@@ -74,7 +74,23 @@ function chordsUnder(hookPart, numerals, ctx, { riffChord = null, turn = false }
   // The riff's own chord for a bar played as written — a pair when the riff changes
   // chord on the half, which the split below finds again from the notes.
   for (const c of [].concat(riffChord || [])) bonus[c] = (bonus[c] || 0) + (ctx.options.variation === 'faithful' ? 0.3 : 0.15);
-  return chordsOfBar((half) => partWeights(hookPart, 'hook', half), pool, bonus);
+  const picked = chordsOfBar((half) => partWeights(hookPart, 'hook', half), pool, bonus);
+  // The mood's own chord won: play it AS WRITTEN. The pool only holds triads, and a quality
+  // on a numeral (Soulful's I7, Mystery's i(maj7) and i6, Lounge's VI7) is part of the
+  // mood, not a colour — the mood's colour would make I7 a maj7 and the line cliché four
+  // bars of one chord (6 Oct 2026). Not where the hook leans on a note the quality takes
+  // away, or sits a semitone from one it adds.
+  if (syms.length === 1 && picked === triadOf(syms[0]) && syms[0] !== picked && !hookClashes(hookPart, syms[0], picked)) return syms[0];
+  return picked;
+}
+
+/** Whether the hook fights what a quality does to a triad: leans on a note it drops, or rubs a semitone against one it adds. */
+function hookClashes(hookPart, written, triad) {
+  const { w } = partWeights(hookPart, 'hook', null);
+  const has = parseChord(written).pcs, plain = parseChord(triad).pcs;
+  const added = has.filter((pc) => !plain.includes(pc));
+  if (plain.some((pc) => !has.includes(pc) && w[pc] > 0)) return true;
+  return added.some((pc) => [11, 1].some((d) => { const n = (pc + d) % 12; return !has.includes(n) && w[n] > 0; }));
 }
 
 /**

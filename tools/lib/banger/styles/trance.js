@@ -75,7 +75,7 @@ export const TRANCE = Object.freeze({
     },
     dark: {
       minor: [['i'], ['i'], ['VI'], ['VII'], ['i'], ['i'], ['iv'], ['V']],
-      major: [['I'], ['bVI'], ['bVII'], ['I'], ['I'], ['bVI'], ['bVII'], ['V']],
+      major: [['I'], ['I'], ['bII'], ['I'], ['I'], ['iv'], ['bII'], ['V']],
     },
   },
   // The long breakdown: wide, open, emotional — the ninths of trance.

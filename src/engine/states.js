@@ -100,6 +100,20 @@ function firstState(next, args) {
   publish();
 }
 
+// No cover at all: the next screen, this frame. For a hand-off the outgoing screen
+// covers itself — the Banger Lab club's reroll strikes lightning and swaps the room
+// under the flash, where the shutter would hide a room that never changes.
+export function setStateNow(next, ...args) {
+  Input.clearAll();
+  current && current.exit && current.exit();
+  current = next;
+  fade = 0; fading = 0;
+  pending = null;
+  preparePresentation(next);
+  next.enter && next.enter(...args);
+  publish();
+}
+
 // Same shutter, no cast cameo. For the run-to-results hand-off: the results
 // screen opens on the whole team celebrating, so a single hero waving one beat
 // earlier steps on that reveal.

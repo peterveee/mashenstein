@@ -65,7 +65,7 @@ export const EUROBEAT = Object.freeze({
     },
     dark: {
       minor: [['i'], ['VI'], ['iv'], ['V'], ['i'], ['VI'], ['iv'], ['V']],
-      major: [['I'], ['bVI'], ['bVII'], ['I'], ['I'], ['bVI'], ['bVII'], ['V']],
+      major: [['I'], ['I'], ['bII'], ['I'], ['I'], ['iv'], ['bII'], ['V']],
     },
   },
   breakdown: {

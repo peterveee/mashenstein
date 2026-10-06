@@ -61,6 +61,44 @@ export const MAKER_VARIATIONS = Object.freeze([
 const PICKERS = 4;
 const VARIATION = 3;
 
+/**
+ * The club's BOLT: `src`'s song as RECHARGE would make it with nothing changed — the riff,
+ * style, mood, voltage and DNA read the way the grid reads them, today's expression and track
+ * effects — on a new seed. The flavour is the one `src` plays, so the take is new but the
+ * combination is not (Peter, 6 Oct 2026).
+ */
+export function rerollRecipe(src, seed = newSeed()) {
+  const mode = src.mode === 'advanced' ? 'advanced' : 'simple';
+  const notes = normaliseNotes(src.notes, mode);
+  const voltage = Math.max(0, Math.min(BANGER_VOLTAGES.length - 1, Math.round(Number(voltageFor(src)) || 0)));
+  const preset = voltageSettings(voltage);
+  const dna = src.variation ?? (src.wild ? 'wild' : 'some');
+  const variation = MAKER_VARIATIONS.some((v) => v.id === dna) ? dna : 'some';
+  const flavour = src.flavour ?? labFlavour(src.style, src.mood, src.seed ?? null, voltageFor(src));
+  return { notes, lengths: normaliseLengths(src.lengths, notes, mode), mode, style: src.style, mood: src.mood, voltage, variation,
+    wild: preset.wild, energy: preset.energy, expression: RECIPE_EXPRESSION,
+    production: { mode: preset.production, version: TRACK_EFFECTS_VERSION }, seed, flavour };
+}
+
+/**
+ * THE BOLT's take: `src` rerolled and made, as `{ rec, song }` — `rec` the pending recipe the
+ * club previews, an update to `from` when that is a kept song — or null if it would not make.
+ */
+export function rerollTake(src, from = null) {
+  const recipe = rerollRecipe(src);
+  let song;
+  try {
+    song = makeBanger({ ...recipe, useCurrentPalette: true });
+  } catch (e) {
+    console.warn('[banger] could not reroll it:', e);
+    return null;
+  }
+  const rec = pendingRecipe({ ...recipe, bpm: song.bpm, paletteSnapshot: song.paletteSnapshot }, from);
+  // a new banger not kept yet keeps the name its preview has shown
+  if (!from && src.name) rec.name = src.name;
+  return { rec, song };
+}
+
 const LOOKAHEAD_S = 0.12;
 // The grid's own preview sound, a different one each visit, drawn from gentle voices
 // with a real sustain stage. Struck pianos, mallets, plucks and fixed-length test tones

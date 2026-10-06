@@ -2,6 +2,7 @@
 import { drawToon } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import { HERO_DANCE_LAB_CANDIDATES, heroDancePose } from '../../dev/hero-dance-candidates.js';
+import { groundDanceFeet } from './dance-legs.js';
 
 export const PARTY_BEATS = Object.freeze({ spotlight: 8, bubbles: 16, cleaner: 16, vacuum: 16, 'drop-jump': 5 });
 /** How many beats the crowd takes to sink all the way down while Fernwick draws. */
@@ -155,9 +156,60 @@ export const partyAlive = (m, beat) => partyAge(m, beat) >= 0 && partyAge(m, bea
 export const DOLORES_DANCE_BEATS = 16;
 export const DOLORES_FLING_BEATS = 1;      // the throw, before the dance
 export const DOLORES_RUN_BEATS = 2;        // off the floor, at a sprint
-const BROOM_FLIGHT_BEATS = 1.2;            // the broom out of the picture
+// The broom goes slowly enough to watch it go (Peter, 6 Oct 2026: "so quick it's hard to see it
+// spinning away"): a high lob out of the picture over three beats, end over end half a turn a beat.
+const BROOM_FLIGHT_BEATS = 3;
+const BROOM_TURNS_PER_BEAT = 0.5;
 /** Her dance: Grumpos's groove, the club's other stout dancer, on the beat. */
 const DOLORES_DANCE = Object.freeze({ ...(HERO_DANCE_LAB_CANDIDATES.find((c) => c.hero === 'grumpos' && c.move === 'groove') || { move: 'groove' }), hero: 'dolores' });
+const DOLORES_SHUFFLE = Object.freeze({ ...DOLORES_DANCE, move: 'shuffle', footwork: null });
+const SHUFFLE_STANCE = 0.12;   // feet together, from the middle: the groove's own stance
+const SHUFFLE_STEP = 0.16;     // one step-together, of her height
+const SHUFFLE_LIFT = 0.045;    // how high the stepping foot comes up
+// her hands well out from her sides in both moves, not tucked against the apron (Peter, 6 Oct 2026)
+const ARMS_OUT = 0.2;
+const armsOut = (pose) => ({ ...pose, dance: { ...pose.dance, hands: pose.dance.hands.map(([o, l]) => [o + ARMS_OUT, l]) } });
+const smooth = (v) => { const n = clamp(v); return n * n * (3 - 2 * n); };
+
+/**
+ * Dolores's dance at song beat `beat`, once she has walked off the job (Peter, 6 Oct 2026: "a
+ * couple of dance moves not just one.. perhaps a shuffle side to side"): Grumpos's groove where
+ * she stands, and every other bar a SIDE SHUFFLE — a step-together on each beat, two towards the
+ * middle of the floor and two back, so the bar ends where it began. The groove takes the part-bars
+ * at either end of the dance, so she only ever shuffles a whole bar, from her spot and back to it.
+ */
+export function doloresDancePose(m, beat) {
+  const q = m.quit, groove = armsOut(heroDancePose(DOLORES_DANCE, beat));
+  if (!q) return groove;
+  const start = m.beat0 + q.from + DOLORES_FLING_BEATS, end = start + q.dance;
+  const first = Math.ceil(start / 4) * 4, bar = Math.floor(beat / 4) * 4;
+  if (!(bar >= first && bar + 4 <= end && ((bar - first) / 4) % 2 === 0)) return groove;
+  const f = beat - bar, i = Math.min(3, Math.floor(f)), g = f - i;
+  const way = i < 2 ? 1 : -1;                    // towards the middle, then back
+  const from = [0, 1, 2, 1][i] * SHUFFLE_STEP;   // where her feet were together on the beat
+  // the leading foot steps out on the beat, the other closes up to it on the "and"
+  const out = smooth(g * 2), close = smooth(g * 2 - 1);
+  const lead = from + way * (SHUFFLE_STANCE + SHUFFLE_STEP * out), trail = from - way * SHUFFLE_STANCE + way * SHUFFLE_STEP * close;
+  const body = (lead + trail) / 2;
+  const leadUp = g < 0.5 ? Math.sin(g * 2 * Math.PI) : 0, trailUp = g >= 0.5 ? Math.sin((g * 2 - 1) * Math.PI) : 0;
+  // which way the middle is, in her own frame (she is drawn facing the way she swept)
+  const toward = -q.out * m.dir;
+  // the foot on the middle's side, and the other, as [x from her middle, lift]
+  const near = way > 0 ? [lead - body, leadUp] : [trail - body, trailUp];
+  const far = way > 0 ? [trail - body, trailUp] : [lead - body, leadUp];
+  const [front, back] = toward > 0 ? [near, far] : [far, near];
+  const shuffle = armsOut(heroDancePose(DOLORES_SHUFFLE, beat));
+  // the arms come out of the groove and go back into it over a quarter of a beat
+  const w = smooth(Math.min(f, 4 - f) / 0.25);
+  const hands = groove.dance.hands.map((hd, k) => hd.map((v, j) => v + (shuffle.dance.hands[k][j] - v) * w));
+  return groundDanceFeet({ ...shuffle,
+    dance: { ...shuffle.dance, hands,
+      feet: [[front[0] * toward, -SHUFFLE_LIFT * front[1]], [back[0] * toward, -SHUFFLE_LIFT * back[1]]],
+      ankles: [0.3 * front[1], 0.3 * back[1]] },
+    shift: toward * body,
+    tilt: 0.03 * toward * Math.sin(f * Math.PI / 2),   // leaning into the way she is going
+    bounce: 0.012 * Math.abs(Math.sin(g * 2 * Math.PI)) });
+}
 
 /**
  * How far across the cleaner has got (0–1 of the crossing) — and, once Dolores has walked off
@@ -184,14 +236,19 @@ function drawBroom(ctx, h) {
   for (let j = 0; j < 5; j++) { ctx.beginPath(); ctx.moveTo(h * 0.25, 0); ctx.lineTo(h * (0.35 + 0.012 * Math.abs(j - 2)), h * (j - 2) * 0.02); ctx.stroke(); }
 }
 
-/** The broom, flung `flung` beats ago towards side `out` from her hands at `x`: up, over, end over end and out of the picture. */
+/**
+ * The broom, flung `flung` beats ago towards side `out` from her hands at `x`: up to about her own
+ * height over her head a little before halfway, then dropping as it goes out of the picture, end
+ * over end.
+ */
 function drawFlungBroom(ctx, flung, out, x, floor, h, width) {
   const x0 = x + out * h * 0.12, y0 = floor - h * 0.62;
   const gone = out > 0 ? width + h * 0.6 - x0 : x0 + h * 0.6;   // how far it flies to be out of the picture
   if (!(flung >= 0 && flung <= BROOM_FLIGHT_BEATS)) return;
+  const k = flung / BROOM_FLIGHT_BEATS;
   ctx.save();
-  ctx.translate(x0 + out * gone * (flung / BROOM_FLIGHT_BEATS), y0 - h * 2.2 * flung + h * 1.3 * flung * flung);
-  ctx.rotate(out * flung * Math.PI * 4.4);
+  ctx.translate(x0 + out * gone * k, y0 - h * (4.4 * k - 4.9 * k * k));
+  ctx.rotate(out * (flung * BROOM_TURNS_PER_BEAT * 2 - 0.3) * Math.PI);
   drawBroom(ctx, h);
   ctx.restore();
 }
@@ -330,15 +387,16 @@ export function drawPartyFront(ctx, m, beat, { width, floorRef, toonH, stageTop,
     if (q) drawFlungBroom(ctx, age - q.from, q.out, at, floor, h, width);
     if (q && age >= q.from) {
       ctx.translate(x, floor); ctx.scale(walk.running != null ? q.out : dir, 1);
+      // delighted from the moment she lets go of the broom, and serious again for the run off (Peter, 6 Oct 2026)
       if (walk.running != null) {
         // at a sprint, arms going, and gone
         drawToon(ctx, 'dolores', { kind: 'run', grounded: true, time: age * 0.9, phase: (age * 1.1) % 1 }, 0, 0, h);
       } else if (walk.flinging != null) {
         // the throw: both arms up and after it
-        drawToon(ctx, 'dolores', { kind: 'stand', grounded: true, time: 0, dance: { hands: [[0.7, -0.75], [0.7, -0.75]] } }, 0, 0, h);
+        drawToon(ctx, 'dolores', { kind: 'stand', grounded: true, time: 0, faceJoy: true, dance: { hands: [[0.7, -0.75], [0.7, -0.75]] } }, 0, 0, h);
       } else {
         // dancing on the beat where she stood
-        const pose = heroDancePose(DOLORES_DANCE, beat);
+        const pose = doloresDancePose(m, beat);
         // into the sway from the throw, and out of it again, over half a beat each way
         const ease = Math.min(1, walk.danceAge * 2, walk.danceLeft * 2);
         ctx.translate((pose.shift || 0) * h * ease, -(pose.bounce || 0) * h * ease);

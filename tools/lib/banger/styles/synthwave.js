@@ -32,8 +32,8 @@ export const SYNTHWAVE = Object.freeze({
     { id: 'darksynth', label: 'Darksynth', note: 'Heavier: half time, a huge gated snare, distorted bass, brass stabs' },
   ],
   flavourByMood: {
-    uplifting: 'outrun', euphoric: 'outrun', heroic: 'outrun', sunshine: 'outrun', hopeful: 'outrun', wonder: 'outrun',
-    dark: 'darksynth', gothic: 'darksynth', boss: 'darksynth', hypnotic: 'darksynth', andalusian: 'darksynth', lament: 'darksynth',
+    uplifting: 'outrun', euphoric: 'outrun', heroic: 'outrun', sunshine: 'outrun', wonder: 'outrun',
+    dark: 'darksynth', gothic: 'darksynth', boss: 'darksynth', hypnotic: 'darksynth', flamenco: 'darksynth', lament: 'darksynth', mystery: 'darksynth',
   },
   // Its bass is its signature: Bass Lifts never moves it.
   bassFixed: true,

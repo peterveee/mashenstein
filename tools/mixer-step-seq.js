@@ -195,12 +195,13 @@ export const KITS = [
   // survived, so each kit is re-paired below with the nearest closed hat still offered.
   //
   // 808: the deleted one was a metal cluster clipped to a tick, and no metallic closed
-  // hat is left at all. `hatGrit` is the only survivor with drive on it — a square
-  // sitting in a resonant band, pushed hard — so it keeps the electronic edge the 808
-  // hat is for, at the cost of being darker than the original.
+  // hat is left at all. It was `hatGrit` — a square in a resonant band, pushed hard —
+  // until 6 Oct 2026, when Peter heard that square as a clave on eighths ("too
+  // distracting"). The plain highpassed tick now, the same closed hat as 909's; the
+  // banger kits made the same swap (tools/lib/banger/sounds.js).
   ['808', {
     kick: 'ds808Kick', snare: 'ds808Snare', clap: 'ds808Clap',
-    hats: 'hatGrit', ohats: 'ds808OpenHat', tom: 'ds808Tom',
+    hats: 'dsHatClosed', ohats: 'ds808OpenHat', tom: 'ds808Tom',
   }],
   // 909: the closest match left, and close on the numbers rather than by name — highpass
   // 7.8k against the deleted one's 7.2k, decay 0.032 against 0.035. Its Q is 1.2, which

@@ -45,14 +45,25 @@ export const CLUB_INKS = Object.freeze([
 ].map(hexRgb));
 
 /**
- * THE LED BOARD'S INKS: the unlit board, a lit dot, and a hot one where the glows pile up. A lit dot averaged over its cell (core, glow and the unlit dot under it) comes
- * to about #d0402a. No black apart from the board's: with one, the unlit dots flickered between
- * the two as the cells cut them unevenly. And no ink for the glow a lit dot throws on its
+ * THE LED BOARD'S INKS: the unlit board in three dark reds (club.js drawLed paints its unlit
+ * dots solid in them, scattered, so the board is grubby rather than a clean dark), a lit dot,
+ * and a hot one where the glows pile up. The board is painted solid for the tube, every lit
+ * dot a full square, so a lit dot can never be averaged away. (The unlit dots once flickered
+ * between two darks as the cells cut the round dots unevenly; painted solid, each cell is a
+ * fixed mix, so the scatter holds still.) No ink for the glow a lit dot throws on its
  * neighbours: it filled the gaps and the insides of the letters with dark red blocks, which
  * made them harder to read (Peter, 6 Oct 2026), so a cell is either lit or the board. (The
  * frame's edge had an ink once too, and took those cells over when the glow's went.)
  */
-export const LED_INKS = Object.freeze(['#1c0a0a', '#d0402a', '#ff6a40'].map(hexRgb));
+export const LED_INKS = Object.freeze(['#1c0a0a', '#2c100d', '#0e0607', '#d0402a', '#ff6a40'].map(hexRgb));
+
+/**
+ * THE CLUB SIGN'S INKS, for its words set in cells (club.js neonPixels): its board and the
+ * board's edge, the glow beside a lit cell, a lit cell dimmed by the neon's flicker, and a lit
+ * cell. On the room's inks the glow and the tube came out the same pinks, so the letters
+ * drowned in a pink slab.
+ */
+export const SIGN_INKS = Object.freeze(['#130f1f', '#2e2640', '#4a1a3e', '#8c2a63', '#ff4fa3'].map(hexRgb));
 
 // A cache from colour to ink: a club frame has a few thousand distinct cell colours, and
 // most of them recur frame to frame. Keyed on 5 bits a channel, which no eye can tell apart.
@@ -90,9 +101,10 @@ function sheet(id, w, h) {
  * (its current transform's), `toonH` a hero's height in them; `lite` leaves out the bloom.
  * With `box` ({ x, y, w, h, cell } in the same units) only that box goes on the tube, cut to
  * cells of its own size from its own corner, in `inks`, and without the tube's vignette — the
- * LED board, a cell to a dot.
+ * LED board, a cell to a dot. Each box on the tube names itself with `id`, so each keeps its
+ * own scratch canvases rather than resizing a shared one every frame.
  */
-export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, inks = CLUB_INKS }) {
+export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, inks = CLUB_INKS, id = 'box' }) {
   if (typeof document === 'undefined' || typeof ctx.getTransform !== 'function' || !ctx.canvas) return false;
   let m;
   try { m = ctx.getTransform(); } catch { return false; }
@@ -114,7 +126,7 @@ export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, ink
   }
   if (R.w < 8 || R.h < 8) return false;
   // the cells: the room averaged down, then every cell snapped to its ink
-  const cells = sheet(box ? 'box-cells' : 'cells', cw, ch);
+  const cells = sheet(box ? `${id}-cells` : 'cells', cw, ch);
   if (!cells.g) return false;
   cells.g.setTransform(1, 0, 0, 1, 0, 0);
   cells.g.imageSmoothingEnabled = true;
@@ -151,7 +163,7 @@ export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, ink
   // a little bloom off a coarser copy
   if (!lite) {
     const bw = Math.max(1, Math.ceil(cw / 4)), bh = Math.max(1, Math.ceil(ch / 4));
-    const bloom = sheet(box ? 'box-bloom' : 'bloom', bw, bh);
+    const bloom = sheet(box ? `${id}-bloom` : 'bloom', bw, bh);
     bloom.g.setTransform(1, 0, 0, 1, 0, 0);
     bloom.g.imageSmoothingEnabled = true;
     bloom.g.clearRect(0, 0, bw, bh);

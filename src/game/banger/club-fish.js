@@ -24,6 +24,14 @@ const ink = (ctx, L, w = 0.035) => {
 };
 const ellipse = (ctx, x, y, rx, ry, rot = 0) => { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, rot, 0, TAU); };
 const fillStroke = (ctx, fill) => { ctx.fillStyle = fill; ctx.fill(); ctx.stroke(); };
+/**
+ * A body's outline. When the look says how wide (drawPaperFish's `contour`) it is the cast's
+ * contour, that width in the cast's whisper-light ink (toons.js OUTLINE, 0.32); else the ink's.
+ */
+const edge = (ctx, w) => {
+  if (w == null) { ctx.stroke(); return; }
+  ctx.save(); ctx.lineWidth = w; ctx.strokeStyle = 'rgba(26,16,40,0.32)'; ctx.stroke(); ctx.restore();
+};
 
 /** An eye: white, a pupil at `look` (fractions of the radius), a glint; `lid` 0–1 shuts it from the top. */
 function eye(ctx, x, y, r, { look = [0.25, 0], pupil = 0.5, lid = 0, lidCol = '#000', white = '#ffffff' } = {}) {
@@ -71,6 +79,63 @@ function bubbles(ctx, x, y, L, beat, n = 2) {
   ctx.restore();
 }
 
+/**
+ * The party shark's baby, from the neck up, drawn over the shark's body: no teeth yet, a big eye
+ * and a rosy cheek, a bow on its head (`hat`, babyBow unless a bake-off passes another:
+ * src/dev/baby-shark-hats.js), and a dummy in its mouth that it sucks twice a beat.
+ */
+function babyShark(ctx, L, { beat, wag, blink, hat = babyBow }) {
+  for (const x of [-0.06, -0.01]) { ctx.beginPath(); ctx.moveTo(L * x, -L * 0.05); ctx.quadraticCurveTo(L * (x - 0.02), L * 0.0, L * x, L * 0.05); ctx.stroke(); }
+  ink(ctx, L);
+  hat(ctx, L, { beat, wag });
+  ink(ctx, L);
+  babyFace(ctx, L, { beat, wag, blink });
+}
+
+/**
+ * The bow it wears: big and pink, stuck on top of its head, popping on the beat (Peter, 6 Oct
+ * 2026: "i like the bow" — from the bake-off, src/dev/baby-shark-hats.js).
+ */
+export function babyBow(ctx, L, { beat }) {
+  const pop = 1 + 0.1 * Math.exp(-(((beat % 1) + 1) % 1) * 6);
+  ctx.save(); ctx.translate(L * 0.24, -L * 0.2); ctx.rotate(-0.15); ctx.scale(pop, pop);
+  for (const s of [-1, 1]) {   // the tails
+    ctx.beginPath(); ctx.moveTo(-L * 0.015, 0); ctx.lineTo(s * L * 0.05, L * 0.08); ctx.lineTo(s * L * 0.07, L * 0.06); ctx.lineTo(L * 0.015, 0); ctx.closePath();
+    fillStroke(ctx, '#ff5d9a');
+  }
+  for (const s of [-1, 1]) {   // the loops
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(s * L * 0.05, -L * 0.11, s * L * 0.15, -L * 0.11, s * L * 0.14, -L * 0.02);
+    ctx.bezierCurveTo(s * L * 0.14, L * 0.045, s * L * 0.05, L * 0.035, 0, 0);
+    fillStroke(ctx, '#ff5d9a');
+    ellipse(ctx, s * L * 0.085, -L * 0.04, L * 0.025, L * 0.014, s * -0.5); ctx.fillStyle = '#ffb3cf'; ctx.fill();
+  }
+  ellipse(ctx, 0, -L * 0.005, L * 0.035, L * 0.035); fillStroke(ctx, '#ff2f7d');
+  ctx.restore();
+}
+
+/** The baby's face, and the fin under it. */
+function babyFace(ctx, L, { beat, wag, blink }) {
+  // a big eye, a rosy cheek
+  if (blink) { ctx.beginPath(); ctx.moveTo(L * 0.28, -L * 0.06); ctx.quadraticCurveTo(L * 0.33, -L * 0.02, L * 0.38, -L * 0.06); ctx.stroke(); }
+  else eye(ctx, L * 0.33, -L * 0.06, L * 0.07, { look: [0.35, 0.15], pupil: 0.62 });
+  ellipse(ctx, L * 0.31, L * 0.045, L * 0.04, L * 0.024); ctx.fillStyle = '#ff9ec0'; ctx.fill();
+  // the dummy, sucked in twice a beat: in the mouth, which is under the snout, so it points down
+  // and forward off the jaw (Peter, 6 Oct 2026: "aiming downward rather than being horizontal
+  // since the mouth is down") — the shield against the jaw and the ring hanging off it
+  const suck = L * 0.014 * (0.5 + 0.5 * Math.cos(beat * TAU * 2));
+  ctx.save(); ctx.translate(L * 0.395, L * 0.085); ctx.scale(1, 1 / BABY_CHUB); ctx.rotate(0.95); ctx.translate(-suck, 0);
+  ellipse(ctx, L * 0.012, 0, L * 0.03, L * 0.072); fillStroke(ctx, '#9ad8ff');
+  ellipse(ctx, L * 0.026, 0, L * 0.016, L * 0.016); fillStroke(ctx, '#6fc0f0');
+  ctx.beginPath(); ctx.arc(L * 0.085, 0, L * 0.055, 0, TAU); ctx.moveTo(L * 0.117, 0); ctx.arc(L * 0.085, 0, L * 0.032, 0, TAU, true);
+  fillStroke(ctx, '#ffd23f');
+  ctx.restore();
+  ctx.beginPath(); ctx.moveTo(L * 0.0, L * 0.12); ctx.quadraticCurveTo(L * 0.02, L * 0.22 + wag * L * 0.02, -L * 0.1, L * 0.24); ctx.lineTo(-L * 0.06, L * 0.14); ctx.closePath(); fillStroke(ctx, '#6f8aa8');
+}
+
+/** How much chubbier the baby is than its parent, top to bottom. */
+const BABY_CHUB = 1.12;
+
 /** How puffed-up a fish is on the beat: in hard on every other downbeat, letting go slowly. */
 const puffOn = (beat) => {
   const ph = ((beat % 2) + 2) % 2;
@@ -81,7 +146,7 @@ export const FISHES = Object.freeze([
   {
     letter: 'A', name: 'GOOGLY', size: 0.55,
     description: 'A chubby orange fish with one enormous googly eye whose pupil rattles about as it swims, big pink lips going BLUB on the beat, a flapping little fin.',
-    paint(ctx, L, { t, beat, wag }) {
+    paint(ctx, L, { t, beat, wag, contour }) {
       ink(ctx, L);
       const blub = Math.max(0, Math.sin((((beat % 1) + 1) % 1) * Math.PI));
       tail(ctx, -L * 0.28, L * 0.42, L * 0.22, wag, '#ff7a2e');
@@ -94,7 +159,7 @@ export const FISHES = Object.freeze([
       ctx.save(); ellipse(ctx, L * 0.03, 0, L * 0.34, L * 0.29); ctx.clip();
       ctx.fillStyle = '#ffc27a'; ellipse(ctx, L * 0.06, L * 0.2, L * 0.3, L * 0.16); ctx.fill();
       ctx.restore();
-      ellipse(ctx, L * 0.03, 0, L * 0.34, L * 0.29); ctx.stroke();
+      ellipse(ctx, L * 0.03, 0, L * 0.34, L * 0.29); edge(ctx, contour);
       // the little fin, flapping fast
       ellipse(ctx, -L * 0.03, L * 0.08, L * 0.07, L * 0.04, 0.6 + Math.sin(t * 18) * 0.6); fillStroke(ctx, '#ff9a55');
       // the lips, open on the beat
@@ -108,7 +173,7 @@ export const FISHES = Object.freeze([
   {
     letter: 'B', name: 'PUFFER', size: 0.5,
     description: 'A worried pufferfish that blows up into a spiky ball on every other downbeat and slowly lets the air out again.',
-    paint(ctx, L, { beat, wag }) {
+    paint(ctx, L, { beat, wag, contour }) {
       ink(ctx, L);
       const p = puffOn(beat);
       const R = L * (0.22 + 0.11 * p);
@@ -128,7 +193,7 @@ export const FISHES = Object.freeze([
       ctx.fillStyle = '#b98a2a';
       for (const [sx, sy] of [[-0.45, -0.35], [-0.1, -0.55], [-0.55, 0.05], [0.15, -0.3], [-0.3, -0.05]]) { ellipse(ctx, R * sx, R * sy, R * 0.08, R * 0.07); ctx.fill(); }
       ctx.restore();
-      ellipse(ctx, 0, 0, R, R * (0.86 + 0.14 * p)); ctx.stroke();
+      ellipse(ctx, 0, 0, R, R * (0.86 + 0.14 * p)); edge(ctx, contour);
       // fins, and the worried face
       ellipse(ctx, -R * 0.15, R * 0.3, L * 0.06, L * 0.035, 0.5 + 0.4 * Math.sin(beat * 9)); fillStroke(ctx, '#e8c23a');
       eye(ctx, R * 0.42, -R * 0.32, L * 0.075, { look: [0.4, -0.3], pupil: 0.5 });
@@ -139,7 +204,7 @@ export const FISHES = Object.freeze([
   {
     letter: 'C', name: 'SHADES', size: 0.55,
     description: 'The club fish: sunglasses, a yellow quiff of a fin, a smirk and a disco sheen, bobbing to the beat as it cruises across.',
-    paint(ctx, L, { t, beat, wag }) {
+    paint(ctx, L, { t, beat, wag, contour }) {
       ink(ctx, L);
       ctx.save();
       ctx.translate(0, -Math.abs(Math.sin(beat * Math.PI)) * L * 0.06);
@@ -158,7 +223,7 @@ export const FISHES = Object.freeze([
       const sweep = (((beat % 1) + 1) % 1) * 1.4 - 0.2;
       ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillRect(L * (-0.4 + sweep * 0.8), -L * 0.3, L * 0.06, L * 0.6);
       ctx.restore();
-      ellipse(ctx, L * 0.03, 0, L * 0.4, L * 0.2); ctx.stroke();
+      ellipse(ctx, L * 0.03, 0, L * 0.4, L * 0.2); edge(ctx, contour);
       // the sunglasses, and the smirk
       ctx.fillStyle = '#0b0b14';
       ctx.beginPath(); ctx.moveTo(L * 0.06, -L * 0.1); ctx.lineTo(L * 0.34, -L * 0.1); ctx.lineTo(L * 0.31, -L * 0.01); ctx.quadraticCurveTo(L * 0.2, L * 0.02, L * 0.1, -L * 0.02); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -175,7 +240,7 @@ export const FISHES = Object.freeze([
   {
     letter: 'D', name: 'SNORKEL', size: 0.55,
     description: 'Dressed for the flood: a diving mask with its eye huge behind the glass, an orange snorkel puffing bubbles on the beat.',
-    paint(ctx, L, { beat, wag }) {
+    paint(ctx, L, { beat, wag, contour }) {
       ink(ctx, L);
       tail(ctx, -L * 0.3, L * 0.36, L * 0.2, wag, '#22a59a');
       ellipse(ctx, L * 0.02, 0, L * 0.38, L * 0.24); ctx.fillStyle = '#3fd0c0'; ctx.fill();
@@ -183,7 +248,7 @@ export const FISHES = Object.freeze([
       ctx.fillStyle = '#2bb3a6';
       for (const x of [-0.22, -0.08]) ctx.fillRect(L * x, -L * 0.3, L * 0.06, L * 0.6);
       ctx.restore();
-      ellipse(ctx, L * 0.02, 0, L * 0.38, L * 0.24); ctx.stroke();
+      ellipse(ctx, L * 0.02, 0, L * 0.38, L * 0.24); edge(ctx, contour);
       // the strap, round the back of the head
       ctx.strokeStyle = '#1f2a44'; ctx.lineWidth = Math.max(1, L * 0.04);
       ctx.beginPath(); ctx.moveTo(L * 0.08, -L * 0.12); ctx.quadraticCurveTo(-L * 0.06, -L * 0.1, -L * 0.04, L * 0.04); ctx.stroke();
@@ -209,10 +274,15 @@ export const FISHES = Object.freeze([
   },
   {
     letter: 'E', name: 'ANGLER', size: 0.6,
-    description: 'From the deep end: a dark anglerfish with a huge underbite of snaggle teeth and a lamp on a stalk, glowing brighter on the beat.',
+    description: 'From the deep end: a dark anglerfish with a huge underbite of snaggle teeth, chomping as it swims, and a lamp on a stalk, glowing brighter on the beat.',
     paint(ctx, L, { t, beat, wag }) {
       ink(ctx, L);
       const pulse = Math.exp(-(((beat % 1) + 1) % 1) * 4);
+      // its jaw chomps as it swims, shut on the beat and dropping open between (Peter, 6 Oct 2026:
+      // "can the anglers teeth, mouth/jaw move a little while moving?"): the jaw hinges at the back
+      // of the mouth, so a point drops by how far forward of the hinge it is
+      const gape = L * 0.08 * (0.5 - 0.5 * Math.cos(beat * TAU));
+      const drop = (x) => gape * Math.max(0, Math.min(1, x / 0.52));
       const lx = L * 0.62, ly = -L * 0.38 + Math.sin(t * 3) * L * 0.04;
       // the glow first, under everything
       const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, L * (0.28 + 0.1 * pulse));
@@ -224,18 +294,18 @@ export const FISHES = Object.freeze([
       ctx.moveTo(-L * 0.32, 0);
       ctx.quadraticCurveTo(-L * 0.25, -L * 0.3, L * 0.12, -L * 0.3);
       ctx.quadraticCurveTo(L * 0.4, -L * 0.28, L * 0.42, -L * 0.04);
-      ctx.lineTo(L * 0.5, L * 0.12);
-      ctx.quadraticCurveTo(L * 0.2, L * 0.34, -L * 0.1, L * 0.24);
+      ctx.lineTo(L * 0.5, L * 0.12 + drop(0.5));
+      ctx.quadraticCurveTo(L * 0.2, L * 0.34 + drop(0.2), -L * 0.1, L * 0.24);
       ctx.quadraticCurveTo(-L * 0.3, L * 0.16, -L * 0.32, 0);
       ctx.closePath(); fillStroke(ctx, '#3a2f5a');
       // the mouth, wide open, the jaw jutting past it, and its snaggle teeth: down from the lip
       // above, up from the jaw below, every one a different length
       ctx.fillStyle = '#4a0d24';
-      ctx.beginPath(); ctx.moveTo(L * 0.42, -L * 0.05); ctx.quadraticCurveTo(L * 0.2, L * 0.06, L * 0.0, L * 0.06); ctx.quadraticCurveTo(L * 0.22, L * 0.24, L * 0.52, L * 0.13); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(L * 0.42, -L * 0.05); ctx.quadraticCurveTo(L * 0.2, L * 0.06, L * 0.0, L * 0.06); ctx.quadraticCurveTo(L * 0.22, L * 0.24 + drop(0.22), L * 0.52, L * 0.13 + drop(0.52)); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#fffbe8';
       ctx.lineWidth = Math.max(0.5, L * 0.012);
       const lip = (u) => [L * (0.0 + 0.42 * u), L * (0.06 - 0.11 * u * u)];
-      const jaw = (u) => [L * (0.0 + 0.52 * u), L * (0.06 + 0.14 * Math.sin(u * Math.PI * 0.8) - 0.0 * u)];
+      const jaw = (u) => [L * (0.0 + 0.52 * u), L * (0.06 + 0.14 * Math.sin(u * Math.PI * 0.8) - 0.0 * u) + drop(0.52 * u)];
       for (const [u, h] of [[0.25, 0.07], [0.45, 0.1], [0.62, 0.06], [0.8, 0.09], [0.94, 0.05]]) {
         const [bx, by] = lip(u);
         ctx.beginPath(); ctx.moveTo(bx - L * 0.026, by); ctx.lineTo(bx + L * 0.004, by + L * h); ctx.lineTo(bx + L * 0.026, by); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -257,7 +327,7 @@ export const FISHES = Object.freeze([
   {
     letter: 'F', name: 'BIG LIPS', size: 0.6,
     description: 'A grumpy grouper, heavy-lidded and spotty, whose great pink lips pucker into a kiss every other beat and blow a heart.',
-    paint(ctx, L, { beat, wag }) {
+    paint(ctx, L, { beat, wag, contour }) {
       ink(ctx, L);
       const ph = ((beat % 2) + 2) % 2;
       const kiss = ph < 0.5 ? Math.sin((ph / 0.5) * Math.PI) : 0;
@@ -269,7 +339,7 @@ export const FISHES = Object.freeze([
       ctx.fillStyle = '#6f8f4a';
       for (const [sx, sy, r] of [[-0.2, -0.12, 0.04], [-0.05, -0.16, 0.035], [-0.25, 0.05, 0.03], [0.05, -0.05, 0.03], [-0.12, 0.0, 0.025], [0.14, -0.15, 0.025]]) { ellipse(ctx, L * sx, L * sy, L * r, L * r); ctx.fill(); }
       ctx.restore();
-      ellipse(ctx, 0, 0, L * 0.38, L * 0.27); ctx.stroke();
+      ellipse(ctx, 0, 0, L * 0.38, L * 0.27); edge(ctx, contour);
       // the lips: pushed out into a pucker on the kiss
       const out = L * 0.06 * kiss;
       ellipse(ctx, L * 0.37 + out, -L * 0.005, L * (0.07 - 0.015 * kiss), L * (0.055 - 0.01 * kiss), -0.2); fillStroke(ctx, '#ff7aa0');
@@ -292,11 +362,15 @@ export const FISHES = Object.freeze([
     },
   },
   {
-    letter: 'G', name: 'PARTY SHARK', size: 0.65,
-    description: 'A friendly shark in a party hat, grinning a mouthful of teeth and blinking on the bar. The biggest of them.',
-    paint(ctx, L, { beat, wag }) {
+    letter: 'G', name: 'PARTY SHARK', size: 0.95,
+    description: 'A friendly shark in a party hat, grinning a mouthful of teeth and blinking on the bar. The biggest of them. '
+      + 'Its baby follows it (`baby`): chubbier, a bigger eye, a big pink bow on its head and a dummy it sucks on the beat.',
+    paint(ctx, L, { beat, wag, baby, babyHat, contour }) {
       ink(ctx, L);
       const blink = (((beat % 4) + 4) % 4) > 3.75;
+      // the baby is a chubby one (Peter, 6 Oct 2026: "more like a baby — pacifier perhaps and some
+      // sort of baby bonnet")
+      if (baby) { ctx.save(); ctx.scale(1, BABY_CHUB); }
       // the tail, a crescent
       const sw = wag * L * 0.06;
       ctx.beginPath(); ctx.moveTo(-L * 0.36, 0);
@@ -319,7 +393,8 @@ export const FISHES = Object.freeze([
       ctx.save(); ctx.clip();
       ctx.fillStyle = '#f2f5fa'; ctx.beginPath(); ctx.ellipse(L * 0.1, L * 0.14, L * 0.42, L * 0.09, 0, 0, TAU); ctx.fill();
       ctx.restore();
-      body(); ctx.stroke();
+      body(); edge(ctx, contour);
+      if (baby) { babyShark(ctx, L, { beat, wag, blink, hat: babyHat }); ctx.restore(); return; }
       // the grin, all teeth
       ctx.fillStyle = '#5a1030';
       ctx.beginPath(); ctx.moveTo(L * 0.1, L * 0.04); ctx.quadraticCurveTo(L * 0.3, L * 0.13, L * 0.44, L * 0.02); ctx.quadraticCurveTo(L * 0.3, L * 0.06, L * 0.1, L * 0.04); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -464,7 +539,20 @@ const grain = () => texture('grain', 64, (g, n) => {
   for (let i = 0; i < 900; i++) { const v = 200 + rnd() * 55; g.fillStyle = `rgb(${v},${v - 4},${v - 10})`; g.fillRect(rnd() * n, rnd() * n, 1 + rnd() * 1.5, 1 + rnd() * 1.5); }
 });
 
-/** One fish in cut paper (FISHES' contract, `fish` one of them). `o.lite` leaves out the grain. */
+/**
+ * How wide a fish's outline is, as a share of a hero's height: the cast's contour (toons.js,
+ * 0.016 h), so the fish are outlined like the heroes they swim over, whatever their size (Peter,
+ * 6 Oct 2026: "should we possibly have a smaller outline for all of them? They seem a bit thicker
+ * than the heros"). It was 3.5% of the fish's own length, so the bigger the fish the heavier, and
+ * solid where the cast's is a third ink (edge).
+ */
+const CONTOUR = 0.016;
+
+/**
+ * One fish in cut paper (FISHES' contract, `fish` one of them). `o.lite` leaves out the grain;
+ * `o.heroH` is the height of the heroes it swims over, for its outline (CONTOUR), else the fish's
+ * own size says.
+ */
 export function drawPaperFish(ctx, fish, L, o = {}) {
   const g = o.lite ? null : grain();
   const pattern = g && ctx.createPattern?.(g, 'repeat');
@@ -493,10 +581,12 @@ export function drawPaperFish(ctx, fish, L, o = {}) {
       const k = deviceScale(t);
       t.save();
       t.shadowColor = 'rgba(20,10,30,0.4)'; t.shadowBlur = k * L * 0.03; t.shadowOffsetY = k * L * 0.015;
-      if (col && luma(col) < 60) { t.strokeStyle = '#3a2a30'; t.lineWidth *= 0.9; }
+      if (col && luma(col) < 60) { t.strokeStyle = css([58, 42, 48, col[3]]); t.lineWidth *= 0.9; }
       t.stroke();
       t.restore();
     },
   });
-  fish.paint(paper, L, o);
+  // a dark line on its own is cut at 0.9 of its width (stroke above), so ask for a little more
+  const contour = (o.heroH ?? L / fish.size) * CONTOUR / 0.9;
+  fish.paint(paper, L, { ...o, contour });
 }

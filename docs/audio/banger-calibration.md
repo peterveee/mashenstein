@@ -19,7 +19,7 @@ On the desk, choose styles and RUN. FULL REBUILD ignores cached measurements for
 
 The Desk's **BANGER BALANCE** panel is for ear-led mix preferences: select a style, adjust the main hook, lead stack, or individual part trims, then choose **SAVE + BUILD**. **MEASURE + BUILD** runs the calibration refresh for that selected style and builds the game after publication. These are separate adjustments: a fader preference does not require new instrument measurements. Restore a style's built-in balance with RESET TO STYLE.
 
-WEEKLY: ON schedules an incremental run of all styles seven days later. The setting survives restarting the desk. An overdue job starts when the desk is open and no other desk job is running. Turning the setting off prevents future runs; it does not interrupt an existing refresh. This is a desk-local scheduler, not a machine service that runs after the desk closes. It starts disabled.
+Ticking WEEKLY schedules an incremental run of all styles seven days later. The setting survives restarting the desk. An overdue job starts when the desk is open and no other desk job is running. Unticking it prevents future runs; it does not interrupt an existing refresh. This is a desk-local scheduler, not a machine service that runs after the desk closes. It starts unticked.
 
 ## What is measured
 

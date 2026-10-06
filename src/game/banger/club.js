@@ -6,7 +6,7 @@ import { ClubVoices } from './club-voices.js';
 import { PADS, SHOUTS, HIT_GAINS, CLAP_OVER_DB, playPad, playToy, startRiser, rollHit, clapsAt, CLAP_FILLS } from './club-hits.js';
 import { VOICES, voiceGain, baseLane } from '../../data/voices.js';
 import { dbToGain } from '../../engine/mixer.js';
-import { clubCrt, LED_INKS } from './club-crt.js';
+import { clubCrt, LED_INKS, SIGN_INKS } from './club-crt.js';
 import { FISHES, drawPaperFish } from './club-fish.js';
 import { drawSpeakerStack } from './speakers.js';
 export { SKIRT_LEGS } from './dance-legs.js';
@@ -49,6 +49,8 @@ import { drawToon, titleParadeAction, toonInkTop } from '../../sprites/toons.js'
 // moves the gallery previews.
 import { HERO_DANCE_LAB_CANDIDATES, heroDancePose } from '../../dev/hero-dance-candidates.js';
 import { songFor, bangerTitle, keepMixer } from './store.js';
+import { drawBolt } from './birth.js';
+import { drawTeslaBolt } from './club-bolts.js';
 import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
 import { LED_SLOGANS, LED_SCROLLS, LED_STYLE_LINES, fillLed } from './led-slogans.js';
 import {
@@ -74,6 +76,26 @@ const INTRO_FADE_S = 0.8;
 /** The mixer icon stays bright this long after it is used, then fades to a hint. */
 const ICONS_AWAKE_S = 3;
 const ICONS_ASLEEP = 0.18;
+// THE BOLT's strike (Peter, 6 Oct 2026; GLOBE BURST, C of the bake-off, chosen the same day): the
+// mirror ball spins up (frames, at the fixed 60 Hz tick: "I would LOVE for the mirror ball to do its
+// speed up animation before the bolts") and a glass plasma globe swells round it over the charge's
+// last STRIKE_PLASMA, then bursts — a shockwave ring off the ball over STRIKE_RING_S, the room
+// washed in STRIKE_COVER while the new take swaps in and clearing over STRIKE_COVER_S, and the arcs
+// out to the room (club-bolts.js, a Tesla coil's) fading over STRIKE_ARC_S. The take is made on the
+// charge's first frame, so only the swap is left for the flash; the spin climbs to STRIKE_SPIN. The
+// charge was a second, and is longer for being "super cute" (Peter, 6 Oct 2026).
+const STRIKE_CHARGE_FRAMES = 108, STRIKE_PLASMA = 0.55, STRIKE_SPIN = 32;
+const STRIKE_COVER = [236, 222, 255, 0.8], STRIKE_COVER_S = 0.3, STRIKE_RING_S = 0.45, STRIKE_ARC_S = 0.45;
+const PLASMA = '#b77bff';
+// Its sound: the turbo hoover's motor revving through the charge as if about to blow (club-hits.js
+// turbo), and the thunder — well under IT'S ALIVE!'s ("a lot softer") — when it does (Peter, 6 Oct 2026)
+const STRIKE_THUNDER_GAIN = 0.3;
+// On the glass THE BOLT asks first (Peter, 6 Oct 2026: a stray tap would ruin the take playing):
+// a tap arms it for REROLL_CONFIRM_S, and a second one — not a double-tap's bounce — lets it go.
+const REROLL_CONFIRM_S = 3, REROLL_CONFIRM_MIN_S = 0.25;
+// What the bottom row's buttons are, on a mouse's hover or the keys' focus (Peter, 6 Oct 2026)
+const TIP_DELAY_S = 0.35;
+
 /** The walk-in: when the first pair sets off, how far apart the pairs go, and the pace (screen widths a second). */
 const WALK_DELAY_S = 0.3;
 const WALK_STAGGER_S = 0.3;
@@ -93,6 +115,8 @@ const MIX_K = 1.7;
 
 /** The LED board: its size in dots, and what it says. */
 export const LED_COLS = 72, LED_ROWS = 7;   // wider (Peter, 3 Oct 2026)
+/** The club sign's CRT cell, as a fraction of its lettering's size. */
+const SIGN_CRT_CELL = 0.1;
 const LED_EQ_BARS = 24;           // the board as a graphic equaliser: bars of three dots (two lit, a gap)
 const LED_HOLD_BARS = 4;          // each slogan's bars on the board
 const LED_SCROLL_COLS_S = 22;     // how fast a scroller crosses, in dots a second
@@ -122,6 +146,15 @@ const LED_FONT = {
 const ledWidth = (text) => text.length * 6 - 1;
 /** The Mexican wave: how far through its bar the last column starts, and each jump's length (bars). */
 const WAVE_SPREAD = 0.75, WAVE_JUMP = 0.25;
+// ROCKET FIST on the floor: each repeat of the stutter loops at least this much of the dance
+// (in beats, played faster to fit a short slice), and kicks the dancers — a shove (of a hero's
+// height), a lean (radians) and a pop off the floor (of a hero's height), alternating sides
+// repeat by repeat and settling across it (stutterJolt).
+const STUTTER_SPAN_BEATS = 0.5;
+const STUTTER_SHOVE = 0.12, STUTTER_TILT = 0.14, STUTTER_POP = 0.1;
+// a hero resting in their idle has no dance to loop, so is kicked this much harder, and lands
+// with a squash (at most, mid-repeat)
+const STUTTER_IDLE = 1.5, STUTTER_SQUASH = 0.2;
 /** The song's title, from a tap on the mirror ball: in, held, out (seconds). */
 const TITLE_IN_S = 0.5, TITLE_HOLD_S = 4, TITLE_OUT_S = 1;
 // the soles sit this far below the floor line on a 46-unit hero (the food court's REFLECT_SOLE_DROP)
@@ -202,7 +235,25 @@ const VOLLEY_H = [1.35, 1.7];   // a knock's height, in heroes
  * tap up in the room, over the heads: lasers fire from the stage and sweep up and out of the picture.
  */
 const SPEAKER_HOLD_S = 0.25;
+// What the DICE says when it is rolled (Peter, 6 Oct 2026: "random/possibly more humourous"),
+// never the same twice running. None starts with NO: the floatie paints those red.
+// ...and while it rolls, each sound button spins through its part's sounds like a fruit
+// machine's reel, slowing, the reels stopping left to right on the new sound (Peter, 6 Oct
+// 2026: "can the presets roll while the dice is rolling also?"). The die tumbles until the
+// last reel stops. A continuous scroll — each name slides out as the next slides in — not a
+// name dropped in and held: that read jerky ("a little jerky"), and so did 9 names in 0.6s.
+const REEL_S = 0.8, REEL_STAGGER = 0.14, REEL_TICKS = 6, REEL_EASE = 1.8;
+const DICE_ROLL_S = REEL_S + REEL_STAGGER * 3;
+export const DICE_LINES = Object.freeze(['ROLL THE DICE!', 'FEELING LUCKY?', 'SURPRISE ME!', 'CHAOS MODE',
+  'WHAT COULD GO WRONG?', 'NEW BAND, WHO DIS?', 'THE DICE HAVE SPOKEN', 'BLAME THE DICE', 'SHAKE IT UP!',
+  'OOPS, ALL PRESETS', 'HOLD MY SYNTH', 'DOUBLE OR NOTHING', 'TRUST THE DICE', 'BAND SWAP!',
+  'IT\'S A GAMBLE', 'THAT\'S THE SPIRIT', 'PURE GENIUS', 'BIG BRAIN MOVE', 'SOUNDS RANDOM', 'YOLO']);
 const SPEAKER_BOOST = 1.8;
+// ...and the heroes bounce with it (Peter, 6 Oct 2026: "the bass boost effect should make the
+// heroes bounce up and down a little.. and the wobble should make it more pronounced as they
+// drag"): a hop off the floor on every kick while boosted, and on the wobble's eighths as high
+// as the drag — of a hero's height — each landing into a squash (boostHop).
+const BOOST_HOP = 0.05, WOBBLE_HOP = 0.14, BOOST_SQUASH = 0.06, WOBBLE_SQUASH = 0.16;
 const LIGHT_SHOW_BEATS = 8;
 /**
  * The laser patterns a tap up top picks between (drawLaserSweep): the FLOOR's fans sweeping up
@@ -268,9 +319,11 @@ const FISH_SHOAL = Object.freeze([[1, 0.45], [2, 0.35], [3, 0.2]]);
 /**
  * THE BABY SHARK (Peter, 5 Oct 2026: "what if a baby shark followed the main shark"): the PARTY
  * SHARK never swims alone — a little one, BABY_SHARK of its size, follows it across BABY_SHARK_BEATS
- * behind, a touch lower in the water, its tail going twice as fast.
+ * behind, a touch lower in the water, its tail going twice as fast. Both went up a size, and the
+ * little one got a bow and a dummy to look like a baby (Peter, 6 Oct 2026; club-fish.js
+ * babyShark).
  */
-const BABY_SHARK = 0.45, BABY_SHARK_BEATS = 0.75;
+const BABY_SHARK = 0.5, BABY_SHARK_BEATS = 0.75;
 
 /** A fresh order of the heroes on the floor: anyone may stand anywhere (Peter, 5 Oct 2026). */
 function shuffledFloor(n, random = Math.random) {
@@ -329,13 +382,20 @@ export class BangerClubState {
    *  button beside the pencil and a save-or-not prompt on the way out. `onSave(asNew)` keeps it
    *  and returns the kept recipe; a successful save from the Back prompt also calls `onBack`.
    *  `onDiscard()` leaves without saving. */
-  constructor({ rec, onBack, onEdit = null, pending = null, onSave = null, onDiscard = null }) {
+  /** `onReroll(rec, pending)` is THE BOLT: this song's recipe made again on a new seed, as
+   *  `{ commit(room) }` to swap it in once the lightning has struck; null if it would not make. */
+  /** `room` is the club as the pencil left it (leftRoom()): coming back from the riff grid — a
+   *  RECHARGE or its BACK — the heroes are still on their spots and the ball still hangs, and
+   *  only the NOW PLAYING card comes up, not the walk-in and the whole welcome (Peter, 6 Oct 2026). */
+  constructor({ rec, onBack, onEdit = null, onReroll = null, pending = null, onSave = null, onDiscard = null, room = null }) {
     this.rec = rec;
     this.onBack = onBack;
     this.onEdit = onEdit;
+    this.onReroll = onReroll;
     this.pending = pending;
     this.onSave = onSave;
     this.onDiscard = onDiscard;
+    this.room = room;
     this.bakes = new Map();
   }
 
@@ -343,6 +403,14 @@ export class BangerClubState {
     this.t = 0;
     this.song = this.pending ? this.pending.song : songFor(this.rec);
     this.savePrompt = null;    // { options: [{label, asNew, discard}], sel } while it asks
+    this.rerolling = 0;        // frames until THE BOLT's remake runs: the ball charges, then its arcs and the flash
+    this.rerolled = false;     // ...and once it has gone, no second one from this club
+    // ...and the strike the new take arrived under, fading off the room from the first frame:
+    // the points the arcs hit ({ x, y }, the room's own units — the new club is laid out the same)
+    this.strikeAt = this.room?.strike ? 0 : -Infinity;
+    this.strikeTargets = this.room?.strike?.targets ?? [];
+    this.rerollArm = null;     // when a tap on the glass armed THE BOLT (it asks first there)
+    this.tip = null;           // the bottom row's tooltip: { key, since } while a button is hovered or focused
     // Moves run on the AUDIO clock, not a beat count: the song loops, and its step count
     // goes back to the top when it does.
     this.queued = null;        // { i, when, bar } — a hero waiting for the beat they go on
@@ -368,7 +436,7 @@ export class BangerClubState {
     this.frameMs = 16;
     this.led = null;           // the LED board's line now: { text, scroll, start, dur }
     this.ledRecent = [];
-    this.ballScale = 0.85 + Math.random() * 0.3;   // a slightly different ball every visit
+    this.ballScale = this.room?.ballScale ?? 0.85 + Math.random() * 0.3;   // a slightly different ball every visit
     // When the club came out from behind the screen transition: the walk-in, the ball's
     // drop and the intro run from here, so none of them happens behind the shutter.
     this.shownAt = null;
@@ -382,7 +450,7 @@ export class BangerClubState {
     }));
     // Who stands where: slot k of the floor holds hero formationOrder[k] — left to right, and
     // in portrait the back row first. Drawn afresh every visit, holds and taps mixed.
-    this.formationOrder = shuffledFloor(HERO_MOVES.length);
+    this.formationOrder = this.room?.formationOrder?.length === HERO_MOVES.length ? [...this.room.formationOrder] : shuffledFloor(HERO_MOVES.length);
     this.formationSwap = null;
     this.formationShuffleAt = Infinity;
     this.danceOrder = HERO_MOVES.map((_, i) => i).sort(() => Math.random() - 0.5);
@@ -414,7 +482,7 @@ export class BangerClubState {
     this.waveAt = -Infinity;   // when the last Mexican wave started (on the song's loop)
     this.lastBeat = null;
     this.focus = 0;            // keyboard / pad focus: the floor's slots, then the part icons, then back
-    this.boxes = { heroes: [], mixer: null, transport: [], panel: null, faders: [], sounds: [], mutes: [], solos: [], reset: null, back: null, ball: null, led: null, floor: null };
+    this.boxes = { heroes: [], mixer: null, transport: [], panel: null, faders: [], sounds: [], mutes: [], solos: [], reset: null, dice: null, back: null, reroll: null, ball: null, led: null, floor: null };
     // The sound swaps: B-33P's 8-BIT and the mixer's sound buttons (club-voices.js).
     this.voices = new ClubVoices(this.song, this.rec);
     this.padHits = [];         // floor pads struck: { pad, x, y, when (audio), t }
@@ -431,11 +499,11 @@ export class BangerClubState {
     this.smash = null;         // the rally's last knock, on its way to the mirror ball: { m, n, t }
     this.flinch = null;        // a hero under a ball that popped: { x, t }
     this.spinPhase = 0;        // the mirror ball spun round by a smash or a finger: extra turn, and how fast
-    this.spinV = 0;
+    this.spinV = this.room?.strike?.spin ?? 0;   // ...still spinning down after THE BOLT
     this.ballSwing = { a: 0, va: 0, stretch: 1, vs: 0 };   // ...swung on its wire: angle (rad), stretch, and their speeds
     this.ballGrab = null;      // ...held: { touch, dx, dy, lastX, vSpin } while a finger has it
     this.ballAnchor = null;    // where its wire hangs from, as last drawn: { x, y, len, r }
-    this.mirrorFlashAt = -Infinity;
+    this.mirrorFlashAt = this.room?.strike ? 0 : -Infinity;   // ...flaring from the first frame after THE BOLT's discharge
     this.buttonsAt = -Infinity; // the floor woke the bottom buttons: a tap on it, or the pointer over it
     this.echoes = [];          // Grumpos's boomerangs in flight: { when (audio, the beat thrown), wet, feedback }
     this.throwing = null;      // ...and held: { i, held, step (the next 2 or 4), first, until } while he throws
@@ -463,10 +531,109 @@ export class BangerClubState {
     this.fitScreen();
   }
 
-  /** The pencil: off to the riff grid with this song. */
+  /** The pencil: off to the riff grid with this song, and the room as it stands to come back to. */
   edit() {
-    if (!this.onEdit) return;
-    this.onEdit(this.rec, this.pending);
+    if (!this.onEdit || this.rerolling) return;
+    this.onEdit(this.rec, this.pending, this.leftRoom());
+  }
+
+  /**
+   * THE BOLT (Peter, 6 Oct 2026): the same song — riff, style, mood, voltage, DNA and flavour —
+   * made again on a new seed, without the trip through the riff grid. The mirror ball charges
+   * like a plasma globe, then throws arcs out to the floor, the heroes and the speakers — new
+   * ones every time — and the room goes white; the make runs under the flash, and the new take's
+   * club comes up straight away — no shutter, no NOW PLAYING — with the arcs and the flash fading
+   * off it (drawStrike), the heroes on their spots, the new take pending.
+   */
+  reroll() {
+    if (!this.onReroll || this.rerolling || this.rerolled) return;
+    this.iconsAt = this.t;
+    // on the glass a first tap only arms it, and the ball starts to crackle; a second makes the take
+    if (Input.usingTouch) {
+      if (!this.rerollArmed()) { this.rerollArm = this.t; Audio.sfx('ui'); return; }
+      if (this.t - this.rerollArm < REROLL_CONFIRM_MIN_S) return;   // a double-tap's bounce is not a yes
+    }
+    this.rerollArm = null;
+    this.rerolling = STRIKE_CHARGE_FRAMES + 2;
+    this.rerollTake = null;
+    this.strikeTargets = this.pickStrikeTargets();
+  }
+
+  /** The charge's first frame: the new take made now (onReroll), its swap left for the flash. */
+  makeReroll() {
+    // the motor revving up to the discharge, started before the make so the make's moment is under it
+    if (Audio.ctx && Audio.musicBus) playToy(Audio.ctx, Audio.musicBus, 'turbo', Audio.ctx.currentTime, { seconds: STRIKE_CHARGE_FRAMES / 60 });
+    this.rerollTake = this.onReroll(this.rec, this.pending);
+    if (!this.rerollTake) {
+      this.rerolling = 0;
+      this.popup = { text: 'THAT ONE WOULD NOT MAKE - TRY AGAIN', t: this.t };
+      Audio.sfx('uiBad');
+    }
+  }
+
+  /**
+   * The bottom row's tooltip, on a mouse (never the glass): the button under the pointer, or the
+   * one the keys have focused, and since when — it shows after TIP_DELAY_S (drawTip).
+   */
+  tipOn() {
+    let key = null;
+    if (!Input.usingTouch && !this.savePrompt) {
+      const { x, y } = Input.pointer || {};
+      const inside = (b) => b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+      key = ['edit', 'reroll', 'save', 'mixer'].find((k) => inside(this.boxes[k]))
+        ?? [0, 1, 2].map((k) => `transport${k}`).find((k, i) => inside(this.boxes.transport?.[i])) ?? null;
+      if (!key) {
+        const f = this.focus, tBase = this.transportFocus();
+        key = f === HERO_MOVES.length ? 'mixer' : f === HERO_MOVES.length + 2 ? 'edit' : f === this.rerollFocus() ? 'reroll'
+          : f === this.saveFocus() ? 'save' : f >= tBase && f < tBase + 3 ? `transport${f - tBase}` : null;
+        if (key && !this.boxes[key] && !key.startsWith('transport')) key = null;
+      }
+    }
+    if (key !== this.tip?.key) this.tip = key ? { key, since: this.t } : null;
+  }
+
+  /** What a bottom-row button does, for its tooltip. */
+  tipText(key) {
+    if (key === 'transport1') return this.paused ? 'PLAY' : 'PAUSE';
+    return { edit: 'EDIT RIFF / STYLE', reroll: 'NEW TAKE', save: 'SAVE', mixer: 'MIXER', transport0: 'PREVIOUS SECTION', transport2: 'NEXT SECTION' }[key] ?? null;
+  }
+
+  /** THE BOLT armed by a first tap on the glass, waiting for the second. */
+  rerollArmed() {
+    return this.rerollArm != null && this.t - this.rerollArm < REROLL_CONFIRM_S;
+  }
+
+  /** Where the ball's arcs land: three to five of the floor, a hero's head or two, a speaker. */
+  pickStrikeTargets() {
+    const f = this.boxes.floor ?? { x: 0, y: H * 0.6, w: W, h: H * 0.3 };
+    const pick = (list) => list.splice(Math.floor(Math.random() * list.length), 1)[0];
+    const heads = this.boxes.heroes.filter(Boolean).map((b) => ({ x: b.x + b.w / 2, y: b.y + b.h * 0.12 }));
+    const cones = (this.boxes.speakers || []).map((b) => ({ x: b.x + b.w / 2, y: b.y + b.h * (0.3 + Math.random() * 0.4) }));
+    const floor = () => ({ x: f.x + f.w * (0.05 + Math.random() * 0.9), y: f.y + f.h * (0.15 + Math.random() * 0.7) });
+    const out = [];
+    const n = 3 + Math.floor(Math.random() * 3);
+    if (heads.length) out.push(pick(heads));
+    if (heads.length && Math.random() < 0.5) out.push(pick(heads));
+    if (cones.length && Math.random() < 0.6) out.push(pick(cones));
+    while (out.length < n) out.push(floor());
+    return out;
+  }
+
+  /** The ball discharges: the arcs and the flash are on screen from this frame, and the thunder. */
+  discharge() {
+    this.mirrorFlashAt = this.t;
+    Audio.sfx('thunder', { gain: STRIKE_THUNDER_GAIN });
+  }
+
+  /** Under the flash: into the new take's club, the arcs, the spin and the room carried over. */
+  rerollNow() {
+    this.rerolled = true;
+    this.rerollTake.commit({ ...this.leftRoom(), strike: { targets: this.strikeTargets, spin: this.spinV } });
+  }
+
+  /** What a return from the riff grid keeps of the room (the constructor's `room`). */
+  leftRoom() {
+    return { formationOrder: [...this.formationOrder], ballScale: this.ballScale };
   }
 
   /** The song's title, fading in under the mirror ball for a while: a tap on the club sign. */
@@ -1534,9 +1701,19 @@ export class BangerClubState {
     if (!this.paused) Audio.sfx('ui');
   }
 
-  /** The focus index of the transport's first button: after the pencil, and SAVE when it shows. */
+  /** The focus index of THE BOLT, after the pencil; -1 when there is none. */
+  rerollFocus() {
+    return this.onReroll ? HERO_MOVES.length + 3 : -1;
+  }
+
+  /** The focus index of SAVE, after the pencil and THE BOLT; -1 when the song is kept. */
+  saveFocus() {
+    return this.pending ? HERO_MOVES.length + 3 + (this.onReroll ? 1 : 0) : -1;
+  }
+
+  /** The focus index of the transport's first button: after the pencil, THE BOLT, and SAVE when it shows. */
   transportFocus() {
-    return HERO_MOVES.length + 3 + (this.pending ? 1 : 0);
+    return HERO_MOVES.length + 3 + (this.onReroll ? 1 : 0) + (this.pending ? 1 : 0);
   }
 
   /** A transport button: `k` 0 back, 1 play/pause, 2 forward. */
@@ -1680,6 +1857,40 @@ export class BangerClubState {
     Audio.sfx('ui');
   }
 
+  /**
+   * The DICE beside RESET (Peter, 6 Oct 2026): every part onto another of its sounds at random,
+   * from the next bar line (club-voices.js shuffle). The die tumbles to a new face.
+   */
+  rollSounds() {
+    if (!this.voices?.shuffle()) { Audio.sfx('uiBad'); return; }
+    this.diceFace = 1 + ((this.diceFace || 5) + Math.floor(Math.random() * 5)) % 6;
+    this.diceAt = this.t;
+    const lines = DICE_LINES.filter((l) => l !== this.popup?.text);
+    this.popup = { text: lines[Math.floor(Math.random() * lines.length)], t: this.t };
+    this.iconsAt = this.t;
+    Audio.sfx('ui');
+  }
+
+  /**
+   * Strip `k`'s sound button as a reel while the dice rolls: the name sliding out (`from`),
+   * the one sliding in after it (`to`), and how far between them (`e`, 0–1). The reel's travel
+   * eases out, so it ends on `landing` with no jump. Null once it has stopped, or for a part
+   * with one sound.
+   */
+  reelFor(k, landing) {
+    const since = this.t - (this.diceAt ?? -Infinity);
+    const stop = REEL_S + k * REEL_STAGGER;
+    if (!(since >= 0 && since < stop)) return null;
+    const list = this.voices?.choices(PARTS[k].id) || [];
+    if (list.length < 2) return null;
+    const at = Math.max(0, list.findIndex((c) => c.label === landing));
+    // eased: quick at first, the last few sounds slow
+    const pos = REEL_TICKS * (1 - (1 - since / stop) ** REEL_EASE);
+    const tick = Math.min(REEL_TICKS - 1, Math.floor(pos));
+    const n = list.length, name = (j) => list[(((at - REEL_TICKS + j) % n) + n) % n].label;
+    return { from: name(tick), to: name(tick + 1), e: pos - tick, name: name(Math.round(pos)) };
+  }
+
   /** A finger down on a speaker: held for the bass, or let go at once for a BOOM (speakersOn). */
   pressSpeaker(x, y) {
     const k = (this.boxes.speakers || []).findIndex((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
@@ -1813,6 +2024,7 @@ export class BangerClubState {
   }
 
   back() {
+    if (this.rerolling) return;   // THE BOLT is going: the new take is on its way in
     // A banger not kept yet asks on the way out: SAVE / UPDATE / SAVE AS NEW / DON'T SAVE.
     if (this.pending) { this.openSavePrompt(true); return; }
     this.onBack?.(this.rec);
@@ -1821,7 +2033,7 @@ export class BangerClubState {
   /** The SAVE button beside the pencil. A brand-new banger saves straight away; an
    *  edit asks first, so UPDATE is a choice rather than a slip of the thumb. */
   savePressed() {
-    if (!this.pending) return;
+    if (!this.pending || this.rerolling) return;
     if (this.pending.kind !== 'new') { this.openSavePrompt(false); return; }
     const rec = this.onSave?.(false);
     if (rec) {
@@ -1837,19 +2049,20 @@ export class BangerClubState {
   }
 
   /**
-   * The choices a pending song is offered. On the way OUT (`closing`) the last is DON'T
-   * SAVE; a successful save also returns to the Lab. From the SAVE button, CANCEL just
-   * hides the box and a successful save stays on the floor (Peter, 4 Oct 2026).
+   * The choices a pending song is offered, CANCEL always last: it just hides the box and the
+   * club carries on. On the way OUT (`closing`) DON'T SAVE comes before it, and is the one
+   * picked; a successful save also returns to the Lab. From the SAVE button a successful save
+   * stays on the floor (Peter, 4 Oct 2026; CANCEL on the way out too, 6 Oct 2026).
    */
   openSavePrompt(closing = false) {
     const kind = this.pending.kind;
-    const last = closing ? { label: "DON'T SAVE", discard: true } : { label: 'CANCEL', cancel: true };
+    const tail = closing ? [{ label: "DON'T SAVE", discard: true }, { label: 'CANCEL', cancel: true }] : [{ label: 'CANCEL', cancel: true }];
     const options = kind === 'edit'
-      ? [{ label: 'UPDATE', asNew: false }, { label: 'SAVE AS NEW', asNew: true }, last]
+      ? [{ label: 'UPDATE', asNew: false }, { label: 'SAVE AS NEW', asNew: true }, ...tail]
       : kind === 'starter'
-        ? [{ label: 'SAVE AS NEW', asNew: true }, last]
-        : [{ label: 'SAVE', asNew: false }, last];
-    this.savePrompt = { closing, options, sel: options.length - 1 };
+        ? [{ label: 'SAVE AS NEW', asNew: true }, ...tail]
+        : [{ label: 'SAVE', asNew: false }, ...tail];
+    this.savePrompt = { closing, options, sel: options.length - tail.length };
     Audio.sfx('uiBad');
   }
 
@@ -1894,6 +2107,7 @@ export class BangerClubState {
 
   update(dt) {
     this.t += dt;
+    this.tipOn();
     // A SLOW DEVICE gets a lighter room (Peter, 3 Oct 2026: slowdown on the phone): the frame
     // time, smoothed, switches it on past ~24ms and off again under ~19ms.
     // `dt` is the fixed simulation tick (1/60s), even when rendering has fallen
@@ -1913,11 +2127,13 @@ export class BangerClubState {
     this.fitScreen();
     if (this.shownAt == null && !isTransitioning()) {
       this.shownAt = this.t;
+      if (this.room && !this.room.strike) this.titleAt = this.t;
       this.strobeNextBeat = this.reduceMotion ? Infinity : Math.ceil(Math.max(0, this.beat()) / 4) * 4 + STROBE_FIRST_BARS * 4;
       // the mirror ball comes in last, once the heroes have walked on
-      this.ballAt = this.t + BALL_ENTER_S;
+      // ...unless they never left (`room`): the ball already hangs, and they dance from the first bar
+      this.ballAt = this.room ? this.t - 60 : this.t + BALL_ENTER_S;
       const bar = this.barSeconds();
-      this.danceOrder.forEach((i, k) => { this.dancers[i].joinAt = this.t + bar * (DANCE_START_BARS + k * DANCE_JOIN_BARS); });
+      this.danceOrder.forEach((i, k) => { this.dancers[i].joinAt = this.t + (this.room ? 0 : bar * (DANCE_START_BARS + k * DANCE_JOIN_BARS)); });
       this.formationShuffleAt = this.beat() + 4 * (20 + Math.floor(Math.random() * 13));
       this.momentAt = this.t + bar * MOMENT_QUIET_BARS;
       this.smokeAt = this.t + bar * SMOKE_FIRST_BARS;
@@ -2046,6 +2262,17 @@ export class BangerClubState {
     // The mixer panel stays open until it is closed — its icon, a tap outside it, or Enter / Back
     // (Peter, 5 Oct 2026: "dont auto hide the mixing panel").
 
+    if (this.rerolling > 0) {
+      const left = --this.rerolling;
+      if (left === STRIKE_CHARGE_FRAMES + 1) this.makeReroll();
+      else if (left === 2) this.discharge();
+      else if (left === 0) { this.rerollNow(); Input.endFrame(); return; }
+      // the ball spins up through the charge, slowly and then hard
+      if (this.rerolling > 2) {
+        const k = 1 - (this.rerolling - 2) / STRIKE_CHARGE_FRAMES;
+        this.spinV = Math.max(this.spinV, STRIKE_SPIN * k * k);
+      }
+    }
     if (this.savePrompt) { this.updateSavePrompt(); return; }
 
     if (this.mixerOpen) {
@@ -2064,6 +2291,7 @@ export class BangerClubState {
         const k = this.boxes.faders.findIndex(inside);
         const tr = this.boxes.transport.findIndex(inside);
         if (this.boxes.reset && inside(this.boxes.reset)) this.resetMixer();
+        else if (this.boxes.dice && inside(this.boxes.dice)) this.rollSounds();
         else if (s >= 0) { this.mixSel = s; this.nextSound(s); }
         else if (mu >= 0) { this.mixSel = mu; this.toggleMute(mu); }
         else if (so >= 0) { this.mixSel = so; this.toggleSolo(so); }
@@ -2076,7 +2304,7 @@ export class BangerClubState {
     }
 
     // the floor's slots (left to right; in portrait the back row first), the mixer, back, the
-    // pencil, the SAVE button while the song is not kept yet, then the transport's three. Up
+    // pencil, THE BOLT, the SAVE button while the song is not kept yet, then the transport's three. Up
     // and down belong to a hero held on the keys: they are its drag.
     const tBase = this.transportFocus();
     const targets = tBase + 3;
@@ -2090,7 +2318,8 @@ export class BangerClubState {
       else if (this.focus === HERO_MOVES.length + 1) this.back();
       else if (this.focus === HERO_MOVES.length + 2) this.edit();
       else if (this.focus >= tBase) this.pressTransport(this.focus - tBase);
-      else if (this.focus === HERO_MOVES.length + 3) this.savePressed();
+      else if (this.focus === this.rerollFocus()) this.reroll();
+      else if (this.focus === this.saveFocus()) this.savePressed();
       else this.back();
     }
     if (Input.pressed('pause')) this.togglePause();
@@ -2104,11 +2333,14 @@ export class BangerClubState {
     }
     if (Input.pressed('pointer')) {
       const ball = this.boxes.ball;
+      // a tap anywhere but THE BOLT stands it down again
+      if (!inside(this.boxes.reroll)) this.rerollArm = null;
       if (inside(this.boxes.led)) this.tapLedBoard();
       else if (inside(this.boxes.sign)) this.tapClubSign();
       else if (inside(this.boxes.back)) this.back();
       else if (inside(this.boxes.mixer)) this.openMixer(true);
       else if (inside(this.boxes.edit)) this.edit();
+      else if (inside(this.boxes.reroll)) this.reroll();
       else if (inside(this.boxes.save)) this.savePressed();
       else if (this.boxes.transport.some(inside)) this.pressTransport(this.boxes.transport.findIndex(inside));
       else if (this.tapBall(x, y)) { /* the beach ball took it */ }
@@ -2169,7 +2401,10 @@ export class BangerClubState {
   /** A sound swap has landed: the LED board says what the band is playing now. */
   voicesLanded(landed) {
     if (landed.part) this.mixerDirty = true;
-    if (landed.part) {
+    if (landed.parts?.length > 1) {
+      // the dice: every part's new sound, scrolled across
+      this.showLed(landed.parts.map((id) => `${PARTS.find((p) => p.id === id)?.label || ''}: ${this.voices.label(id)}`).join('  '));
+    } else if (landed.part) {
       const label = PARTS.find((p) => p.id === landed.part)?.label || '';
       this.showLed(`${label}: ${landed.label}`);
     } else this.showLed(landed.swapped !== this.voices.eightBit ? '8-BIT MODE' : 'HI-FI MODE');
@@ -2278,9 +2513,14 @@ export class BangerClubState {
     return { text, offset: Math.floor((LED_COLS - ledWidth(text)) / 2) };
   }
 
-  drawLed(ctx, x, y, pitch) {
+  /**
+   * `solid` paints it for the CRT (club-crt.js LED_INKS): no unlit dots and no glow, each lit
+   * dot a square a whole pitch across, so a dot is all of its cell and the tube can never
+   * average one away, at any screen size.
+   */
+  drawLed(ctx, x, y, pitch, solid = false) {
     const ss = bakeSS();
-    const key = `led|${pitch}|${ss}`;
+    const key = `led|${pitch}|${ss}|${solid}`;
     const w = (LED_COLS + 2) * pitch, h = (LED_ROWS + 2) * pitch;
     if (!this.bakes.has(key)) {
       const c = document.createElement('canvas');
@@ -2290,18 +2530,26 @@ export class BangerClubState {
       g.fillStyle = '#0a0608'; g.fillRect(0, 0, w, h);
       g.strokeStyle = '#2a2230'; g.lineWidth = Math.max(0.6, pitch * 0.4); g.strokeRect(0, 0, w, h);
       g.fillStyle = '#2a0c0c';
-      for (let r = 0; r < LED_ROWS; r++) for (let col = 0; col < LED_COLS; col++) {
+      if (!solid) for (let r = 0; r < LED_ROWS; r++) for (let col = 0; col < LED_COLS; col++) {
         g.beginPath(); g.arc((col + 1.5) * pitch, (r + 1.5) * pitch, pitch * 0.36, 0, Math.PI * 2); g.fill();
+      }
+      // on the CRT the unlit dots are squares in three dark reds, picked by a hash of where they
+      // sit, so the board reads as a grubby old panel rather than a clean dark (Peter, 6 Oct
+      // 2026: "a bit worse so it's not a clean dark"); the inks are club-crt.js LED_INKS'
+      if (solid) for (let r = 0; r < LED_ROWS; r++) for (let col = 0; col < LED_COLS; col++) {
+        const n = Math.sin(r * 12.9898 + col * 78.233) * 43758.5453, f = n - Math.floor(n);
+        g.fillStyle = f < 0.5 ? '#1c0a0a' : f < 0.82 ? '#2c100d' : '#0e0607';
+        g.fillRect((col + 1) * pitch, (r + 1) * pitch, pitch, pitch);
       }
       this.bakes.set(key, c);
     }
     ctx.drawImage(this.bakes.get(key), x, y, w, h);
     const { text, offset } = this.ledText();
-    if (this.led?.eq) { this.drawLedEq(ctx, x, y, pitch); return; }
+    if (this.led?.eq) { this.drawLedEq(ctx, x, y, pitch, solid); return; }
     // The lit dots of a line are baked once into a strip (glow and all) and then only
     // slid across: they were hundreds of rects a frame, a fifth of the club's time on a phone
     // (Peter, 3 Oct 2026: slowdown in the lab).
-    const skey = `ledtext|${text}|${pitch}|${ss}`;
+    const skey = `ledtext|${text}|${pitch}|${ss}|${solid}`;
     let strip = this.bakes.get(skey);
     if (!strip) {
       const w = ledWidth(text) * pitch + pitch * 2, h = (LED_ROWS + 2) * pitch;
@@ -2309,7 +2557,7 @@ export class BangerClubState {
       c.width = Math.ceil(w * ss); c.height = Math.ceil(h * ss);
       const g = c.getContext('2d');
       g.scale(ss, ss);
-      const d = pitch * 0.72;
+      const d = solid ? pitch : pitch * 0.72;
       const dots = [];
       let cx = 0;
       for (const ch of text) {
@@ -2319,7 +2567,7 @@ export class BangerClubState {
       }
       // a dot at column k sits at pitch * (k + 1.5) from the strip's left, less one pitch of margin
       g.fillStyle = '#ff2a1a'; g.globalAlpha = 0.22;
-      for (let i = 0; i < dots.length; i += 2) g.fillRect((dots[i] + 0.5) * pitch, (dots[i + 1] + 0.5) * pitch, pitch * 2, pitch * 2);
+      if (!solid) for (let i = 0; i < dots.length; i += 2) g.fillRect((dots[i] + 0.5) * pitch, (dots[i + 1] + 0.5) * pitch, pitch * 2, pitch * 2);
       g.globalAlpha = 1; g.fillStyle = '#ff5a3c';
       for (let i = 0; i < dots.length; i += 2) g.fillRect((dots[i] + 1.5) * pitch - d / 2, (dots[i + 1] + 1.5) * pitch - d / 2, d, d);
       strip = { c, w, h };
@@ -2349,10 +2597,10 @@ export class BangerClubState {
    * wide with a gap, and a peak dot over each falling slowly back. Read off the song's analyser
    * (Audio.musicAnalysis); with none, it bounces on the beat. Each bar is a baked column.
    */
-  drawLedEq(ctx, x, y, pitch) {
+  drawLedEq(ctx, x, y, pitch, solid = false) {
     const ss = bakeSS();
     const col = (h) => {
-      const key = `ledeq|${h}|${pitch}|${ss}`;
+      const key = `ledeq|${h}|${pitch}|${ss}|${solid}`;
       let c = this.bakes.get(key);
       if (!c) {
         c = document.createElement('canvas');
@@ -2360,11 +2608,11 @@ export class BangerClubState {
         c.width = Math.ceil(w * ss); c.height = Math.ceil(hh * ss);
         const g = c.getContext('2d');
         g.scale(ss, ss);
-        const d = pitch * 0.72;
+        const d = solid ? pitch : pitch * 0.72;
         const lit = [];
         for (let r = 0; r < LED_ROWS; r++) if (h < 0 ? r === -h - 1 : r >= LED_ROWS - h) lit.push(r);
         g.fillStyle = '#ff2a1a'; g.globalAlpha = 0.22;
-        for (const r of lit) for (let k = 0; k < 2; k++) g.fillRect((k + 0.5) * pitch, (r + 0.5) * pitch, pitch * 2, pitch * 2);
+        if (!solid) for (const r of lit) for (let k = 0; k < 2; k++) g.fillRect((k + 0.5) * pitch, (r + 0.5) * pitch, pitch * 2, pitch * 2);
         g.globalAlpha = 1; g.fillStyle = '#ff5a3c';
         for (const r of lit) for (let k = 0; k < 2; k++) g.fillRect((k + 1.5) * pitch - d / 2, (r + 1.5) * pitch - d / 2, d, d);
         this.bakes.set(key, c);
@@ -2699,6 +2947,60 @@ export class BangerClubState {
     return this.bakes.get(key);
   }
 
+  /**
+   * THE CLUB SIGN ON THE CRT (Peter, 6 Oct 2026: "could the room sign be made a bit more
+   * readable also?" ... "still looks sloppy and quite unreadable"): its words set solid in a
+   * grid of cells, `cell` across, as many as fill its board `w` by `h` — each cell lit pink
+   * when the letters cover most of it, a dim glow beside a lit one, and nothing else. Every
+   * cell is one flat colour, so the tube over it (club-crt.js SIGN_INKS) has nothing to
+   * guess. The neon's outlined letters, sampled by the tube instead, came out as outlines
+   * of noise, white where the core caught a cell, and differently on every screen.
+   */
+  neonPixels(text, size, w, h, cell) {
+    const gw = Math.max(1, Math.round(w / cell)), gh = Math.max(1, Math.round(h / cell));
+    const key = `neonpx|${text}|${size}|${gw}|${gh}`;
+    if (!this.bakes.has(key)) {
+      const S = 4, font = (size / cell) * S;   // the letters as big, in cells, as the neon's
+      const sup = document.createElement('canvas');
+      sup.width = gw * S; sup.height = gh * S;
+      const sg = sup.getContext('2d', { willReadFrequently: true });
+      sg.font = `${font}px ${TITLE_FONT}`;
+      const m = sg.measureText(text);
+      const asc = Number.isFinite(m.actualBoundingBoxAscent) ? m.actualBoundingBoxAscent : font * 0.7;
+      const desc = Number.isFinite(m.actualBoundingBoxDescent) ? m.actualBoundingBoxDescent : 0;
+      sg.fillStyle = '#fff';
+      sg.textBaseline = 'alphabetic';
+      // on whole cells, so a stroke never straddles two by a sliver
+      const x0 = Math.round((gw - m.width / S) / 2) * S;
+      const y0 = Math.round((gh - (asc + desc) / S) / 2) * S + asc;
+      sg.fillText(text, x0, y0);
+      const d = sg.getImageData(0, 0, gw * S, gh * S).data;
+      const lit = new Uint8Array(gw * gh);
+      for (let cy = 0; cy < gh; cy++) for (let cx = 0; cx < gw; cx++) {
+        let a = 0;
+        for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) a += d[(((cy * S + yy) * gw * S) + cx * S + xx) * 4 + 3];
+        lit[cy * gw + cx] = a / (S * S * 255) > 0.6 ? 1 : 0;   // over half: the counters of A and B stay open
+      }
+      const c = document.createElement('canvas');
+      c.width = gw; c.height = gh;
+      const g = c.getContext('2d');
+      for (let cy = 0; cy < gh; cy++) for (let cx = 0; cx < gw; cx++) {
+        let near = false;
+        if (!lit[cy * gw + cx]) {
+          for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx >= 0 && ny >= 0 && nx < gw && ny < gh && lit[ny * gw + nx]) { near = true; break; }
+          }
+        }
+        if (!lit[cy * gw + cx] && !near) continue;
+        g.fillStyle = lit[cy * gw + cx] ? '#ff4fa3' : '#4a1a3e';
+        g.fillRect(cx, cy, 1, 1);
+      }
+      this.bakes.set(key, { img: c, gw, gh });
+    }
+    return this.bakes.get(key);
+  }
+
   /** A soft round glow in `colour`, baked once at 128px and then only scaled: radial gradients cost on a phone. */
   glowSprite(colour) {
     const key = `glow|${colour}`;
@@ -2851,6 +3153,7 @@ export class BangerClubState {
       this.boxes.sign = { x: ax + ns * 0.3, y: ay + a.h / 2 - ns * 0.9, w: a.w - ns * 0.6, h: ns * 1.8 };
       hang(ax + ns * 0.3, ay + a.h / 2 - ns * 0.9, a.w - ns * 0.6, ns * 1.8, '#130f1f', '#2e2640');
       ctx.globalAlpha = flick(0) * (0.85 + 0.15 * pulse);
+      this.signAt = { size: ns, u, alpha: ctx.globalAlpha };   // painted again, on its own tube, over the CRT
       ctx.drawImage(a.img, ax, ay, a.w, a.h);
       ctx.globalAlpha = 1;
     }
@@ -3189,6 +3492,8 @@ export class BangerClubState {
     // The beat the dancing follows: the music's, except where a move bends time for the room —
     // Ramon's stutter loops it, Kiko's tape stop winds it down (danceBeat).
     const danceBeat = this.danceBeat(beat);
+    const jolt = this.stutterJolt(beat);
+    const boostHop = this.boostHop();
     // Fernwick has the crowd while he draws: its crouch and jump (crowdMotion), not the party's.
     const crowd = this.crowdMotion();
     // Grumpos's echo, seen: ghosts of the floor thrown out one side and back the other, behind
@@ -3209,7 +3514,7 @@ export class BangerClubState {
       const startX = fromLeft ? -cellW * 0.6 : W + cellW * 0.6;
       const shown = this.shownAt == null ? 0 : t - this.shownAt;
       const walkedIn = Math.max(0, shown - WALK_DELAY_S - rank * WALK_STAGGER_S - r * 0.12) * W * WALK_SPEED;
-      const walkingIn = walkedIn < Math.abs(cx - startX);
+      const walkingIn = !this.room && walkedIn < Math.abs(cx - startX);
       let formationWalk = null;
       const swap = this.formationSwap;
       if (swap && (swap.heroA === i || swap.heroB === i)) {
@@ -3341,6 +3646,28 @@ export class BangerClubState {
         const base = pose.dance || { ankles: [0, 0], pointAngle: null, shoulderLift: 0 };
         pose = { ...pose, kind: pose.dance ? pose.kind : 'stand', dance: { ...base, hands: [[0.4, -1.05], [0.4, -1.05]], pointAngle: null } };
       }
+      // Ramon's stutter kicks every hero on the floor at the top of each repeat, so the loop
+      // reads as a jump-cut rather than a twitch (Peter, 6 Oct 2026: "they don't move that
+      // much") — the dancers through their dance's own sway, and the ones resting in their
+      // idle harder still, through a kick of their own (body), as they have no dance to loop.
+      let kick = null;
+      if (jolt && !walking && !isActing) {
+        if (dance) {
+          pose = { ...pose, shift: (pose.shift || 0) + jolt.side * STUTTER_SHOVE * jolt.k,
+            tilt: (pose.tilt || 0) + jolt.side * STUTTER_TILT * jolt.k };
+          lift += STUTTER_POP * toonH * jolt.k;
+        } else {
+          const k = jolt.k * STUTTER_IDLE;
+          kick = { dx: jolt.side * STUTTER_SHOVE * k * toonH, tilt: jolt.side * STUTTER_TILT * k };
+          pose = { ...pose, squash: Math.max(pose.squash || 0, STUTTER_SQUASH * (1 - jolt.k) * jolt.k * 4) };
+          lift += STUTTER_POP * toonH * k;
+        }
+      }
+      // a speaker held: everyone on the floor bounces with the bass, harder with the wobble
+      if (boostHop && !walking && !isActing) {
+        lift += boostHop.lift * toonH;
+        pose = { ...pose, squash: Math.max(pose.squash || 0, boostHop.squash) };
+      }
       if (isActing) {
         if (dance) pose = { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 };
         const run = this.heardNow() - this.acting.when;
@@ -3368,6 +3695,10 @@ export class BangerClubState {
       // A dance sways the whole hero (shift, bounce, tilt round the feet), as the lab draws it.
       const body = (ctx, feetY, ax = hx) => {
         ctx.save();
+        if (kick && !this.paused) {
+          ctx.translate(ax + kick.dx, feetY); ctx.rotate(kick.tilt);
+          drawToon(ctx, m.hero, pose, 0, 0, toonH); ctx.restore(); return;
+        }
         if (!dance || isActing) { drawToon(ctx, m.hero, pose, ax, feetY, toonH); ctx.restore(); return; }
         ctx.save();
         ctx.translate(ax + pose.shift * toonH, feetY - pose.bounce * toonH);
@@ -3427,16 +3758,37 @@ export class BangerClubState {
     ctx.translate(-joltX, -joltY);
     // B-33P's 8-BIT, seen: while the band plays on the 8-Bit set, the room is on a CRT — all
     // of it but the UI, which is painted from here on (club-crt.js; Peter, 5 Oct 2026).
-    if (this.voices?.swappedNow && !this.voices.eightBit
-      && clubCrt(ctx, { top: stageTop, bottom: stageBot, toonH, lite: this.lite }) && this.ledAt) {
-      // ...but the LED board says things, so it is painted again over the tube and put on one
-      // of its own (club-crt.js LED_INKS): a block to a dot, the blocks half a dot off the dots
-      // across, so every stroke up and down comes out two blocks wide — bold and smeared, but
-      // never a dot lost. One block a dot, on the dots, read too clean; blocks a little bigger
-      // than a dot (1.05–1.5) dropped a whole column of dots every so often and broke letters
-      // (Peter, 6 Oct 2026: "needs to be a less readable" ... "still a bit unreadable").
+    const crt = this.voices?.swappedNow && !this.voices.eightBit;
+    const tubed = crt && clubCrt(ctx, { top: stageTop, bottom: stageBot, toonH, lite: this.lite });
+    // The club sign is painted again over the tube, its words set in cells of its own
+    // (neonPixels), SIGN_CRT_CELL of its lettering's size a cell, and put on a tube of its own
+    // in its own inks (club-crt.js SIGN_INKS): on the room's cells its letters were three or
+    // four cells tall and read as pink mush (Peter, 6 Oct 2026).
+    if (tubed && this.signAt && this.boxes.sign) {
+      const { size, u: su, alpha } = this.signAt, b = this.boxes.sign;
+      const cell = size * SIGN_CRT_CELL;
+      const px = this.neonPixels('THE BANGER LAB', size, b.w, b.h, cell);
+      ctx.save();
+      ctx.fillStyle = '#130f1f'; rr(ctx, b.x, b.y, b.w, b.h, 1.5 * su); ctx.fill();
+      ctx.strokeStyle = '#2e2640'; ctx.lineWidth = 0.8 * su; ctx.stroke();
+      ctx.globalAlpha = alpha;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(px.img, b.x, b.y, px.gw * cell, px.gh * cell);
+      ctx.restore();
+      clubCrt(ctx, { lite: this.lite, id: 'sign', inks: SIGN_INKS,
+        box: { x: b.x, y: b.y, w: px.gw * cell, h: px.gh * cell, cell } });
+    }
+    if (tubed && this.ledAt) {
+      // ...but the LED board says things, so it is painted again over the tube — solid, every
+      // lit dot a full square — and put on one of its own (club-crt.js LED_INKS): a block to a
+      // dot, the blocks half a dot off the dots across, so every stroke up and down comes out
+      // two blocks wide — bold and smeared, but never a dot lost. One block a dot, on the dots,
+      // read too clean; blocks a little bigger than a dot (1.05–1.5) dropped a whole column of
+      // dots every so often; and the round dots with gaps, half a dot off, came to under half
+      // a cell lit and vanished on some screens (Peter, 6 Oct 2026: "needs to be a less
+      // readable" ... "its even worse now").
       const { x, y, pitch } = this.ledAt;
-      this.drawLed(ctx, x, y, pitch);
+      this.drawLed(ctx, x, y, pitch, true);
       clubCrt(ctx, { lite: this.lite, inks: LED_INKS,
         box: { x: x - pitch / 2, y, w: (LED_COLS + 3) * pitch, h: (LED_ROWS + 2) * pitch, cell: pitch } });
     }
@@ -3449,7 +3801,87 @@ export class BangerClubState {
     this.drawIntro(ctx, { portrait, P, stageTop, stageBot });
     this.drawTitle(ctx, { portrait, P });
     if (this.savePrompt) this.drawSavePrompt(ctx);
+    this.drawStrike(ctx, { portrait, P });
     ctx.restore();
+  }
+
+  /**
+   * THE BOLT's lightning, out of the mirror ball. First the charge: as the ball spins up, a glass
+   * plasma globe swells round it with filaments to its skin, one reaching for the first target as
+   * one does for a finger on the glass (armed on the glass, a faint crackle of it). Then the burst:
+   * a shockwave ring, the room washed out while the new take is made, and a Tesla coil's arcs out
+   * to each of the strike's targets (club-bolts.js), all fading off the new take's club.
+   */
+  drawStrike(ctx, { portrait, P }) {
+    const ball = this.boxes.ball;
+    if (!ball) return;
+    const u = portrait ? 1.9 * P : 1;
+    // the plasma: none while the ball only spins up, then building over the charge's last stretch
+    const spun = this.rerolling > 2 ? 1 - (this.rerolling - 2) / STRIKE_CHARGE_FRAMES : null;
+    const charge = spun != null ? Math.max(0, (spun - (1 - STRIKE_PLASMA)) / STRIKE_PLASMA) : this.rerollArmed() ? 0.12 : null;
+    if (charge === 0) return;
+    ctx.save();
+    if (charge != null) {
+      this.drawCharge(ctx, ball, charge, u);
+      ctx.restore();
+      return;
+    }
+    const since = this.rerolling > 0 || this.rerolled ? 0 : this.t - this.strikeAt;
+    if (since >= Math.max(STRIKE_COVER_S, STRIKE_RING_S, STRIKE_ARC_S)) { ctx.restore(); return; }
+    if (since < STRIKE_COVER_S) {
+      const [r, g, b, a] = STRIKE_COVER;
+      ctx.fillStyle = `rgba(${r},${g},${b},${a * (1 - since / STRIKE_COVER_S)})`;
+      ctx.fillRect(-W, -H, W * 3, H * 3);
+    }
+    if (since < STRIKE_RING_S) {
+      const k = since / STRIKE_RING_S;
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = PLASMA; ctx.lineWidth = (4 - 3 * k) * u;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r * 2.3 + k * Math.max(W, H) * 0.9, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = (1.6 - 1.2 * k) * u;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    const alpha = 1 - since / STRIKE_ARC_S;
+    if (alpha > 0) {
+      for (const p of this.strikeTargets) {
+        const d = Math.hypot(p.x - ball.x, p.y - ball.y) || 1;
+        drawTeslaBolt(ctx, ball.x + (p.x - ball.x) / d * ball.r, ball.y + (p.y - ball.y) / d * ball.r, p.x, p.y, { u, alpha });
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /** THE BOLT's build, `charge` 0–1: filaments out of the ball, a glass globe swelling round it past a little. */
+  drawCharge(ctx, ball, charge, u) {
+    const globe = charge > 0.15;
+    const R = globe ? ball.r * (1.15 + charge * 1.2) : ball.r * (0.9 + charge * 0.9);
+    if (globe) {
+      // the glass: a faint violet sphere with a bright rim and a highlight, the ball inside it
+      const glass = ctx.createRadialGradient(ball.x, ball.y, ball.r, ball.x, ball.y, R);
+      glass.addColorStop(0, 'rgba(183,123,255,0.04)'); glass.addColorStop(0.85, `rgba(183,123,255,${0.18 * charge})`);
+      glass.addColorStop(1, `rgba(236,222,255,${0.45 * charge})`);
+      ctx.fillStyle = glass;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, R, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(236,222,255,${0.6 * charge})`; ctx.lineWidth = 0.8 * u; ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 * charge})`; ctx.lineWidth = 1.2 * u;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, R * 0.82, Math.PI * 1.1, Math.PI * 1.45); ctx.stroke();
+    }
+    // the filaments: from the middle to the globe's skin (or a little past the ball), flickering;
+    // in the globe one of them holds toward the first target, as one does to a finger on the glass
+    const n = 3 + Math.round(charge * 5);
+    const aim = this.strikeTargets[0] ? Math.atan2(this.strikeTargets[0].y - ball.y, this.strikeTargets[0].x - ball.x) : Math.PI / 2;
+    for (let k = 0; k < n; k++) {
+      const a = globe && k === 0 ? aim + (Math.random() - 0.5) * 0.12 : Math.random() * Math.PI * 2;
+      const len = globe ? R : R + ball.r * Math.random() * 0.3;
+      drawBolt(ctx, Math.random, ball.x, ball.y, ball.x + Math.cos(a) * len, ball.y + Math.sin(a) * len,
+        { spread: ball.r * 0.35, width: (globe && k === 0 ? 1.3 : 0.8) * u, colour: '#f4ecff', glow: PLASMA, alpha: 0.45 + 0.55 * charge }, 1);
+    }
+    const halo = ctx.createRadialGradient(ball.x, ball.y, ball.r * 0.6, ball.x, ball.y, R * 1.7);
+    halo.addColorStop(0, `rgba(183,123,255,${0.35 * charge})`); halo.addColorStop(1, 'rgba(183,123,255,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, R * 1.7, 0, Math.PI * 2); ctx.fill();
   }
 
   /**
@@ -3513,7 +3945,10 @@ export class BangerClubState {
     const move = a && HERO_MOVES[a.i];
     if (!move) return beat;
     if (move.slices && this.punch && beat >= this.punch.grab) {
-      return this.punch.grab + ((beat - this.punch.grab) % this.punch.slice);
+      // a short slice plays a longer stretch of the dance, faster, so each repeat visibly
+      // goes somewhere before it snaps back to the grab
+      const { grab, slice } = this.punch;
+      return grab + ((beat - grab) % slice) * (Math.max(slice, STUTTER_SPAN_BEATS) / slice);
     }
     if (move.onTwoOrFour) {
       const now = this.heardNow();
@@ -3525,6 +3960,17 @@ export class BangerClubState {
       }
     }
     return beat;
+  }
+
+  /**
+   * Ramon's stutter, felt by the dancers: at the top of each repeat a kick to one side (the
+   * other side next repeat), `k` falling from 1 to 0 across the repeat. Null when not stuttering.
+   */
+  stutterJolt(beat) {
+    const move = this.acting && HERO_MOVES[this.acting.i];
+    if (!move?.slices || !this.punch || beat < this.punch.grab) return null;
+    const into = (beat - this.punch.grab) / this.punch.slice, n = Math.floor(into);
+    return { side: n % 2 ? -1 : 1, k: (1 - (into - n)) ** 2 };
   }
 
   /**
@@ -3767,7 +4213,7 @@ export class BangerClubState {
       ctx.translate(x, y);
       ctx.scale(f.dir * s, s);
       ctx.rotate(tip);
-      drawPaperFish(ctx, fish, L, { t: now, beat: this.beat(), wag: Math.sin(now * (f.baby ? 26 : 13) + f.born * 5), dive: tip / 1.2, lite: this.lite });
+      drawPaperFish(ctx, fish, L, { t: now, beat: this.beat(), wag: Math.sin(now * (f.baby ? 26 : 13) + f.born * 5), dive: tip / 1.2, lite: this.lite, baby: f.baby, heroH: toonH });
       ctx.restore();
     }
     ctx.restore();
@@ -3833,6 +4279,27 @@ export class BangerClubState {
     // a strong kick jolts the cabinets
     const jolt = thump > 0.6 ? (thump - 0.6) * 2.5 * u : 0;
     rig.xs.forEach((x0) => drawSpeakerStack(ctx, x0 + (Math.random() - 0.5) * jolt, rig, u, thump, { boost: !!this.boost }));
+  }
+
+  /**
+   * The heroes' bounce while a speaker is held (BOOST_HOP): a hop off the floor on every kick —
+   * on the beat with the drums out, or no kick playing — and with the wobble dragged, one on
+   * every eighth, as high as the drag, as the floor's scraps hop (scrapHop). The higher of the
+   * two, so the bounce grows out of the kick's as the drag goes deeper. Null while nothing is
+   * boosted; else { lift (of a hero's height), squash }.
+   */
+  boostHop() {
+    const b = this.boost;
+    if (!b || this.paused) return null;
+    const beat = this.beat();
+    const kick = (this.heard.drums > 0 && this.kickThump()) || Math.exp(-(((beat % 1) + 1) % 1) * 6);
+    const eighth = (((beat * 2) % 1) + 1) % 1;
+    const wob = b.amount > 0.04 ? b.amount : 0;
+    return {
+      lift: Math.max(BOOST_HOP * 4 * kick * (1 - kick), WOBBLE_HOP * wob * Math.sin(Math.PI * eighth)),
+      // the knees take the landing: on the kick itself, and just after each eighth comes down
+      squash: Math.max(BOOST_SQUASH * kick ** 4, WOBBLE_SQUASH * wob * Math.max(0, 1 - eighth * 5)),
+    };
   }
 
   /**
@@ -4108,6 +4575,8 @@ export class BangerClubState {
     const bx = bx0 + Math.sin(swing.a) * len0 * swing.stretch;
     const by = mountY + Math.cos(swing.a) * len0 * swing.stretch;
     this.boxes.ball = { x: bx, y: by, r: br };
+    // where the ball hangs once landed, with no bob, settle or swing: what Now Playing sits under
+    this.ballRest = { x: bx0, y: stageTop + 9 * u + hang, r: br };
     // a rally smashed into it spins it on, and it flares (club.js smashed)
     const tt = t + (this.spinPhase || 0);
     const flare = Math.max(0, 1 - (t - (this.mirrorFlashAt ?? -Infinity)) / 1.4);
@@ -4313,14 +4782,44 @@ export class BangerClubState {
       ctx.restore();
       ctx.globalAlpha = 1;
     }
+    // THE BOLT: this song made again on a new seed (reroll). In landscape it sits on the
+    // pencil's right, SAVE after it; the portrait row has no room for a seventh disc, so there
+    // it hangs in the top-right corner, level with the back button and clear above the LED
+    // board (Peter, 6 Oct 2026). The same silver disc; its rim lit while it remakes.
+    this.boxes.reroll = null;
+    if (this.onReroll) {
+      const rr0 = portrait ? 20 * P : r;
+      const zx = portrait ? W - 30 * P : safeL + 16 + r * 2.8 + 8;
+      const zy = portrait ? stageTop + 44 * P : my;
+      const focused = this.focus === this.rerollFocus() && !Input.usingTouch;
+      const on = this.rerolling > 0 || this.rerolled || this.rerollArmed();
+      this.boxes.reroll = { x: zx - rr0 * 1.4, y: zy - rr0 * 1.4, w: rr0 * 2.8, h: rr0 * 2.8 };
+      disc(zx, zy, rr0, focused || on || portrait ? 1 : iconAlpha);
+      ctx.strokeStyle = focused ? '#c9a0ff' : on ? RIM_ON : portrait ? 'rgba(200,200,216,0.45)' : RIM;
+      ctx.lineWidth = 0.8 * u;
+      ctx.beginPath(); ctx.arc(zx, zy, rr0, 0, Math.PI * 2); ctx.stroke();
+      // a lightning bolt, RECHARGE's own: a zig-zag from top right to its point bottom left
+      const b = rr0;
+      ctx.fillStyle = ICON_INK;
+      ctx.beginPath();
+      ctx.moveTo(zx + b * 0.18, zy - b * 0.62);
+      ctx.lineTo(zx - b * 0.36, zy + b * 0.08);
+      ctx.lineTo(zx - b * 0.02, zy + b * 0.08);
+      ctx.lineTo(zx - b * 0.2, zy + b * 0.64);
+      ctx.lineTo(zx + b * 0.38, zy - b * 0.12);
+      ctx.lineTo(zx + b * 0.04, zy - b * 0.12);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     // SAVE, the pencil's twin on its right while the song is not kept yet: the same disc
     // and the same idle fade as the mixer and the pencil (Peter, 4 Oct 2026), and since
     // 5 Oct their silver ("can our floppy disk icon be monochrome to match the other buttons").
     this.boxes.save = null;
     if (this.pending) {
       const ex = portrait ? 32 * P : safeL + 16;
-      const sx = ex + r * 2.8 + (portrait ? 10 * P : 8);
-      const focused = this.focus === HERO_MOVES.length + 3 && !Input.usingTouch;
+      // in landscape THE BOLT sits between the pencil and SAVE; in portrait it is up top
+      const sx = ex + (r * 2.8 + (portrait ? 10 * P : 8)) * (this.onReroll && !portrait ? 2 : 1);
+      const focused = this.focus === this.saveFocus() && !Input.usingTouch;
       this.boxes.save = { x: sx - r * 1.4, y: my - r * 1.4, w: r * 2.8, h: r * 2.8 };
       disc(sx, my, r, focused ? 1 : iconAlpha);
       ctx.strokeStyle = focused ? '#c9a0ff' : RIM;
@@ -4374,6 +4873,7 @@ export class BangerClubState {
     this.boxes.solos = [];
     this.boxes.panel = null;
     this.boxes.reset = null;
+    this.boxes.dice = null;
     if (this.mixerOpen) {
       // SILVER, the bottom row's family — the gold lost here too (Peter, 6 Oct 2026). Each
       // strip, top to bottom: the part's icon, its MUTE and SOLO, the fader on a scale, its
@@ -4403,6 +4903,27 @@ export class BangerClubState {
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('RESET', tx + tw / 2, ty + th / 2);
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        // DICE: a tab beside it, a die on it — every part onto a random sound. It tumbles when
+        // rolled and lands on a new face.
+        const dw = th * 1.5, dx = tx + tw + fs * 0.6;
+        this.boxes.dice = { x: dx, y: ty - th * 0.3, w: dw, h: th * 1.3 };
+        ctx.fillStyle = 'rgba(11,11,20,0.9)';
+        rr(ctx, dx, ty, dw, th, th / 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(206,208,222,0.7)'; ctx.lineWidth = 0.8 * u; ctx.stroke();
+        const roll = Math.max(0, 1 - (this.t - (this.diceAt ?? -Infinity)) / DICE_ROLL_S);
+        const ds = th * 0.62, dcx = dx + dw / 2, dcy = ty + th / 2;
+        ctx.save();
+        ctx.translate(dcx, dcy);
+        ctx.rotate(roll * roll * Math.PI * 3);
+        ctx.strokeStyle = '#eceef4'; ctx.lineWidth = Math.max(0.8, ds * 0.11);
+        rr(ctx, -ds / 2, -ds / 2, ds, ds, ds * 0.24); ctx.stroke();
+        ctx.fillStyle = '#eceef4';
+        const o = ds * 0.24, pr = ds * 0.085;
+        const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]],
+          4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]],
+          6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+        for (const [qx, qy] of PIPS[this.diceFace || 5]) { ctx.beginPath(); ctx.arc(qx * o, qy * o, pr, 0, Math.PI * 2); ctx.fill(); }
+        ctx.restore();
       }
       const S = (portraitV, landV) => (portrait ? portraitV * P : L(landV));
       const pad = S(12, 6);
@@ -4492,14 +5013,31 @@ export class BangerClubState {
         if (sel) ctx.strokeStyle = '#c9a0ff';
         ctx.stroke();
         const name = this.voices?.label(p.id) || '';
-        let fs = S(10, 3.8);
-        ctx.font = `600 ${fs}px ${BODY_FONT}`;
         const room = chipW - chipH * 0.6;
-        const wide = ctx.measureText(name).width;
-        if (wide > room) { fs = Math.max(fs * 0.6, fs * room / wide); ctx.font = `600 ${fs}px ${BODY_FONT}`; }
+        // each name in its own size, shrunk to fit
+        const fit = (txt) => {
+          let fs = S(10, 3.8);
+          ctx.font = `600 ${fs}px ${BODY_FONT}`;
+          const wide = ctx.measureText(txt).width;
+          if (wide > room) { fs = Math.max(fs * 0.6, fs * room / wide); ctx.font = `600 ${fs}px ${BODY_FONT}`; }
+        };
         ctx.fillStyle = waiting ? '#ffffff' : SILVER;
         ctx.textBaseline = 'middle';
-        ctx.fillText(name, cx, chipY + chipH / 2, room);
+        // a reel while the dice rolls: the names scrolling down through the button, slowing,
+        // the new one coming to rest in the middle
+        const reel = this.reelFor(k, name);
+        if (reel) {
+          const pitch = chipH * 0.85, mid = chipY + chipH / 2;
+          ctx.save();
+          rr(ctx, box.x, box.y, box.w, box.h, chipH / 2); ctx.clip();
+          for (const [txt, dy] of [[reel.from, reel.e * pitch], [reel.to, (reel.e - 1) * pitch]]) {
+            ctx.globalAlpha = Math.max(0, 1 - Math.abs(dy) / pitch);
+            fit(txt);
+            ctx.fillText(txt, cx, mid + dy, room);
+          }
+          ctx.restore();
+          ctx.textAlign = 'center';
+        } else { fit(name); ctx.fillText(name, cx, chipY + chipH / 2, room); }
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'left';
       });
@@ -4539,6 +5077,36 @@ export class BangerClubState {
       ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
       ctx.globalAlpha = 1;
     }
+    // the tooltip on a mouse, and THE BOLT asking for its second tap on the glass
+    const tipOf = (key) => (key.startsWith('transport') ? this.boxes.transport?.[Number(key.slice(9))] : this.boxes[key]);
+    if (this.rerollArmed() && this.boxes.reroll) {
+      this.drawTip(ctx, this.boxes.reroll, 'TAP AGAIN FOR A NEW TAKE', { portrait, P, safeL, safeR, lit: true });
+    } else if (this.tip && this.t - this.tip.since >= TIP_DELAY_S && tipOf(this.tip.key)) {
+      const a = Math.min(1, (this.t - this.tip.since - TIP_DELAY_S) * 8);
+      this.drawTip(ctx, tipOf(this.tip.key), this.tipText(this.tip.key), { portrait, P, safeL, safeR, alpha: a });
+    }
+  }
+
+  /** A tooltip on a dark plate beside `box`: above it, or below one in the top half of the screen. */
+  drawTip(ctx, box, text, { portrait, P, safeL = 0, safeR = 0, alpha = 1, lit = false }) {
+    if (!text) return;
+    const fs = portrait ? 13 * P : 7;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `500 ${fs}px ${BODY_FONT}`;
+    const w = ctx.measureText(text).width + fs * 1.4, h = fs * 1.9;
+    const below = box.y + box.h / 2 < H / 2;
+    const lo = (portrait ? 8 * P : safeL + 4), hi = W - (portrait ? 8 * P : safeR + 4) - w;
+    const x = Math.max(lo, Math.min(hi, box.x + box.w / 2 - w / 2));
+    const y = below ? box.y + box.h + fs * 0.2 : box.y - h - fs * 0.2;
+    ctx.fillStyle = 'rgba(11,11,20,0.88)';
+    rr(ctx, x, y, w, h, h * 0.3); ctx.fill();
+    ctx.strokeStyle = lit ? 'rgba(201,160,255,0.85)' : 'rgba(201,160,255,0.4)'; ctx.lineWidth = portrait ? 1.4 * P : 0.7;
+    ctx.stroke();
+    ctx.fillStyle = lit ? '#e6d6ff' : '#e8e6f0';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + w / 2, y + h / 2 + fs * 0.05);
+    ctx.restore();
   }
 
   /**
@@ -4625,13 +5193,13 @@ export class BangerClubState {
     ctx.restore();
   }
 
-  /** Where the save prompt's buttons sit: two or three, centred, stacked on a phone. */
+  /** Where the save prompt's buttons sit: two to four, centred, stacked on a phone. */
   savePromptLayout() {
     const portrait = portraitMenuActive();
     const n = this.savePrompt.options.length;
     const pad = portrait ? 22 : 20, gap = portrait ? 14 : 14;
     if (!portrait) {
-      const bw = n === 3 ? 104 : 110, bh = 32;
+      const bw = n === 4 ? 92 : n === 3 ? 104 : 110, bh = 32;
       const total = n * bw + (n - 1) * gap;
       const w = Math.max(280, total + pad * 2);
       const h = 116;
@@ -4699,19 +5267,28 @@ export class BangerClubState {
     g.buttons.forEach((r, i) => this.drawSavePromptButton(ctx, r, p.options[i].label, p.sel === i, g.portrait));
   }
 
-  /** The song's name, faded in under the mirror ball when it is tapped. */
+  /**
+   * The song's name, faded in under the mirror ball when it is tapped, and its tempo in small
+   * letters under it (Peter, 6 Oct 2026: "could the now playing also show the bpm of the track",
+   * "in small letters under the title" — not on the intro).
+   */
   drawTitle(ctx, { portrait, P }) {
     const k = this.t - this.titleAt;
-    const ball = this.boxes.ball;
+    // under the ball's resting place, not the ball: it stays put while the ball bobs and swings
+    // (Peter, 6 Oct 2026: "it should not do that and stay in place")
+    const ball = this.boxes.ball && (this.ballRest || this.boxes.ball);
     if (!ball || !(k >= 0) || k > TITLE_IN_S + TITLE_HOLD_S + TITLE_OUT_S) return;
     const a = Math.min(k / TITLE_IN_S, 1, (TITLE_IN_S + TITLE_HOLD_S + TITLE_OUT_S - k) / TITLE_OUT_S);
     const title = bangerTitle(this.rec);
     const fs = portrait ? [10 * P, 13 * P] : [7, 10];
     const lh = portrait ? 18 * P : 13;
     ctx.save();
+    const bpm = Math.round(this.song?.bpm || 0);
+    const tempo = bpm > 0 ? `${bpm} BPM` : '';
+    const sh = tempo ? (portrait ? 13 * P : 9) : 0;   // the tempo's line, shorter than the others
     ctx.font = `${fs[1]}px ${TITLE_FONT}`;
     const boxW = Math.min(W - 16, ctx.measureText(title).width + (portrait ? 32 * P : 24));
-    const boxH = lh * 2 + (portrait ? 12 * P : 10);
+    const boxH = lh * 2 + sh + (portrait ? 12 * P : 10);
     // under the ball — in portrait too, now the ball hangs low and the signs fill the space over
     // it (Peter, 5 Oct 2026: "the messages displayed need to come down lower in portrait")
     const bx = W / 2 - boxW / 2;
@@ -4727,11 +5304,17 @@ export class BangerClubState {
     ctx.font = `${fs[1]}px ${TITLE_FONT}`;
     ctx.fillStyle = '#48e0c8';
     ctx.fillText(title, W / 2, by + (portrait ? 6 * P : 5) + lh * 1.5, boxW - 16);
+    if (tempo) {
+      ctx.font = `500 ${portrait ? 9 * P : 6}px ${BODY_FONT}`;
+      ctx.fillStyle = '#8f8b9e';
+      ctx.fillText(tempo, W / 2, by + (portrait ? 6 * P : 5) + lh * 2 + sh * 0.4, boxW - 16);
+    }
     ctx.restore();
   }
 
   /** The song's name and how to play, over the room for the first few seconds. */
   drawIntro(ctx, { portrait, P, stageTop, stageBot }) {
+    if (this.room) return;   // back from the riff grid: the NOW PLAYING card alone (drawTitle)
     const shown = this.shownAt == null ? 0 : this.t - this.shownAt;
     const a = 1 - Math.max(0, Math.min(1, (shown - INTRO_S) / INTRO_FADE_S));
     if (a <= 0) return;

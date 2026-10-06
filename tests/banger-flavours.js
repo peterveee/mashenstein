@@ -104,8 +104,12 @@ assert(flavourOf(styleFor('big-room'), 'random', { seed: 5 }) === null && flavou
     `the Lab plays synthwave's own on the Light set, and Darksynth on its own sounds (${night.soundsId}, ${dark.soundsId})`);
   // A flavour kept with the recipe is the one played, whatever the roll would say now.
   const kept = makeBanger({ notes: DEFAULT_SIMPLE, style: 'reggaeton', mood: 'uplifting', seed: 7, expression: 3, voltage: 0, flavour: 'perreo' });
-  assert(labFlavour('reggaeton', 'uplifting', 7, 0) === 'clasico' && kept.soundsId === 'reggaeton-perreo' && kept.bpm === 96,
+  assert(labFlavour('reggaeton', 'uplifting', 7, 0) === 'clasico' && kept.soundsId === 'reggaeton-perreo' && kept.bpm === 100,
     'a saved song plays the flavour its recipe kept, not whatever a re-roll would give now');
+  // Overload adds its 4 to the flavour's own tempo, inside the flavour's range — not the style's.
+  const over = (mood, flavour) => makeBanger({ notes: DEFAULT_SIMPLE, style: 'synthwave', mood, seed: 7, expression: 3, voltage: 3, flavour }).bpm;
+  assert(over('dark', 'darksynth') === 116 && over('uplifting', 'outrun') === 132,
+    `Overload is the flavour's tempo + 4 (Darksynth ${over('dark', 'darksynth')}, Outrun ${over('uplifting', 'outrun')})`);
 }
 
 if (failed) { console.error('\nbanger-flavours: FAILED'); process.exit(1); }

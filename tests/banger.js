@@ -624,15 +624,24 @@ try {
     // or a style's own, walk the same eight bars, major or minor. (Played over a riff the
     // hook still has its say about every chord; the sweeps below play every mood in every
     // style.)
+    // Since 6 Oct 2026 that holds for the first nine too, in every style: Dark's major walk
+    // was Heroic's, chord for chord, until it got its own.
     const shared = Object.keys(SHARED_MOODS);
-    const bigRoom = BANGER_STYLES.find((st) => st.id === 'big-room');
-    const walks = Object.entries(bigRoom.progressions).flatMap(([mood, prog]) =>
-      ['major', 'minor'].map((side) => [`${mood} ${side}`, JSON.stringify(prog[side])]));
-    for (const [name, walk] of walks) {
-      if (!shared.includes(name.split(' ')[0])) continue;
-      const twin = walks.find(([other, w]) => other !== name && w === walk);
-      check(!twin, `${name} walks the same chords as ${twin?.[0]}`);
+    for (const st of BANGER_STYLES) {
+      const walks = Object.entries(st.progressions).flatMap(([mood, prog]) =>
+        ['major', 'minor'].map((side) => [`${mood} ${side}`, JSON.stringify(prog[side])]));
+      for (const [name, walk] of walks) {
+        const twin = walks.find(([other, w]) => other !== name && w === walk);
+        check(!twin, `${st.id}: ${name} walks the same chords as ${twin?.[0]}`);
+      }
     }
+    // A retired mood is made in the mood it became, and is no longer offered.
+    const retired = normaliseBangerOptions({ mood: 'hopeful', form: { mood2: 'hopeful' } });
+    const renamed = normaliseBangerOptions({ mood: 'andalusian' });
+    assert(!retired.issues.length && retired.options.mood === 'uplifting' && retired.options.form.mood2 === 'uplifting'
+      && !renamed.issues.length && renamed.options.mood === 'flamenco'
+      && !BANGER_MOODS.some((m) => ['hopeful', 'andalusian'].includes(m.id)),
+    'Hopeful is retired and Andalusian is Flamenco: a banger made in either is made in the mood it became, first mood or second');
     assert(shared.length >= 10 && BANGER_STYLES.every((st) => shared.every((m) => st.progressions[m] && st.moods[m])),
       `the ${shared.length} shared moods are in every style, each walking chords no other mood walks`);
 

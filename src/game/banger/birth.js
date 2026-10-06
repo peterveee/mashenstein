@@ -99,24 +99,8 @@ export class BangerBirthState {
   }
 
   /** A jagged bolt from (x0,y0) to (x1,y1), new every frame. */
-  bolt(ctx, x0, y0, x1, y1, spread, width, colour, depth = 0) {
-    const n = 9;
-    const pts = [[x0, y0]];
-    for (let i = 1; i < n; i++) {
-      const k = i / n;
-      pts.push([x0 + (x1 - x0) * k + (this.random() - 0.5) * spread * 0.4, y0 + (y1 - y0) * k + (this.random() - 0.5) * spread]);
-    }
-    pts.push([x1, y1]);
-    ctx.strokeStyle = colour;
-    for (const [w, a] of [[width * 3.2, 0.18], [width, 0.95]]) {
-      ctx.globalAlpha = a; ctx.lineWidth = w;
-      ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    if (depth < 1 && this.random() < 0.6) {
-      const [bx, by] = pts[2 + Math.floor(this.random() * (n - 4))];
-      this.bolt(ctx, bx, by, bx + (this.random() - 0.5) * spread * 1.4, by + spread * (0.4 + this.random() * 0.6), spread * 0.5, width * 0.6, colour, depth + 1);
-    }
+  bolt(ctx, x0, y0, x1, y1, spread, width, colour) {
+    drawBolt(ctx, this.random, x0, y0, x1, y1, { spread, width, colour });
   }
 
   /** Where the switch's lever is: off (up) until the haul, thrown (down) from SWITCH_AT. */
@@ -390,5 +374,31 @@ export class BangerBirthState {
       ctx.fillStyle = `rgba(255,255,255,${0.85 * (1 - since / 0.35)})`;
       ctx.fillRect(0, 0, W, H);
     }
+  }
+}
+
+/**
+ * A jagged bolt from (x0,y0) to (x1,y1), new every call: a glow (`glow`, the core's colour unless
+ * given) under a hot core, and now and then a branch off it. `alpha` scales the whole bolt, for one
+ * fading out. The club's reroll arcs with it too.
+ */
+export function drawBolt(ctx, random, x0, y0, x1, y1, { spread, width, colour, glow = colour, alpha = 1 }, depth = 0) {
+  const n = 9;
+  const pts = [[x0, y0]];
+  for (let i = 1; i < n; i++) {
+    const k = i / n;
+    pts.push([x0 + (x1 - x0) * k + (random() - 0.5) * spread * 0.4, y0 + (y1 - y0) * k + (random() - 0.5) * spread]);
+  }
+  pts.push([x1, y1]);
+  for (const [w, a, c] of [[width * 3.2, glow === colour ? 0.18 : 0.4, glow], [width, 0.95, colour]]) {
+    ctx.strokeStyle = c;
+    ctx.globalAlpha = a * alpha; ctx.lineWidth = w;
+    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  if (depth < 1 && random() < 0.6) {
+    const [bx, by] = pts[2 + Math.floor(random() * (n - 4))];
+    drawBolt(ctx, random, bx, by, bx + (random() - 0.5) * spread * 1.4, by + spread * (0.4 + random() * 0.6),
+      { spread: spread * 0.5, width: width * 0.6, colour, glow, alpha }, depth + 1);
   }
 }

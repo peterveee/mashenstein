@@ -204,6 +204,27 @@ export class ClubVoices {
     return true;
   }
 
+  /**
+   * The mixer's DICE (Peter, 6 Oct 2026: "randomise all the instrument choices"): every part
+   * with a choice onto another of its sounds, at random, from the next bar line — on whichever
+   * set the band is on. False when no part has another sound.
+   */
+  shuffle(random = Math.random) {
+    const next = copy(this.target);
+    const key = next.swapped ? 'swap' : 'own';
+    let moved = false;
+    for (const part of PART_IDS) {
+      const n = this.choices(part, next.swapped).length;
+      if (n < 2) continue;
+      const was = next.picks[key][part] || 0;
+      const k = (was + 1 + Math.floor(random() * (n - 1))) % n;
+      if (k) next.picks[key][part] = k; else delete next.picks[key][part];
+      moved = true;
+    }
+    if (moved) this.queue(next);
+    return moved;
+  }
+
   queue(next) {
     this.pending = same(next, this.state) ? null : next;
     this.pendingAt = Audio.ctx ? Audio.ctx.currentTime : 0;
@@ -213,7 +234,7 @@ export class ClubVoices {
   /**
    * Once a frame: a change waiting for the bar line goes in when the next step the sequencer
    * schedules is a downbeat — or straight away with no song running, or if a long frame
-   * stepped over the window. Returns what landed ({ swapped, part, label }) or null.
+   * stepped over the window. Returns what landed ({ swapped, part, label, parts }) or null.
    */
   update() {
     const p = this.pending;
@@ -229,8 +250,9 @@ export class ClubVoices {
     this.pending = null;
     if (p.swapped !== was.swapped) return { swapped: p.swapped, part: null, label: null };
     const key = p.swapped ? 'swap' : 'own';
-    const part = PART_IDS.find((id) => (p.picks[key][id] || 0) !== (was.picks[key][id] || 0)) || null;
-    return { swapped: p.swapped, part, label: part ? this.label(part) : null };
+    const parts = PART_IDS.filter((id) => (p.picks[key][id] || 0) !== (was.picks[key][id] || 0));
+    const part = parts[0] || null;
+    return { swapped: p.swapped, part, label: part ? this.label(part) : null, parts };
   }
 
   /** Lane → preset for a state: the other set's sounds if swapped, then the buttons' picks. */

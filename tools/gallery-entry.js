@@ -135,6 +135,7 @@ import { FISH_CANDIDATES } from '../src/dev/fish-candidates.js';
 import { FISH_STYLES } from '../src/dev/fish-styles.js';
 import { drawSpeakerStack, PORT_HORN, PA_HORN } from '../src/game/banger/speakers.js';
 import { HORN_CANDIDATES } from '../src/dev/speaker-horn-candidates.js';
+import { BABY_SHARK_HATS, babyBonnet } from '../src/dev/baby-shark-hats.js';
 import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
 
 // RUSTY WAS THE GUEST HERE from 1 to 10 Sep 2026 — a candidate drawn through
@@ -3053,8 +3054,9 @@ function propNominalSize(name) {
       'startMoment(‘cleaner’) → drawPartyFront: Dolores across the floor in four bars, the confetti gone behind her broom; '
       + 'the other way each lap.', room({ lap: 20, seed: 14, start: cleanerStart('cleaner') }));
     roomCard(grid, 'DOLORES, TAPPED',
-      'tapDolores, six beats into her sweep: she flings the broom away, dances four bars where she stands, then runs off the '
-      + 'nearer side, leaving what she had not swept — and the LED board says so.',
+      'tapDolores, six beats into her sweep: delighted at once, she lobs the broom away end over end, dances four bars — the '
+      + 'groove on her spot, and every other bar a side shuffle to the middle and back — then runs off the nearer side, '
+      + 'leaving what she had not swept — and the LED board says so.',
       room({ lap: 28, seed: 15, start: cleanerStart('cleaner'),
         each: (club, b, n, at) => cue(club, 'tap', b, 6, at, () => {
           const s = club.doloresSpot;
@@ -9113,6 +9115,67 @@ function cryptStyleTiles(grid, tag, cand) {
       drawSpeakerStack(ctx, 3, rig(3, 142), 1, thumpAt(t) * 0.4, { horn: c.paint });
       ctx.restore();
     }, { animated: true, hires: 2 });
+  }
+}
+
+// The baby shark's hat (Peter, 6 Oct 2026: "i don't love the bonnet - give me a few different
+// options"). Every candidate on the baby following the party shark across the flooded club at
+// the club's size, as club.js drawFish has them; then the baby close up.
+{
+  const s = sectionEl('baby-shark-bakeoff', 'BANGER LAB — the baby shark’s hat',
+    'SETTLED 6 Oct 2026 on C, the big bow (club-fish.js babyBow), so 0 and C match; the bonnet it replaced is X. Its dummy was turned the same day to point down off its jaw, where a shark’s mouth is. '
+    + 'The party shark’s baby, which follows it across Lorenzo’s flood (club.js BABY_SHARK), got a frilled pink bonnet tied under its chin, a big eye and a dummy on 6 Oct 2026. '
+    + 'Peter didn’t love the bonnet: A–G were the alternatives (src/dev/baby-shark-hats.js). Every one keeps the dummy, the big eye and the rosy cheek. '
+    + 'First card: all of them side by side at the club’s size. Then each crossing the club behind its parent at 128 BPM over the club’s 66px heroes, and close up.',
+    '2026-10-06');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const FW = 480, FH = 270, FLOOR = FH - 46, TOON_H = 66, BPM = 128, CROSS = 6, REST = 1.5, LAG = 0.75;
+  const shark = FISHES.find((f) => f.name === 'PARTY SHARK');
+  const BABY_L = TOON_H * shark.size * 0.5;   // club.js BABY_SHARK
+  const CELL = (FW - 8) / HERO_MOVES.length;
+  const room = (ctx, t) => {
+    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
+    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
+    HERO_MOVES.forEach((m, i) => drawToon(ctx, m.hero, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, 4 + CELL * (i + 0.5), FLOOR, TOON_H));
+    ctx.save(); ctx.globalAlpha = 0.34; ctx.fillStyle = '#0b5f6a'; ctx.fillRect(0, 0, FW, FH); ctx.restore();
+  };
+  const water = (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0e4a56'); g.addColorStop(1, '#0a2e3a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  };
+  const baby = (ctx, c, L, t) => drawPaperFish(ctx, shark, L, { t, beat: t * BPM / 60, wag: Math.sin(t * 26), dive: 0, baby: true, babyHat: c.paint, heroH: L / (shark.size * 0.5) });
+  const all = [{ letter: '0', name: 'TODAY (club)', paint: undefined, description: 'What the club draws now: C, the big bow.' }, ...BABY_SHARK_HATS,
+    { letter: 'X', name: 'THE OLD BONNET', paint: babyBonnet,
+      description: 'What it had first: a pink bonnet over its crown, a white frill round the brim, a ribbon down its cheek tied in a bow under its chin.' }];
+  const LW = 12 + all.length * 58;
+  tile(grid, 'All side by side (club size)', `0 the club’s (C), A–G, and X the old bonnet, each ${Math.round(BABY_L)}px nose to tail as in the club.`, LW, 74, (ctx, t) => {
+    water(ctx, LW, 74);
+    all.forEach((c, i) => {
+      ctx.save(); ctx.translate(30 + i * 58, 34); baby(ctx, c, BABY_L, t + i * 0.3); ctx.restore();
+      ctx.fillStyle = '#bff8ff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(c.letter, 30 + i * 58, 70);
+    });
+  }, { animated: true, wide: true, hires: 3 });
+  for (const c of all) {
+    tile(grid, `${c.letter} — ${c.name}`, c.description, FW, FH, (ctx, t) => {
+      room(ctx, t);
+      const beat = t * BPM / 60, lap = CROSS + REST + LAG;
+      for (const [L, lag, dy, isBaby] of [[TOON_H * shark.size, 0, 0, false], [BABY_L, LAG, 0.12, true]]) {
+        const at = ((beat % lap) + lap) % lap - lag;
+        if (at < 0 || at > CROSS) continue;
+        const x = -L + (at / CROSS) * (FW + 2 * L);
+        const y = 92 + dy * 90 + Math.sin(t * 2.6 + lag) * L * 0.18;
+        ctx.save(); ctx.translate(x, y);
+        if (isBaby) baby(ctx, c, L, t);
+        else drawPaperFish(ctx, shark, L, { t, beat, wag: Math.sin(t * 13), dive: 0 });
+        ctx.restore();
+      }
+    }, { animated: true });
+    tile(grid, `${c.letter} — close up`, c.name, 240, 176, (ctx, t) => {
+      water(ctx, 240, 176);
+      ctx.save(); ctx.translate(110, 92); baby(ctx, c, 140, t); ctx.restore();
+    }, { animated: true, hires: 3, displayScale: 1.5 });
   }
 }
 

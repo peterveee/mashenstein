@@ -37,6 +37,21 @@ assert(!shipped.length, `the shipped sounds table breaks no rule${shipped.length
 const br = BANGER_SOUNDS['big-room'];
 const { BANGER_STYLES } = await import('../tools/lib/banger/styles/index.js');
 assert(BANGER_STYLES.every((st) => BANGER_SOUNDS[st.id]), `every style has its sounds (${BANGER_STYLES.map((st) => st.id).join(', ')})`);
+{
+  // A style that re-voices parts by mood does it for every mood, the shared ones too
+  // (6 Oct 2026) — a mood left out would quietly play the style's own sounds.
+  const { MOOD_IDS } = await import('../tools/lib/banger/sound-rules.js');
+  const voiced = Object.entries(BANGER_SOUNDS).filter(([, s]) => Object.keys(s.moods || {}).length);
+  const gaps = voiced.flatMap(([id, s]) => MOOD_IDS.filter((m) => !s.moods[m]).map((m) => `${id}.${m}`));
+  assert(voiced.length >= 7 && !gaps.length, `every style with mood sounds names every mood${gaps.length ? ` (missing ${gaps.join(', ')})` : ''}`);
+  const silent = Object.keys((await import('../tools/lib/banger/moods.js')).SHARED_MOODS).filter((m) => !Object.keys(br.moods[m]?.parts || {}).length);
+  assert(!silent.length, `every shared mood re-voices at least one part${silent.length ? ` (not ${silent.join(', ')})` : ''}`);
+  // The Grit Hat's square blip reads as a clave on eighths — "too distracting" (Peter,
+  // 6 Oct 2026) — so no kit plays it, nor 16-Bit's copy of it, as its hats.
+  const grit = Object.entries(BANGER_SOUNDS).flatMap(([id, s]) => Object.entries(s.kits || {})
+    .filter(([, kit]) => ['hatGrit', 'seedMegadriveHats'].includes(kit.hats)).map(([k]) => `${id}.${k}`));
+  assert(!grit.length, `no kit's hats is the Grit Hat${grit.length ? ` (${grit.join(', ')})` : ''}`);
+}
 for (const [id, s] of Object.entries(BANGER_SOUNDS)) {
   assert(slotsFor(id).every((p) => VOICES[s.parts[p.key]]), `every part ${id} writes has a sound`);
   assert(KIT_ROLES.every((r) => VOICES[s.kits.style[r.key]]) && KITS.every((k) => s.kits[k.key]),

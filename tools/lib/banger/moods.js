@@ -40,13 +40,16 @@ export const SHARED_MOODS = Object.freeze({
     modes: { suits: ['major', 'lydian'], fights: ['phrygian', 'harmonic'] },
     lifts: ['borrowed', 'pivot'],
   },
-  // A minor-seventh vamp on a MAJOR IV7 — the dorian sixth in the middle of it.
+  // The ii7–V7 vamp that never lands on the I, and in a minor key two minor sevenths, i7
+  // and iv7, rocking. It used to rock on a MAJOR IV7 — Funky's dorian vamp, chord for chord
+  // — so the minor side moved to the minor iv and a riff that could go either way goes major
+  // (6 Oct 2026).
   disco: {
-    label: 'Disco', title: 'A minor-seventh vamp on a major IV7, turned round at the end — octave bass',
-    minor: [['i7'], ['IV7'], ['i7'], ['IV7'], ['i7'], ['IV7'], ['VImaj7'], ['V7']],
+    label: 'Disco', title: 'A ii7–V7 vamp that never lands on the I — or, in a minor key, two minor sevenths rocking — octave bass',
     major: [['ii7'], ['V7'], ['ii7'], ['V7'], ['ii7'], ['V7'], ['IVmaj7'], ['V7']],
-    mood: { colour: { '': '', m: 'm7' }, exciter: true, high: 2, preferMinor: true, walk: 'bright' },
-    modes: { suits: ['minor', 'dorian'], fights: ['phrygian', 'lydian'] },
+    minor: [['i7'], ['iv7'], ['i7'], ['iv7'], ['i7'], ['iv7'], ['VImaj7'], ['V7']],
+    mood: { colour: { '': '', m: 'm7' }, exciter: true, high: 2, preferMinor: false, walk: 'bright' },
+    modes: { suits: ['major', 'minor', 'mixolydian'], fights: ['phrygian', 'lydian'] },
     bass: 'octaves',
     lifts: ['twostep', 'walkup'],
   },
@@ -130,17 +133,6 @@ export const SHARED_MOODS = Object.freeze({
     bass: 'walking',
     lifts: ['walkup', 'twostep'],
   },
-  // vi–IV–I–V, starting in the minor and leaning bright — but where Moody (big-room's
-  // major walk is the same four chords) goes round for ever, this one gets home: a
-  // suspended V, then the I it was reaching for. 3 Oct 2026.
-  hopeful: {
-    label: 'Hopeful', title: 'vi–IV–I–V, starting in the shadow and leaning into the light — a suspended V, then home at last',
-    major: [['vi'], ['IV'], ['I'], ['V'], ['vi'], ['IV'], ['Vsus4', 'V'], ['I']],
-    minor: [['i'], ['VI'], ['III'], ['VII'], ['i'], ['VI'], ['VIIsus4', 'VII'], ['III']],
-    mood: { colour: { '': 'add9', m: 'm7' }, exciter: true, high: 2.2, preferMinor: false, walk: 'bright' },
-    modes: { suits: ['major', 'mixolydian', 'dorian'], fights: ['phrygian', 'harmonic'] },
-    lifts: ['pivot', 'borrowed'],
-  },
   // The tonic and the flat two a half-bar each, over and over — the menace of a boss
   // stage — turning on the big V. Dark leans on the flat two once a phrase; this one
   // never lets go of it. 3 Oct 2026.
@@ -155,9 +147,10 @@ export const SHARED_MOODS = Object.freeze({
   },
   // The Andalusian cadence, i–VII–VI–V, two chords a bar and round again, resting on the
   // big V at the end. Gothic opens with the same descent a chord a bar and then turns to
-  // the church (a plagal iv, organ and bells); this one is the flamenco guitar's. 3 Oct 2026.
-  andalusian: {
-    label: 'Andalusian', title: 'The flamenco descent, i–VII–VI–V, two chords a bar — resting on the big V',
+  // the church (a plagal iv, organ and bells); this one is the flamenco guitar's. 3 Oct 2026;
+  // called Andalusian until 6 Oct 2026, when Peter named it for the music, not the cadence.
+  flamenco: {
+    label: 'Flamenco', title: 'The flamenco descent, i–VII–VI–V, two chords a bar — resting on the big V',
     minor: [['i', 'VII'], ['VI', 'V'], ['i', 'VII'], ['VI', 'V'], ['i', 'VII'], ['VI', 'V'], ['iv', 'VI'], ['V']],
     major: [['vi', 'V'], ['IV', 'III'], ['vi', 'V'], ['IV', 'III'], ['vi', 'V'], ['IV', 'III'], ['ii', 'IV'], ['III']],
     mood: { colour: { '': '', m: 'm' }, exciter: false, high: 1.5, preferMinor: true, walk: 'dark' },
@@ -178,7 +171,7 @@ export const SHARED_MOODS = Object.freeze({
   },
   // The Latin party (5 Oct 2026, with Merenhouse). Major is merengue and cumbia's: the tonic
   // and its dominant seventh, the IV once, in plain triads. Minor is the son montuno vamp,
-  // i–iv–V7 going round. Not the Andalusian descent, which is its own mood. Written from
+  // i–iv–V7 going round. Not the Andalusian descent, which is Flamenco's. Written from
   // the general idea of the music, not checked against the records.
   fiesta: {
     label: 'Fiesta', title: 'The Latin party: merengue\'s tonic and dominant seventh in major, the montuno vamp i–iv–V7 in minor',
@@ -189,7 +182,55 @@ export const SHARED_MOODS = Object.freeze({
     bass: 'rootFifth',
     lifts: ['pivot', 'walkup'],
   },
+  // Gospel house (6 Oct 2026): the I7 leaning into the IV, then home round the secondary
+  // dominants, iii7–VI7–ii7–V7. In minor the tonic turns major-seventh for one bar to lean
+  // on the iv the same way. It lifts by the walk-up, the church's way into a new key.
+  soulful: {
+    label: 'Soulful', title: 'Gospel-house sevenths: the I7 leaning into the IV, then home round iii7–VI7–ii7–V7 — warm and churchy',
+    major: [['Imaj7'], ['I7'], ['IVmaj7'], ['IVmaj7'], ['iii7'], ['VI7'], ['ii7'], ['V7']],
+    minor: [['i7'], ['I7'], ['iv7'], ['iv7'], ['VImaj7'], ['V7'], ['IIm7b5'], ['V7']],
+    mood: { colour: { '': 'maj7', m: 'm9' }, exciter: false, high: 1.5, preferMinor: false, walk: 'bright' },
+    modes: { suits: ['major', 'dorian', 'mixolydian'], fights: ['phrygian', 'harmonic'] },
+    bass: 'walking',
+    lifts: ['walkup', 'pivot'],
+  },
+  // The line cliché (6 Oct 2026): one minor chord held while a line inside it falls a
+  // semitone a bar — i, i(maj7), i7, i6 — then the same on the iv, and the big V. Suspense,
+  // not Dark's menace or Lament's grief. Its colours are left plain: a seventh laid over the
+  // i would flatten the falling line. The major side is the relative minor's cliché, as
+  // Lament's is.
+  mystery: {
+    label: 'Mystery', title: 'One minor chord with a line falling a semitone at a time inside it — i, i(maj7), i7, i6 — then the iv, then the big V',
+    minor: [['i'], ['imaj7'], ['i7'], ['i6'], ['iv'], ['ivmaj7'], ['iv7'], ['V7']],
+    major: [['vi'], ['vimaj7'], ['vi7'], ['vi6'], ['ii'], ['iimaj7'], ['ii7'], ['III7']],
+    mood: { colour: { '': '', m: 'm' }, exciter: false, high: 0.5, preferMinor: true, walk: 'dark' },
+    modes: { suits: ['minor', 'harmonic'], fights: ['major', 'lydian', 'mixolydian'] },
+    bass: 'walking',
+    lifts: ['walkup', 'pivot'],
+  },
+  // The cartoon (6 Oct 2026): ragtime's chain of dominants, VI7–II7–V7, each pulling the
+  // next round, after a diminished chord sneaking up a semitone from the I. In minor, the
+  // oom-pah of i and V7 and a diminished chord creeping up from the iv. Plain triads
+  // otherwise, an oom-pah bass. Written from the general idea, not checked against anything.
+  playful: {
+    label: 'Playful', title: 'Cartoon mischief: a diminished chord sneaking up from the I, then ragtime\'s VI7–II7–V7 — an oom-pah bass',
+    major: [['I'], ['#Idim7'], ['ii'], ['V7'], ['I'], ['VI7'], ['II7'], ['V7']],
+    minor: [['i'], ['V7'], ['i'], ['V7'], ['iv'], ['#IVdim7'], ['i', 'VI7'], ['V7']],
+    mood: { colour: { '': '', m: 'm' }, exciter: true, high: 2.4, preferMinor: false, walk: 'bright' },
+    modes: { suits: ['major', 'mixolydian'], fights: ['phrygian', 'harmonic'] },
+    bass: 'rootFifth',
+    lifts: ['walkup', 'twostep'],
+  },
 });
+
+/**
+ * Moods that have been retired or renamed, and the mood a banger made in one is made in
+ * now. Hopeful went on 6 Oct 2026: it was Moody's major walk and Uplifting's minor one with
+ * a sus4 on the end. Andalusian was renamed Flamenco the same day.
+ */
+export const RETIRED_MOODS = Object.freeze({ hopeful: 'uplifting', andalusian: 'flamenco' });
+/** The mood a request for `mood` plays: itself, or the one a retired mood became. */
+export const currentMood = (mood) => RETIRED_MOODS[mood] ?? mood;
 
 /** How the first nine moods change key. */
 const OWN_LIFTS = {

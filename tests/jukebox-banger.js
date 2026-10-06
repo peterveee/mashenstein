@@ -22,10 +22,10 @@ const {
 const { BangerMakerState, RIFF_VOICES, MAKER_VARIATIONS } = await import('../src/game/banger/maker.js');
 const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
-const { BangerClubState, LED_COLS } = await import('../src/game/banger/club.js');
+const { BangerClubState, LED_COLS, DICE_LINES } = await import('../src/game/banger/club.js');
 const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor, dragValue, echoLevel, drainSeconds, nextStopStep,
   nowAt, nextSixteenthAt } = await import('../src/game/banger/club-fx.js');
-const { cleanerWalk, DOLORES_DANCE_BEATS, DOLORES_FLING_BEATS, DOLORES_RUN_BEATS, makeScrap, drawScraps } = await import('../src/game/banger/club-party.js');
+const { cleanerWalk, doloresDancePose, DOLORES_DANCE_BEATS, DOLORES_FLING_BEATS, DOLORES_RUN_BEATS, makeScrap, drawScraps } = await import('../src/game/banger/club-party.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -696,7 +696,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const rec = bangerState().kept.at(-1);
   let backs = 0;
   let edited = null;
-  const club = new BangerClubState({ rec, onBack: () => { backs++; }, onEdit: (r) => { edited = r; } });
+  let leftRoom = null;
+  const club = new BangerClubState({ rec, onBack: () => { backs++; }, onEdit: (r, p, room) => { edited = r; leftRoom = room; } });
   club.enter();
   const ctx = document.createElement('canvas').getContext('2d');
   club.draw(ctx);
@@ -710,6 +711,19 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   }
   // (a hero's box follows them, so let the walk-in finish before aiming at one)
   club.shownAt = club.t - 30; club.draw(ctx);
+  // Back from the riff grid — a RECHARGE or its BACK — the room is as the pencil left it: every
+  // hero on their spot from the first frame, the ball hung, and only the NOW PLAYING card, not
+  // the walk-in and the welcome (Peter, 6 Oct 2026).
+  {
+    const again = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, room: leftRoom });
+    again.enter();
+    again.update(1 / 60);
+    again.draw(ctx);
+    assert(leftRoom && again.shownAt != null && again.boxes.heroes.every((b, i) => Math.abs(b.x - club.boxes.heroes[i].x) < 1),
+      'back from the pencil, every hero is already standing where they stood');
+    assert(again.titleAt === again.shownAt && again.t - again.ballAt > again.barSeconds() && again.ballScale === club.ballScale,
+      'and the ball already hangs, with the NOW PLAYING card up');
+  }
   const at = (hero) => HERO_MOVES.findIndex((m) => m.hero === hero);
   const kikoAt = at('kiko');
   const h = club.boxes.heroes[kikoAt];
@@ -895,6 +909,21 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(started && s && flings && dancing && waits && runs && ends && told && left,
       `Dolores tapped mid-sweep flings the broom, dances where she stands, then runs off, leaving the rest of the confetti (${[started, !!s, flings, dancing, waits, runs, ends, told, left]})`);
     club.moments = []; club.floorConfetti = [];
+  }
+  // ...and she has two moves (Peter, 6 Oct 2026): the groove on her spot, and every other bar a
+  // side shuffle towards the middle of the floor and back, only ever whole bars of it.
+  {
+    const m = { kind: 'cleaner', beat0: 0, beats: 99, dir: 1, quit: { from: 6.3, dance: DOLORES_DANCE_BEATS, out: 1, sweptTo: 0 } };
+    const start = 6.3 + DOLORES_FLING_BEATS, end = start + DOLORES_DANCE_BEATS;
+    const at = [];
+    for (let b = start; b < end; b += 1 / 16) at.push([b, doloresDancePose(m, b).shift || 0]);
+    const away = at.filter(([, s]) => Math.abs(s) > 0.01);
+    const bars = new Set(away.map(([b]) => Math.floor(b / 4)));
+    const whole = [...bars].every((bar) => bar * 4 >= start && bar * 4 + 4 <= end);
+    const towardMiddle = away.every(([, s]) => s < 0);   // thrown off the right, facing right: the middle is behind her
+    const home = [8, 12, 16, 20].every((b) => Math.abs(doloresDancePose(m, b).shift || 0) < 1e-9);
+    assert(bars.size === 2 && whole && towardMiddle && home,
+      `Dolores dances the groove, and whole bars of a side shuffle to the middle of the floor and back (${[bars.size, whole, towardMiddle, home]})`);
   }
   // THE TURBO HOOVER (Peter, 5 Oct 2026): the vacuum tapped tears off, sucks up the beach ball,
   // and blows up out of the far side on a beat — KABOOM, the room jolts, a confetti fountain.
@@ -1174,6 +1203,41 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(club.mixerPlain && PARTS.every((p) => club.levels[p.id] === 1) && club.voices.own && !club.rec.mixer
       && club.popup?.text === 'MIXER RESET',
     `RESET: every fader up, every sound the song's own, the kept mixer dropped (${JSON.stringify(club.rec.mixer)})`);
+    // ...and the DICE beside it (Peter, 6 Oct 2026): every part onto another sound at once,
+    // a floatie said, the LED board naming them when they land
+    club.draw(ctx);
+    const was = PARTS.map((p) => club.voices.label(p.id));
+    const rolls = PARTS.filter((p) => club.voices.choices(p.id).length > 1).map((p) => p.id);
+    assert(club.boxes.dice && club.boxes.dice.x > club.boxes.reset.x + club.boxes.reset.w - 1, 'a DICE tab beside RESET');
+    tap(club, ...centre(club.boxes.dice));
+    const said = DICE_LINES.includes(club.popup?.text) && DICE_LINES.every((l) => !l.startsWith('NO'));
+    club.update(1 / 60);
+    const now = PARTS.map((p) => club.voices.label(p.id));
+    assert(said && rolls.length > 1 && PARTS.every((p, k) => rolls.includes(p.id) === (now[k] !== was[k]))
+      && rolls.every((id) => club.led?.text.includes(`${PARTS.find((p) => p.id === id).label}: `)),
+    `DICE: every part with a choice on another sound, a floatie, the LED board names them (${was} -> ${now}; ${club.led?.text})`);
+    // ...and while it rolls each sound button spins through its sounds, the reels stopping
+    // left to right on the new one (Peter, 6 Oct 2026)
+    {
+      const t0 = club.t, at = (s) => { club.t = club.diceAt + s; };
+      const k = PARTS.findIndex((p) => rolls.includes(p.id));
+      const names = new Set();
+      for (let s = 0; s < 0.8; s += 0.01) { at(s); names.add(club.reelFor(k, now[k])?.name); }
+      at(0.3);
+      const early = PARTS.map((p, j) => club.reelFor(j, now[j]));
+      at(0.8 - 0.001);
+      const landing = club.reelFor(k, now[k]);
+      at(0.8 + 0.14 * 3 + 0.01);
+      const done = PARTS.every((p, j) => !club.reelFor(j, now[j]));
+      club.draw(ctx);
+      club.t = t0;
+      assert(names.size > 2 && [...names].every((n) => club.voices.choices(PARTS[k].id).some((c) => c.label === n))
+        && PARTS.every((p, j) => !!early[j] === rolls.includes(p.id)) && landing?.name === now[k] && done,
+      `DICE: the sound buttons roll through their sounds and land on the new one (${[...names].join(', ')})`);
+    }
+    club.draw(ctx);
+    tap(club, ...centre(club.boxes.reset));
+    assert(club.voices.own, 'and RESET puts the dice back too');
     Audio.reapplyBank = realRe;
     club.draw(ctx);
   }
@@ -1748,8 +1812,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   });
   club2.enter();
   club2.back();
-  assert(club2.savePrompt && club2.savePrompt.options.length === 2 && club2.savePrompt.sel === 1,
-    'backing out of a new pending banger asks SAVE / DON\'T SAVE, DON\'T SAVE picked first');
+  assert(club2.savePrompt && club2.savePrompt.options.map((o) => o.label).join() === "SAVE,DON'T SAVE,CANCEL" && club2.savePrompt.sel === 1,
+    'backing out of a new pending banger asks SAVE / DON\'T SAVE / CANCEL, DON\'T SAVE picked first');
   club2.draw(ctx);
   assert(club2.savePrompt, 'the save prompt draws over the room');
   club2.answerSavePrompt(club2.savePrompt.options[club2.savePrompt.sel]);
@@ -1761,15 +1825,21 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   });
   club3.enter();
   club3.back();
-  assert(club3.savePrompt && club3.savePrompt.options.map((o) => o.label).join() === "UPDATE,SAVE AS NEW,DON'T SAVE",
-    'backing out of an edit asks UPDATE / SAVE AS NEW / DON\'T SAVE');
+  assert(club3.savePrompt && club3.savePrompt.options.map((o) => o.label).join() === "UPDATE,SAVE AS NEW,DON'T SAVE,CANCEL",
+    'backing out of an edit asks UPDATE / SAVE AS NEW / DON\'T SAVE / CANCEL');
+  assert(club3.savePrompt.options[club3.savePrompt.sel].label === "DON'T SAVE", 'DON\'T SAVE is still the one picked');
+  club3.draw(ctx);
+  const cancelAt = club3.savePromptLayout();
+  assert(cancelAt.x >= 0 && cancelAt.x + cancelAt.w <= 480, 'four answers still fit across the screen');
+  tap(club3, ...centre(cancelAt.buttons[3]));
+  assert(!club3.savePrompt && club3.pending, 'CANCEL on the way out stays in the club, the song still pending');
   const club4 = new BangerClubState({
     rec, pending: { kind: 'starter', song }, onBack: () => {}, onEdit: () => {},
     onSave: () => rec, onDiscard: () => {},
   });
   club4.enter();
   club4.back();
-  assert(club4.savePrompt && club4.savePrompt.options.map((o) => o.label).join() === "SAVE AS NEW,DON'T SAVE",
+  assert(club4.savePrompt && club4.savePrompt.options.map((o) => o.label).join() === "SAVE AS NEW,DON'T SAVE,CANCEL",
     'a starter edit only offers SAVE AS NEW, never UPDATE');
 
   for (const [label, asNew] of [['UPDATE', false], ['SAVE AS NEW', true]]) {
@@ -1837,6 +1907,186 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(fresh && fresh !== st && fresh.name !== st.name && bangerState().kept.at(-1) === fresh && bangerState().kept.length === before + 1
     && songFor(fresh).bank !== STARTERS['neon-orbit'].song().bank,
     'and saving the starter edit keeps a new song under a new name, made by the plain recipe');
+}
+
+// ---------------------------------------------------------------- THE BOLT: reroll on the floor
+{
+  const { rerollRecipe, rerollTake } = await import('../src/game/banger/maker.js');
+  const { screen } = await import('../src/engine/renderer.js');
+  const rec = bangerState().kept.at(-1);
+  const ctx = document.createElement('canvas').getContext('2d');
+  // the recipe is RECHARGE's with nothing changed, on a new seed, the flavour kept
+  let recharged = null;
+  const maker = new BangerMakerState({ from: rec, onDone: () => {}, onMade: (r) => { recharged = r; }, random: () => 0 });
+  maker.enter();
+  maker.make();
+  maker.exit();
+  const rolled = rerollRecipe(rec, 12345);
+  const same = ['notes', 'lengths', 'mode', 'style', 'mood', 'voltage', 'variation', 'wild', 'energy', 'expression', 'production'];
+  const differ = same.filter((k) => JSON.stringify(rolled[k]) !== JSON.stringify(recharged[k]));
+  assert(!differ.length && rolled.seed === 12345, `a reroll is RECHARGE with nothing changed, on a new seed (differs: ${differ.join()})`);
+  const flavoured = { ...rec, flavour: 'tech' };
+  assert(rerollRecipe(flavoured).flavour === 'tech', 'a reroll keeps the flavour the song plays');
+  // a kept song comes back pending as an update to itself; a pending new one keeps its name
+  const kept = rerollTake(rec, rec);
+  assert(kept && kept.rec.n === rec.n && kept.rec.name === rec.name && kept.rec.seed !== rec.seed && kept.song?.bank,
+    'rerolling a kept song makes a new take of it, pending, under its own name and number');
+  const fresh = rerollTake({ ...rec, n: 0, name: 'FRESH ONE' }, null);
+  assert(fresh && fresh.rec.name === 'FRESH ONE', 'rerolling a new banger not kept yet keeps the name it was shown under');
+
+  // the club: the bolt between the pencil and SAVE in landscape; a tap makes it on a later frame, once
+  const song = makeBanger(rec);
+  const calls = [];
+  const club = new BangerClubState({
+    rec, pending: { kind: 'edit', song }, onBack: () => {}, onEdit: () => {},
+    onReroll: (r, p) => { const call = { r, p, room: null }; calls.push(call); return { commit: (room) => { call.room = room; } }; },
+    onSave: () => rec, onDiscard: () => {},
+  });
+  club.enter();
+  club.draw(ctx);
+  assert(club.boxes.reroll && club.boxes.edit.x < club.boxes.reroll.x && club.boxes.reroll.x < club.boxes.save.x,
+    'in landscape the bolt sits between the pencil and SAVE');
+  assert(club.boxes.save.x + club.boxes.save.w <= club.boxes.transport[0].x, 'and SAVE still clears the transport');
+  const step = (c, n) => { for (let k = 0; k < n; k++) { c.update(1 / 60); Input.endFrame(); } };
+  tap(club, ...centre(club.boxes.reroll));
+  step(club, 1);
+  club.draw(ctx);
+  assert(calls.length === 1 && calls[0].r === rec && calls[0].p === club.pending && !calls[0].room && club.strikeTargets.length >= 3,
+    'the take is made on the charge\'s first frame, its arcs\' targets picked, nothing swapped yet');
+  const spin0 = club.spinV;
+  step(club, Math.floor(club.rerolling * 0.6));
+  club.draw(ctx);
+  assert(!calls[0].room && club.spinV > spin0 + 5, 'the mirror ball spins up');
+  const flashBefore = club.mirrorFlashAt;
+  step(club, club.rerolling - 2);
+  club.draw(ctx);
+  assert(!calls[0].room && club.mirrorFlashAt > flashBefore && club.spinV > 20, 'then discharges - the ball flares, the arcs out - still spinning hard');
+  step(club, 2);
+  assert(calls[0].room?.formationOrder?.length, 'and under the flash the new take swaps in, handed the room as the pencil does');
+  const targets = calls[0].room.strike?.targets;
+  assert(calls[0].room.strike.spin > 20, '...and the spin, so the ball spins down in the new take\'s club');
+  assert(targets?.length >= 3 && targets.length <= 5 && targets.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)),
+    '...marked with where the arcs landed, so it comes up under them');
+  {
+    const spots = new Set();
+    for (let k = 0; k < 8; k++) spots.add(club.pickStrikeTargets().map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
+    assert(spots.size === 8, 'the arcs land somewhere different each time');
+  }
+  {
+    const struck = new BangerClubState({ rec, pending: { kind: 'edit', song }, onBack: () => {}, onEdit: () => {}, onReroll: () => true,
+      room: calls[0].room });
+    struck.enter();
+    assert(struck.spinV === calls[0].room.strike.spin, 'the new club\'s ball carries the spin on');
+    struck.update(1 / 60); Input.endFrame();
+    struck.draw(ctx);
+    assert(struck.shownAt != null && struck.titleAt === -Infinity && struck.strikeAt === 0 && struck.strikeTargets === targets && struck.mirrorFlashAt === 0,
+      'the struck club comes up with the flash fading off it, and no NOW PLAYING card');
+  }
+  tap(club, ...centre(club.boxes.reroll));
+  step(club, 200);
+  assert(calls.length === 1, 'a second tap while it goes makes nothing more');
+  const failing = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, onReroll: () => null });
+  failing.enter();
+  failing.reroll();
+  step(failing, 1);
+  assert(failing.popup?.text.includes('WOULD NOT MAKE') && !failing.rerolling && !failing.rerolled, 'a take that would not make says so at once, and the bolt works again');
+  {
+    // the pencil, SAVE and back wait while it goes
+    let edits = 0;
+    const busy = new BangerClubState({ rec, pending: { kind: 'edit', song }, onBack: () => {}, onEdit: () => { edits++; }, onSave: () => rec,
+      onReroll: () => ({ commit: () => {} }) });
+    busy.enter();
+    busy.reroll();
+    step(busy, 5);
+    busy.edit(); busy.back(); busy.savePressed();
+    assert(!edits && !busy.savePrompt, 'the pencil, back and SAVE wait while the bolt goes');
+  }
+  {
+    // on the glass it asks first: one tap arms it and says so, a second (not a bounce) lets it go
+    const real = Input.usingTouch;
+    Input.usingTouch = true;
+    try {
+      let made = 0;
+      const glass = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, onReroll: () => { made++; return { commit: () => {} }; } });
+      glass.enter();
+      glass.draw(ctx);
+      tap(glass, ...centre(glass.boxes.reroll));
+      step(glass, 2);
+      assert(!made && !glass.rerolling && glass.rerollArmed(), 'on the glass the first tap only arms the bolt');
+      tap(glass, ...centre(glass.boxes.reroll));
+      assert(!glass.rerolling, 'a second tap straight after is a bounce, not a yes');
+      step(glass, 20);
+      tap(glass, ...centre(glass.boxes.reroll));
+      step(glass, 1);
+      assert(made === 1 && glass.rerolling > 0, 'a second tap makes the new take');
+      const other = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, onReroll: () => { made++; return { commit: () => {} }; } });
+      other.enter();
+      other.draw(ctx);
+      tap(other, ...centre(other.boxes.reroll));
+      tap(other, 240, 60);
+      assert(!other.rerollArmed(), 'a tap anywhere else stands it down');
+      tap(other, ...centre(other.boxes.reroll));
+      step(other, 60 * 3 + 5);
+      assert(!other.rerollArmed(), 'and it stands down by itself after a while');
+    } finally {
+      Input.usingTouch = real;
+    }
+  }
+  {
+    // on a mouse the bottom row has tooltips, after a moment's hover
+    const hover = new BangerClubState({ rec, pending: { kind: 'edit', song }, onBack: () => {}, onEdit: () => {}, onSave: () => rec,
+      onReroll: () => ({ commit: () => {} }) });
+    hover.enter();
+    hover.draw(ctx);
+    const seen = [];
+    for (const key of ['edit', 'reroll', 'save', 'mixer']) {
+      Input.pointer = { x: centre(hover.boxes[key])[0], y: centre(hover.boxes[key])[1], down: false };
+      step(hover, 30);
+      seen.push(hover.tip?.key === key && hover.tipText(key));
+    }
+    Input.pointer = { x: centre(hover.boxes.transport[1])[0], y: centre(hover.boxes.transport[1])[1], down: false };
+    step(hover, 30);
+    seen.push(hover.tip?.key === 'transport1' && hover.tipText('transport1'));
+    hover.draw(ctx);
+    assert(seen.join() === 'EDIT RIFF / STYLE,NEW TAKE,SAVE,MIXER,PAUSE', `the bottom row's tooltips say what each button does (${seen.join()})`);
+    Input.pointer = { x: 240, y: 135, down: false };
+    step(hover, 1);
+    assert(!hover.tip, 'and go when the pointer leaves');
+  }
+  {
+    // the whole strike draws, charge to burst, and the burst over the new take
+    const c = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, onReroll: () => ({ commit: () => {} }) });
+    c.enter();
+    c.draw(ctx);
+    c.reroll();
+    const frames = c.rerolling;
+    while (c.rerolling > 0) { step(c, 1); c.draw(ctx); }
+    for (const since of [0.05, 0.15, 0.3, 0.6]) { c.rerolled = false; c.strikeAt = c.t - since; c.draw(ctx); }
+    assert(frames >= 100, `the ball spins up and charges for a good while before it bursts (${frames} frames)`);
+  }
+  const plain = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {} });
+  plain.enter();
+  plain.draw(ctx);
+  assert(!plain.boxes.reroll, 'no bolt without a reroll to do');
+
+  // in portrait the bottom row is full: the bolt hangs top right, level with back, clear of the LED board
+  const mode = screen.presentationMode;
+  screen.presentationMode = 'phone-portrait';
+  try {
+    const tall = new BangerClubState({ rec, pending: { kind: 'edit', song }, onBack: () => {}, onEdit: () => {}, onReroll: () => true, onSave: () => rec });
+    tall.enter();
+    tall.draw(ctx);
+    const z = tall.boxes.reroll, b = tall.boxes.back, led = tall.boxes.led, sign = tall.boxes.sign;
+    const overlaps = (a, c) => a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
+    assert(z && Math.abs((z.y + z.h / 2) - (b.y + b.h / 2)) < 1 && z.x > b.x && z.x + z.w <= 480,
+      'in portrait the bolt sits top right, level with the back button');
+    assert(!overlaps(z, led) && !overlaps(z, sign), 'clear of the club sign and the LED board');
+    assert(tall.boxes.save.x + tall.boxes.save.w <= tall.boxes.transport[0].x, 'and the bottom row is as it was');
+    tall.exit?.();
+  } finally {
+    screen.presentationMode = mode;
+  }
+  Audio.setBank(null);
 }
 
 // ---------------------------------------------------------------- THE PENCIL: edit and remake

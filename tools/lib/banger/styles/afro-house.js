@@ -45,8 +45,8 @@ export const AFRO_HOUSE = Object.freeze({
   ],
   // Which the mood plays; a mood not named plays the style's own (organic).
   flavourByMood: {
-    uplifting: 'melodic', euphoric: 'melodic', hopeful: 'melodic', dreamy: 'melodic', wonder: 'melodic', sunshine: 'melodic', anthemic: 'melodic', heroic: 'melodic',
-    dark: 'tech', hypnotic: 'tech', gothic: 'tech', boss: 'tech', andalusian: 'tech',
+    uplifting: 'melodic', euphoric: 'melodic', dreamy: 'melodic', wonder: 'melodic', sunshine: 'melodic', anthemic: 'melodic', heroic: 'melodic',
+    dark: 'tech', hypnotic: 'tech', gothic: 'tech', boss: 'tech', flamenco: 'tech', mystery: 'tech',
   },
 
   progressions: {

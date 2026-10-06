@@ -11,8 +11,9 @@
 import { energyOf } from '../../../tools/lib/banger/energy.js';
 import { generateBanger } from '../../../tools/lib/banger/index.js';
 import { normaliseTrackEffects } from '../../../tools/lib/banger/production.js';
-import { BANGER_STYLES, styleFor, soundSetOf, moodFlavour } from '../../../tools/lib/banger/styles/index.js';
+import { BANGER_STYLES, styleFor, soundSetOf, moodFlavour, flavourOf } from '../../../tools/lib/banger/styles/index.js';
 import { BANGER_LIMITS, BANGER_MOODS, styleDefaults, moodBass, BANGER_EXPRESSION_VERSION } from '../../../tools/lib/banger/options.js';
+import { currentMood } from '../../../tools/lib/banger/moods.js';
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
 import { BANGER_PALETTE, resolvePalette } from '../../../tools/lib/banger/palette.js';
 import { resolveSounds } from '../../../tools/lib/banger/sound-rules.js';
@@ -79,16 +80,38 @@ const MOOD_DESCRIPTIONS = Object.freeze({
   wonder: 'Wide-eyed, cinematic magic',
   lounge: 'Smooth, jazzy cocktail-bar chords',
   boogie: 'Swaggering blues with a danceable bounce',
-  hopeful: 'Starts in shadow, turns toward light',
   boss: 'Dark, tense video-game showdown',
-  andalusian: 'Flamenco-style tension, then release',
+  flamenco: 'Flamenco-style tension, then release',
   hypnotic: 'A repeating groove that slowly shifts',
   fiesta: 'A Latin party: bouncy, sunny, all night',
+  soulful: 'Warm gospel chords with a churchy lift',
+  mystery: 'A sneaky minor line, full of suspense',
+  playful: 'Cheeky cartoon chords that tiptoe and bounce',
 });
 
-/** The styles the jukebox offers, in the desk's order. */
-export const MAKER_STYLES = Object.freeze(BANGER_STYLES
-  .map((s) => Object.freeze({ id: s.id, label: caps(LAB_SOUND_SETS[s.id]?.label ?? s.label), description: STYLE_DESCRIPTIONS[s.id] ?? s.note ?? '' })));
+// The Lab's picker order (Peter, 6 Oct 2026: "big room house and trance to be first followed
+// by any related styles … don't want it alphabetical"). A walk through the families, each
+// style next to its nearest relation: festival and hands-up, bass music into Latin by way of
+// moombahton, Afro into house and disco, 80s funk and synths, the game consoles, then chill.
+// A style missing from this list goes on the end, in the desk's order.
+const LAB_STYLE_ORDER = Object.freeze([
+  'big-room', 'trance', 'eurodance', 'eurobeat',
+  'future-bass', 'dnb', 'moombahton', 'reggaeton',
+  'merenhouse', 'afro-house', 'deep-house', 'french-house',
+  'nu-disco', 'italo-disco', 'electro-funk', 'electro',
+  'synthwave', 'megadrive', 'chipstep', 'shibuya',
+  'downtempo',
+]);
+// Names the Lab gives a style where the desk's is a record-shop word (Peter, 6 Oct 2026:
+// "could downtempo be called chill or something like that instead", then "chillout room? bit
+// of a throwback").
+const LAB_LABELS = Object.freeze({ downtempo: 'Chillout Room' });
+const labRank = (id) => { const i = LAB_STYLE_ORDER.indexOf(id); return i < 0 ? LAB_STYLE_ORDER.length : i; };
+
+/** The styles the jukebox offers, in the Lab's order (LAB_STYLE_ORDER). */
+export const MAKER_STYLES = Object.freeze([...BANGER_STYLES]
+  .sort((a, b) => labRank(a.id) - labRank(b.id))
+  .map((s) => Object.freeze({ id: s.id, label: caps(LAB_LABELS[s.id] ?? LAB_SOUND_SETS[s.id]?.label ?? s.label), description: STYLE_DESCRIPTIONS[s.id] ?? s.note ?? '' })));
 
 /** The Sound Set a take in `style` plays on ('style', 'light', '8bit'), read off its seed and voltage. */
 export function labSoundSet(style, seed, voltage = null) {
@@ -372,16 +395,24 @@ export const expressionVersionOf = (value) => (Number.isFinite(value) && value >
  */
 export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, wild = false, variation = null, energy = 'full', expression = 0, production = null, voltage = null, paletteSnapshot: savedPalette = null, useCurrentPalette = false, flavour: keptFlavour = null }) {
   if (!hasNotes(notes)) throw new Error('the grid is empty');
+  // A song kept in a mood since retired is made in the mood it became.
+  mood = currentMood(mood);
   const spot = spotFor(style, seed);
   const selectedVariation = ['faithful', 'some', 'more', 'wild'].includes(variation) ? variation : (wild ? 'wild' : null);
   const palette = savedPalette || (useCurrentPalette ? BANGER_PALETTE : null);
   const hasHookPalette = !!resolvePalette(palette, style, mood)?.['riff:hook']?.length;
-  const voltageBpmBoost = voltageSettings(voltage).bpmBoost || 0;
   const styleSettings = BANGER_STYLES.find((candidate) => candidate.id === style);
-  const voltageTempo = voltageBpmBoost && styleSettings ? {
+  // The take's flavour: the one its recipe kept (maker.js, so a flavour added later never moves a
+  // saved song), else rolled. One that is not the style's own plays instead of the Lab's Sound Set.
+  const flavour = keptFlavour ?? labFlavour(style, mood, seed, voltage);
+  // Overload's boost is on the tempo the take plays at — its flavour's, inside its flavour's range
+  // (6 Oct 2026: it was the style's own, so Romántico and Darksynth jumped 8 and Outrun slowed).
+  const voltageBpmBoost = voltageSettings(voltage).bpmBoost || 0;
+  const tempoOf = (styleSettings && flavourOf(styleSettings, flavour, { seed, mood })) || styleSettings;
+  const voltageTempo = voltageBpmBoost && tempoOf ? {
     tempo: 'custom',
-    bpm: Math.min(BANGER_LIMITS.maxBpm, styleSettings.tempoRange?.[1] ?? BANGER_LIMITS.maxBpm,
-      styleSettings.bpm + voltageBpmBoost),
+    bpm: Math.min(BANGER_LIMITS.maxBpm, tempoOf.tempoRange?.[1] ?? BANGER_LIMITS.maxBpm,
+      tempoOf.bpm + voltageBpmBoost),
   } : {};
   // GO WILD is the Wild variation; with expression 1 it is also the slide setting on the lead.
   // Without `expression` (every recipe saved before it) it is the Wild variation alone, as before.
@@ -390,9 +421,6 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   const slides = expressionVersionOf(expression) >= 2 ? !!wild
     : selectedVariation === 'wild' && expressionVersionOf(expression) >= 1;
   const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed) : {};
-  // The take's flavour: the one its recipe kept (maker.js, so a flavour added later never moves a
-  // saved song), else rolled. One that is not the style's own plays instead of the Lab's Sound Set.
-  const flavour = keptFlavour ?? labFlavour(style, mood, seed, voltage);
   const soundSet = ownFlavour(style, flavour) ? labSoundSet(style, seed, voltage) : 'style';
   const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}) };
   const options = {

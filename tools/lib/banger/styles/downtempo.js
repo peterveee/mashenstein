@@ -18,10 +18,10 @@ const CRUSH = { id: 'bitcrusher', params: { bits: 8, downsample: 2, wet: 0.45 } 
 export const DOWNTEMPO = Object.freeze({
   id: 'downtempo',
   label: 'Downtempo',
-  note: '90 · slow crushed breakbeat, Rhodes, muted trumpet',
-  title: '90 BPM and swung: a slow, heavy breakbeat with a crushed edge, a deep round bass, trembling Rhodes chords, soft strings, the hook on a muted trumpet, tape wear over it all. Starts as a Groove in the Moody mood, the riff\'s own drums replaced',
-  bpm: 90,
-  tempoRange: [80, 100],
+  note: '94 · slow crushed breakbeat, Rhodes, muted trumpet',
+  title: '94 BPM and swung: a slow, heavy breakbeat with a crushed edge, a deep round bass, trembling Rhodes chords, soft strings, the hook on a muted trumpet, tape wear over it all. Starts as a Groove in the Moody mood, the riff\'s own drums replaced',
+  bpm: 94,
+  tempoRange: [90, 108],
   swing: 56,
   // The strings hold under the Rhodes through every groove section.
   padUnder: true,

@@ -26,8 +26,8 @@ export const DNB = Object.freeze({
     { id: 'neuro', label: 'Neuro', note: 'Technical: a reese in jabs, a growl biting, clipped stabs, one chord' },
   ],
   flavourByMood: {
-    nostalgic: 'liquid', dreamy: 'liquid', lofi: 'liquid', bittersweet: 'liquid', lounge: 'liquid', hopeful: 'liquid', uplifting: 'liquid',
-    dark: 'neuro', gothic: 'neuro', boss: 'neuro', hypnotic: 'neuro', andalusian: 'neuro',
+    nostalgic: 'liquid', dreamy: 'liquid', lofi: 'liquid', bittersweet: 'liquid', lounge: 'liquid', soulful: 'liquid', uplifting: 'liquid',
+    dark: 'neuro', gothic: 'neuro', boss: 'neuro', hypnotic: 'neuro', flamenco: 'neuro', mystery: 'neuro',
   },
   tempoRange: [166, 178],
   defaults: {

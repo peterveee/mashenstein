@@ -24,10 +24,10 @@ import { twoBarChords, holdFirstHalf } from './flavours.js';
 export const REGGAETON = Object.freeze({
   id: 'reggaeton',
   label: 'Reggaeton',
-  note: '92 · dembow, 808, guitar, marimba, a trap beat switch',
-  title: '92 BPM: the dembow beat under an 808, a filtered pad, the hook on a marimba with vocal chops answering it — and a beat switch to Latin trap in the middle 8. Starts as a Pop Song in the Uplifting mood, the chords strummed on a guitar over the pad',
-  bpm: 92,
-  tempoRange: [86, 100],
+  note: '96 · dembow, 808, guitar, marimba, a trap beat switch',
+  title: '96 BPM: the dembow beat under an 808, a filtered pad, the hook on a marimba with vocal chops answering it — and a beat switch to Latin trap in the middle 8. Starts as a Pop Song in the Uplifting mood, the chords strummed on a guitar over the pad',
+  bpm: 96,
+  tempoRange: [90, 104],
   defaults: {
     mood: 'uplifting',
     form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
@@ -44,8 +44,8 @@ export const REGGAETON = Object.freeze({
     { id: 'perreo', label: 'Perreo', note: 'Hard: a distorted 808, a loud dembow, clav stabs' },
   ],
   flavourByMood: {
-    moody: 'romantico', nostalgic: 'romantico', bittersweet: 'romantico', dreamy: 'romantico', lofi: 'romantico', hopeful: 'romantico', lament: 'romantico',
-    dark: 'perreo', boss: 'perreo', gothic: 'perreo', hypnotic: 'perreo', andalusian: 'perreo', funky: 'perreo',
+    moody: 'romantico', nostalgic: 'romantico', bittersweet: 'romantico', dreamy: 'romantico', lofi: 'romantico', soulful: 'romantico', lament: 'romantico',
+    dark: 'perreo', boss: 'perreo', gothic: 'perreo', hypnotic: 'perreo', flamenco: 'perreo', funky: 'perreo',
   },
   sectionLabels: {
     build: 'Pre-Chorus', build2: 'Pre-Chorus 2', drop: 'Chorus', drop2: 'Chorus 2', drop3: 'Chorus 3', reprise: 'Last Chorus',
@@ -141,7 +141,7 @@ export const REGGAETON = Object.freeze({
 // ---- the flavours (flavours.js), from work/local/_flavour-sketches.mjs (6 Oct 2026)
 export const REGGAETON_FLAVOURS = Object.freeze([
   {
-    // ROMÁNTICO — 88. The dembow kept light on a rim, bongos playing the martillo, a güira,
+    // ROMÁNTICO — 92. The dembow kept light on a rim, bongos playing the martillo, a güira,
     // a nylon guitar picking the chords (the arp) over a warm pad (Chords = Piano Stabs
     // plays as Pad), a round bass on the 3-3-2, every chord held two bars.
     id: 'romantico', label: 'Romántico',
@@ -150,8 +150,8 @@ export const REGGAETON_FLAVOURS = Object.freeze([
     // No sweep and no boom: it eases into a chorus.
     remap: { fx: { riser: { true: false } }, drums: { impact: { true: false } } },
     recipe: {
-      bpm: 88,
-      tempoRange: [82, 94],
+      bpm: 92,
+      tempoRange: [90, 98],
       enter: { arp: 0 },
       drums: {
         ...REGGAETON.drums,
@@ -182,14 +182,14 @@ export const REGGAETON_FLAVOURS = Object.freeze([
     },
   },
   {
-    // PERREO — 96. A distorted 808 under a kick on every beat, the dembow snare loud and dry,
+    // PERREO — 100. A distorted 808 under a kick on every beat, the dembow snare loud and dry,
     // sixteenth hats rolling, the first chord held half the walk and stabbed short on a clav
     // (the guitar's strums become stabs), and a high pluck answering itself (the arp).
     id: 'perreo', label: 'Perreo',
     reshape: holdFirstHalf,
     recipe: {
-      bpm: 96,
-      tempoRange: [92, 102],
+      bpm: 100,
+      tempoRange: [96, 108],
       drums: {
         ...REGGAETON.drums,
         hats16: ['x.x.x.x.x.x.xxxx', 'x.x.x.x.xxx.x.x.'],

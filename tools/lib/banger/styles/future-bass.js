@@ -68,7 +68,7 @@ export const FUTURE_BASS = Object.freeze({
     },
     dark: {
       minor: [['i'], ['iv'], ['VI'], ['V'], ['i'], ['iv'], ['VI'], ['V']],
-      major: [['I'], ['bVI'], ['bVII'], ['I'], ['I'], ['bVI'], ['bVII'], ['V']],
+      major: [['I'], ['I'], ['bII'], ['I'], ['I'], ['iv'], ['bII'], ['V']],
     },
   },
   breakdown: {

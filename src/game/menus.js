@@ -74,8 +74,8 @@ import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
 // arrangement — see bpmOf.
 import { bpmOf } from '../data/arrangements.js';
 import { trackIdOf } from '../data/tracks.js';
-import { BangerMakerState } from './banger/maker.js';
-import { setState } from '../engine/states.js';
+import { BangerMakerState, rerollTake } from './banger/maker.js';
+import { setState, setStateNow } from '../engine/states.js';
 import {
   jukeboxBangerRows, songFor, deleteBanger, bangerTitle, lastPlayedBanger, rememberBanger,
   reviseBanger, keepBanger,
@@ -5370,24 +5370,28 @@ export class SoundTestState {
    * and never for an edit: a song remade with the pencil goes straight back to the club,
    * where the same save question is waiting (Peter, 4 Oct 2026).
    */
-  openPendingClub({ rec, song, from, birth = false }) {
+  openPendingClub({ rec, song, from, birth = false, room = null }) {
     this.pending = { from, rec, song };
     if (birth) setState(new BangerBirthState({ rec, onDone: () => this.openClub(rec, this.pending) }));
-    else this.openClub(rec, this.pending);
+    else this.openClub(rec, this.pending, room);
   }
-  /** A song from the Lab, in the club; its back button returns here with the song selected. */
-  openClub(rec, pending = null) {
-    Audio.sfx('uiConfirm');
+  /** A song from the Lab, in the club; its back button returns here with the song selected.
+   *  `room` is the club the pencil left (BangerClubState's): back to it, no walk-in. */
+  openClub(rec, pending = null, room = null) {
+    // THE BOLT's room (`strike`) comes up this frame under its own lightning, not the shutter
+    if (!room?.strike) Audio.sfx('uiConfirm');
     if (!pending) rememberBanger(rec);
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
-    setState(new BangerClubState({
+    (room?.strike ? setStateNow : setState)(new BangerClubState({
       rec,
       pending: pending ? { kind: pending.from ? (pending.from.preset ? 'starter' : 'edit') : 'new', song: pending.song } : null,
       onSave: pending ? (asNew) => this.commitPending(asNew) : null,
+      room,
       onDiscard: pending ? () => this.discardPending() : null,
-      onEdit: (r, p) => { if (p) this.reEditPending(); else this.openEditor(r); },
+      onEdit: (r, p, left) => { if (p) this.reEditPending(left); else this.openEditor(r, left); },
+      onReroll: (r, p) => this.rerollClub(r, p),
       // the song plays on in the Lab; choosing it there again stops it
       onBack: (r) => setState(this.labAgain(Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === r)), r)),
     }));
@@ -5416,28 +5420,40 @@ export class SoundTestState {
   }
   /** The pencil while a banger is pending: another pass on the same recipe, the original
    *  kept, and straight back to the club — the ceremony is NEW BANGER's alone. */
-  reEditPending() {
+  reEditPending(room = null) {
     const p = this.pending;
     if (!p) return;
     Audio.sfx('uiConfirm');
     setState(new BangerMakerState({
       from: p.from,
       seed: p.rec,
-      onDone: () => this.openClub(p.rec, p),
-      onMade: (r, song, from, recharging) => this.openPendingClub({ rec: r, song, from, birth: !recharging }),
+      onDone: () => this.openClub(p.rec, p, room),
+      onMade: (r, song, from, recharging) => this.openPendingClub({ rec: r, song, from, birth: !recharging, room }),
     }));
+  }
+  /**
+   * The club's BOLT: the song playing made again on a new seed, now, while the mirror ball
+   * spins up — and `commit(room)` takes it into the club, pending, the original kept, with no
+   * shutter: `room.strike` swaps it in under the club's own lightning. Null if it would not make.
+   */
+  rerollClub(rec, pending) {
+    const p = pending ? this.pending : null;
+    const from = p ? p.from : rec;
+    const take = rerollTake(p ? p.rec : rec, from);
+    if (!take) return null;
+    return { commit: (room) => this.openPendingClub({ rec: take.rec, song: take.song, from, room }) };
   }
   /**
    * The club's pencil: the riff grid on this song. RECHARGE remakes it and goes straight
    * back to the club — no IT'S ALIVE! for an edit (Peter, 3 Oct 2026); BACK returns to
    * the club as it was.
    */
-  openEditor(rec) {
+  openEditor(rec, room = null) {
     Audio.sfx('uiConfirm');
     setState(new BangerMakerState({
       from: rec,
-      onDone: () => this.openClub(rec),
-      onMade: (r, song, from, recharging) => this.openPendingClub({ rec: r, song, from, birth: !recharging }),
+      onDone: () => this.openClub(rec, null, room),
+      onMade: (r, song, from, recharging) => this.openPendingClub({ rec: r, song, from, birth: !recharging, room }),
     }));
   }
   /**

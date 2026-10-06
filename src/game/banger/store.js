@@ -21,6 +21,7 @@
 // saved before has none and is made exactly as it was.
 import { energyOf } from '../../../tools/lib/banger/energy.js';
 import { normaliseTrackEffects } from '../../../tools/lib/banger/production.js';
+import { currentMood } from '../../../tools/lib/banger/moods.js';
 import { save as defaultSave } from '../../engine/save.js';
 import { RIFF_VERSION, normaliseNotes, upgradeDraft, upgradeRecipeNotes, modeOf } from './riff.js';
 import {
@@ -63,7 +64,8 @@ export function bangerState(save = defaultSave) {
   // picker carry Voltage's old Pure (Safe and Charged), and a Pure chosen once is not a
   // default either: the draft keeps Hybrid, Spliced or Mutant, and Pure comes back as Hybrid.
   const variation = ['some', 'more', 'wild'].includes(d.variation) ? d.variation : 'some';
-  b.draft = { v: RIFF_VERSION, ...upgradeDraft(d), style, mood: validMood(d.mood) ? d.mood : defaultMoodFor(style), voltage,
+  const mood = currentMood(d.mood);
+  b.draft = { v: RIFF_VERSION, ...upgradeDraft(d), style, mood: validMood(mood) ? mood : defaultMoodFor(style), voltage,
     variation, wild: preset.wild, energy: preset.energy, production: { mode: preset.production, version: 1 } };
   // A kept song whose style has been held back since stays playable: the generator
   // still has it. Only recipes that are not recipes at all are dropped.

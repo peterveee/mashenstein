@@ -71,7 +71,7 @@ export const BIG_ROOM = Object.freeze({
     },
     dark: {
       minor: [['i'], ['i'], ['bII'], ['i'], ['i'], ['iv'], ['bII'], ['V']],
-      major: [['I'], ['bVI'], ['bVII'], ['I'], ['I'], ['bVI'], ['bVII'], ['V']],
+      major: [['I'], ['I'], ['bII'], ['I'], ['I'], ['iv'], ['bII'], ['V']],
     },
   },
   // The breakdown's four chords, re-coloured: rootless ninths over a tonic pedal.

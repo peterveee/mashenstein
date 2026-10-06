@@ -73,7 +73,7 @@ export const CHIPSTEP = Object.freeze({
     },
     dark: {
       minor: [['i'], ['i'], ['bII'], ['i'], ['i'], ['iv'], ['bII'], ['V']],
-      major: [['I'], ['bVI'], ['bVII'], ['I'], ['I'], ['bVI'], ['bVII'], ['V']],
+      major: [['I'], ['I'], ['bII'], ['I'], ['I'], ['iv'], ['bII'], ['V']],
     },
   },
   // CHIPSTEP's breakdown sits on F and C under the hook: VI and III, then home.

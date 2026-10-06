@@ -14,7 +14,7 @@ import { styleFor, BANGER_STYLES } from './styles/index.js';
 import { ARP_FIGURES, BASS_FIGURES } from './theory.js';
 import { normaliseSections } from './form-types.js';
 import { FORM_TEMPLATES } from './templates.js';
-import { SHARED_MOODS, LIFT_APPROACHES } from './moods.js';
+import { SHARED_MOODS, LIFT_APPROACHES, RETIRED_MOODS, currentMood } from './moods.js';
 import { FILL_INS, FILL_EVERY, FILL_NOTES } from './embellish.js';
 
 export const BANGER_MOODS = Object.freeze([
@@ -372,6 +372,10 @@ export function classicDefaults(style = styleFor(BANGER_DEFAULTS.style)) {
  * can say what it ignored.
  */
 export function normaliseBangerOptions(raw = {}, styleArg = null) {
+  // A banger made in a mood since retired is made in the mood it became (moods.js).
+  if (RETIRED_MOODS[raw?.mood] || RETIRED_MOODS[raw?.form?.mood2]) {
+    raw = { ...raw, mood: currentMood(raw.mood), ...(raw.form ? { form: { ...raw.form, mood2: currentMood(raw.form.mood2) } } : {}) };
+  }
   const issues = [];
   const style = styleArg || styleFor(raw?.style) || styleFor(BANGER_DEFAULTS.style);
   if (raw?.style && !styleFor(raw.style)) issues.push(`there is no style called "${raw.style}"`);

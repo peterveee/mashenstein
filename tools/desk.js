@@ -21,7 +21,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, renameSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listBrowsers, stopBrowser } from './browsers.js';
@@ -331,6 +331,44 @@ function tickCalibrationSchedule() {
 }
 const ACTION_BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
 
+// What the last calibration run changed, in words. The card's log ends on the game
+// build's output, so without this the measuring half's result is buried in a report.
+let calibrationReportRead = { mtimeMs: -1, report: null };
+function calibrationReport() {
+  const path = join(REPORTS_DIR, 'banger-calibration.json');
+  try {
+    const { mtimeMs } = statSync(path);
+    if (mtimeMs !== calibrationReportRead.mtimeMs) calibrationReportRead = { mtimeMs, report: JSON.parse(readFileSync(path, 'utf8')) };
+  } catch { return null; }
+  return calibrationReportRead.report;
+}
+function calibrationOutcome(state) {
+  const r = calibrationReport();
+  // A coverage check rewrites the report without a run result; a 'running' report
+  // nobody is running is a run that was killed before it could say so.
+  if (state?.running || !r || r.status === 'coverage' || r.status === 'running') return null;
+  const at = new Date(r.at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  const styles = r.styles?.length > 3 ? `${r.styles.length} styles` : (r.styles || []).join(', ');
+  const keep = 'Nothing published; new takes keep the previous levels.';
+  if (r.status === 'interrupted') return { tone: 'warn', text: `${at} · ${styles}: stopped part-way. ${keep} Run again — finished renders are cached.` };
+  if (!r.published) {
+    const why = String(r.errors?.at(-1) || 'the run failed').split('\n')[0].slice(0, 200);
+    return { tone: 'bad', text: `${at} · ${styles}: ${why} ${keep}` };
+  }
+  const fresh = (r.rows || []).filter((row) => row.status === 'validated').length;
+  const rejected = r.rejected?.length || 0;
+  const parts = [fresh ? `${fresh} instrument${fresh === 1 ? '' : 's'} newly measured` : 'no instrument needed measuring',
+    `${r.ready}/${r.total} now calibrated`];
+  if (rejected) parts.push(`${rejected} rejected — they stay on the old prediction; OPEN lists them`);
+  if (r.status === 'partial') parts.push('partial run');
+  const changed = fresh > 0;
+  const next = !changed ? 'Levels are unchanged.'
+    : state?.code === 0 ? 'Game rebuilt. Reload the game and the mixer, then roll a new take — saved songs keep their faders.'
+    : state?.code != null ? 'Published, but the game build after it failed — see the log.'
+    : 'Rebuild the game (npm run build) if this run did not come from the desk, reload the mixer, then roll a new take — saved songs keep their faders.';
+  return { tone: rejected ? 'warn' : 'good', text: `${at} · ${styles}: ${parts.join(' · ')}. ${next}` };
+}
+
 // The option flags a RUN asked for, filtered to the ones that action declares: the
 // browser sends keys, and only a declared key turns into an argument.
 function optionFlags(id, args) {
@@ -559,6 +597,7 @@ function actionStatus(action) {
     blurb: action.blurb,
     needsIds: !!action.needsIds,
     schedule: action.id === 'bangercalibration' ? calibrationSchedule() : null,
+    outcome: action.id === 'bangercalibration' ? calibrationOutcome(state) : null,
     group: action.group || 'galleries',
     input: action.input || null,
     choices: action.choices || null,

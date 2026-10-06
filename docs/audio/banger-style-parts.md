@@ -205,21 +205,21 @@ default or the style's bass is fixed (**Eurobeat, Chipstep and Synthwave** never
 | Arpeggiated | Moody, Lament |
 | Reese | Dark |
 | Gallop | Heroic, Boss Fight |
-| Walking | Nostalgic, Lo-Fi, Lounge, Boogie |
+| Walking | Nostalgic, Lo-Fi, Lounge, Boogie, Soulful, Mystery |
 | Funk | Funky |
 | Pedal | Gothic, Dreamy |
 | Octaves | Disco |
-| Root–Fifth | Sunshine Pop, Doo-Wop |
+| Root–Fifth | Sunshine Pop, Doo-Wop, Fiesta, Playful |
 | Sequencer | Hypnotic (plus the Bass Echo) |
 
-Anthemic, Uplifting, Euphoric, Bittersweet, Wonder, Hopeful and Andalusian keep the style's own
-bass.
+Anthemic, Uplifting, Euphoric, Bittersweet, Wonder and Flamenco keep the style's own bass.
 
-### 3. The original nine moods re-voice some parts
+### 3. Every mood but Anthemic re-voices some parts
 
 These sound swaps apply in **Big-Room, Trance, Future Bass, Eurobeat, Chipstep and Synthwave**.
 Shibuya-Kei, Drum & Bass, Electro and 16-Bit have no mood sounds, so they always keep
-their own. The newer shared moods (Bittersweet onward) swap no sounds.
+their own. The shared moods (Bittersweet onward) have swapped sounds too since 6 Oct 2026 —
+the second table.
 
 A swap is heard only if the style plays that part. Counter is on only in Eurobeat and Synthwave,
 Third Below only in Chipstep, and Piano only in Trance, Future Bass and Eurobeat. Elsewhere those
@@ -235,6 +235,29 @@ swaps do nothing unless you switch the part on.
 | Nostalgic | Piano → Electric Piano · Pad → Warm Strings · Hook 8va → Vibraphone · Third → DX Bell Keys · Counter → Saxophone |
 | Funky | Bass → Pulled Pop (slap) · Piano → Clavinet · Arp → Wah Guitar · Third → Horn Section Stab · Counter → Voice Box 70s |
 | Gothic | Sub → Pedal Organ · Pad → Full Organ · Hook 8va → Tolling Bell · Arp → Harpsichord · Choir → Choir Aah · Impact → Timpani |
+
+The shared moods, in the same six styles plus Kraftwerk. Lament, Boss Fight, Flamenco and
+Mystery also take the toy bells out of the Random lists, as Moody, Dark and Gothic do.
+
+| Mood | Swaps |
+| --- | --- |
+| Bittersweet | Pad → Soft Strings · Piano → Felt Piano · Hook 8va → Tiny Celeste · Counter → Cello |
+| Disco | Bass → Picked Bass · Pad → Violin Section · Arp → Funk Guitar · Muted · Counter → Brass Section · Impact → Syndrum · Disco Tom |
+| Sunshine Pop | Piano → Bright Piano · Hook 8va → Toy Piano · Arp → Acoustic Guitar |
+| Doo-Wop | Bass → Contrabass · Pad → Synth Choir Ooh · Choir → Synth Choir Ooh · Counter → Saxophone |
+| Lament | Pad → Violin Section · Piano → Concert Grand · Choir → Synth Choir Ooh · Counter → Oboe |
+| Lo-Fi | Piano → Felt Upright · Pad → Warm Pad · Hook 8va → Felt Piano · Arp → Kalimba |
+| Dreamy | Pad → Soft Ambient Pad · Hook 8va → Celeste · Arp → Metal Harp · Counter → Air Flute |
+| Wonder | Pad → Blue Cathedral · Choir → Synth Choir Aah · Hook 8va → Celesta · Arp → Music Box · Counter → French Horn · Impact → Timpani |
+| Lounge | Bass → Contrabass · Piano → Tine Electric Piano · Hook 8va → Vibraphone · Arp → Acoustic Guitar · Counter → Concert Flute |
+| Boogie | Bass → Contrabass · Piano → Old Upright · Third → Horn Section Stab · Counter → Saxophone |
+| Boss Fight | Pad → PWM Brass · Arp → Violin Marcato · Choir → Synth Choir Aah · Hook 8va → Dark Metal Chime · Impact → Taiko Hit |
+| Flamenco | Piano → Acoustic Guitar · Arp → Acoustic Guitar · Pad → Violin Section · Counter → Violin · Cowbell → Clave · Rosewood |
+| Hypnotic | Bass → Sequencer Bass · Pad → Evolving Digital Pad · Arp → Pulsing Lead · Hook 8va → FM Bell |
+| Fiesta | Piano → Bright Pop Grand · Arp → Marimba · Counter → Horn Section Stab · Shaker → Güira · Chk · Cowbell → Cowbell · Wide Agogô |
+| Soulful | Piano → Studio Grand · Pad → Drawbar Organ · Choir → Synth Choir Aah · Counter → Electric Keys |
+| Mystery | Bass → Contrabass · Pad → Soft Strings · Hook 8va → Vibraphone · Arp → Clean Funk Guitar · Counter → Clarinet |
+| Playful | Bass → Tuba · Piano → Old Upright · Hook 8va → Toy Piano · Arp → Marimba · Counter → Pizz · Cowbell → KW Blip · Wood |
 
 There are some exceptions.
 
