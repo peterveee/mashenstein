@@ -266,9 +266,9 @@ Input.endFrame();
 const menuSwipe = pointer(0, 14, 240, 'touch');
 dom.fire('canvas:pointerdown', menuSwipe);
 dom.fire('canvas:pointermove', { ...menuSwipe, clientX: 200 });
-assert(Input.pressed('back') && Input.held('back'), 'a left touch swipe in a menu maps to Back');
+assert(!Input.pressed('back') && !Input.held('back'), 'a left touch swipe in a menu is not Back: the BACK button is');
 dom.fire('canvas:pointerup', menuSwipe);
-assert(Input.released('back') && !Input.held('back'), 'menu swipe Back releases cleanly');
+assert(!Input.released('back') && !Input.held('back'), 'and lifting it releases no Back either');
 
 Input.setContext('run');
 Input.setMenuKeys(true);

@@ -228,12 +228,152 @@ export function cleanerWalk(m, beat) {
   return { ...base, running: Math.min(1, (d - q.dance) / DOLORES_RUN_BEATS) };
 }
 
-/** Dolores's broom along +x through the origin: the shaft, and the head at the +x end. */
+/**
+ * DOLORES'S PUSH BROOM (Peter, 6 Oct 2026, from a reference photo, "obviously stay 2d"): a pale
+ * wooden block, a band of stiff red bristles under it, and a metal collar where the handle goes
+ * in. She pushes it the way she is going, so we see it end on — turned a little off that
+ * ("could the broom head be side on?", then "perhaps ... angled slightly to read better") so
+ * some of its length shows going back across the floor. Drawn about where the handle meets
+ * the middle of its top; `drag` (0–1) bends the bristle tips back, the way they go when pushed.
+ */
+const BROOM_INK = '#3a2f3a';
+const BROOM_LEN = 0.22, BROOM_THICK = 0.06, BROOM_BLOCK = 0.042, BROOM_BRISTLE = 0.042;
+const BROOM_TURN = 0.5;     // radians off end-on
+const BROOM_DEPTH = 0.2;    // how far up the picture the floor carries what is further back
+/** How high above the floor the handle meets the head, of her height. */
+const BROOM_FOOT = 0.096;
+/** The convex hull of some points, as a closed path. */
+function hullPath(ctx, pts) {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], hi = [];
+  for (const q of p) { while (lo.length > 1 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of p.reverse()) { while (hi.length > 1 && cross(hi[hi.length - 2], hi[hi.length - 1], q) <= 0) hi.pop(); hi.push(q); }
+  const ring = lo.slice(0, -1).concat(hi.slice(0, -1));
+  ctx.beginPath(); ring.forEach((q, i) => (i ? ctx.lineTo(...q) : ctx.moveTo(...q))); ctx.closePath();
+}
+const quad = (ctx, a, b, c, d) => { ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.lineTo(...c); ctx.lineTo(...d); ctx.closePath(); };
+function drawBroomHead(ctx, h, drag = 0) {
+  const a = BROOM_LEN / 2 * h, b = BROOM_THICK / 2 * h, BH = BROOM_BLOCK * h, BR = BROOM_BRISTLE * h, ow = h * 0.007;
+  const sn = Math.sin(BROOM_TURN), cs = Math.cos(BROOM_TURN);
+  // a corner: `i` ±1 along the block (−1 the near end), `j` ±1 across it (+1 the face towards
+  // where she is going), `y` down from the top, `grow`/`dx` flaring and bending the bristle tips
+  const at = (i, j, y, grow = 0, dx = 0) => {
+    const ia = i * (a + grow), jb = j * (b + grow);
+    return [ia * sn + jb * cs + dx, y - (ia * cs - jb * sn) * BROOM_DEPTH];
+  };
+  ctx.translate(0, 0.012 * h);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // the bristles: everything between the block's underside and the tips, flared and swept back
+  const lean = -drag * 0.02 * h, fl = 0.005 * h, tip = BH + BR;
+  const under = [], tips = [];
+  for (const i of [-1, 1]) for (const j of [-1, 1]) { under.push(at(i, j, BH)); tips.push(at(i, j, tip, fl, lean)); }
+  hullPath(ctx, [...under, ...tips]);
+  ctx.fillStyle = '#c8463c'; ctx.fill();
+  ctx.strokeStyle = '#8f2b26'; ctx.lineWidth = h * 0.004;
+  ctx.beginPath();
+  for (let k = 1; k < 6; k++) {   // tufts down the long face, and two on the near end
+    const i = -1 + 2 * k / 6;
+    ctx.moveTo(...at(i, 1, BH + 0.004 * h)); ctx.lineTo(...at(i, 1, tip - 0.002 * h, fl, lean));
+  }
+  for (const j of [-0.33, 0.33]) { ctx.moveTo(...at(-1, j, BH + 0.004 * h)); ctx.lineTo(...at(-1, j, tip - 0.002 * h, fl, lean)); }
+  ctx.stroke();
+  hullPath(ctx, [...under, ...tips]);
+  ctx.strokeStyle = BROOM_INK; ctx.lineWidth = ow; ctx.stroke();
+  // the block: the long face towards her way, its near end, and the pale top over both
+  quad(ctx, at(-1, 1, 0), at(1, 1, 0), at(1, 1, BH), at(-1, 1, BH));
+  ctx.fillStyle = '#d6b680'; ctx.fill(); ctx.strokeStyle = BROOM_INK; ctx.lineWidth = ow; ctx.stroke();
+  quad(ctx, at(-1, -1, 0), at(-1, 1, 0), at(-1, 1, BH), at(-1, -1, BH));
+  ctx.fillStyle = '#c4a26c'; ctx.fill(); ctx.stroke();
+  quad(ctx, at(-1, -1, 0), at(1, -1, 0), at(1, 1, 0), at(-1, 1, 0));
+  ctx.fillStyle = '#efd8ae'; ctx.fill(); ctx.stroke();
+}
+/** The handle from `top` to where it meets the head at `foot`, with the head's metal collar. */
+function drawBroomHandle(ctx, top, foot, h) {
+  const dx = foot[0] - top[0], dy = foot[1] - top[1], n = Math.hypot(dx, dy);
+  const ux = dx / n, uy = dy / n;
+  const line = (a, b, colour, w) => {
+    ctx.strokeStyle = colour; ctx.lineWidth = w * h;
+    ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke();
+  };
+  ctx.lineCap = 'round';
+  line(top, foot, BROOM_INK, 0.026);
+  line(top, foot, '#c9a26b', 0.018);
+  const collar = [foot[0] - ux * 0.055 * h, foot[1] - uy * 0.055 * h], end = [foot[0], foot[1] + 0.01 * h];
+  line(collar, end, BROOM_INK, 0.03);
+  line(collar, end, '#b9bec8', 0.022);
+  const o = [-uy * 0.005 * h, ux * 0.005 * h];
+  line([collar[0] + o[0], collar[1] + o[1]], [end[0] + o[0], end[1] + o[1] - 0.002 * h], '#eef1f6', 0.006);
+}
+/** Dolores's broom along +x through the origin: the handle, and the head at the +x end. */
 function drawBroom(ctx, h) {
-  ctx.lineCap = 'round'; ctx.strokeStyle = '#a88f69'; ctx.lineWidth = h * 0.016;
-  ctx.beginPath(); ctx.moveTo(-h * 0.25, 0); ctx.lineTo(h * 0.25, 0); ctx.stroke();
-  ctx.strokeStyle = '#abd0c6'; ctx.lineWidth = h * 0.032;
-  for (let j = 0; j < 5; j++) { ctx.beginPath(); ctx.moveTo(h * 0.25, 0); ctx.lineTo(h * (0.35 + 0.012 * Math.abs(j - 2)), h * (j - 2) * 0.02); ctx.stroke(); }
+  drawBroomHandle(ctx, [-h * 0.25, 0], [h * 0.25, 0], h);
+  ctx.save(); ctx.translate(h * 0.25, 0); ctx.rotate(-Math.PI / 2); drawBroomHead(ctx, h); ctx.restore();
+}
+
+/**
+ * THE SWEEP (Peter, 6 Oct 2026: "should hands move as she sweeps forward?", then "she should be
+ * pushing forward with the broom ... you move it all forward"): on every beat she shoves the
+ * broom on ahead of her and leans into it, then walks up to it while it rides along the floor —
+ * slower than she walks, never back the way it came. A rigid handle, both arms in front: the
+ * hand targets are worked back from where the handle has to be, through the painter's own map
+ * from a dance [out, lift] to where it puts that hand on the run (measured, 6 Oct 2026). Of
+ * her height, in her own frame, feet at the origin, facing +x.
+ */
+const SWEEP_SHOVE = 0.35;   // of each beat: the shove
+// her near shoulder set out to the corner of her body, so that arm comes out of it and not her
+// neck (Peter: "they should still be out of her shoulders"); the far one left where it is,
+// tucked in behind her (Peter: "the rear arm should be further behind the shoulder and a
+// little shorter"). The map is measured with them there.
+const SWEEP_ARM_OUT = [0.05, 0];
+const nearHandFor = ([x, y]) => [(-x - 0.144) / 0.233, (y + 0.45) / 0.236];
+const farHandFor = ([x, y]) => [(x - 0.094) / 0.233, (y + 0.47) / 0.233];
+export function sweepStroke(beat) {
+  const s = beat - Math.floor(beat);
+  const shove = s < SWEEP_SHOVE;
+  // 0 drawn in, 1 pushed out: out fast on the beat, back in a straight line as she catches up
+  const k = shove ? 1 - (1 - s / SWEEP_SHOVE) ** 2 : 1 - (s - SWEEP_SHOVE) / (1 - SWEEP_SHOVE);
+  // UNDERHAND, leaning into it (Peter: "pushing overhand when she should be pushing underhand",
+  // and the rear arm hanging at her side was wrong): the near hand holds the top of the handle
+  // just in front of her, elbow down and bent so the forearm comes up under it; the far arm,
+  // behind her shoulder, reaches on out ahead of her down the handle, palm up under it. Her
+  // whole body leans into the push — more on the shove — which is what tips the handle down to
+  // the floor: her arms are too short to hold it steep from straight up.
+  const lean = 0.15 + 0.06 * k;
+  const c = Math.cos(lean), n = Math.sin(lean);
+  const toWorld = ([x, y]) => [x * c - y * n, x * n + y * c], toBody = ([x, y]) => [x * c + y * n, -x * n + y * c];
+  const top = [-0.026 + 0.012 * k, -0.393];
+  const L = 0.486, G = 0.267;                         // top hand to the head, and on down to the other hand
+  const tw = toWorld(top);
+  const foot = [tw[0] + Math.sqrt(L * L - (tw[1] + BROOM_FOOT) ** 2), -BROOM_FOOT];
+  const ux = (foot[0] - tw[0]) / L, uy = (foot[1] - tw[1]) / L;
+  return { foot, top, low: toBody([tw[0] + ux * G, tw[1] + uy * G]), lean, shift: 0.03 * k,
+    drag: shove ? 1 - 0.5 * s / SWEEP_SHOVE : 0.5 };
+}
+/** Dolores sweeping, at song beat `beat` and `age` beats into the moment, in her own frame. */
+function drawSweeping(ctx, beat, age, h) {
+  const st = sweepStroke(beat);
+  ctx.translate(st.shift * h, 0);
+  const c = Math.cos(st.lean), n = Math.sin(st.lean);
+  drawToon(ctx, 'dolores', { kind: 'run', grounded: true, time: age * 0.35, phase: age * 0.45 % 1, lean: st.lean,
+    // both elbows down, the near one bent under the top of the handle
+    armOut: SWEEP_ARM_OUT, dance: { hands: [nearHandFor(st.top), farHandFor(st.low)], elbows: [-1, -1] },
+    // the handle resting across both palms, as the painter placed them, down to the head on the
+    // floor — drawn upright again, her lean taken back out
+    heldOnHands: true,
+    held: (g, near, far, u) => {
+      const w = ([x, y]) => [x * c - y * n, x * n + y * c];
+      g.rotate(-st.lean);
+      const a = w(near), b = w(far);
+      const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy), ex = dx / len, ey = dy / len;
+      const lift = 0.012 * u;                       // up off the middle of each hand, into the palm
+      const p = [a[0] + ey * lift, a[1] - ex * lift];
+      const t = (-BROOM_FOOT * u - p[1]) / ey;
+      const foot = [p[0] + ex * t, -BROOM_FOOT * u];
+      // the handle's end carries on up past her shoulder (Peter, 6 Oct 2026)
+      drawBroomHandle(g, [p[0] - ex * 0.21 * u, p[1] - ey * 0.21 * u], foot, u);
+      g.translate(...foot); drawBroomHead(g, u, st.drag);
+    } }, 0, 0, h);
 }
 
 /**
@@ -377,11 +517,13 @@ export function drawPartyFront(ctx, m, beat, { width, floorRef, toonH, stageTop,
     // walked off the job: away off her side of the floor, getting up to speed
     const x = walk.running == null ? at : at + ((q.out > 0 ? width + h : -h) - at) * walk.running ** 1.6;
     const floor = cleanerFloor(floorRef, toonH, stageBot, u);
-    spot = { x, floor, h, dancing: walk.dancing || walk.flinging != null, running: walk.running != null };
     // The confetti left on the floor by the last drops (the club's `floorConfetti`, handed
-    // in as `scraps`) disappears behind the broom as she crosses — and stays put once she has
-    // thrown the broom away.
-    const edge = q ? q.sweptTo ?? at + dir * h * 0.4 : x + dir * h * 0.4;
+    // in as `scraps`) disappears under the broom head as she crosses — and stays put once she
+    // has thrown the broom away (club.js keeps `sweptTo`, where the head had got to).
+    const st = sweepStroke(beat);
+    const sweptTo = x + dir * h * (st.shift + st.foot[0]);
+    spot = { x, floor, h, dancing: walk.dancing || walk.flinging != null, running: walk.running != null, sweptTo };
+    const edge = q ? q.sweptTo ?? at + dir * h * 0.4 : sweptTo;
     drawScraps(ctx, (scraps || []).filter((sc) => (dir > 0 ? sc.x >= edge : sc.x <= edge))
       .map((sc) => ({ sc, x: sc.x, y: scrapY(floorRef, toonH, stageBot, u, sc.dy) })), u, { glint, lite, hop });
     if (q) drawFlungBroom(ctx, age - q.from, q.out, at, floor, h, width);
@@ -406,28 +548,8 @@ export function drawPartyFront(ctx, m, beat, { width, floorRef, toonH, stageTop,
       ctx.restore();
       return spot;
     }
-    ctx.translate(x, floor);ctx.scale(dir, 1);
-    // Dolores faces us as she sweeps, so the broom runs across her front: the top hand high
-    // by her chest, the other low on the far side, the shaft drawn THROUGH both — worked out
-    // from where the painter puts a hand for a given [out, lift] (measured, 3 Oct 2026) — and
-    // broken under each so the gloves close round it (Peter: "hands don't touch her broom").
-    const H0 = [0.0, -0.4], H1 = [0.3, 1.0];
-    drawToon(ctx, 'dolores', { kind: 'run', grounded: true, time: age * 0.35, phase: age * 0.45 % 1,
-      dance: { hands: [H0, H1] } }, 0, 0, h);
-    const p0 = [-(0.08 + 0.23 * H0[0]), -(0.47 - 0.24 * H0[1])];
-    const p1 = [0.13 + 0.23 * H1[0], -(0.49 - 0.24 * H1[1])];
-    const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), ux = (p1[0] - p0[0]) / L, uy = (p1[1] - p0[1]) / L;
-    const top = [p0[0] - ux * 0.16, p0[1] - uy * 0.16];
-    const foot = [p0[0] + ux * (-p0[1] / uy), 0];
-    const total = Math.hypot(foot[0] - top[0], foot[1] - top[1]), s0 = 0.16, s1 = s0 + L;
-    const along = (d) => [(top[0] + ux * d) * h, (top[1] + uy * d) * h];
-    ctx.lineCap = 'round'; ctx.strokeStyle = '#a88f69'; ctx.lineWidth = h * 0.016;
-    for (const [a0, b0] of [[0, s0 - 0.03], [s0 + 0.03, s1 - 0.03], [s1 + 0.03, total]]) {
-      const [ax, ay] = along(a0), [bx, by] = along(b0);
-      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-    }
-    ctx.strokeStyle = '#abd0c6'; ctx.lineWidth = h * 0.032;
-    for (let j = 0; j < 5; j++) { ctx.beginPath(); ctx.moveTo(h * (foot[0] - 0.045 + j * 0.022), -h * 0.03); ctx.lineTo(h * (foot[0] - 0.06 + j * 0.03), h * 0.005); ctx.stroke(); }
+    ctx.translate(x, floor); ctx.scale(dir, 1);
+    drawSweeping(ctx, beat, age, h);
   }
   ctx.restore();
   return spot;

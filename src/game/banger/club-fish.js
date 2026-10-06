@@ -171,7 +171,9 @@ export const FISHES = Object.freeze([
     },
   },
   {
-    letter: 'B', name: 'PUFFER', size: 0.5,
+    // the slow one: it takes `pace` times as long as the rest to cross the room (Peter, 6 Oct
+    // 2026: "could one of the fish swim slower than the rest" ... "horizontally")
+    letter: 'B', name: 'PUFFER', size: 0.5, pace: 1.8,
     description: 'A worried pufferfish that blows up into a spiky ball on every other downbeat and slowly lets the air out again.',
     paint(ctx, L, { beat, wag, contour }) {
       ink(ctx, L);

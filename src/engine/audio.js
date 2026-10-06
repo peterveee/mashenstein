@@ -5973,9 +5973,12 @@ class AudioSys {
   // whether the remainder is heard as a beat of silence or as a mistake is a thing to
   // decide by ear rather than by argument. See MusicDirector.play. `startAtBeginning`
   // is the jukebox exception: it still arms the song's authored repeat region, but lets
-  // a listener hear every bar before that region on the first pass.
+  // a listener hear every bar before that region on the first pass. `at` puts the new
+  // downbeat at that audio time instead of `gap` after the call — read against the clock
+  // where the downbeat is booked, after the mix is built, which can take a few
+  // hundredths of a second: the club's BOLT brings a new take in on the old one's bar line.
   setBank(bank, mixOverride = undefined, arrangementOverride = undefined,
-    { gap = 0.5, formLoop = true, countIn = 0, startAtBeginning = false } = {}) {
+    { gap = 0.5, formLoop = true, countIn = 0, startAtBeginning = false, at = null } = {}) {
     // A SONG ARRIVES AT ITS OWN TEMPO. The transport warp belongs to whatever was
     // performing the last one — the star powerup's whole tone, slow-mo's drag, and
     // above all the bpm ramp a beat stage banks at every checkpoint. That last one
@@ -6079,8 +6082,9 @@ class AudioSys {
         // a second and SONG_FADE is twelve milliseconds — so the new downbeat does not
         // move by so much as a sample.
         down();
-        this.songTrim.gain.setTargetAtTime(this.musicTrim, now + startGap, 0.01);
-        this.nextTime = now + startGap;
+        const start = Number.isFinite(at) ? Math.max(at, now + 0.05) : now + startGap;
+        this.songTrim.gain.setTargetAtTime(this.musicTrim, start, 0.01);
+        this.nextTime = start;
       } else {
         down();
       }

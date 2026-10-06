@@ -5268,9 +5268,11 @@ export class SoundTestState {
   }
   pointerIndex(y, x = 0) {
     if (y >= this.backY && y < this.backY + this.backH) {
-      const { del, gen } = this.backPlates();
+      const { back, del, gen } = this.backPlates();
       if (del && x >= del.x && x < del.x + del.w) return this.tracks.length + 2;
-      return gen && x >= gen.x ? this.tracks.length + 1 : this.tracks.length;
+      if (gen && x >= gen.x) return this.tracks.length + 1;
+      // the jukebox's BACK is the row's left half; the empty right half is no button
+      return gen || x < back.x + back.w ? this.tracks.length : -1;
     }
     if (y < this.listY || y >= this.listY + this.visibleRows * this.rowH) return -1;
     const i = this.listStart + Math.floor((y - this.listY) / this.rowH);
@@ -5457,16 +5459,17 @@ export class SoundTestState {
     }));
   }
   /**
-   * The bottom row: BACK on the left, LAB on the right, and DELETE between them while
+   * The bottom row: BACK on the left, NEW BANGER on the right, and DELETE between them while
    * one of the player's songs is playing. Logical x and width of each, for drawing and
-   * for taps; `del` is null when DELETE is not up.
+   * for taps; `del` is null when DELETE is not up. The jukebox has BACK alone, still the
+   * left half: across the whole row it sat centred (Peter, 6 Oct 2026).
    */
   backPlates() {
     const portrait = portraitMenuActive();
     const rowX = portrait ? 18 : JUKEBOX_ROW_X;
     const rowW = portrait ? W - 36 : W - JUKEBOX_ROW_X - JUKEBOX_ROW_INSET_R;
     const gap = portrait ? 12 : 8;
-    if (!this.lab) return { back: { x: rowX, w: rowW }, del: null, gen: null };
+    if (!this.lab) return { back: { x: rowX, w: (rowW - gap) / 2 }, del: null, gen: null };
     if (this.deletable()) {
       // Three equal thirds of the full row, outer edges on the list's.
       const third = (rowW - 2 * gap) / 3;

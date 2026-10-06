@@ -9142,7 +9142,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // neck. Applied to both shoulders rather than only the near one — front-on
   // the two are a mirrored pair, and moving one of them alone makes a standing
   // hero lopsided.
-  const armOut = (spec.armOut || 0) * u;
+  // A pose can widen them too, one number for both or [near, far]: Dolores's
+  // sweep reaches her near arm across her front, and from the run's inboard
+  // socket it came out of her neck instead of her shoulder (Peter, 6 Oct 2026).
+  const [poseOutF, poseOutB] = Array.isArray(pose.armOut) ? pose.armOut : [pose.armOut || 0, pose.armOut || 0];
+  const armOut = ((spec.armOut || 0) + poseOutF) * u, armOutB = ((spec.armOut || 0) + poseOutB) * u;
   let shF = (turned
     ? shoulderCx + nearSign * (torsoHalf * shSpread * (1 + 0.14 * turnDepth) + turnDepth * 0.025 * u)
     : depthRun && !heavy
@@ -9150,7 +9154,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       : shoulderCx + sideF * torsoHalf * shSpread * nearSpread) + sideF * armOut;
   const shB = (turned
     ? shoulderCx - nearSign * (torsoHalf * shSpread * (1 - 0.26 * turnDepth) + turnDepth * 0.018 * u)
-    : shoulderCx + sideB * torsoHalf * shSpread * farSpread) + sideB * armOut;
+    : shoulderCx + sideB * torsoHalf * shSpread * farSpread) + sideB * armOutB;
   // Slide a hand target out to full arm reach along its own direction, so the
   // IK draws the arm straight: arms-out poses with a mid-reach target crook
   // the elbow into a chicken wing.
@@ -10497,7 +10501,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Keep the elbow on the LOWER/outboard solution of the two-bone chain.
     // The other solution folds raised dance arms up beside the cheeks.
     // Keep this side throughout the cycle so no elbow flips mid-gesture.
-    elbF = -sideF; elbB = -sideB;
+    // `dance.elbows` flips one to the other solution (-1): a hand brought IN
+    // across the chest wants it, or the elbow rides up under the chin
+    // (Dolores's top hand on her broom, 6 Oct 2026).
+    const [ef, eb] = pose.dance.elbows || [1, 1];
+    elbF = -sideF * ef; elbB = -sideB * eb;
     if (pose.dance.pointAngle != null) armOverHead = true;
   }
 
@@ -12233,7 +12241,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     && (id === 'lorenzo' || id === 'gary');
   // Dolores' counter idle draws both arms in the FRONT pass (over the apron)
   // so the hips-beat hands read on the bib — the reference-approved look.
-  const armsInFront = stand && !!pose.armsInFront;
+  // Her sweep (club-party.js) asks for it on the run too: both hands are on a
+  // broom held across her front, so the far arm comes round in front of her
+  // instead of hiding behind the apron (Peter, 6 Oct 2026).
+  const armsInFront = (stand || pose.kind === 'run') && !!pose.armsInFront;
   if (!clapFront && !armsInFront && !bowArmFront) {
     // B33P needs no special case here any more. With the cannon moved onto the
     // NEAR shoulder it is simply the front arm, drawn in the front pass like
@@ -13823,8 +13834,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // Draw once, on the correct side of the arm: after it whenever the front
       // arm paints over the apron, otherwise here.
       const frontArmOverApron = armsInFront || clapFront || !stand;
-      if (!frontArmOverApron) drawStraps();
-      apronStrapOver = frontArmOverApron
+      // Moving with an arm reaching across her — both in front, or the near
+      // one taking something held (her sweep) — it goes over the bib AND the
+      // straps: the whole apron goes down first. Straps laid back over them made each arm come out from under
+      // the bib's top edge (Peter, 6 Oct 2026: "coming out the wrong side of
+      // her apron").
+      const strapsOverArms = frontArmOverApron && !(!stand && (armsInFront || pose.held));
+      if (!strapsOverArms) drawStraps();
+      apronStrapOver = strapsOverArms
         ? () => { drawStraps(); recoverBibBand(); drawNameTag(); }
         : null;
       ctx.save();
@@ -13842,7 +13859,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u), APRON_OUTLINE);
       // ...and in the standing pose nothing repaints the bib after this, so the
       // tag lands here — expected on a counter server.
-      if (!frontArmOverApron) drawNameTag();
+      if (!strapsOverArms) drawNameTag();
     }
   }
   // Defined here rather than beside drawCelShield below: the DRAW pose paints
@@ -13855,12 +13872,30 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (pistolAngleB != null) drawPistol(ctx, handB[0], handB[1], pistolAngleB, u, ow, p, farShade);
     handDeco(handB[0], handB[1], 0, shB, armY, elbB);
   };
-  if (!clapFront && !armOverHead && (!stand || raisedArmStudyFront || armsReachFront)) {
+  // Something held in both hands — `pose.held(ctx, front, back, u)`, in figure
+  // space (feet at the origin, the floor at y = 0) — goes over the arms, and
+  // the hands go back on top of it so they close round it. The near hand is
+  // the SEATED one, where drawFrontArm actually painted it. On the run the far
+  // arm is still behind her, so its hand comes round the side of her to it.
+  const drawHeld = () => {
+    const seatX = nearArmSeated ? sideF * ARM_SEAT_IN * u : 0;
+    const seatY = nearArmSeated && !spec.cannon ? ARM_SEAT_DOWN * u : 0;
+    const front = [handF[0] - seatX, handF[1] + seatY];
+    ctx.save();
+    pose.held(ctx, front, handB, u);
+    ctx.restore();
+    // `heldOnHands`: it rests ON them instead, palms up — an underhand grip
+    if (pose.heldOnHands) return;
+    handDeco(handB[0], handB[1], farShade, shB, armY, elbB);
+    handDeco(front[0], front[1], 0, shF - seatX, armYF + seatY, elbF);
+  };
+  if (!clapFront && !armOverHead && !armsInFront && (!stand || raisedArmStudyFront || armsReachFront)) {
     if (bowArmFront) drawFarArm();
     drawFrontArm();
     if (strapOverArm) strapOverArm();
     if (slingOverArm) slingOverArm();
     if (apronStrapOver) apronStrapOver(); // strap passes over the near arm in the run/jump/slide cycle
+    if (pose.held && !stand) drawHeld();
   }
 
   // Idle drew its arm before the costume, so finish the reserved socket pass
@@ -13965,6 +14000,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     drawFrontArm();
     if (slingOverArm) slingOverArm();
     if (apronStrapOver) apronStrapOver();
+    if (pose.held) drawHeld();
   }
 }
 

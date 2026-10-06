@@ -57,6 +57,7 @@ import {
   HERO_MOVES, PARTS, nextBeatAt, nextSixteenthAt, nowAt, nextBarAt, nextTwoOrFourAt, landingFor, playMove, startHold, dragHold, endHold, setPartLevel,
   releaseClub, moveSeconds, gridReady, setSpeed, stepTime, startChipGate, endChipGate, CHIP_GATE_CHANCE, lastBarBeforeSection, chipGateRoll, throwBeat, echoLevel,
   stopTape, nextStopStep, partOf, partGain, startWobble, setWobble, endWobble,
+  PITCH_RANGE, clampPitch, setPitchWarp,
 } from './club-fx.js';
 
 const BODY_FONT = "'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
@@ -94,6 +95,13 @@ const ICONS_ASLEEP = 0.18;
 // charge's first frame, so only the swap is left for the flash; the spin climbs to STRIKE_SPIN. The
 // charge was a second, and is longer for being "super cute" (Peter, 6 Oct 2026).
 const STRIKE_CHARGE_FRAMES = 108, STRIKE_PLASMA = 0.55, STRIKE_SPIN = 32;
+// ...and with a song playing it goes ON THE BEAT (Peter, 6 Oct 2026: "time a reroll so it continues
+// on the beat" ... "lengthen the spinning of the mirror ball for this"): the ball spins up until
+// the last beat of a bar at least STRIKE_CHARGE_MIN_S off, bursts there with the thunder, and the
+// new take comes in on the bar line, on the old one's grid — the charge as long as that takes,
+// up to a bar more. The burst is STRIKE_LEAD_MIN_S at least before the bar line (as heard), a
+// whole number of beats, so the new club is up and its song booked in time for its downbeat.
+const STRIKE_CHARGE_MIN_S = 2, STRIKE_LEAD_MIN_S = 0.3;
 const STRIKE_COVER = [236, 222, 255, 0.8], STRIKE_COVER_S = 0.3, STRIKE_RING_S = 0.45, STRIKE_ARC_S = 0.45;
 const PLASMA = '#b77bff';
 // Its sound: the turbo hoover's motor revving through the charge as if about to blow (club-hits.js
@@ -129,6 +137,12 @@ const SIGN_CRT_CELL = 0.1;
 const LED_EQ_BARS = 24;           // the board as a graphic equaliser: bars of three dots (two lit, a gap)
 const LED_HOLD_BARS = 4;          // each slogan's bars on the board
 const LED_SCROLL_COLS_S = 22;     // how fast a scroller crosses, in dots a second
+// Every line comes on moving, as a real sign's does (Peter, 6 Oct 2026: "short phrases would
+// scroll in from the top or bottom and push away current text"): a short one is pushed up or
+// down onto the board a dot row at a time, shoving the line that was up off the other edge
+// with a blank row between them; a scroller shoves what was up off to the left as it comes on.
+const LED_PUSH_ROWS = LED_ROWS + 1;   // a push's travel: a line's height and the blank row
+const LED_PUSH_ROWS_S = 12;           // how fast a push runs, in dot rows a second (28 was too quick, Peter)
 const LED_SCROLL_CHANCE = 0.35, LED_STYLE_CHANCE = 0.35;
 const LED_RECENT = 12;            // lines not to repeat until this many others have been up
 const LED_TEXT_CACHE_MAX = 24;    // older strips can be rebaked; keep phone canvas memory bounded
@@ -155,15 +169,24 @@ const LED_FONT = {
 const ledWidth = (text) => text.length * 6 - 1;
 /** The Mexican wave: how far through its bar the last column starts, and each jump's length (bars). */
 const WAVE_SPREAD = 0.75, WAVE_JUMP = 0.25;
-// ROCKET FIST on the floor: each repeat of the stutter loops at least this much of the dance
-// (in beats, played faster to fit a short slice), and kicks the dancers — a shove (of a hero's
+// ROCKET FIST on the floor: each repeat of the stutter loops this much of the dance (in beats,
+// played at whatever speed fits it to the slice), and kicks the dancers — a shove (of a hero's
 // height), a lean (radians) and a pop off the floor (of a hero's height), alternating sides
-// repeat by repeat and settling across it (stutterJolt).
-const STUTTER_SPAN_BEATS = 0.5;
+// repeat by repeat and settling across it (stutterJolt). The loop is by slice, quarters (the
+// drag's bottom) to thirty-seconds (its top): short at the bottom, a little more as he is
+// dragged up — it was a whole beat for quarters and half a beat for the rest (Peter, 6 Oct 2026:
+// "reduce the distance travelled in the stutters", "increased the higher up we drag"; then
+// "travel is still quite a lot", so halved again, with the kick below; then "good... perhaps a
+// tiny bit more than this", a quarter up).
+const STUTTER_SPAN = [0.12, 0.15, 0.19, 0.25];
 const STUTTER_SHOVE = 0.12, STUTTER_TILT = 0.14, STUTTER_POP = 0.1;
 // a hero resting in their idle has no dance to loop, so is kicked this much harder, and lands
 // with a squash (at most, mid-repeat)
 const STUTTER_IDLE = 1.5, STUTTER_SQUASH = 0.2;
+// ...all of it scaled by how fast he punches — the drag (Peter, 6 Oct 2026: "lower the amount of
+// stutter overall ... but it would be nice if it increased the higher up we drag", the look only):
+// by slice, quarters (slowest, the drag's bottom) to thirty-seconds (its top), of the kick above
+const STUTTER_AMP = [0.15, 0.25, 0.37, 0.52];
 /** The song's title, from a tap on the mirror ball: in, held, out (seconds). */
 const TITLE_IN_S = 0.5, TITLE_HOLD_S = 4, TITLE_OUT_S = 1;
 // the soles sit this far below the floor line on a 46-unit hero (the food court's REFLECT_SOLE_DROP)
@@ -263,6 +286,11 @@ const SPEAKER_BOOST = 1.8;
 // drag"): a hop off the floor on every kick while boosted, and on the wobble's eighths as high
 // as the drag — of a hero's height — each landing into a squash (boostHop).
 const BOOST_HOP = 0.05, WOBBLE_HOP = 0.14, BOOST_SQUASH = 0.06, WOBBLE_SQUASH = 0.16;
+// A speaker TAPPED throws them too (Peter, 6 Oct 2026: "add the animation to tap"): knees bent
+// just before the BOOM lands, then up off the floor with it and bouncing to a stop, as the
+// floor's scraps do (scrapHop) — each bounce BOOM_BOUNCE_S long, the lot dying away at
+// BOOM_DECAY a second, the first about BOOM_HOP * 0.7 of a hero's height.
+const BOOM_HOP = 0.12, BOOM_SQUASH = 0.09, BOOM_BOUNCE_S = 0.3, BOOM_DECAY = 2.5, BOOM_HOP_S = 1.1, BOOM_CROUCH_S = 0.1;
 const LIGHT_SHOW_BEATS = 8;
 /**
  * The laser patterns a tap up top picks between (drawLaserSweep): the FLOOR's fans sweeping up
@@ -311,9 +339,9 @@ const GHOST_BEATS = 0.75;
  * should swim past"): every FISH_EVERY_BEATS he stays held, fish swim across the flooded room —
  * FISH_SHOAL says how many at once, each one of the seven (club-fish.js, in cut paper: "i want
  * to use all of them randomly.. perhaps even 2 at a time or more"), a beat or so apart, each the
- * other way to the last, taking FISH_CROSS_BEATS. Let go and the water drains — and any fish
+ * other way to the last, taking FISH_CROSS_BEATS (times its `pace`: the PUFFER dawdles). Let go and the water drains — and any fish
  * still in the room dives for the floor before it does, FISH_DIVE_S, and is gone through it with
- * a splash: down the drain, and every drain leads to the sea. The first shoal sets off as his
+ * a bloop and a puff of bubbles: down the drain, and every drain leads to the sea. The first shoal sets off as his
  * card starts to fade (CAPTION_FADE_BEATS; Peter, 5 Oct 2026), the rest FISH_EVERY_BEATS apart.
  */
 const FISH_EVERY_BEATS = 8;
@@ -321,8 +349,22 @@ const FISH_EVERY_BEATS = 8;
 const CAPTION_FADE_BEATS = 2.8;
 const CAPTION_BEATS = 4;
 const FISH_CROSS_BEATS = 6;
+/** How long fish `f` takes to cross the room, in seconds: its kind's `pace` of FISH_CROSS_BEATS. */
+const fishCrossS = (f, beatS) => FISH_CROSS_BEATS * beatS * (f.baby ? 1 : FISHES[f.kind]?.pace ?? 1);
 const FISH_DIVE_S = 0.55;
-const FISH_SPLASH_S = 0.7;
+// ...at least. Let go, each fish swims on until the falling surface is FISH_DIVE_GAP of the stage
+// above it, then dives — FISH_DIVE_DRAIN of the water's drain to get down and through the floor,
+// ahead of the surface, never caught by it — so the shoal goes top fish first as the water comes
+// down (Peter, 6 Oct 2026: "they are gone far too quickly on release when the actual water /
+// filter take a while" ... "the delay of the fish leaving would be increased and they dive a bit
+// faster"). A dive goes on down past the floor to the very bottom of the screen, and the fish
+// fades out over its last FISH_SINK_S as it gets there, its own size all the way (Peter, 6 Oct
+// 2026: "they sort of disappear in mid air" ... "not sure the fish need to get smaller and
+// fade.. perhaps fade out as they hit the very bottom of the screen").
+const FISH_DIVE_GAP = 0.24, FISH_DIVE_DRAIN = 0.24, FISH_DIVE_EASE = 1.2, FISH_SINK_S = 0.22;
+// It goes in under water, so no splash (Peter, 6 Oct 2026: "does the splash even make sense?
+// They're already IN water"): bubbles rise from where it went, popping at the surface.
+const FISH_BUBBLES = 6, FISH_BUBBLE_S = 1.6;
 /** How many fish come at once: [how many, its chance]. */
 const FISH_SHOAL = Object.freeze([[1, 0.45], [2, 0.35], [3, 0.2]]);
 /**
@@ -414,6 +456,8 @@ export class BangerClubState {
     this.savePrompt = null;    // { options: [{label, asNew, discard}], sel } while it asks
     this.rerolling = 0;        // frames until THE BOLT's remake runs: the ball charges, then its arcs and the flash
     this.rerolled = false;     // ...and once it has gone, no second one from this club
+    this.strikeDue = null;     // ...its burst and the new take's downbeat on the song's grid (strikePlan)
+    this.strikeFrames = STRIKE_CHARGE_FRAMES;   // ...and the charge's length
     // ...and the strike the new take arrived under, fading off the room from the first frame:
     // the points the arcs hit ({ x, y }, the room's own units — the new club is laid out the same)
     this.strikeAt = this.room?.strike ? 0 : -Infinity;
@@ -434,16 +478,19 @@ export class BangerClubState {
     this.muted = new Set();
     this.soloed = new Set();
     this.heard = { ...this.levels };
+    // ...and beside them the PITCH fader: the song's tempo, a fraction either side of the one
+    // it was written at (club-fx.js PITCH_RANGE), kept with the song like the faders
+    this.pitch = 0;
     this.mixerOpen = false;
-    this.mixSel = 0;           // the fader the keys move
-    this.dragging = null;      // the fader under the finger
+    this.mixSel = 0;           // the fader the keys move: a part's, or PARTS.length for the pitch
+    this.dragging = null;      // the fader under the finger (the same numbering)
     this.popup = null;         // { text, t }
     this.iconsAt = 0;          // when the mixer was last used
     this.ballAt = Infinity;    // when the ball last started its drop
     this.titleAt = -Infinity;  // when the ball was last tapped for the song's title
     this.lite = false;         // the lighter room for a slow device (update)
     this.frameMs = 16;
-    this.led = null;           // the LED board's line now: { text, scroll, start, dur }
+    this.led = null;           // the LED board's line now: { text, scroll, start, dur, dir, from } (ledLine)
     this.ledRecent = [];
     this.ballScale = this.room?.ballScale ?? 0.85 + Math.random() * 0.3;   // a slightly different ball every visit
     // When the club came out from behind the screen transition: the walk-in, the ball's
@@ -518,11 +565,12 @@ export class BangerClubState {
     this.throwing = null;      // ...and held: { i, held, step (the next 2 or 4), first, until } while he throws
     this.stops = [];           // Kiko's tape stops, booked: { from, until, hits } (audio) — the room goes dark across each
     this.stopping = null;      // ...and held: { i, held, step (where the next may come), firstUntil, until } while he stops it
-    this.fish = [];            // Lorenzo's fish: { born (audio), dir, h, look, dive: { at, x, y } | null, splashed }
+    this.fish = [];            // Lorenzo's fish: { born (audio), dir, h, look, dive: { at, dur } | null, sunk }
     this.doloresSpot = null;   // where Dolores was drawn last frame: what a tap on her is tested against
     this.speakerHold = null;   // a finger on a speaker: { touch, t0, y0, boosted } until it lifts
     this.boost = null;         // ...held: { lanes, lfo, depth } while the bass is boosted
     this.boomAt = -Infinity;   // ...tapped: when its BOOM lands (audio) — the cones punch, the room jolts
+    this.speakerBoomAt = -Infinity;   // ...the speaker's own BOOM (not the vacuum's): the heroes hop with it
     this.lightShow = null;     // a par can tapped: { col, at (audio) } — the room in its colour
     this.laserSweep = null;    // up top tapped: { col, at (audio), dir } — the truss lasers across the room
     this.laserTurn = 0;
@@ -532,7 +580,9 @@ export class BangerClubState {
     this.crowd = null;         // ...and the crowd's crouch and jump for it: { since, release, land } (audio times)
     this.speedBack = null;     // Rusty let go: { notBefore } until the song's own speed is back
     this.layout = null;        // the floor's measures, from the last draw (the drag's scale)
-    Audio.setBank(this.song.bank, this.song.mix, this.song.arrangement, { startAtBeginning: true });
+    // after THE BOLT the new take starts on the bar line the old one was heading for (strikePlan)
+    const downbeat = this.room?.strike?.downbeat;
+    Audio.setBank(this.song.bank, this.song.mix, this.song.arrangement, { startAtBeginning: true, at: downbeat ?? null });
     this.mixerDirty = false;
     this.restoreMixer();
     Input.setMenuButtons();
@@ -563,15 +613,36 @@ export class BangerClubState {
       if (this.t - this.rerollArm < REROLL_CONFIRM_MIN_S) return;   // a double-tap's bounce is not a yes
     }
     this.rerollArm = null;
-    this.rerolling = STRIKE_CHARGE_FRAMES + 2;
+    this.strikeDue = this.strikePlan();
+    this.strikeFrames = this.strikeDue?.frames ?? STRIKE_CHARGE_FRAMES;
+    this.strikeFlashed = false;
+    this.rerolling = this.strikeFrames + 2;
     this.rerollTake = null;
     this.strikeTargets = this.pickStrikeTargets();
+  }
+
+  /**
+   * When THE BOLT bursts and the new take comes in, on the song's grid: `discharge` (audio time)
+   * a whole number of beats before `downbeat`, the bar line the new take starts on, and the
+   * charge's length in frames to reach it. Null with no song running (the charge keeps its
+   * STRIKE_CHARGE_FRAMES).
+   */
+  strikePlan() {
+    const bar = !this.paused && Audio.ctx ? nextBarAt() : null;
+    if (!bar) return null;
+    const beatS = bar.spb * 4, now = this.heardNow();
+    // the burst is heard at `discharge`; the clock is then that much further on (the latency)
+    const leadBeats = Math.max(1, Math.ceil((STRIKE_LEAD_MIN_S + Audio.heardLatencySec()) / beatS));
+    let downbeat = bar.when;
+    while (downbeat - leadBeats * beatS - now < STRIKE_CHARGE_MIN_S) downbeat += 4 * beatS;
+    const discharge = downbeat - leadBeats * beatS;
+    return { discharge, downbeat, frames: Math.round((discharge - now) * 60) };
   }
 
   /** The charge's first frame: the new take made now (onReroll), its swap left for the flash. */
   makeReroll() {
     // the motor revving up to the discharge, started before the make so the make's moment is under it
-    if (Audio.ctx && Audio.musicBus) playToy(Audio.ctx, Audio.musicBus, 'turbo', Audio.ctx.currentTime, { seconds: STRIKE_CHARGE_FRAMES / 60 });
+    if (Audio.ctx && Audio.musicBus) playToy(Audio.ctx, Audio.musicBus, 'turbo', Audio.ctx.currentTime, { seconds: this.strikeFrames / 60 });
     this.rerollTake = this.onReroll(this.rec, this.pending);
     if (!this.rerollTake) {
       this.rerolling = 0;
@@ -637,7 +708,7 @@ export class BangerClubState {
   /** Under the flash: into the new take's club, the arcs, the spin and the room carried over. */
   rerollNow() {
     this.rerolled = true;
-    this.rerollTake.commit({ ...this.leftRoom(), strike: { targets: this.strikeTargets, spin: this.spinV } });
+    this.rerollTake.commit({ ...this.leftRoom(), strike: { targets: this.strikeTargets, spin: this.spinV, downbeat: this.strikeDue?.downbeat ?? null } });
   }
 
   /** What a return from the riff grid keeps of the room (the constructor's `room`). */
@@ -842,7 +913,7 @@ export class BangerClubState {
   /**
    * LORENZO'S FISH (FISH_EVERY_BEATS): one more in the flooded room every so long he is held,
    * each across the room the other way. Let go and every fish still swimming dives for the
-   * floor as the water starts to go (his `drain`), splashing through it with a bloop.
+   * floor as the water starts to go (his `drain`), and through it with a bloop and bubbles.
    */
   fishOn() {
     const a = this.acting, move = a && HERO_MOVES[a.i];
@@ -860,16 +931,25 @@ export class BangerClubState {
       // a fish not yet in the room when the water goes never comes; one in it dives — each a
       // moment after the last, so the bloops run down the shoal
       if (!flooded && !f.dive && now < f.born) f.gone = true;
-      if (!flooded && !f.dive && !f.gone && now - f.born < FISH_CROSS_BEATS * beatS) {
-        f.dive = { at: Math.max(now, move?.drain && a.drain ? a.drain.from : now) + f.lag };
+      if (!flooded && !f.dive && !f.gone && !f.leaving && now - f.born < fishCrossS(f, beatS)) {
+        const drain = move?.drain && a.drain ? a.drain : null;
+        const drainS = drain ? drain.until - drain.from : 0;
+        // when the surface is FISH_DIVE_GAP over it: the drawn water falls on a smoothstep, so
+        // its inverse; `y` is how far down the stage the fish was last drawn (drawFish)
+        const v = Math.max(0, (f.y ?? 0.22 + 0.33 * f.h) - FISH_DIVE_GAP);
+        const wait = drainS * (0.5 - Math.sin(Math.asin(1 - 2 * Math.min(1, v)) / 3));
+        const at = Math.max(now, drain ? drain.from + wait : now) + f.lag;
+        // one that would be across and out before then just swims on out
+        if (f.born + fishCrossS(f, beatS) <= at) f.leaving = true;
+        else f.dive = { at, dur: Math.max(FISH_DIVE_S, drainS * FISH_DIVE_DRAIN) };
       }
-      if (f.dive && f.splashed == null && now >= f.dive.at + FISH_DIVE_S) {
-        f.splashed = now;
+      if (f.dive && f.sunk == null && now >= f.dive.at + f.dive.dur) {
+        f.sunk = now;
         if (Audio.ctx && Audio.musicBus) playToy(Audio.ctx, Audio.musicBus, 'bloop', Audio.ctx.currentTime);
       }
     }
-    this.fish = this.fish.filter((f) => !f.gone && (f.splashed != null ? now - f.splashed < FISH_SPLASH_S
-      : !!f.dive || now - f.born < FISH_CROSS_BEATS * beatS));
+    this.fish = this.fish.filter((f) => !f.gone && (f.sunk != null ? now - f.sunk < FISH_BUBBLE_S
+      : !!f.dive || now - f.born < fishCrossS(f, beatS)));
   }
 
   /**
@@ -894,7 +974,7 @@ export class BangerClubState {
         dir: this.fishCount % 2 ? 1 : -1,
         // heights spread through the water over the heroes, a shoal's apart
         h: (band + j / n) % 1,
-        lag: j * 0.12 + random() * 0.08, dive: null, splashed: null,
+        lag: j * 0.12 + random() * 0.08, dive: null, sunk: null,
       };
       this.fish.push(f);
       if (FISHES[kind]?.name === 'PARTY SHARK') {
@@ -1092,7 +1172,7 @@ export class BangerClubState {
     const was = m.beats;
     if (m.quit) m.quit.dance = Math.max(m.quit.dance, age - m.quit.from - DOLORES_FLING_BEATS + DOLORES_DANCE_BEATS);
     else {
-      m.quit = { from: age, dance: DOLORES_DANCE_BEATS, out: s.x < W / 2 ? -1 : 1, sweptTo: s.x + m.dir * s.h * 0.4 };
+      m.quit = { from: age, dance: DOLORES_DANCE_BEATS, out: s.x < W / 2 ? -1 : 1, sweptTo: s.sweptTo ?? s.x + m.dir * s.h * 0.4 };
       this.showLed('DOLORES IS ON BREAK');
     }
     // her moment lasts till she is off the floor, and the next party moment waits for it
@@ -1783,6 +1863,31 @@ export class BangerClubState {
     this.iconsAt = this.t;
   }
 
+  /**
+   * THE PITCH fader moved (club-fx.js PITCH_RANGE): the song faster or slower from now, on the
+   * transport's warp, so every move and the room's beat go with it. The key stays put.
+   */
+  setPitch(pitch) {
+    const v = clampPitch(pitch);
+    this.iconsAt = this.t;
+    if (v === this.pitch) return;
+    this.pitch = v;
+    this.mixerDirty = true;
+    setPitchWarp(v);
+  }
+
+  /** The PITCH strip's readout button: back to the tempo the song was written at. */
+  zeroPitch() {
+    if (!this.pitch) { Audio.sfx('uiBad'); return; }
+    this.setPitch(0);
+    Audio.sfx('ui');
+  }
+
+  /** The tempo the song is playing at, the pitch fader in. */
+  get playedBpm() {
+    return (this.song?.bpm || 0) * (1 + this.pitch);
+  }
+
   /** What part `id` plays at: its fader, unless it is muted or another part is soloed. */
   heardLevel(id) {
     return this.muted.has(id) || (this.soloed.size && !this.soloed.has(id)) ? 0 : this.levels[id];
@@ -1820,19 +1925,24 @@ export class BangerClubState {
 
   /**
    * THE MIXER, KEPT (Peter, 5 Oct 2026: "save the mixer settings, esp since we can now change
-   * the presets"): the four faders and each part's sound, on the song's own record (store.js
-   * keepMixer) — saved as they change, once a finger lets go of a fader, and put back when the
-   * song is opened here again. A song not saved yet holds them until it is.
+   * the presets"): the four faders, the pitch and each part's sound, on the song's own record
+   * (store.js keepMixer) — saved as they change, once a finger lets go of a fader, and put back
+   * when the song is opened here again. A song not saved yet holds them until it is.
    */
   saveMixer() {
     this.mixerDirty = false;
     if (this.pending || !this.rec) { this.mixerDirty = true; return; }
-    keepMixer(this.rec, { levels: { ...this.levels }, sounds: this.voices?.picksNamed() || { own: {}, swap: {} } });
+    const kept = { levels: { ...this.levels }, sounds: this.voices?.picksNamed() || { own: {}, swap: {} } };
+    if (this.pitch) kept.pitch = this.pitch;
+    keepMixer(this.rec, kept);
   }
 
-  /** The song's kept mixer back on: its faders at once, its sounds from the first note. */
+  /** The song's kept mixer back on: its faders and its pitch at once, its sounds from the first note. */
   restoreMixer() {
     const m = this.rec?.mixer;
+    // always, kept or not: setBank has just put the transport back to the song's own speed
+    this.pitch = clampPitch(m?.pitch ?? 0);
+    setPitchWarp(this.pitch);
     if (!m) return;
     for (const p of PARTS) {
       const v = Number(m.levels?.[p.id]);
@@ -1843,19 +1953,21 @@ export class BangerClubState {
     this.voices?.restorePicks(m.sounds);
   }
 
-  /** Every fader up and every sound the song's own — what a take arrives with. */
+  /** Every fader up, the pitch in the middle and every sound the song's own — what a take arrives with. */
   get mixerPlain() {
-    return PARTS.every((p) => this.levels[p.id] === 1) && (this.voices?.own ?? true) && !this.muted.size && !this.soloed.size;
+    return PARTS.every((p) => this.levels[p.id] === 1) && !this.pitch && (this.voices?.own ?? true) && !this.muted.size && !this.soloed.size;
   }
 
   /**
    * RESET on the mixer panel (Peter, 5 Oct 2026: "a restore button … to go back to the default
-   * levels and patches"): every fader back up, every part back on the song's own sound, at once —
-   * and the kept mixer taken off the song's record (keepMixer drops a plain one).
+   * levels and patches"): every fader back up, the pitch to the middle, every part back on the
+   * song's own sound, at once — and the kept mixer taken off the song's record (keepMixer drops a
+   * plain one).
    */
   resetMixer() {
     if (this.mixerPlain) { Audio.sfx('uiBad'); return; }
     for (const p of PARTS) this.levels[p.id] = 1;
+    this.setPitch(0);
     this.muted.clear();
     this.soloed.clear();
     this.applyHeard();
@@ -1939,6 +2051,7 @@ export class BangerClubState {
     const when = at ? at.when : this.heardNow();
     if (ctx && Audio.musicBus) playToy(ctx, Audio.musicBus, 'boom', Math.max(when, ctx.currentTime));
     this.boomAt = when;
+    this.speakerBoomAt = when;
   }
 
   /** The lanes the BOOST lifts: the bass's and the kick's, each with its monitor gate. */
@@ -2018,8 +2131,17 @@ export class BangerClubState {
     return true;
   }
 
-  /** The fader `k` set from a pointer height. */
+  /**
+   * The fader `k` set from a pointer height. PARTS.length is the pitch, up faster, and it moves
+   * by how far the finger has gone since it pressed (`pitchGrab`) rather than jumping to it: a
+   * tap on the slot must not throw the tempo 8% out.
+   */
   levelFromY(k, y) {
+    if (k === PARTS.length) {
+      const f = this.boxes.pitch, g = this.pitchGrab;
+      if (f && g) this.setPitch(g.pitch + PITCH_RANGE * (g.y - y) / ((f.bot - f.top) / 2));
+      return;
+    }
     const f = this.boxes.faders[k];
     if (!f) return;
     this.setLevel(k, (f.bot - y) / (f.bot - f.top));
@@ -2272,13 +2394,20 @@ export class BangerClubState {
     // (Peter, 5 Oct 2026: "dont auto hide the mixing panel").
 
     if (this.rerolling > 0) {
-      const left = --this.rerolling;
-      if (left === STRIKE_CHARGE_FRAMES + 1) this.makeReroll();
-      else if (left === 2) this.discharge();
-      else if (left === 0) { this.rerollNow(); Input.endFrame(); return; }
+      let left = this.rerolling - 1;
+      // with a song playing the frames left are counted again off the beat it bursts on, so a
+      // slow frame (the make's, on the first) never puts the burst late
+      const due = this.strikeDue;
+      if (due && left <= this.strikeFrames) left = Math.min(left, 2 + Math.max(0, Math.round((due.discharge - this.heardNow()) * 60)));
+      this.rerolling = left;
+      if (left === this.strikeFrames + 1) this.makeReroll();
+      else {
+        if (left <= 2 && !this.strikeFlashed) { this.strikeFlashed = true; this.discharge(); }
+        if (left === 0) { this.rerollNow(); Input.endFrame(); return; }
+      }
       // the ball spins up through the charge, slowly and then hard
       if (this.rerolling > 2) {
-        const k = 1 - (this.rerolling - 2) / STRIKE_CHARGE_FRAMES;
+        const k = 1 - (this.rerolling - 2) / this.strikeFrames;
         this.spinV = Math.max(this.spinV, STRIKE_SPIN * k * k);
       }
     }
@@ -2286,12 +2415,20 @@ export class BangerClubState {
 
     if (this.mixerOpen) {
       // THE MIXER PANEL owns the keys while it is open: left/right a fader, up/down its level,
-      // and the ability key (X, or Shift) the selected part's next sound.
-      if (Input.pressed('right')) this.mixSel = (this.mixSel + 1) % PARTS.length;
-      if (Input.pressed('left')) this.mixSel = (this.mixSel + PARTS.length - 1) % PARTS.length;
-      if (Input.pressed('up')) this.setLevel(this.mixSel, this.levels[PARTS[this.mixSel].id] + 0.1);
-      if (Input.pressed('down')) this.setLevel(this.mixSel, this.levels[PARTS[this.mixSel].id] - 0.1);
-      if (Input.pressed('ability') || Input.pressed('jump')) this.nextSound(this.mixSel);
+      // and the ability key (X, or Shift) the selected part's next sound. On the PITCH strip
+      // (the last) up/down are half a percent, and the ability key back to the middle.
+      const strips = PARTS.length + 1, onPitch = this.mixSel === PARTS.length;
+      if (Input.pressed('right')) this.mixSel = (this.mixSel + 1) % strips;
+      if (Input.pressed('left')) this.mixSel = (this.mixSel + strips - 1) % strips;
+      if (onPitch) {
+        if (Input.pressed('up')) this.setPitch(this.pitch + 0.005);
+        if (Input.pressed('down')) this.setPitch(this.pitch - 0.005);
+        if (Input.pressed('ability') || Input.pressed('jump')) this.zeroPitch();
+      } else {
+        if (Input.pressed('up')) this.setLevel(this.mixSel, this.levels[PARTS[this.mixSel].id] + 0.1);
+        if (Input.pressed('down')) this.setLevel(this.mixSel, this.levels[PARTS[this.mixSel].id] - 0.1);
+        if (Input.pressed('ability') || Input.pressed('jump')) this.nextSound(this.mixSel);
+      }
       if (Input.pressed('confirm') || Input.pressed('back')) this.openMixer(false);
       else if (Input.pressed('pointer')) {
         const s = this.boxes.sounds.findIndex(inside);
@@ -2305,6 +2442,11 @@ export class BangerClubState {
         else if (mu >= 0) { this.mixSel = mu; this.toggleMute(mu); }
         else if (so >= 0) { this.mixSel = so; this.toggleSolo(so); }
         else if (k >= 0) { this.dragging = k; this.mixSel = k; this.levelFromY(k, y); }
+        else if (this.boxes.pitchZero && inside(this.boxes.pitchZero)) { this.mixSel = PARTS.length; this.zeroPitch(); }
+        else if (this.boxes.pitch && inside(this.boxes.pitch)) {
+          this.dragging = this.mixSel = PARTS.length;
+          this.pitchGrab = { y, pitch: this.pitch };
+        }
         else if (tr >= 0) this.pressTransport(tr);   // the transport sits beside the mixer, open or shut
         else if (!inside(this.boxes.panel)) this.openMixer(false);   // a tap outside closes it
       }
@@ -2366,8 +2508,7 @@ export class BangerClubState {
         else if (this.tapSky(x, y)) { /* up in the room: the lasers */ }
       }
     }
-    // A finger dragging a held hero can read as the menus' swipe back: not while it is held.
-    if (Input.pressed('back') && this.holding?.source !== 'pointer') this.back();
+    if (Input.pressed('back')) this.back();
     Input.endFrame();
   }
 
@@ -2423,7 +2564,7 @@ export class BangerClubState {
   showLed(text) {
     const t = String(text).toUpperCase();
     const scroll = ledWidth(t) > LED_COLS;
-    this.led = { text: t, scroll, start: this.t, dur: scroll ? (LED_COLS + ledWidth(t)) / LED_SCROLL_COLS_S : 2 * this.barSeconds() };
+    this.led = this.ledLine(t, scroll, this.t, scroll ? (LED_COLS + ledWidth(t)) / LED_SCROLL_COLS_S : 2 * this.barSeconds());
   }
 
   /**
@@ -2499,7 +2640,7 @@ export class BangerClubState {
    * and leave it, so it is never cut off.
    */
   nextLed(start) {
-    const song = { title: this.rec?.name || '', bpm: this.song?.bpm || 0 };
+    const song = { title: this.rec?.name || '', bpm: this.playedBpm };
     const style = LED_STYLE_LINES[this.rec?.style] || { hold: [], scroll: [] };
     const scroll = Math.random() < LED_SCROLL_CHANCE;
     const own = Math.random() < LED_STYLE_CHANCE;
@@ -2511,15 +2652,49 @@ export class BangerClubState {
     const text = fillLed(line, song);
     const scrolls = scroll || ledWidth(text) > LED_COLS;
     const dur = scrolls ? (LED_COLS + ledWidth(text)) / LED_SCROLL_COLS_S : LED_HOLD_BARS * this.barSeconds();
-    return { text, scroll: scrolls, start, dur };
+    return this.ledLine(text, scrolls, start, dur);
   }
 
+  /**
+   * A line coming on at `start` over the one up now (this.led): a short one pushed in from the
+   * top or the bottom at random (`dir` 1 from below, -1 from above), and `from`, what of the
+   * old line was on the board then — its text and first dot column — to be shoved off.
+   */
+  ledLine(text, scroll, start, dur) {
+    const prev = this.led;
+    let from = null;
+    if (prev && !prev.eq && start >= prev.start) {
+      const { offset } = this.ledPose(prev, start);
+      if (offset < LED_COLS && offset + ledWidth(prev.text) > 0) from = { text: prev.text, offset };
+    }
+    return { text, scroll, start, dur, dir: scroll ? 0 : Math.random() < 0.5 ? 1 : -1, from };
+  }
+
+  /** Where line `led` stands at `t`: its first dot column, and the dot rows it has still to push in. */
+  ledPose(led, t) {
+    const el = Math.max(0, t - led.start);
+    if (led.scroll) return { offset: LED_COLS - Math.floor(el * LED_SCROLL_COLS_S), dy: 0 };
+    return { offset: Math.floor((LED_COLS - ledWidth(led.text)) / 2),
+      dy: led.dir * Math.max(0, LED_PUSH_ROWS - Math.floor(el * LED_PUSH_ROWS_S)) };
+  }
+
+  /**
+   * The board now: the line's text, first dot column and rows still to push in (`dy`), and the
+   * old line it is shoving off (`from`) while that is still in sight — pushed out the other edge
+   * a row behind it, or carried off left in front of a scroller, which cuts it a dot short of
+   * its own first column.
+   */
   ledText() {
     if (!this.led || this.t < this.led.start) this.led = this.nextLed(this.t);
     for (let n = 0; this.t >= this.led.start + this.led.dur && n < 50; n++) this.led = this.nextLed(this.led.start + this.led.dur);
-    const { text, scroll, start } = this.led;
-    if (scroll) return { text, offset: LED_COLS - Math.floor((this.t - start) * LED_SCROLL_COLS_S) };
-    return { text, offset: Math.floor((LED_COLS - ledWidth(text)) / 2) };
+    const { text, scroll, dir, from: old } = this.led;
+    const { offset, dy } = this.ledPose(this.led, this.t);
+    let from = null;
+    if (old && scroll) {
+      const moved = LED_COLS - offset;
+      if (old.offset - moved + ledWidth(old.text) > 0) from = { text: old.text, offset: old.offset - moved, dy: 0, cut: offset - 1 };
+    } else if (old && dy !== 0) from = { text: old.text, offset: old.offset, dy: dy - dir * LED_PUSH_ROWS, cut: LED_COLS };
+    return { text, offset, dy, from };
   }
 
   /**
@@ -2553,11 +2728,31 @@ export class BangerClubState {
       this.bakes.set(key, c);
     }
     ctx.drawImage(this.bakes.get(key), x, y, w, h);
-    const { text, offset } = this.ledText();
+    const line = this.ledText();
     if (this.led?.eq) { this.drawLedEq(ctx, x, y, pitch, solid); return; }
-    // The lit dots of a line are baked once into a strip (glow and all) and then only
-    // slid across: they were hundreds of rects a frame, a fifth of the club's time on a phone
-    // (Peter, 3 Oct 2026: slowdown in the lab).
+    // each line clipped to the board's dots (and the old one short of the new), so a row or a
+    // column pushed past the edge is simply off, as on a real board; at rest the clip leaves the
+    // top and bottom rows' glow on the frame as it always was
+    for (const l of [line.from, line]) {
+      if (!l) continue;
+      const strip = this.ledStrip(l.text, pitch, ss, solid);
+      const moving = line.dy !== 0;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x + pitch, moving ? y + pitch : y, Math.max(0, Math.min(LED_COLS, l.cut ?? LED_COLS)) * pitch, moving ? LED_ROWS * pitch : h);
+      ctx.clip();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(strip.c, x + l.offset * pitch, y + l.dy * pitch, strip.w, strip.h);
+      ctx.restore();
+    }
+  }
+
+  /**
+   * A line's lit dots, baked once into a strip (glow and all) and then only slid about: they were
+   * hundreds of rects a frame, a fifth of the club's time on a phone (Peter, 3 Oct 2026: slowdown
+   * in the lab).
+   */
+  ledStrip(text, pitch, ss, solid) {
     const skey = `ledtext|${text}|${pitch}|${ss}|${solid}`;
     let strip = this.bakes.get(skey);
     if (!strip) {
@@ -2592,12 +2787,7 @@ export class BangerClubState {
       }
       this.bakes.set(skey, strip);
     }
-    ctx.save();
-    ctx.beginPath(); ctx.rect(x + pitch, y, LED_COLS * pitch, h);
-    ctx.clip();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(strip.c, x + offset * pitch, y, strip.w, strip.h);
-    ctx.restore();
+    return strip;
   }
 
   /**
@@ -3662,17 +3852,19 @@ export class BangerClubState {
       let kick = null;
       if (jolt && !walking && !isActing) {
         if (dance) {
-          pose = { ...pose, shift: (pose.shift || 0) + jolt.side * STUTTER_SHOVE * jolt.k,
-            tilt: (pose.tilt || 0) + jolt.side * STUTTER_TILT * jolt.k };
-          lift += STUTTER_POP * toonH * jolt.k;
+          const k = jolt.k * jolt.amp;
+          pose = { ...pose, shift: (pose.shift || 0) + jolt.side * STUTTER_SHOVE * k,
+            tilt: (pose.tilt || 0) + jolt.side * STUTTER_TILT * k };
+          lift += STUTTER_POP * toonH * k;
         } else {
-          const k = jolt.k * STUTTER_IDLE;
+          const k = jolt.k * jolt.amp * STUTTER_IDLE;
           kick = { dx: jolt.side * STUTTER_SHOVE * k * toonH, tilt: jolt.side * STUTTER_TILT * k };
-          pose = { ...pose, squash: Math.max(pose.squash || 0, STUTTER_SQUASH * (1 - jolt.k) * jolt.k * 4) };
+          pose = { ...pose, squash: Math.max(pose.squash || 0, STUTTER_SQUASH * jolt.amp * (1 - jolt.k) * jolt.k * 4) };
           lift += STUTTER_POP * toonH * k;
         }
       }
-      // a speaker held: everyone on the floor bounces with the bass, harder with the wobble
+      // a speaker held: everyone on the floor bounces with the bass, harder with the wobble;
+      // tapped, they are thrown up with its BOOM
       if (boostHop && !walking && !isActing) {
         lift += boostHop.lift * toonH;
         pose = { ...pose, squash: Math.max(pose.squash || 0, boostHop.squash) };
@@ -3826,7 +4018,7 @@ export class BangerClubState {
     if (!ball) return;
     const u = portrait ? 1.9 * P : 1;
     // the plasma: none while the ball only spins up, then building over the charge's last stretch
-    const spun = this.rerolling > 2 ? 1 - (this.rerolling - 2) / STRIKE_CHARGE_FRAMES : null;
+    const spun = this.rerolling > 2 ? 1 - (this.rerolling - 2) / this.strikeFrames : null;
     const charge = spun != null ? Math.max(0, (spun - (1 - STRIKE_PLASMA)) / STRIKE_PLASMA) : this.rerollArmed() ? 0.12 : null;
     if (charge === 0) return;
     ctx.save();
@@ -3954,10 +4146,10 @@ export class BangerClubState {
     const move = a && HERO_MOVES[a.i];
     if (!move) return beat;
     if (move.slices && this.punch && beat >= this.punch.grab) {
-      // a short slice plays a longer stretch of the dance, faster, so each repeat visibly
-      // goes somewhere before it snaps back to the grab
+      // each repeat goes a little way through the dance (STUTTER_SPAN) and snaps back to the grab
       const { grab, slice } = this.punch;
-      return grab + ((beat - grab) % slice) * (Math.max(slice, STUTTER_SPAN_BEATS) / slice);
+      const span = STUTTER_SPAN[move.slices.indexOf(slice)] ?? STUTTER_SPAN[0];
+      return grab + ((beat - grab) % slice) * (span / slice);
     }
     if (move.onTwoOrFour) {
       const now = this.heardNow();
@@ -3973,13 +4165,15 @@ export class BangerClubState {
 
   /**
    * Ramon's stutter, felt by the dancers: at the top of each repeat a kick to one side (the
-   * other side next repeat), `k` falling from 1 to 0 across the repeat. Null when not stuttering.
+   * other side next repeat), `k` falling from 1 to 0 across the repeat, `amp` how hard
+   * (STUTTER_AMP, harder the faster he punches). Null when not stuttering.
    */
   stutterJolt(beat) {
     const move = this.acting && HERO_MOVES[this.acting.i];
     if (!move?.slices || !this.punch || beat < this.punch.grab) return null;
     const into = (beat - this.punch.grab) / this.punch.slice, n = Math.floor(into);
-    return { side: n % 2 ? -1 : 1, k: (1 - (into - n)) ** 2 };
+    const amp = STUTTER_AMP[move.slices.indexOf(this.punch.slice)] ?? STUTTER_AMP[0];
+    return { side: n % 2 ? -1 : 1, k: (1 - (into - n)) ** 2, amp };
   }
 
   /**
@@ -4088,7 +4282,8 @@ export class BangerClubState {
     this.drawFish(ctx, { u, sx, sw, stageTop, stageBot, floorRef, toonH });
     if (move?.slices && this.punch) {
       const phase = (((beat - this.punch.grab) % this.punch.slice) + this.punch.slice) % this.punch.slice / this.punch.slice;
-      ctx.globalAlpha = (beat >= this.punch.grab ? 0.12 : 0) * Math.exp(-phase * 9);
+      const amp = STUTTER_AMP[move.slices.indexOf(this.punch.slice)] ?? STUTTER_AMP[0];
+      ctx.globalAlpha = (beat >= this.punch.grab ? 0.12 * amp : 0) * Math.exp(-phase * 9);
       ctx.fillStyle = '#ffe2d0';
       ctx.fillRect(sx, stageTop, sw, sh);
     }
@@ -4123,7 +4318,8 @@ export class BangerClubState {
       ctx.fillRect(sx, floorRef, sw, stageBot - floorRef);
     }
     {
-      const speed = Audio.tempo || 1;
+      // Rusty's speed alone: the pitch fader's is the song's own tempo, not a move
+      const speed = (Audio.tempo || 1) / (1 + this.pitch);
       if (speed > 1.01) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = '#ffffff';
@@ -4162,7 +4358,6 @@ export class BangerClubState {
   drawFish(ctx, { u, sx, sw, stageTop, stageBot, floorRef, toonH }) {
     if (!this.fish.length) return;
     const now = this.heardNow(), beatS = this.barSeconds() / 4;
-    const floorY = floorRef + (stageBot - floorRef) * 0.45;
     // They swim in the water ABOVE the heroes — clear of the highest head, bob and fins and all —
     // and only come down among them diving for the floor once the water goes (Peter, 5 Oct
     // 2026: "not ... so close to the heroes heads and definitely no overlap until the water is
@@ -4171,8 +4366,15 @@ export class BangerClubState {
     // signs and then can get closer to the heros heads").
     const heads = Math.min(floorRef - toonH, ...this.boxes.heroes.filter(Boolean).map((b) => b.y));
     const signs = Math.max(stageTop, ...[this.boxes.sign, this.boxes.led].filter(Boolean).map((b) => b.y + b.h));
+    // the water's surface as it drains, as drawMoveRoom draws it (null while it is not draining)
+    const drain = this.acting && HERO_MOVES[this.acting.i]?.drain ? this.acting.drain : null;
+    const water = (time) => {
+      if (!drain) return null;
+      const out = Math.max(0, Math.min(1, (time - drain.from) / Math.max(1e-3, drain.until - drain.from)));
+      return stageBot - (stageBot - stageTop) * (1 - out * out * (3 - 2 * out));
+    };
     const swimAt = (f, time, L) => {
-      const p = (time - f.born) / (FISH_CROSS_BEATS * beatS);
+      const p = (time - f.born) / fishCrossS(f, beatS);
       const bottom = heads - L * 0.68 - toonH * 0.02;
       const top = Math.min(bottom, signs + L * 0.5 + toonH * 0.04);
       return {
@@ -4186,33 +4388,38 @@ export class BangerClubState {
       const L = toonH * fish.size * (f.baby ? BABY_SHARK : 1);
       if (now < f.born) continue;
       let { x, y } = swimAt(f, now, L);
-      let tip = 0, s = 1, alpha = 1;
+      // how far down the stage it swims, for when it dives (fishOn)
+      if (!f.dive) f.y = (y - stageTop) / Math.max(1, stageBot - stageTop);
+      let tip = 0, alpha = 1;
       if (f.dive && now >= f.dive.at) {
         const from = swimAt(f, f.dive.at, L);
-        const k = Math.min(1, (now - f.dive.at) / FISH_DIVE_S);
-        x = from.x + f.dir * L * 1.2 * k;
-        y = from.y + (floorY - from.y) * k * k;
+        // down past the floor to the bottom of the screen, its nose at the edge as it gets there
+        const k = Math.min(1, (now - f.dive.at) / f.dive.dur);
+        const end = stageBot + L * 0.2;
+        // swimming on as it goes down, slowing; and kept under the falling surface (water())
+        x = from.x + f.dir * L * 2.4 * k * (2 - k);
+        y = Math.min(end, Math.max(from.y + (end - from.y) * k ** FISH_DIVE_EASE, (water(now) ?? -Infinity) + L * 0.45));
         tip = Math.min(1.2, k * 2.4);
-        // through the floor: smaller and gone as it goes in
-        if (k > 0.75) { s = 1 - (k - 0.75) / 0.25 * 0.7; alpha = 1 - (k - 0.75) / 0.25; }
-        if (f.splashed != null) {
-          const age = (now - f.splashed) / FISH_SPLASH_S;
+        // fading out as it reaches the bottom
+        alpha = 1 - Math.max(0, Math.min(1, (now - f.dive.at - (f.dive.dur - FISH_SINK_S)) / FISH_SINK_S));
+        if (f.sunk != null) {
+          // the bubbles it leaves going on down: a puff up off the bottom, each its own size,
+          // speed and wobble, rising and swelling a little, gone at the surface (water())
+          const age = now - f.sunk, top = water(now);
+          if (top == null) continue;   // the water gone (or the move over): nothing to rise in
           ctx.strokeStyle = '#bff8ff';
-          for (const lag of [0, 0.25]) {
-            const q = age - lag;
+          for (let d = 0; d < FISH_BUBBLES; d++) {
+            const r = hash(d, f.kind + 3, Math.floor(f.born * 7) % 97), r2 = hash(d, 11, f.kind + 5);
+            const q = (age - d * 0.05 - r * 0.1) / (0.9 + 0.35 * r2);
             if (q <= 0 || q >= 1) continue;
-            ctx.globalAlpha = 0.7 * (1 - q);
-            ctx.lineWidth = Math.max(0.6 * u, L * 0.05);
-            ctx.beginPath(); ctx.ellipse(x, floorY, L * (0.25 + q * 0.95), L * (0.08 + q * 0.3), 0, 0, Math.PI * 2); ctx.stroke();
-          }
-          // a few drops thrown up
-          if (age < 0.5) {
-            ctx.fillStyle = '#bff8ff';
-            for (let d = 0; d < 5; d++) {
-              const vx = (d - 2) * 0.35, q = age / 0.5;
-              ctx.globalAlpha = 0.8 * (1 - q);
-              ctx.beginPath(); ctx.arc(x + vx * L * q, floorY - L * (0.9 - 0.25 * Math.abs(d - 2)) * Math.sin(Math.PI * q), Math.max(u * 0.6, L * 0.035), 0, Math.PI * 2); ctx.fill();
-            }
+            const rad = Math.max(0.8 * u, L * (0.05 + 0.05 * r2) * (1 + q * 0.4));
+            const by = stageBot - L * 0.15 - q * L * (1.8 + 1.4 * r);
+            if (by < top + rad) continue;
+            const bx = x + (r - 0.5) * L * 0.7 + Math.sin(q * 9 + d * 2.3) * L * 0.08;
+            ctx.globalAlpha = 0.75 * Math.min(1, q * 8) * (1 - q);
+            ctx.lineWidth = Math.max(0.5 * u, rad * 0.22);
+            ctx.beginPath(); ctx.arc(bx, by, rad, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(bx - rad * 0.3, by - rad * 0.3, rad * 0.35, 3.4, 4.8); ctx.stroke();
           }
           continue;
         }
@@ -4220,9 +4427,9 @@ export class BangerClubState {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.translate(x, y);
-      ctx.scale(f.dir * s, s);
+      ctx.scale(f.dir, 1);
       ctx.rotate(tip);
-      drawPaperFish(ctx, fish, L, { t: now, beat: this.beat(), wag: Math.sin(now * (f.baby ? 26 : 13) + f.born * 5), dive: tip / 1.2, lite: this.lite, baby: f.baby, heroH: toonH });
+      drawPaperFish(ctx, fish, L, { t: now, beat: this.beat(), wag: Math.sin(now * (f.baby ? 26 : 13 / (fish.pace ?? 1)) + f.born * 5), dive: tip / 1.2, lite: this.lite, baby: f.baby, heroH: toonH });
       ctx.restore();
     }
     ctx.restore();
@@ -4294,21 +4501,33 @@ export class BangerClubState {
    * The heroes' bounce while a speaker is held (BOOST_HOP): a hop off the floor on every kick —
    * on the beat with the drums out, or no kick playing — and with the wobble dragged, one on
    * every eighth, as high as the drag, as the floor's scraps hop (scrapHop). The higher of the
-   * two, so the bounce grows out of the kick's as the drag goes deeper. Null while nothing is
-   * boosted; else { lift (of a hero's height), squash }.
+   * two, so the bounce grows out of the kick's as the drag goes deeper. A speaker tapped
+   * (BOOM_HOP) throws them up with its BOOM, bouncing to a stop. Null while nothing is
+   * boosted or booming; else { lift (of a hero's height), squash }.
    */
   boostHop() {
     const b = this.boost;
-    if (!b || this.paused) return null;
-    const beat = this.beat();
-    const kick = (this.heard.drums > 0 && this.kickThump()) || Math.exp(-(((beat % 1) + 1) % 1) * 6);
-    const eighth = (((beat * 2) % 1) + 1) % 1;
-    const wob = b.amount > 0.04 ? b.amount : 0;
-    return {
-      lift: Math.max(BOOST_HOP * 4 * kick * (1 - kick), WOBBLE_HOP * wob * Math.sin(Math.PI * eighth)),
+    const since = this.heardNow() - this.speakerBoomAt;
+    const boom = since > -BOOM_CROUCH_S && since < BOOM_HOP_S ? since : null;
+    if ((!b && boom == null) || this.paused) return null;
+    let lift = 0, squash = 0;
+    if (b) {
+      const beat = this.beat();
+      const kick = (this.heard.drums > 0 && this.kickThump()) || Math.exp(-(((beat % 1) + 1) % 1) * 6);
+      const eighth = (((beat * 2) % 1) + 1) % 1;
+      const wob = b.amount > 0.04 ? b.amount : 0;
+      lift = Math.max(BOOST_HOP * 4 * kick * (1 - kick), WOBBLE_HOP * wob * Math.sin(Math.PI * eighth));
       // the knees take the landing: on the kick itself, and just after each eighth comes down
-      squash: Math.max(BOOST_SQUASH * kick ** 4, WOBBLE_SQUASH * wob * Math.max(0, 1 - eighth * 5)),
-    };
+      squash = Math.max(BOOST_SQUASH * kick ** 4, WOBBLE_SQUASH * wob * Math.max(0, 1 - eighth * 5));
+    }
+    if (boom != null && boom < 0) squash = Math.max(squash, BOOM_SQUASH * (1 + boom / BOOM_CROUCH_S));
+    else if (boom != null) {
+      const decay = Math.exp(-boom * BOOM_DECAY), ph = boom / BOOM_BOUNCE_S;
+      lift = Math.max(lift, BOOM_HOP * decay * Math.abs(Math.sin(Math.PI * ph)));
+      // each landing into the knees, the first push-off out of the crouch
+      squash = Math.max(squash, BOOM_SQUASH * decay * Math.max(0, 1 - (ph % 1) * 5));
+    }
+    return { lift, squash };
   }
 
   /**
@@ -4883,12 +5102,21 @@ export class BangerClubState {
     this.boxes.panel = null;
     this.boxes.reset = null;
     this.boxes.dice = null;
+    this.boxes.pitch = null;
+    this.boxes.pitchZero = null;
     if (this.mixerOpen) {
       // SILVER, the bottom row's family — the gold lost here too (Peter, 6 Oct 2026). Each
       // strip, top to bottom: the part's icon, its MUTE and SOLO, the fader on a scale, its
       // name, and its SOUND button (club-voices.js), a tap for the next one.
       const SILVER = '#dcdee8', SILVER_DIM = 'rgba(206,208,222,0.45)', OFF_INK = '#5a5a68';
-      const pw = portrait ? W * 0.84 : L(156), ph = portrait ? 262 * P : Math.min(L(122), my - r - 6 - stageTop - 8);
+      // in landscape the RESET and DICE tabs (below) stand out of the panel's top edge, so the
+      // panel keeps clear of the stage's top by their height too, its faders shorter for it: on a
+      // phone's cover crop the tabs were cut off (Peter, 6 Oct 2026)
+      const tabRise = L(4.4) * 2 * 0.82;
+      // the PITCH strip's column, at the right end: landscape's panel grows by it, portrait's
+      // parts share their width with it
+      const pitchW = portrait ? W * 0.84 * 0.17 : L(28);
+      const pw = portrait ? W * 0.84 : L(156) + pitchW, ph = portrait ? 262 * P : Math.min(L(122), my - r - 6 - stageTop - tabRise - 6);
       const px = portrait ? (W - pw) / 2 : W - safeR - 10 - pw;
       const py = (portrait ? my - r - 16 * P : my - r - 6) - ph;
       this.boxes.panel = { x: px, y: py, w: pw, h: ph };
@@ -4936,7 +5164,27 @@ export class BangerClubState {
       }
       const S = (portraitV, landV) => (portrait ? portraitV * P : L(landV));
       const pad = S(12, 6);
-      const cw = (pw - pad * 2) / PARTS.length;
+      const cw = (pw - pad * 2 - pitchW) / PARTS.length;
+      // a fader's cap: a brushed-metal knob with its grip line across the middle, on a soft shadow
+      const faderCap = (cx, capY, lit, sel) => {
+        const capW = S(34, 15), capH = S(18, 8);
+        const cl = cx - capW / 2, ct = capY - capH / 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        rr(ctx, cl, ct + S(2, 0.9), capW, capH, capH * 0.28); ctx.fill();
+        const g = ctx.createLinearGradient(0, ct, 0, ct + capH);
+        const [hi, md, lo] = lit ? ['#f6f7fb', '#c6c8d6', '#8a8da2'] : ['#6a6c7e', '#4e5062', '#383a4a'];
+        g.addColorStop(0, hi); g.addColorStop(0.48, md); g.addColorStop(0.52, lo); g.addColorStop(1, md);
+        ctx.fillStyle = g;
+        rr(ctx, cl, ct, capW, capH, capH * 0.28); ctx.fill();
+        ctx.strokeStyle = sel ? '#c9a0ff' : 'rgba(11,11,20,0.6)'; ctx.lineWidth = (sel ? 1.2 : 0.6) * u; ctx.stroke();
+        ctx.lineWidth = 0.8 * u;
+        ctx.strokeStyle = lit ? '#2a2b38' : '#1d1d28';
+        ctx.beginPath(); ctx.moveTo(cl + capW * 0.12, capY); ctx.lineTo(cl + capW * 0.88, capY); ctx.stroke();
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.5 * u;
+        ctx.beginPath();
+        for (const dy of [-0.26, 0.26]) { ctx.moveTo(cl + capW * 0.22, capY + capH * dy); ctx.lineTo(cl + capW * 0.78, capY + capH * dy); }
+        ctx.stroke();
+      };
       const iconY = py + S(24, 10);
       const msH = S(20, 7.5), msW = Math.min(S(32, 11), (cw - S(12, 4)) / 2), msY = py + S(42, 17.5);
       const chipH = S(24, 9), chipY = py + ph - S(10, 4) - chipH;
@@ -4988,24 +5236,7 @@ export class BangerClubState {
           ctx.fillStyle = g;
           rr(ctx, cx - tw / 2 + 0.6 * u, capY, tw - 1.2 * u, bot - capY, (tw - 1.2 * u) / 2); ctx.fill();
         }
-        // the cap: a brushed-metal knob with its grip line across the middle, on a soft shadow
-        const capW = S(34, 15), capH = S(18, 8);
-        const cl = cx - capW / 2, ct = capY - capH / 2;
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        rr(ctx, cl, ct + S(2, 0.9), capW, capH, capH * 0.28); ctx.fill();
-        const g = ctx.createLinearGradient(0, ct, 0, ct + capH);
-        const [hi, md, lo] = heard ? ['#f6f7fb', '#c6c8d6', '#8a8da2'] : ['#6a6c7e', '#4e5062', '#383a4a'];
-        g.addColorStop(0, hi); g.addColorStop(0.48, md); g.addColorStop(0.52, lo); g.addColorStop(1, md);
-        ctx.fillStyle = g;
-        rr(ctx, cl, ct, capW, capH, capH * 0.28); ctx.fill();
-        ctx.strokeStyle = sel ? '#c9a0ff' : 'rgba(11,11,20,0.6)'; ctx.lineWidth = (sel ? 1.2 : 0.6) * u; ctx.stroke();
-        ctx.lineWidth = 0.8 * u;
-        ctx.strokeStyle = heard ? '#2a2b38' : '#1d1d28';
-        ctx.beginPath(); ctx.moveTo(cl + capW * 0.12, capY); ctx.lineTo(cl + capW * 0.88, capY); ctx.stroke();
-        ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.5 * u;
-        ctx.beginPath();
-        for (const dy of [-0.26, 0.26]) { ctx.moveTo(cl + capW * 0.22, capY + capH * dy); ctx.lineTo(cl + capW * 0.78, capY + capH * dy); }
-        ctx.stroke();
+        faderCap(cx, capY, heard, sel);
         ctx.fillStyle = level > 0 ? (heard ? '#c8c8d8' : '#6a6a7c') : '#e04848';
         ctx.font = `600 ${S(11, 5.5)}px ${BODY_FONT}`;
         ctx.textAlign = 'center';
@@ -5050,6 +5281,102 @@ export class BangerClubState {
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'left';
       });
+      // THE PITCH strip, past a rule at the right end, on the parts' rows: a metronome ticking
+      // with the song; the percent off the written tempo, a tap back to it; the fader, up
+      // faster, with the turntable's lamp at its middle, lit while it sits there; and the BPM
+      // the song is playing at.
+      {
+        const cx = px + pw - pad - pitchW / 2;
+        const sel = this.mixSel === PARTS.length && !Input.usingTouch;
+        const off = this.pitch !== 0;
+        ctx.strokeStyle = 'rgba(206,208,222,0.16)'; ctx.lineWidth = 0.6 * u;
+        ctx.beginPath(); ctx.moveTo(cx - pitchW / 2, py + S(16, 6)); ctx.lineTo(cx - pitchW / 2, py + ph - S(16, 6)); ctx.stroke();
+        // the metronome: a body narrowing to its top, and the arm swinging out to a side each beat
+        {
+          const rm = S(13, 6.5), swing = 0.42 * Math.cos(Math.PI * (this.beat() || 0));
+          const by = iconY + rm * 0.5, ty = iconY - rm * 0.55;
+          ctx.strokeStyle = SILVER; ctx.fillStyle = SILVER; ctx.lineWidth = 0.9 * u;
+          ctx.beginPath();
+          ctx.moveTo(cx - rm * 0.5, by); ctx.lineTo(cx - rm * 0.2, ty); ctx.lineTo(cx + rm * 0.2, ty); ctx.lineTo(cx + rm * 0.5, by);
+          ctx.closePath(); ctx.stroke();
+          const pivot = by - rm * 0.18, arm = rm * 0.82;
+          const ax = cx + Math.sin(swing) * arm, ay = pivot - Math.cos(swing) * arm;
+          ctx.beginPath(); ctx.moveTo(cx, pivot); ctx.lineTo(ax, ay); ctx.stroke();
+          const wx = cx + Math.sin(swing) * arm * 0.6, wy = pivot - Math.cos(swing) * arm * 0.6;
+          ctx.fillRect(wx - rm * 0.11, wy - rm * 0.08, rm * 0.22, rm * 0.16);
+        }
+        // the percent, on the MUTE / SOLO row: lit while the song is off its written tempo
+        {
+          const bw = Math.min(pitchW - S(8, 2.5), S(52, 22)), bx = cx - bw / 2;
+          this.boxes.pitchZero = { x: bx - S(2, 1), y: msY - S(4, 1.5), w: bw + S(4, 2), h: msH + S(8, 3) };
+          ctx.fillStyle = '#1d1a2c';
+          rr(ctx, bx, msY, bw, msH, msH * 0.3); ctx.fill();
+          ctx.strokeStyle = off ? SILVER : SILVER_DIM; ctx.lineWidth = 0.8 * u; ctx.stroke();
+          const pct = Math.round(this.pitch * 1000) / 10;
+          const txt = off ? `${pct > 0 ? '+' : '−'}${Math.abs(pct).toFixed(1)}%` : '0%';
+          let fs = S(10, 4);
+          ctx.font = `700 ${fs}px ${BODY_FONT}`;
+          const wide = ctx.measureText(txt).width, room = bw - S(6, 2);
+          if (wide > room) { fs *= room / wide; ctx.font = `700 ${fs}px ${BODY_FONT}`; }
+          ctx.fillStyle = off ? '#ffffff' : '#a3a6ba';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(txt, cx, msY + msH / 2 + 0.5 * u);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        }
+        // the scale: a tick each 2%, the ends and the middle longer
+        const tw = S(5, 2.4), mid = (top + bot) / 2, half = (bot - top) / 2;
+        this.boxes.pitch = { x: cx - pitchW / 2, y: top - 8 * u, w: pitchW, h: bot - top + 16 * u, top, bot };
+        ctx.strokeStyle = 'rgba(206,208,222,0.28)'; ctx.lineWidth = 0.6 * u;
+        ctx.beginPath();
+        for (let n = -4; n <= 4; n++) {
+          const ty = mid - half * n / 4, long = n % 4 === 0;
+          const x1 = cx - tw / 2 - S(5, 2.2);
+          ctx.moveTo(x1, ty); ctx.lineTo(x1 - (long ? S(8, 3.6) : S(4, 1.8)), ty);
+        }
+        ctx.stroke();
+        // + at the top, − at the bottom, by the scale's ends — past the cap, which rides over them
+        const side = cx + S(34, 15) / 2 + S(5, 2.2);
+        ctx.fillStyle = 'rgba(206,208,222,0.5)';
+        ctx.font = `700 ${S(9, 3.6)}px ${BODY_FONT}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('+', side, top);
+        ctx.fillText('−', side, bot);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        // the slot, lit in silver from the middle out to the cap
+        const capY = mid - half * this.pitch / PITCH_RANGE;
+        ctx.fillStyle = '#07070d';
+        rr(ctx, cx - tw / 2, top, tw, bot - top, tw / 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.6 * u; ctx.stroke();
+        if (off) {
+          const g = ctx.createLinearGradient(cx - tw / 2, 0, cx + tw / 2, 0);
+          g.addColorStop(0, '#7e8196'); g.addColorStop(0.5, '#e4e6ef'); g.addColorStop(1, '#7e8196');
+          ctx.fillStyle = g;
+          ctx.fillRect(cx - tw / 2 + 0.6 * u, Math.min(mid, capY), tw - 1.2 * u, Math.abs(capY - mid));
+        }
+        // the lamp at the middle, beside the cap: on at the written tempo
+        ctx.fillStyle = off ? '#2a2b38' : '#f2f3fa';
+        ctx.beginPath(); ctx.arc(side, mid, S(2.6, 1.1), 0, Math.PI * 2); ctx.fill();
+        faderCap(cx, capY, true, sel);
+        // the BPM it plays at: the label, and the number where a part's sound button is
+        ctx.fillStyle = '#c8c8d8';
+        ctx.font = `600 ${S(11, 5.5)}px ${BODY_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.fillText('BPM', cx, labelY);
+        const chipW = pitchW - S(8, 3);
+        ctx.fillStyle = '#07070d';
+        rr(ctx, cx - chipW / 2, chipY, chipW, chipH, chipH / 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.6 * u; ctx.stroke();
+        const num = this.playedBpm.toFixed(1);
+        let fs = S(11, 4.4);
+        ctx.font = `700 ${fs}px ${BODY_FONT}`;
+        const wide = ctx.measureText(num).width, room = chipW - chipH * 0.5;
+        if (wide > room) { fs *= room / wide; ctx.font = `700 ${fs}px ${BODY_FONT}`; }
+        ctx.fillStyle = off ? '#ffffff' : SILVER;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(num, cx, chipY + chipH / 2);
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
+      }
     }
     // NO DRUMS / YES DRUMS: a popup over the icons when a part is switched
     if (this.popup && t - this.popup.t < 1.4) {
@@ -5292,11 +5619,17 @@ export class BangerClubState {
     const fs = portrait ? [10 * P, 13 * P] : [7, 10];
     const lh = portrait ? 18 * P : 13;
     ctx.save();
-    const bpm = Math.round(this.song?.bpm || 0);
-    const tempo = bpm > 0 ? `${bpm} BPM` : '';
+    const bpm = Math.round(this.playedBpm);
+    // and the take's seed beside it, the number THE BOLT rolled (Peter, 6 Oct 2026: "is the seed
+    // # when rerolling an actual number as such? could we show it in the now playing")
+    const seed = Number.isInteger(this.rec?.seed) ? `SEED ${this.rec.seed}` : '';
+    const tempo = [bpm > 0 ? `${bpm} BPM` : '', seed].filter(Boolean).join('  ·  ');
     const sh = tempo ? (portrait ? 13 * P : 9) : 0;   // the tempo's line, shorter than the others
+    const tempoFont = `500 ${portrait ? 9 * P : 6}px ${BODY_FONT}`;
+    ctx.font = tempoFont;
+    const tempoW = tempo ? ctx.measureText(tempo).width : 0;
     ctx.font = `${fs[1]}px ${TITLE_FONT}`;
-    const boxW = Math.min(W - 16, ctx.measureText(title).width + (portrait ? 32 * P : 24));
+    const boxW = Math.min(W - 16, Math.max(ctx.measureText(title).width, tempoW) + (portrait ? 32 * P : 24));
     const boxH = lh * 2 + sh + (portrait ? 12 * P : 10);
     // under the ball — in portrait too, now the ball hangs low and the signs fill the space over
     // it (Peter, 5 Oct 2026: "the messages displayed need to come down lower in portrait")
@@ -5314,7 +5647,7 @@ export class BangerClubState {
     ctx.fillStyle = '#48e0c8';
     ctx.fillText(title, W / 2, by + (portrait ? 6 * P : 5) + lh * 1.5, boxW - 16);
     if (tempo) {
-      ctx.font = `500 ${portrait ? 9 * P : 6}px ${BODY_FONT}`;
+      ctx.font = tempoFont;
       ctx.fillStyle = '#8f8b9e';
       ctx.fillText(tempo, W / 2, by + (portrait ? 6 * P : 5) + lh * 2 + sh * 0.4, boxW - 16);
     }

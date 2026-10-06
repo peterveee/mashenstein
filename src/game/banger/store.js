@@ -228,7 +228,7 @@ export function deleteBanger(rec, save = defaultSave) {
  */
 export function keepMixer(rec, mixer, save = defaultSave) {
   if (!rec) return;
-  const plain = !mixer || (Object.values(mixer.levels || {}).every((v) => v === 1) && !mixer.sounds?.swapped
+  const plain = !mixer || (Object.values(mixer.levels || {}).every((v) => v === 1) && !mixer.pitch && !mixer.sounds?.swapped
     && !Object.keys(mixer.sounds?.own || {}).length && !Object.keys(mixer.sounds?.swap || {}).length);
   if (plain) delete rec.mixer; else rec.mixer = structuredClone(mixer);
   save.persist?.();

@@ -77,7 +77,6 @@ class InputSys {
     this.padConnected = false;  // any pad seen by the last poll; see rewindAvailable()
     this.onAnyGesture = null;   // audio unlock hook
     this.usingTouch = false;
-    this.swipeLeft = false;     // menu back gesture, consumed by the current state
     this.doubleTapTarget = null;
     this.doubleTapCandidate = null;
     this.context = 'default';
@@ -122,7 +121,6 @@ class InputSys {
       if (this.suspended) { e.preventDefault(); return; }
       this.activity++;
       this.usingTouch = e.pointerType === 'touch';
-      this.swipeLeft = false;
       this.onAnyGesture && this.onAnyGesture();
       const p = clientToLogical(e.clientX, e.clientY);
       this.pointer = { x: p.x, y: p.y, down: true };
@@ -247,19 +245,9 @@ class InputSys {
       this.pointer.x = p.x; this.pointer.y = p.y;
       const t = this.touches.get(e.pointerId);
       if (t && !t.isButton) { t.x = p.x; t.y = p.y; }
-      // Menus use a leftward touch swipe as their Back gesture. Keep it out of
-      // gameplay and the hub (where a horizontal drag steers the player), and
-      // let the jukebox visualiser consume the same back press as a preset
-      // browse gesture before it can wake the screen.
-      if (t && !t.isButton && this.usingTouch && (this.context === 'menu' || this.menuKeys)
-        && !t.menuSwipeBack) {
-        const dx = p.x - t.x0, dy = p.y - t.y0;
-        if (dx <= -24 && Math.abs(dx) > Math.abs(dy) * 1.15) {
-          t.menuSwipeBack = true;
-          this.swipeLeft = true;
-          this.press('back');
-        }
-      }
+      // No swipe is ever Back: on touch a player goes back with the screen's
+      // BACK button (Peter, 6 Oct 2026). A leftward swipe used to be, in menus,
+      // and a drag on a club fader or a held hero read as one.
       if (t && !t.isButton && t.allowSwipe) {
         const dx = p.x - t.x0, dy = p.y - t.y0;
         // A finger measurably on its way down is a finger that has not finished
@@ -327,7 +315,6 @@ class InputSys {
         // A guarded one was deliberately given no action, so releasing jump
         // here would cut a jump a DIFFERENT finger is holding on the pill.
         else if (this.usingTouch && !t.guarded && screen.presentationMode !== 'phone-portrait') this.release('jump');
-        if (t.menuSwipeBack) this.release('back');
         this.touches.delete(e.pointerId);
       }
       if (this.touches.size === 0) { this.pointer.down = false; this.release('pointer'); }
@@ -571,7 +558,6 @@ class InputSys {
     this.holds = [];
     this.padPrev = new Set();
     this.pointer.down = false;
-    this.swipeLeft = false;
     this.doubleTapCandidate = null;
   }
   setSuspended(on) {
@@ -674,7 +660,7 @@ class InputSys {
     }
   }
 
-  endFrame() { this.hit.clear(); this.up.clear(); this.pressedAt.clear(); this.swipeLeft = false; this.wheelY = 0; }
+  endFrame() { this.hit.clear(); this.up.clear(); this.pressedAt.clear(); this.wheelY = 0; }
 }
 
 export const Input = new InputSys();

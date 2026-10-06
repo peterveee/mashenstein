@@ -312,6 +312,9 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const { back, gen, del } = jb.backPlates();
   assert(jb.tracks.length === n && !gen && !del && jb.pointerIndex(jb.backY + jb.backH / 2, back.x + back.w - 4) === n,
     'the jukebox lists only the shipped songs, with BACK alone under them');
+  const labHalf = new SoundTestState({ onDone: () => {}, lab: true }).backPlates().back;
+  assert(back.x === labHalf.x && back.w === labHalf.w && jb.pointerIndex(jb.backY + jb.backH / 2, back.x + back.w + 20) === -1,
+    'the jukebox\'s BACK sits on the left, as wide as the Lab\'s, the rest of the row no button');
   jb.draw(document.createElement('canvas').getContext('2d'));
   const lab = new SoundTestState({ onDone: () => {}, lab: true });
   lab.enter();
@@ -855,17 +858,43 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.fishOn();
     // the ones not in yet never come; the one in the room dives
     const dives = club.fish.length === 1 && !!club.fish[0].dive;
+    const dive = club.fish[0]?.dive, drainS = club.acting.drain.until - club.acting.drain.from;
+    // ...not at once: it swims on till the falling surface is about a quarter of the stage over it
+    // (the drawn water falls on a smoothstep), then dives quickly and is through the floor before
+    // the water is gone
+    const fy = 0.22 + 0.33 * club.fish[0].h, out = (dive.at - club.fish[0].lag - club.acting.drain.from) / drainS;
+    const surface = out * out * (3 - 2 * out);
+    const unhurried = dive && Math.abs(surface - Math.max(0, fy - 0.24)) < 1e-6 && dive.dur < drainS * 0.3
+      && dive.at - club.acting.drain.from + dive.dur < drainS;
     club.draw(ctx);
-    club.t += 0.8; club.fishOn();
-    const splashed = club.fish[0]?.splashed != null;
+    // (no audio here: heardNow is the club's own clock)
+    club.t = dive.at + dive.dur * 0.6; club.fishOn();
+    const stillDiving = club.fish[0]?.dive && club.fish[0].sunk == null;
     club.draw(ctx);
-    club.t += 1; club.fishOn();
+    club.t = dive.at + dive.dur + 0.02; club.fishOn();
+    const sunk = club.fish[0]?.sunk != null;
+    club.draw(ctx);
+    club.t += 0.5; club.fishOn();
+    const bubbling = club.fish.length === 1;
+    club.draw(ctx);
+    club.t += 1.2; club.fishOn();
     const gone = club.fish.length === 0;
     club.t = t0; club.acting = null;
-    assert(Math.abs(drainSeconds(move, 0.1) - 3.2) < 1e-9 && swims && dives && splashed && gone,
-      'Underwater: a fish swims past once he is held two bars; let go, the water drains for two bars and the fish dives through the floor');
+    assert(Math.abs(drainSeconds(move, 0.1) - 3.2) < 1e-9 && swims && dives && unhurried && stillDiving && sunk && bubbling && gone,
+      `Underwater: a fish swims past once he is held two bars; let go, the water drains for two bars and the fish waits for the water, then dives through the floor, bubbles rising after it (${[swims, dives, unhurried, stillDiving, sunk, bubbling, gone]})`);
     // the party shark never swims alone: its baby follows it, the same way, a little behind
     const { FISHES } = await import('../src/game/banger/club-fish.js');
+    // ...and the puffer dawdles: still crossing after the others have gone
+    {
+      const puffer = FISHES.findIndex((f) => f.name === 'PUFFER'), googly = FISHES.findIndex((f) => f.name === 'GOOGLY');
+      club.acting = { i: li, when: club.heardNow() - 100 * beatS, bar: club.barSeconds(), dur: Infinity, fishN: 999 };
+      club.fish = [puffer, googly].map((kind) => ({ kind, born: club.heardNow() - 7 * beatS, dir: 1, h: 0.5, lag: 0, dive: null, sunk: null }));
+      club.fishOn();
+      const kinds = club.fish.map((f) => f.kind);
+      club.fish = []; club.acting = null;
+      assert(FISHES.filter((f) => (f.pace ?? 1) > 1).length === 1 && kinds.join() === String(puffer),
+        'one fish, the puffer, swims across slower than the rest');
+    }
     const shark = FISHES.findIndex((f) => f.name === 'PARTY SHARK');
     const seq = [0.1, (shark + 0.5) / FISHES.length, 0.3, 0.5, 0.5];
     let n = 0;
@@ -1265,6 +1294,64 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       'RESET clears every mute and solo');
     club.draw(ctx);
   }
+  // THE PITCH fader beside the parts (Peter, 6 Oct 2026: "like you can on a technics 1200"): the
+  // tempo ±8% on the transport's warp, the key left alone; a drag moves it, a tap does not; a
+  // click at the middle; Rusty's speed rides on it; kept with the song; RESET and its readout
+  // put it back
+  {
+    const { PITCH_RANGE, setSpeed } = await import('../src/game/banger/club-fx.js');
+    const near = (a, b) => Math.abs(a - b) < 1e-9;
+    const drag = (x, y0, y1) => {
+      Input.pointer = { x, y: y0, down: true };
+      Input.press('pointer');
+      club.update(1 / 60);
+      Input.pointer = { x, y: y1, down: true };
+      club.update(1 / 60);
+      Input.release('pointer');
+      Input.pointer.down = false;
+      club.update(1 / 60);
+      Input.endFrame();
+      club.update(1 / 60);   // the finger is off: the mixer is kept on the frame after
+    };
+    const f = club.boxes.pitch, last = club.boxes.faders[PARTS.length - 1];
+    const mid = (f.top + f.bot) / 2, half = (f.bot - f.top) / 2, x = f.x + f.w / 2;
+    assert(PITCH_RANGE === 0.08 && f && club.boxes.pitchZero && f.x >= last.x + last.w - 1 && club.pitch === 0
+      && near(Audio.tempo, 1) && club.playedBpm === club.song.bpm,
+    'a PITCH strip right of the faders, ±8% like a Technics, at the song\'s own tempo');
+    tap(club, x, f.top + 2);
+    club.update(1 / 60);
+    assert(club.pitch === 0 && near(Audio.tempo, 1), 'a tap on the pitch slot does not throw the tempo');
+    drag(x, mid, mid - half / 2);
+    assert(near(club.pitch, 0.04) && near(Audio.tempo, 1.04) && Audio.detune === 1 && near(club.playedBpm, club.song.bpm * 1.04)
+      && club.rec.mixer?.pitch === club.pitch && !club.mixerPlain,
+    `dragged halfway up: 4% faster, the key unmoved, kept with the song (${club.pitch}, ${Audio.tempo}, ${JSON.stringify(club.rec.mixer)})`);
+    setSpeed(0.5);
+    const slow = Audio.tempo;
+    setSpeed(1);
+    assert(near(slow, 0.52) && near(Audio.tempo, 1.04), `Rusty's speed rides on the pitch, and lets go back to it (${slow})`);
+    drag(x, mid, f.top - half);
+    assert(near(club.pitch, PITCH_RANGE) && near(Audio.tempo, 1 + PITCH_RANGE), 'and no further than 8%');
+    club.setPitch(0.003);
+    assert(club.pitch === 0, 'a click at the middle: within 0.4% is the written tempo');
+    club.setPitch(-0.03);
+    club.update(1 / 60);
+    const again = new BangerClubState({ rec: club.rec, onBack: () => {} });
+    again.enter();
+    const back = again.pitch === -0.03 && near(Audio.tempo, 0.97);
+    again.exit();
+    assert(back && near(Audio.tempo, 1), `the pitch is back when the song is opened again, and gone when it is left (${again.pitch})`);
+    Audio.setBank(club.song.bank, club.song.mix, club.song.arrangement, { startAtBeginning: true });
+    club.draw(ctx);
+    tap(club, ...centre(club.boxes.pitchZero));
+    club.update(1 / 60);
+    assert(club.pitch === 0 && near(Audio.tempo, 1) && club.mixerPlain && !club.rec.mixer,
+      'its readout is a tap back to the written tempo');
+    club.setPitch(0.05);
+    club.draw(ctx);
+    tap(club, ...centre(club.boxes.reset));
+    assert(club.pitch === 0 && near(Audio.tempo, 1) && club.mixerPlain, 'and RESET puts the pitch back too');
+    club.draw(ctx);
+  }
   for (let k = 0; k < 600; k++) club.update(1 / 60);
   assert(club.mixerOpen, 'the panel stays open, untouched, until it is closed — ten seconds and still there');
   tap(club, 5, 5);
@@ -1334,6 +1421,18 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     const slices = new Set([0, 0.3, 0.6, 0.9].map((r) => holdChain(ramon, () => r)[0].params.slice));
     assert(slices.size === 4 && [...slices].every((x) => [1, 0.5, 0.25, 0.125].includes(x)),
       'Ramon\'s stutter is quarters, eighths, sixteenths or thirty-seconds, a different one each press');
+    // ...and the floor's kick from it is gentler than it was, harder the higher he is dragged
+    {
+      const realActing = club.acting, realPunch = club.punch;
+      club.acting = { i: HERO_MOVES.indexOf(ramon), when: 0, bar: 2, dur: Infinity };
+      const amps = ramon.slices.map((slice) => { club.punch = { grab: 0, slice }; return club.stutterJolt(0.01).amp; });
+      // how far through the dance one repeat goes, just before it snaps back
+      const spans = ramon.slices.map((slice) => { club.punch = { grab: 0, slice }; return club.danceBeat(slice * 0.999); });
+      club.acting = realActing; club.punch = realPunch;
+      assert(amps.every((a, k) => a < 1 && (k === 0 || a > amps[k - 1])), `Ramon's stutter kicks the dancers harder the higher it is dragged, never as hard as it was (${amps})`);
+      assert(spans.every((x, k) => x < 0.5 && (k === 0 || x > spans[k - 1])),
+        `...and each repeat goes less far through the dance than it did, a little further the higher it is dragged (${spans.map((x) => x.toFixed(2))})`);
+    }
     const grumpos = HERO_MOVES.find((m) => m.hero === 'grumpos');
     assert(grumpos.backbeat && grumpos.chain.some((fx) => fx.id === 'pingpong') && moveSeconds(grumpos, 0.1) === 0.4,
       'Grumpos throws a beat — the 2 or the 4 — into a ping-pong echo: his boomerang');
@@ -1368,6 +1467,32 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     const all = [...LED_SLOGANS, ...LED_SCROLLS, ...Object.values(LED_STYLE_LINES).flatMap((l) => [...l.hold, ...l.scroll])];
     assert(removed.every((r) => !all.includes(r)), 'the lines Peter cut are gone');
     assert(all.every((t) => /^[A-Z0-9 !?\-.':()\/{}]+$/.test(t)), 'every line is in the board\'s font');
+    // every line comes on moving: a short one pushed in from the top or the bottom a row at a time,
+    // shoving the old one off the other edge a row behind it; a scroller carries the old one off left
+    club.t = 1000; club.led = null;
+    club.showLed('OPEN LATE');
+    club.t = 1010;
+    club.showLed('TURBO!');
+    const first = club.ledText();
+    const dir = club.led.dir;
+    let pushed = Math.abs(first.dy) === 8 && first.from?.text === 'OPEN LATE' && first.from.dy === 0, steps = new Set();
+    for (let t = 1010; t < 1011; t += 0.01) {
+      club.t = t;
+      const l = club.ledText();
+      steps.add(l.dy);
+      if (l.dy !== 0 && (!l.from || l.from.dy !== l.dy - dir * 8 || Math.sign(l.dy) !== dir)) pushed = false;
+      if (l.dy === 0 && l.from) pushed = false;
+    }
+    assert(pushed && steps.size === 9 && [...steps].every(Number.isInteger),
+      'a short line is pushed on from the top or the bottom a dot row at a time, shoving the old one off the other edge');
+    club.t = 1012;
+    club.showLed('DOLORES HAS LEFT THE BUILDING');
+    const s0 = club.ledText();
+    club.t = 1013;
+    const s1 = club.ledText();
+    assert(s0.from?.text === 'TURBO!' && s1.from && s1.from.offset === s0.from.offset - (s0.offset - s1.offset)
+      && s1.from.cut === s1.offset - 1 && s1.dy === 0, 'a scroller shoves the old line off to the left as it comes on');
+    club.t = realT; club.led = null;
   }
   // Skirts: no footwork — tap one foot, stand, or hop on the spot; Grumpos only stands.
   {
@@ -1693,6 +1818,16 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     tap(club, ...spot);
     club.update(1 / 60);
     const boomed = club.boomAt > -Infinity && !club.speakerHold;
+    // ...and the tap throws the heroes up with its BOOM: knees in just before, up, bouncing to a stop
+    {
+      const realHeard = club.heardNow, at = club.speakerBoomAt;
+      const hop = (dt) => { club.heardNow = () => at + dt; return club.boostHop(); };
+      const crouch = hop(-0.05), up = hop(0.15), down = hop(0.32), second = hop(0.45), still = hop(1.2);
+      club.heardNow = realHeard;
+      assert(at === club.boomAt && crouch?.lift === 0 && crouch.squash > 0 && up.lift > 0.07 && down.squash > 0
+        && second.lift > 0 && second.lift < up.lift * 0.5 && still === null,
+      'a speaker tapped throws the heroes up with its BOOM, bouncing to a stop');
+    }
     Input.pointer = { x: spot[0], y: spot[1], down: true };
     Input.press('pointer'); club.update(1 / 60); Input.endFrame();
     club.t += 0.4; club.update(1 / 60);
@@ -2063,6 +2198,24 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     while (c.rerolling > 0) { step(c, 1); c.draw(ctx); }
     for (const since of [0.05, 0.15, 0.3, 0.6]) { c.rerolled = false; c.strikeAt = c.t - since; c.draw(ctx); }
     assert(frames >= 100, `the ball spins up and charges for a good while before it bursts (${frames} frames)`);
+  }
+  {
+    // with a song playing THE BOLT goes on the beat: it bursts on a bar's last beat at least two
+    // seconds off, and the new take is booked to start on the bar line after it
+    const c = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, onReroll: () => ({ commit: () => {} }) });
+    c.enter();
+    const keys = ['ctx', 'bank', 'nextTime', 'step', 'bpm', 'tempo', 'heardLatencySec'];
+    const real = Object.fromEntries(keys.map((k) => [k, Audio[k]]));
+    let plans;
+    try {
+      Object.assign(Audio, { ctx: { currentTime: 10 }, bank: real.bank || {}, nextTime: 10.05, step: 6, bpm: 120, tempo: 1, heardLatencySec: () => 0.02 });
+      plans = [6, 9, 15].map((st) => { Audio.step = st; return { ...c.strikePlan(), st }; });
+    } finally { Object.assign(Audio, real); }
+    // in sixteenths from the song's step 0, on the grid the sequencer is writing
+    const spb = 60 / 120 / 4, grid = (t, st) => Math.round((t - (10.05 - st * spb)) / spb * 1e6) / 1e6;
+    assert(plans.every((p) => p.downbeat && grid(p.downbeat, p.st) % 16 === 0 && grid(p.discharge, p.st) % 4 === 0
+      && p.downbeat - p.discharge >= 0.5 - 1e-9 && p.discharge - 9.98 >= 2 && p.discharge - 9.98 < 2 + 2.5 && Math.abs(p.frames - (p.discharge - 9.98) * 60) <= 1),
+    'THE BOLT bursts on the beat, a beat or more before the bar line the new take starts on, the charge stretched to reach it');
   }
   const plain = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {} });
   plain.enter();

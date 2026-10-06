@@ -174,6 +174,21 @@ export const PARTS = Object.freeze([
   { id: 'lead', label: 'LEAD' },
 ]);
 
+/**
+ * The mixer's PITCH fader (Peter, 6 Oct 2026: "change the bpm of the track a bit ... like you
+ * can on a technics 1200"): how far either side of its written tempo the song can be played —
+ * the SL-1200's own ±8% — in tenths of a percent, and a click at the middle (PITCH_DETENT) as
+ * the turntable's has. The tempo only: the key stays where it was written.
+ */
+export const PITCH_RANGE = 0.08, PITCH_STEP = 0.001, PITCH_DETENT = 0.004;
+
+/** A pitch onto the fader's travel: its steps, its ends, and the click at the middle. */
+export function clampPitch(p) {
+  const v = Number(p);
+  if (!Number.isFinite(v) || Math.abs(v) < PITCH_DETENT) return 0;
+  return Math.round(Math.max(-PITCH_RANGE, Math.min(PITCH_RANGE, v)) / PITCH_STEP) / Math.round(1 / PITCH_STEP);
+}
+
 /** Which part a lane belongs to: the kit, the bass, the chords, or the tune (everything else). */
 export function partOf(key) {
   const base = baseLane(key);
@@ -286,8 +301,22 @@ function refile(move, list) {
   LIVE.set(move.hero, list);
 }
 
+// The transport warp is two speeds multiplied: the PITCH fader's, which the song plays at, and a
+// held move's on top of it — so Rusty's slow-mo is half of the pitched tempo, and his let-go
+// comes back to it rather than to the written one.
+let pitchWarp = 1, moveWarp = 1;
+
 /** A held move's speed: Audio's transport warp, the key left where it is. */
-export function setSpeed(speed) { Audio.setWarp?.(speed, 1); }
+export function setSpeed(speed) {
+  moveWarp = speed;
+  Audio.setWarp?.(moveWarp * pitchWarp, 1);
+}
+
+/** The PITCH fader's speed, as a fraction either side of the written tempo: the key left too. */
+export function setPitchWarp(pitch) {
+  pitchWarp = 1 + pitch;
+  Audio.setWarp?.(moveWarp * pitchWarp, 1);
+}
 
 /**
  * A held move goes in at `at`, and stays until endHold. Returns what the drag needs: the
@@ -596,9 +625,10 @@ export function holeGates(song, levels, keep, at = null) {
 export function setPart(song, id, on, at = null) { setPartLevel(song, id, on ? 1 : 0, at); }
 
 /** Leaving the club: every gate open again, the master's section let go, the song back at
- *  its own speed — now. */
+ *  its own speed — the pitch fader's too — now. */
 export function releaseClub(song) {
   LIVE.clear();
+  pitchWarp = 1;
   setSpeed(1);
   const mixer = Audio.mixer;
   const ctx = Audio.ctx;

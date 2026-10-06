@@ -39,3 +39,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-04 | `c25625e` | [2026-10-04-c25625e.html](2026-10-04-c25625e.html) | [bake-offs](2026-10-04-c25625e-lab.html) | feat: add new Banger report and section effects functionality |
 | 2026-10-05 | `cac6fcc` | [2026-10-05-cac6fcc.html](2026-10-05-cac6fcc.html) | [bake-offs](2026-10-05-cac6fcc-lab.html) | feat: add 'more' variation to banger options and update related functionality |
 | 2026-10-06 | `9db55ef` | [2026-10-06-9db55ef.html](2026-10-06-9db55ef.html) | [bake-offs](2026-10-06-9db55ef-lab.html) | Add comprehensive tests for Banger Rolls styles and their properties |
+| 2026-10-06 | `1c8865c` | [2026-10-06-1c8865c.html](2026-10-06-1c8865c.html) | [bake-offs](2026-10-06-1c8865c-lab.html) | feat(banger): enhance track effects planning by excluding percussion lanes from treatment budget |
+| 2026-10-06 | `1eaf382` | [2026-10-06-1eaf382.html](2026-10-06-1eaf382.html) | [bake-offs](2026-10-06-1eaf382-lab.html) | fix(audio): finished drum hits leave the render graph — the banger slow-down |
