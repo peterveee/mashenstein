@@ -1,6 +1,6 @@
 // Ongoing track production, chosen after the notes and sounds, before levelling.
 // Ordinary mixer inserts/sends only; no extra playback path or transition automation.
-import { baseLane } from '../../../src/data/voices.js';
+import { baseLane, PERCUSSION_LANES } from '../../../src/data/voices.js';
 import { midi } from './theory.js';
 import { voiceOfLane } from './expression.js';
 
@@ -112,8 +112,10 @@ export function planTrackEffects({ style, options, mix, bars, laneOf, riffParts,
   const bold = mode === 'adventurous' || overhaul;
   const profile = STYLE[style.id] || STYLE[style.base] || STYLE['big-room'];
   const airy = AIRY.has(options.mood) ? 1.3 : DRY.has(options.mood) ? 0.7 : 1;
-  // Existing prominent production consumes the same budget as new production.
-  const strips = Object.values(mix.lanes || {});
+  // Existing prominent production consumes the same budget as new production. The kit's
+  // own ambience (a riser's insert, a crash's tail) is not a part's treatment, so drum
+  // lanes do not spend it: a seed's riser reverb must not lock every lead out of a room.
+  const strips = Object.entries(mix.lanes || {}).filter(([lane]) => !PERCUSSION_LANES.includes(baseLane(lane))).map(([, s]) => s);
   let echoes = strips.filter(s => (s.effects || []).some(e => active(e) && DELAYS.has(e.id) && (e.params?.mix ?? e.params?.wet ?? 0.35) >= 0.2) || (s.send?.delay || 0) >= 0.4).length;
   let widths = strips.filter(s => (s.effects || []).some(e => active(e) && MODULATION.has(e.id)
     && (e.id === 'widener' ? (e.params?.width ?? 0.7) >= 0.85 : (e.params?.wet ?? 0.5) >= 0.3))).length;
