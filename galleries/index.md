@@ -41,3 +41,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-06 | `9db55ef` | [2026-10-06-9db55ef.html](2026-10-06-9db55ef.html) | [bake-offs](2026-10-06-9db55ef-lab.html) | Add comprehensive tests for Banger Rolls styles and their properties |
 | 2026-10-06 | `1c8865c` | [2026-10-06-1c8865c.html](2026-10-06-1c8865c.html) | [bake-offs](2026-10-06-1c8865c-lab.html) | feat(banger): enhance track effects planning by excluding percussion lanes from treatment budget |
 | 2026-10-06 | `1eaf382` | [2026-10-06-1eaf382.html](2026-10-06-1eaf382.html) | [bake-offs](2026-10-06-1eaf382-lab.html) | fix(audio): finished drum hits leave the render graph — the banger slow-down |
+| 2026-10-06 | `80cf910` | [2026-10-06-80cf910.html](2026-10-06-80cf910.html) | [bake-offs](2026-10-06-80cf910-lab.html) | feat(banger): club pitch fader, Dolores's push broom, BOLT on the bar line, no swipe-back |

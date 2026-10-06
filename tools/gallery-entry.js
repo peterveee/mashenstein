@@ -2739,7 +2739,7 @@ function propNominalSize(name) {
     // What enter() gives a club, less the song (Audio.setBank), the mixer's memory and the screen fit.
     Object.assign(club, {
       t: 0, song: { bpm: BPM, form: [] }, savePrompt: null, queued: null, acting: null, caption: null, holding: null,
-      levels: Object.fromEntries(PARTS.map((p) => [p.id, 1])), mixerOpen: false, mixSel: 0, dragging: null, popup: null,
+      levels: Object.fromEntries(PARTS.map((p) => [p.id, 1])), heard: Object.fromEntries(PARTS.map((p) => [p.id, 1])), mixerOpen: false, mixSel: 0, dragging: null, popup: null,
       iconsAt: -Infinity, buttonsAt: -Infinity, ballAt: -60, titleAt: -Infinity, shownAt: -60, lite: false, frameMs: 16,
       led: null, ledRecent: [], ballScale: 1,
       // nobody has joined the dancing yet: everyone on the idle bob, on the beat
