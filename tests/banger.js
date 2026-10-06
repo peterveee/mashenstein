@@ -39,7 +39,7 @@ import {
 import { writeSongFile } from '../tools/lib/song-file.js';
 import { partLevel, noteDb, MAX_LEVEL_MOVE, LEAD_ROLES, LEAD_CAUTION_DB, LEAD_MAX_RAISE, CURVE_SECONDS, CURVE_MIDI, widenerOf, stereoDb } from '../tools/lib/banger/levels.js';
 import { BANGER_LEVEL_DATA } from '../tools/lib/banger/levels-data.js';
-import { BANGER_STYLES } from '../tools/lib/banger/styles/index.js';
+import { BANGER_STYLES, BANGER_FLAVOURS } from '../tools/lib/banger/styles/index.js';
 import { BANGER_SOUNDS } from '../tools/lib/banger/sounds.js';
 import { makeSeed, useAsStyle, saveCombo, deleteCombo, seedIdOf, SEED_GROUP } from '../tools/lib/banger-seeds.js';
 import { EUROBEAT } from '../tools/lib/banger/styles/eurobeat.js';
@@ -1302,6 +1302,30 @@ try {
     writeSongFile(temp, seedId, { mix: tuned, arrangement: seedMod.arrangement });
     const notSeed = await useAsStyle(temp, 'test-banger');
     assert(!notSeed.ok && notSeed.problems.some((p) => /only a style's seed banger/.test(p)), 'and only a seed can be used as its style');
+
+    // A FLAVOUR has a seed of its own (6 Oct 2026): made in that flavour, used as that flavour
+    // alone. Its base style's seed channels never reach it — they were set for other sounds.
+    const ROMANTICO = BANGER_FLAVOURS.find((f) => f.id === 'reggaeton-romantico');
+    const flMade = makeSeed(temp, ROMANTICO);
+    const flMod = await import(`${pathToFileURL(flMade.path).href}?v=${Math.random()}`);
+    const flLanes = flMod.banger.laneOf;
+    assert(flMade.id === 'banger-seed-reggaeton-romantico' && flMod.banger.seedOf === 'reggaeton-romantico'
+      && flMod.mix.labels[flLanes.congas] === 'BONGO Macho' && flMod.mix.voice[`${flLanes.congas}Voice`] === BANGER_SOUNDS['reggaeton-romantico'].parts.congas,
+    'a flavour\'s seed is made in that flavour, on its own sounds');
+    const flTuned = structuredClone(flMod.mix);
+    flTuned.lanes[flLanes.congas] = { ...flTuned.lanes[flLanes.congas], gain: -2.5, eq: { high: 2 } };
+    writeSongFile(temp, flMade.id, { mix: flTuned, arrangement: flMod.arrangement });
+    const flUsed = await useAsStyle(temp, flMade.id);
+    const flChannels = (await import(`${pathToFileURL(join(temp, 'tools/lib/banger/channels.js')).href}?v=${Math.random()}`)).BANGER_CHANNELS;
+    const flLevels = (await import(`${pathToFileURL(join(temp, 'tools/lib/banger/levels-data.js')).href}?v=${Math.random()}`)).BANGER_LEVEL_DATA;
+    assert(flUsed.ok && flUsed.style === 'reggaeton-romantico' && flChannels['reggaeton-romantico'].strips.congas.eq.high === 2
+      && flChannels.reggaeton?.seed !== flMade.id && flLevels.refs['reggaeton-romantico']?.congas?.song === flMade.id,
+    `Use as Style on it writes that flavour's channels and references, not its base style's (${flUsed.problems?.join('; ') || 'ok'})`);
+    const baseOnly = { reggaeton: { seed: 'x', strips: { congas: { gain: 9, eq: { high: -9 } } } } };
+    const romantico = generateBanger({ riff: HOOK1, options: { style: 'reggaeton', flavour: 'romantico', drums: { congas: true } }, seed: 1, channels: baseOnly, level: false });
+    const clasico = generateBanger({ riff: HOOK1, options: { style: 'reggaeton', flavour: 'style', drums: { congas: true } }, seed: 1, channels: baseOnly, level: false });
+    assert(romantico.mix.lanes[romantico.laneOf.congas]?.eq?.high !== -9 && clasico.mix.lanes[clasico.laneOf.congas]?.eq?.high === -9,
+      'a flavour with no seed of its own keeps its own channels; its base style takes its seed\'s');
 
     // SOUND COMBOS: the same reading of any banger, kept under a name.
     const combo = await saveCombo(temp, seedId, 'Icy Anthem');

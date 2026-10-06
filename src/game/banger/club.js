@@ -6,7 +6,7 @@ import { ClubVoices } from './club-voices.js';
 import { PADS, SHOUTS, HIT_GAINS, CLAP_OVER_DB, playPad, playToy, startRiser, rollHit, clapsAt, CLAP_FILLS } from './club-hits.js';
 import { VOICES, voiceGain, baseLane } from '../../data/voices.js';
 import { dbToGain } from '../../engine/mixer.js';
-import { clubCrt } from './club-crt.js';
+import { clubCrt, LED_INKS } from './club-crt.js';
 import { FISHES, drawPaperFish } from './club-fish.js';
 import { drawSpeakerStack } from './speakers.js';
 export { SKIRT_LEGS } from './dance-legs.js';
@@ -52,7 +52,7 @@ import { songFor, bangerTitle, keepMixer } from './store.js';
 import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
 import { LED_SLOGANS, LED_SCROLLS, LED_STYLE_LINES, fillLed } from './led-slogans.js';
 import {
-  HERO_MOVES, PARTS, nextBeatAt, nextSixteenthAt, nextBarAt, nextTwoOrFourAt, landingFor, playMove, startHold, dragHold, endHold, setPartLevel,
+  HERO_MOVES, PARTS, nextBeatAt, nextSixteenthAt, nowAt, nextBarAt, nextTwoOrFourAt, landingFor, playMove, startHold, dragHold, endHold, setPartLevel,
   releaseClub, moveSeconds, gridReady, setSpeed, stepTime, startChipGate, endChipGate, CHIP_GATE_CHANCE, lastBarBeforeSection, chipGateRoll, throwBeat, echoLevel,
   stopTape, nextStopStep, partOf, partGain, startWobble, setWobble, endWobble,
 } from './club-fx.js';
@@ -351,6 +351,12 @@ export class BangerClubState {
     this.holding = null;       // { i, source } — a held move, while its hero is held down
     // Each part's fader, 0–1 (club-fx.js setPartLevel). 0 is NO DRUMS.
     this.levels = Object.fromEntries(PARTS.map((p) => [p.id, 1]));
+    // ...and its MUTE and SOLO (Peter, 6 Oct 2026): live switches over the fader, not kept with
+    // the song. `heard` is what each part plays at under them — the fader, or 0 — and is what
+    // the moves, the boost and the floor read; `levels` stays where the faders sit.
+    this.muted = new Set();
+    this.soloed = new Set();
+    this.heard = { ...this.levels };
     this.mixerOpen = false;
     this.mixSel = 0;           // the fader the keys move
     this.dragging = null;      // the fader under the finger
@@ -408,7 +414,7 @@ export class BangerClubState {
     this.waveAt = -Infinity;   // when the last Mexican wave started (on the song's loop)
     this.lastBeat = null;
     this.focus = 0;            // keyboard / pad focus: the floor's slots, then the part icons, then back
-    this.boxes = { heroes: [], mixer: null, transport: [], panel: null, faders: [], sounds: [], reset: null, back: null, ball: null, led: null, floor: null };
+    this.boxes = { heroes: [], mixer: null, transport: [], panel: null, faders: [], sounds: [], mutes: [], solos: [], reset: null, back: null, ball: null, led: null, floor: null };
     // The sound swaps: B-33P's 8-BIT and the mixer's sound buttons (club-voices.js).
     this.voices = new ClubVoices(this.song, this.rec);
     this.padHits = [];         // floor pads struck: { pad, x, y, when (audio), t }
@@ -447,7 +453,7 @@ export class BangerClubState {
     this.bow = null;           // Fernwick's draw: { riser, step0, rollStep, until } while it builds
     this.landing = null;       // ...and the drop it lands: { at (audio), section } until it is heard
     this.crowd = null;         // ...and the crowd's crouch and jump for it: { since, release, land } (audio times)
-    this.speedBack = null;     // Rusty let go: { notBefore } until the song's own speed is back on a beat
+    this.speedBack = null;     // Rusty let go: { notBefore } until the song's own speed is back
     this.layout = null;        // the floor's measures, from the last draw (the drag's scale)
     Audio.setBank(this.song.bank, this.song.mix, this.song.arrangement, { startAtBeginning: true });
     this.mixerDirty = false;
@@ -545,8 +551,9 @@ export class BangerClubState {
 
   // ------------------------------------------------------------------ input
   /**
-   * A hero pressed. A held move goes in on the next sixteenth and stays while `source`
-   * (the pointer, or the key that pressed it) is held; a trigger waits for the next beat.
+   * A hero pressed. A held move goes in on the next sixteenth — or at once, an `atOnce` one —
+   * and stays while `source` (the pointer, or the key that pressed it) is held; a trigger
+   * waits for the next beat.
    */
   pressHero(i, source = 'pointer') {
     if (this.paused) return;   // the floor holds still under a pause
@@ -557,7 +564,10 @@ export class BangerClubState {
     if (this.stopping && this.stopping.i !== i) this.stopping = null;
     const move = HERO_MOVES[i];
     if (!move.hold) { this.tapHero(i); return; }
-    const at = nextSixteenthAt();
+    // Ramon's stutter grabs its slice on the grid, and Fernwick's roll counts from it; a filter
+    // or a gate has no grid to wait for, and waiting for the next sixteenth is a whole
+    // sequencer lookahead (nowAt)
+    const at = move.atOnce ? nowAt() : nextSixteenthAt();
     const bar = at ? 16 * at.spb : this.barSeconds();
     const when = at ? at.when : this.heardNow();
     this.queued = { i, when, bar, dur: Infinity };
@@ -568,7 +578,7 @@ export class BangerClubState {
     const touch = source === 'pointer' && Input.touches?.size ? [...Input.touches.keys()].at(-1) : null;
     this.holding = { i, source, touch, min: when + bar * MIN_HOLD_BARS, y0: Input.pointer?.y ?? 0, delta: 0 };
     if (move.speeds) this.speedBack = null;
-    this.holding.held = startHold(move, at, Math.random, { song: this.song, levels: this.levels });
+    this.holding.held = startHold(move, at, Math.random, { song: this.song, levels: this.heard });
     if (move.slices) this.punch = { grab: this.beatAt(when), slice: move.slices[this.holding.held.slice] };
     if (move.draw) this.drawBow(move, at, when);
     if (move.backbeat) {
@@ -791,25 +801,23 @@ export class BangerClubState {
     return { m: { kind: 'draw', beat0: 0, beats: jumpAt == null ? Infinity : jumpAt + 1, jumpAt, releaseAge }, age };
   }
 
-  /** The held hero let go: the effect out on the next beat. */
+  /** The held hero let go: the effect out at once (nowAt). */
   letGo() {
     const h = this.holding;
     this.holding = null;
     if (!h) return;
     const move = HERO_MOVES[h.i];
     if (move.draw) { this.loose(h); return; }
-    // Out on the next BEAT after the release, so it ends with the music rather than
-    // wherever the finger lifted (Peter, 3 Oct 2026) — it went in on a sixteenth, at once.
-    let at = nextBeatAt();
-    // Let go too soon (a tap): it stays in until its half bar is up
-    // ...and still out on a beat: the first one at or after it.
-    if (at && at.when < h.min - 1e-4) {
-      const beatS = 4 * at.spb;
-      at = { ...at, when: at.when + Math.ceil((h.min - at.when) / beatS - 1e-6) * beatS };
-    }
+    // Out the moment the finger lifts, off the grid (Peter, 6 Oct 2026: waiting for the beat
+    // felt like a delay; it was out on the beat from 3 Oct). Not even the next sixteenth: that
+    // is a sequencer lookahead away (nowAt).
+    let at = nowAt();
+    // Let go too soon (a tap): it stays in until its half bar is up — on the sixteenth grid,
+    // as it went in on one
+    if (at && at.when < h.min) at = { ...at, when: h.min };
     const end = at ? at.when : Math.max(this.heardNow(), h.min);
-    // Rusty's speed comes back on that beat too, but a transport warp cannot be booked at an
-    // audio time: update() makes it in the frame where the next step to schedule is the beat.
+    // Rusty's speed comes back as soon as that, but a transport warp cannot be booked at an
+    // audio time: update() makes it in the first frame the next step to schedule is past it.
     // Grumpos throws up to it (throwsOn) — and once, however soon he was let go.
     let out = null;
     if (move.speeds) this.speedBack = { notBefore: Math.max(h.min, this.heardNow()) };
@@ -818,7 +826,7 @@ export class BangerClubState {
       // Kiko: a tap is the one stop; held, no stop starts from the next beat on, and he acts
       // until the music is back from the last
       if (this.stopping?.i === h.i) {
-        const back = Math.max(nextBeatAt()?.when ?? this.heardNow(), this.stopping.firstUntil);
+        const back = Math.max(nowAt()?.when ?? this.heardNow(), this.stopping.firstUntil);
         this.stopping.until = back;
         out = Math.max(back, ...this.stops.map((x) => x.until));
       }
@@ -854,7 +862,7 @@ export class BangerClubState {
     if (move.echo) this.echoes = [...this.echoes, { when, ...echoLevel(null) }];
     // the moment the music comes back after Kiko's tape stop: the lights slam back on with it
     if (move.onTwoOrFour) this.lightsBack = when + this.queued.dur;
-    if (at) playMove(move, at, { song: this.song, levels: this.levels });
+    if (at) playMove(move, at, { song: this.song, levels: this.heard });
   }
 
   /** A fresh path for one ball across a row of `perRow` heroes: hops of { k, beats, h }, k the
@@ -1222,7 +1230,7 @@ export class BangerClubState {
    * probably reduce if drum volume has been lowered"): the fader's own curve, and never quite
    * gone, so a clap with the drums out is still a faint one.
    */
-  drumScale() { return Math.max(0.15, partGain(this.levels?.drums ?? 1)); }
+  drumScale() { return Math.max(0.15, partGain(this.heard?.drums ?? 1)); }
 
   /**
    * The band's own clap for the CLAP pad (club-voices.js clapVoice), played on the engine as the
@@ -1574,7 +1582,7 @@ export class BangerClubState {
   }
 
   /** The parts that are up at all — for anything that asks which are playing. */
-  get parts() { return new Set(PARTS.filter((p) => this.levels[p.id] > 0).map((p) => p.id)); }
+  get parts() { return new Set(PARTS.filter((p) => this.heard[p.id] > 0).map((p) => p.id)); }
 
   /** A part's fader moved: heard at once; NO / YES when it reaches or leaves the bottom. */
   setLevel(k, level) {
@@ -1583,10 +1591,45 @@ export class BangerClubState {
     const v = level < 0.04 ? 0 : Math.min(1, Math.round(level * 100) / 100);
     this.levels[p.id] = v;
     this.mixerDirty = true;
-    setPartLevel(this.song, p.id, v, null, 0.03);
+    this.applyHeard();
     if (was > 0 && v === 0) this.popup = { text: `NO ${p.label}`, t: this.t };
     if (was === 0 && v > 0) this.popup = { text: `YES ${p.label}`, t: this.t };
     this.iconsAt = this.t;
+  }
+
+  /** What part `id` plays at: its fader, unless it is muted or another part is soloed. */
+  heardLevel(id) {
+    return this.muted.has(id) || (this.soloed.size && !this.soloed.has(id)) ? 0 : this.levels[id];
+  }
+
+  /** Every part's gate to its heard level — the ones that changed, at once. */
+  applyHeard(glide = 0.03, all = false) {
+    for (const p of PARTS) {
+      const v = this.heardLevel(p.id);
+      if (!all && this.heard[p.id] === v) continue;
+      this.heard[p.id] = v;
+      setPartLevel(this.song, p.id, v, null, glide);
+    }
+  }
+
+  /** MUTE on part `k`'s strip: in and out at once. */
+  toggleMute(k) {
+    const p = PARTS[k];
+    if (this.muted.has(p.id)) this.muted.delete(p.id); else this.muted.add(p.id);
+    this.applyHeard();
+    this.popup = { text: `${this.muted.has(p.id) ? 'NO' : 'YES'} ${p.label}`, t: this.t };
+    this.iconsAt = this.t;
+    Audio.sfx('ui');
+  }
+
+  /** SOLO on part `k`'s strip: soloed parts play, the rest go quiet; more than one may be. */
+  toggleSolo(k) {
+    const p = PARTS[k];
+    if (this.soloed.has(p.id)) this.soloed.delete(p.id); else this.soloed.add(p.id);
+    this.applyHeard();
+    this.popup = { text: this.soloed.has(p.id) ? `SOLO ${p.label}` : this.soloed.size ? `${p.label} OUT` : 'SOLO OFF', t: this.t };
+    this.iconsAt = this.t;
+    Audio.sfx('ui');
   }
 
   /**
@@ -1609,13 +1652,15 @@ export class BangerClubState {
       const v = Number(m.levels?.[p.id]);
       if (!Number.isFinite(v)) continue;
       this.levels[p.id] = Math.max(0, Math.min(1, v));
-      setPartLevel(this.song, p.id, this.levels[p.id], null, 0.005);
     }
+    this.applyHeard(0.005, true);
     this.voices?.restorePicks(m.sounds);
   }
 
   /** Every fader up and every sound the song's own — what a take arrives with. */
-  get mixerPlain() { return PARTS.every((p) => this.levels[p.id] === 1) && (this.voices?.own ?? true); }
+  get mixerPlain() {
+    return PARTS.every((p) => this.levels[p.id] === 1) && (this.voices?.own ?? true) && !this.muted.size && !this.soloed.size;
+  }
 
   /**
    * RESET on the mixer panel (Peter, 5 Oct 2026: "a restore button … to go back to the default
@@ -1624,10 +1669,10 @@ export class BangerClubState {
    */
   resetMixer() {
     if (this.mixerPlain) { Audio.sfx('uiBad'); return; }
-    for (const p of PARTS) {
-      this.levels[p.id] = 1;
-      setPartLevel(this.song, p.id, 1, null, 0.03);
-    }
+    for (const p of PARTS) this.levels[p.id] = 1;
+    this.muted.clear();
+    this.soloed.clear();
+    this.applyHeard();
     this.voices?.reset();
     this.saveMixer();
     this.popup = { text: 'MIXER RESET', t: this.t };
@@ -1691,7 +1736,7 @@ export class BangerClubState {
     const lanes = this.boostLanes();
     this.boost = { lanes, wobbling: false, amount: 0 };
     if (!ctx) return;
-    for (const l of lanes) l.gate.setTargetAtTime(partGain(this.levels[l.part] ?? 1) * SPEAKER_BOOST, ctx.currentTime, 0.04);
+    for (const l of lanes) l.gate.setTargetAtTime(SPEAKER_BOOST, ctx.currentTime, 0.04);
   }
 
   /** The drag on a held speaker: a wobble on the boosted bass, in eighths, `amount` 0–1 deep. */
@@ -1716,10 +1761,11 @@ export class BangerClubState {
     const b = this.boost, ctx = Audio.ctx;
     this.boost = null;
     if (!b || !ctx) return;
-    const at = nextBeatAt();
+    // out at once, like a hero's hold (letGo), not held for the beat
+    const at = nowAt();
     const when = at ? at.when : ctx.currentTime;
-    for (const l of b.lanes) l.gate.setTargetAtTime(partGain(this.levels[l.part] ?? 1), when, 0.03);
-    // the wobble out on the same beat — unless a hero's move has had the master since
+    for (const l of b.lanes) l.gate.setTargetAtTime(1, when, 0.03);   // the part's level is on its live gate
+    // the wobble out with it — unless a hero's move has had the master since
     if (b.wobbling && !(this.acting && HERO_MOVES[this.acting.i]?.chain)) endWobble(at);
   }
 
@@ -1921,9 +1967,8 @@ export class BangerClubState {
       const landed = this.voices.update();
       if (landed) this.voicesLanded(landed);
     }
-    // Rusty let go: the song's own speed back, on the beat — or now, if a long frame missed it.
-    if (this.speedBack && (gridReady(4, this.speedBack.notBefore)
-      || this.heardNow() - this.speedBack.notBefore > this.barSeconds() / 4 + 0.3)) {
+    // Rusty let go: the song's own speed back, the moment his tap's half bar is up.
+    if (this.speedBack && gridReady(1, this.speedBack.notBefore)) {
       setSpeed(1);
       this.speedBack = null;
     }
@@ -2014,10 +2059,14 @@ export class BangerClubState {
       if (Input.pressed('confirm') || Input.pressed('back')) this.openMixer(false);
       else if (Input.pressed('pointer')) {
         const s = this.boxes.sounds.findIndex(inside);
+        const mu = this.boxes.mutes.findIndex(inside);
+        const so = this.boxes.solos.findIndex(inside);
         const k = this.boxes.faders.findIndex(inside);
         const tr = this.boxes.transport.findIndex(inside);
         if (this.boxes.reset && inside(this.boxes.reset)) this.resetMixer();
         else if (s >= 0) { this.mixSel = s; this.nextSound(s); }
+        else if (mu >= 0) { this.mixSel = mu; this.toggleMute(mu); }
+        else if (so >= 0) { this.mixSel = so; this.toggleSolo(so); }
         else if (k >= 0) { this.dragging = k; this.mixSel = k; this.levelFromY(k, y); }
         else if (tr >= 0) this.pressTransport(tr);   // the transport sits beside the mixer, open or shut
         else if (!inside(this.boxes.panel)) this.openMixer(false);   // a tap outside closes it
@@ -2795,7 +2844,7 @@ export class BangerClubState {
       const bh = (LED_ROWS + 2) * pitch;
       hang(bx - 2 * pitch, by - 2 * pitch, bw + 4 * pitch, bh + 4 * pitch, '#16121c', '#3a3248');
       this.boxes.led = { x: bx - 2 * pitch, y: by - 2 * pitch, w: bw + 4 * pitch, h: bh + 4 * pitch };
-      this.ledAt = { x: bx, y: by, pitch };   // where it is painted again over the CRT
+      this.ledAt = { x: bx, y: by, pitch };   // where it is painted again, on its own tube, over the CRT
       this.drawLed(ctx, bx, by, pitch);
       // in portrait the club sign sits left, just clear of the back button (Peter, 5 Oct 2026)
       const ax = portrait ? 62 * P - ns * 0.3 : safeL + 34, ay = (portrait ? stageTop + 44 * P : stageTop + 34) - a.h / 2;
@@ -3380,8 +3429,16 @@ export class BangerClubState {
     // of it but the UI, which is painted from here on (club-crt.js; Peter, 5 Oct 2026).
     if (this.voices?.swappedNow && !this.voices.eightBit
       && clubCrt(ctx, { top: stageTop, bottom: stageBot, toonH, lite: this.lite }) && this.ledAt) {
-      // ...but the LED board says things, so it is painted again over the tube, crisp
-      this.drawLed(ctx, this.ledAt.x, this.ledAt.y, this.ledAt.pitch);
+      // ...but the LED board says things, so it is painted again over the tube and put on one
+      // of its own (club-crt.js LED_INKS): a block to a dot, the blocks half a dot off the dots
+      // across, so every stroke up and down comes out two blocks wide — bold and smeared, but
+      // never a dot lost. One block a dot, on the dots, read too clean; blocks a little bigger
+      // than a dot (1.05–1.5) dropped a whole column of dots every so often and broke letters
+      // (Peter, 6 Oct 2026: "needs to be a less readable" ... "still a bit unreadable").
+      const { x, y, pitch } = this.ledAt;
+      this.drawLed(ctx, x, y, pitch);
+      clubCrt(ctx, { lite: this.lite, inks: LED_INKS,
+        box: { x: x - pitch / 2, y, w: (LED_COLS + 3) * pitch, h: (LED_ROWS + 2) * pitch, cell: pitch } });
     }
     // the floor pads' words, over the tube: they are what the player just did
     this.drawPadWords(ctx, { toonH, stageBot });
@@ -3761,7 +3818,7 @@ export class BangerClubState {
     // plays (two-step, four on the floor, whatever the style has) and falling back between.
     // Still with the drums pulled out on the mixer.
     const kick = this.kickThump();
-    let thump = (kick == null ? pulse : kick) * (this.levels.drums > 0 ? 1 : 0);
+    let thump = (kick == null ? pulse : kick) * (this.heard.drums > 0 ? 1 : 0);
     // held for the bass the cones pump harder, and wobble with it; a BOOM punches them right out
     const now = this.heardNow();
     if (this.boost) {
@@ -3789,7 +3846,7 @@ export class BangerClubState {
   scrapHop(u) {
     const now = this.heardNow(), since = now - this.boomAt;
     const boom = since >= 0 && since < 1.4 ? since : null;
-    const kick = this.boost && this.levels.drums > 0 ? this.kickThump() ?? Math.exp(-((this.beat() % 1 + 1) % 1) * 6) : 0;
+    const kick = this.boost && this.heard.drums > 0 ? this.kickThump() ?? Math.exp(-((this.beat() % 1 + 1) % 1) * 6) : 0;
     const wob = this.boost?.amount > 0.04 ? this.boost.amount : 0;
     if (boom == null && !kick && !wob) return null;
     const eighth = (((this.beat() * 2) % 1) + 1) % 1;
@@ -4313,20 +4370,24 @@ export class BangerClubState {
     }
     this.boxes.faders = [];
     this.boxes.sounds = [];
+    this.boxes.mutes = [];
+    this.boxes.solos = [];
     this.boxes.panel = null;
     this.boxes.reset = null;
     if (this.mixerOpen) {
-      // under each fader its SOUND button: the part's instrument, a tap for the next one
-      // (club-voices.js) — the panel grew a row for them (Peter, 5 Oct 2026)
-      const pw = portrait ? W * 0.84 : L(156), ph = portrait ? 232 * P : Math.min(L(112), my - r - 6 - stageTop - 8);
+      // SILVER, the bottom row's family — the gold lost here too (Peter, 6 Oct 2026). Each
+      // strip, top to bottom: the part's icon, its MUTE and SOLO, the fader on a scale, its
+      // name, and its SOUND button (club-voices.js), a tap for the next one.
+      const SILVER = '#dcdee8', SILVER_DIM = 'rgba(206,208,222,0.45)', OFF_INK = '#5a5a68';
+      const pw = portrait ? W * 0.84 : L(156), ph = portrait ? 262 * P : Math.min(L(122), my - r - 6 - stageTop - 8);
       const px = portrait ? (W - pw) / 2 : W - safeR - 10 - pw;
       const py = (portrait ? my - r - 16 * P : my - r - 6) - ph;
       this.boxes.panel = { x: px, y: py, w: pw, h: ph };
       ctx.fillStyle = 'rgba(11,11,20,0.9)';
       rr(ctx, px, py, pw, ph, portrait ? 16 * P : L(7)); ctx.fill();
-      ctx.strokeStyle = 'rgba(240,192,64,0.45)'; ctx.lineWidth = 0.8 * u; ctx.stroke();
-      // RESET: a tab on the panel's top edge — every fader up, every sound the song's own.
-      // Dim while there is nothing to reset.
+      ctx.strokeStyle = 'rgba(206,208,222,0.4)'; ctx.lineWidth = 0.8 * u; ctx.stroke();
+      // RESET: a tab on the panel's top edge — every fader up, no mute or solo, every sound the
+      // song's own. Dim while there is nothing to reset.
       {
         const plain = this.mixerPlain;
         const fs = portrait ? 11 * P : L(4.4);
@@ -4337,62 +4398,106 @@ export class BangerClubState {
         this.boxes.reset = { x: tx, y: ty - th * 0.3, w: tw, h: th * 1.3 };
         ctx.fillStyle = 'rgba(11,11,20,0.9)';
         rr(ctx, tx, ty, tw, th, th / 2); ctx.fill();
-        ctx.strokeStyle = plain ? 'rgba(240,192,64,0.25)' : 'rgba(240,192,64,0.7)'; ctx.lineWidth = 0.8 * u; ctx.stroke();
-        ctx.fillStyle = plain ? '#6a6a7c' : '#ffe08a';
+        ctx.strokeStyle = plain ? 'rgba(206,208,222,0.22)' : 'rgba(206,208,222,0.7)'; ctx.lineWidth = 0.8 * u; ctx.stroke();
+        ctx.fillStyle = plain ? '#6a6a7c' : '#eceef4';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('RESET', tx + tw / 2, ty + th / 2);
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       }
-      const pad = portrait ? 12 * P : L(6);
+      const S = (portraitV, landV) => (portrait ? portraitV * P : L(landV));
+      const pad = S(12, 6);
       const cw = (pw - pad * 2) / PARTS.length;
-      const iconY = py + (portrait ? 26 * P : L(11));
-      const chipH = portrait ? 24 * P : L(9), chipY = py + ph - (portrait ? 10 * P : L(4)) - chipH;
-      const labelY = chipY - (portrait ? 9 * P : L(3.5));
-      const top = py + (portrait ? 52 * P : L(22)), bot = labelY - (portrait ? 22 * P : L(9.5));
+      const iconY = py + S(24, 10);
+      const msH = S(20, 7.5), msW = Math.min(S(32, 11), (cw - S(12, 4)) / 2), msY = py + S(42, 17.5);
+      const chipH = S(24, 9), chipY = py + ph - S(10, 4) - chipH;
+      const labelY = chipY - S(9, 3.5);
+      const top = msY + msH + S(22, 9), bot = labelY - S(22, 9.5);
       PARTS.forEach((p, k) => {
         const cx = px + pad + cw * (k + 0.5);
         const level = this.levels[p.id];
+        const heard = this.heard[p.id] > 0;
         const sel = this.mixSel === k && !Input.usingTouch;
         this.boxes.faders.push({ x: cx - cw / 2, y: top - 8 * u, w: cw, h: bot - top + 16 * u, top, bot });
-        // the part's icon over its fader
-        ctx.strokeStyle = level > 0 ? '#ffe08a' : '#5a5a68'; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 0.9 * u;
-        ICON[p.id](ctx, cx, iconY, (portrait ? 13 * P : L(6.5)));
-        // the track, lit up to the cap
-        const tw = portrait ? 6 * P : L(3);
-        const capY = bot - (bot - top) * level;
-        ctx.fillStyle = '#1d1a2c';
-        rr(ctx, cx - tw / 2, top, tw, bot - top, tw / 2); ctx.fill();
-        if (level > 0) {
-          ctx.fillStyle = 'rgba(240,192,64,0.75)';
-          rr(ctx, cx - tw / 2, capY, tw, bot - capY, tw / 2); ctx.fill();
+        // the part's icon over its strip
+        ctx.strokeStyle = heard ? SILVER : OFF_INK; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 0.9 * u;
+        ICON[p.id](ctx, cx, iconY, S(13, 6.5));
+        // MUTE and SOLO, side by side under it: MUTE lit red, SOLO lit silver-white
+        const ms = [['M', this.muted.has(p.id), '#e04848', '#fff', this.boxes.mutes],
+          ['S', this.soloed.has(p.id), '#f2f3fa', '#14141e', this.boxes.solos]];
+        ms.forEach(([txt, on, lit, ink, boxes], j) => {
+          const bx = cx + (j ? S(3, 1) : -S(3, 1) - msW);
+          boxes.push({ x: bx - S(2, 1), y: msY - S(4, 1.5), w: msW + S(4, 2), h: msH + S(8, 3) });
+          ctx.fillStyle = on ? lit : '#1d1a2c';
+          rr(ctx, bx, msY, msW, msH, msH * 0.3); ctx.fill();
+          ctx.strokeStyle = on ? lit : SILVER_DIM; ctx.lineWidth = 0.8 * u; ctx.stroke();
+          ctx.fillStyle = on ? ink : '#a3a6ba';
+          ctx.font = `700 ${S(10, 4)}px ${BODY_FONT}`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(txt, bx + msW / 2, msY + msH / 2 + 0.5 * u);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        });
+        // the scale: a tick each tenth on the left of the slot, the ends and the middle longer
+        const tw = S(5, 2.4);
+        ctx.strokeStyle = 'rgba(206,208,222,0.28)'; ctx.lineWidth = 0.6 * u;
+        ctx.beginPath();
+        for (let n = 0; n <= 10; n++) {
+          const ty = bot - (bot - top) * n / 10, long = n % 5 === 0;
+          const x1 = cx - tw / 2 - S(5, 2.2);
+          ctx.moveTo(x1, ty); ctx.lineTo(x1 - (long ? S(8, 3.6) : S(4, 1.8)), ty);
         }
-        // the cap
-        const capW = portrait ? 34 * P : L(16), capH = portrait ? 14 * P : L(6);
-        ctx.fillStyle = level > 0 ? '#f0c040' : '#3a3a52';
-        rr(ctx, cx - capW / 2, capY - capH / 2, capW, capH, capH * 0.35); ctx.fill();
-        if (sel) { ctx.strokeStyle = '#c9a0ff'; ctx.lineWidth = u; ctx.stroke(); }
-        ctx.fillStyle = level > 0 ? '#c8c8d8' : '#e04848';
-        ctx.font = `600 ${portrait ? 11 * P : L(5.5)}px ${BODY_FONT}`;
+        ctx.stroke();
+        // the slot, sunk into the panel, and lit in silver up to the cap
+        const capY = bot - (bot - top) * level;
+        ctx.fillStyle = '#07070d';
+        rr(ctx, cx - tw / 2, top, tw, bot - top, tw / 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.6 * u; ctx.stroke();
+        if (level > 0) {
+          const g = ctx.createLinearGradient(cx - tw / 2, 0, cx + tw / 2, 0);
+          const [edge, mid] = heard ? ['#7e8196', '#e4e6ef'] : ['#3a3b4a', '#5a5c6e'];
+          g.addColorStop(0, edge); g.addColorStop(0.5, mid); g.addColorStop(1, edge);
+          ctx.fillStyle = g;
+          rr(ctx, cx - tw / 2 + 0.6 * u, capY, tw - 1.2 * u, bot - capY, (tw - 1.2 * u) / 2); ctx.fill();
+        }
+        // the cap: a brushed-metal knob with its grip line across the middle, on a soft shadow
+        const capW = S(34, 15), capH = S(18, 8);
+        const cl = cx - capW / 2, ct = capY - capH / 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        rr(ctx, cl, ct + S(2, 0.9), capW, capH, capH * 0.28); ctx.fill();
+        const g = ctx.createLinearGradient(0, ct, 0, ct + capH);
+        const [hi, md, lo] = heard ? ['#f6f7fb', '#c6c8d6', '#8a8da2'] : ['#6a6c7e', '#4e5062', '#383a4a'];
+        g.addColorStop(0, hi); g.addColorStop(0.48, md); g.addColorStop(0.52, lo); g.addColorStop(1, md);
+        ctx.fillStyle = g;
+        rr(ctx, cl, ct, capW, capH, capH * 0.28); ctx.fill();
+        ctx.strokeStyle = sel ? '#c9a0ff' : 'rgba(11,11,20,0.6)'; ctx.lineWidth = (sel ? 1.2 : 0.6) * u; ctx.stroke();
+        ctx.lineWidth = 0.8 * u;
+        ctx.strokeStyle = heard ? '#2a2b38' : '#1d1d28';
+        ctx.beginPath(); ctx.moveTo(cl + capW * 0.12, capY); ctx.lineTo(cl + capW * 0.88, capY); ctx.stroke();
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.5 * u;
+        ctx.beginPath();
+        for (const dy of [-0.26, 0.26]) { ctx.moveTo(cl + capW * 0.22, capY + capH * dy); ctx.lineTo(cl + capW * 0.78, capY + capH * dy); }
+        ctx.stroke();
+        ctx.fillStyle = level > 0 ? (heard ? '#c8c8d8' : '#6a6a7c') : '#e04848';
+        ctx.font = `600 ${S(11, 5.5)}px ${BODY_FONT}`;
         ctx.textAlign = 'center';
         ctx.fillText(p.label, cx, labelY);
         // the sound button: its name shrunk to fit, pulsing while it waits for the bar line
-        const chipW = cw - (portrait ? 8 * P : L(3));
+        const chipW = cw - S(8, 3);
         const box = { x: cx - chipW / 2, y: chipY, w: chipW, h: chipH };
         this.boxes.sounds.push(box);
         const waiting = this.voices?.waiting(p.id);
         ctx.fillStyle = '#1d1a2c';
         rr(ctx, box.x, box.y, box.w, box.h, chipH / 2); ctx.fill();
-        ctx.strokeStyle = waiting ? `rgba(240,192,64,${0.5 + 0.5 * Math.sin(t * 10)})` : 'rgba(240,192,64,0.45)';
+        ctx.strokeStyle = waiting ? `rgba(206,208,222,${0.5 + 0.5 * Math.sin(t * 10)})` : SILVER_DIM;
         ctx.lineWidth = (waiting ? 1.2 : 0.8) * u;
         if (sel) ctx.strokeStyle = '#c9a0ff';
         ctx.stroke();
         const name = this.voices?.label(p.id) || '';
-        let fs = portrait ? 10 * P : L(3.8);
+        let fs = S(10, 3.8);
         ctx.font = `600 ${fs}px ${BODY_FONT}`;
         const room = chipW - chipH * 0.6;
         const wide = ctx.measureText(name).width;
         if (wide > room) { fs = Math.max(fs * 0.6, fs * room / wide); ctx.font = `600 ${fs}px ${BODY_FONT}`; }
-        ctx.fillStyle = waiting ? '#f0c040' : '#ffe08a';
+        ctx.fillStyle = waiting ? '#ffffff' : SILVER;
         ctx.textBaseline = 'middle';
         ctx.fillText(name, cx, chipY + chipH / 2, room);
         ctx.textBaseline = 'alphabetic';

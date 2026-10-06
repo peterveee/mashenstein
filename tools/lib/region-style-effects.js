@@ -1,6 +1,6 @@
 // Reuse Banger treatments on any arrangement range, independent of its song form.
 import { BANGER_CHANNELS } from './banger/channels.js';
-import { BANGER_STYLES } from './banger/styles/index.js';
+import { BANGER_STYLES, styleFor } from './banger/styles/index.js';
 import { SECTION_FX_PRESETS, sectionEffectPreset } from './banger/section-effects.js';
 import { SECTION_EFFECTS } from '../../src/engine/effects.js';
 
@@ -24,7 +24,7 @@ export function regionStyleEffects(channels = BANGER_CHANNELS, styles = BANGER_S
       const signature = JSON.stringify(ordered(rule.chain));
       if (seen.has(signature)) continue;
       seen.add(signature);
-      const label = styles.find(s => s.id === id)?.label || id;
+      const label = styles.find(s => s.id === id)?.label || styleFor(id)?.label || id;
       const effects = rule.chain.map(e => names.get(e.id)).join(' + ');
       saved.push({ id: `style:${id}:${seen.size}`, label: `${label} · ${effects}`,
         note: `Saved from ${rule.role} · ${rule.sourceSection || rule.section}; apply to any region`,

@@ -96,7 +96,10 @@ export const EUROBEAT = Object.freeze({
     hats16: 'xxxxxxxxxxxxxxxx',
     hats8: 'x.x.x.x.x.x.x.x.',
     crash: 'x...............',
-    rolls: ['x...x...x...x...', 'x.x.x.x.x.x.x.x.', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxx....'],
+    // The gallop build: off-beat eighths pushing against the kick, eighths, the gallop
+    // (three of every four sixteenths), sixteenths, then the gallop into the hole.
+    rolls: ['..x...x...x...x.', 'x.x.x.x.x.x.x.x.', 'x.xxx.xxx.xxx.xx', 'xxxxxxxxxxxxxxxx', 'x.xxx.xxxxxx....'],
+    rollSwell: { from: -10, shape: 'even' },
     // Simmons tom runs — the eurobeat fill.
     fills: [
       { snare: '............x.x.', tom: '........xxxx..x.' },

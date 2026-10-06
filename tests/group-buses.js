@@ -96,6 +96,8 @@ async function render(label, { bank, mix = null, arrangement, steps = 32, second
         ctx.resume();
       });
     }
+    // the Lab club's mute: the live gate shut from the start (setLiveLevel)
+    if (c.live === 'live-level-zero') m.lane('lead').setLiveLevel(0, 0, 0);
     const probe = {
       buses: ['group1', 'group2', 'group3', 'group4'].map((id) => !!m._groupBus(id)),
       phantom: ['__group:group1', '__group:group9'].some((k) => !!m.lane(k)),
@@ -229,6 +231,15 @@ try {
       'unmuting the group brings back only the members not muted by hand');
   }
 
+  // ---- 6b. a live level takes the sends with it ----------------------------------------------------
+  {
+    const mix = { lanes: { lead: { send: { reverb: 0.8, delay: 0.8 } } } };
+    const open = await render('live:open', { bank: leadOnly, mix });
+    const shut = await render('live:shut', { bank: leadOnly, mix, live: 'live-level-zero' });
+    assert(peak(open.x) > 0.01 && peak(shut.x) < 1e-6,
+      `a lane's live level at 0 silences it and its reverb and delay sends (open ${peak(open.x).toFixed(3)}, shut ${peak(shut.x).toExponential(1)})`);
+  }
+
   // ---- 7. solo ------------------------------------------------------------------------------------
   {
     const page = await freshPage('solo');
@@ -248,7 +259,15 @@ try {
       m.lane('lead').setSolo(true);
       const member = { lead: gate('lead'), kick: gate('kick'), bass: gate('bass') };
       m.clearSolo();
-      return { group, member, cleared: gate('bass') };
+      const cleared = gate('bass');
+      // the LIVE level (the Lab club's fader / mute / solo) rides the same gate, times solo
+      m.lane('bass').setLiveLevel(0.25);
+      m.clearSolo();
+      const live = gate('bass');
+      m.lane('lead').setSolo(true);
+      const liveSoloed = gate('bass');
+      m.clearSolo();
+      return { group, member, cleared, live, liveSoloed, liveBack: gate('bass') };
     });
     await page.close();
     assert(st.group.lead === 1 && st.group.kick === 1 && st.group.bass === 0,
@@ -256,6 +275,8 @@ try {
     assert(st.member.lead === 1 && st.member.kick === 0 && st.member.bass === 0,
       'soloing one member is ordinary channel solo — the rest of its group goes quiet too');
     assert(st.cleared === 1, 'and clearing solo opens everything again');
+    assert(st.live === 0.25 && st.liveSoloed === 0 && st.liveBack === 0.25,
+      `a live level is on the gate, upstream of the sends, multiplied with solo and kept through it (${st.live}, ${st.liveSoloed}, ${st.liveBack})`);
   }
 
   // ---- 8. Spot FX on a group --------------------------------------------------------------

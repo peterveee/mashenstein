@@ -19,4 +19,6 @@ export const CHIPSTEP_8BIT = Object.freeze({
   // A part's setting swapped for another: { part: { from: to } }.
   remapParts: { chords: { saws: 'stabs' } },
   label: 'Chipstep · 8-Bit',
+  // The percussion slots hold chip sounds, not the instruments they are named for.
+  labels: { ...CHIPSTEP.labels, fill: 'FILL TOMS', tambourine: 'PERC Hat', congas: 'PERC Tom', cowbell: 'PERC Blip' },
 });

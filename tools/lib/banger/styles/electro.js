@@ -13,6 +13,8 @@ import { BIG_ROOM } from './big-room.js';
 export const ELECTRO = Object.freeze({
   id: 'electro',
   label: 'Electro',
+  // Now and then the Machine-Gun Sweep into a drop, in place of the stutter (fx.js).
+  machineGunSweep: true,
   note: '126 · 808 kit, robot vocoder, stabs',
   title: '126 BPM: an 808 kit with a syncopated kick, an 808 bass locked to it, stabs on the off-beats, a robot vocoder doubling the hook. Dry and straight — no pump. Dark by default',
   bpm: 126,

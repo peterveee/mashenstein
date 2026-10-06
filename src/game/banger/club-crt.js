@@ -16,8 +16,11 @@
 // (the neons, the gold); k-means over the band the heroes stand in, so their clothes, skin
 // and hair are not dragged into the room's purples; and the dance floor's five tints, as
 // they sit on its dark tiles, which no k-means kept. (The arcade intro's inks are the
-// plumber's world — greens and sky — and turned the club to mud.) The LED board is not on
-// the tube: it is painted again over it, crisp, because what it says is news (club.js).
+// plumber's world — greens and sky — and turned the club to mud.) The LED board gets a tube
+// of its own (Peter, 6 Oct 2026: "in 8 bit mode, the sign should also have the 8 bit
+// filter"): the room's cells are bigger than its dots and would mush what it says, so it is
+// painted again over the room and put through clubCrt with `box` — a cell to a dot, in a few
+// reds of its own (LED_INKS), so every dot is a block and the words still read (club.js).
 //
 // COST. One downscale of the room to the cell grid, one readback of it (about 90 x 160 cells),
 // a nearest-ink pass on the CPU, and five full-room fills. The lighter room (a slow device)
@@ -41,15 +44,27 @@ export const CLUB_INKS = Object.freeze([
   '#53244d', '#534434', '#233e64', '#33503e', '#402c64',
 ].map(hexRgb));
 
+/**
+ * THE LED BOARD'S INKS: the unlit board, a lit dot, and a hot one where the glows pile up. A lit dot averaged over its cell (core, glow and the unlit dot under it) comes
+ * to about #d0402a. No black apart from the board's: with one, the unlit dots flickered between
+ * the two as the cells cut them unevenly. And no ink for the glow a lit dot throws on its
+ * neighbours: it filled the gaps and the insides of the letters with dark red blocks, which
+ * made them harder to read (Peter, 6 Oct 2026), so a cell is either lit or the board. (The
+ * frame's edge had an ink once too, and took those cells over when the glow's went.)
+ */
+export const LED_INKS = Object.freeze(['#1c0a0a', '#d0402a', '#ff6a40'].map(hexRgb));
+
 // A cache from colour to ink: a club frame has a few thousand distinct cell colours, and
 // most of them recur frame to frame. Keyed on 5 bits a channel, which no eye can tell apart.
-const memo = new Map();
-function inkOf(r, g, b) {
+const memos = new Map();
+function inkOf(r, g, b, inks) {
+  let memo = memos.get(inks);
+  if (!memo) memos.set(inks, memo = new Map());
   const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
   let ink = memo.get(key);
   if (!ink) {
     let bd = Infinity;
-    for (const p of CLUB_INKS) {
+    for (const p of inks) {
       const dr = r - p[0], dg = g - p[1], db = b - p[2];
       const d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;   // the arcade intro's weighting
       if (d < bd) { bd = d; ink = p; }
@@ -64,7 +79,7 @@ function sheet(id, w, h) {
   let s = sheets[id];
   if (!s) {
     const c = document.createElement('canvas');
-    s = sheets[id] = { c, g: c.getContext('2d', { willReadFrequently: id === 'cells' }) };
+    s = sheets[id] = { c, g: c.getContext('2d', { willReadFrequently: id.endsWith('cells') }) };
   }
   if (s.c.width !== w || s.c.height !== h) { s.c.width = w; s.c.height = h; }
   return s;
@@ -73,21 +88,33 @@ function sheet(id, w, h) {
 /**
  * The room on the tube. `top` and `bottom` are the room's edges in the canvas's logical units
  * (its current transform's), `toonH` a hero's height in them; `lite` leaves out the bloom.
+ * With `box` ({ x, y, w, h, cell } in the same units) only that box goes on the tube, cut to
+ * cells of its own size from its own corner, in `inks`, and without the tube's vignette — the
+ * LED board, a cell to a dot.
  */
-export function clubCrt(ctx, { top, bottom, toonH, lite = false }) {
+export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, inks = CLUB_INKS }) {
   if (typeof document === 'undefined' || typeof ctx.getTransform !== 'function' || !ctx.canvas) return false;
   let m;
   try { m = ctx.getTransform(); } catch { return false; }
   if (!m || !Number.isFinite(m.a) || !Number.isFinite(m.d)) return false;
   const k = Math.hypot(m.a, m.b) || 1;
-  const y0 = Math.max(0, Math.round(m.d * top + m.f));
-  const y1 = Math.min(ctx.canvas.height, Math.round(m.d * bottom + m.f));
-  const R = { x: 0, y: y0, w: ctx.canvas.width, h: y1 - y0 };
+  let R, cell, cw, ch;
+  if (box) {
+    // a fractional cell, so the cells stay on the box's own grid (the board's dots) end to end
+    R = { x: m.a * box.x + m.e, y: m.d * box.y + m.f, w: m.a * box.w, h: m.d * box.h };
+    cell = box.cell * k;
+    if (!(cell >= 1)) return false;
+    cw = Math.max(1, Math.round(R.w / cell)); ch = Math.max(1, Math.round(R.h / cell));
+  } else {
+    const y0 = Math.max(0, Math.round(m.d * top + m.f));
+    const y1 = Math.min(ctx.canvas.height, Math.round(m.d * bottom + m.f));
+    R = { x: 0, y: y0, w: ctx.canvas.width, h: y1 - y0 };
+    cell = Math.max(2, Math.round((toonH * k) / HERO_ROWS));
+    cw = Math.ceil(R.w / cell); ch = Math.ceil(R.h / cell);
+  }
   if (R.w < 8 || R.h < 8) return false;
-  const cell = Math.max(2, Math.round((toonH * k) / HERO_ROWS));
-  const cw = Math.ceil(R.w / cell), ch = Math.ceil(R.h / cell);
   // the cells: the room averaged down, then every cell snapped to its ink
-  const cells = sheet('cells', cw, ch);
+  const cells = sheet(box ? 'box-cells' : 'cells', cw, ch);
   if (!cells.g) return false;
   cells.g.setTransform(1, 0, 0, 1, 0, 0);
   cells.g.imageSmoothingEnabled = true;
@@ -98,7 +125,7 @@ export function clubCrt(ctx, { top, bottom, toonH, lite = false }) {
   try { img = cells.g.getImageData(0, 0, cw, ch); } catch { return false; }
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
-    const p = inkOf(d[i], d[i + 1], d[i + 2]);
+    const p = inkOf(d[i], d[i + 1], d[i + 2], inks);
     d[i] = p[0]; d[i + 1] = p[1]; d[i + 2] = p[2]; d[i + 3] = 255;
   }
   cells.g.putImageData(img, 0, 0);
@@ -124,7 +151,7 @@ export function clubCrt(ctx, { top, bottom, toonH, lite = false }) {
   // a little bloom off a coarser copy
   if (!lite) {
     const bw = Math.max(1, Math.ceil(cw / 4)), bh = Math.max(1, Math.ceil(ch / 4));
-    const bloom = sheet('bloom', bw, bh);
+    const bloom = sheet(box ? 'box-bloom' : 'bloom', bw, bh);
     bloom.g.setTransform(1, 0, 0, 1, 0, 0);
     bloom.g.imageSmoothingEnabled = true;
     bloom.g.clearRect(0, 0, bw, bh);
@@ -137,6 +164,7 @@ export function clubCrt(ctx, { top, bottom, toonH, lite = false }) {
   // the tube's own falloff to its corners
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
+  if (box) { ctx.restore(); return true; }
   const cx = R.x + R.w / 2, cy = R.y + R.h / 2, hd = Math.hypot(R.w / 2, R.h / 2);
   const v = ctx.createRadialGradient(cx, cy, hd * 0.44, cx, cy, hd * 1.09);
   v.addColorStop(0, 'rgba(0,0,0,0)');

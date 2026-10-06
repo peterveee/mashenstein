@@ -326,6 +326,30 @@ assert(!failed, `${made} bangers in every form, style and length are valid songs
   assert(edit.issues(pop).length === 0 && edit.issues([{ type: 'verse', bars: 8 }]).length > 0, 'the editor says what is wrong with a form before it is made');
 }
 
+// ---- the Machine-Gun Sweep (6 Oct 2026): now and then into a drop, in the styles that have it
+{
+  const { laneFx, MASTER_KEY } = await import('../src/data/automation.js');
+  const into = (style, seed) => {
+    const out = generateBanger({ riff: BAND, options: { style, length: 'long' }, seed });
+    return laneFx(out.arrangement.automation, MASTER_KEY).filter((x) => x.chain.some((e) => e.id === 'stutter' && !e.params.stop));
+  };
+  const isSweep = (x) => x.chain.length === 2 && x.chain[0].params.slice === 0.125 && x.chain[0].params.fade === 0
+    && x.chain[1].id === 'filter' && x.chain[1].params.frequency === 18000 && x.chain[1].params.sweepTo === 200
+    && x.to - x.from === 8 && x.to % 16 === 0;
+  const takes = [];
+  for (const style of ['big-room', 'trance', 'future-bass', 'chipstep', 'electro']) for (let seed = 1; seed <= 8; seed++) takes.push(into(style, seed));
+  const sweeps = takes.flat().filter((x) => x.chain[1]?.params?.sweepTo === 200);
+  assert(sweeps.length > 0 && sweeps.every(isSweep),
+    `the styles that have it sometimes close a build's last half bar in thirty-seconds through a low-pass from 18 kHz to 200 Hz (${sweeps.length})`);
+  assert(takes.some((t) => t.some((x) => x.chain.some((e) => e.id === 'filter' && e.params.type === 'highpass'))),
+    'and the rest of the time keep their stutter before the drop');
+  const without = ['deep-house', 'eurodance'].flatMap((style) => [1, 2, 3, 4, 5, 6].flatMap((seed) => into(style, seed)));
+  const dnb = (flavour) => [1, 2, 3, 4, 5, 6, 7, 8].flatMap((seed) => laneFx(generateBanger({ riff: BAND, options: { style: 'dnb', flavour, length: 'long' }, seed })
+    .arrangement.automation, MASTER_KEY)).filter((x) => x.chain[1]?.params?.sweepTo === 200);
+  assert(!without.some(isSweep) && dnb('liquid').length === 0 && dnb('neuro').length > 0,
+    'never in a style without it, nor in Drum & Bass but for Neuro');
+}
+
 console.log(`\n${quiet} quiet checks passed`);
 console.log(failed ? '\nbanger-forms: FAILED' : '\nbanger-forms: all passed');
 process.exit(failed ? 1 : 0);

@@ -237,7 +237,9 @@ export const BANGER_GROUPS = Object.freeze([
   { id: 'spot', label: 'Spot FX', fields: [
     { key: 'intoDrop', label: 'Into a Drop', type: 'select',
       title: 'The effect on the last bar before every drop or chorus. Style: the build\'s stutter (Stutter Before Drop) and, in the other forms, their run-ups',
-      options: [['style', 'Style', 'The switches\' own: the build\'s stutter'], ['stutter', 'Stutter', 'The mix repeating in sixteenths, then thirty-seconds'],
+      options: [['style', 'Style', 'The switches\' own: the build\'s stutter or one of its variations, a different one each build'], ['stutter', 'Stutter', 'The mix repeating in sixteenths, then thirty-seconds'],
+        ['ramp', 'Stutter Ramp', 'The stutter starting a beat early and speeding up: eighths, sixteenths, thirty-seconds'],
+        ['machineGun', 'Machine-Gun Sweep', 'The last half bar in thirty-seconds while a low-pass closes to a choke'],
         ['repeat', 'Beat Repeat', 'The last half bar repeating on itself'], ['sweep', 'High-Pass Sweep', 'The bass draining out as it rises'],
         ['wash', 'Reverb Wash', 'The last two beats blooming into a huge room'],
         ['tapeStop', 'Tape Stop', 'The mix winding down on the last beat and stopping dead — the drop comes in from nothing'], ['none', 'None', 'Straight in']] },
@@ -262,7 +264,7 @@ export const BANGER_GROUPS = Object.freeze([
   { id: 'fx', label: 'FX', fields: [
     { key: 'riser', label: 'Riser', title: 'A two-bar noise riser into every drop' },
     { key: 'filterBuild', label: 'Filter Build', title: 'The music opens up through a low-pass across each build' },
-    { key: 'stutter', label: 'Stutter Before Drop', title: 'The whole mix repeating in 1/16s then 1/32s on the last beat of a build' },
+    { key: 'stutter', label: 'Stutter Before Drop', title: 'A run-up on the end of every build into a drop: the mix stuttering in 1/16s then 1/32s, or one of its variations (Spot FX → Into a Drop) — a different one from the build before' },
     { key: 'pump', label: 'Sidechain Pump', title: 'The chords gated in time — on every beat by default. Chord Gate says at what rate' },
     { key: 'gate', label: 'Chord Gate', type: 'select',
       title: 'The rate the chords are gated at (with Sidechain Pump on): the style\'s own, a quarter-note pump, eighths, the sixteenth trance gate, dotted eighths — or By Energy, slower in quiet sections and faster where the song hits',

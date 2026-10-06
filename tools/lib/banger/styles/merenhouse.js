@@ -104,7 +104,7 @@ export const MERENHOUSE = Object.freeze({
 
   labels: {
     ...BIG_ROOM.labels,
-    hats: 'GÜIRA Chk', shaker: 'GÜIRA Scrape', congas: 'TAMBORA', fill: 'FILL Tambora',
+    hats: 'GÜIRA Chk', shaker: 'GÜIRA Scrape', congas: 'TAMBORA', fill: 'FILL Tambora', cowbell: 'PERC Agogo',
     piano: 'PIANO', counter: 'HORNS',
   },
 });

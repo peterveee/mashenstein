@@ -133,6 +133,8 @@ export const REGGAETON = Object.freeze({
     ...BIG_ROOM.labels,
     clap: 'SNARE Dembow', bass: '808', pad: 'PAD', piano: 'GUITAR', arp: 'ARP', counter: 'VOX Chops', fill: 'FILL Perc',
     shaker: 'PERC Shaker', congas: 'PERC Congas',
+    // The cowbell slot plays a clave, and the crash slot a ride.
+    cowbell: 'PERC Clave', crash: 'CRASH Ride',
   },
 });
 
@@ -176,7 +178,7 @@ export const REGGAETON_FLAVOURS = Object.freeze([
         pad: { gain: -7, eq: { low: -6 }, send: { reverb: 0.5 } },
         hook: { gain: -4, send: { delay: 0.3, reverb: 0.5 } },
       },
-      labels: { ...REGGAETON.labels, clap: 'DEMBOW Rim', hats: 'GÜIRA', shaker: 'PERC Shaker', congas: 'BONGO Macho', fill: 'BONGO Hembra', arp: 'GUITAR Nylon', bass: 'BASS' },
+      labels: { ...REGGAETON.labels, clap: 'DEMBOW Clave', snare: 'CLAVE Roll', hats: 'GÜIRA', shaker: 'PERC Shaker', congas: 'BONGO Macho', fill: 'BONGO Hembra', arp: 'GUITAR Nylon', bass: 'BASS' },
     },
   },
   {

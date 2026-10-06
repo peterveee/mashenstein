@@ -46,7 +46,10 @@ export const EURODANCE = Object.freeze({
     hats16: 'xxxxxxxxxxxxxxxx',
     hats8: 'x.x.x.x.x.x.x.x.',
     crash: 'x...............',
-    rolls: BIG_ROOM.drums.rolls,
+    // The backbeat picking up a pickup, eighths into a gallop, sixteenths, and a dotted
+    // run-up into the hole.
+    rolls: ['....x.......x...', 'x...x...x...x.x.', 'x.x.x.x.x.xxx.xx', 'xxxxxxxxxxxxxxxx', 'x..x..x.xxxx....'],
+    rollSwell: { from: -9, shape: 'equal' },
     fills: BIG_ROOM.drums.fills,
     halfKick: 'x.........x.....',
     halfClap: '........x.......',

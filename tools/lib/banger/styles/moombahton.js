@@ -47,7 +47,10 @@ export const MOOMBAHTON = Object.freeze({
     hats16: 'x.xxx.x.x.xxx.x.',
     hats8: 'x.x.x.x.x.x.x.x.',
     crash: 'x...............',
-    rolls: BIG_ROOM.drums.rolls,
+    // The dembow build: the dembow snare, the tresillo twice, filling in, the gallop, then
+    // one tresillo and the hole.
+    rolls: ['...x..x....x..x.', 'x..x..x.x..x..x.', 'x..x..x.x.xxx.xx', 'x.xxx.xxx.xxx.xx', 'x..x..x.........'],
+    rollSwell: { from: -10, shape: 's' },
     // Tom runs into the next eight.
     fills: [
       { snare: '...x..x.........', tom: '........x.x.xxx.' },

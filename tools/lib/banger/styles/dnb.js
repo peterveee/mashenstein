@@ -60,7 +60,10 @@ export const DNB = Object.freeze({
     hats16: ['x.xxx.x.x.xxx.xx', 'x.xxx.x.x.xxxxx.'],
     hats8: 'x.x.x.x.x.x.x.x.',
     crash: 'x...............',
-    rolls: BIG_ROOM.drums.rolls,
+    // The roll from the backbeat through dotted eighths and the gallop to sixteenths,
+    // stopping dead half a bar before the drop.
+    rolls: ['....x.......x...', 'x..x..x..x..x.x.', 'x.xxx.xxx.xxx.xx', 'xxxxxxxxxxxxxxxx', 'xxxxxxxx........'],
+    rollSwell: { from: -8, shape: 'even' },
     fills: [
       { snare: '..........x.x.xx', tom: '........x.......' },
       { snare: '........x..x.xxx', tom: '..........x.....' },
@@ -157,6 +160,9 @@ export const DNB_FLAVOURS = Object.freeze([
     remapParts: { bass: { reese: 'offbeat' }, chords: { pad: 'piano' } },
     remap: { parts: { sub: { false: true } } },
     recipe: {
+      // The Machine-Gun Sweep now and then into a drop (fx.js): Neuro only — at 174 its
+      // thirty-seconds buzz, which suits the jabs and not Liquid's or Rolling's soul.
+      machineGunSweep: true,
       drums: {
         ...DNB.drums,
         kick: ['x.........x.....', 'x.x.......x.....'],

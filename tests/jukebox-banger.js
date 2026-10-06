@@ -23,7 +23,8 @@ const { BangerMakerState, RIFF_VOICES, MAKER_VARIATIONS } = await import('../src
 const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { BangerClubState, LED_COLS } = await import('../src/game/banger/club.js');
-const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor, dragValue, echoLevel, drainSeconds, nextStopStep } = await import('../src/game/banger/club-fx.js');
+const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor, dragValue, echoLevel, drainSeconds, nextStopStep,
+  nowAt, nextSixteenthAt } = await import('../src/game/banger/club-fx.js');
 const { cleanerWalk, DOLORES_DANCE_BEATS, DOLORES_FLING_BEATS, DOLORES_RUN_BEATS, makeScrap, drawScraps } = await import('../src/game/banger/club-party.js');
 
 let failed = false;
@@ -1176,6 +1177,30 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     Audio.reapplyBank = realRe;
     club.draw(ctx);
   }
+  // MUTE and SOLO over each fader (Peter, 6 Oct 2026): a muted part plays nothing with its fader
+  // where it was; a solo quiets every other part; RESET clears both
+  {
+    assert(club.boxes.mutes.length === PARTS.length && club.boxes.solos.length === PARTS.length,
+      'every strip has a MUTE and a SOLO');
+    const hi = (b) => b.y + b.h / 2;
+    assert(hi(club.boxes.mutes[0]) < club.boxes.faders[0].top, 'MUTE and SOLO sit over the fader');
+    tap(club, ...centre(club.boxes.mutes[1]));
+    assert(club.levels.bass === 1 && club.heard.bass === 0 && !club.parts.has('bass') && club.popup?.text === 'NO BASS',
+      'MUTE: the bass out, its fader left where it was');
+    tap(club, ...centre(club.boxes.mutes[1]));
+    assert(club.heard.bass === 1 && club.popup?.text === 'YES BASS', 'and MUTE again brings it back');
+    tap(club, ...centre(club.boxes.solos[0]));
+    assert(club.heard.drums === 1 && PARTS.filter((p) => p.id !== 'drums').every((p) => club.heard[p.id] === 0) && !club.mixerPlain,
+      'SOLO DRUMS: only the drums play');
+    tap(club, ...centre(club.boxes.solos[3]));
+    assert(club.heard.drums === 1 && club.heard.lead === 1 && club.heard.bass === 0, 'a second SOLO adds its part');
+    tap(club, ...centre(club.boxes.mutes[2]));
+    club.draw(ctx);
+    tap(club, ...centre(club.boxes.reset));
+    assert(!club.muted.size && !club.soloed.size && PARTS.every((p) => club.heard[p.id] === 1) && club.mixerPlain,
+      'RESET clears every mute and solo');
+    club.draw(ctx);
+  }
   for (let k = 0; k < 600; k++) club.update(1 / 60);
   assert(club.mixerOpen, 'the panel stays open, untouched, until it is closed — ten seconds and still there');
   tap(club, 5, 5);
@@ -1217,6 +1242,18 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     d.changeAt = club.t; club.update(1 / 60);
     Math.random = rnd;
     assert(rested && !d.resting && d.move && d.move !== d.last, 'a hero sits a few bars out on the idle bob, then dances something new');
+  }
+  // A held move (or a speaker) let go comes out at once: on the audio clock, not the next
+  // sixteenth the sequencer has yet to queue, a whole lookahead ahead (Peter, 6 Oct 2026).
+  {
+    const keep = { ctx: Audio.ctx, bank: Audio.bank, mixer: Audio.mixer, nextTime: Audio.nextTime, step: Audio.step, bpm: Audio.bpm, tempo: Audio.tempo };
+    Object.assign(Audio, { ctx: { currentTime: 10 }, bank: {}, mixer: {}, nextTime: 10.3, step: 403, bpm: 120, tempo: 1 });
+    const out = nowAt(), grid = nextSixteenthAt();
+    Object.assign(Audio, keep);
+    assert(out && out.when - 10 <= 0.02 && grid.when - 10 >= 0.25 && out.step === 400,
+      `a let-go is heard ${Math.round((out?.when - 10) * 1000)} ms after the clock, not ${Math.round((grid?.when - 10) * 1000)} ms on the next sixteenth`);
+    const once = HERO_MOVES.filter((m) => m.atOnce).map((m) => m.hero).sort().join();
+    assert(once === 'clara,lorenzo', `the filter and the gates go in at the press too; the stutter, the bow, the speed, the throws and the stops wait for their grid (${once})`);
   }
   // Kiko's tape stop: on the 4, a beat; on the 2, two beats — one long stop or two short.
   {

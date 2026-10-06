@@ -23,7 +23,7 @@ assert.deepEqual(presets.reduce((out, v) => {
   out[v.category] = (out[v.category] || 0) + 1; return out;
 }, {}), { Bass: 12, Lead: 8, Pad: 6, Keys: 10, Pluck: 3, Bells: 5, Orch: 5, FX: 2 },
 'TNGR-2 presets cover showcase and conventional instrument categories');
-const familiar = presets.filter((v) => /^(Round Bass|Picked Bass|Soft Piano|Bright Piano|Electric Keys|Music Bell|Church Bell|Celesta|Warm Strings|Soft Strings|Brass Section|Soft Horn|Plain Saw Synth|Plain Pulse Synth|Classic Square Synth)$/.test(v.label));
+const familiar = presets.filter((v) => /^(Digital Round Bass|Picked Bass|Soft Piano|Bright Piano|Electric Keys|Music Bell|Church Bell|Celesta|Warm Strings|Soft Strings|Brass Section|Soft Horn|Plain Saw|Plain Pulse|Classic Square)$/.test(v.label));
 assert.equal(familiar.length, 15, 'the expanded bank includes fifteen familiar instruments');
 // Osc B is present or absent — see the section switch in `_playTngr2`. A stored `on`
 // flag would be a second switch with no pot behind it, so its absence is asserted.

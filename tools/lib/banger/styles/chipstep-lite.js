@@ -22,4 +22,6 @@ export const CHIPSTEP_LITE = Object.freeze({
   soundSet: 'light',
   phone: true,
   label: 'Chipstep · Light',
+  // Its fill is a real tom, where chipstep's own is a blip.
+  labels: { ...CHIPSTEP.labels, fill: 'FILL TOMS' },
 });

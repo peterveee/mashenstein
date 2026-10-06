@@ -1,6 +1,6 @@
-// 16-BIT SEED — one song: what it plays, how it is arranged, how it sounds.
+// SYNTHWAVE · DARKSYNTH SEED — one song: what it plays, how it is arranged, how it sounds.
 //
-// 16-Bit's SEED BANGER: the style laid out to be tuned, every part switched on.
+// Synthwave · Darksynth's SEED BANGER: the style laid out to be tuned, every part switched on.
 // Tune it on the desk — the drum sounds, the presets, the faders, EQ, sends, inserts and the
 // master — then Use as Style (the drawer) makes new bangers start from it.
 // Made by tools/banger-seeds.js; see tools/lib/banger-seeds.js.
@@ -10,14 +10,14 @@
 // about the song up here, where they survive.
 import { seq, chordSeq } from '../../engine/notes.js';
 
-export const id = "banger-seed-megadrive";
-export const title = "16-BIT SEED";
-export const slug = "banger-seed-megadrive";
+export const id = "banger-seed-synthwave-darksynth";
+export const title = "SYNTHWAVE · DARKSYNTH SEED";
+export const slug = "banger-seed-synthwave-darksynth";
 export const group = "bangerSeed";
 export const seed = 1;
 
 export const bank = {
-  bpm: 150,
+  bpm: 112,
   musicTrim: 0.93,
   lead: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
   kick: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
@@ -31,6 +31,7 @@ export const bank = {
   snare: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
   lead5: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
   lead2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+  crash2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
   ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
   tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
   lead3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
@@ -38,16 +39,15 @@ export const bank = {
   rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
   tom2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
   rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
-  lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
   lead6: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
   lead4: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
   lead7: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-  crash2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+  crash3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
   sections: [
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       chords2: chordSeq('D4min . . . . . . . . . . . . . . . | D4min . . . . . . . . . . . . . . .'),
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
@@ -55,7 +55,7 @@ export const bank = {
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       chords2: chordSeq('D4min . . . . . . . . . . . . . . . | D4min . . . . . . . . . . . . . . .'),
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       hats: seq('C1 . . . C1 . . . C1 . . . C1 . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
@@ -63,52 +63,53 @@ export const bank = {
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       chords2: chordSeq('D4min . . . . . . . . . . . . . . . | D4min . . . . . . . . . . . . . . .'),
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       hats: seq('C1 . . . C1 . . . C1 . . . C1 . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4min . . D4min D4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . D1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . D2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       snare: seq('C1 . . . C1 . . . C1 . . . C1 . . . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: seq('F5 . A5 . C6 . A5 . F5 . . . E5 . G5 . | D5 . . . A4 . . . F5 . . . . . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,8,null,null,null,null,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . C1 . . . C1 . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       chords2: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 . . . .').map((v) => !!v),
-      chords: [null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,[261.6255653005986,349.2282314330039,440],[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,null,null],
-      bass: seq('F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 . | F2 . F3 . F2 . F3 . F2 . F3 . . . . .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,null,null,null,null],
-      bass2: seq('. . F1 . . . F1 . . . F1 . . . F1 . | . . F1 . . . F1 . . . F1 . . . . .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,null,null],
-      snare: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 . . . .').map((v) => !!v),
-      lead5: seq('F5 A5 C6 F6 A6 F6 C6 A5 F5 A5 C6 F6 A6 F6 C6 A5 | F5 A5 C6 F6 A6 F6 C6 A5 F5 A5 C6 F6 . . . .'),
-      lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,null,null,null,null],
+      chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      chords: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null],
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('F1 . F1 F1 . F1 F1 . F1 F1 . F1 F1 . F2 . | F1 . F1 F1 . F1 F1 . F1 F1 . F1 F1 . F2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('F1 . . . . . . . F1 . . . . . . . | F1 . . . . . . . F1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      snare: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+      lead5: seq('A4 C5 F5 A4 C5 F5 A4 C5 A4 C5 F5 A4 C5 F5 A4 C5 | A4 C5 F5 A4 C5 F5 A4 C5 A4 C5 F5 A4 C5 F5 A4 C5'),
+      lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('F5 . A5 . C6 . A5 . F5 . . . E5 . G5 . | D5 . . . A4 . . . F5 . . . . . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,8,null,null,null,null,null,null,null],
+      crash2: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4min . . D4min D4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . D1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . D2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -116,16 +117,16 @@ export const bank = {
     {
       lead: seq('F5 . A5 . C6 . A5 . F5 . . . E5 . G5 . | F5 . . . C5 . . . A5 . . . G5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,[261.6255653005986,349.2282314330039,440],[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,[261.6255653005986,349.2282314330039,440],[261.6255653005986,349.2282314330039,440],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 . | F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . F1 . . . F1 . . . F1 . . . F1 . | . . F1 . . . F1 . . . F1 . . . F1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null],
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('F1 . F1 F1 . F1 F1 . F1 F1 . F1 F1 . F2 . | F1 . F1 F1 . F1 F1 . F1 F1 . F1 F1 . F2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('F1 . . . . . . . F1 . . . . . . . | F1 . . . . . . . F1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('F5 . A5 . C6 . A5 . F5 . . . E5 . G5 . | F5 . . . C5 . . . A5 . . . G5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -133,16 +134,16 @@ export const bank = {
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4min . . D4min D4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . D1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . D2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -150,35 +151,35 @@ export const bank = {
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . A4 . . . E4 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,[293.6647679174076,349.2282314330039,440],[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[277.1826309768721,329.6275569128699,440],null,null,[277.1826309768721,329.6275569128699,440],[277.1826309768721,329.6275569128699,440],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . A1 . A2 . A1 . A2 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . A1 . . . A1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . C1 . C1 . C1 C1').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . A1 A1 . A1 A1 . A2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . A1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . C1 . C1 . C1 .').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . A4 . . . E4 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
-      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 C1 C1 C1').map((v) => !!v),
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4min . . D4min D4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . D1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . D2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -188,22 +189,20 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . A4 . . . A4 . . . A4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . D5 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,4,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4min . . D4min D4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . D1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . D2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . D5 . . . F5 . . . E5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,4,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -213,22 +212,20 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . A4 . . . A4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null],
     },
     {
       lead: seq('A5 . C6 . E6 . C6 . A5 . . . G5 . A#5 . | F5 . . . C5 . . . A5 . . . G5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[261.6255653005986,329.6275569128699,440],null,null,null,[261.6255653005986,329.6275569128699,440],null,null,null,[261.6255653005986,329.6275569128699,440],null,null,[261.6255653005986,329.6275569128699,440],[261.6255653005986,329.6275569128699,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,[261.6255653005986,349.2282314330039,440],[261.6255653005986,349.2282314330039,440],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('A1 . A2 . A1 . A2 . A1 . A2 . A1 . A2 . | F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . A1 . . . A1 . . . A1 . . . A1 . | . . F1 . . . F1 . . . F1 . . . F1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: [[261.6255653005986,329.6275569128699,440],null,null,null,null,null,[261.6255653005986,329.6275569128699,440],null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null],
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('A1 . A1 A1 . A1 A1 . A1 A1 . A1 A1 . A2 . | F1 . F1 F1 . F1 F1 . F1 F1 . F1 F1 . F2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('A1 . . . . . . . A1 . . . . . . . | F1 . . . . . . . F1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('A5 . C6 . E6 . C6 . A5 . . . G5 . A#5 . | F5 . . . C5 . . . A5 . . . G5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -238,49 +235,45 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . A4 . . . A4 . . . A4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . A4 . . . E4 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,[293.6647679174076,349.2282314330039,440],[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[277.1826309768721,329.6275569128699,440],null,null,[277.1826309768721,329.6275569128699,440],[277.1826309768721,329.6275569128699,440],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . A1 . A2 . A1 . A2 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . A1 . . . A1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . C1 . C1 . C1 C1').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . A1 A1 . A1 A1 . A2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . A1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . C1 . C1 . C1 .').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . A4 . . . E4 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
-      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 C1 C1 C1').map((v) => !!v),
       lead3: seq('D6 . F6 . A6 . F6 . D6 . . . C6 . E6 . | D6 . . . A5 . . . A5 . . . E5 . . .'),
       lead3Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       rim: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . A4 . . . . . . . . .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,null,null,null,null],
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4min . . D4min D4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . D1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . D2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -290,22 +283,20 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . A4 . . . A4 . . . A4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
     },
     {
       lead: seq('F5 . A5 . C6 . A5 . F5 . . . E5 . G5 . | F5 . . . C5 . . . A5 . . . G5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,[261.6255653005986,349.2282314330039,440],[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[261.6255653005986,349.2282314330039,440],null,null,[261.6255653005986,349.2282314330039,440],[261.6255653005986,349.2282314330039,440],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 . | F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . F1 . . . F1 . . . F1 . . . F1 . | . . F1 . . . F1 . . . F1 . . . F1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null],
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('F1 . F1 F1 . F1 F1 . F1 F1 . F1 F1 . F2 . | F1 . F1 F1 . F1 F1 . F1 F1 . F1 F1 . F2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('F1 . . . . . . . F1 . . . . . . . | F1 . . . . . . . F1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('F5 . A5 . C6 . A5 . F5 . . . E5 . G5 . | F5 . . . C5 . . . A5 . . . G5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -315,22 +306,20 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . A4 . . . A4 . . . A4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4min . . D4min D4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . D1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . D2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
@@ -340,142 +329,139 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . A4 . . . A4 . . . A4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . A4 . . . E4 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,[293.6647679174076,349.2282314330039,440],[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,[277.1826309768721,329.6275569128699,440],null,null,[277.1826309768721,329.6275569128699,440],[277.1826309768721,329.6275569128699,440],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . A1 . A2 . A1 . A2 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . A1 . . . A1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . A1 A1 . A1 A1 . A2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . A1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . C1 . . . C1 C1').map((v) => !!v),
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . A4 . . . E4 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
-      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 C1 C1 C1 C1 C1').map((v) => !!v),
+      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 C1 . C1 . C1 . .').map((v) => !!v),
       lead3: seq('D6 . F6 . A6 . F6 . D6 . . . C6 . E6 . | D6 . . . A5 . . . A5 . . . E5 . . .'),
       lead3Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       rim: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . A4 . . . . . . . . .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,null,null,null,null],
     },
     {
       lead: seq('D5 . . . F5 . . . A5 . . . F5 . . . | D5 . . . . . . . C5 . . . E5 . . .'),
       leadLen: [4,null,null,null,4,null,null,null,4,null,null,null,4,null,null,null,6,null,null,null,null,null,null,null,4,null,null,null,4,null,null,null],
-      chords2: [[174.61411571650194,220,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899,698.4564628660078],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords2: [[174.61411571650194,261.6255653005986,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,440,466.1637615180899,698.4564628660078],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass: seq('D2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . .'),
       bassLen: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      bass2: seq('D1 . . . . . . . . . . . . . . . | D1 . . . . . . . . . . . . . . .'),
+      bass2: seq('D2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . .'),
       bass2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: seq('D6 . F6 . A6 . F6 . D6 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3Len: [2,null,2,null,2,null,2,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead6: [[349.2282314330039,440,587.3295358348151,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[587.3295358348151,698.4564628660078,932.3275230361799,1396.9129257320155],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6: [[349.2282314330039,523.2511306011972,659.2551138257398,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[587.3295358348151,880,932.3275230361799,1396.9129257320155],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       lead: seq('D5 . . . . . . . A4 . . . . . . . | F5 . . . . . . . E5 . . . . . . .'),
       leadLen: [8,null,null,null,null,null,null,null,4,null,null,null,null,null,null,null,4,null,null,null,null,null,null,null,4,null,null,null,null,null,null,null],
-      chords2: [[220,261.6255653005986,349.2282314330039,523.2511306011972],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[164.81377845643496,195.99771799087463,261.6255653005986,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords2: [[220,329.6275569128699,349.2282314330039,523.2511306011972],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[164.81377845643496,195.99771799087463,261.6255653005986,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass: seq('D2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . .'),
       bassLen: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      bass2: seq('D1 . . . . . . . . . . . . . . . | D1 . . . . . . . . . . . . . . .'),
+      bass2: seq('D2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . .'),
       bass2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: seq('D6 . . . A5 . . . F6 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3Len: [4,null,null,null,2,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead6: [[440,523.2511306011972,698.4564628660078,1046.5022612023945],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,523.2511306011972,783.9908719634985],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6: [[440,659.2551138257398,698.4564628660078,1046.5022612023945],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,523.2511306011972,783.9908719634985],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       lead: seq('D5 . . . F5 . . . A5 . . . F5 . . . | D5 . . . . . . . C5 . . . E5 . . .'),
       leadLen: [4,null,null,null,4,null,null,null,4,null,null,null,4,null,null,null,6,null,null,null,null,null,null,null,4,null,null,null,4,null,null,null],
-      chords2: [[174.61411571650194,220,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899,698.4564628660078],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords2: [[174.61411571650194,261.6255653005986,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,440,466.1637615180899,698.4564628660078],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass: seq('D2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . .'),
       bassLen: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      bass2: seq('D1 . . . . . . . . . . . . . . . | D1 . . . . . . . . . . . . . . .'),
+      bass2: seq('D2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . .'),
       bass2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: seq('D6 . F6 . A6 . F6 . D6 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3Len: [2,null,2,null,2,null,2,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead6: [[349.2282314330039,440,587.3295358348151,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[587.3295358348151,698.4564628660078,932.3275230361799,1396.9129257320155],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6: [[349.2282314330039,523.2511306011972,659.2551138257398,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[587.3295358348151,880,932.3275230361799,1396.9129257320155],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       lead: seq('D5 . . . . . . . A4 . . . . . . . | F5 . . . . . . . E5 . . . . . . .'),
       leadLen: [8,null,null,null,null,null,null,null,4,null,null,null,null,null,null,null,4,null,null,null,null,null,null,null,4,null,null,null,null,null,null,null],
-      chords2: [[220,261.6255653005986,349.2282314330039,523.2511306011972],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[164.81377845643496,195.99771799087463,261.6255653005986,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords2: [[220,329.6275569128699,349.2282314330039,523.2511306011972],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[164.81377845643496,195.99771799087463,261.6255653005986,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass: seq('D2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . .'),
       bassLen: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      bass2: seq('D1 . . . . . . . . . . . . . . . | D1 . . . . . . . . . . . . . . .'),
+      bass2: seq('D2 . . . . . . . . . . . . . . . | D2 . . . . . . . . . . . . . . .'),
       bass2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: seq('D6 . . . A5 . . . F6 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3Len: [4,null,null,null,2,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead6: [[440,523.2511306011972,698.4564628660078,1046.5022612023945],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,523.2511306011972,783.9908719634985],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6: [[440,659.2551138257398,698.4564628660078,1046.5022612023945],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,523.2511306011972,783.9908719634985],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       chords2: chordSeq('D4min . . . . . . . . . . . . . . . | D4min . . . . . . . . . . . . . . .'),
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       hats: seq('C1 . . . C1 . . . C1 . . . C1 . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4min . . D4min D4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . D1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . D2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
       snare: seq('C1 . . . C1 . . . C1 . . . C1 . . . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . . . . . . . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . C1 . . . C1 . . . . . . .').map((v) => !!v),
-      chords2: chordSeq('D4min . . . . . . . . . . . . . . . | D4min . . . . . . . C4 . D4 . . . . .'),
-      chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,2,null,2,null,null,null,null,null],
-      hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 . . . .').map((v) => !!v),
-      chords: chordSeq('. . D4min . . . D4min . . . D4min . . D4min D4min . | . . D4min . . . D4min . . . D4 . . . . .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,null,null],
-      bass: seq('D2 . D3 . D2 . D3 . D2 . D3 . D2 . D3 . | D2 . D3 . D2 . D3 . C2 . D3 . . . . .'),
-      bassLen: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,null,null,null,null],
-      bass2: seq('. . D1 . . . D1 . . . D1 . . . D1 . | . . D1 . . . D1 . . . D1 . . . . .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,null,null],
-      snare: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 . . . .').map((v) => !!v),
-      lead5: seq('F6 D6 A5 F5 F6 D6 A5 F5 F6 D6 A5 F5 F6 D6 A5 F5 | F6 D6 A5 F5 F6 D6 A5 F5 E6 C6 A5 F#5 . . . .'),
-      lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,null,null,null,null],
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      chords2: [[293.6647679174076,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,440],null,null,null,null,null,null,null,[311.1269837220809,369.9944227116344,440],null,null,null,null,null,null,null],
+      chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      chords: chordSeq('D4min . . . . . D4min . . . . . . . . . | D4min . . . . . D4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('D2 . D2 D2 . D2 D2 . D2 D2 . D2 D2 . D3 . | D2 . D2 D2 . D2 D2 . B1 . C#2 . D2 . D#2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,2,null,2,null,2,null,2,null],
+      bass2: seq('D2 . . . . . . . D2 . . . . . . . | D2 . . . . . . . B1 . C#2 . D2 . D#2 .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,2,null,2,null,2,null,2,null],
+      snare: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+      lead5: seq('A5 F5 D5 A4 A5 F5 D5 A4 A5 F5 D5 A4 A5 F5 D5 A4 | A5 F5 D5 A4 A5 F5 D5 A4 A5 F#5 D#5 A4 A5 F#5 D#5 A4'),
+      lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . . . . . . . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null],
+      crash2: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       lead: [[659.2551138257398,1318.5102276514797],null,[783.9908719634985,1567.981743926997],null,[987.7666025122483,1975.533205024496],null,[783.9908719634985,1567.981743926997],null,[659.2551138257398,1318.5102276514797],null,null,null,[587.3295358348151,1174.6590716696303],null,[739.9888454232688,1479.9776908465376],null,[659.2551138257398,1318.5102276514797],null,null,null,[493.8833012561241,987.7666025122483],null,null,null,[783.9908719634985,1567.981743926997],null,null,null,[739.9888454232688,1479.9776908465376],null,null,null],
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . E4min . . . E4min . . . E4min . . E4min E4min . | . . E4min . . . E4min . . . E4min . . E4min E4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 | E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2'),
-      bassLen: [2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1],
-      bass2: seq('. . E1 . . . E1 . . . E1 . . . E1 . | . . E1 . . . E1 . . . E1 . . . E1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      lead5: seq('B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5 | B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5'),
+      chords: chordSeq('E4min . . . . . E4min . . . . . . . . . | E4min . . . . . E4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 . | E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('E2 . . . . . . . E2 . . . . . . . | E2 . . . . . . . E2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      lead5: seq('B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7 | B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7'),
       lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('E5 . G5 . B5 . G5 . E5 . . . D5 . F#5 . | E5 . . . B4 . . . G5 . . . F#5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
@@ -486,30 +472,28 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . B4 . . . B4 . . . B4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
       lead6: [[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('E6 . G6 . B6 . G6 . E6 . . . D6 . F#6 . | E6 . . . B5 . . . G6 . . . F#6 . . .'),
       lead4Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,3,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null],
       lead7: seq('C5 . E5 . G5 . E5 . C5 . . . B4 . D5 . | C5 . . . G4 . . . E5 . . . D5 . . .'),
       lead7Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      crash2: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      crash3: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: [[659.2551138257398,1318.5102276514797],null,[783.9908719634985,1567.981743926997],null,[987.7666025122483,1975.533205024496],null,[783.9908719634985,1567.981743926997],null,[659.2551138257398,1318.5102276514797],null,null,null,[587.3295358348151,1174.6590716696303],null,[739.9888454232688,1479.9776908465376],null,[659.2551138257398,1318.5102276514797],null,null,null,[659.2551138257398,1318.5102276514797],null,null,null,[783.9908719634985,1567.981743926997],null,null,null,[739.9888454232688,1479.9776908465376],null,null,null],
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,4,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . E4min . . . E4min . . . E4min . . E4min E4min . | . . E4min . . . E4min . . . E4min . . E4min E4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 | E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2'),
-      bassLen: [2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1],
-      bass2: seq('. . E1 . . . E1 . . . E1 . . . E1 . | . . E1 . . . E1 . . . E1 . . . E1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      lead5: seq('B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5 | B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5'),
+      chords: chordSeq('E4min . . . . . E4min . . . . . . . . . | E4min . . . . . E4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 . | E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('E2 . . . . . . . E2 . . . . . . . | E2 . . . . . . . E2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      lead5: seq('B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7 | B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7'),
       lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('E5 . G5 . B5 . G5 . E5 . . . D5 . F#5 . | E5 . . . E5 . . . G5 . . . F#5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,4,null,null,null,2,null,null,null,2,null,null,null],
@@ -520,31 +504,29 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . B4 . . . B4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null],
       lead6: [[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('E6 . G6 . B6 . G6 . E6 . . . D6 . F#6 . | E6 . . . E6 . . . G6 . . . F#6 . . .'),
       lead4Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,3,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null],
       lead7: seq('C5 . E5 . G5 . E5 . C5 . . . B4 . D5 . | C5 . . . C5 . . . E5 . . . D5 . . .'),
       lead7Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,4,null,null,null,2,null,null,null,2,null,null,null],
-      crash2: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      crash3: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: [[987.7666025122483,1975.533205024496],null,[1174.6590716696303,2349.31814333926],null,[1479.9776908465376,2959.955381693075],null,[1174.6590716696303,2349.31814333926],null,[987.7666025122483,1975.533205024496],null,null,null,[880,1760],null,[1046.5022612023945,2093.004522404789],null,[783.9908719634985,1567.981743926997],null,null,null,[587.3295358348151,1174.6590716696303],null,null,null,[987.7666025122483,1975.533205024496],null,null,null,[880,1760],null,null,null],
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[293.6647679174076,369.9944227116344,493.8833012561241],null,null,null,[293.6647679174076,369.9944227116344,493.8833012561241],null,null,null,[293.6647679174076,369.9944227116344,493.8833012561241],null,null,[293.6647679174076,369.9944227116344,493.8833012561241],[293.6647679174076,369.9944227116344,493.8833012561241],null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,[293.6647679174076,391.99543598174927,493.8833012561241],[293.6647679174076,391.99543598174927,493.8833012561241],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('B1 . B1 B1 B1 . B1 B1 B1 . B1 B1 B1 . B1 B1 | G2 . G2 G2 G2 . G2 G2 G2 . G2 G2 G2 . G2 G2'),
-      bassLen: [2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1],
-      bass2: seq('. . B1 . . . B1 . . . B1 . . . B1 . | . . G1 . . . G1 . . . G1 . . . G1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      lead5: seq('B7 F#7 D7 B6 F#6 D6 B5 F#5 B7 F#7 D7 B6 F#6 D6 B5 F#5 | B7 G7 D7 B6 G6 D6 B5 G5 B7 G7 D7 B6 G6 D6 B5 G5'),
+      chords: [[293.6647679174076,369.9944227116344,493.8833012561241],null,null,null,null,null,[293.6647679174076,369.9944227116344,493.8833012561241],null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,null,null,null,null,null,null],
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('B1 . B1 B1 . B1 B1 . B1 B1 . B1 B1 . B2 . | G1 . G1 G1 . G1 G1 . G1 G1 . G1 G1 . G2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('B1 . . . . . . . B1 . . . . . . . | G1 . . . . . . . G1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      lead5: seq('B4 D5 F#5 B5 D6 F#6 B6 D7 B4 D5 F#5 B5 D6 F#6 B6 D7 | B4 D5 G5 B5 D6 G6 B6 D7 B4 D5 G5 B5 D6 G6 B6 D7'),
       lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('B5 . D6 . F#6 . D6 . B5 . . . A5 . C6 . | G5 . . . D5 . . . B5 . . . A5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
@@ -555,66 +537,62 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . B4 . . . B4 . . . B4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
       lead6: [[369.9944227116344,493.8833012561241,587.3295358348151],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[391.99543598174927,493.8833012561241,587.3295358348151],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('B6 . D7 . F#7 . D7 . B6 . . . A6 . C7 . | G6 . . . D6 . . . B6 . . . A6 . . .'),
       lead4Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,3,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null],
       lead7: seq('G5 . B5 . D6 . B5 . G5 . . . F#5 . A5 . | E5 . . . B4 . . . G5 . . . F#5 . . .'),
       lead7Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      crash2: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      crash3: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: [[659.2551138257398,1318.5102276514797],null,[783.9908719634985,1567.981743926997],null,[987.7666025122483,1975.533205024496],null,[783.9908719634985,1567.981743926997],null,[659.2551138257398,1318.5102276514797],null,null,null,[587.3295358348151,1174.6590716696303],null,[739.9888454232688,1479.9776908465376],null,[659.2551138257398,1318.5102276514797],null,null,null,[493.8833012561241,987.7666025122483],null,null,null,[493.8833012561241,987.7666025122483],null,null,null,[369.9944227116344,739.9888454232688],null,null,null],
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[311.1269837220809,369.9944227116344,493.8833012561241],null,null,[311.1269837220809,369.9944227116344,493.8833012561241],[311.1269837220809,369.9944227116344,493.8833012561241],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 | E2 . E2 E2 E2 . E2 E2 B1 . B1 B1 B1 . B1 B1'),
-      bassLen: [2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1],
-      bass2: seq('. . E1 . . . E1 . . . E1 . . . E1 . | . . E1 . . . E1 . . . B1 . . . B1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
-      lead5: seq('B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5 | B7 G7 E7 B6 G6 E6 B5 G5 B7 F#7 D#7 B6 F#6 D#6 B5 F#5'),
+      chords: chordSeq('E4min . . . . . E4min . . . . . . . . . | E4min . . . . . E4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 . | E2 . E2 E2 . E2 E2 . B1 B1 . B1 B1 . B2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('E2 . . . . . . . E2 . . . . . . . | E2 . . . . . . . B1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . C1 . . . C1 C1').map((v) => !!v),
+      lead5: seq('B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7 | B4 E5 G5 B5 E6 G6 B6 E7 B4 D#5 F#5 B5 D#6 F#6 B6 D#7'),
       lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('E5 . G5 . B5 . G5 . E5 . . . D5 . F#5 . | E5 . . . B4 . . . B4 . . . F#4 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
-      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 C1 C1 C1 C1 C1').map((v) => !!v),
+      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 C1 . C1 . C1 . .').map((v) => !!v),
       lead3: seq('E6 . G6 . B6 . G6 . E6 . . . D6 . F#6 . | E6 . . . B5 . . . B5 . . . F#5 . . .'),
       lead3Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       rim: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . B4 . . . . . . . . .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,null,null,null,null],
       lead6: [[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,[369.9944227116344,493.8833012561241,622.2539674441618],null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       lead4: seq('E6 . G6 . B6 . G6 . E6 . . . D6 . F#6 . | E6 . . . B5 . . . B5 . . . F#5 . . .'),
       lead4Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,3,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null],
       lead7: seq('C5 . E5 . G5 . E5 . C5 . . . B4 . D5 . | C5 . . . G4 . . . G4 . . . D4 . . .'),
       lead7Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
-      crash2: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      crash3: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: [[659.2551138257398,1318.5102276514797],null,[783.9908719634985,1567.981743926997],null,[987.7666025122483,1975.533205024496],null,[783.9908719634985,1567.981743926997],null,[659.2551138257398,1318.5102276514797],null,null,null,[587.3295358348151,1174.6590716696303],null,[739.9888454232688,1479.9776908465376],null,[659.2551138257398,1318.5102276514797],null,null,null,[493.8833012561241,987.7666025122483],null,null,null,[783.9908719634985,1567.981743926997],null,null,null,[739.9888454232688,1479.9776908465376],null,null,null],
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . E4min . . . E4min . . . E4min . . E4min E4min . | . . E4min . . . E4min . . . E4min . . E4min E4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 | E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2'),
-      bassLen: [2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1],
-      bass2: seq('. . E1 . . . E1 . . . E1 . . . E1 . | . . E1 . . . E1 . . . E1 . . . E1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      lead5: seq('B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5 | B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5'),
+      chords: chordSeq('E4min . . . . . E4min . . . . . . . . . | E4min . . . . . E4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 . | E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('E2 . . . . . . . E2 . . . . . . . | E2 . . . . . . . E2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      lead5: seq('B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7 | B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7'),
       lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('E5 . G5 . B5 . G5 . E5 . . . D5 . F#5 . | E5 . . . B4 . . . G5 . . . F#5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
@@ -625,30 +603,28 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . B4 . . . B4 . . . B4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
       lead6: [[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('E6 . G6 . B6 . G6 . E6 . . . D6 . F#6 . | E6 . . . B5 . . . G6 . . . F#6 . . .'),
       lead4Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,3,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null],
       lead7: seq('C5 . E5 . G5 . E5 . C5 . . . B4 . D5 . | C5 . . . G4 . . . E5 . . . D5 . . .'),
       lead7Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      crash2: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      crash3: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: [[783.9908719634985,1567.981743926997],null,[987.7666025122483,1975.533205024496],null,[1174.6590716696303,2349.31814333926],null,[987.7666025122483,1975.533205024496],null,[783.9908719634985,1567.981743926997],null,null,null,[739.9888454232688,1479.9776908465376],null,[880,1760],null,[783.9908719634985,1567.981743926997],null,null,null,[587.3295358348151,1174.6590716696303],null,null,null,[987.7666025122483,1975.533205024496],null,null,null,[880,1760],null,null,null],
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,[293.6647679174076,391.99543598174927,493.8833012561241],[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,[293.6647679174076,391.99543598174927,493.8833012561241],[293.6647679174076,391.99543598174927,493.8833012561241],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('G2 . G2 G2 G2 . G2 G2 G2 . G2 G2 G2 . G2 G2 | G2 . G2 G2 G2 . G2 G2 G2 . G2 G2 G2 . G2 G2'),
-      bassLen: [2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1],
-      bass2: seq('. . G1 . . . G1 . . . G1 . . . G1 . | . . G1 . . . G1 . . . G1 . . . G1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      lead5: seq('B7 G7 D7 B6 G6 D6 B5 G5 B7 G7 D7 B6 G6 D6 B5 G5 | B7 G7 D7 B6 G6 D6 B5 G5 B7 G7 D7 B6 G6 D6 B5 G5'),
+      chords: [[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,null,null,[293.6647679174076,391.99543598174927,493.8833012561241],null,null,null,null,null,null,null,null,null],
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('G1 . G1 G1 . G1 G1 . G1 G1 . G1 G1 . G2 . | G1 . G1 G1 . G1 G1 . G1 G1 . G1 G1 . G2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('G1 . . . . . . . G1 . . . . . . . | G1 . . . . . . . G1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      lead5: seq('B4 D5 G5 B5 D6 G6 B6 D7 B4 D5 G5 B5 D6 G6 B6 D7 | B4 D5 G5 B5 D6 G6 B6 D7 B4 D5 G5 B5 D6 G6 B6 D7'),
       lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('G5 . B5 . D6 . B5 . G5 . . . F#5 . A5 . | G5 . . . D5 . . . B5 . . . A5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
@@ -659,31 +635,29 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . B4 . . . B4 . . . B4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
       lead6: [[391.99543598174927,493.8833012561241,587.3295358348151],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[391.99543598174927,493.8833012561241,587.3295358348151],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('G6 . B6 . D7 . B6 . G6 . . . F#6 . A6 . | G6 . . . D6 . . . B6 . . . A6 . . .'),
       lead4Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,3,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null],
       lead7: seq('E5 . G5 . B5 . G5 . E5 . . . D5 . F#5 . | E5 . . . B4 . . . G5 . . . F#5 . . .'),
       lead7Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      crash2: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      crash3: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: [[659.2551138257398,1318.5102276514797],null,[783.9908719634985,1567.981743926997],null,[987.7666025122483,1975.533205024496],null,[783.9908719634985,1567.981743926997],null,[659.2551138257398,1318.5102276514797],null,null,null,[587.3295358348151,1174.6590716696303],null,[739.9888454232688,1479.9776908465376],null,[659.2551138257398,1318.5102276514797],null,null,null,[493.8833012561241,987.7666025122483],null,null,null,[783.9908719634985,1567.981743926997],null,null,null,[739.9888454232688,1479.9776908465376],null,null,null],
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: chordSeq('. . E4min . . . E4min . . . E4min . . E4min E4min . | . . E4min . . . E4min . . . E4min . . E4min E4min .'),
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 | E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2'),
-      bassLen: [2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1],
-      bass2: seq('. . E1 . . . E1 . . . E1 . . . E1 . | . . E1 . . . E1 . . . E1 . . . E1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      lead5: seq('B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5 | B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5'),
+      chords: chordSeq('E4min . . . . . E4min . . . . . . . . . | E4min . . . . . E4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 . | E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('E2 . . . . . . . E2 . . . . . . . | E2 . . . . . . . E2 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      lead5: seq('B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7 | B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7'),
       lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('E5 . G5 . B5 . G5 . E5 . . . D5 . F#5 . | E5 . . . B4 . . . G5 . . . F#5 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
@@ -694,55 +668,51 @@ export const bank = {
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . B4 . . . B4 . . . B4 .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null],
       lead6: [[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('E6 . G6 . B6 . G6 . E6 . . . D6 . F#6 . | E6 . . . B5 . . . G6 . . . F#6 . . .'),
       lead4Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,3,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null],
       lead7: seq('C5 . E5 . G5 . E5 . C5 . . . B4 . D5 . | C5 . . . G4 . . . E5 . . . D5 . . .'),
       lead7Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      crash2: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      crash3: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: [[659.2551138257398,1318.5102276514797],null,[783.9908719634985,1567.981743926997],null,[987.7666025122483,1975.533205024496],null,[783.9908719634985,1567.981743926997],null,[659.2551138257398,1318.5102276514797],null,null,null,[587.3295358348151,1174.6590716696303],null,[739.9888454232688,1479.9776908465376],null,[659.2551138257398,1318.5102276514797],null,null,null,[493.8833012561241,987.7666025122483],null,null,null,[493.8833012561241,987.7666025122483],null,null,null,[369.9944227116344,739.9888454232688],null,null,null],
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       hats: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
-      chords: [null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[329.6275569128699,391.99543598174927,493.8833012561241],null,null,null,[311.1269837220809,369.9944227116344,493.8833012561241],null,null,[311.1269837220809,369.9944227116344,493.8833012561241],[311.1269837220809,369.9944227116344,493.8833012561241],null],
-      chordsLen: [null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,1,2,null],
-      bass: seq('E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 E2 . E2 E2 | E2 . E2 E2 E2 . E2 E2 B1 . B1 B1 B1 . B1 B1'),
-      bassLen: [2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1,2,null,1,1],
-      bass2: seq('. . E1 . . . E1 . . . E1 . . . E1 . | . . E1 . . . E1 . . . B1 . . . B1 .'),
-      bass2Len: [null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
-      lead5: seq('B7 G7 E7 B6 G6 E6 B5 G5 B7 G7 E7 B6 G6 E6 B5 G5 | B7 G7 E7 B6 G6 E6 B5 G5 B7 F#7 D#7 B6 F#6 D#6 B5 F#5'),
+      chords: chordSeq('E4min . . . . . E4min . . . . . . . . . | E4min . . . . . E4min . . . . . . . . .'),
+      chordsLen: [2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null],
+      bass: seq('E2 . E2 E2 . E2 E2 . E2 E2 . E2 E2 . E3 . | E2 . E2 E2 . E2 E2 . B1 B1 . B1 B1 . B2 .'),
+      bassLen: [2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null,2,null,1,1,null,1,2,null,1,1,null,1,2,null,2,null],
+      bass2: seq('E2 . . . . . . . E2 . . . . . . . | E2 . . . . . . . B1 . . . . . . .'),
+      bass2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      clap: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . . . C1 . . . C1 C1').map((v) => !!v),
+      lead5: seq('B4 E5 G5 B5 E6 G6 B6 E7 B4 E5 G5 B5 E6 G6 B6 E7 | B4 E5 G5 B5 E6 G6 B6 E7 B4 D#5 F#5 B5 D#6 F#6 B6 D#7'),
       lead5Len: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
       lead2: seq('E5 . G5 . B5 . G5 . E5 . . . D5 . F#5 . | E5 . . . B4 . . . B4 . . . F#4 . . .'),
       lead2Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       ohats: seq('. . . . . . . . . . . . . . C1 . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
-      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 C1 C1 C1 C1 C1').map((v) => !!v),
+      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 C1 . C1 . C1 . .').map((v) => !!v),
       lead3: seq('E6 . G6 . B6 . G6 . E6 . . . D6 . F#6 . | E6 . . . B5 . . . B5 . . . F#5 . . .'),
       lead3Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
       rim: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
       rim2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       tom2: seq('. . . C1 . . C1 . . . . C1 . C1 . . | . . . C1 . . C1 . . . . C1 . C1 . .').map((v) => !!v),
       rim3: seq('. . C1 . . . C1 . . C1 . . . C1 . . | . . C1 . . . C1 . . C1 . . . C1 . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . B4 . . . . . . . . .'),
-      lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,null,null,null,null,null,null],
       lead6: [[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[391.99543598174927,493.8833012561241,659.2551138257398],null,null,null,null,null,null,null,[369.9944227116344,493.8833012561241,622.2539674441618],null,null,null,null,null,null,null],
       lead6Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       lead4: seq('E6 . G6 . B6 . G6 . E6 . . . D6 . F#6 . | E6 . . . B5 . . . B5 . . . F#5 . . .'),
       lead4Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,3,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null],
       lead7: seq('C5 . E5 . G5 . E5 . C5 . . . B4 . D5 . | C5 . . . G4 . . . G4 . . . D4 . . .'),
       lead7Len: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,4,null,null,null,4,null,null,null],
-      crash2: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      crash3: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 . | C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       chords2: chordSeq('D4min . . . . . . . . . . . . . . . | D4min . . . . . . . . . . . . . . .'),
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
@@ -751,12 +721,12 @@ export const bank = {
     {
       lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 . | D5 . . . A4 . . . F5 . . . E5 . . .'),
       leadLen: [2,null,2,null,2,null,2,null,3,null,null,null,2,null,2,null,4,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      kick: seq('C1 . . . . . C1 . C1 . . . . . . . | C1 . . . . . C1 . C1 . . . . . C1 .').map((v) => !!v),
+      kick: seq('C1 . . . . . C1 . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       chords2: chordSeq('D4min . . . . . . . . . . . . . . . | D4min . . . . . . . . . . . . . . .'),
       chords2Len: [16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       hats: seq('C1 . . . C1 . . . C1 . . . C1 . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
-      snare: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
-      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 C1 C1 C1 C1 C1').map((v) => !!v),
+      snare: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 . . . C1 C1').map((v) => !!v),
+      tom: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 C1 . C1 . C1 . .').map((v) => !!v),
     },
   ],
   order: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
@@ -765,10 +735,11 @@ export const bank = {
 export const banger = {
   "version": 1,
   "generator": 6,
-  "style": "megadrive",
+  "style": "synthwave-darksynth",
+  "flavour": "darksynth",
   "options": {
-    "style": "megadrive",
-    "mood": "heroic",
+    "style": "synthwave",
+    "mood": "dark",
     "mode": "keep",
     "riffNotes": "keep",
     "length": "medium",
@@ -776,9 +747,10 @@ export const banger = {
     "energy": "full",
     "variation": "some",
     "tempo": "style",
-    "bpm": 150,
+    "bpm": 118,
     "hook": "auto",
     "combo": null,
+    "flavour": "darksynth",
     "production": {
       "mode": "style",
       "version": 1
@@ -821,7 +793,7 @@ export const banger = {
       "breakdownHook": "half"
     },
     "drums": {
-      "source": "replace",
+      "source": "add",
       "kit": "style",
       "crashes": true,
       "fills": true,
@@ -834,7 +806,7 @@ export const banger = {
       "ride": true
     },
     "parts": {
-      "bass": "octaves",
+      "bass": "offbeat",
       "sub": true,
       "chords": "piano",
       "square": true,
@@ -846,7 +818,7 @@ export const banger = {
       "arp": true,
       "arpPattern": "vary",
       "choir": true,
-      "counter": true,
+      "counter": false,
       "fillIn": "off",
       "fillEvery": "2",
       "fillNotes": "2",
@@ -864,10 +836,10 @@ export const banger = {
     },
     "fx": {
       "gate": "style",
-      "riser": false,
-      "filterBuild": false,
-      "stutter": false,
-      "pump": false,
+      "riser": true,
+      "filterBuild": true,
+      "stutter": true,
+      "pump": true,
       "delayThrows": true,
       "lowpassIntro": false,
       "bitcrushIntro": false,
@@ -879,15 +851,15 @@ export const banger = {
   "paletteSnapshot": {
     "version": 1,
     "resolved": true,
-    "styleId": "megadrive",
-    "moodId": "heroic",
+    "styleId": "synthwave-darksynth",
+    "moodId": "dark",
     "parts": {}
   },
   "palette": [
     {
       "lane": "kick",
       "part": "part:kick",
-      "preset": "kickCrush",
+      "preset": "ds909KickPunch",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -895,7 +867,7 @@ export const banger = {
     {
       "lane": "snare",
       "part": "part:snare",
-      "preset": "dsCrackSnare2",
+      "preset": "ds909Snare",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -903,7 +875,7 @@ export const banger = {
     {
       "lane": "clap",
       "part": "part:clap",
-      "preset": "clapFm",
+      "preset": "ds909Clap",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -973,7 +945,7 @@ export const banger = {
       "origin": "style default"
     },
     {
-      "lane": "crash2",
+      "lane": "crash3",
       "part": "part:ride",
       "preset": "ride909SixBit",
       "trimDb": 0,
@@ -983,7 +955,7 @@ export const banger = {
     {
       "lane": "bass",
       "part": "part:bass",
-      "preset": "rmndDxSlap",
+      "preset": "tngrHollowVector",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -999,7 +971,7 @@ export const banger = {
     {
       "lane": "chords",
       "part": "part:piano",
-      "preset": "fmKeys",
+      "preset": "tngrBrassSection",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1007,7 +979,7 @@ export const banger = {
     {
       "lane": "chords2",
       "part": "part:pad",
-      "preset": "synthStrings",
+      "preset": "tngrBurntHorizon",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1015,7 +987,7 @@ export const banger = {
     {
       "lane": "lead2",
       "part": "part:square",
-      "preset": "layerMegamixLead",
+      "preset": "tngrRubyScanner",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1023,7 +995,7 @@ export const banger = {
     {
       "lane": "lead3",
       "part": "part:bell",
-      "preset": "fmBell",
+      "preset": "tngrIceBell",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1031,7 +1003,7 @@ export const banger = {
     {
       "lane": "lead4",
       "part": "part:megaSaw",
-      "preset": "hardFm",
+      "preset": "tngrNeonReed",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1039,7 +1011,7 @@ export const banger = {
     {
       "lane": "lead5",
       "part": "part:arp",
-      "preset": "fmBell",
+      "preset": "tngrCrystalTrigger",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1047,7 +1019,7 @@ export const banger = {
     {
       "lane": "lead6",
       "part": "part:choir",
-      "preset": "bestPwmChoir",
+      "preset": "tngrGlassChoir",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1055,15 +1027,7 @@ export const banger = {
     {
       "lane": "lead7",
       "part": "part:third",
-      "preset": "rmndDxPiano",
-      "trimDb": 0,
-      "favourite": false,
-      "origin": "style default"
-    },
-    {
-      "lane": "lead8",
-      "part": "part:counter",
-      "preset": "fmKeys",
+      "preset": "tngrDigitalEp84",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1114,12 +1078,13 @@ export const banger = {
     "hats": "hats",
     "ohats": "ohats",
     "crash": "crash",
+    "riser": "crash2",
     "fill": "tom",
     "shaker": "rim",
     "tambourine": "rim2",
     "cowbell": "rim3",
     "congas": "tom2",
-    "ride": "crash2",
+    "ride": "crash3",
     "bass": "bass",
     "sub": "bass2",
     "piano": "chords",
@@ -1129,8 +1094,7 @@ export const banger = {
     "megaSaw": "lead4",
     "arp": "lead5",
     "choir": "lead6",
-    "third": "lead7",
-    "counter": "lead8"
+    "third": "lead7"
   },
   "form": [
     {
@@ -1200,13 +1164,13 @@ export const banger = {
   "report": {
     "version": 1,
     "summary": {
-      "style": "16-Bit",
-      "mood": "heroic",
+      "style": "Synthwave · Darksynth",
+      "mood": "dark",
       "key": "D minor",
       "reads": "D minor",
       "bars": 64,
-      "bpm": 150,
-      "seconds": 102,
+      "bpm": 112,
+      "seconds": 137,
       "variation": "some",
       "hook": "Grand"
     },
@@ -1216,10 +1180,10 @@ export const banger = {
         "lane": "kick",
         "job": "kick",
         "how": "sound",
-        "from": "16-Bit's own · kick · = Crushed Kick, bars 45–52",
-        "base": 0,
-        "before": 0,
-        "after": 0,
+        "from": "FIELD SERVICE — NIGHT DRIVE · kick, bars 45–52",
+        "base": -3,
+        "before": -3,
+        "after": -3,
         "move": 0,
         "window": [
           44,
@@ -1231,11 +1195,11 @@ export const banger = {
         "lane": "snare",
         "job": "snare",
         "how": "sound",
-        "from": "16-Bit's own · snare · DS Crack Snare 2, bars 45–52",
-        "base": 1,
-        "before": 1,
-        "after": 1,
-        "move": 0,
+        "from": "FIELD SERVICE — NIGHT DRIVE · snare, bars 45–52",
+        "base": 2,
+        "before": -2,
+        "after": 2,
+        "move": 4,
         "window": [
           44,
           51
@@ -1246,11 +1210,11 @@ export const banger = {
         "lane": "clap",
         "job": "clap",
         "how": "sound",
-        "from": "16-Bit's own · clap · FM Clap, bars 45–52",
-        "base": 0,
-        "before": 0,
-        "after": 0,
-        "move": 0,
+        "from": "FIELD SERVICE — NIGHT DRIVE · clap, bars 45–52",
+        "base": -3,
+        "before": 2,
+        "after": -3,
+        "move": -5,
         "window": [
           44,
           51
@@ -1261,11 +1225,11 @@ export const banger = {
         "lane": "hats",
         "job": "hats",
         "how": "sound",
-        "from": "16-Bit's own · hats · = Grit Hat, bars 45–52",
-        "base": -8,
-        "before": -8,
-        "after": -8,
-        "move": 0,
+        "from": "FIELD SERVICE — NIGHT DRIVE · hats, bars 45–52",
+        "base": -9,
+        "before": -9,
+        "after": -16.5,
+        "move": -7.5,
         "window": [
           44,
           51
@@ -1276,7 +1240,7 @@ export const banger = {
         "lane": "ohats",
         "job": "ohats",
         "how": "sound",
-        "from": "16-Bit's own · ohats · Open Hat · 909 Six-Bit, bars 45–52",
+        "from": "FIELD SERVICE — NIGHT DRIVE · ohats, bars 45–52",
         "base": -11,
         "before": -11,
         "after": -11,
@@ -1291,7 +1255,7 @@ export const banger = {
         "lane": "crash",
         "job": "crash",
         "how": "sound",
-        "from": "16-Bit's own · crash · =909 Crash, bars 45–52",
+        "from": "FIELD SERVICE — NIGHT DRIVE · crash, bars 45–52",
         "base": -9,
         "before": -9,
         "after": -9,
@@ -1306,10 +1270,10 @@ export const banger = {
         "lane": "tom",
         "job": "fill",
         "how": "sound",
-        "from": "16-Bit's own · fill · Simmons · Tom High, bars 52–59",
-        "base": -3,
-        "before": -3,
-        "after": -3,
+        "from": "FIELD SERVICE — NIGHT DRIVE · TOM Hi, bars 9–16",
+        "base": -6,
+        "before": -6,
+        "after": -6,
         "move": 0,
         "window": [
           51,
@@ -1378,7 +1342,7 @@ export const banger = {
         "calibrated": false
       },
       {
-        "lane": "crash2",
+        "lane": "crash3",
         "job": "ride",
         "how": "sound",
         "from": "BIG-ROOM HOUSE SEED · ride · Ride · 909 Six-Bit, bars 45–52",
@@ -1396,11 +1360,11 @@ export const banger = {
         "lane": "bass",
         "job": "bass",
         "how": "part",
-        "from": "16-Bit's own · bass · DX Slap, bars 45–52",
-        "base": -4,
+        "from": "FIELD SERVICE — NIGHT DRIVE · BASS 80s Mono, bars 45–52",
+        "base": -7,
         "before": -4,
-        "after": -4,
-        "move": 0,
+        "after": -1.1,
+        "move": 2.9,
         "window": [
           44,
           51
@@ -1411,11 +1375,11 @@ export const banger = {
         "lane": "bass2",
         "job": "sub",
         "how": "part",
-        "from": "16-Bit's own · sub · Sub Sine (starter), bars 45–52",
-        "base": -12,
-        "before": -12,
-        "after": -12,
-        "move": 0,
+        "from": "FIELD SERVICE — NIGHT DRIVE · SUB, bars 45–52",
+        "base": -15,
+        "before": -15,
+        "after": -15.7,
+        "move": -0.7,
         "window": [
           44,
           51
@@ -1426,11 +1390,11 @@ export const banger = {
         "lane": "chords",
         "job": "piano",
         "how": "part",
-        "from": "16-Bit's own · piano · FM Keys, bars 45–52",
-        "base": -4,
-        "before": -4,
-        "after": -4,
-        "move": 0,
+        "from": "FIELD SERVICE — NIGHT DRIVE · KEYS Electric Grand, bars 33–40",
+        "base": -12,
+        "before": -5,
+        "after": -6,
+        "move": -1,
         "window": [
           44,
           51
@@ -1441,11 +1405,11 @@ export const banger = {
         "lane": "chords2",
         "job": "pad",
         "how": "part",
-        "from": "16-Bit's own · pad · BEST PWM Strings, bars 1–4",
-        "base": -10,
-        "before": -10,
-        "after": -13,
-        "move": -3,
+        "from": "BIG-ROOM HOUSE SEED · pad · Polar Drift, bars 1–4",
+        "base": -11.06,
+        "before": -8,
+        "after": -8.6,
+        "move": -0.6,
         "window": [
           0,
           3
@@ -1456,11 +1420,11 @@ export const banger = {
         "lane": "lead2",
         "job": "square",
         "how": "part",
-        "from": "16-Bit's own · square · Megamix Lead, bars 45–52",
-        "base": -2,
-        "before": -2,
-        "after": -0.9,
-        "move": 1.1,
+        "from": "FIELD SERVICE — NIGHT DRIVE · HOOK Hero Lead, bars 45–52",
+        "base": 1,
+        "before": 1,
+        "after": 1.4,
+        "move": 0.4,
         "window": [
           44,
           51
@@ -1471,11 +1435,11 @@ export const banger = {
         "lane": "lead3",
         "job": "bell",
         "how": "part",
-        "from": "16-Bit's own · bell · FM Bell, bars 45–52",
-        "base": -8,
-        "before": -8,
-        "after": -5.7,
-        "move": 2.3,
+        "from": "FIELD SERVICE — NIGHT DRIVE · HOOK 8va Ice Bell, bars 45–52",
+        "base": -9,
+        "before": -9,
+        "after": -7.6,
+        "move": 1.4,
         "window": [
           44,
           51
@@ -1486,11 +1450,11 @@ export const banger = {
         "lane": "lead4",
         "job": "megaSaw",
         "how": "part",
-        "from": "16-Bit's own · megaSaw · Hard FM, bars 45–52",
-        "base": -6,
-        "before": -6,
-        "after": -5.3,
-        "move": 0.7,
+        "from": "FIELD SERVICE — NIGHT DRIVE · VERSE Hollow PWM, bars 5–12",
+        "base": -2,
+        "before": -2,
+        "after": -1.8,
+        "move": 0.2,
         "window": [
           44,
           51
@@ -1501,11 +1465,11 @@ export const banger = {
         "lane": "lead5",
         "job": "arp",
         "how": "part",
-        "from": "16-Bit's own · arp · Square Tone, bars 45–52",
-        "base": -11,
-        "before": -11,
-        "after": -10,
-        "move": 1,
+        "from": "FIELD SERVICE — NIGHT DRIVE · ARP Crystal, bars 45–52",
+        "base": -13,
+        "before": -13,
+        "after": -11.6,
+        "move": 1.4,
         "window": [
           44,
           51
@@ -1516,11 +1480,11 @@ export const banger = {
         "lane": "lead6",
         "job": "choir",
         "how": "part",
-        "from": "BIG-ROOM HOUSE SEED · choir · BEST Choir Aah, bars 45–52",
-        "base": -11.21,
-        "before": -7,
-        "after": -10.2,
-        "move": -3.2,
+        "from": "FIELD SERVICE — NIGHT DRIVE · CHOIR Glass, bars 33–40",
+        "base": -9.53,
+        "before": -8.54,
+        "after": -5.3,
+        "move": 3.2,
         "window": [
           44,
           51
@@ -1531,29 +1495,14 @@ export const banger = {
         "lane": "lead7",
         "job": "third",
         "how": "part",
-        "from": "16-Bit's own · third · FM Piano, bars 45–52",
-        "base": -8,
-        "before": -8,
-        "after": -7.1,
-        "move": 0.9,
+        "from": "BIG-ROOM HOUSE SEED · third · Electric Grand, bars 45–52",
+        "base": -6.3,
+        "before": -7,
+        "after": -4.7,
+        "move": 2.3,
         "window": [
           44,
           51
-        ],
-        "calibrated": false
-      },
-      {
-        "lane": "lead8",
-        "job": "counter",
-        "how": "part",
-        "from": "16-Bit's own · counter · FM Keys, bars 45–52",
-        "base": -7,
-        "before": -7,
-        "after": -6.3,
-        "move": 0.7,
-        "window": [
-          45,
-          52
         ],
         "calibrated": false
       }
@@ -1570,12 +1519,11 @@ export const banger = {
         "strip": {
           "gain": 0,
           "send": {
-            "delay": 0.12,
-            "reverb": 0.3
+            "delay": 0.25,
+            "reverb": 0.35
           },
-          "pan": -0.05,
           "eq": {
-            "high": 2.6
+            "high": 1
           }
         },
         "noteFX": null
@@ -1584,12 +1532,12 @@ export const banger = {
         "role": "kick",
         "lane": "kick",
         "label": "KICK",
-        "voice": "kickCrush",
+        "voice": "ds909KickPunch",
         "voiceParams": null,
         "strip": {
-          "gain": 0,
+          "gain": -3,
           "eq": {
-            "low": -1
+            "low": -2
           }
         },
         "noteFX": null
@@ -1598,33 +1546,60 @@ export const banger = {
         "role": "snare",
         "lane": "snare",
         "label": "SNARE Roll",
-        "voice": "dsCrackSnare2",
+        "voice": "ds909Snare",
         "voiceParams": null,
         "strip": {
-          "gain": 1,
-          "eq": {
-            "high": 2
-          },
-          "send": {
-            "reverb": 0.15
-          }
+          "gain": 2,
+          "effects": [
+            {
+              "id": "reverb",
+              "params": {
+                "decay": 1.8,
+                "preDelay": 0.005,
+                "wet": 0.55
+              }
+            },
+            {
+              "id": "noisegate",
+              "params": {
+                "threshold": -34,
+                "attack": 0.002,
+                "release": 0.08
+              }
+            }
+          ]
         },
         "noteFX": null
       },
       {
         "role": "clap",
         "lane": "clap",
-        "label": "CLAP",
-        "voice": "clapFm",
+        "label": "SNARE Gated",
+        "voice": "ds909Clap",
         "voiceParams": null,
         "strip": {
-          "gain": 0,
+          "gain": -3,
           "eq": {
-            "high": 1
+            "high": -1
           },
-          "send": {
-            "reverb": 0.15
-          }
+          "effects": [
+            {
+              "id": "reverb",
+              "params": {
+                "decay": 1.8,
+                "preDelay": 0.005,
+                "wet": 0.55
+              }
+            },
+            {
+              "id": "noisegate",
+              "params": {
+                "threshold": -34,
+                "attack": 0.002,
+                "release": 0.08
+              }
+            }
+          ]
         },
         "noteFX": null
       },
@@ -1635,8 +1610,8 @@ export const banger = {
         "voice": "hatGrit",
         "voiceParams": null,
         "strip": {
-          "gain": -8,
-          "pan": 0.2
+          "gain": -16.5,
+          "pan": -0.25
         },
         "noteFX": null
       },
@@ -1648,7 +1623,7 @@ export const banger = {
         "voiceParams": null,
         "strip": {
           "gain": -11,
-          "pan": -0.15
+          "pan": 0.25
         },
         "noteFX": null
       },
@@ -1660,7 +1635,7 @@ export const banger = {
         "voiceParams": null,
         "strip": {
           "gain": -9,
-          "pan": 0.2,
+          "pan": 0.3,
           "send": {
             "reverb": 0.3
           }
@@ -1668,16 +1643,57 @@ export const banger = {
         "noteFX": null
       },
       {
+        "role": "riser",
+        "lane": "crash2",
+        "label": "RISER",
+        "voice": null,
+        "voiceParams": {
+          "label": "Noise Riser",
+          "category": "Sweep",
+          "homeLane": "crash",
+          "kind": "drum",
+          "dur": 4.285714285714286,
+          "note": "White noise through a band climbing 250 Hz to 8 kHz over 4.29s as it fades in: the lift into a drop.",
+          "noise": {
+            "type": "bandpass",
+            "freq": 250,
+            "to": 8000,
+            "sweep": 4.285714285714286,
+            "Q": 1.6,
+            "slope": -24,
+            "color": "white",
+            "attack": 3.942857142857143,
+            "hold": 0,
+            "decay": 0.34285714285714286,
+            "curve": "exp",
+            "gain": 1
+          },
+          "drive": 0.08,
+          "peak": 0.034
+        },
+        "strip": {
+          "gain": -15.5,
+          "send": {
+            "reverb": 0.8
+          },
+          "eq": {
+            "low": 5.5,
+            "high": 2
+          }
+        },
+        "noteFX": null
+      },
+      {
         "role": "fill",
         "lane": "tom",
-        "label": "FILL FM TOMS",
+        "label": "SIMMONS Toms",
         "voice": "sdsTomHigh",
         "voiceParams": null,
         "strip": {
-          "gain": -3,
-          "pan": 0.2,
+          "gain": -6,
+          "pan": 0.35,
           "send": {
-            "reverb": 0.15
+            "reverb": 0.35
           }
         },
         "noteFX": null
@@ -1741,7 +1757,7 @@ export const banger = {
       },
       {
         "role": "ride",
-        "lane": "crash2",
+        "lane": "crash3",
         "label": "RIDE",
         "voice": "ride909SixBit",
         "voiceParams": null,
@@ -1757,11 +1773,21 @@ export const banger = {
       {
         "role": "bass",
         "lane": "bass",
-        "label": "BASS FM Slap · DX Slap",
-        "voice": "rmndDxSlap",
+        "label": "BASS Dist · Hollow Vector",
+        "voice": "tngrHollowVector",
         "voiceParams": null,
         "strip": {
-          "gain": -4
+          "gain": -1.1,
+          "effects": [
+            {
+              "id": "filter",
+              "params": {
+                "type": "lowpass",
+                "frequency": 1400,
+                "Q": 1.5
+              }
+            }
+          ]
         },
         "noteFX": null
       },
@@ -1772,21 +1798,20 @@ export const banger = {
         "voice": "stSubSine",
         "voiceParams": null,
         "strip": {
-          "gain": -12
+          "gain": -15.7
         },
         "noteFX": null
       },
       {
         "role": "piano",
         "lane": "chords",
-        "label": "FM KEYS · FM Keys",
-        "voice": "fmKeys",
+        "label": "BRASS Stabs · Brass Section",
+        "voice": "tngrBrassSection",
         "voiceParams": null,
         "strip": {
-          "gain": -4,
-          "pan": -0.15,
+          "gain": -6,
           "send": {
-            "reverb": 0.15
+            "reverb": 0.4
           }
         },
         "noteFX": null
@@ -1794,88 +1819,14 @@ export const banger = {
       {
         "role": "pad",
         "lane": "chords2",
-        "label": "PAD · Synth Strings",
-        "voice": "synthStrings",
+        "label": "PAD · Burnt Horizon",
+        "voice": "tngrBurntHorizon",
         "voiceParams": null,
         "strip": {
-          "gain": -13,
-          "send": {
-            "reverb": 0.3
-          }
-        },
-        "noteFX": null
-      },
-      {
-        "role": "square",
-        "lane": "lead2",
-        "label": "LEAD FM · Megamix Lead",
-        "voice": "layerMegamixLead",
-        "voiceParams": null,
-        "strip": {
-          "gain": -0.9,
-          "pan": 0.05,
-          "send": {
-            "delay": 0.08,
-            "reverb": 0.15
-          }
-        },
-        "noteFX": null
-      },
-      {
-        "role": "bell",
-        "lane": "lead3",
-        "label": "FM BELL 8VA · FM Bell",
-        "voice": "fmBell",
-        "voiceParams": null,
-        "strip": {
-          "gain": -5.7,
-          "pan": 0.25,
-          "send": {
-            "delay": 0.15,
-            "reverb": 0.2
-          }
-        },
-        "noteFX": null
-      },
-      {
-        "role": "megaSaw",
-        "lane": "lead4",
-        "label": "LEAD FM 8VA · Hard FM",
-        "voice": "hardFm",
-        "voiceParams": null,
-        "strip": {
-          "gain": -5.3,
-          "pan": -0.1,
-          "send": {
-            "reverb": 0.15
-          }
-        },
-        "noteFX": null
-      },
-      {
-        "role": "arp",
-        "lane": "lead5",
-        "label": "FM ARP · FM Bell",
-        "voice": "fmBell",
-        "voiceParams": null,
-        "strip": {
-          "gain": -10,
-          "pan": 0.25,
-          "send": {
-            "delay": 0.12,
-            "reverb": 0.15
-          }
-        },
-        "noteFX": null
-      },
-      {
-        "role": "choir",
-        "lane": "lead6",
-        "label": "CHOIR · BEST PWM Choir",
-        "voice": "bestPwmChoir",
-        "voiceParams": null,
-        "strip": {
-          "gain": -10.2,
+          "gain": -8.6,
+          "eq": {
+            "low": -4
+          },
           "send": {
             "reverb": 0.5
           }
@@ -1883,32 +1834,131 @@ export const banger = {
         "noteFX": null
       },
       {
-        "role": "third",
-        "lane": "lead7",
-        "label": "THIRD BELOW · FM Piano",
-        "voice": "rmndDxPiano",
+        "role": "square",
+        "lane": "lead2",
+        "label": "HOOK DOUBLE · Ruby Scanner",
+        "voice": "tngrRubyScanner",
         "voiceParams": null,
         "strip": {
-          "gain": -7.1,
-          "pan": 0.15,
+          "gain": 1.4,
           "send": {
-            "reverb": 0.15
+            "delay": 0.18,
+            "reverb": 0.3
+          },
+          "effects": [
+            {
+              "id": "peq",
+              "params": {
+                "f3": 3200,
+                "g3": -4,
+                "q3": 0.8
+              }
+            }
+          ]
+        },
+        "noteFX": null
+      },
+      {
+        "role": "bell",
+        "lane": "lead3",
+        "label": "HOOK 8VA · Ice Bell",
+        "voice": "tngrIceBell",
+        "voiceParams": null,
+        "strip": {
+          "gain": -7.6,
+          "pan": 0.2,
+          "send": {
+            "delay": 0.2,
+            "reverb": 0.45
           }
         },
         "noteFX": null
       },
       {
-        "role": "counter",
-        "lane": "lead8",
-        "label": "FM COUNTER · FM Keys",
-        "voice": "fmKeys",
+        "role": "megaSaw",
+        "lane": "lead4",
+        "label": "LEAD 8VA · Neon Reed",
+        "voice": "tngrNeonReed",
         "voiceParams": null,
         "strip": {
-          "gain": -6.3,
-          "pan": -0.2,
+          "gain": -1.8,
+          "pan": -0.05,
           "send": {
-            "delay": 0.12,
-            "reverb": 0.15
+            "delay": 0.22,
+            "reverb": 0.35
+          },
+          "effects": [
+            {
+              "id": "chorus",
+              "params": {
+                "wet": 0.35
+              }
+            }
+          ]
+        },
+        "noteFX": null
+      },
+      {
+        "role": "arp",
+        "lane": "lead5",
+        "label": "ARP · Crystal Trigger",
+        "voice": "tngrCrystalTrigger",
+        "voiceParams": null,
+        "strip": {
+          "gain": -11.6,
+          "pan": -0.3,
+          "send": {
+            "delay": 0.25,
+            "reverb": 0.2
+          },
+          "effects": [
+            {
+              "id": "peq",
+              "params": {
+                "f3": 3500,
+                "g3": -4,
+                "q3": 0.8
+              }
+            },
+            {
+              "id": "autopanner",
+              "params": {
+                "rateSync": 1,
+                "rateDivision": 2,
+                "depth": 0.5,
+                "wet": 1
+              }
+            }
+          ]
+        },
+        "noteFX": null
+      },
+      {
+        "role": "choir",
+        "lane": "lead6",
+        "label": "CHOIR · Glass Choir",
+        "voice": "tngrGlassChoir",
+        "voiceParams": null,
+        "strip": {
+          "gain": -5.3,
+          "send": {
+            "reverb": 0.804
+          }
+        },
+        "noteFX": null
+      },
+      {
+        "role": "third",
+        "lane": "lead7",
+        "label": "THIRD BELOW · Digital EP 84",
+        "voice": "tngrDigitalEp84",
+        "voiceParams": null,
+        "strip": {
+          "gain": -4.7,
+          "pan": 0.15,
+          "send": {
+            "delay": 0.1,
+            "reverb": 0.3
           }
         },
         "noteFX": null
@@ -1927,31 +1977,31 @@ export const banger = {
         "voice": "eced1f8e",
         "auto": "59199ae3",
         "expression": "77074ba4",
-        "production": "7fd26637"
+        "production": "d694f080"
       },
       "kick": {
-        "notes": "9a24ccc7",
-        "voice": "f478f049",
+        "notes": "1335df1d",
+        "voice": "9f0161bb",
         "auto": "77074ba4",
         "expression": "77074ba4",
         "production": "1d66975"
       },
       "snare": {
-        "notes": "190698b7",
-        "voice": "1d20f06e",
+        "notes": "ae51558e",
+        "voice": "c3b485de",
         "auto": "2df4cbe0",
         "expression": "77074ba4",
-        "production": "b66f11a0"
+        "production": "43ecb6a3"
       },
       "clap": {
-        "notes": "54694e65",
-        "voice": "7f16a91f",
+        "notes": "28e8cd19",
+        "voice": "b837a92d",
         "auto": "77074ba4",
         "expression": "77074ba4",
-        "production": "b66f11a0"
+        "production": "43ecb6a3"
       },
       "hats": {
-        "notes": "56394ba5",
+        "notes": "99fef085",
         "voice": "dbc7480d",
         "auto": "77074ba4",
         "expression": "77074ba4",
@@ -1971,12 +2021,19 @@ export const banger = {
         "expression": "77074ba4",
         "production": "a9289503"
       },
+      "riser": {
+        "notes": "2529eb27",
+        "voice": "b6505ee6",
+        "auto": "77074ba4",
+        "expression": "77074ba4",
+        "production": "ce4dd3c6"
+      },
       "fill": {
-        "notes": "de9d26e3",
+        "notes": "e9669415",
         "voice": "eea62c2a",
         "auto": "77074ba4",
         "expression": "77074ba4",
-        "production": "b66f11a0"
+        "production": "6a8a8972"
       },
       "shaker": {
         "notes": "6368f53d",
@@ -2014,125 +2071,117 @@ export const banger = {
         "production": "3ca95014"
       },
       "bass": {
-        "notes": "7bf07305",
-        "voice": "ea2c3395",
-        "auto": "77074ba4",
+        "notes": "45396e5f",
+        "voice": "71691d77",
+        "auto": "5c415a17",
         "expression": "77074ba4",
-        "production": "1d66975"
+        "production": "4fee82c"
       },
       "sub": {
-        "notes": "ec40c64e",
+        "notes": "de3a8b4c",
         "voice": "94966028",
-        "auto": "77074ba4",
+        "auto": "5c415a17",
         "expression": "77074ba4",
         "production": "1d66975"
       },
       "piano": {
-        "notes": "e1b4af6a",
-        "voice": "55d0c191",
-        "auto": "77074ba4",
+        "notes": "7ad4d4d",
+        "voice": "b7854edb",
+        "auto": "5c415a17",
         "expression": "77074ba4",
-        "production": "b66f11a0"
+        "production": "19b0da9a"
       },
       "pad": {
-        "notes": "cf4f8061",
-        "voice": "5f200d82",
-        "auto": "77074ba4",
-        "expression": "77074ba4",
-        "production": "a9289503"
-      },
-      "square": {
-        "notes": "9871906e",
-        "voice": "27000f59",
-        "auto": "77074ba4",
-        "expression": "77074ba4",
-        "production": "6879a06b"
-      },
-      "bell": {
-        "notes": "1cca66aa",
-        "voice": "e0e44b7e",
-        "auto": "77074ba4",
-        "expression": "77074ba4",
-        "production": "cd31b883"
-      },
-      "megaSaw": {
-        "notes": "b22ea12a",
-        "voice": "3d54bbca",
-        "auto": "77074ba4",
-        "expression": "77074ba4",
-        "production": "b66f11a0"
-      },
-      "arp": {
-        "notes": "accc4f0c",
-        "voice": "e0e44b7e",
-        "auto": "77074ba4",
-        "expression": "77074ba4",
-        "production": "e31c6844"
-      },
-      "choir": {
-        "notes": "c9e8cd8a",
-        "voice": "4e407c19",
-        "auto": "77074ba4",
+        "notes": "a55d686c",
+        "voice": "23faa8c9",
+        "auto": "5c415a17",
         "expression": "77074ba4",
         "production": "8643a741"
       },
+      "square": {
+        "notes": "9871906e",
+        "voice": "e8445a03",
+        "auto": "5c415a17",
+        "expression": "77074ba4",
+        "production": "c887ac5e"
+      },
+      "bell": {
+        "notes": "1cca66aa",
+        "voice": "c6497533",
+        "auto": "77074ba4",
+        "expression": "77074ba4",
+        "production": "76cef996"
+      },
+      "megaSaw": {
+        "notes": "b22ea12a",
+        "voice": "3d6bddf7",
+        "auto": "77074ba4",
+        "expression": "77074ba4",
+        "production": "2a61ec45"
+      },
+      "arp": {
+        "notes": "7ca27edf",
+        "voice": "7537d16d",
+        "auto": "5c415a17",
+        "expression": "77074ba4",
+        "production": "3ab2a664"
+      },
+      "choir": {
+        "notes": "9cf9c096",
+        "voice": "1d17ad96",
+        "auto": "77074ba4",
+        "expression": "77074ba4",
+        "production": "82631532"
+      },
       "third": {
         "notes": "706e51dd",
-        "voice": "70ed5af2",
+        "voice": "c49cf45e",
         "auto": "77074ba4",
         "expression": "77074ba4",
-        "production": "b66f11a0"
-      },
-      "counter": {
-        "notes": "392a1609",
-        "voice": "55d0c191",
-        "auto": "77074ba4",
-        "expression": "77074ba4",
-        "production": "e31c6844"
+        "production": "576591d9"
       }
     },
-    "master": "f52c1fee"
+    "master": "d955d253"
   },
-  "seedOf": "megadrive",
-  "made": "2026-10-05T10:54:51.125Z"
+  "seedOf": "synthwave-darksynth",
+  "made": "2026-10-06T01:11:37.886Z"
 };
 
 // ---- THE DESK WRITES BELOW HERE ----------------------------------------------
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  masterEffects: [{ id: "mbCompN", params: { lowFrequency: 180, highFrequency: 1800, "low.threshold": -26, "low.ratio": 4, "low.attack": 0.06, "low.release": 0.22, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3.5, "mid.attack": 0.018, "mid.release": 0.08, "mid.knee": 12, "high.threshold": -26, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }, { id: "gain", params: { gain: -5.8 } }],
-  layers: [{ key: "rim2", from: "rim", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "crash2", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead8", from: "lead", independent: true }],
-  order: ["kick","snare","clap","hats","ohats","crash","tom","rim","rim2","rim3","tom2","crash2","bass","bass2","chords","chords2","lead","lead2","lead3","lead4","lead5","lead6","lead7","lead8"],
-  labels: {"kick":"KICK","snare":"SNARE Roll","clap":"CLAP","hats":"HATS","ohats":"OPEN HATS","crash":"CRASH","tom":"FILL FM TOMS","rim":"PERC Shaker","rim2":"PERC Tambourine","rim3":"PERC Cowbell","tom2":"PERC Congas","crash2":"RIDE","bass":"BASS FM Slap · DX Slap","bass2":"SUB · Sub Sine (starter)","chords":"FM KEYS · FM Keys","chords2":"PAD · Synth Strings","lead":"RIFF Grand · HOOK","lead2":"LEAD FM · Megamix Lead","lead3":"FM BELL 8VA · FM Bell","lead4":"LEAD FM 8VA · Hard FM","lead5":"FM ARP · FM Bell","lead6":"CHOIR · BEST PWM Choir","lead7":"THIRD BELOW · FM Piano","lead8":"FM COUNTER · FM Keys"},
-  voice: {"kickVoice":"kickCrush","snareVoice":"dsCrackSnare2","clapVoice":"clapFm","hatsVoice":"hatGrit","ohatsVoice":"ohat909SixBit","crashVoice":"blastNoiseCrash","tomVoice":"sdsTomHigh","rimVoice":"shaker","rim2Voice":"tambourine","rim3Voice":"ds808Cowbell","tom2Voice":"congaMid","crash2Voice":"ride909SixBit","bassVoice":"rmndDxSlap","bass2Voice":"stSubSine","chordsVoice":"fmKeys","chords2Voice":"synthStrings","leadVoice":"mrdrElectricGrand","lead2Voice":"layerMegamixLead","lead3Voice":"fmBell","lead4Voice":"hardFm","lead5Voice":"fmBell","lead6Voice":"bestPwmChoir","lead7Voice":"rmndDxPiano","lead8Voice":"fmKeys"},
-  voiceParams: {"kickVoice":{"label":"= Crushed Kick","category":"Kick","homeLane":"kick","dur":1,"note":"An ordinary 808 drop through the bit crusher, with the tone control pulling the top off what that adds. Hardware, rather than a distortion pedal.","osc":{"type":"sine","from":190,"to":48,"sweep":0.04,"decay":0.237,"curve":"exp","gain":1},"drive":0.45,"shape":"crush","tone":{"freq":5200},"starter":false,"knock":0.17,"kind":"drum","level":0.0294943992464762,"peak":0.7088061240166504,"songOrigin":"library","songSourceId":"kickVoice"},"snareVoice":{"label":"Crack Snare","category":"Snare","dur":1,"note":"Tight and driven: a short square knock, highpassed air, everything over in a tenth of a second. The backbeat for fast songs.","osc":{"type":"square","from":255,"to":440,"sweep":0.025,"decay":0.05,"curve":"exp","gain":0.55},"noise":{"type":"highpass","freq":2900,"Q":0.8,"decay":0.3,"gain":1},"drive":0.35,"id":"dsCrackSnare2","kind":"drum","factory":true,"level":0.0886,"peak":0.7038},"clapVoice":{"label":"FM Clap","category":"Clap","dur":1,"note":"Three short FM cracks in quick succession. Drier than the metal clap and easier to fit under a vocal.","osc":{"type":"sine","from":330,"to":250,"sweep":0.025,"decay":0.07,"curve":"exp","gain":0.7,"fm":{"type":"square","ratio":5.1,"index":2.2,"decay":0.03}},"noise":{"type":"bandpass","freq":1750,"to":1250,"sweep":0.06,"Q":1.4,"decay":0.06,"gain":0.6},"taps":[0,0.01,0.021],"tapFalloff":0.74,"id":"clapFm","kind":"drum","factory":true,"level":0.018663,"peak":0.5222},"hatsVoice":{"label":"= Grit Hat","category":"Hats","homeLane":"hats","dur":0.5,"note":"A resonant band with a square oscillator sitting in it, pushed hard into the shaper. Dirty and mid-forward — the hat for a mix where the bright ones vanish.","osc":{"type":"square","from":3900,"to":1950,"sweep":0.006,"decay":0.028,"curve":"lin","gain":0.16},"noise":{"type":"bandpass","freq":5600,"to":3600,"sweep":0.05,"Q":4.5,"decay":0.038,"gain":1},"drive":0.5,"id":"hatGrit","kind":"drum","factory":true,"level":0.0411,"peak":0.6942},"ohatsVoice":{"label":"909 Lo-Fi Open Hat","category":"Hats","homeLane":"ohats","dur":3,"note":"The 909’s open hat is a six-bit sample, so this is the cluster quantised to six bits — `crush` at 0.6, which is exactly where this engine’s curve lands — under an 11 kHz lowpass standing in for the real anti-aliasing filter. Dirtier and flatter than the 808, which is the difference.","metal":{"wave":"square","freq":620,"count":6,"spread":1.06,"filter":"highpass","hp":6400,"Q":0.85,"slope":-24,"decay":0.55,"sag":0.42,"sagAt":0.045,"gain":0.95},"drive":0.6,"shape":"crush","tone":{"type":"lowpass","freq":11000,"Q":0.7},"humanize":{"gain":0.04},"id":"ohat909SixBit","kind":"drum","factory":true,"level":0.0667,"peak":1.3267},"crashVoice":{"label":"Blast · Noise Crash","category":"Crash","homeLane":"crash","dur":8,"note":"The white-noise crash of every big electronic drop: a steep lowpass opening wide and closing to 2 kHz over two seconds, a snap of air on the front, driven just enough to sound loud.","noise":{"type":"lowpass","freq":14000,"to":2200,"sweep":2,"Q":1.2,"slope":-24,"attack":0.002,"hold":0.03,"decay":2.3,"sag":0.55,"sagAt":0.08,"gain":1},"ring":{"type":"highpass","freq":6000,"Q":0.7,"hit":0.02,"decay":0.05,"gain":0.6},"drive":0.25,"tone":{"type":"highpass","freq":300,"Q":0.7},"id":"blastNoiseCrash","kind":"drum","factory":true,"level":0,"peak":1},"tomVoice":{"label":"Simmons · Tom High","category":"Tom","homeLane":"tom","dur":2,"note":"Top hexagon of the kit: 420 bending to 150 with the bend pot around the middle, so it drops far enough to be electronic and not so far that it stops being a tom. Plays with the Mid and Low as a three-drum fill.","osc":{"type":"triangle","from":420,"to":150,"sweep":0.11,"pitchCurve":"snap","attack":0.0008,"decay":0.34,"curve":"exp","gain":1},"noise":{"type":"lowpass","freq":2600,"Q":0.7,"decay":0.012,"sag":0.2,"sagAt":0.004,"gain":0.25},"drive":0.14,"id":"sdsTomHigh","kind":"drum","factory":true,"level":0.033,"peak":0.6593},"rimVoice":{"label":"Shaker","category":"Perc","homeLane":"rim","dur":0.5,"note":"A soft band with no attack to speak of. Sixteenths of this sit under anything without competing.","noise":{"type":"bandpass","freq":6000,"Q":1.1,"decay":0.06},"id":"shaker","kind":"drum","factory":true,"level":0.010894,"peak":0.4346},"rim2Voice":{"label":"Tambourine","category":"Perc","homeLane":"rim","dur":1,"note":"Bright, jangly and slightly longer, with a touch of pitch in it.","osc":{"type":"square","from":900,"to":780,"sweep":0.05,"decay":0.05,"gain":0.12},"noise":{"type":"highpass","freq":5200,"Q":0.6,"decay":0.14},"id":"tambourine","kind":"drum","factory":true,"level":0.034686,"peak":0.8969},"rim3Voice":{"label":"=808 Cowbell","category":"Perc","homeLane":"tom","dur":1,"note":"The actual TR-808 cowbell topology: simultaneous 540 and 800 Hz squares through a 1.3 kHz bandpass, with a 200ms exponential VCA cut-off.","metal":{"wave":"square","freq":540,"ratios":[1,1.481481],"spread":1,"count":2,"filter":"bandpass","hp":1300,"Q":4,"slope":-12,"attack":0,"decay":0.2,"floor":0.001,"hardStop":true,"resonator":{"feedback":0.96,"drive":1.4,"leak":0.0005}},"id":"ds808Cowbell","kind":"drum","factory":true,"level":0.02003,"peak":0.4688},"tom2Voice":{"label":"Conga · Mid","category":"Perc","homeLane":"tom","dur":1,"note":"A centered open conga with a warm falling body and a little shell noise on the front, designed to answer the high and low voices cleanly.","osc":{"type":"sine","from":285,"to":205,"sweep":0.045,"decay":0.32,"curve":"exp","gain":1},"noise":{"type":"lowpass","freq":1700,"Q":0.65,"decay":0.022,"gain":0.3},"drive":0.1,"id":"congaMid","kind":"drum","factory":true,"level":0.0378,"peak":0.6865},"crash2Voice":{"label":"909 Lo-Fi Ride","category":"Crash","homeLane":"crash","dur":4,"note":"A ride with a bell you can hear: a narrow 2.5 kHz resonance for the ping over a six-bit wash, lowpassed at 9.5 kHz. The 909’s ride was a sample and its grit is half of why the sound is recognisable, so the crush is doing the work here that the filter sweeps do on the 808 presets.","ring":{"freq":2500,"Q":70,"hit":0.0018,"decay":0.25,"gain":0.6},"metal":{"wave":"square","freq":780,"count":6,"spread":1.12,"filter":"highpass","hp":5400,"Q":0.8,"slope":-24,"attack":0.004,"decay":1.6,"sag":0.3,"sagAt":0.06,"gain":0.55},"drive":0.6,"shape":"crush","tone":{"type":"lowpass","freq":9500,"Q":0.7},"humanize":{"gain":0.03},"id":"ride909SixBit","kind":"drum","factory":true,"level":0.0532,"peak":1.0339},"bassVoice":{"label":"FM Slap Bass","category":"Bass","synth":"RMND-2","dur":1,"note":"The DX7 bass: a 1:1 modulator at index 12, gone in an eighth of a second, so the note starts as a buzz-saw and settles to a round sine.","options":{"harmonicity":1,"modulationIndex":12,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.9,"sustain":0.35,"release":0.08},"modulationEnvelope":{"attack":0.001,"decay":0.12,"sustain":0.06,"release":0.1}},"id":"rmndDxSlap","kind":"tone","factory":true,"level":0.0215,"peak":0.2207},"bass2Voice":{"label":"Sub Sine","category":"Bass","kind":"tone","synth":"CRLS-1","dur":2.2,"note":"Pure weight, no harmonics. Wants room underneath it and a lead up top.","options":{"oscillator":{"type":"sine"},"envelope":{"attack":0.012,"decay":0.3,"sustain":0.8,"release":0.4}},"id":"stSubSine","starter":true,"factory":true,"level":0.11677,"peak":0.6891},"chordsVoice":{"label":"FM Keys","category":"Keys","synth":"RMND-2","dur":2.6,"note":"Struck keys, percussive enough to keep a stab from smearing into the next bar.","options":{"harmonicity":2,"modulationIndex":4,"oscillator":{"type":"sine"},"modulation":{"type":"triangle"},"envelope":{"attack":0.005,"decay":0.8,"sustain":0.1,"release":0.8},"modulationEnvelope":{"attack":0.004,"decay":0.4,"sustain":0.05,"release":0.5}},"id":"fmKeys","kind":"tone","factory":true,"level":0.021576,"peak":0.2185},"chords2Voice":{"label":"Synth Strings","category":"Orch","synth":"MRDR-3","dur":4,"note":"The string-machine sound: two detuned saws, slow on, slow off.","layer":{"osc1":{"type":"sawtooth","ratio":1,"detune":0,"gain":1,"attack":0.2,"decay":0.3,"sustain":0.85,"release":1},"osc2":{"type":"sawtooth","ratio":1,"detune":10.4,"gain":1,"attack":0.3,"decay":0.3,"sustain":0.85,"release":1.2}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":200,"Q":1,"track":0,"env":{"octaves":3,"attack":0.01,"decay":0.001,"sustain":1,"release":0.5}}},"vibrato":{"depth":0.025,"rate":4},"id":"synthStrings","kind":"tone","factory":true,"level":0.148374,"peak":1.0717},"leadVoice":{"label":"Electric Grand","category":"Keys","synth":"MRDR-3","dur":2.2,"note":"The CP-70: real strings on a pickup, so a thinner body, a brighter strike and the chorus it was always played through.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.7,"attack":0.001,"decay":2.2,"sustain":0,"release":0.3,"unison":2,"spread":6,"stereo":0.5,"filter":{"type":"lowpass","slope":-12,"freq":900,"Q":0.8,"track":0.9,"env":{"octaves":2.5,"attack":0.001,"decay":0.25,"sustain":0,"release":0.2}}},"osc2":{"type":"triangle","ratio":2,"gain":0.25,"attack":0.001,"decay":1.2,"sustain":0,"release":0.25},"osc3":{"type":"noise","ratio":1,"gain":0.07,"color":"white","attack":0.001,"decay":0.018,"sustain":0,"release":0.02,"filter":{"type":"bandpass","slope":-12,"freq":2400,"Q":1.2,"track":0.4}}},"humanize":{"entry":0.005,"gain":0.07},"chorus":{"mix":0.35,"rate":0.6,"depth":0.4,"width":1},"id":"mrdrElectricGrand","kind":"tone","factory":true,"level":0.0443,"peak":0.4886},"lead2Voice":{"label":"Soft Triangle Lead","category":"Lead","synth":"MRDR-3","dur":1.25,"note":"Triangle with a little length on it — soft enough to sit inside a mix carrying every other cabinet at once.","layer":{"osc1":{"type":"triangle","ratio":1,"gain":1,"attack":0.008,"decay":1.25}},"id":"layerMegamixLead","kind":"tone","factory":true,"level":0.080969,"peak":0.6983},"lead3Voice":{"label":"FM Bell","category":"Bells","synth":"RMND-2","dur":1.2,"note":"Struck and metallic, decaying rather than held — a bell at long lengths.","options":{"harmonicity":3,"modulationIndex":8,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.003,"decay":0.6,"sustain":0.05,"release":0.6},"modulationEnvelope":{"attack":0.002,"decay":0.35,"sustain":0.02,"release":0.4}},"id":"fmBell","kind":"tone","factory":true,"level":0.018029,"peak":0.2199},"lead4Voice":{"label":"Gritty FM Lead","category":"FX","synth":"RMND-2","dur":1.2,"note":"Modulation index high enough to be noise with a pitch in it.","options":{"harmonicity":1.41,"modulationIndex":24,"oscillator":{"type":"sawtooth"},"modulation":{"type":"sawtooth"},"envelope":{"attack":0.002,"decay":0.25,"sustain":0.4,"release":0.2},"modulationEnvelope":{"attack":0.002,"decay":0.2,"sustain":0.3,"release":0.2}},"id":"hardFm","kind":"tone","factory":true,"level":0.013983,"peak":0.2094},"lead5Voice":{"label":"FM Bell","category":"Bells","synth":"RMND-2","dur":1.2,"note":"Struck and metallic, decaying rather than held — a bell at long lengths.","options":{"harmonicity":3,"modulationIndex":8,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.003,"decay":0.6,"sustain":0.05,"release":0.6},"modulationEnvelope":{"attack":0.002,"decay":0.35,"sustain":0.02,"release":0.4}},"id":"fmBell","kind":"tone","factory":true,"level":0.018029,"peak":0.2199},"lead6Voice":{"label":"PWM Choir","category":"Orch","synth":"MRDR-3","dur":8,"note":"The /a/ formants again, but over pulses whose widths drift instead of over plain saws. The vowel is held by the filters; the moving source is what turns one singer into a section, and it is doing the job the chorus pedal does on a Juno.","layer":{"osc1":{"type":"pulse","width":0.5,"ratio":1,"gain":0.9,"attack":0.151,"decay":1.4,"sustain":0.85,"release":1,"attackCurve":"lin","unison":2,"spread":8,"stereo":0.75,"pwm":{"type":"sine","rate":0.24,"depth":0.6,"delay":0.5},"filter":{"type":"bandpass","slope":-12,"freq":800,"Q":7,"track":0,"env":{"attack":0.006}}},"osc2":{"type":"pulse","width":0.44,"ratio":1,"detune":7,"gain":0.55,"attack":0.187,"decay":1.6,"sustain":0.8,"release":1,"attackCurve":"lin","pwm":{"type":"sine","rate":0.35,"depth":0.55,"delay":0.5},"filter":{"type":"bandpass","slope":-12,"freq":1150,"Q":9,"track":0}},"osc3":{"type":"pulse","width":0.55,"ratio":1,"detune":-8,"gain":0.3,"attack":0.145,"decay":1.8,"sustain":0.72,"release":1.1,"attackCurve":"lin","pwm":{"type":"sine","rate":0.17,"depth":0.5,"delay":0.5},"filter":{"type":"bandpass","slope":-12,"freq":2900,"Q":11,"track":0}}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":3600,"Q":0.7,"track":0.3,"env":{"octaves":1.2,"attack":0.183,"decay":1.8,"sustain":0.55,"release":1}},"vca":{"attack":0.022,"decay":1.8,"sustain":0.88,"release":1.3,"attackCurve":"lin"}},"drive":0.08,"shape":"soft","humanize":{"entry":0.02},"vibrato":{"depth":0.16,"rate":5,"delay":0.7,"spread":0},"chorus":{"mix":0.37},"id":"bestPwmChoir","kind":"tone","factory":true,"level":0.0316,"peak":0.2098},"lead7Voice":{"label":"FM Piano","category":"Keys","synth":"RMND-2","dur":2.4,"note":"Harmonicity 1 is a full harmonic series; the index falls from bright to nearly a sine across the first second. The DX7 piano everybody has heard.","options":{"harmonicity":1,"modulationIndex":2.4,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.002,"decay":2.4,"sustain":0.02,"release":0.6},"modulationEnvelope":{"attack":0.001,"decay":0.9,"sustain":0.06,"release":0.5}},"id":"rmndDxPiano","kind":"tone","factory":true,"level":0.0267,"peak":0.2183},"lead8Voice":{"label":"FM Keys","category":"Keys","synth":"RMND-2","dur":2.6,"note":"Struck keys, percussive enough to keep a stab from smearing into the next bar.","options":{"harmonicity":2,"modulationIndex":4,"oscillator":{"type":"sine"},"modulation":{"type":"triangle"},"envelope":{"attack":0.005,"decay":0.8,"sustain":0.1,"release":0.8},"modulationEnvelope":{"attack":0.004,"decay":0.4,"sustain":0.05,"release":0.5}},"id":"fmKeys","kind":"tone","factory":true,"level":0.021576,"peak":0.2185}},
-  fx: { reverb: { decay: 1.2 } },
+  masterEffects: [{ id: "mbCompN", params: { lowFrequency: 180, highFrequency: 1800, "low.threshold": -26, "low.ratio": 4, "low.attack": 0.06, "low.release": 0.22, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3.5, "mid.attack": 0.018, "mid.release": 0.08, "mid.knee": 12, "high.threshold": -26, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }, { id: "gain", params: { gain: -3.6 } }],
+  layers: [{ key: "crash2", from: "crash", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "crash3", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }],
+  order: ["kick","snare","clap","hats","ohats","crash","crash2","tom","rim","rim2","rim3","tom2","crash3","bass","bass2","chords","chords2","lead","lead2","lead3","lead4","lead5","lead6","lead7"],
+  labels: {"kick":"KICK","snare":"SNARE Roll","clap":"SNARE Gated","hats":"HATS","ohats":"OPEN HATS","crash":"CRASH","crash2":"RISER","tom":"SIMMONS Toms","rim":"PERC Shaker","rim2":"PERC Tambourine","rim3":"PERC Cowbell","tom2":"PERC Congas","crash3":"RIDE","bass":"BASS Dist · Hollow Vector","bass2":"SUB · Sub Sine (starter)","chords":"BRASS Stabs · Brass Section","chords2":"PAD · Burnt Horizon","lead":"RIFF Grand · HOOK","lead2":"HOOK DOUBLE · Ruby Scanner","lead3":"HOOK 8VA · Ice Bell","lead4":"LEAD 8VA · Neon Reed","lead5":"ARP · Crystal Trigger","lead6":"CHOIR · Glass Choir","lead7":"THIRD BELOW · Digital EP 84"},
+  voice: {"kickVoice":"ds909KickPunch","snareVoice":"ds909Snare","clapVoice":"ds909Clap","hatsVoice":"hatGrit","ohatsVoice":"ohat909SixBit","crashVoice":"ds909Crash","tomVoice":"sdsTomHigh","rimVoice":"shaker","rim2Voice":"tambourine","rim3Voice":"ds808Cowbell","tom2Voice":"congaMid","crash3Voice":"ride909SixBit","bassVoice":"tngrHollowVector","bass2Voice":"stSubSine","chordsVoice":"tngrBrassSection","chords2Voice":"tngrBurntHorizon","leadVoice":"mrdrElectricGrand","lead2Voice":"tngrRubyScanner","lead3Voice":"tngrIceBell","lead4Voice":"tngrNeonReed","lead5Voice":"tngrCrystalTrigger","lead6Voice":"tngrGlassChoir","lead7Voice":"tngrDigitalEp84"},
+  voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":4.285714285714286,"note":"White noise through a band climbing 250 Hz to 8 kHz over 4.29s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":4.285714285714286,"Q":1.6,"slope":-24,"color":"white","attack":3.942857142857143,"hold":0,"decay":0.34285714285714286,"curve":"exp","gain":1},"drive":0.08,"peak":0.034}},
   lanes: {
-    kick: { eq: { low: -1 } },
-    snare: { gain: 0.24, send: { reverb: 0.15 }, eq: { mid: 1.6, high: 2 } },
-    clap: { gain: 2.544, send: { reverb: 0.15 }, eq: { high: 1 } },
-    hats: { gain: -8, pan: 0.2 },
-    ohats: { gain: -11, pan: -0.15 },
-    crash: { gain: -7.6, pan: 0.2, send: { delay: 0.408, reverb: 0.541 } },
-    tom: { gain: -3, pan: 0.2, send: { reverb: 0.15 } },
-    rim: { gain: -12.6, pan: 0.3 },
-    rim2: { gain: -9.76, pan: -0.3, send: { reverb: 0.15 } },
-    rim3: { gain: -8.8, pan: 0.25, send: { reverb: 0.15 } },
+    kick: { gain: -3, eq: { low: -2 } },
+    snare: { gain: 2, effects: [{ id: "reverb", params: { decay: 1.8, preDelay: 0.005, wet: 0.55 } }, { id: "noisegate", params: { threshold: -34, attack: 0.002, release: 0.08 } }] },
+    clap: { gain: -3, eq: { high: -1 }, effects: [{ id: "reverb", params: { decay: 1.8, preDelay: 0.005, wet: 0.55 } }, { id: "noisegate", params: { threshold: -34, attack: 0.002, release: 0.08 } }] },
+    hats: { gain: -16.5, pan: -0.25 },
+    ohats: { gain: -11, pan: 0.25 },
+    crash: { gain: -9, pan: 0.3, send: { reverb: 0.3 } },
+    crash2: { gain: -15.5, send: { reverb: 0.8 }, eq: { low: 5.5, high: 2 } },
+    tom: { gain: -6, pan: 0.35, send: { reverb: 0.35 } },
+    rim: { gain: -15, pan: 0.3 },
+    rim2: { gain: -12, pan: -0.3, send: { reverb: 0.15 } },
+    rim3: { gain: -13, pan: 0.25, send: { reverb: 0.15 } },
     tom2: { gain: -8, pan: -0.2, send: { reverb: 0.15 } },
-    crash2: { gain: -12, pan: 0.3, send: { reverb: 0.2 } },
-    bass: { gain: -4 },
-    bass2: { gain: -12 },
-    chords: { gain: -4, pan: -0.15, send: { reverb: 0.15 } },
-    chords2: { gain: -13, send: { reverb: 0.3 } },
-    lead: { pan: -0.05, send: { delay: 0.12, reverb: 0.3 }, eq: { high: 2.6 } },
-    lead2: { gain: -0.9, pan: 0.05, send: { delay: 0.08, reverb: 0.15 } },
-    lead3: { gain: -5.7, pan: 0.25, send: { delay: 0.15, reverb: 0.2 } },
-    lead4: { gain: -5.3, pan: -0.1, send: { reverb: 0.15 } },
-    lead5: { gain: -10, pan: 0.25, send: { delay: 0.12, reverb: 0.15 } },
-    lead6: { gain: -10.2, send: { reverb: 0.5 } },
-    lead7: { gain: -7.1, pan: 0.15, send: { reverb: 0.15 } },
-    lead8: { gain: -6.3, pan: -0.2, send: { delay: 0.12, reverb: 0.15 } },
+    crash3: { gain: -12, pan: 0.3, send: { reverb: 0.2 } },
+    bass: { gain: -1.1, effects: [{ id: "filter", params: { type: "lowpass", frequency: 1400, Q: 1.5 } }] },
+    bass2: { gain: -15.7 },
+    chords: { gain: -6, send: { reverb: 0.4 } },
+    chords2: { gain: -8.6, send: { reverb: 0.5 }, eq: { low: -4 } },
+    lead: { send: { delay: 0.25, reverb: 0.35 }, eq: { high: 1 } },
+    lead2: { gain: 1.4, send: { delay: 0.18, reverb: 0.3 }, effects: [{ id: "peq", params: { f3: 3200, g3: -4, q3: 0.8 } }] },
+    lead3: { gain: -7.6, pan: 0.2, send: { delay: 0.2, reverb: 0.45 } },
+    lead4: { gain: -1.8, pan: -0.05, send: { delay: 0.22, reverb: 0.35 }, effects: [{ id: "chorus", params: { wet: 0.35 } }] },
+    lead5: { gain: -11.6, pan: -0.3, send: { delay: 0.25, reverb: 0.2 }, effects: [{ id: "peq", params: { f3: 3500, g3: -4, q3: 0.8 } }, { id: "autopanner", params: { rateSync: 1, rateDivision: 2, depth: 0.5, wet: 1 } }] },
+    lead6: { gain: -5.3, send: { reverb: 0.804 } },
+    lead7: { gain: -4.7, pan: 0.15, send: { delay: 0.1, reverb: 0.3 } },
   },
 };
 
@@ -2142,8 +2191,316 @@ export const arrangement = {
     toBar: 64,
   },
   automation: {
+    chords: {
+      fx: [
+        {
+          from: [5,0],
+          to: [9,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+        {
+          from: [41,0],
+          to: [45,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    chords2: {
+      fx: [
+        {
+          from: [5,0],
+          to: [9,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+        {
+          from: [41,0],
+          to: [45,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    bass: {
+      fx: [
+        {
+          from: [5,0],
+          to: [9,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+        {
+          from: [41,0],
+          to: [45,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    bass2: {
+      fx: [
+        {
+          from: [5,0],
+          to: [9,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+        {
+          from: [41,0],
+          to: [45,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead5: {
+      fx: [
+        {
+          from: [5,0],
+          to: [9,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+        {
+          from: [41,0],
+          to: [45,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    lead2: {
+      fx: [
+        {
+          from: [5,0],
+          to: [9,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+        {
+          from: [41,0],
+          to: [45,0],
+          chain: [
+            {
+              id: "filter",
+              params: {
+                type: "lowpass",
+                frequency: 350,
+                Q: 1.1,
+                sweep: 1,
+                sweepTo: 14000,
+              },
+            },
+          ],
+        },
+      ],
+    },
     snare: {
       points: [[5,0,0],[5,0,-12],[9,0,0],[41,0,0],[41,0,-12],[45,0,0]],
+    },
+    __master: {
+      fx: [
+        {
+          from: [8,12],
+          to: [8,14],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [8,14],
+          to: [9,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [44,12],
+          to: [44,14],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.25,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 500,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+        {
+          from: [44,14],
+          to: [45,0],
+          chain: [
+            {
+              id: "stutter",
+              params: {
+                slice: 0.125,
+                retrigger: 0,
+                fade: -1,
+              },
+            },
+            {
+              id: "filter",
+              params: {
+                type: "highpass",
+                frequency: 1200,
+                Q: 0.9,
+              },
+            },
+          ],
+        },
+      ],
     },
     lead: {
       points: [[45,0,0],[45,0,-2.5],[61,0,-2.5],[61,0,0]],

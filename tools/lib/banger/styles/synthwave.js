@@ -121,7 +121,10 @@ export const SYNTHWAVE = Object.freeze({
     hats16: 'xxxxxxxxxxxxxxxx',
     hats8: 'x.x.x.x.x.x.x.x.',
     crash: 'x...............',
-    rolls: BIG_ROOM.drums.rolls,
+    // The gated snare is already huge, so the build is a drummer's fill more than a roll:
+    // the backbeat, a pickup, eighths into sixteenths, eighths into the hole. Barely swells.
+    rolls: ['....x.......x...', '....x.......x.xx', 'x...x...x.x.x.xx', 'x.x.x.x.xxxxxxxx', 'x.x.x.x.x.x.....'],
+    rollSwell: { from: -6, shape: 'even' },
     // Simmons tom runs.
     fills: [
       { snare: '............x.x.', tom: '........xxxx..x.' },

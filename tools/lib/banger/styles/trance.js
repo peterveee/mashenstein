@@ -11,6 +11,8 @@ import { BIG_ROOM } from './big-room.js';
 export const TRANCE = Object.freeze({
   id: 'trance',
   label: 'Trance',
+  // Now and then the Machine-Gun Sweep into a drop, in place of the stutter (fx.js).
+  machineGunSweep: true,
   // What the Style list says beside it, and its tooltip.
   note: '138 · rolling bass, gated saws, long breakdown',
   title: '138 BPM: a rolling sixteenth bass, supersaws trance-gated in sixteenths, a long breakdown with the hook on a piano. Uplifting, Long, and the Anthem form by default',
@@ -109,6 +111,8 @@ export const TRANCE = Object.freeze({
     crash: 'x...............',
     // The snare build: quarters, eighths, sixteenths, then the last bar's hole.
     rolls: ['x...x...x...x...', 'x.x.x.x.x.x.x.x.', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxx....'],
+    // The long trance swell: from eighteen under, on an S-curve, so it creeps then surges.
+    rollSwell: { from: -18, shape: 's' },
     fills: [
       { snare: '............xxxx', tom: '........x.x.....' },
       { snare: '..........x.xxxx', tom: '........x.......' },

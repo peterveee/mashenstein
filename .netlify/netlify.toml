@@ -1,0 +1,48 @@
+plugins = []
+headers = []
+
+[functions]
+
+[functions."*"]
+
+[build]
+publish = "/Users/Peter/mashenstein"
+publishOrigin = "default"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
+
+[[redirects]]
+from = "/play"
+to = "https://peterveee.github.io/mashenstein/"
+status = 302.0
+force = false
+
+[redirects.query]
+
+[redirects.conditions]
+
+[redirects.headers]
+
+[[redirects]]
+from = "/thelab"
+to = "https://peterveee.github.io/mashenstein/?goto=thelab"
+status = 302.0
+force = false
+
+[redirects.query]
+
+[redirects.conditions]
+
+[redirects.headers]

@@ -36,7 +36,7 @@ import { IMPORTED_DIR, songFileIn, writeImportedIndex } from './imported-index.j
 import { compactArrangement, normaliseArrangementResolution } from './arrangement-edit.js';
 import { generateBanger } from './banger/index.js';
 import { captureSectionEffects } from './banger/section-effects.js';
-import { styleFor } from './banger/styles/index.js';
+import { styleFor, BANGER_STYLES, BANGER_SOUND_SETS, BANGER_FLAVOURS } from './banger/styles/index.js';
 import { KIT_ROLES, tableIssues, forgetOffered } from './banger/sound-rules.js';
 import { soundsSource, tidyTable } from './banger/sounds-source.js';
 import { songFrom, bangerRefs, buildAllRefs, readLevelData, writeLevelData, CHANNELS_FILE } from './banger-refs.js';
@@ -62,12 +62,22 @@ const SEED_RIFF = {
     bars: ['D5:2 . F5:2 . A5:2 . F5:2 . D5:3 . . . C5:2 . E5:2 .', 'D5:4 . . . A4:2 . . . F5:2 . . . E5:2 . . .'],
   }],
 };
+/** The first mood its base style plays `flavour` in, or null. */
+const moodOfFlavour = (flavour) => Object.entries(styleFor(flavour.base)?.flavourByMood || {})
+  .find(([, id]) => id === flavour.flavour)?.[0] || null;
+/** Every style that can have a seed: each style, then each flavour (styles/flavours.js). */
+export const SEEDABLE = [...BANGER_STYLES, ...BANGER_FLAVOURS];
 /**
  * Every part a style can play, switched on — so every channel it has is there to tune — on
  * the style's OWN sounds, never a roll from its shortlists.
  */
 export const seedOptions = (style) => ({
-  style: style.id,
+  // A FLAVOUR (styles/flavours.js) has a seed of its own, 6 Oct 2026: made as its base style
+  // played in that flavour, in a mood that plays it, so its own sounds and channels are what
+  // is laid out to tune. A style's own seed is the style itself, whatever its mood would pick.
+  ...(style.flavour
+    ? { style: style.base, flavour: style.flavour, ...(moodOfFlavour(style) ? { mood: moodOfFlavour(style) } : {}) }
+    : { style: style.id, flavour: 'style' }),
   parts: { sub: true, thirdBelow: true, counter: true, arp: true, choir: true, bell: true, square: true, octaveDouble: true, partSounds: 'style' },
   drums: { shaker: true, tambourine: true, congas: true, cowbell: true, ride: true },
   // Always the Club form: a seed is every part laid out to tune, and Use as Style reads it by its drops.
@@ -177,6 +187,22 @@ export function styleFromBanger(mod) {
 const pascal = (s) => String(s).split(/[^A-Za-z0-9]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join('');
 /** The library id a sound tuned on a seed (or a combo's banger) is kept under. */
 export const tunedPresetId = (styleId, job, combo = null) => `${combo ? 'combo' : 'seed'}${pascal(styleId)}${combo ? pascal(combo) : ''}${pascal(job)}`;
+// A kept sound's name drops the style (or combo) it was last kept for — `Ride · Future Bass`
+// re-kept for Reggaeton is `Ride · Reggaeton` — but nothing else: a kit sound's instrument
+// stays, so `Havana Patio · Clave` and `Havana Patio · Conga` don't both become
+// `Havana Patio · Reggaeton`.
+// A flavour's label has a `·` of its own (`Reggaeton · Romántico`), so the longest match wins.
+const STYLE_LABELS = [...BANGER_STYLES, ...BANGER_SOUND_SETS, ...BANGER_FLAVOURS].map((s) => s.label).filter(Boolean)
+  .sort((a, b) => b.length - a.length);
+const withoutStyleSuffix = (label) => {
+  const text = String(label);
+  for (const s of STYLE_LABELS) {
+    const at = text.lastIndexOf(` · ${s}`);
+    const rest = at < 0 ? null : text.slice(at + s.length + 3);
+    if (at > 0 && (rest === '' || (rest.startsWith(' ') && !rest.includes('·')))) return text.slice(0, at);
+  }
+  return text;
+};
 // What a song's copy carries that a library entry does not (or works out for itself).
 const COPY_ONLY = ['id', 'kind', 'level', 'peak', 'factory', 'user', 'songOrigin', 'songSourceId', 'songLocal'];
 
@@ -194,7 +220,7 @@ async function keepTunedSounds(root, copies, { styleLabel, idFor, measure, resta
   for (const c of copies) {
     const id = idFor(c.job);
     const preset = Object.fromEntries(Object.entries(structuredClone(c.params)).filter(([k]) => !COPY_ONLY.includes(k)));
-    preset.label = `${String(c.params.label || c.job).replace(/ · [^·]+$/, '')} · ${styleLabel}`;
+    preset.label = `${withoutStyleSuffix(c.params.label || c.job)} · ${styleLabel}`;
     preset.starter = false;
     const kind = c.params.kind === 'drum' ? 'drum' : 'tone';
     if (VOICES[id] && soundKey({ ...VOICES[id], label: preset.label }) === soundKey({ ...preset, id })) {

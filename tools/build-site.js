@@ -54,6 +54,15 @@ for (const arg of process.argv.slice(2)) {
 }
 const OUT = join(root, flags.out || 'work/site');
 
+// Short links on mashenstein.com, written out as a Netlify _redirects file
+// beside the page. 302 rather than 301: browsers cache a 301 for good, so a
+// target that ever moves would strand everyone who had clicked it once.
+const REDIRECTS = [
+  ['/play', 'https://peterveee.github.io/mashenstein/'],
+  // ?goto=thelab is the one deep link a published build honours (src/main.js boot()).
+  ['/thelab', 'https://peterveee.github.io/mashenstein/?goto=thelab'],
+];
+
 // Sections written and kept in index.html but switched off. THE RELAY and NINE
 // CABINETS are off because their artwork was the one thing on this site that
 // could not be vector — a hero comes out of drawToon, which is a canvas painter
@@ -705,6 +714,7 @@ if (!ogPng) {
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, 'index.html'), html);
+writeFileSync(join(OUT, '_redirects'), REDIRECTS.map(([from, to]) => `${from}  ${to}  302`).join('\n') + '\n');
 
 const kb = (b) => `${(b / 1024).toFixed(1)} KB`;
 console.log(`  index.html  ${kb(Buffer.byteLength(html))}   (one file, no bitmaps)`);
@@ -717,4 +727,5 @@ if (ogPng) {
 } else {
   console.log('  og.png      not written — shared links preview as text (pass --og)');
 }
+console.log(`  _redirects  ${REDIRECTS.map(([from]) => from).join(', ')}`);
 console.log(`\n${OUT}\n  preview: python3 -m http.server -d work/site 8020`);

@@ -9,9 +9,10 @@
 //
 // Some moves are HELD instead (`hold`, Peter, 3 Oct 2026): the effect is in for as long as
 // the hero is held down — underwater, a stutter, the speed, the bow drawn — switched in on
-// the next sixteenth after the press and out on the next beat after the release, so it
-// answers at once and still sits on the grid. The rest are TRIGGERS: they land on the next
-// beat and play out on their own (a tape stop, a breakdown, an echo thrown).
+// the next sixteenth after the press (a filter or a gate, `atOnce`, at the press itself) and
+// out the moment it is let go (nowAt; out on the beat until 6 Oct 2026, which felt late).
+// The rest are TRIGGERS: they land on the next beat and play out on their own (a tape stop, a
+// breakdown, an echo thrown).
 //
 // 5 Oct 2026 (Peter): every held move can be PLAYED, not only switched — drag the held hero
 // up or down (or press up and down on the keys) and the move follows: Lorenzo's water gets
@@ -53,7 +54,10 @@ export const HERO_MOVES = Object.freeze([
   // Let go, the water DRAINS (Peter, 5 Oct 2026: "slowly go back to normal rather than revert
   // instantly"): from the next beat the cutoff glides from where the drag left it up to
   // `drain.to`, past hearing, across `drain.bars`, and the section lets go there (endHold).
+  // In the moment he is pressed (`atOnce`, Peter, 6 Oct 2026), not on the next sixteenth: a
+  // filter has no grid to sit on (nowAt).
   { hero: 'lorenzo', name: 'LORENZO', move: 'UNDERWATER', what: 'hold: the room floods, drag to sink or surface', col: '#48e0c8', hold: true,
+    atOnce: true,
     drag: { param: 'frequency', also: 'sweepTo', from: 140, to: 3200, start: 0.351 },
     drain: { to: 18000, bars: 2 },
     chain: [{ id: 'filter', params: { type: 'lowpass', frequency: 420, Q: 1.4, sweep: 1, sweepTo: 420 } }] },
@@ -99,9 +103,10 @@ export const HERO_MOVES = Object.freeze([
   // slide"): the band falls through for as long as she is held — drums only where a press
   // starts — and the drag says how much: up brings the bass back, then the chords; down takes
   // the drums through too, to the kick and the backbeat, then the kick alone. `holes` runs
-  // from the bottom of the drag to the top; each says what stays, by part or by drum.
+  // from the bottom of the drag to the top; each says what stays, by part or by drum. In the
+  // moment she is pressed (`atOnce`, 6 Oct 2026): the gates are fades, with no grid to wait for.
   { hero: 'clara', name: 'CLARA', move: 'PLOT HOLE', what: 'hold: the band falls through, drag for how much', col: '#c9a0ff',
-    hold: true, holeStart: 2,
+    hold: true, atOnce: true, holeStart: 2,
     holes: [['kick'], ['kick', 'snare', 'clap', 'rim'], ['drums'], ['drums', 'bass'], ['drums', 'bass', 'chords']] },
   // THE DROP (Peter, 5 Oct 2026). Held, the bow is drawn: the high-pass climbs from 30 Hz to
   // 1.8 kHz over `drawBars` and holds there, a noise riser and a snare roll build under it
@@ -203,6 +208,23 @@ export function nextSixteenthAt() {
   if (when - ctx.currentTime < 0.01) { step += 1; when += spb; }
   return { when, step, spb };
 }
+
+/**
+ * Now, or as near it as the audio clock will take an event: where every held move comes OUT,
+ * and where an `atOnce` move goes in. Not the next sixteenth: that is the next step the
+ * sequencer has not queued yet, a whole lookahead ahead of the clock (0.25 s on a desktop,
+ * 0.5 s on a phone, phone-audio.js) — and the master's section switch and the lane gates are
+ * gain ramps, free to land between steps. Null with no song running.
+ */
+export function nowAt() {
+  const ctx = Audio.ctx;
+  if (!ctx || !Audio.bank || !Audio.mixer || !Number.isFinite(Audio.nextTime)) return null;
+  const spb = 60 / ((Audio.bpm || 120) * (Audio.tempo || 1)) / 4;
+  const when = ctx.currentTime + RELEASE_MARGIN_S;
+  return { when, step: Audio.step - Math.ceil(Math.max(0, Audio.nextTime - when) / spb), spb };
+}
+/** How far ahead of the audio clock nowAt books: enough to reach the audio thread. */
+const RELEASE_MARGIN_S = 0.01;
 
 /** The next bar line — where a seek queued now lands (Audio.setStepAtBoundary's own rule). */
 export function nextBarAt() {
@@ -535,7 +557,11 @@ export function playMove(move, at, { song = null, levels = null } = {}) {
 /** A fader position (0–1) as a gain: squared, so the travel feels even to the ear. */
 export const partGain = (level) => Math.max(0, Math.min(1, level)) ** 2;
 
-/** A part's level (a fader, 0–1), from `at` (or now), gliding over `glide` seconds. */
+/**
+ * A part's level (a fader, 0–1), from `at` (or now), gliding over `glide` seconds — on each
+ * lane's live gate (mixer setLiveLevel), upstream of its sends, so the part's echo and reverb
+ * go with it. The monitor gate below the sends is the moves' (holeGates, the BOOST).
+ */
 export function setPartLevel(song, id, level, at = null, glide = 0.012) {
   const mixer = Audio.mixer;
   const ctx = Audio.ctx;
@@ -543,15 +569,14 @@ export function setPartLevel(song, id, level, at = null, glide = 0.012) {
   const when = at ? at.when : ctx.currentTime;
   for (const key of song?.mix?.order || []) {
     if (partOf(key) !== id) continue;
-    const gate = mixer.lane(key)?._monitorNode?.gain;
-    if (gate) gate.setTargetAtTime(partGain(level), when, glide);
+    mixer.lane(key)?.setLiveLevel?.(partGain(level), when, glide);
   }
 }
 
 /**
  * PLOT HOLE's gates: from `at` (or now), every lane that `keep` names — by part ('drums',
- * 'bass'…) or by drum ('kick', 'snare'…) — at its part's fader level, every other lane shut.
- * `keep` null opens them all again, each to its part's fader.
+ * 'bass'…) or by drum ('kick', 'snare'…) — open, every other lane shut. `keep` null opens
+ * them all again. The fader is not theirs: it is on each lane's live gate (setPartLevel).
  */
 export function holeGates(song, levels, keep, at = null) {
   const mixer = Audio.mixer;
@@ -562,7 +587,8 @@ export function holeGates(song, levels, keep, at = null) {
     const part = partOf(key);
     const stays = !keep || keep.includes(part) || keep.includes(baseLane(key));
     const gate = mixer.lane(key)?._monitorNode?.gain;
-    if (gate) gate.setTargetAtTime(partGain(stays ? (levels?.[part] ?? 1) : 0), when, 0.012);
+    // open is 1: the part's own level is on its live gate already (setPartLevel)
+    if (gate) gate.setTargetAtTime(stays ? 1 : 0, when, 0.012);
   }
 }
 
@@ -579,7 +605,9 @@ export function releaseClub(song) {
   if (!mixer || !ctx) return;
   const now = ctx.currentTime;
   for (const key of song?.mix?.order || []) {
-    const gate = mixer.lane(key)?._monitorNode?.gain;
+    const lane = mixer.lane(key);
+    lane?.setLiveLevel?.(1, now, 0.005);
+    const gate = lane?._monitorNode?.gain;
     if (!gate) continue;
     gate.cancelScheduledValues(now);
     gate.setValueAtTime(1, now);

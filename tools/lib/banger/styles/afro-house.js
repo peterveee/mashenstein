@@ -139,7 +139,7 @@ export const AFRO_HOUSE = Object.freeze({
   labels: {
     ...BIG_ROOM.labels,
     hats: 'SHEKERE', congas: 'DJEMBE Tone', tambourine: 'DJEMBE Slap', cowbell: 'AGOGO', fill: 'TALKING DRUM',
-    shaker: 'PERC Shaker', pad: 'PAD', saws: 'CHORDS Pad', megaSaw: 'LEAD 8VA',
+    shaker: 'PERC Shekere', pad: 'PAD', saws: 'CHORDS Pad', megaSaw: 'LEAD 8VA',
   },
 });
 
@@ -173,7 +173,7 @@ export const AFRO_HOUSE_FLAVOURS = Object.freeze([
         arp: { gain: -9, pan: -0.2, send: { delay: 0.35, reverb: 0.4 } },
         hook: { gain: -5, pan: 0.1, send: { delay: 0.25, reverb: 0.5 } },
       },
-      labels: { ...ORGANIC.labels, hats: 'SHAKER', tambourine: 'RIM', congas: 'CONGA', bass: 'BASS Rolling', arp: 'ARP Pluck' },
+      labels: { ...ORGANIC.labels, hats: 'SHAKER', shaker: 'PERC Shaker', tambourine: 'CLAVE', congas: 'CONGA', bass: 'BASS Rolling', arp: 'ARP Pluck' },
     },
   },
   {

@@ -455,7 +455,7 @@ voiceEditor = createVoiceEditor({
 const params = new URLSearchParams(location.search);
 const requested = eligible(params.get('preset') || DEFAULT_PRESET);
 const patch = decodePatch(location.hash.startsWith('#patch=') ? location.hash.slice(7) : '');
-if (params.get('preset') && params.get('preset') !== requested) toast('Unknown preset — opened BEST Choir Aah');
+if (params.get('preset') && params.get('preset') !== requested) toast('Unknown preset — opened Synth Choir Aah');
 if (location.hash && !patch && location.hash.startsWith('#patch=')) toast('Invalid patch link — opened the base preset');
 loadPreset(requested, patch);
 

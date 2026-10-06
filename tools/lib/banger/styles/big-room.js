@@ -21,6 +21,8 @@
 export const BIG_ROOM = Object.freeze({
   id: 'big-room',
   label: 'Big-Room House',
+  // Now and then the Machine-Gun Sweep into a drop, in place of the stutter (fx.js).
+  machineGunSweep: true,
   // What the Style list says beside it, and its tooltip.
   note: '128 · pumping supersaws, off-beat bass, big drops',
   title: '128 BPM, ABSOLUTE ZERO\'s shape: four on the floor, an off-beat bass, pumping supersaw chords, snare-roll builds and a harder second drop. Starts on the Club form',
@@ -161,8 +163,13 @@ export const BIG_ROOM = Object.freeze({
     hats16: 'xxxxxxxxxxxxxxxx',
     hats8: 'x.x.x.x.x.x.x.x.',
     crash: 'x...............',
-    // Rolls by bars left before the drop: four or more out, then three, two, one, the last.
+    // Rolls by bars left before the drop: five or more out, then four, three, two, and the
+    // last — whose last beat is the hole, so it stays empty. Each rolling style has its own
+    // (tests/banger-rolls.js); this is the classic, halves doubling every bar.
     rolls: ['x.......x.......', 'x...x...x...x...', 'x.x.x.x.x.x.x.x.', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxx....'],
+    // How the roll swells to the fader across the build (fx.js; ROLL_SWELL when absent),
+    // and optionally `rollSweep`, a filter opening on the snare under it.
+    rollSwell: { from: -12, shape: 'even' },
     // Fills: snare and toms over the last bar of an eight.
     fills: [
       { snare: '..........x.xxxx', tom: '........x.x.x...' },

@@ -14,7 +14,7 @@ import { VOICES, PERCUSSION_LANES } from '../../src/data/voices.js';
 import { draftOf } from './arrangement-edit.js';
 import { extractRiff } from './banger/riff.js';
 import { generateBanger } from './banger/index.js';
-import { BANGER_STYLES } from './banger/styles/index.js';
+import { BANGER_STYLES, BANGER_FLAVOURS } from './banger/styles/index.js';
 import { BIG_ROOM } from './banger/styles/big-room.js';
 import { ROLE_ORDER } from './banger/lanes.js';
 import { levelWindow, libraryCurveId, copyCurveKey, widenerOf, LEVEL_WINDOW_BARS } from './banger/levels.js';
@@ -216,6 +216,16 @@ export async function buildAllRefs(root = ROOT, { channels = {}, log = () => {} 
       refs[style.id][job] = ref;
       log(style, job, why, ref);
     }
+  }
+  // A flavour with a seed of its own (Use as Style on it) is matched to that seed, job for
+  // job, and to its base style's references for anything the seed has no part for. One
+  // without keeps its base's (levels.js falls back by `base`).
+  for (const flavour of BANGER_FLAVOURS) {
+    const tuned = channels[flavour.id]?.seed ? await songAt(root, 'src/data/imported', channels[flavour.id].seed).catch(() => null) : null;
+    if (!tuned?.raw?.banger) continue;
+    const fromSeed = bangerRefs(tuned, { laneOf: tuned.raw.banger.laneOf || {}, form: tuned.raw.banger.form || [], label: tuned.title, tag: { song: tuned.id } });
+    refs[flavour.id] = { ...(refs[flavour.base] || {}), ...fromSeed };
+    for (const [job, ref] of Object.entries(fromSeed)) log(flavour, job, 'seed banger', ref);
   }
   return refs;
 }

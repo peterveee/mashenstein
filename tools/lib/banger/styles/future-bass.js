@@ -12,6 +12,8 @@ import { BIG_ROOM } from './big-room.js';
 export const FUTURE_BASS = Object.freeze({
   id: 'future-bass',
   label: 'Future Bass',
+  // Now and then the Machine-Gun Sweep into a drop, in place of the stutter (fx.js).
+  machineGunSweep: true,
   // What the Style list says beside it, and its tooltip.
   note: '140 half time · 808, wobble, stuttered chords',
   title: '140 BPM felt at half time: hat rolls, an 808 under a talking wobble, chords stuttered in eighths, a full-time second drop. Euphoric by default',
@@ -110,7 +112,11 @@ export const FUTURE_BASS = Object.freeze({
     hats16: ['x.x.x.x.x.x.x.x.', 'x.x.x.x.x.xxxxxx', 'x.x.x.x.x.x.x.x.', 'x.x.xxx.x.x.xxxx'],
     hats8: 'x...x...x...x...',
     crash: 'x...............',
-    rolls: ['x.......x.......', 'x...x...x...x...', 'x.x.x.x.x.x.x.x.', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxx....'],
+    // The snare build at half time: the backbeat, doubled, three against four in dotted
+    // eighths, sixteenths — a high-pass opening under it like a pitch climbing.
+    rolls: ['........x.......', '....x.......x...', 'x..x..x..x..x..x', 'xxxxxxxxxxxxxxxx', 'x.x.xxxxxxxx....'],
+    rollSwell: { from: -15, shape: 'equal' },
+    rollSweep: { type: 'highpass', from: 150, to: 1800, Q: 0.9 },
     fills: [
       { snare: '............xxxx', tom: '........x.x.....' },
       { snare: '........x.x.xxxx', tom: '................' },

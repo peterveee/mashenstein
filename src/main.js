@@ -96,6 +96,7 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 // Recognised goto values:
 //   title  tutorial  hub  trophy  difficulty  howto  fieldguide  settings  calibrate  cast
 //   attract  intro  finale  soundtest  stage  gravity  boss  overtime
+// (?goto=thelab is not one of these: it works in published builds too — see boot().)
 function routeDevUrl(goto, p) {
   // So Flow.toTitle() is skipped. The last line of boot() guards on this flag.
   window.__mash_routed = true;
@@ -916,6 +917,17 @@ function boot() {
     const p = new URLSearchParams(window.location.search);
     const goto = p.get('goto');
     if (goto) routeDevUrl(goto, p);
+  }
+
+  // Public deep links — the few ?goto targets a published build honours too, so a
+  // link on mashenstein.com can open the game somewhere other than the title. Each
+  // lands where the title's own menu would take you and seeds no save file; every
+  // other target above stays dev-only.
+  //   ?goto=thelab  → THE LAB (mashenstein.com/thelab)
+  if (!window.__mash_routed && typeof window !== 'undefined'
+      && new URLSearchParams(window.location.search).get('goto') === 'thelab') {
+    window.__mash_routed = true;
+    setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') }));
   }
 
   if (!window.__mash_routed) Flow.toTitle();

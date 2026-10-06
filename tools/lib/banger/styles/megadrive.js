@@ -49,7 +49,11 @@ export const MEGADRIVE = Object.freeze({
     hats16: 'x.x.x.x.x.x.x.x.',
     hats8: 'x...x...x...x...',
     crash: 'x...............',
-    rolls: BIG_ROOM.drums.rolls,
+    // The FM roll: syncopated, filling in bar by bar, sixteenths, then a gallop into the
+    // hole — a high-pass climbing under it.
+    rolls: ['....x..x....x...', 'x...x..xx...x..x', 'x.x.x.xxx.x.x.xx', 'xxxxxxxxxxxxxxxx', 'xxx.xxx.xxx.....'],
+    rollSwell: { from: -9, shape: 'even' },
+    rollSweep: { type: 'highpass', from: 200, to: 2500, Q: 0.9 },
     // FM tom runs down the kit.
     fills: [
       { snare: '............xxxx', tom: '........x.x.....' },

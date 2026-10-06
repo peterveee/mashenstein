@@ -122,7 +122,7 @@ rolls and the riser.
 | Drums | Source Drums (Keep and Add / Replace / Keep As-Is) · Kit (Style, Studio, 909, 808, DS, CR-78) · Crashes · Fills · Snare Rolls · Impact · Shaker · Tambourine · Congas · Cowbell · Ride |
 | Bass & Chords | Bass (Off-Beat, Rolling 16ths, Octave Eighths, Root–Fifth, Funk Syncopated, Long 808, Reese Drone, Gallop, Arpeggiated, Pedal, Walking, Sub Only, None) · Bass Lifts (later drops move to a busier related bass) · Sub Layer · Chords (Pumping Supersaws, Piano Stabs, Pad, None) · Square Double · Bell Octave · Octave Hook · Third Below · Arp · Arp Pattern (Varied, Style's Own, or one of thirteen figures) · Choir · Counter-Melody · Write a Lead (When Needed / Always / Off) · Riff Sound (Keep / Random) · Part Sounds (Roll / Style's Own) · Fill In (`tools/lib/banger/embellish.js`: Off, Repeat — the first half of each bar's long notes struck twice, Passing — a scale note between notes a third or more apart, Neighbour — long notes stepping up and back; every added note in the banger's key) · Fill Every (Every Pass, Every 2nd, Every 4th — the last pass of each group is the filled one, so it answers the plain ones) · Fill Notes (One, Two, Every Gap — figures a filled bar gets, earliest first). The same bar on the same pass is always filled the same way; the chords are chosen under the plain tune; a busy riff has no room and is left alone |
 | Spot FX | Effects chosen by what they are for — each **Style** (the switches' own moves) by default. **Into a Drop** (the last bar before every drop or chorus: Stutter, Beat Repeat, High-Pass Sweep, Reverb Wash, Tape Stop, None) · **Out of a Drop** (the last bar before the song drops down: Delay Throw, Reverb Wash, Low-Pass Down, Tape Stop, None — a transition's Tape Stop winds the mix down over the bar's last beat, two from 160 BPM, and stands still on the bar line) · **Breakdowns** (over every breakdown and middle 8: Underwater, Ping-Pong Echo, Big Reverb) · **Intro FX** (Low-Pass, Bitcrush, Radio, None) · **Ending** (Tape Stop, Echo Out, Fade, None). Surprise Me rolls each one time in four. All written as the desk's Spot FX, so they can be edited afterwards |
-| FX | Riser · Filter Build · Stutter Before Drop · Sidechain Pump · **Chord Gate** (Style's Own — Trance sixteenths, Future Bass eighths, the rest a quarter-note pump — or Pump, Eighths, Sixteenths, Dotted Eighths, or By Energy: a pump in quiet sections, eighths building, sixteenths in the drops) · Delay Throws · Low-Pass Intro · Bitcrush Intro · Tape-Stop Ending |
+| FX | Riser · Filter Build · Stutter Before Drop (in Big-Room, Trance, Future Bass, Chipstep, Electro and Drum & Bass · Neuro, one build in three closes instead with the **Machine-Gun Sweep**: the last half bar held in 1/32s through a low-pass closing 18 kHz → 200 Hz — the desk's Machine Gun + Sweep Down presets) · Sidechain Pump · **Chord Gate** (Style's Own — Trance sixteenths, Future Bass eighths, the rest a quarter-note pump — or Pump, Eighths, Sixteenths, Dotted Eighths, or By Energy: a pump in quiet sections, eighths building, sixteenths in the drops) · Delay Throws · Low-Pass Intro · Bitcrush Intro · Tape-Stop Ending |
 
 **Build in Layers** turns the intro into a build-up: the parts arrive one at a time, a few
 bars apart — on a banger the kick alone, then the rest of the kit, the bass, the chords and
@@ -258,9 +258,17 @@ Four tools join the two.
 ### Seed bangers
 
 Each style has a **seed banger**: the style laid out to be tuned, with every part switched
-on (the percussion, the third below, the counter-melody, the choir, …). The seven are on the
+on (the percussion, the third below, the counter-melody, the choir, …). They are on the
 **Style Seeds** shelf of the desk's songs. They are tracked songs
 (`src/data/imported/banger-seed-<style>.js`), so they can't be deleted from the desk.
+
+**Each flavour has a seed of its own** (6 Oct 2026), such as REGGAETON · ROMÁNTICO SEED
+(`banger-seed-reggaeton-romantico.js`). It is made in that flavour, on its own sounds. Use as Style
+on it writes that flavour's row of `sounds.js`, its own entry in `channels.js` and its own level
+references, and leaves the base style alone. A flavour never takes its base style's seed
+channels. Those were set for the base style's sounds, and they used to replace every flavour's
+own mix. Until a flavour's seed is used, its bangers play the flavour recipe's own channels.
+Make one with `node tools/banger-seeds.js make reggaeton-romantico`.
 
 1. Open a seed and tune it in context: swap the drum sounds, try other presets, edit a
    patch in the voice editor, ride the faders, change the EQ, sends, inserts and master.

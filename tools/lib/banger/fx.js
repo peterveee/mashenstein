@@ -25,6 +25,31 @@ export const DELAY_THROW = { id: 'delay', params: { sync: 1, division: 0.75, fee
 // A gentle eighth-note ping-pong: the space a scripted section opens up (Kraftwerk's Isolation).
 export const PING_PONG = { id: 'pingpong', params: { sync: 1, division: 0.5, feedback: 0.35, wet: 0.3 } };
 export const LOWPASS = (frequency, Q = 0.9) => ({ id: 'filter', params: { type: 'lowpass', frequency, Q } });
+/**
+ * The Machine-Gun Sweep (Peter's, 6 Oct 2026): the last half bar before a drop held in
+ * thirty-seconds while a low-pass closes from 18 kHz to 200 Hz, so the drop lands out of a
+ * choke. The desk's own Machine Gun and Sweep Down presets (src/data/effect-presets.js).
+ * One of the run-ups below; a style with `machineGunSweep` has it in its draw.
+ */
+export const MACHINE_GUN_SWEEP = [STUTTER(0.125, 0), SWEEP(18000, 200, 'lowpass', 1.2)];
+/**
+ * Stutter Before Drop's run-ups (Peter, 6 Oct 2026): every build into a drop gets one, but
+ * not the same one — each draws from these by weight, never the one the build before it
+ * had, so the classic stutter stays the commonest without being every time. The ids are
+ * Spot FX → Into a Drop's own, so any one of them can also be asked for by name. Without
+ * a random stream (a direct call) the classic stutter, as before.
+ */
+export const INTO_DROP_RUNUPS = Object.freeze([
+  { id: 'stutter', weight: 3 },
+  { id: 'ramp', weight: 2 },
+  { id: 'repeat', weight: 2 },
+  { id: 'sweep', weight: 2 },
+  { id: 'wash', weight: 1 },
+  { id: 'tapeStop', weight: 1 },
+  { id: 'machineGun', weight: 1, style: 'machineGunSweep' },
+]);
+/** A build's snare swell where the style names none: twelve under, even. */
+export const ROLL_SWELL = Object.freeze({ from: -12, shape: 'even' });
 
 export const REVERB_WASH = { id: 'reverb', params: { decay: 4.5, preDelay: 0.02, low: 0, mid: 0, high: -3, width: 1, wet: 0.55 } };
 export const BAND_PASS = { id: 'filter', params: { type: 'bandpass', frequency: 1400, Q: 1.3 } };
@@ -66,7 +91,7 @@ const section = (from, to, chain) => ({ from, to, chain: Array.isArray(chain) ? 
  * The automation for a song: `events` from the section builders, `laneOf` mapping
  * roles to lanes, `total` bars. Returns the automation object, or null.
  */
-export function buildFx({ options, events, laneOf, total, lanesSounding, form = [], bpm = 120 }) {
+export function buildFx({ options, events, laneOf, total, lanesSounding, form = [], bpm = 120, style = {}, rng = null }) {
   let auto = null;
   const lane = (role) => laneOf.get(role) || null;
   const fx = options.fx;
@@ -80,22 +105,41 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
     master(bar(b, 16 - 4 * beats), bar(b + 1), TRANSITION_TAPE_STOP(beats));
   };
 
+  // A run-up into a drop over the end of bar `b`, by its Spot FX id.
+  const intoDrop = (id, b) => {
+    if (id === 'stutter') {
+      master(bar(b, 12), bar(b, 14), [STUTTER(0.25, -1), HIGHPASS(500)]);
+      master(bar(b, 14), bar(b + 1), [STUTTER(0.125, -1), HIGHPASS(1200)]);
+    } else if (id === 'ramp') {
+      // The stutter starting a beat early and speeding up: eighths, sixteenths, thirty-seconds.
+      master(bar(b, 8), bar(b, 12), [STUTTER(0.5, -1), HIGHPASS(250)]);
+      master(bar(b, 12), bar(b, 14), [STUTTER(0.25, -1), HIGHPASS(600)]);
+      master(bar(b, 14), bar(b + 1), [STUTTER(0.125, -1), HIGHPASS(1500)]);
+    } else if (id === 'repeat') {
+      master(bar(b, 8), bar(b, 12), [STUTTER(0.5, 0)]);
+      master(bar(b, 12), bar(b + 1), [STUTTER(0.25, -1)]);
+    } else if (id === 'sweep') master(bar(b), bar(b + 1), SWEEP(150, 6000, 'highpass', 1.2));
+    else if (id === 'wash') master(bar(b, 8), bar(b + 1), REVERB_WASH);
+    else if (id === 'tapeStop') tapeStopInto(b);
+    else if (id === 'machineGun') master(bar(b, 8), bar(b + 1), MACHINE_GUN_SWEEP);
+  };
+  // The style's run-up for one build: drawn by weight, never the last build's.
+  let lastRunup = null;
+  const drawRunup = () => {
+    if (!rng) return 'stutter';
+    const pool = INTO_DROP_RUNUPS.filter((r) => (!r.style || style[r.style]) && r.id !== lastRunup);
+    let pick = rng.next() * pool.reduce((t, r) => t + r.weight, 0);
+    lastRunup = (pool.find((r) => (pick -= r.weight) < 0) || pool[pool.length - 1]).id;
+    return lastRunup;
+  };
+
   // ---- Spot FX by purpose (More Options → Spot FX). `Style` is the switches' own moves.
   // Into a drop or a chorus: the last bar before every section that carries the hook.
   if (!own('intoDrop') && spot.intoDrop !== 'none') {
     form.forEach((s, i) => {
       const prev = form[i - 1];
       if (!prev || !(s.hook || ['drop', 'drop2', 'drop3', 'reprise'].includes(s.role)) || prev.role === s.role) return;
-      const b = prev.to;
-      if (spot.intoDrop === 'stutter') {
-        master(bar(b, 12), bar(b, 14), [STUTTER(0.25, -1), HIGHPASS(500)]);
-        master(bar(b, 14), bar(b + 1), [STUTTER(0.125, -1), HIGHPASS(1200)]);
-      } else if (spot.intoDrop === 'repeat') {
-        master(bar(b, 8), bar(b, 12), [STUTTER(0.5, 0)]);
-        master(bar(b, 12), bar(b + 1), [STUTTER(0.25, -1)]);
-      } else if (spot.intoDrop === 'sweep') master(bar(b), bar(b + 1), SWEEP(150, 6000, 'highpass', 1.2));
-      else if (spot.intoDrop === 'wash') master(bar(b, 8), bar(b + 1), REVERB_WASH);
-      else if (spot.intoDrop === 'tapeStop') tapeStopInto(b);
+      intoDrop(spot.intoDrop, prev.to);
     });
   }
   // Out of a big section into a quieter one: the last bar before it.
@@ -150,19 +194,19 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
         if (key) auto = addSections(auto, key, [section(a, b, SWEEP(350, 14000, 'lowpass', 1.1))]);
       }
     }
-    // The snare roll swelling from twelve under up to the fader.
+    // The snare roll swelling up to the fader — from the style's own depth on its own curve
+    // (`drums.rollSwell`, twelve under and even if it has none), and in a style with a
+    // `drums.rollSweep` a filter opening under it, the roll climbing like a pitch.
     if (options.drums.rolls && lane('snare') && !build.short) {
-      auto = setLaneFade(auto, lane('snare'), a, b, -12, 0, 'even');
+      const swell = style.drums?.rollSwell || ROLL_SWELL;
+      auto = setLaneFade(auto, lane('snare'), a, b, swell.from, 0, swell.shape);
+      const sweep = style.drums?.rollSweep;
+      if (sweep) auto = addSections(auto, lane('snare'), [section(a, b, SWEEP(sweep.from, sweep.to, sweep.type, sweep.Q))]);
     }
-    // The last beat: the whole mix repeating in sixteenths, then thirty-seconds, a
-    // high-pass climbing under it.
-    if (own('intoDrop') && fx.stutter && build.intoDrop) {
-      const s = posOf(build.to, 12);
-      auto = addSections(auto, MASTER_KEY, [
-        section(s, s + 2, [STUTTER(0.25, -1), HIGHPASS(500)]),
-        section(s + 2, s + 4, [STUTTER(0.125, -1), HIGHPASS(1200)]),
-      ]);
-    }
+    // The run-up into the drop (INTO_DROP_RUNUPS): the classic stutter — the whole mix
+    // repeating in sixteenths, then thirty-seconds, a high-pass climbing under it — or one
+    // of its variations, a different one from the build before.
+    if (own('intoDrop') && fx.stutter && build.intoDrop) intoDrop(drawRunup(), build.to);
   }
 
   // Hard stops: everything that could be ringing cut dead — except the riser, which is

@@ -66,8 +66,9 @@ export {
  * recipe's own `expression` field is for (src/game/banger/make.js).
  * 4 (4 Oct 2026): opt-in ongoing track production, under production policy 1.
  * Keep Style (also the default for old recipes) retains v3's mix and music.
+ * 7 (6 Oct 2026): the Machine-Gun Sweep into one build in three, in the styles that have it (fx.js).
  */
-export const BANGER_GENERATOR_VERSION = 6;
+export const BANGER_GENERATOR_VERSION = 7;
 
 /** A seed as an unsigned 32-bit number. */
 export const normaliseSeed = (seed) => (Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : 1);
@@ -156,6 +157,8 @@ export function generateBanger({
     expression: stream('expression'),
     production: stream('production'),
     sectionFx: stream('sectionFx'),
+    // The builds' Machine-Gun Sweep (fx.js) — drawn only in a style that has one.
+    spotFx: stream('spotFx'),
   };
   const warnings = [];
   if (raw?.production?.mode && raw.production.mode !== 'style' && options.production.mode === 'style') {
@@ -191,7 +194,10 @@ export function generateBanger({
   const combo = options.combo && !set ? combos?.[recipe.id]?.[options.combo] || null : null;
   if (options.combo && set) warnings.push(`a Sound Combo does not go over a Sound Set — made with the ${set.label} sounds`);
   else if (options.combo && !combo) warnings.push(`${recipe.label} has no Sound Combo "${options.combo}" — made with its own sounds`);
-  const style = withChannels(set || flavour || recipe, channels?.[recipe.id] ?? channels?.[recipe.base], combo?.channels);
+  // A flavour's channels are its own seed's (6 Oct 2026), never its base style's: the base
+  // seed's were set for the base's sounds and drowned every flavour's own mix.
+  const seeded = flavour && !set ? channels?.[flavour.id] : channels?.[recipe.id] ?? channels?.[recipe.base];
+  const style = withChannels(set || flavour || recipe, seeded, combo?.channels);
   // Every sound it is made with — the style's table, with the mood's overrides. `table`
   // is the shipped one unless the Banger Sounds page is auditioning unsaved choices.
   const sounds = withComboSounds(resolveSounds(table, style.id, options.mood), combo);
@@ -301,7 +307,7 @@ export function generateBanger({
     }
     return [...out];
   };
-  const automation = buildFx({ options, events, laneOf, total, lanesSounding, form, bpm });
+  const automation = buildFx({ options, events, laneOf, total, lanesSounding, form, bpm, style, rng: rng.spotFx });
   // The loop: from the first build (or drop) of a Club banger; from the first section after
   // the intro of any other form.
   const loopFrom = form[0]?.joins ? (form.find((x) => x.role !== 'intro') || form[0])

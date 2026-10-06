@@ -28,9 +28,14 @@ import * as AUDITION_SURF from './audition-surf.js';
 import * as AUDITION_TECHNO from './audition-techno.js';
 import * as BABY_PORTABLE_ROCK_4_COPY from './baby-portable-rock-4-copy.js';
 import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
+import * as BANGER_SEED_AFRO_HOUSE_MELODIC from './banger-seed-afro-house-melodic.js';
+import * as BANGER_SEED_AFRO_HOUSE_TECH from './banger-seed-afro-house-tech.js';
+import * as BANGER_SEED_AFRO_HOUSE from './banger-seed-afro-house.js';
 import * as BANGER_SEED_BIG_ROOM from './banger-seed-big-room.js';
 import * as BANGER_SEED_CHIPSTEP from './banger-seed-chipstep.js';
 import * as BANGER_SEED_DEEP_HOUSE from './banger-seed-deep-house.js';
+import * as BANGER_SEED_DNB_LIQUID from './banger-seed-dnb-liquid.js';
+import * as BANGER_SEED_DNB_NEURO from './banger-seed-dnb-neuro.js';
 import * as BANGER_SEED_DNB from './banger-seed-dnb.js';
 import * as BANGER_SEED_DOWNTEMPO from './banger-seed-downtempo.js';
 import * as BANGER_SEED_ELECTRO_FUNK from './banger-seed-electro-funk.js';
@@ -45,8 +50,12 @@ import * as BANGER_SEED_MEGADRIVE from './banger-seed-megadrive.js';
 import * as BANGER_SEED_MERENHOUSE from './banger-seed-merenhouse.js';
 import * as BANGER_SEED_MOOMBAHTON from './banger-seed-moombahton.js';
 import * as BANGER_SEED_NU_DISCO from './banger-seed-nu-disco.js';
+import * as BANGER_SEED_REGGAETON_PERREO from './banger-seed-reggaeton-perreo.js';
+import * as BANGER_SEED_REGGAETON_ROMANTICO from './banger-seed-reggaeton-romantico.js';
 import * as BANGER_SEED_REGGAETON from './banger-seed-reggaeton.js';
 import * as BANGER_SEED_SHIBUYA from './banger-seed-shibuya.js';
+import * as BANGER_SEED_SYNTHWAVE_DARKSYNTH from './banger-seed-synthwave-darksynth.js';
+import * as BANGER_SEED_SYNTHWAVE_OUTRUN from './banger-seed-synthwave-outrun.js';
 import * as BANGER_SEED_SYNTHWAVE from './banger-seed-synthwave.js';
 import * as BANGER_SEED_TRANCE from './banger-seed-trance.js';
 import * as BARBER_2 from './barber-2.js';
@@ -201,9 +210,14 @@ export const IMPORTED_BY_ID = {
   "audition-techno": { bank: AUDITION_TECHNO.bank, title: AUDITION_TECHNO.title, group: "styleAudition", writable: true },
   "baby-portable-rock-4-copy": { bank: BABY_PORTABLE_ROCK_4_COPY.bank, title: BABY_PORTABLE_ROCK_4_COPY.title, group: "copy", writable: true },
   "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
+  "banger-seed-afro-house-melodic": { bank: BANGER_SEED_AFRO_HOUSE_MELODIC.bank, title: BANGER_SEED_AFRO_HOUSE_MELODIC.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_AFRO_HOUSE_MELODIC.banger },
+  "banger-seed-afro-house-tech": { bank: BANGER_SEED_AFRO_HOUSE_TECH.bank, title: BANGER_SEED_AFRO_HOUSE_TECH.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_AFRO_HOUSE_TECH.banger },
+  "banger-seed-afro-house": { bank: BANGER_SEED_AFRO_HOUSE.bank, title: BANGER_SEED_AFRO_HOUSE.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_AFRO_HOUSE.banger },
   "banger-seed-big-room": { bank: BANGER_SEED_BIG_ROOM.bank, title: BANGER_SEED_BIG_ROOM.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_BIG_ROOM.banger },
   "banger-seed-chipstep": { bank: BANGER_SEED_CHIPSTEP.bank, title: BANGER_SEED_CHIPSTEP.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_CHIPSTEP.banger },
   "banger-seed-deep-house": { bank: BANGER_SEED_DEEP_HOUSE.bank, title: BANGER_SEED_DEEP_HOUSE.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_DEEP_HOUSE.banger },
+  "banger-seed-dnb-liquid": { bank: BANGER_SEED_DNB_LIQUID.bank, title: BANGER_SEED_DNB_LIQUID.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_DNB_LIQUID.banger },
+  "banger-seed-dnb-neuro": { bank: BANGER_SEED_DNB_NEURO.bank, title: BANGER_SEED_DNB_NEURO.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_DNB_NEURO.banger },
   "banger-seed-dnb": { bank: BANGER_SEED_DNB.bank, title: BANGER_SEED_DNB.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_DNB.banger },
   "banger-seed-downtempo": { bank: BANGER_SEED_DOWNTEMPO.bank, title: BANGER_SEED_DOWNTEMPO.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_DOWNTEMPO.banger },
   "banger-seed-electro-funk": { bank: BANGER_SEED_ELECTRO_FUNK.bank, title: BANGER_SEED_ELECTRO_FUNK.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_ELECTRO_FUNK.banger },
@@ -218,8 +232,12 @@ export const IMPORTED_BY_ID = {
   "banger-seed-merenhouse": { bank: BANGER_SEED_MERENHOUSE.bank, title: BANGER_SEED_MERENHOUSE.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_MERENHOUSE.banger },
   "banger-seed-moombahton": { bank: BANGER_SEED_MOOMBAHTON.bank, title: BANGER_SEED_MOOMBAHTON.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_MOOMBAHTON.banger },
   "banger-seed-nu-disco": { bank: BANGER_SEED_NU_DISCO.bank, title: BANGER_SEED_NU_DISCO.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_NU_DISCO.banger },
+  "banger-seed-reggaeton-perreo": { bank: BANGER_SEED_REGGAETON_PERREO.bank, title: BANGER_SEED_REGGAETON_PERREO.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_REGGAETON_PERREO.banger },
+  "banger-seed-reggaeton-romantico": { bank: BANGER_SEED_REGGAETON_ROMANTICO.bank, title: BANGER_SEED_REGGAETON_ROMANTICO.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_REGGAETON_ROMANTICO.banger },
   "banger-seed-reggaeton": { bank: BANGER_SEED_REGGAETON.bank, title: BANGER_SEED_REGGAETON.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_REGGAETON.banger },
   "banger-seed-shibuya": { bank: BANGER_SEED_SHIBUYA.bank, title: BANGER_SEED_SHIBUYA.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_SHIBUYA.banger },
+  "banger-seed-synthwave-darksynth": { bank: BANGER_SEED_SYNTHWAVE_DARKSYNTH.bank, title: BANGER_SEED_SYNTHWAVE_DARKSYNTH.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_SYNTHWAVE_DARKSYNTH.banger },
+  "banger-seed-synthwave-outrun": { bank: BANGER_SEED_SYNTHWAVE_OUTRUN.bank, title: BANGER_SEED_SYNTHWAVE_OUTRUN.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_SYNTHWAVE_OUTRUN.banger },
   "banger-seed-synthwave": { bank: BANGER_SEED_SYNTHWAVE.bank, title: BANGER_SEED_SYNTHWAVE.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_SYNTHWAVE.banger },
   "banger-seed-trance": { bank: BANGER_SEED_TRANCE.bank, title: BANGER_SEED_TRANCE.title, group: "bangerSeed", writable: true, banger: BANGER_SEED_TRANCE.banger },
   "barber-2": { bank: BARBER_2.bank, title: BARBER_2.title, group: "imported", writable: true },

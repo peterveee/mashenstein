@@ -1,8 +1,9 @@
 // MAKE A BANGER — the seed bangers, from the command line. 2 Oct 2026.
 //
 //   node tools/banger-seeds.js make [style …]      make each style's seed banger (every style
-//                                                  when none is named); one already made is
-//                                                  left alone
+//                                                  and flavour when none is named — a
+//                                                  flavour by its id, reggaeton-romantico);
+//                                                  one already made is left alone
 //         --force                                  make it again — its tuning is lost
 //   node tools/banger-seeds.js use <style>         Use as Style, as the desk's button does
 //   node tools/banger-seeds.js combos              list the Sound Combos
@@ -12,8 +13,8 @@
 // Use as Style (the drawer) makes new bangers start from it. See tools/lib/banger-seeds.js.
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { BANGER_STYLES, styleFor } from './lib/banger/styles/index.js';
-import { makeSeed, useAsStyle, deleteCombo, seedIdOf, COMBOS_FILE } from './lib/banger-seeds.js';
+import { styleFor } from './lib/banger/styles/index.js';
+import { makeSeed, useAsStyle, deleteCombo, seedIdOf, SEEDABLE, COMBOS_FILE } from './lib/banger-seeds.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -21,7 +22,7 @@ const command = argv[0];
 const named = argv.slice(1).filter((a) => !a.startsWith('--'));
 
 if (command === 'make') {
-  const styles = named.length ? named.map((id) => styleFor(id) || (console.error(`no style called ${id}`), process.exit(1))) : BANGER_STYLES;
+  const styles = named.length ? named.map((id) => styleFor(id) || (console.error(`no style called ${id}`), process.exit(1))) : SEEDABLE;
   for (const style of styles) {
     try {
       const { file } = makeSeed(ROOT, style, { force: argv.includes('--force') });

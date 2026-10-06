@@ -33,22 +33,22 @@ each style's `defaults` over them, in `tools/lib/banger/styles/`; sounds in
 
 | Part | Strip |
 | --- | --- |
-| Bass | BASS · Wide Detune |
+| Bass | BASS · Wide Detune Bass |
 | Sub | SUB · Sub Sine |
 | Chords | CHORDS Pump · Super Saw |
-| Pad | PAD · Polar Drift |
-| Hook Double | HOOK DOUBLE · Plain Square vs Synth |
+| Pad | PAD · Cold Wide Pad |
+| Hook Double | HOOK DOUBLE · Plain Square |
 | Hook 8va | HOOK 8VA · Ice Bell |
 | Lead 8va | LEAD 8VA · Mega Saw Lead |
-| Arp | ARP · Crystal Trigger |
-| Choir | CHOIR · BEST Choir Aah |
+| Arp | ARP · Sparkle Pluck |
+| Choir | CHOIR · Synth Choir Aah |
 
 **Trance** (Uplifting) — Bass Rolling 16ths · Chords Supersaws, trance-gated.
 Adds over Big-Room: a **piano** for the breakdown hook.
 
 | Part | Strip |
 | --- | --- |
-| Bass | BASS · Night Sequence |
+| Bass | BASS · Sequencer Bass |
 | Sub | SUB · Sub Sine |
 | Chords | CHORDS Gate · Super Saw |
 | Piano | PIANO · Bright Pop Grand |
@@ -56,15 +56,15 @@ Adds over Big-Room: a **piano** for the breakdown hook.
 | Hook Double | HOOK DOUBLE · Super Saw |
 | Hook 8va | HOOK 8VA · Ice Bell |
 | Lead 8va | LEAD 8VA · Mega Saw Lead |
-| Arp | ARP · Crystal Trigger |
-| Choir | CHOIR · BEST Choir Aah |
+| Arp | ARP · Sparkle Pluck |
+| Choir | CHOIR · Synth Choir Aah |
 
 **Future Bass** (Euphoric) — Bass Off-Beat · Chords Supersaws, stuttered in eighths.
 Adds: the **sub is a wobble** rather than a sine, and a **piano** for the breakdown hook.
 
 | Part | Strip |
 | --- | --- |
-| Bass | BASS 808 · Round Bass |
+| Bass | BASS 808 · Digital Round Bass |
 | Sub | WOBBLE · WUB Glass Yowl |
 | Chords | CHORDS Stutter · Super Saw |
 | Piano | PIANO · Bright Pop Grand |
@@ -72,8 +72,8 @@ Adds: the **sub is a wobble** rather than a sine, and a **piano** for the breakd
 | Hook Double | HOOK DOUBLE · Aiueo (vowel chop) |
 | Hook 8va | HOOK 8VA · Music Box |
 | Lead 8va | LEAD 8VA · Mega Saw Lead |
-| Arp | ARP · Plain Saw Synth |
-| Choir | CHOIR · BEST Choir Aah |
+| Arp | ARP · Plain Saw |
+| Choir | CHOIR · Synth Choir Aah |
 
 **Eurobeat** (Anthemic) — Bass Octave (fixed) · Chords as strings.
 Adds: **brass stabs** (Counter on, playing off-beat triads). Drops: the sub.
@@ -81,14 +81,14 @@ Adds: **brass stabs** (Counter on, playing off-beat triads). Drops: the sub.
 | Part | Strip |
 | --- | --- |
 | Bass | BASS Octave · BASS 80s Duo |
-| Chords | CHORDS · BEST PWM Strings |
+| Chords | CHORDS · PWM Strings |
 | Pad | PAD · Warm Strings |
 | Hook Double | HOOK DOUBLE · Sync Razor Lead |
 | Hook 8va | HOOK 8VA · Bright Pop Grand |
 | Lead 8va | LEAD 8VA · Mega Saw Lead |
-| Arp | ARP · Crystal Trigger |
-| Choir | CHOIR · BEST Choir Aah |
-| Counter | STABS · BEST PWM Brass |
+| Arp | ARP · Sparkle Pluck |
+| Choir | CHOIR · Synth Choir Aah |
+| Counter | STABS · PWM Brass |
 
 The breakdown hook goes to a piano here too, on a PIANO lane, when the form has a breakdown.
 
@@ -97,15 +97,15 @@ Adds: the **sub is a wobble**, and the **Third Below** is on — the arcade chor
 
 | Part | Strip |
 | --- | --- |
-| Bass | BASS Octave · Classic Square Synth |
+| Bass | BASS Octave · Classic Square |
 | Sub | WOBBLE · WUB Classic 1/8 |
-| Chords | CHORDS Pump · BEST PWM Pad Wide |
-| Pad | PAD · BEST PWM Strings |
-| Hook Double | HOOK DOUBLE · Plain Pulse Synth |
+| Chords | CHORDS Pump · Wide PWM Pad |
+| Pad | PAD · PWM Strings |
+| Hook Double | HOOK DOUBLE · Plain Pulse |
 | Hook 8va | HOOK 8VA · Square Tone |
-| Lead 8va | LEAD 8VA · BEST Screamer Lead |
+| Lead 8va | LEAD 8VA · Screamer Lead |
 | Arp | ARP · Square Tone |
-| Choir | CHOIR · BEST PWM Choir |
+| Choir | CHOIR · PWM Choir |
 | Third Below | THIRD BELOW · Arcade Chorus |
 
 **Synthwave** (Anthemic) — Bass root–octave 16ths (fixed) · Chords as a string machine.
@@ -115,14 +115,14 @@ Adds: **brass stabs** (Counter on, its own stab rhythm).
 | --- | --- |
 | Bass | BASS · Classic Mono |
 | Sub | SUB · Sub Sine |
-| Chords | CHORDS String Machine · BEST PWM Strings |
+| Chords | CHORDS String Machine · PWM Strings |
 | Pad | PAD · Warm Strings |
 | Hook Double | HOOK DOUBLE · Hero Lead |
 | Hook 8va | HOOK 8VA · Ice Bell |
 | Lead 8va | LEAD 8VA · PWM Hollow Lead |
-| Arp | ARP · Crystal Trigger |
+| Arp | ARP · Sparkle Pluck |
 | Choir | CHOIR · Glass Choir |
-| Counter | BRASS Stabs · BEST PWM Brass |
+| Counter | BRASS Stabs · PWM Brass |
 
 **Shibuya-Kei** (Lounge) — Bass Off-Beat (the bossa figure) · Chords as Piano Stabs (a nylon guitar).
 Adds: a **flute** counter-melody (Counter on). It's a line in the hook's rests, so a busy hook
@@ -130,14 +130,14 @@ gets no flute. Drops: sub, Octave Hook.
 
 | Part | Strip |
 | --- | --- |
-| Bass | BASS · Round Bass |
+| Bass | BASS · Digital Round Bass |
 | Chords | GUITAR Bossa · Acoustic Guitar |
 | Pad | ORGAN · Drawbar Organ |
 | Hook Double | VIBES · Vibraphone |
 | Hook 8va | CELESTA · Celesta |
 | Lead 8va | TRUMPET 8VA · Muted Trumpet |
 | Arp | HARPSICHORD · Harpsichord |
-| Choir | CHOIR Ba-Ba · BEST Choir Aah |
+| Choir | CHOIR Ba-Ba · Synth Choir Aah |
 | Counter | FLUTE · Concert Flute (only when the hook leaves rests) |
 
 **Drum & Bass** (Moody) — Bass Reese · Chords Pad. Drops: supersaws, Octave Hook.
@@ -146,11 +146,11 @@ gets no flute. Drops: sub, Octave Hook.
 | --- | --- |
 | Bass | BASS Reese · Reese Bass |
 | Sub | SUB · Sub Sine |
-| Chords / Pad | PAD · Polar Drift |
-| Hook Double | HOOK PLUCK · Wire Harp |
+| Chords / Pad | PAD · Cold Wide Pad |
+| Hook Double | HOOK PLUCK · Metal Harp |
 | Hook 8va | HOOK 8VA · Ice Bell |
 | Lead 8va | LEAD 8VA · PWM Hollow Lead |
-| Arp | ARP · Crystal Trigger |
+| Arp | ARP · Sparkle Pluck |
 | Choir | CHOIR · Glass Choir |
 
 **Electro** (Dark) — Bass 808, riding the kick · Chords as Piano Stabs (orchestra stabs).
@@ -160,25 +160,25 @@ Drops: sub, supersaws, Octave Hook.
 | --- | --- |
 | Bass | BASS 808 · Distorted 808 |
 | Chords | STABS · Brass Stab |
-| Pad | PAD · BEST PWM Strings |
-| Hook Double | VOCODER · BEST Robot Vox |
+| Pad | PAD · PWM Strings |
+| Hook Double | VOCODER · Robot Vox |
 | Hook 8va | HOOK 8VA · FM Bell |
-| Lead 8va | LEAD FM 8VA · Hard FM |
-| Arp | ARP · BEST S&H Pulse |
-| Choir | CHOIR · BEST PWM Choir |
+| Lead 8va | LEAD FM 8VA · Gritty FM Lead |
+| Arp | ARP · Random Pulse Keys |
+| Choir | CHOIR · PWM Choir |
 
 **16-Bit** (Heroic) — Bass Octaves · Chords as Piano Stabs (FM keys). Drops: sub, supersaws.
 
 | Part | Strip |
 | --- | --- |
-| Bass | BASS FM Slap · DX Slap |
+| Bass | BASS FM Slap · FM Slap Bass |
 | Chords | FM KEYS · FM Keys |
 | Pad | PAD · Synth Strings |
-| Hook Double | LEAD FM · Megamix Lead |
+| Hook Double | LEAD FM · Soft Triangle Lead |
 | Hook 8va | FM BELL 8VA · FM Bell |
-| Lead 8va | LEAD FM 8VA · Hard FM |
+| Lead 8va | LEAD FM 8VA · Gritty FM Lead |
 | Arp | FM ARP · FM Bell |
-| Choir | CHOIR · BEST PWM Choir |
+| Choir | CHOIR · PWM Choir |
 
 **Kraftwerk** still has a recipe (`styles/kraftwerk.js`) and a sounds entry, but it is not in
 the style list (`styles/index.js`), so Make a Banger does not offer it. Its recipe adds parts no

@@ -17,6 +17,8 @@ import { BIG_ROOM } from './big-room.js';
 export const CHIPSTEP = Object.freeze({
   id: 'chipstep',
   label: 'Chipstep',
+  // Now and then the Machine-Gun Sweep into a drop, in place of the stutter (fx.js).
+  machineGunSweep: true,
   // What the Style list says beside it, and its tooltip.
   note: '140 · chip-house, square bass, half-time wobble drop',
   title: '140 BPM, CHIPSTEP\'s shape: chip-house builds on an octave square bass, a half-time first drop with a wobble, full-time drops after it, a Game Boy snare',
@@ -105,7 +107,11 @@ export const CHIPSTEP = Object.freeze({
     hats16: 'xxxxxxxxxxxxxxxx',
     hats8: 'x.x.x.x.x.x.x.x.',
     crash: 'x...............',
-    rolls: ['x.......x.......', 'x...x...x...x...', 'x.x.x.x.x.x.x.x.', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxx....'],
+    // The noise roll: the backbeat, quarters into eighths, eighths snapping into
+    // sixteenths halfway — a resonant high-pass climbing under it, the chip pitch-up.
+    rolls: ['....x.......x...', 'x...x...x.x.x.x.', 'x.x.x.x.xxxxxxxx', 'xxxxxxxxxxxxxxxx', 'xxxxxxxxxxxx....'],
+    rollSwell: { from: -6, shape: 'even' },
+    rollSweep: { type: 'highpass', from: 300, to: 4000, Q: 1.4 },
     // The verse's Game Boy run on the last beat, and two with a blip answering.
     fills: [
       { snare: '....x.......xxxx', tom: '................' },
@@ -203,6 +209,6 @@ export const CHIPSTEP = Object.freeze({
   // Labels name the JOB; a tuned part's strip adds the sound (`THIRD BELOW · Arcade Chorus`).
   labels: {
     ...BIG_ROOM.labels,
-    clap: 'BACKBEAT', bass: 'BASS Octave', sub: 'WOBBLE', saws: 'CHORDS Pump',
+    clap: 'BACKBEAT', bass: 'BASS Octave', sub: 'WOBBLE', saws: 'CHORDS Pump', fill: 'FILL Blips',
   },
 });

@@ -8,7 +8,7 @@ node tools/build-site.js                     # -> work/site/index.html
 python3 -m http.server -d work/site 8020     # -> http://localhost:8020
 ```
 
-Deploying is copying `work/site/index.html` to wherever the domain points. It is
+Deploying is uploading the `work/site/` folder to Netlify, which serves the domain. The page is
 about 53 KB, has no build step of its own, and fetches exactly one thing from
 the network: the three Google faces the game itself loads.
 
@@ -42,6 +42,13 @@ exception, and it is off by default.
 One place: the `data-play-url` attribute on `<body>`. While it is empty, every
 PLAY button renders greyed with a COMING SOON pill and refuses to be clicked.
 Paste a URL in and all of them become real links.
+
+## Short links
+
+`REDIRECTS` in `tools/build-site.js` writes a Netlify `_redirects` file beside
+the page, so `mashenstein.com/play` sends you to the game on GitHub Pages and
+`mashenstein.com/thelab` straight into THE LAB via `?goto=thelab`. Deploy
+the whole `work/site/` folder, not just `index.html`, or the redirects go missing.
 
 ## Switched-off sections
 

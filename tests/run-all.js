@@ -168,6 +168,8 @@ const suites = [
   'tests/banger-sounds.js',
   // A style's other arrangements, chosen by the mood, by name, or by the Lab's voltage.
   'tests/banger-flavours.js',
+  // Every rolling style builds into its drop with a roll, a swell and a sweep of its own.
+  'tests/banger-rolls.js',
   // B-33P's 8-bit gate: one bar before a new section, now and then.
   'tests/club-chip-gate.js',
   'tests/creative-drum-kits.js',
@@ -735,7 +737,7 @@ const soundSuites = [
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
-  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-forms.js', 'tests/banger-modify.js',
+  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-rolls.js', 'tests/banger-forms.js', 'tests/banger-modify.js',
   'tests/banger-expression.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',

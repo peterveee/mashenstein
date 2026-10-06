@@ -1245,9 +1245,17 @@ export function createMixer(ctx, {
     // It reaches ONLY the gate, and the gate is upstream of both the fader and the send
     // taps — so silencing a channel silences its sends without this writing them, and
     // without stepping on a ramp a transition has scheduled there.
+    const soloGain = () => ((anySolo() && !soloHeard(key)) ? 0 : 1);
     const applySolo = () => {
-      vol.gain.value = (anySolo() && !soloHeard(key)) ? 0 : 1;
+      vol.gain.value = soloGain() * liveLevel;
     };
+
+    // A LIVE level on the same gate (6 Oct 2026): a performer's fader, mute or solo — the
+    // Lab club's mixer — multiplied in with the desk's solo. On the gate, not `monitor`,
+    // because the gate is upstream of the send taps: a part pulled down takes its echo and
+    // reverb with it, where `monitor` left them ringing on. Playback only, like solo; never
+    // in a mix, and 1 (a multiply by one) whenever nobody is playing it.
+    let liveLevel = 1;
 
     // A GROUP's mute, broadcast into its members (see the group buses above). Held apart
     // from `state.mute`, which is the lane's own and is what gets saved: a lane muted by
@@ -1450,6 +1458,14 @@ export function createMixer(ctx, {
         if (on) soloed.add(key); else soloed.delete(key);
         applySoloAll();
       },
+      /** The live gate (see liveLevel): `g` from `when`, gliding with time constant `glide`. */
+      setLiveLevel(g, when = ctx.currentTime, glide = 0.012) {
+        liveLevel = g;
+        const at = Math.max(when, ctx.currentTime);
+        vol.gain.cancelScheduledValues(at);
+        vol.gain.setTargetAtTime(soloGain() * g, at, glide);
+      },
+      get liveLevel() { return liveLevel; },
       setEQ(patch = {}) {
         cancelState('eq');
         Object.assign(state.eq, patch);
