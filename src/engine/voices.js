@@ -5276,6 +5276,9 @@ export class VoiceRack {
         },
       });
     }
+    // Out of the graph once it has rung out — a choke above stops the sources early, and
+    // `ended` follows them. See `_retireNote`.
+    this._retireNote(sources, outs);
     return true;
   }
 
@@ -5395,7 +5398,7 @@ export class VoiceRack {
     // UNISON is N sources into one tract, power-summed inside the note (renderIr), so a
     // bigger choir is not a louder one and the level here is the key's.
     const unison = Math.max(1, Math.min(4, patch.unison));
-    const { stackIn } = this._jmjr4Bus(v, { laneEffects, laneKey, dry, wet, echo, time, preview, scope, gain, crush: patch.crush });
+    const { out: busOut, stackIn } = this._jmjr4Bus(v, { laneEffects, laneKey, dry, wet, echo, time, preview, scope, gain, crush: patch.crush });
 
     // ---- the modulators shared by every singer of this note-on -------------------
     // Vibrato exactly as `_playAdditive` builds it: the shared key, semitones × 100 cents
@@ -5486,6 +5489,7 @@ export class VoiceRack {
     record.gateUntil = hold ? time + HOLD_SECONDS : time + Math.max(0.05, Array.isArray(dur) ? Math.max(...dur) : (dur || 0));
     this._jmjr4Last.set(lineKey, record);
     if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
+    this._retireNote(sources, [busOut]);
     return true;
   }
 
@@ -5580,8 +5584,9 @@ export class VoiceRack {
     // restart taking it back to the first.
     const ir = byWord ? this._jmjr4Line(lineKey, sp.words, step).syl : sp.ir;
     if (!ir) return false;
-    const { stackIn } = this._jmjr4Bus(v, { laneEffects, laneKey, dry, wet, echo, time, preview, scope, gain, crush: patch.crush });
+    const { out: busOut, stackIn } = this._jmjr4Bus(v, { laneEffects, laneKey, dry, wet, echo, time, preview, scope, gain, crush: patch.crush });
     const sharedMods = { oscs: [], holds: 0 };
+    const spoken = [];
     const flutterSource = this._jmjr4FlutterSource(patch, sharedMods);
     // Phrases that have ended leave the stop-all list, or it grows with every key.
     for (const [k, h] of this._heldNative) if (h.jmjr4Speak && h.jmjr4Speak.end < time) this._heldNative.delete(k);
@@ -5593,6 +5598,7 @@ export class VoiceRack {
       const pitchShiftSt = sp.pitchFollows === 'key' ? 12 * Math.log2(hz / sp.pitchHz) : 12 * Math.log2(shift);
       const h = renderIr(ctx, ir, { start: time, destination: stackIn, pitchShiftSt, nasalPlaces: [], flutterSource });
       lastOff = Math.max(lastOff, h.end);
+      spoken.push(...h.sources);
       // Under its own key rather than the finger's: letting a key go does not cut a phrase
       // off, but stop-all must reach it, and the generic native record is what stop-all
       // reads.
@@ -5604,6 +5610,7 @@ export class VoiceRack {
     }
     for (const m of sharedMods.oscs) { m.start(time); m.stop(lastOff + 0.05); }
     if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
+    this._retireNote(spoken, [busOut]);
     return true;
   }
 
@@ -5631,6 +5638,7 @@ export class VoiceRack {
     if (!km) return true;
     const { notes } = km;
     const rec = { at: time, freq: 0, outs: [], pitchSets: [], envelopes: [], gates: [], sources: [], gateUntil: 0, gateKey: null, stopAt: 0 };
+    const pips = [];
     const stretch = a.stretch ?? 0;
     const damp = a.damp ?? 0;
     const p = a.pitch;
@@ -5876,6 +5884,7 @@ export class VoiceRack {
             if (vibCents) vibCents.connect(o.detune);
             o.connect(g); g.connect(percBus());
             o.start(t); o.stop(off + 0.01);
+            pips.push(o);
             lastOff = Math.max(lastOff, off + 0.01);
           }
         }
@@ -5885,6 +5894,7 @@ export class VoiceRack {
     // note it belongs to is a node nothing disposes.
     if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); sharedMods.oscs.push(lfo); }
     this._perNoteKeyModeEnd(km, hold, rec);
+    this._retireNote([...rec.sources, ...pips], rec.outs);
     return true;
   }
 
@@ -6433,7 +6443,7 @@ export class VoiceRack {
     const legatoEnvelopes = [];
     const legatoGates = [];
     const legatoSources = [];
-    // Every audible source this note starts — what `_retireLayerNote` waits on.
+    // Every audible source this note starts — what `_retireNote` waits on.
     const noteSources = [];
     const activeLayerMonitors = [];
     const activeLayerWaves = [];
@@ -7226,19 +7236,23 @@ export class VoiceRack {
       this._mrdrTailStats.culled++;
       this._mrdrTailStats.savedSeconds += tailPlan.saved;
     }
-    this._retireLayerNote(noteSources, allOuts);
+    this._retireNote(noteSources, allOuts);
     return true;
   }
 
   /**
    * TAKE A FINISHED NOTE OUT OF THE GRAPH — its outputs, once every source in it has ended.
+   * Every native path that builds a graph per note or per hit calls it: MRDR-3
+   * (`_playLayer`), the drums (`_playDrum`), the drawbar stack (`_playAdditive`) and JMJR-4.
    *
    * ---- why a stopped note does not leave on its own -----------------------------------
    *
    * A browser retires a finished chain by letting "dormant" spread downstream from the
    * stopped source — but a node only goes dormant when it is down to ONE live input. A
    * native MRDR-3 note is built of nodes with several: the layers sum into the global
-   * filter, the chord tones into the one `out`. So the filter, the VCA and the out never go
+   * filter, the chord tones into the one `out`. A drum hit is the same shape — a kick's
+   * body and click, a snare's tone and noise, a cymbal's six metal partials all sum into
+   * the hit's `out` — and so is a drawbar stack. So those nodes never go
    * dormant at all. They stay in the render graph, pulled every quantum, until garbage
    * collection breaks their connections — and GC is lazy, so on a busy song that is
    * thousands of dead nodes.
@@ -7259,9 +7273,19 @@ export class VoiceRack {
    * stopped, after the envelope has reached its floor. Realtime only: an offline render is
    * one finite pass, and a disconnect landing at a main-thread moment inside it would make
    * the bounce depend on timing.
+   *
+   * MEASURED AGAIN, 6 Oct 2026, for the drums (work/local/_banger-loop-leak.mjs, the Lab's
+   * NEON ORBIT in the real game): live nodes climbed by ~7 a second for as long as the
+   * song played — 1,900 at 30 s, 5,900 at ten minutes — and eight crash808Long hits left
+   * 27 gains, 8 shapers and 8 filters pulled forever, gc() or not. That is the banger that
+   * plays fine for a few passes on an iPhone and then stutters.
    */
-  _retireLayerNote(sources, outs) {
+  _retireNote(sources, outs) {
+    sources = [...new Set(sources)];
     if (!sources.length || !outs.length || typeof this.ctx.startRendering === 'function') return;
+    // A source that cannot say when it has ended (a test's stand-in node) leaves the note
+    // where it is: cutting a note early is worse than keeping a dead one.
+    if (!sources.every((src) => typeof src.addEventListener === 'function')) return;
     let left = sources.length;
     const ended = () => {
       if (--left > 0) return;
