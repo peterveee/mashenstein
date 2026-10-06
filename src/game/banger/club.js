@@ -73,6 +73,15 @@ const RIG_Y = 5;
 /** Seconds the song's name and the instructions stay up, and how long they take to go. */
 const INTRO_S = 4.5;
 const INTRO_FADE_S = 0.8;
+/** The encouragement under CLICK ABSOLUTELY ANYTHING, one picked at random a visit, all equally
+ *  likely (Peter, 6 Oct 2026). */
+const INTRO_NUDGES = [
+  'SEE WHAT HAPPENS!', 'POKE AROUND!', 'GO ON, BE NOSY!', 'SURPRISE YOURSELF!',
+  'EVERYTHING DOES SOMETHING!',
+  'NOTHING CAN BREAK!', 'NO WRONG MOVES!', "YOU CAN'T GET IT WRONG!", 'BE BRAVE!',
+  'MIX IT UP!', 'MAKE SOME NOISE!', 'GO WILD!', 'TURN IT UP!', 'THE FLOOR IS YOURS!',
+  'GO ON, TRY IT!', 'HAVE A PLAY!', 'GET STUCK IN!', 'MAKE IT YOURS!', 'FIND YOUR GROOVE!',
+];
 /** The mixer icon stays bright this long after it is used, then fades to a hint. */
 const ICONS_AWAKE_S = 3;
 const ICONS_ASLEEP = 0.18;
@@ -5318,11 +5327,11 @@ export class BangerClubState {
     const shown = this.shownAt == null ? 0 : this.t - this.shownAt;
     const a = 1 - Math.max(0, Math.min(1, (shown - INTRO_S) / INTRO_FADE_S));
     if (a <= 0) return;
-    // how to play, simply: tap (or click) anything or anyone, and an encouragement — mostly SEE
-    // WHAT HAPPENS, now and then MIX IT UP, picked once a visit (Peter, 5 Oct 2026)
-    this.introNudge ??= Math.random() < 1 / 3 ? 'MIX IT UP!' : 'SEE WHAT HAPPENS!';
+    // how to play, simply: tap (or click) absolutely anything, and an encouragement picked once a
+    // visit (Peter, 6 Oct 2026)
+    this.introNudge ??= INTRO_NUDGES[Math.floor(Math.random() * INTRO_NUDGES.length)];
     const lines = ['NOW PLAYING', bangerTitle(this.rec),
-      `${Input.isTouchDevice() ? 'TAP' : 'CLICK'} ANYTHING OR ANYONE`, this.introNudge];
+      `${Input.isTouchDevice() ? 'TAP' : 'CLICK'} ABSOLUTELY ANYTHING`, this.introNudge];
     const fs = portrait ? [13 * P, 17 * P, 13 * P, 13 * P] : [7, 10, 7.5, 7.5];
     const lh = portrait ? 26 * P : 13;
     ctx.save();
