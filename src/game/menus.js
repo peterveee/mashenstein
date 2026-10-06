@@ -5748,7 +5748,11 @@ export class SoundTestState {
     drawMenuRow(ctx, plates.back.x, this.backY + 1, plates.back.w, this.backH - 2, 3,
       backSelected ? undefined : BACK_BUTTON_PLATE);
     const backTextY = textYForMid(this.backY + this.backH / 2, JUKEBOX_ITEM_S);
-    menuTextCentered('BACK', plates.back.x + plates.back.w / 2, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', JUKEBOX_ITEM_S);
+    const backColor = backSelected ? '#c9a0ff' : '#c8c8d8';
+    // BACK alone starts where the track titles do, as the Settings BACK does;
+    // in the Lab it is one of a bar of three and centres like its neighbours.
+    if (this.lab) menuTextCentered('BACK', plates.back.x + plates.back.w / 2, backTextY, backColor, JUKEBOX_ITEM_S);
+    else menuText('BACK', textX, backTextY, backColor, JUKEBOX_ITEM_S);
     this.drawGener8(ctx, this.backY + 1, this.backH - 2, 3, JUKEBOX_ITEM_S,
       (gen, color, size) => menuTextCentered('NEW BANGER', gen.x + gen.w / 2, backTextY, color, size));
     this.drawDelete(ctx, this.backY + 1, this.backH - 2, 3, JUKEBOX_ITEM_S,
@@ -5815,8 +5819,10 @@ export class SoundTestState {
     drawMenuRow(ctx, plates.back.x, this.backY + 2, plates.back.w, this.backH - 4, 8,
       backSelected ? undefined : BACK_BUTTON_PLATE);
     const backS = portraitMenuFit('BACK', PORTRAIT_JUKEBOX_ITEM_S, plates.back.w - 24);
-    portraitMenuTextCentered(ctx, 'BACK', plates.back.x + plates.back.w / 2,
-      portraitMenuTextY(this.backY + this.backH / 2, backS), backSelected ? '#c9a0ff' : '#c8c8d8', backS);
+    const backTextY = portraitMenuTextY(this.backY + this.backH / 2, backS);
+    const backColor = backSelected ? '#c9a0ff' : '#c8c8d8';
+    if (this.lab) portraitMenuTextCentered(ctx, 'BACK', plates.back.x + plates.back.w / 2, backTextY, backColor, backS);
+    else portraitMenuText(ctx, 'BACK', titleX, backTextY, backColor, backS);
     this.drawGener8(ctx, this.backY + 2, this.backH - 4, 8, PORTRAIT_JUKEBOX_ITEM_S, (gen, color, size) => {
       const s = portraitMenuFit('NEW BANGER', size, gen.w - 24);
       portraitMenuTextCentered(ctx, 'NEW BANGER', gen.x + gen.w / 2, portraitMenuTextY(this.backY + this.backH / 2, s), color, s);

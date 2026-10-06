@@ -117,6 +117,23 @@ const TIP_DELAY_S = 0.35;
 const WALK_DELAY_S = 0.3;
 const WALK_STAGGER_S = 0.3;
 const WALK_SPEED = 0.26;
+/** Which way a hero faces on their spot (Peter, 6 Oct 2026: "occasionally look left/right... they
+ *  don't necessarily need to keep pointing in that direction when idle"). Mostly RIGHT, the way
+ *  they were drawn — but not all of them all the time, or the floor reads as a queue. Now and
+ *  then, on a beat, one turns round — mirrored at the top of a small hop, never squeezed
+ *  edge-on: TURN_GAP_BARS until a hero facing right turns left, TURN_BACK_BARS until one facing
+ *  left (as the right half walk in, or a swap leaves one) turns back. The hop is TURN_HOP of a
+ *  hero's height, over TURN_BEATS. */
+const TURN_GAP_BARS = [6, 18], TURN_BACK_BARS = [2, 6];
+const TURN_BEATS = 0.5, TURN_HOP = 0.1;
+/** THE GLANCES (Peter, 6 Oct 2026: "make their pupils look around now and then so they're not
+ *  always front on"). Each GLANCE_SLOT_S, a hero may (GLANCE_CHANCE) look off for GLANCE_HOLD_S —
+ *  to one side by up to GLANCE_X, up or down by up to GLANCE_Y (the painter's gaze, in its u) —
+ *  easing in and out over GLANCE_EASE_S. */
+const GLANCE_SLOT_S = 2.4, GLANCE_CHANCE = 0.5, GLANCE_HOLD_S = [0.7, 1.7], GLANCE_EASE_S = 0.12;
+const GLANCE_X = 0.034, GLANCE_Y = 0.014;
+/** Two heroes changing places walk SWAP_BEATS_BASE beats and SWAP_BEATS_PER_SLOT more for each slot between them. */
+const SWAP_BEATS_BASE = 2, SWAP_BEATS_PER_SLOT = 2;
 /** The mirror ball drops this long after the club appears: last of all, once the song's
  *  name and the instructions have faded (Peter, 3 Oct 2026). */
 const BALL_ENTER_S = INTRO_S + INTRO_FADE_S;
@@ -386,7 +403,25 @@ function shuffledFloor(n, random = Math.random) {
   return order;
 }
 
+/** A beat some whole number of bars from lo to hi off, on any of the bar's four beats. */
+const beatsIn = ([lo, hi]) => 4 * (lo + Math.floor(Math.random() * (hi - lo + 1))) + Math.floor(Math.random() * 4);
+
 const hash = (a, b, n) => { const v = Math.sin(a * 91.7 + b * 47.3 + n * 13.1) * 43758.5; return v - Math.floor(v); };
+
+/** Where hero `i` is looking off to at `t` seconds (THE GLANCES), or null: straight out. */
+function heroGlance(i, t) {
+  const tt = t + i * 0.83;
+  const n = Math.floor(tt / GLANCE_SLOT_S);
+  if (hash(i, n, 1) > GLANCE_CHANCE) return null;
+  const hold = GLANCE_HOLD_S[0] + hash(i, n, 2) * (GLANCE_HOLD_S[1] - GLANCE_HOLD_S[0]);
+  const s = tt - n * GLANCE_SLOT_S - hash(i, n, 3) * (GLANCE_SLOT_S - hold);
+  if (s < 0 || s > hold) return null;
+  return {
+    amt: Math.min(1, s / GLANCE_EASE_S, (hold - s) / GLANCE_EASE_S),
+    x: (hash(i, n, 4) < 0.5 ? -1 : 1) * GLANCE_X * (0.6 + 0.4 * hash(i, n, 5)),
+    y: (hash(i, n, 6) * 2 - 1.1) * GLANCE_Y,
+  };
+}
 
 function rr(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -509,6 +544,12 @@ export class BangerClubState {
     this.formationOrder = this.room?.formationOrder?.length === HERO_MOVES.length ? [...this.room.formationOrder] : shuffledFloor(HERO_MOVES.length);
     this.formationSwap = null;
     this.formationShuffleAt = Infinity;
+    // Which way each faces on their spot (null: the walk-in's way, to the middle of the floor),
+    // the hop round each is in the middle of, and the beat each next turns on (updateFacing).
+    this.facing = this.room?.facing?.length === HERO_MOVES.length ? [...this.room.facing] : HERO_MOVES.map(() => null);
+    this.turns = HERO_MOVES.map(() => null);
+    this.turnAt = HERO_MOVES.map(() => Infinity);
+    this.lastTurnBeat = -Infinity;
     this.danceOrder = HERO_MOVES.map((_, i) => i).sort(() => Math.random() - 0.5);
     this.moments = [];         // the crowd moments in the room now
     this.momentAt = Infinity;  // when the next one comes
@@ -713,7 +754,7 @@ export class BangerClubState {
 
   /** What a return from the riff grid keeps of the room (the constructor's `room`). */
   leftRoom() {
-    return { formationOrder: [...this.formationOrder], ballScale: this.ballScale };
+    return { formationOrder: [...this.formationOrder], facing: this.facing.map((f, i) => this.turns[i]?.to ?? f), ballScale: this.ballScale };
   }
 
   /** The song's title, fading in under the mirror ball for a while: a tap on the club sign. */
@@ -1692,33 +1733,75 @@ export class BangerClubState {
   updateFormation() {
     if (this.shownAt == null) return;
     const beat = this.beat();
+    this.updateFacing(beat);
     if (this.formationSwap) {
       if (beat < this.formationSwap.beat0 + this.formationSwap.beats) return;
-      const { slotA, slotB } = this.formationSwap;
+      const { heroA, heroB, slotA, slotB } = this.formationSwap;
       [this.formationOrder[slotA], this.formationOrder[slotB]] = [this.formationOrder[slotB], this.formationOrder[slotA]];
       this.formationSwap = null;
+      // ...and there they face each other (Peter, 6 Oct 2026: "at the moment they seem to face
+      // the same direction which looks odd"): each stops facing the way it walked, away from
+      // the other, and hops round.
+      this.turnTo(heroA, Math.sign(slotA - slotB), beat, -Math.sign(slotA - slotB));
+      this.turnTo(heroB, Math.sign(slotB - slotA), beat, -Math.sign(slotB - slotA));
       this.formationShuffleAt = beat + 4 * (20 + Math.floor(Math.random() * 13));
       return;
     }
     if (beat < this.formationShuffleAt || beat % 1 > 0.15 || this.queued || this.acting || this.holding) return;
     // In portrait nobody changes places (Peter, 5 Oct 2026): the two rows stand where they
-    // walked in. In landscape any two neighbours may swap — the holds and the taps used to
-    // keep to their own halves of the floor, and no longer have halves.
+    // walked in. In landscape any two may swap, however far apart (Peter, 6 Oct 2026: "we can
+    // loosen this up") — the holds and the taps used to keep to their own halves of the floor,
+    // and then to their neighbours. Not one who is in the middle of turning round.
     if (portraitMenuActive()) {
       this.formationShuffleAt = beat + 4 * (20 + Math.floor(Math.random() * 13));
       return;
     }
-    const pairs = Array.from({ length: Math.max(0, this.formationOrder.length - 1) }, (_, i) => [i, i + 1]);
-    if (!pairs.length) {
-      this.formationShuffleAt = beat + 4 * (20 + Math.floor(Math.random() * 13));
+    const free = this.formationOrder.map((hero, slot) => (this.turns[hero] ? -1 : slot)).filter((slot) => slot >= 0);
+    if (free.length < 2) {
+      this.formationShuffleAt = this.formationOrder.length < 2 ? beat + 4 * (20 + Math.floor(Math.random() * 13)) : Math.floor(beat) + 1;
       return;
     }
-    const [slotA, slotB] = pairs[Math.floor(Math.random() * pairs.length)];
+    const a = Math.floor(Math.random() * free.length);
+    const b = (a + 1 + Math.floor(Math.random() * (free.length - 1))) % free.length;
+    const slotA = free[a], slotB = free[b];
     this.formationSwap = {
       heroA: this.formationOrder[slotA], heroB: this.formationOrder[slotB],
-      slotA, slotB, beat0: beat, beats: 4,
+      slotA, slotB, beat0: beat, beats: SWAP_BEATS_BASE + SWAP_BEATS_PER_SLOT * Math.abs(slotA - slotB),
     };
     this.formationShuffleAt = Infinity;
+  }
+
+  /** Which way hero `i` faces on their spot now: their own way, or the walk-in's, to the middle. */
+  facingOf(i) {
+    if (this.facing[i]) return this.facing[i];
+    const perRow = HERO_MOVES.length / (portraitMenuActive() ? 2 : 1);
+    return this.formationOrder.indexOf(i) % perRow < perRow / 2 ? 1 : -1;
+  }
+
+  /** Hero `i` hops round to face `to` (from `from`, or the way they face now), and when they next turn is drawn: soon, if that is left. */
+  turnTo(i, to, beat, from = this.facingOf(i)) {
+    this.facing[i] = from;
+    if (from !== to) this.turns[i] = { beat0: beat, to };
+    this.turnAt[i] = beat + beatsIn(to > 0 ? TURN_GAP_BARS : TURN_BACK_BARS);
+  }
+
+  /**
+   * The heroes looking about (TURN_GAP_BARS): a hop round lands facing the other way, and on a
+   * beat, one hero at most whose turn it is turns round — not one walking, playing their move,
+   * waiting to, or held, and nobody while the whole crowd jumps.
+   */
+  updateFacing(beat) {
+    this.turns.forEach((turn, i) => {
+      if (turn && beat >= turn.beat0 + TURN_BEATS) { this.facing[i] = turn.to; this.turns[i] = null; }
+    });
+    if (this.paused || beat % 1 > 0.15 || Math.floor(beat) <= this.lastTurnBeat || this.crowd
+      || this.moments.some((m) => m.kind === 'drop-jump' && partyAlive(m, beat))) return;
+    const swap = this.formationSwap;
+    const i = this.turnAt.findIndex((at, i) => beat >= at && !this.turns[i] && swap?.heroA !== i && swap?.heroB !== i
+      && this.acting?.i !== i && this.queued?.i !== i && this.holding?.i !== i);
+    if (i < 0) return;
+    this.lastTurnBeat = Math.floor(beat);
+    this.turnTo(i, -this.facingOf(i), beat);
   }
 
   tapLedBoard() {
@@ -1779,6 +1862,8 @@ export class BangerClubState {
     if (Math.abs(jump) < 1) return;
     for (const m of this.moments) if (m.beat0 != null && m.kind !== 'drop-jump') m.beat0 += jump;
     if (this.formationSwap) this.formationSwap.beat0 += jump;
+    for (const turn of this.turns) if (turn) turn.beat0 += jump;
+    this.turnAt = this.turnAt.map((at) => at + jump);
     for (const k of ['partyNextBeat', 'cleanerBeat', 'cleanerCooldown', 'strobeBeat', 'strobeNextBeat', 'formationShuffleAt']) this[k] += jump;
   }
 
@@ -2266,6 +2351,7 @@ export class BangerClubState {
       const bar = this.barSeconds();
       this.danceOrder.forEach((i, k) => { this.dancers[i].joinAt = this.t + (this.room ? 0 : bar * (DANCE_START_BARS + k * DANCE_JOIN_BARS)); });
       this.formationShuffleAt = this.beat() + 4 * (20 + Math.floor(Math.random() * 13));
+      this.turnAt = HERO_MOVES.map((_, i) => this.beat() + beatsIn(this.facingOf(i) > 0 ? TURN_GAP_BARS : TURN_BACK_BARS));
       this.momentAt = this.t + bar * MOMENT_QUIET_BARS;
       this.smokeAt = this.t + bar * SMOKE_FIRST_BARS;
     }
@@ -3708,7 +3794,7 @@ export class BangerClubState {
       // stand on their spot facing the middle of the floor.
       const half = perRow / 2;
       const fromLeft = c < half;
-      const dir = fromLeft ? 1 : -1;
+      const inDir = fromLeft ? 1 : -1;
       const rank = fromLeft ? half - 1 - c : c - half;
       const startX = fromLeft ? -cellW * 0.6 : W + cellW * 0.6;
       const shown = this.shownAt == null ? 0 : t - this.shownAt;
@@ -3723,16 +3809,19 @@ export class BangerClubState {
         const progress = Math.max(0, Math.min(1, (beat - swap.beat0) / swap.beats));
         const ease = progress * progress * (3 - 2 * progress);
         const distance = Math.hypot(to.cx - from.cx, to.floorY - from.floorY) || 1;
-        const lane = Math.sin(Math.PI * progress) * Math.min(toonH * 0.55, cellW * 0.32);
-        const side = swap.heroA === i ? 1 : -1;
-        formationWalk = { from, to, progress, ease,
-          laneX: -(to.floorY - from.floorY) / distance * lane * side,
-          laneY: (to.cx - from.cx) / distance * lane * side };
+        // One comes forward round the others in an arc; the other goes behind them in a straight
+        // line along the floor (Peter, 6 Oct 2026: "not arc up"). The other's path runs the
+        // other way, so its side of the line between the spots is the other side.
+        const behind = (to.cx - from.cx) / distance < 0;
+        const lane = behind ? 0 : Math.sin(Math.PI * progress) * Math.min(toonH * 0.55, cellW * 0.32);
+        formationWalk = { from, to, progress, ease, behind,
+          laneX: -(to.floorY - from.floorY) / distance * lane,
+          laneY: (to.cx - from.cx) / distance * lane };
       }
       const walking = walkingIn || !!formationWalk;
       const hx = formationWalk
         ? formationWalk.from.cx + (formationWalk.to.cx - formationWalk.from.cx) * formationWalk.ease + formationWalk.laneX
-        : walkingIn ? startX + dir * walkedIn : cx;
+        : walkingIn ? startX + inDir * walkedIn : cx;
       if (formationWalk) floorY = formationWalk.from.floorY + (formationWalk.to.floorY - formationWalk.from.floorY) * formationWalk.ease + formationWalk.laneY;
       const walked = formationWalk
         ? formationWalk.progress * Math.hypot(formationWalk.to.cx - formationWalk.from.cx, formationWalk.to.floorY - formationWalk.from.floorY)
@@ -3778,6 +3867,17 @@ export class BangerClubState {
       };
       let pose = { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37, squash: pulse * 0.08 };
       let lift = 0;
+      // Which way they face: the way they walk, coming in and changing places (so two who swap
+      // set off facing each other); on their spot their own way, turned at the top of a hop.
+      let dir = this.facing[i] || inDir;
+      const turn = this.turns[i];
+      if (walkingIn) dir = inDir;
+      else if (formationWalk) dir = Math.sign(formationWalk.to.cx - formationWalk.from.cx) || dir;
+      else if (turn) {
+        const p = Math.max(0, Math.min(1, (beat - turn.beat0) / TURN_BEATS));
+        dir = p < 0.5 ? -turn.to : turn.to;
+        lift += Math.sin(Math.PI * p) * TURN_HOP * toonH;
+      }
       // the stride integrated from the distance walked, so the feet keep their footing
       if (walking) pose = { kind: 'run', grounded: true, menu: true, time: t, phase: (walked / (toonH * 1.15)) % 1 };
       // the back row in portrait comes in over the speaker tops, a hop from one to the next
@@ -3887,6 +3987,9 @@ export class BangerClubState {
         dance = null;
         lift = 0;
       }
+      // ...and now and then they look off — to one side, up, down — rather than always straight out
+      const glance = !this.paused && !walking && !isActing ? heroGlance(i, t) : null;
+      if (glance) pose = { ...pose, gazeAmt: glance.amt, gazeX: glance.x, gazeY: glance.y };
       // The right half faces left: the painter draws a hero facing right, so it is
       // mirrored round its own middle.
       const face = (ctx, fn, ax = hx) => {
@@ -3908,11 +4011,13 @@ export class BangerClubState {
         ctx.restore();
         ctx.restore();
       };
+      // laid down in order of depth; one walking behind the others, on their line, just before them
+      const depth = formationWalk?.behind ? floorY - 0.01 : floorY;
       // the front row is mirrored in the gloss
       if (floorY >= floorRef - 1) {
-        mirrors.push({ floorY, draw: (c) => { try { face(c, () => body(c, floorY - lift)); } catch {} }, height: toonH, anchorX: hx, lift });
+        mirrors.push({ floorY: depth, draw: (c) => { try { face(c, () => body(c, floorY - lift)); } catch {} }, height: toonH, anchorX: hx, lift });
       }
-      paints.push({ floorY, draw: () => {
+      paints.push({ floorY: depth, draw: () => {
         ground();
         try {
           // through the hero's own sprite, refreshed every other frame (every third on a slow

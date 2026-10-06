@@ -1014,7 +1014,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     Audio.setBank(club.song.bank, club.song.mix, club.song.arrangement, { startAtBeginning: true });
     assert(whole && mixed && orders.size > 10, 'every hero stands somewhere, holds and taps mixed, in a new order each visit');
   }
-  // ...and in portrait nobody changes places; in landscape any two neighbours may swap.
+  // ...and in portrait nobody changes places; in landscape any two may swap, however far apart.
   {
     const { screen } = await import('../src/engine/renderer.js');
     const mode = screen.presentationMode;
@@ -1025,11 +1025,53 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.updateFormation();
     const still = club.formationSwap === null && club.formationShuffleAt > 400;
     screen.presentationMode = mode;
-    club.formationShuffleAt = -1;
-    club.updateFormation();
-    const swap = club.formationSwap;
-    assert(still && swap && swap.slotB === swap.slotA + 1, 'in portrait nobody changes places; in landscape two neighbours may');
+    const gaps = new Set();
+    let paired = true;
+    for (let n = 0; n < 60; n++) {
+      club.formationSwap = null; club.formationShuffleAt = -1; club.turns = club.turns.map(() => null);
+      club.updateFormation();
+      const swap = club.formationSwap;
+      if (!swap || swap.slotA === swap.slotB || club.formationOrder[swap.slotA] !== swap.heroA || club.formationOrder[swap.slotB] !== swap.heroB) paired = false;
+      else gaps.add(Math.abs(swap.slotA - swap.slotB));
+    }
+    assert(still && paired && [...gaps].some((g) => g > 1), 'in portrait nobody changes places; in landscape any two may, neighbours or not');
+    // Once swapped they face each other: each hops round from the way it walked to the other.
+    {
+      const swap = club.formationSwap;
+      const { heroA, heroB, slotA, slotB } = swap;
+      club.beat = () => 400 + swap.beats;
+      club.updateFormation();
+      const a = club.turns[heroA], b = club.turns[heroB];
+      const facingEach = a && b && a.to === Math.sign(slotA - slotB) && b.to === -a.to
+        && club.facing[heroA] === -a.to && club.facing[heroB] === -b.to;
+      club.beat = () => 400 + swap.beats + 1;
+      club.updateFormation();
+      assert(facingEach && club.facingOf(heroA) === Math.sign(slotA - slotB) && club.facingOf(heroB) === Math.sign(slotB - slotA),
+        'two who have changed places turn round to face each other');
+    }
+    // On their spots the heroes now and then turn round: one at most a beat, never mid-move.
+    {
+      club.formationSwap = null; club.formationShuffleAt = Infinity;
+      club.turns = club.turns.map(() => null); club.facing = club.facing.map(() => null);
+      club.turnAt = club.turnAt.map(() => 0); club.lastTurnBeat = -Infinity; club.crowd = null;
+      club.acting = { i: 0 };
+      club.beat = () => 500;
+      const was = HERO_MOVES.map((_, i) => club.facingOf(i));
+      club.updateFormation();
+      const turning = club.turns.map((t, i) => (t ? i : -1)).filter((i) => i >= 0);
+      // mostly facing right, as drawn: one turned left turns back within TURN_BACK_BARS (2–6)
+      const backSoon = club.turns[turning[0]]?.to > 0 || club.turnAt[turning[0]] <= 500 + 4 * 6 + 3;
+      club.updateFormation();
+      const once = club.turns.filter(Boolean).length === 1;
+      club.beat = () => 501;
+      club.updateFormation();
+      const landed = HERO_MOVES.map((_, i) => club.facingOf(i));
+      club.acting = null;
+      assert(turning.length === 1 && turning[0] !== 0 && once && landed[turning[0]] === -was[turning[0]] && backSoon,
+        'a hero on their spot turns round now and then — one a beat, not one playing their move, and back right soon');
+    }
     club.beat = realBeat; club.formationSwap = null; club.formationShuffleAt = Infinity;
+    club.turns = club.turns.map(() => null); club.turnAt = club.turnAt.map(() => Infinity);
   }
   // B-33P: the whole band onto the 8-Bit Sound Set from the next bar line, back at a second tap.
   {
