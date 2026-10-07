@@ -13,7 +13,7 @@ const {
 } = riffMod;
 const DEFAULT_NOTES = DEFAULT_SIMPLE;
 const { MAKER_STYLES, MAKER_MOODS, makeBanger, defaultMoodFor, hookSoundFor, RIFF_TRIM_DB, tapeStopFor, TAPE_STOP_CHANCE,
-  spotFor, INTRO_LOWPASS_CHANCE, INTRO_BITCRUSH_CHANCE, UNDERWATER_CHANCE } = await import('../src/game/banger/make.js');
+  spotFor, INTRO_LOWPASS_CHANCE, INTRO_BITCRUSH_CHANCE, UNDERWATER_CHANCE, formulaLabel } = await import('../src/game/banger/make.js');
 const { BANGER_STYLES } = await import('../tools/lib/banger/styles/index.js');
 const { generateBanger } = await import('../tools/lib/banger/index.js');
 const {
@@ -112,6 +112,11 @@ function assert(cond, msg) {
 
 // ---------------------------------------------------------------- the generator
 assert(!MAKER_STYLES.some((s) => s.id === 'kraftwerk'), 'Kraftwerk is out');
+// Boogie is hidden in the Lab, not the desk (7 Oct 2026), so the Lab offers a multiple of four;
+// a song kept on it still reads as BOOGIE.
+assert(!MAKER_STYLES.some((s) => s.id === 'electro-funk') && BANGER_STYLES.some((s) => s.id === 'electro-funk')
+  && MAKER_STYLES.length % 4 === 0 && formulaLabel('electro-funk') === 'BOOGIE',
+  `Boogie is out of the Lab but still on the desk, and the Lab offers ${MAKER_STYLES.length} styles`);
 // Chipstep and synthwave play on their LIGHT Sound Set (5 Oct 2026): no MRDR-3, no JMJR-4 —
 // and chipstep, as CHIPTUNE, comes out on 8-Bit blips now and then, by its seed — more often the
 // higher the voltage (1 in 6 at Safe up to 1 in 2 at Overload).

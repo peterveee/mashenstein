@@ -11,6 +11,12 @@
 // FIRST — that is what starts it all: the coils wake, the steps tick through, the meter
 // fills. He looks shocked at what he has started, and smiles when it's alive.
 //
+// WHAT HE THROWS IS A ROLL OF THE DICE (Peter, 7 Oct 2026): six switches came out of a
+// bake-off — a big knife switch, a floor lever, a big red button, a plunger, an amp knob
+// cranked to 11 and a master fader — and every birth gets one at random (birth-switches.js,
+// picked in menus.js). The small knife switch drawGary paints with no `lever` is the one he
+// had before; only the tests and the gallery still draw it.
+//
 // WHAT COMES ALIVE is a GIANT CASSETTE (Peter, 3 Oct 2026, from the bake-off — the other
 // candidates are in src/dev/birth-subjects.js): standing on the lab's slab, clamped to the
 // coils, the new song's name on its label. Dormant it is grey and still; alive its reels
@@ -46,6 +52,8 @@ const LET_GO_AT = SWITCH_AT + 0.5, LET_GO_S = 0.3;
 /** His face: shocked from the moment the switch lands, smiling once it's alive. */
 const SMILE_AT = FLASH_AT;
 const SWITCH_UP = -1.05, SWITCH_DOWN = 1.05;   // the lever's angle, off and thrown (radians)
+/** Gary's beats, for a switch candidate (src/dev/birth-switches.js) to time itself to. */
+export const GARY_BEATS = Object.freeze({ REACH_AT, BRACE_AT, PULL_AT, SWITCH_AT, LET_GO_AT, LET_GO_S, FLASH_AT });
 const rr = (ctx, x, y, w, h, r) => {
   ctx.beginPath();
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -60,12 +68,15 @@ export class BangerBirthState {
   /**
    * `rec` is the song just made; `onDone` opens it. `subject` paints what is brought to life
    * (the bake-off's candidates, src/dev/birth-subjects.js); the music note by default.
+   * `lever` is what Gary throws (birth-switches.js; the jukebox picks one at random); the
+   * old small knife switch on its panel without one.
    */
-  constructor({ rec, onDone, random = Math.random, subject = null }) {
+  constructor({ rec, onDone, random = Math.random, subject = null, lever = null }) {
     this.rec = rec;
     this.onDone = onDone;
     this.random = random;
     this.subject = subject;
+    this.lever = lever;
   }
 
   enter() {
@@ -192,7 +203,39 @@ export class BangerBirthState {
     ctx.restore();
   }
 
+  /**
+   * One of the birth switches in place of the old knife switch: it paints itself behind Gary
+   * (and, if it stands in front of him, after him), and says where his hands go — in screen
+   * space, each blended from where it hangs by its own weight.
+   */
+  drawLever(ctx, { portrait, P, base, coilX }) {
+    const t = this.t;
+    const h = portrait ? 100 * P : 72;
+    const o = { t, h, base, coilX, portrait, gx: W * (portrait ? 0.27 : 0.32), random: this.random, since: t - SWITCH_AT };
+    const rig = this.lever.rig(o);
+    this.lever.back?.(ctx, o, rig);
+    const rest = [0.7, 0.85];
+    // the dance hands are [out, lift] off each shoulder, out to the screen's left for the first
+    const reach = (i, [x, y]) => [(i ? x - o.gx - 0.1 * h : o.gx - x - 0.1 * h) / (0.26 * h), (y - base + 0.511 * h) / (0.256 * h)];
+    const hands = [0, 1].map((i) => {
+      const g = rig.hands?.[i];
+      if (!g || !(g.w > 0)) return rest;
+      const to = reach(i, g.at);
+      return rest.map((v, j) => v + (to[j] - v) * g.w);
+    });
+    const pose = {
+      kind: 'stand', time: t, phase: 0, grounded: true, facing: 1, squash: rig.squash || 0,
+      lean: rig.lean || 0,
+      dance: { hands, ankles: [0, 0], pointAngle: null, shoulderLift: 0, elbows: rig.elbows },
+      faceSurprised: t >= SWITCH_AT && t < SMILE_AT,
+      faceJoy: t >= SMILE_AT,
+    };
+    try { drawToon(ctx, 'gary', pose, o.gx, base, h); } catch { /* the switch throws itself */ }
+    this.lever.front?.(ctx, o, rig);
+  }
+
   drawGary(ctx, { portrait, P, base, coilX }) {
+    if (this.lever) return this.drawLever(ctx, { portrait, P, base, coilX });
     const t = this.t;
     const since = t - SWITCH_AT;
     const h = portrait ? 100 * P : 72;
@@ -343,7 +386,7 @@ export class BangerBirthState {
       const dots = '.'.repeat(1 + (Math.floor(t * 6) % 3));
       ctx.font = `600 ${portrait ? 15 * P : 9}px ${BODY_FONT}`;
       ctx.fillStyle = '#c8c8d8';
-      ctx.fillText(live ? `${BIRTH_STEPS[Math.max(0, this.step)]}${dots}` : 'THROWING THE SWITCH', W / 2, my - (portrait ? 14 : 8) * P);
+      ctx.fillText(live ? `${BIRTH_STEPS[Math.max(0, this.step)]}${dots}` : this.lever?.caption || 'THROWING THE SWITCH', W / 2, my - (portrait ? 14 : 8) * P);
     }
 
     // IT'S ALIVE!

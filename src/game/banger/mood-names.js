@@ -9,6 +9,7 @@
 // One word each side, letters only (the title reads NAME (STYLE/MOOD), and the tests hold
 // names to two plain words).
 import { randomSongName } from '../../../tools/lib/song-names.js';
+import { firstMood } from '../../../tools/lib/banger/moods.js';
 
 export const MOOD_WORDS = Object.freeze({
   anthemic: ['ROARING', 'BLAZING', 'TOWERING', 'MIGHTY', 'GLORIOUS', 'SKYWARD', 'MASSIVE', 'STADIUM',
@@ -116,7 +117,8 @@ export const moodNameCount = (mood) => (MOOD_WORDS[mood]?.length || 0) * MOOD_NO
  * with no words of its own (an unknown id) falls back to the desk's general names.
  */
 export function moodSongName({ mood, taken = [], random = Math.random } = {}) {
-  const words = MOOD_WORDS[mood];
+  // a MOOD PAIR is named for the mood it starts in
+  const words = MOOD_WORDS[mood] ?? MOOD_WORDS[firstMood(mood)];
   if (!words) return randomSongName({ taken, random });
   const used = new Set(taken.map((n) => String(n).trim().toUpperCase()));
   const count = words.length * MOOD_NOUNS.length;

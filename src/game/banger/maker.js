@@ -60,7 +60,8 @@ import {
   normaliseNotes, normaliseLengths, simplify, expand, sixteenths, luckyNotes, perOf, stepsOf, barsOf, settleBars,
 } from './riff.js';
 import { GAME_RIFF_ODDS, pickGameRiff, gameRiffGrid } from './game-riffs.js';
-import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION, labFlavour, labInfusion, infusionStyle } from './make.js';
+import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION, labFlavour, labInfusion, infusionStyle, pairDescription } from './make.js';
+import { styleDefaults } from '../../../tools/lib/banger/options.js';
 import { styleFor } from '../../../tools/lib/banger/styles/index.js';
 import { bangerState, saveDraft, pendingRecipe } from './store.js';
 import { BANGER_VOLTAGES, voltageFor, voltageSettings } from './voltage.js';
@@ -182,6 +183,12 @@ const C_ARROW_OFF = 'rgba(200,200,216,0.22)';
 const C_BAR_LINE = 'rgba(255,255,255,0.2)';
 const BAR_LINE_W = 0.75;
 const C_NOTE = '#48e0c8';
+/** A MOOD PAIR's mark (drawPairMark), in the name's cap heights: its width, and the gap before the name. */
+const PAIR_MARK_W = 0.96;
+const PAIR_MARK_GAP = 0.5;
+const PAIR_MARK_SPAN = PAIR_MARK_W + PAIR_MARK_GAP;
+const C_SILVER = '#c4c8d4';
+const C_GOLD = '#e6bf55';
 
 // Each of the twelve notes has its own colour, round the wheel from A (the game's teal),
 // so a tune reads as a shape of colours and an octave lands on the colour it left — the
@@ -362,6 +369,15 @@ export class BangerMakerState {
   /** INFUSION: another formula's sound over FORMULA's groove, or NONE. The loop's tempo is FORMULA's, so it runs on. */
   setInfusion(id) {
     this.infusion = id && id !== NONE && id !== this.style ? id : null;
+  }
+  /**
+   * ELEMENT's choices: the moods, then the MOOD PAIRS, each pair's line in the words of the form the
+   * song starts in — the INFUSION's, else FORMULA's (a Pop Song's choruses are a Club track's drops).
+   */
+  moodItems() {
+    const st = styleFor(this.infusion || this.style);
+    const template = st ? styleDefaults(st).form.template : 'club';
+    return MAKER_MOODS.map((m) => (m.pair ? { ...m, description: pairDescription(m.id, template) } : m));
   }
   /** INFUSION's choices: NONE, then every formula but FORMULA itself. */
   infusionItems() {
@@ -666,7 +682,7 @@ export class BangerMakerState {
   // grid (`grid`): a cell for each of the sixteen, rows the VOLTAGE and columns the DNA. Under each
   // title, a line on what the choice does (CHOOSER_NOTES).
   openChooser(picker) {
-    const items = picker === FORMULA ? MAKER_STYLES : picker === INFUSION ? this.infusionItems() : picker === ELEMENT ? MAKER_MOODS
+    const items = picker === FORMULA ? MAKER_STYLES : picker === INFUSION ? this.infusionItems() : picker === ELEMENT ? this.moodItems()
       : Array.from({ length: 16 }, (_, m) => ({ id: String(m), label: this.mutationLabel(m),
         description: `${BANGER_VOLTAGES[Math.floor(m / 4)].helper}. ${MAKER_VARIATIONS[m % 4].description}` }));
     const cur = this.pickerValue(picker);
@@ -778,16 +794,39 @@ export class BangerMakerState {
       const labelSize = portraitMenuFit(it.label, 1.05, r.w - 12);
       const description = it.description ?? '';
       const descriptionSize = portraitMenuFit(description, 0.68, r.w - 12);
-      portraitMenuTextCentered(ctx, it.label.toUpperCase(), r.x + r.w / 2, textYForMid(labelY, portraitMenuScale(labelSize)),
+      // A MOOD PAIR's mark sits just left of its name, the two centred together.
+      const scale = portraitMenuScale(labelSize);
+      const markH = it.pair ? scale * TEXT_INK_H : 0;
+      const labelX = r.x + r.w / 2 + (it.pair ? PAIR_MARK_SPAN * markH / 2 : 0);
+      portraitMenuTextCentered(ctx, it.label.toUpperCase(), labelX, textYForMid(labelY, scale),
         sel ? C_SEL : on ? C_NOTE : C_TEXT, labelSize);
+      if (it.pair) this.drawPairMark(ctx, labelX - textWidth(it.label.toUpperCase(), scale) / 2 - PAIR_MARK_GAP * markH, labelY, markH);
       if (description) portraitMenuTextCentered(ctx, description, r.x + r.w / 2,
         textYForMid(descriptionY, portraitMenuScale(descriptionSize)), sel ? '#d3c0f4' : '#89899a', descriptionSize);
     });
   }
 
   /**
+   * A MOOD PAIR's mark: two linked rings, silver for the mood it starts in and gold for the one it
+   * turns into (Peter picked the rings over an arrow and a split disc, 7 Oct 2026, then asked for gold
+   * and silver over teal and amber). Its right edge is at `right`, its middle at `cy`; `h` is the
+   * name's cap height.
+   */
+  drawPairMark(ctx, right, cy, h) {
+    // (a little smaller than the name's caps: Peter, "a bit smaller")
+    const rad = h * 0.3, off = rad * 0.6;
+    const x = right - rad - off;
+    ctx.save();
+    // a line in proportion to the ring, so a small one stays a ring and not a blob
+    ctx.lineWidth = Math.max(0.75, h * 0.11);
+    ctx.strokeStyle = C_SILVER; ctx.beginPath(); ctx.arc(x - off, cy, rad, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = C_GOLD; ctx.beginPath(); ctx.arc(x + off, cy, rad, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
    * MUTATION's grid: YOUR NOTES over the DNA names, ENERGY beside the VOLTAGE names, a cell for each
-   * pairing — the chosen one teal with a dot, the steps of its arrows (MUTATION_LADDER) marked small —
+   * pairing — the chosen one teal with a dot —
    * and, under it, what the chosen (or focused) cell does.
    */
   drawMutationGrid(ctx, L, cells, grid, showFocus) {
@@ -810,11 +849,11 @@ export class BangerMakerState {
     cells.forEach((r, i) => {
       const on = i === cur, sel = showFocus && c.sel === i;
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), sel ? MENU_ROW_HILITE : on ? 'rgba(72,224,200,0.28)' : BACK_BUTTON_PLATE);
-      const step = MUTATION_LADDER.includes(i);
-      if (!on && !step) return;
-      const rad = Math.max(1.5, Math.min(r.w, r.h) * (on ? 0.12 : 0.05));
+      // only the chosen cell is marked (the arrows' six steps were too, until Peter: "why the faded dots?")
+      if (!on) return;
+      const rad = Math.max(1.5, Math.min(r.w, r.h) * 0.12);
       ctx.save();
-      ctx.fillStyle = on ? C_NOTE : 'rgba(200,200,216,0.35)';
+      ctx.fillStyle = C_NOTE;
       ctx.beginPath(); ctx.arc(r.x + r.w / 2, r.y + r.h / 2, rad, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     });

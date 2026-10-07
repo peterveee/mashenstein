@@ -120,7 +120,7 @@ rolls and the riser.
 
 | Group | Switches |
 |---|---|
-| Form | (the form itself is the Form row) Style's Own Form · Intro · Build in Layers (Off, Long Songs, Always) · Drums & Bass Intro · Build · Breakdown · Second Drop · Double Drop · Key Lift (none, half step, whole step, major third) · Second Mood (None or any mood: its chords, chord colours, the bass it suggests — unless the bass was picked by hand — and its key-change approach; the sounds stay the first mood's) · Switch At (After the Break — from the breakdown or middle 8 on; Final Chorus — the last drop or chorus on; Choruses Only — the drops and choruses, the verses and builds keep the first mood) · Key Change (how the lift arrives, on the last half-bar before it: Mood's Own, Straight, Pivot — the new V7, Two-Step — ii7–V7, Borrowed Step — ♭VI–♭VII, Walk-Up — the bass climbing in by semitones; Mood's Own gives each kind of lifted section the same approach every time, the mood's first for the first kind) · Hard Stop · False Ending · Half-Time Switch · Outro. Intro, Outro, Build in Layers, Drums & Bass Intro, Key Lift, Hard Stop (as the pause before a final chorus) and False Ending (before the final chorus) shape every form; the rest only the Club form. |
+| Form | (the form itself is the Form row) Style's Own Form · Intro · Build in Layers (Off, Long Songs, Always) · Drums & Bass Intro · Build · Breakdown · Second Drop · Double Drop · Key Lift (none, half step, whole step, major third) · Second Mood (None or any mood: its chords, chord colours, the bass it suggests — unless the bass was picked by hand — and its key-change approach; the sounds stay the first mood's) · Switch At (After the Break — from the breakdown or middle 8 on; Final Chorus — the last drop or chorus on; Choruses Only — the drops and choruses, the verses and builds keep the first mood; in a Groove, which has no drops, its fullest sections) · Key Change (how the lift arrives, on the last half-bar before it: Mood's Own, Straight, Pivot — the new V7, Two-Step — ii7–V7, Borrowed Step — ♭VI–♭VII, Walk-Up — the bass climbing in by semitones; Mood's Own gives each kind of lifted section the same approach every time, the mood's first for the first kind) · Hard Stop · False Ending · Half-Time Switch · Outro. Intro, Outro, Build in Layers, Drums & Bass Intro, Key Lift, Hard Stop (as the pause before a final chorus) and False Ending (before the final chorus) shape every form; the rest only the Club form. |
 | Drums | Source Drums (Keep and Add / Replace / Keep As-Is) · Kit (Style, Studio, 909, 808, DS, CR-78) · Crashes · Fills · Snare Rolls · Impact · Shaker · Tambourine · Congas · Cowbell · Ride |
 | Bass & Chords | Bass (Off-Beat, Rolling 16ths, Octave Eighths, Root–Fifth, Funk Syncopated, Long 808, Reese Drone, Gallop, Arpeggiated, Pedal, Walking, Sub Only, None) · Bass Lifts (later drops move to a busier related bass) · Sub Layer · Chords (Pumping Supersaws, Piano Stabs, Pad, None) · Square Double · Bell Octave · Octave Hook · Third Below · Arp · Arp Pattern (Varied, Style's Own, or one of thirteen figures) · Choir · Counter-Melody · Write a Lead (When Needed / Always / Off) · Riff Sound (Keep / Random) · Part Sounds (Roll / Style's Own) · Fill In (`tools/lib/banger/embellish.js`: Off, Repeat — the first half of each bar's long notes struck twice, Passing — a scale note between notes a third or more apart, Neighbour — long notes stepping up and back; every added note in the banger's key) · Fill Every (Every Pass, Every 2nd, Every 4th — the last pass of each group is the filled one, so it answers the plain ones) · Fill Notes (One, Two, Every Gap — figures a filled bar gets, earliest first). The same bar on the same pass is always filled the same way; the chords are chosen under the plain tune; a busy riff has no room and is left alone |
 | Spot FX | Effects chosen by what they are for — each **Style** (the switches' own moves) by default. **Into a Drop** (the last bar before every drop or chorus: Stutter, Beat Repeat, High-Pass Sweep, Reverb Wash, Tape Stop, None) · **Out of a Drop** (the last bar before the song drops down: Delay Throw, Reverb Wash, Low-Pass Down, Tape Stop, None — a transition's Tape Stop winds the mix down over the bar's last beat, two from 160 BPM, and stands still on the bar line) · **Breakdowns** (over every breakdown and middle 8: Underwater, Ping-Pong Echo, Big Reverb) · **Intro FX** (Low-Pass, Bitcrush, Radio, None) · **Ending** (Tape Stop, Echo Out, Fade, None). Surprise Me rolls each one time in four. All written as the desk's Spot FX, so they can be edited afterwards |
@@ -406,6 +406,29 @@ FORMULA's **groove** (its drums, bass and tempo). See [Fusions](#fusions).
 - **Older songs.** A song kept in the first hour of fusions, when the sound was `style` and
   the groove `fusion`, is rewritten on load (`make.js upgradeFusionRecipe`) and plays as it did.
 
+**MOOD PAIRS** (7 Oct 2026) follow the moods in ELEMENT's list, alphabetically, which makes 32
+entries; the list fits without scrolling in both orientations. Each pair is two moods under one
+name (`moods.js MOOD_PAIRS`), played as the first mood with the second as Second Mood and Switch
+At:
+
+| Name | Mood, then | Takes over |
+|---|---|---|
+| Awakening | Hypnotic → Euphoric | after the break |
+| Breakthrough | Moody → Uplifting | in every chorus or drop |
+| Farewell | Nostalgic → Bittersweet | for the last chorus or drop |
+| Final Boss | Playful → Boss Fight | for the last chorus or drop |
+| Revelation | Mystery → Euphoric | in every chorus or drop |
+| Victory | Dark → Heroic | for the last chorus or drop |
+
+- **The line under a pair's name** says where the change comes in, using the words of the form
+  the song starts in (`make.js pairDescription`): choruses in a Pop Song, drops in Club or Anthem,
+  peaks or the finale in a Groove. The form is the INFUSION's if there is one, else FORMULA's.
+- **What changes.** The first mood picks the sounds, the flavour, the bass and the song's name;
+  only the notes change where the second takes over.
+- **What a recipe keeps** is the pair's id.
+- **How they were chosen.** Each second mood starts on the first's tonic. They were picked from
+  the progressions, not by ear yet.
+
 **MUTATION** (7 Oct 2026) is VOLTAGE and DNA in one selector, which reads `SURGE · SPLICED`.
 
 - **The grid.** Its chooser is a 4×4 grid. Down the side is ENERGY (Safe, Charged, Surge,
@@ -414,7 +437,7 @@ FORMULA's **groove** (its drums, bass and tempo). See [Fusions](#fusions).
   pairings, so an Overload take can still keep the riff as written.
 - **The arrows** step a ladder of six (`maker.js MUTATION_LADDER`), from wherever the selector
   is: Safe · Pure, Charged · Pure, Charged · Hybrid (where NEW BANGER opens), Surge · Spliced,
-  Overload · Pure, Overload · Mutant. The grid marks those six with small dots.
+  Overload · Pure, Overload · Mutant. The grid does not mark them: there, every cell is one tap.
 - **Saved songs** still keep `voltage` and `variation` separately, so nothing kept changes.
 
 **The grid** is SIMPLE (eighths on the eleven notes of A minor, G4 to C6) or ADVANCED
@@ -791,7 +814,7 @@ mixes. Every sound is already in the catalogue: none of them needed a new preset
   (Chords = Pad), and a **disco tom** falling into the end of each eight (the fill slot).
   The Riff Sound shortlist starts on the **Robot Vox** vocoder. A Pop Song in the Anthemic
   mood, with no riser, roll, pump or stutter.
-- **Boogie** (`styles/electro-funk.js`, id `electro-funk`; renamed from Electro-Funk so it never reads as Electro): **108**, swing 55. An 808 boogie kick over
+- **Boogie** (`styles/electro-funk.js`, id `electro-funk`; renamed from Electro-Funk so it never reads as Electro; **hidden in the Lab** since 7 Oct 2026 — `LAB_HIDDEN` in `src/game/banger/make.js` — so the Lab offers 20, but still on the desk): **108**, swing 55. An 808 boogie kick over
   two bars, a cowbell, a **Synth Slap** bass popping octaves, and a **Wire Clav** comping
   sixteenths through an auto-wah (Chords = Piano Stabs). **Horn stabs** answer in the
   hook's rests (the Counter-Melody slot). The Riff Sound shortlist starts on the **Voice

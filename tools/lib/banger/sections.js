@@ -157,17 +157,20 @@ export function buildSections(ctx) {
   // Where it takes over: from the first breakdown or middle 8 on; from the last drop or
   // chorus on; or the drops and choruses alone. No break in the form — the final chorus.
   const HOOK_ROLES = new Set([...DROP_ROLES, 'false']);
+  // A form with no drops (Groove) has its fullest sections (`hook`) for choruses (7 Oct 2026: a
+  // mood pair switched only on the very last section there, or never).
+  const dropless = !form.some((s) => DROP_ROLES.has(s.role));
   const switchFrom = (() => {
     if (!secondId) return Infinity;
     const how = options.form.moodSwitch || 'breakdown';
-    const lastHook = form.reduce((at, s, i) => (DROP_ROLES.has(s.role) ? i : at), form.length - 1);
+    const lastHook = form.reduce((at, s, i) => (DROP_ROLES.has(s.role) || (dropless && s.hook) ? i : at), form.length - 1);
     if (how === 'breakdown') {
       const brk = form.findIndex((s) => s.role === 'breakdown' || s.role === 'middle8');
       return brk >= 0 ? brk : lastHook;
     }
     return how === 'final' ? lastHook : Infinity;
   })();
-  const secondAt = (sec, si) => !!secondId && (options.form.moodSwitch === 'choruses' ? HOOK_ROLES.has(sec.role) : si >= switchFrom);
+  const secondAt = (sec, si) => !!secondId && (options.form.moodSwitch === 'choruses' ? HOOK_ROLES.has(sec.role) || (dropless && !!sec.hook) : si >= switchFrom);
   // The bass a mood suggests follows the mood; a bass picked by hand stays.
   const moodsBass = options.parts.bass === moodBass(style, options.mood);
   let mood = firstMood.mood;

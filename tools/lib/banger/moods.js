@@ -224,6 +224,26 @@ export const SHARED_MOODS = Object.freeze({
 });
 
 /**
+ * MOOD PAIRS (Peter, 7 Oct 2026: "curated pairs"): one mood, then another taking over part of the song —
+ * the desk's Second Mood and Switch At (sections.js), under a name of their own. Picked by ear, not
+ * free: each second mood starts on the first's tonic, so the change sounds like the song going
+ * somewhere rather than a new song. `switch` is Switch At's: 'choruses' (every drop or chorus — a
+ * Groove's fullest sections), 'final' (the last drop or chorus on), 'breakdown' (from the break on).
+ * The first mood chooses the sounds and the flavour; only the notes change. The Lab offers them in
+ * ELEMENT; a recipe keeps the pair's id.
+ */
+export const MOOD_PAIRS = Object.freeze({
+  breakthrough: { label: 'Breakthrough', first: 'moody', second: 'uplifting', switch: 'choruses' },
+  victory: { label: 'Victory', first: 'dark', second: 'heroic', switch: 'final' },
+  revelation: { label: 'Revelation', first: 'mystery', second: 'euphoric', switch: 'choruses' },
+  awakening: { label: 'Awakening', first: 'hypnotic', second: 'euphoric', switch: 'breakdown' },
+  farewell: { label: 'Farewell', first: 'nostalgic', second: 'bittersweet', switch: 'final' },
+  finalboss: { label: 'Final Boss', first: 'playful', second: 'boss', switch: 'final' },
+});
+/** The mood a pair starts in (or the mood itself): what picks the sounds, the flavour and the bass. */
+export const firstMood = (mood) => MOOD_PAIRS[mood]?.first ?? mood;
+
+/**
  * Moods that have been retired or renamed, and the mood a banger made in one is made in
  * now. Hopeful went on 6 Oct 2026: it was Moody's major walk and Uplifting's minor one with
  * a sus4 on the end. Andalusian was renamed Flamenco the same day.

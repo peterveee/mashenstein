@@ -13,7 +13,7 @@ import { generateBanger } from '../../../tools/lib/banger/index.js';
 import { normaliseTrackEffects } from '../../../tools/lib/banger/production.js';
 import { BANGER_STYLES, BANGER_FLAVOURS, styleFor, soundSetOf, moodFlavour, flavourOf, fusionOf } from '../../../tools/lib/banger/styles/index.js';
 import { BANGER_LIMITS, BANGER_MOODS, styleDefaults, moodBass, BANGER_EXPRESSION_VERSION } from '../../../tools/lib/banger/options.js';
-import { currentMood } from '../../../tools/lib/banger/moods.js';
+import { currentMood, MOOD_PAIRS, firstMood } from '../../../tools/lib/banger/moods.js';
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
 import { BANGER_PALETTE, resolvePalette } from '../../../tools/lib/banger/palette.js';
 import { resolveSounds } from '../../../tools/lib/banger/sound-rules.js';
@@ -107,11 +107,17 @@ const LAB_STYLE_ORDER = Object.freeze([
 // of a throwback").
 const LAB_LABELS = Object.freeze({ downtempo: 'Chillout Room' });
 const labRank = (id) => { const i = LAB_STYLE_ORDER.indexOf(id); return i < 0 ? LAB_STYLE_ORDER.length : i; };
+// Styles the Lab leaves out of its pickers, but still makes and names — the desk keeps them all.
+// Boogie (Peter, 7 Oct 2026: "hide in lab, not desk"), so the list is 20, a multiple of four;
+// it keeps its place in LAB_STYLE_ORDER for when more styles bring it back.
+const LAB_HIDDEN = new Set(['electro-funk']);
 
-/** The styles the jukebox offers, in the Lab's order (LAB_STYLE_ORDER). */
-export const MAKER_STYLES = Object.freeze([...BANGER_STYLES]
+// Every style as the Lab names it, hidden ones too, so a song kept on one still reads as itself.
+const LAB_STYLES = Object.freeze([...BANGER_STYLES]
   .sort((a, b) => labRank(a.id) - labRank(b.id))
   .map((s) => Object.freeze({ id: s.id, label: caps(LAB_LABELS[s.id] ?? LAB_SOUND_SETS[s.id]?.label ?? s.label), description: STYLE_DESCRIPTIONS[s.id] ?? s.note ?? '' })));
+/** The styles the jukebox offers, in the Lab's order (LAB_STYLE_ORDER). */
+export const MAKER_STYLES = Object.freeze(LAB_STYLES.filter((s) => !LAB_HIDDEN.has(s.id)));
 
 /** The Sound Set a take in `style` plays on ('style', 'light', '8bit'), read off its seed and voltage. */
 export function labSoundSet(style, seed, voltage = null) {
@@ -132,7 +138,7 @@ export const FLAVOUR_SURPRISE = Object.freeze([0, 1 / 5, 1 / 3, 1 / 2]);
 export function labFlavour(style, mood, seed = null, voltage = null) {
   const st = styleFor(style);
   if (!st?.flavours?.length) return null;
-  const own = moodFlavour(st, mood);
+  const own = moodFlavour(st, firstMood(mood));
   if (seed == null || rollOf(seed, 0x6a09e667) >= (FLAVOUR_SURPRISE[voltageLevel(voltage) ?? 1] ?? 0)) return own;
   const others = st.flavours.map((f) => f.id).filter((id) => id !== own);
   return others[Math.floor(rollOf(seed, 0x3c6ef372) * others.length)];
@@ -152,11 +158,33 @@ function soundsIdFor(style, seed, voltage, mood = null, flavour = null) {
 }
 
 /** Every mood plays in every style; show them alphabetically in the Lab. */
-export const MAKER_MOODS = Object.freeze(BANGER_MOODS
-  .map((m) => Object.freeze({ id: m.id, label: caps(m.label), description: MOOD_DESCRIPTIONS[m.id] ?? m.title ?? '' }))
-  .sort((a, b) => a.label.localeCompare(b.label)));
+/**
+ * Where a MOOD PAIR's second mood takes over, in the words of the form the song is in: a Pop Song's
+ * choruses are a Club track's drops and a Groove's peaks.
+ */
+const PAIR_WHERE = Object.freeze({
+  choruses: { pop: 'in every chorus', groove: 'at every peak', other: 'in every drop' },
+  final: { pop: 'for the last chorus', groove: 'for the finale', other: 'for the last drop' },
+  breakdown: { pop: 'from the middle 8', groove: 'for the second half', other: 'after the break' },
+});
+const moodName = (id) => BANGER_MOODS.find((m) => m.id === id)?.label ?? id;
+/** A pair's line under its name: `Moody, turning Uplifting in every chorus` — for the form `template`. */
+export function pairDescription(id, template = 'club') {
+  const p = MOOD_PAIRS[id];
+  if (!p) return '';
+  return `${moodName(p.first)}, turning ${moodName(p.second)} ${PAIR_WHERE[p.switch][template === 'pop' || template === 'groove' ? template : 'other']}`;
+}
+/** ELEMENT's list: the moods alphabetically, then the MOOD PAIRS (moods.js), alphabetically too. */
+export const MAKER_MOODS = Object.freeze([
+  ...BANGER_MOODS
+    .map((m) => Object.freeze({ id: m.id, label: caps(m.label), description: MOOD_DESCRIPTIONS[m.id] ?? m.title ?? '' }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
+  ...Object.entries(MOOD_PAIRS)
+    .map(([id, p]) => Object.freeze({ id, label: caps(p.label), description: pairDescription(id), pair: true }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
+]);
 
-export const styleLabel = (id) => MAKER_STYLES.find((s) => s.id === id)?.label ?? caps(id);
+export const styleLabel = (id) => LAB_STYLES.find((s) => s.id === id)?.label ?? caps(id);
 
 /**
  * INFUSION (tools/lib/banger/styles/fusion.js; Peter, 7 Oct 2026): the selector beside FORMULA. NONE,
@@ -175,7 +203,7 @@ export const infusionStyle = (infusion) => {
 export function labInfusion(id, mood) {
   const st = styleFor(infusionStyle(id));
   if (!st) return null;
-  const f = moodFlavour(st, mood);
+  const f = moodFlavour(st, firstMood(mood));
   if (!f || f === st.flavours?.[0]?.id) return st.id;
   return BANGER_FLAVOURS.find((x) => x.base === st.id && x.flavour === f)?.id ?? st.id;
 }
@@ -477,6 +505,10 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   if (!hasNotes(notes)) throw new Error('the grid is empty');
   // A song kept in a mood since retired is made in the mood it became.
   mood = currentMood(mood);
+  // A MOOD PAIR (moods.js): its first mood makes the song, and its second takes over where it says
+  // (the generator's Second Mood and Switch At).
+  const pair = MOOD_PAIRS[mood] || null;
+  if (pair) mood = pair.first;
   // INFUSION: FORMULA (its flavour, on its Lab Sound Set) becomes the GROOVE, and from here on `style`
   // is the infusion — the SOUND, which the generator makes — playing the flavour it was kept with.
   let beat = null;
@@ -513,6 +545,9 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed, beat, expressionVersionOf(expression)) : {};
   const soundSet = ownFlavour(style, flavour) ? labSoundSet(style, seed, voltage) : 'style';
   const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}) };
+  // A pair's switch goes on the form, which must name its template (a form that names none is Club).
+  const pairForm = pair ? { template: rolls.form?.template ?? (styleSettings && styleDefaults((beat && fusionOf(styleSettings, beat)) || styleSettings).form.template),
+    ...rolls.form, mood2: pair.second, moodSwitch: pair.switch } : null;
   const options = {
     style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,
@@ -521,7 +556,7 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
     ...(Object.keys(parts).length ? { parts } : {}),
     ...(rolls.fx ? { fx: rolls.fx } : {}),
     ...(rolls.drums ? { drums: rolls.drums } : {}),
-    ...(rolls.form ? { form: rolls.form } : {}),
+    ...(pairForm ? { form: pairForm } : rolls.form ? { form: rolls.form } : {}),
     ...(Object.keys(spot).length || rolls.spot ? { spot: { ...rolls.spot, ...spot } } : {}),
   };
   const out = generateBanger({ riff: riffFromNotes(notes, hookSoundFor(style, mood, seed, voltage, flavour), mode, lengths), options, seed,
