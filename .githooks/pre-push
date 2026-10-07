@@ -16,9 +16,22 @@ done
 [ "$only_deletes" -eq 1 ] && exit 0
 
 echo "pre-push: running npm test..."
-if npm test; then
+log=$(mktemp) && status=$(mktemp)
+# tee keeps the run streaming to the terminal; the status file keeps npm test's exit code
+{ npm test 2>&1; echo $? > "$status"; } | tee "$log"
+code=$(cat "$status")
+if [ "$code" = 0 ]; then
+  rm -f "$log" "$status"
   exit 0
 fi
+
+# Peter's phone (ntfy topic, see the ntfy-push-topic memory): a failed push is easy to miss
+# in a terminal or the editor's Git panel. Best effort — never holds the push up.
+failed=$(grep 'SUITE(S) FAILED' "$log" | tail -1)
+curl -s -m 5 -H "Title: MASHENSTEIN push failed" -H "Tags: x" \
+  -d "$(git rev-parse --short HEAD) on $(git branch --show-current): ${failed:-npm test exited $code}" \
+  ntfy.sh/mashenstein-702f05ba > /dev/null 2>&1 || true
+rm -f "$log" "$status"
 
 echo ""
 echo "pre-push: TESTS FAILED — push aborted."

@@ -14,7 +14,8 @@
 //   B FLOOR LEVER       a signal-box lever out of a toothed quadrant on the floor; he hauls it
 //                       back towards himself and it clunks into the last notch
 //   C BIG RED BUTTON    a hazard-striped pedestal; he flips the cover, winds up and slams it
-//   D PLUNGER           a charger box in front of him, both hands on the T-bar, pushed home
+//   D PLUNGER           a tall, thin charger post between his feet, both hands on the
+//                       T-bar, pushed home
 //   E AMP KNOB          a combo amp with one giant chicken-head knob; he cranks it round to 11
 //   F MASTER FADER      a giant channel strip; he shoves the fader to the top and the meter
 //                       beside it fills with the charge
@@ -300,48 +301,73 @@ const bigButton = {
 };
 
 // ------------------------------------------------------------------ D: the plunger
-const PLUNGE = { rest: -0.5, home: -0.32, half: 0.25, box: 0.22 };
-const plungeY = (t) => {
+// A TALL, THIN POST, so his legs show (Peter, 7 Oct 2026: the charger box "covering his entire
+// lower body", then "can the plunger be tall and thin so you can still see his legs? or off to
+// his side maybe?"). Two takes while he picks: IN FRONT, the post stands between his feet and
+// both hands drive the T-bar home; AT HIS SIDE, it stands out on his right (the screen's left)
+// and one hand drives a short handle home.
+const POST = { w: 0.09, foot: 0.02 };
+const PLUNGE = { front: { x: 0, rest: -0.5, home: -0.32, top: -0.27, half: 0.28 },
+  side: { x: -0.38, rest: -0.66, home: -0.46, top: -0.4, half: 0.07 } };
+const plungeY = (t, p) => {
   // he hauls it UP a touch on the brace, then drives it home
   const lift = t >= BRACE_AT && t < PULL_AT ? smooth((t - BRACE_AT) / (PULL_AT - BRACE_AT)) * 0.04 : t >= PULL_AT && t < SWITCH_AT ? 0.04 : 0;
-  return lerp(PLUNGE.rest - lift, PLUNGE.home, haul(t));
+  return lerp(p.rest - lift, p.home, haul(t));
 };
+/** The post: a planked charger standing on the floor, its rod out of the cap to the handle. */
+function plungerPost(ctx, o, p) {
+  const { h, t } = o;
+  const [cx, top] = at(o, p.x, p.top), y = at(o, p.x, plungeY(t, p))[1];
+  const w = POST.w * h, x0 = cx - w / 2, foot = o.base + POST.foot * h, ph = foot - top;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.ellipse(cx, foot, w * 1.2, h * 0.022, 0, 0, TAU); ctx.fill();
+  // the rod, and the handle across his hands
+  bar(ctx, cx, top, cx, y, h * 0.03, STEEL_DK, STEEL);
+  bar(ctx, cx - p.half * h, y, cx + p.half * h, y, h * 0.045, '#3a2a22', '#6a4a36');
+  // the post: planked wood, a cap, a lamp and a stencilled bolt
+  ctx.fillStyle = '#7a4a2a'; rr(ctx, x0, top, w, ph, h * 0.015); ctx.fill();
+  ctx.strokeStyle = '#5a3420'; ctx.lineWidth = h * 0.008;
+  for (const k of [0.66, 0.86]) { ctx.beginPath(); ctx.moveTo(x0, top + ph * k); ctx.lineTo(x0 + w, top + ph * k); ctx.stroke(); }
+  ctx.strokeStyle = INK; ctx.lineWidth = h * 0.012; rr(ctx, x0, top, w, ph, h * 0.015); ctx.stroke();
+  ctx.fillStyle = '#9a6238'; ctx.fillRect(x0 - h * 0.018, top - h * 0.02, w + h * 0.036, h * 0.04);
+  ctx.strokeStyle = INK; ctx.lineWidth = h * 0.01; ctx.strokeRect(x0 - h * 0.018, top - h * 0.02, w + h * 0.036, h * 0.04);
+  lamp(ctx, cx, top + ph * 0.17, h * 0.022, t >= SWITCH_AT ? ALIVE : RED, 1);
+  ctx.fillStyle = HAZARD;
+  const sy = top + ph * 0.42, s = h * 0.05;
+  ctx.beginPath(); ctx.moveTo(cx + s * 0.25, sy - s); ctx.lineTo(cx - s * 0.45, sy + s * 0.1); ctx.lineTo(cx, sy + s * 0.1);
+  ctx.lineTo(cx - s * 0.25, sy + s); ctx.lineTo(cx + s * 0.45, sy - s * 0.1); ctx.lineTo(cx, sy - s * 0.1); ctx.closePath(); ctx.fill();
+  // terminals on the cap's ends
+  const ends = [x0 - h * 0.012, x0 + w + h * 0.012];
+  for (const tx of ends) { ctx.fillStyle = COPPER; ctx.fillRect(tx - h * 0.014, top - h * 0.045, h * 0.028, h * 0.028); }
+  sparks(ctx, o.random, cx, top - h * 0.02, o.since, h, 10);
+  for (const tx of ends) crackle(ctx, o, tx, top - h * 0.04, h * 0.07);
+}
 const plunger = {
   letter: 'D', name: 'PLUNGER', caption: 'PUSHING THE PLUNGER',
-  description: 'A charger box on the floor in front of him, both hands on the T-bar: he hoists it a touch, then drives it home. The box’s lamp goes green and the terminals crackle.',
+  description: 'A tall, thin charger post standing between his feet, both hands on the T-bar: he hoists it a touch, then drives it home. The post’s lamp goes green and the terminals crackle.',
   rig: (o) => {
-    const y = plungeY(o.t), w = grip(o.t);
+    const p = PLUNGE.front, y = plungeY(o.t, p), w = grip(o.t);
     return {
-      hands: [{ at: at(o, -PLUNGE.half + 0.01, y), w }, { at: at(o, PLUNGE.half - 0.01, y), w }],
+      hands: [{ at: at(o, -p.half + 0.04, y), w }, { at: at(o, p.half - 0.04, y), w }],
       squash: o.t >= SWITCH_AT && o.t < LET_GO_AT ? 0.06 : 0,
     };
   },
-  back(ctx, o) { cable(ctx, o, o.gx - PLUNGE.box * o.h * 0.8, o.base - o.h * 0.1); },
-  front(ctx, o) {
-    const { h, t } = o;
-    const y = at(o, 0, plungeY(t))[1], [bx, by] = at(o, -PLUNGE.box, -0.26), bw = PLUNGE.box * 2 * h, bh = 0.26 * h;
-    // the rod, out of the box's lid, and the T-bar across his hands
-    bar(ctx, o.gx, by, o.gx, y, h * 0.035, STEEL_DK, STEEL);
-    bar(ctx, o.gx - PLUNGE.half * h * 1.12, y, o.gx + PLUNGE.half * h * 1.12, y, h * 0.045, '#3a2a22', '#6a4a36');
-    // the box: planked wood, a lid, a lamp and a stencilled bolt
-    ctx.fillStyle = '#7a4a2a'; rr(ctx, bx, by, bw, bh, h * 0.02); ctx.fill();
-    ctx.strokeStyle = '#5a3420'; ctx.lineWidth = h * 0.01;
-    for (const k of [0.36, 0.68]) { ctx.beginPath(); ctx.moveTo(bx, by + bh * k); ctx.lineTo(bx + bw, by + bh * k); ctx.stroke(); }
-    ctx.fillStyle = '#9a6238'; ctx.fillRect(bx - h * 0.015, by - h * 0.02, bw + h * 0.03, h * 0.04);
-    ctx.strokeStyle = INK; ctx.lineWidth = h * 0.012; rr(ctx, bx, by, bw, bh, h * 0.02); ctx.stroke();
-    ctx.fillStyle = HAZARD;
-    const sx = o.gx, sy = by + bh * 0.55, s = h * 0.07;
-    ctx.beginPath(); ctx.moveTo(sx + s * 0.25, sy - s); ctx.lineTo(sx - s * 0.45, sy + s * 0.1); ctx.lineTo(sx, sy + s * 0.1);
-    ctx.lineTo(sx - s * 0.25, sy + s); ctx.lineTo(sx + s * 0.45, sy - s * 0.1); ctx.lineTo(sx, sy - s * 0.1); ctx.closePath(); ctx.fill();
-    // terminals on the lid's corners
-    for (const tx of [bx + h * 0.05, bx + bw - h * 0.05]) {
-      ctx.fillStyle = COPPER; ctx.fillRect(tx - h * 0.018, by - h * 0.05, h * 0.036, h * 0.035);
-    }
-    lamp(ctx, bx + bw - h * 0.08, by + bh * 0.55, h * 0.028, t >= SWITCH_AT ? ALIVE : RED, 1);
-    sparks(ctx, o.random, o.gx, by - h * 0.02, o.since, h, 10);
-    crackle(ctx, o, bx + h * 0.05, by - h * 0.05, h * 0.09);
-    crackle(ctx, o, bx + bw - h * 0.05, by - h * 0.05, h * 0.09);
+  back(ctx, o) { cable(ctx, o, o.gx, o.base); },
+  front(ctx, o) { plungerPost(ctx, o, PLUNGE.front); },
+};
+/** The other take on D, at his side: not in BIRTH_SWITCHES until Peter picks it. */
+export const PLUNGER_AT_SIDE = {
+  letter: 'D', name: 'PLUNGER AT HIS SIDE', caption: 'PUSHING THE PLUNGER',
+  description: 'The same tall, thin charger post standing out at his side, between him and the coil: one hand on a short handle, hoisted a touch and driven home.',
+  rig: (o) => {
+    const p = PLUNGE.side, y = plungeY(o.t, p), w = grip(o.t);
+    return {
+      hands: [{ at: at(o, p.x, y - 0.015), w }],
+      lean: o.t >= SWITCH_AT - 0.06 && o.t < LET_GO_AT ? 0.04 : 0,
+      squash: o.t >= SWITCH_AT && o.t < LET_GO_AT ? 0.06 : 0,
+    };
   },
+  back(ctx, o) { cable(ctx, o, at(o, PLUNGE.side.x, 0)[0], o.base); plungerPost(ctx, o, PLUNGE.side); },
 };
 
 // ------------------------------------------------------------------ E: the amp knob

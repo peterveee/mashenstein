@@ -19,8 +19,12 @@
 //
 // WHAT COMES ALIVE is a GIANT CASSETTE (Peter, 3 Oct 2026, from the bake-off — the other
 // candidates are in src/dev/birth-subjects.js): standing on the lab's slab, clamped to the
-// coils, the new song's name on its label. Dormant it is grey and still; alive its reels
-// turn, the eyes in them open, and it grins.
+// coils. Dormant it is grey and still, its label blank; alive its reels turn, the eyes in
+// them open, it grins, and the new song's name is on its label.
+//
+// THE NAME IS KEPT BACK FOR IT'S ALIVE! (Peter, 7 Oct 2026: "not show the title but show it
+// with ITS ALIVE"): nothing names the song while it is being made; the flash reveals it,
+// under IT'S ALIVE! and on the label.
 //
 // The song itself is made in the riff grid (maker.js) on the frame before this opens, so
 // what this shows is the birth, not a wait: on a phone it covers the generation's few
@@ -67,7 +71,8 @@ export class BangerBirthState {
 
   /**
    * `rec` is the song just made; `onDone` opens it. `subject` paints what is brought to life
-   * (the bake-off's candidates, src/dev/birth-subjects.js); the music note by default.
+   * in place of the cassette, standing on its slab (the bake-offs' candidates,
+   * src/dev/birth-subjects.js and src/dev/birth-faces.js).
    * `lever` is what Gary throws (birth-switches.js; the jukebox picks one at random); the
    * old small knife switch on its panel without one.
    */
@@ -129,12 +134,12 @@ export class BangerBirthState {
    * on that side, its lever's handle where his hand can meet it.
    */
   /**
-   * The giant cassette on its slab: the table, the clamps wired back to the coils, and the
-   * tape itself — `y` is its middle, `r` its size (it is 2.5r wide, 1.6r tall).
+   * The slab whatever is born stands on: a riveted steel top on a pedestal, and the cables
+   * from each coil's base to a clamp on its sides — for a thing whose middle is `y`, `r` its
+   * size, 2.5r wide and 1.6r tall (the cassette's box; a bake-off candidate stands in it).
    */
-  drawCassette(ctx, x, y, r, { alive, since, t, base, coilXs, u }) {
+  drawSlab(ctx, x, y, r, { base, coilXs, u }) {
     const w = r * 2.5, h = r * 1.6;
-    // the slab: a riveted steel top on a pedestal
     const topY = y + h / 2, tw = w * 1.3, th = r * 0.16;
     ctx.fillStyle = '#1b1828';
     ctx.fillRect(x - r * 0.25, topY + th, r * 0.5, base - topY - th);
@@ -152,6 +157,12 @@ export class BangerBirthState {
       ctx.fillStyle = '#b07a3a';
       ctx.fillRect(ex - (side > 0 ? 0 : r * 0.18), ey - r * 0.12, r * 0.18, r * 0.24);
     }
+  }
+
+  /** The giant cassette on its slab — `y` is its middle, `r` its size (2.5r wide, 1.6r tall). */
+  drawCassette(ctx, x, y, r, { alive, since, t, base, coilXs, u }) {
+    const w = r * 2.5, h = r * 1.6;
+    this.drawSlab(ctx, x, y, r, { base, coilXs, u });
     ctx.save();
     ctx.translate(x, y);
     // alive, it rocks to the beat
@@ -170,7 +181,7 @@ export class BangerBirthState {
     ctx.fillStyle = '#1b1828';
     ctx.font = `${Math.max(4, r * 0.17)}px ${TITLE_FONT}`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(this.rec?.name || 'BANGER', 0, -h * 0.25, w * 0.78);
+    if (alive) ctx.fillText(this.rec?.name || 'BANGER', 0, -h * 0.25, w * 0.78);
     // the window, and the reels in it — the eyes
     ctx.fillStyle = '#16131f'; rr(ctx, -w * 0.28, -h * 0.14, w * 0.56, h * 0.26, r * 0.13); ctx.fill();
     ctx.fillStyle = col('#5a3a2a', '#3a3a40'); ctx.fillRect(-w * 0.12, -h * 0.07, w * 0.24, h * 0.12);
@@ -349,8 +360,10 @@ export class BangerBirthState {
     ng.addColorStop(0, alive ? ALIVE + '88' : `rgba(168,230,255,${0.1 + 0.4 * charge})`); ng.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = ng;
     ctx.beginPath(); ctx.arc(W / 2, sy, nr * 3, 0, Math.PI * 2); ctx.fill();
-    if (this.subject) this.subject(ctx, W / 2, sy, nr * 0.6, { charge, alive, since: Math.max(0, since), t });
-    else this.drawCassette(ctx, W / 2, sy, nr, { alive, since: Math.max(0, since), t, base, coilXs: xs, u });
+    if (this.subject) {
+      this.drawSlab(ctx, W / 2, sy, nr, { base, coilXs: xs, u });
+      this.subject(ctx, W / 2, sy, nr, { charge, alive, since: Math.max(0, since), t, name: this.rec?.name || 'BANGER' });
+    } else this.drawCassette(ctx, W / 2, sy, nr, { alive, since: Math.max(0, since), t, base, coilXs: xs, u });
     // Gary in front of the slab and its cables
     this.drawGary(ctx, { portrait, P, base, coilX: xs[0] });
 
@@ -366,13 +379,10 @@ export class BangerBirthState {
     // the step, and the meter filling
     const top = portrait ? portraitMenuSafeTop() + 60 * P : 22;
     ctx.textAlign = 'center';
-    ctx.font = `500 ${portrait ? 13 * P : 8}px ${BODY_FONT}`;
-    ctx.fillStyle = '#8f8b9e';
-    ctx.fillText(alive ? 'BORN JUST NOW' : 'BRINGING TO LIFE', W / 2, top);
-    ctx.font = `${portrait ? 17 * P : 11}px ${TITLE_FONT}`;
-    ctx.fillStyle = '#48e0c8';
-    ctx.fillText(bangerTitle(this.rec), W / 2, top + (portrait ? 26 * P : 15), W - 20);
     if (!alive) {
+      ctx.font = `500 ${portrait ? 13 * P : 8}px ${BODY_FONT}`;
+      ctx.fillStyle = '#8f8b9e';
+      ctx.fillText('BRINGING TO LIFE', W / 2, top);
       const my = base + (portrait ? 70 : 34) * P;
       const segs = 12, sw = (portrait ? 18 : 12) * P, gap = (portrait ? 5 : 3) * P;
       const mx = W / 2 - (segs * (sw + gap) - gap) / 2;
@@ -389,12 +399,12 @@ export class BangerBirthState {
       ctx.fillText(live ? `${BIRTH_STEPS[Math.max(0, this.step)]}${dots}` : this.lever?.caption || 'THROWING THE SWITCH', W / 2, my - (portrait ? 14 : 8) * P);
     }
 
-    // IT'S ALIVE!
+    // IT'S ALIVE! — and, under it, the song's name, kept back until now
     if (alive) {
       const pop = 1 + 0.35 * Math.exp(-since * 7);
       const size = (portrait ? 58 : 38) * P;
       ctx.save();
-      ctx.translate(W / 2, cy - (portrait ? 100 : 62) * P);   // portrait: clear of the song's name
+      ctx.translate(W / 2, cy - (portrait ? 130 : 62) * P);   // portrait: the name clears the coils' balls
       ctx.scale(pop, pop);
       ctx.font = `${size}px ${TITLE_FONT}`;
       ctx.shadowColor = ALIVE; ctx.shadowBlur = size * 0.5;
@@ -402,6 +412,11 @@ export class BangerBirthState {
       ctx.strokeText("IT'S ALIVE!", 0, 0);
       ctx.fillStyle = ALIVE;
       ctx.fillText("IT'S ALIVE!", 0, 0);
+      ctx.shadowBlur = 0;
+      ctx.font = `${portrait ? 17 * P : 13}px ${TITLE_FONT}`;
+      ctx.fillStyle = '#48e0c8';
+      // landscape: narrower than the gap between the coils' balls, which sit level with it
+      ctx.fillText(bangerTitle(this.rec), 0, (portrait ? 34 : 20) * P, portrait ? W - 40 : 250);
       ctx.restore();
       // the bolt that did it, fading
       if (since < 0.6) {

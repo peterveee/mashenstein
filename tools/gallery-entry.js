@@ -9646,7 +9646,7 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
     + 'take one out of BIRTH_SWITCHES to take it out of the game). X is the small knife switch on a panel he had until now. '
     + 'A BIG KNIFE SWITCH the same idea made to read, a slate board with a fat copper blade, red knob and red/green lamps; '
     + 'B FLOOR LEVER a signal-box lever he leans out for and hauls back into the last notch; '
-    + 'C BIG RED BUTTON he flicks the cover open, winds up and slams it; D PLUNGER both hands on the T-bar of a charger box, driven home; '
+    + 'C BIG RED BUTTON he flicks the cover open, winds up and slams it; D PLUNGER both hands on the T-bar of a tall, thin charger post, driven home; '
     + 'E AMP KNOB a combo amp’s giant chicken-head knob cranked round to 11; F MASTER FADER shoved to the top, its meter filling with the charge. '
     + 'Everything lands on the same beat the old switch did (the power sound, the coils waking). '
     + 'First the whole birth for each, then each throw close up at 3x, looping its first 1.8 s.',
@@ -9662,7 +9662,7 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
     b.step = t < SWITCH_AT ? -1 : Math.min(BIRTH_STEPS.length - 1, Math.floor((t - SWITCH_AT) / STEP_S));
     return b;
   };
-  const LOOP = BIRTH_S + 0.8, THROW = 1.8, Z = 3, CX = 70, CY = 92, CW = 160, CH = 125;
+  const LOOP = BIRTH_S + 0.8, THROW = 1.8, Z = 3, CX = 70, CY = 92, CW = 160, CH = 132;   // tall enough for D's box on the floor
   for (const c of all) {
     const b = new BangerBirthState({ rec, onDone() {}, lever: c.letter === 'X' ? null : c });
     tile(grid, `${c.letter} — ${c.name}`, c.description, W, H, (ctx, t) => {
