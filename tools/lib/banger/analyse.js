@@ -7,7 +7,7 @@
 // hook wins. So the mood decides everything it can without rewriting the tune.
 //
 // Browser-safe: no `node:*` imports.
-import { NAMES, midi, parseChord, chordSym, scaleOf, isDrumPart, mapPitches } from './theory.js';
+import { NAMES, midi, parseChord, chordSym, scaleOf, isDrumPart, mapPitches, grindOf } from './theory.js';
 
 // Krumhansl–Kessler key profiles.
 const KEY_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
@@ -233,16 +233,31 @@ export function triadOf(sym) {
 }
 
 /**
- * How well a chord fits a bar's weights, -0.6..1: the share sounding inside it, less
- * most of the share sounding outside. A bass on the root is worth a little more.
+ * How well a chord fits a bar's weights: the share sounding inside it, less most of the share
+ * sounding outside. A bass on the root is worth a little more. A note outside that grinds against
+ * the chord (theory.js grindOf: a flat ninth on its root, its other third, a tritone on its root)
+ * costs the chord again (6 Oct 2026), so the chord under a hook that leans on F is not E minor.
  */
+const GRIND = 1;
 export function chordFit({ w, bassPc }, sym) {
   const total = w.reduce((s, x) => s + x, 0);
   if (!total) return 0;
   const { root, pcs } = parseChord(sym);
-  let inside = 0; let outside = 0;
-  for (let pc = 0; pc < 12; pc++) (pcs.includes(pc) ? (inside += w[pc]) : (outside += w[pc]));
-  return (inside - 0.6 * outside) / total + (bassPc === root ? 0.15 : 0) - (bassPc != null && !pcs.includes(bassPc) ? 0.2 : 0);
+  let inside = 0; let outside = 0; let grind = 0;
+  for (let pc = 0; pc < 12; pc++) {
+    if (pcs.includes(pc)) inside += w[pc];
+    else { outside += w[pc]; grind += w[pc] * grindOf(pc, sym); }
+  }
+  return (inside - 0.6 * outside - GRIND * grind) / total + (bassPc === root ? 0.15 : 0) - (bassPc != null && !pcs.includes(bassPc) ? 0.2 : 0);
+}
+
+/** The share of a bar's weight that grinds against a chord (theory.js grindOf), 0..1. */
+export function grindShare({ w }, sym) {
+  const total = w.reduce((s, x) => s + x, 0);
+  if (!total) return 0;
+  let grind = 0;
+  for (let pc = 0; pc < 12; pc++) if (w[pc]) grind += w[pc] * grindOf(pc, sym);
+  return grind / total;
 }
 
 /** The best chord for some weights from `candidates`, each with an optional bonus. */

@@ -1383,5 +1383,69 @@ try {
     `the measured curves carry what gets past the made side's cut at each pitch, more of it up high (${withHighs.length} of ${measured.length})`);
 }
 
+// ---------------------------------------------------------------- nothing grinds (6 Oct 2026)
+{
+  const { grindOf, fitToChords, clearUnder } = await import('../tools/lib/banger/theory.js');
+  const { chordFit, partWeights } = await import('../tools/lib/banger/analyse.js');
+  const { riffFromNotes, luckyNotes } = await import('../src/game/banger/riff.js');
+  const pcOf = (name) => midi(`${name}4`) % 12;
+  assert(grindOf(pcOf('F'), 'E') === 1 && grindOf(pcOf('G'), 'E') === 1 && grindOf(pcOf('C#'), 'Am') === 1
+    && grindOf(pcOf('F'), 'Gmaj7') === 1 && grindOf(pcOf('B'), 'F') === 0.4
+    && grindOf(pcOf('D'), 'C') === 0 && grindOf(pcOf('B'), 'Am') === 0 && grindOf(pcOf('F'), 'G7') === 0 && grindOf(pcOf('E'), 'E') === 0,
+  'a flat ninth, the other third and the other seventh grind, a tritone a little; ninths and sevenths over a triad are colour');
+  const fitted = fitToChords(L('G4:4 . . . F5:4 . . . E5:4 . . . B4:4 . . .'), 'E');
+  assert(fitted.notes[0] === 'G#4' && fitted.notes[4] === 'E5' && fitted.notes[8] === 'E5' && fitted.notes[12] === 'B4' && fitted.lens[0] === 4,
+    'a line made from the hook is fitted to its chord: G over E major becomes the leading note, F steps down to E, the rest stays');
+  const leansOnF = partWeights(L('E5:2 . F5:4 . . . G5:2 . F5:4 . . . E5:2 . . .'));
+  assert(chordFit(leansOnF, 'C') > chordFit(leansOnF, 'Em'), 'a bar leaning on F sits on C, not on E minor, where the F is a flat ninth');
+  const pedal = clearUnder(L('E2:16 . . . . . . . . . . . . . . .'), L('. . . . . . . . F5:8 . . . . . . .'), 'Dm');
+  const walk = clearUnder(L('A2:4 . . . C3:4 . . . E3:4 . . . G#2:4 . . .'), L('A4:16 . . . . . . . . . . . . . . .'), 'Am');
+  assert(pedal.notes[0] === 'D2' && walk.notes[12] === 'A2' && walk.notes[4] === 'C3',
+    'a pedal or a walking bass a semitone under the tune steps onto its chord\'s root; the rest of the line is left alone');
+  // Across the Pop Song styles' pre-choruses and middle 8s, made from four-bar riffs: no hook note
+  // grinds on the chord the pad holds under it.
+  let x = 9;
+  const random = () => ((x = (x * 16807) % 2147483647) / 2147483647);
+  const pcHz = (hz) => ((Math.round(69 + 12 * Math.log2(hz / 440)) % 12) + 12) % 12;
+  let weight = 0; let grind = 0;
+  for (const style of ['eurodance', 'synthwave', 'nu-disco', 'italo-disco', 'reggaeton']) {
+    for (let k = 0; k < 3; k++) {
+      const out = generateBanger({ riff: riffFromNotes(luckyNotes('simple', random, 4)), options: { style }, seed: 40 + k, level: false });
+      const { bank, laneOf, form } = out;
+      const pad = laneOf.pad || laneOf.saws || laneOf.piano;
+      for (const sec of form.filter((f) => f.role === 'preChorus' || f.role === 'middle8')) {
+        for (let b = sec.from - 1; b < sec.to; b++) {
+          const s = bank.sections[Math.floor(b / 2)]; const o = (b % 2) * 16;
+          const hook = s?.[laneOf.hook]?.slice(o, o + 16); const chord = s?.[pad]?.slice(o, o + 16);
+          if (!hook || !chord) continue;
+          // the chord the pad is holding when each hook note starts: the root that takes in most of it
+          const lens = s[`${pad}Len`];
+          const heldAt = (i) => {
+            let at = null;
+            chord.forEach((v, j) => { if (v != null && j <= i && j + (lens?.[o + j] ?? 1) > i) at = v; });
+            return new Set(at == null ? [] : [].concat(at).map(pcHz));
+          };
+          hook.forEach((v, i) => {
+            if (v == null) return;
+            const held = heldAt(i);
+            let root = null; let third = null; let most = 0;
+            for (let r = 0; r < 12; r++) {
+              const t = held.has((r + 4) % 12) ? 4 : held.has((r + 3) % 12) ? 3 : null;
+              const n = [r, r + (t ?? 0), r + 7, r + 10, r + 11].filter((x) => held.has(x % 12)).length;
+              if (held.has(r) && t != null && n > most) { root = r; third = t; most = n; }
+            }
+            if (root == null) return;
+            const p = pcHz([].concat(v)[0]);
+            const w = s[`${laneOf.hook}Len`]?.[o + i] ?? 1;
+            weight += w;
+            if (!held.has(p) && (p === (root + 1) % 12 || p === (root + 7 - third) % 12)) grind += w;
+          });
+        }
+      }
+    }
+  }
+  assert(weight > 0 && grind / weight < 0.01, `pre-choruses and middle 8s made from four-bar riffs: ${(100 * grind / weight).toFixed(1)}% of the hook grinds (a flat ninth or the other third)`);
+}
+
 if (failed) { console.error('\nbanger: FAILED'); process.exit(1); }
 console.log('\nbanger: all passed');

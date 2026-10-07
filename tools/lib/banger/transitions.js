@@ -16,7 +16,7 @@
 // The existing switches still say yes or no: Fills, Riser, Hard Stop, Stutter, Delay
 // Throws. Every move is recorded in `events.transitions` — the tests and the song's note
 // read them. Browser-safe.
-import { P, cut, blank, isDrumPart, nameOf } from './theory.js';
+import { P, cut, blank, isDrumPart, nameOf, midi, chordSym, grindOf, parseChord } from './theory.js';
 import { pitchesOf } from './cohesion.js';
 
 export const TRANSITIONS = Object.freeze({
@@ -24,6 +24,40 @@ export const TRANSITIONS = Object.freeze({
   pause: 'The Pause', pickup: 'Pickup', throw: 'Delay Throw', halfTimeBar: 'Half-Time Bar',
 });
 const DRUM_ROLES = ['kick', 'clap', 'snare', 'hats', 'ohats', 'fill', 'shaker', 'tambourine', 'congas', 'cowbell', 'ride'];
+
+/** The parts that hold a bar's harmony, and its bass. */
+const HARMONY_ROLES = ['pad', 'saws', 'piano', 'choir', 'chords'];
+const pcOf = (m) => ((m % 12) + 12) % 12;
+
+/**
+ * The chord sounding at `step` of a bar, read off its harmony parts — the triad (and seventh) that
+ * takes in most of what is held, on the bass's note where it can — or null where none is clear.
+ */
+function chordUnder(bar, step) {
+  const held = new Set();
+  const sounding = (part) => {
+    let at = null;
+    part.notes.forEach((v, i) => { if (v != null && i <= step && i + (part.lens[i] ?? 1) > step) at = v; });
+    return at == null ? [] : [].concat(at).map(midi);
+  };
+  for (const role of HARMONY_ROLES) if (bar[role] && !isDrumPart(bar[role])) sounding(bar[role]).forEach((m) => held.add(pcOf(m)));
+  const bass = bar.bass && !isDrumPart(bar.bass) ? sounding(bar.bass).map(pcOf) : [];
+  // A root with its third, and its fifth, its seventh or the bass under it (a V7 often drops its fifth).
+  let best = null;
+  for (let r = 0; r < 12; r++) {
+    const third = held.has((r + 4) % 12) ? 4 : held.has((r + 3) % 12) ? 3 : null;
+    if (third == null || !(held.has(r) || bass.includes(r))) continue;
+    const seventh = held.has((r + 11) % 12) ? 11 : held.has((r + 10) % 12) ? 10 : null;
+    if (!held.has((r + 7) % 12) && seventh == null && !bass.includes(r)) continue;
+    const score = [r, r + third, r + 7, seventh == null ? null : r + seventh].filter((x) => x != null && held.has(x % 12)).length
+      + (bass.includes(r) ? 0.5 : 0);
+    if (!best || score > best.score) best = { r, third, seventh, score };
+  }
+  if (!best) return null;
+  const quality = best.third === 4 ? (best.seventh === 11 ? 'maj7' : best.seventh === 10 ? '7' : '')
+    : (best.seventh === 11 ? 'mmaj7' : best.seventh === 10 ? 'm7' : 'm');
+  return chordSym(best.r, quality);
+}
 
 /** Any part — notes or drums — silenced from `step` on. */
 function cutAny(part, step) {
@@ -59,15 +93,26 @@ export function planTransitions({ form, bars, events, options, D, rng, fillPick,
       moves.push('fill');
     };
     const pickup = () => {
-      // The hook's first note, walked up to from two scale steps below on the last two
-      // sixteenths — only where the hook is not already playing then.
+      // The hook's first note, walked up to from two steps below on the last two sixteenths —
+      // only where the hook is not already playing then. A step is a note of the scale or of the
+      // chord sounding there that does not grind on that chord (6 Oct 2026): into A over E major
+      // the walk is E, G# rather than F, G.
       const first = bars[next.from - 1]?.hook;
       const target = first && pitchesOf(first)[0];
       if (!target || (bar.hook && bar.hook.notes.slice(12).some((v) => v != null))) return;
       const out = bar.hook ? { notes: [...bar.hook.notes], lens: [...bar.hook.lens] } : blank();
-      const below = (m) => { let x = m - 1; while (x > m - 4 && !scale.includes(((x % 12) + 12) % 12)) x--; return x; };
-      out.notes[14] = nameOf(below(below(target))); out.lens[14] = 1;
-      out.notes[15] = nameOf(below(target)); out.lens[15] = 1;
+      const below = (m, step) => {
+        let x = m - 1;
+        while (x > m - 4 && !scale.includes(pcOf(x))) x--;
+        const sym = chordUnder(bar, step);
+        if (!sym || grindOf(pcOf(x), sym) === 0) return x;
+        const { pcs } = parseChord(sym);
+        for (let y = m - 1; y > m - 6; y--) if ((scale.includes(pcOf(y)) || pcs.includes(pcOf(y))) && grindOf(pcOf(y), sym) === 0) return y;
+        return x;
+      };
+      const second = below(target, 15);
+      out.notes[14] = nameOf(below(second, 14)); out.lens[14] = 1;
+      out.notes[15] = nameOf(second); out.lens[15] = 1;
       bar.hook = out;
       moves.push('pickup');
     };

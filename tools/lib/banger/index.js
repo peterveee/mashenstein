@@ -67,8 +67,13 @@ export {
  * 4 (4 Oct 2026): opt-in ongoing track production, under production policy 1.
  * Keep Style (also the default for old recipes) retains v3's mix and music.
  * 7 (6 Oct 2026): the Machine-Gun Sweep into one build in three, in the styles that have it (fx.js).
+ * 8 (6 Oct 2026): nothing grinds (Peter: "a little discordant"). Chords are chosen against notes that
+ * would grind on them (analyse.js chordFit); the lines made from the hook — pre-chorus, middle 8,
+ * verse, the third below, the breakdown bell — are fitted to their chords (theory.js fitToChords);
+ * a breakdown's walk gives way to a hook that grinds on it; a pedal or walking bass steps off a note
+ * a semitone under the tune (clearUnder). Every take with such a moment changes, kept Lab songs too.
  */
-export const BANGER_GENERATOR_VERSION = 7;
+export const BANGER_GENERATOR_VERSION = 8;
 
 /** A seed as an unsigned 32-bit number. */
 export const normaliseSeed = (seed) => (Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : 1);

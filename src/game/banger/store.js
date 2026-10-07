@@ -4,7 +4,7 @@
 // anyone's songs away, and it rebuilds `settings` wholesale. Per install, like the
 // settings, not per slot — a song is not campaign progress.
 //
-//   save.data.bangers = { draft: { v, mode, simple, advanced, simpleEdited, style, mood },
+//   save.data.bangers = { draft: { v, mode, bars, simple, advanced, simpleEdited, style, mood },
 //                         kept: [recipe…], next, lastPlayed }
 //
 // A GENER8 with a new riff, style or mood keeps a new song (Peter, 3 Oct 2026), added at

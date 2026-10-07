@@ -54,6 +54,22 @@ const BY_ID = new Map([...BANGER_STYLES, ...BANGER_SOUND_SETS, ...BANGER_FLAVOUR
 /** The recipe called `id` — a style, a sound set or a flavour — or null. */
 export const styleFor = (id) => (id == null ? null : BY_ID.get(id) || null);
 
+// A sound kept from a seed is named for the style too — `Ride · Future Bass` — and this takes
+// that off again, but nothing else: a kit sound's instrument stays, so `Havana Patio · Clave`
+// keeps its `Clave`. A flavour's label has a `·` of its own (`Reggaeton · Romántico`), so the
+// longest match wins.
+const STYLE_LABELS = [...BY_ID.values()].map((s) => s.label).filter(Boolean).sort((a, b) => b.length - a.length);
+/** A preset's label without the style it was kept for: `Ride · Future Bass` → `Ride`. */
+export const withoutStyleSuffix = (label) => {
+  const text = String(label);
+  for (const s of STYLE_LABELS) {
+    const at = text.lastIndexOf(` · ${s}`);
+    const rest = at < 0 ? null : text.slice(at + s.length + 3);
+    if (at > 0 && (rest === '' || (rest.startsWith(' ') && !rest.includes('·')))) return text.slice(0, at);
+  }
+  return text;
+};
+
 /** The sound set `set` of a style ('light', '8bit'), or null — 'style' and unknown sets are null. */
 export const soundSetOf = (style, set) => BANGER_SOUND_SETS.find((x) => x.base === style?.id && x.soundSet === set) || null;
 /** The sound sets a style has, as ids — what the Sound Set option can pick for it. */

@@ -1615,6 +1615,23 @@ export const GOLD_TOASTER_FINISH = {
     [0.62, '#e8b232'], [1, '#f8cc48']],
 };
 
+// THE TOASTER'S TOP — F, ROUNDED TOP, from the curved-top bake-off (Peter, 7 Oct 2026: "maybe
+// round the top corners to match the bottom corners", then "Use f"). Flat inside, every top edge
+// rolled over a quarter-round TOASTER_TOP_R toaster lengths — about the bottom corners' radius on
+// screen — along it, across it and round the corners as a ball does, so the top corners are as
+// round as the bottom ones. `z(s, d)` is how far the top stands above the flat at s along the
+// toaster (0 its lever end, 1 its back) and d across it (0 the face's top edge, 1 the far edge;
+// d is a share of the 0.6-long depth, s already in lengths); `crestD` is where its light runs.
+// The painter's `finish.crown` can swap it for one of the bake-off's others (src/dev/toaster-crowns.js).
+export const TOASTER_TOP_R = 0.08;
+export function roundedToasterTop(s, d, r = TOASTER_TOP_R) {
+  const rs = r, rd = r / 0.6;
+  const a = Math.max(0, 1 - s / rs, (s - (1 - rs)) / rs), b = Math.max(0, 1 - d / rd, (d - (1 - rd)) / rd);
+  const q = Math.min(1, Math.hypot(a, b));
+  return -r + r * Math.sqrt(1 - q * q);
+}
+export const TOASTER_CROWN = Object.freeze({ z: roundedToasterTop, crestD: 0.08 });
+
 // The replay toaster's casing: the same chrome as the gold one, in steel, with
 // the rim, lever, slot and gleam that the gold casing keeps warm gone cool.
 export const SILVER_TOASTER_FINISH = {
@@ -3701,47 +3718,111 @@ export const PROP_PAINTERS = {
     const toastRise = h * 0.48 * toastOpen;
     const toastSway = w * 0.002 * Math.sin(toastPhase);
 
-    // Small rear wing tucked behind the toaster's top shoulder.
-    ctx.save();
-    ctx.translate(w * 0.34, h * 0.44);
-    // This wing extends left in the authored view, so its hinge rotation must
-    // oppose the foreground wing for both tips to rise and fall together.
-    ctx.rotate(0.28 + lift * 0.26 - sweep * 0.02);
-    ctx.scale(1.08, 1.08);
-    wingShape('#d5d4dc', (c) => {
-      c.moveTo(0, h * 0.08);
-      c.bezierCurveTo(-w * 0.1, -h * 0.01, -w * 0.22, -h * 0.03, -w * 0.29, h * 0.01);
-      c.quadraticCurveTo(-w * 0.22, h * 0.11, -w * 0.15, h * 0.11);
-      c.quadraticCurveTo(-w * 0.11, h * 0.19, -w * 0.05, h * 0.15);
-      c.closePath();
-    });
-    stroke(ctx, '#9999a8', Math.max(0.24, u * 0.014), (c) => {
-      c.moveTo(-w * 0.25, h * 0.025); c.quadraticCurveTo(-w * 0.12, h * 0.06, 0, h * 0.1);
-      c.moveTo(-w * 0.17, h * 0.035); c.lineTo(-w * 0.08, h * 0.135);
-    });
-    ctx.restore();
+    // The box's two axes (see ONE BOX IN ONE VIEW below), in the authored view.
+    const F0 = [0.31, 0.39], LONG = [0.475, -0.04], DEEP = [-0.14, -0.09];
+    const at = (s, d) => [w * (F0[0] + LONG[0] * s + DEEP[0] * d), h * (F0[1] + LONG[1] * s + DEEP[1] * d)];
+    // A WING BAKE-OFF's own wings (src/dev/toaster-wings.js): `finish.wings(ctx, which, rig)`
+    // draws the rear pair's in place of the small rear wing, before the casing, and the
+    // front's in place of the big one, after it — in this authored, mirrored view, where the
+    // toaster's back is +x. Review only: no finish the game uses has one.
+    const wingRig = { w, h, u, lift, sweep, at };
+    // THE TOP's surface (TOASTER_CROWN, the rounded top; a bake-off's `finish.crown` instead):
+    // `crown.z(s, d)` is how far it stands above the flat cap at (s, d), in toaster lengths — one
+    // length up is 0.59h, the face being 0.53h for 0.9 of one tall — and `top3` is a point on it.
+    // The end plane's top, the face's top edge, the cap, the slot and the slice's clip all follow it.
+    const crown = finish?.crown || TOASTER_CROWN;
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const zAt = (s, d) => crown.z(clamp01(s), clamp01(d));
+    const top3 = (s, d) => { const [x, y] = at(s, d); return [x, y - 0.59 * h * zAt(s, d)]; };
+    // samples across the surface: closer together at its edges, where a rolled one turns over
+    const ss = [0, 0.01, 0.025, 0.045, 0.07, 0.1, 0.14, 0.2, 0.27, 0.35, 0.43, 0.5,
+      0.57, 0.65, 0.73, 0.8, 0.86, 0.9, 0.93, 0.955, 0.975, 0.99, 1];
+    // The cap's outline, drawn first: the hull of the surface, of which anything below its true
+    // edges is covered by the end plane and the face, whose tops follow the same surface.
+    const crownCap = () => {
+      const pts = [];
+      for (const a of ss) for (const b of ss) pts.push(top3(a, b));
+      pts.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+      const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+      const lower = [], upper = [];
+      for (const pt of pts) { while (lower.length > 1 && cross(lower.at(-2), lower.at(-1), pt) <= 0) lower.pop(); lower.push(pt); }
+      for (const pt of [...pts].reverse()) { while (upper.length > 1 && cross(upper.at(-2), upper.at(-1), pt) <= 0) upper.pop(); upper.push(pt); }
+      return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+    };
+    {
+      const hull = crownCap();
+      const capPath = (c) => { c.moveTo(...hull[0]); for (const pt of hull.slice(1)) c.lineTo(...pt); c.closePath(); };
+      fineShape(finish?.top || '#ffe16a', capPath);
+      // light along its crest: the top's roundness is in the shine
+      ctx.save();
+      ctx.beginPath(); capPath(ctx); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.beginPath();
+      if (crown.crestD != null) {
+        for (const a of ss) ctx.lineTo(...top3(0.06 + a * 0.88, crown.crestD - 0.12));
+        for (const a of [...ss].reverse()) ctx.lineTo(...top3(0.06 + a * 0.88, crown.crestD + 0.12));
+      } else if (crown.crestS != null) {
+        for (const b of ss) ctx.lineTo(...top3(crown.crestS - 0.09, b));
+        for (const b of [...ss].reverse()) ctx.lineTo(...top3(crown.crestS + 0.09, b));
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    if (finish?.wings) finish.wings(ctx, 'rear', wingRig);
+    else {
+      // Small rear wing tucked behind the toaster's top shoulder.
+      ctx.save();
+      ctx.translate(w * 0.34, h * 0.44);
+      // This wing extends left in the authored view, so its hinge rotation must
+      // oppose the foreground wing for both tips to rise and fall together.
+      ctx.rotate(0.28 + lift * 0.26 - sweep * 0.02);
+      ctx.scale(1.08, 1.08);
+      wingShape('#d5d4dc', (c) => {
+        c.moveTo(0, h * 0.08);
+        c.bezierCurveTo(-w * 0.1, -h * 0.01, -w * 0.22, -h * 0.03, -w * 0.29, h * 0.01);
+        c.quadraticCurveTo(-w * 0.22, h * 0.11, -w * 0.15, h * 0.11);
+        c.quadraticCurveTo(-w * 0.11, h * 0.19, -w * 0.05, h * 0.15);
+        c.closePath();
+      });
+      stroke(ctx, '#9999a8', Math.max(0.24, u * 0.014), (c) => {
+        c.moveTo(-w * 0.25, h * 0.025); c.quadraticCurveTo(-w * 0.12, h * 0.06, 0, h * 0.1);
+        c.moveTo(-w * 0.17, h * 0.035); c.lineTo(-w * 0.08, h * 0.135);
+      });
+      ctx.restore();
+    }
 
     // Flat reference construction: one narrow side plane, one broad face and
     // one sloped cap. Avoid a separate round centre panel.
+    //
+    // ONE BOX IN ONE VIEW (Peter, 7 Oct 2026: "the top perspective where the
+    // toast comes out is off"). The end plane, the cap, the slot and the slice
+    // all hang off two vectors: LONG, along the top of the broad face, and DEEP,
+    // from the face's top edge back across the toaster. The end plane's top
+    // edge and the cap's sides are DEEP; the cap's back edge is LONG; the slot
+    // runs LONG down the middle of the cap; the slice stands in it parallel to
+    // the face. The cap used to be a level band over a near-level end plane —
+    // two views at once — and the slice was sheared to suit neither.
+    // (F0, LONG, DEEP and at() are set up above the rear wing, which a candidate's wings use too.)
     fineShape(finish?.back || '#a97816', (c) => {
-      c.moveTo(w * 0.16, h * 0.36);
-      c.quadraticCurveTo(w * 0.17, h * 0.35, w * 0.2, h * 0.36);
-      c.lineTo(w * 0.31, h * 0.39);
+      // its top is the top's section at the near end
+      c.moveTo(...top3(0, 0));
+      for (const b of ss.slice(1)) c.lineTo(...top3(0, b));
+      c.lineTo(w * 0.17, h * 0.78);
+      c.quadraticCurveTo(w * 0.17, h * 0.82, w * 0.21, h * 0.845);
       c.lineTo(w * 0.32, h * 0.92);
-      c.lineTo(w * 0.21, h * 0.9);
-      c.quadraticCurveTo(w * 0.16, h * 0.88, w * 0.16, h * 0.82);
-      c.lineTo(w * 0.16, h * 0.36);
       c.closePath();
     });
     const sidePath = (c) => {
-      c.moveTo(w * 0.31, h * 0.39);
-      c.lineTo(w * 0.74, h * 0.35);
-      c.quadraticCurveTo(w * 0.8, h * 0.34, w * 0.8, h * 0.41);
+      // its top edge is the top's front edge, rounding over the far corner
+      const rise = -0.59 * h * zAt(1, 0);
+      c.moveTo(...top3(0, 0));
+      for (const a of ss.slice(1)) if (a <= 0.91) c.lineTo(...top3(a, 0));
+      c.quadraticCurveTo(w * 0.8, h * 0.34 + rise, w * 0.8, h * 0.41 + rise);
       c.lineTo(w * 0.79, h * 0.81);
       c.quadraticCurveTo(w * 0.79, h * 0.86, w * 0.73, h * 0.88);
       c.lineTo(w * 0.36, h * 0.92);
       c.quadraticCurveTo(w * 0.32, h * 0.92, w * 0.32, h * 0.88);
-      c.lineTo(w * 0.31, h * 0.39);
+      c.lineTo(...top3(0, 0));
       c.closePath();
     };
     fineShape(finish?.side || '#f4c934', sidePath);
@@ -3796,21 +3877,10 @@ export const PROP_PAINTERS = {
       ctx.lineWidth = Math.max(0.24, u * 0.015);
       ctx.stroke();
     }
-    fineShape(finish?.top || '#ffe16a', (c) => {
-      c.moveTo(w * 0.17, h * 0.36);
-      c.lineTo(w * 0.31, h * 0.28);
-      c.quadraticCurveTo(w * 0.32, h * 0.27, w * 0.35, h * 0.27);
-      c.lineTo(w * 0.68, h * 0.27);
-      c.quadraticCurveTo(w * 0.7, h * 0.27, w * 0.72, h * 0.29);
-      c.lineTo(w * 0.79, h * 0.34);
-      c.quadraticCurveTo(w * 0.8, h * 0.36, w * 0.77, h * 0.36);
-      c.lineTo(w * 0.35, h * 0.39);
-      c.quadraticCurveTo(w * 0.32, h * 0.4, w * 0.3, h * 0.38);
-      c.closePath();
-    });
+    // (The cap itself was drawn first, under the end plane and the face.) Its front edge:
     stroke(ctx, finish?.edge || 'rgba(178,124,22,0.55)', Math.max(0.2, u * 0.011), (c) => {
-      c.moveTo(w * 0.35, h * 0.39);
-      c.lineTo(w * 0.77, h * 0.36);
+      c.moveTo(...top3(0.05, 0));
+      for (const a of ss) if (a > 0.05 && a <= 0.96) c.lineTo(...top3(a, 0));
     });
 
     // The ejector lives on the narrow side plane. Its thumb rises as the
@@ -3831,56 +3901,88 @@ export const PROP_PAINTERS = {
     plain(ctx, finish?.glint || '#fff8c8', (c) => star(c, w * 0.67, h * 0.56, w * (0.012 + glimmer * 0.014), w * 0.005, 4));
     ctx.restore();
 
-    // Clip the full square slice at the slot line: at the bottom of its slow
-    // cycle it is genuinely inside the casing; at the top it rises almost
-    // completely clear. The tiny lateral settle keeps all 96 poses distinct.
-    ctx.save();
-    ctx.translate(w * 0.5, h * 0.325);
-    ctx.rotate(-0.07);
-    ctx.translate(-w * 0.5, -h * 0.325);
-    ctx.beginPath();
-    ctx.rect(0, -h, w, h * 1.335);
-    ctx.clip();
-    ctx.translate(toastSway, -toastRise);
-    // A slight shear makes the slice lean toward the visible right-side plane
-    // while its lower edge remains aligned with the slot.
-    ctx.transform(1, 0, 0.07, 1, -h * 0.021, 0);
-    fineShape('#93602a', (c) => rr(c, w * 0.385, h * 0.345, w * 0.23, h * 0.345, w * 0.03));
-    plain(ctx, '#d9a84f', (c) => rr(c, w * 0.415, h * 0.38, w * 0.17, h * 0.275, w * 0.022));
-    ctx.restore();
-
-    // One clean recessed opening; the dark capsule carries enough depth
-    // without an extra metallic rim competing with the toast.
-    ctx.save();
-    ctx.translate(w * 0.5, h * 0.325);
-    ctx.rotate(-0.07);
-    ctx.translate(-w * 0.5, -h * 0.325);
-    plain(ctx, finish?.slot || '#4a2b12', (c) => rr(c, w * 0.36, h * 0.309, w * 0.28, h * 0.036, h * 0.016));
-    ctx.restore();
-
-    // Large foreground wing wraps across the side. Separate feather tips make
-    // the wing survive reduction without reverting to a thick dark outline.
-    ctx.save();
-    ctx.translate(w * 0.57, h * 0.52);
-    ctx.rotate(-0.08 - lift * 0.31 + sweep * 0.025);
-    ctx.scale(1.08, 1.08);
-    wingShape('#f6f5fa', (c) => {
-      c.moveTo(-w * 0.05, -h * 0.06);
-      c.bezierCurveTo(w * 0.08, -h * 0.14, w * 0.21, -h * 0.15, w * 0.36, -h * 0.11);
-      c.quadraticCurveTo(w * 0.4, -h * 0.04, w * 0.34, h * 0.015);
-      c.quadraticCurveTo(w * 0.39, h * 0.08, w * 0.31, h * 0.12);
-      c.quadraticCurveTo(w * 0.34, h * 0.2, w * 0.25, h * 0.2);
-      c.quadraticCurveTo(w * 0.23, h * 0.28, w * 0.14, h * 0.23);
-      c.quadraticCurveTo(w * 0.08, h * 0.29, w * 0.02, h * 0.18);
+    // One clean recessed opening, LONG down the middle of the cap; the dark
+    // capsule carries enough depth without a metallic rim competing with the
+    // toast. Under the slice, which rises out of it.
+    plain(ctx, finish?.slot || '#4a2b12', (c) => {
+      // down the top's middle, following it
+      const along = ss.map((a) => 0.27 + a * 0.52);
+      c.moveTo(...top3(0.27, 0.62));
+      for (const a of along) c.lineTo(...top3(a, 0.62));
+      c.quadraticCurveTo(...top3(0.83, 0.5), ...top3(0.79, 0.38));
+      for (const a of [...along].reverse()) c.lineTo(...top3(a, 0.38));
+      c.quadraticCurveTo(...top3(0.23, 0.5), ...top3(0.27, 0.62));
       c.closePath();
     });
-    stroke(ctx, '#aaaab8', Math.max(0.24, u * 0.014), (c) => {
-      c.moveTo(-w * 0.02, h * 0.02); c.quadraticCurveTo(w * 0.17, h * 0.02, w * 0.34, -h * 0.08);
-      c.moveTo(w * 0.1, h * 0.04); c.lineTo(w * 0.31, h * 0.1);
-      c.moveTo(w * 0.08, h * 0.08); c.lineTo(w * 0.24, h * 0.19);
-      c.moveTo(w * 0.04, h * 0.1); c.lineTo(w * 0.14, h * 0.23);
-    });
+
+    // The slice stands in the slot parallel to the face, so it is drawn on the
+    // face's own axes — LONG across, straight up — from the slot's middle line,
+    // and clipped there: at the bottom of its slow cycle it is genuinely inside
+    // the casing; at the top it rises almost completely clear. Its back face
+    // shows a sliver of crust over the front one, the slice's thickness. The
+    // tiny lateral settle keeps all 96 poses distinct.
+    // `sheet` is a rounded rectangle on those axes: `u` a share of LONG, `v` px down, `r` px.
+    // (from the slot's middle where the slice stands, and clipped along the top's curve there)
+    const [sx0, sy0] = [at(0.3, 0.5)[0], at(0.3, 0.5)[1] - 0.59 * h * zAt(0.52, 0.5)];
+    const Lx = LONG[0] * w, Ly = LONG[1] * h;
+    const sheet = (c, u0, v0, uw, vh, r, [ox, oy] = [0, 0]) => {
+      const P = (uu, vv) => [sx0 + ox + uu * Lx, sy0 + oy + uu * Ly + vv];
+      const ru = r / Lx;
+      c.moveTo(...P(u0 + ru, v0)); c.lineTo(...P(u0 + uw - ru, v0));
+      c.quadraticCurveTo(...P(u0 + uw, v0), ...P(u0 + uw, v0 + r));
+      c.lineTo(...P(u0 + uw, v0 + vh - r));
+      c.quadraticCurveTo(...P(u0 + uw, v0 + vh), ...P(u0 + uw - ru, v0 + vh));
+      c.lineTo(...P(u0 + ru, v0 + vh));
+      c.quadraticCurveTo(...P(u0, v0 + vh), ...P(u0, v0 + vh - r));
+      c.lineTo(...P(u0, v0 + r));
+      c.quadraticCurveTo(...P(u0, v0), ...P(u0 + ru, v0));
+      c.closePath();
+    };
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(sx0 - 2 * Lx, sy0 - 2 * Ly - 2 * h); ctx.lineTo(sx0 + 3 * Lx, sy0 + 3 * Ly - 2 * h);
+    {
+      const [ex, ey] = top3(1, 0.5);
+      ctx.lineTo(ex + 2 * Lx, ey + 2 * Ly);
+      for (const a of [...ss].reverse()) ctx.lineTo(...top3(a, 0.5));
+      const [bx, by] = top3(0, 0.5);
+      ctx.lineTo(bx - 2 * Lx, by - 2 * Ly);
+    }
+    ctx.closePath();
+    ctx.clip();
+    // the slice: a share of LONG wide and TH tall, its top risen `toastRise` above the slot
+    const TW = 0.44, TH = h * 0.345, du = toastSway / Lx, top = -toastRise;
+    plain(ctx, '#7a4c1e', (c) => sheet(c, du, top, TW, TH, w * 0.03, [DEEP[0] * w * 0.1, DEEP[1] * h * 0.1]));
+    fineShape('#93602a', (c) => sheet(c, du, top, TW, TH, w * 0.03));
+    plain(ctx, '#d9a84f', (c) => sheet(c, du + TW * 0.13, top + h * 0.035, TW * 0.74, TH - h * 0.07, w * 0.022));
     ctx.restore();
+
+    if (finish?.wings) finish.wings(ctx, 'front', wingRig);
+    else {
+      // Large foreground wing wraps across the side. Separate feather tips make
+      // the wing survive reduction without reverting to a thick dark outline.
+      ctx.save();
+      ctx.translate(w * 0.57, h * 0.52);
+      ctx.rotate(-0.08 - lift * 0.31 + sweep * 0.025);
+      ctx.scale(1.08, 1.08);
+      wingShape('#f6f5fa', (c) => {
+        c.moveTo(-w * 0.05, -h * 0.06);
+        c.bezierCurveTo(w * 0.08, -h * 0.14, w * 0.21, -h * 0.15, w * 0.36, -h * 0.11);
+        c.quadraticCurveTo(w * 0.4, -h * 0.04, w * 0.34, h * 0.015);
+        c.quadraticCurveTo(w * 0.39, h * 0.08, w * 0.31, h * 0.12);
+        c.quadraticCurveTo(w * 0.34, h * 0.2, w * 0.25, h * 0.2);
+        c.quadraticCurveTo(w * 0.23, h * 0.28, w * 0.14, h * 0.23);
+        c.quadraticCurveTo(w * 0.08, h * 0.29, w * 0.02, h * 0.18);
+        c.closePath();
+      });
+      stroke(ctx, '#aaaab8', Math.max(0.24, u * 0.014), (c) => {
+        c.moveTo(-w * 0.02, h * 0.02); c.quadraticCurveTo(w * 0.17, h * 0.02, w * 0.34, -h * 0.08);
+        c.moveTo(w * 0.1, h * 0.04); c.lineTo(w * 0.31, h * 0.1);
+        c.moveTo(w * 0.08, h * 0.08); c.lineTo(w * 0.24, h * 0.19);
+        c.moveTo(w * 0.04, h * 0.1); c.lineTo(w * 0.14, h * 0.23);
+      });
+      ctx.restore();
+    }
 
     // At the glint's peak the band throws a star off the face's top edge, over the
     // wing and out past the silhouette — the part of a glint that reads at lane size.

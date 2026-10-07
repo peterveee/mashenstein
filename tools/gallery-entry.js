@@ -27,7 +27,7 @@ import { PUNT, HEAVY_PUNT, startPunt, stepPunt } from '../src/game/punt.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
 import { HERO_DANCE_LAB_CANDIDATES, drawHeroDanceCard } from '../src/dev/hero-dance-candidates.js';
 import {
-  PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite,
+  PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, SILVER_TOASTER_FINISH,
   PORTAL_SPRITE, PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME,
   eggshellCopterArt, switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T,
 } from '../src/sprites/props.js';
@@ -130,12 +130,24 @@ import { BangerClubState } from '../src/game/banger/club.js';
 import { PARTY_BEATS, partyAlive } from '../src/game/banger/club-party.js';
 import { drawBeachBall, BEACH_BALL_COLOURS, BEACH_BALL_COLOURS_2 } from '../src/game/banger/beachball.js';
 import { screen as rendererScreen } from '../src/engine/renderer.js';
-import { drawPaperFish, FISHES } from '../src/game/banger/club-fish.js';
+import { drawPaperFish, FISHES, anglerJaws } from '../src/game/banger/club-fish.js';
 import { FISH_CANDIDATES } from '../src/dev/fish-candidates.js';
 import { FISH_STYLES } from '../src/dev/fish-styles.js';
 import { drawSpeakerStack, PORT_HORN, PA_HORN } from '../src/game/banger/speakers.js';
 import { HORN_CANDIDATES } from '../src/dev/speaker-horn-candidates.js';
 import { BABY_SHARK_HATS, babyBonnet } from '../src/dev/baby-shark-hats.js';
+import { ANGLER_MOUTHS, anglerMaroon } from '../src/dev/angler-mouth-candidates.js';
+import { createFishTankLab, tankPaper, TANK_DIVER } from '../src/engine/visualisers.js';
+import { DIVERS, STANDING_DIVER } from '../src/dev/diver-candidates.js';
+import { MERMAIDS } from '../src/dev/mermaid-candidates.js';
+import { MIXER_ICON_CANDIDATES } from '../src/dev/mixer-icon-candidates.js';
+import { MIXER_ICONS, MIXER_ICONS_BEFORE } from '../src/game/banger/mixer-icons.js';
+import { BOLT_ATTRACT_CANDIDATES } from '../src/dev/bolt-attract-candidates.js';
+import { drawBoltButton, drawBoltPlain, boltAttractAlpha } from '../src/game/banger/bolt-button.js';
+import { TOASTER_SIZE, makeToaster, toasterAt, toasterLoop, drawToaster } from '../src/game/banger/club-toaster.js';
+import { applianceBefore } from '../src/dev/toaster-top-before.js';
+import { TOASTER_WING_CANDIDATES } from '../src/dev/toaster-wings.js';
+import { TOASTER_CROWN_CANDIDATES } from '../src/dev/toaster-crowns.js';
 import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
 
 // RUSTY WAS THE GUEST HERE from 1 to 10 Sep 2026 — a candidate drawn through
@@ -8910,10 +8922,10 @@ function cryptStyleTiles(grid, tag, cand) {
   }
 }
 
-// Eight regular Lab choreographies per hero, plus Lorenzo's occasional moonwalk.
+// Eight regular Lab choreographies per hero, plus the occasional moonwalk for Lorenzo, B-33P and Rusty.
 {
   const s = sectionEl('hero-dance-bakeoff', 'BANGER LAB — hero dance moves',
-    'CURRENT LAB MOVES — eight regular dances per hero, all available in the club, plus Lorenzo’s occasional side-on moonwalk. Includes three new signature routines for each hero, Rusty’s revised legwork and Grumpos’s slow tap and double biceps, with his normal standing arms between flexes. Each card pairs a close-up with a 28px lab-size figure. '
+    'CURRENT LAB MOVES — eight regular dances per hero, all available in the club, plus an occasional side-on moonwalk for Lorenzo (F), B-33P and Rusty (I) — one at a time, and very now and then all three together. Includes three new signature routines for each hero, Rusty’s revised legwork and Grumpos’s slow tap and double biceps, with his normal standing arms between flexes. Each card pairs a close-up with a 28px lab-size figure. '
     + 'All moves share a beat clock; the four lights count the bar. Tempo is a silent preview. '
     + 'Use ANIMATE to pause or SLOW to inspect the joints. Skirted heroes show a sample of the quiet legwork that the club varies during playback.',
     '2026-10-05');
@@ -9176,6 +9188,450 @@ function cryptStyleTiles(grid, tag, cand) {
       water(ctx, 240, 176);
       ctx.save(); ctx.translate(110, 92); baby(ctx, c, 140, t); ctx.restore();
     }, { animated: true, hires: 3, displayScale: 1.5 });
+  }
+}
+
+// THE FLYING TOASTER (Peter, 6 Oct 2026): one of the club's crowd moments, never under water;
+// a tap sends it round a loop-the-loop. club-toaster.js draws it; club.js starts it and takes the tap.
+{
+  const s = sectionEl('flying-toaster', 'BANGER LAB — the flying toaster',
+    'NEW 6 Oct 2026: one of the club’s crowd moments (club.js CLUB_MOMENTS), never while the room is under water. '
+    + 'Since 7 Oct it is the game’s own SILVER TOASTER (props.js applianceSilver, the one that pays only coins) — the first version was a new chrome toaster that read as the same object. '
+    + 'It crosses the room over the heroes’ heads and under the mirror ball, its wingbeat put on the beat and its toast on a two-bar cycle. '
+    + 'A tap sends it round a loop-the-loop; its chrome flashes once on the way round, where it turns through the light. '
+    + 'First card: the club at its landscape size (480x270, heroes 66px) at 128 BPM, a loop on every crossing. Then close up, flying and looping.',
+    '2026-10-06');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const FW = 480, FH = 270, FLOOR = 224, TOON_H = 66, BPM = 128;
+  const CELL = (FW - 8) / HERO_MOVES.length;
+  const sky = { width: FW, top: 83, bottom: FLOOR - TOON_H, S: TOON_H * TOASTER_SIZE };
+  const room = (ctx, t) => {
+    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
+    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
+    ctx.fillStyle = '#2a2244'; ctx.beginPath(); ctx.arc(FW / 2, 57, 20, 0, Math.PI * 2); ctx.fill();   // where the mirror ball hangs
+    HERO_MOVES.forEach((m, i) => drawToon(ctx, m.hero, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, 4 + CELL * (i + 0.5), FLOOR, TOON_H));
+  };
+  // a crossing every 9 seconds, alternate ways, tapped 2.5 seconds in
+  const crossing = (t) => {
+    const n = Math.floor(t / 9), k = t - n * 9;
+    let seed = n + 1;
+    const m = makeToaster(() => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; });
+    m.dir = n % 2 ? -1 : 1;
+    if (k >= 2.5) m.loops.push(toasterLoop(m, 2.5, sky));
+    return { m, k };
+  };
+  tile(grid, 'In the club, looping', 'Crossing the club at its size, tapped on every crossing.', FW, FH, (ctx, t) => {
+    room(ctx, t);
+    const { m, k } = crossing(t), at = toasterAt(m, k, sky);
+    ctx.save(); ctx.translate(at.x, at.y); ctx.scale(at.dir, 1);
+    drawToaster(ctx, sky.S, { beat: t * BPM / 60, pitch: at.pitch });
+    ctx.restore();
+  }, { animated: true });
+  const close = (ctx) => { const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#1a1538'); g.addColorStop(1, '#0f0d24'); ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176); };
+  tile(grid, 'Close up, flying', 'A wingbeat a beat; the toast’s cycle over two bars.', 240, 176, (ctx, t) => {
+    close(ctx);
+    ctx.save(); ctx.translate(120, 96); drawToaster(ctx, 110, { beat: t * BPM / 60, pitch: 0.06 }); ctx.restore();
+  }, { animated: true, hires: 3, displayScale: 1.5 });
+  tile(grid, 'Close up, looping', 'Round and round: the flash where it turns through the light.', 240, 176, (ctx, t) => {
+    close(ctx);
+    ctx.save(); ctx.translate(120, 92); drawToaster(ctx, 90, { beat: t * BPM / 60, pitch: -t * 2.4 }); ctx.restore();
+  }, { animated: true, hires: 3, displayScale: 1.5 });
+}
+
+// The angler's mouth (Peter, 6 Oct 2026: "whats the maroon bit for this fish, it's mouth? looks
+// odd can you bake off some fixes"). Every candidate chomping at 128 BPM, at the club's size and
+// close up, as drawPaperFish draws it in the flood.
+{
+  const s = sectionEl('angler-mouth-bakeoff', 'BANGER LAB — the angler’s mouth',
+    'SETTLED 6 Oct 2026 on C, the tongue; then on 7 Oct taken further (Peter: “not have a mouth area and just show teeth and tongue side on”): '
+    + '0 is the club’s now (club-fish.js anglerJaws), side on with no hole in the face — a lower jaw of its own hinged at the corner, the teeth crossing between the lips, a little tongue at the back by the corner, and open water in the gap in front of it. '
+    + 'C is the tongue in its dark throat as it shipped on 6 Oct; the maroon mouth before that is X. '
+    + 'The maroon wedge on the ANGLER (club-fish.js) is the inside of its open mouth. It reads oddly because it is laid on the face as one more cut-out, '
+    + 'so it casts a shadow like a sticker instead of sitting in the face like a hole; maroon on dark purple is muddy and reads as meat; its front edge runs straight down the silhouette, '
+    + 'so the face looks sliced off; and nothing says which part is jaw. A–F were the fixes (src/dev/angler-mouth-candidates.js). '
+    + 'The tail, the lamp, the eye and the fin are the same in every one, and every one keeps the chomp: shut on the beat, open between. '
+    + 'First cards: all of them side by side at the club’s size (the angler is 0.6 of a 66px hero) and at twice it. Then each close up.',
+    '2026-10-06');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const TOON_H = 66, BPM = 128;
+  const angler = FISHES.find((f) => f.name === 'ANGLER');
+  const CLUB_L = TOON_H * angler.size;
+  const all = [{ letter: '0', name: 'TODAY (club)', paint: anglerJaws, description: 'What the club draws now: side on, a hinged jaw, the teeth, a little tongue at the back and nothing else between the lips (7 Oct 2026).' }, ...ANGLER_MOUTHS,
+    { letter: 'X', name: 'THE OLD MAROON', paint: anglerMaroon, description: 'What it had until 6 Oct 2026: a maroon wedge laid over the face.' }];
+  const water = (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#21434f'); g.addColorStop(1, '#16313d');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  };
+  const fish = (ctx, c, L, t) => drawPaperFish(ctx, angler, L, { t, beat: t * BPM / 60, wag: Math.sin(t * 13), dive: 0, jaws: c.paint, heroH: TOON_H });
+  for (const [k, label] of [[1, 'club size'], [2, 'twice club size']]) {
+    const L = CLUB_L * k, step = Math.round(L * 1.6), LW = 16 + all.length * step, LH = Math.round(L * 1.22 + 14);
+    tile(grid, `All side by side (${label})`, `0 the club’s (C), A–F, and X the old maroon, each ${Math.round(L)}px nose to tail.`, LW, LH, (ctx, t) => {
+      water(ctx, LW, LH);
+      all.forEach((c, i) => {
+        ctx.save(); ctx.translate(8 + step * (i + 0.36), L * 0.8); fish(ctx, c, L, t + i * 0.11); ctx.restore();
+        ctx.fillStyle = '#bff8ff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(c.letter, 8 + step * (i + 0.5), LH - 4);
+      });
+    }, { animated: true, wide: true, hires: 3 });
+  }
+  for (const c of all) {
+    tile(grid, `${c.letter} — ${c.name}`, c.description, 240, 176, (ctx, t) => {
+      water(ctx, 240, 176);
+      ctx.save(); ctx.translate(86, 114); fish(ctx, c, 140, t); ctx.restore();
+    }, { animated: true, hires: 3, displayScale: 1.5 });
+  }
+}
+
+// THE GOLDEN TOASTER'S TOP (Peter, 7 Oct 2026: "i kinda like the current one but the top perspective
+// where the toast comes out is off"). PROP_PAINTERS.appliance now builds its end plane, cap, slot and
+// slice off one pair of axes; src/dev/toaster-top-before.js keeps the painter as it was, for comparison.
+{
+  const s = sectionEl('golden-toaster-top', 'GOLDEN TOASTER — the top, in perspective',
+    'FIXED 7 Oct 2026, in the game (props.js appliance), for the gold toaster and the silver one alike. AFTER is the game’s toaster as it is now, so it also has the rounded top settled below (toaster-crowns-bakeoff, F). '
+    + 'The cap over the toaster used to be a level band sat on an end plane seen almost level — two views at once — with the slot level and the slice sheared to suit neither. '
+    + 'Now one box in one view: the end plane’s top and the cap’s sides run the same way back, the slot runs down the middle of the cap, '
+    + 'and the slice stands in it square to the face, rising straight up, with a sliver of its back crust showing its thickness. Nothing else changed: the wings, the chrome and the clock are the same. '
+    + '(The A–E redesign bake-off that was here is gone: Peter kept the current toaster.) '
+    + 'First card: before and after at the pickup’s real size through the run’s world camera, a hero for scale. Then close up, before and after, gold and silver.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const BOX = { w: 22, h: 18 }, OVER = 4 / 3;   // entities.js appliance; draw.js draws pickups 4/3 their box
+  const dw = BOX.w * OVER, dh = BOX.h * OVER;
+  const frameAt = (t, k = 0) => Math.floor(t * 24 + k * 7) % 96;
+  const hover = (t, k = 0) => Math.sin(t * 2.4 + k) * 2;
+  const looks = [
+    ['BEFORE', (ctx, w, h, f) => applianceBefore(ctx, w, h, f)],
+    ['AFTER', (ctx, w, h, f) => PROP_PAINTERS.appliance(ctx, w, h, f)],
+    ['BEFORE (silver)', (ctx, w, h, f) => applianceBefore(ctx, w, h, f, SILVER_TOASTER_FINISH)],
+    ['AFTER (silver)', (ctx, w, h, f) => PROP_PAINTERS.applianceSilver(ctx, w, h, f)],
+  ];
+  const LW = 40 + looks.length * 40;
+  tile(grid, 'Before and after (lane size)', 'At the pickup’s real size through the run’s world camera; the hero for scale.',
+    LW * WORLD_Z, 60 * WORLD_Z, (ctx, t) => {
+      ctx.fillStyle = '#1d2a3a'; ctx.fillRect(0, 0, LW * WORLD_Z, 60 * WORLD_Z);
+      ctx.scale(WORLD_Z, WORLD_Z);
+      ctx.fillStyle = '#2c4a3a'; ctx.fillRect(0, 52, LW, 8);
+      drawToon(ctx, 'lorenzo', { kind: 'run', grounded: true, time: t, phase: (t * 1.6) % 1 }, 16, 52, HERO_DRAW_H);
+      looks.forEach(([name, paint], i) => {
+        ctx.save(); ctx.translate(36 + i * 40, 16 + hover(t, i)); paint(ctx, dw, dh, frameAt(t)); ctx.restore();
+        ctx.fillStyle = '#ffe890'; ctx.font = 'bold 4px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(name, 36 + i * 40 + dw / 2, 58);
+      });
+    }, { animated: true, wide: true, hires: 3 });
+  for (const [name, paint] of looks) {
+    tile(grid, `${name} — close up`, 'Watch the slice come up out of the slot.', 240, 176, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#24314a'); g.addColorStop(1, '#141c2c');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176);
+      ctx.save(); ctx.translate(30, 18 + hover(t) * 3); paint(ctx, 180, 180 * BOX.h / BOX.w, frameAt(t)); ctx.restore();
+    }, { animated: true, hires: 3, displayScale: 1.5 });
+  }
+}
+
+// THE GOLDEN TOASTER'S WINGS (Peter, 7 Oct 2026: "much better, can we see with the different wings we
+// just had?"). src/dev/toaster-wings.js: the turned-down redesigns' wings on the shipped toaster, through
+// the painter's `finish.wings` seam.
+{
+  const s = sectionEl('toaster-wings-bakeoff', 'GOLDEN TOASTER — its wings',
+    'OPEN 7 Oct 2026. The toaster as it now ships, its top in perspective, with the wings from the redesign bake-off it replaced — beside 0, the wings it has. '
+    + 'A AFTER DARK, a big pair rising out of the top; B BIG SCALLOP, one broad dark-edged wing across the side; C ANGEL, long and narrow; '
+    + 'D BIRD, straight out with a full stroke; E STUBBY, short and round. The body, the toast and the clock are the shipped ones. '
+    + 'They FLAP (Peter, 7 Oct 2026: "theyre just moving back and froth, not flapping"): each beats about the body’s long axis in 3D, through the painter’s own axes — tall at the top of the stroke, foreshortened as it comes out towards you, across the body on the way down. 0 still only rocks, as it does in the game. '
+    + 'First card: all six at the pickup’s real size through the run’s world camera, a hero for scale. Then each close up.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const BOX = { w: 22, h: 18 }, OVER = 4 / 3;
+  const dw = BOX.w * OVER, dh = BOX.h * OVER;
+  const frameAt = (t, k = 0) => Math.floor(t * 24 + k * 7) % 96;
+  const hover = (t, k = 0) => Math.sin(t * 2.4 + k) * 2;
+  const LW = 40 + TOASTER_WING_CANDIDATES.length * 40;
+  tile(grid, 'All side by side (lane size)', '0 the wings it has, then A–E, at the pickup’s real size; the hero for scale.',
+    LW * WORLD_Z, 60 * WORLD_Z, (ctx, t) => {
+      ctx.fillStyle = '#1d2a3a'; ctx.fillRect(0, 0, LW * WORLD_Z, 60 * WORLD_Z);
+      ctx.scale(WORLD_Z, WORLD_Z);
+      ctx.fillStyle = '#2c4a3a'; ctx.fillRect(0, 52, LW, 8);
+      drawToon(ctx, 'lorenzo', { kind: 'run', grounded: true, time: t, phase: (t * 1.6) % 1 }, 16, 52, HERO_DRAW_H);
+      TOASTER_WING_CANDIDATES.forEach((c, i) => {
+        ctx.save(); ctx.translate(36 + i * 40, 16 + hover(t, i)); PROP_PAINTERS.appliance(ctx, dw, dh, frameAt(t, i), c.finish); ctx.restore();
+        ctx.fillStyle = '#ffe890'; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(c.letter, 36 + i * 40 + dw / 2, 58);
+      });
+    }, { animated: true, wide: true, hires: 3 });
+  for (const c of TOASTER_WING_CANDIDATES) {
+    tile(grid, `${c.letter} — ${c.name}`, c.note, 240, 176, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#24314a'); g.addColorStop(1, '#141c2c');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176);
+      ctx.save(); ctx.translate(30, 18 + hover(t) * 3); PROP_PAINTERS.appliance(ctx, 180, 180 * BOX.h / BOX.w, frameAt(t), c.finish); ctx.restore();
+    }, { animated: true, hires: 3, displayScale: 1.5 });
+  }
+}
+
+// THE GOLDEN TOASTER'S TOP, CURVED (Peter, 7 Oct 2026: "can we possibly try to make the top of the toaster
+// slightly curved? give me options"). src/dev/toaster-crowns.js, through the painter's `finish.crown` seam.
+{
+  const s = sectionEl('toaster-crowns-bakeoff', 'GOLDEN TOASTER — a curved top',
+    'SETTLED 7 Oct 2026 on F, the rounded top ("Use f"): it ships in props.js as TOASTER_CROWN, for the gold toaster and the silver. 0 is the flat top it replaced. '
+    + 'A SOFT DOME, a gentle rise across it; B HIGH DOME, twice that; C LOAF, curved along its length, down to both ends; D PILLOW, a little of both; '
+    + 'E ROUNDED EDGE, flat on top with the edge to the face rolled over. '
+    + 'Then (Peter: "maybe round the top corners to match the bottom corners") F ROUNDED TOP, every top edge rolled over at about the bottom corners’ radius; G that with A’s dome; H that with C’s loaf. '
+    + 'Each is one surface the whole top follows — the lever end’s top, the face’s top edge, the cap, the slot along its middle and the slice rising out of it — with the light along its crest. '
+    + 'The wings, the chrome and the clock are the shipped ones. First card: all six at the pickup’s real size, a hero for scale; then each close up.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const BOX = { w: 22, h: 18 }, OVER = 4 / 3;
+  const dw = BOX.w * OVER, dh = BOX.h * OVER;
+  const frameAt = (t, k = 0) => Math.floor(t * 24 + k * 7) % 96;
+  const hover = (t, k = 0) => Math.sin(t * 2.4 + k) * 2;
+  const LW = 40 + TOASTER_CROWN_CANDIDATES.length * 40;
+  tile(grid, 'All side by side (lane size)', '0 flat, then A–E, at the pickup’s real size; the hero for scale.',
+    LW * WORLD_Z, 60 * WORLD_Z, (ctx, t) => {
+      ctx.fillStyle = '#1d2a3a'; ctx.fillRect(0, 0, LW * WORLD_Z, 60 * WORLD_Z);
+      ctx.scale(WORLD_Z, WORLD_Z);
+      ctx.fillStyle = '#2c4a3a'; ctx.fillRect(0, 52, LW, 8);
+      drawToon(ctx, 'lorenzo', { kind: 'run', grounded: true, time: t, phase: (t * 1.6) % 1 }, 16, 52, HERO_DRAW_H);
+      TOASTER_CROWN_CANDIDATES.forEach((c, i) => {
+        ctx.save(); ctx.translate(36 + i * 40, 16 + hover(t, i)); PROP_PAINTERS.appliance(ctx, dw, dh, frameAt(t, i), c.finish); ctx.restore();
+        ctx.fillStyle = '#ffe890'; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(c.letter, 36 + i * 40 + dw / 2, 58);
+      });
+    }, { animated: true, wide: true, hires: 3 });
+  for (const c of TOASTER_CROWN_CANDIDATES) {
+    tile(grid, `${c.letter} — ${c.name}`, c.note, 240, 176, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#24314a'); g.addColorStop(1, '#141c2c');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176);
+      ctx.save(); ctx.translate(30, 18 + hover(t) * 3); PROP_PAINTERS.appliance(ctx, 180, 180 * BOX.h / BOX.w, frameAt(t), c.finish); ctx.restore();
+    }, { animated: true, hires: 3, displayScale: 1.5 });
+  }
+}
+
+// THE DEEP BLUE DISCO'S DIVER, AND A MERMAID (Peter, 7 Oct 2026: "plesae do a backof f of the diver" ...
+// "do a bakeoff of a little mermaid parody who could swim past" ... "or ursula"). The jukebox's FISH
+// TANK (visualisers.js) with each candidate in it, stepped on the gallery clock at 120 BPM, and each
+// close up through the tank's own paper (tankPaper).
+const fishTankTile = (opts) => {
+  let tank = null, at = 0;
+  return (ctx, t) => {
+    if (!tank || t < at) { tank = createFishTankLab(0x7a2c51, { bpm: 120 }, opts); at = 0; }
+    if (t - at > 40) at = t - 40;
+    while (at < t) {
+      const dt = Math.min(1 / 30, t - at + 1e-9);
+      at += dt;
+      tank.update(dt, { beat: at * 2, bass: 0.5, mid: 0.4, treble: 0.3, level: 0.6, dynamics: 0.9, drums: 1 });
+    }
+    tank.draw(ctx);
+  };
+};
+/** Water and a strip of sand, for the close-ups. */
+const tankBackdrop = (ctx, w, h, sand = true) => {
+  const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#3b8f9e'); g.addColorStop(1, '#235e74');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  if (sand) { ctx.fillStyle = '#e6cc96'; ctx.fillRect(0, h - 22, w, 22); }
+};
+/** The tank's paper at whatever scale the context is at now. */
+const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx, Math.hypot(m.a, m.b) || 1); };
+
+{
+  const s = sectionEl('diver-bakeoff', 'DEEP BLUE DISCO — the diver',
+    'SETTLED 7 Oct 2026 on D, the photographer (“replace diver with photographer”): it is the tank’s now (visualisers.js TANK_DIVER), so 0 and D match; X is the hard hat standing waving that it had first. '
+    + 'The diver on the sand at the back of the jukebox’s DEEP BLUE DISCO. '
+    + 'A TREASURE HUNTER on one knee at a little chest, lifting the lid on the bar line; B HOSE WALKER side on, stomping on the spot, its air hose swaying up to the surface; '
+    + 'C LITTLE ONE, a helmet twice the size on a stub of a body, both arms waving; D PHOTOGRAPHER, a scuba diver kneeling with a camera that flashes on the bar line; '
+    + 'E ON THE CHEST, sat on the treasure chest swinging its legs; F GONE FISHING, sat on a rock with a rod out — fishing, in a fish tank (src/dev/diver-candidates.js). '
+    + 'Every one is cut from the tank’s paper and breathes bubbles from its helmet (or its snorkel). '
+    + 'First card: all of them at the tank’s size. Then each in the tank, and close up.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const all = [{ ...TANK_DIVER, letter: '0', name: 'TODAY (tank)' }, ...DIVERS, STANDING_DIVER];
+  const LW = 20 + all.length * 64;
+  tile(grid, 'All side by side (tank size)', '0 the tank’s, then A–F, at the size they stand in the tank.', LW, 100, (ctx, t) => {
+    tankBackdrop(ctx, LW, 100);
+    all.forEach((d, i) => {
+      ctx.save(); ctx.translate(42 + i * 64, 84);
+      d.paint(ctx, paperHere(ctx), { t, flow: t, beat: t * 2, phase: i });
+      ctx.restore();
+      ctx.fillStyle = '#5a4630'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(d.letter, 42 + i * 64, 97);
+    });
+  }, { animated: true, wide: true, hires: 3 });
+  for (const d of all) {
+    tile(grid, `${d.letter} — ${d.name}, in the tank`, d.description, 480, 270, fishTankTile({ diver: d }), { animated: true });
+    tile(grid, `${d.letter} — close up`, d.name, 240, 176, (ctx, t) => {
+      tankBackdrop(ctx, 240, 176);
+      ctx.save(); ctx.translate(120, 166); ctx.scale(2.2, 2.2);
+      d.paint(ctx, paperHere(ctx), { t, flow: t, beat: t * 2, phase: 0 });
+      ctx.restore();
+    }, { animated: true, hires: 3, displayScale: 1.5 });
+  }
+}
+
+{
+  const s = sectionEl('mermaid-bakeoff', 'DEEP BLUE DISCO — a mermaid swimming past',
+    'SETTLED 7 Oct 2026 on A, B, C and E (“i would like to use a b c e to swim through once in a while”): one of the four drifts across the jukebox’s DEEP BLUE DISCO every minute or so (src/sprites/mermaids.js); D, F and G stay here. '
+    + 'She swims in front of the fish, straight across and out of the other side. '
+    + 'Round 1 (side on, long) was “terrible”; these follow Peter’s reference: a chibi mermaid front on, a big head of curling hair, dot eyes and a blush, a bandeau, a slim body and a tail sweeping round behind her into a big fin, scaled on its lower part. '
+    + 'She faces you for the whole crossing, her tail sweeping and its fin flipping every two beats. The fairy tale’s, not anybody’s film. '
+    + 'A SKY BLUE, the reference as near as paper goes; B SUNNY, golden curls; C SONGBIRD, a note on every beat; D TOASTER TREASURE, a silver toaster from the wreck, toast popping on the bar line; '
+    + 'E CLUB KID, shades and headphones, nodding on the beat; F MERDAD, her dad by mistake; G SEA WITCH, the tale’s sea witch instead, an octopus below the waist with Lorenzo’s angler as her pet (src/dev/mermaid-candidates.js). '
+    + 'First card: all seven at the tank’s size. Then each crossing the tank (here every few seconds), and close up.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const L = 84, LW = 30 + MERMAIDS.length * 100;
+  tile(grid, 'All side by side (tank size)', 'A–G swimming on the spot, each as big as she is in the tank.', LW, 130, (ctx, t) => {
+    tankBackdrop(ctx, LW, 130, false);
+    MERMAIDS.forEach((m, i) => {
+      ctx.save(); ctx.translate(70 + i * 100, 72 + Math.sin(t * 1.3 + i) * 3);
+      m.paint(ctx, paperHere(ctx), L, { t, beat: t * 2, phase: i });
+      ctx.restore();
+      ctx.fillStyle = '#e8fbff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(m.letter, 70 + i * 100, 126);
+    });
+  }, { animated: true, wide: true, hires: 3 });
+  for (const m of MERMAIDS) {
+    tile(grid, `${m.letter} — ${m.name}, in the tank`, m.description, 480, 270, fishTankTile({ mermaid: m, mermaidEvery: 2 }), { animated: true });
+    tile(grid, `${m.letter} — close up`, m.name, 240, 176, (ctx, t) => {
+      tankBackdrop(ctx, 240, 176, false);
+      ctx.save(); ctx.translate(140, 104); ctx.scale(1.25, 1.25);
+      m.paint(ctx, paperHere(ctx), L, { t, beat: t * 2, phase: 0 });
+      ctx.restore();
+    }, { animated: true, hires: 3, displayScale: 1.5 });
+  }
+}
+
+
+// The mixer's icons (Peter, 7 Oct 2026: "do a bake off with better icons for the mixer in the lab"
+// — "for drums, keyboard, bass, melody, tempo"). Each set heads the strips of the club's own mixer
+// panel: club.js drawControls on a stand-in club with the panel open and no song, a set on its
+// `mixerIcons`. Then the five close up.
+{
+  const s = sectionEl('mixer-icons-bakeoff', 'BANGER LAB — the mixer’s icons',
+    'PICKED 7 Oct 2026: A, in the strip’s own finer line, its keys F to B (four white, three black) — the mixer’s now (src/game/banger/mixer-icons.js), so 0 is A as it ships; X is the set it replaced. '
+    + 'The icons heading the Lab mixer’s strips: DRUMS, BASS, CHORDS (the keys), LEAD (the melody) and the BPM strip’s tempo. '
+    + 'X, the old set: a can that read as a database, a sine, three bars like a barcode, one note, a metronome — thin, and small for the strip. '
+    + 'A LINE KIT the instruments outlined in a heavier line: a snare with its sticks, a bass guitar, piano keys, two beamed quavers, a metronome on a plinth; '
+    + 'B SOLID KIT filled silhouettes, the detail knocked out: a drum kit front on, a bass guitar, a synth, heavier quavers, a solid metronome; '
+    + 'C NOTATION as the parts are written: hi-hat crosses, the bass clef, a chord on one stem, the treble clef, and the tempo mark (a crotchet =, bumping on the beat); '
+    + 'D SCOPE each part as its wave on a little screen, the tempo a click track; E PIXEL 8-bit glyphs, the LED board’s family, the metronome ticking between two frames; '
+    + 'F ON THE BEAT A’s drawings moving while their part plays — the sticks take turns, the bass nods, a chord goes down, the quavers hop — and still while it is muted (src/dev/mixer-icon-candidates.js). '
+    + 'First card: every set at the mixer’s landscape size, heard and then muted (the dim ink of a part not heard). Then each set on the mixer itself, BASS muted, and close up.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const BPM = 124;
+  const KEYS = ['drums', 'bass', 'chords', 'lead', 'tempo'], NAMES = ['DRUMS', 'BASS', 'CHORDS', 'LEAD', 'BPM'];
+  const R = 6.5 * 1.7;                                   // club.js drawControls: S(13, 6.5) in landscape, MIX_K 1.7
+  const PANEL = '#0e0e18', SILVER = '#dcdee8', OFF = '#5a5a68';
+  const all = [{ letter: '0', name: 'TODAY (A, fine)', icons: MIXER_ICONS, description: 'What the mixer has now: A in the strip’s fine line, the keys F to B.' }, ...MIXER_ICON_CANDIDATES,
+    { letter: 'X', name: 'THE OLD SET', icons: MIXER_ICONS_BEFORE, description: 'What the mixer had until 7 Oct 2026.' }];
+  // one icon as the strip draws it: its ink (silver, or dim while the part is not heard; the tempo is always lit) and line
+  const icon = (ctx, set, k, x, y, beat, on) => {
+    const ink = on || k === 'tempo' ? SILVER : OFF;
+    ctx.save(); ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = 0.9;
+    set.icons[k](ctx, x, y, R, { u: 1, beat, on: on || k === 'tempo', cut: PANEL });
+    ctx.restore();
+  };
+  const COL = 34, LW = 92 + COL * 10 + 18, LH = 26 + all.length * 34;
+  tile(grid, 'All side by side (mixer size)', 'Every set at the landscape mixer’s size: heard on the left, muted on the right.', LW, LH, (ctx, t) => {
+    ctx.fillStyle = PANEL; ctx.fillRect(0, 0, LW, LH);
+    const beat = t * BPM / 60;
+    ctx.fillStyle = 'rgba(206,208,222,0.5)'; ctx.font = 'bold 7px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('HEARD', 92 + COL * 2.5, 12); ctx.fillText('MUTED', 92 + COL * 7.5 + 18, 12);
+    all.forEach((set, j) => {
+      const cy = 34 + j * 34;
+      ctx.fillStyle = '#c9a0ff'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'left';
+      ctx.fillText(`${set.letter} ${set.name}`, 6, cy + 3);
+      KEYS.forEach((k, i) => {
+        icon(ctx, set, k, 92 + COL * (i + 0.5), cy, beat, true);
+        icon(ctx, set, k, 92 + 18 + COL * (i + 5.5), cy, beat, false);
+      });
+    });
+  }, { animated: true, wide: true, hires: 3 });
+  // A club with its mixer open and nothing else: what drawControls reads, BASS muted, the faders spread.
+  const voices = { waiting: () => false, choices: () => [], own: true,
+    label: (id) => ({ drums: 'STYLE KIT', bass: 'FM SLAP BASS', chords: 'BRIGHT POP GRAND', lead: 'SAXOPHONE' })[id] };
+  const mixerClub = (icons) => Object.assign(Object.create(BangerClubState.prototype), {
+    t: 0, song: { bpm: BPM, form: [] }, rec: { name: 'NEON ORBIT' }, mixerIcons: icons, voices,
+    levels: { drums: 1, bass: 0.8, chords: 0.55, lead: 0.9 }, heard: { drums: 1, bass: 0, chords: 0.55, lead: 0.9 },
+    muted: new Set(['bass']), soloed: new Set(), mixerOpen: true, mixSel: -1, pitch: 0, paused: false, skipLit: null,
+    iconsAt: 0, buttonsAt: -Infinity, focus: -1, popup: null, tip: null, rerollArm: null, diceAt: -Infinity, diceFace: 5,
+    onEdit: null, onReroll: null, pending: null,
+    boxes: { heroes: [], mixer: null, transport: [], panel: null, faders: [], sounds: [], mutes: [], solos: [], reset: null, dice: null, back: null, reroll: null, ball: null, led: null, floor: null },
+  });
+  // the panel's corner of the 480x270 frame, over the room's purples
+  const PX0 = 150, PY0 = 12, PW = 330, PH = 228;
+  for (const set of all) {
+    const club = mixerClub(set.icons);
+    tile(grid, `${set.letter} — ${set.name}, on the mixer`, set.description, PW, PH, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, PH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.7, '#1a1236'); g.addColorStop(1, '#120d26');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, PW, PH);
+      ctx.save(); ctx.translate(-PX0, -PY0);
+      club.t = t;
+      club.drawControls(ctx, { portrait: false, P: 1, u: 1, stageTop: 0, stageBot: H, safeL: 0, safeR: 0 });
+      ctx.restore();
+    }, { animated: true, hires: 3 });
+    tile(grid, `${set.letter} — close up`, 'The five at twice the mixer’s size, heard.', 300, 70, (ctx, t) => {
+      ctx.fillStyle = PANEL; ctx.fillRect(0, 0, 300, 70);
+      ctx.save(); ctx.scale(2, 2);
+      KEYS.forEach((k, i) => icon(ctx, set, k, 15 + i * 30, 15, t * BPM / 60, true));
+      ctx.restore();
+      ctx.fillStyle = '#c8c8d8'; ctx.font = '600 7px sans-serif'; ctx.textAlign = 'center';
+      NAMES.forEach((n, i) => ctx.fillText(n, 30 + i * 60, 63));
+    }, { animated: true, hires: 4 });
+  }
+}
+
+// THE BOLT's attract (Peter, 7 Oct 2026: "a little attraction effect on the lightning icon to attract
+// attention ... fade in if dimmed and a glisten or do something so user notice it. Icon may need to
+// change"). Each look on a loop of two bars: a bar of the moment, then a bar at rest, faded as the
+// bottom row fades when nobody has touched it (club.js ICONS_ASLEEP).
+{
+  const s = sectionEl('bolt-attract-bakeoff', 'BANGER LAB — THE BOLT getting itself noticed',
+    'SETTLED 7 Oct 2026 on A, the glint, once a visit: on the first bar line 7 s after the room comes up (the welcome card gone), if the bolt has not been touched (src/game/banger/bolt-button.js), so 0 is A; X is the plain button it had. '
+    + 'THE BOLT (a new take of the song, on a new seed) sits faint in the bottom row with the pencil and SAVE, and nobody found it. '
+    + 'Each look gives it an attract moment: for one bar the button fades up however faint the row has gone and does something. '
+    + 'A GLINT a shine sweeps the disc and a star twinkles on the tip; B CHARGE the bolt fills with gold from its point up, then flashes and throws sparks; C PING two rings go out from the rim; '
+    + 'D JIGGLE it hops and wobbles on three beats; E CRACKLE little arcs crackle off the rim, the bolt flickering; F SPIN ARROW a new icon, the bolt inside a reroll arrow that spins once; '
+    + 'G GOLD the bolt turns gold on a glow, pulsing on the beat (src/dev/bolt-attract-candidates.js). '
+    + 'Here every loop is two bars at 124 BPM: the moment, then a bar at rest. First card: all of them at the club’s size between the pencil and SAVE; then each close up.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const BPM = 124, R = 11, ASLEEP = 0.18;
+  const all = [{ letter: '0', name: 'TODAY (A)', paint: drawBoltButton, description: 'The club’s now: A, the glint.' }, ...BOLT_ATTRACT_CANDIDATES,
+    { letter: 'X', name: 'NO MOMENT', paint: drawBoltPlain, description: 'The plain button it had until 7 Oct 2026.' }];
+  const room = (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#1a1236'); g.addColorStop(1, '#120d26');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  };
+  // the moment for the first bar of each two, at rest for the second
+  const at = (t) => { const beat = t * BPM / 60, b = beat % 8; return { beat, k: b < 4 ? b / 4 : -1 }; };
+  const button = (ctx, c, x, y, r, t, u = 1) => {
+    const { beat, k } = at(t);
+    const still = c.paint === drawBoltPlain;
+    const alpha = still ? ASLEEP : Math.max(ASLEEP, boltAttractAlpha(k));
+    c.paint(ctx, { x, y, r, u, alpha, rim: 'rgba(206,208,222,0.7)', ink: '#dcdee8', k: still ? -1 : k, beat, t });
+    ctx.globalAlpha = 1;
+  };
+  const plain = (ctx, x, y, r) => {          // the pencil's and SAVE's discs either side, asleep
+    ctx.globalAlpha = ASLEEP; ctx.fillStyle = 'rgba(11,11,20,0.78)';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(206,208,222,0.7)'; ctx.lineWidth = 0.8; ctx.stroke(); ctx.globalAlpha = 1;
+  };
+  const STEP = R * 2.8 + 8, CW = STEP * 3 + 12, LW = all.length * CW + 10;
+  tile(grid, 'All side by side (club size)', 'Each between the pencil and SAVE, the row asleep; the moment on the first bar of every two.', LW, 64, (ctx, t) => {
+    room(ctx, LW, 64);
+    all.forEach((c, i) => {
+      const x0 = 10 + i * CW + R + 4, y = 30;
+      plain(ctx, x0, y, R); plain(ctx, x0 + STEP * 2, y, R);
+      button(ctx, c, x0 + STEP, y, R, t);
+      ctx.fillStyle = '#c9a0ff'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(c.letter, x0 + STEP, 58);
+    });
+  }, { animated: true, wide: true, hires: 3 });
+  for (const c of all) {
+    tile(grid, `${c.letter} — ${c.name}, close up`, c.description, 160, 120, (ctx, t) => {
+      room(ctx, 160, 120);
+      ctx.save(); ctx.scale(4, 4);
+      button(ctx, c, 20, 15, R, t);
+      ctx.restore();
+    }, { animated: true, hires: 2 });
   }
 }
 

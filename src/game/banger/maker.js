@@ -1,8 +1,17 @@
 // MAKE A BANGER, in the game — the screen. 3 Oct 2026.
 //
-// Reached from THE LAB's NEW BANGER button, and titled NEW BANGER (Peter, 3 Oct 2026). A two-bar piano roll (riff.js), a STYLE
+// Reached from THE LAB's NEW BANGER button, and titled NEW BANGER (Peter, 3 Oct 2026). A piano roll (riff.js), a STYLE
 // and a MOOD, and BRING TO LIFE: the desk's generator writes a whole song from those (make.js), it is kept
 // (store.js), and the jukebox opens again with it playing.
+//
+// TWO BARS OR FOUR (Peter, 6 Oct 2026). Small bar numbers run along the top of the grid, and a + at
+// their end adds bars 3–4 (a − takes them away again), with a floatie on the tap and a tooltip on a
+// mouse. The grid opens on two bars, as simple as it always was. Bars 3–4 arrive as a dim repeat of
+// 1–2 that follows them until a note is written in 3–4, which makes them the riff's own; until then
+// the song is the one two bars make (riff.js settleBars). − hides bars of its own and remembers them,
+// as ADVANCED is remembered. Every bar is always on show — one line in landscape and on a desktop,
+// and in portrait four bars stack two over two, like the lines of a score. ZAP writes as many bars as
+// are set: four are a question and an answer (riff.js luckyNotes), or a cabinet's own four-bar phrase.
 //
 // SIMPLE and ADVANCED (riff.js) are two grids over one riff: ADVANCED is remembered
 // while SIMPLE shows it converted down, and comes back as it was unless SIMPLE has been
@@ -39,8 +48,8 @@ import {
   portraitMenuText, portraitMenuTextCentered, portraitMenuFit,
 } from '../../engine/portrait-menu.js';
 import {
-  RIFF_MODES, RIFF_BPM, modeOf, semitoneOf, rowName, isSharp, rowHz, semitoneHz, toggleNote, hasNotes,
-  normaliseNotes, normaliseLengths, simplify, expand, sixteenths, luckyNotes,
+  RIFF_MODES, RIFF_BPM, RIFF_BARS, modeOf, semitoneOf, rowName, isSharp, rowHz, semitoneHz, toggleNote, hasNotes,
+  normaliseNotes, normaliseLengths, simplify, expand, sixteenths, luckyNotes, perOf, stepsOf, barsOf, settleBars,
 } from './riff.js';
 import { GAME_RIFF_ODDS, pickGameRiff, gameRiffGrid } from './game-riffs.js';
 import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION, labFlavour } from './make.js';
@@ -126,6 +135,11 @@ const WHEEL_ROW = 40;
 /** How far a press on the note names moves before it is a drag rather than a tap on an arrow. */
 const SCROLL_TAP_SLOP = 4;
 const MODE_IDS = ['simple', 'advanced'];
+const MODE_ITEMS = MODE_IDS.map((id) => ({ id, label: RIFF_MODES[id].label }));
+/** The bars both grids hold, whichever is set: two bars hide the last two and keep them. */
+const HELD_BARS = 4;
+/** What + and − say: on the tap (a floatie) and under a mouse (a tooltip). */
+const BARS_SAY = Object.freeze({ add: 'BARS 3-4 ADDED', drop: 'BACK TO 2 BARS', addTip: 'ADD BARS 3-4', dropTip: 'BACK TO 2 BARS' });
 
 const C_BG = '#0b0b14';
 const C_TEXT = '#c8c8d8';
@@ -196,10 +210,9 @@ export class BangerMakerState {
   enter() {
     const d = bangerState().draft;
     this.mode = d.mode;
-    this.simple = normaliseNotes(d.simple, 'simple');
-    this.advanced = normaliseNotes(d.advanced, 'advanced');
-    this.simpleLengths = normaliseLengths(d.simpleLengths, this.simple, 'simple');
-    this.advancedLengths = normaliseLengths(d.advancedLengths, this.advanced, 'advanced');
+    this.bars = d.bars === 4 ? 4 : 2;
+    this.setGrid('simple', d.simple, d.simpleLengths, false);
+    this.setGrid('advanced', d.advanced, d.advancedLengths);
     this.simpleEdited = !!d.simpleEdited;
     // The style and mood it was left on (store.js has already checked they still exist).
     // What changes every visit is only the grid's preview sound — never last visit's
@@ -211,8 +224,8 @@ export class BangerMakerState {
     const src = this.seed || this.from;
     if (src) {
       this.mode = src.mode;
-      if (this.mode === 'simple') { this.simple = normaliseNotes(src.notes, 'simple'); this.simpleLengths = normaliseLengths(src.lengths, this.simple, 'simple'); this.simpleEdited = true; }
-      else { this.advanced = normaliseNotes(src.notes, 'advanced'); this.advancedLengths = normaliseLengths(src.lengths, this.advanced, 'advanced'); }
+      this.bars = barsOf(src.notes, this.mode);
+      this.setGrid(this.mode, src.notes, src.lengths);
       this.style = src.style;
       this.mood = src.mood;
       this.setVoltage(voltageFor(src), false);
@@ -249,21 +262,54 @@ export class BangerMakerState {
   }
 
   draft() {
-    return { mode: this.mode, simple: this.simple, advanced: this.advanced, simpleLengths: this.simpleLengths, advancedLengths: this.advancedLengths, simpleEdited: this.simpleEdited, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy,
+    // Both grids hold four bars; with nothing in bars 3–4 of either, the draft keeps two, the shape it always had.
+    const held = MODE_IDS.some((m) => hasNotes(this.grid(m).notes.slice(stepsOf(m, 2))));
+    const keep = (a, m) => (held ? a : a.slice(0, stepsOf(m, 2)));
+    return { mode: this.mode, bars: this.bars, simple: keep(this.simple, 'simple'), advanced: keep(this.advanced, 'advanced'),
+      simpleLengths: keep(this.simpleLengths, 'simple'), advancedLengths: keep(this.advancedLengths, 'advanced'), simpleEdited: this.simpleEdited, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy,
       production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION } };
   }
 
-  /** The grid on show. */
-  get notes() { return this.mode === 'simple' ? this.simple : this.advanced; }
-  get lengths() { return this.mode === 'simple' ? this.simpleLengths : this.advancedLengths; }
-  set lengths(v) {
-    const n = this.notes;
-    if (this.mode === 'simple') { this.simpleLengths = normaliseLengths(v, n, 'simple'); this.simpleEdited = true; }
-    else this.advancedLengths = normaliseLengths(v, n, 'advanced');
+  /** A mode's whole grid, all four bars of it, and its lengths. */
+  grid(mode) {
+    return mode === 'simple' ? { notes: this.simple, lengths: this.simpleLengths } : { notes: this.advanced, lengths: this.advancedLengths };
   }
+  /** Write a mode's whole grid; a two-bar one is padded with two bars of rest. SIMPLE written in is `edited`. */
+  setGrid(mode, notes, lengths, edited = true) {
+    const n = normaliseNotes(notes, mode, HELD_BARS);
+    const l = normaliseLengths(lengths, n, mode, HELD_BARS);
+    if (mode === 'simple') { this.simple = n; this.simpleLengths = l; if (edited) this.simpleEdited = true; }
+    else { this.advanced = n; this.advancedLengths = l; }
+  }
+  /**
+   * Bars 3–4 still the repeat of 1–2 — the copy + made, untouched since. They follow 1–2: an edit
+   * there is copied on into them, and a note written in 3–4 itself makes them the riff's own.
+   */
+  repeats(mode = this.mode) {
+    if (this.bars !== 4) return false;
+    const { notes, lengths } = this.grid(mode);
+    const half = stepsOf(mode, 2);
+    return notes.slice(0, half).join() === notes.slice(half).join() && lengths.slice(0, half).join() === lengths.slice(half).join();
+  }
+  /** The bars on show written back into the mode's grid: hidden bars stay as they were, a repeat follows bars 1–2. */
+  writeShown(notes, lengths) {
+    const m = this.mode;
+    const g = this.grid(m);
+    const half = stepsOf(m, 2);
+    const followed = this.repeats(m);
+    let n = [...notes, ...g.notes.slice(notes.length)];
+    let l = [...lengths, ...g.lengths.slice(lengths.length)];
+    const tailUntouched = n.slice(half).join() === g.notes.slice(half).join() && l.slice(half).join() === g.lengths.slice(half).join();
+    if (followed && tailUntouched) { n = [...n.slice(0, half), ...n.slice(0, half)]; l = [...l.slice(0, half), ...l.slice(0, half)]; }
+    this.setGrid(m, n, l);
+  }
+  /** The grid on show: as many bars as are set. */
+  get notes() { return this.grid(this.mode).notes.slice(0, this.steps); }
+  get lengths() { return this.grid(this.mode).lengths.slice(0, this.steps); }
+  set lengths(v) { this.writeShown(this.notes, normaliseLengths(v, this.notes, this.mode, this.bars)); }
   set notes(v) {
-    if (this.mode === 'simple') { this.simple = normaliseNotes(v, 'simple'); this.simpleLengths = normaliseLengths(this.simpleLengths, this.simple, 'simple'); this.simpleEdited = true; }
-    else { this.advanced = normaliseNotes(v, 'advanced'); this.advancedLengths = normaliseLengths(this.advancedLengths, this.advanced, 'advanced'); }
+    const shown = normaliseNotes(v, this.mode, this.bars);
+    this.writeShown(shown, normaliseLengths(this.lengths, shown, this.mode, this.bars));
   }
   get previewBpm() {
     const style = styleFor(this.style);
@@ -298,7 +344,39 @@ export class BangerMakerState {
     this.showRow(Math.max(...vrs));
     this.showRow(Math.min(...vrs));
   }
-  get steps() { return modeOf(this.mode).steps; }
+  /** Columns in the loop: every bar that is set. */
+  get steps() { return stepsOf(this.mode, this.bars); }
+  /** Sixteenths a column covers. */
+  get per() { return perOf(this.mode); }
+  /** The loop, in sixteenths. */
+  get loopLength() { return 16 * this.bars; }
+  /** In portrait, four bars stack two over two; everywhere else every bar is on one line. */
+  get lines() { return this.bars === 4 && portraitMenuActive() ? 2 : 1; }
+  /** Columns on one line. */
+  get lineCols() { return this.steps / this.lines; }
+
+  /**
+   * + and −. Four bars bring 3–4 in as a repeat of 1–2 in both grids (`repeats`), so nothing
+   * sounds different until they are written in — or as they were, when − kept bars of their own.
+   * Two bars hide 3–4 and remember them; a repeat is not worth remembering and is let go, so the
+   * next + repeats 1–2 as they are by then. `say` puts the floatie up.
+   */
+  setBars(n, say = false) {
+    if (n === this.bars || !RIFF_BARS.includes(n)) return;
+    for (const mode of MODE_IDS) {
+      const { notes, lengths } = this.grid(mode);
+      const half = stepsOf(mode, 2);
+      const head = notes.slice(0, half), headL = lengths.slice(0, half);
+      const tail = notes.slice(half), tailL = lengths.slice(half);
+      if (n === 4 && !hasNotes(tail)) this.setGrid(mode, [...head, ...head], [...headL, ...headL], false);
+      if (n === 2 && tail.join() === head.join() && tailL.join() === headL.join()) this.setGrid(mode, head, headL, false);
+    }
+    this.bars = n;
+    const f = this.focus;
+    f.col = Math.min(this.steps - 1, f.col);
+    if (say) this.say(n === 4 ? BARS_SAY.add : BARS_SAY.drop);
+    Audio.sfx('ui');
+  }
 
   /** SIMPLE converted down from ADVANCED, which it gives back unless SIMPLE is written in. */
   simplifyAdvanced() {
@@ -311,8 +389,7 @@ export class BangerMakerState {
   /** ZAP's cabinet riff: written into ADVANCED, SIMPLE converted down from it. */
   zapGameRiff(riff) {
     const { notes, lengths } = gameRiffGrid(riff);
-    this.advanced = normaliseNotes(notes, 'advanced');
-    this.advancedLengths = normaliseLengths(lengths, this.advanced, 'advanced');
+    this.setGrid('advanced', notes, lengths);
     if (this.mode === 'simple') this.simplifyAdvanced();
     BangerMakerState.lastGameRiff = riff.id;
     this.scrollToNotes();
@@ -367,43 +444,58 @@ export class BangerMakerState {
     const pickerRows = Math.ceil(PICKERS / cols);
     const buttonRows = Math.ceil(BUTTONS.length / cols);
     const ctrlTop = bottom - pickerRows * (ctrlH + gap) - buttonRows * (buttonH + gap) + gap;
-    const gridTop = top + titleH;
     // Every beat stands apart in a gutter of its own and the bar in a wider one (Peter, 5 Oct
     // 2026): sixteenths in ADVANCED read in fours. The gutters come out of the width before
-    // it is shared, so every square is the same size. Positions are counted in sixteenths:
-    // `startX(at)` is where a square starting there begins, `endX(at)` where one ending there
-    // ends, a gutter between them.
+    // it is shared, so every square is the same size. Positions are counted in sixteenths from
+    // the left edge of a line: `startX(at)` is where a square starting there begins, `endX(at)`
+    // where one ending there ends, a gutter between them.
     const gridW = width - labelW;
-    const per = 32 / this.steps;
-    const pad = gridW / this.steps > 20 ? 1.5 : 1;
-    const gutter = (at) => (at <= 0 || at >= 32 ? 0 : at % 16 === 0 ? 4 * pad : at % 4 === 0 ? 2 * pad : 0);
+    const per = this.per;
+    const lines = this.lines;
+    const shownCols = this.lineCols;
+    const span = shownCols * per;
+    const pad = gridW / shownCols > 20 ? 1.5 : 1;
+    const gutter = (at) => (at <= 0 || at >= span ? 0 : at % 16 === 0 ? 4 * pad : at % 4 === 0 ? 2 * pad : 0);
     let gutters = 0;
-    for (let at = 4; at < 32; at += 4) gutters += gutter(at);
-    const cellW = (gridW - gutters) / this.steps;
+    for (let at = 4; at < span; at += 4) gutters += gutter(at);
+    const cellW = (gridW - gutters) / shownCols;
     const before = (at, inclusive) => {
       let sum = 0;
-      for (let b = 4; b < 32 && (inclusive ? b <= at : b < at); b += 4) sum += gutter(b);
+      for (let b = 4; b < span && (inclusive ? b <= at : b < at); b += 4) sum += gutter(b);
       return sum;
     };
     const gx = x0 + labelW;
     const startX = (at) => gx + (at / per) * cellW + before(at, true);
     const endX = (at) => gx + (at / per) * cellW + before(at, false);
-    // The column under x: a gutter belongs half to each side.
+    // The column of a line under x: a gutter belongs half to each side.
     const colAt = (x) => {
-      for (let col = 0; col < this.steps - 1; col++) {
+      for (let col = 0; col < shownCols - 1; col++) {
         const at = (col + 1) * per;
         if (x < (endX(at) + startX(at)) / 2) return col;
       }
-      return this.steps - 1;
+      return shownCols - 1;
     };
-    // Portrait gives the grid everything between the title and the pickers: tall
-    // squares are what a thumb wants.
+    // Each line has its bar numbers over it (Peter, 6 Oct 2026), and portrait gives the lines
+    // everything between the title and the pickers: tall squares are what a thumb wants.
+    const rulerH = portrait ? 26 : 10;
+    const lineGap = portrait ? 12 : 0;
     const visible = this.visibleRows;
-    const cellH = (ctrlTop - gap - gridTop) / visible;
+    const gridTop = top + titleH;
+    const cellH = (ctrlTop - gap - gridTop - lines * rulerH - (lines - 1) * lineGap) / (visible * lines);
     // The note names stand centred under the BACK disc (Peter, 5 Oct 2026); `labelX` is the
     // column's left edge, where the scroll arrows hang.
-    const grid = { x: gx, y: gridTop, w: gridW, h: cellH * visible, cellW, cellH, labelX: x0, nameX: backBox.cx, visible,
-      pad, startX, endX, colAt };
+    const grids = Array.from({ length: lines }, (_, k) => {
+      const rulerY = gridTop + k * (rulerH + visible * cellH + lineGap);
+      return { x: gx, y: rulerY + rulerH, w: gridW, h: cellH * visible, cellW, cellH, labelX: x0, nameX: backBox.cx, visible,
+        pad, startX, endX, colAt, from: k * span, span, firstCol: k * shownCols, cols: shownCols, rulerY, rulerH, bar0: k * (span / 16) };
+    });
+    const grid = grids[0];
+    // + / − at the end of the last line's bar numbers; the tap target reaches a little past the plate.
+    const last = grids[lines - 1];
+    const barsW = portrait ? 46 : 20;
+    const barsBox = { x: gx + gridW - barsW, y: last.rulerY + (portrait ? 2 : 1), w: barsW, h: rulerH - (portrait ? 6 : 2) };
+    const reach = portrait ? 6 : 4;
+    const barsHit = { x: barsBox.x - reach, y: barsBox.y - reach, w: barsBox.w + 2 * reach, h: barsBox.h + reach };
     const selectorW = (width - (cols - 1) * gap) / cols;
     const pickers = Array.from({ length: PICKERS }, (_, i) => ({
       x: x0 + (i % cols) * (selectorW + gap), y: ctrlTop + Math.floor(i / cols) * (ctrlH + gap), w: selectorW, h: ctrlH,
@@ -413,17 +505,20 @@ export class BangerMakerState {
     const buttons = BUTTONS.map((_, i) => ({
       x: x0 + (i % cols) * (selectorW + gap), y: by + Math.floor(i / cols) * (buttonH + gap), w: selectorW, h: buttonH,
     }));
-    return { portrait, top, titleH, modeBox, backBox, grid, pickers, buttons };
+    return { portrait, top, titleH, modeBox, backBox, grid, grids, barsBox, barsHit, pickers, buttons };
   }
 
   // ------------------------------------------------------------------ the loop
   // Always counted in sixteenths, whichever grid is showing: the kick on the beat, the
-  // hat on the off-beat eighths, the riff from the grid as sixteenths.
+  // hat on the off-beat eighths, the riff from the grid as sixteenths. It loops every bar
+  // that is set, the page ADVANCED is not showing included.
   tickLoop() {
     const ctx = Audio.ctx;
     if (!ctx) return;
     const now = ctx.currentTime;
     const stepS = this.previewSixteenthS;
+    const loop = this.loopLength;
+    const per = this.per;
     if (this.loopT0 == null) { this.loopT0 = now + 0.1; this.scheduled = -1; }
     const { semis, lengths } = sixteenths(this.notes, this.mode, this.lengths);
     for (;;) {
@@ -435,15 +530,16 @@ export class BangerMakerState {
       if (t < now - 0.25) { this.loopT0 = now + 0.05 - next * stepS; continue; }
       this.scheduled = next;
       const at = Math.max(0.005, t - now);
-      const s16 = next % 32;
+      const s16 = next % loop;
       // The kick on every beat, a light clap on two and four, the hat off the beat.
       if (s16 % 4 === 0) Audio.voiceSfx('kickMegamix', { gain: 0.45, at });
       else if (s16 % 4 === 2) Audio.voiceSfx('hatEngine', { gain: 0.3, at });
       if (s16 % 8 === 4) Audio.voiceSfx('ds808Clap', { gain: 0.2, at });
-      if (semis[s16] != null) Audio.voiceSfx(this.riffVoice, { freq: semitoneHz(semis[s16]), seconds: lengths[Math.floor(s16 / (16 / this.steps))] * stepS * 0.9, gain: RIFF_GAIN, at });
+      // a note's length is its column's (a sixteenth in ADVANCED, an eighth in SIMPLE)
+      if (semis[s16] != null) Audio.voiceSfx(this.riffVoice, { freq: semitoneHz(semis[s16]), seconds: lengths[Math.floor(s16 / per)] * stepS * 0.9, gain: RIFF_GAIN, at });
     }
     const pos = Math.floor((now - this.loopT0) / stepS);
-    this.playStep = pos >= 0 ? Math.floor((pos % 32) * this.steps / 32) : -1;
+    this.playStep = pos >= 0 ? Math.floor((pos % loop) / per) : -1;
   }
 
   // ------------------------------------------------------------------ actions
@@ -577,16 +673,15 @@ export class BangerMakerState {
 
   press(button) {
     const name = BUTTONS[button];
+    // CLEAR and ZAP write the whole grid: bars 3–4 that 2 BARS was keeping go too.
     if (name === 'CLEAR') {
-      this.notes = null;
+      this.setGrid(this.mode, null, null);
       Audio.sfx('ui');
     } else if (name === 'ZAP') {
-      const riff = this.random() < GAME_RIFF_ODDS ? pickGameRiff(this.mode, this.random, BangerMakerState.lastGameRiff) : null;
+      // a cabinet riff as long as the grid: two bars, or a four-bar phrase (game-riffs.js)
+      const riff = this.random() < GAME_RIFF_ODDS ? pickGameRiff(this.mode, this.random, BangerMakerState.lastGameRiff, this.bars) : null;
       if (riff) this.zapGameRiff(riff);
-      else {
-        this.notes = luckyNotes(this.mode);
-        this.lengths = normaliseLengths(null, this.notes, this.mode);
-      }
+      else this.setGrid(this.mode, luckyNotes(this.mode, Math.random, this.bars), null);
       Audio.sfx('uiConfirm');
     } else if (name === 'EXPERIMENT') {
       this.experiment();
@@ -605,7 +700,8 @@ export class BangerMakerState {
     // `expression` is the recipe's playing-policy version (make.js): a new or revised song opts in,
     // so GO WILD also sets the slide on its lead and the take draws its voltage rolls (a new lead
     // sound, and by voltage a new bass line and chord gate); an old recipe kept without it is made as it was.
-    const recipe = { notes: this.notes, lengths: this.lengths, mode: this.mode, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy, expression: RECIPE_EXPRESSION,
+    const { notes, lengths } = settleBars(this.notes, this.lengths, this.mode);
+    const recipe = { notes, lengths, mode: this.mode, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy, expression: RECIPE_EXPRESSION,
       production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, seed: newSeed() };
     // The flavour the take plays, kept with it (make.js labFlavour): a flavour added to the style later
     // never moves a saved song. Null for a style without flavours.
@@ -640,22 +736,27 @@ export class BangerMakerState {
       if (dx > 0) f.area = 'mode';
       if (dy > 0) { f.area = 'grid'; f.row = this.scrollRow; f.col = 0; }
     } else if (f.area === 'mode') {
-      // left past SIMPLE reaches the BACK arrow
+      // left past SIMPLE reaches the BACK arrow; down, the + / − under it
       if (dx < 0 && this.mode === 'simple') f.area = 'back';
       else if (dx) { this.setMode(dx < 0 ? 'simple' : 'advanced'); return true; }
-      if (dy > 0) { f.area = 'grid'; f.row = this.scrollRow; }
+      if (dy > 0) f.area = 'bars';
+    } else if (f.area === 'bars') {
+      // + / −, at the end of the bar numbers, between SIMPLE / ADVANCED and the grid
+      if (dy < 0) f.area = 'mode';
+      else if (dy > 0) { f.area = 'grid'; f.row = this.scrollRow; f.col = Math.min(this.steps - 1, f.col); }
     } else if (f.area === 'grid') {
       if (dx) f.col = (f.col + dx + this.steps) % this.steps;
-      if (dy < 0 && f.row === 0) f.area = 'mode';
-      else if (dy > 0 && f.row === this.rows - 1) { f.area = 'picker'; f.picker = Math.min(this.pickerCols() - 1, Math.floor(f.col * this.pickerCols() / this.steps)); }
+      if (dy < 0 && f.row === 0) f.area = 'bars';
+      else if (dy > 0 && f.row === this.rows - 1) { f.area = 'picker'; f.picker = Math.min(this.pickerCols() - 1, Math.floor((f.col % this.lineCols) * this.pickerCols() / this.lineCols)); }
       else if (dy) { f.row = Math.max(0, Math.min(this.rows - 1, f.row + dy)); this.showRow(f.row); }
     } else if (f.area === 'picker') {
       if (dx) { this.cycle(f.picker, dx); return true; }
       const cols = this.pickerCols();
       if (dy < 0 && f.picker >= cols) f.picker -= cols;
       else if (dy < 0) {
+        // up from the selectors into the last line, under the selector's column
         f.area = 'grid'; f.row = this.scrollRow + this.visibleRows - 1;
-        f.col = Math.floor(this.steps * (f.picker + 0.5) / cols);
+        f.col = (this.lines - 1) * this.lineCols + Math.floor(this.lineCols * (f.picker + 0.5) / cols);
       } else if (dy > 0 && f.picker + cols < PICKERS) f.picker += cols;
       else if (dy > 0) { f.area = 'button'; f.button = f.picker % cols; }
     } else if (f.area === 'button') {
@@ -697,15 +798,17 @@ export class BangerMakerState {
     const inside = (r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
     if (inside(L.backBox)) return { area: 'back' };
     if (inside(L.modeBox)) return { area: 'mode', mode: x < L.modeBox.x + L.modeBox.w / 2 ? 'simple' : 'advanced' };
-    const g = L.grid;
-    // the note names are the handle that scrolls the grid
-    if (x >= g.labelX - 12 && x < g.x && y >= g.y && y < g.y + g.h) return { area: 'names' };
-    if (inside(g)) {
-      return {
-        area: 'grid',
-        col: g.colAt(x),
-        row: Math.min(this.rows - 1, this.scrollRow + Math.floor((y - g.y) / g.cellH)),
-      };
+    if (inside(L.barsHit)) return { area: 'bars' };
+    for (const g of L.grids) {
+      // the note names are the handle that scrolls the grid
+      if (x >= g.labelX - 12 && x < g.x && y >= g.y && y < g.y + g.h) return { area: 'names' };
+      if (inside(g)) {
+        return {
+          area: 'grid',
+          col: g.firstCol + g.colAt(x),
+          row: Math.min(this.rows - 1, this.scrollRow + Math.floor((y - g.y) / g.cellH)),
+        };
+      }
     }
     for (let i = 0; i < L.pickers.length; i++) {
       const r = L.pickers[i];
@@ -745,6 +848,7 @@ export class BangerMakerState {
     if (Input.pressed('confirm')) {
       if (f.area === 'back') { Audio.sfx('ui'); this.onDone(); }
       else if (f.area === 'mode') this.setMode(this.mode === 'simple' ? 'advanced' : 'simple');
+      else if (f.area === 'bars') this.setBars(this.bars === 2 ? 4 : 2, true);
       else if (f.area === 'grid') this.toggle(f.col, f.row);
       else if (f.area === 'picker') this.openChooser(f.picker);
       else this.press(f.button);
@@ -754,6 +858,7 @@ export class BangerMakerState {
       if (hit?.area === 'back') { Audio.sfx('ui'); this.onDone(); }
       else if (hit?.area === 'names') this.scrollDrag = { y: Input.pointer.y, from: this.scrollRow, moved: false };
       else if (hit?.area === 'mode') { f.area = 'mode'; this.setMode(hit.mode); }
+      else if (hit?.area === 'bars') { f.area = 'bars'; this.setBars(this.bars === 2 ? 4 : 2, true); }
       else if (hit?.area === 'grid') {
         Object.assign(f, hit);
         this.toggle(hit.col, hit.row);
@@ -807,11 +912,17 @@ export class BangerMakerState {
     this.drawBack(ctx, L, showFocus);
     const titleX = L.backBox.cx + L.backBox.r + (L.portrait ? 18 : 8);
     portraitMenuText(ctx, this.from ? 'EDIT BANGER' : 'NEW BANGER', titleX, textYForMid(titleMid, portraitMenuScale(1.6), 'title'), '#fff', 1.6, 'title');
-    this.drawModeSwitch(ctx, L, showFocus);
-    this.drawGrid(ctx, L.grid, L.portrait);
+    const focusOn = (area) => showFocus && this.focus.area === area;
+    this.drawSwitch(ctx, L, L.modeBox, MODE_ITEMS, this.mode, focusOn('mode'));
+    for (const g of L.grids) { this.drawRuler(ctx, L, g); this.drawGrid(ctx, g, L.portrait); }
+    this.drawBarsButton(ctx, L, focusOn('bars'));
     // CHARGING... and the like float over the middle of the grid: the title row is full.
     const status = this.making > 0 ? 'CHARGING...' : (this.messageT > 0 ? this.message : null);
     if (status) this.drawStatus(ctx, L, status);
+    // A mouse resting on + / − is told what it does.
+    const p = Input.pointer;
+    const hb = L.barsHit;
+    if (!Input.usingTouch && !this.chooser && p.x >= hb.x && p.x < hb.x + hb.w && p.y >= hb.y && p.y < hb.y + hb.h) this.drawTip(ctx, L);
     const selectors = [
       { label: 'FORMULA', value: (MAKER_STYLES.find((s) => s.id === this.style)?.label ?? '').toUpperCase() },
       { label: 'ELEMENT', value: (MAKER_MOODS.find((m) => m.id === this.mood)?.label ?? '').toUpperCase() },
@@ -870,27 +981,63 @@ export class BangerMakerState {
     ctx.restore();
   }
 
-  drawModeSwitch(ctx, L, showFocus) {
-    const b = L.modeBox;
+  /** A two-way switch in the title row's style — SIMPLE | ADVANCED, 2 BARS | 4 BARS, and ADVANCED's pages. */
+  drawSwitch(ctx, L, b, items, current, focused) {
     const r = plateRadius(b.h, L.portrait);
-    const focused = showFocus && this.focus.area === 'mode';
     drawMenuRow(ctx, b.x, b.y, b.w, b.h, r, focused ? MENU_ROW_HILITE : BACK_BUTTON_PLATE);
-    MODE_IDS.forEach((id, i) => {
-      const seg = { x: b.x + (i * b.w) / 2, w: b.w / 2 };
-      const on = this.mode === id;
+    items.forEach(({ id, label }, i) => {
+      const seg = { x: b.x + (i * b.w) / items.length, w: b.w / items.length };
+      const on = current === id;
       if (on) drawMenuRow(ctx, seg.x + 2, b.y + 2, seg.w - 4, b.h - 4, Math.max(0, r - 2), 'rgba(72,224,200,0.22)');
-      const label = RIFF_MODES[id].label;
       const s = portraitMenuFit(label, 0.72, seg.w - 8);
       portraitMenuTextCentered(ctx, label, seg.x + seg.w / 2, textYForMid(b.y + b.h / 2, portraitMenuScale(s)),
         on ? C_NOTE : (focused ? C_SEL : '#7a7a8c'), s);
     });
   }
 
+  /** A line's bar numbers along its top (Peter, 6 Oct 2026), the repeat's dim like its notes. */
+  drawRuler(ctx, L, g) {
+    // about the size of the note names, so they read on a phone
+    const size = L.portrait ? 0.8 : 0.7;
+    const ty = textYForMid(g.rulerY + g.rulerH / 2, portraitMenuScale(size));
+    const repeat = this.repeats();
+    for (let b = 0; b < g.span / 16; b++) {
+      const bar = g.bar0 + b + 1;
+      portraitMenuText(ctx, String(bar), g.startX(b * 16) + (L.portrait ? 4 : 2), ty, repeat && bar > 2 ? 'rgba(122,122,140,0.45)' : '#8a8a9c', size);
+    }
+  }
+
+  /** + (two bars) or − (four) at the end of the bar numbers: a small plate, the sign drawn rather than set in type. */
+  drawBarsButton(ctx, L, focused) {
+    const b = L.barsBox;
+    drawMenuRow(ctx, b.x, b.y, b.w, b.h, plateRadius(b.h, L.portrait), focused ? MENU_ROW_HILITE : BACK_BUTTON_PLATE);
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    const arm = Math.min(b.w, b.h) * 0.28, t = L.portrait ? 2.4 : 1.2;
+    ctx.save();
+    ctx.fillStyle = focused ? C_SEL : C_TEXT;
+    ctx.fillRect(cx - arm, cy - t / 2, 2 * arm, t);
+    if (this.bars === 2) ctx.fillRect(cx - t / 2, cy - arm, t, 2 * arm);
+    ctx.restore();
+  }
+
+  /** The tooltip under a mouse on + / −: what a click does, on a plate just left of it. */
+  drawTip(ctx, L) {
+    const text = this.bars === 2 ? BARS_SAY.addTip : BARS_SAY.dropTip;
+    const size = L.portrait ? 0.7 : 0.6;
+    const s = portraitMenuScale(size);
+    const w = textWidth(text, s) + (L.portrait ? 20 : 10);
+    const h = L.barsBox.h + (L.portrait ? 6 : 3);
+    const x = L.barsBox.x - w - 4;
+    const y = L.barsBox.y + L.barsBox.h / 2 - h / 2;
+    drawMenuRow(ctx, x, y, w, h, plateRadius(h, L.portrait), 'rgba(11,11,20,0.92)');
+    portraitMenuTextCentered(ctx, text, x + w / 2, textYForMid(y + h / 2, s), C_TEXT, size);
+  }
+
   drawGrid(ctx, g, portrait) {
     const mode = this.mode;
     const rows = this.rows;
     const steps = this.steps;
-    const per = 32 / steps;                  // sixteenths per column
+    const per = this.per;                    // sixteenths per column
     const pad = g.pad;
     const labelS = Math.min(0.85, g.cellH / (portrait ? 20 : 12));
     // Only the rows on show (landscape scrolls); `top` is the first, a visual row.
@@ -913,11 +1060,13 @@ export class BangerMakerState {
     const radius = Math.min(g.cellW - 2 * pad, h) * 0.3;
     // The beat gutters (layout) are space alone — a line on every beat was noise; the bar's
     // has a hairline down it.
+    // Columns on show are counted from the left edge of what shows (`c`); `col` is the column in the loop.
     const leftAt = (at) => g.startX(at) + pad;
     const rightAt = (at) => g.endX(at) - pad;
-    for (let col = 0; col < steps; col++) {
-      const x = leftAt(col * per);
-      const w = rightAt((col + 1) * per) - x;
+    for (let c = 0; c < g.cols; c++) {
+      const col = g.firstCol + c;
+      const x = leftAt(c * per);
+      const w = rightAt((c + 1) * per) - x;
       const playing = col === this.playStep;
       // Beats alternate in shade so the bar reads in fours.
       const beatLift = Math.floor((col * per) / 4) % 2 === 0 ? 0.05 : 0;
@@ -927,29 +1076,36 @@ export class BangerMakerState {
         drawMenuRow(ctx, x, yOf(vr) + pad, w, h, Math.min(radius, w / 2), fill);
       }
     }
-    // The bar line, under a note held across it.
+    // The bar lines, under a note held across one.
     ctx.fillStyle = C_BAR_LINE;
-    ctx.fillRect((g.endX(16) + g.startX(16)) / 2 - BAR_LINE_W / 2, g.y, BAR_LINE_W, g.h);
-    const lengths = normaliseLengths(this.lengths, this.notes, mode);
+    for (let at = 16; at < g.span; at += 16) ctx.fillRect((g.endX(at) + g.startX(at)) / 2 - BAR_LINE_W / 2, g.y, BAR_LINE_W, g.h);
+    const notes = this.notes;
+    const lengths = normaliseLengths(this.lengths, notes, mode);
+    const loop = this.loopLength;
     // Each note is a piano roll block: the body itself reaches the written end, with
-    // wrapped duration continuing at the start of this two-bar loop.
+    // wrapped duration continuing at the start of the loop — each piece cut to the line on show.
+    // Bars 3–4 still the repeat of 1–2 are drawn dim: a repeat, not a tune of their own yet.
+    const half = steps / 2;
+    const repeat = this.repeats();
     for (let col = 0; col < steps; col++) {
-      const row = this.notes[col];
+      const row = notes[col];
       if (row < 0) continue;
+      ctx.globalAlpha = repeat && col >= half ? 0.32 : 1;
       const vr = rows - 1 - row;
       if (vr < top || vr >= top + g.visible) continue;
       const y = yOf(vr) + pad;
       const start = col * per;
       const end = start + lengths[col];
-      const x = leftAt(start);
-      const first = rightAt(Math.min(end, 32)) - x;
-      drawMenuRow(ctx, x, y, first, h, Math.min(radius, first / 2),
-        col === this.playStep ? '#ffffff' : noteColour(mode, row));
-      if (end > 32) {
-        const wrapped = rightAt(Math.min(end - 32, 32)) - leftAt(0);
-        drawMenuRow(ctx, leftAt(0), y, wrapped, h, Math.min(radius, wrapped / 2), noteColour(mode, row));
-      }
+      [[start, Math.min(end, loop)], [0, Math.min(end - loop, loop)]].forEach(([a, b], piece) => {
+        const lo = Math.max(a, g.from), hi = Math.min(b, g.from + g.span);
+        if (hi <= lo) return;
+        const x = leftAt(lo - g.from);
+        const w = rightAt(hi - g.from) - x;
+        drawMenuRow(ctx, x, y, w, h, Math.min(radius, w / 2),
+          !piece && col === this.playStep ? '#ffffff' : noteColour(mode, row));
+      });
     }
+    ctx.globalAlpha = 1;
     // More rows than show: an arrow at the top and the bottom of the names, left of them (it
     // was a slim scroll bar; Peter, 5 Oct 2026), in the selectors' arrow colour. Both stay
     // up; the one with nowhere left to go is dimmed.
@@ -974,12 +1130,13 @@ export class BangerMakerState {
       ctx.restore();
     }
     const fr = this.focus.row;
-    if (!Input.usingTouch && this.focus.area === 'grid' && fr >= top && fr < top + g.visible) {
+    const fc = this.focus.col - g.firstCol;
+    if (!Input.usingTouch && this.focus.area === 'grid' && fr >= top && fr < top + g.visible && fc >= 0 && fc < g.cols) {
       ctx.save();
       ctx.strokeStyle = C_SEL;
       ctx.lineWidth = 2;
-      const fx = g.startX(this.focus.col * per);
-      ctx.strokeRect(fx + 1, yOf(this.focus.row) + 1, g.endX((this.focus.col + 1) * per) - fx - 2, g.cellH - 2);
+      const fx = g.startX(fc * per);
+      ctx.strokeRect(fx + 1, yOf(this.focus.row) + 1, g.endX((fc + 1) * per) - fx - 2, g.cellH - 2);
       ctx.restore();
     }
   }

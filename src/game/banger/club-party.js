@@ -4,7 +4,9 @@ import { drawProp } from '../../sprites/props.js';
 import { HERO_DANCE_LAB_CANDIDATES, heroDancePose } from '../../dev/hero-dance-candidates.js';
 import { groundDanceFeet } from './dance-legs.js';
 
-export const PARTY_BEATS = Object.freeze({ spotlight: 8, bubbles: 16, cleaner: 16, vacuum: 16, 'drop-jump': 5 });
+export const PARTY_BEATS = Object.freeze({ spotlight: 8, bubbles: 16, cleaner: 16, vacuum: 16, 'drop-jump': 5, moonwalk: 16 });
+/** Each moonwalker's moonwalk, for THE GROUP MOONWALK (club.js GROUP_MOONWALK_CHANCE). */
+const MOONWALKS = Object.fromEntries(HERO_DANCE_LAB_CANDIDATES.filter((c) => c.move === 'moonwalk').map((c) => [c.hero, c]));
 /** How many beats the crowd takes to sink all the way down while Fernwick draws. */
 export const DRAW_CROUCH_BEATS = 4;
 /** The two who come for the confetti on the floor: Dolores with her broom, or the game's vacuum cleaner. */
@@ -333,38 +335,28 @@ export function sweepStroke(beat) {
   const shove = s < SWEEP_SHOVE;
   // 0 drawn in, 1 pushed out: out fast on the beat, back in a straight line as she catches up
   const k = shove ? 1 - (1 - s / SWEEP_SHOVE) ** 2 : 1 - (s - SWEEP_SHOVE) / (1 - SWEEP_SHOVE);
-  // UNDERHAND, leaning into it (Peter: "pushing overhand when she should be pushing underhand",
-  // and the rear arm hanging at her side was wrong): the near hand holds the top of the handle
-  // just in front of her, elbow down and bent so the forearm comes up under it; the far arm,
-  // behind her shoulder, reaches on out ahead of her down the handle, palm up under it. Her
-  // whole body leans into the push — more on the shove — which is what tips the handle down to
-  // the floor: her arms are too short to hold it steep from straight up.
-  const lean = 0.15 + 0.06 * k;
-  const c = Math.cos(lean), n = Math.sin(lean);
-  const toWorld = ([x, y]) => [x * c - y * n, x * n + y * c], toBody = ([x, y]) => [x * c + y * n, -x * n + y * c];
+  // UNDERHAND (Peter: "pushing overhand when she should be pushing underhand"): the near hand
+  // holds the top of the handle just in front of her, elbow down and bent so the forearm comes
+  // up under it; the far arm, behind her shoulder, reaches down nearly straight and takes it
+  // lower, palm up. She stands upright (Peter: "I don't think Dolores needs to lean forward"),
+  // so the shove is her weight going onto her front foot and her hands going with it.
   const top = [-0.026 + 0.012 * k, -0.393];
-  const L = 0.486, G = 0.267;                         // top hand to the head, and on down to the other hand
-  const tw = toWorld(top);
-  const foot = [tw[0] + Math.sqrt(L * L - (tw[1] + BROOM_FOOT) ** 2), -BROOM_FOOT];
-  const ux = (foot[0] - tw[0]) / L, uy = (foot[1] - tw[1]) / L;
-  return { foot, top, low: toBody([tw[0] + ux * G, tw[1] + uy * G]), lean, shift: 0.03 * k,
+  const L = 0.561, G = 0.272;                         // top hand to the head, and on down to the other hand
+  const foot = [top[0] + Math.sqrt(L * L - (top[1] + BROOM_FOOT) ** 2), -BROOM_FOOT];
+  const ux = (foot[0] - top[0]) / L, uy = (foot[1] - top[1]) / L;
+  return { foot, top, low: [top[0] + ux * G, top[1] + uy * G], shift: 0.04 * k,
     drag: shove ? 1 - 0.5 * s / SWEEP_SHOVE : 0.5 };
 }
 /** Dolores sweeping, at song beat `beat` and `age` beats into the moment, in her own frame. */
 function drawSweeping(ctx, beat, age, h) {
   const st = sweepStroke(beat);
   ctx.translate(st.shift * h, 0);
-  const c = Math.cos(st.lean), n = Math.sin(st.lean);
-  drawToon(ctx, 'dolores', { kind: 'run', grounded: true, time: age * 0.35, phase: age * 0.45 % 1, lean: st.lean,
+  drawToon(ctx, 'dolores', { kind: 'run', grounded: true, time: age * 0.35, phase: age * 0.45 % 1,
     // both elbows down, the near one bent under the top of the handle
     armOut: SWEEP_ARM_OUT, dance: { hands: [nearHandFor(st.top), farHandFor(st.low)], elbows: [-1, -1] },
-    // the handle resting across both palms, as the painter placed them, down to the head on the
-    // floor — drawn upright again, her lean taken back out
+    // the handle resting across both palms, as the painter placed them, down to the head on the floor
     heldOnHands: true,
-    held: (g, near, far, u) => {
-      const w = ([x, y]) => [x * c - y * n, x * n + y * c];
-      g.rotate(-st.lean);
-      const a = w(near), b = w(far);
+    held: (g, a, b, u) => {
       const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy), ex = dx / len, ey = dy / len;
       const lift = 0.012 * u;                       // up off the middle of each hand, into the palm
       const p = [a[0] + ey * lift, a[1] - ex * lift];
@@ -436,6 +428,9 @@ export function partyHero(m, beat, hero, i, pose) {
     return { pose: { kind: 'celebrate', grounded: true, menu: true, time: age * 0.5, phase: (age / 2) % 1,
       shift: 0, bounce: 0, tilt: 0 }, lift: 0 };
   }
+  // THE GROUP MOONWALK: the ones in it all on the same moonwalk, from the top of its glide —
+  // two glides and resets, in step
+  if (m.kind === 'moonwalk' && m.who?.includes(i) && MOONWALKS[hero]) return { pose: heroDancePose(MOONWALKS[hero], age), lift: 0 };
   if (m.kind === 'bubbles' && hero === 'b33p') return { pose: { ...pose, headTurn: 22 * Math.sin(age * 0.7) }, lift: 0 };
   if (m.kind === 'bubbles' && hero === 'rusty' && age > 4 && age < 6) return {
     pose: { ...pose, headTurn: -15, dance: { ...pose.dance, hands: [[0.7, -0.65], [0.7, 0.65]] } }, lift: 0 };

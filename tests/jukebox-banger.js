@@ -8,7 +8,7 @@ const { save } = await import('../src/engine/save.js');
 const { Audio } = await import('../src/engine/audio.js');
 const riffMod = await import('../src/game/banger/riff.js');
 const {
-  RIFF_MODES, DEFAULT_SIMPLE, rowHz, rowName, toggleNote, riffFromNotes, normaliseNotes, simplify, expand,
+  RIFF_MODES, DEFAULT_SIMPLE, rowHz, rowName, toggleNote, riffFromNotes, normaliseNotes, normaliseLengths, simplify, expand,
   upgradeDraft, upgradeRecipeNotes, luckyNotes, hasNotes,
 } = riffMod;
 const DEFAULT_NOTES = DEFAULT_SIMPLE;
@@ -466,7 +466,9 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(maker.focus.row === 2 && maker.scrollRow === 2, 'the focus walking off the top scrolls one row');
     maker.focus = { area: 'mode', col: 0, row: 0, picker: 0, button: 3 };
     frame(maker, 'down');
-    assert(maker.focus.area === 'grid' && maker.focus.row === 2, 'down from SIMPLE / ADVANCED lands on the top row on show');
+    assert(maker.focus.area === 'bars', 'down from SIMPLE / ADVANCED reaches the + at the end of the bar numbers');
+    frame(maker, 'down');
+    assert(maker.focus.area === 'grid' && maker.focus.row === 2, 'and down again lands on the top row on show');
     maker.setMode('simple');
     L = maker.layout();
   }
@@ -504,7 +506,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(maker.advanced[1] === 3, 'ADVANCED takes a sharp on a sixteenth');
   const remembered = [...maker.advanced];
   tap(maker, L.modeBox.x + L.modeBox.w * 0.25, L.modeBox.y + L.modeBox.h / 2);
-  assert(maker.mode === 'simple' && maker.notes.join() === simplify(remembered).join(),
+  assert(maker.mode === 'simple' && maker.notes.join() === simplify(remembered).slice(0, maker.steps).join(),
     'ADVANCED → SIMPLE shows the riff converted to scale notes and eighths');
   tap(maker, L.modeBox.x + L.modeBox.w * 0.75, L.modeBox.y + L.modeBox.h / 2);
   assert(maker.mode === 'advanced' && maker.advanced.join() === remembered.join(),
@@ -562,8 +564,10 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(maker.focus.area === 'button', 'down from the selectors reaches the action buttons');
   maker.focus = { area: 'grid', col: 2, row: 0, picker: 0, button: 3 };
   frame(maker, 'up');
+  assert(maker.focus.area === 'bars', 'up from the top row reaches the + at the end of the bar numbers');
+  frame(maker, 'up');
   frame(maker, 'right');
-  assert(maker.focus.area === 'mode' && maker.mode === 'advanced', 'up from the top row reaches SIMPLE / ADVANCED, and right picks ADVANCED');
+  assert(maker.focus.area === 'mode' && maker.mode === 'advanced', 'up again reaches SIMPLE / ADVANCED, and right picks ADVANCED');
   frame(maker, 'left');
   assert(maker.mode === 'simple', 'left picks SIMPLE');
 
@@ -630,6 +634,127 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.setMode('advanced');
   maker.draw(ctx);
   assert(true, 'the maker draws in both modes');
+}
+
+// ---------------------------------------------------------------- two bars or four: + and − (Peter, 6 Oct 2026)
+{
+  const { settleBars, barsOf, stepsOf } = riffMod;
+  const random = (() => { let x = 19; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
+  // ZAP's four bars: a question and its answer.
+  let shaped = true;
+  for (let k = 0; k < 60; k++) {
+    for (const mode of ['simple', 'advanced']) {
+      const n = luckyNotes(mode, random, 4);
+      const half = stepsOf(mode, 2), bar = half / 2;
+      const rhythm = (b) => n.slice(b * bar, (b + 1) * bar).map((r) => (r >= 0 ? 'x' : '.')).join('');
+      const last = n.findLast((r) => r >= 0);
+      const home = mode === 'simple' ? [1, 8] : [2, 14];
+      if (n.length !== 2 * half || rhythm(2) !== rhythm(0) || n.slice(2 * bar, 3 * bar).join() === n.slice(0, bar).join()
+        || !home.includes(last) || n[3 * bar] < 0) shaped = false;
+    }
+  }
+  assert(shaped, 'ZAP at four bars: bar 3 is bar 1\'s rhythm on other notes, bar 4 comes home to A');
+  const two = luckyNotes('simple', random);
+  const copy = [...two, ...two];
+  const copyL = normaliseLengths(null, copy, 'simple');
+  assert(barsOf(copy, 'simple') === 4 && barsOf(two, 'simple') === 2 && normaliseNotes(two, 'simple', 4).length === 32
+    && normaliseNotes(two, 'simple', 4).slice(16).every((r) => r < 0), 'a grid\'s bars are its length; a two-bar grid asked for four gets two bars of rest');
+  const settled = settleBars(copy, copyL, 'simple');
+  const real = [...two, ...luckyNotes('simple', random)];
+  assert(settled.notes.join() === two.join() && settled.lengths.length === 16 && settleBars(real, null, 'simple').notes.length === 32,
+    'four bars that are still the copy go to the generator as two; four of their own stay four');
+  const riff = riffFromNotes(real);
+  assert(riff.bars === 4 && riff.source.to === 3 && riff.parts[0].bars.length === 4 && riff.parts[0].bars.every((b) => b.split(' ').length === 16),
+    'a four-bar grid is a four-bar riff, the shape the desk reads off a song');
+  const song4 = makeBanger({ notes: real, style: 'eurodance', mood: defaultMoodFor('eurodance'), seed: 3 });
+  assert(song4.bank && makeBanger({ notes: real, style: 'eurodance', mood: defaultMoodFor('eurodance'), seed: 3 }).bank, 'and makes a song');
+}
+{
+  let made = null;
+  saveDraft({ mode: 'simple', simple: DEFAULT_NOTES, advanced: expand(DEFAULT_NOTES), simpleEdited: true, style: 'eurodance', mood: defaultMoodFor('eurodance') });
+  const maker = new BangerMakerState({ onDone: () => {}, onMade: (rec, song) => { made = { rec, song }; }, random: () => 0 });
+  maker.enter();
+  let L = maker.layout();
+  const g0 = L.grid;
+  assert(maker.bars === 2 && maker.steps === 16 && maker.notes.join() === DEFAULT_NOTES.join() && L.grids.length === 1
+    && L.barsBox.y >= g0.rulerY && L.barsBox.y + L.barsBox.h <= g0.y && Math.abs(L.barsBox.x + L.barsBox.w - (g0.x + g0.w)) < 0.01
+    && L.barsBox.y > L.modeBox.y + L.modeBox.h,
+  'the grid opens on two bars, its bar numbers along the top and the + at their end, out of the title row');
+  tap(maker, ...centre(L.barsBox));
+  L = maker.layout();
+  assert(maker.bars === 4 && maker.steps === 32 && maker.notes.join() === [...DEFAULT_NOTES, ...DEFAULT_NOTES].join() && maker.repeats()
+    && L.grids.length === 1 && L.grid.cols === 32 && maker.message === 'BARS 3-4 ADDED',
+  '+ brings bars 3–4 in as a repeat of 1–2, says so, and landscape shows all four bars on one line');
+  // a note written in bar 1 is followed in bar 3 while 3–4 are still the repeat
+  maker.toggle(2, maker.rows - 1 - 6);
+  assert(maker.notes[2] === 6 && maker.notes[18] === 6 && maker.repeats(), 'an edit in bars 1–2 is followed by the repeat');
+  const followed = [...maker.notes];
+  frame(maker); frame(maker);
+  tap(maker, ...centre(L.buttons[3]));
+  frame(maker); frame(maker);
+  assert(made && made.rec.notes.join() === followed.slice(0, 16).join() && made.rec.lengths.length === 16,
+    'still the repeat, BRING TO LIFE makes the two-bar song');
+  // write in bar 3: the top square of its first column
+  tap(maker, L.grid.startX(32) + 1, L.grid.y + L.grid.cellH / 2);
+  assert(maker.notes[16] === 10 && maker.simple[16] === 10 && !maker.repeats(), 'a note written in bar 3 makes bars 3–4 the riff\'s own');
+  maker.toggle(3, maker.rows - 1 - 4);
+  assert(maker.notes[3] === 4 && maker.notes[19] !== 4, 'and bars 1–2 are no longer followed');
+  const four = [...maker.notes];
+  made = null;
+  tap(maker, ...centre(L.buttons[3]));
+  frame(maker); frame(maker);
+  assert(made && made.rec.notes.join() === four.join() && made.song.bank, 'bars 3–4 of their own make a four-bar song');
+  assert(bangerState().draft.bars === 4 && bangerState().draft.simple.length === 32, 'and the draft remembers four bars');
+  tap(maker, ...centre(L.barsBox));
+  assert(maker.bars === 2 && maker.message === 'BACK TO 2 BARS' && maker.notes.join() === four.slice(0, 16).join()
+    && maker.simple.slice(16).join() === four.slice(16).join(), '− goes back to two bars, says so, and keeps bars 3–4');
+  maker.setBars(4);
+  assert(maker.notes.join() === four.join(), 'and + brings them back as they were');
+  // ADVANCED's four bars on one line in landscape; in portrait, two lines, bars 3–4 under 1–2
+  tap(maker, L.modeBox.x + L.modeBox.w * 0.75, L.modeBox.y + L.modeBox.h / 2);
+  L = maker.layout();
+  assert(maker.mode === 'advanced' && maker.steps === 64 && L.grids.length === 1 && L.grid.cols === 64,
+    'ADVANCED\'s four bars are one line of sixty-four columns in landscape');
+  {
+    // a phone held upright: a real portrait frame, 393 by 852
+    const { setPresentationFrame } = await import('../src/engine/renderer.js');
+    const { frameForViewport, defaultFrame, PHONE_PORTRAIT } = await import('../src/engine/frame.js');
+    setPresentationFrame(frameForViewport({ mode: PHONE_PORTRAIT, viewportWidth: 393, viewportHeight: 852 }));
+    try {
+      const P2 = maker.layout();
+      const [a, b] = P2.grids;
+      assert(P2.grids.length === 2 && a.cols === 32 && b.cols === 32 && b.firstCol === 32 && b.bar0 === 2 && a.bar0 === 0
+        && b.rulerY >= a.y + a.h && b.y === b.rulerY + b.rulerH && P2.barsBox.y >= b.rulerY && P2.barsBox.y + P2.barsBox.h <= b.y,
+      'portrait stacks four bars two over two, each line under its own bar numbers, the − at the end of the second');
+      const before = maker.notes[33];
+      assert(before < 0, 'bar 3\'s second sixteenth starts empty');
+      tap(maker, b.startX(1) + b.cellW / 2, b.y + b.cellH / 2);
+      assert(maker.notes[33] >= 0, 'a tap on the second line writes in bar 3');
+      maker.draw(document.createElement('canvas').getContext('2d'));
+    } finally { setPresentationFrame(defaultFrame()); }
+  }
+  maker.setMode('simple');
+  // the keyboard: + / − sits between SIMPLE / ADVANCED and the grid, and confirm on it says what it did
+  maker.focus = { area: 'mode', col: 0, row: 0, picker: 0, button: 3 };
+  frame(maker, 'down');
+  frame(maker, 'confirm');
+  assert(maker.focus.area === 'bars' && maker.bars === 2 && maker.message === 'BACK TO 2 BARS', 'confirm on − goes back to two bars');
+  frame(maker, 'confirm');
+  assert(maker.bars === 4 && maker.message === 'BARS 3-4 ADDED', 'and on + brings four back');
+  // a mouse resting on + / − gets a tooltip
+  Input.usingTouch = false;
+  L = maker.layout();
+  Input.pointer = { x: L.barsBox.x + 2, y: L.barsBox.y + 2, down: false };
+  maker.draw(document.createElement('canvas').getContext('2d'));
+  // ZAP at four bars writes four: a cabinet's own phrase (this maker's random is 0), or one of its own
+  tap(maker, ...centre(L.buttons[1]));
+  assert(maker.notes.length === 32 && hasNotes(maker.notes.slice(16)), 'ZAP at four bars writes four bars');
+  tap(maker, ...centre(L.buttons[0]));
+  maker.setBars(2);
+  maker.setBars(4);
+  assert(maker.notes.every((n) => n < 0), 'CLEAR takes bars 3–4 with it');
+  maker.draw(document.createElement('canvas').getContext('2d'));
+  maker.exit();
 }
 
 // ---------------------------------------------------------------- THE LAB, after
@@ -1048,6 +1173,21 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       club.updateFormation();
       assert(facingEach && club.facingOf(heroA) === Math.sign(slotA - slotB) && club.facingOf(heroB) === Math.sign(slotB - slotA),
         'two who have changed places turn round to face each other');
+    }
+    // ...walking there in time (Peter, 6 Oct 2026): off on the beat, in double time — two steps a
+    // beat, every one on an eighth — each step about as long as their own walk's, so the planted
+    // foot hardly slips
+    {
+      const { toonWalkStep } = await import('../src/sprites/toons.js');
+      club.draw(ctx);
+      club.beat = () => 600.1;
+      club.formationSwap = null; club.formationShuffleAt = -1; club.turns = club.turns.map(() => null);
+      club.updateFormation();
+      const sw = club.formationSwap, lay = club.layout;
+      const walked = Math.abs(sw.slotA - sw.slotB) * lay.cellW / (sw.beats * 2) / lay.toonH;
+      const slips = [sw.heroA, sw.heroB].map((h) => Math.abs(walked / toonWalkStep(HERO_MOVES[h].hero) - 1));
+      assert(sw.beat0 === 600 && sw.beats >= 1 && Number.isInteger(sw.beats * 2) && slips.every((x) => x < 0.25),
+        `two changing places set off on the beat and take two steps a beat, the length of their walk's (slip ${slips.map((x) => x.toFixed(2))})`);
     }
     // On their spots the heroes now and then turn round: one at most a beat, never mid-move.
     {
@@ -1614,6 +1754,28 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.beat = realBeat;
   }
   assert(!club.moments.some(m => [...CLUB_MOMENTS, 'smoke'].includes(m.kind)), 'the crowd moments (beach ball, confetti, glow sticks, the smoke machine) play and clear');
+  // THE FLYING TOASTER: never under water, and a tap sends it round a loop-the-loop
+  {
+    club.moments = [];
+    const realUnder = club.underwater;
+    club.underwater = () => true;
+    const dry = !club.startMoment('toaster');
+    club.underwater = realUnder;
+    assert(dry && club.startMoment('toaster'), 'the flying toaster never comes while the room is under water');
+    const m = club.moments.find((x) => x.kind === 'toaster');
+    club.t += 2; club.draw(ctx);
+    const s = club.toasterSpot, life = m.life;
+    const took = s && club.tapToaster(s.x, s.y);
+    assert(took && m.loops.length === 1 && Math.abs(m.life - life - m.loops[0].dur) < 1e-9 && m.loops[0].dur > 0.5,
+      'a tap on it sends it round a loop, and its crossing lasts that much longer');
+    club.t += m.loops[0].dur * 0.5; club.draw(ctx);
+    const top = club.toasterSpot;
+    assert(club.tapToaster(top.x, top.y) && m.loops.length === 1 && top.y < s.y - m.loops[0].r, '...up and over, once round at a time');
+    club.t += m.loops[0].dur * 0.5 + 1e-6; club.draw(ctx);
+    assert(Math.hypot(club.toasterSpot.x - s.x, club.toasterSpot.y - s.y) < 1, '...and back where it started, to carry on across');
+    club.t += m.life; club.update(1 / 60);
+    assert(!club.moments.includes(m), 'and it is gone once across');
+  }
   // Grumpos's non-flexing dance phases retain his native standing arms.
   {
     const { HERO_DANCE_LAB_CANDIDATES, heroDancePose } = await import('../src/dev/hero-dance-candidates.js');
@@ -1702,6 +1864,70 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(club.cleanerBeat > beat, 'confetti schedules a later cleaner visit');
     club.moments = []; club.cleanerBeat = Infinity; club.partyNextBeat = Infinity;
     club.beat = realBeat;
+  }
+  // THE MOONWALK: one hero's at a time — and now and then (GROUP_MOONWALK_CHANCE) all the
+  // moonwalkers at once, from a bar line, in step and facing the same way
+  {
+    const { MOONWALKERS } = await import('../src/dev/hero-dance-candidates.js');
+    const { partyHero, partyAlive } = await import('../src/game/banger/club-party.js');
+    const realBeat = club.beat, rnd0 = Math.random, song = club.song, shown = club.shownAt;
+    const saved = club.dancers.map((d) => ({ ...d })), facing = [...club.facing], turns = [...club.turns], turnAt = [...club.turnAt];
+    let beat = 400;
+    club.beat = () => beat;
+    const walkers = HERO_MOVES.map((_, i) => i).filter((i) => MOONWALKERS.has(HERO_MOVES[i].hero));
+    assert(walkers.map((i) => HERO_MOVES[i].hero).sort().join() === 'b33p,lorenzo,rusty'
+      && walkers.every((i) => club.dancers[i].moves.filter((m) => m.move === 'moonwalk').length === 1),
+      'Lorenzo, B-33P and Rusty each have the moonwalk');
+    const [a, b] = walkers;
+    const moonwalk = (i) => club.dancers[i].moves.find((m) => m.move === 'moonwalk');
+    const changes = () => {
+      let n = 0;
+      for (let k = 0; k < 300; k++) {
+        club.dancers.forEach((d, i) => { d.changeAt = i === b ? -Infinity : Infinity; d.joinAt = -Infinity; });
+        club.dancers[b].move = club.dancers[b].moves[0]; club.dancers[b].resting = false;
+        club.updateDancers();
+        if (club.dancers[b].move === moonwalk(b)) n++;
+      }
+      return n;
+    };
+    club.dancers[a].move = moonwalk(a);
+    const whileTaken = changes();
+    club.dancers[a].move = club.dancers[a].moves[0];
+    assert(whileTaken === 0 && changes() > 0, 'nobody takes up the moonwalk while another hero is on it');
+    club.moments = []; club.formationSwap = null; club.acting = null; club.queued = null; club.holding = null;
+    club.turns = club.turns.map(() => null);
+    walkers.forEach((i, k) => { club.facing[i] = k < 2 ? 1 : -1; });
+    assert(club.startMoment('moonwalk'), 'THE GROUP MOONWALK starts');
+    const mw = club.moments.find((m) => m.kind === 'moonwalk');
+    assert(mw.beats === 16 && mw.who.length === 3 && walkers.every((i) => mw.who.includes(i)) && mw.dir === 1
+      && club.turns[walkers[2]]?.to === 1 && !club.turns[a] && !club.turns[b],
+      'all three are in it, facing the way most of them do: the odd one out hops round to join them');
+    const poses = walkers.map((i) => partyHero(mw, mw.beat0 + 2.5, HERO_MOVES[i].hero, i, { kind: 'idle' }).pose);
+    assert(poses.every((p) => p.kind === 'run' && p.walk && p.shift < 0 && p.shift === poses[0].shift), 'and they glide back in step');
+    const other = HERO_MOVES.findIndex((m) => !MOONWALKERS.has(m.hero)), idle = { kind: 'idle' };
+    assert(partyHero(mw, mw.beat0 + 2.5, HERO_MOVES[other].hero, other, idle).pose === idle, 'the rest dance on');
+    for (const age of [0.1, 0.4, 3, 7, 12]) { beat = mw.beat0 + age; club.draw(ctx); }
+    beat = mw.beat0 + 4; club.lastTurnBeat = -Infinity; club.turnAt[other] = beat;
+    club.updateFacing(beat);
+    assert(club.facing[walkers[2]] === 1 && !club.turns[other], 'nobody turns round while it is on');
+    assert(!partyAlive(mw, mw.beat0 + 16), 'it lasts two glides, four bars');
+    // the party slot: rolled once, and the group moonwalk waits for a bar line
+    club.song = { ...song, form: [] }; club.shownAt = club.t - 20; club.cleanerBeat = Infinity;
+    club.moments = []; club.partyNextBeat = 0; club.groupMoonwalkNext = null;
+    beat = 401; Math.random = () => 0.01;
+    club.updateParty();
+    const waited = !club.moments.length && club.groupMoonwalkNext === true;
+    Math.random = () => 0.99; beat = 402; club.updateParty();
+    const held = !club.moments.length;
+    beat = 404; club.updateParty();
+    assert(waited && held && club.moments[0]?.kind === 'moonwalk' && club.groupMoonwalkNext === null,
+      'a party slot that rolls the group moonwalk waits for the bar line, and goes on it');
+    club.moments = []; club.partyNextBeat = 0; beat = 409; club.updateParty();
+    assert(club.moments.length === 1 && club.moments[0].kind !== 'moonwalk', 'otherwise the slot is one of the usual moments');
+    Math.random = rnd0; club.beat = realBeat; club.song = song; club.shownAt = shown;
+    club.moments = []; club.partyNextBeat = Infinity;
+    saved.forEach((d, i) => Object.assign(club.dancers[i], d));
+    club.facing = facing; club.turns = turns; club.turnAt = turnAt;
   }
   {
     const build = window.__MASH_BUILD__;
@@ -2126,6 +2352,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(club.boxes.save.x + club.boxes.save.w <= club.boxes.transport[0].x, 'and SAVE still clears the transport');
   const step = (c, n) => { for (let k = 0; k < n; k++) { c.update(1 / 60); Input.endFrame(); } };
   tap(club, ...centre(club.boxes.reroll));
+  assert(calls.length === 0 && club.spinV >= 10 && club.mirrorFlashAt === club.t,
+    'the press is answered at once - the ball kicked faster and flaring - before the make\'s frame');
   step(club, 1);
   club.draw(ctx);
   assert(calls.length === 1 && calls[0].r === rec && calls[0].p === club.pending && !calls[0].room && club.strikeTargets.length >= 3,

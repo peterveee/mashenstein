@@ -142,6 +142,70 @@ const puffOn = (beat) => {
   return ph < 0.12 ? ph / 0.12 : clamp01(1 - (ph - 0.12) / 1.3);
 };
 
+/**
+ * The angler's body, its jaw, its teeth and its tongue (ANGLER's `jaws`, unless a bake-off passes
+ * another: src/dev/angler-mouth-candidates.js). `drop(x)` is how far the chomping jaw has dropped
+ * at `x` (in L) forward of its hinge at the back of the mouth.
+ *
+ * Side on, with no mouth to see into (Peter, 7 Oct 2026: "not have a mouth area and just show
+ * teeth and tongue side on"): the head comes down to its upper lip, the lower jaw is a cut-out of
+ * its own hinged at the corner, and the teeth cross between them, down from the lip above and up
+ * from the jaw below. The tongue is a little one at the back, by the corner; in front of it the
+ * gap between the lips is open water. Until then (the bake-off's C, 6 Oct) the mouth was a hole
+ * cut out of the face with the dark of the throat behind it, and for a day the tongue filled the
+ * whole gap ("seems to stretch out to be his full mouth").
+ */
+export function anglerJaws(ctx, L, { drop }) {
+  // the lips, `u` 0 at the front to 1 at the corner: the upper from the snout, the lower from the
+  // jaw's tip, which juts a little past it, both bowing down on the way back
+  const bez = (a, c, b, u) => (1 - u) * (1 - u) * a + 2 * u * (1 - u) * c + u * u * b;
+  const upper = (u) => [L * bez(0.44, 0.24, 0.02, u), L * bez(-0.04, 0.07, 0.07, u)];
+  const lower = (u) => {
+    const x = bez(0.5, 0.25, 0.02, u);
+    return [L * x, L * bez(0.06, 0.12, 0.09, u) + drop(Math.max(0, x))];
+  };
+  const along = (lip, from, to) => {
+    for (let k = 0; k <= 8; k++) { const [x, y] = lip(from + (to - from) * k / 8); ctx.lineTo(x, y); }
+  };
+  // the tongue: a little one, lying in the back of the jaw by the corner of the mouth and going
+  // down with it, its back tucked under the head and its bottom under the jaw; in front of it
+  // there is nothing between the lips but what is behind the fish (Peter, 7 Oct 2026: "tongue is
+  // just in the back when teeth open there is nothing in the background")
+  ctx.beginPath();
+  ctx.ellipse(L * 0.085, L * 0.095 + drop(0.085), L * 0.08, L * 0.032, -0.12, 0, Math.PI * 2);
+  fillStroke(ctx, '#d0607f');
+  ink(ctx, L);
+  // the body, the head most of it, down to the upper lip and back to the corner of the mouth
+  ctx.beginPath();
+  ctx.moveTo(-L * 0.32, 0);
+  ctx.quadraticCurveTo(-L * 0.25, -L * 0.3, L * 0.12, -L * 0.3);
+  ctx.quadraticCurveTo(L * 0.4, -L * 0.28, L * 0.44, -L * 0.04);
+  along(upper, 0, 1);
+  ctx.quadraticCurveTo(L * 0.0, L * 0.2, -L * 0.1, L * 0.24);
+  ctx.quadraticCurveTo(-L * 0.3, L * 0.16, -L * 0.32, 0);
+  ctx.closePath(); fillStroke(ctx, '#3a2f5a');
+  // the lower jaw, a shade paler, hinged at the corner: out along its lip to the tip and back under the chin
+  ctx.beginPath();
+  ctx.moveTo(...lower(1));
+  along(lower, 1, 0);
+  ctx.quadraticCurveTo(L * 0.34, L * 0.3 + drop(0.34), L * 0.08, L * 0.27 + drop(0.08));
+  ctx.quadraticCurveTo(-L * 0.04, L * 0.2, L * 0.02, L * 0.09);
+  ctx.closePath(); fillStroke(ctx, '#45386b');
+  // its snaggle teeth over the tongue: down from the lip above, up from the jaw below, crossing,
+  // every one a different length
+  ctx.fillStyle = '#fffbe8';
+  ctx.lineWidth = Math.max(0.5, L * 0.012);
+  const tooth = (bx, by, dir, h, w) => {
+    ctx.beginPath(); ctx.moveTo(bx - L * w, by); ctx.lineTo(bx + L * 0.004 * dir, by + dir * L * h); ctx.lineTo(bx + L * w, by); ctx.closePath(); ctx.fill(); ctx.stroke();
+  };
+  for (const [u, h] of [[0.1, 0.05], [0.27, 0.09], [0.45, 0.06], [0.62, 0.085], [0.8, 0.045]]) {
+    const [bx, by] = upper(u); tooth(bx, by - L * 0.01, 1, h + 0.01, 0.024);
+  }
+  for (const [u, h] of [[0.04, 0.065], [0.2, 0.1], [0.37, 0.07], [0.54, 0.09], [0.72, 0.05]]) {
+    const [bx, by] = lower(u); tooth(bx, by + L * 0.01, -1, h + 0.01, 0.026);
+  }
+}
+
 export const FISHES = Object.freeze([
   {
     letter: 'A', name: 'GOOGLY', size: 0.55,
@@ -276,8 +340,8 @@ export const FISHES = Object.freeze([
   },
   {
     letter: 'E', name: 'ANGLER', size: 0.6,
-    description: 'From the deep end: a dark anglerfish with a huge underbite of snaggle teeth, chomping as it swims, and a lamp on a stalk, glowing brighter on the beat.',
-    paint(ctx, L, { t, beat, wag }) {
+    description: 'From the deep end: a dark anglerfish with a huge underbite of snaggle teeth and a pink tongue, chomping as it swims, and a lamp on a stalk, glowing brighter on the beat.',
+    paint(ctx, L, { t, beat, wag, jaws = anglerJaws }) {
       ink(ctx, L);
       const pulse = Math.exp(-(((beat % 1) + 1) % 1) * 4);
       // its jaw chomps as it swims, shut on the beat and dropping open between (Peter, 6 Oct 2026:
@@ -291,31 +355,8 @@ export const FISHES = Object.freeze([
       g.addColorStop(0, `rgba(250,255,170,${0.55 + 0.35 * pulse})`); g.addColorStop(1, 'rgba(180,255,170,0)');
       ctx.fillStyle = g; ctx.fillRect(lx - L * 0.4, ly - L * 0.4, L * 0.8, L * 0.8);
       tail(ctx, -L * 0.3, L * 0.3, L * 0.18, wag, '#4a3b70', { fork: 0.2 });
-      // the body, the head most of it
-      ctx.beginPath();
-      ctx.moveTo(-L * 0.32, 0);
-      ctx.quadraticCurveTo(-L * 0.25, -L * 0.3, L * 0.12, -L * 0.3);
-      ctx.quadraticCurveTo(L * 0.4, -L * 0.28, L * 0.42, -L * 0.04);
-      ctx.lineTo(L * 0.5, L * 0.12 + drop(0.5));
-      ctx.quadraticCurveTo(L * 0.2, L * 0.34 + drop(0.2), -L * 0.1, L * 0.24);
-      ctx.quadraticCurveTo(-L * 0.3, L * 0.16, -L * 0.32, 0);
-      ctx.closePath(); fillStroke(ctx, '#3a2f5a');
-      // the mouth, wide open, the jaw jutting past it, and its snaggle teeth: down from the lip
-      // above, up from the jaw below, every one a different length
-      ctx.fillStyle = '#4a0d24';
-      ctx.beginPath(); ctx.moveTo(L * 0.42, -L * 0.05); ctx.quadraticCurveTo(L * 0.2, L * 0.06, L * 0.0, L * 0.06); ctx.quadraticCurveTo(L * 0.22, L * 0.24 + drop(0.22), L * 0.52, L * 0.13 + drop(0.52)); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#fffbe8';
-      ctx.lineWidth = Math.max(0.5, L * 0.012);
-      const lip = (u) => [L * (0.0 + 0.42 * u), L * (0.06 - 0.11 * u * u)];
-      const jaw = (u) => [L * (0.0 + 0.52 * u), L * (0.06 + 0.14 * Math.sin(u * Math.PI * 0.8) - 0.0 * u) + drop(0.52 * u)];
-      for (const [u, h] of [[0.25, 0.07], [0.45, 0.1], [0.62, 0.06], [0.8, 0.09], [0.94, 0.05]]) {
-        const [bx, by] = lip(u);
-        ctx.beginPath(); ctx.moveTo(bx - L * 0.026, by); ctx.lineTo(bx + L * 0.004, by + L * h); ctx.lineTo(bx + L * 0.026, by); ctx.closePath(); ctx.fill(); ctx.stroke();
-      }
-      for (const [u, h] of [[0.3, 0.06], [0.5, 0.11], [0.68, 0.07], [0.86, 0.1], [0.97, 0.06]]) {
-        const [bx, by] = jaw(u);
-        ctx.beginPath(); ctx.moveTo(bx - L * 0.028, by); ctx.lineTo(bx - L * 0.004, by - L * h); ctx.lineTo(bx + L * 0.028, by); ctx.closePath(); ctx.fill(); ctx.stroke();
-      }
+      // the body, its mouth and teeth: `jaws` (src/dev/angler-mouth-candidates.js bakes off others)
+      jaws(ctx, L, { t, beat, gape, drop, pulse });
       ink(ctx, L);
       // the stalk and its lamp
       ctx.beginPath(); ctx.moveTo(L * 0.18, -L * 0.29); ctx.quadraticCurveTo(L * 0.4, -L * 0.62, lx, ly); ctx.stroke();
@@ -492,6 +533,19 @@ function rgbOf(c) {
 const css = ([r, g, b, a = 1]) => `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${a})`;
 const luma = ([r, g, b]) => 0.299 * r + 0.587 * g + 0.114 * b;
 const mix = (c, d, k) => [c[0] + (d[0] - c[0]) * k, c[1] + (d[1] - c[1]) * k, c[2] + (d[2] - c[2]) * k, c[3] ?? 1];
+/**
+ * A colour with its hue turned `deg` degrees round the wheel, its saturation and lightness kept
+ * (HSL, not the CSS filter's matrix, which muddies a turned yellow): a grey, the eyes' white and
+ * the ink, stays as it is.
+ */
+function turnHue(c, deg) {
+  const [r, g, b] = c.map((v) => v / 255), max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (d < 1e-4) return c;
+  const h = (((max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60 + deg) % 360 + 360) % 360;
+  const x = d * (1 - Math.abs(((h / 60) % 2) - 1));
+  const [p, q, s] = h < 60 ? [d, x, 0] : h < 120 ? [x, d, 0] : h < 180 ? [0, d, x] : h < 240 ? [0, x, d] : h < 300 ? [x, 0, d] : [d, 0, x];
+  return [(p + min) * 255, (q + min) * 255, (s + min) * 255, c[3] ?? 1];
+}
 /** The scale from the context's units to device pixels. */
 const deviceScale = (t) => { try { const m = t.getTransform(); return Math.hypot(m.a, m.b) || 1; } catch { return 1; } };
 
@@ -500,12 +554,24 @@ const deviceScale = (t) => { try { const m = t.getTransform(); return Math.hypot
  * `stroke(t, { afterFill })` get the real context with the painter's path still on it;
  * `afterFill` says this path was just filled (most outlines are), so a style that outlines its
  * own fills can leave the painter's outline off. fillRect goes to `fill` as a rectangle.
+ * A painter's globalAlpha is taken as a share of the alpha the fish is drawn at, so a bubble
+ * setting it to 1 fades with a fading fish rather than punching through. `gradient(css)` turns a
+ * gradient's colours as they are added (a CanvasGradient is made fresh for each call, so its own
+ * addColorStop can be wrapped; a stand-in that hands out one shared object is left alone).
  */
-function styled(ctx, { fill, stroke }) {
+function styled(ctx, { fill, stroke, gradient }) {
   let filled = false;
+  const alpha = ctx.globalAlpha ?? 1;
   return new Proxy(ctx, {
     get(t, k) {
       if (k === 'beginPath') return () => { filled = false; t.beginPath(); };
+      if (gradient && (k === 'createLinearGradient' || k === 'createRadialGradient')) return (...a) => {
+        const g = t[k](...a);
+        if (!g || Object.prototype.hasOwnProperty.call(g, 'addColorStop')) return g;
+        const add = g.addColorStop;
+        g.addColorStop = (at, c) => add.call(g, at, gradient(c));
+        return g;
+      };
       if (k === 'fill' && fill) return (...a) => { fill(t, ...a); filled = true; };
       if (k === 'stroke' && stroke) return (...a) => stroke(t, { afterFill: filled }, ...a);
       // a rectangle filled with a gradient is a light — the angler's lamp — not a shape: as it is
@@ -516,7 +582,7 @@ function styled(ctx, { fill, stroke }) {
       const v = t[k];
       return typeof v === 'function' ? v.bind(t) : v;
     },
-    set(t, k, v) { t[k] = v; return true; },
+    set(t, k, v) { t[k] = k === 'globalAlpha' ? v * alpha : v; return true; },
   });
 }
 
@@ -553,26 +619,42 @@ const CONTOUR = 0.016;
 /**
  * One fish in cut paper (FISHES' contract, `fish` one of them). `o.lite` leaves out the grain;
  * `o.heroH` is the height of the heroes it swims over, for its outline (CONTOUR), else the fish's
- * own size says.
+ * own size says. `o.hue` turns every colour it is cut from that many degrees round the wheel —
+ * the same fish in another colourway (the jukebox's DEEP BLUE DISCO); the ink and the eyes keep theirs.
+ * `o.quick` casts each piece's shadow in two hard steps rather than a blur: a blurred shadow
+ * costs about a tenth of a millisecond a piece, which a tank of a dozen fish cannot afford.
  */
 export function drawPaperFish(ctx, fish, L, o = {}) {
   const g = o.lite ? null : grain();
   const pattern = g && ctx.createPattern?.(g, 'repeat');
+  const hue = o.hue ? (c) => turnHue(c, o.hue) : null;
   const paper = styled(ctx, {
+    gradient: hue && ((c) => { const col = rgbOf(c); return col ? css(hue(col)) : c; }),
     fill(t) {
-      const col = rgbOf(t.fillStyle);
+      let col = rgbOf(t.fillStyle);
+      if (col && hue) col = hue(col);
       const k = deviceScale(t), lw = L * 0.035;
       t.save();
-      t.shadowColor = 'rgba(20,10,30,0.45)';
-      t.shadowBlur = k * lw * 1.1;
-      t.shadowOffsetX = k * lw * 0.35;
-      t.shadowOffsetY = k * lw * 0.55;
       if (col) t.fillStyle = css(mix(col, [250, 240, 222], luma(col) < 60 ? 0.05 : 0.12));
+      if (o.quick) {
+        // the far step first, faint, then the near one under the piece itself: the piece is
+        // filled twice, which only a see-through one would show, so that one gets the near step
+        if ((col?.[3] ?? 1) >= 1) {
+          t.shadowColor = 'rgba(20,10,30,0.2)'; t.shadowOffsetX = k * lw * 0.8; t.shadowOffsetY = k * lw * 1.15;
+          t.fill();
+        }
+        t.shadowColor = 'rgba(20,10,30,0.3)'; t.shadowOffsetX = k * lw * 0.35; t.shadowOffsetY = k * lw * 0.55;
+      } else {
+        t.shadowColor = 'rgba(20,10,30,0.45)';
+        t.shadowBlur = k * lw * 1.1;
+        t.shadowOffsetX = k * lw * 0.35;
+        t.shadowOffsetY = k * lw * 0.55;
+      }
       t.fill();
       t.restore();
       if (pattern && col && luma(col) > 40) {
         t.save(); t.clip();
-        t.globalCompositeOperation = 'multiply'; t.globalAlpha = 0.55; t.fillStyle = pattern;
+        t.globalCompositeOperation = 'multiply'; t.globalAlpha *= 0.55; t.fillStyle = pattern;
         t.fillRect(-L * 2, -L * 2, L * 4, L * 4);
         t.restore();
       }
@@ -582,7 +664,8 @@ export function drawPaperFish(ctx, fish, L, o = {}) {
       const col = rgbOf(t.strokeStyle);
       const k = deviceScale(t);
       t.save();
-      t.shadowColor = 'rgba(20,10,30,0.4)'; t.shadowBlur = k * L * 0.03; t.shadowOffsetY = k * L * 0.015;
+      t.shadowColor = o.quick ? 'rgba(20,10,30,0.3)' : 'rgba(20,10,30,0.4)';
+      t.shadowBlur = o.quick ? 0 : k * L * 0.03; t.shadowOffsetY = k * L * 0.015;
       if (col && luma(col) < 60) { t.strokeStyle = css([58, 42, 48, col[3]]); t.lineWidth *= 0.9; }
       t.stroke();
       t.restore();

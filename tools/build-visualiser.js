@@ -34,6 +34,9 @@ const stripSprites = (root) => ({
       if (args.importer.includes('no-sprites.js')) return null;
       return { path: stub };
     });
+    // Lorenzo's fish and the tank's mermaids too: DEEP BLUE DISCO is withdrawn with the cast's presets.
+    build.onResolve({ filter: /banger[/\\]club-fish\.js$/ }, () => ({ path: stub }));
+    build.onResolve({ filter: /sprites[/\\]mermaids\.js$/ }, () => ({ path: stub }));
   },
 });
 

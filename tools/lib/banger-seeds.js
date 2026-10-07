@@ -36,7 +36,7 @@ import { IMPORTED_DIR, songFileIn, writeImportedIndex } from './imported-index.j
 import { compactArrangement, normaliseArrangementResolution } from './arrangement-edit.js';
 import { generateBanger } from './banger/index.js';
 import { captureSectionEffects } from './banger/section-effects.js';
-import { styleFor, BANGER_STYLES, BANGER_SOUND_SETS, BANGER_FLAVOURS } from './banger/styles/index.js';
+import { styleFor, BANGER_STYLES, BANGER_FLAVOURS, withoutStyleSuffix } from './banger/styles/index.js';
 import { KIT_ROLES, tableIssues, forgetOffered } from './banger/sound-rules.js';
 import { soundsSource, tidyTable } from './banger/sounds-source.js';
 import { songFrom, bangerRefs, buildAllRefs, readLevelData, writeLevelData, CHANNELS_FILE } from './banger-refs.js';
@@ -190,19 +190,7 @@ export const tunedPresetId = (styleId, job, combo = null) => `${combo ? 'combo' 
 // A kept sound's name drops the style (or combo) it was last kept for — `Ride · Future Bass`
 // re-kept for Reggaeton is `Ride · Reggaeton` — but nothing else: a kit sound's instrument
 // stays, so `Havana Patio · Clave` and `Havana Patio · Conga` don't both become
-// `Havana Patio · Reggaeton`.
-// A flavour's label has a `·` of its own (`Reggaeton · Romántico`), so the longest match wins.
-const STYLE_LABELS = [...BANGER_STYLES, ...BANGER_SOUND_SETS, ...BANGER_FLAVOURS].map((s) => s.label).filter(Boolean)
-  .sort((a, b) => b.length - a.length);
-const withoutStyleSuffix = (label) => {
-  const text = String(label);
-  for (const s of STYLE_LABELS) {
-    const at = text.lastIndexOf(` · ${s}`);
-    const rest = at < 0 ? null : text.slice(at + s.length + 3);
-    if (at > 0 && (rest === '' || (rest.startsWith(' ') && !rest.includes('·')))) return text.slice(0, at);
-  }
-  return text;
-};
+// `Havana Patio · Reggaeton` (withoutStyleSuffix, styles/index.js).
 // What a song's copy carries that a library entry does not (or works out for itself).
 const COPY_ONLY = ['id', 'kind', 'level', 'peak', 'factory', 'user', 'songOrigin', 'songSourceId', 'songLocal'];
 

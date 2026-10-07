@@ -312,6 +312,75 @@ export function overlay(a, b) {
 const chordAt = (cs, i) => cs[Math.min(cs.length - 1, Math.floor(i / (16 / cs.length)))];
 
 /**
+ * How hard a pitch class grinds against a chord it is not in (6 Oct 2026): 1 for a flat ninth on
+ * the root, the third the chord does not have (G over E major, C# over A minor) or the seventh it
+ * does not have (F over Gmaj7) — no voicing sweetens those — 0.4 for a tritone on the root, 0 for
+ * the rest. Ninths, fourths and sixths, and a seventh over a triad, are colour, not a grind.
+ */
+export function grindOf(pc, sym) {
+  const { root, ivs, pcs } = parseChord(sym);
+  if (pcs.includes(pc)) return 0;
+  const iv = (((pc - root) % 12) + 12) % 12;
+  if (iv === 1) return 1;
+  const major = ivs.includes(4), minor = ivs.includes(3);
+  if ((major && !minor && iv === 3) || (minor && !major && iv === 4)) return 1;
+  const maj7 = ivs.includes(11), b7 = ivs.includes(10);
+  if ((maj7 && !b7 && iv === 10) || (b7 && !maj7 && iv === 11)) return 1;
+  return iv === 6 ? 0.4 : 0;
+}
+
+/**
+ * A line made from the hook — a pre-chorus's sequenced head, a middle 8's fragment, a verse moved
+ * up a step, the third below — fitted to the chords under it (6 Oct 2026): a note that grinds
+ * (grindOf) moves to the nearest note of its chord, upward on a tie, so a G over E major becomes
+ * the leading note G#. The riff as written never goes through this; its chords are chosen to suit
+ * it instead (analyse.js chordFit).
+ */
+export function fitToChords(part, chords) {
+  if (!part || Array.isArray(part) || chords == null) return part;
+  const cs = Array.isArray(chords) ? chords : [chords];
+  const fit = (name, i) => {
+    const sym = chordAt(cs, i);
+    const m = midi(name);
+    if (!grindOf(((m % 12) + 12) % 12, sym)) return name;
+    const { pcs } = parseChord(sym);
+    for (let d = 1; d <= 6; d++) {
+      for (const x of [m + d, m - d]) if (pcs.includes(((x % 12) + 12) % 12)) return nameOf(clampMidi(x));
+    }
+    return name;
+  };
+  return { notes: part.notes.map((v, i) => (v == null ? v : Array.isArray(v) ? v.map((x) => fit(x, i)) : fit(v, i))), lens: [...part.lens] };
+}
+
+/**
+ * A bass kept from grinding under a melody (6 Oct 2026): a bass note with a melody note a semitone
+ * above it while it sounds — a flat ninth from the bottom — plays its chord's root instead, the
+ * nearer octave. A walking bass's passing note, or a pedal under a hook leaning on the note above it.
+ */
+export function clearUnder(bass, line, chords) {
+  if (!bass || !line || Array.isArray(bass) || Array.isArray(line) || chords == null) return bass;
+  const cs = Array.isArray(chords) ? chords : [chords];
+  const over = (i, len) => {
+    const out = [];
+    line.notes.forEach((v, j) => {
+      if (v != null && j < i + len && j + (line.lens[j] ?? 1) > i) out.push(...(Array.isArray(v) ? v : [v]));
+    });
+    return out.map(midi);
+  };
+  return {
+    notes: bass.notes.map((v, i) => {
+      if (v == null || Array.isArray(v)) return v;
+      const m = midi(v);
+      if (!over(i, bass.lens[i] ?? 1).some((t) => (((t - m) % 12) + 12) % 12 === 1)) return v;
+      const { root } = parseChord(chordAt(cs, i));
+      const below = m - ((((m - root) % 12) + 12) % 12);
+      return nameOf(clampMidi(m - below <= 6 ? below : below + 12));
+    }),
+    lens: [...bass.lens],
+  };
+}
+
+/**
  * A bass line over one bar of chords. `chords` is one symbol (the bar) or two (half
  * bars). `pat` is sixteen tokens: `R` root, `O` root an octave up, `5` the fifth,
  * `3` the third, `7` the seventh, `b` the root an octave DOWN, `.` rest; `:n` a

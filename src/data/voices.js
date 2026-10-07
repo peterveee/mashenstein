@@ -6246,7 +6246,7 @@ const USER_TONE = {
     note: 'A sparkling high-partial attack with a clean short body.',
     tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
-  seedBigRoomBass: { label: 'Wide Detune · Big-Room House', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
+  seedBigRoomBass: { label: 'Wide Detune Bass · Big-Room House', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'Two layers a few cents apart, saw against square. Big, and wide without a chorus.',
     layer: {
       osc1: { type: 'sawtooth', ratio: 1, detune: 0, gain: 1, attack: 0.008, decay: 0.2, sustain: 0.7, release: 0.3 },
@@ -6257,7 +6257,7 @@ const USER_TONE = {
     },
     vibrato: { depth: 0.01, rate: 3 },
     starter: false },
-  seedBigRoomSub: { label: 'Sub Sine (starter) · Big-Room House', category: 'Bass', synth: 'CRLS-1', dur: 2.2,
+  seedBigRoomSub: { label: 'Sub Sine · Big-Room House', category: 'Bass', synth: 'CRLS-1', dur: 2.2,
     note: 'Pure weight, no harmonics. Wants room underneath it and a lead up top.',
     options: {
       oscillator: { type: 'sine' },
@@ -6273,11 +6273,11 @@ const USER_TONE = {
       envelope: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 0.4, attackCurve: 'exponential' },
     },
     starter: false },
-  seedBigRoomPad: { label: 'Polar Drift · Big-Room House', category: 'Pad', synth: 'TNGR-2', dur: 8,
+  seedBigRoomPad: { label: 'Cold Wide Pad · Big-Room House', category: 'Pad', synth: 'TNGR-2', dur: 8,
     note: 'Wide cold sparse partials with independent slow movement.',
     tngr2: { oscA: { table: 'crystal', position: 0.35, envAmount: 0.42, lfoAmount: 0.12, level: 0.68, unison: 3, spread: 18, stereo: 0.9 }, oscB: { table: 'alloy', position: 0.7, envAmount: -0.3, lfoAmount: -0.1, level: 0.25, unison: 2, spread: 15, stereo: 0.9, interval: -12 }, amp: { attack: 0.03, decay: 2.5, sustain: 0.7, release: 1.387 }, positionEnv: { attack: 2.8, decay: 3.5, sustain: 0.45 }, filter: { type: 'lowpass', cutoff: 5600, resonance: 1.92 }, lfo1: { shape: 'triangle', rate: 0.07, amount: 0.22 }, master: { gain: 0.46 } },
     starter: false },
-  seedBigRoomSquare: { label: 'Plain Square vs Synth · Big-Room House', category: 'Lead', synth: 'CRLS-1', dur: 7.7,
+  seedBigRoomSquare: { label: 'Plain Square · Big-Room House', category: 'Lead', synth: 'CRLS-1', dur: 7.7,
     note: 'Simple Square Tone 2',
     options: {
       oscillator: { type: 'square' },
@@ -6308,11 +6308,11 @@ const USER_TONE = {
     tone: { freq: 12000 },
     vibrato: { depth: 0.1, rate: 5.6, delay: 0.5 },
     starter: false },
-  seedBigRoomArp: { label: 'Crystal Trigger · Big-Room House', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
+  seedBigRoomArp: { label: 'Sparkle Pluck · Big-Room House', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
     tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
-  seedBigRoomChoir: { label: 'BEST Choir Aah · Big-Room House', category: 'Orch', synth: 'MRDR-3', dur: 8,
+  seedBigRoomChoir: { label: 'Synth Choir Aah · Big-Room House', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the '
       + 'pitch moving underneath them. Delayed vibrato and a slow swell do the rest: this is '
       + 'how a voice works, not an impression of one.',
@@ -6341,7 +6341,7 @@ const USER_TONE = {
     humanize: { entry: 0.005, gain: 0.07 },
     chorus: { mix: 0.35, rate: 0.6, depth: 0.4, width: 1 },
     starter: false },
-  seedBigRoomCounter: { label: 'Crystal Trigger · Big-Room House', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
+  seedBigRoomCounter: { label: 'Sparkle Pluck · Big-Room House', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
     tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
@@ -6912,7 +6912,7 @@ const USER_DRUM = {
     noise: { type: 'lowpass', freq: 1700, Q: 0.65, decay: 0.022, gain: 0.3 },
     drive: 0.1,
     starter: false },
-  seedTranceRide: { label: 'Ride · 909 Six-Bit · Trance', category: 'Crash', homeLane: 'crash', dur: 4,
+  seedTranceRide: { label: '909 Lo-Fi Ride · Trance', category: 'Crash', homeLane: 'crash', dur: 4,
     note: 'A ride with a bell you can hear: a narrow 2.5 kHz resonance for the ping over a '
       + 'six-bit wash, lowpassed at 9.5 kHz. The 909’s ride was a sample and its grit is '
       + 'half of why the sound is recognisable, so the crush is doing the work here that the '
@@ -6994,7 +6994,7 @@ const USER_DRUM = {
     noise: { type: 'lowpass', freq: 1700, Q: 0.65, decay: 0.022, gain: 0.3 },
     drive: 0.1,
     starter: false },
-  seedItaloDiscoRide: { label: 'Ride · 909 Six-Bit · Italo Disco', category: 'Crash', homeLane: 'crash', dur: 4,
+  seedItaloDiscoRide: { label: '909 Lo-Fi Ride · Italo Disco', category: 'Crash', homeLane: 'crash', dur: 4,
     note: 'A ride with a bell you can hear: a narrow 2.5 kHz resonance for the ping over a '
       + 'six-bit wash, lowpassed at 9.5 kHz. The 909’s ride was a sample and its grit is '
       + 'half of why the sound is recognisable, so the crush is doing the work here that the '
@@ -7012,7 +7012,7 @@ const USER_DRUM = {
     noise: { type: 'bandpass', freq: 1450, Q: 1.1, decay: 0.018, gain: 0.52 },
     drive: 0.42,
     starter: false },
-  seedBigRoomSnare: { label: 'DS Snare · Big-Room House', category: 'Snare', dur: 1,
+  seedBigRoomSnare: { label: 'Synth Snare · Big-Room House', category: 'Snare', dur: 1,
     note: 'The two-source snare: a triangle knock falling a fourth under a wide band of noise '
       + 'that rings a little longer than the body does.',
     osc: { type: 'triangle', from: 210, to: 165, sweep: 0.04, decay: 0.11, curve: 'exp', gain: 0.7 },
@@ -7026,7 +7026,7 @@ const USER_DRUM = {
     taps: [0, 0.014, 0.028, 0.048], tapFalloff: 0.82, tapDetune: 0.94, tapTone: 0.97,
     starter: false,
     trim: 3 },
-  seedBigRoomHats: { label: 'DS Closed Hat · Big-Room House', category: 'Hats', dur: 0.5,
+  seedBigRoomHats: { label: 'Synth Closed Hat · Big-Room House', category: 'Hats', dur: 0.5,
     note: 'A resonant highpassed tick — sharper than the plain closed hat, closer to metal '
       + 'without being metal.',
     noise: { type: 'highpass', freq: 7800, Q: 1.2, decay: 0.032, gain: 1 },
@@ -7082,7 +7082,7 @@ const USER_DRUM = {
     noise: { type: 'lowpass', freq: 1700, Q: 0.65, decay: 0.022, gain: 0.3 },
     drive: 0.1,
     starter: false },
-  seedBigRoomRide: { label: 'Ride · 909 Six-Bit · Big-Room House', category: 'Crash', homeLane: 'crash', dur: 4,
+  seedBigRoomRide: { label: '909 Lo-Fi Ride · Big-Room House', category: 'Crash', homeLane: 'crash', dur: 4,
     note: 'A ride with a bell you can hear: a narrow 2.5 kHz resonance for the ping over a '
       + 'six-bit wash, lowpassed at 9.5 kHz. The 909’s ride was a sample and its grit is '
       + 'half of why the sound is recognisable, so the crush is doing the work here that the '

@@ -7,6 +7,8 @@ import { screen } from './renderer.js';
 import { TITLE_FONT, onGameFontsChanged, drawText, textWidth } from './sprites.js';
 import { drawToon } from '../sprites/toons.js';
 import { drawApplianceFinish, drawProp, hasProp, propFrames, propFps } from '../sprites/props.js';
+import { FISHES, drawPaperFish } from '../game/banger/club-fish.js';
+import { MERMAIDS as TANK_MERMAIDS } from '../sprites/mermaids.js';
 
 export const VISUALISER_NAMES = [
   'NEON CATHEDRAL',
@@ -31,6 +33,7 @@ export const VISUALISER_NAMES = [
   'GLASS BLOB EQUALIZER',
   'HALF-PIPE HORIZON',
   'ASTRAL TRAVEL',
+  'DEEP BLUE DISCO',
   // Not a scene of its own: a DJ that plays the rest of the pack, one 16-bar
   // phrase each, and mixes between them on the downbeat. LAST, always: it
   // deals the presets above it, so a preset added after it would be a scene
@@ -5580,6 +5583,2553 @@ class AstralTravel extends BaseVisualiser {
 }
 
 // ---------------------------------------------------------------------------
+// DEEP BLUE DISCO — called FISH TANK until Peter asked for "a better name" (7 Oct
+// 2026) and picked this one; the class and its TANK_ constants keep the old word.
+//
+// Lorenzo's fish (src/game/banger/club-fish.js) out of his flood and
+// into a tank of their own (Peter, 6 Oct 2026: "a fish tank now that we have
+// lorenzo's fish ... a bunch of lorenzos fish in the tank with bubbles ...
+// relatively simple with a paper aesthetic ... different color variations ...
+// different sizes"). Then, the same day: "make the fish much larger and move
+// across faster and only move a bit more subtly to the beat ... we need a lot of
+// activity in the tank ... fish swam around and not just go in a straight line
+// ... their tails wag in time not the whole body bop", and "id like the
+// backgrounds to move in parralax ... to simulate moving water".
+//
+// So the fish wander. Each heads for a spot in the tank, climbing or diving
+// towards it, and picks another when it gets there; a spot behind it turns it
+// round — nose up (or down) to the vertical, where it is mirrored, with a puff
+// of bubbles: a snap hidden by a move, never squeezed edge-on. Some dart off,
+// a couple more on every phrase, and now and then one swims out of the tank and
+// another comes in. Two schools of small fish follow a leader of their own, and
+// the party shark's baby follows it. Their tails wag on the beat; nothing else
+// of them moves to it but what the fish do themselves (a puff, a kiss).
+//
+// Then: more fish, more things on the sand, fish jumping out of the water ("perhaps
+// the water level could rise and fall to facilitate that"), a diver, other
+// creatures, two crabs in paper, and clams that open now and then on a pearl. So
+// the water drains and fills on a slow cycle of its own, and while it is low the
+// smaller fish leap out and splash back in; a diver stands on the sand by a wreck;
+// jellyfish pulse up and sink, seahorses hover, a turtle paddles by now and then;
+// two crabs walk the front of the sand. (The castle went again: "remove the house
+// on the bottom".)
+//
+// The whole tank is cut paper: every piece a flat sheet laid over the last with
+// its shadow under it, and one sheet of grain over the lot. The water's sheets
+// drift sideways with the current, the farther the slower, and the light, the
+// specks in the water and the weed go with it; the sand stays where it is.
+// ---------------------------------------------------------------------------
+
+/** The tank's waters, back to front; its sand, back bank then front; its weed. */
+const TANK_SCHEMES = [
+  { water: ['#235e74', '#2c7689', '#3b8f9e', '#56aaae', '#7ec7c1'], sand: ['#cfae78', '#e6cc96'], weed: ['#1d5f4a', '#2c8156', '#4aa566'] },
+  { water: ['#233f6a', '#2b5686', '#386fa1', '#538dbd', '#7eb1d6'], sand: ['#cdb184', '#e4cfa2'], weed: ['#1b5655', '#2a7766', '#4a9c76'] },
+  { water: ['#35376a', '#454b85', '#57639f', '#7386bb', '#9aadd4'], sand: ['#c8a986', '#dfcaa8'], weed: ['#2a5860', '#38776f', '#589e82'] },
+];
+// The water's surface, down from the top, when the tank is full and when it is low
+// (a portrait tank drains further); the sand, up from the bottom.
+const TANK_FULL = 15;
+const TANK_LOW = 64;
+const TANK_SAND = 48;
+// The water level goes round TANK_TIDE_BEATS on its own clock, so a song that loops
+// does not slosh it: full for six bars, down over two, low for six, up over two.
+const TANK_TIDE_BEATS = 64;
+// A jump: only a fish this long or shorter leaps, when the water is at least
+// TANK_JUMP_AIR below the top; gravity in px a second squared.
+const TANK_JUMP_L = 66;
+const TANK_JUMP_AIR = 36;
+const TANK_JUMP_G = 420;
+// A fish's size is in hero heights (club-fish.js): the hero height each layer of
+// the tank swims against, far then near, and its schools'. Fish-sized next to the
+// diver and the mermaids, not monsters (Peter, 7 Oct 2026: "make all fish smaller so
+// they are not gigantic compared to humans ... the shark can be around the same size
+// and whale bigger still"): the party shark keeps the size it had (TANK_SHARK_H), the
+// whale is bigger again.
+const TANK_FISH_H = [30, 50];
+const TANK_SHARK_H = [54, 96];
+const TANK_SCHOOL_H = [17, 22];
+// Solo fish in a landscape tank, far then near, how many schools each layer has,
+// and the fish in a school — a tank with room in it (Peter, 7 Oct 2026: "make tank a
+// lot less crowded"). A portrait tank adds a few solo fish and a far school.
+const TANK_SOLO = [2, 3];
+const TANK_SCHOOLS = [0, 1];
+const TANK_SCHOOL = [4, 4];
+// The schools are of the small, quick ones.
+const TANK_SCHOOL_KINDS = ['GOOGLY', 'SHADES', 'SNORKEL', 'BIG LIPS']
+  .map((name) => FISHES.findIndex((f) => f.name === name)).filter((i) => i >= 0);
+// Cruising speeds, far then near, in logical px a second: a near fish takes fifteen
+// to twenty seconds over the tank — relaxed, not frantic (Peter, 7 Oct 2026: "make
+// fish much more relaxed ... less fish at one time"). Now and then one puts on a
+// little speed: TANK_DART times its cruise for TANK_DART_S.
+const TANK_CRUISE = [[15, 24], [22, 36]];
+const TANK_DART = 1.6;
+const TANK_DART_S = 1.2;
+// A turn round, in seconds, unhurried; how long after one before the next; how
+// steeply a fish climbs or dives as it swims (radians), and how near the vertical it turns.
+const TANK_TURN_S = 1.1;
+const TANK_TURN_REST = 3;
+const TANK_PITCH = 0.62;
+const TANK_TURN_TIP = 1.38;
+// The current: how fast each water sheet drifts, back to front, in px a second at
+// full motion. The specks, the light and the weed take their cue from it.
+const TANK_DRIFT = [4, 8, 14, 22];
+// A water sheet's wavy edge sits in a strip this far above and below its line.
+const TANK_STRIP_UP = 12;
+const TANK_STRIP_DOWN = 22;
+// Colourways, in degrees round the wheel: mostly as cut, the rest turned.
+const TANK_HUES = [0, 0, 0, 40, 95, 150, 205, 260, 315];
+// Bubbles alive at once in a landscape tank; a taller one, taller columns, more.
+const TANK_BUBBLES = 110;
+const TANK_PEBBLES = ['#c96f5a', '#7aa3c9', '#e8b04a', '#8fbf7a', '#b58ad0', '#f2efe6', '#e58fa8'];
+// The ornaments, one to a slot so none stands on another: the back bank's tall ones,
+// and the front bank's low ones between them and at the ends. A 'coral' is a cluster
+// of two or three corals of different kinds (coralPiece): a garden of them rather than
+// the one thin stick of a thing there was (Peter, 7 Oct 2026: "more and better looking
+// coral") — two clusters on the back bank and a low one at the front.
+const TANK_BACK = ['diver', 'wreck', 'coral', 'rocks', 'coral'];
+const TANK_FRONT = ['chest', 'stone', 'clam', 'coral', 'clam', 'shells'];
+// Each coral is cut in three tones of its colour: its body, a paler one where the light
+// catches it, and a darker one for what is behind and underneath.
+const TANK_CORALS = [
+  { body: '#ef6f86', light: '#fbb3bf', shade: '#b9475f' },
+  { body: '#f48c3a', light: '#fcc786', shade: '#c0601e' },
+  { body: '#a979dc', light: '#d6baf4', shade: '#7449a8' },
+  { body: '#e2509a', light: '#f6a3cb', shade: '#a7306c' },
+  { body: '#f2c335', light: '#fbe490', shade: '#bb8e17' },
+  { body: '#4fc2a0', light: '#a6ead2', shade: '#24866b' },
+  { body: '#e4513f', light: '#f6a08a', shade: '#a8352a' },
+  { body: '#f59a7a', light: '#fdd0bc', shade: '#c86a4c' },
+];
+// The kinds: the back bank always has a staghorn and a sea fan, and two of the rest;
+// the front's are the ones that stay low, under TANK_CORAL_LOW, so the near fish show
+// over them.
+const TANK_CORAL_BACK = ['tubes', 'plate', 'soft', 'brain'];
+const TANK_CORAL_FRONT = ['brain', 'soft', 'tubes', 'plate'];
+const TANK_CORAL_LOW = 22;
+// A clam's shell, inside and out, and its pearl's tint.
+const TANK_CLAMS = [
+  { shell: '#e7b3c9', lid: '#f0c4d6', ridge: 'rgba(140,70,105,0.35)', pearl: '#f6eee6' },
+  { shell: '#f0c48a', lid: '#f6d4a2', ridge: 'rgba(150,90,40,0.35)', pearl: '#fbf3e2' },
+  { shell: '#b9c4e8', lid: '#cdd6f2', ridge: 'rgba(70,80,140,0.35)', pearl: '#f3eef8' },
+];
+const TANK_JELLIES = ['#f2a7c8', '#c9a7f2', '#a7d8f2', '#f7c58f'];
+const TANK_SEAHORSES = ['#f2b84b', '#f08a6b', '#e8789a', '#9bd16b'];
+const TANK_CRABS = [['#d9614a', '#f09a7c', '#b8452f'], ['#e08a3c', '#f6b979', '#b9652a']];
+// The party shark brings its baby (club.js BABY_SHARK): half its size, a little behind and below.
+const TANK_SHARK = FISHES.findIndex((f) => f.name === 'PARTY SHARK');
+const TANK_BABY = 0.5;
+// A mermaid swimming past, top of her hair to the bottom of her tail, in logical px:
+// half what she first was, smaller than a near fish (Peter, 7 Oct 2026: "make mermaid
+// much smaller").
+const TANK_MERMAID_L = 42;
+// The photographer swimming from spot to spot, in logical px a second, and how far each
+// thing on the back bank reaches either side of its middle, so it kneels beside one rather
+// than in it.
+const TANK_PHOTOG_SPEED = 20;
+// and its size, as drawn: a little smaller than the bake-off drew it, to stand beside the
+// mermaids (Peter, 7 Oct 2026: "he and the mermaid should be similar scale").
+const TANK_PHOTOG_S = 0.8;
+const TANK_HALF = { wreck: 38, rocks: 30, coral: 22 };
+// How long the whale grins, its teeth showing, as it winks going by.
+const TANK_WHALE_GRIN = 2.6;
+
+// The edges of the water's sheets, cut once and kept: blurring a shadow under a
+// sheet the width of the screen is the dearest thing in the frame. Each is a strip
+// one tank wide whose edge comes round to meet itself, so it drifts by being drawn
+// twice side by side. Keyed by sheet, colour and device scale — the scale in half
+// steps, so a megamix move that zooms the context re-cuts a few times rather than
+// every frame — and cleared wholesale like the glow sprites.
+const tankStrips = new Map();
+// Paper is never quite the colour it was asked for: a little of its cream comes
+// through, as in the fish (club-fish.js drawPaperFish), and a dark one is the brown of
+// a cut strip. Everything the tank cuts with piece() and cutLine() goes through it, so
+// its creatures are the fish's own stuff (Peter, 7 Oct 2026: "make sure all creatures
+// are made of paper").
+const tankTones = new Map();
+function paperTone(col) {
+  if (typeof col !== 'string' || col[0] !== '#' || col.length !== 7) return col;
+  let tone = tankTones.get(col);
+  if (tone) return tone;
+  const n = parseInt(col.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255];
+  const dark = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 60;
+  const to = dark ? [58, 42, 48] : [250, 240, 222];
+  tone = `#${c.map((v, i) => Math.round(v + (to[i] - v) * (dark ? 0.6 : 0.12)).toString(16).padStart(2, '0')).join('')}`;
+  if (tankTones.size > 256) tankTones.clear();
+  tankTones.set(col, tone);
+  return tone;
+}
+/**
+ * Fill the current path as a cut-out, its shadow in two hard steps rather than a
+ * blur (drawPaperFish's `quick`: a blurred one is about a tenth of a millisecond a
+ * piece, and this tank has a few hundred pieces). `k` is the context's scale to
+ * device pixels, which shadows ignore. The path must be opaque — it is filled twice.
+ */
+function tankCut(ctx, k, lift = 1, draw = 'fill') {
+  ctx.save();
+  ctx.shadowColor = 'rgba(16,10,34,0.17)';
+  ctx.shadowOffsetX = k * 1.3 * lift;
+  ctx.shadowOffsetY = k * 2 * lift;
+  ctx[draw]();
+  ctx.shadowColor = 'rgba(16,10,34,0.26)';
+  ctx.shadowOffsetX = k * 0.6 * lift;
+  ctx.shadowOffsetY = k * 1 * lift;
+  ctx[draw]();
+  ctx.restore();
+}
+
+/** tankCut() for a line: the current path stroked as a strip of paper. */
+function tankCutLine(ctx, k, lift = 1) {
+  ctx.save();
+  ctx.strokeStyle = paperTone(ctx.strokeStyle);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  tankCut(ctx, k, lift, 'stroke');
+  ctx.restore();
+}
+
+/**
+ * Fill what `path` builds in `col` as a cut-out. `edge` gives it the faint edge the
+ * fish's bodies have (drawPaperFish's contour), for a creature's body.
+ */
+function tankPiece(ctx, k, col, path, lift = 0.8, edge = false) {
+  ctx.fillStyle = paperTone(col);
+  ctx.beginPath();
+  path();
+  tankCut(ctx, k, lift);
+  if (edge) {
+    ctx.save();
+    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = 'rgba(26,16,40,0.32)';
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/**
+ * A tapering ribbon up a polyline, added to the current path: `pts` is flat, [x0, y0, x1,
+ * y1, ...], from its root to its rounded tip, `w0` wide at the root and `w1` at the tip,
+ * and each point is pushed `sway * (y / h)²` sideways, so it bends more the higher it is.
+ * Every ribbon winds the same way round (and so does a circle drawn anticlockwise), so a
+ * lot of them filled as one path overlap as one sheet rather than cutting holes in it.
+ */
+function tankRibbon(ctx, pts, w0, w1, sway = 0, h = 1) {
+  const n = pts.length / 2 - 1;
+  const X = (i) => pts[i * 2] + sway * (pts[i * 2 + 1] / h) ** 2;
+  let nx = 0, ny = 0;
+  const normal = (i) => {
+    const a = Math.max(0, i - 1), b = Math.min(n, i + 1);
+    const dx = X(b) - X(a), dy = pts[b * 2 + 1] - pts[a * 2 + 1], m = Math.hypot(dx, dy) || 1;
+    nx = -dy / m; ny = dx / m;
+  };
+  for (let i = 0; i <= n; i++) {
+    normal(i);
+    const half = (w0 + (w1 - w0) * i / n) / 2;
+    ctx[i ? 'lineTo' : 'moveTo'](X(i) + nx * half, pts[i * 2 + 1] + ny * half);
+  }
+  const a = Math.atan2(ny, nx);
+  ctx.arc(X(n), pts[n * 2 + 1], w1 / 2, a, a - Math.PI, true);
+  for (let i = n; i >= 0; i--) {
+    normal(i);
+    const half = (w0 + (w1 - w0) * i / n) / 2;
+    ctx.lineTo(X(i) - nx * half, pts[i * 2 + 1] - ny * half);
+  }
+  ctx.closePath();
+}
+
+/**
+ * The tank's paper, for a painter that is handed it rather than being one of the
+ * tank's own (the diver, and the diver bake-off: src/dev/diver-candidates.js):
+ * `piece(col, path, lift, edge)` fills what `path` builds as a cut-out,
+ * `strip(col, width, path, lift)` strokes it as a strip of paper.
+ */
+export function tankPaper(ctx, k) {
+  return {
+    piece: (col, path, lift, edge) => tankPiece(ctx, k, col, path, lift, edge),
+    strip: (col, width, path, lift = 0.6) => {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      path();
+      tankCutLine(ctx, k, lift);
+    },
+  };
+}
+
+/**
+ * The tank's diver: a scuba diver, side on, with a mask, a tank and yellow flippers, holding a
+ * camera up to the fish that flashes on the bar line; it breathes out through its snorkel
+ * (`valve`, where its bubbles come out). From the diver bake-off (lab gallery `diver-bakeoff`,
+ * src/dev/diver-candidates.js), D, the photographer (Peter, 7 Oct 2026: "replace diver with
+ * photographer"); the hard hat standing waving that it replaced stays there as X.
+ *
+ * It gets about (Peter, 7 Oct 2026: "can photographer swim around and then settle down in various
+ * areas to take photos"): `swims`, so the tank moves it (FishTank.movePhotog) and hands paint a
+ * `pose` — `kneel` 1 on one knee to 0 stood up straight, `ground` 1 with its flippers flat on the
+ * sand to 0 off it, `pitch` 0 upright to π/2 swimming flat out, `kick` its legs' flutter. With a
+ * pose the origin is its hip; without one it kneels with its knee on the sand at the origin, as
+ * every bake-off diver stands. Drawn facing right, through tankPaper.
+ */
+const DIVER_HIP = 16;      // the hip over the sand, kneeling; DIVER_STAND stood up on its flippers
+const DIVER_STAND = 21;
+const DIVER_KNEEL = { kneel: 1, ground: 1, pitch: 0, kick: 0 };
+/** Where the photographer's parts are for a pose, hip-local and upright (paint turns them by `pitch`). */
+function diverRig({ kneel, ground, pitch, kick }) {
+  const mix = (a, b, t) => a + (b - a) * t;
+  // its legs: angles from straight down, forward positive; a flutter once its feet are off the sand
+  const flut = Math.sin(kick) * 0.17 * (1 - kneel) * (1 - ground);
+  const legs = [
+    { hip: [-2, 0], a1: mix(-0.05 + flut, -0.675, kneel), l1: mix(11, 12.8, kneel), a2: mix(-0.22 + flut * 1.4, -1.107, kneel), l2: mix(9.5, 6.7, kneel), flat: -1.33 },
+    { hip: [1, 0], a1: mix(0.05 - flut, 0.862, kneel), l1: mix(11, 9.2, kneel), a2: mix(-0.14 - flut * 1.4, 0, kneel), l2: mix(9.5, 8, kneel), flat: 1.45 },
+  ].map((g) => {
+    const knee = [g.hip[0] + Math.sin(g.a1) * g.l1, g.hip[1] + Math.cos(g.a1) * g.l1];
+    const ankle = [knee[0] + Math.sin(g.a2) * g.l2, knee[1] + Math.cos(g.a2) * g.l2];
+    // a flipper lies flat on the sand, and trails off the shin once it is up
+    return { ...g, knee, ankle, fin: mix(g.a2 + 0.12 * Math.sin(kick - 1.2) * (1 - ground), g.flat, ground) };
+  });
+  // the head and the camera turn back against the body, so it looks, and shoots, where it is going
+  const head = -pitch * 0.75, cam = -pitch * 0.85;
+  const camAt = [mix(10, 13.5, kneel), mix(-13, -22, kneel)];
+  return { legs, head, cam, camAt };
+}
+/** A point turned `a` radians about the origin. */
+const spin = ([x, y], a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+/** Its snorkel's top, hip-local, for a pose (the tank turns it by `pitch` and its facing). */
+function diverValve(pose) {
+  const { head } = diverRig(pose);
+  const [x, y] = spin([-6, -18], head);
+  return spin([x, y - 20], pose.pitch);
+}
+
+export const TANK_DIVER = Object.freeze({
+  letter: 'D', name: 'PHOTOGRAPHER', valve: [-6, -55], swims: true, valveAt: diverValve,
+  description: 'A scuba diver instead of a hard hat: side on and kneeling, mask, snorkel, tank and yellow flippers, a camera held up that flashes on the bar line. '
+    + 'In the tank it swims from spot to spot, kneeling to take pictures.',
+  paint(ctx, paper, { beat, pose }) {
+    const p = pose ?? DIVER_KNEEL;
+    // (a picture is taken kneeling, not on the way)
+    const b = ((beat % 4) + 4) % 4, flash = (b < 0.25 ? 1 - b / 0.25 : 0) * clamp((p.kneel - 0.8) / 0.2);
+    const { legs, head, cam, camAt } = diverRig(p);
+    ctx.save();
+    if (!pose) ctx.translate(0, -DIVER_HIP);
+    ctx.rotate(p.pitch);
+    const [back, front] = legs;
+    const fin = (g) => paper.piece('#f2c14e', () => {
+      const [ax, ay] = g.ankle, dx = Math.sin(g.fin), dy = Math.cos(g.fin);
+      ctx.moveTo(ax - dy * 2.6, ay + dx * 2.6);
+      ctx.lineTo(ax + dx * 12.5, ay + dy * 12.5);
+      ctx.lineTo(ax + dy * 2.6, ay - dx * 2.6);
+      ctx.closePath();
+    }, 0.5);
+    const leg = (g) => paper.strip('#2b3f63', 6, () => { ctx.moveTo(...g.hip); ctx.lineTo(...g.knee); ctx.lineTo(...g.ankle); }, 0.6);
+    // the tank on its back, the flippers out behind
+    paper.piece('#e8e2d0', () => { ctx.moveTo(-13, -24); ctx.arcTo(-6, -24, -6, -2, 3); ctx.arcTo(-6, -2, -13, -2, 3); ctx.arcTo(-13, -2, -13, -24, 3); ctx.arcTo(-13, -24, -6, -24, 3); ctx.closePath(); }, 0.6);
+    fin(back);
+    leg(back);
+    leg(front);
+    fin(front);
+    paper.piece('#2b3f63', () => { ctx.moveTo(-7, 1); ctx.lineTo(-6, -20); ctx.lineTo(5, -20); ctx.lineTo(4, 1); ctx.closePath(); }, 0.8, true);
+    paper.piece('#3e8fd0', () => ctx.rect(-6.5, -16, 11, 3), 0.3);
+    // the head, the mask and the snorkel
+    ctx.save();
+    ctx.translate(0, -20);
+    ctx.rotate(head);
+    paper.piece('#f0c9a8', () => ctx.arc(1, -7, 7, 0, TAU), 0.6, true);
+    paper.piece('#2b3f63', () => { ctx.arc(1, -8, 7.4, Math.PI * 1.05, Math.PI * 1.95); ctx.closePath(); }, 0.4);
+    paper.piece('#f2c14e', () => ctx.rect(1, -11, 8, 6), 0.4);
+    ctx.fillStyle = '#9fe0ff';
+    ctx.beginPath(); ctx.rect(2.5, -9.8, 5.6, 3.6); ctx.fill();
+    paper.strip('#f2c14e', 2, () => { ctx.moveTo(-5, -4); ctx.lineTo(-6, -18); }, 0.4);
+    ctx.restore();
+    // the camera, held up in both hands, its flash on the bar line
+    const grip = (x, y) => { const [gx, gy] = spin([x, y], cam); return [camAt[0] + gx, camAt[1] + gy]; };
+    paper.strip('#2b3f63', 4.5, () => { ctx.moveTo(2, -17); ctx.lineTo(...grip(-4, -2)); ctx.moveTo(-1, -15); ctx.lineTo(...grip(-5, 2)); }, 0.6);
+    ctx.save();
+    ctx.translate(...camAt);
+    ctx.rotate(cam);
+    paper.piece('#3a3a44', () => ctx.rect(-5.5, -4, 11, 8), 0.6);
+    paper.piece('#5b5b68', () => ctx.arc(5.5, 0, 3, 0, TAU), 0.4);
+    if (flash > 0) {
+      ctx.globalAlpha *= flash;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const a = i * Math.PI / 8, r = i % 2 ? 4 : 12;
+        ctx[i ? 'lineTo' : 'moveTo'](0.5 + Math.cos(a) * r, -6 + Math.sin(a) * r);
+      }
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    ctx.restore();
+  },
+});
+
+// Each sheet of the tank is its own piece of paper (Peter, 7 Oct 2026: "can each
+// section of the water have it's own paper texture rather than just a single overlay
+// of textrure"): a tile of it, its colour with its own speckle and fibre, TANK_TILE
+// logical px square (a whole number to the tank's width, so a drifting sheet's tile
+// comes round to meet itself), cut once per colour, seed and device scale.
+const TANK_TILE = 120;
+const tankTiles = new Map();
+function tankPaperTile(col, seed, step) {
+  const key = `${col}:${seed}:${step}`;
+  let tile = tankTiles.get(key);
+  if (tile !== undefined) return tile;
+  const size = Math.ceil(TANK_TILE * step);
+  const made = makeSurface(size, size);
+  if (made) {
+    const g = made.ctx, noise = new Rng(0x51ab0 + seed * 7919);
+    g.scale(step, step);
+    g.fillStyle = col;
+    g.fillRect(0, 0, TANK_TILE, TANK_TILE);
+    // speckle: flecks a little darker and a little lighter, each of this sheet's own size
+    const fleck = 0.5 + noise.float() * 0.8;
+    for (let i = 0; i < 1100; i++) {
+      const x = noise.float() * TANK_TILE, y = noise.float() * TANK_TILE, w = fleck * (0.5 + noise.float());
+      g.fillStyle = noise.chance(0.6) ? `rgba(30,20,40,${0.04 + noise.float() * 0.07})` : `rgba(255,252,240,${0.05 + noise.float() * 0.08})`;
+      for (const dx of [0, -TANK_TILE]) for (const dy of [0, -TANK_TILE]) g.fillRect(x + dx, y + dy, w, w);
+    }
+    // and a few fibres, laid every which way
+    g.lineWidth = 0.35;
+    g.lineCap = 'round';
+    for (let i = 0; i < 26; i++) {
+      const x = noise.float() * TANK_TILE, y = noise.float() * TANK_TILE, a = noise.float() * TAU, len = 3 + noise.float() * 7;
+      g.strokeStyle = `rgba(255,252,240,${0.1 + noise.float() * 0.12})`;
+      for (const dx of [0, -TANK_TILE]) for (const dy of [0, -TANK_TILE]) {
+        g.beginPath();
+        g.moveTo(x + dx, y + dy);
+        g.quadraticCurveTo(x + dx + Math.cos(a + 0.6) * len * 0.5, y + dy + Math.sin(a + 0.6) * len * 0.5, x + dx + Math.cos(a) * len, y + dy + Math.sin(a) * len);
+        g.stroke();
+      }
+    }
+  }
+  tile = made?.canvas ?? null;
+  if (tankTiles.size > 40) tankTiles.clear();
+  tankTiles.set(key, tile);
+  return tile;
+}
+
+/**
+ * Fill style for a sheet of the tank's paper: its tile as a pattern, `TANK_TILE` logical
+ * px across whatever the context's scale (the plain colour where there is no canvas).
+ * The pattern sits at the context's origin, so translate to move it with its sheet.
+ */
+function tankPaperFill(ctx, col, seed, step) {
+  const tile = tankPaperTile(col, seed, step);
+  const pattern = tile && ctx.createPattern?.(tile, 'repeat');
+  if (!pattern || typeof DOMMatrix === 'undefined' || !pattern.setTransform) return col;
+  pattern.setTransform(new DOMMatrix().scale(1 / step, 1 / step));
+  return pattern;
+}
+
+// One sheet of paper grain, faint, over the whole tank: the fish and the things on
+// the sand get their tooth from it. Shared, made once.
+let tankGrain;
+function tankGrainSurface() {
+  if (tankGrain !== undefined) return tankGrain;
+  const made = makeSurface(96, 96);
+  if (made) {
+    const noise = new Rng(0x7a9c4e11);
+    made.ctx.fillStyle = '#ffffff';
+    made.ctx.fillRect(0, 0, 96, 96);
+    for (let i = 0; i < 1400; i++) {
+      const v = Math.round(196 + noise.float() * 59);
+      made.ctx.fillStyle = `rgb(${v},${v - 4},${v - 10})`;
+      made.ctx.fillRect(noise.float() * 96, noise.float() * 96, 0.6 + noise.float() * 1.2, 0.6 + noise.float() * 1.2);
+    }
+  }
+  tankGrain = made?.canvas ?? null;
+  return tankGrain;
+}
+
+class FishTank extends BaseVisualiser {
+  /**
+   * `opts.diver` stands another diver on the sand, and `opts.mermaid` sends that one
+   * mermaid past rather than the tank's own — every `opts.mermaidEvery` seconds, if it
+   * says (createFishTankLab: the diver and mermaid bake-offs). The pack's tank has
+   * TANK_DIVER, and one of TANK_MERMAIDS swims through once in a while.
+   */
+  constructor(seed, track, opts = {}) {
+    super(seed, track);
+    this.name = VISUALISER_NAMES[22];
+    this.fishRng = this.rng.stream('fish-tank');
+    const rng = this.fishRng;
+    this.scheme = rng.pick(TANK_SCHEMES);
+    // Which way the water runs, and the shape of each sheet's edge: whole waves to
+    // the tank's width, so a strip of it tiles.
+    this.current = rng.chance(0.5) ? 1 : -1;
+    this.sheets = TANK_DRIFT.map(() => ({ a: rng.int(2, 3), b: rng.int(5, 7), p: rng.float() * TAU, q: rng.float() * TAU }));
+    // The weed: a back row behind the far fish, a middle row rooted in the front
+    // bank, and a few short fronds at the very front — more of each (Peter, 7 Oct
+    // 2026: "more plants on the sea floor").
+    this.weeds = [];
+    for (const [layer, n, h0, h1] of [[0, 8, 60, 120], [1, 6, 34, 72], [2, 3, 22, 40]]) {
+      for (let i = 0; i < n; i++) {
+        this.weeds.push({
+          layer,
+          x: (i + 0.15 + rng.float() * 0.7) / n * W,
+          h: rng.range(h0, h1),
+          w: rng.range(5, 9) * (layer === 2 ? 1.2 : 1),
+          phase: rng.float() * TAU,
+          side: i % 2 ? 1 : -1,
+          col: this.scheme.weed[Math.min(2, layer + rng.int(0, 1))],
+        });
+      }
+    }
+    // and low plants along the sand: tufts of sea grass on both banks, and sprigs of
+    // sea grapes, round leaves up a stem, on the back one
+    this.tufts = [];
+    for (const [back, n] of [[true, 7], [false, 6]]) {
+      for (let i = 0; i < n; i++) {
+        this.tufts.push({
+          back, x: (i + 0.1 + rng.float() * 0.8) / n * W, h: back ? rng.range(12, 24) : rng.range(9, 17), phase: rng.float() * TAU,
+          col: this.scheme.weed[rng.int(back ? 0 : 1, 2)],
+          blades: Array.from({ length: rng.int(4, 6) }, () => ({ dx: rng.range(-5, 5), lean: rng.range(-0.45, 0.45), h: rng.range(0.6, 1), w: rng.range(1.5, 2.5) })),
+        });
+      }
+    }
+    this.sprigs = Array.from({ length: 4 }, (_, i) => ({
+      x: (i + 0.2 + rng.float() * 0.6) / 4 * W, h: rng.range(20, 34), phase: rng.float() * TAU, curl: rng.range(-0.5, 0.5),
+      col: mixHex(this.scheme.weed[2], '#c8ec78', 0.35), stem: this.scheme.weed[1],
+    }));
+    this.pebbles = Array.from({ length: 18 }, () => ({
+      x: rng.float() * W, dy: rng.range(6, TANK_SAND * 0.55), rx: rng.range(2.4, 5), ry: rng.range(1.8, 3.2),
+      rot: rng.range(-0.5, 0.5), col: rng.pick(TANK_PEBBLES),
+    })).sort((a, b) => a.dy - b.dy);
+    this.rays = Array.from({ length: 5 }, (_, i) => ({ x: (i + rng.float()) / 5 * (W + 160) - 80, w: rng.range(16, 34), phase: rng.float() * TAU }));
+    this.bankPhase = [rng.float() * TAU, rng.float() * TAU];
+    // The ornaments, spaced along the sand one to a slot, in a seeded order. The corals
+    // are dealt as they come (ornament): their kinds, so no cluster has two of one, and
+    // their colours, a different one for every coral.
+    const nb = TANK_BACK.length, nf = TANK_FRONT.length;
+    this.coralDeal = {
+      back: rng.shuffle(['staghorn', 'fan', ...rng.shuffle(TANK_CORAL_BACK).slice(0, 2)]),
+      front: rng.shuffle(TANK_CORAL_FRONT),
+      cols: rng.shuffle(TANK_CORALS),
+      dealt: 0,
+    };
+    this.ornaments = [
+      ...rng.shuffle(TANK_BACK).map((kind, i) => this.ornament(kind, true, (i + 0.5) / nb * W + rng.range(-6, 6))),
+      ...rng.shuffle(TANK_FRONT).map((kind, i) => this.ornament(kind, false, clamp(i / (nf - 1) * W, 28, W - 28) + rng.range(-8, 8))),
+    ];
+    this.coralDeal = null;
+    const at = (kind) => this.ornaments.find((o) => o.kind === kind).x;
+    this.chestX = at('chest');
+    this.stoneX = at('stone');
+    this.diverX = at('diver');
+    this.diverSide = this.ornaments.find((o) => o.kind === 'diver').side;
+    this.diver = opts.diver ?? TANK_DIVER;
+    this.diverDue = 0;
+    // A diver that swims (TANK_DIVER does) gets about: kneeling at its slot to begin with,
+    // taking pictures for a while, then off to somewhere else (movePhotog).
+    this.photog = this.diver.swims ? {
+      mode: 'shoot', x: this.diverX, y: 0, dir: this.diverX < W / 2 ? 1 : -1, wait: rng.range(4, 9), subject: null, plan: null,
+      kneel: 1, ground: 1, pitch: 0, kick: 0, lift: 0, dy: 0,
+    } : null;
+    // The water level, and the clock it keeps.
+    this.tideBeat = rng.pick([0, 12]);
+    this.tide = 0;
+    this.surfaceY = TANK_FULL;
+    // Two crabs on the front of the sand; jellyfish and seahorses in the water; a
+    // turtle now and then; the splash a jumping fish makes.
+    this.crabs = TANK_CRABS.map((cols, i) => ({
+      x: (i + 0.25 + rng.float() * 0.5) / 2 * W, dir: rng.chance(0.5) ? 1 : -1, pause: rng.range(0, 2), walk: 0,
+      size: i ? 0.85 : 1, cols,
+    }));
+    const tall = Math.max(0, H - LANDSCAPE_H) / LANDSCAPE_H;
+    const few = tall > 1 ? 2 : 1;
+    this.jellies = Array.from({ length: few }, (_, i) => ({
+      x: (i + 0.5) / few * W + rng.range(-40, 40), yf: rng.range(0.2, 0.55), r: rng.range(11, 16),
+      vy: 0, pulse: rng.float(), phase: rng.float() * TAU, col: rng.pick(TANK_JELLIES),
+    }));
+    this.seahorses = Array.from({ length: few }, (_, i) => ({
+      x: (i + 0.3 + rng.float() * 0.4) / few * W, yf: rng.range(0.5, 0.75), h: rng.range(24, 32),
+      dir: rng.chance(0.5) ? 1 : -1, phase: rng.float() * TAU, col: rng.pick(TANK_SEAHORSES),
+    }));
+    this.turtle = { live: false, wait: rng.range(10, 22), x: 0, yf: 0, dir: 1, stroke: 0, L: 0, dy: 0 };
+    // and once in a long while a great big whale, slow, far back, behind everything (Peter,
+    // 7 Oct 2026: "how about if we added a great big whale occasionally")
+    this.whale = { live: false, wait: rng.range(25, 45), x: 0, depth: 0, dir: 1, stroke: 0, L: 0, blew: false, wink: 0, grin: 0 };
+    // and once in a while a little mermaid, one of the bake-off's four (src/sprites/mermaids.js;
+    // Peter, 7 Oct 2026: "i would like to use a b c e to swim through once in a while")
+    this.mermaidKinds = opts.mermaid ? [opts.mermaid] : TANK_MERMAIDS;
+    this.mermaidKind = null;
+    this.mermaid = { live: false, wait: opts.mermaidEvery ? 1 : rng.range(20, 45), every: opts.mermaidEvery ?? 0, x: 0, yf: 0, dir: 1, L: 0, dy: 0, phase: rng.float() * TAU };
+    this.drops = Array.from({ length: 48 }, () => ({ live: false, x: 0, y: 0, vx: 0, vy: 0, r: 0 }));
+    this.ripples = Array.from({ length: 8 }, () => ({ live: false, x: 0, age: 0 }));
+    this.bubbles = Array.from({ length: Math.round(TANK_BUBBLES * H / LANDSCAPE_H) }, () => ({ live: false, x: 0, y: 0, r: 0, vy: 0, age: 0, phase: 0 }));
+    this.stoneDue = 0;
+    // The fish, in groups: a solo fish, the shark and its baby, or a school behind
+    // its leader. Solo kinds come off a shuffled deck of all seven, so the tank is
+    // a mix rather than three anglers at once. A portrait tank is taller, not
+    // wider: more fish, so it is not half empty.
+    this.deck = [];
+    this.groups = [];
+    for (const layer of [0, 1]) {
+      for (let i = 0; i < TANK_SOLO[layer] + Math.min(3, Math.round(tall * 1.5)); i++) this.groups.push(this.spawnGroup({ layer, school: false }, true));
+      for (let i = 0; i < TANK_SCHOOLS[layer] + (tall > 1 && !layer ? 1 : 0); i++) this.groups.push(this.spawnGroup({ layer, school: true }, true));
+    }
+    this.sortFish();
+  }
+
+  /** An ornament at `x` on the back bank or the front, with its own seeded shape. */
+  ornament(kind, back, x) {
+    const rng = this.fishRng;
+    const o = { kind, back, x, phase: rng.float() * TAU, side: rng.chance(0.5) ? 1 : -1 };
+    if (kind === 'coral') {
+      // two or three corals, the tallest at the back and the others in front of it, a
+      // little nearer and overlapping it by a third; `w` the cluster's width, kept inside
+      // its slot so it never stands on its neighbours
+      const deal = this.coralDeal;
+      const kinds = deal[back ? 'back' : 'front'].splice(0, back ? 2 : rng.int(2, 3));
+      const pieces = kinds.map((ck) => this.coralPiece(ck, back, deal.cols[deal.dealt++ % deal.cols.length]))
+        .sort((a, b) => b.h - a.h);
+      const way = rng.chance(0.5) ? 1 : -1;
+      let left = -pieces[0].w / 2, right = pieces[0].w / 2;
+      pieces.forEach((p, i) => {
+        if (!i) return;
+        p.dy = 1 + i;
+        const lap = Math.min(p.w, pieces[0].w) * 0.32;
+        if ((i % 2 ? way : -way) > 0) { p.dx = right - lap + p.w / 2; right = p.dx + p.w / 2; }
+        else { p.dx = left + lap - p.w / 2; left = p.dx - p.w / 2; }
+      });
+      const room = back ? 70 : 50;
+      if (right - left > room) {
+        const f = (room - pieces[0].w) / (right - left - pieces[0].w);
+        left = -pieces[0].w / 2; right = pieces[0].w / 2;
+        for (const p of pieces) { p.dx *= f; left = Math.min(left, p.dx - p.w / 2); right = Math.max(right, p.dx + p.w / 2); }
+      }
+      for (const p of pieces) p.dx -= (left + right) / 2;
+      o.corals = pieces;
+      o.w = right - left;
+    } else if (kind === 'rocks') {
+      o.blobs = [[-12, 12, 9], [6, 15, 12], [17, 8, 6]].map(([dx, rx, ry]) => ({
+        dx: dx + rng.range(-2, 2), rx: rx * rng.range(0.85, 1.15), ry: ry * rng.range(0.85, 1.15),
+        col: rng.pick(['#7d7a86', '#8f8a94', '#6c6875', '#857a70']),
+      }));
+    } else if (kind === 'wreck') {
+      o.tilt = rng.range(-0.16, 0.08);
+    } else if (kind === 'clam') {
+      // shut, until its own moment comes round (update)
+      o.cols = rng.pick(TANK_CLAMS);
+      o.size = rng.range(0.9, 1.15);
+      o.wait = rng.range(2, 9);
+      o.openFor = 0;
+      o.at = 0;
+    } else if (kind === 'shells') {
+      o.shells = [-11, 0, 12].map((dx, i) => ({
+        dx: dx + rng.range(-2, 2), conch: i === 1 && rng.chance(0.6), rot: rng.range(-0.4, 0.4),
+        col: rng.pick(['#f3d2bd', '#f6e3c4', '#efc1c9', '#e9c7a0']),
+      }));
+    }
+    return o;
+  }
+
+  /**
+   * One coral of a cluster, its shape seeded and its colours `cols` (TANK_CORALS), standing
+   * on the sand at its origin: `h` how tall it stands and `w` how wide, for laying the
+   * cluster out. A front bank's is one of the low kinds, and lower again.
+   */
+  coralPiece(kind, back, cols) {
+    const rng = this.fishRng;
+    const p = { kind, cols, phase: rng.float() * TAU, dx: 0, dy: 0, h: 0, w: 0 };
+    if (kind === 'staghorn') {
+      // round branches forking twice, a few of them behind the rest in the shade, each
+      // tip a short ribbon of the paler paper laid over it
+      p.branches = [];
+      const grow = (x, y, a, len, w, depth, shade) => {
+        const pts = [x, y];
+        for (let i = 0; i < 3; i++) {
+          a = clamp(a + rng.range(-0.16, 0.16), -1.1, 1.1);
+          x += Math.sin(a) * len / 3;
+          y -= Math.cos(a) * len / 3;
+          pts.push(x, y);
+        }
+        const w1 = Math.max(1.8, w * 0.6), f = 0.4;
+        p.branches.push({
+          pts, w0: w, w1, shade, pad: w / 2,
+          tip: [pts[4] + (x - pts[4]) * f, pts[5] + (y - pts[5]) * f, x, y], tw: w + (w1 - w) * (2 + f) / 3,
+        });
+        if (depth === 2) return;
+        const side = rng.chance(0.5) ? 1 : -1;
+        for (let i = 0, n = depth ? rng.int(1, 2) : 2; i < n; i++) {
+          const j = i ? 1 : 2;
+          grow(pts[j * 2], pts[j * 2 + 1], a + (i ? -side : side) * rng.range(0.45, 0.75),
+            len * rng.range(0.5, 0.65), w * 0.72, depth + 1, shade || rng.chance(0.3));
+        }
+      };
+      const h = rng.range(32, 40);
+      for (let i = 0; i < 3; i++) grow((i - 1) * 3, 3, (i - 1) * 0.38 + rng.range(-0.1, 0.1), h * rng.range(0.55, 0.62), 5, 0, false);
+    } else if (kind === 'fan') {
+      // a sea fan: a flat sheet of lace on a short stem, rows of holes cut in it between
+      // its veins, and the veins laid over it in the darker paper
+      const h = rng.range(34, 42), stem = h * rng.range(0.12, 0.17), R = h - stem;
+      const sx = rng.range(0.74, 0.84), spread = rng.range(0.85, 1);
+      // a point `rho` of the way out along angle `th`, and how far a vein curls out there
+      const at = (rho, th) => {
+        const r = rho * R * (0.9 + 0.1 * Math.cos(th * 1.5));
+        return [Math.sin(th) * r * sx, -stem - Math.cos(th) * r];
+      };
+      const curl = (rho) => Math.min(1, 0.62 + 0.4 * rho);
+      p.stem = [0, 3, 0, -stem - 2];
+      p.rim = [];
+      for (let i = 0; i <= 12; i++) p.rim.push(...at(rng.range(0.97, 1.03), -spread + 2 * spread * i / 12));
+      const nv = rng.int(5, 7);
+      const th = Array.from({ length: nv }, (_, v) => (-0.88 + 1.76 * v / (nv - 1)) * spread + rng.range(-0.04, 0.04));
+      p.veins = th.map((t) => [0, -stem, ...at(0.45, t * curl(0.45)), ...at(0.72, t * curl(0.72)), ...at(0.95, t * curl(0.95))]);
+      p.holes = [];
+      for (let v = 0; v < nv - 1; v++) {
+        for (const rho of [0.5, 0.69, 0.86]) {
+          if (rng.chance(0.1)) continue;
+          const gap = (th[v + 1] - th[v]) * curl(rho);
+          const t = (th[v] + th[v + 1]) / 2 * curl(rho) + rng.range(-0.12, 0.12) * gap;
+          const across = (gap * rho * R * sx - 1.7) * 0.42;
+          if (across < 0.6) continue;
+          const [x, y] = at(rho + rng.range(-0.02, 0.02), t);
+          p.holes.push([x, y, across, R * rng.range(0.055, 0.07), Math.atan2(Math.sin(t) * sx, Math.cos(t))]);
+        }
+      }
+      p.h = h;
+      p.w = 2 * Math.sin(spread) * R * sx * 1.05;
+    } else if (kind === 'brain') {
+      // a brain coral: a dome, its grooves winding round it
+      const rx = back ? rng.range(13, 16) : rng.range(11.5, 13.5), ry = rx * rng.range(0.66, 0.78);
+      p.rx = rx;
+      p.ry = ry;
+      p.grooves = [0.8, 0.57, 0.34].map((f) => {
+        const waves = Math.round(16 * f) + rng.int(-1, 1), q = rng.float() * TAU, pts = [];
+        for (let i = 0; i <= 36; i++) {
+          const a = Math.PI * i / 36, r = f + 0.07 * Math.sin(a * waves + q);
+          pts.push(-Math.cos(a) * rx * r, -Math.sin(a) * ry * r);
+        }
+        return pts;
+      });
+      p.h = ry;
+      p.w = rx * 2;
+    } else if (kind === 'tubes') {
+      // organ-pipe coral: tubes stood side by side, leaning out a little, open at the top
+      const n = back ? rng.int(4, 5) : rng.int(3, 4), tall = back ? rng.range(22, 28) : rng.range(17, TANK_CORAL_LOW - 2);
+      let x = 0;
+      p.tubes = [];
+      for (let i = 0; i < n; i++) {
+        const w = back ? rng.range(5, 6.4) : rng.range(4.6, 5.6), mid = 1 - Math.abs(i - (n - 1) / 2) / n;
+        p.tubes.push({
+          x: x + w / 2, w, h: tall * (0.45 + 0.55 * mid) * rng.range(0.82, 1),
+          lean: (i - (n - 1) / 2) * 0.06 + rng.range(-0.03, 0.03), phase: rng.float() * TAU,
+        });
+        x += w + 1.8;
+      }
+      for (const t of p.tubes) t.x -= (x - 1.8) / 2;
+      p.mouth = mixHex(cols.shade, '#22142a', 0.65);
+      p.h = Math.max(...p.tubes.map((t) => t.h)) + 2;
+      p.w = x;
+    } else if (kind === 'plate') {
+      // table coral: thin shelves stepping up and off to one side, each smaller than the
+      // one under it, on a stout stalk running up through them; their tops pale
+      const h = back ? rng.range(22, 27) : rng.range(17, TANK_CORAL_LOW - 2), m = back ? 3 : 2;
+      const rx = back ? rng.range(14, 17) : rng.range(11, 13), side = rng.chance(0.5) ? 1 : -1;
+      p.plates = Array.from({ length: m }, (_, i) => {
+        const r = rx * (1 - 0.2 * i) * rng.range(0.92, 1.05);
+        return { cx: side * i * rx * 0.42 + rng.range(-1, 1), y: -(h - 3) * (0.36 + 0.64 * i / (m - 1)), rx: r, ry: r * 0.2, t: 2.8 };
+      });
+      const x0 = Math.min(...p.plates.map((pl) => pl.cx - pl.rx)), x1 = Math.max(...p.plates.map((pl) => pl.cx + pl.rx));
+      for (const pl of p.plates) pl.cx -= (x0 + x1) / 2;
+      p.stem = [-(x0 + x1) / 2, 3, ...p.plates.flatMap((pl) => [pl.cx, pl.y])];
+      p.h = h;
+      p.w = x1 - x0;
+    } else {
+      // soft coral: fat stalks fanning out from one root, each ending in a tuft of polyps
+      const h = back ? rng.range(26, 32) : rng.range(19, TANK_CORAL_LOW - 0.5), n = back ? rng.int(4, 5) : rng.int(3, 4);
+      const r0 = back ? 4.4 : 3.6;
+      p.stalks = Array.from({ length: n }, (_, i) => {
+        const u = i / (n - 1) * 2 - 1;
+        const r = r0 * rng.range(0.85, 1.1), len = (h - r - 3) * (1 - Math.abs(u) * 0.3) * rng.range(0.85, 1);
+        let a = u * 0.5 + rng.range(-0.08, 0.08), x = u * 2, y = 3;
+        const pts = [x, y];
+        for (let j = 0; j < 3; j++) {
+          x += Math.sin(a) * len / 3;
+          y -= Math.cos(a) * len / 3;
+          pts.push(x, y);
+          a *= 1.25;
+        }
+        // the polyps: a ring of knobs round the top of the tuft and two in its middle,
+        // like a head of cauliflower
+        const polyps = [];
+        for (let j = 0; j < 6; j++) {
+          const b = Math.PI * (0.88 + 1.24 * j / 5) + rng.range(-0.1, 0.1);
+          polyps.push([Math.cos(b) * r * 0.66, Math.sin(b) * r * 0.66, r * rng.range(0.36, 0.44)]);
+        }
+        polyps.push([-r * 0.24, -r * 0.12, r * 0.4], [r * 0.26, -r * 0.08, r * 0.38]);
+        return { pts, w0: back ? 4.2 : 3.2, w1: back ? 3 : 2.3, r, pad: r, polyps, phase: rng.float() * TAU };
+      });
+    }
+    // the branching kinds grew from their root: centre them on what they cover
+    const lines = p.branches ?? p.stalks;
+    if (lines) {
+      let x0 = Infinity, x1 = -Infinity, top = 0;
+      for (const l of lines) {
+        for (let i = 0; i < l.pts.length; i += 2) {
+          x0 = Math.min(x0, l.pts[i] - l.pad);
+          x1 = Math.max(x1, l.pts[i] + l.pad);
+          top = Math.min(top, l.pts[i + 1] - l.pad);
+        }
+      }
+      const mid = (x0 + x1) / 2;
+      for (const l of lines) {
+        for (let i = 0; i < l.pts.length; i += 2) l.pts[i] -= mid;
+        if (l.tip) { l.tip[0] -= mid; l.tip[2] -= mid; }
+      }
+      p.w = x1 - x0;
+      p.h = -top;
+    }
+    return p;
+  }
+
+  /**
+   * Of a few spots, the one furthest from the other fish and where they are
+   * headed, and from the creatures, so the tank fills out rather than the fish
+   * bunching up.
+   */
+  roomiest(f, spots) {
+    let best = spots[0], room = -1;
+    const others = this.bodies().filter((b) => !b.f);
+    for (const spot of spots) {
+      let near = Infinity;
+      for (const g of this.groups) {
+        const o = g.members?.[0];
+        if (!o || o === f) continue;
+        near = Math.min(near, Math.hypot(o.tx - spot[0], (o.ty - spot[1]) * 1.6), Math.hypot(o.x - spot[0], (o.y - spot[1]) * 1.6));
+      }
+      for (const b of others) near = Math.min(near, Math.hypot(b.x - spot[0], (b.y - spot[1]) * 1.6));
+      if (near > room) { room = near; best = spot; }
+    }
+    return best;
+  }
+
+  /** Every fish, far then near and smallest first, so the bigger swim in front. */
+  sortFish() {
+    this.fish = this.groups.flatMap((g) => g.members).sort((a, b) => a.layer - b.layer || a.L - b.L);
+  }
+
+  /** A solo fish's kind off the deck, never a second shark. */
+  dealKind(g) {
+    const rng = this.fishRng;
+    if (!this.deck.length) this.deck = rng.shuffle(FISHES.map((_, i) => i));
+    let kind = this.deck.pop();
+    // One shark in the tank at a time: it is the biggest, and it brings its baby.
+    // A second goes back under the deck for later.
+    if (kind === TANK_SHARK && this.groups.some((o) => o !== g && o.members?.[0]?.kind === TANK_SHARK)) {
+      if (!this.deck.length) this.deck = rng.shuffle(FISHES.map((_, i) => i).filter((i) => i !== TANK_SHARK));
+      this.deck.unshift(kind);
+      kind = this.deck.pop();
+    }
+    return kind;
+  }
+
+  makeFish(layer, kind, hue, heroH, cruise) {
+    const rng = this.fishRng;
+    return {
+      layer, kind, hue, heroH, L: FISHES[kind].size * heroH, cruise, v: cruise,
+      x: 0, y: 0, dir: 1, pitch: 0, tx: 0, ty: 0, wait: 0, turn: null, rest: 0, dart: 0,
+      // half the tails swing one way on the beat, half the other
+      wag: rng.chance(0.5) ? 0 : Math.PI, bob: rng.float() * TAU, offX: 0, offY: 0, baby: false,
+    };
+  }
+
+  /**
+   * A group into the tank, or back into it as a new one once it has swum out: a
+   * new kind, colourway and size each time. `initial` puts it somewhere in the tank
+   * already; otherwise it comes in from a side.
+   */
+  spawnGroup(g, initial = false) {
+    const rng = this.fishRng;
+    const hue = rng.pick(TANK_HUES);
+    const kind = g.school ? rng.pick(TANK_SCHOOL_KINDS) : this.dealKind(g);
+    const heroH = g.school ? TANK_SCHOOL_H[g.layer] : (kind === TANK_SHARK ? TANK_SHARK_H : TANK_FISH_H)[g.layer] * rng.range(0.8, 1.25);
+    const cruise = rng.range(...TANK_CRUISE[g.layer]) / (FISHES[kind].pace ?? 1);
+    const lead = this.makeFish(g.layer, kind, hue, heroH, cruise);
+    lead.dir = rng.chance(0.5) ? 1 : -1;
+    const [top, bottom] = this.band(lead);
+    const spots = Array.from({ length: 4 }, () => [rng.range(lead.L, W - lead.L), rng.range(top, bottom)]);
+    [lead.x, lead.y] = this.roomiest(lead, spots);
+    if (!initial) lead.x = lead.dir > 0 ? -lead.L - rng.float() * 40 : W + lead.L + rng.float() * 40;
+    g.members = [lead];
+    if (g.school) {
+      // strung out behind the leader, either side of its line by turns
+      const n = TANK_SCHOOL[g.layer] + rng.int(-1, 1);
+      for (let i = 1; i < n; i++) {
+        const f = this.makeFish(g.layer, kind, hue, heroH * rng.range(0.85, 1.1), cruise);
+        f.offX = -(0.6 + 0.8 * i + rng.float() * 0.6) * lead.L;
+        f.offY = (i % 2 ? 1 : -1) * (0.4 + 0.35 * i + rng.float() * 0.5) * lead.L;
+        g.members.push(f);
+      }
+    } else if (kind === TANK_SHARK) {
+      const baby = this.makeFish(g.layer, kind, hue, heroH * TANK_BABY, cruise);
+      baby.baby = true;
+      baby.offX = -1.25 * lead.L;
+      baby.offY = 0.28 * lead.L;
+      g.members.push(baby);
+    }
+    for (const f of g.members.slice(1)) {
+      f.dir = lead.dir;
+      f.x = lead.x + lead.dir * f.offX;
+      f.y = lead.y + f.offY;
+    }
+    g.exiting = false;
+    g.age = 0;
+    this.pickTarget(g, lead);
+    // one coming in heads into the tank first
+    if (!initial) lead.tx = rng.range(W * 0.3, W * 0.7);
+    return g;
+  }
+
+  /** How high and how low fish `f` may swim: under the surface, over the sand. */
+  band(f) {
+    // the whole fish, not just its middle: a shark's fin and hat, an angler's lamp, a
+    // snorkel stand up to half its length over its back, and a nose tipped up or down
+    // reaches further (Peter, 7 Oct 2026: "can't see fin of shark when he's near the
+    // surface" ... "fish should go below the sand")
+    const lift = f.L * (0.55 + 0.45 * Math.max(0, -Math.sin(f.pitch)));
+    const sink = f.L * (0.45 + 0.45 * Math.max(0, Math.sin(f.pitch)));
+    const top = this.surfaceY + 5 + lift;
+    // over whichever bank of sand is in front of it, all along its length
+    const back = f.layer === 0, x = clamp(f.x, 0, W), half = f.L * 0.5;
+    const sand = Math.min(this.bankAt(clamp(x - half, 0, W), back), this.bankAt(x, back), this.bankAt(clamp(x + half, 0, W), back));
+    return [top, Math.max(top + 1, sand - 3 - sink)];
+  }
+
+  /** Somewhere new for a leader to head for — mostly on ahead, sometimes back, now and then out. */
+  pickTarget(g, f) {
+    const rng = this.fishRng;
+    f.wait = rng.range(5, 10);
+    if (g.age > 20 && rng.chance(0.18)) {
+      g.exiting = true;
+      f.tx = f.dir > 0 ? W + f.L * 4 : -f.L * 4;
+      f.ty = f.y;
+      return;
+    }
+    const [top, bottom] = this.band(f);
+    const margin = Math.min(W * 0.3, f.L * 0.7);
+    const spots = Array.from({ length: 3 }, () => {
+      // heights weighted to the top and the bottom: swimming between them passes
+      // through the middle anyway, and evenly picked ones leave the tank's edges bare
+      const ty = top + (bottom - top) * (1 - Math.cos(Math.PI * rng.float())) / 2;
+      // and a long way to go for a long way up or down, so it can climb there
+      const tx = rng.chance(0.7) ? f.x + f.dir * Math.max(rng.range(90, 280), Math.abs(ty - f.y) * 1.2) : rng.range(margin, W - margin);
+      return [clamp(tx, margin, W - margin), ty];
+    });
+    [f.tx, f.ty] = this.roomiest(f, spots);
+    // time enough to get there, so a fish heading for the top or the bottom of the
+    // tank reaches it rather than every fish drifting round the middle
+    f.wait = Math.hypot(f.tx - f.x, f.ty - f.y) / f.cruise + rng.range(2, 5);
+    if (rng.chance(0.05)) f.dart = TANK_DART_S;
+  }
+
+  /**
+   * One fish swimming for its target at speed `want`: climbing or diving towards
+   * it, turning round when it is behind.
+   */
+  swimFish(f, dt, want) {
+    f.rest -= dt;
+    f.dart -= dt;
+    if (f.turn) {
+      const turn = f.turn;
+      turn.at += dt;
+      const p = clamp(turn.at / TANK_TURN_S);
+      const tip = turn.way * TANK_TURN_TIP;
+      if (p < 0.5) f.pitch = turn.from + (tip - turn.from) * smooth(p * 2);
+      else {
+        // at the vertical: mirrored, and a puff of bubbles off its nose
+        if (!turn.flipped) {
+          turn.flipped = true;
+          f.dir = -f.dir;
+          for (let i = 0; i < 2; i++) this.spawnBubble(f.x + this.fishRng.range(-3, 3), f.y + Math.sin(tip) * f.L * 0.45, this.fishRng.range(1.2, 2.4));
+        }
+        f.pitch = tip * (1 - smooth((p - 0.5) * 2));
+      }
+      f.v += (want * 0.8 - f.v) * Math.min(1, dt * 4);
+      if (p >= 1) { f.turn = null; f.rest = TANK_TURN_REST; }
+    } else {
+      const dx = f.tx - f.x, dy = f.ty - f.y;
+      const [top, bottom] = this.band(f);
+      if (dx * f.dir < -f.L * 0.6 && f.rest <= 0) {
+        // nose up, unless the surface is too near or the target is below and there is room
+        const room = f.L * 0.9;
+        const way = f.y - top < room || (dy > 0 && bottom - f.y > room) ? 1 : -1;
+        f.turn = { at: 0, way, from: f.pitch, flipped: false };
+      } else {
+        // steeper when the target is more up or down than along
+        const steep = TANK_PITCH + 0.3 * clamp(Math.abs(dy) / (Math.abs(dx) + f.L) - 0.6);
+        const aim = clamp(Math.atan2(dy, Math.abs(dx) + f.L * 2), -steep, steep);
+        f.pitch += (aim - f.pitch) * Math.min(1, dt * 1.1);
+        f.v += (want - f.v) * Math.min(1, dt * (f.dart > 0 ? 2 : 1));
+      }
+    }
+    f.x += f.dir * Math.cos(f.pitch) * f.v * dt;
+    f.y += Math.sin(f.pitch) * f.v * dt;
+    // the surface and the sand are walls: a fish swimming into one runs along it, and
+    // one the water drains from under goes down with the water
+    const [top, bottom] = this.band(f);
+    f.y = clamp(f.y, top, bottom);
+  }
+
+  /**
+   * The photographer: kneeling to take pictures for a while, then up on its flippers, off
+   * the sand, tipping forward into a swim to somewhere new, tipping back up over it and
+   * kneeling again. It turns round only stood upright off the sand — as the fish turn only
+   * nose-up or nose-down, never side on.
+   */
+  movePhotog(step) {
+    const p = this.photog;
+    if (p.mode === 'shoot') {
+      if ((p.wait -= step) <= 0) this.photogSetOff(p);
+    } else {
+      const s = p.plan, t = (s.at += step);
+      // the ends of: standing up, lifting off, tipping forward, the swim, tipping back, landing, kneeling
+      const [t1, t2, t3, t4, t5, t6, t7] = s.marks;
+      const seg = (a, b) => smooth(clamp((t - a) / (b - a)));
+      p.kneel = 1 - seg(0, t1) + seg(t6, t7);
+      p.ground = 1 - seg(t1, t2) + seg(t5, t6);
+      p.pitch = Math.PI / 2 * (seg(t2, t3) - seg(t4, t5));
+      p.dir = t < t2 ? p.dir : t < t5 ? s.way : s.face;
+      p.x = s.from + (s.to - s.from) * seg(t2, t5);
+      p.lift = s.height * (seg(t1, t3) - seg(t4, t6));
+      p.kick += step * 9;
+      if (t >= t7) {
+        p.mode = 'shoot';
+        p.wait = this.fishRng.range(6, 14);
+        p.plan = null;
+      }
+    }
+    // a little bob while it swims; the push it has had out of something's way, dying away
+    p.dy *= 1 - Math.min(1, step * 0.6);
+    const off = (1 - p.ground) * (Math.sin(this.flow * 1.3) * 2 + p.dy);
+    const sand = this.bankAt(p.x, true) + 6 - (DIVER_HIP + (DIVER_STAND - DIVER_HIP) * (1 - p.kneel)) * TANK_PHOTOG_S;
+    p.y = Math.max(this.surfaceY + 10 + 34 * TANK_PHOTOG_S * Math.cos(p.pitch), sand - p.lift + off);
+  }
+
+  /**
+   * Somewhere new for the photographer to kneel: beside one of the things on the back bank,
+   * facing it — and always facing into the tank, never shooting off the side of it (Peter, 7
+   * Oct 2026: "near left face right, near right, face left").
+   */
+  photogSetOff(p) {
+    const rng = this.fishRng;
+    const half = (o) => o.half ?? TANK_HALF[o.kind] ?? 22;
+    const sights = this.ornaments.filter((o) => o.back && o.kind !== 'diver');
+    const clear = (x, o) => x > 26 && x < W - 26 && Math.abs(x - p.x) > 60 && !sights.some((q) => q !== o && Math.abs(q.x - x) < half(q) + 8);
+    const inward = (x, face) => (x < W * 0.35 ? face > 0 : x > W * 0.65 ? face < 0 : true);
+    let to = null;
+    for (let i = 0; i < 16 && !to; i++) {
+      const o = rng.pick(sights), side = rng.chance(0.5) ? 1 : -1, x = o.x + side * (half(o) + rng.range(12, 20));
+      if (o !== p.subject && clear(x, o) && inward(x, -side)) to = { o, x, face: -side };
+    }
+    // nothing beside anything: anywhere clear, facing into the tank
+    for (let i = 0; i < 12 && !to; i++) {
+      const x = rng.range(30, W - 30);
+      if (clear(x, null)) to = { o: null, x, face: x < W / 2 ? 1 : -1 };
+    }
+    if (!to) { p.wait = rng.range(3, 6); return; }
+    const cruise = Math.max(0.5, Math.abs(to.x - p.x) / TANK_PHOTOG_SPEED - 1.4);
+    let at = 0;
+    const marks = [0.7, 0.8, 1, cruise, 1, 0.8, 0.7].map((d) => (at += d));
+    p.plan = { at: 0, marks, from: p.x, to: to.x, way: Math.sign(to.x - p.x) || 1, face: to.face, height: rng.range(26, 64) };
+    p.subject = to.o;
+    p.mode = 'swim';
+  }
+
+  /** Where the diver's bubbles come out, in the tank. */
+  valvePoint() {
+    const p = this.photog;
+    if (!p) return [this.diverX + this.diverSide * this.diver.valve[0], this.bankAt(this.diverX, true) + 5 + this.diver.valve[1]];
+    const [vx, vy] = this.diver.valveAt(p);
+    return [p.x + p.dir * vx * TANK_PHOTOG_S, p.y + vy * TANK_PHOTOG_S];
+  }
+
+  /**
+   * Everything swimming, as an ellipse round what it draws and the ways it can give way
+   * (`mx`, `my`; `move(dx, dy)` does it), at its depth (`layer`: the far fish 0, the near 1,
+   * the creatures between them).
+   */
+  bodies() {
+    const span = Math.max(1, H - TANK_SAND - this.surfaceY), out = [];
+    for (const g of this.groups ?? []) for (const f of g.members) {
+      if (f.jump || f.x < -f.L || f.x > W + f.L) continue;
+      out.push({ f, g, x: f.x, y: f.y, rx: f.L * 0.5, ry: f.L * 0.3, mx: 0, my: 1, layer: f.layer,
+        move: (dx, dy) => { const [top, bottom] = this.band(f); f.y = clamp(f.y + dy, top, bottom); } });
+    }
+    for (const j of this.jellies ?? []) {
+      const y = this.surfaceY + span * j.yf;
+      out.push({ x: j.x, y: y + j.r * 0.7, rx: j.r, ry: j.r * 1.6, mx: 1, my: 0.4, layer: 0.5,
+        move: (dx, dy) => { j.x += dx; j.yf = clamp(j.yf + dy / span, j.r * 1.4 / span, 0.7); } });
+    }
+    for (const s of this.seahorses ?? []) {
+      const x = s.x + Math.sin(this.flow * 0.3 + s.phase) * 14, y = this.surfaceY + span * s.yf + Math.sin(this.flow * 0.8 + s.phase) * 6;
+      out.push({ x: x + s.dir * 0.15 * s.h, y, rx: 0.32 * s.h, ry: 0.55 * s.h, mx: 0.6, my: 0.4, layer: 0.5,
+        move: (dx, dy) => { s.x = clamp(s.x + dx, 24, W - 24); s.yf = clamp(s.yf + dy / span, 0.3, 0.8); } });
+    }
+    const t = this.turtle;
+    if (t?.live) {
+      out.push({ x: t.x + t.dir * 0.05 * t.L, y: this.surfaceY + span * t.yf + t.dy, rx: 0.55 * t.L, ry: 0.3 * t.L, mx: 0, my: 1, layer: 0.5,
+        move: (dx, dy) => { t.dy = clamp(t.dy + dy, -span * t.yf + t.L * 0.35, span * (1 - t.yf) - t.L * 0.35); } });
+    }
+    const mm = this.mermaid;
+    if (mm?.live) {
+      const y = this.surfaceY + span * mm.yf + mm.dy;
+      out.push({ x: mm.x - mm.dir * 0.15 * mm.L, y: y - 0.15 * mm.L, rx: 0.42 * mm.L, ry: 0.52 * mm.L, mx: 0, my: 1, layer: 0.5,
+        move: (dx, dy) => { mm.dy = clamp(mm.dy + dy, -span * mm.yf + mm.L * 0.7, span * (1 - mm.yf) - mm.L * 0.4); } });
+    }
+    const p = this.photog;
+    if (p) {
+      // kneeling it stays put and the rest go round it; swimming it gives way up or down
+      const flat = Math.sin(p.pitch), up = 1 - flat, swim = 1 - p.ground, S = TANK_PHOTOG_S;
+      out.push({ x: p.x + p.dir * flat * 4 * S, y: p.y - up * 10 * S, rx: (12 + 20 * flat) * S, ry: (12 + 20 * up) * S, mx: 0, my: swim, layer: 0.5,
+        move: (dx, dy) => { p.dy += dy; } });
+    }
+    return out;
+  }
+
+  /**
+   * Fish and creatures keep out of each other's way where they can (Peter, 7 Oct 2026:
+   * "lets make the fish and other marine creatures avoid overlapping where possible"): two
+   * that overlap each give way as they can — a fish over or under, a jellyfish or a seahorse
+   * sideways, the turtle, the mermaid or a swimming photographer up or down off its line.
+   * A school keeps its places; a far fish and a near one, apart already in depth, give way
+   * less; the leaders of one layer keep apart already (update).
+   */
+  keepApart(step) {
+    // (wider than they draw, along the way they swim, so they start to give way before they touch)
+    const rate = Math.min(1, step * 4);
+    for (const o of [this.turtle, this.mermaid]) if (!o.live) o.dy = 0; else o.dy *= 1 - Math.min(1, step * 0.3);
+    const all = this.bodies();
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        const a = all[i], b = all[j];
+        if (a.g && a.g === b.g) continue;
+        if (a.f && b.f && a.layer === b.layer && a.f === a.g.members[0] && b.f === b.g.members[0]) continue;
+        const rx = (a.rx + b.rx) * 1.35, ry = (a.ry + b.ry) * 1.15, dx = b.x - a.x, dy = b.y - a.y;
+        const qx = (dx / rx) ** 2, qy = (dy / ry) ** 2;
+        if (qx + qy >= 1) continue;
+        const apart = Math.abs(a.layer - b.layer), w = apart >= 1 ? 0.35 : apart > 0 ? 0.7 : 1;
+        const needY = (ry * Math.sqrt(1 - qx) - Math.abs(dy)) * rate * w, sy = Math.sign(dy) || 1;
+        const needX = (rx * Math.sqrt(1 - qy) - Math.abs(dx)) * rate * w, sx = Math.sign(dx) || 1;
+        if (a.my + b.my > 0) {
+          const share = needY / (a.my + b.my);
+          a.move(0, -sy * share * a.my);
+          b.move(0, sy * share * b.my);
+        }
+        if (a.mx + b.mx > 0) {
+          const share = needX / (a.mx + b.mx);
+          a.move(-sx * share * a.mx, 0);
+          b.move(sx * share * b.mx, 0);
+        }
+      }
+    }
+  }
+
+  spawnBubble(x, y, r) {
+    const b = this.bubbles.find((o) => !o.live);
+    if (!b) return;
+    b.live = true;
+    b.x = x; b.y = y; b.r = r;
+    b.vy = 22 + r * 7 + this.fishRng.float() * 10;
+    b.age = 0;
+    b.phase = this.fishRng.float() * TAU;
+  }
+
+  /** The top of the front bank of sand at `x`, or the back bank's (`back`). */
+  bankAt(x, back = false) {
+    const p = this.bankPhase[back ? 1 : 0];
+    return H - TANK_SAND * (back ? 1.05 : 0.62)
+      + Math.sin(x * 0.019 + p) * (back ? 6 : 4) + Math.sin(x * 0.047 + p * 2) * 2;
+  }
+
+  update(dt, a) {
+    const bar = Math.floor(this.beat / 4);
+    const phrase = Math.floor(this.beat / 16);
+    super.update(dt, a);
+    const rng = this.fishRng;
+    const step = Math.max(0, dt) * (0.45 + 0.55 * this.motion);
+    // The water level, on its own clock: only a beat moving on as beats do counts,
+    // so a loop back to the top of the song carries on where the tide was.
+    const db = this.beat - this.prevBeat;
+    if (db > 0 && db < 2) {
+      this.tideBeat += db;
+      // the water stays up while the whale is in, right to the last beat before it drains
+      const held = ((this.tideBeat - db) % TANK_TIDE_BEATS + TANK_TIDE_BEATS) % TANK_TIDE_BEATS;
+      if (this.whale.live && held < 24 && held + db >= 23.9) this.tideBeat -= held + db - 23.9;
+    }
+    const tp = this.tideBeat % TANK_TIDE_BEATS;
+    this.tide = tp < 24 ? 0 : tp < 32 ? smooth((tp - 24) / 8) : tp < 56 ? 1 : 1 - smooth((tp - 56) / 8);
+    this.surfaceY = TANK_FULL + (TANK_LOW + Math.max(0, H - LANDSCAPE_H) * 0.08 - TANK_FULL) * this.tide;
+    // One fish puts on a little speed now and then, on a phrase.
+    if (Math.floor(this.beat / 16) !== phrase && rng.chance(0.4)) {
+      const solo = this.groups.filter((g) => !g.exiting && !g.members[0].jump);
+      if (solo.length) rng.pick(solo).members[0].dart = TANK_DART_S;
+    }
+    // On the bar line, while the water is low, one of the smaller fish near the top
+    // makes a run for the surface and leaps out (jumpFish).
+    if (Math.floor(this.beat / 4) !== bar && this.surfaceY - TANK_FULL >= TANK_JUMP_AIR && rng.chance(0.35)) {
+      const able = this.groups.filter((g) => {
+        const f = g.members[0];
+        if (g.exiting || g.members.length > 1 || f.layer !== 1 || f.L > TANK_JUMP_L || f.turn || f.jump) return false;
+        const [top, bottom] = this.band(f);
+        return f.y < top + (bottom - top) * 0.5 && f.x > W * 0.12 && f.x < W * 0.88;
+      });
+      if (able.length) rng.pick(able).members[0].jump = { stage: 'run', at: 0, vx: 0, vy: 0 };
+    }
+    let respawned = false;
+    for (const g of this.groups) {
+      g.age += step;
+      const [lead, ...rest] = g.members;
+      if (lead.jump) this.jumpFish(lead, step);
+      else {
+        if (!g.exiting && (lead.wait -= step) <= 0) this.pickTarget(g, lead);
+        if (!g.exiting && Math.abs(lead.tx - lead.x) < lead.L && Math.abs(lead.ty - lead.y) < lead.L * 0.8) this.pickTarget(g, lead);
+        // keep clear of the other leaders in its layer: passing over or under, not through
+        for (const o of this.groups) {
+          const other = o.members[0];
+          if (o === g || other.layer !== lead.layer || other.jump) continue;
+          const dy = lead.y - other.y, reach = (lead.L + other.L) * 0.5;
+          if (Math.abs(lead.x - other.x) < reach * 1.5 && Math.abs(dy) < reach) {
+            lead.y += Math.sign(dy || 1) * (reach - Math.abs(dy)) * Math.min(1, step * 2.5);
+          }
+        }
+        this.swimFish(lead, step, lead.cruise * (lead.dart > 0 ? TANK_DART : 1));
+      }
+      // the rest keep their places round the leader, the school breathing in and out
+      for (const f of rest) {
+        f.tx = lead.x + lead.dir * f.offX + Math.sin(this.flow * 0.7 + f.bob) * f.L * 0.6;
+        f.ty = lead.y + f.offY + Math.cos(this.flow * 0.5 + f.bob) * f.L * 0.4;
+        const behind = (f.tx - f.x) * f.dir;
+        this.swimFish(f, step, clamp(lead.v + behind * 0.9, lead.v * 0.5, lead.v * 1.8 + 8));
+      }
+      // out of the tank, every one of them: another group comes in
+      if (g.exiting && g.members.every((f) => f.x + f.L < -10 || f.x - f.L > W + 10)) {
+        this.spawnGroup(g);
+        respawned = true;
+      }
+    }
+    if (respawned) this.sortFish();
+    // The chest lets go a burst on every bar; a song that loops restarts its count,
+    // which reads as a new bar too.
+    if (Math.floor(this.beat / 4) !== bar) {
+      const top = this.bankAt(this.chestX) - 8;
+      const n = 4 + Math.round(4 * (PULSE_FLOOR + (1 - PULSE_FLOOR) * this.groove));
+      for (let i = 0; i < n; i++) this.spawnBubble(this.chestX + rng.range(-8, 8), top - rng.float() * 6, rng.range(1.4, 3.6));
+    }
+    // The airstone never stops; the louder the song the harder it runs, and a drum
+    // landing puffs out a few more.
+    this.stoneDue += Math.max(0, dt) * (1.5 + 4.5 * this.level) + this.hit * 0.3;
+    while (this.stoneDue >= 1) {
+      this.stoneDue -= 1;
+      this.spawnBubble(this.stoneX + rng.range(-3, 3), this.bankAt(this.stoneX) - 3, rng.range(0.9, 2.4));
+    }
+    // The diver breathes out through its snorkel or its helmet's valve, slower than the
+    // airstone; a photographer gets about first.
+    if (this.photog) this.movePhotog(step);
+    this.diverDue += Math.max(0, dt) * (1 + 2.5 * this.level);
+    while (this.diverDue >= 1) {
+      this.diverDue -= 1;
+      const [vx, vy] = this.valvePoint();
+      this.spawnBubble(vx + rng.range(-1.5, 1.5), vy, rng.range(1.2, 3));
+    }
+    // Each clam opens on its own now and then, a few bubbles going up as it does.
+    for (const o of this.ornaments) {
+      if (o.kind !== 'clam') continue;
+      if (o.openFor > 0) {
+        o.at += step;
+        if (o.at >= o.openFor) { o.openFor = 0; o.wait = rng.range(5, 14); }
+      } else if ((o.wait -= step) <= 0) {
+        o.openFor = rng.range(3, 5);
+        o.at = 0;
+        for (let i = 0; i < 3; i++) this.spawnBubble(o.x + rng.range(-4, 8), this.bankAt(o.x) - 4, rng.range(1.2, 2.4));
+      }
+    }
+    this.moveCreatures(step, dt);
+    this.keepApart(step);
+    for (const b of this.bubbles) {
+      if (!b.live) continue;
+      b.age += Math.max(0, dt);
+      b.y -= b.vy * step;
+      if (b.y < this.surfaceY + b.r) b.live = false;
+    }
+    for (const d of this.drops) {
+      if (!d.live) continue;
+      d.vy += TANK_JUMP_G * Math.max(0, dt);
+      d.x += d.vx * Math.max(0, dt);
+      d.y += d.vy * Math.max(0, dt);
+      if (d.vy > 0 && d.y > this.surfaceY + 2) d.live = false;
+    }
+    for (const r of this.ripples) if (r.live && (r.age += Math.max(0, dt)) > 0.9) r.live = false;
+  }
+
+  /**
+   * A fish leaping: a run up to the surface at a dart, then out of the water on an
+   * arc, its nose following the way it is going, and back in with a splash — the
+   * arc turns it nose-down, so it needs no mirror.
+   */
+  jumpFish(f, dt) {
+    const j = f.jump, rng = this.fishRng, surf = this.surfaceY;
+    if (j.stage === 'run') {
+      j.at += dt;
+      const aim = clamp(Math.atan2(surf - 12 - f.y, 70), -1.05, 0.3);
+      f.pitch += (aim - f.pitch) * Math.min(1, dt * 4);
+      f.v += (f.cruise * TANK_DART - f.v) * Math.min(1, dt * 5);
+      f.x += f.dir * Math.cos(f.pitch) * f.v * dt;
+      f.y += Math.sin(f.pitch) * f.v * dt;
+      if (f.y - f.L * (0.55 + 0.45 * Math.max(0, -Math.sin(f.pitch))) <= surf) {
+        // out: high enough to clear the water, never past the top of the frame
+        const h = clamp(f.L * rng.range(0.7, 1), 10, Math.max(10, surf - f.L * 0.6 - 4));
+        j.stage = 'air';
+        j.vx = f.dir * clamp(f.v * 0.45, 35, 75);
+        // (it leaves while its middle is still under, so it has that far to rise as well)
+        j.vy = -Math.sqrt(2 * TANK_JUMP_G * (f.y - surf + h));
+        this.splash(f.x, surf, 6, j.vx);
+      } else if (j.at > 4) f.jump = null;   // never got there: thinks better of it
+      return;
+    }
+    j.vy += TANK_JUMP_G * dt;
+    f.x += j.vx * dt;
+    f.y += j.vy * dt;
+    f.pitch += (Math.atan2(j.vy, Math.abs(j.vx)) - f.pitch) * Math.min(1, dt * 14);
+    if (j.vy > 0 && f.y >= this.band(f)[0]) {
+      // back in: a splash, a trail of bubbles, and on down into the tank
+      this.splash(f.x, surf, 9, j.vx);
+      for (let i = 0; i < 4; i++) this.spawnBubble(f.x + rng.range(-6, 6), surf + f.L * rng.range(0.5, 1.1), rng.range(1.2, 2.8));
+      f.v = Math.hypot(j.vx, j.vy) * 0.5;
+      f.jump = null;
+      f.tx = f.x + f.dir * 160;
+      f.ty = f.y + 60;
+      f.wait = 2.5;
+      f.rest = 0.6;
+    }
+  }
+
+  /** Drops thrown up where a fish breaks the surface at `x`, and a ripple running out from it. */
+  splash(x, y, n, vx, up = 1) {
+    const rng = this.fishRng;
+    for (let i = 0; i < n; i++) {
+      const d = this.drops.find((o) => !o.live);
+      if (!d) break;
+      d.live = true;
+      d.x = x + rng.range(-5, 5);
+      d.y = y - 1;
+      d.vx = (rng.range(-45, 45) + vx * 0.3) / up;
+      d.vy = -rng.range(70, 150) * up;
+      d.r = rng.range(1, 2.2);
+    }
+    const r = this.ripples.find((o) => !o.live);
+    if (r) { r.live = true; r.x = x; r.age = 0; }
+  }
+
+  /** The jellyfish, the turtle and the crabs. (The seahorses only hover: drawSeahorse has them off the clock.) */
+  moveCreatures(step, dt) {
+    const rng = this.fishRng;
+    // A jellyfish pulses up, then sinks slowly, carried along by the current.
+    for (const j of this.jellies) {
+      j.pulse += step / 1.7;
+      if (j.pulse >= 1) { j.pulse -= 1; j.vy = -26; }
+      j.vy = Math.min(8, j.vy + 22 * step);
+      const span = H - TANK_SAND - this.surfaceY;
+      j.yf = clamp(j.yf + j.vy * step / Math.max(1, span), j.r * 1.4 / Math.max(1, span), 0.7);
+      j.x += (this.current * 7 + Math.sin(this.flow * 0.4 + j.phase) * 4) * step;
+      if (j.x < -30) j.x += W + 60;
+      if (j.x > W + 30) j.x -= W + 60;
+    }
+    // The turtle: now and then, across the tank and out the other side.
+    const t = this.turtle;
+    if (!t.live) {
+      if ((t.wait -= step) <= 0) {
+        t.live = true;
+        t.dir = rng.chance(0.5) ? 1 : -1;
+        t.L = rng.range(50, 62);   // (Peter, 7 Oct 2026: "smaller tortoise"; it was 72–92)
+        t.x = t.dir > 0 ? -t.L : W + t.L;
+        t.yf = rng.range(0.25, 0.55);
+        t.stroke = 0;
+      }
+    } else {
+      t.stroke += step * 0.7;
+      // a push on each stroke of its flippers, gliding between
+      t.x += t.dir * (16 + 14 * Math.max(0, Math.sin(t.stroke * TAU))) * step;
+      if (t.x < -t.L * 1.2 || t.x > W + t.L * 1.2) { t.live = false; t.wait = rng.range(22, 40); }
+    }
+    // The whale: across the back of the tank and out of the other side, and halfway over a
+    // column of bubbles out of its blowhole. Then not again for a minute or two.
+    const wh = this.whale;
+    if (!wh.live) {
+      // only while the tide is in (Peter, 7 Oct 2026: "Whale near surface only when tide is
+      // high"), early enough in the high water that it holds for the whole of its crossing;
+      // big, but not the whole tank ("make whale smaller")
+      wh.wait -= step;
+      const tp = ((this.tideBeat % TANK_TIDE_BEATS) + TANK_TIDE_BEATS) % TANK_TIDE_BEATS;
+      if (wh.wait <= 0 && this.tide === 0 && tp < 16) {
+        wh.live = true;
+        wh.dir = rng.chance(0.5) ? 1 : -1;
+        wh.L = rng.range(160, 190);
+        wh.wink = 0;
+        wh.grin = 0;
+        wh.x = wh.dir > 0 ? -wh.L * 0.62 : W + wh.L * 0.62;
+        // near the surface: its back a few px under it
+        wh.depth = rng.range(5, 12);
+        wh.stroke = 0;
+        wh.blew = false;
+      }
+    } else {
+      wh.stroke += step * 0.32;
+      wh.x += wh.dir * 20 * step;
+      wh.wink = Math.max(0, wh.wink - step);
+      wh.grin = Math.max(0, wh.grin - step);
+      if (!wh.blew && Math.abs(wh.x - W / 2) < 30) {
+        wh.blew = true;
+        // and gives you a wink (Peter, 7 Oct 2026: "can he wink as he swims past")
+        wh.wink = 0.9;
+        wh.grin = TANK_WHALE_GRIN;
+        // up at the surface it blows: a spout of spray up through it and falling back
+        this.splash(wh.x + wh.dir * wh.L * 0.22, this.surfaceY, 22, 0, 2.2);
+      }
+      if (wh.x < -wh.L * 0.65 || wh.x > W + wh.L * 0.65) { wh.live = false; wh.wait = rng.range(70, 120); }
+    }
+    // A mermaid, if the tank has one: straight across in front of the fish and out of the
+    // other side, so she never has to turn round.
+    const mm = this.mermaid;
+    if (this.mermaidKinds.length) {
+      if (!mm.live) {
+        if ((mm.wait -= step) <= 0) {
+          // a different one from the last, where there is a choice
+          const kinds = this.mermaidKinds.filter((m) => m !== this.mermaidKind);
+          this.mermaidKind = rng.pick(kinds.length ? kinds : this.mermaidKinds);
+          mm.live = true;
+          mm.dir = rng.chance(0.5) ? 1 : -1;
+          mm.L = this.mermaidKind.L ?? TANK_MERMAID_L;
+          mm.x = mm.dir > 0 ? -mm.L : W + mm.L;
+          mm.yf = rng.range(0.25, 0.5);
+        }
+      } else {
+        mm.x += mm.dir * 34 * step;
+        if (mm.x < -mm.L * 1.3 || mm.x > W + mm.L * 1.3) { mm.live = false; mm.wait = mm.every || rng.range(45, 90); }
+      }
+    }
+    // The crabs walk the front of the sand sideways, as crabs do, stopping now and then.
+    for (const c of this.crabs) {
+      if (c.pause > 0) { c.pause -= step; continue; }
+      c.x += c.dir * 16 * step;
+      c.walk += 16 * step;
+      // and keep out of each other's way
+      const other = this.crabs.find((o) => o !== c && Math.abs(o.x - c.x) < 40 && Math.sign(o.x - c.x) === c.dir);
+      if (other) {
+        c.dir = -c.dir;
+        c.pause = rng.range(0.3, 1);
+      } else if (c.x < 26 || c.x > W - 26) {
+        c.x = clamp(c.x, 26, W - 26);
+        c.dir = -c.dir;
+        c.pause = rng.range(0.4, 1.2);
+      } else if (rng.chance(Math.max(0, dt) * 0.3)) {
+        c.pause = rng.range(0.8, 2.6);
+        if (rng.chance(0.5)) c.dir = -c.dir;
+      }
+    }
+  }
+
+  /** The scale from logical to device pixels: shadows ignore the transform. */
+  deviceScale(ctx) {
+    try { const m = ctx.getTransform(); return Math.hypot(m.a, m.b) || 1; } catch { return 1; }
+  }
+
+  /** A cut-out's soft shadow under whatever is filled next, `lift` how far off the sheet below. */
+  paperShadow(ctx, k, lift = 1) {
+    ctx.shadowColor = 'rgba(16,10,34,0.38)';
+    ctx.shadowBlur = k * 2.4 * lift;
+    ctx.shadowOffsetX = k * 0.7 * lift;
+    ctx.shadowOffsetY = k * 1.2 * lift;
+  }
+
+  /** tankCut(), tankCutLine() and tankPiece(), for the tank's own painters. */
+  cut(ctx, k, lift = 1) { tankCut(ctx, k, lift); }
+
+  cutLine(ctx, k, lift = 1) { tankCutLine(ctx, k, lift); }
+
+  piece(ctx, k, col, path, lift = 0.8, edge = false) { tankPiece(ctx, k, col, path, lift, edge); }
+
+  /** Where water sheet `i` hangs down to, in the middle: the lightest the shortest. */
+  sheetLine(i) {
+    return this.surfaceY + (H - TANK_SAND - this.surfaceY) * (1 - (i + 1) / (TANK_DRIFT.length + 1)) * 0.95;
+  }
+
+  /** Sheet `i`'s edge, one tank wide, cut with its shadow under it, in a strip round its line. */
+  cutStrip(ctx, k, i) {
+    const s = this.sheets[i];
+    ctx.save();
+    this.paperShadow(ctx, k, 1.4);
+    ctx.fillStyle = tankPaperFill(ctx, this.scheme.water[i + 1], i + 1, k);
+    ctx.beginPath();
+    ctx.moveTo(-40, -4);
+    for (let x = -40; x <= W + 40; x += 4) {
+      ctx.lineTo(x, TANK_STRIP_UP + Math.sin(TAU * s.a * x / W + s.p) * 7 + Math.sin(TAU * s.b * x / W + s.q) * 3);
+    }
+    ctx.lineTo(W + 40, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /**
+   * The water: a dark sheet at the back and lighter ones over it, hanging down
+   * from the surface, each drifting with the current — the farther, the slower.
+   */
+  drawWater(ctx, k) {
+    const water = this.scheme.water;
+    const step = Math.min(4, Math.ceil(k * 2) / 2);
+    // the back sheet, its paper drifting slowest of all
+    const backOff = ((this.flow * 2 * this.current) % TANK_TILE + TANK_TILE) % TANK_TILE;
+    ctx.save();
+    ctx.translate(backOff, 0);
+    ctx.fillStyle = tankPaperFill(ctx, water[0], 0, step);
+    ctx.fillRect(-backOff, 0, W, H);
+    ctx.restore();
+    const stripH = TANK_STRIP_UP + TANK_STRIP_DOWN;
+    for (let i = 0; i < TANK_DRIFT.length; i++) {
+      const key = `${water[i + 1]}:${JSON.stringify(this.sheets[i])}:${step}:paper`;
+      let strip = tankStrips.get(key);
+      if (strip === undefined) {
+        const made = makeSurface(Math.ceil(W * step), Math.ceil(stripH * step));
+        if (made) {
+          made.ctx.scale(step, step);
+          this.cutStrip(made.ctx, step, i);
+        }
+        strip = made?.canvas ?? null;
+        if (tankStrips.size > 24) tankStrips.clear();
+        tankStrips.set(key, strip);
+      }
+      // the sheet itself down to its strip, then the strip, twice, drifting; and the
+      // whole sheet heaving a little, as water does
+      // its paper goes with it: the pattern sits where the strip's does
+      const y = this.sheetLine(i) - TANK_STRIP_UP + Math.sin(this.flow * 0.6 + i * 1.3) * 1.5;
+      let off = ((this.flow * TANK_DRIFT[i] * this.current) % W + W) % W;
+      off = Math.round(off * k) / k;
+      ctx.save();
+      ctx.translate(off, y);
+      ctx.fillStyle = tankPaperFill(ctx, water[i + 1], i + 1, step);
+      ctx.fillRect(-off, -y, W, y + 1);
+      ctx.restore();
+      if (!strip) continue;
+      ctx.drawImage(strip, off - W, y, W, stripH);
+      ctx.drawImage(strip, off, y, W, stripH);
+    }
+    // Light from the surface, in long slanting strips of tissue going by on the current.
+    for (const r of this.rays) {
+      const span = W + 160;
+      const x = ((r.x + 80 + this.flow * 7 * this.current) % span + span) % span - 80;
+      const sway = Math.sin(this.flow * 0.3 + r.phase) * 16;
+      ctx.fillStyle = `rgba(255,255,240,${0.05 + 0.03 * Math.sin(this.flow * 0.9 + r.phase) + this.mid * 0.04})`;
+      ctx.beginPath();
+      ctx.moveTo(x + sway, this.surfaceY);
+      ctx.lineTo(x + sway + r.w, this.surfaceY);
+      ctx.lineTo(x + sway * 2 + r.w * 2.6 + 50, H - TANK_SAND);
+      ctx.lineTo(x + sway * 2 + 50, H - TANK_SAND);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  /** Specks in the water, carried by the current: the nearer, the faster. */
+  drawSpecks(ctx) {
+    ctx.fillStyle = 'rgba(236,248,240,0.4)';
+    ctx.beginPath();
+    for (const p of this.dust) {
+      const span = W + 20;
+      const x = ((p.x + this.flow * this.current * (5 + p.z * 16)) % span + span) % span - 10;
+      const r = (0.5 + p.z * 1.1) * Math.min(1, p.life * 3);
+      ctx.moveTo(x + r, p.y);
+      ctx.arc(x, p.y, r, 0, TAU);
+    }
+    ctx.fill();
+  }
+
+  /** A frond of weed: a ribbon tapering up from `baseY`, leaning with the current and swaying. */
+  drawWeed(ctx, w, baseY) {
+    const h = w.h * Math.sqrt(H / LANDSCAPE_H);
+    const kick = Math.pow(1 - this.beatPhase, 3) * (PULSE_FLOOR + (1 - PULSE_FLOOR) * this.groove) * 0.05 * w.side;
+    const spine = [];
+    for (let i = 0; i <= 8; i++) {
+      const s = i / 8;
+      const bend = (Math.sin(this.flow * 1.2 + w.phase - s * 2.2) * 0.28 + 0.12 * this.current + kick) * s * s * h;
+      spine.push([w.x + bend, baseY - s * h, w.w * (1 - s * 0.88) * (0.85 + 0.15 * Math.sin(s * 11 + w.phase))]);
+    }
+    ctx.beginPath();
+    ctx.moveTo(spine[0][0] - spine[0][2], spine[0][1] + 4);
+    for (const [x, y, half] of spine) ctx.lineTo(x - half, y);
+    for (let i = spine.length - 1; i >= 0; i--) ctx.lineTo(spine[i][0] + spine[i][2], spine[i][1]);
+    ctx.lineTo(spine[0][0] + spine[0][2], spine[0][1] + 4);
+    ctx.closePath();
+    ctx.fillStyle = w.col;
+  }
+
+  drawWeeds(ctx, k, layer) {
+    for (const w of this.weeds) {
+      if (w.layer !== layer) continue;
+      this.drawWeed(ctx, w, layer === 0 ? this.bankAt(w.x, true) + 6 : layer === 1 ? this.bankAt(w.x) + 5 : H + 4);
+      this.cut(ctx, k, layer === 0 ? 0.8 : 1.1);
+    }
+  }
+
+  /** The sea grass on one bank: each tuft a few thin leaves, bending with the current. */
+  drawTufts(ctx, k, back) {
+    for (const t of this.tufts) {
+      if (t.back !== back) continue;
+      const base = this.bankAt(t.x, back) + (back ? 6 : 5);
+      ctx.fillStyle = t.col;
+      ctx.beginPath();
+      for (const b of t.blades) {
+        const h = t.h * b.h, x0 = t.x + b.dx;
+        const sway = (Math.sin(this.flow * 1.4 + t.phase + b.dx * 0.3) * 0.25 + 0.15 * this.current + b.lean) * h;
+        ctx.moveTo(x0 - b.w, base + 2);
+        ctx.quadraticCurveTo(x0 - b.w * 0.6 + sway * 0.4, base - h * 0.55, x0 + sway, base - h);
+        ctx.quadraticCurveTo(x0 + b.w * 0.6 + sway * 0.4, base - h * 0.55, x0 + b.w, base + 2);
+        ctx.closePath();
+      }
+      this.cut(ctx, k, back ? 0.6 : 0.8);
+    }
+  }
+
+  /** Sprigs of sea grapes on the back bank: a stem bending in the current, round leaves up it by turns. */
+  drawSprigs(ctx, k) {
+    for (const s of this.sprigs) {
+      const base = this.bankAt(s.x, true) + 6, pts = [];
+      for (let i = 0; i <= 6; i++) {
+        const f = i / 6, bend = (Math.sin(this.flow * 1.1 + s.phase - f * 2) * 0.2 + 0.1 * this.current + s.curl * 0.3) * f * f * s.h;
+        pts.push([s.x + bend, base - f * s.h]);
+      }
+      ctx.strokeStyle = s.stem;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x, y));
+      this.cutLine(ctx, k, 0.5);
+      ctx.fillStyle = s.col;
+      ctx.beginPath();
+      for (let i = 1; i <= 6; i++) {
+        const [x, y] = pts[i], r = 3 * (1 - i / 10), side = i % 2 ? 1 : -1;
+        ctx.moveTo(x + side * r * 1.1 + r, y);
+        ctx.ellipse(x + side * r * 1.1, y, r, r * 0.85, 0, 0, TAU);
+      }
+      this.cut(ctx, k, 0.5);
+    }
+  }
+
+  /** A bank of sand. Its shadow would fall on itself, so it has none; the pebbles on it do. */
+  drawBank(ctx, k, back) {
+    ctx.fillStyle = tankPaperFill(ctx, this.scheme.sand[back ? 0 : 1], back ? 7 : 8, Math.min(4, Math.ceil(k * 2) / 2));
+    ctx.beginPath();
+    ctx.moveTo(-4, H + 4);
+    for (let x = -4; x <= W + 8; x += 8) ctx.lineTo(x, this.bankAt(x, back));
+    ctx.lineTo(W + 8, H + 4);
+    ctx.closePath();
+    ctx.fill();
+    if (back) return;
+    for (const p of this.pebbles) {
+      ctx.fillStyle = p.col;
+      ctx.beginPath();
+      ctx.ellipse(p.x, this.bankAt(p.x) + p.dy, p.rx, p.ry, p.rot, 0, TAU);
+      this.cut(ctx, k, 0.6);
+    }
+    // the airstone: a grey pebble the bubbles come out of
+    ctx.fillStyle = '#8d8f9c';
+    ctx.beginPath();
+    ctx.ellipse(this.stoneX, this.bankAt(this.stoneX) + 1, 7, 4, 0, 0, TAU);
+    this.cut(ctx, k, 0.8);
+  }
+
+  /**
+   * A cluster of corals (ornament), each stood on the sand where it is, the tallest first
+   * and the rest in front of it. Every coral is a few cut-outs, its many small pieces of a
+   * tone filled as one path, so a cluster costs a dozen or so cuts.
+   */
+  drawCoral(ctx, k, o) {
+    for (const p of o.corals) {
+      const x = o.x + p.dx;
+      ctx.save();
+      ctx.translate(x, this.bankAt(x, o.back) + (o.back ? 6 : 7) + p.dy);
+      if (p.kind === 'staghorn') this.drawStaghorn(ctx, k, p);
+      else if (p.kind === 'fan') this.drawSeaFan(ctx, k, p);
+      else if (p.kind === 'brain') this.drawBrainCoral(ctx, k, p);
+      else if (p.kind === 'tubes') this.drawTubeCoral(ctx, k, p);
+      else if (p.kind === 'plate') this.drawPlateCoral(ctx, k, p);
+      else this.drawSoftCoral(ctx, k, p);
+      ctx.restore();
+    }
+  }
+
+  /** Staghorn: the branches behind in the shade, then the rest, each tipped paler, the tips stirring. */
+  drawStaghorn(ctx, k, p) {
+    const stir = Math.sin(this.flow * 0.9 + p.phase) * 1.3 + this.current * 0.6;
+    for (const shade of [true, false]) {
+      ctx.fillStyle = paperTone(shade ? p.cols.shade : p.cols.body);
+      ctx.beginPath();
+      for (const b of p.branches) if (b.shade === shade) tankRibbon(ctx, b.pts, b.w0, b.w1, stir, p.h);
+      this.cut(ctx, k, shade ? 0.6 : 0.8);
+      ctx.fillStyle = paperTone(shade ? p.cols.body : p.cols.light);
+      ctx.beginPath();
+      for (const b of p.branches) if (b.shade === shade) tankRibbon(ctx, b.tip, b.tw, b.w1, stir, p.h);
+      this.cut(ctx, k, 0.2);
+    }
+  }
+
+  /** A sea fan: its stem, the sheet of lace, the veins over it; the whole fan leaning in the current. */
+  drawSeaFan(ctx, k, p) {
+    const lean = Math.sin(this.flow * 0.7 + p.phase) * 0.05 + this.current * 0.03;
+    ctx.save();
+    ctx.transform(1, 0, -lean, 1, 0, 0);
+    this.piece(ctx, k, p.cols.shade, () => tankRibbon(ctx, p.stem, 4.6, 3), 0.6);
+    this.piece(ctx, k, p.cols.body, () => {
+      // round the rim, smoothed through its points, and back to the stem; then the holes,
+      // wound the other way so they come out of the sheet
+      const r = p.rim, n = r.length;
+      ctx.moveTo(-1.6, p.stem[3] + 2);
+      ctx.lineTo(r[0], r[1]);
+      for (let i = 2; i < n - 2; i += 2) ctx.quadraticCurveTo(r[i], r[i + 1], (r[i] + r[i + 2]) / 2, (r[i + 1] + r[i + 3]) / 2);
+      ctx.lineTo(r[n - 2], r[n - 1]);
+      ctx.lineTo(1.6, p.stem[3] + 2);
+      ctx.closePath();
+      for (const [x, y, rx, ry, rot] of p.holes) {
+        ctx.moveTo(x + Math.cos(rot) * rx, y + Math.sin(rot) * rx);
+        ctx.ellipse(x, y, rx, ry, rot, 0, TAU, true);
+      }
+    }, 0.7);
+    ctx.fillStyle = paperTone(p.cols.shade);
+    ctx.beginPath();
+    for (const v of p.veins) tankRibbon(ctx, v, 1.7, 1);
+    this.cut(ctx, k, 0.2);
+    ctx.restore();
+  }
+
+  /** A brain coral: the dome, the light on its crown, its grooves. */
+  drawBrainCoral(ctx, k, p) {
+    const { rx, ry } = p;
+    this.piece(ctx, k, p.cols.body, () => {
+      ctx.moveTo(-rx, 3);
+      ctx.ellipse(0, 0, rx, ry, 0, Math.PI, TAU);
+      ctx.lineTo(rx, 3);
+      ctx.closePath();
+    }, 0.8);
+    ctx.fillStyle = paperTone(p.cols.light);
+    ctx.beginPath();
+    ctx.ellipse(-rx * 0.2, -ry * 0.66, rx * 0.5, ry * 0.25, -0.15, 0, TAU);
+    ctx.fill();
+    ctx.save();
+    ctx.strokeStyle = paperTone(p.cols.shade);
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (const g of p.grooves) {
+      ctx.moveTo(g[0], g[1]);
+      for (let i = 2; i < g.length; i += 2) ctx.lineTo(g[i], g[i + 1]);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Organ-pipe coral: a foot in the shade, the tubes, the light down one side of each and
+   * the shade down the other, their rims, and the dark of their mouths, breathing a little.
+   */
+  drawTubeCoral(ctx, k, p) {
+    const { body, light, shade } = p.cols;
+    this.piece(ctx, k, shade, () => ctx.ellipse(0, 1, p.w / 2, 3.4, 0, 0, TAU), 0.5);
+    this.piece(ctx, k, body, () => {
+      for (const t of p.tubes) {
+        const tx = t.x + t.lean * t.h;
+        ctx.moveTo(t.x - t.w / 2, 3);
+        ctx.lineTo(tx - t.w / 2 - 0.6, -t.h);
+        ctx.lineTo(tx + t.w / 2 + 0.6, -t.h);
+        ctx.lineTo(t.x + t.w / 2, 3);
+        ctx.closePath();
+      }
+    }, 0.7);
+    for (const [col, side] of [[light, -1], [shade, 1]]) {
+      ctx.fillStyle = paperTone(col);
+      ctx.beginPath();
+      for (const t of p.tubes) {
+        const tx = t.x + t.lean * t.h, edge = t.w / 2 - 0.5;
+        ctx.moveTo(t.x + side * edge, 3);
+        ctx.lineTo(tx + side * (edge + 0.4), -t.h + 1);
+        ctx.lineTo(tx + side * (edge - 1.1), -t.h + 1);
+        ctx.lineTo(t.x + side * (edge - 1.3), 3);
+        ctx.closePath();
+      }
+      ctx.fill();
+    }
+    this.piece(ctx, k, light, () => {
+      for (const t of p.tubes) {
+        const tx = t.x + t.lean * t.h, rx = t.w / 2 + 0.6;
+        ctx.moveTo(tx + rx, -t.h);
+        ctx.ellipse(tx, -t.h, rx, 1.8, 0, 0, TAU);
+      }
+    }, 0.3);
+    ctx.fillStyle = p.mouth;
+    ctx.beginPath();
+    for (const t of p.tubes) {
+      const tx = t.x + t.lean * t.h, rx = t.w / 2 - 0.5;
+      ctx.moveTo(tx + rx, -t.h + 0.2);
+      ctx.ellipse(tx, -t.h + 0.2, rx, 1.05 * (0.85 + 0.15 * Math.sin(this.flow * 1.1 + t.phase)), 0, 0, TAU);
+    }
+    ctx.fill();
+  }
+
+  /** Table coral: its stalk in the shade, then each shelf from the bottom up, its edge scalloped and its top pale. */
+  drawPlateCoral(ctx, k, p) {
+    this.piece(ctx, k, p.cols.shade, () => tankRibbon(ctx, p.stem, 4.6, 3.2), 0.6);
+    for (const pl of p.plates) {
+      const { cx, y, rx, ry, t } = pl;
+      this.piece(ctx, k, p.cols.body, () => {
+        ctx.ellipse(cx, y, rx, ry, 0, Math.PI, TAU);
+        for (let i = 0; i < 6; i++) {
+          const a1 = (i + 1) * Math.PI / 6, am = (i + 0.5) * Math.PI / 6;
+          ctx.quadraticCurveTo(cx + Math.cos(am) * rx * 1.04, y + Math.sin(am) * (ry + t) * 1.25, cx + Math.cos(a1) * rx, y + Math.sin(a1) * (ry + t));
+        }
+        ctx.closePath();
+      }, 0.8);
+      ctx.fillStyle = paperTone(p.cols.light);
+      ctx.beginPath();
+      ctx.ellipse(cx, y - ry * 0.1, rx * 0.9, ry * 0.72, 0, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  /** Soft coral: its stalks swaying, a ball of shade at the end of each and its polyps on that, each breathing. */
+  drawSoftCoral(ctx, k, p) {
+    const sway = (s) => (Math.sin(this.flow * 1.1 + s.phase) * 0.08 + 0.04 * this.current) * p.h;
+    ctx.fillStyle = paperTone(p.cols.body);
+    ctx.beginPath();
+    for (const s of p.stalks) tankRibbon(ctx, s.pts, s.w0, s.w1, sway(s), p.h);
+    this.cut(ctx, k, 0.7);
+    for (const [col, polyps] of [[p.cols.shade, false], [p.cols.light, true]]) {
+      ctx.fillStyle = paperTone(col);
+      ctx.beginPath();
+      for (const s of p.stalks) {
+        const n = s.pts.length, y = s.pts[n - 1], x = s.pts[n - 2] + sway(s) * (y / p.h) ** 2;
+        if (!polyps) {
+          ctx.moveTo(x + s.r, y);
+          ctx.arc(x, y, s.r, 0, TAU, true);
+          continue;
+        }
+        for (const [dx, dy, r] of s.polyps) {
+          const rr = r * (0.9 + 0.1 * Math.sin(this.flow * 1.5 + s.phase + dx));
+          ctx.moveTo(x + dx + rr, y + dy);
+          ctx.arc(x + dx, y + dy, rr, 0, TAU, true);
+        }
+      }
+      this.cut(ctx, k, polyps ? 0.25 : 0.5);
+    }
+  }
+
+  /** A pile of rocks, each with a lighter top where the light falls. */
+  drawRocks(ctx, k, o) {
+    const b = this.bankAt(o.x, true) + 7;
+    for (const r of o.blobs) {
+      this.piece(ctx, k, r.col, () => ctx.ellipse(o.x + r.dx, b - r.ry * 0.7, r.rx, r.ry, 0, 0, TAU));
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      ctx.beginPath();
+      ctx.ellipse(o.x + r.dx - r.rx * 0.2, b - r.ry * 1.15, r.rx * 0.6, r.ry * 0.35, 0, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  /** The diver (TANK_DIVER, or the one a bake-off passed in) on the back bank, facing its way. */
+  drawDiver(ctx, k, o) {
+    if (this.photog) return;   // it gets about: drawPhotog
+    ctx.save();
+    ctx.translate(o.x, this.bankAt(o.x, true) + 6);
+    ctx.scale(o.side, 1);
+    this.diver.paint(ctx, tankPaper(ctx, k), { t: this.t, flow: this.flow, beat: this.beat, phase: o.phase });
+    ctx.restore();
+  }
+
+  /** The photographer, wherever it has got to, facing its way. */
+  drawPhotog(ctx, k) {
+    const p = this.photog;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(p.dir * TANK_PHOTOG_S, TANK_PHOTOG_S);
+    this.diver.paint(ctx, tankPaper(ctx, k), { t: this.t, flow: this.flow, beat: this.beat, pose: p });
+    ctx.restore();
+  }
+
+  /** A sunken ship, its mast snapped and a rag of sail on it flapping in the current. */
+  drawWreck(ctx, k, o) {
+    const b = this.bankAt(o.x, true) + 8;
+    ctx.save();
+    ctx.translate(o.x, b);
+    ctx.scale(o.side * 0.9, 0.9);
+    ctx.rotate(o.tilt);
+    this.piece(ctx, k, '#5c3d28', () => { ctx.moveTo(4, -22); ctx.lineTo(8, -22); ctx.lineTo(5, -62); ctx.lineTo(2.5, -57); ctx.lineTo(0.5, -60); ctx.closePath(); });
+    const flap = Math.sin(this.flow * 2 + o.phase) * 2;
+    this.piece(ctx, k, '#e8dcc0', () => {
+      ctx.moveTo(6, -56); ctx.lineTo(24, -50 + flap); ctx.lineTo(17, -44 + flap * 0.5);
+      ctx.lineTo(23, -36 + flap); ctx.lineTo(6, -32); ctx.closePath();
+    }, 0.6);
+    this.piece(ctx, k, '#8a6142', () => ctx.rect(-28, -32, 18, 11));
+    this.piece(ctx, k, '#7a5236', () => {
+      ctx.moveTo(-40, -22); ctx.lineTo(34, -22);
+      ctx.quadraticCurveTo(46, -24, 42, -12);
+      ctx.quadraticCurveTo(32, 2, 0, 2);
+      ctx.quadraticCurveTo(-32, 2, -38, -8);
+      ctx.closePath();
+    });
+    for (const [y0, w0] of [[-16, 74], [-9, 66]]) this.piece(ctx, k, '#6a4630', () => ctx.rect(-36, y0, w0, 2.4), 0.3);
+    this.piece(ctx, k, '#2f2420', () => { ctx.moveTo(-20, -15); ctx.lineTo(-11, -17); ctx.lineTo(-7, -9); ctx.lineTo(-13, -4); ctx.lineTo(-21, -7); ctx.closePath(); }, 0.3);
+    for (const px of [8, 20]) {
+      this.piece(ctx, k, '#c9a04a', () => ctx.arc(px, -13, 3.4, 0, TAU), 0.3);
+      ctx.fillStyle = '#2d3f4f';
+      ctx.beginPath(); ctx.arc(px, -13, 2.2, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = '#2f2420';
+    ctx.fillRect(-24, -29, 4, 4);
+    ctx.fillRect(-17, -29, 4, 4);
+    ctx.restore();
+  }
+
+  /**
+   * A clam, its shell scalloped and ridged, half sunk in the sand. Now and then it
+   * opens (update) on a pearl in a pink lining, which catches the light while it can.
+   */
+  drawClam(ctx, k, o) {
+    const s = o.size, rx = 17 * s, ry = 9 * s;
+    const x = o.x, y = this.bankAt(x) + 6;
+    let open = 0;
+    if (o.openFor > 0) open = o.at < 0.6 ? smooth(o.at / 0.6) : o.at > o.openFor - 0.6 ? smooth((o.openFor - o.at) / 0.6) : 1;
+    const { shell, lid, ridge, pearl } = o.cols;
+    // half a shell: its scalloped rim below the lip (dir 1) or above it (-1), `h` deep
+    const half = (dir, h) => {
+      const n = 7;
+      ctx.moveTo(-rx, 0);
+      for (let i = 0; i < n; i++) {
+        const a1 = Math.PI - (i + 1) * Math.PI / n, am = Math.PI - (i + 0.5) * Math.PI / n;
+        ctx.quadraticCurveTo(Math.cos(am) * rx * 1.12, dir * Math.sin(am) * h * 1.12, Math.cos(a1) * rx, dir * Math.sin(a1) * h);
+      }
+      ctx.closePath();
+    };
+    const ridges = (dir, h) => {
+      ctx.strokeStyle = ridge;
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      for (let i = 1; i < 7; i++) {
+        const a = Math.PI - i * Math.PI / 7;
+        ctx.moveTo(0, dir * h * 0.12);
+        ctx.lineTo(Math.cos(a) * rx * 0.9, dir * Math.sin(a) * h * 0.9);
+      }
+      ctx.stroke();
+    };
+    ctx.save();
+    ctx.translate(x, y);
+    // the lid, hinged at the back and lifting
+    ctx.save();
+    ctx.translate(-rx * 0.92, 0);
+    ctx.rotate(-1.0 * open);
+    ctx.translate(rx * 0.92, 0);
+    this.piece(ctx, k, lid, () => half(-1, ry * 1.25), 0.6);
+    ridges(-1, ry * 1.25);
+    ctx.restore();
+    if (open > 0.01) {
+      // the lining, and the pearl in it: a disc with a sheen, a blush and a glint. Only what
+      // shows between the lid's edge and the shell's is drawn, so as the lid comes down it
+      // covers the pearl rather than the pearl sitting on it till it shuts and then going
+      // (Peter, 7 Oct 2026: "pearls are not inside shells. the pearl disappears after the
+      // shells close"); and the pearl sits down in the shell, its lower part behind the rim.
+      const tilt = -1.0 * open, hx = -rx * 0.92, reach = rx * 1.92;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(hx, 0);
+      ctx.lineTo(hx + reach * Math.cos(tilt), reach * Math.sin(tilt));
+      ctx.lineTo(rx * 1.3, reach * Math.sin(tilt));
+      ctx.lineTo(rx * 1.3, ry * 2);
+      ctx.lineTo(-rx * 1.3, ry * 2);
+      ctx.lineTo(-rx * 1.3, 0);
+      ctx.closePath();
+      ctx.clip();
+      this.piece(ctx, k, '#f9dbe5', () => ctx.ellipse(0, -0.5, rx * 0.84, 1 + ry * 0.5 * open, 0, 0, TAU), 0.3);
+      const pr = 5.4 * s, px = rx * 0.06, py = -pr * 0.3 - 0.8 * open;
+      this.piece(ctx, k, pearl, () => ctx.arc(px, py, pr, 0, TAU), 0.5);
+      ctx.fillStyle = 'rgba(232,186,214,0.55)';
+      ctx.beginPath();
+      ctx.arc(px, py, pr * 0.86, 0.15, 1.95);
+      ctx.arc(px + pr * 0.12, py - pr * 0.1, pr * 0.62, 1.95, 0.15, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.beginPath(); ctx.ellipse(px - pr * 0.35, py - pr * 0.38, pr * 0.3, pr * 0.2, -0.6, 0, TAU); ctx.fill();
+      // a twinkle while it is open, turning
+      const tw = open * (0.65 + 0.35 * Math.sin(this.t * 5 + o.phase)) * 3.2 * s;
+      const sx = px + pr * 0.85, sy = py - pr * 0.95;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4 + this.t * 0.8, r = i % 2 ? tw * 0.28 : tw;
+        ctx[i ? 'lineTo' : 'moveTo'](sx + Math.cos(a) * r, sy + Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    this.piece(ctx, k, shell, () => half(1, ry), 0.6);
+    ridges(1, ry);
+    ctx.restore();
+  }
+
+  /** A few shells on the sand: scallops, and maybe a conch. */
+  drawShells(ctx, k, o) {
+    for (const sh of o.shells) {
+      const x = o.x + sh.dx, y = this.bankAt(x) + 9;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(sh.rot);
+      if (sh.conch) {
+        this.piece(ctx, k, sh.col, () => { ctx.ellipse(0, 0, 6, 3.4, 0, 0, TAU); ctx.moveTo(9, 0); ctx.lineTo(4, -2.6); ctx.lineTo(4, 2.6); ctx.closePath(); }, 0.5);
+        ctx.strokeStyle = 'rgba(120,80,50,0.4)';
+        ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.arc(-1.5, 0, 2.2, 0, TAU * 0.8); ctx.stroke();
+      } else {
+        this.piece(ctx, k, sh.col, () => { ctx.moveTo(-1.6, 3); ctx.arc(0, -0.5, 6, 0.25, Math.PI - 0.25, true); ctx.lineTo(1.6, 3); ctx.closePath(); }, 0.5);
+        ctx.strokeStyle = 'rgba(120,80,60,0.35)';
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        for (const a of [-2.5, -2, -1.57, -1.1, -0.65]) { ctx.moveTo(0, 2.5); ctx.lineTo(Math.cos(a) * 5.6, -0.5 + Math.sin(a) * 5.6); }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  /** A crab, front on and cut from paper, walking sideways; its claws click on the bar line. */
+  drawCrab(ctx, k, c) {
+    const [body, belly, dark] = c.cols;
+    ctx.save();
+    ctx.translate(c.x, this.bankAt(c.x) + 8);
+    ctx.scale(c.size, c.size);
+    // three legs a side, chunky strips stepping as it walks
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    for (const s of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const lift = c.pause > 0 ? 0 : Math.max(0, Math.sin(c.walk * 0.5 + i * 2.1 + (s > 0 ? Math.PI : 0))) * 2.6;
+        ctx.moveTo(s * (5 + i * 2.2), -6);
+        ctx.lineTo(s * (11 + i * 2.6), -9 + i - lift * 0.5);
+        ctx.lineTo(s * (13 + i * 3), -lift);
+      }
+    }
+    this.cutLine(ctx, k, 0.5);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (const s of [-1, 1]) { ctx.moveTo(s * 7, -10); ctx.lineTo(s * 13, -16); }
+    this.cutLine(ctx, k, 0.5);
+    // the shell, a paler band along its front and a few freckles
+    this.piece(ctx, k, body, () => {
+      ctx.moveTo(-12, -6);
+      ctx.quadraticCurveTo(-13, -17, 0, -18);
+      ctx.quadraticCurveTo(13, -17, 12, -6);
+      ctx.quadraticCurveTo(0, -2, -12, -6);
+      ctx.closePath();
+    }, 0.6, true);
+    this.piece(ctx, k, belly, () => ctx.ellipse(0, -6.4, 9, 2.6, 0, 0, TAU), 0.3);
+    this.piece(ctx, k, belly, () => {
+      for (const [fx, fy] of [[-5, -13], [0, -15], [5, -12.5]]) { ctx.moveTo(fx + 1.2, fy); ctx.arc(fx, fy, 1.2, 0, TAU); }
+    }, 0.2);
+    // eyes up on their stalks, looking the way it walks
+    for (const s of [-1, 1]) {
+      this.piece(ctx, k, dark, () => ctx.rect(s * 3.5 - 1, -23, 2, 7), 0.3);
+      this.piece(ctx, k, '#fbf6ee', () => ctx.arc(s * 3.5, -23.5, 2.4, 0, TAU), 0.4);
+    }
+    this.piece(ctx, k, '#1b1428', () => {
+      for (const s of [-1, 1]) { const ex = s * 3.5 + c.dir * 0.7; ctx.moveTo(ex + 1.1, -23.5); ctx.arc(ex, -23.5, 1.1, 0, TAU); }
+    }, 0.2);
+    // the claws: a palm and a pincer that snaps shut on the bar line
+    const barBeat = ((this.beat % 4) + 4) % 4;
+    const snap = barBeat < 0.3 ? Math.sin(barBeat / 0.3 * Math.PI) : 0;
+    for (const s of [-1, 1]) {
+      this.piece(ctx, k, body, () => ctx.ellipse(s * 15, -18, 4.6, 3.8, s * 0.4, 0, TAU), 0.5);
+      this.piece(ctx, k, body, () => {
+        ctx.moveTo(s * 13.5, -21);
+        ctx.quadraticCurveTo(s * 17, -27 + snap * 1.5, s * 21, -23 + snap * 2);
+        ctx.lineTo(s * 17.5, -21.5);
+        ctx.closePath();
+      }, 0.5);
+    }
+    ctx.strokeStyle = '#1b1428';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(0, -11, 2.6, 0.4, Math.PI - 0.4);
+    this.cutLine(ctx, k, 0.2);
+    ctx.restore();
+  }
+
+  /** A jellyfish: its bell squeezes on each pulse (update), its tentacles trailing. */
+  drawJelly(ctx, k, j) {
+    const x = j.x, y = this.surfaceY + (H - TANK_SAND - this.surfaceY) * j.yf, r = j.r;
+    const squeeze = j.pulse < 0.2 ? Math.sin(j.pulse / 0.2 * Math.PI) : 0;
+    const sx = 1 - 0.18 * squeeze, sy = 1 + 0.14 * squeeze;
+    const light = mixHex(j.col, '#ffffff', 0.45);
+    ctx.strokeStyle = light;
+    ctx.lineWidth = Math.max(1, r * 0.13);
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const x0 = x + (-0.7 + 0.35 * i) * r * sx;
+      ctx.moveTo(x0, y + r * 0.1);
+      for (let s = 1; s <= 6; s++) {
+        ctx.lineTo(x0 + Math.sin(this.t * 3 + i * 1.3 + s * 0.9) * r * 0.18, y + r * 0.1 + s * r * (0.32 + 0.05 * Math.sin(i * 2)) * (1 + 0.15 * squeeze));
+      }
+    }
+    this.cutLine(ctx, k, 0.5);
+    ctx.strokeStyle = j.col;
+    ctx.lineWidth = r * 0.28;
+    ctx.beginPath();
+    for (const s of [-1, 1]) {
+      ctx.moveTo(x + s * r * 0.15, y);
+      ctx.quadraticCurveTo(x + s * r * 0.35 + Math.sin(this.t * 2 + s) * r * 0.2, y + r * 0.9, x + s * r * 0.1, y + r * 1.4);
+    }
+    this.cutLine(ctx, k, 0.5);
+    this.piece(ctx, k, j.col, () => {
+      ctx.ellipse(x, y, r * sx, r * 0.85 * sy, 0, Math.PI, TAU);
+      for (let i = 0; i < 5; i++) {
+        ctx.quadraticCurveTo(x + r * sx * (1 - (i + 0.5) * 0.4), y + r * 0.28, x + r * sx * (1 - (i + 1) * 0.4), y);
+      }
+      ctx.closePath();
+    }, 0.6, true);
+    this.piece(ctx, k, light, () => ctx.ellipse(x - r * 0.15, y - r * 0.45 * sy, r * 0.45 * sx, r * 0.22, -0.2, 0, TAU), 0.3);
+  }
+
+  /** A seahorse, upright, hovering and drifting a little; its back fin a blur. */
+  drawSeahorse(ctx, k, s) {
+    const u = s.h;
+    const x = s.x + Math.sin(this.flow * 0.3 + s.phase) * 14;
+    const y = this.surfaceY + (H - TANK_SAND - this.surfaceY) * s.yf + Math.sin(this.flow * 0.8 + s.phase) * 6;
+    const light = mixHex(s.col, '#ffffff', 0.4);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s.dir, 1);
+    ctx.rotate(Math.sin(this.flow * 0.6 + s.phase) * 0.08);
+    ctx.strokeStyle = s.col;
+    ctx.lineWidth = u * 0.1;
+    ctx.beginPath();
+    ctx.moveTo(0, 0.2 * u);
+    ctx.quadraticCurveTo(-0.1 * u, 0.4 * u, 0.02 * u, 0.5 * u);
+    ctx.arc(0.08 * u, 0.46 * u, 0.065 * u, 2.55, -2.45, true);
+    this.cutLine(ctx, k, 0.5);
+    this.piece(ctx, k, light, () => ctx.ellipse(-0.13 * u, 0.02 * u, 0.06 * u * (0.6 + 0.4 * Math.abs(Math.sin(this.t * 12 + s.phase))), 0.1 * u, 0, 0, TAU), 0.3);
+    this.piece(ctx, k, s.col, () => {
+      ctx.moveTo(0.05 * u, -0.42 * u);
+      ctx.quadraticCurveTo(0.2 * u, -0.5 * u, 0.26 * u, -0.38 * u);
+      ctx.lineTo(0.46 * u, -0.36 * u);
+      ctx.lineTo(0.47 * u, -0.31 * u);
+      ctx.lineTo(0.25 * u, -0.29 * u);
+      ctx.quadraticCurveTo(0.14 * u, -0.22 * u, 0.18 * u, -0.08 * u);
+      ctx.quadraticCurveTo(0.24 * u, 0.1 * u, 0.1 * u, 0.24 * u);
+      ctx.quadraticCurveTo(0.02 * u, 0.3 * u, -0.02 * u, 0.26 * u);
+      ctx.quadraticCurveTo(-0.12 * u, 0.1 * u, -0.1 * u, -0.1 * u);
+      ctx.quadraticCurveTo(-0.08 * u, -0.32 * u, 0.05 * u, -0.42 * u);
+      ctx.closePath();
+    }, 0.6, true);
+    this.piece(ctx, k, light, () => { ctx.moveTo(0.0, -0.42 * u); ctx.lineTo(0.05 * u, -0.54 * u); ctx.lineTo(0.11 * u, -0.45 * u); ctx.closePath(); }, 0.3);
+    this.piece(ctx, k, light, () => ctx.ellipse(0.11 * u, 0.06 * u, 0.06 * u, 0.13 * u, -0.25, 0, TAU), 0.3);
+    this.piece(ctx, k, '#fbf6ee', () => ctx.arc(0.15 * u, -0.36 * u, 0.05 * u, 0, TAU), 0.3);
+    this.piece(ctx, k, '#1b1428', () => ctx.arc(0.165 * u, -0.36 * u, 0.026 * u, 0, TAU), 0.15);
+    ctx.restore();
+  }
+
+  /** The turtle paddling by: front flippers sweeping down and back, the shell gliding. */
+  drawTurtle(ctx, k) {
+    const t = this.turtle;
+    if (!t.live) return;
+    const L = t.L, sw = Math.sin(t.stroke * TAU);
+    const y = this.surfaceY + (H - TANK_SAND - this.surfaceY) * t.yf + t.dy + sw * 2;
+    const skin = '#9cbf7a';
+    const flipper = (x0, y0, len, wid, angle, col) => {
+      ctx.save();
+      ctx.translate(x0, y0);
+      ctx.rotate(angle);
+      this.piece(ctx, k, col, () => ctx.ellipse(len * 0.5, 0, len * 0.5, wid, 0, 0, TAU), 0.6);
+      ctx.restore();
+    };
+    ctx.save();
+    ctx.translate(t.x, y);
+    ctx.scale(t.dir, 1);
+    ctx.rotate(-0.04 * sw);
+    flipper(0.12 * L, 0.04 * L, 0.3 * L, 0.055 * L, 1.4 + Math.sin(t.stroke * TAU - 0.6) * 0.9, '#7f9f5f');
+    flipper(-0.26 * L, 0.07 * L, 0.15 * L, 0.045 * L, 2.5 + sw * 0.25, '#7f9f5f');
+    this.piece(ctx, k, skin, () => ctx.ellipse(0.38 * L, 0.03 * L, 0.1 * L, 0.055 * L, -0.1, 0, TAU));
+    this.piece(ctx, k, skin, () => ctx.ellipse(0.47 * L, 0, 0.085 * L, 0.065 * L, 0, 0, TAU), 0.8, true);
+    this.piece(ctx, k, '#e6d79a', () => ctx.ellipse(0, 0.08 * L, 0.32 * L, 0.07 * L, 0, 0, TAU), 0.5);
+    this.piece(ctx, k, '#5f7f45', () => { ctx.ellipse(0, 0.06 * L, 0.36 * L, 0.27 * L, 0, Math.PI, TAU); ctx.closePath(); }, 0.8, true);
+    for (const [cx, cy] of [[-0.17, -0.04], [0, -0.1], [0.17, -0.04], [-0.07, 0.01], [0.09, 0.01]]) {
+      this.piece(ctx, k, '#7d9c58', () => {
+        for (let i = 0; i < 6; i++) {
+          const a = i * Math.PI / 3 + 0.5;
+          ctx[i ? 'lineTo' : 'moveTo'](cx * L + Math.cos(a) * 0.065 * L, cy * L + Math.sin(a) * 0.05 * L);
+        }
+        ctx.closePath();
+      }, 0.3);
+    }
+    this.piece(ctx, k, '#4d6a38', () => ctx.rect(-0.36 * L, 0.04 * L, 0.72 * L, 0.035 * L), 0.4);
+    this.piece(ctx, k, '#fbf6ee', () => ctx.arc(0.5 * L, -0.015 * L, 0.024 * L, 0, TAU), 0.3);
+    this.piece(ctx, k, '#1b1428', () => ctx.arc(0.507 * L, -0.015 * L, 0.013 * L, 0, TAU), 0.15);
+    ctx.strokeStyle = '#1b1428';
+    ctx.lineWidth = Math.max(0.8, 0.012 * L);
+    ctx.beginPath(); ctx.arc(0.5 * L, 0.01 * L, 0.035 * L, 0.3, 1.4);
+    this.cutLine(ctx, k, 0.2);
+    flipper(0.18 * L, 0.07 * L, 0.34 * L, 0.065 * L, 1.4 + sw * 0.9, skin);
+    flipper(-0.22 * L, 0.09 * L, 0.16 * L, 0.05 * L, 2.4 + Math.sin(t.stroke * TAU + 1) * 0.25, skin);
+    ctx.restore();
+  }
+
+  /** The whale, side on: grooved throat, long flippers, its flukes beating slowly. */
+  drawWhale(ctx, k) {
+    const wh = this.whale;
+    if (!wh.live) return;
+    const L = wh.L, stroke = Math.sin(wh.stroke * TAU);
+    // its dorsal fin, the top of it, stays under the water, waves and all (Peter, 7 Oct 2026:
+    // "whales fin is cut off by water level")
+    const y = this.surfaceY + L * 0.2 + 4 + wh.depth + stroke * 2;
+    const back = '#4d6f95', pale = '#c9d5e2';
+    const flipper = (x0, y0, len, wid, angle, col) => {
+      ctx.save();
+      ctx.translate(x0, y0);
+      ctx.rotate(angle);
+      this.piece(ctx, k, col, () => ctx.ellipse(len * 0.5, 0, len * 0.5, wid, 0, 0, TAU), 1);
+      ctx.restore();
+    };
+    ctx.save();
+    ctx.translate(wh.x, y);
+    ctx.scale(wh.dir, 1);
+    flipper(0.12 * L, 0.07 * L, 0.3 * L, 0.04 * L, 1.0 + stroke * 0.15, '#3c5a80');
+    // the tail, swinging up and down on its stroke, the flukes at its end
+    ctx.save();
+    ctx.translate(-0.38 * L, -0.01 * L);
+    ctx.rotate(stroke * 0.16);
+    this.piece(ctx, k, back, () => {
+      ctx.moveTo(0.04 * L, -0.06 * L);
+      ctx.lineTo(-0.11 * L, -0.012 * L);
+      ctx.quadraticCurveTo(-0.15 * L, -0.08 * L, -0.23 * L, -0.11 * L);
+      ctx.quadraticCurveTo(-0.18 * L, -0.03 * L, -0.15 * L, 0);
+      ctx.quadraticCurveTo(-0.18 * L, 0.03 * L, -0.23 * L, 0.1 * L);
+      ctx.quadraticCurveTo(-0.15 * L, 0.07 * L, -0.11 * L, 0.012 * L);
+      ctx.lineTo(0.04 * L, 0.06 * L);
+      ctx.closePath();
+    }, 1.2, true);
+    ctx.restore();
+    // the body, its dorsal fin, and its pale grooved throat and belly
+    this.piece(ctx, k, back, () => { ctx.moveTo(-0.17 * L, -0.12 * L); ctx.quadraticCurveTo(-0.13 * L, -0.19 * L, -0.08 * L, -0.2 * L); ctx.quadraticCurveTo(-0.08 * L, -0.15 * L, -0.03 * L, -0.14 * L); ctx.closePath(); }, 0.8);
+    this.piece(ctx, k, back, () => {
+      ctx.moveTo(0.5 * L, 0);
+      ctx.bezierCurveTo(0.5 * L, -0.13 * L, 0.32 * L, -0.17 * L, 0.12 * L, -0.16 * L);
+      ctx.bezierCurveTo(-0.12 * L, -0.15 * L, -0.3 * L, -0.08 * L, -0.42 * L, -0.04 * L);
+      ctx.lineTo(-0.43 * L, 0.03 * L);
+      ctx.bezierCurveTo(-0.3 * L, 0.08 * L, -0.1 * L, 0.14 * L, 0.12 * L, 0.14 * L);
+      ctx.bezierCurveTo(0.34 * L, 0.14 * L, 0.5 * L, 0.1 * L, 0.5 * L, 0);
+      ctx.closePath();
+    }, 1.4, true);
+    this.piece(ctx, k, pale, () => {
+      ctx.moveTo(0.49 * L, 0.04 * L);
+      ctx.bezierCurveTo(0.43 * L, 0.115 * L, 0.3 * L, 0.135 * L, 0.12 * L, 0.135 * L);
+      ctx.bezierCurveTo(-0.05 * L, 0.135 * L, -0.2 * L, 0.1 * L, -0.28 * L, 0.065 * L);
+      ctx.bezierCurveTo(-0.1 * L, 0.08 * L, 0.15 * L, 0.07 * L, 0.3 * L, 0.05 * L);
+      ctx.quadraticCurveTo(0.42 * L, 0.035 * L, 0.49 * L, 0.04 * L);
+      ctx.closePath();
+    }, 0.6);
+    ctx.strokeStyle = '#9fb2c6';
+    ctx.lineWidth = Math.max(1, L * 0.004);
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      ctx.moveTo(0.44 * L - i * 0.02 * L, 0.066 * L + i * 0.013 * L);
+      ctx.quadraticCurveTo(0.2 * L, 0.088 * L + i * 0.012 * L, -0.04 * L - i * 0.035 * L, 0.096 * L + i * 0.008 * L);
+    }
+    this.cutLine(ctx, k, 0.2);
+    // the bumps on its head, its long mouth, its small eye
+    this.piece(ctx, k, '#5d81a8', () => {
+      for (const [bx, by] of [[0.44, -0.07], [0.38, -0.115], [0.31, -0.14], [0.46, -0.03]]) { ctx.moveTo(bx * L + 0.012 * L, by * L); ctx.arc(bx * L, by * L, 0.012 * L, 0, TAU); }
+    }, 0.4);
+    // its mouth: a smile, and as it winks going by a grin of teeth (Peter, 7 Oct 2026: "can
+    // whale smile with teeth perhaps?" ... "i don't want toothy grin on whale all the time. he
+    // should smile and wink and expose his teeth in passing"): the lower lip drops off the
+    // smile's line into a crescent, a row of teeth along its top and its bottom
+    const g = wh.grin > 0 ? smooth(clamp(Math.min((TANK_WHALE_GRIN - wh.grin) / 0.4, wh.grin / 0.5))) : 0;
+    if (g > 0.02) {
+      const grin = () => {
+        ctx.moveTo(0.495 * L, 0.018 * L);
+        ctx.quadraticCurveTo(0.41 * L, 0.052 * L, 0.3 * L, 0.03 * L);
+        ctx.quadraticCurveTo(0.4 * L, (0.052 + 0.048 * g) * L, 0.488 * L, (0.018 + 0.03 * g) * L);
+        ctx.closePath();
+      };
+      this.piece(ctx, k, '#2a1a2e', grin, 0.3);
+      ctx.save();
+      ctx.beginPath(); grin(); ctx.clip();
+      ctx.fillStyle = '#fbf6ee';
+      ctx.fillRect(0.28 * L, -0.02 * L, 0.24 * L, 0.14 * L);
+      ctx.strokeStyle = '#a9b4c4';
+      ctx.lineWidth = Math.max(0.6, L * 0.0028);
+      ctx.beginPath();
+      for (let x = 0.33; x < 0.48; x += 0.027) { ctx.moveTo(x * L, 0); ctx.lineTo(x * L, 0.1 * L); }
+      ctx.stroke();
+      // the dark between the rows
+      ctx.fillStyle = '#2a1a2e';
+      ctx.beginPath();
+      ctx.moveTo(0.28 * L, 0.03 * L); ctx.quadraticCurveTo(0.41 * L, (0.052 + 0.012 * g) * L, 0.52 * L, 0.03 * L);
+      ctx.lineTo(0.52 * L, (0.018 + 0.016 * g) * L); ctx.quadraticCurveTo(0.4 * L, (0.052 + 0.03 * g) * L, 0.28 * L, 0.03 * L);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    // the smile's line, turned up at the corner
+    ctx.strokeStyle = '#1b1428';
+    ctx.lineWidth = Math.max(1, L * 0.006);
+    ctx.beginPath();
+    ctx.moveTo(0.5 * L, 0.016 * L);
+    ctx.quadraticCurveTo(0.41 * L, 0.052 * L, 0.3 * L, 0.03 * L);
+    ctx.quadraticCurveTo(0.285 * L, 0.026 * L, 0.288 * L, 0.014 * L);
+    this.cutLine(ctx, k, 0.3);
+    if (wh.wink > 0.15 && wh.wink < 0.75) {
+      // shut tight, a crease of a smile under it
+      ctx.strokeStyle = '#1b1428';
+      ctx.lineWidth = Math.max(1, L * 0.007);
+      ctx.beginPath(); ctx.arc(0.27 * L, 0.004 * L, 0.02 * L, 0.3, Math.PI - 0.3);
+      this.cutLine(ctx, k, 0.2);
+    } else {
+      this.piece(ctx, k, '#fbf6ee', () => ctx.arc(0.27 * L, 0.012 * L, 0.017 * L, 0, TAU), 0.3);
+      this.piece(ctx, k, '#1b1428', () => ctx.arc(0.275 * L, 0.013 * L, 0.009 * L, 0, TAU), 0.15);
+    }
+    // the near flipper, long and pale-edged, rowing slowly
+    flipper(0.16 * L, 0.09 * L, 0.36 * L, 0.05 * L, 0.85 + stroke * 0.22, '#8fa9c6');
+    ctx.restore();
+  }
+
+  /**
+   * Whatever of the mermaid is out of the water when it has fallen below her head: drawn
+   * again over the air (Peter, 7 Oct 2026: "that's ok as long as you can still see the top
+   * of her head above the water").
+   */
+  drawMermaidAbove(ctx, k) {
+    if (!this.mermaidKind || !this.mermaid.live) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-4, -4);
+    for (let x = -4; x <= W + 8; x += 6) ctx.lineTo(x, this.surfaceAt(x));
+    ctx.lineTo(W + 8, -4);
+    ctx.closePath();
+    ctx.clip();
+    this.drawMermaid(ctx, k);
+    ctx.restore();
+  }
+
+  /** The mermaid swimming past, if there is one, in front of the fish. */
+  drawMermaid(ctx, k) {
+    const mm = this.mermaid;
+    if (!this.mermaidKind || !mm.live) return;
+    const y = this.surfaceY + (H - TANK_SAND - this.surfaceY) * mm.yf + mm.dy + Math.sin(this.t * 1.3 + mm.phase) * 3;
+    ctx.save();
+    ctx.translate(mm.x, y);
+    ctx.scale(mm.dir, 1);
+    this.mermaidKind.paint(ctx, tankPaper(ctx, k), mm.L, { t: this.t, beat: this.beat, phase: mm.phase });
+    ctx.restore();
+  }
+
+  drawCreatures(ctx, k) {
+    for (const s of this.seahorses) this.drawSeahorse(ctx, k, s);
+    for (const j of this.jellies) this.drawJelly(ctx, k, j);
+    this.drawTurtle(ctx, k);
+  }
+
+  /** The fish in the air, over the surface. */
+  drawJumpers(ctx) {
+    for (const f of this.fish) if (f.jump?.stage === 'air') this.drawFish(ctx, f);
+  }
+
+  /** Splash drops, and the ripples running out along the surface from where a fish broke it. */
+  drawSplash(ctx, k) {
+    ctx.fillStyle = '#e4f8ff';
+    ctx.beginPath();
+    for (const d of this.drops) if (d.live) { ctx.moveTo(d.x + d.r, d.y); ctx.arc(d.x, d.y, d.r, 0, TAU); }
+    this.cut(ctx, k, 0.4);
+    ctx.save();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.3;
+    ctx.lineCap = 'round';
+    for (const r of this.ripples) {
+      if (!r.live) continue;
+      const age = r.age / 0.9, h = 3 * (1 - age);
+      ctx.globalAlpha = (1 - age) * this.frameAlpha;
+      ctx.beginPath();
+      for (const side of [-1, 1]) {
+        const xx = r.x + side * (5 + age * 34), y = this.surfaceAt(xx);
+        ctx.moveTo(xx - 5, y);
+        ctx.quadraticCurveTo(xx, y - h, xx + 5, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawOrnaments(ctx, k, back) {
+    for (const o of this.ornaments) {
+      if (o.back !== back) continue;
+      if (o.kind === 'coral') this.drawCoral(ctx, k, o);
+      else if (o.kind === 'rocks') this.drawRocks(ctx, k, o);
+      else if (o.kind === 'diver') this.drawDiver(ctx, k, o);
+      else if (o.kind === 'wreck') this.drawWreck(ctx, k, o);
+      else if (o.kind === 'clam') this.drawClam(ctx, k, o);
+      else if (o.kind === 'shells') this.drawShells(ctx, k, o);
+    }
+  }
+
+  /** The treasure chest, front on: its lid lifts on the downbeat of every bar. */
+  drawChest(ctx, k) {
+    const x = this.chestX, base = this.bankAt(x) + 5;
+    const bw = 34, bh = 17;
+    const barBeat = ((this.beat % 4) + 4) % 4;
+    const open = barBeat < 0.12 ? barBeat / 0.12 : barBeat < 1.1 ? 1 : clamp(1 - (barBeat - 1.1) / 0.6);
+    const lift = smooth(open) * (0.6 + 0.4 * (PULSE_FLOOR + (1 - PULSE_FLOOR) * this.groove));
+    const piece = (col, x0, y0, w, h) => { ctx.fillStyle = col; ctx.beginPath(); ctx.rect(x0, y0, w, h); this.cut(ctx, k, 0.7); };
+    // the inside, and the gold in it, seen as the lid goes up
+    if (lift > 0.02) {
+      piece('#3a1f16', x - bw / 2 + 2, base - bh - 9 * lift, bw - 4, 9 * lift + 2);
+      ctx.fillStyle = '#ffd75e';
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) {
+        ctx.moveTo(x - 10 + i * 6.5 + 3.4, base - bh - 1 + (i % 2));
+        ctx.ellipse(x - 10 + i * 6.5, base - bh - 1 + (i % 2), 3.4, 2, 0, 0, TAU);
+      }
+      this.cut(ctx, k, 0.5);
+    }
+    // the box, its bands and its lock
+    piece('#9a5b34', x - bw / 2, base - bh, bw, bh);
+    piece('#e2b24a', x - bw / 2 + 4, base - bh, 4, bh);
+    piece('#e2b24a', x + bw / 2 - 8, base - bh, 4, bh);
+    // the lid, lifted and tipped back
+    ctx.save();
+    ctx.translate(x, base - bh - 10 * lift);
+    ctx.scale(1, 1 - 0.45 * lift);
+    ctx.fillStyle = '#ad6a3e';
+    ctx.beginPath();
+    ctx.moveTo(-bw / 2 - 1, 0);
+    ctx.lineTo(-bw / 2 - 1, -5);
+    ctx.quadraticCurveTo(0, -15, bw / 2 + 1, -5);
+    ctx.lineTo(bw / 2 + 1, 0);
+    ctx.closePath();
+    this.cut(ctx, k);
+    piece('#e2b24a', -bw / 2 + 4, -10, 4, 10);
+    piece('#e2b24a', bw / 2 - 8, -10, 4, 10);
+    ctx.restore();
+    ctx.fillStyle = '#f2d36b';
+    ctx.beginPath();
+    ctx.ellipse(x, base - bh + 3 - 10 * lift, 3.2, 3.6, 0, 0, TAU);
+    this.cut(ctx, k, 0.6);
+  }
+
+  /** One fish: tilted the way it swims, its tail wagging on the beat. */
+  drawFish(ctx, f) {
+    const fish = FISHES[f.kind];
+    // the baby's goes twice as fast (club.js), the slow puffer's half
+    const rate = f.baby ? 2 : fish.pace ? 0.5 : 1;
+    const wag = Math.cos(this.beat * TAU * rate + f.wag) * clamp(0.45 + 0.3 * f.v / f.cruise, 0.45, 1);
+    ctx.save();
+    ctx.translate(f.x, f.y + Math.sin(this.t * 2.1 + f.bob) * f.L * 0.03);
+    ctx.scale(f.dir, 1);
+    ctx.rotate(f.pitch);
+    drawPaperFish(ctx, fish, f.L, { t: this.t, beat: this.beat, wag, lite: true, quick: true, heroH: f.heroH, hue: f.hue, baby: f.baby });
+    ctx.restore();
+  }
+
+  drawLayer(ctx, layer) {
+    for (const f of this.fish) if (f.layer === layer && f.jump?.stage !== 'air') this.drawFish(ctx, f);
+  }
+
+  /** Every bubble as one cut-out sheet of rings, so the lot casts one shadow. */
+  drawBubbles(ctx, k) {
+    ctx.fillStyle = '#e8fbff';
+    ctx.beginPath();
+    for (const b of this.bubbles) {
+      if (!b.live) continue;
+      const x = b.x + Math.sin(b.age * 3.2 + b.phase) * (1.2 + b.r * 0.5);
+      const r = b.r * (1 + Math.min(1, b.age * 0.25) * 0.3);
+      ctx.moveTo(x + r, b.y);
+      ctx.arc(x, b.y, r, 0, TAU);
+      ctx.moveTo(x + r * 0.66, b.y);
+      ctx.arc(x, b.y, r * 0.66, 0, TAU, true);
+    }
+    this.cut(ctx, k, 0.6);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    for (const b of this.bubbles) {
+      if (!b.live || b.r < 1.6) continue;
+      const x = b.x + Math.sin(b.age * 3.2 + b.phase) * (1.2 + b.r * 0.5);
+      const r = b.r * (1 + Math.min(1, b.age * 0.25) * 0.3);
+      ctx.moveTo(x - r * 0.25, b.y - r * 0.35);
+      ctx.ellipse(x - r * 0.3, b.y - r * 0.35, r * 0.22, r * 0.14, -0.6, 0, TAU);
+    }
+    ctx.fill();
+  }
+
+  /** Where the surface is at `x`: the water level, rippling with the current. */
+  surfaceAt(x) {
+    const run = this.flow * 18 * this.current;
+    return this.surfaceY + Math.sin((x - run) * 0.03 + this.flow * 1.3) * 2.2 + Math.sin((x - run) * 0.071 - this.flow) * 1.3;
+  }
+
+  /** The air over the water: a pale sheet down to the surface, a bright edge along it. */
+  drawSurface(ctx, k) {
+    ctx.fillStyle = tankPaperFill(ctx, mixHex(this.scheme.water[4], '#ffffff', 0.6), 9, Math.min(4, Math.ceil(k * 2) / 2));
+    ctx.beginPath();
+    ctx.moveTo(-4, -4);
+    for (let x = -4; x <= W + 8; x += 6) ctx.lineTo(x, this.surfaceAt(x));
+    ctx.lineTo(W + 8, -4);
+    ctx.closePath();
+    this.cut(ctx, k, 0.9);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let x = -4; x <= W + 8; x += 6) ctx[x < 0 ? 'moveTo' : 'lineTo'](x, this.surfaceAt(x) + 0.6);
+    ctx.stroke();
+  }
+
+  draw(ctx) {
+    const k = this.deviceScale(ctx);
+    this.drawWater(ctx, k);
+    this.drawWhale(ctx, k);
+    this.drawWeeds(ctx, k, 0);
+    this.drawLayer(ctx, 0);
+    // the water in front of the far fish
+    ctx.fillStyle = rgba(this.scheme.water[2], 0.3);
+    ctx.fillRect(0, 0, W, H);
+    this.drawSpecks(ctx);
+    this.drawBank(ctx, k, true);
+    this.drawTufts(ctx, k, true);
+    this.drawSprigs(ctx, k);
+    this.drawOrnaments(ctx, k, true);
+    if (this.photog) this.drawPhotog(ctx, k);
+    this.drawWeeds(ctx, k, 1);
+    this.drawCreatures(ctx, k);
+    this.drawChest(ctx, k);
+    this.drawLayer(ctx, 1);
+    this.drawMermaid(ctx, k);
+    this.drawBank(ctx, k, false);
+    this.drawTufts(ctx, k, false);
+    this.drawOrnaments(ctx, k, false);
+    for (const c of this.crabs) this.drawCrab(ctx, k, c);
+    this.drawWeeds(ctx, k, 2);
+    this.drawBubbles(ctx, k);
+    this.drawSurface(ctx, k);
+    this.drawMermaidAbove(ctx, k);
+    this.drawJumpers(ctx);
+    this.drawSplash(ctx, k);
+    // one sheet of grain over the whole tank
+    const grain = tankGrainSurface();
+    const pattern = grain && ctx.createPattern?.(grain, 'repeat');
+    if (pattern) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = 0.24 * this.frameAlpha;
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // VJ MEGAMIX — the pack playing itself.
 //
@@ -5881,16 +8431,17 @@ const MEGAMIX_INDEX = VISUALISER_NAMES.indexOf('VJ MEGAMIX');
 const MEGAMIX_ROSTER = VISUALISER_NAMES.map((_, index) => index).filter((index) => index !== MEGAMIX_INDEX);
 
 /**
- * The two presets that put MASHENSTEIN's cast and appliances on screen.
+ * The presets that put MASHENSTEIN's cast and appliances on screen — and
+ * Lorenzo's fish, whose DEEP BLUE DISCO goes with them.
  *
  * Named here rather than left to be worked out, because the modules they draw
- * from — ../sprites/toons.js and ../sprites/props.js — are imported at module
- * scope. Declining to OFFER these two does not keep the characters out of a
+ * from — ../sprites/toons.js, ../sprites/props.js and the club's fish — are
+ * imported at module scope. Declining to OFFER these two does not keep the characters out of a
  * bundle; a build that wants them gone has to strip those modules as well, and
  * then it must not deal these presets to anything, or the pack draws nothing.
  * tools/build-visualiser.js does both halves.
  */
-export const SPRITE_VISUALISERS = ['ARCADE ART GALLERY', 'TOASTER SKY PARADE'];
+export const SPRITE_VISUALISERS = ['ARCADE ART GALLERY', 'TOASTER SKY PARADE', 'DEEP BLUE DISCO'];
 
 // Which presets the pack will DEAL. Not which it can build: createVisualiser
 // stays a plain lookup, because the game's dev menu addresses presets by index
@@ -6137,9 +8688,19 @@ export function createHalfPipeLab(seed, track, tune) {
   return new HalfPipeHorizon(seed >>> 0, track, tune);
 }
 
+/**
+ * The fish tank with another diver standing on its sand, or another mermaid swimming
+ * past, for the diver and mermaid bake-offs (src/dev/diver-candidates.js,
+ * src/dev/mermaid-candidates.js): FishTank's `opts`, all of them. Like the half-pipe
+ * lab, never dealt: the pack's DEEP BLUE DISCO always has its own.
+ */
+export function createFishTankLab(seed, track, opts = {}) {
+  return new FishTank(seed >>> 0, track, opts);
+}
+
 export function createVisualiser(name, seed, track) {
   const index = typeof name === 'number' ? name : VISUALISER_NAMES.indexOf(name);
-  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, HalfPipeHorizon, AstralTravel, VjMegamix];
+  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, HalfPipeHorizon, AstralTravel, FishTank, VjMegamix];
   const Ctor = constructors[Math.max(0, index) % constructors.length];
   return new Ctor(seed >>> 0, track);
 }

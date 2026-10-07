@@ -10,12 +10,12 @@
 import {
   P, blank, clonePart, shift, legato, diatonic, octaves, cut, augment, bassBar, padBar,
   chordBar, arpBar, ARP_FIGURES, BASS_FIGURES, BASS_LIFTS, openVoicing, parseChord, withQuality, nameOf, midi, hasNotes, isDrumPart, overlay,
-  chordSym, clampMidi,
+  chordSym, clampMidi, fitToChords, clearUnder,
 } from './theory.js';
 import { moodLifts } from './moods.js';
 import { moodBass } from './options.js';
 import { fillIn, passFilled } from './embellish.js';
-import { romanChord, partWeights, chordFit, bestChord, triadOf, chordsOfBar, fitsScale } from './analyse.js';
+import { romanChord, partWeights, chordFit, bestChord, triadOf, chordsOfBar, fitsScale, grindShare } from './analyse.js';
 import { hookCell, phrasePlan, realise, head, cellLength } from './variation.js';
 import { DROP_ROLES, DEFAULT_LAYERS, DEFAULT_GROOVE, layersOn, scriptOn } from './form.js';
 import { DROP_INDEX } from './form-types.js';
@@ -402,7 +402,8 @@ export function buildSections(ctx) {
     if (options.parts.bell && joined('bell', p, dropIndex, layered)) put(b, 'bell', st(shift(up(tune), 12)));
     if (dropIndex >= 1) put(b, 'megaSaw', st(shift(legato([up(tune)], 0, 3)[0], 12)));
     if (options.parts.arp && joined('arp', p, dropIndex, layered)) put(b, 'arp', st(arp(c, b)));
-    if (options.parts.thirdBelow && (dropIndex === 1 || final)) put(b, 'third', st(diatonic(up(tune), -2, ctx.scale)));
+    // the third below is the hook moved, so it is fitted to the chord: a scale third can land on a grind
+    if (options.parts.thirdBelow && (dropIndex === 1 || final)) put(b, 'third', st(fitToChords(diatonic(up(tune), -2, ctx.scale), c)));
     if (options.parts.choir && final) put(b, 'choir', st(choirPart(c)));
     if (options.parts.counter && joined('counter', p, dropIndex, layered)) put(b, 'counter', st(counterPart(up(tune), c)));
     // The riff's own counter-lines go where the hook is played as written or
@@ -813,11 +814,13 @@ export function buildSections(ctx) {
         const want = romanChord(prog[i % prog.length], key);
         const w = partWeights(tune);
         let c = want;
-        if (w.w.some((x) => x > 0) && chordFit(w, triadOf(want)) < -0.1) {
+        // The walk gives way where the hook does not fit it, or grinds against it (6 Oct 2026).
+        if (w.w.some((x) => x > 0) && (chordFit(w, triadOf(want)) < -0.1 || grindShare(w, want) > 0.05)) {
           const best = bestChord(w, ctx.candidates).sym;
-          // Coloured the breakdown's way — a ninth, else a seventh — with whichever stays in the key.
+          // Coloured the breakdown's way — a ninth, else a seventh — with whichever stays in the key
+          // and adds no grind of its own.
           const colours = parseChord(best).quality === 'm' ? ['m9', 'm7', 'madd9'] : ['add9', 'maj7', '6'];
-          c = colours.map((q) => withQuality(best, q)).find(inKey) || best;
+          c = colours.map((q) => withQuality(best, q)).find((x) => inKey(x) && grindShare(w, x) <= grindShare(w, best)) || best;
         }
         // The trance breakdown: the hook as written, on a piano, rather than at half speed
         // on its own sound.
@@ -825,9 +828,10 @@ export function buildSections(ctx) {
         else put(b, 'hook', tune);
         if (chordRole) put(b, 'pad', padBar(c, C.pad, { open: true }));
         if (options.parts.choir && joins) put(b, 'choir', { notes: [openVoicing(c, 'E5'), ...Array(15).fill(null)], lens: [16, ...Array(15).fill(null)] });
-        if (options.parts.bell && i % 2 === 0 && mode === 'half') put(b, 'bell', shift(up(head(cell[(i / 2) % cell.length])), 12));
-        if (options.parts.bass !== 'none' && !hookIsBass && joins) put(b, 'bass', bassBar(analysis.tonicChord, R.pedal, C.bassFloor));
-        if (options.parts.sub && options.parts.bass !== 'none' && !(hookIsBass && style.wobbleSub) && joins) put(b, 'sub', bassBar(analysis.tonicChord, R.pedal, C.subFloor));
+        if (options.parts.bell && i % 2 === 0 && mode === 'half') put(b, 'bell', fitToChords(shift(up(head(cell[(i / 2) % cell.length])), 12), c));
+        // the pedal holds home unless the hook leans on the note just above it
+        if (options.parts.bass !== 'none' && !hookIsBass && joins) put(b, 'bass', clearUnder(bassBar(analysis.tonicChord, R.pedal, C.bassFloor), tune, c));
+        if (options.parts.sub && options.parts.bass !== 'none' && !(hookIsBass && style.wobbleSub) && joins) put(b, 'sub', clearUnder(bassBar(analysis.tonicChord, R.pedal, C.subFloor), tune, c));
       }
       if (options.drums.crashes) put(from, 'crash', P(D.crash));
     }
@@ -912,7 +916,9 @@ export function buildSections(ctx) {
       for (let i = 0; i < n; i++) {
         const b = from + i;
         const c = chords[i];
-        put(b, singer, line[i]);
+        // the verse line, the pre-chorus and the middle 8 are made from the hook over chords that never
+        // looked at it: each is fitted to its chords, so nothing grinds (Peter, 6 Oct 2026)
+        put(b, singer, fitToChords(line[i], c));
         if (chordRole) put(b, 'pad', padBar(colourAll(c, mood), C.pad));
         if (e >= 0.5 && options.parts.arp) put(b, 'arp', arp(c, b));
         put(b, 'bass', e >= 0.42 ? bassLine(c) : hookIsBass || options.parts.bass === 'none' ? null : bassBar(triads(c), R.sub, C.bassFloor));
@@ -931,7 +937,7 @@ export function buildSections(ctx) {
         const b = from + i;
         const c = chords[i];
         const second = i >= n / 2;
-        put(b, singer, line[i]);
+        put(b, singer, fitToChords(line[i], c));
         if (chordRole) put(b, 'pad', padBar(colourAll(c, mood), C.pad));
         if (second && chordRole && chordRole !== 'pad') put(b, chordRole, chordPart(c));
         if (second && options.parts.arp) put(b, 'arp', arp(c, b));
@@ -951,10 +957,12 @@ export function buildSections(ctx) {
       for (let i = 0; i < n; i++) {
         const b = from + i;
         const c = chords[i];
-        put(b, singer, line[i]);
+        const sung = fitToChords(line[i], c);
+        put(b, singer, sung);
         if (chordRole) put(b, 'pad', padBar(colourAll(c, mood), C.pad, { open: true }));
         if (options.parts.choir && i >= n / 2) put(b, 'choir', padBar(colourAll(c, mood), C.choir));
-        if (!hookIsBass && options.parts.bass !== 'none') put(b, 'bass', bassBar(triads(c), walk, C.bassFloor));
+        // the walking bass's passing notes step aside where the line sits a semitone above them
+        if (!hookIsBass && options.parts.bass !== 'none') put(b, 'bass', clearUnder(bassBar(triads(c), walk, C.bassFloor), sung, triads(c)));
         put(b, 'kick', drum('kick', D.halfKick, i));
         put(b, 'clap', drum('clap', D.halfClap, i));
         put(b, 'hats', drum('hats', D.halfHats || D.hats8, i));

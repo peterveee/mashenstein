@@ -1002,6 +1002,146 @@ assert(bareRide.rows.every((r) => Number.isFinite(r.cx) && Number.isFinite(r.r))
   'the half-pipe draws against a bare analysis feed and a stub canvas without a real sprite');
 
 
+// --- DEEP BLUE DISCO ---------------------------------------------------------
+// Lorenzo's fish in a tank of their own. They wander rather than cross on a rail —
+// turning round, climbing and diving — and now and then swim out and come back as
+// others; the chest bursts on the bar line; draw() changes nothing.
+{
+  const TANK = VISUALISER_NAMES.indexOf('DEEP BLUE DISCO');
+  assert(TANK >= 0 && TANK < VISUALISER_NAMES.indexOf('VJ MEGAMIX'), 'DEEP BLUE DISCO is in the pack, ahead of the megamix');
+  const tank = createVisualiser(TANK, 0xf15a7a4c, { bpm: 120 });
+  const kinds = new Set(), hues = new Set(), sizes = new Set();
+  const turns = new Map(), heights = new Map();
+  let sharksAtOnce = 0, arrivals = 0, bursts = 0, edgeOn = 0, leaps = 0, clams = 0, poking = 0, whale = 0, whaleLow = 0;
+  const mermaids = new Set();
+  let lowest = Infinity, highest = -Infinity;
+  const seen = new WeakMap();
+  for (let frame = 0; frame < 60 * 240; frame++) {
+    const atChest = () => tank.bubbles.filter((b) => b.live && b.age < 0.02 && Math.abs(b.x - tank.chestX) < 12).length;
+    const dirs = new Map(tank.fish.map((f) => [f, f.dir]));
+    tank.update(1 / 60, { ...analysis, beat: frame * 2 / 60, hit: 0, level: 0 });
+    // a bar line lets go a burst of ten at once out of the chest
+    if (atChest() >= 7) bursts++;
+    for (const g of tank.groups) {
+      const lead = g.members[0];
+      if (seen.has(g) && seen.get(g) !== lead) arrivals++;
+      seen.set(g, lead);
+    }
+    for (const f of tank.fish) {
+      if (dirs.has(f) && dirs.get(f) !== f.dir) {
+        turns.set(f, (turns.get(f) ?? 0) + 1);
+        // mirrored only at the top of a turn, never while side-on
+        if (Math.abs(f.pitch) < 1.2) edgeOn++;
+      }
+      const [lo, hi] = heights.get(f) ?? [f.y, f.y];
+      heights.set(f, [Math.min(lo, f.y), Math.max(hi, f.y)]);
+      kinds.add(f.kind); hues.add(f.hue); sizes.add(Math.round(f.L));
+    }
+    sharksAtOnce = Math.max(sharksAtOnce, tank.fish.filter((f) => f.baby).length);
+    lowest = Math.min(lowest, tank.surfaceY);
+    highest = Math.max(highest, tank.surfaceY);
+    // clear of the water: its middle over the surface, and the water low enough for it
+    if (tank.fish.some((f) => f.jump?.stage === 'air' && f.y < tank.surfaceY - 4)) leaps++;
+    if (tank.ornaments.some((o) => o.kind === 'clam' && o.openFor > 0)) clams++;
+    if (tank.whale.live) { whale++; if (tank.tide > 0) whaleLow++; }
+    if (tank.mermaid.live) mermaids.add(tank.mermaidKind.letter);
+    // a fish not leaping keeps wholly in the water: its fin under the surface, its belly over the sand
+    for (const f of tank.fish) {
+      if (f.jump || f.x < 0 || f.x > 480) continue;
+      if (f.y - f.L * 0.5 < tank.surfaceY || f.y + f.L * 0.4 > tank.bankAt(f.x, f.layer === 0)) poking++;
+    }
+  }
+  // a calm tank (7 Oct 2026: "much more relaxed ... less fish at one time"): a few new
+  // arrivals a minute, not a stream of them
+  assert(arrivals >= 8 && kinds.size >= 6 && hues.size >= 5 && sizes.size >= 12,
+    `fish swim out and others come in (${arrivals}) — ${kinds.size} kinds, in ${hues.size} colourways, ${sizes.size} sizes`);
+  const wanderers = [...heights].filter(([f, [lo, hi]]) => (turns.get(f) ?? 0) > 0 && hi - lo > f.L);
+  assert(wanderers.length > 20 && edgeOn === 0,
+    `fish wander, turning round and changing depth (${wanderers.length}), mirrored only nose-up or nose-down`);
+  assert(sharksAtOnce === 1, 'never more than one party shark (with its baby) in the tank at once');
+  assert(bursts >= 110 && bursts <= 121, `the chest lets go a burst on every bar (${bursts} in 120 bars)`);
+  assert(highest - lowest > 40 && leaps > 60,
+    `the water level falls and rises (${Math.round(lowest)}–${Math.round(highest)}), and fish leap out of it (${leaps} frames in the air)`);
+  assert(clams > 60 * 20 && clams < 60 * 200, 'the clams open now and then on their pearls, and shut again');
+  assert(poking === 0, `fish stay wholly in the water, never under the sky or in the sand (${poking} out)`);
+  assert(whale > 60 * 20 && whaleLow === 0, `the whale comes by, and only while the tide is in, which holds for it (${whaleLow} frames at low water)`);
+  assert(mermaids.size >= 2 && [...mermaids].every((m) => 'ABCE'.includes(m)),
+    `a mermaid swims through now and then, one of the picked four (${[...mermaids].sort().join('')})`);
+  const snapshot = () => JSON.stringify([tank.groups, tank.bubbles, tank.deck, tank.t, tank.beat, tank.crabs, tank.jellies,
+    tank.turtle, tank.drops, tank.ripples, tank.ornaments, tank.surfaceY]);
+  const held = snapshot();
+  tank.draw(ctx);
+  assert(snapshot() === held, 'draw() moves nothing: every fish, creature, bubble and drop moves in update()');
+  setVisualiserViewport(900);
+  const tall = createVisualiser(TANK, 0xf15a7a4c, { bpm: 120 });
+  setVisualiserViewport(270);
+  assert(tall.fish.length > tank.fish.length, 'a portrait tank is stocked with more fish than a landscape one');
+}
+
+// The coral garden (7 Oct 2026: "more and better looking coral"): clusters of corals of
+// different kinds, three or four on the back bank and two or three low ones at the front,
+// each its own colour, none standing on another ornament; the same garden for the same seed.
+{
+  const TANK = VISUALISER_NAMES.indexOf('DEEP BLUE DISCO');
+  // how far each of the other ornaments reaches either side of its middle
+  const reach = { diver: 28, wreck: 42, rocks: 25, chest: 19, stone: 7, clam: 22, shells: 20 };
+  const kinds = new Set(), bad = [];
+  for (let seed = 1; seed <= 40; seed++) {
+    const tank = createVisualiser(TANK, seed * 0x9e3779b1, { bpm: 120 });
+    const clusters = tank.ornaments.filter((o) => o.kind === 'coral');
+    const back = clusters.filter((o) => o.back).flatMap((o) => o.corals);
+    const front = clusters.filter((o) => !o.back).flatMap((o) => o.corals);
+    for (const p of [...back, ...front]) kinds.add(p.kind);
+    if (back.length < 3 || back.length > 4 || front.length < 2 || front.length > 3) bad.push(`${back.length} back, ${front.length} front`);
+    if (front.some((p) => p.h > 22)) bad.push(`a front coral ${Math.max(...front.map((p) => p.h)).toFixed(1)} tall`);
+    if (clusters.some((o) => new Set(o.corals.map((p) => p.kind)).size < o.corals.length)) bad.push('two of a kind in a cluster');
+    if (new Set([...back, ...front].map((p) => p.cols)).size < back.length + front.length) bad.push('two corals of one colour');
+    for (const bank of [true, false]) {
+      const row = tank.ornaments.filter((o) => o.back === bank).sort((a, b) => a.x - b.x);
+      for (let i = 1; i < row.length; i++) {
+        const [a, b] = [row[i - 1], row[i]].map((o) => ({ ...o, r: o.kind === 'coral' ? o.w / 2 : reach[o.kind] }));
+        if (b.x - a.x < a.r + b.r) bad.push(`${a.kind} on ${b.kind}`);
+      }
+    }
+  }
+  assert(!bad.length && kinds.size === 6,
+    `corals in clusters of different kinds and colours, 3–4 at the back and 2–3 low at the front, standing clear of the other ornaments (${kinds.size} kinds${bad.length ? `; ${bad.slice(0, 4).join(', ')}` : ''})`);
+  const garden = (tank) => JSON.stringify(tank.ornaments.filter((o) => o.kind === 'coral'));
+  assert(garden(createVisualiser(TANK, 0xf15a7a4c, { bpm: 120 })) === garden(createVisualiser(TANK, 0xf15a7a4c, { bpm: 120 })),
+    'the same seed grows the same coral garden');
+}
+
+// The tank's photographer gets about, kneeling to take pictures at one spot after another,
+// always facing into the tank, and turns round only stood upright off the sand, never side
+// on; and the fish and the creatures keep out of each other's way (7 Oct 2026).
+{
+  const tank = createVisualiser(VISUALISER_NAMES.indexOf('DEEP BLUE DISCO'), 0xf15a7a4c, { bpm: 120 });
+  const spots = new Set();
+  let sideOn = 0, outward = 0, deep = 0, last = tank.photog.dir;
+  const frames = 60 * 180;
+  for (let frame = 0; frame < frames; frame++) {
+    tank.update(1 / 60, { ...analysis, beat: frame * 2 / 60, hit: 0, level: 0 });
+    const p = tank.photog;
+    if (p.mode === 'shoot') {
+      spots.add(Math.round(p.x / 20));
+      if ((p.x < 480 * 0.35 && p.dir < 0) || (p.x > 480 * 0.65 && p.dir > 0)) outward++;
+    }
+    if (p.dir !== last && (p.ground > 0.01 || Math.abs(p.pitch) > 0.01)) sideOn++;
+    last = p.dir;
+    const all = tank.bodies();
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        const a = all[i], b = all[j];
+        if ((a.g && a.g === b.g) || Math.abs(a.layer - b.layer) >= 1) continue;
+        if (((b.x - a.x) / (a.rx + b.rx)) ** 2 + ((b.y - a.y) / (a.ry + b.ry)) ** 2 < 0.6) deep++;
+      }
+    }
+  }
+  assert(spots.size >= 4 && sideOn === 0 && outward === 0,
+    `the photographer swims to one spot after another (${spots.size}), facing into the tank (${outward} frames facing out), turning round only upright off the sand (${sideOn} side on)`);
+  assert(deep / frames < 0.3, `fish and creatures keep out of each other's way (${(deep / frames).toFixed(2)} deep overlaps a frame)`);
+}
+
 // --- VJ MEGAMIX -------------------------------------------------------------
 // The preset that plays the other presets. What matters is the clock: a record
 // holds for a full phrase and the handover lands ON the boundary, whatever the

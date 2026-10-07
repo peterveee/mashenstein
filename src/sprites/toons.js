@@ -1219,6 +1219,16 @@ export const TOON_SPECS = {
     //
     // She does not need it either way: handsFront exists to keep hands down the
     // front of a skirt instead of elbows out, and that was Kiko's split dress.
+    //
+    // ...and back, at 0.92 (7 Oct 2026). Standing on the cast's shared rest,
+    // her short arm and narrow waist held both hands out level with her hips,
+    // elbows winged — Peter: "her arms / elbows aren't so stiff / odd looking.
+    // Arms should hang down sides more". handsFront as a NUMBER stops the hand
+    // 0.92 of the way to full reach along Kiko's line: the arm hangs down beside
+    // the gown with a little give at the elbow, and on today's 0.88 arm the hand
+    // lands at the side of the skirt, above the hem — not the mid-thigh hang
+    // full reach on her full-length arm gave in September.
+    handsFront: 0.92,
     // The necklace is the THREE-STONE collar, chosen 7 Sep 2026 over a plain
     // pendant, a teardrop, a layered pair, a choker and a gold torc. It and
     // the torc were the only two that still read as jewellery at lane size,
@@ -1330,7 +1340,9 @@ export const TOON_SPECS = {
   // breaks the corner and the shirt's own edge IS the shoulder — at 0.5 that
   // came out square, a box with a head on it. She is opted in alone; Kiko and
   // Grumpos share the taper path and keep the shipped corner.
-  clara: { rig: 'humanoid', shoeShape: 'boot', armLift: 0.014,  head: 'braid', hairCut: 'pulled', fringe: 'swept-wisps', mouth: 'smile', slim: true, taper: 0.9, shoulderSoft: 0.75,
+  // handsFront 0.92 (7 Oct 2026): standing, her arms hang down her sides as Fernwick's do, the far
+  // elbow no longer winged out.
+  clara: { rig: 'humanoid', shoeShape: 'boot', armLift: 0.014, handsFront: 0.92,  head: 'braid', hairCut: 'pulled', fringe: 'swept-wisps', mouth: 'smile', slim: true, taper: 0.9, shoulderSoft: 0.75,
     armDepth: true, hands: true, limbStyle: 'snap', pants: true,
     bareArms: true, tank: true, crop: 0.78, beltDrop: 0.035, gloves: true,
     gearBelt: true, holster: 'thigh', boots: 0.5, pistol: 'twin', ears: true, earOut: 0.91 ,
@@ -2733,6 +2745,11 @@ const STRIDE_RUN = 0.55;
 const STRIDE_RUN_HEAVY = 0.36;
 const LIFT_RUN = 0.5;
 const LIFT_RUN_HEAVY = 0.3;
+// ...and the WALK's (pose.walk): a short reach, shorter still for Grumpos; Dolores's small
+// steps take more of a shorter thigh (spec.smallSteps).
+const walkStrideOf = (spec) => (spec.smallSteps ? 0.44 : spec.heavy ? 0.23 : 0.32);
+// Ramon's floating shoes' reach, in u: his ray rig has no legs to measure it against.
+const RAY_STRIDE = 0.115;
 
 // ---- limb style ---------------------------------------------------------
 // The gait above says how FAR a foot travels. This says how it travels, and
@@ -2841,6 +2858,21 @@ const locoStyle = (spec, pose) => {
     || (ACTIVE_LIMB_STYLE === 'legacy' ? null : (spec && spec.limbStyle));
   return (key && LOCO[key]) || null;
 };
+// A hero's leg, in u: what every pose of theirs is measured against.
+const legLenOf = (spec, L) => (spec.heavy ? 0.4 : spec.stout ? 0.27 : 0.3)
+  * (spec.legLength || 1) * (spec.tall || 1) * (L ? L.legLen : 1);
+/**
+ * How far a hero goes in one step of their WALK, in toon heights: the planted foot's sweep along
+ * the ground (2 x stride), so a caller who moves them that far a step, a step at a time, keeps
+ * that foot still under them — the club's dancers walking to the beat when they change places
+ * (Peter, 6 Oct 2026). Ramon's ray rig has no walk: his floating shoes run (drawRay).
+ */
+export function toonWalkStep(heroId) {
+  const spec = TOON_SPECS[heroId];
+  if (!spec) return 0;
+  if (spec.rig === 'ray') return 2 * RAY_STRIDE;
+  return 2 * legLenOf(spec, locoStyle(spec, null)) * walkStrideOf(spec);
+}
 // Odd-symmetric power curve. k < 1 pushes a value toward its extremes, so a
 // clock shaped by it lingers at the ends and snaps through the middle.
 const shaped = (v, k) => (k === 1 ? v : (v < 0 ? -1 : 1) * Math.pow(Math.abs(v), k));
@@ -8384,8 +8416,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // legLen is the one styled term that is NOT gated on the run: a hero's legs
   // are the same length standing, sliding and airborne, so lengthening them
   // for the gait alone would change his proportions the moment he stopped.
-  const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u
-    * (spec.legLength || 1) * (spec.tall || 1) * (L ? L.legLen : 1);
+  const legL = legLenOf(spec, L) * u;
   // Front-on hip half-separation, and how far outboard of it the crouch plants
   // its feet. Both in u; the crouch's leg length is solved against them.
   const HIP_HALF = 0.095;
@@ -8706,7 +8737,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // recovery arc. The short thigh limits how far the joint can flare sideways.
   const smallWalk = walk && spec.smallSteps;
   if (smallWalk) legSeg = 0.5 * legL + 0.005 * u;
-  const stride = legL * (walk ? (smallWalk ? 0.44 : heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN)
+  const stride = legL * (walk ? walkStrideOf(spec) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN)
     * (styledGait ? L.stride : 1);
   const lift = legL * (walk ? (smallWalk ? 0.24 : heavy ? 0.15 : 0.22) : heavy ? LIFT_RUN_HEAVY : LIFT_RUN)
     * (styledGait ? L.lift : 1);
@@ -10472,11 +10503,19 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // than the soft curve it reads as through a sleeve. reach() is the same
     // helper the arms-out poses use for the same reason — put the target at the
     // end of the limb and the IK has no bend left to make.
+    //
+    // A NUMBER instead of `true` stops the hand that share of the way to full
+    // reach, along the same line: the arm still hangs down the side, with a
+    // little give left at the elbow (Fernwick, 7 Oct 2026: her arms read stiff,
+    // elbows out, and Peter wanted them hanging "down sides more").
     if (spec.handsFront) {
       const foldOut = waistHalf + armW * 0.5 + 0.035 * u + sway;
       const aimY = armY + armL * 0.84 - sway * 0.2;
-      handF = reach(shF, armY, [shoulderCx + sideF * foldOut, aimY]);
-      handB = reach(shB, armY, [shoulderCx + sideB * foldOut, aimY]);
+      const k = typeof spec.handsFront === 'number' ? spec.handsFront : 1;
+      const rf = reach(shF, armY, [shoulderCx + sideF * foldOut, aimY]);
+      const rb = reach(shB, armY, [shoulderCx + sideB * foldOut, aimY]);
+      handF = [shF + (rf[0] - shF) * k, armY + (rf[1] - armY) * k];
+      handB = [shB + (rb[0] - shB) * k, armY + (rb[1] - armY) * k];
       elbF = sideF; elbB = sideB;
     }
     // Periodic hands-on-hips. As hipsAmt rises the resting hands ride UP to the
@@ -16757,8 +16796,8 @@ function drawRay(ctx, id, spec, p, pose, u, ow, lod) {
   const airApex = jump ? 1 - Math.abs(airV) : 0;
   // Two distinct footfalls per cycle: each shoe travels backward along the
   // floor, then lifts and swings forward. The torso settles on contact.
-  const footF = run ? floatingFoot(pose.phase || 0, 0.115 * u, 0.082 * u) : [0, 0];
-  const footB = run ? floatingFoot((pose.phase || 0) + 0.5, 0.115 * u, 0.082 * u) : [0, 0];
+  const footF = run ? floatingFoot(pose.phase || 0, RAY_STRIDE * u, 0.082 * u) : [0, 0];
+  const footB = run ? floatingFoot((pose.phase || 0) + 0.5, RAY_STRIDE * u, 0.082 * u) : [0, 0];
   if (pose.dance?.feet) {
     footF[0] = (pose.dance.feet[0][0] - 0.13) * u;
     footF[1] = pose.dance.feet[0][1] * u;

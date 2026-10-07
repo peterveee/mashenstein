@@ -17,6 +17,7 @@
 // Nothing is kept: leaving the floor puts the song's own sounds back (release).
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
 import { KITS } from '../../../tools/lib/banger/sound-rules.js';
+import { withoutStyleSuffix } from '../../../tools/lib/banger/styles/index.js';
 import { CREATIVE_DRUM_KITS } from '../../data/creative-drum-kits.js';
 import { VOICES, baseLane, PERCUSSION_LANES } from '../../data/voices.js';
 import { Audio } from '../../engine/audio.js';
@@ -37,8 +38,13 @@ export const SOUND_PARTS = Object.freeze({
 });
 const PART_IDS = Object.keys(SOUND_PARTS);
 
-/** A preset's name as a button says it: the library's label, capitals, no kit marker. */
-export const voiceLabel = (id) => String(VOICES[id]?.label || id || '').replace(/^=\s*/, '').toUpperCase();
+/**
+ * A preset's name as a button says it: the library's label in capitals, without the desk's
+ * markers — the kit `=`, `(starter)`, and the style a seed's sound was kept for (every sound on
+ * the floor is the take's own style, so `· BIG-ROOM HOUSE` only made the button longer).
+ */
+export const voiceLabel = (id) => withoutStyleSuffix(VOICES[id]?.label || id || '')
+  .replace(/^=\s*/, '').replace(/\s*\(starter\)/i, '').toUpperCase();
 /** A kit's name as a button says it: 909 KIT, CR-78 KIT, STYLE KIT. */
 export const kitLabel = (key) => `${String(KITS.find((k) => k.key === key)?.label || key).replace(/ kit$/i, '').toUpperCase()} KIT`;
 

@@ -68,7 +68,7 @@ const FADE_CLOSE = 0.5;
 const LAB = 'HALF-PIPE HORIZON — LAB';
 
 // This page carries no MASHENSTEIN characters: tools/build-visualiser.js resolves
-// the sprite modules to a stub, so the two presets that draw the cast cannot be
+// the sprite modules to a stub, so the presets that draw the cast cannot be
 // drawn here. Telling the pack means VJ MEGAMIX never deals them either — without
 // this it would shuffle them into its own deck and paint an empty stage for
 // sixteen bars. The pack keeps its indices; only what gets OFFERED changes.
@@ -505,7 +505,7 @@ function sizeCanvas() {
   canvas.height = Math.max(1, Math.round(innerHeight * dpr));
 }
 
-/** Browse the offered list, which is the pack minus the two sprite presets. */
+/** Browse the offered list, which is the pack minus the sprite presets. */
 function stepPreset(delta) {
   const at = OFFERED_INDICES.indexOf(view.index);
   const n = OFFERED_INDICES.length;

@@ -145,6 +145,10 @@ const TAU = Math.PI * 2;
 const skirted = new Set(['kiko', 'clara', 'fernwick', 'grumpos']);
 const softerHopC = new Set(['fernwick', 'clara', 'kiko', 'rusty']);
 const rustyLegs = ['rusty-step', 'rusty-heel', 'rusty-hop'];
+/** Who has the MOONWALK among their moves (Peter, 6 Oct 2026: it "breaks up the monotony of
+ *  everyone facing forward"): side-on, so only the heroes whose feet show — no hem over them.
+ *  Not Ramon: his ray rig walks front-on, gloves out either side, and it read as a jog on the spot. */
+export const MOONWALKERS = new Set(['lorenzo', 'b33p', 'rusty']);
 // GRUMPOS keeps his arms at his sides for everything but A and C (Peter, 3 Oct 2026); B
 // becomes one foot tapping, slowly — once every two beats; C keeps its Double Biceps, with
 // the arms hanging idle between the poses.
@@ -174,8 +178,9 @@ const LAB_ALL = () => Object.keys(choices).flatMap(hero => {
     description: i ? 'Quiet foot tap; swap the tapping foot every bar. Small arm groove. Current Lab move.'
       : 'One foot taps the beat, the other stays planted. Relaxed arms. Current Lab move.',
   }));
-  const moonwalk = hero === 'lorenzo' ? [{
-    hero, id: 'lorenzo-F', letter: 'F', move: 'moonwalk', footwork: null,
+  // Lorenzo's is F, from before the signature routines; the others' comes after theirs, as I
+  const moonwalk = MOONWALKERS.has(hero) ? [{
+    hero, id: `${hero}-${hero === 'lorenzo' ? 'F' : 'I'}`, letter: hero === 'lorenzo' ? 'F' : 'I', move: 'moonwalk', footwork: null,
     name: 'Moonwalk',
     description: 'A side-on backward glide with alternating toe lifts and a smooth reset. Occasional club dance.',
   }] : [];
@@ -190,7 +195,7 @@ const LAB_ALL = () => Object.keys(choices).flatMap(hero => {
       description: `${move.description} ${legs} Current Lab move.`,
     };
   });
-  return [...current, ...taps, ...moonwalk, ...additions];
+  return [...current, ...taps, ...moonwalk, ...additions].sort((a, b) => a.letter.localeCompare(b.letter));
 });
 export const HERO_DANCE_LAB_CANDIDATES = LAB_ALL().map(grumposPlain);
 export function heroDancePose(candidate, beat) {

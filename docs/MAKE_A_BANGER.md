@@ -10,6 +10,8 @@ is not touched: the banger is a new song, it opens on the desk, and it plays.
 - **The Song Desk drawer**, under New song: **Make a Banger…** uses the selection, or the
   first four bars if nothing is selected. **Banger Sounds…** beside it opens the Banger
   Sounds page (below) through the desk launcher.
+- **THE LAB in the game**: the jukebox's **NEW BANGER** makes one from a riff written on
+  its own grid (*THE LAB, in the game*, below).
 
 Every banger is saved in its own folder, `work/bangers/`, and listed on its own shelf in
 the drawer's songs list: **Bangers**, just above Scratch songs. (Bangers made before 2 Oct
@@ -283,9 +285,10 @@ The chords' gate and the hook's exciter are switches of their own (Sidechain Pum
 mood), so their settings are taken but they are never doubled.
 
 **A patch you edited on the seed is kept.** Use as Style saves it as a library preset of
-its own, named for the style and the part (for example "Wide Detune · Eurobeat", id
+its own, named for the style and the part (for example "Wide Detune Bass · Eurobeat", id
 `seedEurobeatBass`), and measures it the way the voice editor's Save as New does. Using the
-style again updates that same preset rather than adding another.
+style again updates that same preset rather than adding another. The style in the name is for
+the desk's library; the game's sound buttons leave it off.
 
 Patterns are not tuned this way: drum grooves, bass rhythms and chord walks are the
 recipe's (`tools/lib/banger/styles/`).
@@ -378,6 +381,64 @@ its mix. Deleting the song deletes its takes too.
 On the deployed desk, which has no server, a take is kept as its seed and re-made when
 you come back to it.
 
+## THE LAB, in the game
+
+The jukebox's **THE LAB** makes bangers with the same generator (`src/game/banger/make.js`).
+**NEW BANGER** opens a piano roll with a **FORMULA** (the style), an **ELEMENT** (the mood),
+**VOLTAGE** and **DNA** (the Variation: Pure, Hybrid, Spliced, Mutant), and **BRING TO LIFE**
+makes the song. A kept song is stored as its recipe (notes, style, mood, seed) and made
+again each time it plays.
+
+**The grid** is SIMPLE (eighths on the eleven notes of A minor, G4 to C6) or ADVANCED
+(sixteenths on every semitone), and two bars or four (Peter, 6 Oct 2026):
+
+- Small bar numbers run along the top of the grid. A **+** at their end adds bars 3–4; a
+  **−** takes them away again. A tap puts up a floatie (BARS 3-4 ADDED, BACK TO 2 BARS) and
+  a mouse resting on it gets a tooltip (ADD BARS 3-4, BACK TO 2 BARS). The grid opens on two
+  bars, as simple as it always was, under the same title row: NEW BANGER (EDIT BANGER for
+  a kept song) and SIMPLE / ADVANCED.
+- Bars 3–4 come in as a dim **repeat** of bars 1–2 that follows them: an edit in bars 1–2 is
+  copied on into 3–4 until a note is written in 3–4 itself, which makes them the riff's own.
+  Until then BRING TO LIFE makes the two-bar song (`riff.js settleBars`): four bars count
+  only once they say something of their own. **−** hides bars of their own and remembers
+  them, the way ADVANCED is remembered; a repeat is let go.
+- **Every bar is on show.** One line in landscape and on a desktop (ADVANCED's four bars are
+  sixty-four columns); in portrait four bars stack two over two, each line under its own bar
+  numbers, like the lines of a score. Turning pages between bars 1–2 and 3–4 was tried and
+  dropped.
+- A grid's bar count is its length (`riff.js barsOf`): a mode's `steps` are two bars, and
+  twice that is four. Every recipe and draft from before reads as two bars, so nothing needed
+  a new version.
+
+**ZAP** writes as many bars as are set. Its own four bars are a question and its answer:
+bar 2 stops open, on C, D or E; bar 3 is bar 1 moved along the scale (two steps up, three up
+or two down), the same shape so it is heard as the same tune, on other notes so another chord
+goes under it; bar 4 walks home to A. One ZAP in three is a cabinet's own riff instead, as
+long as the grid (`src/game/banger/game-riffs.js`), and the floatie names the song:
+
+| Song | Two bars | Four bars |
+|---|---|---|
+| FIELD SERVICE | the drop hook (B minor), its answer, the pan-flute whistle | the whistle and its answer; the drop hook in B minor |
+| SPEED ZONE | the lead | the pad's melody |
+| FROST FORTRESS | the lead | none: its hook is one bar four times |
+| RHYTHM BANKRUPTCY | the lead's entrance, the arpeggio, the drop | the drop with its run-up; the arpeggio climbing out |
+| CRYPT SHIFT | the theremin | the theremin, round to its G♯ |
+| TERMINAL VELOCITY | the chime | the chime, over C and then G |
+| THE FOOD COURT | its arpeggio loop | the loop and its repeat |
+
+The riffs are read off the songs as the desk hears them and kept in the remix shorthand;
+only stretches that fit G4–C6 are taken. THE FOOD COURT's tune is moved up a minor sixth
+(A minor to F minor) to fit, so it is ADVANCED only, as are the B-minor hook and the
+theremin's four bars; SIMPLE gets the riffs that sit on its A-minor rows. CARDBOARD KINGDOM,
+CORPORATE KOMBAT and THE SURGE have none: their song files are two-bar loops.
+
+**Why four bars.** On Pure, a ZAP's two bars sat the whole drop on one chord in about one
+take in five; four bars of its own give a four-chord progression in about seven in ten
+(measured 6 Oct 2026). Bars 3–4 that only repeat 1–2 with a new ending barely change the song.
+
+The grid's preview loop plays every bar that is set, and a held note plays as long as it is
+drawn (before 6 Oct 2026 it read the wrong column's length).
+
 ## Forms beyond the drop
 
 Everything but the Club form is a list of typed sections (`tools/lib/banger/form-types.js`):
@@ -410,10 +471,14 @@ lifted one — is final (the octave hook, the choir, the ride).
   silent until the hook's first beat comes in early as the pickup home.
 - **Intro** can quote the chorus; **outro** can tag it.
 
+The verse, pre-chorus and middle 8 lines are each fitted to the chords under them, so none
+of them grinds (*Nothing grinds*, below).
+
 **The joins** between sections (`transitions.js`) are chosen by how much the energy
 changes. A big rise into a chorus gets a riser and one of: the kick and bass dropping out
 for the last two beats, stop-time on the last beat, the mix stuttering, or — into the
-final chorus, with Hard Stop on — the pause; and a two-note pickup in the hook. A smaller
+final chorus, with Hard Stop on — the pause; and a two-note pickup in the hook, walking up
+through notes that fit the chord under it. A smaller
 rise gets a fill and the pickup; a level join a fill; a fall a delay throw off the hook or
 a half-time last bar. The switches still say yes or no (Fills, Riser, Hard Stop, Stutter,
 Delay Throws), and every join is listed in the song's header note under **Joins**. A Club
@@ -456,6 +521,31 @@ No two phrases sound the same, even at Faithful.
 Chords suit the notes, never the other way round. The mood's progression is used wherever
 the hook sits on it; otherwise the chord that fits the hook wins. A riff that changes
 chord on the half bar (FIELD SERVICE's Am→F arpeggio) gets both chords.
+
+**Nothing grinds** (6 Oct 2026, generator v8: Peter heard four-bar Lab songs that were "a
+little discordant"). A note *grinds* on a chord it is not in when it is a flat ninth on the
+root, the third the chord does not have (G over E major, C♯ over A minor) or the seventh it
+does not have (F over Gmaj7); a tritone on the root grinds a little. Ninths, fourths, sixths
+and a seventh over a triad are colour, not grinds (`theory.js grindOf`). The generator keeps
+grinds out four ways:
+
+- **Choosing a chord**, a note that would grind on it costs the chord again
+  (`analyse.js chordFit`), so a bar that leans on F sits on C, not on E minor. The riff as
+  written is never moved.
+- **The lines made from the hook** — the verse, the pre-chorus, the middle 8, the third below,
+  the breakdown's bell — are fitted to the chords under them (`theory.js fitToChords`): a
+  grinding note moves to the nearest note of its chord, upward on a tie, so a G over the
+  pre-chorus's E major becomes the leading note G♯.
+- **The breakdown's walk** gives way where the hook grinds on it, and its colours add no
+  grind of their own. **A pedal or a walking bass** a semitone under the tune steps onto its
+  chord's root (`theory.js clearUnder`).
+- **The pickup** at a join walks up through notes that fit the chord under it
+  (`transitions.js`): into A over E major it plays E, G♯ rather than F, G.
+
+Measured over 2,016 Lab songs, the share of melodic notes that grind fell from 3.2% to about
+1%, and a four-bar riff's pre-chorus from 17% to 0.2%; the number of different chords in a
+drop did not change. A kept Lab song is made again from its recipe, so the songs already
+kept changed with it.
 
 **The mix** is ABSOLUTE ZERO's mix block, including Peter's edits:
 
@@ -926,6 +1016,8 @@ named by part alone (`KICK`, `HATS`).
 | `tools/banger-sounds.js`, `banger-sounds-entry.js`, `banger-sounds-shell.html` | The Banger Sounds page (:8022) |
 | `tools/lib/banger-file.js` | Writing a banger song into `work/bangers/`, its takes, and the one-time move out of `work/scratch/` |
 | `tools/lib/banger/form-types.js`, `templates.js`, `cohesion.js`, `transitions.js`, `form-edit.js`, `lead.js` | The kinds of section; the Pop Song, Anthem and Groove forms; the verse, pre-chorus and middle 8 grown from the hook; the joins; the form editor's moves; Write a Lead |
+| `tools/lib/banger/theory.js` `grindOf`, `fitToChords`, `clearUnder`; `analyse.js` `chordFit`, `grindShare` | What grinds, and how the generator keeps it out |
+| `src/game/banger/` | THE LAB: `riff.js` (the grid, two bars or four, ZAP's own riffs, `settleBars`), `maker.js` (the screen: bar numbers, + / −, the repeat, the lines), `game-riffs.js` (the cabinet riffs, two bars and four), `make.js` (the game's call into the generator), `store.js` (what is kept) |
 | `tools/mixer-banger.js`, `tools/mixer-banger-form.js` | The dialog and the take buttons; the Form row's strip and editor |
 | `tools/mixer.js` | `POST /make-banger`, `GET /banger-takes`, `POST /banger-take` |
 | `tools/banger-audition.js` | Make and render bangers from the command line |
@@ -937,7 +1029,8 @@ named by part alone (`KICK`, `HATS`).
 | `tools/lib/banger-refs.js` | Reading reference parts out of seeds, remixes and bangers |
 | `tools/mixer-banger-seeds.js` | The desk's Use as Style, Save as Combo and A/B |
 | `src/data/imported/banger-seed-*.js` | The seven seed bangers |
-| `tests/banger.js` | Tests for the generator, the riff reader, the song file and the takes |
+| `tests/banger.js` | Tests for the generator, the riff reader, the song file and the takes, and that nothing grinds |
+| `tests/jukebox-banger.js`, `tests/banger-game-riffs.js` | Tests for THE LAB: the grid, + / −, the repeat, the lines, ZAP and the cabinet riffs |
 | `tests/banger-sounds.js` | Tests for the sounds table, the rules, Save, and the generator playing the table |
 | `tests/banger-flavours.js` | Tests for the flavours: chosen by the mood, by name, by the seed and by the Lab's voltage, and what each one changes |
 | `tests/banger-forms.js` | Tests for the forms: every length exact, every style valid, drawn forms re-made exactly, the verse/pre/middle 8 promises, the joins, the groove, the editor's moves |
