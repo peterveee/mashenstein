@@ -43,7 +43,8 @@ for (const [frame, label] of [[null, 'landscape'], [frameForViewport({ mode: PHO
 }
 
 // His hands, wherever a switch puts them: within reach of the shoulder they hang from, and
-// clear of his chest — the stand draws its arms behind the torso, so a grip there vanishes.
+// clear of his chest — the stand draws its arms behind the torso, so a grip there vanishes —
+// unless the switch has his arms painted over his front (armsInFront: the plunger's).
 for (const sw of BIRTH_SWITCHES) {
   const h = 72, base = 205, gx = W * 0.32;
   let worst = 0, hidden = 0, held = 0;
@@ -53,7 +54,7 @@ for (const sw of BIRTH_SWITCHES) {
       if (!g || g.w < 0.5) return;
       const sx = gx + (i ? 0.1 : -0.1) * h, sy = base - 0.511 * h;
       worst = Math.max(worst, Math.hypot(g.at[0] - sx, g.at[1] - sy) / h);
-      if (Math.abs(g.at[0] - gx) < 0.17 * h) hidden++;
+      if (!rig.armsInFront && Math.abs(g.at[0] - gx) < 0.17 * h) hidden++;
       if (t >= SWITCH_AT && t < GARY_BEATS.LET_GO_AT) held++;
     });
   }

@@ -83,6 +83,7 @@ import {
 import { BangerClubState } from './banger/club.js';
 import { BangerBirthState } from './banger/birth.js';
 import { pickBirthSwitch } from './banger/birth-switches.js';
+import { pickBirthFace } from './banger/birth-faces.js';
 import { totalPlugs, MAX_PLUGS, formatCoins, formatRunTime, nextStage, stageUnlocked } from './progress.js';
 import {
   portraitMenuActive, portraitMenuScale, portraitMenuText, portraitMenuTextCentered,
@@ -5375,7 +5376,7 @@ export class SoundTestState {
    */
   openPendingClub({ rec, song, from, birth = false, room = null }) {
     this.pending = { from, rec, song };
-    if (birth) setState(new BangerBirthState({ rec, lever: pickBirthSwitch(), onDone: () => this.openClub(rec, this.pending) }));
+    if (birth) setState(new BangerBirthState({ rec, lever: pickBirthSwitch(), subject: pickBirthFace().paint, onDone: () => this.openClub(rec, this.pending) }));
     else this.openClub(rec, this.pending, room);
   }
   /** A song from the Lab, in the club; its back button returns here with the song selected.

@@ -5602,9 +5602,13 @@ export class BangerClubState {
       ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
       ctx.globalAlpha = 1;
     }
-    // the tooltip on a mouse, and THE BOLT asking for its second tap on the glass
+    // the tooltip on a mouse, and THE BOLT asking for its second tap on the glass — then, from
+    // the press until the new take swaps in, saying it is on it (Peter, 7 Oct 2026: "something
+    // to let the user know we're working on it")
     const tipOf = (key) => (key.startsWith('transport') ? this.boxes.transport?.[Number(key.slice(9))] : this.boxes[key]);
-    if (this.rerollArmed() && this.boxes.reroll) {
+    if (this.rerolling > 0 && this.boxes.reroll) {
+      this.drawTip(ctx, this.boxes.reroll, 'CHARGING', { portrait, P, safeL, safeR, lit: true, dots: true });
+    } else if (this.rerollArmed() && this.boxes.reroll) {
       this.drawTip(ctx, this.boxes.reroll, 'TAP AGAIN FOR A NEW TAKE', { portrait, P, safeL, safeR, lit: true });
     } else if (this.tip && this.t - this.tip.since >= TIP_DELAY_S && tipOf(this.tip.key)) {
       const a = Math.min(1, (this.t - this.tip.since - TIP_DELAY_S) * 8);
@@ -5612,14 +5616,20 @@ export class BangerClubState {
     }
   }
 
-  /** A tooltip on a dark plate beside `box`: above it, or below one in the top half of the screen. */
-  drawTip(ctx, box, text, { portrait, P, safeL = 0, safeR = 0, alpha = 1, lit = false }) {
+  /**
+   * A tooltip on a dark plate beside `box`: above it, or below one in the top half of the screen.
+   * With `dots`, one to three dots after the words, counting round while it waits; the plate
+   * sized for all three, so it holds still.
+   */
+  drawTip(ctx, box, text, { portrait, P, safeL = 0, safeR = 0, alpha = 1, lit = false, dots = false }) {
     if (!text) return;
     const fs = portrait ? 13 * P : 7;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.font = `500 ${fs}px ${BODY_FONT}`;
-    const w = ctx.measureText(text).width + fs * 1.4, h = fs * 1.9;
+    const full = dots ? `${text}...` : text;
+    const tw = ctx.measureText(full).width;
+    const w = tw + fs * 1.4, h = fs * 1.9;
     const below = box.y + box.h / 2 < H / 2;
     const lo = (portrait ? 8 * P : safeL + 4), hi = W - (portrait ? 8 * P : safeR + 4) - w;
     const x = Math.max(lo, Math.min(hi, box.x + box.w / 2 - w / 2));
@@ -5629,8 +5639,14 @@ export class BangerClubState {
     ctx.strokeStyle = lit ? 'rgba(201,160,255,0.85)' : 'rgba(201,160,255,0.4)'; ctx.lineWidth = portrait ? 1.4 * P : 0.7;
     ctx.stroke();
     ctx.fillStyle = lit ? '#e6d6ff' : '#e8e6f0';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + w / 2, y + h / 2 + fs * 0.05);
+    ctx.textBaseline = 'middle';
+    if (dots) {
+      ctx.textAlign = 'left';
+      ctx.fillText(text + '.'.repeat(1 + Math.floor(this.t * 3) % 3), x + (w - tw) / 2, y + h / 2 + fs * 0.05);
+    } else {
+      ctx.textAlign = 'center';
+      ctx.fillText(text, x + w / 2, y + h / 2 + fs * 0.05);
+    }
     ctx.restore();
   }
 

@@ -75,6 +75,7 @@ const suites = [
   'tests/jukebox-banger.js',
   // IT'S ALIVE!: the six switches Gary throws at a new banger's birth, one at random.
   'tests/birth-switches.js',
+  'tests/birth-faces.js',
   // Its sibling on the tools side: every cue the engine can play has a row on
   // the SFX desk and a date in the birthday record. Seventeen cues — every menu
   // step, every fanfare, the title buzz, the ice deck — were unlistenable on

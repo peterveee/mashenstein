@@ -17,10 +17,12 @@
 // picked in menus.js). The small knife switch drawGary paints with no `lever` is the one he
 // had before; only the tests and the gallery still draw it.
 //
-// WHAT COMES ALIVE is a GIANT CASSETTE (Peter, 3 Oct 2026, from the bake-off — the other
-// candidates are in src/dev/birth-subjects.js): standing on the lab's slab, clamped to the
-// coils. Dormant it is grey and still, its label blank; alive its reels turn, the eyes in
-// them open, it grins, and the new song's name is on its label.
+// WHAT COMES ALIVE IS A ROLL OF THE DICE TOO (Peter, 7 Oct 2026, from the second bake-off:
+// "i like x,a,b,c ... and d.. mix it up"): the giant cassette (3 Oct, from the first bake-off,
+// src/dev/birth-subjects.js), a clear cassette, a mixtape, a chrome cassette and a silver
+// boombox, one at random per birth (birth-faces.js, picked in menus.js). Each stands on the
+// lab's slab, clamped to the coils; dormant it is grey and still with its eyes shut; alive it
+// takes its colours, its eyes open, it grins and moves to the beat, and the song's name is on it.
 //
 // THE NAME IS KEPT BACK FOR IT'S ALIVE! (Peter, 7 Oct 2026: "not show the title but show it
 // with ITS ALIVE"): nothing names the song while it is being made; the flash reveals it,
@@ -40,6 +42,7 @@ import { TITLE_FONT } from '../../engine/sprites.js';
 import { portraitMenuActive, portraitMenuSafeTop } from '../../engine/portrait-menu.js';
 import { bangerTitle } from './store.js';
 import { drawToon } from '../../sprites/toons.js';
+import { GIANT_CASSETTE } from './birth-faces.js';
 
 const BODY_FONT = "'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
 export const BIRTH_STEPS = Object.freeze(['STITCHING THE RIFF', 'WIRING UP THE BASS', 'CHARGING THE DRUMS', 'CRANKING THE VOLTAGE']);
@@ -70,9 +73,9 @@ export class BangerBirthState {
   static portraitMode = 'frame';
 
   /**
-   * `rec` is the song just made; `onDone` opens it. `subject` paints what is brought to life
-   * in place of the cassette, standing on its slab (the bake-offs' candidates,
-   * src/dev/birth-subjects.js and src/dev/birth-faces.js).
+   * `rec` is the song just made; `onDone` opens it. `subject` paints what is brought to life,
+   * standing on the slab (one of BIRTH_FACES' painters; the jukebox picks one at random);
+   * the giant cassette without one.
    * `lever` is what Gary throws (birth-switches.js; the jukebox picks one at random); the
    * old small knife switch on its panel without one.
    */
@@ -159,61 +162,6 @@ export class BangerBirthState {
     }
   }
 
-  /** The giant cassette on its slab — `y` is its middle, `r` its size (2.5r wide, 1.6r tall). */
-  drawCassette(ctx, x, y, r, { alive, since, t, base, coilXs, u }) {
-    const w = r * 2.5, h = r * 1.6;
-    this.drawSlab(ctx, x, y, r, { base, coilXs, u });
-    ctx.save();
-    ctx.translate(x, y);
-    // alive, it rocks to the beat
-    if (alive) ctx.rotate(Math.sin(t * Math.PI * 2) * 0.04);
-    const col = (live, dead) => (alive ? live : dead);
-    // the shell
-    ctx.fillStyle = col('#2a2540', '#3a3e48');
-    rr(ctx, -w / 2, -h / 2, w, h, r * 0.1); ctx.fill();
-    ctx.fillStyle = col('#3a3456', '#474b56');
-    ctx.beginPath(); ctx.moveTo(-w * 0.3, h / 2); ctx.lineTo(-w * 0.24, h * 0.3); ctx.lineTo(w * 0.24, h * 0.3); ctx.lineTo(w * 0.3, h / 2); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#1b1828';
-    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.beginPath(); ctx.arc(sx * w * 0.44, sy * h * 0.4, r * 0.04, 0, Math.PI * 2); ctx.fill(); }
-    // the label, the song's name on it
-    ctx.fillStyle = col('#ffd23f', '#6a6e78'); rr(ctx, -w * 0.42, -h * 0.42, w * 0.84, h * 0.56, r * 0.06); ctx.fill();
-    ctx.fillStyle = col('#ff4fa3', '#5a5e68'); ctx.fillRect(-w * 0.42, -h * 0.42 + h * 0.06, w * 0.84, h * 0.05);
-    ctx.fillStyle = '#1b1828';
-    ctx.font = `${Math.max(4, r * 0.17)}px ${TITLE_FONT}`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    if (alive) ctx.fillText(this.rec?.name || 'BANGER', 0, -h * 0.25, w * 0.78);
-    // the window, and the reels in it — the eyes
-    ctx.fillStyle = '#16131f'; rr(ctx, -w * 0.28, -h * 0.14, w * 0.56, h * 0.26, r * 0.13); ctx.fill();
-    ctx.fillStyle = col('#5a3a2a', '#3a3a40'); ctx.fillRect(-w * 0.12, -h * 0.07, w * 0.24, h * 0.12);
-    const open = alive ? Math.min(1, since * 6) : 0;
-    const blink = alive && (t % 2.6) > 2.45;
-    for (const dx of [-w * 0.17, w * 0.17]) {
-      ctx.save(); ctx.translate(dx, -h * 0.01);
-      ctx.fillStyle = '#f2f2f6'; ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2); ctx.fill();
-      ctx.save(); ctx.rotate(alive ? t * 5 : 0);
-      ctx.fillStyle = '#8a8e98';
-      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; ctx.fillRect(Math.cos(a) * r * 0.14 - r * 0.025, Math.sin(a) * r * 0.14 - r * 0.025, r * 0.05, r * 0.05); }
-      ctx.restore();
-      if (open > 0 && !blink) {
-        ctx.fillStyle = '#1b1828';
-        ctx.beginPath(); ctx.ellipse(r * 0.03 * Math.sin(t * 1.7), 0, r * 0.09, r * 0.09 * open, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(-r * 0.03, -r * 0.03, r * 0.025, 0, Math.PI * 2); ctx.fill();
-      } else {
-        ctx.strokeStyle = '#1b1828'; ctx.lineWidth = r * 0.04;
-        ctx.beginPath(); ctx.moveTo(-r * 0.1, 0); ctx.lineTo(r * 0.1, 0); ctx.stroke();
-      }
-      ctx.restore();
-    }
-    // the mouth, along the bottom: a flat line, then a grin
-    ctx.strokeStyle = '#1b1828'; ctx.lineWidth = r * 0.07; ctx.lineCap = 'round';
-    ctx.beginPath();
-    if (alive) ctx.arc(0, h * 0.12, r * 0.42, Math.PI * 0.22, Math.PI * 0.78);
-    else { ctx.moveTo(-r * 0.25, h * 0.38); ctx.lineTo(r * 0.25, h * 0.38); }
-    ctx.stroke(); ctx.lineCap = 'butt';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.restore();
-  }
-
   /**
    * One of the birth switches in place of the old knife switch: it paints itself behind Gary
    * (and, if it stands in front of him, after him), and says where his hands go — in screen
@@ -238,6 +186,7 @@ export class BangerBirthState {
       kind: 'stand', time: t, phase: 0, grounded: true, facing: 1, squash: rig.squash || 0,
       lean: rig.lean || 0,
       dance: { hands, ankles: [0, 0], pointAngle: null, shoulderLift: 0, elbows: rig.elbows },
+      armsInFront: !!rig.armsInFront,
       faceSurprised: t >= SWITCH_AT && t < SMILE_AT,
       faceJoy: t >= SMILE_AT,
     };
@@ -360,10 +309,8 @@ export class BangerBirthState {
     ng.addColorStop(0, alive ? ALIVE + '88' : `rgba(168,230,255,${0.1 + 0.4 * charge})`); ng.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = ng;
     ctx.beginPath(); ctx.arc(W / 2, sy, nr * 3, 0, Math.PI * 2); ctx.fill();
-    if (this.subject) {
-      this.drawSlab(ctx, W / 2, sy, nr, { base, coilXs: xs, u });
-      this.subject(ctx, W / 2, sy, nr, { charge, alive, since: Math.max(0, since), t, name: this.rec?.name || 'BANGER' });
-    } else this.drawCassette(ctx, W / 2, sy, nr, { alive, since: Math.max(0, since), t, base, coilXs: xs, u });
+    this.drawSlab(ctx, W / 2, sy, nr, { base, coilXs: xs, u });
+    (this.subject || GIANT_CASSETTE.paint)(ctx, W / 2, sy, nr, { charge, alive, since: Math.max(0, since), t, name: this.rec?.name || 'BANGER' });
     // Gary in front of the slab and its cables
     this.drawGary(ctx, { portrait, P, base, coilX: xs[0] });
 

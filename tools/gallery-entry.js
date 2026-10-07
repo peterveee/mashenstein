@@ -145,7 +145,8 @@ import { MIXER_ICONS, MIXER_ICONS_BEFORE } from '../src/game/banger/mixer-icons.
 import { BOLT_ATTRACT_CANDIDATES } from '../src/dev/bolt-attract-candidates.js';
 import { drawBoltButton, drawBoltPlain, boltAttractAlpha } from '../src/game/banger/bolt-button.js';
 import { BangerBirthState, BIRTH_S, BIRTH_STEPS, SWITCH_AT, FLASH_AT } from '../src/game/banger/birth.js';
-import { BIRTH_SWITCHES } from '../src/game/banger/birth-switches.js';
+import { BIRTH_SWITCHES, PLUNGER_AT_SIDE } from '../src/game/banger/birth-switches.js';
+import { BIRTH_FACES } from '../src/game/banger/birth-faces.js';
 import { TOASTER_SIZE, makeToaster, toasterAt, toasterLoop, drawToaster } from '../src/game/banger/club-toaster.js';
 import { applianceBefore } from '../src/dev/toaster-top-before.js';
 import { TOASTER_WING_CANDIDATES } from '../src/dev/toaster-wings.js';
@@ -9646,7 +9647,8 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
     + 'take one out of BIRTH_SWITCHES to take it out of the game). X is the small knife switch on a panel he had until now. '
     + 'A BIG KNIFE SWITCH the same idea made to read, a slate board with a fat copper blade, red knob and red/green lamps; '
     + 'B FLOOR LEVER a signal-box lever he leans out for and hauls back into the last notch; '
-    + 'C BIG RED BUTTON he flicks the cover open, winds up and slams it; D PLUNGER both hands on the T-bar of a tall, thin charger post, driven home; '
+    + 'C BIG RED BUTTON he flicks the cover open, winds up and slams it; D PLUNGER both hands close together on the short T-bar of a tall, thin charger post, elbows out, driven home '
+    + '(OPEN, 7 Oct 2026: D2 is the same post out at his side, one hand — not in the game until picked); '
     + 'E AMP KNOB a combo amp’s giant chicken-head knob cranked round to 11; F MASTER FADER shoved to the top, its meter filling with the charge. '
     + 'Everything lands on the same beat the old switch did (the power sound, the coils waking). '
     + 'First the whole birth for each, then each throw close up at 3x, looping its first 1.8 s.',
@@ -9654,7 +9656,7 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
   const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
   const rec = { name: 'CRYSTAL BEETLE', style: 'big-room', mood: 'dark', n: 1 };
   const STEP_S = (FLASH_AT - SWITCH_AT) / BIRTH_STEPS.length;
-  const all = [...BIRTH_SWITCHES,
+  const all = [...BIRTH_SWITCHES, { ...PLUNGER_AT_SIDE, letter: 'D2' },
     { letter: 'X', name: 'THE KNIFE SWITCH HE HAD', description: 'The small knife switch on its panel, until 7 Oct 2026 (birth.js drawGary, drawn when no switch is given).' }];
   // what update() would have left behind by time t: the step it is on
   const at = (b, t) => {
@@ -9675,6 +9677,46 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
       // magnified to be seen, not a push-in: Gary inked as the menu inks him (scale 1)
       ctx.save(); ctx.scale(Z, Z); ctx.translate(-CX, -CY); setInkScale(1);
       try { at(b, t % THROW).draw(ctx); } finally { setInkScale(); ctx.restore(); }
+    }, { animated: true });
+  }
+}
+
+// IT'S ALIVE! — boomboxes and cassettes, each with a face (Peter, 7 Oct 2026: "can we do a bake off
+// of different boomboxes and cassettes. I like how the casset has a face, comes alive, so don't want to
+// lose that effect, I feel we could do that with a boom box if we wanted to as well").
+{
+  const s = sectionEl('birth-faces-bakeoff', 'BANGER LAB — IT’S ALIVE!, boomboxes and cassettes with faces',
+    'SHIPS FIVE, AT RANDOM (7 Oct 2026: "i like x,a,b,c (remove the pencil on b though) and d.. mix it up"): every new '
+    + 'banger’s birth stands one of these on the slab (src/game/banger/birth-faces.js; take one out of BIRTH_FACES to take '
+    + 'it out of the game). Each keeps the effect — grey and asleep with its eyes shut, then at the flash its colours, its '
+    + 'eyes open, a grin, the song’s name, and moving to the beat. X GIANT CASSETTE the first; A CLEAR CASSETTE, its tape '
+    + 'the mouth; B MIXTAPE, marker brows and teeth; C CHROME CASSETTE, a half-lid smirk; D SILVER BOOMBOX, speaker eyes '
+    + 'and a tape-door mouth. (E DOUBLE-DECK BLASTER and F, the cassette inside a boombox, were not kept.) '
+    + 'First the whole birth for each, then the slab close up at 3x, looping from the charge through the flash.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const rec = { name: 'CRYSTAL BEETLE', style: 'big-room', mood: 'dark', n: 1 };
+  const STEP_S = (FLASH_AT - SWITCH_AT) / BIRTH_STEPS.length;
+  const all = BIRTH_FACES;
+  const at = (b, t) => {
+    b.t = t;
+    b.step = t < SWITCH_AT ? -1 : Math.min(BIRTH_STEPS.length - 1, Math.floor((t - SWITCH_AT) / STEP_S));
+    return b;
+  };
+  const make = (c) => new BangerBirthState({ rec, onDone() {}, lever: BIRTH_SWITCHES[0], subject: c.paint });
+  const LOOP = BIRTH_S + 0.8, Z = 3, CX = 165, CY = 68, CW = 150, CH = 145;
+  const FROM = FLASH_AT - 1.2, SPAN = 4.2;
+  for (const c of all) {
+    const b = make(c);
+    tile(grid, `${c.letter} — ${c.name}`, c.description, W, H, (ctx, t) => {
+      at(b, Math.min(t % LOOP, BIRTH_S)).draw(ctx);
+    }, { animated: true });
+  }
+  for (const c of all) {
+    const b = make(c);
+    tile(grid, `${c.letter} — ${c.name}, close up`, 'The slab at 3x: charging, the flash, alive.', CW * Z, CH * Z, (ctx, t) => {
+      ctx.save(); ctx.scale(Z, Z); ctx.translate(-CX, -CY); setInkScale(1);
+      try { at(b, FROM + (t % SPAN)).draw(ctx); } finally { setInkScale(); ctx.restore(); }
     }, { animated: true });
   }
 }

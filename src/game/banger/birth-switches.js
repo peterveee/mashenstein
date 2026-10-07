@@ -14,8 +14,8 @@
 //   B FLOOR LEVER       a signal-box lever out of a toothed quadrant on the floor; he hauls it
 //                       back towards himself and it clunks into the last notch
 //   C BIG RED BUTTON    a hazard-striped pedestal; he flips the cover, winds up and slams it
-//   D PLUNGER           a tall, thin charger post between his feet, both hands on the
-//                       T-bar, pushed home
+//   D PLUNGER           a tall, thin charger post between his feet, both hands close
+//                       together on a short T-bar, elbows out, pushed home
 //   E AMP KNOB          a combo amp with one giant chicken-head knob; he cranks it round to 11
 //   F MASTER FADER      a giant channel strip; he shoves the fader to the top and the meter
 //                       beside it fills with the charge
@@ -25,7 +25,8 @@
 // since (seconds since the switch landed) }. rig returns where his hands go, in screen space,
 // each { at: [x, y], w } blended from where it hangs by w; first hand reaches to the screen's
 // left. Hands in front of his body vanish behind it (the stand draws its arms behind the
-// torso), so every grip sits clear of his chest. Everything lands on SWITCH_AT, when the
+// torso), so every grip sits clear of his chest — unless the rig says `armsInFront`, which
+// paints both arms over the torso (the plunger's). Everything lands on SWITCH_AT, when the
 // scene plays its 'power' and the coils wake.
 
 import { GARY_BEATS, drawBolt } from './birth.js';
@@ -306,9 +307,15 @@ const bigButton = {
 // his side maybe?"). Two takes while he picks: IN FRONT, the post stands between his feet and
 // both hands drive the T-bar home; AT HIS SIDE, it stands out on his right (the screen's left)
 // and one hand drives a short handle home.
+//
+// A SHORT T-BAR, ELBOWS OUT (Peter, 7 Oct 2026: "can the plunger handle be narrower so gary's
+// elbows need to stick out?"): his hands sit close together on it at his belly, so his arms
+// fold and the elbows wing out either side (`elbows` -1: the painter's other solution, or they
+// fold in across his chest) — painted over his front (armsInFront), or the hands would be lost
+// behind his chest.
 const POST = { w: 0.09, foot: 0.02 };
-const PLUNGE = { front: { x: 0, rest: -0.5, home: -0.32, top: -0.27, half: 0.28 },
-  side: { x: -0.38, rest: -0.66, home: -0.46, top: -0.4, half: 0.07 } };
+const PLUNGE = { front: { x: 0, rest: -0.38, home: -0.3, top: -0.22, half: 0.12, grip: 0.08 },
+  side: { x: -0.38, rest: -0.66, home: -0.46, top: -0.4, half: 0.07, grip: 0 } };
 const plungeY = (t, p) => {
   // he hauls it UP a touch on the brace, then drives it home
   const lift = t >= BRACE_AT && t < PULL_AT ? smooth((t - BRACE_AT) / (PULL_AT - BRACE_AT)) * 0.04 : t >= PULL_AT && t < SWITCH_AT ? 0.04 : 0;
@@ -344,11 +351,12 @@ function plungerPost(ctx, o, p) {
 }
 const plunger = {
   letter: 'D', name: 'PLUNGER', caption: 'PUSHING THE PLUNGER',
-  description: 'A tall, thin charger post standing between his feet, both hands on the T-bar: he hoists it a touch, then drives it home. The post’s lamp goes green and the terminals crackle.',
+  description: 'A tall, thin charger post standing between his feet, both hands close together on a short T-bar, elbows out: he hoists it a touch, then drives it home. The post’s lamp goes green and the terminals crackle.',
   rig: (o) => {
     const p = PLUNGE.front, y = plungeY(o.t, p), w = grip(o.t);
     return {
-      hands: [{ at: at(o, -p.half + 0.04, y), w }, { at: at(o, p.half - 0.04, y), w }],
+      hands: [{ at: at(o, -p.grip, y), w }, { at: at(o, p.grip, y), w }],
+      armsInFront: w > 0, elbows: [-1, -1],
       squash: o.t >= SWITCH_AT && o.t < LET_GO_AT ? 0.06 : 0,
     };
   },

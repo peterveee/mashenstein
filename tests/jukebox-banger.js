@@ -2407,6 +2407,14 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   tap(club, ...centre(club.boxes.reroll));
   assert(calls.length === 0 && club.spinV >= 10 && club.mirrorFlashAt === club.t,
     'the press is answered at once - the ball kicked faster and flaring - before the make\'s frame');
+  {
+    const tips = [], drawTip = club.drawTip;
+    club.drawTip = (c, box, text, o) => { tips.push({ box, text, dots: o?.dots }); return drawTip.call(club, c, box, text, o); };
+    club.draw(ctx);
+    club.drawTip = drawTip;
+    assert(tips.some((tp) => tp.box === club.boxes.reroll && tp.text === 'CHARGING' && tp.dots),
+      '...and the bolt says it is on it, from the press: CHARGING...');
+  }
   step(club, 1);
   club.draw(ctx);
   assert(calls.length === 1 && calls[0].r === rec && calls[0].p === club.pending && !calls[0].room && club.strikeTargets.length >= 3,
