@@ -29,6 +29,7 @@ import { CREATIVE_DRUM_KITS } from '../../../src/data/creative-drum-kits.js';
 import { VOICES, voicesFor } from '../../../src/data/voices.js';
 import { SHARED_MOODS } from './moods.js';
 import { styleFor } from './styles/index.js';
+import { fusionIds } from './styles/fusion.js';
 
 /**
  * Every slot a style's table fills. `prefer` only ORDERS a slot's list — its usual
@@ -271,12 +272,50 @@ export function tableIssues(table) {
 }
 
 /**
+ * A FUSION's row (styles/fusion.js): the music's row with the beat's in the beat's slots — the
+ * kits, the percussion, the bass and sub, the bass's Random list — mood by mood the same way.
+ * A sound either style never uses stays out. Null unless both rows are in the table.
+ */
+const beatSlot = (key) => {
+  const slot = PART_SLOTS.find((p) => p.key === key);
+  return !!slot && (slot.group === 'Bass' || slot.group === 'Percussion' || slot.kind === 'drum');
+};
+const beatPicked = (music, beat) => {
+  const out = {};
+  for (const [k, v] of Object.entries(music || {})) if (!beatSlot(k)) out[k] = v;
+  for (const [k, v] of Object.entries(beat || {})) if (beatSlot(k)) out[k] = v;
+  return out;
+};
+export function fusionRow(table, id) {
+  const pair = fusionIds(id);
+  const m = pair && table?.[pair.music];
+  const b = pair && table?.[pair.beat];
+  if (!m || !b) return null;
+  const moods = {};
+  for (const mood of new Set([...Object.keys(m.moods || {}), ...Object.keys(b.moods || {})])) {
+    const mm = m.moods?.[mood] || {};
+    const bm = b.moods?.[mood] || {};
+    moods[mood] = { parts: beatPicked(mm.parts, bm.parts), skip: [...new Set([...(mm.skip || []), ...(bm.skip || [])])] };
+  }
+  return {
+    parts: beatPicked(m.parts, b.parts),
+    kits: b.kits,
+    random: { ...m.random, bass: b.random?.bass || [] },
+    choices: beatPicked(m.choices, b.choices),
+    moods,
+    never: [...new Set([...(m.never || []), ...(b.never || [])])],
+  };
+}
+/** The row of `table` a recipe id plays: its own, or a fusion's put together from its two. */
+export const soundsRow = (table, id) => table?.[id] ?? fusionRow(table, id) ?? undefined;
+
+/**
  * The sounds a banger in `styleId` and `mood` is made with: the mood's part overrides
  * over the style's own, and the Random lists without the never-use list and the mood's
  * skips. What the generator reads.
  */
 export function resolveSounds(table, styleId, mood) {
-  const s = table?.[styleId];
+  const s = soundsRow(table, styleId);
   if (!s) throw new Error(`no sounds for the style "${styleId}"`);
   const m = s.moods?.[mood] || {};
   const never = new Set(s.never || []);

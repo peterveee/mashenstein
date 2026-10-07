@@ -671,9 +671,9 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   const hookTrim = (style) => { const t = balanceForStyle(BANGER_STYLES.find((st) => st.id === style)).riffTrimDb; return Number.isFinite(t) ? t : RIFF_TRIM_DB; };
   const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; return o; };
 
-  assert(RECIPE_EXPRESSION === 3 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
+  assert(RECIPE_EXPRESSION === 4 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,
-  'a recipe\'s expression version is 3 for a new recipe, and anything unreadable reads as none');
+  'a recipe\'s expression version is 4 for a new recipe, and anything unreadable reads as none');
 
   // VOLTAGE ROLLS (expression 2): read off the seed, so a kept take is made again the same;
   // the higher the voltage, the more often the bass and the chord gate move
@@ -682,6 +682,20 @@ const plannedAt = (fixture, lane, set) => createLaneView({
     const seeds = Array.from({ length: 400 }, (_, i) => (i * 2654435761) >>> 0 || 1);
     const rate = (style, mood, v, has) => seeds.filter((s) => has(voltageRollsFor(style, mood, v, s))).length / seeds.length;
     assert(same(voltageRollsFor('big-room', 'anthemic', 3, 77), voltageRollsFor('big-room', 'anthemic', 3, 77)), 'voltage rolls are the same for the same seed');
+    {
+      // THE FORM ROLL (recipe expression 4, 7 Oct 2026): now and then another form, mostly Club for a style
+      // that is not Club already; a Club style changes half as often and never to Club; nothing before 4.
+      const formOf = (style, v, version) => seeds.map((s) => voltageRollsFor(style, defaultMoodFor(style), v, s, null, version).form?.template ?? null);
+      const share = (list, t) => list.filter((x) => x === t).length / list.length;
+      const changed = (list, own) => list.filter((x) => x && x !== own).length / list.length;
+      const pop = formOf('reggaeton', 3, 4);
+      assert(Math.abs(changed(pop, 'pop') - 1 / 3) < 0.07 && Math.abs(share(pop, 'club') - 1 / 4) < 0.06,
+        `Overload turns a Pop Song style into another form about one take in three, mostly Club (${changed(pop, 'pop').toFixed(2)}, club ${share(pop, 'club').toFixed(2)})`);
+      const club = formOf('big-room', 3, 4);
+      assert(Math.abs(changed(club, 'club') - 1 / 6) < 0.06, `a Club style changes half as often (${changed(club, 'club').toFixed(2)})`);
+      assert(changed(formOf('reggaeton', 0, 4), 'pop') === 0 && changed(formOf('reggaeton', 3, 3), 'pop') === 0,
+        'never at Safe, and never in a recipe made before version 4');
+    }
     const bass = [0, 1, 2, 3].map((v) => rate('big-room', 'anthemic', v, (r) => r.parts.bass));
     // (the gate is counted over the takes that keep their supersaws — piano stabs are never gated)
     // (a gate draw may come up as Supersaw Stabs instead, which counts)

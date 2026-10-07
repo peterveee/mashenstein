@@ -3,9 +3,10 @@
 // The same song on other instruments, live: every note stays where it is and only the
 // presets change, through Audio.reapplyBank — the desk's own way of changing a sound while
 // a song plays (only the lanes whose voice changed are rebuilt, and a note already sounding
-// rings out on the old one). Each change waits for the next bar line and lands ON it: it is
-// made in the frame where the sequencer's next step to schedule is a downbeat
-// (`Audio.step % 16 === 0`), so the downbeat is the first note on the new sound.
+// rings out on the old one). Each change waits for the grid and lands ON it — B-33P's swap on
+// the next beat (Peter, 7 Oct 2026: a bar was too long to wait for a tap), a sound button's on
+// the next bar line: it is made in the frame where the sequencer's next step to schedule is a
+// beat (`Audio.step % 4 === 0`) or a downbeat (`% 16`), so that is the first note on the new sound.
 //
 //   B-33P   8-BIT: every part at once onto the 8-Bit Sound Set (tools/lib/banger/sounds.js,
 //           'chipstep-8bit'), drums and all, and back at a second tap. A take that is
@@ -16,7 +17,7 @@
 //
 // Nothing is kept: leaving the floor puts the song's own sounds back (release).
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
-import { KITS } from '../../../tools/lib/banger/sound-rules.js';
+import { KITS, soundsRow } from '../../../tools/lib/banger/sound-rules.js';
 import { withoutStyleSuffix } from '../../../tools/lib/banger/styles/index.js';
 import { CREATIVE_DRUM_KITS } from '../../data/creative-drum-kits.js';
 import { VOICES, baseLane, PERCUSSION_LANES } from '../../data/voices.js';
@@ -125,14 +126,16 @@ export class ClubVoices {
   constructor(song, rec = null) {
     this.song = song;
     this.style = rec?.style ?? null;
-    this.ownSet = BANGER_SOUNDS[song?.soundsId] ? song.soundsId : this.style;
+    // A fusion's row (`fusion:…`) is its two styles' put together, made once here.
+    this.ownSet = soundsRow(BANGER_SOUNDS, song?.soundsId) ? song.soundsId : this.style;
+    this.ownRow = soundsRow(BANGER_SOUNDS, this.ownSet) || null;
     this.eightBit = this.ownSet === CHIP_SET;
     this.swapSet = this.eightBit ? HIFI_SET : CHIP_SET;
-    const row = BANGER_SOUNDS[this.ownSet] || null;
+    const row = this.ownRow;
     this.roles = rolesOf(song, row);
     this.kit = song?.kit || this.detectKit(row);
     this.state = fresh();      // what plays now
-    this.pending = null;       // what plays from the next bar line
+    this.pending = null;       // what plays from the next beat or bar line
     this.pendingAt = null;
   }
 
@@ -143,7 +146,7 @@ export class ClubVoices {
     return KIT_ORDER.find((k) => kick && row?.kits?.[k]?.kick === kick) || 'style';
   }
 
-  rowFor(swapped) { return BANGER_SOUNDS[swapped ? this.swapSet : this.ownSet] || null; }
+  rowFor(swapped) { return swapped ? BANGER_SOUNDS[this.swapSet] || null : this.ownRow; }
   kitIn(row) { return row?.kits?.[this.kit] ? this.kit : 'style'; }
 
   /** The lane a part's button changes: its first lane with one of the part's jobs. */
@@ -182,7 +185,7 @@ export class ClubVoices {
     return list[(s.picks[s.swapped ? 'swap' : 'own'][part] || 0) % Math.max(1, list.length)]?.label || '';
   }
 
-  /** Whether a part's sound (or the whole set) is waiting for the bar line. */
+  /** Whether a part's sound (or the whole set) is waiting for its beat or bar line. */
   waiting(part = null) {
     if (!this.pending) return false;
     if (part == null || this.pending.swapped !== this.state.swapped) return true;
@@ -238,9 +241,10 @@ export class ClubVoices {
   }
 
   /**
-   * Once a frame: a change waiting for the bar line goes in when the next step the sequencer
-   * schedules is a downbeat — or straight away with no song running, or if a long frame
-   * stepped over the window. Returns what landed ({ swapped, part, label, parts }) or null.
+   * Once a frame: a change waiting for the grid goes in when the next step the sequencer
+   * schedules is on it — a beat for the whole set (B-33P), a downbeat for a sound button — or
+   * straight away with no song running, or if a long frame stepped over the window. Returns
+   * what landed ({ swapped, part, label, parts }) or null.
    */
   update() {
     const p = this.pending;
@@ -248,8 +252,9 @@ export class ClubVoices {
     const ctx = Audio.ctx;
     const playing = ctx && Audio.bank && Audio.sourceBank === this.song?.bank && Number.isFinite(Audio.nextTime);
     if (playing) {
-      const bar = (4 * 60) / ((Audio.bpm || 120) * (Audio.tempo || 1));
-      if (Audio.step % 16 !== 0 && ctx.currentTime - this.pendingAt < bar + 0.3) return null;
+      const sixteenth = 60 / ((Audio.bpm || 120) * (Audio.tempo || 1)) / 4;
+      const grid = p.swapped !== this.state.swapped ? 4 : 16;
+      if (Audio.step % grid !== 0 && ctx.currentTime - this.pendingAt < grid * sixteenth + 0.3) return null;
     }
     const was = this.state;
     this.apply(p);

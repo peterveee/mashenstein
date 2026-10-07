@@ -409,15 +409,18 @@ export function drawMotion(age, jumpAt = null, releaseAge = null) {
   if (age < jumpAt + 1) return { crouch: 0, jump: Math.sin((age - jumpAt) * Math.PI) };
   return { crouch: 0, jump: 0 };
 }
-export function partyHero(m, beat, hero, i, pose) {
+export function partyHero(m, beat, hero, i, pose, { perched = false } = {}) {
   const age = partyAge(m, beat);
   if (!partyAlive(m, beat)) return { pose, lift: 0 };
   if (m.kind === 'drop-jump' || m.kind === 'draw') {
     const { crouch, jump } = m.kind === 'draw' ? drawMotion(age, m.jumpAt, m.releaseAge) : dropMotion(age, m.jumpAt);
     if (jump > 0) return { pose: { ...pose, kind: 'jump', grounded: false, vy: 200 * Math.cos((age - m.jumpAt) * Math.PI),
       dance: { hands: [[0.65, -0.7], [0.65, -0.7]], feet: null }, shift: 0, tilt: 0, bounce: 0 }, lift: jump * 0.4 };
-    // A compact crouch with feet fixed: lower the body, bend knees, tuck arms.
-    const dip = crouch * 0.1;
+    // A compact crouch with feet fixed: lower the body, bend knees, tuck arms. A hero PERCHED
+    // on something (the back row on the speaker tops, portrait) gets ready on the spot, knees
+    // bent and arms tucked but not sinking: there is no floor up there to sink into (Peter,
+    // 7 Oct 2026: "never below the top of the speakers").
+    const dip = perched ? 0 : crouch * 0.1;
     return { pose: { ...pose, kind: 'stand', grounded: true, time: 0,
       dance: { hands: [[0.65, 0.65], [0.65, 0.65]], feet: [[0.12, dip], [-0.12, dip]], ankles: [0, 0], legFlex: 0.5 },
       shift: 0, tilt: 0, bounce: -dip }, lift: 0 };

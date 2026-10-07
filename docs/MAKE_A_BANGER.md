@@ -384,10 +384,38 @@ you come back to it.
 ## THE LAB, in the game
 
 The jukebox's **THE LAB** makes bangers with the same generator (`src/game/banger/make.js`).
-**NEW BANGER** opens a piano roll with a **FORMULA** (the style), an **ELEMENT** (the mood),
-**VOLTAGE** and **DNA** (the Variation: Pure, Hybrid, Spliced, Mutant), and **BRING TO LIFE**
-makes the song. A kept song is stored as its recipe (notes, style, mood, seed) and made
+**NEW BANGER** opens a piano roll with four selectors: **FORMULA** (the style), **INFUSION**
+(another style's sound, or NONE), **ELEMENT** (the mood) and **MUTATION** (Voltage and DNA
+together). **BRING TO LIFE** makes the song. A kept song is stored as its recipe (notes, style, mood, seed) and made
 again each time it plays.
+
+**INFUSION** (7 Oct 2026) is the selector beside FORMULA. It starts on NONE. Picking another
+formula plays that formula's **sound** (its chords, instruments and arrangement) over
+FORMULA's **groove** (its drums, bass and tempo). See [Fusions](#fusions).
+
+- **What FORMULA keeps.** FORMULA keeps its flavour (`flavour`, rolled as ever), and that
+  flavour is the groove.
+- **Phones.** Both formulas play on their Lab Sound Sets (chipstep and synthwave on Light).
+- **Tempo.** The preview loop keeps FORMULA's tempo.
+- **Edge cases.** INFUSION's list leaves FORMULA out. Moving FORMULA onto the infusion's own
+  style sets INFUSION back to NONE.
+- **EXPERIMENT** rolls an INFUSION one time in three.
+- **What a kept take stores.** It keeps `infusion`: the style, or the flavour of it that the
+  take's mood plays (`make.js labInfusion`). A flavour added to that style later never changes
+  the song.
+- **Older songs.** A song kept in the first hour of fusions, when the sound was `style` and
+  the groove `fusion`, is rewritten on load (`make.js upgradeFusionRecipe`) and plays as it did.
+
+**MUTATION** (7 Oct 2026) is VOLTAGE and DNA in one selector, which reads `SURGE · SPLICED`.
+
+- **The grid.** Its chooser is a 4×4 grid. Down the side is ENERGY (Safe, Charged, Surge,
+  Overload); across the top is YOUR NOTES (Pure, Hybrid, Spliced, Mutant). Under the grid, the
+  chosen or focused cell's two descriptions are shown. One tap picks any of the sixteen
+  pairings, so an Overload take can still keep the riff as written.
+- **The arrows** step a ladder of six (`maker.js MUTATION_LADDER`), from wherever the selector
+  is: Safe · Pure, Charged · Pure, Charged · Hybrid (where NEW BANGER opens), Surge · Spliced,
+  Overload · Pure, Overload · Mutant. The grid marks those six with small dots.
+- **Saved songs** still keep `voltage` and `variation` separately, so nothing kept changes.
 
 **The grid** is SIMPLE (eighths on the eleven notes of A minor, G4 to C6) or ADVANCED
 (sixteenths on every semitone), and two bars or four (Peter, 6 Oct 2026):
@@ -925,6 +953,59 @@ so a flavour added later never changes a song that is already saved.
 the style, export the flavour definitions from its file and add them to `BANGER_FLAVOURS`
 in `styles/index.js`, then give each flavour a row in `sounds.js`.
 
+### Fusions
+
+Added on 7 Oct 2026, when Peter asked whether styles could be combined. A **fusion** plays
+one style's **sound** over another style's **groove** (`styles/fusion.js`). Peter chose the
+names SOUND and GROOVE; the code calls the two `music` and `beat`, because `sound` already
+names the sounds table. Every part comes from exactly one of the two styles. Its sound, its channel strip, its section FX and the
+seed part its fader is matched to are all that style's, so nothing has to be invented.
+
+| From the GROOVE (`beat`) | From the SOUND (`music`, the style) |
+|---|---|
+| tempo, tempo range, swing | progressions, moods, mode walks, breakdown |
+| every drum pattern, fill, roll and the half- and full-time drops | the arp and stab figures, `enter`, `padUnder`, `arpFixed` |
+| the bass and sub rhythms (`offbeat`, `rolling`, `sub`, `subOff`, `pedal`), `bassFloor` / `subFloor` | every other register |
+| the pump (the sidechain on the kick) | the master, the exciter, the riser, the FX moves, the form, the section labels |
+| the kit, the percussion, the bass and sub sounds, and the bass's Random list | the hook doubles, the arp, the chords, the pad, the choir, the hook's Random list |
+| the drum switches, the Bass and Sub settings and the pump in the defaults | every other default |
+
+- **The tempo is the groove's.** A dembow at 138 is not a dembow. Overload's tempo boost
+  applies to the groove's tempo, within the groove's range.
+- **What a groove can be.** A groove is a style, one of its flavours (they are grooves of
+  their own: Reggaeton · Romántico is 92 with a rim dembow), or one of its Sound Sets. Sound Set =
+  Light puts both styles on their Light sets, where they have one.
+- **Not combined yet:**
+  - **A Sound Combo.** It is dropped with a warning.
+  - **A groove's mood flavour on the desk.** The desk plays the groove as named; the Lab names
+    the mood's flavour.
+- **The name.** A fusion is a recipe like a flavour, never listed. It is named
+  `fusion:<music>+<beat>`, and `styleFor` makes it again from that name. It has no seed song
+  of its own:
+  - its sounds are the two rows of `sounds.js` put together slot by slot (`sound-rules.js
+    soundsRow`);
+  - its channels are the two seeds' put together role by role (`fusion.js fuseChannels`);
+  - its fader references are the two seeds', role by role (`levels.js`).
+- **On the desk**, the dialog's **Infusion** list sits under Style, as INFUSION sits beside
+  FORMULA in the Lab. It offers None, then every other style followed by its flavours.
+  - **Which does what.** Style is the groove: it plays as it would alone, with its Flavour list,
+    and keeps its tempo. The infusion is the sound.
+  - **Picking an infusion** is like picking a style: everything under Full Options goes to the
+    fusion's defaults (the style's drum switches, Bass, Sub and pump, and the infusion's
+    everything else), keeping the mood, the length and the variation. With an infusion chosen,
+    Style Defaults and Classic reset to the same.
+  - **The generator's option** is `infusion`, the same fusion asked for from the groove's side.
+  - **Older desk takes.** A desk take made earlier on 7 Oct, when this was a Groove field
+    (`fusion`), re-makes as it was. Banger Settings… shows it the new way round; Modify keeps its
+    groove unseen.
+- **A take without a fusion** is exactly what it was before fusions existed: 840 takes across
+  every style, checked byte for byte against the generator before the change.
+
+Every key a recipe holds is either the groove's, the sound's, shared out part by part, or the
+fusion's own. `tests/banger-fusion.js` fails on a new key until it is placed. **A new recipe
+key** therefore goes in one of `FUSION_KEYS`' lists in `styles/fusion.js`, and a new rhythm
+goes in `BEAT_RHYTHMS` or `MUSIC_RHYTHMS`.
+
 ### Levels
 
 Every preset is levelled by the engine before any fader touches it: its loudness was
@@ -1009,7 +1090,7 @@ named by part alone (`KICK`, `HATS`).
 
 | Path | What it is |
 |---|---|
-| `tools/lib/banger/` | The generator, browser-safe: `index.js` (`generateBanger`), `riff.js`, `options.js`, `analyse.js`, `variation.js`, `form.js`, `sections.js`, `lanes.js`, `fx.js`, `theory.js` (the remix toolkit), `styles/big-room.js`, `styles/trance.js`, `styles/future-bass.js`, `styles/eurobeat.js`, `styles/chipstep.js`, `styles/kraftwerk.js`, `styles/synthwave.js`, `styles/shibuya.js`, `styles/dnb.js`, `styles/electro.js`, `styles/megadrive.js`, `styles/deep-house.js`, `styles/nu-disco.js`, `styles/downtempo.js`, `styles/eurodance.js`, `styles/italo-disco.js`, `styles/electro-funk.js`, `styles/french-house.js`, `styles/reggaeton.js`, `styles/moombahton.js`, `styles/merenhouse.js`, `styles/afro-house.js`, `styles/flavours.js` (a style's other arrangements) |
+| `tools/lib/banger/` | The generator, browser-safe: `index.js` (`generateBanger`), `riff.js`, `options.js`, `analyse.js`, `variation.js`, `form.js`, `sections.js`, `lanes.js`, `fx.js`, `theory.js` (the remix toolkit), `styles/big-room.js`, `styles/trance.js`, `styles/future-bass.js`, `styles/eurobeat.js`, `styles/chipstep.js`, `styles/kraftwerk.js`, `styles/synthwave.js`, `styles/shibuya.js`, `styles/dnb.js`, `styles/electro.js`, `styles/megadrive.js`, `styles/deep-house.js`, `styles/nu-disco.js`, `styles/downtempo.js`, `styles/eurodance.js`, `styles/italo-disco.js`, `styles/electro-funk.js`, `styles/french-house.js`, `styles/reggaeton.js`, `styles/moombahton.js`, `styles/merenhouse.js`, `styles/afro-house.js`, `styles/flavours.js` (a style's other arrangements), `styles/fusion.js` (one style's sound over another's groove) |
 | `tools/lib/banger/sounds.js` | The sounds table — written by the Banger Sounds page |
 | `tools/lib/banger/sound-rules.js` | The rulebook: every slot, and what may go in it |
 | `tools/lib/banger/sounds-source.js`, `audition.js` | The table's serialiser; the two-bar auditions |
@@ -1033,6 +1114,7 @@ named by part alone (`KICK`, `HATS`).
 | `tests/jukebox-banger.js`, `tests/banger-game-riffs.js` | Tests for THE LAB: the grid, + / −, the repeat, the lines, ZAP and the cabinet riffs |
 | `tests/banger-sounds.js` | Tests for the sounds table, the rules, Save, and the generator playing the table |
 | `tests/banger-flavours.js` | Tests for the flavours: chosen by the mood, by name, by the seed and by the Lab's voltage, and what each one changes |
+| `tests/banger-fusion.js` | Tests for fusions: every recipe key placed, every pair of styles made at its groove's tempo, each part on its owner's sound and fader, the Lab's FUSION box |
 | `tests/banger-forms.js` | Tests for the forms: every length exact, every style valid, drawn forms re-made exactly, the verse/pre/middle 8 promises, the joins, the groove, the editor's moves |
 
 The page makes the music and the server only writes the file. So a change to the

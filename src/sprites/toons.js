@@ -7877,9 +7877,25 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
       ctx.arc(g.slingSocketX, g.slingSocketY, r, 0, Math.PI);
       ctx.closePath();
     };
+    // STANDING, THE RUN DOWN THE CHEST GOES OVER THE ARM too, not just the
+    // crown. The standing pass redraws the near arm on top of the gown, and
+    // her socket sits right on the strip, so an arm held out from the body —
+    // every club dance — laid its root across the strap below the crown: strap
+    // above the arm, strap below it, the arm cut clean through (Peter, 7 Oct
+    // 2026). A strap over the shoulder lies on the arm's root. Only the tail,
+    // the part that turns outboard under the armpit, stays under the arm,
+    // which is what the hanging idle arm has always covered. Both passes take
+    // the same split, so every part of the ribbon is painted exactly once.
+    const runCut = x - 0.018 * u - (spec.quiverStrapWidth ?? 0.030) * u / 2 - 0.006 * u;
+    const runMask = () => ctx.rect(runCut, g.slingSocketY, 2 * u, 2 * u);
     ctx.save(); ctx.beginPath();
     ctx.rect(px - 2 * u, torsoTop - 2 * u, 4 * u, 4 * u);
-    socketMask(); ctx.clip('evenodd'); paintStrip(); ctx.restore();
+    socketMask(); ctx.clip('evenodd');
+    if (g.slingOverRun) {
+      ctx.beginPath(); ctx.rect(px - 2 * u, torsoTop - 2 * u, 4 * u, 4 * u);
+      runMask(); ctx.clip('evenodd');
+    }
+    paintStrip(); ctx.restore();
     if (g.setSlingOverArm) g.setSlingOverArm(() => {
       ctx.save();
       // Under the smooth join the shoulder's contour up there is the CROWN,
@@ -7889,7 +7905,9 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
         ctx.beginPath(); ctx.rect(px - 2 * u, torsoTop - 2 * u, 4 * u, 4 * u);
         g.slingTrim(ctx); ctx.clip('evenodd');
       }
+      // Both masks wind the same way, so the nonzero clip is their union.
       ctx.beginPath(); socketMask();
+      if (g.slingOverRun) runMask();
       ctx.clip(); paintStrip(); ctx.restore();
     });
     }
@@ -13492,6 +13510,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // tapered start is cut along the shoulder's own contour like everything
       // else there, instead of poking into the air above the crown.
       slingTrim: shoulderJoin?.trim ? (c) => crownCapPath(c, -ow * 0.5) : null,
+      // The standing pass below redraws the near arm over the gown and then
+      // calls slingOverArm; the strip's run goes over the arm there.
+      slingOverRun: stand && !raisedArmStudyFront && !armsReachFront && !clapFront
+        && !armOverHead && !armsInFront,
       // The celebration hop's lift, handed over rather than reached for: the
       // hop belongs to this painter and the skirt is drawn by another one.
       celebLift: cm ? cm.lift || 0 : 0, vy: pose.vy || 0, celebrating: pose.kind === 'celebrate',
@@ -18519,6 +18541,23 @@ export function toonInkTop(heroId) {
   if (b) top = (TOP_FEET - b.y0) / TOP_R;
   STAND_TOP.set(heroId, top);
   return top;
+}
+
+// And how far it reaches BELOW them: the soles are drawn a little under the
+// feet line, which reads as standing on a floor seen from above, but sinks a
+// hero into anything seen edge-on — the club's speaker tops. Standing idle,
+// measured large because it is only a few percent of the height.
+const STAND_SOLE = new Map();
+const SOLE_R = 160;
+const SOLE_FEET = SOLE_R * 2;        // feet line on the SOLE_R * 3 canvas
+export function toonInkBottom(heroId) {
+  if (STAND_SOLE.has(heroId)) return STAND_SOLE.get(heroId);
+  let sole = 0;
+  const b = inkBounds(SOLE_R * 3, (x) => drawToon(x, heroId, { kind: 'idle', phase: 0, time: 0, grounded: true, menu: true, facing: 1 },
+    SOLE_R * 1.5, SOLE_FEET, SOLE_R, { light: false }));
+  if (b) sole = Math.max(0, (b.y1 + 1 - SOLE_FEET) / SOLE_R);
+  STAND_SOLE.set(heroId, sole);
+  return sole;
 }
 
 // Stable glass-effect envelope for each toon. The shield used to be one ellipse

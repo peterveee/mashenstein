@@ -13,6 +13,7 @@ import {
   BANGER_GROUPS, BANGER_LIMITS, normaliseBangerOptions, surpriseBangerOptions, goCrazyBangerOptions, styleDefaults, classicDefaults,
   BANGER_REROLLS, modifyBanger, describeModify, BANGER_STRUCTURE, keepStructure,
   styleFor, generateBanger, validateRiff, riffSummary, randomBangerSeed, keyName, parseRiff, flavoursFor, moodFlavour,
+  fusionOf, flavourOf, BANGER_FLAVOURS,
   bangerBars, bangerBpm, BANGER_GENERATOR_VERSION, BANGER_EXPRESSION_VERSION, sourceRiff,
 } from './lib/banger/index.js';
 import { analyseRiff } from './lib/banger/analyse.js';
@@ -106,13 +107,55 @@ export function createBangerDesk(desk) {
     select.value = ok ? value : 'mood';
     $('bgflavourfield').hidden = !flavoursFor(styleId).length;
   }
-  /** Sounds is only asked where the style has a combo to offer. */
+  /** Sounds is only asked where the style has a combo to offer — and not over another style's beat. */
   function syncCombos(styleId, value = '') {
     const select = $('bgcombo');
     if (!select) return;
     select.innerHTML = comboOptions(styleId, value);
     select.value = BANGER_COMBOS[styleId]?.[value] ? value : '';
-    $('bgcombofield').hidden = !Object.keys(BANGER_COMBOS[styleId] || {}).length;
+    $('bgcombofield').hidden = !Object.keys(BANGER_COMBOS[styleId] || {}).length || ($('bginfusion')?.value || 'none') !== 'none';
+  }
+  /**
+   * The Infusion list (FUSION, styles/fusion.js; the Lab's INFUSION, 7 Oct 2026): None, then every
+   * other style — and each of their flavours, which sound of their own — whose sound (its chords,
+   * instruments and form) plays over this style's groove: its drums, bass and tempo.
+   */
+  function infusionOptions(styleId, value) {
+    const flavoursOf = (id) => BANGER_FLAVOURS.filter((f) => f.base === id);
+    return `<option value="none"${sel(value || 'none', 'none')}>None</option>`
+      + BANGER_STYLES.filter((s) => s.id !== styleId).map((s) => `<option value="${s.id}" data-note="${escapeHtml(s.note || '')}"${sel(value, s.id)}>${escapeHtml(s.label)}</option>`
+        + flavoursOf(s.id).map((f) => `<option value="${f.id}"${sel(value, f.id)}>${escapeHtml(f.label)}</option>`).join('')).join('');
+  }
+  /** The Infusion list for `styleId`, keeping `value` unless it is that style (or one of its flavours). */
+  function syncInfusion(styleId, value = 'none') {
+    const select = $('bginfusion');
+    if (!select) return;
+    const sound = value && value !== 'none' ? styleFor(value) : null;
+    const ok = !!sound && (sound.base || sound.id) !== styleId;
+    select.innerHTML = infusionOptions(styleId, ok ? value : 'none');
+    select.value = ok ? value : 'none';
+  }
+  /**
+   * The recipe a request plays: its style, or a fusion — the infusion it names over the style's
+   * groove, or (a take from early on 7 Oct 2026) the style over the groove its `fusion` names.
+   */
+  function recipeOf(o) {
+    const style = styleFor(o.style);
+    const sound = o.infusion && o.infusion !== 'none' ? styleFor(o.infusion) : null;
+    const groove = o.fusion && o.fusion !== 'none' ? styleFor(o.fusion) : null;
+    return (sound && fusionOf(sound, style)) || (groove && fusionOf(style, groove)) || style;
+  }
+  /**
+   * `make` (styleDefaults, classicDefaults) for the request's style with its Infusion: the fusion's —
+   * the style's drum switches, bass and pump, the infusion's everything else — asked for the desk's way.
+   */
+  function defaultsOf(o, make = styleDefaults) {
+    const infusion = o.infusion && o.infusion !== 'none' ? o.infusion : 'none';
+    const d = make(recipeOf({ style: o.style, infusion }));
+    d.style = o.style;
+    d.infusion = infusion;
+    delete d.fusion;
+    return d;
   }
 
   function bodyHtml(o, { from, to, settings, modifying = false, view }) {
@@ -148,6 +191,7 @@ export function createBangerDesk(desk) {
       + `<label class="askfield" title="The recipe: the drums, the bass, the chords, the sounds and the form it starts on. Picking one resets everything under More Options to its defaults">Style<select id="bgstyle">${BANGER_STYLES.map((s) => `<option value="${s.id}" data-note="${escapeHtml(s.note || '')}"${sel(o.style, s.id)}>${escapeHtml(s.label)}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" id="bgcombofield" title="The style's own sounds, or a Sound Combo saved from a banger tuned on the desk"${Object.keys(BANGER_COMBOS[o.style] || {}).length ? '' : ' hidden'}>Sounds<select id="bgcombo">${comboOptions(o.style, o.combo)}</select></label>`
       + `<label class="askfield" id="bgflavourfield" title="Which of the style's arrangements a take is — its drums, rhythms, sounds and how long its chords are held. By Mood: the one the mood plays. Random: drawn from the take's seed, so Another Take can land on any of them"${flavoursFor(o.style).length ? '' : ' hidden'}>Flavour<select id="bgflavour">${flavourOptions(o.style, o.flavour || 'mood', o.mood)}</select></label>`
+      + `<label class="askfield" id="bginfusionfield" title="Infusion: another style's sound — its chords, instruments and form — over this style's groove: its drums, percussion, bass and tempo. None: the style's own sound">Infusion<select id="bginfusion">${infusionOptions(o.style, o.infusion)}</select></label>`
       + `<label class="askfield" title="The feel: the chord progression, the chord colours, how bright the hook is — and it can swap sounds and suggest a bass">Mood<select id="bgmood">${BANGER_MOODS.map((m) => `<option value="${m.id}" data-note="${escapeHtml(m.title)}"${sel(o.mood, m.id)}>${m.label}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" title="Major or minor with one note changed — that note is the flavour">Mode<select id="bgmode">${modeOptions(o.mood, o.mode)}</select></label>`
       + '</div></fieldset><fieldset class="bgprimary bgfull"><legend>Length &amp; tempo</legend><div class="bgfields">'
@@ -204,6 +248,9 @@ export function createBangerDesk(desk) {
       hook: $('bghook')?.value || 'auto',
       combo: $('bgcombo')?.value || null,
       flavour: $('bgflavour')?.value || 'mood',
+      infusion: $('bginfusion')?.value || 'none',
+      // A take made before the Infusion field (early on 7 Oct 2026) keeps its groove, in Modify.
+      ...(box.dataset.fusion ? { fusion: box.dataset.fusion } : {}),
       expression: { version: BANGER_EXPRESSION_VERSION },
     };
     for (const g of BANGER_GROUPS) raw[g.id] = {};
@@ -217,6 +264,8 @@ export function createBangerDesk(desk) {
   function writeDialog(box, o) {
     const setSel = (id, v) => { const el = $(id); if (el && v != null) { el.value = String(v); el.dispatchEvent(new Event('change')); } };
     setSel('bgstyle', o.style); setSel('bgmood', o.mood);
+    // Defaults with an Infusion say so (defaultsOf); a style's say nothing, and leave the Infusion as it is.
+    if (o.infusion !== undefined) syncInfusion(o.style, o.infusion);
     setSel('bgmode', o.mode); setSel('bgriffnotes', o.riffNotes);
     setSel('bglength', o.length); setSel('bgtempo', o.tempo);
     $('bgcustom').value = String(o.customBars);
@@ -255,6 +304,21 @@ export function createBangerDesk(desk) {
       stored.form = { ...stored.form, template: styleDefaults(styleFor(stored.style) || BANGER_STYLES[0]).form.template };
     }
     const start = normaliseBangerOptions(settings ? recipe.options : { ...stored, hook: 'auto' }).options;
+    // A take or a preference from early on 7 Oct 2026 named its sound `style` and its groove `fusion`;
+    // the desk asks the other way round now: Style the groove, Infusion the sound. Modify keeps the
+    // take's shape, style and all, so there the groove rides along unseen (readDialog).
+    let legacyFusion = null;
+    if (start.fusion && start.fusion !== 'none' && (!start.infusion || start.infusion === 'none')) {
+      const groove = styleFor(start.fusion);
+      if (groove && modifying) legacyFusion = start.fusion;
+      else if (groove) {
+        const sound = flavourOf(styleFor(start.style), start.flavour, { seed: recipe?.seed ?? 1, mood: start.mood });
+        start.infusion = sound ? sound.id : start.style;
+        start.style = groove.base || groove.id;
+        start.flavour = groove.flavour || 'style';
+      }
+    }
+    delete start.fusion;
     const bars = settings ? recipe.riff.bars : desk.barCount();
     const title = modifying ? `Modify this take — ${escapeHtml(desk.current().track?.title || '')}`
       : settings ? `Banger settings — ${escapeHtml(desk.current().track?.title || '')}` : 'Make a banger';
@@ -262,6 +326,8 @@ export function createBangerDesk(desk) {
     const answered = ask(title, bodyHtml(start, { from: settings ? recipe.riff.source.from : from, to: settings ? recipe.riff.source.to : to, settings, modifying, view }),
       modifying ? 'Modify This Take' : settings ? 'Make a New Take' : 'Make It', { wide: true });
     const box = $('askbody');
+    // (the ask box is shared with every dialog: the groove rides along on this one only)
+    if (legacyFusion) box.dataset.fusion = legacyFusion; else delete box.dataset.fusion;
     const ok = $('askok');
     let riff = settings ? sourceRiff(recipe.riff) : null;
     let riffIssues = [];
@@ -321,7 +387,8 @@ export function createBangerDesk(desk) {
     const paint = () => {
       const raw = read();
       const { options, issues } = normaliseBangerOptions(raw);
-      const style = styleFor(options.style);
+      // With an Infusion, the fusion: its tempo is the style's, the groove's.
+      const style = recipeOf(options);
       $('bgcustomfield').hidden = options.length !== 'custom';
       $('bgriffnotesfield').hidden = options.mode === 'keep';
       $('bgbpmfield').hidden = options.tempo !== 'custom';
@@ -408,8 +475,8 @@ export function createBangerDesk(desk) {
         b.classList.toggle('on', b.dataset.length === options.length);
         b.setAttribute('aria-pressed', String(b.dataset.length === options.length));
       });
-      const own = styleDefaults(style);
-      const same = (o) => JSON.stringify({ ...o, style: 0, mood: 0, length: 0, customBars: 0, hook: 0, bpm: 0, combo: 0, parts: { ...o.parts, bass: 0 } });
+      const own = defaultsOf(options);
+      const same = (o) => JSON.stringify({ ...o, style: 0, mood: 0, length: 0, customBars: 0, hook: 0, bpm: 0, combo: 0, fusion: 0, infusion: 0, parts: { ...o.parts, bass: 0 } });
       const tuned = formEditor.edited || options.combo || same(options) !== same(own)
         || options.parts.bass !== moodBass(style, options.mood);
       const custom = options.length === 'custom' ? `Custom · ${options.customBars} bars. ` : '';
@@ -419,10 +486,11 @@ export function createBangerDesk(desk) {
       const r = $('bgsimplereset');
       if (r) r.onclick = () => {
         const now = normaliseBangerOptions(readDialog(box)).options;
-        write({ ...styleDefaults(style), mood: now.mood, length: now.length, customBars: now.customBars,
-          parts: { ...styleDefaults(style).parts, bass: moodBass(style, now.mood) } });
-        syncCombos(style.id);
-        syncFlavours(style.id);
+        const d = defaultsOf(now);
+        write({ ...d, mood: now.mood, length: now.length, customBars: now.customBars,
+          parts: { ...d.parts, bass: moodBass(style, now.mood) } });
+        syncCombos(now.style);
+        syncFlavours(now.style);
         formEditor.reset();
         paint();
       };
@@ -453,16 +521,29 @@ export function createBangerDesk(desk) {
       if (el.type === 'checkbox') el.parentElement.querySelector('.fxswitch')?.classList.toggle('on', el.checked);
       if (el.id === 'bgstyle') {
         const current = readDialog(box);
-        write({ ...styleDefaults(styleFor(el.value)), variation: current.variation, expression: current.expression });
+        // The Infusion stays, unless it is the new style's own; the defaults are the fusion's if it stays.
+        syncInfusion(el.value, current.infusion);
+        write({ ...defaultsOf({ style: el.value, infusion: $('bginfusion')?.value }), variation: current.variation, expression: current.expression });
         syncCombos(el.value);
         syncFlavours(el.value);
         formEditor.reset(`Form back to ${styleFor(el.value).label}'s own`);
+      }
+      // A new Infusion is picked like a style: everything under Full Options to the fusion's defaults
+      // (the infusion's, but the style's drums, bass and pump), keeping the mood, the length and the variation.
+      if (el.id === 'bginfusion') {
+        const now = normaliseBangerOptions(readDialog(box)).options;
+        const d = defaultsOf(now);
+        write({ ...d, mood: now.mood, length: now.length, customBars: now.customBars, variation: now.variation, expression: now.expression,
+          parts: { ...d.parts, bass: moodBass(recipeOf(now), now.mood) } });
+        syncCombos(now.style);
+        syncFlavours(now.style, $('bgflavour')?.value, now.mood);
+        formEditor.reset(`Form back to ${recipeOf(now).label}'s own`);
       }
       // A new mood re-marks the Mode list: what suits it now, what fights it.
       if (el.id === 'bgmood') {
         // …and moves the Bass switch to the bass the mood suggests.
         const bass = box.querySelector('[data-group="parts"][data-key="bass"]');
-        if (bass) { bass.value = moodBass(styleFor($('bgstyle').value), el.value); bass.dispatchEvent(new Event('change', { bubbles: false })); }
+        if (bass) { bass.value = moodBass(recipeOf(readDialog(box)), el.value); bass.dispatchEvent(new Event('change', { bubbles: false })); }
         const mode = $('bgmode');
         const keep = mode.value;
         mode.innerHTML = modeOptions(el.value, keep);
@@ -493,7 +574,8 @@ export function createBangerDesk(desk) {
     // riff's bars and the hook kept, any drawn form and Sound Combo dropped.
     const resetTo = (make, what) => {
       const style = styleFor($('bgstyle').value);
-      write(make(style));
+      // With an Infusion, the fusion's own: the style's drums, bass and pump, the infusion's the rest.
+      write(defaultsOf({ style: style.id, infusion: $('bginfusion')?.value }, make));
       syncCombos(style.id);
       syncFlavours(style.id);
       formEditor.reset();

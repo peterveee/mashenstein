@@ -4,7 +4,7 @@ import { VOICES } from '../../../src/data/voices.js';
 import { EFFECT_BY_ID, INSERT_EFFECTS, MAX_EFFECTS, TEMPO_DIVISIONS, AUTOPANNER_RATE_DIVISIONS, paramRange } from '../../../src/engine/effects.js';
 import { BANGER_STYLES } from './styles/index.js';
 import { BANGER_MOODS } from './options.js';
-import { PART_SLOTS, RANDOM_JOBS, soundIssues, resolveSounds, phoneStyle } from './sound-rules.js';
+import { PART_SLOTS, RANDOM_JOBS, soundIssues, resolveSounds, phoneStyle, soundsRow } from './sound-rules.js';
 import { BANGER_SOUNDS } from './sounds.js';
 import paletteData from './palette.json' with { type: 'json' };
 
@@ -165,7 +165,7 @@ export function resolvePalette(config, styleId, moodId, { sounds = BANGER_SOUNDS
     }
     const role = part.slice(part.indexOf(':') + 1);
     const slot = isPart ? PART_SLOTS.find((p) => p.key === role) : RANDOM_JOBS.find((j) => j.key === role);
-    const never = sounds[styleId]?.never || [];
+    const never = soundsRow(sounds, styleId)?.never || [];
     result[part] = [...entries.values()].filter((e) => e.enabled && slot && !soundIssues(e.id, slot, { never, phone: phoneStyle(styleId) }).blocked.length)
       .map((e) => ({ ...e, weight: e.favourite ? 3 : 1 }));
   }

@@ -140,6 +140,8 @@ export function styleFromBanger(mod) {
   const problems = [];
   const style = styleFor(recipe?.seedOf || recipe?.style);
   if (!recipe || !style) return { style: null, problems: ['not a banger'] };
+  // A fusion (styles/fusion.js) is two styles' sounds and channels: neither one's seed or combo.
+  if (style.fusion) return { style, problems: [`${style.label} is a fusion — its sounds are two styles', so it cannot be one style's seed or combo`] };
   const laneOf = recipe.laneOf;
   if (!laneOf) return { style, problems: ['made before bangers kept which lane does which job — make it again'] };
   const mix = mod.mix || {};

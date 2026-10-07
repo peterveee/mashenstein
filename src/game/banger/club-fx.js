@@ -61,7 +61,7 @@ export const HERO_MOVES = Object.freeze([
     drag: { param: 'frequency', also: 'sweepTo', from: 140, to: 3200, start: 0.351 },
     drain: { to: 18000, bars: 2 },
     chain: [{ id: 'filter', params: { type: 'lowpass', frequency: 420, Q: 1.4, sweep: 1, sweepTo: 420 } }] },
-  // Not an effect: the band's instruments, swapped for the 8-Bit Sound Set's on the next bar
+  // Not an effect: the band's instruments, swapped for the 8-Bit Sound Set's on the next beat
   // and back again at the next tap (club-voices.js).
   { hero: 'b33p', name: 'B-33P', move: '8-BIT', what: 'the whole band goes 8-bit, tap again to go back', col: '#f0c040', toggle: true },
   // A different length of stutter each press (Peter, 3 Oct 2026): quarters, eighths,
@@ -539,16 +539,15 @@ export function kikoPlan(at, random = Math.random) {
 }
 
 /**
- * Where a trigger move lands: the next beat — or the next 4, or 2 or 4, for a move that
- * wants it, or the next bar line for B-33P's sound swap. A move that plays differently by
- * where it lands carries its `plan`.
+ * Where a trigger move lands: the next beat (B-33P's sound swap too) — or the next 4, or 2
+ * or 4, for a move that wants it. A move that plays differently by where it lands carries
+ * its `plan`.
  */
 export function landingFor(move, random = Math.random) {
   if (move.onTwoOrFour) {
     const at = nextTwoOrFourAt();
     return at && { ...at, plan: kikoPlan(at, random) };
   }
-  if (move.toggle) return nextBarAt();
   if (move.backbeat) return nextTwoOrFourAt();
   return move.onFour ? nextFourAt() : nextBeatAt();
 }

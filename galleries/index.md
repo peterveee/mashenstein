@@ -43,3 +43,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-06 | `1eaf382` | [2026-10-06-1eaf382.html](2026-10-06-1eaf382.html) | [bake-offs](2026-10-06-1eaf382-lab.html) | fix(audio): finished drum hits leave the render graph — the banger slow-down |
 | 2026-10-06 | `80cf910` | [2026-10-06-80cf910.html](2026-10-06-80cf910.html) | [bake-offs](2026-10-06-80cf910-lab.html) | feat(banger): club pitch fader, Dolores's push broom, BOLT on the bar line, no swipe-back |
 | 2026-10-06 | `3e5d16a` | [2026-10-06-3e5d16a.html](2026-10-06-3e5d16a.html) | [bake-offs](2026-10-06-3e5d16a-lab.html) | Refactor code structure for improved readability and maintainability |
+| 2026-10-07 | `fcd3390` | [2026-10-07-fcd3390.html](2026-10-07-fcd3390.html) | [bake-offs](2026-10-07-fcd3390-lab.html) | Add mermaid sprite implementation with various styles and animations |

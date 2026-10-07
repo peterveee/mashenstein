@@ -350,6 +350,8 @@ export function styleDefaults(style = styleFor(BANGER_DEFAULTS.style)) {
   }
   d.style = style.id;
   d.bpm = style.bpm;
+  // A fusion's defaults (styles/fusion.js) are a request for its music's style over its beat.
+  if (style.fusion) { d.style = style.base; d.fusion = style.fusion.beat; }
   return d;
 }
 
@@ -422,6 +424,17 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     if (raw.flavour === null || raw.flavour === '') out.flavour = 'style';
     else if (typeof raw.flavour === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(raw.flavour)) out.flavour = raw.flavour;
     else issues.push(`a Flavour is named by its id, not ${JSON.stringify(raw.flavour)}`);
+  }
+  // A FUSION (styles/fusion.js), by a recipe's id — a style, or one of its flavours or Sound Sets —
+  // or 'none'. `infusion`: the recipe whose SOUND plays over this style's groove (the desk's Infusion).
+  // `fusion`: the recipe whose GROOVE (`beat`) this style's sound plays over (the Lab; a desk take made
+  // early on 7 Oct 2026). Only their shape, as with a combo: the generator knows the recipes, and says
+  // when it cannot use one.
+  for (const [k, name] of [['infusion', 'An Infusion'], ['fusion', 'A Groove']]) {
+    if (raw?.[k] === undefined) continue;
+    if (raw[k] === null || raw[k] === '' || raw[k] === 'none') out[k] = 'none';
+    else if (typeof raw[k] === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(raw[k])) out[k] = raw[k];
+    else issues.push(`${name} is named by its style's id, not ${JSON.stringify(raw[k])}`);
   }
   // Only its shape is checked: which combos a style has is the generator's to know, and a
   // desk older than the page must not refuse a combo saved since it started.

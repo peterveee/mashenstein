@@ -49,6 +49,8 @@ import { BANGER_LEVEL_DATA } from './levels-data.js';
 import { BANGER_CALIBRATION } from './calibration-data.js';
 import { measuredPart, referenceKey } from './calibration.js';
 import { balanceForStyle } from './style-balance.js';
+import { styleFor } from './styles/index.js';
+import { fuseRoles } from './styles/fusion.js';
 
 /** How many bars of a part its level is read over: a drop phrase. */
 export const LEVEL_WINDOW_BARS = 8;
@@ -369,8 +371,12 @@ const sameSound = (a, b) => a.voice === b.voice
 export function levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts, hookKey, refs: own = null, data = BANGER_LEVEL_DATA, calibration = BANGER_CALIBRATION }) {
   // A Sound Combo brings its own: the banger it was saved from is what its faders were set for.
   // A lite style (styles/chipstep-lite.js) has its base's seed song, so its base's references.
-  const refs = own || data.refs?.[style.id] || data.refs?.[style.base] || {};
-  const offsets = data.offsets?.[style.id] || data.offsets?.[style.base] || {};
+  const refsOf = (s) => data.refs?.[s?.id] || data.refs?.[s?.base] || {};
+  const offsetsOf = (s) => data.offsets?.[s?.id] || data.offsets?.[s?.base] || {};
+  // A fusion (styles/fusion.js) is matched part by part to the seed each part came from.
+  const parents = style.fusion ? [styleFor(style.fusion.music), styleFor(style.fusion.beat)] : null;
+  const refs = own || (parents ? fuseRoles(refsOf(parents[0]), refsOf(parents[1])) : refsOf(style));
+  const offsets = parents ? fuseRoles(offsetsOf(parents[0]), offsetsOf(parents[1])) : offsetsOf(style);
   const balance = balanceForStyle(style);
   const leadCautionDb = Number.isFinite(balance.leadCautionDb) ? balance.leadCautionDb : LEAD_CAUTION_DB;
   const byKey = new Map(riffParts.map((p) => [p.key, p]));

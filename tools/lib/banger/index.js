@@ -22,7 +22,8 @@ import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { arrangementIssues } from '../../../src/data/arrangements.js';
 import { packBank, hasNotes, isDrumPart, midi, MIDI_MIN, MIDI_MAX, BASS_FIGURES, echoPart } from './theory.js';
 import { normaliseBangerOptions, bangerBars, bangerBpm } from './options.js';
-import { styleFor, soundSetOf, flavourOf } from './styles/index.js';
+import { styleFor, soundSetOf, flavourOf, fusionOf } from './styles/index.js';
+import { fuseChannels } from './styles/fusion.js';
 import { validateRiff, parseRiff, pickHook } from './riff.js';
 import { analyseRiff, romanChord, keyName, MODE_INFO } from './analyse.js';
 import { buildForm } from './form.js';
@@ -49,7 +50,7 @@ export { BANGER_DEFAULTS, BANGER_GROUPS, BANGER_MOODS, BANGER_KEYS, BANGER_MODES
 export { EXPRESSION_ROLES, EXPRESSION_POLICY, planExpression, applyExpression, voiceOfLane } from './expression.js';
 export { TRACK_EFFECTS_VERSION, TRACK_EFFECTS_MODES, PRODUCTION_ROLES, trackEffectsMode,
   normaliseTrackEffects, productionFeatures, planTrackEffects, applyTrackEffects } from './production.js';
-export { BANGER_STYLES, BANGER_SOUND_SETS, BANGER_FLAVOURS, styleFor, soundSetOf, soundSetsFor, flavoursFor, flavourOf, moodFlavour } from './styles/index.js';
+export { BANGER_STYLES, BANGER_SOUND_SETS, BANGER_FLAVOURS, styleFor, soundSetOf, soundSetsFor, flavoursFor, flavourOf, moodFlavour, fusionOf } from './styles/index.js';
 export { modifyBanger, describeModify, bangerPrints } from './modify.js';
 export { extractRiff, laneVoiceOf, validateRiff, pickHook, riffSummary, parseRiff } from './riff.js';
 export { keyName, MODE_INFO } from './analyse.js';
@@ -108,6 +109,18 @@ export function withChannels(style, ...layers) {
   return out;
 }
 
+/**
+ * The recipe a request's `fusion` names for `style` to play over, or null: a style, a flavour or a
+ * Sound Set, never a fusion, never `style` itself or one of its own.
+ */
+function beatRecipe(style, id) {
+  if (!id || id === 'none') return null;
+  const beat = styleFor(id);
+  return beat && !beat.fusion && (beat.base || beat.id) !== style.id ? beat : null;
+}
+/** The channels a recipe's seed set (channels.js): a flavour's own, a Sound Set's style's, a style's. */
+const seededChannels = (channels, r) => (r.flavour ? channels?.[r.id] : channels?.[r.soundSet ? r.base : r.id]);
+
 /** A style's sounds with a Sound Combo's over them. */
 /** Every tuned note in `bank` held at most `steps` steps — each lane's `…Len`, in every section. */
 function blipBank(bank, steps) {
@@ -135,8 +148,20 @@ export function generateBanger({
   palette = BANGER_PALETTE,
 }) {
   const recipe = styleFor(raw?.style) || styleFor('big-room');
-  const { options, issues } = normaliseBangerOptions(raw, recipe);
+  // A FUSION (styles/fusion.js): one recipe's SOUND over another's GROOVE, asked for two ways.
+  //   · `infusion` (the desk's Infusion, 7 Oct 2026): the style is the groove — its flavour, its Sound
+  //     Set, as it would play alone — and the infusion is the sound.
+  //   · `fusion` (a desk take made earlier that day; the Lab, which names both): the style is the sound
+  //     and the fusion is the groove (`beat`).
+  // The request's defaults are the fusion's: the groove's drum switches, bass and pump, the sound's
+  // everything else.
+  const infusionAsked = beatRecipe(recipe, raw?.infusion);
+  const beatAsked = infusionAsked ? null : beatRecipe(recipe, raw?.fusion);
+  const { options, issues } = normaliseBangerOptions(raw, infusionAsked ? fusionOf(infusionAsked, recipe)
+    : beatAsked ? fusionOf(recipe, beatAsked) : recipe);
   if (issues.length) throw new Error(`can't make that banger: ${issues.join('; ')}`);
+  // (A fusion's defaults ask for its sound's style over its groove; an infusion asked the other way round.)
+  if (infusionAsked) { options.style = recipe.id; delete options.fusion; }
   riff = sourceRiff(riff);
   const riffIssues = validateRiff(riff);
   if (riffIssues.length) throw new Error(`can't make a banger from that: ${riffIssues.join('; ')}`);
@@ -184,10 +209,24 @@ export function generateBanger({
   // sounds and how long its chords are held — chosen by the mood (the default), by name, or
   // drawn from the seed. Not under a Sound Set, which is the style's own music re-voiced.
   const flavour = set ? null : flavourOf(recipe, options.flavour, { seed: s, mood: options.mood });
+  // The other recipe, as asked for when that is a flavour or a Sound Set, else the style's own on the
+  // take's Sound Set where it has one — never its mood's flavour: it is asked for by name (the Lab
+  // names the mood's). With an infusion the style as it plays is the groove; with a fusion, the sound.
+  const asked = infusionAsked || beatAsked;
+  const other = asked && (asked.base ? asked : soundSetOf(asked, options.parts.soundSet) || asked);
+  const own = set || flavour || recipe;
+  const music = infusionAsked ? other : own;
+  const beat = infusionAsked ? own : other;
+  const fusion = other ? fusionOf(music, beat) : null;
+  if (asked && !fusion) warnings.push(`${recipe.label} cannot be fused with ${asked.label} — made on its own`);
+  for (const k of ['infusion', 'fusion']) {
+    if (options[k] && options[k] !== 'none' && !styleFor(options[k])) warnings.push(`there is no style called "${options[k]}" to fuse with — made with ${recipe.label} on its own`);
+  }
   // (A set asked for by its own id — the Banger Sounds page's audition — is played as itself.)
-  for (const [k, swap] of Object.entries((set || flavour || recipe).remapParts || {})) if (swap[options.parts[k]]) options.parts[k] = swap[options.parts[k]];
-  // A flavour may move any switch, off as well as on: { group: { key: { from: to } } }.
-  for (const [group, keys] of Object.entries(flavour?.remap || {})) {
+  for (const [k, swap] of Object.entries((fusion || set || flavour || recipe).remapParts || {})) if (swap[options.parts[k]]) options.parts[k] = swap[options.parts[k]];
+  // A flavour may move any switch, off as well as on: { group: { key: { from: to } } }. A fusion
+  // moves each the way the flavour it came from would (its music's, or its beat's).
+  for (const [group, keys] of Object.entries((fusion || flavour)?.remap || {})) {
     for (const [k, swap] of Object.entries(keys)) {
       const at = String(options[group]?.[k]);
       if (options[group] && Object.hasOwn(swap, at)) options[group][k] = swap[at];
@@ -196,13 +235,16 @@ export function generateBanger({
   // A Sound Combo, when one is chosen and the style has it: its sounds and channels over
   // the style's own, and its own banger as what the faders are matched against. Not over a
   // Sound Set: a combo's sounds are the style's kind, and would undo a Light set's budget.
-  const combo = options.combo && !set ? combos?.[recipe.id]?.[options.combo] || null : null;
-  if (options.combo && set) warnings.push(`a Sound Combo does not go over a Sound Set — made with the ${set.label} sounds`);
+  const combo = options.combo && !set && !fusion ? combos?.[recipe.id]?.[options.combo] || null : null;
+  if (options.combo && fusion) warnings.push(`a Sound Combo does not go over a fusion — made with ${fusion.label}'s own sounds`);
+  else if (options.combo && set) warnings.push(`a Sound Combo does not go over a Sound Set — made with the ${set.label} sounds`);
   else if (options.combo && !combo) warnings.push(`${recipe.label} has no Sound Combo "${options.combo}" — made with its own sounds`);
   // A flavour's channels are its own seed's (6 Oct 2026), never its base style's: the base
   // seed's were set for the base's sounds and drowned every flavour's own mix.
   const seeded = flavour && !set ? channels?.[flavour.id] : channels?.[recipe.id] ?? channels?.[recipe.base];
-  const style = withChannels(set || flavour || recipe, seeded, combo?.channels);
+  // A fusion's channels are the two seeds', role by role (fusion.js fuseChannels).
+  const style = fusion ? withChannels(fusion, fuseChannels(seededChannels(channels, music), seededChannels(channels, beat)))
+    : withChannels(set || flavour || recipe, seeded, combo?.channels);
   // Every sound it is made with — the style's table, with the mood's overrides. `table`
   // is the shipped one unless the Banger Sounds page is auditioning unsaved choices.
   const sounds = withComboSounds(resolveSounds(table, style.id, options.mood), combo);
@@ -416,6 +458,7 @@ export function generateBanger({
     generator: BANGER_GENERATOR_VERSION,
     style: style.id,
     ...(style.flavour ? { flavour: style.flavour } : {}),
+    ...(style.fusion ? { fusion: style.fusion } : {}),
     options,
     seed: s,
     paletteSnapshot: resolvedPaletteSnapshot,

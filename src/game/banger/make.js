@@ -11,7 +11,7 @@
 import { energyOf } from '../../../tools/lib/banger/energy.js';
 import { generateBanger } from '../../../tools/lib/banger/index.js';
 import { normaliseTrackEffects } from '../../../tools/lib/banger/production.js';
-import { BANGER_STYLES, styleFor, soundSetOf, moodFlavour, flavourOf } from '../../../tools/lib/banger/styles/index.js';
+import { BANGER_STYLES, BANGER_FLAVOURS, styleFor, soundSetOf, moodFlavour, flavourOf, fusionOf } from '../../../tools/lib/banger/styles/index.js';
 import { BANGER_LIMITS, BANGER_MOODS, styleDefaults, moodBass, BANGER_EXPRESSION_VERSION } from '../../../tools/lib/banger/options.js';
 import { currentMood } from '../../../tools/lib/banger/moods.js';
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
@@ -138,7 +138,7 @@ export function labFlavour(style, mood, seed = null, voltage = null) {
   return others[Math.floor(rollOf(seed, 0x3c6ef372) * others.length)];
 }
 /** Whether `flavour` is the style's own arrangement (or the style has none). */
-const ownFlavour = (style, flavour) => !flavour || flavour === styleFor(style)?.flavours?.[0]?.id;
+const ownFlavour = (style, flavour) => !flavour || flavour === 'style' || flavour === styleFor(style)?.flavours?.[0]?.id;
 /**
  * Whose row of the sounds table a take plays: a flavour's (one not the style's own — it has its
  * own sounds, phone-light where the style's Lab set is), else the style's Sound Set's, else the
@@ -157,6 +157,59 @@ export const MAKER_MOODS = Object.freeze(BANGER_MOODS
   .sort((a, b) => a.label.localeCompare(b.label)));
 
 export const styleLabel = (id) => MAKER_STYLES.find((s) => s.id === id)?.label ?? caps(id);
+
+/**
+ * INFUSION (tools/lib/banger/styles/fusion.js; Peter, 7 Oct 2026): the selector beside FORMULA. NONE,
+ * or another formula whose SOUND — its chords, instruments and arrangement — plays over FORMULA's
+ * GROOVE: its drums, bass and tempo. The generator calls the sound the style (`music`) and the groove
+ * its `fusion` (`beat`). A take keeps the infusion as it played (`infusion`): the style, or the flavour
+ * of it its mood picks (labInfusion), so a flavour added to that style later never moves a kept song.
+ * FORMULA keeps its own flavour as ever (`flavour`, labFlavour), and that is the groove.
+ */
+/** The style a kept infusion belongs to — a flavour's own style — or null for anything that is not one. */
+export const infusionStyle = (infusion) => {
+  const st = infusion ? styleFor(infusion) : null;
+  return st && !st.fusion && !st.soundSet ? (st.base || st.id) : null;
+};
+/** The infusion a take in `mood` keeps for the style `id`: its mood's flavour where that is not its own, else the style. */
+export function labInfusion(id, mood) {
+  const st = styleFor(infusionStyle(id));
+  if (!st) return null;
+  const f = moodFlavour(st, mood);
+  if (!f || f === st.flavours?.[0]?.id) return st.id;
+  return BANGER_FLAVOURS.find((x) => x.base === st.id && x.flavour === f)?.id ?? st.id;
+}
+/** The recipe FORMULA's groove plays on: its flavour where that is not its own, else the style on its Lab Sound Set. */
+function grooveRecipeId(style, flavour, seed, voltage) {
+  if (!ownFlavour(style, flavour)) {
+    const f = BANGER_FLAVOURS.find((x) => x.base === style && x.flavour === flavour);
+    if (f) return f.id;
+  }
+  const set = seed == null ? LAB_SOUND_SETS[style]?.set : labSoundSet(style, seed, voltage);
+  return soundSetOf(styleFor(style), set)?.id ?? style;
+}
+/**
+ * A song kept in the first hour of fusions (7 Oct 2026) named its SOUND `style` (with that style's
+ * `flavour`) and its GROOVE `fusion`. Rewritten in place as FORMULA (`style`, `flavour`) and `infusion`,
+ * so it is made exactly as it was.
+ */
+export function upgradeFusionRecipe(r) {
+  const groove = styleFor(r.fusion);
+  if (groove && !groove.fusion) {
+    const sound = r.flavour && !ownFlavour(r.style, r.flavour) && BANGER_FLAVOURS.find((x) => x.base === r.style && x.flavour === r.flavour);
+    r.infusion = sound ? sound.id : r.style;
+    r.style = groove.base || groove.id;
+    const own = styleFor(r.style)?.flavours?.[0]?.id;
+    if (groove.flavour || own) r.flavour = groove.flavour || own; else delete r.flavour;
+  }
+  delete r.fusion;
+  return r;
+}
+/** A kept song's formula as the Lab names it: REGGAETON, or REGGAETON × TRANCE with an infusion. */
+export const formulaLabel = (style, infusion = null) => {
+  const sound = infusionStyle(infusion);
+  return sound && sound !== style ? `${styleLabel(style)} × ${styleLabel(sound)}` : styleLabel(style);
+};
 export const moodLabel = (id) => MAKER_MOODS.find((m) => m.id === id)?.label ?? caps(id);
 
 /**
@@ -270,6 +323,13 @@ export function spotFor(style, seed) {
  *   key way   a key lift arriving by a walk-up, a pivot, a two-step or a borrowed step — High
  *             Voltage one in two
  *   breakdown the hook at its own speed in the breakdown, or resting — Overload one in four
+ *
+ * and, from recipe expression 4 (Peter, 7 Oct 2026: "occasionally change it, but more towards doing
+ * club if it's not already"), from Charged up:
+ *
+ *   form      another shape for the song (FORM_ROLLS). A style that is not Club becomes Club three
+ *             times in four, else another; a Club style changes half as often, never to Club.
+ *             Charged one take in six, Surge one in four, Overload one in three
  */
 // Never Sequencer: its echo is a channel of its own (BASS ECHO), and the rolls add no parts.
 const BASS_ROLLS = Object.freeze({
@@ -301,6 +361,8 @@ const SPOT_ROLLS = Object.freeze({
   intoDrop: ['stutter', 'repeat', 'sweep', 'wash'], outOf: ['throw', 'wash', 'lowpass'], quiet: ['echo', 'reverb'],
 });
 const APPROACH_ROLLS = Object.freeze(['walkup', 'pivot', 'twostep', 'borrowed']);
+/** The forms a take can roll to (tools/lib/banger/templates.js, and Club). */
+const FORM_ROLLS = Object.freeze(['club', 'pop', 'anthem', 'groove']);
 /** The rate a pumping style's own gate runs at (fx.js GATES), so a roll never lands on it. */
 const OWN_GATE = { trance: 'sixteenths', 'future-bass': 'eighths' };
 /** The chance of each roll, by voltage level 0–3. */
@@ -310,11 +372,19 @@ export const VOLTAGE_ROLL_ODDS = Object.freeze({
   keyLift: [0, 0, 0, 1 / 3], halfTime: [0, 0, 0, 1 / 4], falseEnding: [0, 0, 0, 1 / 4],
   spot: [0, 0, 1 / 4, 1 / 2], radio: [0, 0, 0, 1 / 4], buildUp: [0, 0, 1 / 4, 1 / 3],
   approach: [0, 0, 0, 1 / 2], breakdownHook: [0, 0, 0, 1 / 4],
+  form: [0, 1 / 6, 1 / 4, 1 / 3],
 });
 
-/** This take's voltage rolls, as partial generator options: `{ parts, fx?, drums?, form?, spot? }`. */
-export function voltageRollsFor(styleId, moodId, voltage, seed) {
-  const style = BANGER_STYLES.find((s) => s.id === styleId);
+/**
+ * This take's voltage rolls, as partial generator options: `{ parts, fx?, drums?, form?, spot? }`. Over
+ * another style's beat (`beat`, a recipe id) the bass lines and the chords' gate are the beat's.
+ * `version` is the recipe's expression version: the form roll is 4's.
+ */
+export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, version = 3) {
+  const plain = BANGER_STYLES.find((s) => s.id === styleId);
+  const style = (beat && plain && fusionOf(plain, beat)) || plain;
+  // whose per-style tables (bass lines, the chords' gate) the groove is: the beat recipe's own style
+  const groove = style?.fusion ? (styleFor(beat)?.base || beat) : styleId;
   // The style's own lead stays in the draw, one take in as many as there are leads to draw from:
   // Riff Sound = Random alone always moves off it.
   const leads = resolveSounds(BANGER_SOUNDS, soundsIdFor(styleId, seed, voltage, moodId), moodId).random?.hook?.length || 1;
@@ -326,7 +396,7 @@ export function voltageRollsFor(styleId, moodId, voltage, seed) {
   const rolls = (key, salt) => rollOf(seed, salt) < VOLTAGE_ROLL_ODDS[key][level];
   const pick = (list, salt) => list[Math.floor(rollOf(seed, salt) * list.length)];
   const set = (group, key, value) => { out[group] = { ...out[group], [key]: value }; };
-  const basses = BASS_ROLLS[styleId];
+  const basses = BASS_ROLLS[groove];
   if (basses && !style.bassFixed && moodBass(style, moodId) === own.parts.bass
     && rolls('bass', 0x5b1d0a77)) out.parts.bass = pick(basses, 0x1e9f3c25);
   // A style whose chords ARE its pad (Drum & Bass) keeps them: its breakdowns play the pad
@@ -338,7 +408,7 @@ export function voltageRollsFor(styleId, moodId, voltage, seed) {
   const chops = padChords ? CHOP_ROLLS.filter((g) => g !== 'stabs') : CHOP_ROLLS;
   if (chords === 'saws' || chords === 'pad') {
     if (own.fx.pump) {
-      if (rolls('gate', 0x6a09e667)) gateOrStabs(pick(GATE_ROLLS.filter((g) => g !== (OWN_GATE[styleId] || 'pump')), 0x3c6ef372));
+      if (rolls('gate', 0x6a09e667)) gateOrStabs(pick(GATE_ROLLS.filter((g) => g !== (OWN_GATE[groove] || 'pump')), 0x3c6ef372));
     } else if (rolls('chop', 0x1f83d9ab)) {
       const g = pick(chops, 0x5be0cd19);
       if (g !== 'stabs') set('fx', 'pump', true);
@@ -348,7 +418,16 @@ export function voltageRollsFor(styleId, moodId, voltage, seed) {
   if (own.parts.choir && (own.fx.pump || out.fx?.pump) && rolls('choir', 0xab1c5ed5)) set('fx', 'gateChoir', true);
   if (rolls('kit', 0x428a2f98)) set('drums', 'kit', pick(KIT_ROLLS, 0x71374491));
   if (own.form.keyLift !== 'third' && rolls('keyLift', 0xb5c0fbcf)) set('form', 'keyLift', 'third');
-  if (own.form.template === 'club' && !own.form.halfTime && rolls('halfTime', 0xe9b5dba5)) set('form', 'halfTime', true);
+  // The form, now and then (version 4) — Club, mostly, for a style that is not Club already.
+  let template = own.form.template;
+  if (version >= 4) {
+    const club = template === 'club';
+    if (rollOf(seed, 0x2f8bd2a1) < VOLTAGE_ROLL_ODDS.form[level] * (club ? 1 / 2 : 1)) {
+      template = !club && rollOf(seed, 0x6d1f3b55) < 3 / 4 ? 'club' : pick(FORM_ROLLS.filter((t) => t !== 'club' && t !== template), 0x4c1a7e93);
+      set('form', 'template', template);
+    }
+  }
+  if (template === 'club' && !own.form.halfTime && rolls('halfTime', 0xe9b5dba5)) set('form', 'halfTime', true);
   if (!own.form.falseEnding && rolls('falseEnding', 0x3956c25b)) set('form', 'falseEnding', true);
   for (const [i, [key, list]] of Object.entries(SPOT_ROLLS).entries()) {
     if (rolls('spot', 0x59f111f1 + i)) set('spot', key, pick(list, 0x923f82a4 + i));
@@ -378,14 +457,15 @@ export function newSeed() {
 /**
  * A recipe's EXPRESSION VERSION: which playing policy it was made under — today only Auto
  * Portamento, a slide setting on the lead that GO WILD adds (tools/lib/banger/expression.js).
- * Version 2 adds the VOLTAGE ROLLS (voltageRollsFor). Version 3 adds Voltage-driven section FX. A NEW recipe carries 3 (maker.js); one saved
+ * Version 2 adds the VOLTAGE ROLLS (voltageRollsFor). Version 3 adds Voltage-driven section FX. Version 4 (7 Oct
+ * 2026) adds the form roll. A NEW recipe carries 4 (maker.js); one saved
  * at 1 has the slide but no rolls, and one saved before there was any has no `expression` and reads
  * as 0, and is made EXACTLY as it always was, Go Wild included. A kept song is only its recipe,
  * made again whenever it is played, so a recipe that did not say must come out the way it did.
  * It is not RIFF_VERSION (what the grid's numbers mean) and not the generator's version (which
  * the Lab does not record).
  */
-export const RECIPE_EXPRESSION = 3;
+export const RECIPE_EXPRESSION = 4;
 /** A recipe's expression version, read safely: a whole number from 1, anything else 0 — none. */
 export const expressionVersionOf = (value) => (Number.isFinite(value) && value >= 1 ? Math.floor(value) : 0);
 
@@ -393,10 +473,19 @@ export const expressionVersionOf = (value) => (Number.isFinite(value) && value >
  * A recipe → the song: { bank, mix, arrangement, bpm }. Throws if the generator
  * refuses (an empty grid, an unknown style).
  */
-export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, wild = false, variation = null, energy = 'full', expression = 0, production = null, voltage = null, paletteSnapshot: savedPalette = null, useCurrentPalette = false, flavour: keptFlavour = null }) {
+export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, wild = false, variation = null, energy = 'full', expression = 0, production = null, voltage = null, paletteSnapshot: savedPalette = null, useCurrentPalette = false, flavour: keptFlavour = null, infusion = null }) {
   if (!hasNotes(notes)) throw new Error('the grid is empty');
   // A song kept in a mood since retired is made in the mood it became.
   mood = currentMood(mood);
+  // INFUSION: FORMULA (its flavour, on its Lab Sound Set) becomes the GROOVE, and from here on `style`
+  // is the infusion — the SOUND, which the generator makes — playing the flavour it was kept with.
+  let beat = null;
+  const sound = infusionStyle(infusion);
+  if (sound && sound !== style) {
+    beat = grooveRecipeId(style, keptFlavour ?? labFlavour(style, mood, seed, voltage), seed, voltage);
+    style = sound;
+    keptFlavour = styleFor(infusion).flavour ?? 'style';
+  }
   const spot = spotFor(style, seed);
   const selectedVariation = ['faithful', 'some', 'more', 'wild'].includes(variation) ? variation : (wild ? 'wild' : null);
   const palette = savedPalette || (useCurrentPalette ? BANGER_PALETTE : null);
@@ -408,7 +497,8 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   // Overload's boost is on the tempo the take plays at — its flavour's, inside its flavour's range
   // (6 Oct 2026: it was the style's own, so Romántico and Darksynth jumped 8 and Outrun slowed).
   const voltageBpmBoost = voltageSettings(voltage).bpmBoost || 0;
-  const tempoOf = (styleSettings && flavourOf(styleSettings, flavour, { seed, mood })) || styleSettings;
+  // With an infusion, the tempo is the groove's.
+  const tempoOf = beat ? styleFor(beat) : (styleSettings && flavourOf(styleSettings, flavour, { seed, mood })) || styleSettings;
   const voltageTempo = voltageBpmBoost && tempoOf ? {
     tempo: 'custom',
     bpm: Math.min(BANGER_LIMITS.maxBpm, tempoOf.tempoRange?.[1] ?? BANGER_LIMITS.maxBpm,
@@ -420,11 +510,11 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   // it is how the lead is played, not which notes it plays.
   const slides = expressionVersionOf(expression) >= 2 ? !!wild
     : selectedVariation === 'wild' && expressionVersionOf(expression) >= 1;
-  const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed) : {};
+  const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed, beat, expressionVersionOf(expression)) : {};
   const soundSet = ownFlavour(style, flavour) ? labSoundSet(style, seed, voltage) : 'style';
   const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}) };
   const options = {
-    style, mood, ...(flavour ? { flavour } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
+    style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,
     ...(expressionVersionOf(expression) >= 3 ? { sectionFx: { mode: voltageSettings(voltage).sectionFx } } : {}),
     ...(slides ? { expression: { autoPortamento: true, version: BANGER_EXPRESSION_VERSION } } : {}),
@@ -448,6 +538,8 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   return { bank: out.bank, mix: out.mix, arrangement: out.arrangement, bpm: out.bank.bpm,
     trackEffects: out.trackEffects,
     paletteSnapshot: out.banger.paletteSnapshot,
-    laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style', soundsId: soundsIdFor(style, seed, voltage, mood, flavour),
+    laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style',
+    // A fusion's sounds are its two rows put together (sound-rules.js soundsRow reads the name).
+    soundsId: out.banger?.fusion ? out.banger.style : soundsIdFor(style, seed, voltage, mood, flavour),
     form: (out.form || []).map((f) => ({ role: f.role, type: f.type, from: f.from, to: f.to })) };
 }

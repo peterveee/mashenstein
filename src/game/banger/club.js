@@ -45,7 +45,7 @@ import { Audio } from '../../engine/audio.js';
 import { isTransitioning } from '../../engine/states.js';
 import { TITLE_FONT, drawTextCenteredForPresentation as drawTextCentered, textWidth, textYForMid } from '../../engine/sprites.js';
 import { portraitMenuActive, portraitMenuSafeTop, portraitMenuSafeBottom, portraitMenuTextCentered, portraitMenuTextY, portraitMenuFit } from '../../engine/portrait-menu.js';
-import { drawToon, titleParadeAction, toonInkTop, toonWalkStep } from '../../sprites/toons.js';
+import { drawToon, titleParadeAction, toonInkTop, toonInkBottom, toonWalkStep } from '../../sprites/toons.js';
 // The heroes' dances come from the gallery's shared list, so the club always offers the same
 // moves the gallery previews.
 import { HERO_DANCE_LAB_CANDIDATES, MOONWALKERS, heroDancePose } from '../../dev/hero-dance-candidates.js';
@@ -220,8 +220,6 @@ const STUTTER_IDLE = 1.5, STUTTER_SQUASH = 0.2;
 const STUTTER_AMP = [0.15, 0.25, 0.37, 0.52];
 /** The song's title, from a tap on the mirror ball: in, held, out (seconds). */
 const TITLE_IN_S = 0.5, TITLE_HOLD_S = 4, TITLE_OUT_S = 1;
-// the soles sit this far below the floor line on a 46-unit hero (the food court's REFLECT_SOLE_DROP)
-const REFLECT_SOLE_DROP = 1.5;
 
 /**
  * The heroes in skirts — Kiko's split dress, Clara's dress, Fernwick's tunic, Grumpos's kilt.
@@ -385,6 +383,28 @@ const GHOST_BEATS = 0.75;
  * card starts to fade (CAPTION_FADE_BEATS; Peter, 5 Oct 2026), the rest FISH_EVERY_BEATS apart.
  */
 const FISH_EVERY_BEATS = 8;
+/**
+ * A move's line on its card, broken to fit `maxW` (Peter, 7 Oct 2026: in portrait it ran off
+ * both edges): at its clauses — after a colon, a comma or a dash — where that takes no more
+ * lines than breaking between words would, and between words where it does.
+ */
+function wrapCaption(ctx, text, maxW) {
+  const pack = (pieces) => {
+    const lines = [];
+    for (const piece of pieces) {
+      const joined = lines.length ? `${lines[lines.length - 1]} ${piece}` : piece;
+      if (lines.length && ctx.measureText(joined).width <= maxW) lines[lines.length - 1] = joined;
+      else lines.push(piece);
+    }
+    return lines;
+  };
+  const words = pack(text.split(/\s+/));
+  const clauses = text.split(/(?<=[:,—])\s+/);
+  if (clauses.some((c) => ctx.measureText(c).width > maxW)) return words;
+  const byClause = pack(clauses);
+  return byClause.length <= words.length ? byClause : words;
+}
+
 /** A move's card is up four beats; it starts to fade this far in (drawCaption). */
 const CAPTION_FADE_BEATS = 2.8;
 const CAPTION_BEATS = 4;
@@ -1159,7 +1179,7 @@ export class BangerClubState {
     // `bar` is a bar of this song (the caption's clock); `dur` is how long the move lasts.
     this.queued = { i, when, bar, dur: at ? moveSeconds(move, at.spb, at.plan) : bar * (move.bars || 1), plan: at?.plan || null };
     if (move.toggle) {
-      // B-33P: the band onto the 8-Bit set (or back) from the next bar line — club-voices.js
+      // B-33P: the band onto the 8-Bit set (or back) from the next beat — club-voices.js
       // makes the swap; the caption says which way it went.
       const on = this.voices.toggle();
       const hifi = this.voices.eightBit;
@@ -3390,6 +3410,9 @@ export class BangerClubState {
     const sx = 0, sw = W, sh = stageBot - stageTop;
     const k270 = portrait ? 1 : sh / 270;   // landscape sizes are for the full 270
     const floorRef = portrait ? portraitMenuSafeBottom() - 110 * P : stageBot - Math.round(46 * k270);
+    // The front row and the speakers stand ON the floor, on top of its edge line, not sunk
+    // into it (Peter, 7 Oct 2026)
+    const standY = floorRef - 0.4 * u;
     // bigger in landscape, and standing in front of the speakers (Peter, 3 Oct 2026)
     const toonH = portrait ? 96 * P : Math.round(66 * k270);
     const rows = portrait ? 2 : 1;
@@ -3419,13 +3442,13 @@ export class BangerClubState {
     const rig = (() => {
       if (portrait) {
         const w = cellW * 0.8;
-        return { w, subH: rowGap * 0.6, topH: rowGap * 0.4, floor: floorRef, top: floorRef - rowGap,
+        return { w, subH: rowGap * 0.6, topH: rowGap * 0.4, floor: standY, top: standY - rowGap,
           xs: Array.from({ length: perRow }, (_, c) => heroL + cellW * (c + 0.5) - w / 2) };
       }
       const w = 54 * k270, subH = 84 * k270, topH = 56 * k270;
       // in from the notch / island / home bar so the stacks are never under them; the heroes may
       // stand a little in front of them
-      return { w, subH, topH, floor: floorRef, top: floorRef - subH - topH, xs: [safeL + 4, W - safeR - 4 - w] };
+      return { w, subH, topH, floor: standY, top: standY - subH - topH, xs: [safeL + 4, W - safeR - 4 - w] };
     })();
 
     ctx.save();
@@ -3575,7 +3598,7 @@ export class BangerClubState {
           const x = x0 + c * size, y = floorRef + r * size;
           ctx.fillStyle = (c + r) % 2 ? '#15112a' : '#1d1836';
           ctx.fillRect(x, y, size, size);
-          const under = r === 0 && actingX != null && (floorRowY == null || floorRowY >= floorRef - 1)
+          const under = r === 0 && actingX != null && (floorRowY == null || floorRowY > floorRef - rowGap / 2)
             && Math.abs(x + size / 2 - actingX) < size * 0.9;
           const chased = !!show;
           const hot = show && (((c + r * 2 - show.step) % 5) + 5) % 5 === 0;
@@ -3611,8 +3634,10 @@ export class BangerClubState {
       sheen.addColorStop(0, 'rgba(255,255,255,0.10)'); sheen.addColorStop(0.35, 'rgba(255,255,255,0.02)');
       sheen.addColorStop(1, 'rgba(0,0,0,0.45)');
       ctx.fillStyle = sheen; ctx.fillRect(sx, floorRef, sw, stageBot - floorRef);
-      ctx.fillStyle = '#2a2342'; ctx.fillRect(sx, floorRef - 1.5 * u, sw, 2 * u);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(sx, floorRef - 1.5 * u, sw, 0.6 * u);
+      // the floor's edge: one light line over the tiles' top grout, the tiles right under it
+      // (Peter, 7 Oct 2026: a dark band between the line and the tiles read as a gap)
+      ctx.fillStyle = '#2a2342'; ctx.fillRect(sx, standY, sw, 0.8 * u);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(sx, standY, sw, 0.8 * u);
     }
 
     // All the truss lamps snap white together, with broad beams through the haze.
@@ -3818,7 +3843,7 @@ export class BangerClubState {
     // Slot k: left to right along a row, and in portrait the back row (on the speakers) first.
     const slotPosition = slot => {
       const r = portrait ? Math.floor(slot / perRow) : 0, c = portrait ? slot % perRow : slot;
-      return { r, c, cx: heroL + cellW * (c + 0.5), floorY: portrait ? floorRef - (rows - 1 - r) * rowGap : floorRef };
+      return { r, c, cx: heroL + cellW * (c + 0.5), floorY: portrait ? standY - (rows - 1 - r) * rowGap : standY };
     };
     // The beat the dancing follows: the music's, except where a move bends time for the room —
     // Ramon's stutter loops it, Kiko's tape stop winds it down (danceBeat).
@@ -3835,6 +3860,7 @@ export class BangerClubState {
       const slot = formationSlots[i] ?? i;
       const { r, c, cx } = slotPosition(slot);
       let floorY = slotPosition(slot).floorY;
+      const perched = portrait && r < rows - 1;
       // THE WALK-IN: on the way in they walk on from the sides — the left half from the
       // left, the right half from the right, the middle ones first so nobody crosses — and
       // stand on their spot facing the middle of the floor.
@@ -3869,6 +3895,12 @@ export class BangerClubState {
         ? formationWalk.from.cx + (formationWalk.to.cx - formationWalk.from.cx) * formationWalk.progress + formationWalk.laneX
         : walkingIn ? startX + inDir * walkedIn : cx;
       if (formationWalk) floorY = formationWalk.from.floorY + (formationWalk.to.floorY - formationWalk.from.floorY) * formationWalk.progress + formationWalk.laneY;
+      // The soles sit ON the line, the floor's lip or a speaker top, not sunk into it (Peter,
+      // 7 Oct 2026): the painter draws them a little under the feet line, so the feet go up by
+      // that much. What lies on the floor under them — the shadow, the spotlight's pool — stays
+      // on the line (groundY).
+      const groundY = floorY;
+      floorY -= toonInkBottom(m.hero) * toonH;
       const walked = formationWalk
         ? formationWalk.progress * Math.hypot(formationWalk.to.cx - formationWalk.from.cx, formationWalk.to.floorY - formationWalk.from.floorY)
         : walkedIn;
@@ -3884,14 +3916,14 @@ export class BangerClubState {
         // hero's height across, lit the neighbours too. Now the cone stands over the hero and
         // the pool is one dancer wide.
         const spread = toonH * 0.55;
-        const beam = ctx.createLinearGradient(hx, stageTop, hx, floorY);
+        const beam = ctx.createLinearGradient(hx, stageTop, hx, groundY);
         beam.addColorStop(0, `rgba(255,244,193,${0.05 * fade})`);
         beam.addColorStop(1, `rgba(255,244,193,${0.3 * fade})`);
         ctx.fillStyle = beam;ctx.beginPath();ctx.moveTo(hx - 4 * u, stageTop);
-        ctx.lineTo(hx - spread, floorY);ctx.lineTo(hx + spread, floorY);
+        ctx.lineTo(hx - spread, groundY);ctx.lineTo(hx + spread, groundY);
         ctx.lineTo(hx + 4 * u, stageTop);ctx.closePath();ctx.fill();
         ctx.fillStyle = `rgba(255,240,180,${0.25 * fade})`;
-        ctx.beginPath();ctx.ellipse(hx, floorY, spread, toonH * 0.1, 0, 0, Math.PI * 2);ctx.fill();
+        ctx.beginPath();ctx.ellipse(hx, groundY, spread, toonH * 0.1, 0, 0, Math.PI * 2);ctx.fill();
       }
       const isActing = this.acting?.i === i && !walking;
       const isQueued = this.queued?.i === i;
@@ -3909,7 +3941,7 @@ export class BangerClubState {
         ctx.globalAlpha = 1;
       }
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.beginPath(); ctx.ellipse(hx, floorY + 1, toonH * 0.22, toonH * 0.045, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(hx, groundY + 1, toonH * 0.22, toonH * 0.045, 0, 0, Math.PI * 2); ctx.fill();
       };
       let pose = { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37, squash: pulse * 0.08 };
       let lift = 0;
@@ -3930,7 +3962,7 @@ export class BangerClubState {
       // halfway through it
       if (formationWalk) pose = { kind: 'run', walk: true, grounded: true, menu: true, time: t, phase: (formationWalk.steps / 2) % 1 };
       // the back row in portrait comes in over the speaker tops, a hop from one to the next
-      if (walkingIn && portrait && floorY < floorRef - 1) {
+      if (walkingIn && perched) {
         const hop = Math.abs(Math.sin(Math.PI * (walked + cellW * 0.5) / cellW));
         lift += hop * toonH * 0.45;
         if (hop > 0.15) pose = { kind: 'jump', grounded: false, menu: true, time: t, vy: Math.cos(Math.PI * (walked + cellW * 0.5) / cellW) * 200 };
@@ -3952,11 +3984,11 @@ export class BangerClubState {
       }
       if (dance) pose = dance;
       if (!walking && !isActing && crowd) {
-        const changed = partyHero(crowd.m, crowd.age, m.hero, i, pose);
+        const changed = partyHero(crowd.m, crowd.age, m.hero, i, pose, { perched });
         pose = changed.pose; lift += changed.lift * toonH;
         if (pose !== dance) dance = pose;
       } else if (!walking && !isActing) for (const moment of party) {
-        const changed = partyHero(moment, beat, m.hero, i, pose);
+        const changed = partyHero(moment, beat, m.hero, i, pose, { perched });
         pose = changed.pose; lift += changed.lift * toonH;
         if (pose !== dance && (moment.kind === 'drop-jump' || moment.kind === 'spotlight' && moment.hero === i
           || moment.kind === 'moonwalk' && moment.who.includes(i))) dance = pose;
@@ -4062,9 +4094,9 @@ export class BangerClubState {
         ctx.restore();
       };
       // laid down in order of depth; one walking behind the others, on their line, just before them
-      const depth = formationWalk?.behind ? floorY - 0.01 : floorY;
+      const depth = formationWalk?.behind ? groundY - 0.01 : groundY;
       // the front row is mirrored in the gloss
-      if (floorY >= floorRef - 1) {
+      if (floorY > floorRef - rowGap / 2) {
         mirrors.push({ floorY: depth, draw: (c) => { try { face(c, () => body(c, floorY - lift)); } catch {} }, height: toonH, anchorX: hx, lift });
       }
       paints.push({ floorY: depth, draw: () => {
@@ -4094,7 +4126,8 @@ export class BangerClubState {
     // down once a frame: the food court's painter redrew the whole front row and composited a
     // full-width band at full density every frame, a fifth of the club's time on a phone
     // (Peter, 3 Oct 2026: slowdown in the lab).
-    this.drawReflections(ctx, mirrors.sort((a, b) => a.floorY - b.floorY), floorRef + REFLECT_SOLE_DROP * toonH / 46, toonH);
+    // mirrored round the soles, up on the floor's lip
+    this.drawReflections(ctx, mirrors.sort((a, b) => a.floorY - b.floorY), standY, toonH);
     for (const paint of paints.sort((a, b) => a.floorY - b.floorY)) paint.draw();
 
     this.drawMoments(ctx, 'front', { portrait, P, u, floorRef, toonH, stageTop, stageBot, beat });
@@ -4265,9 +4298,8 @@ export class BangerClubState {
       ctx.font = `${big}px ${TITLE_FONT}`;
       const w1 = ctx.measureText(`${m.move}!`).width;
       ctx.font = `500 ${small}px ${BODY_FONT}`;
-      // too wide for the screen at its biggest (in capitals, in portrait): broken at its dash
-      const fits = ctx.measureText(what).width + big <= (W - 16) / 1.25;
-      const lines = fits ? [what] : what.split(/\s+—\s+/);
+      // too wide for the screen at its biggest (in capitals, in portrait): wrapped to it
+      const lines = wrapCaption(ctx, what, (W - 16) / 1.25 - big);
       const w2 = Math.max(...lines.map((l) => ctx.measureText(l).width));
       const pw = Math.max(w1, w2) + big;
       const lineH = small * 1.3;

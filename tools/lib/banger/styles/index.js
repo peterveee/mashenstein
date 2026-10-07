@@ -30,6 +30,7 @@ import { MERENHOUSE } from './merenhouse.js';
 import { AFRO_HOUSE, AFRO_HOUSE_FLAVOURS } from './afro-house.js';
 import { withSharedMoods } from '../moods.js';
 import { makeFlavour, seedRoll } from './flavours.js';
+import { makeFusion, fusionIds } from './fusion.js';
 
 // Every style plays the shared moods (moods.js) unless it has its own take on one.
 export const BANGER_STYLES = Object.freeze([BIG_ROOM, TRANCE, FUTURE_BASS, EUROBEAT, CHIPSTEP, SYNTHWAVE, SHIBUYA, DNB, ELECTRO, MEGADRIVE, DEEP_HOUSE, NU_DISCO, DOWNTEMPO,
@@ -51,8 +52,27 @@ export const BANGER_FLAVOURS = Object.freeze([
 ]);
 const BY_ID = new Map([...BANGER_STYLES, ...BANGER_SOUND_SETS, ...BANGER_FLAVOURS].map((s) => [s.id, s]));
 
-/** The recipe called `id` — a style, a sound set or a flavour — or null. */
-export const styleFor = (id) => (id == null ? null : BY_ID.get(id) || null);
+// FUSIONS (7 Oct 2026, fusion.js): one recipe's music over another's beat. Not listed — there is
+// one for every pair — but made on asking, by the name a take records, and kept once made.
+const FUSIONS = new Map();
+/** The fusion of `music` over `beat` (recipes, or their ids), or null — never a style over itself. */
+export function fusionOf(music, beat) {
+  const m = typeof music === 'string' ? BY_ID.get(music) : music;
+  const b = typeof beat === 'string' ? BY_ID.get(beat) : beat;
+  if (!m || !b || m.fusion || b.fusion || (m.base || m.id) === (b.base || b.id)) return null;
+  const id = `${m.id}+${b.id}`;
+  if (!FUSIONS.has(id)) FUSIONS.set(id, makeFusion(m, b));
+  return FUSIONS.get(id);
+}
+
+/** The recipe called `id` — a style, a sound set, a flavour or a fusion — or null. */
+export const styleFor = (id) => {
+  if (id == null) return null;
+  const known = BY_ID.get(id);
+  if (known) return known;
+  const pair = fusionIds(id);
+  return pair ? fusionOf(pair.music, pair.beat) : null;
+};
 
 // A sound kept from a seed is named for the style too — `Ride · Future Bass` — and this takes
 // that off again, but nothing else: a kit sound's instrument stays, so `Havana Patio · Clave`

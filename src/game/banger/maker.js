@@ -22,6 +22,14 @@
 // 2026) is ZAP for everything else: a random FORMULA, ELEMENT, VOLTAGE and DNA (Hybrid,
 // Spliced or Mutant), leaving the notes alone.
 //
+// FOUR SELECTORS (Peter, 7 Oct 2026): FORMULA, INFUSION, ELEMENT and MUTATION.
+//   · INFUSION is NONE, or another formula whose SOUND — its chords, instruments and arrangement —
+//     plays over FORMULA's GROOVE: its drums, bass and tempo (tools/lib/banger/styles/fusion.js).
+//   · MUTATION is what VOLTAGE and DNA were, in one selector. Its chooser is a 4×4 grid — down the side
+//     the energy and effects (Safe to Overload), across how much the riff's own notes change (Pure to
+//     Mutant) — so every one of the sixteen is a single tap. Its arrows step a ladder of six
+//     (MUTATION_LADDER) from wherever it is.
+//
 // The grid loops while you edit, over a plain kick, hat and light clap at four BPM below
 // the chosen style's lower tempo limit. It runs its own clock through Audio.voiceSfx rather
 // than loading a song: edits are heard on the next pass, and a style change restarts
@@ -45,21 +53,22 @@ import { Audio } from '../../engine/audio.js';
 import { drawMenuRow, MENU_ROW_HILITE, BACK_BUTTON_PLATE, textYForMid, textWidth, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
 import {
   portraitMenuActive, portraitMenuSafeTop, portraitMenuSafeBottom, portraitMenuScale,
-  portraitMenuText, portraitMenuTextCentered, portraitMenuFit,
+  portraitMenuText, portraitMenuTextCentered, portraitMenuFit, portraitMenuWrap,
 } from '../../engine/portrait-menu.js';
 import {
   RIFF_MODES, RIFF_BPM, RIFF_BARS, modeOf, semitoneOf, rowName, isSharp, rowHz, semitoneHz, toggleNote, hasNotes,
   normaliseNotes, normaliseLengths, simplify, expand, sixteenths, luckyNotes, perOf, stepsOf, barsOf, settleBars,
 } from './riff.js';
 import { GAME_RIFF_ODDS, pickGameRiff, gameRiffGrid } from './game-riffs.js';
-import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION, labFlavour } from './make.js';
+import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION, labFlavour, labInfusion, infusionStyle } from './make.js';
 import { styleFor } from '../../../tools/lib/banger/styles/index.js';
 import { bangerState, saveDraft, pendingRecipe } from './store.js';
 import { BANGER_VOLTAGES, voltageFor, voltageSettings } from './voltage.js';
 
-// DNA — how far the riff's own notes are rewritten — has its own picker beside VOLTAGE, which
-// is the effects, energy and arrangement, so a Overload take can keep the riff as written
-// (Peter, 4 Oct 2026). It is the desk's Variation: PURE Faithful, HYBRID Some, SPLICED More, MUTANT Wild.
+// DNA — how far the riff's own notes are rewritten — is apart from VOLTAGE, which is the effects,
+// energy and arrangement, so a Overload take can keep the riff as written (Peter, 4 Oct 2026). Since
+// 7 Oct the two are one selector, MUTATION, whose grid keeps every pairing. DNA is the desk's
+// Variation: PURE Faithful, HYBRID Some, SPLICED More, MUTANT Wild.
 export const MAKER_VARIATIONS = Object.freeze([
   Object.freeze({ id: 'faithful', label: 'Pure', description: 'Your notes, as written' }),
   Object.freeze({ id: 'some', label: 'Hybrid', description: 'Sequenced up, phrase ends turned round' }),
@@ -68,7 +77,30 @@ export const MAKER_VARIATIONS = Object.freeze([
   Object.freeze({ id: 'wild', label: 'Mutant', description: 'Fragments, rhythm shifts and big leaps' }),
 ]);
 const PICKERS = 4;
-const VARIATION = 3;
+// The selectors, in their order on screen.
+const FORMULA = 0;
+const INFUSION = 1;
+const ELEMENT = 2;
+const MUTATION = 3;
+/** INFUSION's first choice: FORMULA's own sound. */
+const NONE = 'none';
+/**
+ * What each selector's choice does, under its chooser's title, in the selectors' order. INFUSION's
+ * names the FORMULA on show, so it is plain which one keeps the groove (Peter, 7 Oct 2026: "which formula???").
+ */
+const CHOOSER_NOTES = Object.freeze([
+  () => 'The kind of music: its beat, tempo, instruments and how the song is built',
+  (formula) => `The one you pick brings its chords and instruments. ${formula} keeps its drums, bass and tempo`,
+  () => 'The mood: the chords your riff is played over, and how the song changes key',
+  () => 'ENERGY is how hard the effects and arrangement push. YOUR NOTES is how much your riff is rewritten',
+]);
+/**
+ * MUTATION's sixteen as one number, `voltage × 4 + DNA` (DNA in MAKER_VARIATIONS' order), and the six
+ * its arrows step: Safe·Pure, Charged·Pure, Charged·Hybrid (where NEW BANGER opens), Surge·Spliced,
+ * Overload·Pure (the riff as written, everything else flat out) and Overload·Mutant.
+ */
+const mutationOf = (voltage, variation) => voltage * 4 + Math.max(0, MAKER_VARIATIONS.findIndex((v) => v.id === variation));
+export const MUTATION_LADDER = Object.freeze([0, 4, 5, 10, 12, 15]);
 
 /**
  * The club's BOLT: `src`'s song as RECHARGE would make it with nothing changed — the riff,
@@ -86,7 +118,8 @@ export function rerollRecipe(src, seed = newSeed()) {
   const flavour = src.flavour ?? labFlavour(src.style, src.mood, src.seed ?? null, voltageFor(src));
   return { notes, lengths: normaliseLengths(src.lengths, notes, mode), mode, style: src.style, mood: src.mood, voltage, variation,
     wild: preset.wild, energy: preset.energy, expression: RECIPE_EXPRESSION,
-    production: { mode: preset.production, version: TRACK_EFFECTS_VERSION }, seed, flavour };
+    production: { mode: preset.production, version: TRACK_EFFECTS_VERSION }, seed, flavour,
+    ...(src.infusion ? { infusion: src.infusion } : {}) };
 }
 
 /**
@@ -218,6 +251,7 @@ export class BangerMakerState {
     // What changes every visit is only the grid's preview sound — never last visit's
     // (Peter, 3 Oct 2026).
     this.style = d.style;
+    this.infusion = d.infusion ?? null;
     this.mood = d.mood;
     this.setVoltage(voltageFor(d), false);
     this.setVariation(d.variation);
@@ -227,6 +261,8 @@ export class BangerMakerState {
       this.bars = barsOf(src.notes, this.mode);
       this.setGrid(this.mode, src.notes, src.lengths);
       this.style = src.style;
+      // Its INFUSION, as a style (a kept one may be the flavour of it its mood picked).
+      this.infusion = infusionStyle(src.infusion);
       this.mood = src.mood;
       this.setVoltage(voltageFor(src), false);
       // A recipe with no DNA of its own (the starter, a song from before the picker) was made
@@ -267,7 +303,7 @@ export class BangerMakerState {
     const keep = (a, m) => (held ? a : a.slice(0, stepsOf(m, 2)));
     return { mode: this.mode, bars: this.bars, simple: keep(this.simple, 'simple'), advanced: keep(this.advanced, 'advanced'),
       simpleLengths: keep(this.simpleLengths, 'simple'), advancedLengths: keep(this.advancedLengths, 'advanced'), simpleEdited: this.simpleEdited, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy,
-      production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION } };
+      production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, ...(this.infusion ? { infusion: this.infusion } : {}) };
   }
 
   /** A mode's whole grid, all four bars of it, and its lengths. */
@@ -316,9 +352,42 @@ export class BangerMakerState {
     return (style?.tempoRange?.[0] ?? style?.bpm ?? RIFF_BPM) - 4;
   }
   get previewSixteenthS() { return 60 / this.previewBpm / 4; }
+  /** FORMULA — the groove, and everything else unless there is an INFUSION. An infusion of itself goes. */
   setStyle(id) {
+    if (this.infusion === id) this.infusion = null;
     if (this.style === id) return;
     this.style = id;
+    this.restartLoop();
+  }
+  /** INFUSION: another formula's sound over FORMULA's groove, or NONE. The loop's tempo is FORMULA's, so it runs on. */
+  setInfusion(id) {
+    this.infusion = id && id !== NONE && id !== this.style ? id : null;
+  }
+  /** INFUSION's choices: NONE, then every formula but FORMULA itself. */
+  infusionItems() {
+    const formula = MAKER_STYLES.find((s) => s.id === this.style)?.label ?? 'The formula';
+    return [{ id: NONE, label: 'NONE', description: `${formula}'s own sound` }, ...MAKER_STYLES.filter((s) => s.id !== this.style)];
+  }
+  /** MUTATION as one number (mutationOf). */
+  get mutation() { return mutationOf(this.voltage, this.variation); }
+  /** MUTATION set from one number: its VOLTAGE and its DNA. */
+  setMutation(m) {
+    const k = Math.max(0, Math.min(15, Math.round(Number(m) || 0)));
+    this.setVoltage(Math.floor(k / 4), false);
+    this.setVariation(MAKER_VARIATIONS[k % 4].id);
+  }
+  /** MUTATION's arrows: the next step of the ladder up or down from wherever it is, and no further. */
+  stepMutation(dir) {
+    const at = this.mutation;
+    const next = dir > 0 ? MUTATION_LADDER.find((m) => m > at) : [...MUTATION_LADDER].reverse().find((m) => m < at);
+    if (next != null) this.setMutation(next);
+  }
+  /** MUTATION as the selector reads it: CHARGED · HYBRID. */
+  mutationLabel(m = this.mutation) {
+    return `${BANGER_VOLTAGES[Math.floor(m / 4)].label} · ${MAKER_VARIATIONS[m % 4].label}`.toUpperCase();
+  }
+  /** The loop starts again at the tempo it is now. */
+  restartLoop() {
     this.loopT0 = null;
     this.scheduled = -1;
     this.playStep = -1;
@@ -555,28 +624,33 @@ export class BangerMakerState {
   }
 
   cycle(picker, dir) {
-    if (picker === 0) {
+    if (picker === FORMULA) {
       const i = MAKER_STYLES.findIndex((s) => s.id === this.style);
       this.setStyle(MAKER_STYLES[(i + dir + MAKER_STYLES.length) % MAKER_STYLES.length].id);
-    } else if (picker === 1) {
+    } else if (picker === INFUSION) {
+      const list = this.infusionItems();
+      const i = Math.max(0, list.findIndex((it) => it.id === (this.infusion ?? NONE)));
+      this.setInfusion(list[(i + dir + list.length) % list.length].id);
+    } else if (picker === ELEMENT) {
       const i = MAKER_MOODS.findIndex((m) => m.id === this.mood);
       this.mood = MAKER_MOODS[(i + dir + MAKER_MOODS.length) % MAKER_MOODS.length].id;
-    } else if (picker === VARIATION) {
-      const i = MAKER_VARIATIONS.findIndex((v) => v.id === this.variation);
-      this.setVariation(MAKER_VARIATIONS[Math.max(0, Math.min(MAKER_VARIATIONS.length - 1, i + dir))].id);
-    } else this.setVoltage(this.voltage + dir, false);
+    } else this.stepMutation(dir);
     Audio.sfx('ui');
   }
 
   say(text) { this.message = text; this.messageT = 2; }
 
-  /** EXPERIMENT: a new FORMULA and ELEMENT (never the ones on show), any VOLTAGE, and DNA Hybrid, Spliced or Mutant — never Pure (Peter, 5 Oct 2026). The notes stay. */
+  /**
+   * EXPERIMENT: a new FORMULA and ELEMENT (never the ones on show), any VOLTAGE, and DNA Hybrid, Spliced or
+   * Mutant — never Pure (Peter, 5 Oct 2026). One time in three an INFUSION too, else NONE. The notes stay.
+   */
   experiment() {
     const other = (list, cur) => {
       const rest = list.filter((it) => it.id !== cur);
       return (rest.length ? rest : list)[Math.floor(this.random() * (rest.length || list.length))].id;
     };
     this.setStyle(other(MAKER_STYLES, this.style));
+    this.setInfusion(this.random() < 1 / 3 ? other(MAKER_STYLES, this.style) : null);
     this.mood = other(MAKER_MOODS, this.mood);
     this.setVoltage(Math.floor(this.random() * BANGER_VOLTAGES.length), false);
     const dna = MAKER_VARIATIONS.filter((v) => v.id !== 'faithful');
@@ -588,12 +662,15 @@ export class BangerMakerState {
 
   // ------------------------------------------------------------------ the chooser
   // The centre opens the full choice list; the arrows at either end step the selection.
-  // A tap outside, or back, closes the list.
+  // A tap outside, BACK at the top (Peter, 7 Oct 2026), or back, closes the list. MUTATION's is a
+  // grid (`grid`): a cell for each of the sixteen, rows the VOLTAGE and columns the DNA. Under each
+  // title, a line on what the choice does (CHOOSER_NOTES).
   openChooser(picker) {
-    const items = picker === 0 ? MAKER_STYLES : picker === 1 ? MAKER_MOODS : picker === VARIATION ? MAKER_VARIATIONS
-      : BANGER_VOLTAGES.map(({ level, label, helper }) => ({ id: String(level), label, description: helper }));
+    const items = picker === FORMULA ? MAKER_STYLES : picker === INFUSION ? this.infusionItems() : picker === ELEMENT ? MAKER_MOODS
+      : Array.from({ length: 16 }, (_, m) => ({ id: String(m), label: this.mutationLabel(m),
+        description: `${BANGER_VOLTAGES[Math.floor(m / 4)].helper}. ${MAKER_VARIATIONS[m % 4].description}` }));
     const cur = this.pickerValue(picker);
-    this.chooser = { picker, items, sel: Math.max(0, items.findIndex((it) => it.id === cur)) };
+    this.chooser = { picker, items, grid: picker === MUTATION, sel: Math.max(0, items.findIndex((it) => it.id === cur)) };
     Audio.sfx('ui');
   }
 
@@ -601,10 +678,10 @@ export class BangerMakerState {
     const c = this.chooser;
     const it = c.items[i];
     if (it) {
-      if (c.picker === 0) this.setStyle(it.id);
-      else if (c.picker === 1) this.mood = it.id;
-      else if (c.picker === VARIATION) this.setVariation(it.id);
-      else this.setVoltage(Number(it.id), false);
+      if (c.picker === FORMULA) this.setStyle(it.id);
+      else if (c.picker === INFUSION) this.setInfusion(it.id);
+      else if (c.picker === ELEMENT) this.mood = it.id;
+      else this.setMutation(Number(it.id));
     }
     this.chooser = null;
     Audio.sfx('uiConfirm');
@@ -613,47 +690,84 @@ export class BangerMakerState {
   chooserLayout(L) {
     const c = this.chooser;
     const n = c.items.length;
+    const pad = L.portrait ? 14 : 6, gap = L.portrait ? 8 : 4, titleH = L.portrait ? 50 : 18;
+    // the line under the title: two lines of it on a phone
+    const noteH = L.portrait ? 46 : 14;
+    const top = titleH + noteH;
+    const panel = { x: 8, y: L.top, w: W - 16, h: (L.buttons[0].y + L.buttons[0].h) - L.top };
+    // BACK, the Lab's own disc, at the left of the title
+    const r = L.backBox.r, cy = panel.y + pad + titleH / 2;
+    const back = { x: panel.x + pad - 4, y: cy - r * 1.4, w: r * 2.8, h: r * 2.8, cx: panel.x + pad + r, cy, r };
+    if (c.grid) {
+      // MUTATION: the DNA names across the top, the VOLTAGE names down the side, the chosen cell's
+      // two descriptions under it.
+      const headH = L.portrait ? 64 : 26, infoH = L.portrait ? 64 : 24, labW = Math.round(panel.w * (L.portrait ? 0.27 : 0.2));
+      const cw = (panel.w - pad * 2 - labW - gap * 4) / 4;
+      const ch = Math.min(L.portrait ? 96 : 40, (panel.h - pad * 2 - top - headH - infoH - gap * 5) / 4);
+      const x0 = panel.x + pad + labW + gap;
+      const y0 = panel.y + pad + top + headH + gap;
+      const cells = c.items.map((_, i) => ({ x: x0 + (i % 4) * (cw + gap), y: y0 + Math.floor(i / 4) * (ch + gap), w: cw, h: ch }));
+      const cols = [0, 1, 2, 3].map((k) => ({ x: x0 + k * (cw + gap), y: panel.y + pad + top, w: cw, h: headH }));
+      const rows = [0, 1, 2, 3].map((k) => ({ x: panel.x + pad, y: y0 + k * (ch + gap), w: labW, h: ch }));
+      const info = { x: panel.x + pad, y: y0 + 4 * ch + 4 * gap, w: panel.w - pad * 2, h: infoH };
+      panel.h = pad * 2 + top + headH + gap + 4 * ch + 4 * gap + infoH;
+      return { panel, cells, cols: 4, titleH, noteH, pad, back, grid: { cols, rows, info, corner: { x: panel.x + pad, y: panel.y + pad + top, w: labW, h: headH } } };
+    }
     const cols = L.portrait ? 2 : (n > 10 ? 4 : 2);
     const rows = Math.ceil(n / cols);
-    const pad = L.portrait ? 14 : 6, gap = L.portrait ? 8 : 4, titleH = L.portrait ? 50 : 18;
-    const panel = { x: 8, y: L.top, w: W - 16, h: (L.buttons[0].y + L.buttons[0].h) - L.top };
     const cw = (panel.w - pad * 2 - gap * (cols - 1)) / cols;
-    const ch = Math.min(L.portrait ? 56 : 42, (panel.h - pad * 2 - titleH - gap * (rows - 1)) / rows);
+    const ch = Math.min(L.portrait ? 56 : 42, (panel.h - pad * 2 - top - gap * (rows - 1)) / rows);
     const cells = c.items.map((_, i) => ({
-      x: panel.x + pad + (i % cols) * (cw + gap), y: panel.y + pad + titleH + Math.floor(i / cols) * (ch + gap), w: cw, h: ch,
+      x: panel.x + pad + (i % cols) * (cw + gap), y: panel.y + pad + top + Math.floor(i / cols) * (ch + gap), w: cw, h: ch,
     }));
-    panel.h = Math.min(panel.h, pad * 2 + titleH + rows * ch + (rows - 1) * gap);
-    return { panel, cells, cols, titleH, pad };
+    panel.h = Math.min(panel.h, pad * 2 + top + rows * ch + (rows - 1) * gap);
+    return { panel, cells, cols, titleH, noteH, pad, back };
   }
 
   updateChooser(L) {
     const c = this.chooser;
-    const { panel, cells, cols } = this.chooserLayout(L);
+    const { panel, cells, cols, back } = this.chooserLayout(L);
     const n = c.items.length;
-    if (Input.pressed('right')) c.sel = (c.sel + 1) % n;
-    if (Input.pressed('left')) c.sel = (c.sel + n - 1) % n;
-    if (Input.pressed('down')) c.sel = Math.min(n - 1, c.sel + cols);
-    if (Input.pressed('up')) c.sel = Math.max(0, c.sel - cols);
-    if (Input.pressed('confirm')) { this.choose(c.sel); return; }
-    if (Input.pressed('back')) { this.chooser = null; Audio.sfx('ui'); return; }
+    const close = () => { this.chooser = null; Audio.sfx('ui'); };
+    // `sel` -1 is BACK: up from the top row reaches it, and any arrow comes back to the first choice
+    if (c.sel < 0) {
+      if (Input.pressed('right') || Input.pressed('left') || Input.pressed('down')) c.sel = 0;
+    } else {
+      if (Input.pressed('right')) c.sel = (c.sel + 1) % n;
+      if (Input.pressed('left')) c.sel = (c.sel + n - 1) % n;
+      if (Input.pressed('down')) c.sel = Math.min(n - 1, c.sel + cols);
+      if (Input.pressed('up')) c.sel = c.sel < cols ? -1 : c.sel - cols;
+    }
+    if (Input.pressed('confirm')) { if (c.sel < 0) close(); else this.choose(c.sel); return; }
+    if (Input.pressed('back')) { close(); return; }
     if (Input.pressed('pointer')) {
       const { x, y } = Input.pointer;
       const inside = (r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
       const i = cells.findIndex(inside);
       if (i >= 0) this.choose(i);
-      else if (!inside(panel)) { this.chooser = null; Audio.sfx('ui'); }
+      else if (inside(back) || !inside(panel)) close();
     }
   }
 
   drawChooser(ctx, L) {
     const c = this.chooser;
-    const { panel, cells, titleH, pad } = this.chooserLayout(L);
+    const { panel, cells, titleH, noteH, pad, back, grid } = this.chooserLayout(L);
     const showFocus = !Input.usingTouch;
     ctx.fillStyle = 'rgba(5,5,10,0.7)';
     ctx.fillRect(0, 0, W, H);
     drawMenuRow(ctx, panel.x, panel.y, panel.w, panel.h, plateRadius(28, L.portrait), 'rgba(16,14,28,0.98)');
-    const title = ['CHOOSE A FORMULA', 'CHOOSE AN ELEMENT', 'CHOOSE A VOLTAGE', 'CHOOSE ITS DNA'][c.picker];
-    portraitMenuTextCentered(ctx, title, W / 2, textYForMid(panel.y + pad + titleH / 2, portraitMenuScale(1.3)), '#fff', 1.3);
+    this.drawBack(ctx, L, showFocus && c.sel < 0, back);
+    const title = ['CHOOSE A FORMULA', 'CHOOSE AN INFUSION', 'CHOOSE AN ELEMENT', 'CHOOSE A MUTATION'][c.picker];
+    // centred, clear of BACK on either side
+    const titleS = portraitMenuFit(title, 1.3, panel.w - 2 * (back.x + back.w - panel.x + 4));
+    portraitMenuTextCentered(ctx, title, W / 2, textYForMid(panel.y + pad + titleH / 2, portraitMenuScale(titleS)), '#fff', titleS);
+    const noteS = L.portrait ? 0.8 : 0.72;
+    const formula = MAKER_STYLES.find((s) => s.id === this.style)?.label ?? '';
+    const notes = portraitMenuWrap(CHOOSER_NOTES[c.picker](formula), panel.w - pad * 2, noteS, L.portrait ? 2 : 1);
+    // set close under the title, with the larger gap below, before the choices
+    notes.forEach((line, k) => portraitMenuTextCentered(ctx, line, W / 2,
+      textYForMid(panel.y + pad + titleH + noteH * (L.portrait ? 0.2 + 0.36 * k : 0.4), portraitMenuScale(noteS)), '#89899a', noteS));
+    if (grid) { this.drawMutationGrid(ctx, L, cells, grid, showFocus); return; }
     const cur = this.pickerValue(c.picker);
     c.items.forEach((it, i) => {
       const r = cells[i];
@@ -669,6 +783,46 @@ export class BangerMakerState {
       if (description) portraitMenuTextCentered(ctx, description, r.x + r.w / 2,
         textYForMid(descriptionY, portraitMenuScale(descriptionSize)), sel ? '#d3c0f4' : '#89899a', descriptionSize);
     });
+  }
+
+  /**
+   * MUTATION's grid: YOUR NOTES over the DNA names, ENERGY beside the VOLTAGE names, a cell for each
+   * pairing — the chosen one teal with a dot, the steps of its arrows (MUTATION_LADDER) marked small —
+   * and, under it, what the chosen (or focused) cell does.
+   */
+  drawMutationGrid(ctx, L, cells, grid, showFocus) {
+    const c = this.chooser;
+    const cur = this.mutation;
+    const fit = (text, size, w) => portraitMenuFit(text, size, w);
+    const centred = (text, r, mid, size, colour) => portraitMenuTextCentered(ctx, text, r.x + r.w / 2, textYForMid(mid, portraitMenuScale(size)), colour, size);
+    // the axes
+    const cap = 0.62;
+    centred('YOUR NOTES', { x: grid.cols[0].x, w: grid.cols[3].x + grid.cols[3].w - grid.cols[0].x }, grid.cols[0].y + grid.cols[0].h * 0.24, fit('YOUR NOTES', cap, grid.cols[0].w * 4), '#89899a');
+    centred('ENERGY', grid.corner, grid.corner.y + grid.corner.h * 0.72, fit('ENERGY', cap, grid.corner.w - 8), '#89899a');
+    grid.cols.forEach((r, k) => {
+      const label = MAKER_VARIATIONS[k].label.toUpperCase();
+      centred(label, r, r.y + r.h * 0.72, fit(label, 0.95, r.w - 6), k === cur % 4 ? C_NOTE : C_TEXT);
+    });
+    grid.rows.forEach((r, k) => {
+      const label = BANGER_VOLTAGES[k].label.toUpperCase();
+      centred(label, r, r.y + r.h / 2, fit(label, 0.95, r.w - 6), k === Math.floor(cur / 4) ? C_NOTE : C_TEXT);
+    });
+    cells.forEach((r, i) => {
+      const on = i === cur, sel = showFocus && c.sel === i;
+      drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), sel ? MENU_ROW_HILITE : on ? 'rgba(72,224,200,0.28)' : BACK_BUTTON_PLATE);
+      const step = MUTATION_LADDER.includes(i);
+      if (!on && !step) return;
+      const rad = Math.max(1.5, Math.min(r.w, r.h) * (on ? 0.12 : 0.05));
+      ctx.save();
+      ctx.fillStyle = on ? C_NOTE : 'rgba(200,200,216,0.35)';
+      ctx.beginPath(); ctx.arc(r.x + r.w / 2, r.y + r.h / 2, rad, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    });
+    const it = c.items[showFocus && c.sel >= 0 ? c.sel : cur];
+    const head = it.label;
+    const r = grid.info;
+    centred(head, r, r.y + r.h * 0.3, fit(head, 0.95, r.w - 8), C_NOTE);
+    centred(it.description, r, r.y + r.h * 0.74, fit(it.description, 0.7, r.w - 8), '#89899a');
   }
 
   press(button) {
@@ -703,6 +857,9 @@ export class BangerMakerState {
     const { notes, lengths } = settleBars(this.notes, this.lengths, this.mode);
     const recipe = { notes, lengths, mode: this.mode, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy, expression: RECIPE_EXPRESSION,
       production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, seed: newSeed() };
+    // INFUSION: that style, or the flavour of it this mood plays (make.js labInfusion), kept with the
+    // take so a flavour added later never moves it.
+    if (this.infusion) recipe.infusion = labInfusion(this.infusion, this.mood);
     // The flavour the take plays, kept with it (make.js labFlavour): a flavour added to the style later
     // never moves a saved song. Null for a style without flavours.
     recipe.flavour = labFlavour(recipe.style, recipe.mood, recipe.seed, recipe.voltage);
@@ -791,7 +948,7 @@ export class BangerMakerState {
 
   /** What a picker shows, as its chooser's id. */
   pickerValue(picker) {
-    return picker === 0 ? this.style : picker === 1 ? this.mood : picker === VARIATION ? this.variation : String(this.voltage);
+    return picker === FORMULA ? this.style : picker === INFUSION ? this.infusion ?? NONE : picker === ELEMENT ? this.mood : String(this.mutation);
   }
 
   pointerHit(L, x, y) {
@@ -909,7 +1066,7 @@ export class BangerMakerState {
     ctx.fillRect(0, 0, W, H);
     const titleMid = L.top + L.titleH / 2 - (L.portrait ? 6 : 2);
     const showFocus = !Input.usingTouch;
-    this.drawBack(ctx, L, showFocus);
+    this.drawBack(ctx, L, showFocus && this.focus.area === 'back');
     const titleX = L.backBox.cx + L.backBox.r + (L.portrait ? 18 : 8);
     portraitMenuText(ctx, this.from ? 'EDIT BANGER' : 'NEW BANGER', titleX, textYForMid(titleMid, portraitMenuScale(1.6), 'title'), '#fff', 1.6, 'title');
     const focusOn = (area) => showFocus && this.focus.area === area;
@@ -925,9 +1082,9 @@ export class BangerMakerState {
     if (!Input.usingTouch && !this.chooser && p.x >= hb.x && p.x < hb.x + hb.w && p.y >= hb.y && p.y < hb.y + hb.h) this.drawTip(ctx, L);
     const selectors = [
       { label: 'FORMULA', value: (MAKER_STYLES.find((s) => s.id === this.style)?.label ?? '').toUpperCase() },
+      { label: 'INFUSION', value: this.infusion ? (MAKER_STYLES.find((s) => s.id === this.infusion)?.label ?? '').toUpperCase() : 'NONE' },
       { label: 'ELEMENT', value: (MAKER_MOODS.find((m) => m.id === this.mood)?.label ?? '').toUpperCase() },
-      { label: 'VOLTAGE', value: BANGER_VOLTAGES[this.voltage].label.toUpperCase() },
-      { label: 'DNA', value: (MAKER_VARIATIONS.find((v) => v.id === this.variation)?.label ?? '').toUpperCase() },
+      { label: 'MUTATION', value: this.mutationLabel() },
     ];
     L.pickers.forEach((r, i) => {
       const sel = showFocus && this.focus.area === 'picker' && this.focus.picker === i;
@@ -939,7 +1096,8 @@ export class BangerMakerState {
       portraitMenuText(ctx, '<', r.x + 12, ay, sel ? C_SEL : C_TEXT, arrowS);
       portraitMenuText(ctx, '>', r.x + r.w - 12 - portraitMenuScale(arrowS) * 5, ay, sel ? C_SEL : C_TEXT, arrowS);
       const labelSize = portraitMenuFit(selectors[i].label, 0.9, r.w - 12);
-      const valueSize = portraitMenuFit(selectors[i].value, L.portrait ? 1 : 0.86, r.w - 34);
+      // between the arrows, with a little air either side (MUTATION's two names are the longest)
+      const valueSize = portraitMenuFit(selectors[i].value, L.portrait ? 1 : 0.86, r.w - 2 * (18 + textWidth('<', portraitMenuScale(arrowS))));
       portraitMenuTextCentered(ctx, selectors[i].label, r.x + r.w / 2,
         textYForMid(labelMid, portraitMenuScale(labelSize)), sel ? C_SEL : '#89899a', labelSize);
       portraitMenuTextCentered(ctx, selectors[i].value, r.x + r.w / 2,
@@ -967,10 +1125,9 @@ export class BangerMakerState {
   }
 
   /** BACK, drawn as the dance floor draws its own (club.js): a dark disc, a faint rim, a chevron. */
-  drawBack(ctx, L, showFocus) {
-    const { cx, cy, r } = L.backBox;
+  drawBack(ctx, L, focused, box = L.backBox) {
+    const { cx, cy, r } = box;
     const u = L.portrait ? 1.9 * W / 390 : 1;
-    const focused = showFocus && this.focus.area === 'back';
     ctx.save();
     ctx.fillStyle = 'rgba(11,11,20,0.78)';
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();

@@ -19,7 +19,7 @@ const { generateBanger } = await import('../tools/lib/banger/index.js');
 const {
   bangerState, keepBanger, reviseBanger, saveDraft, bangerRow, MAX_KEPT, deleteBanger, lastPlayedBanger,
 } = await import('../src/game/banger/store.js');
-const { BangerMakerState, RIFF_VOICES, MAKER_VARIATIONS } = await import('../src/game/banger/maker.js');
+const { BangerMakerState, RIFF_VOICES, MAKER_VARIATIONS, MUTATION_LADDER } = await import('../src/game/banger/maker.js');
 const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { BangerClubState, LED_COLS, DICE_LINES } = await import('../src/game/banger/club.js');
@@ -348,46 +348,49 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.enter();
   let L = maker.layout();
   assert(BANGER_VOLTAGES.map((preset) => preset.label).join() === 'Safe,Charged,Surge,Overload'
-    && maker.voltage === 1, 'the maker opens on the four-step Voltage selector at Charged');
-  assert(L.pickers.length === 4 && !('voltageBox' in L), 'Formula, Element, Voltage and DNA share one selector row');
+    && maker.voltage === 1 && maker.mutationLabel() === 'CHARGED · HYBRID', 'the maker opens on MUTATION at Charged · Hybrid');
+  assert(L.pickers.length === 4 && !('voltageBox' in L), 'Formula, Infusion, Element and Mutation share one selector row');
   assert(!('wildBox' in L) && !('energyBox' in L) && !('effectsBox' in L), 'Go Wild, Energy and Track Effects are merged');
-  const chooseVoltage = (level) => {
-    const control = L.pickers[2];
+  // MUTATION is Voltage and DNA in one selector: a 4×4 grid, Voltage down the side, DNA across.
+  const chooseMutation = (level, dna) => {
+    const control = L.pickers[3];
     tap(maker, control.x + control.w / 2, control.y + control.h / 2);
-    const { cells } = maker.chooserLayout(maker.layout());
-    assert(maker.chooser?.picker === 2 && cells.length === BANGER_VOLTAGES.length, 'Voltage opens the same choice list as Formula and Element');
-    tap(maker, cells[level].x + cells[level].w / 2, cells[level].y + cells[level].h / 2);
+    const { cells, grid } = maker.chooserLayout(maker.layout());
+    assert(maker.chooser?.picker === 3 && cells.length === 16 && grid, 'MUTATION opens a grid of all sixteen');
+    maker.draw(document.createElement('canvas').getContext('2d'));
+    const k = level * 4 + MAKER_VARIATIONS.findIndex((v) => v.id === dna);
+    tap(maker, cells[k].x + cells[k].w / 2, cells[k].y + cells[k].h / 2);
   };
   assert(maker.variation === 'some', 'DNA starts on Hybrid, not Pure');
   maker.setVariation('nonsense');
   assert(maker.variation === 'some', 'an unreadable DNA setting reads as Hybrid');
-  chooseVoltage(0);
-  assert(maker.voltage === 0 && maker.energy === 'lean' && maker.trackEffects === 'style' && maker.variation === 'some', 'Safe keeps the formula intact, and leaves DNA where it was');
-  chooseVoltage(2);
-  assert(maker.voltage === 2 && maker.energy === 'huge' && maker.trackEffects === 'adventurous' && maker.variation === 'some', 'Surge maps to high energy and bold FX, and leaves the riff\'s notes alone');
-  chooseVoltage(3);
-  assert(maker.voltage === 3 && maker.wild && maker.energy === 'maximum' && maker.trackEffects === 'overhaul' && maker.variation === 'some', 'Overload maps to maximum energy and full FX — DNA is its own picker');
+  chooseMutation(0, 'some');
+  assert(!maker.chooser && maker.voltage === 0 && maker.energy === 'lean' && maker.trackEffects === 'style' && maker.variation === 'some', 'Safe · Hybrid keeps the formula intact and sequences the riff, and a tap closes the grid');
+  chooseMutation(2, 'some');
+  assert(maker.voltage === 2 && maker.energy === 'huge' && maker.trackEffects === 'adventurous' && maker.variation === 'some', 'Surge maps to high energy and bold FX');
+  chooseMutation(3, 'some');
+  assert(maker.voltage === 3 && maker.wild && maker.energy === 'maximum' && maker.trackEffects === 'overhaul' && maker.variation === 'some', 'Overload maps to maximum energy and full FX');
+  chooseMutation(3, 'faithful');
+  assert(maker.voltage === 3 && maker.energy === 'maximum' && maker.variation === 'faithful', 'Overload · Pure: everything flat out, the riff as written — every pairing is still there');
   {
     const control = L.pickers[3];
-    tap(maker, control.x + control.w / 2, control.y + control.h / 2);
-    const { cells } = maker.chooserLayout(maker.layout());
-    assert(maker.chooser?.picker === 3 && cells.length === 4 && cells.length === MAKER_VARIATIONS.length
-      && MAKER_VARIATIONS.map((v) => v.label).join() === 'Pure,Hybrid,Spliced,Mutant', 'DNA opens Pure, Hybrid, Spliced and Mutant');
-    tap(maker, cells[1].x + cells[1].w / 2, cells[1].y + cells[1].h / 2);
-    assert(maker.variation === 'some' && maker.voltage === 3 && maker.energy === 'maximum', 'choosing a DNA leaves the Voltage as it was');
+    assert(MUTATION_LADDER.join() === '0,4,5,10,12,15', 'its arrows step six: Safe·Pure, Charged·Pure, Charged·Hybrid, Surge·Spliced, Overload·Pure, Overload·Mutant');
+    maker.setMutation(6);
     tap(maker, control.x + control.w * 0.1, control.y + control.h / 2);
-    assert(maker.variation === 'faithful', 'and its left arrow steps back to Pure');
+    assert(maker.mutation === 5, 'from off the ladder, the left arrow steps down to the next step below');
+    tap(maker, control.x + control.w - 3, control.y + control.h / 2);
+    assert(maker.mutation === 10 && maker.voltage === 2 && maker.variation === 'more', 'and the right arrow up to Surge · Spliced');
   }
-  chooseVoltage(1);
+  chooseMutation(1, 'some');
   assert(maker.voltage === 1 && !maker.wild && maker.energy === 'full' && maker.trackEffects === 'subtle', 'Charged maps to medium energy and subtle FX');
   assert(maker.mode === 'simple' && maker.rows === 11 && maker.steps === 16, 'the maker opens in SIMPLE');
   assert(maker.actionWord() === 'BRING TO LIFE', 'a new banger is made with BRING TO LIFE');
   {
     // the middle of MOOD opens every mood at once; a tap on one picks it and closes
-    const moodBox = L.pickers[1];
+    const moodBox = L.pickers[2];
     const before = maker.mood;
     tap(maker, moodBox.x + moodBox.w / 2, moodBox.y + moodBox.h / 2);
-    assert(maker.chooser?.picker === 1 && maker.chooser.items.length === MAKER_MOODS.length, 'the middle of MOOD opens every mood at once');
+    assert(maker.chooser?.picker === 2 && maker.chooser.items.length === MAKER_MOODS.length, 'the middle of MOOD opens every mood at once');
     const { cells } = maker.chooserLayout(maker.layout());
     const pick = MAKER_MOODS.findIndex((m) => m.id !== before);
     maker.draw(document.createElement('canvas').getContext('2d'));
@@ -396,6 +399,22 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     tap(maker, moodBox.x + moodBox.w - 3, moodBox.y + moodBox.h / 2);
     assert(!maker.chooser && maker.mood === MAKER_MOODS[(pick + 1) % MAKER_MOODS.length].id, 'the arrow at the end still steps');
     maker.mood = before;
+    // BACK at the top of every chooser closes it with nothing changed, by tap or by keys
+    for (let p = 0; p < 4; p++) {
+      const box = L.pickers[p];
+      const was = maker.pickerValue(p);
+      tap(maker, box.x + box.w / 2, box.y + box.h / 2);
+      const { back, cells: list } = maker.chooserLayout(maker.layout());
+      assert(maker.chooser?.picker === p && back.y + back.h <= list[0].y, `chooser ${p} has BACK above its choices`);
+      tap(maker, back.cx, back.cy);
+      assert(!maker.chooser && maker.pickerValue(p) === was, `chooser ${p}: BACK closes it and changes nothing`);
+    }
+    tap(maker, moodBox.x + moodBox.w / 2, moodBox.y + moodBox.h / 2);
+    maker.chooser.sel = 0;
+    frame(maker, 'up');
+    assert(maker.chooser.sel === -1, 'up from the top row reaches BACK');
+    frame(maker, 'confirm');
+    assert(!maker.chooser && maker.mood === before, 'and confirm on it closes with nothing changed');
   }
   {
     // The style and mood are remembered; the grid's preview sound changes every visit.
@@ -539,27 +558,26 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.setStyle(style0);
   assert(allStylePreviewsSlow, 'every style preview is four BPM below its lower tempo limit');
   const mood0 = maker.mood;
-  tap(maker, L.pickers[1].x + L.pickers[1].w - 4, L.pickers[1].y + L.pickers[1].h / 2);
+  tap(maker, L.pickers[2].x + L.pickers[2].w - 4, L.pickers[2].y + L.pickers[2].h / 2);
   assert(maker.mood !== mood0, 'tapping the MOOD picker moves to the next mood');
 
   // From the grid's bottom row, down reaches the selector in the same column;
   // up from the top row reaches the mode switch.
   maker.focus = { area: 'grid', col: maker.steps - 1, row: maker.rows - 1, picker: 0, button: 3 };
   frame(maker, 'down');
-  assert(maker.focus.area === 'picker' && maker.focus.picker === 3, 'down from the grid reaches DNA in the same selector row');
-  maker.setVariation('faithful');
+  assert(maker.focus.area === 'picker' && maker.focus.picker === 3, 'down from the grid reaches MUTATION in the same selector row');
+  maker.setMutation(0);
   frame(maker, 'right');
-  assert(maker.variation === 'some', 'right steps DNA from Pure to Hybrid');
+  assert(maker.voltage === 1 && maker.variation === 'faithful', 'right steps MUTATION from Safe · Pure to Charged · Pure');
   frame(maker, 'right');
-  assert(maker.variation === 'more', 'then Spliced');
-  frame(maker, 'right'); frame(maker, 'right');
-  assert(maker.variation === 'wild', 'left and right step DNA, stopping at Mutant');
-  maker.focus.picker = 2;
-  const v1 = maker.voltage;
+  assert(maker.variation === 'some', 'then Charged · Hybrid');
+  frame(maker, 'right'); frame(maker, 'right'); frame(maker, 'right'); frame(maker, 'right');
+  assert(maker.voltage === 3 && maker.variation === 'wild', 'left and right step the ladder, stopping at Overload · Mutant');
+  maker.focus.picker = 1;
   frame(maker, 'right');
-  assert(maker.voltage !== v1, 'left and right turn the Voltage selector');
-  frame(maker, 'right');
-  assert(maker.voltage === 3, 'left and right step through voltage levels');
+  assert(maker.infusion && maker.infusion !== maker.style, 'right turns INFUSION from NONE to another formula');
+  frame(maker, 'left');
+  assert(maker.infusion === null, 'and left back to NONE');
   frame(maker, 'down');
   assert(maker.focus.area === 'button', 'down from the selectors reaches the action buttons');
   maker.focus = { area: 'grid', col: 2, row: 0, picker: 0, button: 3 };
@@ -576,19 +594,21 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   {
     const was = { style: maker.style, mood: maker.mood, voltage: maker.voltage, variation: maker.variation };
     const notes = maker.notes.join();
-    let styles = 0, moods = 0;
+    let styles = 0, moods = 0, infused = 0;
     const voltages = new Set(), dnas = new Set();
     for (let k = 0; k < 40; k++) {
       const before = { style: maker.style, mood: maker.mood };
       tap(maker, ...centre(L.buttons[2]));
       if (maker.style !== before.style) styles++;
       if (maker.mood !== before.mood) moods++;
+      if (maker.infusion) infused++;
       voltages.add(maker.voltage); dnas.add(maker.variation);
     }
     assert(styles === 40 && moods === 40 && voltages.size === BANGER_VOLTAGES.length && dnas.size === 3 && !dnas.has('faithful')
       && maker.energy === voltageSettings(maker.voltage).energy && maker.notes.join() === notes,
     'EXPERIMENT picks a new formula and element every time, any voltage, DNA Hybrid, Spliced or Mutant (never Pure), and leaves the notes alone');
-    maker.setStyle(was.style); maker.mood = was.mood; maker.setVoltage(was.voltage, false); maker.setVariation(was.variation);
+    assert(infused > 4 && infused < 30, 'and an INFUSION now and then, NONE the rest');
+    maker.setStyle(was.style); maker.setInfusion(null); maker.mood = was.mood; maker.setVoltage(was.voltage, false); maker.setVariation(was.variation);
   }
   tap(maker, ...centre(L.buttons[1]));
   assert(hasNotes(maker.notes) && maker.notes.length === 16, 'ZAP writes a riff into the grid on show');
@@ -609,8 +629,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(typeof made.rec.name === 'string' && made.rec.name.length > 0, 'the pending preview is titled before it is kept');
   const kept = keepBanger({ ...made.rec, fresh: false, name: made.rec.name });
   assert(kept === bangerState().kept.at(-1) && bangerState().kept.includes(kept), 'saving the pending recipe keeps the song');
-  assert(kept.expression === 3 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
-    'a new recipe opts into expression version 3 (Go Wild\'s slide on the lead, the voltage rolls), and made again from the kept recipe it is the song just handed over');
+  assert(kept.expression === 4 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
+    'a new recipe opts into expression version 4 (Go Wild\'s slide on the lead, the voltage rolls, the form roll), and made again from the kept recipe it is the song just handed over');
 
   tap(maker, ...centre(L.buttons[0]));
   made = null;
@@ -1213,7 +1233,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.beat = realBeat; club.formationSwap = null; club.formationShuffleAt = Infinity;
     club.turns = club.turns.map(() => null); club.turnAt = club.turnAt.map(() => Infinity);
   }
-  // B-33P: the whole band onto the 8-Bit Sound Set from the next bar line, back at a second tap.
+  // B-33P: the whole band onto the 8-Bit Sound Set from the next beat, back at a second tap.
   {
     const { BANGER_SOUNDS } = await import('../tools/lib/banger/sounds.js');
     const realRe = Audio.reapplyBank, realSource = Audio.sourceBank, realBank = Audio.bank;
@@ -1227,11 +1247,11 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     const bb = club.boxes.heroes[at('b33p')];
     tap(club, bb.x + bb.w / 2, bb.y + bb.h / 2);
     assert(club.queued?.i === at('b33p') && club.queued.title === (eightBit ? 'HI-FI' : '8-BIT') && club.voices.swapped && !club.voices.swappedNow,
-      'a tap on B-33P queues the swap for the next bar');
+      'a tap on B-33P queues the swap for the next beat');
     club.update(1 / 60);
     const swappedLanes = Object.entries(mixes.at(-1)?.voice || {}).filter(([k, id]) => id !== club.song.mix.voice[k]);
     assert(club.voices.swappedNow && swappedLanes.length > 5 && swappedLanes.every(([, id]) => ids.has(id)),
-      'on the bar every part goes onto the set\'s own sounds, the drums and all');
+      'on the beat every part goes onto the set\'s own sounds, the drums and all');
     assert(club.led?.text === (eightBit ? 'HI-FI MODE' : '8-BIT MODE'), 'and the LED board says so');
     club.draw(ctx);
     tap(club, bb.x + bb.w / 2, bb.y + bb.h / 2);
@@ -1239,6 +1259,34 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(!club.voices.swappedNow && mixes.at(-1) === club.song.mix && club.led?.text === (eightBit ? '8-BIT MODE' : 'HI-FI MODE'),
       'a second tap puts the band\'s own sounds back');
     Audio.reapplyBank = realRe; Audio.sourceBank = realSource; Audio.bank = realBank;
+  }
+  // ...on the grid, with a song running: B-33P's swap (both ways) on the next beat, a sound
+  // button's on the next bar line (Peter, 7 Oct 2026: a bar was too long to wait for B-33P).
+  {
+    const { ClubVoices } = await import('../src/game/banger/club-voices.js');
+    const real = { re: Audio.reapplyBank, source: Audio.sourceBank, bank: Audio.bank, ctx: Audio.ctx, next: Audio.nextTime, tick: Audio._tick };
+    Audio.reapplyBank = () => {};
+    Audio.sourceBank = club.song.bank; Audio.bank = real.bank || club.song.bank;
+    Audio.ctx = { currentTime: 0 }; Audio.nextTime = 0;
+    const stepTo = (step) => { Audio._tick = step * Audio.transportResolution / 16; };
+    const v = new ClubVoices(club.song, club.rec);
+    stepTo(17); v.toggle();
+    const offBeat = v.update();
+    stepTo(20);
+    const on = v.update();
+    stepTo(21); v.toggle();
+    const offBeatBack = v.update();
+    stepTo(24);
+    const back = v.update();
+    const part = ['bass', 'chords', 'lead', 'drums'].find((p) => v.next(p));
+    stepTo(28);
+    const beatOnly = v.update();
+    stepTo(32);
+    const bar = v.update();
+    assert(!offBeat && on?.swapped && !offBeatBack && back && !back.swapped && part && !beatOnly && bar?.part === part,
+      'B-33P\'s swap lands on the next beat, going and coming back; a sound button still waits for the bar line');
+    Audio.reapplyBank = real.re; Audio.sourceBank = real.source; Audio.bank = real.bank;
+    Audio.ctx = real.ctx; Audio.nextTime = real.next; Audio._tick = real.tick;
   }
   // RUSTY: held, the song runs 15% fast in its own key; dragged down, through its own speed to
   // half-speed slow-mo; let go, back to its own speed on the beat.
@@ -2548,7 +2596,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const revised = reviseBanger(rec, made);
   assert(revised === rec && rec.style === other && rec.name === name && rec.n === n && bangerState().kept.length === count,
     'and saving the edit remakes that song in place: same name and number, the new style, no new song');
-  assert(rec.expression === 3, 'and an old recipe edited with the pencil opts into expression version 3');
+  assert(rec.expression === 4, 'and an old recipe edited with the pencil opts into expression version 4');
   assert(JSON.stringify(bangerState().draft) === draftBefore, 'editing a song leaves the NEW BANGER draft alone');
 }
 
