@@ -119,6 +119,15 @@ const STRIKE_THUNDER_GAIN = 0.3;
 // On the glass THE BOLT asks first (Peter, 6 Oct 2026: a stray tap would ruin the take playing):
 // a tap arms it for REROLL_CONFIRM_S, and a second one — not a double-tap's bounce — lets it go.
 const REROLL_CONFIRM_S = 3, REROLL_CONFIRM_MIN_S = 0.25;
+// ...and it says CHARGING... from the press to the swap, then, over the new take's club for
+// STRIKE_DONE_S, one of these to say it is done — never the same twice running (Peter, 7 Oct 2026)
+const STRIKE_DONE = Object.freeze(['HERE YOU HAVE!', 'TA-DA!', 'FRESH TAKE!', 'SERVED HOT!', 'ALL YOURS!']);
+const STRIKE_DONE_S = 1.8;
+let lastStrikeDone = null;
+function pickStrikeDone() {
+  const pool = STRIKE_DONE.filter((s) => s !== lastStrikeDone);
+  return (lastStrikeDone = pool[Math.floor(Math.random() * pool.length)]);
+}
 // What the bottom row's buttons are, on a mouse's hover or the keys' focus (Peter, 6 Oct 2026)
 const TIP_DELAY_S = 0.35;
 
@@ -516,7 +525,8 @@ export class BangerClubState {
     // the points the arcs hit ({ x, y }, the room's own units — the new club is laid out the same)
     this.strikeAt = this.room?.strike ? 0 : -Infinity;
     this.strikeTargets = this.room?.strike?.targets ?? [];
-    this.rerollArm = null;     // when a tap on the glass armed THE BOLT (it asks first there)
+    this.strikeDone = this.room?.strike ? pickStrikeDone() : null;   // ...and what the bolt says it brought
+    this.rerollArm = null;    // when a tap on the glass armed THE BOLT (it asks first there)
     this.tip = null;           // the bottom row's tooltip: { key, since } while a button is hovered or focused
     // Moves run on the AUDIO clock, not a beat count: the song loops, and its step count
     // goes back to the top when it does.
@@ -5610,6 +5620,9 @@ export class BangerClubState {
       this.drawTip(ctx, this.boxes.reroll, 'CHARGING', { portrait, P, safeL, safeR, lit: true, dots: true });
     } else if (this.rerollArmed() && this.boxes.reroll) {
       this.drawTip(ctx, this.boxes.reroll, 'TAP AGAIN FOR A NEW TAKE', { portrait, P, safeL, safeR, lit: true });
+    } else if (this.strikeDone && this.t - this.strikeAt < STRIKE_DONE_S && this.boxes.reroll) {
+      const a = Math.min(1, (STRIKE_DONE_S - (this.t - this.strikeAt)) / 0.3);
+      this.drawTip(ctx, this.boxes.reroll, this.strikeDone, { portrait, P, safeL, safeR, lit: true, alpha: a });
     } else if (this.tip && this.t - this.tip.since >= TIP_DELAY_S && tipOf(this.tip.key)) {
       const a = Math.min(1, (this.t - this.tip.since - TIP_DELAY_S) * 8);
       this.drawTip(ctx, tipOf(this.tip.key), this.tipText(this.tip.key), { portrait, P, safeL, safeR, alpha: a });

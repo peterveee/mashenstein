@@ -2444,9 +2444,22 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     struck.enter();
     assert(struck.spinV === calls[0].room.strike.spin, 'the new club\'s ball carries the spin on');
     struck.update(1 / 60); Input.endFrame();
+    const tips = [], drawTip = struck.drawTip;
+    struck.drawTip = (c, box, text, o) => { tips.push({ box, text }); return drawTip.call(struck, c, box, text, o); };
     struck.draw(ctx);
     assert(struck.shownAt != null && struck.titleAt === -Infinity && struck.strikeAt === 0 && struck.strikeTargets === targets && struck.mirrorFlashAt === 0,
       'the struck club comes up with the flash fading off it, and no NOW PLAYING card');
+    assert(struck.strikeDone && tips.some((tp) => tp.box === struck.boxes.reroll && tp.text === struck.strikeDone),
+      `...and the bolt says it is done: ${struck.strikeDone}`);
+    for (let k = 0; k < 120; k++) { struck.update(1 / 60); Input.endFrame(); }
+    tips.length = 0;
+    struck.draw(ctx);
+    struck.drawTip = drawTip;
+    assert(!tips.some((tp) => tp.text === struck.strikeDone), '...for a moment, then it goes');
+    const again = new BangerClubState({ rec, pending: { kind: 'edit', song }, onBack: () => {}, onEdit: () => {}, onReroll: () => true,
+      room: calls[0].room });
+    again.enter();
+    assert(again.strikeDone && again.strikeDone !== struck.strikeDone, 'and the next take\'s line is a different one');
   }
   tap(club, ...centre(club.boxes.reroll));
   step(club, 200);
