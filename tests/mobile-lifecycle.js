@@ -447,10 +447,16 @@ assert(lifecyclePolicy({ allowed: false, visible: false, backgroundAudio: true }
   media.handlers.play();
   assert(pauses.join() === 'true,false' && media.playbackState === 'playing',
     'the card\'s play reaches the screen');
-  assert(anchor.playing, 'and the stand-in plays again');
+  assert(anchor.playing && resumed === 1, 'and the stand-in plays again, the context asked to resume');
+  // A notification's chime: iOS interrupts the context and pauses the stand-in, behind the
+  // game's back — the screen still says playing, so PLAY has nothing of its own to change.
+  anchor.playing = false;
+  media.handlers.play();
+  assert(pauses.join() === 'true,false,false' && resumed === 2 && anchor.playing,
+    'PLAY after an interruption still resumes the context and restarts the stand-in');
   doc.hidden = false;
   doc.fire('visibilitychange');
-  assert(bgCalls.at(-1) === 'loop:resume' && resumed === 1,
+  assert(bgCalls.at(-1) === 'loop:resume' && resumed === 3,
     'coming back resumes the loop and asks an interrupted context to resume');
   song = { ...song, paused: true };
   doc.hidden = true;

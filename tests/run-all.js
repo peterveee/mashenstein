@@ -680,6 +680,7 @@ const browserSuites = new Set([
   'tests/sfx-routing.js',
   'tests/note-duration.js',
   'tests/song-switch.js',
+  'tests/song-change-fade.js',
   'tests/bar-gain.js',
   'tests/bar-pan.js',
   'tests/mix-automation.js',

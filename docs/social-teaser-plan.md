@@ -36,7 +36,18 @@ output lands in gitignored `dist/social/`.
 node tools/render-social.js [all|posters|styles|cabinets|locked|menuboard] [--flags]
 node tools/render-cabinet-reel.js [trackId] [outPath] [--flags]
 node tools/render-loop.js [locked|gary|coin|eggshell] [outPath] [--flags]
+node tools/render-album.js [all|front|back|tracks|views] [--flags]
 ```
+
+`render-album.js` is the fake soundtrack album (8 Oct 2026): four front-cover
+candidates, the back cover with the tracklist, and nine track cards, all
+1080x1080 for one carousel, in `work/social/album/`. One track per cabinet, in
+cabinet order; the titles and the (invented) running times live in the tool's
+`TRACKS` table. A card's art is a still out of a run — scenery, lane, a hazard,
+the cabinet's poster star — from the spot its `view` pins; `views` writes the
+contact sheet those numbers come from (`--sky` for the jukebox's sky-only covers,
+which leave CARDBOARD KINGDOM and CORPORATE KOMBAT almost blank). DÉJÀ VIEW, with
+no scenery of its own, is the other eight in eight strips with Gary running across.
 
 `render-social.js` writes 30 PNGs in about a minute: nine 1080x1350 posters, the
 1080x1080 nine-style contact sheet, eighteen 1080x1350 lit-cabinet portraits, the

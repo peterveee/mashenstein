@@ -465,6 +465,14 @@ export class LifecycleController {
         // Played from the lock screen after a pause in the game: the song now plays
         // on, and apply() is what lets it out of the lifecycle's hold.
         this.apply();
+        // PLAY also restarts what iOS stopped behind the game's back. An interruption (a
+        // notification's chime, Peter, 8 Oct 2026) leaves the context interrupted and the
+        // stand-in paused while the screen still thinks it is playing — so neither the
+        // screen nor apply() has anything to change, and without this the press did nothing.
+        if (!paused) {
+          if (this.audio.resumeContext) this.audio.resumeContext();
+          this.anchorState = null;   // syncAnchor below plays it again
+        }
         this.syncMusicSession();
       };
       try {

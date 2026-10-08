@@ -564,9 +564,11 @@ Input.press('confirm');
 sound.update(1 / 60);
 Input.release('confirm');
 Input.endFrame();
-for (let i = 0; i < 11; i++) sound.update(0.5);
+// Half-second steps to the song's idle wait (visualiserWait: 20s for a shipped song since
+// 8 Oct 2026), and one more for the start gap.
+for (let i = 0; i < 2 * sound.visualiserWait() + 1; i++) sound.update(0.5);
 assert(sound.playing === 0 && sound.visualState === 'in',
-  'screensaver begins after five seconds of audible playback plus the start gap');
+  'screensaver begins after the idle wait of audible playback plus the start gap');
 sound.update(1.1);
 assert(sound.visualState === 'active', 'visualiser fade-in reaches the active state');
 sound.draw(ctx);
