@@ -1010,6 +1010,11 @@ class AudioSys {
     // A locator loop can be armed while the transport is still playing the intro.
     // Keep songBeat() on that intro until the scheduler has actually wrapped once.
     this.loopHasWrapped = false;
+    // PLAY ONCE (setPlayOnce): the song runs through its whole form a single time and then
+    // stops queueing notes; `songEnded` is that end, reached.
+    this.playOnce = false;
+    this.songEnded = false;
+    this.onceMinSteps = 0;
     // Whether the armed region is the SONG's own — its `arrangement.loop` — rather
     // than a locator range or a cabinet treatment's. What is armed looks identical
     // either way, and the difference decides who is allowed to re-arm it: a bar edit
@@ -2167,6 +2172,22 @@ class AudioSys {
     const armed = this.armLoop(this.songLoop(), { seek });
     this.formLoopArmed = armed;
     return armed;
+  }
+
+  /**
+   * PLAY ONCE, for the song already playing (setBank's `once` arrives with it): on, the
+   * song's loop is let go and the transport runs on through its looped region and any bars
+   * after it to the end of the form, where it stops queueing notes — the tails of the last
+   * ones left to ring — and the loop listeners hear `{ ended: true }`. Off, its own loop is
+   * armed again; a song that has already ended stays ended (choose it again to replay it).
+   * The jukebox's REPEAT switch, off and on (Peter, 8 Oct 2026).
+   */
+  setPlayOnce(on) {
+    on = !!on;
+    if (on === this.playOnce || !this.bank) return;
+    this.playOnce = on;
+    if (on) this.setLoop();
+    else if (!this.songEnded) this.armSongLoop();
   }
 
   /**
@@ -6095,7 +6116,7 @@ class AudioSys {
   // where the downbeat is booked, after the mix is built, which can take a few
   // hundredths of a second: the club's BOLT brings a new take in on the old one's bar line.
   setBank(bank, mixOverride = undefined, arrangementOverride = undefined,
-    { gap = 0.5, formLoop = true, countIn = 0, startAtBeginning = false, at = null } = {}) {
+    { gap = 0.5, formLoop = true, countIn = 0, startAtBeginning = false, at = null, once = false } = {}) {
     // A SONG ARRIVES AT ITS OWN TEMPO. The transport warp belongs to whatever was
     // performing the last one — the star powerup's whole tone, slow-mo's drag, and
     // above all the bpm ramp a beat stage banks at every checkpoint. That last one
@@ -6273,8 +6294,14 @@ class AudioSys {
     // game goes through — the title screen, the hub, a level, the jukebox and
     // MusicDirector alike — so arming it here is what makes an intro work everywhere
     // without a single call site knowing about it. `formLoop: false` is for the one
-    // screen that must not loop: the credits roll and then end.
-    if (formLoop) this.armSongLoop({ seek: !startAtBeginning });
+    // screen that must not loop: the credits roll and then end. `once` goes further: the
+    // song plays its form through a single time and stops (setPlayOnce) — the jukebox with
+    // REPEAT off. `{ minBars }` keeps a form shorter than that going round until it has
+    // played that many: a song that is one two-bar pattern has no "once" worth the name.
+    this.playOnce = !!once;
+    this.onceMinSteps = Math.max(0, Number(once?.minBars) || 0) * 16;
+    this.songEnded = false;
+    if (formLoop && !once) this.armSongLoop({ seek: !startAtBeginning });
     if (bank && bank.bpm) {
       this.bpm = bank.bpm;
       // follows delayDivision, and grows the line if this bpm makes it a long one — once
@@ -7342,6 +7369,9 @@ class AudioSys {
     // shutter, rather than whenever a timer gets a turn on a busy main thread.
     if (this._pendingMix && this.ctx && this.ctx.currentTime >= this._pendingMix.due) this._flushPendingMix();
     if (!this.ctx || !this.bank) return;
+    // A song played once has ended (setPlayOnce): its tails ring, nothing more is queued —
+    // and its queue running dry is not a starved transport.
+    if (this.songEnded) return;
     // How much queued audio was left when this pass began — the number that says
     // whether the main thread is keeping the sequencer fed. Normally it hovers a
     // little under the lookahead; after a long task it is the lookahead minus the
@@ -7396,6 +7426,7 @@ class AudioSys {
    */
   prefill(seconds = 1) {
     if (!this.ctx || !this.bank || this.offline || this._previewing) return;
+    if (this.songEnded) return;   // played once and ended (setPlayOnce): nothing more to queue
     const upTo = this.ctx.currentTime + Math.min(2, Math.max(0, seconds));
     while (this.nextTime < upTo) this.scheduleStep();
   }
@@ -9749,7 +9780,10 @@ class AudioSys {
           ? rearrangementOutputSteps(this.rearrangement)
           : plan.length * 16;
         if (formEnd > 0 && this.step % formEnd === 0) {
+          // Played once (setPlayOnce): here the song ends, and schedule() queues no more.
+          if (this.playOnce && !this.rearrangement && this.step >= this.onceMinSteps) this.songEnded = true;
           const loop = { when: this.nextTime, start: 0, end: formEnd,
+            ...(this.songEnded ? { ended: true } : {}),
             // The listener needs to know this wrap is a RECIPE wrap to act on it, and
             // when it will be heard, since the scheduler runs ahead of the ear.
             ...(this.rearrangement ? { rearrangement: true, looping: this.rearrangeLoop !== false } : {}) };
@@ -10116,6 +10150,21 @@ class AudioSys {
   // analyser values provide the organic response; songBeat() supplies the
   // exact procedural clock so kicks and phrase geometry never drift from the
   // notes the sequencer actually scheduled.
+  /**
+   * How loud the song is coming out right now: the largest sample in the visualisers'
+   * analyser window (a few milliseconds, after every reverb and echo return), linear, or
+   * null with no analyser. For waiting out a song's tails (the jukebox's REPEAT off).
+   */
+  songPeak() {
+    const a = this.songAnalyser;
+    if (!a || typeof a.getFloatTimeDomainData !== 'function') return null;
+    if (!this._peakWindow || this._peakWindow.length !== a.fftSize) this._peakWindow = new Float32Array(a.fftSize);
+    a.getFloatTimeDomainData(this._peakWindow);
+    let peak = 0;
+    for (const v of this._peakWindow) if (v > peak) peak = v; else if (-v > peak) peak = -v;
+    return peak;
+  }
+
   musicAnalysis() {
     const out = this._analysis;
     // ONE READOUT PER FRAME, however many callers ask for it.

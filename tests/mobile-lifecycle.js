@@ -368,9 +368,9 @@ assert(lifecyclePolicy({ allowed: false, visible: false, backgroundAudio: true }
   let clock = { duration: 32, position: 4 };
   // The lock screen's stand-in: a silent <audio>, the only thing WebKit sends the card's buttons to.
   const anchor = {
-    muted: null, playing: false, attrs: {},
+    muted: null, playing: false, attrs: {}, plays: 0,
     setAttribute(k, v) { this.attrs[k] = v; },
-    play() { this.playing = true; return Promise.resolve(); },
+    play() { this.playing = true; this.plays++; return Promise.resolve(); },
     pause() { this.playing = false; },
   };
   doc.createElement = (tag) => (tag === 'audio' ? anchor : null);
@@ -415,9 +415,12 @@ assert(lifecyclePolicy({ allowed: false, visible: false, backgroundAudio: true }
   assert(media.positions.length === 2 && media.position.position === 16, 'a loop back or a skip sets it again');
   bg.primeAnchor();
   await Promise.resolve(); await Promise.resolve();
-  assert(doc.body.child === anchor && anchor.loop && anchor.src === 'blob:audio/wav:32044'
-    && anchor.playing && anchor.muted === false && bg.anchorReady,
-    'a tap on a music screen starts two seconds of looping silence as the card\'s stand-in');
+  assert(doc.body.child === anchor && anchor.loop && anchor.src === 'blob:audio/wav:2880044'
+    && anchor.plays === 1 && anchor.muted === false && bg.anchorReady,
+    'a tap on a music screen starts half a minute of looping silence at 48 kHz as the card\'s stand-in');
+  assert(!anchor.playing, '...and it rests at once while the game is on screen: the lock screen is what it is for');
+  bg.syncMusicSession();
+  assert(!anchor.playing && anchor.plays === 1, 'a frame on screen leaves it resting');
   assert(!media.handlers.nexttrack && !media.handlers.previoustrack,
     'a song that cannot skip offers no previous/next');
   song = { ...song, skips: true };
@@ -434,6 +437,7 @@ assert(lifecyclePolicy({ allowed: false, visible: false, backgroundAudio: true }
   doc.fire('visibilitychange');
   assert(bgCalls.at(-1) === 'loop:pause' && !bgCalls.includes('audio:true'),
     'hiding with music pauses the loop and leaves the audio running');
+  assert(anchor.playing && anchor.plays === 2, 'hidden, the stand-in wakes for the lock screen');
   assert(backgrounded === 1, 'the screen is told once that it went into the background');
   win.fire('resize');
   assert(backgrounded === 1, 'a hidden re-apply does not tell the screen again');
@@ -458,6 +462,7 @@ assert(lifecyclePolicy({ allowed: false, visible: false, backgroundAudio: true }
   doc.fire('visibilitychange');
   assert(bgCalls.at(-1) === 'loop:resume' && resumed === 3,
     'coming back resumes the loop and asks an interrupted context to resume');
+  assert(!anchor.playing, 'back on screen, the stand-in rests again');
   song = { ...song, paused: true };
   doc.hidden = true;
   doc.fire('visibilitychange');

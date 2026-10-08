@@ -5,19 +5,36 @@ const KEY = 'mashenstein.v2';
 const V1KEY = 'superMashBros.v1';
 const RENDER_DENSITY_VERSION = 2;
 
-// ---- the .mash file ----------------------------------------------------------
+// ---- the .bak file -----------------------------------------------------------
 //
 // SETTINGS > IMPORT / EXPORT (8 Oct 2026): the whole save — all three shifts, the
 // settings and every Lab song — as one file a player can carry to a new install.
 // On an iPhone that is the only way anything survives: the installed app keeps
 // its own storage, and deleting it from the home screen deletes the lot.
 //
-// JSON inside a small envelope that names itself, so a stray JSON file is refused
+// BINARY, NOT TEXT (Peter, 8 Oct 2026): a save file should look like a save file,
+// not like a page of JSON anyone can open and edit. The layout:
+//
+//   0   8 bytes  magic  \x89 M A S H \r \n \x1a
+//   8   1 byte   format version
+//   9   4 bytes  payload length, little-endian
+//   13  4 bytes  CRC-32 of the payload before scrambling, little-endian
+//   17  …        the payload: UTF-8 JSON, XORed with a fixed keystream
+//
+// The magic is PNG's trick: the high first byte stops it reading as text, and
+// the \r\n and \x1a catch a file mangled by a text-mode transfer. The scramble
+// is obfuscation, not encryption — it keeps the file from being read or edited
+// casually, and the checksum turns any edit that does get made into "DAMAGED"
+// rather than a save with 99999 coins in it.
+//
+// Inside, JSON in a small envelope that names itself, so a stray file is refused
 // by name rather than read as an empty save, and a file from a newer game is
 // refused rather than half-understood.
-export const SAVE_FILE_EXT = '.mash';
+export const SAVE_FILE_EXT = '.bak';
 const SAVE_FILE_TAG = 'MASHENSTEIN SAVE';
 const SAVE_FILE_FORMAT = 1;
+const SAVE_FILE_MAGIC = [0x89, 0x4d, 0x41, 0x53, 0x48, 0x0d, 0x0a, 0x1a];
+const SAVE_FILE_HEADER = SAVE_FILE_MAGIC.length + 1 + 4 + 4;
 // A real save is a few kilobytes; the Lab keeps recipes, not audio. Anything
 // near this is not a save, and reading it would only stall the frame.
 export const SAVE_FILE_MAX_BYTES = 2 * 1024 * 1024;
@@ -25,37 +42,90 @@ export const SAVE_FILE_MAX_BYTES = 2 * 1024 * 1024;
 // learns its own ceiling. Stripped on export, kept from the device on import.
 const DEVICE_ONLY_SETTINGS = ['renderDensityByBackend', 'renderDensityVersion'];
 
-/** The save as the text of a .mash file. */
+const NOT_A_SAVE = 'THAT IS NOT A MASHENSTEIN SAVE FILE.';
+const DAMAGED = 'THAT SAVE FILE IS DAMAGED AND CANNOT BE READ.';
+const NEWER = 'THAT FILE IS FROM A NEWER VERSION OF THE GAME. UPDATE THE GAME, THEN IMPORT IT.';
+
+let crcTable = null;
+function crc32(bytes) {
+  if (!crcTable) {
+    crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      crcTable[n] = c >>> 0;
+    }
+  }
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) crc = crcTable[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** XOR `bytes` in place with an xorshift32 keystream. Its own inverse. */
+function scramble(bytes) {
+  let x = (0x4d415348 ^ bytes.length) >>> 0 || 1;
+  for (let i = 0; i < bytes.length; i++) {
+    x ^= x << 13; x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5; x >>>= 0;
+    bytes[i] ^= x & 0xff;
+  }
+  return bytes;
+}
+
+/** The save as the bytes of a .bak file. */
 export function packSaveFile(data, now = new Date()) {
   const save = JSON.parse(JSON.stringify(data));
   if (save.settings) for (const k of DEVICE_ONLY_SETTINGS) delete save.settings[k];
   delete save.importedV1;
-  return JSON.stringify({
+  const body = new TextEncoder().encode(JSON.stringify({
     mashenstein: SAVE_FILE_TAG, format: SAVE_FILE_FORMAT, exportedAt: now.toISOString(), save,
-  });
+  }));
+  const out = new Uint8Array(SAVE_FILE_HEADER + body.length);
+  const view = new DataView(out.buffer);
+  out.set(SAVE_FILE_MAGIC, 0);
+  out[SAVE_FILE_MAGIC.length] = SAVE_FILE_FORMAT;
+  view.setUint32(SAVE_FILE_MAGIC.length + 1, body.length, true);
+  view.setUint32(SAVE_FILE_MAGIC.length + 5, crc32(body), true);
+  out.set(scramble(body), SAVE_FILE_HEADER);
+  return out;
+}
+
+/** The JSON text inside a .bak file's bytes, or the bytes as text when they are not one. */
+function unpackSaveFile(bytes) {
+  const magic = SAVE_FILE_MAGIC.every((b, i) => bytes[i] === b);
+  if (!magic) return new TextDecoder().decode(bytes);
+  if (bytes.length < SAVE_FILE_HEADER) throw new Error(DAMAGED);
+  if (bytes[SAVE_FILE_MAGIC.length] > SAVE_FILE_FORMAT) throw new Error(NEWER);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const length = view.getUint32(SAVE_FILE_MAGIC.length + 1, true);
+  if (SAVE_FILE_HEADER + length !== bytes.length) throw new Error(DAMAGED);
+  const body = scramble(bytes.slice(SAVE_FILE_HEADER));
+  if (crc32(body) !== view.getUint32(SAVE_FILE_MAGIC.length + 5, true)) throw new Error(DAMAGED);
+  return new TextDecoder().decode(body);
 }
 
 /**
- * Read a .mash file's text. Returns { save, exportedAt, shifts, labSongs } — the
- * counts are what the IMPORT screen shows before anything is replaced — or throws
- * an Error whose message is written for the player.
+ * Read a save file. Returns { save, exportedAt, shifts, labSongs } — the counts
+ * are what the IMPORT screen shows before anything is replaced — or throws an
+ * Error whose message is written for the player.
  *
- * The bare localStorage blob is accepted too (a v2 save without the envelope),
+ * Takes the file's bytes (a Uint8Array or ArrayBuffer) or text. Plain JSON is
+ * still accepted underneath the binary — the bare localStorage blob included —
  * since that is what a save looks like copied out of a browser's dev tools.
  */
-export function readSaveFile(text) {
+export function readSaveFile(input) {
+  const bytes = input instanceof Uint8Array ? input
+    : input instanceof ArrayBuffer ? new Uint8Array(input) : null;
+  const text = bytes ? unpackSaveFile(bytes) : String(input);
   let file = null;
   try { file = JSON.parse(text); } catch (e) { /* not JSON */ }
-  if (!file || typeof file !== 'object') throw new Error('THAT IS NOT A MASHENSTEIN SAVE FILE.');
+  if (!file || typeof file !== 'object') throw new Error(NOT_A_SAVE);
   const enveloped = file.mashenstein === SAVE_FILE_TAG;
   const save = enveloped ? file.save : file;
-  if (!enveloped && !(save && 'version' in save && 'slots' in save)) {
-    throw new Error('THAT IS NOT A MASHENSTEIN SAVE FILE.');
-  }
-  if ((enveloped && Number(file.format) > SAVE_FILE_FORMAT) || Number(save?.version) > 2) {
-    throw new Error('THAT FILE IS FROM A NEWER VERSION OF THE GAME. UPDATE THE GAME, THEN IMPORT IT.');
-  }
-  if (!validSave(migrate(save))) throw new Error('THAT SAVE FILE IS DAMAGED AND CANNOT BE READ.');
+  if (!enveloped && !(save && 'version' in save && 'slots' in save)) throw new Error(NOT_A_SAVE);
+  if ((enveloped && Number(file.format) > SAVE_FILE_FORMAT) || Number(save?.version) > 2) throw new Error(NEWER);
+  if (!validSave(migrate(save))) throw new Error(DAMAGED);
   const exported = enveloped ? new Date(file.exportedAt) : null;
   return {
     save,
@@ -309,7 +379,7 @@ export class Save {
     return JSON.parse(JSON.stringify(this.data));
   }
 
-  /** The whole save as the text of a .mash file (packSaveFile). */
+  /** The whole save as the bytes of a .bak file (packSaveFile). */
   exportFile(now) {
     return packSaveFile(this.data, now);
   }

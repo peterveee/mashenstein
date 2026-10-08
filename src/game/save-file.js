@@ -1,10 +1,14 @@
-// SETTINGS > IMPORT / EXPORT: the whole save as one .mash file. 8 Oct 2026.
+// SETTINGS > IMPORT / EXPORT: the whole save as one .bak file. 8 Oct 2026.
 //
 // EXPORT writes all three shifts, the settings and every Lab song into a file;
 // IMPORT reads one back on a new install or another device, after a screen that
-// says what is in the file and what it is about to replace. The file format and
-// its checks live with the save (save.js packSaveFile / readSaveFile); this is
-// only the screen and the trip through the browser.
+// says what is in the file and what it is about to replace, and then a second
+// that asks ARE YOU REALLY SURE with the cursor on NO (Peter, 8 Oct 2026): an
+// import throws away everything on the device, so it takes two deliberate
+// answers, and the safe one is where the cursor starts both times.
+//
+// The file format and its checks live with the save (save.js packSaveFile /
+// readSaveFile); this is only the screen and the trip through the browser.
 //
 // WHY EXPORT AND IMPORT ACT INSIDE THE BROWSER EVENT. The game reads its input
 // once a frame, after the tap that caused it has finished. A browser opens a
@@ -29,17 +33,20 @@ const RESTART_SEC = 1.0;
 
 // ---- the copy, written once --------------------------------------------------
 const READY_HEADLINE = 'TAKE YOUR GAME WITH YOU';
+// "Backup file" is the name; the extension is said once, where the file is made.
 const READY_STEPS = [
-  `EXPORT PUTS ALL THREE SHIFTS, YOUR SETTINGS AND EVERY LAB SONG IN ONE ${SAVE_FILE_EXT.toUpperCase()} FILE.`,
-  `IMPORT LOADS A ${SAVE_FILE_EXT.toUpperCase()} FILE INTO A NEW INSTALL OR ANOTHER DEVICE.`,
+  `EXPORT PUTS YOUR PROGRESS, SETTINGS AND EVERY LAB SONG IN ONE BACKUP FILE (WITH A ${SAVE_FILE_EXT.toUpperCase()} EXTENSION).`,
+  'IMPORT LOADS A BACKUP FILE INTO A NEW INSTALL OR ANOTHER DEVICE.',
 ];
-const READY_WHY = `DELETING THE GAME DELETES ITS SAVE. KEEP A ${SAVE_FILE_EXT.toUpperCase()} FILE SOMEWHERE SAFE.`;
+const READY_WHY = 'DELETING THE GAME DELETES ITS SAVE. KEEP A BACKUP FILE SOMEWHERE SAFE.';
 // A phone exports through the share sheet, which offers a dozen places to send a
 // file and does not say which one keeps it.
 const PHONE_HOW = 'ON A PHONE, CHOOSE SAVE TO FILES WHEN THE SHARE SHEET OPENS.';
-const CONFIRM_WARNING = 'IT REPLACES ALL THREE SHIFTS, THE SETTINGS AND EVERY LAB SONG ON THIS DEVICE.'
+const CONFIRM_WARNING = 'IT REPLACES THE PROGRESS, SETTINGS AND EVERY LAB SONG ON THIS DEVICE.'
   + ' THIS CANNOT BE UNDONE.';
 const CONFIRM_HOW = 'THE GAME RESTARTS TO LOAD IT.';
+const SURE_WARNING = 'THE PROGRESS, SETTINGS AND LAB SONGS ON THIS DEVICE WILL BE GONE FOR GOOD.';
+const SURE_HOW = 'IF YOU MIGHT WANT THEM BACK, CHOOSE NO AND EXPORT THEM FIRST.';
 
 const NOTICE_COLOR = { ok: '#48c848', bad: '#d84828', info: '#8a8a98' };
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -57,7 +64,7 @@ export function exportedLabel(d) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-/** mashenstein-2026-10-08-1432.mash — sorts by date, and two exports a day apart never collide. */
+/** mashenstein-2026-10-08-1432.bak — sorts by date, and two exports a day apart never collide. */
 export function exportFileName(d) {
   return `mashenstein-${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
     + `-${pad2(d.getHours())}${pad2(d.getMinutes())}${SAVE_FILE_EXT}`;
@@ -78,13 +85,13 @@ export const browserFiles = {
    * navigator.share is reached before the first await, so it is still inside
    * the gesture that called this.
    */
-  send(text, name) {
-    const type = 'application/json';
-    const file = typeof File === 'function' ? new File([text], name, { type }) : null;
+  send(bytes, name) {
+    const type = 'application/octet-stream';
+    const file = typeof File === 'function' ? new File([bytes], name, { type }) : null;
     if (Input.isTouchDevice() && file && navigator.canShare?.({ files: [file] })) {
       return navigator.share({ files: [file], title: name }).then(() => 'shared');
     }
-    const url = URL.createObjectURL(new Blob([text], { type }));
+    const url = URL.createObjectURL(new Blob([bytes], { type }));
     const a = document.createElement('a');
     a.href = url;
     a.download = name;
@@ -97,7 +104,7 @@ export const browserFiles = {
   },
   /**
    * Open the file picker; `onFile` gets the File the player chose. There is no
-   * `accept` filter on purpose: iOS does not know the .mash extension and greys
+   * `accept` filter on purpose: iOS does not know a .bak file's type and greys
    * out every file it cannot match, which would make the save unpickable. The
    * contents are checked instead (readSaveFile).
    */
@@ -159,6 +166,7 @@ export class SaveFileState extends PanelScreen {
   buttonRows() {
     if (this.phase === 'ready') return ['EXPORT', 'IMPORT', 'BACK'];
     if (this.phase === 'confirm') return ['CANCEL', 'REPLACE'];
+    if (this.phase === 'sure') return ['NO', 'YES'];
     return [];
   }
 
@@ -227,7 +235,7 @@ export class SaveFileState extends PanelScreen {
       return;
     }
     if (Input.pressed('back')) {
-      if (this.phase === 'confirm') this.cancelImport();
+      if (this.phase === 'confirm' || this.phase === 'sure') this.cancelImport();
       else { Audio.sfx('ui'); this.onDone(); }
       this.keyed = false;
       Input.endFrame();
@@ -249,8 +257,9 @@ export class SaveFileState extends PanelScreen {
       this.act(row);
       return;
     }
-    if (row === 'REPLACE') { this.replace(); return; }
-    if (row === 'CANCEL') { this.cancelImport(); return; }
+    if (row === 'REPLACE') { this.askSure(); return; }
+    if (row === 'YES') { this.replace(); return; }
+    if (row === 'CANCEL' || row === 'NO') { this.cancelImport(); return; }
     Audio.sfx('ui');
     this.onDone();
   }
@@ -310,11 +319,11 @@ export class SaveFileState extends PanelScreen {
       return;
     }
     this.busy = true;
-    return file.text().then((text) => {
+    return file.arrayBuffer().then((bytes) => {
       this.busy = false;
       if (this.phase !== 'ready') return;
       try {
-        this.pending = readSaveFile(text);
+        this.pending = readSaveFile(bytes);
       } catch (e) {
         this.say('bad', e.message);
         Audio.sfx('uiBad');
@@ -330,6 +339,14 @@ export class SaveFileState extends PanelScreen {
       this.say('bad', 'THAT FILE COULD NOT BE READ.');
       Audio.sfx('uiBad');
     });
+  }
+
+  /** The second question. The cursor starts on NO, so a press made in a hurry keeps the device as it is. */
+  askSure() {
+    this.phase = 'sure';
+    this.idx = 0;
+    this.layout();
+    Audio.sfx('uiBad');
   }
 
   cancelImport() {
@@ -391,6 +408,10 @@ export class SaveFileState extends PanelScreen {
       push(`${countOf(f.shifts, 'SHIFT')}, ${countOf(f.labSongs, 'LAB SONG')}`, '#48e0c8', S.step);
       para(CONFIRM_WARNING, '#d84828', S.why, S.gap);
       para(CONFIRM_HOW, '#8a8a98', S.why, S.gap);
+    } else if (this.phase === 'sure') {
+      push('ARE YOU REALLY SURE?', '#d84828', S.head);
+      para(SURE_WARNING, '#c8c8d8', S.step, S.gap);
+      para(SURE_HOW, '#8a8a98', S.why, S.gap);
     } else {
       push('SAVE IMPORTED', '#48c848', S.head);
       push('RESTARTING...', '#8a8a98', S.step, S.gap);

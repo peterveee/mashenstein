@@ -104,11 +104,18 @@ assert(sound.playing === 3, 'keyboard confirmation starts the selected track aga
 const skipIn = JUKEBOX.findIndex((track) =>
   (loopOf(track.bank, trackIdOf(track.bank))?.startBar ?? 1) > 1);
 assert(skipIn >= 0, 'the shipped jukebox includes a song with a later gameplay start marker');
-sound.openTrack(skipIn);
-assert(Audio.step === 0,
-  'a jukebox song with a later gameplay start marker still begins at bar one');
-assert(Audio.formLoopArmed && Audio.loopStart != null && Audio.loopEnd != null,
-  'starting at bar one preserves the song authored repeat region');
+{
+  // with REPEAT on: off, the jukebox arms no loop at all (the REPEAT block below)
+  const { save } = await import('../src/engine/save.js');
+  const kept = save.data;
+  save.data = { settings: { jukeboxRepeat: true }, slots: [null, null, null] };
+  sound.openTrack(skipIn);
+  assert(Audio.step === 0,
+    'a jukebox song with a later gameplay start marker still begins at bar one');
+  assert(Audio.formLoopArmed && Audio.loopStart != null && Audio.loopEnd != null,
+    'starting at bar one preserves the song authored repeat region (REPEAT on)');
+  save.data = kept;
+}
 const starts = JUKEBOX.map((track, i) => {
   sound.openTrack(i);
   return { name: track.name, step: Audio.step };
@@ -233,51 +240,69 @@ renderer.setPresentationFrame(defaultFrame());
 }
 
 {
-  // REPEAT: off (the default), a song plays through twice and the next one comes on, at the
-  // end of its second time round; on, it goes round for as long as it is left. Kept in the save.
+  // REPEAT: off (the default), a song plays through ONCE — no loop armed, so the transport
+  // runs on to the end of its form — and at the end it waits for every tail to die away
+  // (Audio.songPeak), then the next one; on, it goes round its loop for as long as it is left. Kept in the save. The
+  // engine's end (Audio.songEnded at the form's end) is checked in a real browser:
+  // work/local/play-once.mjs.
   const { save, defaultSettings } = await import('../src/engine/save.js');
   const kept = save.data;
   save.data = { settings: { jukeboxVisualiser: true }, slots: [null, null, null] };
   const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
-  const loopAt = () => ({ when: Audio.ctx?.currentTime ?? 0, start: 0, end: 64 });
+  // The engine's end, heard long enough ago that the wait for its tails has run out (no
+  // analyser here to read them, so it is the JUKEBOX_TAIL_MAX cap that lets go).
+  const ended = () => { Audio.songEnded = true; return { when: -20, start: 0, end: 64, ended: true }; };
   assert(defaultSettings().jukeboxRepeat === false, 'REPEAT starts off');
   Input.clearAll();
   const jb = new SoundTestState({ onDone: () => {}, initialTrack: 2 });
   jb.enter();
   const n = jb.tracks.length;
-  jb.onSongLoop(loopAt());
+  assert(Audio.playOnce && Audio.loopEnd == null && Audio.onceMinSteps === 256,
+    'off, the song is put on to play once — no loop armed — and a two-bar pattern would go round to sixteen bars');
+  jb.onSongLoop({ when: -10, start: 0, end: 64 });
   await tick();
-  assert(jb.playing === 2 && jb.passes === 1, 'once round, the song plays on');
-  jb.onSongLoop(loopAt());
+  assert(jb.playing === 2 && !jb.advanceTimer, 'a form going round (a short pattern still filling its bars) changes nothing');
+  jb.onSongLoop(ended());
   await tick();
-  assert(jb.playing === 3 && jb.idx === 3 && jb.passes === 0 && Audio.sourceBank === JUKEBOX[3].bank,
-    'twice round, the next song comes on, the cursor with it');
+  assert(jb.playing === 3 && jb.idx === 3 && Audio.sourceBank === JUKEBOX[3].bank && Audio.playOnce,
+    'at its end, its tails over, the next song comes on, played once too, the cursor with it');
   jb.idx = n;   // the cursor down on BACK stays there
-  jb.onSongLoop(loopAt()); jb.onSongLoop(loopAt());
+  jb.onSongLoop(ended());
   await tick();
   assert(jb.playing === 4 && jb.idx === n, 'the cursor moves only when it was on the song that finished');
   jb.idx = n + 5;
   Input.press('confirm'); jb.update(1 / 60); Input.release('confirm'); Input.endFrame();
-  assert(jb.repeatOn && save.data.settings.jukeboxRepeat === true, 'REPEAT switches on, into the save');
-  for (let i = 0; i < 6; i++) jb.onSongLoop(loopAt());
+  assert(jb.repeatOn && save.data.settings.jukeboxRepeat === true && !Audio.playOnce && Audio.loopEnd != null,
+    'REPEAT switches on, into the save, and the song playing arms its loop again');
+  jb.onSongLoop(ended());
   await tick();
-  assert(jb.playing === 4, 'on, a song goes round and round');
+  assert(jb.playing === 4, 'on, nothing moves it on');
   jb.toggleRepeat();
-  jb.onSongLoop(loopAt());
-  await tick();
-  assert(!jb.repeatOn && jb.playing === 5, 'switched off with the song long since twice round, it gives way at its next loop');
-  jb.toggle(5);   // stopped
-  jb.onSongLoop(loopAt()); jb.onSongLoop(loopAt());
+  assert(!jb.repeatOn && Audio.playOnce && Audio.loopEnd == null, 'off again, the song lets go of its loop and plays on to its end');
+  Audio.songEnded = true;   // ...and gets there
+  jb.toggleRepeat();
+  assert(jb.repeatOn && !Audio.songEnded && !Audio.playOnce && Audio.loopEnd != null && jb.playing === 4,
+    'on, with the song already ended, it is put back on from the top to go round');
+  jb.toggleRepeat();
+  jb.toggle(4);   // stopped
+  jb.onSongLoop(ended());
   await tick();
   assert(jb.playing === -1, 'a stopped jukebox stays stopped');
   jb.toggle(n - 1);
-  jb.onSongLoop(loopAt()); jb.onSongLoop(loopAt());
+  jb.onSongLoop(ended());
   await tick();
   assert(jb.playing === 0, 'after the last song, round to the first');
-  jb.onSongLoop(loopAt()); jb.onSongLoop(loopAt());
+  jb.mediaPause(true);
+  jb.onSongLoop(ended());
+  await tick();
+  assert(jb.playing === 0, 'a song that ends under the lock screen\'s pause waits');
+  Audio.songEnded = true;
+  jb.mediaPause(false);
+  assert(jb.playing === 1, '...and PLAY brings on the next');
+  jb.onSongLoop(ended());
   jb.exit();
   await tick();
-  assert(jb.playing === 0 && jb.offLoop === null, 'leaving the jukebox lets go of the loop and any change booked');
+  assert(jb.playing === 1 && jb.offLoop === null, 'leaving the jukebox lets go of the loop and any change booked');
   const lab = new SoundTestState({ onDone: () => {}, lab: true });
   lab.enter();
   assert(lab.offLoop === null && !lab.backPlates().rep, 'the Lab has no REPEAT and does not listen for loops');

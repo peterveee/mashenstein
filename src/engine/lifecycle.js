@@ -84,7 +84,11 @@ export function portraitAllowedFor(state, diagPortrait = false) {
 
 // Two seconds of 8 kHz mono silence as a WAV: the lock screen's stand-in (primeAnchor).
 // WebKit will not make a clip under 0.95 s the thing that is playing.
-function silentWav(seconds = 2, rate = 8000) {
+// Half a minute at the context's own rate (8 Oct 2026): the first stand-in, two seconds at
+// 8 kHz, went round thirty times a minute beside the song, and the jukebox crackled where the
+// same song in a level — stand-in resting — did not. Long, so it seldom goes round; at the
+// game's rate, so nothing has to be converted to play it. ~2.9 MB of zeros, made once.
+function silentWav(seconds = 30, rate = 48000) {
   const n = Math.round(seconds * rate);
   const v = new DataView(new ArrayBuffer(44 + n * 2));
   const tag = (at, s) => { for (let i = 0; i < 4; i++) v.setUint8(at + i, s.charCodeAt(i)); };
@@ -546,7 +550,8 @@ export class LifecycleController {
       el.loop = true;
       el.preload = 'auto';
       el.setAttribute('playsinline', '');
-      el.src = this.win.URL.createObjectURL(new this.win.Blob([silentWav()], { type: 'audio/wav' }));
+      const rate = Math.round(this.audio.ctx?.sampleRate) || 48000;
+      el.src = this.win.URL.createObjectURL(new this.win.Blob([silentWav(30, rate)], { type: 'audio/wav' }));
       if (this.doc.body) this.doc.body.appendChild(el);
       this.anchor = el;
     }
@@ -600,13 +605,21 @@ export class LifecycleController {
       : null;
   }
 
-  /** The anchor follows the song: playing, paused — or muted when there is none, which takes it off the lock screen. */
+  /**
+   * The anchor follows the song: playing, paused — or muted when there is none, which takes
+   * it off the lock screen. And it RESTS while the game is on screen, song or no song: it is
+   * only there for the lock screen's buttons, and playing beside the song it made the jukebox
+   * crackle (Peter, 8 Oct 2026). apply() wakes it as the page is hidden — allowed without a
+   * tap, as it has played with one (primeAnchor) — and rests it again on the way back.
+   */
   syncAnchor(state) {
     const el = this.anchor;
-    if (!el || !this.anchorReady || state === this.anchorState) return;
-    this.anchorState = state;
+    if (!el || !this.anchorReady) return;
+    const want = state === 'playing' && !this.isHidden() ? 'resting' : state;
+    if (want === this.anchorState) return;
+    this.anchorState = want;
     el.muted = state === 'none';
-    if (state !== 'playing') { el.pause(); return; }
+    if (want !== 'playing') { el.pause(); return; }
     let played = null;
     try { played = el.play(); } catch (e) { /* settled below */ }
     // refused after all: the next tap on a music screen starts it again
@@ -915,6 +928,8 @@ export class LifecycleController {
       if (this.inBackground) this.onBackground();
       else if (this.audio.resumeContext) this.audio.resumeContext();
     }
+    // The lock screen's stand-in wakes as the page goes and rests as it comes back (syncAnchor).
+    this.syncAnchor(this.playbackState);
     // Gone to the lock screen with a song whose cover is not painted yet (syncMusicSession).
     if (this.isHidden() && this.nowPlayingKey && this.coverKey !== this.nowPlayingKey) {
       const song = this.nowPlaying();

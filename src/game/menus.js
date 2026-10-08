@@ -4937,6 +4937,14 @@ const JUKEBOX_HINT_TOP = H - 14;
 // Air between a device cutout and this screen's own ink. Portrait stretches Y
 // by roughly 3x, so two logical px is a comfortable handful of real ones.
 const JUKEBOX_SAFE_PAD = 2;
+// REPEAT off: a song's tails are over once its output has stayed under -60 dBFS for
+// JUKEBOX_TAIL_HOLD — that hold is the short silence before the next song, which setBank's
+// own half-second gap lengthens a little — read every JUKEBOX_TAIL_POLL_MS, and never
+// waited on for more than JUKEBOX_TAIL_MAX after the last note (SoundTestState.onSongLoop).
+const JUKEBOX_TAIL_QUIET = 0.001;
+const JUKEBOX_TAIL_HOLD = 0.75;
+const JUKEBOX_TAIL_POLL_MS = 50;
+const JUKEBOX_TAIL_MAX = 15;
 // Portrait fills the phone's height, so glyphs are drawn compressed in the
 // logical canvas and the CSS fill expands them back out; they also get to be
 // bigger, since a whole phone's worth of height is a lot of room for six rows.
@@ -5043,13 +5051,13 @@ export class SoundTestState {
     // landscape it is the row's third third; in portrait the two switches share a row of
     // their own over BACK, since three across a phone shrank VISUALISER: OFF to fit.
     //
-    // REPEAT (the jukebox only, index tracks.length + 5): on, the song goes round for as
-    // long as it is left; off, it plays through twice and the next one in the list comes
-    // on (Peter, 8 Oct 2026). Kept in the save. Landscape: the bottom row's fourth quarter;
-    // portrait: the half beside BACK. `passes` counts the playing song's trips round its
-    // loop (onSongLoop); `advanceTimer` is the change booked for the end of the second.
+    // REPEAT (the jukebox only, index tracks.length + 5): on, the song goes round its loop
+    // for as long as it is left; off, it plays through ONCE — its loop a single time, on to
+    // whatever bars follow it — then every reverb and echo tail dies away, and the next one
+    // in the list comes on (Peter, 8 Oct 2026: Audio's `once`, setPlayOnce). Kept in the
+    // save. Landscape: the bottom row's fourth quarter; portrait: the half beside BACK.
+    // `advanceTimer` is the wait for the ended song's tails (onSongLoop).
     this.togglesY = JUKEBOX_BACK_TOP;
-    this.passes = 0;
     this.advanceTimer = null;
     this.offLoop = null;
   }
@@ -5159,6 +5167,8 @@ export class SoundTestState {
     if (!!this.held === paused) return;
     this.held = paused;
     Audio.setPlayerPaused(paused);
+    // let go after the song ran out under the hold: the next one, as it would have been
+    if (!paused && Audio.songEnded && !this.advanceTimer && !this.lab && this.playing >= 0) this.autoAdvance();
   }
   clearVisualiser() {
     setVisualiserFullscreen(false);
@@ -5343,14 +5353,17 @@ export class SoundTestState {
    */
   openTrack(i) {
     this.mediaPause(false);
-    this.passes = 0;
     this.cancelAdvance();
     const tr = this.tracks[i];
     if (!tr) { Audio.setBank(null); return; }
     // Sound Test is a listening surface: always play the first bar on the first pass,
     // even when gameplay normally skips into a song at its authored start marker.
-    // Its repeat region stays armed, so only the initial entry differs.
-    Audio.setBank(tr.bank, tr.mix, tr.arrangement, { startAtBeginning: true });
+    // Its repeat region stays armed, so only the initial entry differs — unless REPEAT is
+    // off, when the song plays through once and ends (`once`). The Lab's list loops.
+    // A song that is a single two-bar pattern (CARDBOARD KINGDOM, CORPORATE KOMBAT, DÉJÀ
+    // VIEW) has no once to play: it goes round to sixteen bars first.
+    const once = !this.lab && !this.repeatOn ? { minBars: 16 } : false;
+    Audio.setBank(tr.bank, tr.mix, tr.arrangement, { startAtBeginning: true, once });
   }
   /** 8-BIT on or off — SETTINGS ▸ SOUNDTRACK; a song playing goes over on its next beat. */
   toggleEightBit() {
@@ -5367,14 +5380,23 @@ export class SoundTestState {
     this.resetIdle();
     Audio.sfx('uiConfirm');
   }
-  /** REPEAT on or off. Off with the song already twice round, it gives way at its next loop. */
+  /**
+   * REPEAT on or off, for the song playing too. Off, it lets go of its loop and plays on to
+   * its end. On, it goes round again — and a song that has already ended (its tails still
+   * dying away) is put back on from the top rather than giving way.
+   */
   toggleRepeat() {
     const settings = save.data?.settings;
     if (settings) {
       settings.jukeboxRepeat = !this.repeatOn;
       save.persist();
     }
-    if (this.repeatOn) this.cancelAdvance();
+    if (!this.lab && this.playing >= 0) {
+      if (this.repeatOn && Audio.songEnded) {
+        Audio.setBank(null);
+        this.openTrack(this.playing);
+      } else Audio.setPlayOnce(!this.repeatOn);
+    }
     Audio.sfx('uiConfirm');
   }
   cancelAdvance() {
@@ -5382,33 +5404,49 @@ export class SoundTestState {
     this.advanceTimer = null;
   }
   /**
-   * The playing song has come round to its loop start (Audio.onLoop, from the scheduler, a
-   * lookahead before it is heard at `loop.when`). The end of the second time through, with
-   * REPEAT off, books the next song for that moment: the old one's last bar plays out, its
-   * fade lands on the bar line, and the next follows after setBank's usual gap — the same
-   * change as choosing it then.
+   * The playing song has reached the end of its form (Audio.onLoop, from the scheduler, a
+   * lookahead before it is heard at `loop.when`) — `ended`, played once with REPEAT off.
+   * Its notes have stopped, and the next song waits for EVERY tail — reverbs, echoes, a long
+   * release — to die away (Peter, 8 Oct 2026: not a fixed bar): from the moment the end is
+   * heard, the song's own output is read (Audio.songPeak) until it has stayed below
+   * JUKEBOX_TAIL_QUIET for JUKEBOX_TAIL_HOLD, which is the little silence before the next
+   * one too; JUKEBOX_TAIL_MAX caps a tail that never ends. A song that ends under the lock
+   * screen's pause waits for PLAY (mediaPause).
    */
   onSongLoop(loop) {
-    if (this.playing < 0 || this.held) return;
-    this.passes += 1;
-    if (this.repeatOn || this.passes < 2 || this.tracks.length < 2 || this.advanceTimer) return;
+    if (!loop.ended || this.repeatOn || this.playing < 0 || this.held || this.advanceTimer) return;
     const song = this.playing;
-    const lead = 0.03;   // ahead of the bar line by more than SONG_FADE
-    const wait = Math.max(0, (loop.when - lead - (Audio.ctx?.currentTime ?? 0)) * 1000);
-    this.advanceTimer = setTimeout(() => {
+    const endAt = loop.when;
+    // the audio clock `when` is on; with no context there is nothing to wait for
+    const clock = () => Audio.ctx?.currentTime ?? Infinity;
+    let quietSince = null;
+    const listen = () => {
       this.advanceTimer = null;
-      if (this.playing === song && !this.repeatOn && !this.held) this.autoAdvance();
-    }, wait);
+      if (this.playing !== song || this.repeatOn || this.held || !Audio.songEnded) return;
+      const now = clock();
+      const peak = Audio.songPeak();
+      if (peak != null && peak > JUKEBOX_TAIL_QUIET) quietSince = null;
+      else if (quietSince == null) quietSince = now;
+      if ((quietSince != null && now - quietSince >= JUKEBOX_TAIL_HOLD) || now - endAt >= JUKEBOX_TAIL_MAX) {
+        this.autoAdvance();
+        return;
+      }
+      this.advanceTimer = setTimeout(listen, JUKEBOX_TAIL_POLL_MS);
+    };
+    this.advanceTimer = setTimeout(listen, Math.max(0, (endAt - clock()) * 1000));
   }
   /**
-   * The next song in the list, round to the first after the last. Unlike a choice it leaves
-   * the screen as it is: a visualiser up stays up (on a fresh preset for the new song), and
-   * the cursor moves only if it was on the song that finished. The lock screen's card is
-   * retitled at once — with the screen off, no frame would do it.
+   * The next song in the list, round to the first after the last (the same one again in a
+   * list of one). Unlike a choice it leaves the screen as it is: a visualiser up stays up (on
+   * a fresh preset for the new song), and the cursor moves only if it was on the song that
+   * finished. The lock screen's card is retitled at once — with the screen off, no frame
+   * would do it.
    */
   autoAdvance() {
     const from = this.playing;
     const i = (from + 1) % this.tracks.length;
+    // setBank keeps a song it is handed again as it is: an ended one has to be let go first
+    if (i === from) Audio.setBank(null);
     this.playing = i;
     this.openTrack(i);
     Audio.schedule();

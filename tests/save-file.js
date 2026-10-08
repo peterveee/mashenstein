@@ -1,4 +1,4 @@
-// SETTINGS > IMPORT / EXPORT: the whole save to a .mash file and back.
+// SETTINGS > IMPORT / EXPORT: the whole save to a .bak file and back.
 //
 // Two things matter here. The file must carry everything a player would mourn —
 // three shifts, settings, every Lab song — and nothing that belongs to the
@@ -40,27 +40,27 @@ source.settings.audioSyncMs = 180;
 source.settings.renderDensityByBackend = { webgl: 1.5, '2d': 'native' };
 source.data.bangers = { draft: { style: 'house' }, kept: [recipe(1), recipe(2), recipe(3)], next: 4 };
 
-const text = source.exportFile(NOW);
-const parsed = JSON.parse(text);
-assert(parsed.mashenstein === 'MASHENSTEIN SAVE' && parsed.format === 1,
-  'the file names itself, so a stray JSON file can be refused by name');
-assert(parsed.save.slots[0].coins === 4321 && parsed.save.slots[0].campaign.cleared.plumber
-  && parsed.save.slots[1] === null && !!parsed.save.slots[2],
+const bytes = source.exportFile(NOW);
+assert(bytes instanceof Uint8Array && bytes[0] === 0x89 && String.fromCharCode(...bytes.slice(1, 5)) === 'MASH',
+  'the file is binary, and opens with its own signature');
+const asText = Buffer.from(bytes).toString('latin1');
+assert(!/MASHENSTEIN|coins|bangers|settings|SONG 3|"version"/.test(asText), 'none of the save can be read in it as text');
+
+const read = readSaveFile(bytes);
+const parsed = read.save;
+assert(parsed.slots[0].coins === 4321 && parsed.slots[0].campaign.cleared.plumber
+  && parsed.slots[1] === null && !!parsed.slots[2],
   'every shift is in it, empty ones included');
-assert(parsed.save.settings.volumes.music === 0.3 && parsed.save.settings.audioSyncMs === 180,
-  'the settings are in it');
-assert(parsed.save.bangers.kept.length === 3 && parsed.save.bangers.kept[2].name === 'SONG 3',
-  'every Lab song is in it');
-assert(!('renderDensityByBackend' in parsed.save.settings) && !('renderDensityVersion' in parsed.save.settings),
+assert(parsed.settings.volumes.music === 0.3 && parsed.settings.audioSyncMs === 180, 'the settings are in it');
+assert(parsed.bangers.kept.length === 3 && parsed.bangers.kept[2].name === 'SONG 3', 'every Lab song is in it');
+assert(!('renderDensityByBackend' in parsed.settings) && !('renderDensityVersion' in parsed.settings),
   'what the render density learned about THIS device stays behind');
 assert(source.settings.renderDensityByBackend.webgl === 1.5,
   'and exporting does not strip it from the live save');
-
-const read = readSaveFile(text);
 assert(read.shifts === 2 && read.labSongs === 3, 'reading a file counts what is in it before anything is replaced');
 assert(read.exportedAt && read.exportedAt.getTime() === NOW.getTime(), 'and knows when it was made');
 assert(exportedLabel(NOW) === '8 OCT 2026, 14:32', 'the date reads as a date');
-assert(exportFileName(NOW) === 'mashenstein-2026-10-08-1432.mash', 'the file name sorts by date and ends .mash');
+assert(exportFileName(NOW) === 'mashenstein-2026-10-08-1432.bak', 'the file name sorts by date and ends .bak');
 assert(countOf(0, 'SHIFT') === 'NO SHIFTS' && countOf(1, 'LAB SONG') === '1 LAB SONG' && countOf(3, 'SHIFT') === '3 SHIFTS',
   'counts read as English');
 
@@ -69,14 +69,19 @@ const refuses = (t, re, msg) => {
   try { readSaveFile(t); } catch (e) { err = e; }
   assert(err && re.test(err.message), `${msg} (${err ? err.message : 'accepted'})`);
 };
-refuses('not json at all', /NOT A MASHENSTEIN SAVE/, 'a file that is not JSON is refused by name');
-refuses(JSON.stringify({ name: 'package', version: '1.0.0' }), /NOT A MASHENSTEIN SAVE/, 'so is somebody else\'s JSON');
-refuses(JSON.stringify({ ...parsed, format: 2 }), /NEWER VERSION/, 'a file from a newer game says so, rather than being half-read');
-refuses(JSON.stringify({ ...parsed, save: { ...parsed.save, version: 3 } }), /NEWER VERSION/, 'as does a newer save inside it');
-refuses(JSON.stringify({ ...parsed, save: { ...parsed.save, slots: [null] } }), /DAMAGED/, 'a file with the wrong shape is damaged, not empty');
-const bare = readSaveFile(JSON.stringify(source.exportData()));
+const edited = (fn) => { const b = bytes.slice(); fn(b); return b; };
+refuses(edited((b) => { b[40] ^= 1; }), /DAMAGED/, 'a single changed byte is caught by the checksum: an edited save is damaged');
+refuses(bytes.slice(0, bytes.length - 3), /DAMAGED/, 'so is a file cut short');
+refuses(edited((b) => { b[8] = 2; }), /NEWER VERSION/, 'a file from a newer game says so, rather than being half-read');
+refuses(new Uint8Array([0, 255, 3, 9, 77, 12, 200]), /NOT A MASHENSTEIN SAVE/, 'some other binary file is refused by name');
+refuses(new TextEncoder().encode('not json at all'), /NOT A MASHENSTEIN SAVE/, 'and so is some other text file');
+refuses(JSON.stringify({ name: 'package', version: '1.0.0' }), /NOT A MASHENSTEIN SAVE/, 'and somebody else\'s JSON');
+const inner = { mashenstein: 'MASHENSTEIN SAVE', format: 1, exportedAt: NOW.toISOString(), save: parsed };
+refuses(JSON.stringify({ ...inner, save: { ...parsed, version: 3 } }), /NEWER VERSION/, 'a newer save inside the envelope is refused too');
+refuses(JSON.stringify({ ...inner, save: { ...parsed, slots: [null] } }), /DAMAGED/, 'a save with the wrong shape is damaged, not empty');
+const bare = readSaveFile(new TextEncoder().encode(JSON.stringify(source.exportData())));
 assert(bare.shifts === 2 && bare.exportedAt === null,
-  'the bare localStorage blob is accepted too, with no export date to show');
+  'the bare localStorage blob is still accepted, with no export date to show');
 
 // Importing keeps what this device measured for itself.
 const target = new Save();
@@ -144,7 +149,7 @@ assert(screen.deviceSummary() === '1 SHIFT, 1 LAB SONG', 'and says what this dev
 key(screen, 'Enter');
 assert(sent.length === 1 && sent[0].inEvent,
   'ENTER on EXPORT hands the file over inside the key press, where the browser allows it');
-assert(sent[0].name === 'mashenstein-2026-10-08-1432.mash' && readSaveFile(sent[0].t).shifts === 1,
+assert(sent[0].name === 'mashenstein-2026-10-08-1432.bak' && readSaveFile(sent[0].t).shifts === 1,
   'and the file is this save');
 await flush();
 assert(screen.notice?.tone === 'ok' && /SENT/.test(screen.notice.text), 'a sent file is confirmed on screen');
@@ -160,15 +165,18 @@ tap(screen, 'IMPORT');
 assert(picks.length === 1 && picks[0].inEvent, 'the second tap opens the file picker, inside the lift');
 
 // A damaged file is refused on this screen and nothing changes.
-const fileOf = (t) => ({ size: t.length, text: () => Promise.resolve(t) });
-await picks[0].onFile(fileOf('{"mashenstein":"MASHENSTEIN SAVE","format":1,"save":{"version":2}}'));
+const fileOf = (content) => {
+  const u8 = typeof content === 'string' ? new TextEncoder().encode(content) : content;
+  return { size: u8.length, arrayBuffer: () => Promise.resolve(u8.slice().buffer) };
+};
+await picks[0].onFile(fileOf(edited((b) => { b[40] ^= 1; })));
 assert(screen.phase === 'ready' && /DAMAGED/.test(screen.notice?.text || ''), 'a damaged file is refused with a reason');
 assert(save.data.slots[1] && !save.data.slots[0], 'and the save is untouched');
-await picks[0].onFile({ size: 50 * 1024 * 1024, text: () => Promise.resolve('') });
+await picks[0].onFile({ size: 50 * 1024 * 1024, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) });
 assert(/TOO BIG/.test(screen.notice?.text || ''), 'a file far too big to be a save is not even read');
 
 // A good file goes to the confirm screen first; CANCEL is where the cursor lands.
-await picks[0].onFile(fileOf(text));
+await picks[0].onFile(fileOf(bytes));
 frame(screen);
 assert(screen.phase === 'confirm' && screen.boxes[screen.idx].label === 'CANCEL',
   'a good file asks first, with the cursor on CANCEL');
@@ -179,14 +187,33 @@ key(screen, 'Enter');
 assert(screen.phase === 'ready' && save.data.slots[1] && !save.data.slots[0] && restarted === 0,
   'CANCEL replaces nothing');
 
-tap(screen, 'IMPORT');
-await picks[picks.length - 1].onFile(fileOf(text));
-frame(screen);
+// REPLACE is not the end of it: ARE YOU REALLY SURE, with the cursor on NO.
+const toSure = async () => {
+  tap(screen, 'IMPORT');
+  await picks[picks.length - 1].onFile(fileOf(bytes));
+  frame(screen);
+  key(screen, 'ArrowRight');
+  key(screen, 'Enter');
+};
+await toSure();
+assert(screen.phase === 'sure' && screen.boxes.map((b) => b.label).join() === 'NO,YES'
+  && screen.boxes[screen.idx].label === 'NO',
+  'REPLACE asks ARE YOU REALLY SURE, with the cursor on NO');
+assert(screen.panelLines(false)[0].text === 'ARE YOU REALLY SURE?', 'in so many words');
+assert(save.data.slots[1] && !save.data.slots[0], 'and has still changed nothing');
+key(screen, 'Enter');
+assert(screen.phase === 'ready' && save.data.slots[1] && !save.data.slots[0] && restarted === 0,
+  'ENTER straight through takes the default, NO, and imports nothing');
+await toSure();
+key(screen, 'Escape');
+assert(screen.phase === 'ready' && !save.data.slots[0], 'ESC on the question is a NO as well');
+
+await toSure();
 key(screen, 'ArrowRight');
-assert(screen.boxes[screen.idx].label === 'REPLACE', 'the cursor reaches REPLACE');
+assert(screen.boxes[screen.idx].label === 'YES', 'the cursor has to be moved to YES');
 key(screen, 'Enter');
 assert(screen.phase === 'restarting' && save.data.slots[0]?.coins === 4321 && save.data.bangers.kept.length === 3,
-  'REPLACE imports the file');
+  'and only YES imports the file');
 assert(restarted === 0, 'the game shows SAVE IMPORTED before it restarts');
 for (let i = 0; i < 70; i++) frame(screen);
 assert(restarted === 1, 'and then restarts, once, so every part of the game reads the new save');
@@ -197,6 +224,7 @@ const drawn = new SaveFileState({ save, onDone: () => {}, onRestart: () => {}, f
 drawn.enter();
 drawn.draw(ctx);
 drawn.pending = read; drawn.phase = 'confirm'; drawn.layout(); drawn.draw(ctx);
+drawn.phase = 'sure'; drawn.layout(); drawn.draw(ctx);
 drawn.phase = 'restarting'; drawn.layout(); drawn.draw(ctx);
 assert(true, 'every phase renders');
 drawn.exit();
