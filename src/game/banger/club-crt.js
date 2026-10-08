@@ -45,6 +45,25 @@ export const CLUB_INKS = Object.freeze([
 ].map(hexRgb));
 
 /**
+ * SIXTEEN OF THE CLUB'S OWN: CLUB_INKS cut to sixteen by k-means over the inks themselves (the
+ * room's eighteen weighted heaviest), each centre snapped back to its nearest real ink, so every
+ * colour is one the 8-BIT room already uses — 4 bits of colour.
+ */
+export const CLUB_INKS_16 = Object.freeze([
+  '#191531', '#493e5d', '#2b651d', '#954a39', '#526cc6', '#7e8653', '#e6603b', '#d06578',
+  '#6d94a7', '#3db2f7', '#ba7eff', '#d7b979', '#7cff6b', '#f6d33c', '#87effd', '#dcd5ce',
+].map(hexRgb));
+
+/** The room's tube for B-33P's 8-BIT: a hero HERO_ROWS cells tall, on the club's inks. */
+export const EIGHT_BIT_TUBE = Object.freeze({ rows: HERO_ROWS, inks: CLUB_INKS });
+/**
+ * ...and for his 4-BIT, on a take already on the 8-Bit set (club-voices.js CRUSH): cruder, so it
+ * reads lower-fi than the 8-bit the room already claims — a hero 10 cells tall, on sixteen of the
+ * club's inks. D, CHUNKIER, Peter's pick of the bake-off (8 Oct 2026; src/dev/crt-4bit-candidates.js).
+ */
+export const FOUR_BIT_TUBE = Object.freeze({ rows: 10, inks: CLUB_INKS_16 });
+
+/**
  * THE LED BOARD'S INKS: the unlit board in three dark reds (club.js drawLed paints its unlit
  * dots solid in them, scattered, so the board is grubby rather than a clean dark), a lit dot,
  * and a hot one where the glows pile up. The board is painted solid for the tube, every lit
@@ -86,6 +105,17 @@ function inkOf(r, g, b, inks) {
   return ink;
 }
 
+// A tube in one phosphor (`mono`): each cell by its brightness alone, onto the ink nearest it
+// in brightness — by colour, a green screen's inks would take a pink cell to whichever green
+// happened to sit nearest it.
+const lumOf = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+function monoInk(r, g, b, inks) {
+  const l = lumOf(r, g, b);
+  let ink = inks[0], bd = Infinity;
+  for (const p of inks) { const dl = Math.abs(lumOf(p[0], p[1], p[2]) - l); if (dl < bd) { bd = dl; ink = p; } }
+  return ink;
+}
+
 const sheets = {};
 function sheet(id, w, h) {
   let s = sheets[id];
@@ -103,9 +133,12 @@ function sheet(id, w, h) {
  * With `box` ({ x, y, w, h, cell } in the same units) only that box goes on the tube, cut to
  * cells of its own size from its own corner, in `inks`, and without the tube's vignette — the
  * LED board, a cell to a dot. Each box on the tube names itself with `id`, so each keeps its
- * own scratch canvases rather than resizing a shared one every frame.
+ * own scratch canvases rather than resizing a shared one every frame. `rows` is how many cells
+ * tall a hero is, `mono` snaps cells to `inks` by brightness alone (monoInk), and `dim` and `sat`
+ * grade every cell before it is snapped — darker, and further from its grey — so a palette of a
+ * few loud hues is not all its greys.
  */
-export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, inks = CLUB_INKS, id = 'box' }) {
+export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, inks = CLUB_INKS, id = 'box', rows = HERO_ROWS, mono = false, dim = 1, sat = 1 }) {
   if (typeof document === 'undefined' || typeof ctx.getTransform !== 'function' || !ctx.canvas) return false;
   let m;
   try { m = ctx.getTransform(); } catch { return false; }
@@ -122,7 +155,7 @@ export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, ink
     const y0 = Math.max(0, Math.round(m.d * top + m.f));
     const y1 = Math.min(ctx.canvas.height, Math.round(m.d * bottom + m.f));
     R = { x: 0, y: y0, w: ctx.canvas.width, h: y1 - y0 };
-    cell = Math.max(2, Math.round((toonH * k) / HERO_ROWS));
+    cell = Math.max(2, Math.round((toonH * k) / rows));
     cw = Math.ceil(R.w / cell); ch = Math.ceil(R.h / cell);
   }
   if (R.w < 8 || R.h < 8) return false;
@@ -137,8 +170,12 @@ export function clubCrt(ctx, { top, bottom, toonH, lite = false, box = null, ink
   let img;
   try { img = cells.g.getImageData(0, 0, cw, ch); } catch { return false; }
   const d = img.data;
+  const graded = dim !== 1 || sat !== 1;
+  const grade = (v, m) => Math.max(0, Math.min(255, (m + (v - m) * sat) * dim)) | 0;
   for (let i = 0; i < d.length; i += 4) {
-    const p = inkOf(d[i], d[i + 1], d[i + 2], inks);
+    let r = d[i], g = d[i + 1], b = d[i + 2];
+    if (graded) { const m = (r + g + b) / 3; r = grade(r, m); g = grade(g, m); b = grade(b, m); }
+    const p = (mono ? monoInk : inkOf)(r, g, b, inks);
     d[i] = p[0]; d[i + 1] = p[1]; d[i + 2] = p[2]; d[i + 3] = 255;
   }
   cells.g.putImageData(img, 0, 0);

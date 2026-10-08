@@ -6,7 +6,7 @@ import { ClubVoices } from './club-voices.js';
 import { PADS, SHOUTS, HIT_GAINS, CLAP_OVER_DB, playPad, playToy, startRiser, rollHit, clapsAt, CLAP_FILLS } from './club-hits.js';
 import { VOICES, voiceGain, baseLane } from '../../data/voices.js';
 import { dbToGain } from '../../engine/mixer.js';
-import { clubCrt, LED_INKS, SIGN_INKS } from './club-crt.js';
+import { clubCrt, LED_INKS, SIGN_INKS, EIGHT_BIT_TUBE, FOUR_BIT_TUBE } from './club-crt.js';
 import { FISHES, drawPaperFish } from './club-fish.js';
 import { TOASTER_S, TOASTER_SIZE, makeToaster, toasterAt, toasterLoop, drawToaster } from './club-toaster.js';
 import { drawSpeakerStack } from './speakers.js';
@@ -1205,13 +1205,13 @@ export class BangerClubState {
     // `bar` is a bar of this song (the caption's clock); `dur` is how long the move lasts.
     this.queued = { i, when, bar, dur: at ? moveSeconds(move, at.spb, at.plan) : bar * (move.bars || 1), plan: at?.plan || null };
     if (move.toggle) {
-      // B-33P: the band onto the 8-Bit set (or back) from the next beat — club-voices.js
-      // makes the swap; the caption says which way it went.
+      // B-33P: the band onto the 8-Bit set (or back) from the next beat — or, on a take
+      // already on it, into 4-BIT (club-voices.js CRUSH); the caption says which way it went.
       const on = this.voices.toggle();
-      const hifi = this.voices.eightBit;
-      this.queued.title = on === !hifi ? '8-BIT' : 'HI-FI';
-      this.queued.what = on ? (hifi ? 'the band leaves 8-bit, tap again to go back' : move.what)
-        : (hifi ? 'the band is back on 8-bit' : 'the band is back in HD');
+      const chip = this.voices.eightBit;
+      this.queued.title = chip ? (on ? '4-BIT' : '8-BIT') : (on ? '8-BIT' : 'HI-FI');
+      this.queued.what = on ? (chip ? 'the band goes 4-bit, tap again to go back' : move.what)
+        : (chip ? 'the band is back on 8-bit' : 'the band is back in HD');
       return;
     }
     if (move.echo) this.echoes = [...this.echoes, { when, ...echoLevel(null) }];
@@ -1647,6 +1647,17 @@ export class BangerClubState {
       startChipGate(Audio.nextTime, this.barSeconds() / 16);
       this.gating = true;
     }
+  }
+
+  /**
+   * The tube the room is on (club-crt.js), or null: while B-33P has the band on the 8-Bit set,
+   * 8-BIT's; on a take already on it, 4-BIT's (FOUR_BIT_TUBE, Peter's pick, 8 Oct 2026). With the
+   * sound, not the tap. `crtLook` ({ rows, inks, mono, dim, sat }) is the gallery's seam for other
+   * tubes (src/dev/crt-4bit-candidates.js).
+   */
+  tubeLook() {
+    if (!this.voices?.swappedNow) return null;
+    return this.crtLook ?? (this.voices.eightBit ? FOUR_BIT_TUBE : EIGHT_BIT_TUBE);
   }
 
   /** A crowd moment, starting now. */
@@ -2781,7 +2792,8 @@ export class BangerClubState {
     } else if (landed.part) {
       const label = PARTS.find((p) => p.id === landed.part)?.label || '';
       this.showLed(`${label}: ${landed.label}`);
-    } else this.showLed(landed.swapped !== this.voices.eightBit ? '8-BIT MODE' : 'HI-FI MODE');
+    } else if (this.voices.eightBit) this.showLed(landed.swapped ? '4-BIT MODE' : '8-BIT MODE');
+    else this.showLed(landed.swapped ? '8-BIT MODE' : 'HI-FI MODE');
   }
 
   /** A line of the club's own on the LED board, now: held two bars, or scrolled once across. */
@@ -4220,9 +4232,11 @@ export class BangerClubState {
     }
     ctx.translate(-joltX, -joltY);
     // B-33P's 8-BIT, seen: while the band plays on the 8-Bit set, the room is on a CRT — all
-    // of it but the UI, which is painted from here on (club-crt.js; Peter, 5 Oct 2026).
-    const crt = this.voices?.swappedNow && !this.voices.eightBit;
-    const tubed = crt && clubCrt(ctx, { top: stageTop, bottom: stageBot, toonH, lite: this.lite });
+    // of it but the UI, which is painted from here on (club-crt.js; Peter, 5 Oct 2026) — and his
+    // 4-BIT puts it on a cruder one (tubeLook).
+    const look = this.tubeLook();
+    const tubed = !!look && clubCrt(ctx, { top: stageTop, bottom: stageBot, toonH, lite: this.lite,
+      rows: look.rows, inks: look.inks, mono: look.mono, dim: look.dim, sat: look.sat });
     // The club sign is painted again over the tube, its words set in cells of its own
     // (neonPixels), SIGN_CRT_CELL of its lettering's size a cell, and put on a tube of its own
     // in its own inks (club-crt.js SIGN_INKS): on the room's cells its letters were three or

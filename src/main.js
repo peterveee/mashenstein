@@ -46,6 +46,7 @@ import { EXIT_CUE } from './game/hub/cabinet-dive.js';
 import { resultsOnTheBeat, installSoundtrack } from './game/results-chip.js';
 import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
 import { CalibrateState } from './game/calibrate.js';
+import { SaveFileState } from './game/save-file.js';
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
@@ -96,7 +97,7 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 //   ?goto=soundtest&audition                   — audition every megamix move
 //
 // Recognised goto values:
-//   title  tutorial  hub  trophy  difficulty  howto  fieldguide  settings  calibrate  cast
+//   title  tutorial  hub  trophy  difficulty  howto  fieldguide  settings  calibrate  savefile  cast
 //   attract  intro  finale  soundtest  stage  gravity  boss  overtime
 // (?goto=thelab is not one of these: it works in published builds too — see boot().)
 function routeDevUrl(goto, p) {
@@ -201,10 +202,14 @@ function routeDevUrl(goto, p) {
       setState(new SettingsState({ save,
         onDone: () => Flow.toTitle(),
         onCalibrate: () => Flow.toCalibrate(() => routeDevUrl('settings', p)),
+        onSaveFile: () => Flow.toSaveFile(() => routeDevUrl('settings', p)),
         onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
       break;
     case 'calibrate':
       Flow.toCalibrate(() => Flow.toTitle());
+      break;
+    case 'savefile':
+      Flow.toSaveFile(() => Flow.toTitle());
       break;
     case 'cast':
       setState(new CastState({ realSettings: save.settings, slot: save.slot, onExit: () => Flow.toTitle() }));
@@ -433,11 +438,18 @@ const Flow = {
     setState(new SettingsState({ save,
       onDone: () => Flow.toExtras('settings'),
       onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()),
+      onSaveFile: () => Flow.toSaveFile(() => Flow.toSettings()),
       onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
   },
 
   toCalibrate(onDone) {
     setState(new CalibrateState({ save, onDone }));
+  },
+
+  // An import restarts the game rather than patching the new save into every
+  // module that has already read the old one.
+  toSaveFile(onDone) {
+    setState(new SaveFileState({ save, onDone, onRestart: () => window.location.reload() }));
   },
 
   startStage(cab, stage, corrupted) {

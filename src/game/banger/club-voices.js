@@ -10,7 +10,9 @@
 //
 //   B-33P   8-BIT: every part at once onto the 8-Bit Sound Set (tools/lib/banger/sounds.js,
 //           'chipstep-8bit'), drums and all, and back at a second tap. A take that is
-//           ALREADY on the 8-Bit set goes the other way, onto the Light set ('chipstep-lite').
+//           ALREADY on the 8-Bit set goes further down instead: 4-BIT, the whole mix through
+//           a bit crusher on its own instruments (CRUSH). It went to the Light set until
+//           8 Oct 2026.
 //   MIXER   a sound button under each fader steps that part through the take's own table:
 //           DRUMS through its six kits, BASS, CHORDS and LEAD through its Riff Sound lists.
 //           With 8-BIT on, the buttons step through the 8-Bit set's instead.
@@ -24,7 +26,19 @@ import { VOICES, baseLane, PERCUSSION_LANES } from '../../data/voices.js';
 import { Audio } from '../../engine/audio.js';
 
 export const CHIP_SET = 'chipstep-8bit';
-export const HIFI_SET = 'chipstep-lite';
+/**
+ * 4-BIT (Peter, 8 Oct 2026): B-33P on a take already on the 8-Bit set. "I want the user to think
+ * it's even LESS than what we are claiming is 8 bit", so it is billed 4-BIT, though the desk's Bit
+ * Crusher at Peter's settings — 12 bits, downsample 8, mix 1.00 — barely touches the depth: the
+ * damage is the sample rate, held to an eighth of the context's. The instruments stay as they are.
+ * In the club it is the mixer's treatment leg (mixer.setTreatment), which no song writes and which
+ * cross-fades at an audio time, so it lands on the beat as the swap does and leaves the master's
+ * sections — the heroes' moves, the song's own — free to play over it.
+ */
+export const CRUSH = Object.freeze({ bits: 12, downsample: 8, wet: 1 });
+/** CRUSH as a chain link, fresh each time: a chain slot keeps the params it is handed. */
+export const crushLink = () => ({ id: 'bitcrusher', params: { ...CRUSH } });
+const isCrush = (chain) => !!chain?.some?.((link) => link?.def?.id === 'bitcrusher');
 const CREATIVE_KIT_KEYS = new Set(CREATIVE_DRUM_KITS.map((k) => k.key));
 const KIT_ROLES = Object.freeze(['kick', 'snare', 'clap', 'hats', 'ohats', 'crash', 'fill']);
 // The game's kits are the six the desk has always had; the desk's creative kits
@@ -102,7 +116,10 @@ export function roleVoice(row, kit, role, lane = '') {
 export function mixWithKept(song, rec, sounds) {
   if (!sounds) return song?.mix;
   const v = new ClubVoices(song, rec);
-  return v.mixFor(v.stateFor(sounds));
+  const state = v.stateFor(sounds);
+  const mix = v.mixFor(state);
+  // 4-BIT is kept too: off the floor, with no leg to cross-fade, the crusher is the mix's first master insert
+  return v.eightBit && state.swapped ? { ...mix, masterEffects: [crushLink(), ...(mix?.masterEffects || [])] } : mix;
 }
 
 /** The song's mix with `voices` (lane → preset) put on its lanes. */
@@ -129,8 +146,9 @@ export class ClubVoices {
     // A fusion's row (`fusion:…`) is its two styles' put together, made once here.
     this.ownSet = soundsRow(BANGER_SOUNDS, song?.soundsId) ? song.soundsId : this.style;
     this.ownRow = soundsRow(BANGER_SOUNDS, this.ownSet) || null;
+    // on the 8-Bit set already, B-33P crushes it (CRUSH) rather than swapping sets
     this.eightBit = this.ownSet === CHIP_SET;
-    this.swapSet = this.eightBit ? HIFI_SET : CHIP_SET;
+    this.crushToken = 0;
     const row = this.ownRow;
     this.roles = rolesOf(song, row);
     this.kit = song?.kit || this.detectKit(row);
@@ -146,7 +164,11 @@ export class ClubVoices {
     return KIT_ORDER.find((k) => kick && row?.kits?.[k]?.kick === kick) || 'style';
   }
 
-  rowFor(swapped) { return swapped ? BANGER_SOUNDS[this.swapSet] || null : this.ownRow; }
+  /** Whether B-33P's `swapped` has the band on the 8-Bit set's instruments: never on an 8-Bit take, which keeps its own. */
+  onChipSet(swapped) { return !!swapped && !this.eightBit; }
+  /** Which picks a state's buttons are on: the 8-Bit set's, or the take's own (in 4-BIT too). */
+  pickKey(swapped) { return this.onChipSet(swapped) ? 'swap' : 'own'; }
+  rowFor(swapped) { return this.onChipSet(swapped) ? BANGER_SOUNDS[CHIP_SET] || null : this.ownRow; }
   kitIn(row) { return row?.kits?.[this.kit] ? this.kit : 'style'; }
 
   /** The lane a part's button changes: its first lane with one of the part's jobs. */
@@ -166,14 +188,14 @@ export class ClubVoices {
     }
     const lane = this.partLane(part);
     if (!lane) return [];
-    const first = swapped ? roleVoice(row, this.kitIn(row), this.roles.get(lane), lane) : this.song?.mix?.voice?.[`${lane}Voice`];
+    const first = this.onChipSet(swapped) ? roleVoice(row, this.kitIn(row), this.roles.get(lane), lane) : this.song?.mix?.voice?.[`${lane}Voice`];
     const list = row.random?.[SOUND_PARTS[part].list] || [];
     return [first, ...list.filter((id) => id !== first)].filter((id) => VOICES[id]).map((id) => ({ id, label: voiceLabel(id) }));
   }
 
   /** The state that will be playing once anything waiting has landed. */
   get target() { return this.pending || this.state; }
-  /** 8-BIT (or, on an 8-Bit take, the Light set) is on, or about to be. */
+  /** 8-BIT (or, on an 8-Bit take, 4-BIT) is on, or about to be. */
   get swapped() { return this.target.swapped; }
   /** ...and is on now, as heard (the pixel heroes go with the sound, not the tap). */
   get swappedNow() { return this.state.swapped; }
@@ -182,14 +204,14 @@ export class ClubVoices {
   label(part) {
     const s = this.target;
     const list = this.choices(part, s.swapped);
-    return list[(s.picks[s.swapped ? 'swap' : 'own'][part] || 0) % Math.max(1, list.length)]?.label || '';
+    return list[(s.picks[this.pickKey(s.swapped)][part] || 0) % Math.max(1, list.length)]?.label || '';
   }
 
   /** Whether a part's sound (or the whole set) is waiting for its beat or bar line. */
   waiting(part = null) {
     if (!this.pending) return false;
     if (part == null || this.pending.swapped !== this.state.swapped) return true;
-    const key = this.pending.swapped ? 'swap' : 'own';
+    const key = this.pickKey(this.pending.swapped);
     return (this.pending.picks[key][part] || 0) !== (this.state.picks[key][part] || 0);
   }
 
@@ -206,7 +228,7 @@ export class ClubVoices {
     const next = copy(this.target);
     const n = this.choices(part, next.swapped).length;
     if (n < 2) return false;
-    const key = next.swapped ? 'swap' : 'own';
+    const key = this.pickKey(next.swapped);
     next.picks[key][part] = ((next.picks[key][part] || 0) + 1) % n;
     if (!next.picks[key][part]) delete next.picks[key][part];
     this.queue(next);
@@ -220,7 +242,7 @@ export class ClubVoices {
    */
   shuffle(random = Math.random) {
     const next = copy(this.target);
-    const key = next.swapped ? 'swap' : 'own';
+    const key = this.pickKey(next.swapped);
     let moved = false;
     for (const part of PART_IDS) {
       const n = this.choices(part, next.swapped).length;
@@ -260,25 +282,25 @@ export class ClubVoices {
     this.apply(p);
     this.pending = null;
     if (p.swapped !== was.swapped) return { swapped: p.swapped, part: null, label: null };
-    const key = p.swapped ? 'swap' : 'own';
+    const key = this.pickKey(p.swapped);
     const parts = PART_IDS.filter((id) => (p.picks[key][id] || 0) !== (was.picks[key][id] || 0));
     const part = parts[0] || null;
     return { swapped: p.swapped, part, label: part ? this.label(part) : null, parts };
   }
 
-  /** Lane → preset for a state: the other set's sounds if swapped, then the buttons' picks. */
+  /** Lane → preset for a state: the 8-Bit set's sounds if swapped onto it, then the buttons' picks. */
   voicesFor(state) {
     const voices = new Map();
     const row = this.rowFor(state.swapped);
     if (!row) return voices;
-    if (state.swapped) {
+    if (this.onChipSet(state.swapped)) {
       const kit = this.kitIn(row);
       for (const [lane, role] of this.roles) {
         const id = roleVoice(row, kit, role, lane);
         if (id && VOICES[id]) voices.set(lane, id);
       }
     }
-    const picks = state.picks[state.swapped ? 'swap' : 'own'];
+    const picks = state.picks[this.pickKey(state.swapped)];
     for (const part of PART_IDS) {
       const k = picks[part] || 0;
       if (!k) continue;
@@ -311,10 +333,10 @@ export class ClubVoices {
     const isClap = (id) => VOICES[id]?.kind === 'drum' && VOICES[id].category === 'Clap';
     const lane = [...this.roles].find(([, role]) => role === 'clap')?.[0];
     const now = this.voicesFor(s);
-    const laneVoice = lane && (now.get(lane) ?? (s.swapped ? null : this.song?.mix?.voice?.[`${lane}Voice`]));
+    const laneVoice = lane && (now.get(lane) ?? (this.onChipSet(s.swapped) ? null : this.song?.mix?.voice?.[`${lane}Voice`]));
     if (isClap(laneVoice)) return laneVoice;
     const row = this.rowFor(s.swapped);
-    const pick = s.picks[s.swapped ? 'swap' : 'own'].drums || 0;
+    const pick = s.picks[this.pickKey(s.swapped)].drums || 0;
     const kit = (pick && this.choices('drums', s.swapped)[pick]?.kit) || this.kitIn(row);
     for (const k of [kit, ...KIT_ORDER.filter((x) => x !== kit)]) {
       const id = roleVoice(row, k, 'clap');
@@ -333,10 +355,36 @@ export class ClubVoices {
   }
 
   apply(state) {
+    const was = this.state;
     this.state = state;
     // Only onto the song this club is playing: reapplyBank on any other bank is a song change.
     if (Audio.sourceBank !== this.song?.bank || !Audio.bank) return;
     try { Audio.reapplyBank(this.song.bank, this.mixFor(state)); } catch { /* the song carries on as it was */ }
+    if (this.eightBit && !!state.swapped !== !!was.swapped) this.crush(!!state.swapped);
+  }
+
+  /**
+   * 4-BIT in or out (CRUSH) from the next step the sequencer schedules — the beat the swap lands
+   * on — or at once with none. After a song change's held mix (afterMix): applying that resets the
+   * treatment leg. Out, the crusher comes off the leg once it is silent, unless 4-BIT came back.
+   */
+  crush(on) {
+    const token = ++this.crushToken;
+    Audio.afterMix(() => {
+      const mixer = Audio.mixer, ctx = Audio.ctx;
+      if (token !== this.crushToken || !mixer?.rampTreatment || !ctx) return;
+      const when = Math.max(ctx.currentTime, Number.isFinite(Audio.nextTime) ? Audio.nextTime : 0);
+      if (on) {
+        // still loaded from a 4-BIT just let go: it is faded back to, never rebuilt while heard
+        if (!isCrush(mixer.treatment)) mixer.setTreatment([crushLink()], Audio.bpm || 120);
+        mixer.rampTreatment(1, when);
+        return;
+      }
+      mixer.rampTreatment(0, when);
+      setTimeout(() => Audio.afterMix(() => {
+        if (token === this.crushToken && isCrush(Audio.mixer?.treatment)) Audio.mixer.clearTreatment();
+      }), Math.ceil((when - ctx.currentTime) * 1000) + 60);
+    });
   }
 
   /**

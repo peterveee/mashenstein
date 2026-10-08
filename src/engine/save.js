@@ -5,6 +5,71 @@ const KEY = 'mashenstein.v2';
 const V1KEY = 'superMashBros.v1';
 const RENDER_DENSITY_VERSION = 2;
 
+// ---- the .mash file ----------------------------------------------------------
+//
+// SETTINGS > IMPORT / EXPORT (8 Oct 2026): the whole save — all three shifts, the
+// settings and every Lab song — as one file a player can carry to a new install.
+// On an iPhone that is the only way anything survives: the installed app keeps
+// its own storage, and deleting it from the home screen deletes the lot.
+//
+// JSON inside a small envelope that names itself, so a stray JSON file is refused
+// by name rather than read as an empty save, and a file from a newer game is
+// refused rather than half-understood.
+export const SAVE_FILE_EXT = '.mash';
+const SAVE_FILE_TAG = 'MASHENSTEIN SAVE';
+const SAVE_FILE_FORMAT = 1;
+// A real save is a few kilobytes; the Lab keeps recipes, not audio. Anything
+// near this is not a save, and reading it would only stall the frame.
+export const SAVE_FILE_MAX_BYTES = 2 * 1024 * 1024;
+// Measured on THIS device's hardware, so never carried to another: a new phone
+// learns its own ceiling. Stripped on export, kept from the device on import.
+const DEVICE_ONLY_SETTINGS = ['renderDensityByBackend', 'renderDensityVersion'];
+
+/** The save as the text of a .mash file. */
+export function packSaveFile(data, now = new Date()) {
+  const save = JSON.parse(JSON.stringify(data));
+  if (save.settings) for (const k of DEVICE_ONLY_SETTINGS) delete save.settings[k];
+  delete save.importedV1;
+  return JSON.stringify({
+    mashenstein: SAVE_FILE_TAG, format: SAVE_FILE_FORMAT, exportedAt: now.toISOString(), save,
+  });
+}
+
+/**
+ * Read a .mash file's text. Returns { save, exportedAt, shifts, labSongs } — the
+ * counts are what the IMPORT screen shows before anything is replaced — or throws
+ * an Error whose message is written for the player.
+ *
+ * The bare localStorage blob is accepted too (a v2 save without the envelope),
+ * since that is what a save looks like copied out of a browser's dev tools.
+ */
+export function readSaveFile(text) {
+  let file = null;
+  try { file = JSON.parse(text); } catch (e) { /* not JSON */ }
+  if (!file || typeof file !== 'object') throw new Error('THAT IS NOT A MASHENSTEIN SAVE FILE.');
+  const enveloped = file.mashenstein === SAVE_FILE_TAG;
+  const save = enveloped ? file.save : file;
+  if (!enveloped && !(save && 'version' in save && 'slots' in save)) {
+    throw new Error('THAT IS NOT A MASHENSTEIN SAVE FILE.');
+  }
+  if ((enveloped && Number(file.format) > SAVE_FILE_FORMAT) || Number(save?.version) > 2) {
+    throw new Error('THAT FILE IS FROM A NEWER VERSION OF THE GAME. UPDATE THE GAME, THEN IMPORT IT.');
+  }
+  if (!validSave(migrate(save))) throw new Error('THAT SAVE FILE IS DAMAGED AND CANNOT BE READ.');
+  const exported = enveloped ? new Date(file.exportedAt) : null;
+  return {
+    save,
+    exportedAt: exported && Number.isFinite(exported.getTime()) ? exported : null,
+    shifts: save.slots.filter(Boolean).length,
+    labSongs: Array.isArray(save.bangers?.kept) ? save.bangers.kept.length : 0,
+  };
+}
+
+function validSave(data) {
+  return !!data && Array.isArray(data.slots) && data.slots.length === 3
+    && !!data.settings && typeof data.settings === 'object';
+}
+
 // AUDIO SYNC: how much LATER than the browser claims the sound actually reaches
 // the ear, in milliseconds. Positive is later. Bluetooth is the reason it
 // exists: Android Chrome and Windows report the mixer buffer but not the radio,
@@ -233,8 +298,9 @@ export class Save {
     return this;
   }
 
+  /** Write the save. False when the browser refused (storage full or blocked). */
   persist() {
-    try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch (e) { /* storage full/blocked */ }
+    try { localStorage.setItem(KEY, JSON.stringify(this.data)); return true; } catch (e) { return false; }
   }
 
   // File saves deliberately use the same versioned envelope as localStorage.
@@ -243,18 +309,28 @@ export class Save {
     return JSON.parse(JSON.stringify(this.data));
   }
 
+  /** The whole save as the text of a .mash file (packSaveFile). */
+  exportFile(now) {
+    return packSaveFile(this.data, now);
+  }
+
+  /**
+   * Replace the live save with `raw`. The settings this device measured for
+   * itself stay (DEVICE_ONLY_SETTINGS). The once-only refunds and renames in
+   * load() are not repeated here: the IMPORT screen restarts the game, and
+   * load() runs them on the way back up.
+   */
   importData(raw) {
     const data = migrate(raw);
-    if (!data || !Array.isArray(data.slots) || data.slots.length !== 3
-      || !data.settings || typeof data.settings !== 'object') {
-      throw new Error('INVALID SAVE FILE');
-    }
+    if (!validSave(data)) throw new Error('INVALID SAVE FILE');
+    const device = this.data?.settings;
+    if (device) for (const k of DEVICE_ONLY_SETTINGS) if (k in device) data.settings[k] = device[k];
     data.settings = normalizeSettings(data.settings).settings;
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
     for (const s of data.slots) if (s) migrateHeroIds(s);
     this.data = data;
     this.slotIndex = Math.min(this.slotIndex, this.data.slots.length - 1);
-    this.persist();
+    if (!this.persist()) throw new Error('THIS DEVICE WOULD NOT STORE THE SAVE.');
     return this;
   }
 

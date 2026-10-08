@@ -63,6 +63,7 @@ const SCREENS = [
   { id: 'fieldguide', label: 'Field guide', query: 'goto=fieldguide', states: ['FieldGuideState'] },
   { id: 'settings', label: 'Settings', query: 'goto=settings', states: ['SettingsState'] },
   { id: 'calibrate', label: 'Calibrate', query: 'goto=calibrate', states: ['CalibrateState'] },
+  { id: 'savefile', label: 'Import / export', query: 'goto=savefile', states: ['SaveFileState'] },
   { id: 'soundtest', label: 'Sound test (jukebox)', query: 'goto=soundtest', states: ['SoundTestState'], settle: 1200 },
   { id: 'attract', label: 'Attract (idle demo)', query: 'goto=attract', states: ['AttractState'], settle: 1500 },
   { id: 'finale', label: 'Finale', query: 'goto=finale', states: ['FinaleState'], settle: 1200 },

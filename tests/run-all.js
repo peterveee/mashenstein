@@ -70,6 +70,7 @@ const suites = [
   'tests/touch-layout.js',
   'tests/settings-menu.js',
   'tests/calibrate.js',
+  'tests/save-file.js',
   'tests/sound-test-menu.js',
   // MAKE A BANGER on the jukebox: the riff grid, the save, the maker screen, the rows.
   'tests/jukebox-banger.js',

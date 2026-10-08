@@ -154,6 +154,7 @@ import { TOASTER_CROWN_CANDIDATES } from '../src/dev/toaster-crowns.js';
 import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
 import { definePropVariant } from '../src/sprites/props.js';
 import { BANANA_PEELS, bananaPeelBefore } from '../src/dev/banana-peels.js';
+import { CRT_8BIT, CRT_4BIT_CANDIDATES } from '../src/dev/crt-4bit-candidates.js';
 
 // RUSTY WAS THE GUEST HERE from 1 to 10 Sep 2026 — a candidate drawn through
 // drawToon's spec/pal seam and spliced into every cast-wide line-up by a
@@ -2716,6 +2717,8 @@ function propNominalSize(name) {
 // seeded while the club runs, so a lap plays the same every time. The heroes keep the idle bob
 // they have before the dancing starts, so the objects read. The small cards are the painters the
 // club calls, on the room's own colours.
+// The floor's stand-in rooms, kept for the lab's club bake-offs (crt-4bit-bakeoff).
+let labClub = null;
 {
   const sec = sectionEl('banger-lab-floor', 'BANGER LAB — everything on the dance floor',
     'Every object in the Lab’s club, drawn by the club: src/game/banger/club.js and the painters it calls (mirrorball.js, '
@@ -2765,6 +2768,8 @@ function propNominalSize(name) {
       dancers: HERO_MOVES.map((m) => ({ moves: [], move: null, joinAt: Infinity, changeAt: Infinity, resting: false,
         last: null, legs: 'stand', hero: m.hero, skirted: false })),
       formationOrder: HERO_MOVES.map((_, i) => i), formationSwap: null, formationShuffleAt: Infinity,
+      // everyone facing the way they are drawn, and nobody turning round
+      facing: HERO_MOVES.map(() => null), turns: HERO_MOVES.map(() => null), turnAt: HERO_MOVES.map(() => Infinity), lastTurnBeat: -Infinity,
       moments: [], momentAt: Infinity, smokeAt: Infinity, strobeBeat: -Infinity, strobeNextBeat: Infinity, reduceMotion: false,
       lastMoment: null, partyNextBeat: Infinity, partyTurn: 0, cleanerBeat: Infinity, cleanerKind: 'cleaner',
       floorConfetti: [], sweeping: null, cleanerCooldown: -Infinity, lastSoloHero: -1, skipTo: null, skipLit: null,
@@ -2810,9 +2815,10 @@ function propNominalSize(name) {
   // with the club's clock on beat b of the lap, so a tap lands on its beat whatever the frame
   // rate. A lap only starts once the room has been drawn, so the boxes a tap is tested against
   // exist. Returns paint(ctx, t), which draws the whole frame in frame pixels.
-  const room = ({ lap = 0, seed = 1, reacts = false, start = null, each = null, beat = null } = {}) => {
+  const room = ({ lap = 0, seed = 1, reacts = false, start = null, each = null, beat = null, setup = null } = {}) => {
     const club = standIn({ reacts });
     if (beat) club.beat = beat;
+    setup?.(club);
     const rLed = seeded(seed * 31 + 7);
     let lapN = null, rnd = seeded(seed);
     // the part of update() the picture needs, in update()'s order
@@ -2912,6 +2918,7 @@ function propNominalSize(name) {
     if (club.startMoment(kind)) club.moments.at(-1).dir = n % 2 ? -1 : 1;
   };
   const BALL_CROP = [170, 0, 140, 104];   // the mirror ball and the two cans either side of it
+  labClub = { room, sharedRoom, roomCard, cue };
 
   // The room as it plays between moments, sixteen bars a lap: lasers in bursts on the club's own
   // clock (floor rig bars 1–2 and 9–10, overhead rig bars 5 and 13), the LED board tapped on bar 7.
@@ -9794,6 +9801,49 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
       drawProp(ctx, c.sprite, 10, 6, 130, 80);
     }, { animated: false, hires: 3 });
   }
+}
+
+// 4-BIT, SEEN (Peter, 8 Oct 2026: "give me a bake off to see 8 bit vs 4 bit crt"). B-33P on a take
+// already on the 8-Bit set crushes the mix and calls it 4-BIT (club-voices.js CRUSH), and the room
+// has no tube for it yet. Each look is the club's own tube (club-crt.js clubCrt) through the club's
+// `crtLook` seam, on the floor section's stand-in room: no song, no sound, sixteen bars a lap, the
+// LED board tapped on bar 7. Candidates in src/dev/crt-4bit-candidates.js.
+{
+  const s = sectionEl('crt-4bit-bakeoff', 'BANGER LAB — 4-BIT on the tube',
+    'PICKED 8 Oct 2026: D, CHUNKIER — 4-BIT puts the room on it now (club-crt.js FOUR_BIT_TUBE), so D is what ships; 0 is still 8-BIT’s. '
+    + 'B-33P on a take that is already 8-bit now crushes the mix and calls it 4-BIT; these are the tube it could put the room on, '
+    + 'each lower-fi than the 8-BIT tube the room goes on for a take that is not. 0 is 8-BIT as it ships (a hero 22 cells tall, the club’s 47 inks). '
+    + 'A CHUNKY bigger cells only (14 tall); B SIXTEEN OF OURS 14 tall on sixteen of the club’s own inks — 4 bits of colour; '
+    + 'C THE PC’S SIXTEEN 14 tall on the old 4-bit RGBI palette, the room pushed darker and louder first (as it is, it all went to the palette’s two greys); D CHUNKIER B’s inks, 10 tall; E GREEN SCREEN 14 tall, four levels of one green phosphor. '
+    + 'The LED board and the sign keep tubes of their own in every one, as in 8-BIT. The room is the floor section’s stand-in club, sixteen bars a lap, '
+    + 'no song and no sound. First the heroes from every look side by side, then each whole room.',
+    '2026-10-08');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const { room, sharedRoom, roomCard, cue } = labClub;
+  const looks = [CRT_8BIT, ...CRT_4BIT_CANDIDATES];
+  // what draw() reads off the band while it plays on the 8-Bit set: swapped, and not an 8-Bit take
+  const onTube = { swappedNow: true, swapped: true, eightBit: false, waiting: () => false, label: () => '' };
+  const rooms = looks.map((look) => sharedRoom(room({ lap: 64, seed: 1,
+    setup: (club) => Object.assign(club, { voices: onTube, crtLook: look }),
+    each: (club, b, n, at) => cue(club, 'led', b, 24, at, () => club.tapLedBoard()) })));
+  // the heroes and the floor under them, the middle of the room
+  const CROP = [150, 118, 180, 132];
+  const [, , cw, ch] = CROP, GAP = 6, LABEL = 12, COLS = 3;
+  const SW = COLS * (cw + GAP) - GAP, SH = Math.ceil(looks.length / COLS) * (ch + LABEL + GAP) - GAP;
+  tile(grid, 'All side by side', 'The middle of the floor from every look, at the room’s own size: 0 is 8-BIT today.', SW, SH, (ctx, t) => {
+    ctx.fillStyle = '#0e0e18'; ctx.fillRect(0, 0, SW, SH);
+    looks.forEach((look, i) => {
+      const x = (i % COLS) * (cw + GAP), y = Math.floor(i / COLS) * (ch + LABEL + GAP);
+      ctx.save();
+      ctx.translate(x, y + LABEL);
+      ctx.beginPath(); ctx.rect(0, 0, cw, ch); ctx.clip();
+      rooms[i](ctx, t, CROP);
+      ctx.restore();
+      ctx.fillStyle = '#c9a0ff'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'left';
+      ctx.fillText(`${look.letter} ${look.name}`, x, y + 9);
+    });
+  }, { animated: true, wide: true });
+  looks.forEach((look, i) => roomCard(grid, `${look.letter} — ${look.name}`, look.description, rooms[i]));
 }
 
 // ---------------------------------------------------------------- driver

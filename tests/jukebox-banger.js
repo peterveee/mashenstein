@@ -1267,25 +1267,88 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     const mixes = [];
     Audio.reapplyBank = (bank, mix) => { mixes.push(mix); };
     Audio.sourceBank = club.song.bank; Audio.bank = realBank || club.song.bank;
+    // a take already on the 8-Bit set goes to 4-BIT instead, on its own instruments (below)
     const eightBit = club.voices.eightBit;
-    const set = BANGER_SOUNDS[eightBit ? 'chipstep-lite' : 'chipstep-8bit'];
+    const set = BANGER_SOUNDS['chipstep-8bit'];
     const ids = new Set([...Object.values(set.parts), ...Object.values(set.kits).flatMap((k) => Object.values(k))]);
     club.draw(ctx);
     const bb = club.boxes.heroes[at('b33p')];
     tap(club, bb.x + bb.w / 2, bb.y + bb.h / 2);
-    assert(club.queued?.i === at('b33p') && club.queued.title === (eightBit ? 'HI-FI' : '8-BIT') && club.voices.swapped && !club.voices.swappedNow,
+    assert(club.queued?.i === at('b33p') && club.queued.title === (eightBit ? '4-BIT' : '8-BIT') && club.voices.swapped && !club.voices.swappedNow,
       'a tap on B-33P queues the swap for the next beat');
     club.update(1 / 60);
     const swappedLanes = Object.entries(mixes.at(-1)?.voice || {}).filter(([k, id]) => id !== club.song.mix.voice[k]);
-    assert(club.voices.swappedNow && swappedLanes.length > 5 && swappedLanes.every(([, id]) => ids.has(id)),
-      'on the beat every part goes onto the set\'s own sounds, the drums and all');
-    assert(club.led?.text === (eightBit ? 'HI-FI MODE' : '8-BIT MODE'), 'and the LED board says so');
+    assert(club.voices.swappedNow && (eightBit ? !swappedLanes.length : swappedLanes.length > 5 && swappedLanes.every(([, id]) => ids.has(id))),
+      eightBit ? 'on the beat an 8-Bit take keeps its own sounds: 4-BIT crushes them' : 'on the beat every part goes onto the set\'s own sounds, the drums and all');
+    assert(club.led?.text === (eightBit ? '4-BIT MODE' : '8-BIT MODE'), 'and the LED board says so');
     club.draw(ctx);
     tap(club, bb.x + bb.w / 2, bb.y + bb.h / 2);
     club.update(1 / 60);
     assert(!club.voices.swappedNow && mixes.at(-1) === club.song.mix && club.led?.text === (eightBit ? '8-BIT MODE' : 'HI-FI MODE'),
       'a second tap puts the band\'s own sounds back');
     Audio.reapplyBank = realRe; Audio.sourceBank = realSource; Audio.bank = realBank;
+  }
+  // 4-BIT (Peter, 8 Oct 2026): B-33P on a take already on the 8-Bit set keeps its instruments
+  // and puts the whole mix through the Bit Crusher at his settings — 12 bits, downsample 8, mix
+  // 1.00 — on the mixer's treatment leg, from the beat; and back off it on the next tap.
+  {
+    const { ClubVoices, mixWithKept } = await import('../src/game/banger/club-voices.js');
+    const real = { re: Audio.reapplyBank, source: Audio.sourceBank, bank: Audio.bank, ctx: Audio.ctx, next: Audio.nextTime,
+      tick: Audio._tick, mixer: Audio._mixer, timeout: globalThis.setTimeout };
+    const calls = [], mixes = [], timers = [];
+    let chain = [];
+    Audio.mixer = {
+      get treatment() { return chain; },
+      setTreatment(list) { calls.push(['set', list]); chain = list.map((l) => ({ def: { id: l.id } })); },
+      rampTreatment(w, when) { calls.push(['ramp', w, when]); },
+      clearTreatment() { calls.push(['clear']); chain = []; },
+    };
+    globalThis.setTimeout = (fn) => { timers.push(fn); return 0; };
+    const song = { ...club.song, soundsId: 'chipstep-8bit' };
+    Audio.reapplyBank = (bank, mix) => { mixes.push(mix); };
+    Audio.sourceBank = song.bank; Audio.bank = real.bank || song.bank;
+    Audio.ctx = { currentTime: 0 }; Audio.nextTime = 0.25;
+    const stepTo = (step) => { Audio._tick = step * Audio.transportResolution / 16; };
+    const v = new ClubVoices(song, club.rec);
+    // a sound picked first, to see the button keep it through 4-BIT
+    const part = ['bass', 'chords', 'lead', 'drums'].find((p) => v.choices(p).length > 1);
+    stepTo(31); v.next(part); stepTo(32); v.update();
+    const picked = v.label(part), before = mixes.at(-1);
+    stepTo(33); v.toggle(); stepTo(36);
+    const on = v.update();
+    const sets = calls.filter((c) => c[0] === 'set');
+    const crusher = JSON.stringify(sets[0]?.[1]) === JSON.stringify([{ id: 'bitcrusher', params: { bits: 12, downsample: 8, wet: 1 } }]);
+    const onRamp = calls.at(-1);
+    const ownSounds = JSON.stringify(mixes.at(-1)?.voice) === JSON.stringify(before?.voice) && v.label(part) === picked;
+    stepTo(37); v.toggle(); stepTo(40);
+    const off = v.update();
+    const offRamp = calls.at(-1);
+    // straight back in before the leg is cleared: faded back to, not rebuilt
+    stepTo(41); v.toggle(); stepTo(44); v.update();
+    timers.splice(0).forEach((fn) => fn());
+    const reused = calls.filter((c) => c[0] === 'set').length === 1 && calls.at(-1)?.[1] === 1 && !calls.some((c) => c[0] === 'clear');
+    stepTo(45); v.toggle(); stepTo(48); v.update();
+    timers.splice(0).forEach((fn) => fn());
+    const cleared = calls.at(-1)?.[0] === 'clear';
+    assert(v.eightBit && on?.swapped && crusher && onRamp?.[1] === 1 && onRamp?.[2] === 0.25 && ownSounds
+      && off && !off.swapped && offRamp?.[1] === 0 && reused && cleared,
+      `4-BIT: an 8-Bit take keeps its own sounds and goes through the Bit Crusher (12 bits, downsample 8) from the beat, off at the next tap and cleared once silent (${[v.eightBit, !!on?.swapped, crusher, onRamp, ownSounds, !!off, offRamp, reused, cleared]})`);
+    const keptOn = mixWithKept(song, club.rec, { own: {}, swap: {}, swapped: true });
+    const keptOff = mixWithKept(song, club.rec, { own: {}, swap: {}, swapped: false });
+    assert(keptOn.masterEffects?.[0]?.id === 'bitcrusher' && keptOn.masterEffects[0].params.downsample === 8
+      && !keptOff.masterEffects?.some?.((l) => l.id === 'bitcrusher'),
+      'a kept 8-Bit take left in 4-BIT plays crushed in the Lab and on the jukebox: the crusher first on its master');
+    // ...and seen (Peter's pick of the bake-off, 8 Oct 2026: D): the room on a cruder tube than 8-BIT's
+    const { EIGHT_BIT_TUBE, FOUR_BIT_TUBE } = await import('../src/game/banger/club-crt.js');
+    const realVoices = club.voices;
+    const tubes = [false, true].map((eightBit) => [false, true].map((swappedNow) => { club.voices = { eightBit, swappedNow }; return club.tubeLook(); }));
+    club.voices = realVoices;
+    assert(tubes[0][0] === null && tubes[1][0] === null && tubes[0][1] === EIGHT_BIT_TUBE && tubes[1][1] === FOUR_BIT_TUBE
+      && FOUR_BIT_TUBE.rows === 10 && FOUR_BIT_TUBE.inks.length === 16 && EIGHT_BIT_TUBE.rows > FOUR_BIT_TUBE.rows,
+      'the room goes on the tube with the sound: 8-BIT’s for a take swapped onto the 8-Bit set, 4-BIT’s — a hero 10 cells tall, 16 inks — for one already on it');
+    Audio.reapplyBank = real.re; Audio.sourceBank = real.source; Audio.bank = real.bank;
+    Audio.ctx = real.ctx; Audio.nextTime = real.next; Audio._tick = real.tick; Audio.mixer = real.mixer;
+    globalThis.setTimeout = real.timeout;
   }
   // ...on the grid, with a song running: B-33P's swap (both ways) on the next beat, a sound
   // button's on the next bar line (Peter, 7 Oct 2026: a bar was too long to wait for B-33P).

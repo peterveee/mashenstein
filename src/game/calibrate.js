@@ -28,11 +28,12 @@ import { W, H } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { clampAudioSyncMs } from '../engine/save.js';
-import { drawTextCentered, textWidth, drawMenuRow, textYForMid, wrapText, BACK_BUTTON_PLATE } from '../engine/sprites.js';
+import { drawTextCentered, textWidth } from '../engine/sprites.js';
 import {
   portraitMenuActive, portraitMenuFit, portraitMenuSafeBottom, portraitMenuSafeTop,
-  portraitMenuScale, portraitMenuTextCentered, portraitMenuTextY, portraitMenuWrap,
+  portraitMenuTextCentered, portraitMenuTextY,
 } from '../engine/portrait-menu.js';
+import { PanelScreen, PANEL } from './panel-screen.js';
 
 // 120 BPM: half a second a click. Fast enough that sixteen of them is eight
 // seconds of the player's time, slow enough that nobody is rushed into
@@ -170,41 +171,14 @@ const CABLE_WHY = 'THAT IS A BIG DELAY. A CABLE WILL ALWAYS FEEL TIGHTER.';
 // SET / RESET / BACK while the screen is waiting, APPLY / RETRY / BACK once it
 // has a reading. RESET used to be a second row on the settings list, one line
 // under this feature's other half; it belongs beside SET, where the screen's
-// own copy is there to say what each of them does to the figure.
-//
-// buttonBoxes() is the ONE geometry: the painter, the keyboard cursor and the
-// pointer hit-test all read it, so none of the three can believe in a button
-// the other two do not have. Laid out across rather than down in both
-// orientations — three short words fit a 480-wide frame either way up, and a
-// row of buttons at the foot of the screen is what a phone expects.
-const BUTTON = {
-  landscape: { h: 26, gap: 12, scale: 1.25, pad: 22, minW: 84, margin: 40, bottom: 20 },
-  portrait: { h: 62, gap: 14, scale: 1.8, pad: 26, minW: 118, margin: 26, bottom: 34 },
-};
-// ---- the copy block --------------------------------------------------------
-//
-// Type sizes and spacing, per orientation. Only these differ: the strings, the
-// order and the colours are shared, and drawPanel solves the spacing against
-// the room the frame actually has rather than trusting these to fit.
-//
-// `top` is measured down from the title, `clear` is the air kept above the
-// button row, `line` is the natural line pitch and `tight` the floor it may be
-// squeezed to. `gap` is the extra lead before a new idea starts.
-const PANEL = {
-  landscape: {
-    top: 24, clear: 14, margin: 56, line: 17, tight: 13, gap: 10,
-    head: 1.5, step: 1.22, why: 1.12, status: 1.2, big: 2.2, notice: 1.12,
-  },
-  portrait: {
-    top: 64, clear: 30, margin: 44, line: 44, tight: 34, gap: 28,
-    head: 2.3, step: 1.9, why: 1.65, status: 1.7, big: 3.0, notice: 1.6,
-  },
-};
+// own copy is there to say what each of them does to the figure. The row, the
+// cursor and the copy block are laid out by PanelScreen (panel-screen.js).
 
-export class CalibrateState {
+export class CalibrateState extends PanelScreen {
   static portraitMode = 'frame';
 
   constructor({ save, onDone }) {
+    super();
     this.save = save;
     this.onDone = onDone;
   }
@@ -256,42 +230,6 @@ export class CalibrateState {
     // against.
     if (this.phase === 'tapping') return ['BACK'];
     return this.resultRows();
-  }
-
-  /**
-   * Where each button sits, in logical pixels. The single source of that: a
-   * cursor, a finger and a painter that each worked it out for themselves is
-   * how a tap lands one row off the thing it looks like it hit.
-   */
-  buttonBoxes() {
-    const rows = this.buttonRows();
-    const portrait = portraitMenuActive();
-    const m = portrait ? BUTTON.portrait : BUTTON.landscape;
-    const label = (text) => (portrait
-      ? textWidth(text, portraitMenuScale(m.scale))
-      : textWidth(text, m.scale));
-    let widths = rows.map((text) => Math.max(m.minW, Math.round(label(text) + m.pad * 2)));
-    const span = () => widths.reduce((a, b) => a + b, 0) + m.gap * (rows.length - 1);
-    const maxSpan = W - m.margin;
-    // Narrow every button by the same factor rather than truncating one of
-    // them: three buttons that no longer line up read as three different
-    // controls, and the words here are all short enough to survive the squeeze.
-    if (span() > maxSpan) {
-      const k = (maxSpan - m.gap * (rows.length - 1)) / widths.reduce((a, b) => a + b, 0);
-      widths = widths.map((w) => Math.floor(w * k));
-    }
-    const y = Math.round((portrait ? portraitMenuSafeBottom(m.bottom) : H - m.bottom) - m.h);
-    let x = Math.round((W - span()) / 2);
-    return rows.map((text, i) => {
-      const box = { label: text, x, y, w: widths[i], h: m.h, scale: m.scale };
-      x += widths[i] + m.gap;
-      return box;
-    });
-  }
-
-  layout() {
-    this.boxes = this.buttonBoxes();
-    if (this.idx >= this.boxes.length) this.idx = this.boxes.length - 1;
   }
 
   exit() {
@@ -359,31 +297,6 @@ export class CalibrateState {
     if (this.phase === 'tapping') this.updateTapping(dt);
     else this.updateButtons();
     Input.endFrame();
-  }
-
-  /**
-   * One cursor for both the ready screen and the result screen, because they
-   * are one screen with two things to say. Left/right walks the row it is
-   * drawn as; up/down is kept alive because a d-pad player will reach for it.
-   */
-  updateButtons() {
-    const boxes = this.boxes || this.buttonBoxes();
-    const n = boxes.length;
-    if (Input.pressed('right') || Input.pressed('down')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
-    if (Input.pressed('left') || Input.pressed('up')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
-    if (Input.pressed('pointer')) {
-      const { x, y } = Input.pointer;
-      const hit = boxes.findIndex((b) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h);
-      // A first tap moves the cursor, a second one commits: the same two-step
-      // the result rows have always used, kept so a fat-fingered tap on the
-      // wrong button is recoverable rather than immediately acted on.
-      if (hit >= 0) {
-        if (this.idx === hit) { this.choose(boxes[hit].label); return; }
-        this.idx = hit;
-        Audio.sfx('ui');
-      }
-    }
-    if (Input.pressed('confirm') || Input.pressed('jump')) this.choose(boxes[this.idx].label);
   }
 
   updateTapping(dt) {
@@ -468,43 +381,15 @@ export class CalibrateState {
 
   draw(ctx) {
     const portrait = portraitMenuActive();
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
     const safeTop = portrait ? portraitMenuSafeTop() : 0;
     const safeBottom = portrait ? portraitMenuSafeBottom() : H;
-    const titleMid = portrait ? safeTop + 34 : 26;
-    const titleS = portrait
-      ? portraitMenuFit('AUDIO SYNC', 4.2, W - 24, 'title')
-      : Math.min(2.8, (W - 32) / Math.max(1, textWidth('AUDIO SYNC', 1, 'title')));
-    this.centred(ctx, 'AUDIO SYNC', W / 2, titleMid, '#fff', titleS, 'title');
+    const titleMid = this.drawFrame(ctx, 'AUDIO SYNC');
     if (this.phase === 'tapping') {
       if (portrait) this.drawTappingPortrait(ctx, safeTop, safeBottom);
       else this.drawTapping(ctx);
       return;
     }
     this.drawPanel(ctx, portrait, titleMid);
-  }
-
-  /**
-   * One line centred on `midX`, in whichever type system this orientation uses.
-   * The x is a parameter and not W / 2: the button row centres each label on
-   * its own plate, and a shared helper that assumed the screen's middle drew
-   * all three of them on top of each other.
-   */
-  centred(ctx, text, midX, midY, color, size, style = 'ui') {
-    if (portraitMenuActive()) {
-      portraitMenuTextCentered(ctx, text, midX,
-        portraitMenuTextY(midY, size, style), color, size, style);
-    } else {
-      drawTextCentered(ctx, text, midX, textYForMid(midY, size, style), color, size, style);
-    }
-  }
-
-  /** The widest this orientation lets a string be, at `size`. */
-  fit(text, size, maxWidth, style = 'ui') {
-    return portraitMenuActive()
-      ? portraitMenuFit(text, size, maxWidth, style)
-      : Math.min(size, maxWidth / Math.max(1, textWidth(text, 1, style)));
   }
 
   /**
@@ -524,17 +409,7 @@ export class CalibrateState {
     const out = [];
     const push = (text, color, size, lead = 0, style = 'ui') =>
       out.push({ text, color, size, style, lead });
-    const para = (text, color, size, lead) => {
-      const width = W - S.margin;
-      // A generous cap, not a tight one: wrapText ELLIPSISES whatever will not
-      // fit in the lines it is given, so a cap set to what landscape happens to
-      // need silently truncates the same sentence in portrait, where the column
-      // is half as wide. drawPanel tightens the pitch to fit; nothing is cut.
-      const wrapped = portrait
-        ? portraitMenuWrap(text, width, size, 12)
-        : wrapText(text, width, size, 12);
-      wrapped.forEach((l, i) => push(l, color, size, i === 0 ? lead : 0));
-    };
+    const para = (text, color, size, lead) => out.push(...this.paragraph(text, color, size, lead, portrait));
 
     if (this.phase === 'ready') {
       push(READY_HEADLINE, '#f6d33c', S.head);
@@ -586,72 +461,9 @@ export class CalibrateState {
         color: ms ? '#48e0c8' : '#5a5a68', size: S.status, style: 'ui', lead: 0,
       },
     ];
-    if (this.notice) {
-      const width = W - S.margin;
-      const wrapped = portrait
-        ? portraitMenuWrap(this.notice, width, S.notice, 12)
-        : wrapText(this.notice, width, S.notice, 12);
-      wrapped.forEach((l, i) => out.push({
-        text: l, color: this.noticeOk ? '#48c848' : '#d84828',
-        size: S.notice, style: 'ui', lead: i === 0 ? S.gap : 0,
-      }));
-    }
+    if (this.notice) out.push(...this.paragraph(this.notice, this.noticeOk ? '#48c848' : '#d84828', S.notice, S.gap, portrait));
     return out;
   }
-
-  /** Draw a measured stack of centred lines downward from `y`. Returns the end. */
-  drawStack(ctx, rows, y, line, margin, k = 1) {
-    for (const r of rows) {
-      y += r.lead * k;
-      const size = this.fit(r.text, r.size, W - margin, r.style);
-      this.centred(ctx, r.text, W / 2, y + line * k / 2, r.color, size, r.style);
-      y += line * k;
-    }
-    return y;
-  }
-
-  drawPanel(ctx, portrait, titleMid) {
-    const S = portrait ? PANEL.portrait : PANEL.landscape;
-    const rows = this.panelLines(portrait);
-    const status = this.statusLines(portrait);
-    const buttonTop = this.boxes?.[0]?.y ?? H;
-    const statusH = status.reduce((h, r) => h + S.line + r.lead, 0);
-    const top = titleMid + S.top;
-    const bottom = buttonTop - S.clear * 2 - statusH;
-    // THE STACK IS FITTED, NOT ASSUMED. How many lines there are depends on the
-    // phase, on whether the reading was unsteady, on whether there is a notice
-    // and on how wide the frame wrapped the paragraphs — so the spacing is
-    // solved for the room that is actually left rather than hard-coded and
-    // hoped for. Nothing is ever dropped: it tightens to the floor and, if even
-    // that will not fit, overruns knowingly rather than hiding a line.
-    const natural = rows.reduce((h, r) => h + S.line + r.lead, 0);
-    const room = Math.max(1, bottom - top);
-    const k = natural > room ? Math.max(S.tight / S.line, room / natural) : 1;
-    // TOP-ALIGNED, NOT CENTRED. Centring splits the leftover room evenly, and
-    // on a tall phone that is half a screen of nothing between the title and
-    // the first line — which reads as a page that failed to load rather than as
-    // breathing space. The slack belongs at the bottom, above the buttons,
-    // where it is just the end of the text.
-    this.drawStack(ctx, rows, top, S.line, S.margin, k);
-    this.drawStack(ctx, status, buttonTop - S.clear - statusH, S.line, S.margin);
-    this.drawButtons(ctx);
-  }
-
-  /**
-   * SET / RESET / BACK, or APPLY / RETRY / BACK. Every button gets a plate, not
-   * just the selected one: three words floating on the background read as a
-   * caption, and a caption is not a thing anybody taps.
-   */
-  drawButtons(ctx) {
-    const boxes = this.boxes || this.buttonBoxes();
-    boxes.forEach((b, i) => {
-      const on = i === this.idx;
-      drawMenuRow(ctx, b.x, b.y, b.w, b.h, 3, on ? undefined : BACK_BUTTON_PLATE);
-      const size = this.fit(b.label, b.scale, b.w - 16);
-      this.centred(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2, on ? '#fff' : '#8a8a98', size);
-    });
-  }
-
 
   drawTappingPortrait(ctx, safeTop, safeBottom) {
     const now = Audio.ctx?.currentTime ?? 0;

@@ -6442,11 +6442,12 @@ export class SettingsState {
 
   // `onDevMenu` is passed only by a dev build (main.js, when Dev.enabled): it puts a
   // DEV MENU row at the top of the list, the phone's way in without the five-tap corner.
-  constructor({ save, onDone, onCalibrate = null, onDevMenu = null }) {
+  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null }) {
     this.save = save;
     this.onDone = onDone;
     this.onDevMenu = onDevMenu;
     this.onCalibrate = onCalibrate;
+    this.onSaveFile = onSaveFile;
     this.listStart = 0;
     this.pointerGesture = null;
     this.layout();
@@ -6552,6 +6553,9 @@ export class SettingsState {
       this.audioSyncOption(),
       { label: `SHOW FPS: ${s.showFps ? 'ON' : 'OFF'}`, act: () => { s.showFps = !s.showFps; } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
+      // The whole save to a .mash file and back (save-file.js). Its own screen,
+      // because what it writes and what it replaces both need saying first.
+      ...(this.onSaveFile ? [{ label: 'IMPORT / EXPORT', act: () => { this.save.persist(); this.onSaveFile(); } }] : []),
       { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },
       { label: 'BACK', act: () => { this.save.persist(); this.onDone(); } },
     ];

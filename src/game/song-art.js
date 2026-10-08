@@ -25,7 +25,9 @@ const SUBJECTS = [
   ...[...FISHES, FISHBOWL].map((fish) => ({ id: fish.name, fish })),
   { id: 'GOLDEN TOASTER', toaster: 'appliance' },
   { id: 'SILVER TOASTER', toaster: 'applianceSilver' },
-  { id: 'MIRROR BALL', club: 'ball' },
+  // On the tube its sixteen bands of facets came out a cell each, averaged to a grey-green
+  // blob: half as many, each a couple of cells, and two more inks, and it is silver again.
+  { id: 'MIRROR BALL', club: 'ball', tube: { bands: 8, inks: 8 } },
   { id: 'THE BOLT', club: 'bolt' },
 ];
 
@@ -118,7 +120,7 @@ function paintToaster(ctx, S, painter) {
 }
 
 // The club's mirror ball, hung on its wire, haloed and twinkling (club.js draws it so).
-function paintBall(ctx, S) {
+function paintBall(ctx, S, bands = 16) {
   backdrop(ctx, S, NIGHT);
   const x = S / 2, y = S * 0.54, r = S * 0.3;
   ctx.strokeStyle = 'rgba(200,200,216,0.55)';
@@ -128,7 +130,7 @@ function paintBall(ctx, S) {
   halo.addColorStop(0, 'rgba(255,255,255,0.24)'); halo.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = halo;
   ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, Math.PI * 2); ctx.fill();
-  drawDiscoBall(ctx, x, y, r, { t: 0.7, pulse: 0.3, bands: 16 });
+  drawDiscoBall(ctx, x, y, r, { t: 0.7, pulse: 0.3, bands });
   ctx.fillStyle = '#5a5670';
   ctx.fillRect(x - S * 0.012, y - r - S * 0.016, S * 0.024, S * 0.02);
   sparkles(ctx, x, y, r, 0.35, 7, 3);
@@ -151,7 +153,7 @@ function paintBolt(ctx, S) {
 // curves and the paper's grain come out smooth at the size the lock screen shows.
 const SUPERSAMPLE = 2;
 
-function paint(pick, S) {
+function paint(pick, S, tube = null) {
   const big = document.createElement('canvas');
   big.width = big.height = S * SUPERSAMPLE;
   const bx = big.getContext('2d');
@@ -159,7 +161,7 @@ function paint(pick, S) {
   if (pick.face) paintFace(bx, S, pick.face);
   else if (pick.fish) paintFish(bx, S, pick.fish);
   else if (pick.toaster) paintToaster(bx, S, pick.toaster);
-  else if (pick.club === 'ball') paintBall(bx, S);
+  else if (pick.club === 'ball') paintBall(bx, S, tube?.bands);
   else paintBolt(bx, S);
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = S;
@@ -325,8 +327,11 @@ export function paintSongArt(S = 1024, random = Math.random, song = null) {
     const pool = SUBJECTS.filter((s) => s.id !== last);
     const pick = pool[Math.floor(random() * pool.length)];
     last = pick.id;
-    canvas = paint(pick, S);
+    const tube = song && song.eightBit ? { ...pick.tube } : null;
+    canvas = paint(pick, S, tube);
     canvas.subject = pick.id;
+    canvas.eightBit = !!tube && tubeCover(canvas, tube);
+    return canvas;
   }
   canvas.eightBit = !!(song && song.eightBit) && tubeCover(canvas);
   return canvas;
@@ -334,13 +339,14 @@ export function paintSongArt(S = 1024, random = Math.random, song = null) {
 
 /**
  * One subject by id (SONG_ART_SUBJECTS), for a contact sheet or a test; on the tube with
- * `eightBit`, and `tube` ({ cells, inks, standouts }) to try the tube other ways.
+ * `eightBit`, and `tube` ({ cells, inks, standouts, bands }) to try the tube other ways.
  */
 export function paintSongArtOf(id, S = 1024, { eightBit = false, tube } = {}) {
   const pick = SUBJECTS.find((s) => s.id === id);
   if (!pick || typeof document === 'undefined') return null;
-  const canvas = paint(pick, S);
-  canvas.eightBit = eightBit && tubeCover(canvas, tube);
+  const t = eightBit ? { ...pick.tube, ...tube } : null;
+  const canvas = paint(pick, S, t);
+  canvas.eightBit = eightBit && tubeCover(canvas, t);
   return canvas;
 }
 
