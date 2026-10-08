@@ -36,13 +36,14 @@ import { POWER_DEFS } from './game/powerups.js';
 import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { CABINET_BY_ID } from './data/cabinets.js';
 import { tngr2WorkerAvailable } from './engine/tngr2/tables.js';
-import { paperTextureSource } from './engine/paper-material.js';
+import { warmPaperTexture } from './engine/paper-material.js';
 import { gameAlternate, GAME_ALTERNATES } from './data/game-alternates.js';
 import { STAGES, STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
 import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
 import { IntroState } from './game/intro.js';
 import { EXIT_CUE } from './game/hub/cabinet-dive.js';
+import { resultsOnTheBeat, installSoundtrack } from './game/results-chip.js';
 import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
 import { CalibrateState } from './game/calibrate.js';
 import { applyResult } from './game/progress.js';
@@ -51,6 +52,7 @@ import { AttractState } from './game/attract.js';
 import { TutorialState } from './game/tutorial.js';
 import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy, portraitNow, portraitAllowedFor } from './engine/lifecycle.js';
+import { paintSongArt } from './game/song-art.js';
 import { readPlatform } from './engine/platform.js';
 import { setInk, PHONE_INK } from './sprites/toons.js';
 import { applyPhoneAudioProfile, applyMobileSynthQuality } from './engine/phone-audio.js';
@@ -495,15 +497,16 @@ const Flow = {
         Flow.setHero(result.finalHero);
         if (devAutoExit) { Flow.toTitle(); return; }
         const gains = applyResult(save, result);
-        setStateNoCameo(new ResultsState({
-          result, gains, save,
+        // On the beat the song turns 8-bit (results-chip.js); a win waits for the bar.
+        resultsOnTheBeat((chip) => setStateNoCameo(new ResultsState({
+          result, gains, save, chip,
           onDone: () => Flow.toHub(false, cab.id, !!result.success),
           // launchStage, not startStage: a retry has already read the briefing.
           // No seed passed either, so the next attempt is a fresh roll rather
           // than a replay of the pattern that just went wrong. announceBench:false
           // so the bench-upgrade toasts don't parade a second time.
           onRetry: () => Flow.launchStage(cab, stage, corrupted, undefined, undefined, false),
-        }));
+        })), { bar: !!result.success });
       },
     }));
   },
@@ -538,14 +541,14 @@ const Flow = {
           save.persist();
         }
         const gains = applyResult(save, result);
-        setStateNoCameo(new ResultsState({
-          result, gains, save,
+        resultsOnTheBeat((chip) => setStateNoCameo(new ResultsState({
+          result, gains, save, chip,
           onDone: () => {
             if (result.success && cabId === 'surge') Flow.startFinale();
             else Flow.toHub(false, cabId, !!result.success);
           },
           onRetry: () => Flow.startBoss(cabId, undefined, initialHeroId, devInvuln, devAutoExit, devMaxTime),
-        }));
+        })), { bar: !!result.success });
       },
     }));
   },
@@ -577,7 +580,7 @@ const Flow = {
         Flow.lastTeam = result.team;
         Flow.setHero(result.finalHero);
         const gains = applyResult(save, result);
-        setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => Flow.toHub(false, fromCab, !!result.success) }));
+        resultsOnTheBeat((chip) => setStateNoCameo(new ResultsState({ result, gains, save, chip, onDone: () => Flow.toHub(false, fromCab, !!result.success) })), { bar: !!result.success });
       },
     }));
   },
@@ -779,6 +782,8 @@ function boot() {
   // The game uses songAnalyser, not the desk display meters.
   Audio.setMixerMeteringEnabled(false);
   Audio.setCaptureEnabled(Input.rewindAvailable());
+  // A scene change fades the old song out before the new one's mix goes on (setBank).
+  Audio.fadeSongChanges = true;
   // A phone gets a bigger output buffer and a wider scheduler window; everything
   // else keeps the browser's default. Here rather than anywhere later because
   // latencyHint is an AudioContext constructor argument — see phone-audio.js, and
@@ -816,10 +821,15 @@ function boot() {
   // strokes on the main thread (paintPaperFibres), built the first time anything draws
   // with it and cached for the page. neon-1's golden sky (cardstockClear) paid it on
   // its first frame — AFTER the song had started — and the scheduler's queue fell from
-  // ~230 ms to ~50 (25 Sep 2026, work/local/neon-audio-0925). One material per slice
-  // on the title, and ABANDONED once a run has begun: waiting it out only moved the
-  // cost onto the results screen, with the song still playing. RunState.enter warms the
-  // material a stage needs first, so a dev-URL start is covered without this.
+  // ~230 ms to ~50 (25 Sep 2026, work/local/neon-audio-0925). ABANDONED once a run has
+  // begun: waiting it out only moved the cost onto the results screen, with the song
+  // still playing. RunState.enter warms the material a stage needs first (finishing a
+  // half-built sheet rather than restarting it), so a dev-URL start is covered too.
+  //
+  // In 3 ms SLICES, not a material per task. Whole, each sheet was a ~150 ms stall at
+  // whatever moment its timer came up — and a player who goes straight from the title
+  // into the food court meets those moments on the walk in through the door (8 Oct
+  // 2026: the first-entry stutter, gone on every later entry once the sheets existed).
   {
     // The three shipped play draws with (stage presets and the neon sky, terrain, the
     // plumber sky); `felt` and `cardstockQuiet` are only reached through a dev ?paper=.
@@ -827,8 +837,8 @@ function boot() {
     const next = () => {
       if (!materials.length) return;
       if (typeof window !== 'undefined' && window.__mash_state === 'RunState') return;
-      paperTextureSource(materials.shift());
-      setTimeout(next, 250);
+      if (warmPaperTexture(materials[0], 3)) materials.shift();
+      setTimeout(next, 16);
     };
     setTimeout(next, 1500);
   }
@@ -837,6 +847,8 @@ function boot() {
   // leave the context suspended and the first gesture resumes this same
   // already-configured sequencer instead of creating it late.
   Audio.setVolumes(save.settings.volumes);
+  // SOUNDTRACK: the engine's mixes go through the 8-bit filter from the first song on.
+  installSoundtrack(save);
   // One portrait predicate, shared by this boot-time seed and the lifecycle
   // controller installed further down, so the two can never disagree about
   // which screens are allowed to stay running sideways. Read the diag switch
@@ -892,6 +904,8 @@ function boot() {
   };
   Input.onAnyGesture = () => {
     Audio.ensure();
+    // A music screen's tap starts the lock screen's stand-in (lifecycle.js primeAnchor).
+    if (typeof currentState()?.nowPlaying === 'function') window.__mash_lifecycle?.primeAnchor();
     Audio.setVolumes(save.settings.volumes);
     Audio.setMuted(save.settings.muted);
     Audio.setSyncOffset(save.settings.audioSyncMs);
@@ -946,6 +960,7 @@ function boot() {
         if (wasTransitioning && !transitioning) window.__mash_lifecycle?.apply();
         wasTransitioning = transitioning;
       }
+      window.__mash_lifecycle?.syncMusicSession();
       if (Dev.update(dt)) return;
       updateState(dt * Dev.timeScale);
     },
@@ -1206,6 +1221,21 @@ function boot() {
     // screens use the frame-based phone composition.
     allowPortrait: allowPortraitNow,
     onPortraitJukebox: () => setStateFade(new SoundTestState({ onDone: () => Flow.toTitle({ fade: true }) })),
+    // A screen playing a song the player chose says which (nowPlaying: the jukebox, the
+    // Lab's club): it plays on with the screen off and names itself on the lock screen.
+    // onBackground lets it put down what only its frames would end; onMediaPause and
+    // onMediaSkip are the lock screen's play/pause and previous/next.
+    nowPlaying: () => currentState()?.nowPlaying?.() || null,
+    onBackground: () => currentState()?.onBackground?.(),
+    onMediaPause: (paused) => currentState()?.mediaPause?.(paused),
+    onMediaSkip: (dir) => currentState()?.mediaSkip?.(dir),
+    // a hero, a fish, a toaster, the ball or THE BOLT, new each song; a cabinet's own scenery.
+    // 600px, not more: WebKit hands the card's artwork to iOS's Now Playing service as an
+    // uncompressed TIFF, and at 1024 (4MB each) the service blew its memory limit and was
+    // killed (Peter's iPhone, JetsamEvent 8 Oct 07:25: mediaremoted, highwater).
+    songArt: (song) => paintSongArt(600, Math.random, song),
+    // a beat-locked run holds its audio with its world, without the exit fade
+    beatLocked: () => currentState()?.beatLock === true,
     // Five taps on the portrait heading. Local builds only, like every other
     // door into the dev menu: a published bundle never sets __MASH_BUILD__, so
     // this reports false and the overlay says nothing.

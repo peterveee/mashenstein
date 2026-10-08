@@ -51,7 +51,7 @@ import { HANDOFF_VARIANTS } from '../src/game/credits-handoff.js';
 import { BOOST_FX_VARIANTS } from '../src/game/boostFx.js';
 import { FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX } from '../src/game/finishMarker.js';
 import {
-  PLAYER_X, AIR_JUMP_SCALE, VARIABLE_JUMP_CUT, jumpV, gravityFor, jumpHeightFor, airtimeFor,
+  PLAYER_X, AIR_JUMP_SCALE, VARIABLE_JUMP_CUT, MIN_JUMP_RISE_T, jumpV, gravityFor, jumpHeightFor, airtimeFor,
   Player, SLIDE_KICK_T, STAND_AFTER_PLOW_T,
 } from '../src/game/player.js';
 import { BASE_SPEED, SPEED_RAMP_K } from '../src/game/layout.js';
@@ -152,6 +152,8 @@ import { applianceBefore } from '../src/dev/toaster-top-before.js';
 import { TOASTER_WING_CANDIDATES } from '../src/dev/toaster-wings.js';
 import { TOASTER_CROWN_CANDIDATES } from '../src/dev/toaster-crowns.js';
 import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
+import { definePropVariant } from '../src/sprites/props.js';
+import { BANANA_PEELS, bananaPeelBefore } from '../src/dev/banana-peels.js';
 
 // RUSTY WAS THE GUEST HERE from 1 to 10 Sep 2026 — a candidate drawn through
 // drawToon's spec/pal seam and spliced into every cast-wide line-up by a
@@ -1385,7 +1387,9 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   // plus the little the clamp still carries.
   const hopOf = (h, hold) => {
     const v = jumpV(h), g = gravityFor(h);
-    const tc = Math.min(hold, v / g);       // releasing past the apex changes nothing
+    // A release inside MIN_JUMP_RISE_T is not cut until the window closes;
+    // releasing past the apex changes nothing.
+    const tc = Math.min(Math.max(hold, MIN_JUMP_RISE_T), v / g);
     const cut = Math.min(v - g * tc, VARIABLE_JUMP_CUT);
     return (v * tc - 0.5 * g * tc * tc) + (cut * cut) / (2 * g);
   };
@@ -9718,6 +9722,77 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
       ctx.save(); ctx.scale(Z, Z); ctx.translate(-CX, -CY); setInkScale(1);
       try { at(b, FROM + (t % SPAN)).draw(ctx); } finally { setInkScale(); ctx.restore(); }
     }, { animated: true });
+  }
+}
+
+// THE BANANA PEEL, second bake-off (Peter, 7 Oct 2026: "could we do a bakeoff for the banana peel
+// obstacle, still not 100% happy with it"). Candidates in src/dev/banana-peels.js; each one is
+// registered as a variant of the real prop and drawn through drawWorldEntity on an entity wearing
+// it as `skin`, so the raster, the 4/3 inflation, the contact shadow and the rim are the game's.
+{
+  const s = sectionEl('banana-peel-bakeoff', 'Banana peel — bake-off II, the anatomy',
+    'SETTLED 7 Oct 2026 on D, RIPE (“D”): it is props.js bananaPeel now, so 0 and D match; the peel it replaced is X, last. '
+    + 'The first bake-off (27 Aug) settled the size (10x6, lying on the road), the lemon yellow and the warm contour; every candidate keeps them. '
+    + 'What it left is the anatomy: the peel it shipped (X) grows its skins from a root in the pile and carries the stalk on the end of one of them, so nothing joins the parts and one skin floats above the rest. '
+    + 'In A–F every skin hangs from the one crown the stalk stands on. A, B and C are three ways that peel can have landed; D, E and F are finishes on A’s shape, each portable to whichever shape wins. '
+    + 'First the whole field side by side in the three cabinets that deal a peel, at the run’s own size; then each one met at running speed on Plumber Panic, and close up.',
+    '2026-10-07');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
+  const all = [
+    { letter: '0', name: 'TODAY', sprite: 'bananaPeel', description: 'The peel in the game now (props.js bananaPeel): D.' },
+    ...[...BANANA_PEELS, { letter: 'X', name: 'THE PEEL D REPLACED', paint: bananaPeelBefore,
+      description: 'props.js bananaPeel until 7 Oct 2026: four skins from a root in the pile, the stalk on the end of the one standing up.' }]
+      .map((c) => {
+        const sprite = `bananaPeel:${c.letter}`;
+        definePropVariant(sprite, 'bananaPeel', c.paint, c.rim ? { rim: true } : {});
+        return { ...c, sprite };
+      }),
+  ];
+  const peelAt = (x, c) => { const e = makeObstacle('bananaPeel', x); if (c.sprite !== 'bananaPeel') e.skin = c.sprite; return e; };
+  const frame = (ctx, t, cabId, camX, draw) => {
+    const cab = CABINETS.find((c) => c.id === cabId);
+    const pack = getStylePack(cab.style, {});
+    const bc = { stageIndex: 1, progress: 0.3 };
+    pack.bg(ctx, t, camX, cab, Infinity, bc, 0, bc);
+    ctx.save();
+    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
+    pack.ground(ctx, camX, cab, [], [], t * 60, VIEW_W);
+    draw(pack);
+    ctx.restore();
+    if (pack.post) pack.post(ctx, t);
+  };
+  // The field in a row, ahead of the hero, in each cabinet that deals a peel (cabinets.js PEEL_ONCE).
+  for (const [cabId, label] of [['plumber', 'PLUMBER PANIC'], ['speed', 'SPEED ZONE — the road is the peel’s own orange'], ['office', 'CORPORATE KOMBAT']]) {
+    tile(grid, `All side by side — ${label}`, '0 the game’s (D), A–F, and X the peel D replaced, at the run’s size beside Lorenzo.', W, H, (ctx, t) => {
+      const camX = 2000;
+      frame(ctx, t, cabId, camX, (pack) => {
+        drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+        all.forEach((c, i) => {
+          const x = 84 + i * 19;
+          drawWorldEntity(ctx, peelAt(camX + x, c), camX, t, pack, {});
+          ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillText(c.letter, x + 5.5, GROUND_Y + 10.5);
+          ctx.fillStyle = '#fff6c8'; ctx.fillText(c.letter, x + 5, GROUND_Y + 10);
+        });
+      });
+    }, { animated: true });
+  }
+  // Each one met at running speed: the peel scrolls in from the right at BASE_SPEED and Lorenzo hops it.
+  const LOOP = 2.2, PEEL_X = 2300;
+  for (const c of all) {
+    tile(grid, `${c.letter} — ${c.name}`, c.description, W, H, (ctx, t) => {
+      const camX = 2000 + (t % LOOP) * BASE_SPEED;
+      frame(ctx, t, 'plumber', camX, (pack) => {
+        const ahead = PEEL_X - camX - PLAYER_X;   // world units from the hero's x to the peel's
+        const hop = ahead < 25 && ahead > -35 ? (ahead - 25) / -60 : -1;
+        const lift = hop >= 0 ? Math.sin(Math.PI * hop) * 26 : 0;
+        drawWorldEntity(ctx, peelAt(PEEL_X, c), camX, t, pack, {});
+        drawToon(ctx, 'lorenzo', pose(hop >= 0 ? 'jump' : 'run', t), PLAYER_X, GROUND_Y - lift, HERO_DRAW_H);
+      });
+    }, { animated: true });
+    tile(grid, `${c.letter} — close up`, 'The painter at ten times its world size.', 150, 92, (ctx) => {
+      drawProp(ctx, c.sprite, 10, 6, 130, 80);
+    }, { animated: false, hires: 3 });
   }
 }
 

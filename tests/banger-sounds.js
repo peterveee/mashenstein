@@ -18,7 +18,9 @@ import {
 } from '../tools/lib/banger/sound-rules.js';
 import { soundsSource, tidyTable } from '../tools/lib/banger/sounds-source.js';
 import { generateBanger } from '../tools/lib/banger/index.js';
-import { saveTable } from '../tools/banger-sounds.js';
+import { saveTable, editorPage, presetRefs } from '../tools/banger-sounds.js';
+import { saveVoice } from '../tools/lib/voice-save.js';
+import { readVoicesSource, readMeasured, tableOf } from '../tools/lib/voices-source.js';
 import { BANGER_LEVEL_DATA } from '../tools/lib/banger/levels-data.js';
 
 let failed = false;
@@ -209,6 +211,56 @@ try {
   } catch { ok = false; }
   const shell = readFileSync('tools/banger-sounds-shell.html', 'utf8');
   assert(ok && shell.includes('/banger-sounds-bundle.js') && !/<select/i.test(shell), 'the page bundles, and draws no native dropdown');
+}
+
+// ---------------------------------------------------------------- Edit Sound saves as the desk does
+// The palette's editor files a preset through tools/lib/voice-save.js, the desk's own rules —
+// held here against the real voices.js text, in memory, with a stand-in for the render.
+{
+  const original = readVoicesSource();
+  const run = async (body, { measured = { level: 0.02, peak: 0.5 }, fail = false } = {}) => {
+    let src = original;
+    let restarts = 0;
+    const measuredIds = [];
+    const out = await saveVoice(body, {
+      read: () => src, write: (text) => { src = text; }, restart: async () => { restarts++; },
+      measure: async (id) => { measuredIds.push(id); if (fail) throw new Error('no engine'); return measured; },
+      log: () => {},
+    });
+    return { out, src, restarts, measuredIds };
+  };
+  const library = Object.values(VOICES).find((v) => v.factory && v.kind === 'tone');
+  const starter = Object.values(VOICES).find((v) => v.starter === true);
+  const user = Object.values(VOICES).find((v) => v.user && v.kind === 'tone' && !v.starter);
+  const presetOf = (v) => { const { id, kind, level, peak, factory, user: u, ...rest } = v; return clone(rest); };
+
+  let r = await run({ id: library.id, preset: presetOf(library), table: 'TONE' });
+  assert(r.out.status === 403 && r.src === original, `a library preset is refused without the dev role (${library.id})`);
+  r = await run({ id: library.id, preset: { ...presetOf(library), label: 'Edited' }, table: 'TONE', dev: true });
+  assert(r.out.status === 200 && r.out.body.saved && r.measuredIds[0] === library.id
+    && readMeasured(r.src, library.id).level === 0.02 && r.src.includes("label: 'Edited'"),
+  'the dev role updates a library preset, measured, with its level written');
+  if (starter) {
+    r = await run({ id: starter.id, preset: presetOf(starter), table: 'TONE', dev: true });
+    assert(r.out.status === 409 && r.src === original, 'a starter sound is never saved over');
+  }
+  r = await run({ id: 'bassVoice@plumber', preset: presetOf(user), table: 'USER_TONE' });
+  assert(r.out.status === 400, 'a song-local copy id is refused');
+  r = await run({ id: user.id, preset: presetOf(user), table: 'USER_TONE' }, { fail: true });
+  assert(r.out.status === 500 && r.src === original && r.restarts >= 2, 'a preset that cannot render is put back');
+  r = await run({ id: user.id, preset: presetOf(user), table: 'USER_TONE' }, { measured: { level: 0, peak: 0 } });
+  assert(r.out.status === 200 && r.out.body.silent && !r.out.body.saved && r.src === original, 'a silent preset is reported, not saved');
+  r = await run({ id: 'editSoundTestCopy', preset: { ...presetOf(user), label: 'Edit Sound Test Copy' }, table: 'USER_TONE' });
+  assert(r.out.status === 200 && tableOf(r.src, 'editSoundTestCopy') === 'USER_TONE', 'Save as New files a user preset');
+  r = await run({ id: 'editSoundTestCopy', preset: presetOf(user), table: 'TONE' });
+  assert(r.out.status === 403, 'a new library preset needs the dev role');
+
+  const refs = await presetRefs(BANGER_SOUNDS['big-room'].parts.bass);
+  assert(refs.styles.includes('big-room'), 'Edit Sound counts the styles that name a preset');
+  const page = editorPage();
+  assert(!page.includes('/*__BUNDLE__*/') && !page.includes('/*__MIXER_STYLE__*/') && page.includes('#synthfull')
+    && !/<select/i.test(readFileSync('tools/banger-voice-shell.html', 'utf8')),
+  'the Edit Sound page builds with the desk stylesheet, and draws no native dropdown');
 }
 
 // ---------------------------------------------------------------- the levels know every sound

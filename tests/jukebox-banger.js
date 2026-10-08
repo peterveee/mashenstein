@@ -318,8 +318,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(jb.tracks.length === n && !gen && !del && jb.pointerIndex(jb.backY + jb.backH / 2, back.x + back.w - 4) === n,
     'the jukebox lists only the shipped songs, with BACK alone under them');
   const labHalf = new SoundTestState({ onDone: () => {}, lab: true }).backPlates().back;
-  assert(back.x === labHalf.x && back.w === labHalf.w && jb.pointerIndex(jb.backY + jb.backH / 2, back.x + back.w + 20) === -1,
-    'the jukebox\'s BACK sits on the left, as wide as the Lab\'s, the rest of the row no button');
+  assert(back.x === labHalf.x && jb.pointerIndex(jb.backY + jb.backH / 2, back.x + back.w + 4) === -1,
+    'the jukebox\'s BACK sits on the left, as the Lab\'s does, the gap after it no button');
   jb.draw(document.createElement('canvas').getContext('2d'));
   const lab = new SoundTestState({ onDone: () => {}, lab: true });
   lab.enter();
@@ -1213,6 +1213,28 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       const slips = [sw.heroA, sw.heroB].map((h) => Math.abs(walked / toonWalkStep(HERO_MOVES[h].hero) - 1));
       assert(sw.beat0 === 600 && sw.beats >= 1 && Number.isInteger(sw.beats * 2) && slips.every((x) => x < 0.25),
         `two changing places set off on the beat and take two steps a beat, the length of their walk's (slip ${slips.map((x) => x.toFixed(2))})`);
+      // ...and so for every pair at every distance, not just the one the dice gave: each pair put
+      // `d` slots apart and Math.random steered to pick them (Ramon's long stride slid a neighbour 29%)
+      const rnd = Math.random, order = [...club.formationOrder], turnAt = [...club.turnAt], n = HERO_MOVES.length;
+      club.turnAt = club.turnAt.map(() => Infinity);   // nobody turning round, so every slot is free
+      let worst = { slip: 0 };
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) for (let d = 1; d < n; d++) {
+        const rest = HERO_MOVES.map((_, k) => k).filter((k) => k !== i && k !== j);
+        club.formationOrder = [i, ...rest.slice(0, d - 1), j, ...rest.slice(d - 1)];
+        const picks = [0, (d - 0.5) / (n - 1)];
+        Math.random = () => (picks.length ? picks.shift() : rnd());
+        club.formationSwap = null; club.formationShuffleAt = -1; club.turns = club.turns.map(() => null);
+        try { club.updateFormation(); } finally { Math.random = rnd; }
+        const s = club.formationSwap;
+        if (!s || s.heroA !== i || s.heroB !== j) { worst = { slip: Infinity, pair: `${i}+${j}`, d }; continue; }
+        const w = d * lay.cellW / (s.beats * 2) / lay.toonH;
+        for (const h of [i, j]) {
+          const slip = Math.abs(w / toonWalkStep(HERO_MOVES[h].hero) - 1);
+          if (slip > worst.slip) worst = { slip, pair: `${HERO_MOVES[i].hero}+${HERO_MOVES[j].hero}`, d };
+        }
+      }
+      club.formationOrder = order; club.turnAt = turnAt; club.formationSwap = null;
+      assert(worst.slip < 0.25, `every pair at every distance walks within a quarter of its own stride (worst ${worst.pair} ${worst.d} apart: ${worst.slip.toFixed(3)})`);
     }
     // On their spots the heroes now and then turn round: one at most a beat, never mid-move.
     {
@@ -1472,7 +1494,12 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.draw(ctx);
     const was = PARTS.map((p) => club.voices.label(p.id));
     const rolls = PARTS.filter((p) => club.voices.choices(p.id).length > 1).map((p) => p.id);
-    assert(club.boxes.dice && club.boxes.dice.x > club.boxes.reset.x + club.boxes.reset.w - 1, 'a DICE tab beside RESET');
+    {
+      // RESET and DICE at the panel's two top corners, in as far as each other (Peter, 8 Oct 2026)
+      const { reset, dice, panel } = club.boxes;
+      assert(dice && Math.abs((reset.x - panel.x) - (panel.x + panel.w - dice.x - dice.w)) < 1e-6 && reset.y === dice.y && dice.y < panel.y,
+        'a DICE tab at the panel\'s top right, RESET\'s mirror image');
+    }
     tap(club, ...centre(club.boxes.dice));
     const said = DICE_LINES.includes(club.popup?.text) && DICE_LINES.every((l) => !l.startsWith('NO'));
     club.update(1 / 60);
@@ -1943,6 +1970,9 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       }
       return n;
     };
+    // everyone but b on some other dance first: the room's own dancing can have left the third
+    // moonwalker on it (or due to join and free to pick it), which holds it from b all along
+    club.dancers.forEach((d, i) => { if (i !== b && d.moves.length) { d.move = d.moves.find((m) => m.move !== 'moonwalk'); d.resting = false; } });
     club.dancers[a].move = moonwalk(a);
     const whileTaken = changes();
     club.dancers[a].move = club.dancers[a].moves[0];
@@ -2400,8 +2430,23 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   });
   club.enter();
   club.draw(ctx);
-  assert(club.boxes.reroll && club.boxes.edit.x < club.boxes.reroll.x && club.boxes.reroll.x < club.boxes.save.x,
-    'in landscape the bolt sits between the pencil and SAVE');
+  {
+    // in landscape too the bolt hangs top right, the back button's mirror image, and the LED board
+    // the club sign's: [back][sign] ... [LED][bolt]
+    const z = club.boxes.reroll, b = club.boxes.back, led = club.boxes.led, sign = club.boxes.sign;
+    const overlaps = (a, c) => a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
+    assert(z && Math.abs((z.y + z.h / 2) - (b.y + b.h / 2)) < 1 && Math.abs(z.w - b.w) < 1e-6
+      && Math.abs((480 - (z.x + z.w)) - b.x) < 1e-6, 'in landscape the bolt sits top right, the back button mirrored');
+    assert(Math.abs((480 - (led.x + led.w)) - sign.x) < 1e-6 && Math.abs((led.y + led.h / 2) - (sign.y + sign.h / 2)) < 1e-6,
+      'and the LED board mirrors the club sign');
+    assert(!overlaps(z, led) && led.x + led.w <= z.x, 'the LED board on the bolt\'s left, clear of it');
+    club.openMixer(true); club.draw(ctx);
+    const under = club.boxes.reroll;
+    club.openMixer(false); club.draw(ctx);
+    assert(!under && club.boxes.reroll, 'the open mixer\'s panel lies over that corner: the bolt steps out until it shuts');
+    assert(club.boxes.save.x > club.boxes.edit.x && club.boxes.save.x - club.boxes.edit.x < club.boxes.edit.w * 1.5,
+      'SAVE sits right beside the pencil');
+  }
   assert(club.boxes.save.x + club.boxes.save.w <= club.boxes.transport[0].x, 'and SAVE still clears the transport');
   const step = (c, n) => { for (let k = 0; k < n; k++) { c.update(1 / 60); Input.endFrame(); } };
   tap(club, ...centre(club.boxes.reroll));
@@ -2566,7 +2611,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   plain.draw(ctx);
   assert(!plain.boxes.reroll, 'no bolt without a reroll to do');
 
-  // in portrait the bottom row is full: the bolt hangs top right, level with back, clear of the LED board
+  // in portrait the bolt hangs top right as well, level with back, clear of the LED board below it
   const mode = screen.presentationMode;
   screen.presentationMode = 'phone-portrait';
   try {
@@ -2579,6 +2624,13 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       'in portrait the bolt sits top right, level with the back button');
     assert(!overlaps(z, led) && !overlaps(z, sign), 'clear of the club sign and the LED board');
     assert(tall.boxes.save.x + tall.boxes.save.w <= tall.boxes.transport[0].x, 'and the bottom row is as it was');
+    // the bottom row is seven even slots, pencil to mixer, one spare between SAVE and the transport
+    const mid = (bx) => bx.x + bx.w / 2;
+    const row = [tall.boxes.edit, tall.boxes.save, null, ...tall.boxes.transport, tall.boxes.mixer];
+    const slot = (mid(tall.boxes.mixer) - mid(tall.boxes.edit)) / 6;
+    assert(row.every((bx, i) => !bx || Math.abs(mid(bx) - (mid(tall.boxes.edit) + i * slot)) < 1e-6),
+      'in portrait the bottom row sits on seven even slots, room for one more button');
+    assert(row.filter(Boolean).every((bx, i, a) => i === 0 || a[i - 1].x + a[i - 1].w <= bx.x + 1e-6), 'its tap boxes never overlap');
     tall.exit?.();
   } finally {
     screen.presentationMode = mode;
@@ -2655,6 +2707,28 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(skip.t >= FLASH_AT && opened === 1, 'a tap skips straight to the flash');
   tap(skip, 10, 10);
   assert(opened === 2, 'and another goes on into the club');
+}
+
+{
+  // The lock screen's next in the Lab: a song carried on from the club, then the next of the
+  // player's own, played in the list.
+  const list = new SoundTestState({ onDone: () => {}, lab: true });
+  list.enter();
+  const first = list.tracks[0];
+  Audio.setBank(first.bank, first.mix, first.arrangement);
+  const carried = new SoundTestState({ onDone: () => {}, lab: true, labPlaying: first.banger });
+  carried.enter();
+  assert(carried.tracks.length > 1 && carried.playing === 0 && carried.nowPlaying()?.album === 'THE LAB'
+    && carried.nowPlaying().title === first.name && carried.nowPlaying().skips,
+    'a song carried on into THE LAB is named in full on the lock screen, with previous/next');
+  const before = Audio.sourceBank;
+  carried.mediaSkip(1);
+  const next = carried.tracks[1];
+  assert(carried.playing === 1 && carried.idx === 1 && carried.labPlaying === next.banger
+    && lastPlayedBanger() === next.banger && Audio.sourceBank && Audio.sourceBank !== before
+    && carried.statusText() === `NOW PLAYING: ${next.name}`,
+    'next plays the next of their songs in the list, the cursor with it');
+  carried.exit();
 }
 
 if (failed) { console.error('JUKEBOX BANGER: FAILED'); process.exit(1); }

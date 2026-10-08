@@ -347,10 +347,13 @@ function renderPresets() {
     favourite.onclick = () => { updateEntry(item.id, { favourite: !item.favourite }); renderPresets(); };
     const hear = h('button', { text: 'Hear this preset', disabled: !item.enabled || !isCompatible(item.id) || (state.part.startsWith('riff:') && state.riffMode !== 'random') });
     hear.onclick = () => playPreview(state.part, item);
+    const editSound = h('button', { text: 'Edit Sound', title: 'Open the preset editor over a banger playing this sound',
+      disabled: !item.enabled || !isCompatible(item.id) || null });
+    editSound.onclick = () => openEditor(state.part, item);
     const effectButton = h('button', { text: state.openedEffects === item.id ? 'Hide Effects' : 'Effects' });
     effectButton.onclick = () => { state.openedEffects = state.openedEffects === item.id ? null : item.id; renderPresets(); };
     const remove = h('button', { text: 'Remove', title: 'Remove this preset from this scope' }); remove.onclick = () => removeEntry(item.id);
-    const top = h('div', { class: 'preset-top' }, enabled, name, h('span', { class: 'origin', text: item.origin }), favourite, hear, effectButton, remove);
+    const top = h('div', { class: 'preset-top' }, enabled, name, h('span', { class: 'origin', text: item.origin }), favourite, hear, editSound, effectButton, remove);
     const range = h('input', { type: 'range', min: -18, max: 6, step: 0.1, value: item.trimDb || 0, disabled: !item.enabled || null });
     const number = h('input', { type: 'number', min: -18, max: 6, step: 0.1, value: item.trimDb || 0, disabled: !item.enabled || null, 'aria-label': `${titleOf(item.id)} level in dB` });
     const setTrim = (value) => { const n = Math.max(-18, Math.min(6, Number(value))); if (!Number.isFinite(n)) return; number.value = range.value = n; updateEntry(item.id, { trimDb: Math.round(n * 10) / 10 }); };
@@ -424,10 +427,9 @@ function selectedSnapshot(part, item) {
   snapshot.parts[part] = [{ ...clone(configured), enabled: true, weight: configured.favourite ? 3 : 1, audition: true }];
   return snapshot;
 }
-function makePreview(part = null, item = null) {
+function makePreview(part = null, item = null, riffMode = state.riffMode) {
   const styleId = contextStyle(); const moodId = contextMood();
   let palette = paletteSnapshot(state.palette, styleId, moodId, { sounds: state.sounds });
-  const riffMode = state.riffMode;
   if (part && item) palette = selectedSnapshot(part, item);
   const out = generateBanger({ riff: getRiff(), options: {
     style: styleId, mood: moodId, variation: 'some', length: 'short',
@@ -550,6 +552,102 @@ function playPreview(part = null, item = null) {
   }
 }
 
+// ---------------------------------------------------------------- Edit Sound
+// The desk's preset editor, in a frame over this page (tools/banger-voice-entry.js), playing
+// a preview banger with this preset in its part. The frame is a page of its own with its
+// own engine, so this page's preview stops while it is up; it says when it saved something,
+// and this page's copy of the preset follows. A Save as New is swapped in for the sound it
+// was made from, in the scope being edited, for Save Changes to keep.
+let editorFrame = null;
+let editorPayload = null;
+function partLabel(part) {
+  if (LABEL[part]) return LABEL[part];
+  const key = part.slice(part.indexOf(':') + 1);
+  return key.replace(/([a-z])([A-Z0-9])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
+}
+function scopeLabel() {
+  if (state.scope === 'style') return `${styleOf().label} style palette`;
+  if (state.scope === 'mood') return `${MOOD_LABEL(state.moodId)} mood palette`;
+  return `${styleOf().label} · ${MOOD_LABEL(state.moodId)} palette`;
+}
+function setEditStatus(text, cls = '') {
+  const el = $('edit-status');
+  el.textContent = text;
+  el.className = cls;
+  el.hidden = !text;
+}
+function openEditor(part, item) {
+  if (editorFrame) return;
+  if (state.playing) stop();
+  let out; let audition;
+  try {
+    // A riff part only plays a palette preset when its sound is drawn from the palette.
+    out = makePreview(part, item, part.startsWith('riff:') ? 'random' : state.riffMode);
+    audition = auditionStart(out, part, item);
+  } catch (err) {
+    setEditStatus(`Could not make a banger to edit this sound in: ${err.message}`, 'warning');
+    return;
+  }
+  // A lane on a song-local copy (a generated riser) plays that copy, not a preset.
+  const copies = new Set(Object.keys(out.mix?.voiceParams || {}));
+  const sounds = (out.banger.palette || []).filter((e) => !copies.has(`${e.lane}Voice`))
+    .map((e) => ({ lane: e.lane, part: e.part, label: partLabel(e.part), preset: e.preset }));
+  editorPayload = {
+    type: 'banger-edit', preset: item.id, sounds,
+    context: `${styleOf().label} · ${MOOD_LABEL(contextMood())}`,
+    song: JSON.parse(JSON.stringify({ bank: out.bank, mix: out.mix, arrangement: audition.arrangement })),
+  };
+  setEditStatus('');
+  editorFrame = h('iframe', { id: 'sound-editor', src: '/edit', title: 'Sound editor', allow: 'autoplay; midi' });
+  document.body.append(editorFrame);
+  document.body.classList.add('editing');
+}
+function closeEditor() {
+  editorFrame?.remove();
+  editorFrame = null;
+  editorPayload = null;
+  document.body.classList.remove('editing');
+}
+/** The frame saved `id`: this page's catalogue entry becomes what was filed. */
+function applySaved({ id, kind, preset, level, peak, library, from, part }) {
+  const filed = { ...clone(preset), id, kind, level, peak, ...(library ? { factory: true } : { user: true }) };
+  const live = VOICES[id];
+  if (live) { for (const key of Object.keys(live)) delete live[key]; Object.assign(live, filed); }
+  else VOICES[id] = filed;
+  try { if (Audio.ctx) Audio.refreshVoice(id); } catch { /* nothing of it is sounding */ }
+  const name = titleOf(id);
+  if (!from || from === id) {
+    setEditStatus(`Saved ${name}. Every song and banger that names it plays the new version — reload the game to hear it there.`);
+  } else if (part && LABEL[part]) {
+    swapIn(part, from, id);
+    setEditStatus(`Saved ${name} as a new preset and swapped it in for ${titleOf(from)} on ${LABEL[part]} in the ${scopeLabel()}. Save Changes to keep the swap.`);
+  } else {
+    setEditStatus(`Saved ${name} as a new preset. ${part ? partLabel(part) : 'That part'} is not on this palette — put it in place on the Advanced page to use it.`);
+  }
+  render();
+}
+/** Put `to` where `from` was in this scope, with its level, effects and sends. */
+function swapIn(part, from, to) {
+  const old = candidates(part).find((e) => e.id === from) || {};
+  const scope = targetScope();
+  const entries = (scope.parts[part] ||= { entries: {} }).entries;
+  entries[to] = {
+    enabled: true,
+    ...(old.favourite ? { favourite: true } : {}),
+    ...(old.trimDb ? { trimDb: old.trimDb } : {}),
+    ...(Array.isArray(old.inserts) ? { inserts: clone(old.inserts) } : {}),
+    ...(old.send ? { send: clone(old.send) } : {}),
+  };
+  entries[from] = { ...(entries[from] || {}), enabled: false };
+}
+addEventListener('message', (ev) => {
+  if (!editorFrame || ev.origin !== location.origin || ev.source !== editorFrame.contentWindow) return;
+  const msg = ev.data || {};
+  if (msg.type === 'banger-voice-ready' && editorPayload) editorFrame.contentWindow.postMessage(editorPayload, location.origin);
+  else if (msg.type === 'banger-voice-saved') applySaved(msg);
+  else if (msg.type === 'banger-voice-close') closeEditor();
+});
+
 function updateStatus() {
   if (!state.palette) return;
   const isDirty = dirty();
@@ -568,7 +666,11 @@ async function save() {
   const response = await fetch('/palette/save', { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ palette: tidyPalette(state.palette), hash: state.hash }) });
   const body = await response.json();
-  if (!response.ok) { $('status').className = 'bad'; $('status').textContent = body.error || `Save failed (${response.status})`; return; }
+  if (!response.ok) {
+    $('status').className = 'bad';
+    $('status').textContent = body.issues?.length ? `${body.error}: ${body.issues[0]}` : body.error || `Save failed (${response.status})`;
+    return;
+  }
   state.palette = tidyPalette(state.palette); state.saved = JSON.stringify(state.palette); state.hash = body.hash; render();
   $('status').textContent = 'Saved palette. Reload the game before making new Bangers with these choices.';
 }

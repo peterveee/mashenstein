@@ -382,8 +382,9 @@ const STEPS = [
     hero: 'lorenzo',
     label: 'JUMP',
     legend: tutorialJumpLegend,
-    // "HOLD", not "PRESS": every hero has a variable jump, so a flicked key
-    // clamps to a 2px hop and eats the crate (player.update). Teaching the tap
+    // "HOLD", not "PRESS": every hero has a variable jump. A flick now gets
+    // the MIN_JUMP_RISE_T hop (~21px, enough for one crate but not two), and
+    // the stacks step after this one is all about holding — teaching the tap
     // first and the hold second taught the failure first.
     // "SECTION ONE:" was doing nothing the room label at the bottom of the
     // screen was not already doing, and dropping it lets the callback at the end

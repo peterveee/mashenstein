@@ -108,45 +108,97 @@ function paintFeltFibres(ctx, m) {
   ctx.restore();
 }
 
+// THE PRESSED SHEET, RESUMABLE. A whole sheet is 100k stroke pairs — ~150 ms
+// in one go in Chrome — and the title's warm-up used to pay that as single
+// tasks, one per material. Go into the food court within a couple of seconds
+// of the title and they landed in the arrival, so the hero stuttered on his way
+// through the door, once per page load. `step(until)` paints until a
+// performance.now() deadline and picks up where it stopped; the seeded stroke
+// order is the same either way, so a sheet built in slices is the same sheet.
+const FIBRES = 100000;
+const clockNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+function fibreBake(ctx, m) {
+  let seed = 23571;
+  const rand = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  let i = 0;
+  return (until = Infinity) => {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    while (i < FIBRES) {
+      const x = rand()*TILE_SIZE, y = rand()*TILE_SIZE, angle = rand()*Math.PI*2;
+      const length = .5 + .5*m.pressed + rand()*(1.5 + 3.5*m.pressed);
+      const dx = Math.cos(angle)*length, dy = Math.sin(angle)*length;
+      ctx.lineWidth = .5 + rand()*.8; ctx.lineCap = 'round';
+      const a = (.035 + rand()*.055)*m.strength;
+      for (const ox of [-TILE_SIZE, 0, TILE_SIZE]) for (const oy of [-TILE_SIZE, 0, TILE_SIZE]) {
+        if (x+ox < -8 || x+ox > TILE_SIZE+8 || y+oy < -8 || y+oy > TILE_SIZE+8) continue;
+        ctx.strokeStyle = `rgba(0,0,0,${a * m.darkStrength})`;
+        ctx.beginPath(); ctx.moveTo(x+ox,y+oy); ctx.lineTo(x+ox+dx,y+oy+dy); ctx.stroke();
+        ctx.strokeStyle = `rgba(255,255,255,${a*1.3*m.lightStrength})`;
+        ctx.beginPath(); ctx.moveTo(x+ox,y+oy-.7); ctx.lineTo(x+ox+dx,y+oy+dy-.7); ctx.stroke();
+      }
+      i++;
+      if ((i & 255) === 0 && until !== Infinity && clockNow() >= until) break;
+    }
+    ctx.restore();
+    return i >= FIBRES;
+  };
+}
+
 export function paintPaperFibres(ctx, material = 'cardstockClear') {
   const m = materialOf(material);
   if (m.kind === 'felt') {
     paintFeltFibres(ctx, m);
     return;
   }
-  let seed = 23571;
-  const rand = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-  ctx.save();
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 1;
-  for (let i = 0; i < 100000; i++) {
-    const x = rand()*TILE_SIZE, y = rand()*TILE_SIZE, angle = rand()*Math.PI*2;
-    const length = .5 + .5*m.pressed + rand()*(1.5 + 3.5*m.pressed);
-    const dx = Math.cos(angle)*length, dy = Math.sin(angle)*length;
-    ctx.lineWidth = .5 + rand()*.8; ctx.lineCap = 'round';
-    const a = (.035 + rand()*.055)*m.strength;
-    for (const ox of [-TILE_SIZE, 0, TILE_SIZE]) for (const oy of [-TILE_SIZE, 0, TILE_SIZE]) {
-      if (x+ox < -8 || x+ox > TILE_SIZE+8 || y+oy < -8 || y+oy > TILE_SIZE+8) continue;
-      ctx.strokeStyle = `rgba(0,0,0,${a * m.darkStrength})`;
-      ctx.beginPath(); ctx.moveTo(x+ox,y+oy); ctx.lineTo(x+ox+dx,y+oy+dy); ctx.stroke();
-      ctx.strokeStyle = `rgba(255,255,255,${a*1.3*m.lightStrength})`;
-      ctx.beginPath(); ctx.moveTo(x+ox,y+oy-.7); ctx.lineTo(x+ox+dx,y+oy+dy-.7); ctx.stroke();
-    }
-  }
-  ctx.restore();
+  fibreBake(ctx, m)();
 }
-export function paperTextureSource(material = 'cardstockClear') {
-  const m = materialOf(material);
-  const key = `${m.revision}:${m.pressed}:${m.strength}:${m.darkStrength}:${m.lightStrength}`;
-  if (sourceCache.has(key)) return sourceCache.get(key);
+
+// Sheets part-way through a sliced warm, by the same key as sourceCache. A
+// caller that needs one now finishes it rather than starting it again.
+const sheetsInProgress = new Map();
+const sourceKey = (m) => `${m.revision}:${m.pressed}:${m.strength}:${m.darkStrength}:${m.lightStrength}`;
+function beginSheet(m) {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = TILE_SIZE;
   const ctx = canvas.getContext('2d');
   if (!ctx || typeof ctx.stroke !== 'function') return null;
-  paintPaperFibres(ctx, m);
-  sourceCache.set(key, canvas);
-  return canvas;
+  const step = m.kind === 'felt' ? () => { paintFeltFibres(ctx, m); return true; } : fibreBake(ctx, m);
+  return { canvas, step };
+}
+function finishSheet(key, sheet) {
+  sheetsInProgress.delete(key);
+  sourceCache.set(key, sheet.canvas);
+  return sheet.canvas;
+}
+
+export function paperTextureSource(material = 'cardstockClear') {
+  const m = materialOf(material);
+  const key = sourceKey(m);
+  if (sourceCache.has(key)) return sourceCache.get(key);
+  const sheet = sheetsInProgress.get(key) || beginSheet(m);
+  if (!sheet) return null;
+  sheet.step();
+  return finishSheet(key, sheet);
+}
+
+// Build a material's sheet ahead of need, `budgetMs` at a time. True once it is
+// cached. Call it again (on a timer, not in a loop) until it says so.
+export function warmPaperTexture(material = 'cardstockClear', budgetMs = 3) {
+  const m = materialOf(material);
+  const key = sourceKey(m);
+  if (sourceCache.has(key)) return true;
+  let sheet = sheetsInProgress.get(key);
+  if (!sheet) {
+    sheet = beginSheet(m);
+    if (!sheet) return true;   // nothing to paint on (headless stub): nothing to wait for
+    sheetsInProgress.set(key, sheet);
+  }
+  if (!sheet.step(clockNow() + budgetMs)) return false;
+  finishSheet(key, sheet);
+  return true;
 }
 
 export function paperPatternFor(ctx, material = 'cardstockClear') {

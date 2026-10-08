@@ -190,6 +190,8 @@ export function buildSections(ctx) {
   // Build in Layers, where it applies (Long Songs: only past 64 bars).
   const inLayers = layersOn(options.form, total);
   const bars = Array.from({ length: total }, () => ({}));
+  // `${bar0}:${role}` for a chord part playing the riff as written — what voice-leading.js leaves alone.
+  const asWritten = new Set();
   const events = {
     builds: [], drops: [], stops: [], throws: [], intro: null, risers: [], finalDrops: [], octaveBars: [],
     echoes: [], filterDowns: [], fadeOuts: [], trims: [], sweeps: [], transitions: [],
@@ -614,7 +616,7 @@ export function buildSections(ctx) {
       arrangeEnergy(ctx, sec, bars, events);
       liftSection(sec);
     }
-    return { bars, events, cell };
+    return { bars, events, cell, asWritten };
   }
 
   // ---- what the sections of the other forms play (cohesion.js), worked out once
@@ -827,8 +829,10 @@ export function buildSections(ctx) {
         }
         // The trance breakdown: the hook as written, on a piano, rather than at half speed
         // on its own sound.
-        if (noHook) { /* the hook rests */ } else if (style.breakdownHook === 'piano') put(b, 'piano', clonePart(cell[i % cell.length]));
-        else put(b, 'hook', tune);
+        if (noHook) { /* the hook rests */ } else if (style.breakdownHook === 'piano') {
+          put(b, 'piano', clonePart(cell[i % cell.length]));
+          asWritten.add(`${b}:piano`);
+        } else put(b, 'hook', tune);
         if (chordRole) put(b, 'pad', padBar(c, C.pad, { open: true }));
         if (options.parts.choir && joins) put(b, 'choir', { notes: [openVoicing(c, 'E5'), ...Array(15).fill(null)], lens: [16, ...Array(15).fill(null)] });
         if (options.parts.bell && i % 2 === 0 && mode === 'half') put(b, 'bell', fitToChords(shift(up(head(cell[(i / 2) % cell.length])), 12), c));
@@ -990,7 +994,7 @@ export function buildSections(ctx) {
   // The joins between sections, for every form but Club's (transitions.js).
   if (form[0]?.joins) planTransitions({ form, bars, events, options, D, rng: rng.transitions, fillPick, scale: ctx.scale });
 
-  return { bars, events, cell };
+  return { bars, events, cell, asWritten };
 }
 
 // ---- the way into a lifted key (moods.js LIFT_APPROACHES)

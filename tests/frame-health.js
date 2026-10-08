@@ -16,7 +16,7 @@ let clock = 0;
 globalThis.requestAnimationFrame = (cb) => { pending = cb; return 1; };
 globalThis.performance = { now: () => clock };
 
-const { startLoop, frameHealth } = await import('../src/engine/loop.js');
+const { startLoop, frameHealth, discardNextGap } = await import('../src/engine/loop.js');
 
 // Advance the clock by dtMs and deliver the frame the loop is waiting on.
 function step(dtMs) {
@@ -98,5 +98,29 @@ assert(h.stallTotal === across.stallTotal, 'nor a stall');
 assert(h.hitches === 0, 'and resume clears the live window');
 
 loop.stop();
+
+// A load frame behind a closed shutter (the food court's first draw) is not
+// time the new screen lived through: discardNextGap() turns the next gap into
+// one tick instead of a burst of catch-up, but the display still waited, so it
+// stays a hitch.
+let ticks = 0;
+const loaded = startLoop({ update() { ticks++; }, draw() {} });
+step(16.7);
+run(70, 16.7);
+ticks = 0;
+step(90);
+assert(ticks === 5, 'a 90ms gap normally replays as five catch-up ticks');
+run(70, 16.7);
+const loadBefore = frameHealth();
+discardNextGap();
+ticks = 0;
+step(90);
+assert(ticks === 1, 'a discarded load gap runs a single tick');
+ticks = 0;
+step(16.7);
+assert(ticks === 1, 'and only the one frame: the next is ordinary');
+run(70, 16.7);
+assert(frameHealth().hitchEvents === loadBefore.hitchEvents + 1, 'the load gap is still counted as a hitch');
+loaded.stop();
 console.log(failed ? 'FRAME HEALTH: FAILED' : 'FRAME HEALTH: PASSED');
 process.exit(failed ? 1 : 0);

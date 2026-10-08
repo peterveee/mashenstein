@@ -166,6 +166,132 @@ portrait.draw(document.createElement('canvas').getContext('2d'));
 portrait.exit();
 renderer.setPresentationFrame(defaultFrame());
 
+{
+  // VISUALISER: off, a song plays on under the list and the visualiser never takes over;
+  // the switch is kept in the save. Landscape has BACK · 8-BIT · VISUALISER across one row;
+  // portrait gives the two switches a row of their own over BACK.
+  const { save } = await import('../src/engine/save.js');
+  const kept = save.data;
+  save.data = { settings: { jukeboxVisualiser: true }, slots: [null, null, null] };
+  Input.clearAll();
+  Input.usingTouch = false;
+  const jb = new SoundTestState({ onDone: () => {}, initialTrack: 0 });
+  jb.enter();
+  const n = jb.tracks.length;
+  const press = (key) => { Input.press(key); jb.update(1 / 60); Input.release(key); Input.endFrame(); };
+  const { back, chip, vis } = jb.backPlates();
+  const midY = jb.backY + jb.backH / 2;
+  assert(back.y === chip.y && chip.y === vis.y && back.x < chip.x && chip.x < vis.x
+    && jb.pointerIndex(midY, back.x + 4) === n && jb.pointerIndex(midY, chip.x + 4) === n + 3
+    && jb.pointerIndex(midY, vis.x + 4) === n + 4,
+    'landscape: BACK, 8-BIT and VISUALISER are the bottom row\'s three thirds');
+  jb.idx = n - 1;
+  press('down'); const a = jb.idx;
+  press('down'); const b = jb.idx;
+  press('down'); const c = jb.idx;
+  assert(a === n && b === n + 3 && c === n + 4, 'landscape: down from the last song goes BACK, 8-BIT, VISUALISER');
+  press('confirm');
+  assert(!jb.visualiserOn && save.data.settings.jukeboxVisualiser === false, 'VISUALISER switches off, into the save');
+  jb.update(60);
+  assert(jb.playing === 0 && jb.visualState === 'list' && !jb.visualiser,
+    'switched off, a minute of a song playing untouched brings no visualiser');
+  press('confirm');
+  jb.update(jb.visualiserWait() + 1);
+  assert(jb.visualiserOn && jb.visualiser && jb.visualState !== 'list', 'switched on, the visualiser comes back after the idle wait');
+  jb.clearVisualiser();
+  jb.draw(document.createElement('canvas').getContext('2d'));
+  jb.exit();
+
+  renderer.setPresentationFrame(portraitFrame);
+  const tall = new SoundTestState({ onDone: () => {}, initialTrack: 0 });
+  tall.enter();
+  const p = tall.backPlates();
+  const switchY = p.chip.y + tall.backH / 2;
+  const backY = p.back.y + tall.backH / 2;
+  assert(p.chip.y === p.vis.y && p.vis.y + tall.backH <= p.back.y && p.chip.x === p.back.x && p.back.w === p.chip.w
+    && tall.pointerIndex(switchY, p.chip.x + 4) === n + 3 && tall.pointerIndex(switchY, p.vis.x + 4) === n + 4
+    && tall.pointerIndex(backY, p.back.x + 4) === n && tall.pointerIndex(backY, p.vis.x + 4) === -1,
+    'portrait: 8-BIT and VISUALISER are the halves of a row over BACK, BACK still the left half under them');
+  const lastRowBottom = tall.listY + tall.visibleRows * tall.rowH;
+  assert(lastRowBottom <= p.chip.y && tall.rowH >= 56, 'portrait: the songs stop above the switches, rows still finger-sized');
+  tall.idx = n - 1;
+  const order = [];
+  for (let i = 0; i < 3; i++) {
+    Input.press('down'); tall.update(1 / 60); Input.release('down'); Input.endFrame();
+    order.push(tall.idx);
+  }
+  assert(order.join() === [n + 3, n + 4, n].join(), 'portrait: down from the last song goes 8-BIT, VISUALISER, then BACK');
+  tall.draw(document.createElement('canvas').getContext('2d'));
+  tall.exit();
+  renderer.setPresentationFrame(defaultFrame());
+  save.data = kept;
+}
+
+{
+  // The lock screen's previous/next: round the list, the cursor following. Nothing on the
+  // jukebox's own screen offers it.
+  const jb = new SoundTestState({ onDone: () => {}, initialTrack: JUKEBOX.length - 1 });
+  jb.enter();
+  const np = jb.nowPlaying();
+  assert(np && np.skips && np.album === 'JUKEBOX' && np.title === 'MASHENSTEIN: THE MONSTER MIX',
+    'the lock screen names the jukebox song and offers previous/next');
+  jb.mediaSkip(1);
+  assert(jb.playing === 0 && jb.idx === 0 && Audio.sourceBank === JUKEBOX[0].bank,
+    'next from the last song plays the first, the cursor with it');
+  jb.mediaSkip(-1);
+  assert(jb.playing === JUKEBOX.length - 1 && Audio.sourceBank === JUKEBOX.at(-1).bank,
+    'previous from the first plays the last');
+  jb.mediaPause(true);
+  assert(jb.nowPlaying().paused && jb.statusText().startsWith('PAUSED:'),
+    'a lock-screen pause holds the song and says so');
+  jb.mediaSkip(1);
+  assert(!jb.held && jb.playing === 0 && !jb.nowPlaying().paused, 'a skip while held plays the next song');
+  jb.exit();
+}
+
+{
+  // The lock screen's cover: a playable hero's face, a paper fish or a flying toaster, new each
+  // song, never twice running.
+  const { paintSongArt, paintSongArtOf, SONG_ART_SUBJECTS } = await import('../src/game/song-art.js');
+  const { HEROES } = await import('../src/data/heroes.js');
+  assert(HEROES.every((h) => SONG_ART_SUBJECTS.includes(h.id)) && !SONG_ART_SUBJECTS.includes('gary')
+    && !SONG_ART_SUBJECTS.includes('dolores') && SONG_ART_SUBJECTS.includes('PARTY SHARK')
+    && SONG_ART_SUBJECTS.includes('GOLDEN TOASTER'),
+    'the covers are the playable heroes (no NPCs), the club\'s fish and the toasters');
+  const painted = SONG_ART_SUBJECTS.filter((id) => { try { return paintSongArtOf(id)?.width === 1024; } catch { return false; } });
+  assert(painted.length === SONG_ART_SUBJECTS.length, `every cover paints at 1024 (${SONG_ART_SUBJECTS.filter((id) => !painted.includes(id)).join(', ') || 'all'})`);
+  let seed = 3;
+  const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  // a cabinet's own song in the jukebox wears that cabinet's scenery; DÉJÀ VIEW, a subject
+  const { CABINETS } = await import('../src/data/cabinets.js');
+  const cabRow = new SoundTestState({ onDone: () => {}, initialTrack: JUKEBOX.findIndex((t) => t.bank === CABINETS[0].music) });
+  cabRow.enter();
+  const titleRow = new SoundTestState({ onDone: () => {}, initialTrack: 0 });
+  titleRow.enter();
+  assert(cabRow.nowPlaying()?.cabinet === CABINETS[0].id && titleRow.nowPlaying()?.cabinet === null,
+    'the jukebox says which cabinet a song is from, and the title theme is from none');
+  const scenery = paintSongArt(64, random, { cabinet: CABINETS[0].id });
+  const surge = paintSongArt(64, random, { cabinet: 'surge' });
+  assert(scenery.subject === `cabinet:${CABINETS[0].id}` && SONG_ART_SUBJECTS.includes(surge.subject),
+    'a cabinet\'s song is covered with its scenery; DÉJÀ VIEW\'s, which has none of its own, with a subject');
+  // with 8-BIT on, a song playing its 8-bit version says so, and its cover goes on the tube
+  const { installSoundtrack } = await import('../src/game/results-chip.js');
+  const chipSave = { settings: { soundtrack: '8bit' } };
+  installSoundtrack(chipSave);
+  const chipOn = cabRow.nowPlaying()?.eightBit;
+  chipSave.settings.soundtrack = 'original';
+  const chipOff = cabRow.nowPlaying()?.eightBit;
+  installSoundtrack({ settings: { soundtrack: 'original' } });
+  assert(chipOn === true && chipOff === false, 'the jukebox says when the song is playing its 8-bit version');
+  assert(paintSongArt(64, random, { eightBit: true })?.width === 64 && paintSongArtOf('clara', 64, { eightBit: true })?.width === 64,
+    'an 8-bit cover paints (on the tube where the canvas can take it)');
+  titleRow.exit();
+  cabRow.exit();
+  const picks = Array.from({ length: 300 }, () => paintSongArt(64, random).subject);
+  assert(picks.every((id, i) => i === 0 || id !== picks[i - 1]) && new Set(picks).size === SONG_ART_SUBJECTS.length,
+    'each song draws a new cover at random, never the one before, and every face and fish comes up');
+}
+
 Input.clearAll();
 console.log(failed ? 'SOUND TEST MENU: FAILED' : 'SOUND TEST MENU: PASSED');
 process.exit(failed ? 1 : 0);

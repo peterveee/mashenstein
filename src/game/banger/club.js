@@ -51,7 +51,7 @@ import { drawToon, titleParadeAction, toonInkTop, toonInkBottom, toonWalkStep } 
 import { HERO_DANCE_LAB_CANDIDATES, MOONWALKERS, heroDancePose } from '../../dev/hero-dance-candidates.js';
 import { songFor, bangerTitle, keepMixer } from './store.js';
 import { MIXER_ICONS } from './mixer-icons.js';
-import { drawBoltButton, boltAttractK, boltAttractAlpha, BOLT_SETTLE_S } from './bolt-button.js';
+import { drawBoltButton, boltAttractK, BOLT_SETTLE_S } from './bolt-button.js';
 import { drawBolt } from './birth.js';
 import { drawTeslaBolt } from './club-bolts.js';
 import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
@@ -157,6 +157,22 @@ const GLANCE_X = 0.034, GLANCE_Y = 0.014;
  *  number of them lands on the eighth after a beat: rounding to an even one skated the feet). Before the floor has been drawn there is nothing to
  *  measure the way across by, and they take SWAP_STEPS_PER_SLOT a slot. */
 const SWAP_STEPS_PER_BEAT = 2, SWAP_MIN_STEPS = 2, SWAP_STEPS_PER_SLOT = 4;
+/**
+ * How many steps (SWAP_MIN_STEPS or more) a pair takes to cover `dist`, both walking the same
+ * steps: the count whose worse-off foot slips least against its own stride. Ramon's stride is a
+ * quarter longer than anyone's, and the two strides averaged and rounded left a neighbour of his
+ * skating 29% (8 Oct 2026).
+ */
+function swapSteps(dist, strides) {
+  const lo = Math.max(SWAP_MIN_STEPS, Math.floor(dist / Math.max(...strides)));
+  const hi = Math.max(lo, Math.ceil(dist / Math.min(...strides)));
+  let best = lo, least = Infinity;
+  for (let n = lo; n <= hi; n++) {
+    const slip = Math.max(...strides.map((s) => Math.abs(dist / n / s - 1)));
+    if (slip < least) { best = n; least = slip; }
+  }
+  return best;
+}
 /** The mirror ball drops this long after the club appears: last of all, once the song's
  *  name and the instructions have faded (Peter, 3 Oct 2026). */
 const BALL_ENTER_S = INTRO_S + INTRO_FADE_S;
@@ -1837,10 +1853,11 @@ export class BangerClubState {
     const slotA = free[a], slotB = free[b];
     const heroA = this.formationOrder[slotA], heroB = this.formationOrder[slotB];
     // the steps the pair takes between them, each a little longer or shorter than their own
-    const lay = this.layout, step = (toonWalkStep(HERO_MOVES[heroA].hero) + toonWalkStep(HERO_MOVES[heroB].hero)) / 2;
-    const steps = lay && step > 0 ? Math.abs(slotA - slotB) * lay.cellW / (step * lay.toonH)
-      : SWAP_STEPS_PER_SLOT * Math.abs(slotA - slotB);
-    const beats = Math.max(SWAP_MIN_STEPS, Math.round(steps)) / SWAP_STEPS_PER_BEAT;
+    const lay = this.layout, gap = Math.abs(slotA - slotB);
+    const strides = [heroA, heroB].map((h) => toonWalkStep(HERO_MOVES[h].hero));
+    const steps = lay && strides.every((s) => s > 0) ? swapSteps(gap * lay.cellW / lay.toonH, strides)
+      : SWAP_STEPS_PER_SLOT * gap;
+    const beats = steps / SWAP_STEPS_PER_BEAT;
     // ...setting off on the beat, so every footfall is on one
     this.formationSwap = { heroA, heroB, slotA, slotB, beat0: Math.floor(beat), beats };
     this.formationShuffleAt = Infinity;
@@ -1942,12 +1959,58 @@ export class BangerClubState {
     for (const k of ['partyNextBeat', 'cleanerBeat', 'cleanerCooldown', 'strobeBeat', 'strobeNextBeat', 'formationShuffleAt']) this[k] += jump;
   }
 
+  /** The song, for the lock screen (lifecycle.js nowPlaying): it plays on with the screen off unless PAUSE holds it. */
+  nowPlaying() {
+    if (!Audio.bank) return null;
+    // the full title, style and mood with it — as the Lab's list names it when the song plays on there
+    return { title: bangerTitle(this.rec), album: 'THE LAB', paused: this.paused, skips: (this.song.form || []).length > 1 };
+  }
+
+  /**
+   * The lock screen's previous/next: the transport's skip back/forward, without the click.
+   * No frame may have run since the screen went off, so the section update() keeps can be
+   * several behind and `skipTo` one that landed long ago: both are caught up from what is
+   * heard first — unless a skip is still on its way, which a second press carries on from.
+   */
+  mediaSkip(dir) {
+    const landing = this.skipTo != null && this.skipLit && Audio.ctx && Audio.ctx.currentTime < this.skipLit.until;
+    if (!landing) {
+      this.section = this.heardSection();
+      this.skipTo = null;
+    }
+    this.skipSection(dir);
+  }
+
+  /** The section of the form the song is in, as heard: an index into its form, -1 between sections. */
+  heardSection() {
+    const form = this.song.form || [];
+    const bar = Math.floor(this.songPos() / 4) + 1;   // round the song: every repeat gets its moments
+    return form.findIndex((f) => bar >= f.from && bar <= f.to);
+  }
+
+  /**
+   * The screen went off with the song playing on, and no frame runs until it is back — so
+   * whatever only a frame would end is ended now: a held hero let go, as PAUSE does, Rusty's
+   * speed put back (a transport warp update() would otherwise make), the 8-BIT GATE taken out.
+   */
+  onBackground() {
+    if (this.holding) this.letGo();
+    if (this.speedBack) { setSpeed(1); this.speedBack = null; }
+    if (this.gating) { this.gating = false; endChipGate(Audio.nextTime); }
+  }
+
   /** PLAY / PAUSE: the whole sound of the club holds on the sample it stopped on (Audio.setPlayerPaused). */
   togglePause() {
-    this.paused = !this.paused;
-    Audio.setPlayerPaused(this.paused);
-    if (this.paused && this.holding) this.letGo();
+    this.mediaPause(!this.paused);
     if (!this.paused) Audio.sfx('ui');
+  }
+
+  /** ...and the lock screen's play/pause (lifecycle.js onMediaPause): the same pause, without the click. */
+  mediaPause(paused) {
+    if (paused === this.paused) return;
+    this.paused = paused;
+    Audio.setPlayerPaused(paused);
+    if (paused && this.holding) this.letGo();
   }
 
   /** The focus index of THE BOLT, after the pencil; -1 when there is none. */
@@ -2453,8 +2516,7 @@ export class BangerClubState {
     // A section change, as heard: its moment, on the downbeat it changes on.
     {
       const form = this.song.form || [];
-      const bar = Math.floor(this.songPos() / 4) + 1;   // round the song: every repeat gets its moments
-      const si = form.findIndex((f) => bar >= f.from && bar <= f.to);
+      const si = this.heardSection();
       if (si !== this.section) {
         // Fernwick's drop arriving brings its own moment (dropLanded), not the section's
         if (this.landing && si === this.landing.section) this.dropLanded();
@@ -3504,7 +3566,9 @@ export class BangerClubState {
       // drawn first, so its cables run behind the club sign
       const pitch = (a.w - ns * 0.6) / (LED_COLS + 6);
       const bw = (LED_COLS + 2) * pitch;
-      const bx = portrait ? sw - bw - 8 * P : sw - safeR - bw - 12;
+      // in landscape the club sign's mirror image, in from the right as far as the sign is in from
+      // the left, so THE BOLT stands outside it as the back button does the sign (Peter, 8 Oct 2026)
+      const bx = portrait ? sw - bw - 8 * P : sw - safeR - 34 - ns * 0.3 - 2 * pitch - bw;
       // in portrait, well below the club sign (Peter, 5 Oct 2026: "move the led down a fair bit")
       const by = stageTop + (portrait ? 108 * P : 34) - (LED_ROWS + 2) * pitch / 2;
       const bh = (LED_ROWS + 2) * pitch;
@@ -5126,9 +5190,14 @@ export class BangerClubState {
     const RIM = 'rgba(206,208,222,0.7)', RIM_ON = '#f2f3fa', ICON_INK = '#dcdee8';
     const mx = portrait ? W - 32 * P : W - safeR - 16;
     const my = portrait ? portraitMenuSafeBottom() - 34 * P : stageBot - 16;
+    // a disc to the next: in portrait the row is SEVEN even slots from the pencil to the mixer —
+    // pencil, SAVE, a spare, the transport's three, the mixer — so one more button would fit in
+    // the gap without moving the others (Peter, 8 Oct 2026)
+    const step = portrait ? (mx - 32 * P) / 6 : r * 2.8 + 8;
+    const hit = (cx) => ({ x: cx - Math.min(r * 1.4, step / 2), y: my - r * 1.4, w: Math.min(r * 2.8, step), h: r * 2.8 });   // tap boxes that never overlap
     {
       const focused = this.focus === HERO_MOVES.length && !Input.usingTouch;
-      this.boxes.mixer = { x: mx - r * 1.4, y: my - r * 1.4, w: r * 2.8, h: r * 2.8 };
+      this.boxes.mixer = hit(mx);
       disc(mx, my, r, focused ? 1 : iconAlpha);
       ctx.strokeStyle = focused ? '#c9a0ff' : this.mixerOpen ? RIM_ON : RIM;
       ctx.lineWidth = 0.8 * u;
@@ -5148,14 +5217,13 @@ export class BangerClubState {
     // PLAY's rim while the song is held.
     this.boxes.transport = [];
     {
-      const step = r * 2.8 + (portrait ? 10 * P : 8);
       const tBase = this.transportFocus();
       const lit = this.skipLit && this.heardNow() < this.skipLit.until ? this.skipLit.dir : 0;
       for (let k = 0; k < 3; k++) {
         const cx = mx - (3 - k) * step;
         const focused = this.focus === tBase + k && !Input.usingTouch;
         const on = k === 1 ? this.paused : lit === (k === 0 ? -1 : 1);
-        this.boxes.transport.push({ x: cx - r * 1.4, y: my - r * 1.4, w: r * 2.8, h: r * 2.8 });
+        this.boxes.transport.push(hit(cx));
         disc(cx, my, r, focused || this.paused ? 1 : iconAlpha);
         ctx.strokeStyle = focused ? '#c9a0ff' : on ? RIM_ON : RIM;
         ctx.lineWidth = 0.8 * u;
@@ -5183,7 +5251,7 @@ export class BangerClubState {
     if (this.onEdit) {
       const ex = portrait ? 32 * P : safeL + 16;
       const focused = this.focus === HERO_MOVES.length + 2 && !Input.usingTouch;
-      this.boxes.edit = { x: ex - r * 1.4, y: my - r * 1.4, w: r * 2.8, h: r * 2.8 };
+      this.boxes.edit = hit(ex);
       disc(ex, my, r, focused ? 1 : iconAlpha);
       ctx.strokeStyle = focused ? '#c9a0ff' : RIM;
       ctx.lineWidth = 0.8 * u;
@@ -5223,27 +5291,28 @@ export class BangerClubState {
       ctx.restore();
       ctx.globalAlpha = 1;
     }
-    // THE BOLT: this song made again on a new seed (reroll). In landscape it sits on the
-    // pencil's right, SAVE after it; the portrait row has no room for a seventh disc, so there
-    // it hangs in the top-right corner, level with the back button and clear above the LED
-    // board (Peter, 6 Oct 2026). The same silver disc; its rim lit while it remakes.
+    // THE BOLT: this song made again on a new seed (reroll). It hangs in the top-right corner,
+    // the back button's mirror image — level with it, as far in, as big, and as bright (Peter,
+    // 6 Oct 2026 in portrait; 8 Oct in landscape too: "since it changes the mix it should be
+    // separate", and one place in both is less confusing). Its rim lit while it remakes. In
+    // landscape an open mixer's panel lies over that corner, DICE on it, and a tap there only shuts
+    // the panel, so the bolt steps out until it does.
     this.boxes.reroll = null;
-    if (this.onReroll) {
-      const rr0 = portrait ? 20 * P : r;
-      const zx = portrait ? W - 30 * P : safeL + 16 + r * 2.8 + 8;
-      const zy = portrait ? stageTop + 44 * P : my;
+    if (this.onReroll && !(this.mixerOpen && !portrait)) {
+      const rr0 = portrait ? 20 * P : 10;
+      const zx = portrait ? W - 30 * P : W - safeR - 15;
+      const zy = portrait ? stageTop + 44 * P : stageTop + 34;
       const focused = this.focus === this.rerollFocus() && !Input.usingTouch;
       const on = this.rerolling > 0 || this.rerolled || this.rerollArmed();
       this.boxes.reroll = { x: zx - rr0 * 1.4, y: zy - rr0 * 1.4, w: rr0 * 2.8, h: rr0 * 2.8 };
       // a lightning bolt, RECHARGE's own (bolt-button.js). Once a visit, on the first bar line after
-      // the room has settled and only if it has not been touched, it fades up and glints for a bar.
+      // the room has settled and only if it has not been touched, it glints for a bar.
       if (this.boltAttractFrom == null && this.shownAt != null && t - this.shownAt >= BOLT_SETTLE_S && !this.paused) {
         this.boltAttractFrom = on ? Infinity : Math.ceil(this.beat() / 4) * 4;
       }
       const k = on ? -1 : boltAttractK(this.beat(), this.boltAttractFrom);
-      const alpha = focused || on || portrait ? 1 : Math.max(iconAlpha, boltAttractAlpha(k));
-      const rim = focused ? '#c9a0ff' : on ? RIM_ON : portrait ? 'rgba(200,200,216,0.45)' : RIM;
-      drawBoltButton(ctx, { x: zx, y: zy, r: rr0, u, alpha, rim, ink: ICON_INK, k });
+      const rim = focused ? '#c9a0ff' : on ? RIM_ON : 'rgba(200,200,216,0.45)';
+      drawBoltButton(ctx, { x: zx, y: zy, r: rr0, u, alpha: 1, rim, ink: ICON_INK, k });
       ctx.globalAlpha = 1;
     }
     // SAVE, the pencil's twin on its right while the song is not kept yet: the same disc
@@ -5252,10 +5321,9 @@ export class BangerClubState {
     this.boxes.save = null;
     if (this.pending) {
       const ex = portrait ? 32 * P : safeL + 16;
-      // in landscape THE BOLT sits between the pencil and SAVE; in portrait it is up top
-      const sx = ex + (r * 2.8 + (portrait ? 10 * P : 8)) * (this.onReroll && !portrait ? 2 : 1);
+      const sx = ex + step;
       const focused = this.focus === this.saveFocus() && !Input.usingTouch;
-      this.boxes.save = { x: sx - r * 1.4, y: my - r * 1.4, w: r * 2.8, h: r * 2.8 };
+      this.boxes.save = hit(sx);
       disc(sx, my, r, focused ? 1 : iconAlpha);
       ctx.strokeStyle = focused ? '#c9a0ff' : RIM;
       ctx.lineWidth = 0.8 * u;
@@ -5322,7 +5390,8 @@ export class BangerClubState {
       // in landscape the RESET and DICE tabs (below) stand out of the panel's top edge, so the
       // panel keeps clear of the stage's top by their height too, its faders shorter for it: on a
       // phone's cover crop the tabs were cut off (Peter, 6 Oct 2026)
-      const tabRise = L(4.4) * 2 * 0.82;
+      // (bigger than they were, and at the panel's two top corners: Peter, 8 Oct 2026)
+      const tabFs = portrait ? 15 * P : L(6), tabRise = tabFs * 2 * 0.82;
       // the PITCH strip's column, at the right end: landscape's panel grows by it, portrait's
       // parts share their width with it
       const pitchW = portrait ? W * 0.84 * 0.17 : L(28);
@@ -5333,15 +5402,14 @@ export class BangerClubState {
       ctx.fillStyle = 'rgba(11,11,20,0.9)';
       rr(ctx, px, py, pw, ph, portrait ? 16 * P : L(7)); ctx.fill();
       ctx.strokeStyle = 'rgba(206,208,222,0.4)'; ctx.lineWidth = 0.8 * u; ctx.stroke();
-      // RESET: a tab on the panel's top edge — every fader up, no mute or solo, every sound the
-      // song's own. Dim while there is nothing to reset.
+      // RESET: a tab on the panel's top edge at its left corner — every fader up, no mute or solo,
+      // every sound the song's own. Dim while there is nothing to reset.
       {
         const plain = this.mixerPlain;
-        const fs = portrait ? 11 * P : L(4.4);
+        const fs = tabFs, inset = portrait ? 14 * P : L(6);
         ctx.font = `700 ${fs}px ${BODY_FONT}`;
         const tw = ctx.measureText('RESET').width + fs * 1.8, th = fs * 2;
-        // at the LEFT end: the right end sits under the LED board in landscape
-        const tx = px + (portrait ? 14 * P : L(6)), ty = py - th * 0.82;
+        const tx = px + inset, ty = py - th * 0.82;
         this.boxes.reset = { x: tx, y: ty - th * 0.3, w: tw, h: th * 1.3 };
         ctx.fillStyle = 'rgba(11,11,20,0.9)';
         rr(ctx, tx, ty, tw, th, th / 2); ctx.fill();
@@ -5350,9 +5418,9 @@ export class BangerClubState {
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('RESET', tx + tw / 2, ty + th / 2);
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        // DICE: a tab beside it, a die on it — every part onto a random sound. It tumbles when
-        // rolled and lands on a new face.
-        const dw = th * 1.5, dx = tx + tw + fs * 0.6;
+        // DICE: the same tab at the right corner, a die on it — every part onto a random sound. It
+        // tumbles when rolled and lands on a new face.
+        const dw = th * 1.5, dx = px + pw - inset - dw;
         this.boxes.dice = { x: dx, y: ty - th * 0.3, w: dw, h: th * 1.3 };
         ctx.fillStyle = 'rgba(11,11,20,0.9)';
         rr(ctx, dx, ty, dw, th, th / 2); ctx.fill();

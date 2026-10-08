@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banger Sound Editor</title>
+<style>
+/*__MIXER_STYLE__*/
+  /* A frame over the Banger Sound Palette (tools/banger-voice-entry.js). The page itself is
+     a veil over the palette, and the editor window floats on it exactly as it does over
+     the desk — the same stylesheet, the same window. */
+  html { background: transparent !important; }
+  body { background: rgb(8 10 14 / .62) !important; overflow: hidden; }
+  #voiceedit { display: none !important; }
+  /* The song this sound is playing in, in the editor's own title bar. */
+  .bvbar { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
+  .bvcontext { color: var(--dim); font-size: 9px; letter-spacing: .08em; white-space: nowrap;
+               overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+  .bvrefs { color: var(--dim); font-size: 9px; letter-spacing: .06em; white-space: nowrap; cursor: help; }
+  .bvrefs.wide { color: var(--hot); }
+  .bvlevels { color: var(--dim); font-size: 9px; letter-spacing: .06em; white-space: nowrap; }
+  .bvlevels.busy { color: var(--accent); }
+  .bvlevels.bad { color: var(--hot); }
+  .bvplay { height: 25px; padding: 3px 10px; color: var(--ink); background: var(--input);
+            border: 1px solid var(--line); border-radius: 3px; font: inherit; font-size: 10px;
+            letter-spacing: .08em; white-space: nowrap; cursor: pointer; }
+  .bvplay:hover { border-color: var(--accent); }
+  .bvplay.playing { color: var(--accent); background: var(--input); border-color: var(--accent); }
+  .bvplay.wake { animation: bvwake 1.2s ease-in-out infinite; }
+  @keyframes bvwake { 50% { border-color: var(--accent); color: var(--accent); } }
+  @media (prefers-reduced-motion: reduce) { .bvplay.wake { animation: none; border-color: var(--accent); } }
+  /* The editor's save sheet and the toast go over the window — on the desk the window is
+     shut before either is needed, so their own layers sit below it. */
+  .vesheet-backdrop { z-index: 80 !important; }
+  #toast { z-index: 95 !important; }
+  .bvbtn { height: 25px; padding: 3px 9px; color: var(--ink); background: var(--input);
+           border: 1px solid var(--line); border-radius: 3px; font: inherit; font-size: 10px;
+           letter-spacing: .08em; white-space: nowrap; cursor: pointer; }
+  .bvbtn:hover:not(:disabled) { border-color: var(--accent); }
+  .bvbtn:disabled { opacity: .45; cursor: default; }
+  .bvbtn.save { color: var(--accent); border-color: var(--accent-line, var(--accent)); }
+  #bvempty { position: fixed; inset: 0; display: grid; place-items: center; color: var(--dim);
+             font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+  #bvempty[hidden] { display: none; }
+  #ask { display: none; position: fixed; inset: 0; z-index: 90; align-items: center;
+         justify-content: center; background: #0008; }
+  #ask.show { display: flex; }
+  #askbox { width: min(380px, calc(100vw - 32px)); padding: 16px; background: var(--panel);
+            border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 16px 40px #0009; }
+  #asktitle { margin: 0 0 8px; color: var(--accent); font: inherit; font-size: 12px;
+              line-height: 1.2; letter-spacing: .08em; }
+  #askbody { margin: 0 0 14px; color: var(--dim); font-size: 11px; line-height: 1.5; }
+  #askactions { display: flex; justify-content: flex-end; gap: 6px; }
+  #askactions button { font: inherit; font-size: 10px; padding: 5px 9px; color: var(--ink);
+                       background: var(--input); border: 1px solid var(--line); border-radius: 4px; }
+  #askok { color: var(--accent); border-color: var(--accent-line); }
+</style>
+<div id="bvempty">WAITING FOR THE BANGER SOUND PALETTE…</div>
+<div id="voiceedit"></div>
+<div id="synthfullback" aria-hidden="true"></div>
+<div id="synthfull" role="application" aria-label="Banger sound editor" aria-hidden="true"></div>
+<div id="ask" role="dialog" aria-modal="true">
+  <div id="askbox">
+    <h2 id="asktitle"></h2><p id="askbody"></p>
+    <div id="askactions"><button id="askcancel" type="button">CANCEL</button>
+      <button id="askok" type="button">DISCARD</button></div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>/*__BUNDLE__*/</script>

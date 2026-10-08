@@ -3183,70 +3183,47 @@ export const PROP_PAINTERS = {
       c.closePath();
     });
   },
-  // THE BANANA PEEL, drawn from the flat-vector reference Peter brought in.
+  // THE BANANA PEEL — settled 7 Oct 2026 on D, RIPE, in the second bake-off
+  // (src/dev/banana-peels.js, where the painter it replaced is kept as X).
   //
-  // It is a peel LYING on the road with one skin risen out of the pile carrying
-  // the stalk — not the Mario Kart item standing on its base, which is what the
-  // first three passes drew. That earlier shape read (it has a real silhouette)
-  // and it was never right, and the bake-off in src/dev/banana-candidates.js is
-  // where seven of them were put side by side to find out why. Three things
-  // separate this one from all of those, and each is deliberate:
+  // A PEEL IS HELD TOGETHER BY ITS STEM. Every skin hangs from the one crown
+  // the stalk stands on: two arch out and down onto the road to either side,
+  // one lies behind, and one flops forward across the right one's foot with its
+  // cream inside up. The painter before this grew its skins from a root down in
+  // the pile and carried the stalk on the END of one of them, so nothing joined
+  // the parts — one skin floated above the rest and the whole read as yellow
+  // leaves. Size, palette family and contour are the first bake-off's (27 Aug):
+  // 10x6 lying on the road, warm yellow, a warm whisper of ink.
   //
-  //   NO CONTOUR — or as near as this game can afford. Every other prop here is
-  //     outlined; this one separates its parts by TONE, four warm values from
-  //     cream to deep orange, and the absence of the dark hairline is most of
-  //     why it reads clean rather than busy. What survives is a whisper of warm
-  //     contour, kept for one specific reason: Speed Zone's road is #c88848 and
-  //     Frost's is near-white, and an unoutlined warm prop disappears into the
-  //     first and floats on the second. At 0.014 it is a separation, not a
-  //     border — an eighth the weight the cactus carries.
-  //   WARM, NOT LEMON. Golds and oranges instead of the #f2e42c the earlier
-  //     passes used. It separates from turf better and it stops the prop reading
-  //     as the same yellow as a coin, which at lane size was a real confusion.
-  //   ONE TALL ARC. Not a fan of equal skins around a stub. A single sweeping
-  //     skin rises out of the pile and carries the stalk at its top, everything
-  //     else lies down around it. That is what buys a silhouette while keeping
-  //     the prop low — a peak without a tower.
-  //
-  // The stalk is a chunky dark block rather than a taper, and it is doing more
-  // work than its size suggests: it is the only non-warm mark in the drawing and
-  // it sits at the top of the silhouette, which is where the eye lands.
+  // RIPE is the finish: a deeper yellow than the coin, sugar spots, longer
+  // browned tips and a dark stalk. The spots are the quickest "banana" there is,
+  // and they part the peel from every other yellow thing in the lane.
   bananaPeel(ctx, w, h) {
-    const gy = h * 0.97;
-    // THE CONTOUR, and it is a real decision rather than a default.
-    //
-    // The reference has no outline at all, and drawn that way the peel loses its
-    // lower edge into Speed Zone's road — #c88848 is close enough to the peel's
-    // own yellow that the skins resting on the ground simply merge with it. The
-    // first attempt at a fix went the other way and was so faint that the
-    // OVERLAPS stopped reading: four skins on top of each other became one
-    // silhouette with a stalk. The house dark (rgba(26,16,40,.34), what the
-    // cactus and crate wear) works but goes grey against this much yellow, and
-    // anything heavier turns the prop into a sticker with a brown border.
-    //
-    // Warm, mid-weight, is the one that does both jobs: it separates the peel
-    // from every ground in the game AND separates the skins from each other,
-    // while still reading as flat vector art rather than as an outlined sprite.
+    const u = Math.max(w, h);
+    const X = (k) => w * k, Y = (k) => h * k;
+    // Warm, mid-weight contour: it separates the peel from Speed Zone's #c88848
+    // road and Frost's near-white without turning it into a bordered sticker.
     const INK = 'rgba(122,80,10,0.55)';
+    const inkW = Math.max(0.2, u * 0.020);
     const P = {
-      lit: '#ffe14a',    // the arc's lit face
-      main: '#fcd420',   // the two skins reaching left — the colour of the thing
-      deep: '#f0c008',   // the lobe lying behind and right
-      tip: '#7a5a1e',    // stalk, and the point on each outer end
+      lit: '#ffd648',    // the crown's lit face
+      main: '#f6c414',   // the skins — the colour of the thing
+      deep: '#e4ac0c',   // the skin lying behind
+      cream: '#fbe7ae',  // the inside of the skin
+      tip: '#4e3214',    // stalk and browned points
+      spot: 'rgba(92,56,18,0.8)',
     };
 
-    // A SKIN: a centreline offset along its own normal, which is the only way
-    // that reliably gives a long strip a point on the end. Hand-placed edge
-    // curves were tried against both references and every one came out a
-    // rounded lump — two curves do not hold their relationship as a path bends,
-    // and this drawing is nothing BUT long thin strips with points on them.
-    //
-    // `floor` holds the strip open at both ends instead of closing to a point.
-    // The two reaching skins want the point; the arc, which has the stalk
-    // balanced on its top, wants a band.
-    const skin = (rx, ry, kx, ky, tx, ty, halfMax, rootF = 0.9, tipF = 0) => {
+    // A SKIN: a centreline (a quadratic, root to tip) offset along its own
+    // normal — the only construction that reliably puts a point on a long
+    // strip. Widest near the root, where a skin is still attached; `rootF` holds
+    // that end open as a band so it can tuck under the crown. `face(f, k)` is
+    // the same strip at `k` of its width, pushed `f` half-widths across it: the
+    // outer face of a skin with its lining showing, or the cream inside of one
+    // turned over.
+    const skin = (rx, ry, kx, ky, tx, ty, halfMax, rootF = 0.85) => {
       const N = 16;
-      const top = [], bot = [];
+      const pts = [];
       for (let i = 0; i <= N; i++) {
         const t = i / N, mt = 1 - t;
         const x = mt * mt * rx + 2 * mt * t * kx + t * t * tx;
@@ -3254,108 +3231,86 @@ export const PROP_PAINTERS = {
         const dx = 2 * mt * (kx - rx) + 2 * t * (tx - kx);
         const dy = 2 * mt * (ky - ry) + 2 * t * (ty - ky);
         const len = Math.hypot(dx, dy) || 1;
-        // Widest nearer the root than the middle: a peeled skin is broadest
-        // where it is still attached and narrows the whole way out.
-        //
-        // The two floors are what hold the strip OPEN at each end, and `rootF`
-        // in particular is not cosmetic. A plain sine closes both ends to a
-        // point, and a peel built that way has no pile in the middle — every
-        // strip meets its neighbours at a needle, so the arc's own blunt foot
-        // had nothing covering it and stuck out below the drawing. A fat root
-        // is what makes the centre a mass the arc can grow out of.
-        const floor = rootF * (1 - t) + tipF * t;
-        const half = halfMax * Math.max(floor, Math.sin(Math.PI * Math.pow(t, 0.62)));
-        top.push([x - dy / len * half, y + dx / len * half]);
-        bot.push([x + dy / len * half, y - dx / len * half]);
+        const half = halfMax * Math.max(rootF * (1 - t), Math.sin(Math.PI * Math.pow(t, 0.62)));
+        pts.push({ x, y, nx: -dy / len, ny: dx / len, half });
       }
-      // The root end is ROUNDED rather than closed with a straight line across
-      // the two edges. A flat cut there is a hard vertical edge in the middle of
-      // the pile — it reads as a strip that has been guillotined, which is the
-      // one thing none of the references has. The nose bulges out along the
-      // reverse tangent by about its own half-width.
-      const nx = rx - kx, ny = ry - ky;
-      const nl = Math.hypot(nx, ny) || 1;
-      const nose = halfMax * rootF * 0.9;
-      const path = (c) => {
+      const face = (f, k) => (c) => {
+        const top = pts.map((p) => [p.x + p.nx * p.half * (f + k), p.y + p.ny * p.half * (f + k)]);
+        const bot = pts.map((p) => [p.x + p.nx * p.half * (f - k), p.y + p.ny * p.half * (f - k)]);
         c.moveTo(top[0][0], top[0][1]);
         for (const [x, y] of top) c.lineTo(x, y);
         for (let i = bot.length - 1; i >= 0; i--) c.lineTo(bot[i][0], bot[i][1]);
-        c.quadraticCurveTo(rx + nx / nl * nose, ry + ny / nl * nose, top[0][0], top[0][1]);
         c.closePath();
       };
-      // The browned point on the outer end, cut back along the strip so it is a
-      // wedge continuing the taper rather than a bead stuck on the tip.
+      // The browned point, three steps back: ripe skins brown further along.
       const cap = (c) => {
-        // An eighth of the strip, not a fifth. At N-3 the browned end ran a
-        // fifth of the way back down the skin and read as a dagger blade; in
-        // both references it is a short dark nick on the very point.
-        const m = N - 2;
+        const m = pts[N - 3];
         c.moveTo(tx, ty);
-        c.lineTo(top[m][0], top[m][1]);
-        c.quadraticCurveTo((top[m][0] + bot[m][0]) / 2, (top[m][1] + bot[m][1]) / 2,
-          bot[m][0], bot[m][1]);
+        c.lineTo(m.x + m.nx * m.half, m.y + m.ny * m.half);
+        c.quadraticCurveTo(m.x, m.y, m.x - m.nx * m.half, m.y - m.ny * m.half);
         c.closePath();
       };
-      return { path, cap };
+      return { path: face(0, 1), face, cap, pts };
+    };
+    // How a skin is dressed: `lining` shows the cream inside along its lower
+    // edge; `inside` paints the whole skin as its cream underside in a rim of
+    // yellow — a skin flopped over toward the viewer.
+    const dress = (sk, col, { lining = 0, inside = false } = {}) => {
+      fineShape(ctx, lining ? P.cream : col, u, sk.path, INK, 0.020);
+      ctx.save();
+      ctx.beginPath(); sk.path(ctx); ctx.clip();
+      if (inside) plain(ctx, P.cream, sk.face(0, 0.58));
+      else if (lining) plain(ctx, col, sk.face(lining, 1));
+      ctx.restore();
+      // Re-ink the edge the lining fill covered.
+      ctx.beginPath(); sk.path(ctx);
+      ctx.strokeStyle = INK; ctx.lineWidth = inkW; ctx.lineJoin = 'round'; ctx.stroke();
+      plain(ctx, P.tip, sk.cap);
     };
 
     // Contact smear, so the peel sits ON the road rather than above it.
     plain(ctx, 'rgba(8,6,12,0.15)', (c) => {
-      c.ellipse(w * 0.48, gy - h * 0.005, w * 0.42, h * 0.03, 0, 0, Math.PI * 2);
+      c.ellipse(w * 0.5, Y(0.97) - h * 0.005, w * 0.42, h * 0.03, 0, 0, Math.PI * 2);
     });
-
-    // THE FOUR PARTS, back to front. `k` below is height above the road as a
-    // fraction of the box, and the parts that sit HIGH are the ones lying
-    // further away — the reference is drawn at a shallow plan angle, and that
-    // is the only depth cue in it. Nothing here is floating.
-    const K = (k) => gy - h * k;
-    // ORDER MATTERS, and it is the fix for the arc's foot. A strip built from a
-    // centreline has a blunt end, and the arc's belongs INSIDE the pile — drawn
-    // last it stood proud of everything and its flat foot read as a separate
-    // slab dropped into the middle of the drawing. So the arc goes down third
-    // and the lower reaching skin goes over it, exactly as in the reference,
-    // where that skin passes in front of the arc's base.
-    const parts = [
-      // The lobe lying behind and to the right. Deeper yellow, which is what
-      // pushes it back — and FLAT: fattened it becomes a teardrop sitting beside
-      // the peel instead of a skin tucked behind it.
-      { s: skin(w * 0.530, K(0.24), w * 0.780, K(0.36), w * 0.985, K(0.20), h * 0.092), col: P.deep, cap: true },
-      // The upper skin reaching LEFT. The thinnest thing in the drawing — this
-      // is the strip that, with the arc's inner edge, encloses the open lens of
-      // background that the reference is really built around. Fatten it and the
-      // gap closes and the whole peel becomes one solid mass.
-      { s: skin(w * 0.570, K(0.54), w * 0.34, K(0.70), w * 0.020, K(0.47), h * 0.056, 0.7), col: P.main, cap: true },
-      // THE ARC. Rises out of the pile and carries the stalk, LEANING right the
-      // whole way rather than going up straight and kinking over at the top —
-      // the control point sits right of the chord, which is what turns a hook
-      // into the smooth cant the reference has.
-      // Rooted DEEP and narrow at the foot: a fat root here pushes its rounded
-      // nose out from under the skin that is meant to be covering it, and the
-      // bulge reads as a notch in the middle of the pile.
-      { s: skin(w * 0.500, K(0.215), w * 0.552, K(0.56), w * 0.655, K(0.865), w * 0.052, 0.72, 0.44), col: P.lit },
-      // The lower skin reaching left, thicker and resting on the road. Last, so
-      // it covers the arc's foot.
-      { s: skin(w * 0.580, K(0.19), w * 0.36, K(0.24), w * 0.070, K(0.11), h * 0.098, 0.95), col: P.main, cap: true },
-    ];
-    for (const { s: sk, col, cap } of parts) {
-      fineShape(ctx, col, Math.max(w, h), sk.path, INK, 0.020);
-      if (cap) plain(ctx, P.tip, sk.cap);
-    }
-
-    // The stalk: a short dark NUB tilted off the top of the arc. In both
-    // references it is barely a tenth of the height and it does its work by
-    // being the only dark mark in an otherwise entirely yellow drawing — drawn
-    // longer it stops being part of the peel and becomes a brown peg leaning
-    // against it.
-    // It continues the arc's own lean rather than setting off at its own angle,
-    // which is what made it read as a peg propped against the peel.
-    // Started BELOW the arc's point so the two overlap. Begun at the point
-    // itself, the round cap left a hairline of background between stalk and
-    // peel, and the nub read as a brown capsule hovering over the tip.
-    stroke(ctx, P.tip, Math.max(0.45, w * 0.034), (c) => {
-      c.moveTo(w * 0.646, K(0.815));
-      c.lineTo(w * 0.674, K(0.930));
-    });
+    // Not mirror images: the left skin has slumped flatter and further, the
+    // right one still holds a little arch. Matched, they read as horns.
+    const back = skin(X(0.55), Y(0.50), X(0.72), Y(0.22), X(0.88), Y(0.50), h * 0.10);
+    const left = skin(X(0.46), Y(0.60), X(0.20), Y(0.38), X(0.02), Y(0.93), h * 0.15);
+    const right = skin(X(0.55), Y(0.58), X(0.82), Y(0.20), X(0.975), Y(0.90), h * 0.15);
+    // The front skin hangs from the crown's hem and lies forward on the road,
+    // inside up. Its root goes UNDER the crown, so the hem is the fold.
+    // Hanging straight down it was a leg.
+    const front = skin(X(0.51), Y(0.62), X(0.58), Y(0.98), X(0.84), Y(0.965), h * 0.13, 0.7);
+    dress(back, P.deep);
+    dress(left, P.main, { lining: 0.45 });
+    dress(right, P.main, { lining: 0.45 });
+    dress(front, P.main, { inside: true });
+    // The crown: a short dome, pinched at the top where the stem is, with a
+    // rounded hem rather than a cut across its foot.
+    const crown = (c) => {
+      c.moveTo(X(0.405), Y(0.68));
+      c.bezierCurveTo(X(0.40), Y(0.42), X(0.44), Y(0.20), X(0.505), Y(0.19));
+      c.bezierCurveTo(X(0.57), Y(0.20), X(0.61), Y(0.42), X(0.605), Y(0.68));
+      c.quadraticCurveTo(X(0.505), Y(0.80), X(0.405), Y(0.68));
+      c.closePath();
+    };
+    fineShape(ctx, P.lit, u, crown, INK, 0.020);
+    ctx.save(); ctx.beginPath(); crown(ctx); ctx.clip();
+    plain(ctx, P.main, (c) => c.ellipse(X(0.60), Y(0.52), X(0.05), Y(0.40), -0.15, 0, Math.PI * 2));
+    ctx.restore();
+    // The stalk: a short dark nub, begun inside the crown so no hairline of
+    // background opens between them.
+    ctx.lineCap = 'round';
+    stroke(ctx, P.tip, w * 0.058, (c) => { c.moveTo(X(0.505), Y(0.26)); c.lineTo(X(0.53), Y(0.035)); });
+    // Sugar spots: three on the crown, the rest placed on the skins' own
+    // centrelines (skin, step along it, offset across it) so they stay on the peel.
+    const dot = (x, y, r) => plain(ctx, P.spot, (c) => c.ellipse(x, y, w * r, h * r * 1.4, 0.4, 0, Math.PI * 2));
+    for (const [a, b, r] of [[0.47, 0.42, 0.030], [0.55, 0.30, 0.022], [0.53, 0.56, 0.020]]) dot(X(a), Y(b), r);
+    [[left, 4, 0.2], [left, 9, -0.1], [left, 12, 0.3], [right, 5, 0.3], [right, 9, -0.2], [back, 8, 0.1], [front, 9, 0.1]]
+      .forEach(([sk, i, f], k) => {
+        const p = sk.pts[i];
+        dot(p.x + p.nx * p.half * f, p.y + p.ny * p.half * f, k % 2 ? 0.018 : 0.024);
+      });
   },
   zombieWalk(ctx, w, h) {
     const u = Math.max(w, h);
@@ -5748,10 +5703,9 @@ const PROP_DETAIL_SCALE = {
   buzzbird: 2, drone: 2, shooterDrone: 2, droneEye: 2,
   printer: 2, chair: 2,
   trafficCone: 2,
-  // Four overlapping skins, a stalk nub and two browned points inside a box SIX
-  // pixels tall. Three rather than the usual two: at 2x the arc's neck and the
-  // lens of background between it and the upper skin — the two marks the whole
-  // drawing is built on — both close up when rasterized this small, and the peel
+  // Four overlapping skins, a crown, a stalk nub, browned points and sugar spots
+  // inside a box SIX pixels tall. Three rather than the usual two: at 2x the
+  // spots and the cream lining close up when rasterized this small, and the peel
   // collapses into one yellow smear with a dark speck on it.
   bananaPeel: 3,
   coin: 2, battery: 2,
@@ -5898,6 +5852,23 @@ export function propHazardRim(name) {
 // centres 3px below the thing it is meant to be haloing.
 const BOX_CENTRED_PROPS = new Set(['battery']);
 export function propBoxCentred(name) { return BOX_CENTRED_PROPS.has(name); }
+
+// A BAKE-OFF CANDIDATE, drawn through the real pipeline. `name` gets `painter`
+// and inherits every per-prop setting `base` has — detail, stature, visual
+// scale, rim opt-out, anchoring — so an entity wearing it as `skin` is
+// rasterized and placed exactly as `base` would be, and a candidate is judged
+// on its drawing rather than on a re-implementation of drawWorldEntity.
+// `rim` overrides the opt-out for a candidate drawn in the outlined house style.
+// Gallery only: nothing in the game calls it.
+export function definePropVariant(name, base, painter, { rim } = {}) {
+  PROP_PAINTERS[name] = painter;
+  if (PROP_DETAIL_SCALE[base]) PROP_DETAIL_SCALE[name] = PROP_DETAIL_SCALE[base];
+  if (PROP_TALL[base]) PROP_TALL[name] = PROP_TALL[base];
+  if (PROP_VISUAL_SCALE[base]) PROP_VISUAL_SCALE[name] = PROP_VISUAL_SCALE[base];
+  if (BOX_CENTRED_PROPS.has(base)) BOX_CENTRED_PROPS.add(name);
+  if (rim ?? !SELF_OUTLINED_PROPS.has(base)) SELF_OUTLINED_PROPS.delete(name);
+  else SELF_OUTLINED_PROPS.add(name);
+}
 
 export function propFrames(name) { return PROP_FRAMES[name] || 1; }
 export function propFps(name) { return PROP_FPS[name] || 11; }

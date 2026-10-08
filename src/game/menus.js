@@ -8,7 +8,7 @@ import {
   VISUALISER_NAMES, clamp, createVisualiser, pickVisualiser, setVisualiserViewport,
 } from '../engine/visualisers.js';
 import { smooth } from '../engine/ease.js';
-import { defaultSettings, clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
+import { save, defaultSettings, clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
 import {
   drawTextForPresentation as drawText,
@@ -81,6 +81,7 @@ import {
   reviseBanger, keepBanger,
 } from './banger/store.js';
 import { BangerClubState } from './banger/club.js';
+import { ChipResults, soundtrack8bit, setSoundtrack8bit, retuneOnTheBeat, playsEightBit } from './results-chip.js';
 import { BangerBirthState } from './banger/birth.js';
 import { pickBirthSwitch } from './banger/birth-switches.js';
 import { pickBirthFace } from './banger/birth-faces.js';
@@ -1869,12 +1870,18 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
   // STAFF ONLY is a real page on a phone, not a small dialog floating in the
   // old landscape strip. Give its rows a thumb-sized pitch and let the box
   // use the generous portrait height; the same geometry feeds modalRowAt().
-  const rowH = portrait
-    ? (spaciousRows ? 132 : 56)
-    : spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
   const headH = portrait
     ? (spaciousRows ? 172 : hasNote ? 100 : 48)
     : hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
+  // Landscape is only 270 units tall, and STAFF ONLY at nine rows on touch asked
+  // for 306 — the box was pinned to the top and BACK, the one way out, hung off
+  // the bottom of the screen. Rows give a little ground before the list does.
+  const wantRowH = portrait
+    ? (spaciousRows ? 132 : 56)
+    : spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
+  const fitRowH = (H - 2 * Math.max(8, screen.safeBottom, screen.safeTop) - headH - 8)
+    / (count + (gapBeforeLast ? 0.6 : 0));
+  const rowH = portrait ? wantRowH : Math.min(wantRowH, fitRowH);
   const cancelGap = gapBeforeLast ? rowH * 0.6 : 0;
   // A boxed modal on a phone is still a box, but it cannot be a LANDSCAPE box:
   // portrait sets every glyph 1.55x larger (PORTRAIT_MENU_TEXT_SCALE), so a
@@ -3566,8 +3573,10 @@ const PORTRAIT_RESULT_CARD_TOP_CSS = 20;
 export class ResultsState {
   static portraitMode = 'frame';
 
-  constructor({ result, gains, save, onDone, onRetry }) {
+  constructor({ result, gains, save, onDone, onRetry, chip = null }) {
     this.result = result; this.gains = gains; this.save = save; this.onDone = onDone;
+    // 8-BIT RESULTS (results-chip.js): the switch the screen was brought up on, already made.
+    this.chipIn = chip;
     // No retry offered (overtime's seed is the day's, not the run's) falls back
     // to the plain prompt rather than drawing a row that cannot fire.
     this.onRetry = onRetry || null;
@@ -3602,7 +3611,12 @@ export class ResultsState {
     clearParticles();
     Input.setMenuButtons();
     Audio.sfx(this.celebrating ? 'win' : 'lose');
+    // 8-BIT RESULTS: the level's song onto the 8-Bit set (results-chip.js) — made already when
+    // the run brought this screen up on the beat (resultsOnTheBeat).
+    this.chip = this.chipIn || new ChipResults();
+    if (!this.chipIn) this.chip.start();
   }
+  exit() { this.chip?.stop(); }
   // Fireworks over the celebration row, plus streamers tumbling down the
   // frame. Losses get neither — a quiet screen is part of the joke — unless
   // the loss just beat the overtime clock, which earns the same party a clear does.
@@ -3674,6 +3688,7 @@ export class ResultsState {
   }
   update(dt) {
     this.t += dt;
+    this.chip?.tick();
     this.updateParty(dt);
     updateParticles(dt);
     this.shown = Math.min(this.result.score, this.shown + dt * Math.max(500, this.result.score));
@@ -5019,7 +5034,18 @@ export class SoundTestState {
     // The last list row the cursor was on: what DELETE means once the cursor has moved
     // down onto the button row.
     this.rowFocus = -1;
+    // 8-BIT (the jukebox only, beside BACK; its index is tracks.length + 3) is SETTINGS ▸
+    // SOUNDTRACK, the same switch (Peter, 8 Oct 2026: "a toggle in the juke box to play the 8
+    // bit versions"). A song playing goes over on its next beat (results-chip.js).
+    //
+    // VISUALISER (the jukebox only, index tracks.length + 4): off, the list stays up and the
+    // visualiser never takes over (Peter, 8 Oct 2026). Kept in the save, like 8-BIT. In
+    // landscape it is the row's third third; in portrait the two switches share a row of
+    // their own over BACK, since three across a phone shrank VISUALISER: OFF to fit.
+    this.togglesY = JUKEBOX_BACK_TOP;
   }
+  get eightBit() { return soundtrack8bit(); }
+  get visualiserOn() { return save.data?.settings?.jukeboxVisualiser !== false; }
   /** main.js shows its FPS/audio readout while this is true (see `showsStats` there). */
   get wantsStats() { return this.screensaverOff; }
   enter() {
@@ -5067,10 +5093,56 @@ export class SoundTestState {
     Input.setMenuButtons();
   }
   exit() {
+    this.mediaPause(false);
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
     this.screensaverOff = false;
+  }
+  /** The song playing here, for the lock screen (lifecycle.js nowPlaying): it plays on with the screen off. */
+  nowPlaying() {
+    const tr = this.playing >= 0 && Audio.bank ? this.tracks[this.playing] : null;
+    if (!tr) return null;
+    // a cabinet's own song wears that cabinet's scenery on the lock screen (song-art.js)
+    // (not asked of the Lab's rows, whose bank is a getter that makes the song)
+    const cabinet = this.lab ? null : CABINETS.find((c) => c.music === tr.bank)?.id ?? null;
+    // and goes on the tube while it plays its 8-bit version (8-BIT)
+    const eightBit = !this.lab && playsEightBit(tr.bank);
+    return { title: jukeboxTitle(tr), album: this.lab ? 'THE LAB' : 'JUKEBOX', paused: !!this.held, skips: this.tracks.length > 1, cabinet, eightBit };
+  }
+  /**
+   * The lock screen's previous/next: the song before or after, round the list. Nothing on
+   * screen offers it — on the glass a song is changed by its row. The cursor follows, so the
+   * song playing is the row picked when the screen is back. In the Lab the next of the
+   * player's songs plays here in the list, as one carried on from the club does: opening
+   * the club takes frames, and a locked screen has none.
+   */
+  mediaSkip(dir) {
+    const n = this.tracks.length;
+    if (n < 2 || this.playing < 0) return;
+    const i = (((this.playing + dir) % n) + n) % n;
+    this.playing = i;
+    if (this.lab) {
+      this.labPlaying = this.tracks[i].banger;
+      rememberBanger(this.labPlaying);
+    }
+    this.openTrack(i);
+    // the new song's opening queued now, ahead of the lock screen's cover being painted
+    Audio.schedule();
+    this.idx = i;
+    this.rowFocus = i;
+    this.keepSelectionVisible();
+    this.resetIdle();
+  }
+  /**
+   * The lock screen's pause holds the song where it is (Audio.setPlayerPaused) — the list
+   * has no pause of its own. Its play lets it go; so does choosing any row, the held song's
+   * own row carrying on rather than stopping, and so does leaving.
+   */
+  mediaPause(paused) {
+    if (!!this.held === paused) return;
+    this.held = paused;
+    Audio.setPlayerPaused(paused);
   }
   clearVisualiser() {
     setVisualiserFullscreen(false);
@@ -5211,8 +5283,10 @@ export class SoundTestState {
       // leaving a large unused lower band.
       this.backH = 60;
       this.backY = footerY - 18 - this.backH;
+      // The jukebox's 8-BIT and VISUALISER: a row of their own over BACK (see backPlates).
+      this.togglesY = this.lab ? this.backY : this.backY - 12 - this.backH;
       this.rowH = Math.max(56, Math.min(108,
-        (this.backY - this.listY - 12) / this.visibleRows));
+        (this.togglesY - this.listY - 12) / this.visibleRows));
       this.hintY = footerY;
       return;
     }
@@ -5231,6 +5305,7 @@ export class SoundTestState {
     this.listY = JUKEBOX_TOP + drop;
     this.backY = JUKEBOX_BACK_TOP - lift;
     this.backH = JUKEBOX_BACK_H;
+    this.togglesY = this.backY;
     // The portrait branch above raises this to fit up to ten album rows on a
     // phone; landscape scrolls a fixed six instead, so it has to put the count
     // back or a screen that was ever in portrait keeps portrait's row count
@@ -5251,12 +5326,28 @@ export class SoundTestState {
    * with none of the balance and none of the section order.
    */
   openTrack(i) {
+    this.mediaPause(false);
     const tr = this.tracks[i];
     if (!tr) { Audio.setBank(null); return; }
     // Sound Test is a listening surface: always play the first bar on the first pass,
     // even when gameplay normally skips into a song at its authored start marker.
     // Its repeat region stays armed, so only the initial entry differs.
     Audio.setBank(tr.bank, tr.mix, tr.arrangement, { startAtBeginning: true });
+  }
+  /** 8-BIT on or off — SETTINGS ▸ SOUNDTRACK; a song playing goes over on its next beat. */
+  toggleEightBit() {
+    setSoundtrack8bit(!soundtrack8bit());
+    Audio.sfx('uiConfirm');
+  }
+  /** VISUALISER on or off; switched on, the idle wait starts from now. */
+  toggleVisualiser() {
+    const settings = save.data?.settings;
+    if (settings) {
+      settings.jukeboxVisualiser = !this.visualiserOn;
+      save.persist();
+    }
+    this.resetIdle();
+    Audio.sfx('uiConfirm');
   }
 
   maxListStart() { return Math.max(0, this.tracks.length - this.visibleRows); }
@@ -5269,11 +5360,18 @@ export class SoundTestState {
     this.listStart = Math.max(0, Math.min(this.maxListStart(), this.listStart));
   }
   pointerIndex(y, x = 0) {
-    if (y >= this.backY && y < this.backY + this.backH) {
-      const { back, del, gen } = this.backPlates();
+    const { back, del, gen, chip, vis } = this.backPlates();
+    const onRow = (plate) => y >= plate.y && y < plate.y + this.backH;
+    if (vis && onRow(vis)) {
+      if (x >= vis.x) return this.tracks.length + 4;
+      if (x >= chip.x && x < chip.x + chip.w) return this.tracks.length + 3;
+      // portrait: the switches' own row, the gap between them no button
+      if (!onRow(back)) return -1;
+    }
+    if (onRow(back)) {
       if (del && x >= del.x && x < del.x + del.w) return this.tracks.length + 2;
       if (gen && x >= gen.x) return this.tracks.length + 1;
-      // the jukebox's BACK is the row's left half; the empty right half is no button
+      // the jukebox's BACK is its own plate; the gaps beside it are no button
       return gen || x < back.x + back.w ? this.tracks.length : -1;
     }
     if (y < this.listY || y >= this.listY + this.visibleRows * this.rowH) return -1;
@@ -5283,9 +5381,9 @@ export class SoundTestState {
   /**
    * Seconds of no input before the visualiser takes over. A banger just made gets 30, so
    * its name and the list stay up while it is first heard (Peter, 3 Oct 2026); the
-   * shipped songs keep their 5.
+   * shipped songs 20 (Peter, 8 Oct 2026: five had them kicking in too quickly).
    */
-  visualiserWait() { return this.tracks[this.playing]?.banger ? 30 : 5; }
+  visualiserWait() { return this.tracks[this.playing]?.banger ? 30 : 20; }
   /**
    * The song DELETE would take: the selected one — the row the cursor is on, or was on
    * last before moving down to the buttons — when it is one of the player's own, playing
@@ -5295,11 +5393,15 @@ export class SoundTestState {
     const focused = this.tracks[this.rowFocus];
     return focused?.banger ? focused : null;
   }
-  /** Every selectable index in arrow order: the rows, then BACK, DELETE (when it is up), LAB. */
+  /**
+   * Every selectable index in arrow order: the rows, then BACK, DELETE (when it is up), LAB.
+   * The jukebox's in reading order: BACK, 8-BIT, VISUALISER across one row; in portrait the
+   * switches' row first, BACK under it.
+   */
   selectOrder() {
     const n = this.tracks.length;
     const rows = Array.from({ length: n }, (_, i) => i);
-    if (!this.lab) return [...rows, n];
+    if (!this.lab) return portraitMenuActive() ? [...rows, n + 3, n + 4, n] : [...rows, n, n + 3, n + 4];
     return this.deletable() ? [...rows, n, n + 2, n + 1] : [...rows, n, n + 1];
   }
   stepSelection(delta) {
@@ -5462,28 +5564,45 @@ export class SoundTestState {
   }
   /**
    * The bottom row: BACK on the left, NEW BANGER on the right, and DELETE between them while
-   * one of the player's songs is playing. Logical x and width of each, for drawing and
-   * for taps; `del` is null when DELETE is not up. The jukebox has BACK alone, still the
-   * left half: across the whole row it sat centred (Peter, 6 Oct 2026).
+   * one of the player's songs is playing. Logical x, width and top of each, for drawing and
+   * for taps; `del` is null when DELETE is not up. The jukebox has BACK, 8-BIT (`chip`) and
+   * VISUALISER (`vis`): three thirds of the row in landscape; in portrait the two switches
+   * are the halves of a row over BACK's, BACK its left half as it always was (Peter, 6 Oct
+   * 2026: across the whole row it sat centred).
    */
   backPlates() {
     const portrait = portraitMenuActive();
     const rowX = portrait ? 18 : JUKEBOX_ROW_X;
     const rowW = portrait ? W - 36 : W - JUKEBOX_ROW_X - JUKEBOX_ROW_INSET_R;
     const gap = portrait ? 12 : 8;
-    if (!this.lab) return { back: { x: rowX, w: (rowW - gap) / 2 }, del: null, gen: null };
-    if (this.deletable()) {
-      // Three equal thirds of the full row, outer edges on the list's.
-      const third = (rowW - 2 * gap) / 3;
+    const y = this.backY;
+    const half = (rowW - gap) / 2;
+    // Three equal thirds of the full row, outer edges on the list's.
+    const third = (rowW - 2 * gap) / 3;
+    if (!this.lab) {
+      if (portrait) {
+        const top = this.togglesY;
+        return {
+          back: { x: rowX, w: half, y }, del: null, gen: null,
+          chip: { x: rowX, w: half, y: top },
+          vis: { x: rowX + half + gap, w: half, y: top },
+        };
+      }
       return {
-        back: { x: rowX, w: third },
-        del: { x: rowX + third + gap, w: third },
-        gen: { x: rowX + 2 * (third + gap), w: third },
+        back: { x: rowX, w: third, y }, del: null, gen: null,
+        chip: { x: rowX + third + gap, w: third, y },
+        vis: { x: rowX + 2 * (third + gap), w: third, y },
+      };
+    }
+    if (this.deletable()) {
+      return {
+        back: { x: rowX, w: third, y },
+        del: { x: rowX + third + gap, w: third, y },
+        gen: { x: rowX + 2 * (third + gap), w: third, y },
       };
     }
     // Two equal halves of the full row, so their outer edges line up with the list.
-    const half = (rowW - gap) / 2;
-    return { back: { x: rowX, w: half }, del: null, gen: { x: rowX + half + gap, w: half } };
+    return { back: { x: rowX, w: half, y }, del: null, gen: { x: rowX + half + gap, w: half, y } };
   }
   drawDelete(ctx, y, h, radius, size, text) {
     const { del } = this.backPlates();
@@ -5494,9 +5613,23 @@ export class SoundTestState {
   }
   /** The line under the title: what is playing — or, in the Lab, what to do. */
   statusText() {
+    if (this.held && this.playing >= 0) return `PAUSED: ${jukeboxTitle(this.tracks[this.playing])}`;
     if (this.lab && this.playing >= 0) return `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}`;
     if (this.lab) return this.tracks.length ? 'CHOOSE A SONG TO PLAY IT LIVE' : 'NO SONGS YET: MAKE ONE WITH NEW BANGER';
     return this.playing >= 0 ? `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}` : 'STOPPED';
+  }
+  /** The jukebox's 8-BIT and VISUALISER plates: each teal while it is on, like the Lab's own button. */
+  drawSwitches(ctx, inset, h, radius, size, text) {
+    const { chip, vis } = this.backPlates();
+    if (!chip) return;
+    const n = this.tracks.length;
+    for (const [plate, name, on, sel] of [
+      [chip, '8-BIT', this.eightBit, this.idx === n + 3],
+      [vis, 'VISUALISER', this.visualiserOn, this.idx === n + 4],
+    ]) {
+      drawMenuRow(ctx, plate.x, plate.y + inset, plate.w, h, radius, sel ? undefined : (on ? 'rgba(72,224,200,0.14)' : BACK_BUTTON_PLATE));
+      text(plate, sel ? '#c9a0ff' : (on ? '#48e0c8' : '#c8c8d8'), size, `${name}: ${on ? 'ON' : 'OFF'}`);
+    }
   }
   drawGener8(ctx, y, h, radius, size, text) {
     const { gen } = this.backPlates();
@@ -5506,6 +5639,9 @@ export class SoundTestState {
     text(gen, sel ? '#c9a0ff' : '#48e0c8', size);
   }
   toggle(i) {
+    // held from the lock screen: its own row plays it on
+    if (this.held && this.playing === i) { this.mediaPause(false); Audio.sfx('uiConfirm'); return; }
+    this.mediaPause(false);
     if (this.lab) {
       if (this.playing === i) { this.playing = -1; this.labPlaying = null; Audio.setBank(null); return; }
       if (this.tracks[i]) this.openClub(this.tracks[i].banger);
@@ -5532,6 +5668,9 @@ export class SoundTestState {
     // Rotating the phone or opening it in portrait moves every row, and taps are
     // resolved against these same numbers — re-measure before reading a pointer.
     this.layout();
+    // A lock-screen hold outlives no song: whatever stopped it (a delete, a stop) lets
+    // the context go too, or the list's own sounds would stay held with it.
+    if (this.held && !this.nowPlaying()) this.mediaPause(false);
     if (this.confirmDelete) { this.updateDeleteConfirm(); return; }
     const n = this.tracks.length;
     // DELETE leaves with the song it was for.
@@ -5597,7 +5736,7 @@ export class SoundTestState {
       Input.endFrame();
       return;
     }
-    if (this.playing >= 0 && !this.screensaverOff && !this.lab) {
+    if (this.playing >= 0 && !this.screensaverOff && !this.lab && this.visualiserOn) {
       this.idleT += dt;
       if (this.idleT >= this.visualiserWait()) this.startVisualiser();
     }
@@ -5617,6 +5756,8 @@ export class SoundTestState {
       if (this.idx === n) this.done();
       else if (this.idx === n + 1) this.openMaker();
       else if (this.idx === n + 2) this.askDelete();
+      else if (this.idx === n + 3) this.toggleEightBit();
+      else if (this.idx === n + 4) this.toggleVisualiser();
       else this.toggle(this.idx);
     }
     if (Input.pressed('pointer')) {
@@ -5634,6 +5775,10 @@ export class SoundTestState {
           this.openMaker();
         } else if (i === n + 2) {
           this.askDelete();
+        } else if (i === n + 3) {
+          this.toggleEightBit();
+        } else if (i === n + 4) {
+          this.toggleVisualiser();
         } else if (this.idx === i) {
           this.toggle(i);
         } else {
@@ -5659,6 +5804,8 @@ export class SoundTestState {
         if (i === n) this.done();
         else if (i === n + 1) this.openMaker();
         else if (i === n + 2) this.askDelete();
+        else if (i === n + 3) this.toggleEightBit();
+        else if (i === n + 4) this.toggleVisualiser();
         else if (i >= 0) {
           this.idx = i;
           this.toggle(i);
@@ -5751,14 +5898,19 @@ export class SoundTestState {
       backSelected ? undefined : BACK_BUTTON_PLATE);
     const backTextY = textYForMid(this.backY + this.backH / 2, JUKEBOX_ITEM_S);
     const backColor = backSelected ? '#c9a0ff' : '#c8c8d8';
-    // BACK alone starts where the track titles do, as the Settings BACK does;
-    // in the Lab it is one of a bar of three and centres like its neighbours.
+    // The jukebox's buttons start their labels as far in from the plate's edge as the
+    // track titles do from the row's (Peter, 8 Oct 2026); in the Lab BACK centres like
+    // its neighbours.
+    const labelPad = textX - rowX;
     if (this.lab) menuTextCentered('BACK', plates.back.x + plates.back.w / 2, backTextY, backColor, JUKEBOX_ITEM_S);
-    else menuText('BACK', textX, backTextY, backColor, JUKEBOX_ITEM_S);
+    else menuText('BACK', plates.back.x + labelPad, backTextY, backColor, JUKEBOX_ITEM_S);
     this.drawGener8(ctx, this.backY + 1, this.backH - 2, 3, JUKEBOX_ITEM_S,
       (gen, color, size) => menuTextCentered('NEW BANGER', gen.x + gen.w / 2, backTextY, color, size));
     this.drawDelete(ctx, this.backY + 1, this.backH - 2, 3, JUKEBOX_ITEM_S,
       (del, color, size) => menuTextCentered('DELETE', del.x + del.w / 2, backTextY, color, size));
+    this.drawSwitches(ctx, 1, this.backH - 2, 3, JUKEBOX_ITEM_S, (plate, color, size, label) =>
+      menuText(label, plate.x + labelPad, backTextY, color,
+        Math.min(size, size * (plate.w - labelPad - 6) / textWidth(label, size))));
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
@@ -5832,6 +5984,11 @@ export class SoundTestState {
     this.drawDelete(ctx, this.backY + 2, this.backH - 4, 8, PORTRAIT_JUKEBOX_ITEM_S, (del, color, size) => {
       const s = portraitMenuFit('DELETE', size, del.w - 24);
       portraitMenuTextCentered(ctx, 'DELETE', del.x + del.w / 2, portraitMenuTextY(this.backY + this.backH / 2, s), color, s);
+    });
+    // Left-aligned like BACK, as far in from the plate's edge as the titles from the row's.
+    this.drawSwitches(ctx, 2, this.backH - 4, 8, PORTRAIT_JUKEBOX_ITEM_S, (plate, color, size, label) => {
+      const s = portraitMenuFit(label, size, plate.w - 2 * (titleX - rowX));
+      portraitMenuText(ctx, label, plate.x + titleX - rowX, portraitMenuTextY(plate.y + this.backH / 2, s), color, s);
     });
     if (this.playing >= 0) {
       for (let i = 0; i < 12; i++) {
@@ -6308,6 +6465,8 @@ export class SettingsState {
         : []),
       this.volumeOption('music', 'MUSIC VOLUME'),
       this.volumeOption('sfx', 'SFX VOLUME'),
+      // Every song in its 8-bit version — the same switch as the jukebox's 8-BIT.
+      { label: `SOUNDTRACK: ${soundtrack8bit() ? '8-BIT' : 'ORIGINAL'}`, act: () => setSoundtrack8bit(!soundtrack8bit()) },
       this.audioSyncOption(),
       { label: `SHOW FPS: ${s.showFps ? 'ON' : 'OFF'}`, act: () => { s.showFps = !s.showFps; } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
@@ -6350,6 +6509,8 @@ export class SettingsState {
     // and it also clears `audioSyncAsked`, so the rhythm briefing offers the tap
     // test once more.
     Audio.setSyncOffset(this.save.settings.audioSyncMs);
+    // SOUNDTRACK back to ORIGINAL under whatever is playing.
+    retuneOnTheBeat();
     this.confirming = false;
   }
   update(dt) {

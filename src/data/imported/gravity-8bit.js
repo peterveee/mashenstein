@@ -1,0 +1,282 @@
+// POLARITY DRIVE 8-BIT — one song: what it plays, how it is arranged, how it sounds.
+//
+// POLARITY DRIVE as the results screen plays it: every part on the 8-Bit Sound Set, every
+// fader where tools/chip-results-levels.js measured the 8-bit part should sit against the
+// one it replaces, no reverb. Mix it here: Save, and the game's copy (src/game/results-chip-mixes.js)
+// follows — what the results screens switch to and what SETTINGS ▸ SOUNDTRACK: 8-BIT plays.
+// The music below is POLARITY DRIVE's, copied as it stood (an alternate of gravity).
+//
+// The music below is the composition. Everything under THE DESK WRITES BELOW HERE
+// is written by `npm run mixer` and will be rewritten on every save — put notes
+// about the song up here, where they survive.
+import { seq, chordSeq } from '../../engine/notes.js';
+
+export const id = "gravity-8bit";
+export const title = "POLARITY DRIVE 8-BIT";
+export const slug = "gravity-8bit";
+export const group = "alternate";
+export const alternateOf = "gravity";
+
+export const bank = {
+  bpm: 120,
+  musicTrim: 0.87,
+  bass: [73.4161919793519,null,null,null,null,null,146.8323839587038,null,null,null,73.4161919793519,null,null,null,146.8323839587038,null,58.27047018976124,null,null,null,null,null,116.54094037952248,null,null,null,58.27047018976124,null,null,null,116.54094037952248,null],
+  lead: seq('D5 . . . . . F5 . . . D5 . . . A4 . | F5 . . . . . C5 . . . D5 . . . . .'),
+  lead2: seq('. . D5 . . . A5 . . . F5 . . . D5 . | . . A#4 . . . F5 . . . D5 . . . A#4 .'),
+  chords: [[293.6647679174076,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,3,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+  bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null],
+  chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . . . . . C1 . . . . .').map((v) => !!v),
+  snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+  hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+  ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+  sections: [
+    {
+      bass: [73.4161919793519,null,null,null,null,null,146.8323839587038,null,null,null,73.4161919793519,null,null,null,146.8323839587038,null,58.27047018976124,null,null,null,null,null,116.54094037952248,null,null,null,58.27047018976124,null,null,null,116.54094037952248,null],
+      lead: seq('D5 . . . . . F5 . . . D5 . . . A4 . | F5 . . . . . C5 . . . D5 . . . . .'),
+      lead2: seq('. . D5 . . . A5 . . . F5 . . . D5 . | . . A#4 . . . F5 . . . D5 . . . A#4 .'),
+      chords: [[293.6647679174076,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,3,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      bass: [48.999429497718666,null,null,null,null,null,97.99885899543733,null,null,null,48.999429497718666,null,null,null,97.99885899543733,null,0,null,null,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      lead: seq('G4 . . . . . A5 . . . F5 . . . . . | E5 . . . . . A4 . . . C#5 . . . . .'),
+      lead2: [null,null,391.9954359817493,null,null,null,587.3295358348151,null,null,null,466.1637615180899,null,null,null,391.9954359817493,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      chords: [[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . . C1').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . C1').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . C1 C1 C1').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+    },
+    {
+      bass: seq('F2 . . . . . F3 . . . F2 . . . F3 . | C2 . . . . . C3 . . . C2 . . . C3 .'),
+      lead: seq('A5 . . . . . E5 . . . A5 . . . . . | E5 . . . . . D5 . . . E5 . . . G4 .'),
+      lead2: seq('. . F5 . . . A5 . . . C6 . . . F5 . | . . C5 . . . E5 . . . G5 . . . C5 .'),
+      chords: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,329.6275569128699,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,3,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      bass: [73.4161919793519,null,null,null,null,null,146.8323839587038,null,null,null,73.4161919793519,null,null,null,146.8323839587038,null,0,null,null,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      lead: seq('A4 . . . . . A5 . . . D5 . . . C5 . | C#5 . . . . . G5 . . . C#5 . . . . .'),
+      lead2: [null,null,587.3295358348151,null,null,null,698.4564628660078,null,null,null,880,null,null,null,587.3295358348151,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      chords: [[293.6647679174076,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,3,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . . C1').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . C1').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . C1 C1 C1').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+    },
+    {
+      bass: seq('G1 . . . . . G2 . . . G1 . . . G2 . | D#2 . . . . . D#3 . . . D#2 . . . D#3 .'),
+      lead: [783.9908719634986,null,null,null,null,null,932.3275230361799,null,null,null,783.9908719634986,null,null,null,587.3295358348151,null,932.3275230361799,null,null,null,null,null,698.4564628660078,null,null,null,783.9908719634986,null,null,null,null,null],
+      lead2: [null,null,391.9954359817493,null,null,null,587.3295358348151,null,null,null,466.1637615180899,null,null,null,391.9954359817493,null,null,null,622.2539674441618,null,null,null,932.3275230361799,null,null,null,783.9908719634986,null,null,null,622.2539674441618,null],
+      chords: [[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,3,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      bass: [65.40639132514966,null,null,null,null,null,130.8127826502993,null,null,null,65.40639132514966,null,null,null,130.8127826502993,null,0,null,null,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      lead: seq('C5 . . . . . D6 . . . A#5 . . . . . | A5 . . . . . D5 . . . F#5 . . . . .'),
+      lead2: [null,null,523.2511306011972,null,null,null,783.9908719634985,null,null,null,622.2539674441617,null,null,null,523.2511306011972,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      chords: [[311.1269837220809,391.99543598174927,523.2511306011972],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,369.9944227116344,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . . C1').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . C1').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . C1 C1 C1').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+    },
+    {
+      bass: seq('G1 . . . . . G2 . . . G1 . . . G2 . | D#2 . . . . . D#3 . . . D#2 . . . D#3 .'),
+      lead: [783.9908719634986,null,null,null,null,null,932.3275230361799,null,null,null,783.9908719634986,null,null,null,587.3295358348151,null,932.3275230361799,null,null,null,null,null,698.4564628660078,null,null,null,783.9908719634986,null,null,null,null,null],
+      lead2: [null,null,391.9954359817493,null,null,null,466.1637615180899,null,null,null,587.3295358348151,null,null,null,391.9954359817493,null,null,null,622.2539674441618,null,null,null,783.9908719634986,null,null,null,932.3275230361799,null,null,null,622.2539674441618,null],
+      chords: [[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,3,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      bass: [65.40639132514966,null,null,null,null,null,130.8127826502993,null,null,null,65.40639132514966,null,null,null,130.8127826502993,null,0,null,null,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      lead: seq('C5 . . . . . D6 . . . A#5 . . . . . | C#5 . . . . . G5 . . . C#5 . . . . .'),
+      lead2: [null,null,523.2511306011972,null,null,null,622.2539674441617,null,null,null,783.9908719634985,null,null,null,523.2511306011972,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      chords: [[311.1269837220809,391.99543598174927,523.2511306011972],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . . C1').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . C1').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . C1 C1 C1').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+    },
+    {
+      bass: seq('A#1 . . . . . . . . . A#1 . . . . . | F2 . . . . . . . . . F2 . . . . .'),
+      lead: seq('D5 . . . . . F5 . . . D5 . . . . . | G5 . . . . . C5 . . . A5 . . . . .'),
+      lead2: seq('. . A#4 . . . . . . . D5 . . . A#4 . | . . F5 . . . . . . . A5 . . . F5 .'),
+      chords: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [3,null,null,null,null,null,null,null,null,null,3,null,null,null,null,null,3,null,null,null,null,null,null,null,null,null,3,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats: seq('. . . . . . C1 . . . . . . . C1 . | . . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      bass: [65.40639132514966,null,null,null,null,null,null,null,null,null,65.40639132514966,null,null,null,null,null,0,null,null,null,null,null,null,null,null,null,0,null,null,null,null,null],
+      lead: [622.2539674441618,null,null,null,null,null,783.9908719634985,null,null,null,622.2539674441617,null,null,null,null,null,440,null,null,null,null,null,0,null,null,null,0,null,null,null,null,null],
+      lead2: [null,null,523.2511306011972,null,null,null,null,null,null,null,622.2539674441617,null,null,null,523.2511306011972,null,null,null,0,null,null,null,null,null,null,null,0,null,null,null,0,null],
+      chords: [[311.1269837220809,391.99543598174927,523.2511306011972],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null,5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bassLen: [3,null,null,null,null,null,null,null,null,null,3,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats: seq('. . . . . . C1 . . . . . . . C1 . | . . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+    },
+    {
+      bass: seq('D#2 . . . . . . . . . D#2 . . . . . | A#1 . . . . . . . . . A#1 . . . . .'),
+      lead: [783.9908719634985,null,null,null,null,null,466.1637615180899,null,null,null,783.9908719634986,null,null,null,null,null,587.3295358348151,null,null,null,null,null,349.2282314330039,null,null,null,587.3295358348151,null,null,null,null,null],
+      lead2: seq('. . D#5 . . . . . . . A#5 . . . D#5 . | . . A#4 . . . . . . . F5 . . . A#4 .'),
+      chords: [[311.1269837220809,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null],
+      bassLen: [3,null,null,null,null,null,null,null,null,null,3,null,null,null,null,null,3,null,null,null,null,null,null,null,null,null,3,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats: seq('. . . . . . C1 . . . . . . . C1 . | . . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      bass: [48.999429497718666,null,null,null,null,null,null,null,null,null,48.999429497718666,null,null,null,null,null,0,null,null,null,null,null,null,null,null,null,0,null,null,null,null,null],
+      lead: seq('A4 . . . . . F5 . . . A#4 . . . . . | E5 . . . . . A4 . . . A4 . . . E5 .'),
+      lead2: [null,null,391.9954359817493,null,null,null,null,null,null,null,587.3295358348151,null,null,null,391.9954359817493,null,null,null,0,null,null,null,null,null,null,null,0,null,null,null,0,null],
+      chords: [[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [5,null,null,null,null,null,3,null,null,null,3,null,null,null,null,null,5,null,null,null,null,null,3,null,null,null,3,null,null,null,3,null],
+      bassLen: [3,null,null,null,null,null,null,null,null,null,3,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats: seq('. . . . . . C1 . . . . . . . C1 . | . . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+    },
+    {
+      bass: [73.4161919793519,null,null,null,null,null,146.8323839587038,null,null,null,73.4161919793519,null,null,null,146.8323839587038,null,58.27047018976124,null,null,null,null,null,116.54094037952248,null,null,null,58.27047018976124,null,null,null,116.54094037952248,null],
+      lead: seq('D5 . . A4 . . F5 . E5 . D5 . . . F5 A4 | F5 . . . D5 . C5 . A4 . . . . . D5 F4'),
+      lead2: seq('. . D5 . . . A5 . . . F5 . . . D5 . | . . A#4 . . . F5 . . . D5 . . . A#4 .'),
+      chords: [[293.6647679174076,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [1.8,null,null,1.8,null,null,1.8,null,1.8,null,1.8,null,null,null,1.8,1.8,1.8,null,null,null,1.8,null,1.8,null,1.8,null,null,null,null,null,1.8,1.8],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      bass: [48.999429497718666,null,null,null,null,null,97.99885899543733,null,null,null,48.999429497718666,null,null,null,97.99885899543733,null,0,null,null,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      lead: seq('G4 . . D5 . . A5 . G5 . F5 . D5 . A#4 D4 | E5 . . C#5 . . A4 . . . C#5 . E5 . . .'),
+      lead2: [null,null,391.9954359817493,null,null,null,587.3295358348151,null,null,null,466.1637615180899,null,null,null,391.9954359817493,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      chords: [[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [1.8,null,null,1.8,null,null,1.8,null,1.8,null,1.8,null,1.8,null,1.8,1.8,1.8,null,null,1.8,null,null,1.8,null,null,null,1.8,null,1.8,null,null,null],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . . C1').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . C1').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . C1 C1 C1').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+    },
+    {
+      bass: seq('F2 . . . . . F3 . . . F2 . . . F3 . | G1 . . . . . G2 . . . G1 . . . G2 .'),
+      lead: seq('A5 . . G5 . . E5 . F5 . . . C5 . A5 C5 | G4 . . D5 . . A5 . G5 . F5 . D5 . A#4 D4'),
+      lead2: [null,null,698.4564628660078,null,null,null,880,null,null,null,1046.5022612023945,null,null,null,698.4564628660078,null,null,null,391.9954359817493,null,null,null,466.1637615180899,null,null,null,587.3295358348151,null,null,null,391.9954359817493,null],
+      chords: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [1.8,null,null,1.8,null,null,1.8,null,1.8,null,null,null,1.8,null,1.8,1.8,1.8,null,null,1.8,null,null,1.8,null,1.8,null,1.8,null,1.8,null,1.8,1.8],
+      bassLen: [1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null,1.5,null,null,null,null,null,1.5,null,null,null,1.5,null,null,null,1.5,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      bass: [0,null,null,null,null,null,0,null,null,null,0,null,null,null,0,null,0,null,null,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      lead: [554.3652619537442,null,null,659.2551138257398,null,null,783.9908719634985,null,659.2551138257398,null,554.3652619537442,null,440,null,0,0,659.2551138257398,null,554.3652619537442,null,440,null,null,null,391.99543598174927,null,440,null,554.3652619537442,null,null,null],
+      lead2: [null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null,null,null,0,null],
+      chords: [[277.1826309768721,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,329.6275569128699,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [1.8,null,null,1.8,null,null,1.8,null,1.8,null,1.8,null,1.8,null,null,null,1.8,null,1.8,null,1.8,null,null,null,1.8,null,1.8,null,1.8,null,null,null],
+      bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . . . . . . . C1 . . . . . | C1 . . . . . C1 . . . C1 . . . . C1').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . . C1').map((v) => !!v),
+      hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . C1 C1 C1').map((v) => !!v),
+      ohats: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+    },
+  ],
+  order: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+  echoLevel: 0.12,
+};
+
+// ---- THE DESK WRITES BELOW HERE ----------------------------------------------
+// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
+
+export const mix = {
+  master: -3,
+  layers: [{ key: "lead2", from: "lead", independent: true }],
+  voice: {"kickVoice":"sdsKick","snareVoice":"gameBoySnare","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine","bassVoice":"toneTriangle","leadVoice":"toneSquare","lead2Voice":"squareOrgan","chordsVoice":"toneTriangle","clapVoice":"snareEngine","rimVoice":"vl1Sha","crashVoice":"crashEngine","tomVoice":"tomEngine"},
+  lanes: {
+    bass: { gain: -5.2 },
+    lead: { gain: -6.5, pan: -0.08, send: { delay: 0.22 } },
+    lead2: { gain: -4.5, pan: 0.24, send: { delay: 0.3 } },
+    chords: { gain: -2.5 },
+    kick: { gain: 1.2 },
+    snare: { gain: -2.4 },
+    hats: { gain: -1.8 },
+    ohats: { gain: 7.5 },
+  },
+};
+
+export const arrangement = {
+  order: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+  loop: {
+    startBar: 1,
+    fromBar: 1,
+    toBar: 32,
+  },
+  choke: {
+    hats: "ohats",
+  },
+};
+
+export const variants = null;
+
+// M8TRX is a Mixer-only parked recipe. It is intentionally not a game alternate.
+export const m8trx = null;

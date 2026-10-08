@@ -447,8 +447,9 @@ export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, ver
   if (rolls('kit', 0x428a2f98)) set('drums', 'kit', pick(KIT_ROLLS, 0x71374491));
   if (own.form.keyLift !== 'third' && rolls('keyLift', 0xb5c0fbcf)) set('form', 'keyLift', 'third');
   // The form, now and then (version 4) — Club, mostly, for a style that is not Club already.
-  let template = own.form.template;
-  if (version >= 4) {
+  // Over another style's beat (an INFUSION) the form is Club's, always (Peter, 8 Oct 2026) — no roll.
+  let template = beat ? 'club' : own.form.template;
+  if (version >= 4 && !beat) {
     const club = template === 'club';
     if (rollOf(seed, 0x2f8bd2a1) < VOLTAGE_ROLL_ODDS.form[level] * (club ? 1 / 2 : 1)) {
       template = !club && rollOf(seed, 0x6d1f3b55) < 3 / 4 ? 'club' : pick(FORM_ROLLS.filter((t) => t !== 'club' && t !== template), 0x4c1a7e93);
@@ -468,7 +469,7 @@ export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, ver
   if (rolls('breakdownHook', 0x80deb1fe)) set('form', 'breakdownHook', pick(['written', 'none'].filter((h) => h !== own.form.breakdownHook), 0x9bdc06a7));
   // A form that names no template is read as Club (options.js, for takes made before there
   // were templates): say the style's own, or Eurobeat's pop song would become a club track.
-  if (out.form) out.form = { template: own.form.template, ...out.form };
+  if (out.form) out.form = { template: beat ? 'club' : own.form.template, ...out.form };
   return out;
 }
 
@@ -548,6 +549,9 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   // A pair's switch goes on the form, which must name its template (a form that names none is Club).
   const pairForm = pair ? { template: rolls.form?.template ?? (styleSettings && styleDefaults((beat && fusionOf(styleSettings, beat)) || styleSettings).form.template),
     ...rolls.form, mood2: pair.second, moodSwitch: pair.switch } : null;
+  // An INFUSION is always the Club form — the build-and-drop banger, never a Pop Song (Peter, 8 Oct 2026).
+  const clubForm = beat ? { template: 'club' } : null;
+  const formOptions = pairForm || rolls.form || clubForm ? { ...(pairForm || rolls.form), ...clubForm } : null;
   const options = {
     style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,
@@ -556,7 +560,7 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
     ...(Object.keys(parts).length ? { parts } : {}),
     ...(rolls.fx ? { fx: rolls.fx } : {}),
     ...(rolls.drums ? { drums: rolls.drums } : {}),
-    ...(pairForm ? { form: pairForm } : rolls.form ? { form: rolls.form } : {}),
+    ...(formOptions ? { form: formOptions } : {}),
     ...(Object.keys(spot).length || rolls.spot ? { spot: { ...rolls.spot, ...spot } } : {}),
   };
   const out = generateBanger({ riff: riffFromNotes(notes, hookSoundFor(style, mood, seed, voltage, flavour), mode, lengths), options, seed,

@@ -35,6 +35,8 @@ import { PAN_MAX } from '../engine/camera.js';
 import { resolveLayout } from '../game/layout.js';
 import { proseMenu } from './prose.js';
 import { GravityRunState } from './gravity/state.js';
+import { labRenderMenu } from './lab-render.js';
+import { chipResults } from '../game/results-chip.js';
 
 const GOLD = '#f6d33c';
 const DIM = '#5a5a68';
@@ -687,6 +689,12 @@ function tuneMenu(dev, group) {
   return { ...build(), rebuild: build };
 }
 
+// The level's song onto the 8-Bit Sound Set while the results are up (src/game/results-chip.js).
+// On in the game; off here is this browser only, to hear the results screen the old way.
+const chipResultsItem = () => ({
+  label: `8-BIT RESULTS: ${chipResults.on ? 'ON' : 'off'}`, act: () => { chipResults.on = !chipResults.on; },
+});
+
 function runMenu(dev) {
   const build = () => {
     const r = dev.run();
@@ -695,6 +703,7 @@ function runMenu(dev) {
         title: 'RUN',
         items: [
           { label: 'NO RUN ACTIVE', act: null },
+          chipResultsItem(),
           { label: `SEED LOCK: ${dev.seedLock ?? 'off'}`, adjust: (d) => { dev.seedLock = dev.seedLock == null ? 1000 : Math.max(0, dev.seedLock + d); } },
           { label: `TIME SCALE: x${dev.timeScale}`, adjust: (d) => dev.cycleSpeed(d) },
         ],
@@ -706,6 +715,7 @@ function runMenu(dev) {
         { label: `INVULNERABLE: ${r.devInvuln ? 'ON' : 'off'}`, act: () => { r.devInvuln = !r.devInvuln; } },
         { label: `FORCE MISSION: ${r.devForceMission ? 'ON' : 'off'}`, act: () => { r.devForceMission = !r.devForceMission; } },
         { label: `HITBOXES: ${r.debug ? 'ON' : 'off'}`, act: () => { r.debug = !r.debug; } },
+        chipResultsItem(),
         { label: `TIME SCALE: x${dev.timeScale}`, adjust: (d) => dev.cycleSpeed(d) },
         { label: `SEED LOCK: ${dev.seedLock ?? 'off'}`, adjust: (d) => { dev.seedLock = dev.seedLock == null ? r.seed : Math.max(0, dev.seedLock + d); } },
         { label: `BATTERY: ${r.battery}/${r.maxBattery()}`, adjust: (d) => { r.battery = Math.min(r.maxBattery(), Math.max(0, r.battery + d)); } },
@@ -817,6 +827,7 @@ export function rootMenu(dev) {
         setState(new CreditsState({ onDone: () => dev.ctx.Flow.toHub() }));
       } },
       { label: 'VISUALISERS ▸', submenu: () => visualisersMenu(dev) },
+      { label: 'LAB WAV RENDER ▸', submenu: () => labRenderMenu(dev) },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },
       { label: Recorder.active ? 'RECORD ▸  ● REC' : 'RECORD ▸', submenu: () => recordMenu(dev) },

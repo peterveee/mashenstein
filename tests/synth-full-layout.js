@@ -637,7 +637,7 @@ if (gameCutoff.read(undefined, gameSimple) !== 18000) {
   fail('KNDO-5 raw waveform does not read as an open Simple CUTOFF');
 }
 gameCutoff.write(2400, gameSimple);
-if (gameSimple.filter?.freq !== 2400 || gameSimple.filter?.to !== 2400) {
+if (gameSimple.filter?.freq !== 2400 || 'to' in (gameSimple.filter || {})) {
   fail('KNDO-5 Simple CUTOFF did not create a stationary optional filter');
 }
 gameCutoff.write(18000, gameSimple);

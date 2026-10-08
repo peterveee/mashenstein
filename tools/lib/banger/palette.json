@@ -1,6 +1,44 @@
 {
   "version": 1,
-  "styles": {},
-  "moods": {},
+  "styles": {
+    "future-bass": {
+      "parts": {
+        "part:sub": {
+          "entries": {
+            "seedFutureBassSub": {
+              "trimDb": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "moods": {
+    "bittersweet": {
+      "parts": {
+        "riff:hook": {
+          "entries": {
+            "fmBell": {
+              "trimDb": 0.3
+            },
+            "rmndDxPiano": {
+              "trimDb": 1
+            }
+          }
+        }
+      }
+    },
+    "dark": {
+      "parts": {
+        "riff:hook": {
+          "entries": {
+            "hardFm": {
+              "trimDb": -2
+            }
+          }
+        }
+      }
+    }
+  },
   "combinations": {}
 }

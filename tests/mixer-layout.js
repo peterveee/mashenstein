@@ -15,6 +15,8 @@ const librarySource = readFileSync(new URL('../tools/mixer-voice-library.js', im
 const editor = readFileSync(new URL('../tools/mixer-voice-editor.js', import.meta.url), 'utf8');
 const voiceSource = readFileSync(new URL('../src/data/voices.js', import.meta.url), 'utf8');
 const server = readFileSync(new URL('../tools/mixer.js', import.meta.url), 'utf8');
+// The desk's /voice-save rules, shared with the Banger Sound Palette's editor since 7 Oct 2026.
+const voiceSave = readFileSync(new URL('../tools/lib/voice-save.js', import.meta.url), 'utf8');
 const mixerBuilder = readFileSync(new URL('../tools/build-mixer-static.js', import.meta.url), 'utf8');
 const seq = readFileSync(new URL('../tools/mixer-step-seq.js', import.meta.url), 'utf8');
 const piano = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8');
@@ -1946,8 +1948,9 @@ assert(/const isLibraryPreset = \(voice\) =>/.test(editor)
   && /libraryUpdate/.test(editor)
   && /libraryTableFor/.test(editor)
   && /state\.libraryNew/.test(editor)
-  && /requestedLibrary/.test(server)
-  && /devLibraryCreate/.test(server)
+  && /requestedLibrary/.test(voiceSave)
+  && /devLibraryCreate/.test(voiceSave)
+  && /saveVoice\(/.test(server)
   && /const devDelete =/.test(server)
   && !/confirm\(`Save preset as/.test(editor)
   && editor.indexOf('if (state.laneKey && assign) assign(state.laneKey, newId);')

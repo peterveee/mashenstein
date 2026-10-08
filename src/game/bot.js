@@ -793,7 +793,9 @@ export class DemoBot {
       // lip, a stone or two behind him.
       const target = run.player.grounded ? next
         : crossing.stones.find((st) => st.x + st.w > px + PLAYER_SPRITE_W);
-      if (!run.player.grounded && this.jumpHold && target
+      // Not inside MIN_JUMP_RISE_T: a release there is not cut until the window
+      // closes, higher and further on than the arc solved here.
+      if (!run.player.grounded && this.jumpHold && target && !(run.player.jumpRiseT > 0)
         && run.player.vy > VARIABLE_JUMP_CUT && run.player.hero?.variableJump) {
         const a = this.arc();
         const g = a ? a.g : run.player.gravity;

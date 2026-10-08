@@ -372,11 +372,12 @@ export class BangerMakerState {
   }
   /**
    * ELEMENT's choices: the moods, then the MOOD PAIRS, each pair's line in the words of the form the
-   * song starts in — the INFUSION's, else FORMULA's (a Pop Song's choruses are a Club track's drops).
+   * song starts in — FORMULA's (a Pop Song's choruses are a Club track's drops), and Club's with an
+   * INFUSION, which always plays the Club form.
    */
   moodItems() {
-    const st = styleFor(this.infusion || this.style);
-    const template = st ? styleDefaults(st).form.template : 'club';
+    const st = styleFor(this.style);
+    const template = this.infusion || !st ? 'club' : styleDefaults(st).form.template;
     return MAKER_MOODS.map((m) => (m.pair ? { ...m, description: pairDescription(m.id, template) } : m));
   }
   /** INFUSION's choices: NONE, then every formula but FORMULA itself. */

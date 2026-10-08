@@ -43,6 +43,16 @@ async function inlined(root, entry, shell, define) {
 }
 
 /**
+ * The render frame on its own: a second, unbound copy of the engine to bounce a WAV
+ * through. The game's dev server builds it per request for the dev menu's LAB WAV
+ * RENDER test (build/build.js, /__dev/render-frame), from here, so the desk and the
+ * game cannot be handed two different frames.
+ */
+export function renderFramePage(root = here) {
+  return inlined(root, 'tools/mixer-render-entry.js', 'tools/mixer-render-shell.html');
+}
+
+/**
  * Write dist/TRK24/ — the desk and its render frame.
  *
  * @returns {Promise<{index: number, frame: number}>} the two sizes, in KB
@@ -58,7 +68,7 @@ export async function buildSongMixer(root = here) {
     { __MASH_STATIC_MIXER__: 'true' }))
     .replaceAll('/*__MIXER_BRAND__*/', () => MIXER_BRAND)
     .replace('/*__MIXER_DEV_USER__*/', 'false');
-  const frame = await inlined(root, 'tools/mixer-render-entry.js', 'tools/mixer-render-shell.html');
+  const frame = await renderFramePage(root);
 
   const outDir = join(root, 'dist', 'TRK24');
   mkdirSync(outDir, { recursive: true });

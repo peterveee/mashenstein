@@ -196,6 +196,9 @@ const suites = [
   // issue, switching it on moves nothing but the settings, the policy only picks a lane whose
   // sound and notes take a slide, Modify moves that one field, and an old recipe is made as it was.
   'tests/banger-expression.js',
+  // Voice leading (generator v9): coloured chords move least from the one before, with no needless
+  // semitone clusters; triads, open voicings and the riff as written stay as placed; loops repeat.
+  'tests/banger-voice-leading.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
@@ -572,6 +575,8 @@ const suites = [
   'tests/gate-allowed.js',
   'tests/gate-font-wait.js',
   'tests/build-shell.js',
+  // The results screen turns the level's song 8-bit: what switches, onto what, and its trims.
+  'tests/results-chip.js',
   'tests/smoke.js',
   'tests/touch-smoke.js',
   // Last three: all render the engine offline in Chromium, which is slower than every
@@ -585,6 +590,9 @@ const suites = [
   // What a length that long does to the song AFTER it: opening another song has to
   // stop the note that is still ringing, not merely slide it for half a second.
   'tests/song-switch.js',
+  // And how the old song goes: in the game it fades out before the new song's mix goes
+  // on, so a scene change is a fade and not a cut to silence that comes back.
+  'tests/song-change-fade.js',
   // A lane trimmed over a range of bars. Also a claim about the speakers and not the
   // graph: the trim routed every note on that lane through a gain pair BUILT PER STEP,
   // and a new pair is a new graph to the voice rack, which answered it by disposing
@@ -745,7 +753,7 @@ const soundSuites = [
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
   'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-fusion.js', 'tests/banger-mood-pairs.js', 'tests/banger-rolls.js', 'tests/banger-forms.js', 'tests/banger-modify.js',
-  'tests/banger-expression.js',
+  'tests/banger-expression.js', 'tests/banger-voice-leading.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',

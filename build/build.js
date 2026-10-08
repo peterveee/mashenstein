@@ -418,6 +418,25 @@ function handleRecordUpload(req, res, url) {
   req.pipe(file);
 }
 
+// The render frame for the dev menu's LAB WAV RENDER test: a second, unbound copy of
+// the audio engine, loaded by the game in a hidden iframe to bounce a song through an
+// OfflineAudioContext (src/dev/lab-render.js). Built per request, so it is always the
+// engine in the tree and costs nothing until it is asked for. The same builder writes
+// the desk's dist/TRK24/render-frame.html. Dev server only.
+const RENDER_FRAME_ROUTE = '/__dev/render-frame';
+
+async function handleRenderFrame(res) {
+  try {
+    const { renderFramePage } = await import('../tools/build-mixer-static.js');
+    const html = await renderFramePage(root);
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(html);
+  } catch (err) {
+    res.writeHead(500, { 'content-type': 'text/plain' });
+    res.end(`render frame build failed: ${err.message || err}\n`);
+  }
+}
+
 // TLS FOR THE DEVICE URL, and the one thing it is actually for.
 //
 // AudioWorklet requires a SECURE CONTEXT. `localhost` counts as one by fiat, but
@@ -480,6 +499,7 @@ function startProxy(host, port, upstreamPort, tls = null) {
       // URL is parsed against a fixed base because only the path matters here.
       const url = new URL(req.url, 'http://dev.local');
       if (url.pathname === RECORD_ROUTE) { handleRecordUpload(req, res, url); return; }
+      if (url.pathname === RENDER_FRAME_ROUTE) { handleRenderFrame(res); return; }
       const upstream = httpRequest({
         host: '127.0.0.1',
         port: upstreamPort,

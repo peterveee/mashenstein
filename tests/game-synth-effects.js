@@ -48,6 +48,15 @@ const CASES = {
   postHalf: { keys: { drive: 0.85, shape: 'soft', tone: { freq: 4000 } }, gain: 0.25 },
   pre: { keys: { drive: 0.85, shape: 'soft', tone: { freq: 4000 }, drivePlace: 'pre' }, gain: 0.5 },
   chorus: { keys: { chorus: { mix: 0.7, rate: 1.2, depth: 0.6, width: 1 } }, gain: 0.5 },
+  // A filter at ENV AMOUNT zero sits still. The `stale` one carries the `to`/`sweep` pair
+  // the old SWEEP TO card wrote — and the filter section's seed wrote as `to: 4000` — which
+  // this path used to hand straight to `_filterChain`: a cutoff turned down to 135 Hz then
+  // swept back up to 4 kHz on every note, with nothing on the panel to show it.
+  filterStill: { keys: { filter: { type: 'lowpass', freq: 135, Q: 0.7, env: { octaves: 0 } } }, gain: 0.5 },
+  filterStale: {
+    keys: { filter: { type: 'lowpass', freq: 135, to: 4000, Q: 0.7, sweep: 0.12, env: { octaves: 0 } } },
+    gain: 0.5,
+  },
 };
 
 const chromium = require('playwright').chromium;
@@ -152,6 +161,11 @@ const dryTail = rms(L('plain'), Math.round(0.516 * RATE), Math.round(0.525 * RAT
 // — so any signal at all in that window came out of the delay line.
 assert(dryTail === 0 && tail > 1e-6,
   `the chorus rings past the note (${tail.toExponential(2)} where the dry preset is silent)`);
+
+// 6. ENV AMOUNT zero is no envelope at all — a stale sweep target is not one either.
+const staleDiff = maxDiff(L('filterStill'), L('filterStale'));
+assert(staleDiff === 0,
+  `a filter at ENV AMOUNT 0 ignores a leftover SWEEP TO target (max diff ${staleDiff.toExponential(2)})`);
 
 console.log(failed ? `GAME SYNTH EFFECTS: ${failed} FAILED` : 'GAME SYNTH EFFECTS: PASSED');
 process.exit(failed ? 1 : 0);

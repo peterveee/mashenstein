@@ -3,6 +3,7 @@
 import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
 import { H, W, chrome as chromeGeo, clientToLogical, isPhonePortraitPresentation, onPresentationChanged, presentationFrame, shake } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
+import { discardNextGap } from '../../engine/loop.js';
 import { Audio, PORTAL_BREATH } from '../../engine/audio.js';
 import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H, BACK_BUTTON_PLATE } from '../../engine/sprites.js';
 import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
@@ -2087,6 +2088,7 @@ export class HubState {
     this.exitDoorTarget = null;
     this.trophyDoorTarget = null;
     this.doorWalk = null;
+    this.doorCue = null;     // the arrival's open cue, waiting on the first frame
     this.departed = false;   // see the door walk: true once he is through one
     // A queued cabinet dive owns this arrival. Consume it before deciding whether
     // to walk through the hub door, otherwise that walk can delay the dive.
@@ -2129,9 +2131,16 @@ export class HubState {
         // so the single sound you heard arrived after he was already stood in
         // the room with the door closed behind him — a door announcing itself
         // one whole beat after the event.
-        Audio.sfx(kind === 'swing' ? 'doorSwingOpen' : 'doorOpen');
+        //
+        // But not from here. The first visit's first frame is mostly load — the
+        // new song's effects, the cabinet screens, the marker's ink measurement
+        // — and draw() holds the walk behind the shutter until it is paid for.
+        // Fired now, the whoosh ran that far ahead of the door. update() fires
+        // it on the first tick after that frame, when the door really starts.
+        this.doorCue = kind === 'swing' ? 'doorSwingOpen' : 'doorOpen';
       }
     }
+    this.drawnOnce = false;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
     this.npcMenuIdx = 0;
@@ -2424,10 +2433,17 @@ export class HubState {
       // assigning toX here overwrote whoever had set a position since, which is
       // how a skipped arrival used to teleport him back to the door.
       this.doorWalk = null;
+      this.doorCue = null;
     }
     if (this.doorWalk) {
       this.t += dt;
       this.updateNpcs(dt);
+      // The arrival's open cue, on the first tick after the room has drawn once
+      // — see enter() and the gap draw() discards.
+      if (this.doorCue && this.drawnOnce) {
+        Audio.sfx(this.doorCue);
+        this.doorCue = null;
+      }
       // The cues ride the PHASE CHANGES, which is the only place they can live
       // now: proximity is what normally opens and shuts these doors, and the
       // sequence has taken the door away from proximity for its duration. A
@@ -3313,6 +3329,26 @@ export class HubState {
   }
 
   draw(ctx) {
+    // THE FIRST FRAME IS LOAD. On the first visit it carries the room's lazy
+    // art (cabinet screens, the marker's ink measurement) on top of the song
+    // switch enter() just made — the best part of 100 ms in Chrome, all behind
+    // the closed shutter. The loop would replay that as catch-up ticks, and the
+    // walk-in and the reveal both lurched forward in one frame as he came
+    // through the door. So an arrival throws the gap away and starts moving
+    // from the first frame anyone can see.
+    //
+    // It also bakes every lit cabinet's attract screen, not just the ones in
+    // view. Each is built the first time it is drawn, and a narrow frame (a
+    // phone held upright) leaves Frost and Crypt off screen on arrival — so the
+    // walk toward them stalled while Frost's crayon sky painted, ~70 ms in
+    // WebKit. Here it is paid behind the shutter; later visits find them cached.
+    if (!this.drawnOnce) {
+      this.drawnOnce = true;
+      for (const s of this.stations()) {
+        if (s.type === 'cabinet' && palFor(s.cab, s.unlocked).lit) cabinetScene(s.cab);
+      }
+      if (this.doorWalk && this.doorWalk.mode === 'out') discardNextGap();
+    }
     const slot = this.save.slot;
     const act = actForSlot(slot);
     const layout = this.layout();

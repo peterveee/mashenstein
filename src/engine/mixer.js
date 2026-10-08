@@ -548,6 +548,32 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
 }
 
 /**
+ * One silent source per context, for makeSectionSwitch to wire into a switch it needs kept
+ * rendering. A constant through a gain of zero rather than a constant of zero: a gain at
+ * zero marks what it sends as SILENCE, which the nodes after it are entitled to skip the
+ * work for, where a constant of zero is a signal like any other. Adds exact zeros. Its CPU
+ * on a held lane between hits has not been measured.
+ *
+ * Live only, like the effect sleeper: an offline render was measured switching on time
+ * without it (work/local/_rhythm-clap-fx-probe.mjs), and a render is left as it was.
+ * WebKit plays the switch right without it too, measured; it is harmless there.
+ */
+const KEEP_ALIVE = new WeakMap();
+function keepAlive(ctx) {
+  if (typeof ctx.startRendering === 'function' || typeof ctx.createConstantSource !== 'function') return null;
+  let out = KEEP_ALIVE.get(ctx);
+  if (!out) {
+    const source = ctx.createConstantSource();
+    out = ctx.createGain();
+    out.gain.value = 0;
+    source.connect(out);
+    source.start();
+    KEEP_ALIVE.set(ctx, out);
+  }
+  return out;
+}
+
+/**
  * BAR-EFFECT SECTIONS — the switch that sends a stretch of a track, or of the whole mix,
  * through an effect chain of its own (src/data/automation.js: a lane's `fx`, and the
  * per-bar `inlineFx` snapshot before it).
@@ -564,6 +590,15 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
  * `disengage`, and told again for a FRESH section of the same chain: two sections side by
  * side with one chain are two grabs, where switching from a chain to itself is otherwise
  * nothing at all.
+ *
+ * And the switch has to be RENDERED to switch. Chromium stops rendering a chain whose
+ * sources have all gone — a drum lane between hits, once the last hit's nodes are
+ * disconnected — and a param on a node it is not rendering does not move. When the next
+ * hit wakes the chain, an automation that started and finished while it slept is thrown
+ * away and the param keeps the value it had before: a section ending in a gap between hits
+ * never switched off. That was rhythm's clap (7 Oct 2026): a bar-2 ping-pong on every clap
+ * after it, live only. So a switch with branches is held awake by a silent source — see
+ * keepAlive.
  */
 function makeSectionSwitch(ctx, from, to) {
   const direct = ctx.createGain();
@@ -571,6 +606,14 @@ function makeSectionSwitch(ctx, from, to) {
   from.connect(direct);
   direct.connect(to);
   const branches = new Map();
+  let heldAwake = false;
+  const holdAwake = (on) => {
+    const source = keepAlive(ctx);
+    if (!source || on === heldAwake) return;
+    heldAwake = on;
+    if (on) source.connect(from);
+    else try { source.disconnect(from); } catch { /* not wired */ }
+  };
   // The initial graph is already direct. Do not schedule a no-op ramp at bar one:
   // OfflineAudioContext receives the whole song's automation before rendering and
   // Chromium can otherwise resolve a later cancel-and-hold through that redundant
@@ -591,6 +634,7 @@ function makeSectionSwitch(ctx, from, to) {
         slot.set(list, bpm);
         branches.set(signature, { input, slot, list });
       }
+      if (branches.size) holdAwake(true);
     },
     /**
      * Select a prepared route at an audio time; deselected routes keep ringing out.
@@ -676,6 +720,7 @@ function makeSectionSwitch(ctx, from, to) {
         try { branch.input.disconnect(); } catch { /* already gone */ }
       }
       branches.clear();
+      holdAwake(false);
     },
   };
   return sw;

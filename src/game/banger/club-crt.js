@@ -67,7 +67,8 @@ export const SIGN_INKS = Object.freeze(['#130f1f', '#2e2640', '#4a1a3e', '#8c2a6
 
 // A cache from colour to ink: a club frame has a few thousand distinct cell colours, and
 // most of them recur frame to frame. Keyed on 5 bits a channel, which no eye can tell apart.
-const memos = new Map();
+// Weak, as each lock-screen cover brings inks of its own (song-art.js) and is done with them.
+const memos = new WeakMap();
 function inkOf(r, g, b, inks) {
   let memo = memos.get(inks);
   if (!memo) memos.set(inks, memo = new Map());

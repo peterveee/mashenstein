@@ -3,6 +3,8 @@
 // Only saved songs explicitly marked group: "alternate" are imported here. Scratch
 // songs and MIDI auditions remain desk-only and never enter the game bundle.
 import * as GAME_ALT_ARCADE_THEME from './imported/arcade-theme.js';
+import * as GAME_ALT_CARDBOARD_8BIT from './imported/cardboard-8bit.js';
+import * as GAME_ALT_CRYPT_8BIT from './imported/crypt-8bit.js';
 import * as GAME_ALT_CRYPT_BLACK_ABBEY from './imported/crypt-black-abbey.js';
 import * as GAME_ALT_CRYPT_CLOCKWORK_SEANCE from './imported/crypt-clockwork-seance.js';
 import * as GAME_ALT_CRYPT_MIDNIGHT_PROCESSION from './imported/crypt-midnight-procession.js';
@@ -23,19 +25,30 @@ import * as GAME_ALT_FIELD_SERVICE_ORIGINAL from './imported/field-service-origi
 import * as GAME_ALT_FIELD_SERVICE_OVERCLOCK from './imported/field-service-overclock.js';
 import * as GAME_ALT_FIELD_SERVICE_REWIRED from './imported/field-service-rewired.js';
 import * as GAME_ALT_FIELD_SERVICE_SLAP_HAPPY from './imported/field-service-slap-happy.js';
+import * as GAME_ALT_FINALE_8BIT from './imported/finale-8bit.js';
+import * as GAME_ALT_FROST_8BIT from './imported/frost-8bit.js';
 import * as GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO from './imported/frost-remix-absolute-zero.js';
 import * as GAME_ALT_FROST_REMIX_BLACK_ICE from './imported/frost-remix-black-ice.js';
 import * as GAME_ALT_FROST_REMIX_SNOW_GLOBE from './imported/frost-remix-snow-globe.js';
+import * as GAME_ALT_GRAVITY_8BIT from './imported/gravity-8bit.js';
+import * as GAME_ALT_HUB_8BIT from './imported/hub-8bit.js';
+import * as GAME_ALT_MEGAMIX_8BIT from './imported/megamix-8bit.js';
 import * as GAME_ALT_MONSTER_MEGAMIX_ALT from './imported/monster-megamix-alt.js';
+import * as GAME_ALT_NEON_8BIT from './imported/neon-8bit.js';
 import * as GAME_ALT_NEON_REMIX_ENDSTATION from './imported/neon-remix-endstation.js';
 import * as GAME_ALT_NEON_REMIX_FREEFALL from './imported/neon-remix-freefall.js';
 import * as GAME_ALT_NEON_REMIX_GOLDEN_HOUR from './imported/neon-remix-golden-hour.js';
 import * as GAME_ALT_NEON_REMIX_LIVE_WIRE from './imported/neon-remix-live-wire.js';
 import * as GAME_ALT_NEW_THE_FOOD_COURT from './imported/new-the-food-court.js';
+import * as GAME_ALT_OFFICE_8BIT from './imported/office-8bit.js';
+import * as GAME_ALT_PLUMBER_8BIT from './imported/plumber-8bit.js';
 import * as GAME_ALT_PLUMBER_PANIC_ALT from './imported/plumber-panic-alt.js';
+import * as GAME_ALT_RHYTHM_8BIT from './imported/rhythm-8bit.js';
 import * as GAME_ALT_RHYTHM_REMIX_FIRE_SALE from './imported/rhythm-remix-fire-sale.js';
 import * as GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER from './imported/rhythm-remix-hostile-takeover.js';
 import * as GAME_ALT_RHYTHM_REMIX_IN_THE_RED from './imported/rhythm-remix-in-the-red.js';
+import * as GAME_ALT_SHOP_8BIT from './imported/shop-8bit.js';
+import * as GAME_ALT_SPEED_8BIT from './imported/speed-8bit.js';
 import * as GAME_ALT_SPEED_HORIZON_LINES_OVERDRIVE from './imported/speed-horizon-lines-overdrive.js';
 import * as GAME_ALT_SPEED_HORIZON_LINES from './imported/speed-horizon-lines.js';
 import * as GAME_ALT_SPEED_REMIX_BREAKNECK from './imported/speed-remix-breakneck.js';
@@ -45,15 +58,19 @@ import * as GAME_ALT_SPEED_REMIX_REDLINE_ACID_GPT from './imported/speed-remix-r
 import * as GAME_ALT_SPEED_ZONE_ALT_2 from './imported/speed-zone-alt-2.js';
 import * as GAME_ALT_SPEED_ZONE_ALT from './imported/speed-zone-alt.js';
 import * as GAME_ALT_SPEED_ZONE_ORIGINAL from './imported/speed-zone-original.js';
+import * as GAME_ALT_SURGE_8BIT from './imported/surge-8bit.js';
 import * as GAME_ALT_SURGE_REMIX_HIGH_VOLTAGE from './imported/surge-remix-high-voltage.js';
 import * as GAME_ALT_SURGE_REMIX_MASHTERPIECE from './imported/surge-remix-mashterpiece.js';
 import * as GAME_ALT_SURGE_REMIX_OVERLOAD from './imported/surge-remix-overload.js';
 import * as GAME_ALT_SURGE_REMIX_SHORT_CIRCUIT from './imported/surge-remix-short-circuit.js';
 import * as GAME_ALT_THE_FOOD_COURT_ALT_2 from './imported/the-food-court-alt-2.js';
 import * as GAME_ALT_THE_FOOD_COURT_ALT from './imported/the-food-court-alt.js';
+import * as GAME_ALT_TITLE_8BIT from './imported/title-8bit.js';
 
 export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_ARCADE_THEME,
+  GAME_ALT_CARDBOARD_8BIT,
+  GAME_ALT_CRYPT_8BIT,
   GAME_ALT_CRYPT_BLACK_ABBEY,
   GAME_ALT_CRYPT_CLOCKWORK_SEANCE,
   GAME_ALT_CRYPT_MIDNIGHT_PROCESSION,
@@ -74,19 +91,30 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_FIELD_SERVICE_OVERCLOCK,
   GAME_ALT_FIELD_SERVICE_REWIRED,
   GAME_ALT_FIELD_SERVICE_SLAP_HAPPY,
+  GAME_ALT_FINALE_8BIT,
+  GAME_ALT_FROST_8BIT,
   GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO,
   GAME_ALT_FROST_REMIX_BLACK_ICE,
   GAME_ALT_FROST_REMIX_SNOW_GLOBE,
+  GAME_ALT_GRAVITY_8BIT,
+  GAME_ALT_HUB_8BIT,
+  GAME_ALT_MEGAMIX_8BIT,
   GAME_ALT_MONSTER_MEGAMIX_ALT,
+  GAME_ALT_NEON_8BIT,
   GAME_ALT_NEON_REMIX_ENDSTATION,
   GAME_ALT_NEON_REMIX_FREEFALL,
   GAME_ALT_NEON_REMIX_GOLDEN_HOUR,
   GAME_ALT_NEON_REMIX_LIVE_WIRE,
   GAME_ALT_NEW_THE_FOOD_COURT,
+  GAME_ALT_OFFICE_8BIT,
+  GAME_ALT_PLUMBER_8BIT,
   GAME_ALT_PLUMBER_PANIC_ALT,
+  GAME_ALT_RHYTHM_8BIT,
   GAME_ALT_RHYTHM_REMIX_FIRE_SALE,
   GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER,
   GAME_ALT_RHYTHM_REMIX_IN_THE_RED,
+  GAME_ALT_SHOP_8BIT,
+  GAME_ALT_SPEED_8BIT,
   GAME_ALT_SPEED_HORIZON_LINES_OVERDRIVE,
   GAME_ALT_SPEED_HORIZON_LINES,
   GAME_ALT_SPEED_REMIX_BREAKNECK,
@@ -96,12 +124,14 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_SPEED_ZONE_ALT_2,
   GAME_ALT_SPEED_ZONE_ALT,
   GAME_ALT_SPEED_ZONE_ORIGINAL,
+  GAME_ALT_SURGE_8BIT,
   GAME_ALT_SURGE_REMIX_HIGH_VOLTAGE,
   GAME_ALT_SURGE_REMIX_MASHTERPIECE,
   GAME_ALT_SURGE_REMIX_OVERLOAD,
   GAME_ALT_SURGE_REMIX_SHORT_CIRCUIT,
   GAME_ALT_THE_FOOD_COURT_ALT_2,
   GAME_ALT_THE_FOOD_COURT_ALT,
+  GAME_ALT_TITLE_8BIT,
 ].map((song) => [song.id, song]));
 
 export function gameAlternate(id, parentId = null) {

@@ -14,18 +14,27 @@
 // The page does the music; this process only serves it, reads the songs, and writes the
 // table on Save — refusing a table the rulebook rejects, and a Save made against a file
 // that changed on disk after the page loaded (several sessions share this tree).
+//
+// EDIT SOUND (7 Oct 2026): /edit is the desk's preset editor over a preview banger
+// (tools/banger-voice-entry.js). It saves through the desk's own rules
+// (tools/lib/voice-save.js) — measured in a headless renderer opened for the save — and
+// then re-measures the Lab's level curves in the background.
 import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { soundsSource, tidyTable } from './lib/banger/sounds-source.js';
-import { tableIssues } from './lib/banger/sound-rules.js';
+import { tableIssues, forgetOffered } from './lib/banger/sound-rules.js';
 import { VOICES, baseLane, seamFor } from '../src/data/voices.js';
 import { bangerIssues, writeBangerSong } from './lib/banger-file.js';
 import { slugFor, songFileIn, writeImportedIndex } from './lib/imported-index.js';
 import { paletteIssues, tidyPalette } from './lib/banger/palette.js';
+import { saveVoice } from './lib/voice-save.js';
+import { readMeasured } from './lib/voices-source.js';
+import { measureVoiceAt, homeLane } from './lib/measure-voice.js';
 
 const require = createRequire(import.meta.url);
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,6 +62,25 @@ function bundle(entry = 'tools/banger-sounds-entry.js', name = 'banger-sounds') 
 const hashOf = (text) => createHash('sha256').update(text).digest('hex').slice(0, 16);
 let importSeq = 0;
 const fresh = (path) => import(`${pathToFileURL(path).href}?v=${Date.now()}-${++importSeq}`);
+
+// The rulebook checks presets against VOICES, imported once at start-up — but Edit Sound,
+// the desk and other sessions rewrite src/data/voices.js under a running server. A preset
+// saved as new after start-up is offered by the page (bundled fresh) and then refused on
+// Save as "not a selectable library preset". So the shared object is brought up to date in
+// place, which every module holding the import sees, whenever the file has changed, and
+// the rulebook's memo of what the picker offers is dropped with it. A song's own copy
+// (`songLocal`) was registered at runtime, not read from the file, so it stays.
+const VOICES_FILE = join(root, 'src/data/voices.js');
+let voicesMtime = statSync(VOICES_FILE).mtimeMs;
+async function syncVoices() {
+  const mtime = statSync(VOICES_FILE).mtimeMs;
+  if (mtime === voicesMtime) return;
+  const { VOICES: now } = await fresh(VOICES_FILE);
+  for (const [id, v] of Object.entries(VOICES)) if (!(id in now) && !v.songLocal) delete VOICES[id];
+  Object.assign(VOICES, now);
+  forgetOffered();
+  voicesMtime = mtime;
+}
 
 async function readTable() {
   const text = readFileSync(SOUNDS_FILE, 'utf8');
@@ -150,6 +178,91 @@ async function harvest() {
   return songs;
 }
 
+// ------------------------------------------------------------------- presets
+// Edit Sound saves a preset the way the desk does. Its measurement needs the real engine,
+// so a headless renderer is opened for each save and closed after it: a save is a rare,
+// deliberate press, and a Chromium kept warm for a page nobody is looking at is the stray
+// that fakes audio glitches. Saves queue behind each other, because each one rewrites
+// src/data/voices.js and measures what it wrote.
+let renderer = null;
+let saving = Promise.resolve();
+async function closeRenderer() {
+  const r = renderer;
+  renderer = null;
+  if (r) { try { await r.close(); } catch { /* already gone, which is the goal */ } }
+}
+async function measureVoice(id, preset, src) {
+  if (!renderer) {
+    const { openRenderer } = await import('./lib/render-bank-browser.js');
+    renderer = await openRenderer();
+  }
+  // The renderer bundles the file as just written, whose measured blocks still hold the
+  // old numbers (or none); `measureVoiceAt` divides exactly those back out.
+  const voice = { ...preset, id, ...readMeasured(src, id) };
+  return measureVoiceAt(renderer.render, voice, homeLane(voice));
+}
+function savePreset(body, dev) {
+  const run = saving.then(async () => {
+    try {
+      return await saveVoice({ ...body, dev }, { measure: measureVoice, restart: closeRenderer });
+    } finally {
+      await closeRenderer();
+    }
+  });
+  saving = run.catch(() => {});
+  return run;
+}
+
+// Who hears an Update: the songs on disk that name the preset, and the styles whose sound
+// table does.
+export async function presetRefs(id) {
+  const songs = (await harvest()).filter((song) => song.voices.some((v) => v.id === id))
+    .map(({ id: songId, title, group }) => ({ id: songId, title, group }));
+  const { table } = await readTable();
+  const named = (value) => (Array.isArray(value) ? value.some(named)
+    : value && typeof value === 'object' ? Object.values(value).some(named) : value === id);
+  const styles = Object.entries(table).filter(([, row]) => named(row)).map(([styleId]) => styleId);
+  return { id, songs, styles };
+}
+
+// The Lab sets each banger channel's fader from a curve measured off its preset
+// (tools/banger-levels.js curves), keyed by the preset's definition. A saved edit leaves
+// that curve describing the old sound, so it is measured again — only what changed is —
+// one run at a time, with another queued if a save lands mid-run.
+const curves = { running: false, again: false, last: null };
+function remeasureCurves() {
+  if (curves.running) { curves.again = true; return; }
+  curves.running = true;
+  let tail = '';
+  const keep = (chunk) => { tail = (tail + chunk).slice(-4000); };
+  const child = spawn(process.execPath, ['tools/banger-levels.js', 'curves'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout.on('data', keep);
+  child.stderr.on('data', keep);
+  console.log('re-measuring the banger level curves for the edited sound…');
+  const done = (ok) => {
+    if (!curves.running) return;
+    curves.running = false;
+    curves.last = { ok, at: Date.now(), tail: tail.trim().split('\n').slice(-4).join('\n') };
+    console.log(ok ? 'banger level curves up to date' : `banger level curves FAILED:\n${tail.trim()}`);
+    if (curves.again) { curves.again = false; remeasureCurves(); }
+  };
+  child.on('error', (err) => { keep(String(err?.message || err)); done(false); });
+  child.on('exit', (code) => done(code === 0));
+}
+
+// The editor page: its bundle, in a shell that carries the desk's stylesheet — the editor
+// is drawn by it, exactly as on the MRDR-3 playground (tools/mixer.js, buildMrdr3Page).
+export function editorPage() {
+  const js = bundle('tools/banger-voice-entry.js', 'banger-voice').replace(/<\/script/gi, '<\\/script');
+  const mixerShell = readFileSync(join(root, 'tools/mixer-shell.html'), 'utf8');
+  const styleStart = mixerShell.indexOf('<style>') + '<style>'.length;
+  const styleEnd = mixerShell.indexOf('</style>', styleStart);
+  if (styleStart < '<style>'.length || styleEnd < styleStart) throw new Error('mixer shell has no injectable style block');
+  return readFileSync(join(root, 'tools/banger-voice-shell.html'), 'utf8')
+    .replace('/*__MIXER_STYLE__*/', () => mixerShell.slice(styleStart, styleEnd))
+    .replace('/*__BUNDLE__*/', () => js);
+}
+
 // ------------------------------------------------------------------- server
 const send = (res, code, type, body) => {
   res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' });
@@ -166,6 +279,7 @@ const readBody = (req) => new Promise((resolve, reject) => {
 export function startServer(port = PORT) {
   const server = createServer(async (req, res) => {
     try {
+      await syncVoices();
       if (req.method === 'GET' && req.url === '/sounds') return json(res, 200, await readTable());
       if (req.method === 'GET' && req.url === '/palette') return json(res, 200, readPalette());
       if (req.method === 'GET' && req.url === '/harvest') return json(res, 200, { songs: await harvest() });
@@ -180,8 +294,29 @@ export function startServer(port = PORT) {
         const { palette, hash } = JSON.parse((await readBody(req)) || '{}');
         const out = savePalette(palette, hash);
         if (out.status === 200) console.log(`saved ${PALETTE_FILE.slice(root.length + 1)}`);
-        else console.warn(`refused a palette save: ${out.body.error}`);
+        else console.warn(`refused a palette save: ${out.body.error}${out.body.issues ? `\n  ${out.body.issues.join('\n  ')}` : ''}`);
         return json(res, out.status, out.body);
+      }
+      if (req.method === 'GET' && req.url === '/edit') {
+        try { return send(res, 200, 'text/html', editorPage()); }
+        catch (err) { return send(res, 500, 'text/plain', `the editor did not build: ${err.message}`); }
+      }
+      if (req.method === 'GET' && req.url.startsWith('/voice-refs')) {
+        const id = new URL(req.url, 'http://localhost').searchParams.get('id');
+        return json(res, 200, id ? await presetRefs(id) : { id, songs: [], styles: [] });
+      }
+      if (req.method === 'GET' && req.url === '/levels-status') {
+        return json(res, 200, { running: curves.running, last: curves.last });
+      }
+      // The desk's /voice-save, answered by the same rules. This is a tool on Peter's own
+      // machine, so the editor's dev role (library presets may be updated) is honoured as
+      // the desk honours it.
+      if (req.method === 'POST' && req.url === '/voice-save') {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const out = await savePreset(body, req.headers['x-mixer-role'] === 'dev');
+        if (out.status === 200 && out.body?.saved) remeasureCurves();
+        if (out.type === 'json') return json(res, out.status, out.body);
+        return send(res, out.status, 'text/plain', out.body);
       }
       if (req.url === '/banger-palette-bundle.js') {
         try { return send(res, 200, 'application/javascript', bundle('tools/banger-palette-entry.js', 'banger-palette')); }

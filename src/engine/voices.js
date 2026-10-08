@@ -3567,9 +3567,14 @@ export class VoiceRack {
     // unit amplitude, `vibEnv` carries the ONSET (shared — every note in a chord should
     // bloom together), and the last gain does the scaling per destination.
     let lfo = null, vibEnv = null, centsGain = null, lastOff = 0;
+    // Every node of the vibrato is wired INTO the notes' params, so it is unwired with them
+    // (_retireNote below): left to the collector still connected, it is what trips Safari's
+    // summing-junction crash (webkit-junction-guard.js).
+    const paramMods = [];
     if (vib) {
       lfo = this.ctx.createOscillator();
       vibEnv = this.ctx.createGain();
+      paramMods.push(lfo, vibEnv);
       lfo.type = vib.type || 'sine';
       // `?? 5` matches the Tone path's own fallback a hundred lines up, so a preset
       // with a depth and no rate wobbles at the same speed whichever path plays it.
@@ -3590,6 +3595,7 @@ export class VoiceRack {
         centsGain = this.ctx.createGain();
         centsGain.gain.setValueAtTime(vibCents, time);
         vibEnv.connect(centsGain);
+        paramMods.push(centsGain);
       }
     }
     // ---- DRIVE, and where it sits ---------------------------------------------
@@ -3682,10 +3688,16 @@ export class VoiceRack {
       // bottom of the keyboard stays where it was put. `_filterChain` takes it as the
       // per-hit cutoff RATIO — the slot a drum's per-tap tone goes into — so one
       // multiplier carries it and the sweep's destination would move with its origin.
+      //
+      // `to` is CLEARED on the way in, not merely unwritten. `_filterChain` sweeps whenever
+      // a spec carries a `to` that differs from `freq`, and presets here still carry one:
+      // the old SWEEP TO card's, and the `to: 4000` the section's own seed wrote — so a
+      // cutoff turned down to 135 Hz swept back up to 4 kHz on every note, at ENV AMOUNT
+      // zero, with no control on the panel to show or stop it.
       const fspec = v.filter;
       const track = fspec && fspec.track > 0
         ? ((f * shift) / 110) ** Math.min(1, fspec.track) : 1;
-      const chain = fspec ? this._filterChain(fspec, t, track, 'lowpass', 4000) : null;
+      const chain = fspec ? this._filterChain({ ...fspec, to: null }, t, track, 'lowpass', 4000) : null;
       if (chain) {
         chain.tail.connect(g);
         // ENV AMOUNT octaves across the cascade, over its own ADSR — the same `filterEnv`
@@ -3770,6 +3782,7 @@ export class VoiceRack {
         hzGain.gain.setValueAtTime(f * shift * (Math.pow(2, vibCents / 1200) - 1), t);
         vibEnv.connect(hzGain);
         hzGain.connect(pitch);
+        paramMods.push(hzGain);
       }
       // THE NOTE-OFF LEVEL, and why the fall stops above silence.
       //
@@ -3850,6 +3863,7 @@ export class VoiceRack {
     // A chord of nothing but rests built no oscillators, so there is nothing to wobble.
     if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); }
     this._perNoteKeyModeEnd(km, hold, rec);
+    if (paramMods.length) this._retireNote(rec.sources, paramMods);
     return true;
   }
 
@@ -4890,6 +4904,7 @@ export class VoiceRack {
     // there and not in front of the shaper matters: a fade the waveshaper then sees is a
     // tail that distorts on its way out.
     const outs = [];
+    const paramMods = [];   // nodes wired INTO the hit's params, unwired with it (_retireNote)
     // Stopped as well as faded. A choked crash otherwise leaves its six metal partials
     // running to whatever stop time they were scheduled for, which is CPU spent on
     // silence — and on a 6-second cymbal that is most of the hit.
@@ -5053,6 +5068,8 @@ export class VoiceRack {
           mod.connect(mg); mg.connect(osc.frequency);
           mod.start(t); mod.stop(t + oscLen + 0.03);
           sources.push(mod);
+          // unwired with the hit (_retireNote): it is connected into the carrier's frequency
+          paramMods.push(mg);
         }
         osc.connect(g); g.connect(into);
         osc.start(t); osc.stop(t + oscLen + 0.03);
@@ -5278,7 +5295,7 @@ export class VoiceRack {
     }
     // Out of the graph once it has rung out — a choke above stops the sources early, and
     // `ended` follows them. See `_retireNote`.
-    this._retireNote(sources, outs);
+    this._retireNote(sources, [...outs, ...paramMods]);
     return true;
   }
 
@@ -5405,6 +5422,8 @@ export class VoiceRack {
     // into every oscillator's detune, the onset delay as a fade. Flutter likewise once per
     // note-on: three slow sines every singer reads, rather than three per singer.
     const sharedMods = { oscs: [], holds: 0 };
+    // ...unwired with the note (_retireNote), as they are connected into its params
+    const paramMods = [];
     const vib = v.vibrato && v.vibrato.depth > 0 ? v.vibrato : null;
     let vibCents = null;
     if (vib) {
@@ -5418,8 +5437,10 @@ export class VoiceRack {
       vibCents.gain.setValueAtTime(vib.depth * 100, time);
       lfo.connect(env); env.connect(vibCents);
       sharedMods.oscs.push(lfo);
+      paramMods.push(lfo, env, vibCents);
     }
     const flutterSource = this._jmjr4FlutterSource(patch, sharedMods);
+    if (flutterSource) paramMods.push(flutterSource, ...sharedMods.oscs);
 
     // ---- the keys: one note each, its UNISON sources inside ------------------------
     const variants = singerVariants(unison).map((s) => ({ ...s, cents: s.cents * (patch.spread / 20) }));
@@ -5489,7 +5510,7 @@ export class VoiceRack {
     record.gateUntil = hold ? time + HOLD_SECONDS : time + Math.max(0.05, Array.isArray(dur) ? Math.max(...dur) : (dur || 0));
     this._jmjr4Last.set(lineKey, record);
     if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
-    this._retireNote(sources, [busOut]);
+    this._retireNote(sources, [busOut, ...new Set(paramMods)]);
     return true;
   }
 
@@ -5706,6 +5727,8 @@ export class VoiceRack {
     // with itself is a chorus, not a vibrato.
     const vib = v.vibrato && v.vibrato.depth > 0 ? v.vibrato : null;
     let vibCents = null; let lfo = null; let lastOff = 0;
+    // ...and unwired with the note (_retireNote): it is connected INTO every partial's detune
+    const vibMods = [];
     // One LFO for the whole note-on, so a chord counts its held tones and stops it with
     // the last of them — the same bookkeeping `_playLayer` does, for the same reason.
     const sharedMods = { oscs: [], holds: 0 };
@@ -5731,6 +5754,7 @@ export class VoiceRack {
       // there would be the same preset wobbling differently on two lanes.
       vibCents.gain.setValueAtTime(vib.depth * 100, time);
       lfo.connect(env); env.connect(vibCents);
+      vibMods.push(lfo, env, vibCents);
     }
 
     // Humanise only. NO TAPS on this path, for the reason `play` gives: a repeated hit
@@ -5894,7 +5918,7 @@ export class VoiceRack {
     // note it belongs to is a node nothing disposes.
     if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); sharedMods.oscs.push(lfo); }
     this._perNoteKeyModeEnd(km, hold, rec);
-    this._retireNote([...rec.sources, ...pips], rec.outs);
+    this._retireNote([...rec.sources, ...pips], [...rec.outs, ...vibMods]);
     return true;
   }
 
@@ -6285,6 +6309,10 @@ export class VoiceRack {
     // wobble. Counted instead, and stopped when the last of them lets go. Filled in
     // after the notes are built, which is where these oscillators are started.
     const sharedMods = { oscs: [], holds: 0 };
+    // Every modulator wired INTO a param of this note — vibrato, LFO, PWM, FM — unwired with
+    // the note (_retireNote at the end): left to the collector still connected, it is what
+    // trips Safari's summing-junction crash (webkit-junction-guard.js).
+    const paramMods = [];
     const vibVoices = new Map();
     const vibFor = (u) => {
       if (!vib) return null;
@@ -6315,6 +6343,7 @@ export class VoiceRack {
       cents.gain.setValueAtTime(vib.depth * 100, time);
       lfo.connect(env); env.connect(cents);
       vibOscs.push(lfo);
+      paramMods.push(lfo, env, cents);
       vibVoices.set(key, cents);
       return cents;
     };
@@ -6349,6 +6378,7 @@ export class VoiceRack {
       env.gain.setValueAtTime(0, time);
       env.gain.linearRampToValueAtTime(1, time + Math.max(0.001, lfoSpec.delay || 0.001));
       lfoOut = ctx.createGain();
+      paramMods.push(lfoOsc, env, lfoOut);
       const depth = Math.min(1, Math.max(0, Number(lfoSpec.depth) || 0));
       const amount = lfoSpec.target === 'filter' ? depth * LFO_FILTER_CENTS
         : lfoSpec.target === 'pitch' ? depth * LFO_PITCH_CENTS : depth;
@@ -6902,6 +6932,7 @@ export class VoiceRack {
             lfo.connect(env); env.connect(pwmSecs);
             lfo.start(lt); lfo.stop(off + 0.01);
             layerMods.push(lfo);
+            paramMods.push(lfo, env, pwmSecs);
           }
 
           for (let u = 0; u < count; u++) {
@@ -7114,6 +7145,7 @@ export class VoiceRack {
                 mod.connect(fmSpread);
                 mod.start(lt); mod.stop(off + 0.01);
                 layerMods.push(mod);
+                paramMods.push(mod, fmSpread);
               }
               for (const pitch of pitches) fmSpread.connect(pitch);
             }
@@ -7236,7 +7268,7 @@ export class VoiceRack {
       this._mrdrTailStats.culled++;
       this._mrdrTailStats.savedSeconds += tailPlan.saved;
     }
-    this._retireNote(noteSources, allOuts);
+    this._retireNote(noteSources, [...allOuts, ...paramMods]);
     return true;
   }
 

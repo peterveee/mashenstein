@@ -623,8 +623,12 @@ const CONTOUR = 0.016;
  * the same fish in another colourway (the jukebox's DEEP BLUE DISCO); the ink and the eyes keep theirs.
  * `o.quick` casts each piece's shadow in two hard steps rather than a blur: a blurred shadow
  * costs about a tenth of a millisecond a piece, which a tank of a dozen fish cannot afford.
+ * `o.lines` thins (or thickens) every line it draws by that factor: a fish drawn as big as the
+ * lock screen's cover (song-art.js) wants lines as fine as a hero's face beside it, where its
+ * lines, set off its length, come out a hand's width thick.
  */
 export function drawPaperFish(ctx, fish, L, o = {}) {
+  const lines = o.lines ?? 1;
   const g = o.lite ? null : grain();
   const pattern = g && ctx.createPattern?.(g, 'repeat');
   const hue = o.hue ? (c) => turnHue(c, o.hue) : null;
@@ -665,7 +669,8 @@ export function drawPaperFish(ctx, fish, L, o = {}) {
       const k = deviceScale(t);
       t.save();
       t.shadowColor = o.quick ? 'rgba(20,10,30,0.3)' : 'rgba(20,10,30,0.4)';
-      t.shadowBlur = o.quick ? 0 : k * L * 0.03; t.shadowOffsetY = k * L * 0.015;
+      t.shadowBlur = o.quick ? 0 : k * L * 0.03 * lines; t.shadowOffsetY = k * L * 0.015 * lines;
+      t.lineWidth *= lines;
       if (col && luma(col) < 60) { t.strokeStyle = css([58, 42, 48, col[3]]); t.lineWidth *= 0.9; }
       t.stroke();
       t.restore();

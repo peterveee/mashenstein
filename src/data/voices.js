@@ -2783,8 +2783,10 @@ const TONE = {
   fmBell: { label: 'FM Bell', category: 'Bells', synth: 'RMND-2', dur: 1.2,
     note: 'Struck and metallic, decaying rather than held — a bell at long lengths.',
     options: {
-      harmonicity: 3, modulationIndex: 8,
-      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      harmonicity: 3,
+      modulationIndex: 14.3,
+      oscillator: { type: 'sine' },
+      modulation: { type: 'sine' },
       envelope: { attack: 0.003, decay: 0.6, sustain: 0.05, release: 0.6 },
       modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0.02, release: 0.4 },
     } },
@@ -2885,8 +2887,10 @@ const TONE = {
   hardFm: { label: 'Gritty FM Lead', category: 'FX', synth: 'RMND-2', dur: 1.2,
     note: 'Modulation index high enough to be noise with a pitch in it.',
     options: {
-      harmonicity: 1.41, modulationIndex: 24,
-      oscillator: { type: 'sawtooth' }, modulation: { type: 'sawtooth' },
+      harmonicity: 1.585,
+      modulationIndex: 4.1,
+      oscillator: { type: 'sawtooth' },
+      modulation: { type: 'sawtooth' },
       envelope: { attack: 0.002, decay: 0.25, sustain: 0.4, release: 0.2 },
       modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0.3, release: 0.2 },
     } },
@@ -4065,16 +4069,16 @@ const TONE = {
       + 'two-semitone blip into every note — the pitch envelope and the portamento running '
       + 'at once, which they could not do until they stopped sharing a parameter.',
     layer: {
-      osc1: { type: 'sawtooth', ratio: 1, gain: 0.9, attack: 0.02, decay: 0.6, sustain: 0.85, release: 0.3, unison: 3, spread: 14, pitch: { semitones: 2, decay: 0.055 } },
-      osc2: { type: 'triangle', ratio: 2, gain: 0.3, len: 0.85, attack: 0.03, decay: 0.5, sustain: 0.6, release: 0.25, fm: { type: 'sine', ratio: 3.01, index: 0.9, attack: 0.004, decay: 0.18 } },
-      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.45, detune: -4, attack: 0.02, decay: 0.7, sustain: 0.9, release: 0.3 },
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.9, attack: 0.02, decay: 0.6, sustain: 0.85, release: 1.013, unison: 3, spread: 14, pitch: { semitones: 2, decay: 0.055 } },
+      osc2: { type: 'triangle', ratio: 2, gain: 0.154, len: 0.85, attack: 0.03, decay: 0.5, sustain: 0.6, release: 0.802, fm: { type: 'sine', ratio: 3.01, index: 0.9, attack: 0.004, decay: 0.18 } },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.45, detune: -4, attack: 0.02, decay: 0.7, sustain: 0.9, release: 0.77 },
       lfo: { type: 'sine', rate: 0.35, depth: 0.25, target: 'filter', delay: 0.6 },
     },
     global: {
-      filter: { type: 'lowpass', slope: -24, freq: 620, Q: 1.9, track: 0.55, env: { octaves: 3.8, attack: 0.05, decay: 0.9, sustain: 0.5, release: 0.35 } },
-      vca: { attack: 0.02, decay: 0.8, sustain: 0.9, release: 0.4, attackCurve: 'lin' },
+      filter: { type: 'lowpass', slope: -24, freq: 620, Q: 1.9, track: 0.55, env: { octaves: 3.8, attack: 0.05, decay: 0.9, sustain: 0.5, release: 0.644 } },
+      vca: { attack: 0.02, decay: 0.8, sustain: 0.9, release: 0.739, attackCurve: 'lin' },
     },
-    drive: 0.26, shape: 'soft',
+    drive: 0.1, shape: 'soft',
     tone: { freq: 11000 },
     vibrato: { depth: 0.16, rate: 5.1, delay: 0.45 },
     mono: true,
@@ -4082,24 +4086,20 @@ const TONE = {
 
   bestScreamerLead: { label: 'Screamer Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.4,
     note: 'Cuts through anything. An FM operator at a deliberately inharmonic ratio puts a '
-      + 'metallic edge on the saw, the fold shaper turns level into a different sound '
-      + 'rather than a louder one, and the filter envelope snaps shut behind each note.',
+      + 'metallic edge on the saw, the fold shaper turns level into a different sound rather '
+      + 'than a louder one, and the filter envelope snaps shut behind each note.',
     layer: {
-      osc1: { type: 'sawtooth', ratio: 1, gain: 0.95, attack: 0.003, decay: 0.35,
-        sustain: 0.72, release: 0.14, unison: 4, spread: 20,
-        fm: { type: 'square', ratio: 2.47, index: 1.4, attack: 0.001, decay: 0.12 } },
-      osc2: { type: 'square', ratio: 1, gain: 0.4, detune: 12, attack: 0.004, decay: 0.3,
-        sustain: 0.6, release: 0.12 },
-      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.35, attack: 0.003, decay: 0.4,
-        sustain: 0.8, release: 0.14 },
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.95, attack: 0.011, decay: 0.35, sustain: 0.72, release: 1.379, unison: 4, spread: 20, fm: { type: 'square', ratio: 2.47, index: 1.4, attack: 0.001, decay: 0.12 } },
+      osc2: { type: 'square', ratio: 1, gain: 0.01, detune: 12, attack: 0.004, decay: 0.3, sustain: 0.6, release: 0.409 },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.137, attack: 0.003, decay: 0.4, sustain: 0.8, release: 1.086 },
       lfo: { type: 'sine', rate: 6.2, depth: 0.18, target: 'filter', delay: 0.25 },
     },
     global: {
-      filter: { type: 'lowpass', slope: -24, freq: 900, Q: 3.4, track: 0.45,
-        env: { octaves: 3.2, attack: 0.004, decay: 0.28, sustain: 0.3, release: 0.16 } },
-      vca: { attack: 0.003, decay: 0.35, sustain: 0.78, release: 0.18 },
+      filter: { type: 'lowpass', slope: -24, freq: 900, Q: 3.4, track: 0.45, env: { octaves: 3.2, attack: 0.004, decay: 0.28, sustain: 0.3, release: 0.16 } },
+      vca: { attack: 0.015, decay: 0.586, sustain: 0.78, release: 0.343 },
     },
-    drive: 0.62, shape: 'fold', tone: { freq: 9000 },
+    drive: 0.18, shape: 'fold',
+    tone: { freq: 9000 },
     vibrato: { depth: 0.2, rate: 6.4, delay: 0.3 } },
 
   bestMonsterBass: { label: 'MONSTER Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
@@ -4132,13 +4132,14 @@ const TONE = {
       lfo: { type: 'triangle', rate: 0.9, depth: 0.55, target: 'filter', delay: 0.1 },
     },
     global: {
-      filter: { type: 'lowpass', slope: -24, freq: 160, Q: 4.5, track: 0.35, env: { octaves: 3, attack: 0.02, decay: 0.8, sustain: 0.35, release: 0.25 } },
+      filter: { type: 'lowpass', slope: -24, freq: 245, Q: 4.15, track: 0.35, env: { octaves: 3.3, attack: 0.02, decay: 0.8, sustain: 0.35, release: 0.25 } },
       vca: { attack: 0.006, decay: 1.2, sustain: 0.94, release: 0.24 },
     },
-    drive: 0.3, shape: 'soft',
-    tone: { freq: 4800 },
+    drive: 0.1, shape: 'soft',
+    tone: { freq: 7407.741855 },
     mono: true,
-    portamento: 0.05 },
+    portamento: 0.05,
+    drivePlace: 'pre' },
 
   // ---- BEST: the pulse-width family --------------------------------------------
   //
@@ -4164,26 +4165,22 @@ const TONE = {
     vibrato: { depth: 0.07, rate: 4.2, delay: 1.4 } },
 
   bestPwmBrass: { label: 'PWM Brass', category: 'Orch', synth: 'MRDR-3', dur: 2.4,
-    note: 'The Jupiter brass stab: a pulse leaning on a saw, the width moving fast enough '
-      + 'to be heard inside a short note, and the shared filter opening three octaves as '
-      + 'the section leans in.',
+    note: 'The Jupiter brass stab: a pulse leaning on a saw, the width moving fast enough to '
+      + 'be heard inside a short note, and the shared filter opening three octaves as the '
+      + 'section leans in.',
     layer: {
-      osc1: { type: 'pulse', width: 0.42, ratio: 1, gain: 0.9, attack: 0.03, decay: 0.7,
-        sustain: 0.8, release: 0.25,
-        pwm: { type: 'sine', rate: 0.85, depth: 0.4, delay: 0.05 } },
-      osc2: { type: 'sawtooth', ratio: 1, detune: 7, gain: 0.6, attack: 0.04, decay: 0.7,
-        sustain: 0.75, release: 0.25, unison: 2, spread: 11 },
-      osc3: { type: 'pulse', width: 0.5, ratio: 0.5, gain: 0.4, attack: 0.03, decay: 0.8,
-        sustain: 0.85, release: 0.22,
-        pwm: { type: 'sine', rate: 0.61, depth: 0.35, delay: 0.05 } },
+      osc1: { type: 'pulse', width: 0.37, ratio: 1, gain: 0.9, attack: 0.012, decay: 0.7, sustain: 0.8, release: 0.25, pwm: { type: 'sine', rate: 1.23, depth: 0.52, delay: 0.05 } },
+      osc2: { type: 'sawtooth', ratio: 1, detune: 7, gain: 0.6, attack: 0.033, decay: 0.7, sustain: 0.75, release: 0.25, unison: 2, spread: 11 },
+      osc3: { type: 'pulse', width: 0.5, ratio: 0.5, gain: 0.4, attack: 0.03, decay: 0.8, sustain: 0.85, release: 0.22, pwm: { type: 'sine', rate: 1.61, depth: 0.42, delay: 0.05 } },
     },
     global: {
-      filter: { type: 'lowpass', slope: -24, freq: 520, Q: 1.8, track: 0.5,
-        env: { octaves: 3.2, attack: 0.07, decay: 0.75, sustain: 0.45, release: 0.3 } },
-      vca: { attack: 0.025, decay: 0.8, sustain: 0.85, release: 0.32, attackCurve: 'lin' },
+      filter: { type: 'lowpass', slope: -24, freq: 520, Q: 1.15, track: 0.5, env: { octaves: 1.4, attack: 0.044, decay: 0.75, sustain: 0.45, release: 0.3 } },
+      vca: { attack: 0.019, decay: 0.8, sustain: 0.85, release: 0.32, attackCurve: 'lin' },
     },
-    drive: 0.22, shape: 'soft', tone: { freq: 11000 },
-    vibrato: { depth: 0.11, rate: 5, delay: 0.5 } },
+    drive: 0, shape: 'soft',
+    tone: { freq: 11000 },
+    vibrato: { depth: 0.11, rate: 5, delay: 0.5 },
+    chorus: { mix: 0.2 } },
 
   bestPwmPadWide: { label: 'Wide PWM Pad', category: 'Pad', synth: 'MRDR-3', dur: 8,
     note: 'Three pulses at three rates, all of them slow and deep, through one filter the '
@@ -4286,25 +4283,20 @@ const TONE = {
     vibrato: { depth: 0.17, rate: 5.6, delay: 0.35 } },
 
   bestPwmClav: { label: 'PWM Clav', category: 'Keys', synth: 'MRDR-3', dur: 1.2,
-    note: 'Percussive and narrow: a 15% pulse with a filter envelope that shuts almost as '
-      + 'fast as it opens. The PWM is shallow and quick — on a note this short it reads as '
-      + 'the string still ringing rather than as modulation.',
+    note: 'Percussive and narrow: a 15% pulse with a filter envelope that shuts almost as fast '
+      + 'as it opens. The PWM is shallow and quick — on a note this short it reads as the '
+      + 'string still ringing rather than as modulation.',
     layer: {
-      osc1: { type: 'pulse', width: 0.15, ratio: 1, gain: 1, attack: 0.002, decay: 0.28,
-        sustain: 0.25, release: 0.1,
-        pwm: { type: 'sine', rate: 2.4, depth: 0.3, delay: 0 } },
-      osc2: { type: 'pulse', width: 0.22, ratio: 2, len: 0.6, detune: 8, gain: 0.32,
-        attack: 0.002, decay: 0.18, sustain: 0.15, release: 0.08,
-        pwm: { type: 'sine', rate: 3.1, depth: 0.28, delay: 0 } },
-      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.3, attack: 0.002, decay: 0.3,
-        sustain: 0.2, release: 0.08 },
+      osc1: { type: 'pulse', width: 0.15, ratio: 1, gain: 1, attack: 0.002, decay: 0.28, sustain: 0.25, release: 0.1, pwm: { type: 'sine', rate: 2.4, depth: 0.3, delay: 0 } },
+      osc2: { type: 'pulse', width: 0.22, ratio: 2, len: 0.6, detune: 8, gain: 0.32, attack: 0.002, decay: 0.18, sustain: 0.15, release: 0.08, pwm: { type: 'sine', rate: 3.1, depth: 0.28, delay: 0 } },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.3, attack: 0.002, decay: 0.3, sustain: 0.2, release: 0.08 },
     },
     global: {
-      filter: { type: 'lowpass', slope: -24, freq: 700, Q: 3.6, track: 0.55,
-        env: { octaves: 3.4, attack: 0.003, decay: 0.22, sustain: 0.14, release: 0.1 } },
+      filter: { type: 'lowpass', slope: -24, freq: 700, Q: 3.6, track: 0.55, env: { octaves: 3.4, attack: 0.002, decay: 0.22, sustain: 0.14, release: 0.1 } },
       vca: { attack: 0.002, decay: 0.3, sustain: 0.3, release: 0.12 },
     },
-    drive: 0.38, shape: 'soft', tone: { freq: 12000 } },
+    drive: 0.2, shape: 'soft',
+    tone: { freq: 12000 } },
 
   bestPwmChoir: { label: 'PWM Choir', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'The /a/ formants again, but over pulses whose widths drift instead of over plain '
@@ -4466,9 +4458,10 @@ const TONE = {
     tngr2: { oscA: { table: 'organShift', position: 0.2, envAmount: 0.28, level: 0.8, unison: 2, spread: 6 }, oscB: { table: 'octaveCascade', position: 0.35, envAmount: 0.2, level: 0.16, interval: -12 }, amp: { attack: 0.027, decay: 0.4, sustain: 0.84, release: 0.65 }, positionEnv: { attack: 0.25, decay: 1.1, sustain: 0.3 }, filter: { type: 'lowpass', cutoff: 5200, resonance: 1.2 }, master: { gain: 0.56 } } },
 
   tngrCrystalTrigger: { label: 'Sparkle Pluck', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
-    note: 'A sparkling high-partial attack with a clean short body.', tngr2: {
-      oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 },
-      amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } } },
+    note: 'A sparkling high-partial attack with a clean short body.',
+    drive: 0,
+    tngr2: { oscA: { table: 'crystal', position: 0.58, envAmount: -0.71, level: 0.83, detune: -4 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12, detune: 6 }, amp: { attack: 0.001, decay: 0.726, sustain: 0.26, release: 0.16 }, positionEnv: { attack: 0.003, decay: 0.715, sustain: 0.79 }, filter: { type: 'lowpass', cutoff: 2705, resonance: 2.4, keyTrack: 0.38 }, master: { gain: 0.52 }, filterEnv: { sustain: 0.21, release: 0.029, decay: 0.093 } },
+    chorus: { mix: 0.2 } },
   tngrWireHarp: { label: 'Metal Harp', category: 'Pluck', synth: 'TNGR-2', dur: 1.4,
     note: 'A metallic reed onset decaying toward a simpler waveform.', tngr2: {
       oscA: { table: 'alloy', position: 0.72, envAmount: -0.55, level: 0.76 }, oscB: { table: 'reedWire', position: 0.6, level: 0.18, interval: 12 },
@@ -4479,13 +4472,13 @@ const TONE = {
       amp: { attack: 0.002, decay: 0.48, sustain: 0.06, release: 0.18 }, positionEnv: { attack: 0, decay: 0.38, sustain: 0.05 }, filter: { type: 'lowpass', cutoff: 5400, resonance: 1.68 }, master: { gain: 0.55 } } },
 
   tngrIceBell: { label: 'Ice Bell', category: 'Bells', synth: 'TNGR-2', dur: 3,
-    note: 'Sparse crystal partials with a long decay and controlled high notes.', tngr2: {
-      oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12 },
-      amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.1, sustain: 0.12 }, filter: { type: 'lowpass', cutoff: 9800, resonance: 1.2 }, master: { gain: 0.5 } } },
+    note: 'Sparse crystal partials with a long decay and controlled high notes.',
+    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12, envAmount: 0 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.278, sustain: 0.17 }, filter: { type: 'lowpass', cutoff: 13180, resonance: 1.2 }, master: { gain: 0.5 }, filterEnv: { decay: 0.356, attack: 0.007 } } },
   tngrAlloyChime: { label: 'Dark Metal Chime', category: 'Bells', synth: 'TNGR-2', dur: 2.6,
-    note: 'A darker metallic evolution with controlled beating between oscillators.', tngr2: {
-      oscA: { table: 'alloy', position: 0.55, envAmount: -0.3, level: 0.72, unison: 2, spread: 5 }, oscB: { table: 'bellFold', position: 0.38, level: 0.2, interval: 12, detune: 7 },
-      amp: { attack: 0.001, decay: 1.3, sustain: 0.05, release: 0.7 }, positionEnv: { attack: 0, decay: 0.9, sustain: 0.14 }, filter: { type: 'lowpass', cutoff: 7600, resonance: 2.16 }, master: { gain: 0.5 } } },
+    note: 'A darker metallic evolution with controlled beating between oscillators.',
+    tngr2: { oscA: { table: 'alloy', position: 0.55, envAmount: -0.3, level: 0.72, unison: 2, spread: 5 }, oscB: { table: 'bellFold', position: 0.38, level: 0.2, interval: 12, detune: 7 }, amp: { attack: 0.001, decay: 0.373, sustain: 0.18, release: 0.684 }, positionEnv: { attack: 0, decay: 0.9, sustain: 0.55 }, filter: { type: 'lowpass', cutoff: 7600, resonance: 2.16 }, master: { gain: 0.5 } },
+    chorus: { mix: 0.03 },
+    trim: -0.9 },
 
   // Familiar, low-cost instruments. These deliberately favour one oscillator at unison 1
   // over TNGR-2's wider showcase architecture, so they stay useful in full arrangements.
@@ -4525,11 +4518,10 @@ const TONE = {
       positionEnv: { attack: 0, decay: 0.85, sustain: 0.08 }, master: { gain: 0.62 } } },
 
   tngrMusicBell: { label: 'Music Bell', category: 'Bells', synth: 'TNGR-2', dur: 3.6,
-    note: 'A rounded, familiar music-box bell without a wide unison stack.', tngr2: {
-      oscA: { table: 'bellFold', position: 0.42, envAmount: -0.16, level: 0.8, unison: 1 },
-      amp: { attack: 0.001, decay: 2.1, sustain: 0.02, release: 0.8 },
-      filter: { type: 'lowpass', cutoff: 8200, resonance: 0.72 },
-      positionEnv: { attack: 0, decay: 1.25, sustain: 0.03 }, master: { gain: 0.52 } } },
+    note: 'A rounded, familiar music-box bell without a wide unison stack.',
+    tngr2: { oscA: { table: 'bellFold', position: 0.42, envAmount: -0.16, level: 0.8, unison: 1 }, amp: { attack: 0.021, decay: 2.1, sustain: 0.02, release: 0.8 }, filter: { type: 'lowpass', cutoff: 8200, resonance: 0.72 }, positionEnv: { attack: 0.007, decay: 1.25, sustain: 0.03 }, master: { gain: 0.52 }, filterEnv: { attack: 0.019 } },
+    chorus: { mix: 0 },
+    vibrato: { depth: 0.02 } },
   tngrChurchBell: { label: 'Church Bell', category: 'Bells', synth: 'TNGR-2', dur: 5,
     note: 'A darker, weightier bell with one quiet detuned upper partial layer.', tngr2: {
       oscA: { table: 'alloy', position: 0.3, envAmount: -0.14, level: 0.76, unison: 1 },
@@ -4558,12 +4550,9 @@ const TONE = {
       positionEnv: { attack: 1.1, decay: 2.4, sustain: 0.38 }, master: { gain: 0.6 } } },
 
   tngrBrassSection: { label: 'Brass Section', category: 'Orch', synth: 'TNGR-2', dur: 3,
-    note: 'A direct ensemble brass patch with a modest opening bite.', tngr2: {
-      oscA: { table: 'sawForm', position: 0.38, envAmount: 0.1, level: 0.78, unison: 1 },
-      oscB: { table: 'reedWire', position: 0.12, level: 0.1, unison: 1 },
-      amp: { attack: 0.055, decay: 0.5, sustain: 0.78, release: 0.38 },
-      filter: { type: 'lowpass', cutoff: 3100, resonance: 1.56 }, filterEnv: { amount: 1.25, attack: 0.035, decay: 0.42, sustain: 0.3 },
-      positionEnv: { attack: 0.04, decay: 0.45, sustain: 0.18 }, master: { gain: 0.58 } } },
+    note: 'A direct ensemble brass patch with a modest opening bite.',
+    tngr2: { oscA: { table: 'sawForm', position: 0.34, envAmount: 0.24, level: 0.85, unison: 1 }, amp: { attack: 0.055, decay: 0.5, sustain: 0.78, release: 0.38 }, filter: { type: 'lowpass', cutoff: 1550, resonance: 0.8 }, filterEnv: { amount: 2.1, attack: 0.06, decay: 0.42, sustain: 0.3 }, positionEnv: { attack: 0.08, decay: 0.45, sustain: 0.23, release: 0.477 }, master: { gain: 0.58 }, oscB: { table: 'reedWire', position: 0.12, level: 0.09, unison: 1, detune: 3 } },
+    chorus: { mix: 0.15, rate: 2, depth: 0.19 } },
   tngrSoftHorn: { label: 'Soft Horn', category: 'Orch', synth: 'TNGR-2', dur: 3.5,
     note: 'A mellow single-oscillator horn for sustained melody and chords.', tngr2: {
       oscA: { table: 'reedWire', position: 0.08, envAmount: 0.08, level: 0.8, unison: 1 },
@@ -4821,15 +4810,15 @@ const TONE = {
     global: { filter: { type: 'lowpass', slope: -12, freq: 7000, Q: 0.5, track: 0.3 } },
     humanize: { entry: 0.005, gain: 0.07 } },
   mrdrElectricGrand: { label: 'Electric Grand', category: 'Keys', synth: 'MRDR-3', dur: 2.2,
-    note: 'The CP-70: real strings on a pickup, so a thinner body, a brighter strike and '
-      + 'the chorus it was always played through.',
+    note: 'The CP-70: real strings on a pickup, so a thinner body, a brighter strike and the '
+      + 'chorus it was always played through.',
     layer: {
-      osc1: { type: 'sawtooth', ratio: 1, gain: 0.7, attack: 0.001, decay: 2.2, sustain: 0, release: 0.3, unison: 2, spread: 6, stereo: 0.5, filter: { type: 'lowpass', slope: -12, freq: 900, Q: 0.8, track: 0.9, env: { octaves: 2.5, attack: 0.001, decay: 0.25, sustain: 0, release: 0.2 } } },
-      osc2: { type: 'triangle', ratio: 2, gain: 0.25, attack: 0.001, decay: 1.2, sustain: 0, release: 0.25 },
-      osc3: { type: 'noise', ratio: 1, gain: 0.07, color: 'white', attack: 0.001, decay: 0.018, sustain: 0, release: 0.02, filter: { type: 'bandpass', slope: -12, freq: 2400, Q: 1.2, track: 0.4 } },
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.789, attack: 0.001, decay: 2.2, sustain: 0, release: 0.3, unison: 2, spread: 6, stereo: 0.5, filter: { type: 'lowpass', slope: -12, freq: 900, Q: 0.8, track: 0.9, env: { octaves: 2.5, attack: 0.001, decay: 0.25, sustain: 0, release: 0.2 } } },
+      osc2: { type: 'triangle', ratio: 0.5, gain: 0.155, attack: 0.001, decay: 1.2, sustain: 0, release: 0.25, detune: 8 },
+      osc3: { type: 'noise', ratio: 1, gain: 0.151, color: 'white', attack: 0.001, decay: 0.04, sustain: 0, release: 0.02, filter: { type: 'bandpass', slope: -12, freq: 2400, Q: 1.2, track: 0.4 }, detune: 0 },
     },
-    humanize: { entry: 0.005, gain: 0.07 },
-    chorus: { mix: 0.35, rate: 0.6, depth: 0.4, width: 1 } },
+    humanize: { entry: 0, gain: 0 },
+    chorus: { mix: 0, rate: 0.6, depth: 0.54, width: 1 } },
 
   tngrConcertGrand: { label: 'Digital Grand', category: 'Keys', synth: 'TNGR-2', dur: 2.8,
     note: 'Warm Harmonics swept from bright to dark by the position envelope, a quiet '
@@ -5446,6 +5435,11 @@ const TONE = {
       vca: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.03 },
     },
     humanize: { entry: 0.004, gain: 0.12 } },
+  darkMetalChime: { label: 'Dark Metal Chime', category: 'Bells', synth: 'TNGR-2', dur: 2.6,
+    note: 'A darker metallic evolution with controlled beating between oscillators.',
+    tngr2: { oscA: { table: 'alloy', position: 0.55, envAmount: -0.3, level: 0.93, unison: 2, spread: 5 }, oscB: { table: 'bellFold', position: 0.38, level: 0.25, interval: -12, detune: 7 }, amp: { attack: 0.001, decay: 0.373, sustain: 0.18, release: 0.684 }, positionEnv: { attack: 0, decay: 0.9, sustain: 0.55 }, filter: { type: 'lowpass', cutoff: 2970, resonance: 2.75 }, master: { gain: 0.5 }, filterEnv: { amount: 0.2 } },
+    chorus: { mix: 0.03 },
+    trim: 0 },
 };
 
 // User presets live in their own tables rather than beside the built-in library.
@@ -5507,15 +5501,16 @@ const USER_TONE = {
   celeste2: { label: 'Tiny Celeste', category: 'Bells', synth: 'RMND-2', dur: 4,
     note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
     options: {
-      harmonicity: 3.765, modulationIndex: 2.4,
+      harmonicity: 3.765,
+      modulationIndex: 2.4,
       oscillator: { type: 'square' },
       modulation: { type: 'sine' },
-      envelope: { attack: 0.001, decay: 1.6, sustain: 0.01, release: 1.6 },
+      envelope: { attack: 0.001, decay: 1.6, sustain: 0.08, release: 1.6 },
       modulationEnvelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.4 },
     },
     starter: false,
     transpose: 24,
-    vibrato: { depth: 0.04 },
+    vibrato: { depth: 0.08, rate: 5 },
     trim: 0 },
   thickSquareGlide: { label: 'Thick Square Glide', category: 'Keys', synth: 'MRDR-3', dur: 1.5,
     note: 'Three squares at the same pitch, seven cents either side of centre. No filter, no '
@@ -5729,14 +5724,16 @@ const USER_TONE = {
     starter: false },
   seedFutureBassBass: { label: 'Digital Round Bass · Future Bass', category: 'Bass', synth: 'TNGR-2', dur: 1.8,
     note: 'A plain, warm single-oscillator bass with a stable fundamental.',
+    drive: 0.17,
     tngr2: { oscA: { table: 'basic', position: 0.18, level: 0.86, unison: 1 }, amp: { attack: 0.006, decay: 0.38, sustain: 0.72, release: 0.16 }, filter: { type: 'lowpass', cutoff: 1250, resonance: 0.96 }, filterEnv: { amount: 0.7, attack: 0.002, decay: 0.3, sustain: 0.25 }, positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.7 } },
     starter: false },
   seedFutureBassSub: { label: 'WUB Glass Yowl · Future Bass', category: 'Bass', synth: 'TNGR-2', dur: 2.4,
     note: 'A slower, glassier vowel yowl on the quarter note, triangle LFO, with a '
       + 'spectral-PWM sub churning underneath.',
+    drive: 0.23,
     mode: 'mono',
     portamento: 0.05,
-    tngr2: { oscA: { table: 'vowelGlass', position: 0.1, lfoAmount: 0.85, level: 0.8, unison: 2, spread: 12, stereo: 0.4 }, oscB: { table: 'spectralPWM', position: 0.3, lfoAmount: -0.4, level: 0.45, interval: -12 }, amp: { attack: 0.006, decay: 0.4, sustain: 0.9, release: 0.15 }, filter: { type: 'lowpass', cutoff: 2800, resonance: 5 }, lfo1: { shape: 'triangle', rate: 2.333 } },
+    tngr2: { oscA: { table: 'vowelGlass', position: 0.1, lfoAmount: 0.85, level: 0.8, unison: 2, spread: 12, stereo: 0.4 }, oscB: { table: 'spectralPWM', position: 0.3, lfoAmount: -0.4, level: 0.45, interval: -12 }, amp: { attack: 0.006, decay: 0.4, sustain: 0.9, release: 0.15 }, filter: { type: 'lowpass', cutoff: 2800, resonance: 5 }, lfo1: { shape: 'triangle', rate: 2.95 }, positionEnv: { attack: 0.095 } },
     starter: false },
   seedFutureBassSaws: { label: 'Super Saw · Future Bass', category: 'Lead', synth: 'CRLS-1', dur: 1.4,
     note: 'Three sawtooths thirty cents apart — the trance lead, and the widest single sound '
@@ -7202,10 +7199,10 @@ const LEVELS = {
   epiano: 0.023667, clav: 0.005047, toyPiano: 0.013277, softKeys: 0.060456,
   padTriangle: 0.101497, warmPad: 0.104127, glassPad: 0.021327,
   breathPad: 0.119482, amOrgan: 0.026762, fullOrgan: 0.062627,
-  reedOrgan: 0.027077, fmBell: 0.018029, celeste: 0.024454, marimba: 0.013661,
+  reedOrgan: 0.027077, fmBell: 0.018372, celeste: 0.024454, marimba: 0.013661,
   musicBox: 0.020825, synthPluck: 0.028111, harpPluck: 0.04711, koto: 0.013469,
   brassStab: 0.060669, synthStrings: 0.148374, hornSwell: 0.025887,
-  buzzSaw: 0.078515, ringMod: 0.009345, hardFm: 0.013983, clave: 0.006432,
+  buzzSaw: 0.078515, ringMod: 0.009345, hardFm: 0.014233, clave: 0.006432,
   woodBlock: 0.008281, tpBah: 0.005703, tpBassGuitar: 0.085495, tpBassy: 0.0685,
   tpBrassCircuit: 0.060105, tpCoolGuy: 0.246214, tpPianoetta: 0.111126,
   tpPizz: 0.017563, tpAlienChorus: 0.070974, tpDelicateWind: 0.050353,
@@ -7240,11 +7237,11 @@ const LEVELS = {
   mrdrContrabass: 0.0822, bestVoiceBox70s: 0.1145, bestRobotVox: 0.085,
   bestVowelPad: 0.0145, syncRazorLead: 0.1196, syncVowelLead: 0.029297,
   syncBassBite: 0.132, syncWireClav: 0.0651, syncOrbitPad: 0.073164,
-  bestMegaSawLead: 0.1295, bestHeroLead: 0.1538, bestScreamerLead: 0.1405,
-  bestMonsterBass: 0.1237, bestReeseBass: 0.1482, bestPwmStrings: 0.132846,
-  bestPwmBrass: 0.1818, bestPwmPadWide: 0.029779, bestPwmBass: 0.1513,
+  bestMegaSawLead: 0.1295, bestHeroLead: 0.138617, bestScreamerLead: 0.110338,
+  bestMonsterBass: 0.1237, bestReeseBass: 0.169047, bestPwmStrings: 0.132846,
+  bestPwmBrass: 0.170536, bestPwmPadWide: 0.029779, bestPwmBass: 0.1513,
   bestPwmGrowlBass: 0.1466, bestPwmHollowLead: 0.1665, bestPwmReedLead: 0.0432,
-  bestPwmClav: 0.1233, bestPwmChoir: 0.0316, bestClassicMono: 0.1466,
+  bestPwmClav: 0.068496, bestPwmChoir: 0.0316, bestClassicMono: 0.1466,
   bestPwmDrift: 0.010478, tngrOrangeCurrent: 0.021126, tngrGlassMotor: 0.024021,
   tngrNightSequence: 0.019071, tngrHollowVector: 0.01566,
   tngrDigitalGrowl: 0.03354, tngrBerlinSignal: 0.006938, tngrNeonReed: 0.00125,
@@ -7253,13 +7250,14 @@ const LEVELS = {
   tngrCloudMemory: 0.052923, tngrGlassChoir: 0.051055, tngrPolarDrift: 0.053682,
   tngrDreamCircuit: 0.09742, tngrBlueCathedral: 0.043193,
   tngrDigitalEp84: 0.023083, tngrHollowKeys: 0.015106, tngrPhaseClav: 0.002873,
-  tngrMemoryOrgan: 0.0392, tngrCrystalTrigger: 0.010504, tngrWireHarp: 0.011153,
-  tngrDataMarimba: 0.008376, tngrIceBell: 0.032051, tngrAlloyChime: 0.014265,
+  tngrMemoryOrgan: 0.0392, tngrCrystalTrigger: 0.022313, tngrWireHarp: 0.011153,
+  tngrDataMarimba: 0.008376, tngrIceBell: 0.026608, tngrAlloyChime: 0.012553,
   tngrRoundBass: 0.007667, tngrPickedBass: 0.012406, tngrSoftPiano: 0.021082,
-  tngrBrightPiano: 0.013829, tngrElectricKeys: 0.009868, tngrMusicBell: 0.02606,
-  tngrChurchBell: 0.03437, tngrCelesta: 0.017852, tngrWarmStrings: 0.041256,
-  tngrSoftStrings: 0.02999, tngrBrassSection: 0.029676, tngrSoftHorn: 0.026943,
-  tngrPlainSaw: 0.016661, tngrPlainPulse: 0.010196, tngrClassicSquare: 0.027022,
+  tngrBrightPiano: 0.013829, tngrElectricKeys: 0.009868,
+  tngrMusicBell: 0.026828, tngrChurchBell: 0.03437, tngrCelesta: 0.017852,
+  tngrWarmStrings: 0.041256, tngrSoftStrings: 0.02999,
+  tngrBrassSection: 0.028819, tngrSoftHorn: 0.026943, tngrPlainSaw: 0.016661,
+  tngrPlainPulse: 0.010196, tngrClassicSquare: 0.027022,
   tngrScannerSweep: 0.072603, tngrTransmission: 0.003385,
   squareVSMono: 0.041441, jmjrChoirAah: 0.027448, jmjrChoirOoh: 0.031107,
   jmjrDoowop: 0.013095, jmjrRobotChant: 0.020615, jmjrSmallVoice: 0.017325,
@@ -7314,7 +7312,7 @@ const LEVELS = {
   clapRoom: 0.026987, hatOpen: 0.0552, hatFoilOpen: 0.046743, shaker: 0.010894,
   tambourine: 0.034686, noiseSweep: 0.044485, amHollow2: 0.01455,
   sawtoothTone2: 0.020703, sintone: 0.04505, roundBass: 0.075557,
-  squareMono: 0.043368, celeste2: 0.034436, thickSquareGlide: 0.115047,
+  squareMono: 0.043368, celeste2: 0.03694, thickSquareGlide: 0.115047,
   memoryOrgan2: 0.035899, testSIMPLESQR: 0.161945, simpleStrings: 0.0321,
   vl1Pi2: 0.03509, wubClassic: 0.1365, wubSlow: 0.1481, wubTriplet: 0.1742,
   wubStutter: 0.1477, wubHalf: 0.1198, wubReese: 0.137, wubFmGrowl: 0.1272,
@@ -7344,7 +7342,7 @@ const LEVELS = {
   stHatSizzle: 0.056353, stMetalHatClosed: 0.01638, stCowbell: 0.0194,
   stTriangleDing: 0.0194, gateClang: 0.1043, wndrConcertGrand: 0.2647,
   wndrOldUpright: 0.1838, wndrFeltPiano: 0.2148, mrdrGrand: 0.1251,
-  mrdrPopGrand: 0.1081, mrdrElectricGrand: 0.0443, tngrConcertGrand: 0.0248,
+  mrdrPopGrand: 0.1081, mrdrElectricGrand: 0.044228, tngrConcertGrand: 0.0248,
   tngrFeltUpright: 0.0317, rmndDxPiano: 0.0267, rmndTineEP: 0.0301,
   rmndDxSlap: 0.0215, rmndDxPop: 0.0152, rmndDigitalSlap: 0.0206,
   mrdrSlapThumb: 0.104, mrdrSlapPop: 0.0984, mrdrSynthSlap: 0.1081,
@@ -7367,8 +7365,8 @@ const LEVELS = {
   seedFutureBassImpact: 0.363747, seedFutureBassFill: 0.039071,
   seedFutureBassShaker: 0.01086, seedFutureBassTambourine: 0.032351,
   seedFutureBassCowbell: 0.02003, seedFutureBassCongas: 0.037788,
-  seedFutureBassRide: 0.053247, seedFutureBassBass: 0.017856,
-  seedFutureBassSub: 0.030793, seedFutureBassSaws: 0.024461,
+  seedFutureBassRide: 0.053247, seedFutureBassBass: 0.017791,
+  seedFutureBassSub: 0.041082, seedFutureBassSaws: 0.024461,
   seedFutureBassPiano: 0.068382, seedFutureBassPad: 0.042293,
   seedFutureBassSquare: 0.018129, seedFutureBassBell: 0.020825,
   seedFutureBassMegaSaw: 0.126683, seedFutureBassArp: 0.016702,
@@ -7478,7 +7476,7 @@ const LEVELS = {
   seedMegadriveSquare: 0.052423, seedMegadriveBell: 0.018029,
   seedMegadriveMegaSaw: 0.013983, seedMegadriveArp: 0.018029,
   seedMegadriveChoir: 0.028924, seedMegadriveThird: 0.02674,
-  seedMegadriveCounter: 0.021576
+  seedMegadriveCounter: 0.021576, darkMetalChime: 0.021727
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -7493,10 +7491,10 @@ const PEAKS = {
   vibratoLead: 1.3321, fmKeys: 0.2185, epiano: 0.2199, clav: 0.2594,
   toyPiano: 0.2149, softKeys: 0.6896, padTriangle: 0.6968, warmPad: 0.7232,
   glassPad: 0.1228, breathPad: 0.8623, amOrgan: 0.111, fullOrgan: 0.2204,
-  reedOrgan: 0.4084, fmBell: 0.2199, celeste: 0.2195, marimba: 0.2153,
+  reedOrgan: 0.4084, fmBell: 0.2194, celeste: 0.2195, marimba: 0.2153,
   musicBox: 0.219, synthPluck: 1.1918, harpPluck: 0.6946, koto: 0.2181,
   brassStab: 0.752, synthStrings: 1.0717, hornSwell: 0.2168, buzzSaw: 1.1884,
-  ringMod: 0.1355, hardFm: 0.2094, clave: 0.2031, woodBlock: 0.2198,
+  ringMod: 0.1355, hardFm: 0.2045, clave: 0.2031, woodBlock: 0.2198,
   tpBah: 0.1386, tpBassGuitar: 0.7916, tpBassy: 0.992, tpBrassCircuit: 1.0582,
   tpCoolGuy: 2.9141, tpPianoetta: 0.886, tpPizz: 1.0667, tpAlienChorus: 0.8054,
   tpDelicateWind: 0.2183, tpLectric: 0.6403, tpMarimba: 0.6906,
@@ -7528,11 +7526,11 @@ const PEAKS = {
   mrdrContrabass: 0.4769, bestVoiceBox70s: 0.8619, bestRobotVox: 0.7646,
   bestVowelPad: 0.1515, syncRazorLead: 0.9602, syncVowelLead: 0.2337,
   syncBassBite: 0.8647, syncWireClav: 0.7612, syncOrbitPad: 0.5669,
-  bestMegaSawLead: 0.7715, bestHeroLead: 0.8002, bestScreamerLead: 1.0031,
-  bestMonsterBass: 0.709, bestReeseBass: 0.8112, bestPwmStrings: 0.7017,
-  bestPwmBrass: 0.8744, bestPwmPadWide: 0.4509, bestPwmBass: 0.8094,
+  bestMegaSawLead: 0.7715, bestHeroLead: 1.2771, bestScreamerLead: 1.1305,
+  bestMonsterBass: 0.709, bestReeseBass: 2.6675, bestPwmStrings: 0.7017,
+  bestPwmBrass: 1.7208, bestPwmPadWide: 0.4509, bestPwmBass: 0.8094,
   bestPwmGrowlBass: 0.9419, bestPwmHollowLead: 0.8223, bestPwmReedLead: 0.5501,
-  bestPwmClav: 0.948, bestPwmChoir: 0.2098, bestClassicMono: 0.8592,
+  bestPwmClav: 0.9815, bestPwmChoir: 0.2098, bestClassicMono: 0.8592,
   bestPwmDrift: 0.1572, tngrOrangeCurrent: 0.3899, tngrGlassMotor: 0.3651,
   tngrNightSequence: 0.2963, tngrHollowVector: 0.4181, tngrDigitalGrowl: 0.3288,
   tngrBerlinSignal: 0.1312, tngrNeonReed: 0.0191, tngrRubyScanner: 0.3442,
@@ -7540,12 +7538,12 @@ const PEAKS = {
   tngrCloudMemory: 0.4159, tngrGlassChoir: 0.3341, tngrPolarDrift: 0.3928,
   tngrDreamCircuit: 0.4712, tngrBlueCathedral: 0.1636, tngrDigitalEp84: 0.27,
   tngrHollowKeys: 0.2653, tngrPhaseClav: 0.0509, tngrMemoryOrgan: 0.2896,
-  tngrCrystalTrigger: 0.171, tngrWireHarp: 0.1735, tngrDataMarimba: 0.0833,
-  tngrIceBell: 0.422, tngrAlloyChime: 0.132, tngrRoundBass: 0.0456,
+  tngrCrystalTrigger: 0.2709, tngrWireHarp: 0.1735, tngrDataMarimba: 0.0833,
+  tngrIceBell: 0.4184, tngrAlloyChime: 0.1923, tngrRoundBass: 0.0456,
   tngrPickedBass: 0.2058, tngrSoftPiano: 0.1435, tngrBrightPiano: 0.1461,
-  tngrElectricKeys: 0.0492, tngrMusicBell: 0.2229, tngrChurchBell: 0.2536,
+  tngrElectricKeys: 0.0492, tngrMusicBell: 0.2706, tngrChurchBell: 0.2536,
   tngrCelesta: 0.1224, tngrWarmStrings: 0.2535, tngrSoftStrings: 0.2674,
-  tngrBrassSection: 0.3992, tngrSoftHorn: 0.2438, tngrPlainSaw: 0.3398,
+  tngrBrassSection: 0.381, tngrSoftHorn: 0.2438, tngrPlainSaw: 0.3398,
   tngrPlainPulse: 0.1243, tngrClassicSquare: 0.3347, tngrScannerSweep: 0.3835,
   tngrTransmission: 0.04, squareVSMono: 0.6167, jmjrChoirAah: 0.1415,
   jmjrChoirOoh: 0.2042, jmjrDoowop: 0.1628, jmjrRobotChant: 0.3009,
@@ -7597,7 +7595,7 @@ const PEAKS = {
   clapRoom: 0.3987, hatOpen: 0.8645, hatFoilOpen: 0.8072, shaker: 0.4346,
   tambourine: 0.8969, noiseSweep: 0.8133, amHollow2: 0.1073,
   sawtoothTone2: 0.5903, sintone: 0.686, roundBass: 1.183, squareMono: 0.7338,
-  celeste2: 0.2067, thickSquareGlide: 1.1343, memoryOrgan2: 0.2616,
+  celeste2: 0.2188, thickSquareGlide: 1.1343, memoryOrgan2: 0.2616,
   testSIMPLESQR: 0.4192, simpleStrings: 0.3617, vl1Pi2: 0.6659, fatKick: 0.9364,
   wubClassic: 0.7188, wubSlow: 0.7732, wubTriplet: 0.7006, wubStutter: 0.7039,
   wubHalf: 0.9136, wubReese: 0.7188, wubFmGrowl: 0.9464, wubSyncScreech: 0.7038,
@@ -7623,7 +7621,7 @@ const PEAKS = {
   stHatSizzle: 1.0138, stMetalHatClosed: 0.7687, stCowbell: 0.4158,
   stTriangleDing: 0.4158, gateClang: 0.7381, wndrConcertGrand: 1.9679,
   wndrOldUpright: 1.4454, wndrFeltPiano: 1.003, mrdrGrand: 0.6125,
-  mrdrPopGrand: 0.7024, mrdrElectricGrand: 0.4886, tngrConcertGrand: 0.1688,
+  mrdrPopGrand: 0.7024, mrdrElectricGrand: 0.6441, tngrConcertGrand: 0.1688,
   tngrFeltUpright: 0.1462, rmndDxPiano: 0.2183, rmndTineEP: 0.2206,
   rmndDxSlap: 0.2207, rmndDxPop: 0.2206, rmndDigitalSlap: 0.2207,
   mrdrSlapThumb: 0.8492, mrdrSlapPop: 0.9364, mrdrSynthSlap: 0.92,
@@ -7646,8 +7644,8 @@ const PEAKS = {
   seedFutureBassImpact: 0.7, seedFutureBassFill: 0.7024,
   seedFutureBassShaker: 0.4159, seedFutureBassTambourine: 0.9308,
   seedFutureBassCowbell: 0.4688, seedFutureBassCongas: 0.6865,
-  seedFutureBassRide: 1.0339, seedFutureBassBass: 0.1146,
-  seedFutureBassSub: 0.5473, seedFutureBassSaws: 0.2661,
+  seedFutureBassRide: 1.0339, seedFutureBassBass: 0.1141,
+  seedFutureBassSub: 0.6173, seedFutureBassSaws: 0.2661,
   seedFutureBassPiano: 0.6944, seedFutureBassPad: 0.3158,
   seedFutureBassSquare: 0.132, seedFutureBassBell: 0.219,
   seedFutureBassMegaSaw: 0.7717, seedFutureBassArp: 0.3444,
@@ -7750,7 +7748,7 @@ const PEAKS = {
   seedMegadriveSquare: 0.6812, seedMegadriveBell: 0.2199,
   seedMegadriveMegaSaw: 0.2094, seedMegadriveArp: 0.2199,
   seedMegadriveChoir: 0.182, seedMegadriveThird: 0.2183,
-  seedMegadriveCounter: 0.2185
+  seedMegadriveCounter: 0.2185, darkMetalChime: 0.3016
 };
 
 /**

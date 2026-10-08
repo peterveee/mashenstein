@@ -339,6 +339,176 @@ win.fire('pageshow');
 assert(calls.at(-1) === 'loop:resume', 'pageshow recomputes and resumes visible landscape');
 lifecycle.destroy();
 
+// Background music: a screen playing a song the player chose (the jukebox, the Lab's
+// club) keeps it playing with the page hidden; the picture and input still stop.
+const hiddenMusic = lifecyclePolicy({ visible: false, backgroundAudio: true });
+assert(hiddenMusic.paused && !hiddenMusic.audioPaused && hiddenMusic.backgroundAudio,
+  'a hidden screen playing music pauses its picture but not its audio');
+assert(lifecyclePolicy({ visible: false, backgroundAudio: false }).audioPaused,
+  'a hidden screen with no music to keep pauses its audio');
+assert(!lifecyclePolicy({ visible: true, backgroundAudio: true }).backgroundAudio,
+  'a visible screen is not in the background');
+assert(lifecyclePolicy({ allowed: false, visible: false, backgroundAudio: true }).audioPaused,
+  'the platform gate still stops background music');
+{
+  let song = { title: 'NEON ORBIT', album: 'JUKEBOX', paused: false };
+  let backgrounded = 0;
+  let resumed = 0;
+  const pauses = [];
+  const skips = [];
+  let covers = 0;   // off until the cover test below: the card keeps the icon
+  const bgCalls = [];
+  const session = { writes: [], set type(v) { this.writes.push(v); }, get type() { return this.writes.at(-1); } };
+  const media = { handlers: {}, metadata: undefined, playbackState: undefined, setActionHandler(k, fn) { this.handlers[k] = fn; } };
+  win.navigator.audioSession = session;
+  win.navigator.mediaSession = media;
+  win.MediaMetadata = class { constructor(init) { Object.assign(this, init); } };
+  media.positions = [];
+  media.setPositionState = (state) => { media.position = state; media.positions.push(state); };
+  let clock = { duration: 32, position: 4 };
+  // The lock screen's stand-in: a silent <audio>, the only thing WebKit sends the card's buttons to.
+  const anchor = {
+    muted: null, playing: false, attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; },
+    play() { this.playing = true; return Promise.resolve(); },
+    pause() { this.playing = false; },
+  };
+  doc.createElement = (tag) => (tag === 'audio' ? anchor : null);
+  doc.querySelector = (sel) => (sel === 'link[rel="icon"][sizes="192x192"]' ? { href: 'https://example.test/icon-dev-192.png' } : null);
+  doc.body = { appendChild: (el) => { doc.body.child = el; } };
+  win.Blob = class { constructor(parts, opts) { this.parts = parts; this.type = opts.type; } };
+  win.URL = { createObjectURL: (blob) => `blob:${blob.type}:${blob.parts[0].byteLength}` };
+  doc.hidden = false;
+  const bg = new LifecycleController({
+    platform: detectPlatform({ ua: IPHONE, standalone: true }),
+    loop: { pause: () => bgCalls.push('loop:pause'), resume: () => bgCalls.push('loop:resume') },
+    input: { setSuspended: (v) => bgCalls.push(`input:${v}`) },
+    audio: {
+      setLifecyclePaused: (v) => bgCalls.push(`audio:${v}`),
+      resumeContext: () => { resumed++; },
+      songClock: () => clock,
+    },
+    doc, win,
+    nowPlaying: () => song,
+    onBackground: () => { backgrounded++; },
+    onMediaPause: (paused) => { pauses.push(paused); if (song) song = { ...song, paused }; },
+    onMediaSkip: (dir) => { skips.push(dir); song = { ...song, title: `TRACK ${dir}` }; },
+    songArt: () => (covers ? { width: 512, height: 512, toBlob: (cb) => cb({ type: 'image/jpeg', n: ++covers }) } : null),
+  });
+  bg.syncMusicSession();
+  bg.syncMusicSession();
+  assert(session.writes.join() === 'playback',
+    'a screen with a song holds a playback audio session, written once');
+  assert(media.metadata?.title === 'NEON ORBIT' && media.metadata.artist === 'MASHENSTEIN'
+    && media.metadata.album === 'JUKEBOX' && media.playbackState === 'playing',
+    'the NOW PLAYING card names the song rather than the host');
+  assert(media.metadata.artwork.length === 1 && media.metadata.artwork[0].src === 'https://example.test/icon-dev-512.png',
+    'the card\'s artwork is the 512 icon beside the linked 192, sharp when the lock screen blows it up');
+  assert(media.position?.duration === 32 && media.position.position === 4 && media.position.playbackRate === 1
+    && media.positions.length === 1,
+    'the card\'s progress bar is the song — its length and where it is — not the stand-in\'s two seconds');
+  clock = { duration: 32, position: 4.01 };
+  bg.syncMusicSession();
+  assert(media.positions.length === 1, 'and is not set again while it runs true');
+  clock = { duration: 32, position: 16 };
+  bg.syncMusicSession();
+  assert(media.positions.length === 2 && media.position.position === 16, 'a loop back or a skip sets it again');
+  bg.primeAnchor();
+  await Promise.resolve(); await Promise.resolve();
+  assert(doc.body.child === anchor && anchor.loop && anchor.src === 'blob:audio/wav:32044'
+    && anchor.playing && anchor.muted === false && bg.anchorReady,
+    'a tap on a music screen starts two seconds of looping silence as the card\'s stand-in');
+  assert(!media.handlers.nexttrack && !media.handlers.previoustrack,
+    'a song that cannot skip offers no previous/next');
+  song = { ...song, skips: true };
+  bg.syncMusicSession();
+  media.handlers.nexttrack();
+  assert(media.metadata.title === 'TRACK 1', 'the card is retitled at once after next, with no frame to do it');
+  media.handlers.previoustrack();
+  assert(skips.join() === '1,-1', 'the card\'s next and previous reach the screen');
+  song = { ...song, skips: false };
+  bg.syncMusicSession();
+  assert(media.handlers.nexttrack === null && media.handlers.previoustrack === null,
+    'previous/next are withdrawn when the song can no longer take them');
+  doc.hidden = true;
+  doc.fire('visibilitychange');
+  assert(bgCalls.at(-1) === 'loop:pause' && !bgCalls.includes('audio:true'),
+    'hiding with music pauses the loop and leaves the audio running');
+  assert(backgrounded === 1, 'the screen is told once that it went into the background');
+  win.fire('resize');
+  assert(backgrounded === 1, 'a hidden re-apply does not tell the screen again');
+  media.handlers.pause();
+  assert(pauses.join() === 'true' && media.playbackState === 'paused',
+    'the card\'s pause reaches the screen and the card says paused');
+  assert(!anchor.playing && anchor.muted === false, 'the stand-in pauses with the song, still on the card');
+  win.fire('resize');
+  assert(!bgCalls.includes('audio:true'),
+    'a song paused from the lock screen is held, not suspended by a later apply');
+  media.handlers.play();
+  assert(pauses.join() === 'true,false' && media.playbackState === 'playing',
+    'the card\'s play reaches the screen');
+  assert(anchor.playing, 'and the stand-in plays again');
+  doc.hidden = false;
+  doc.fire('visibilitychange');
+  assert(bgCalls.at(-1) === 'loop:resume' && resumed === 1,
+    'coming back resumes the loop and asks an interrupted context to resume');
+  song = { ...song, paused: true };
+  doc.hidden = true;
+  doc.fire('visibilitychange');
+  assert(bgCalls.at(-1) === 'loop:pause' && bgCalls.includes('audio:true') && backgrounded === 1,
+    'a song paused in the game is suspended with the page');
+  bgCalls.length = 0;
+  media.handlers.play();
+  assert(bgCalls.includes('audio:false') && backgrounded === 2,
+    'played from the lock screen, a song paused in the game plays on in the background');
+  doc.hidden = false;
+  doc.fire('visibilitychange');
+  // Covers on: each song its own, handed over as a data URL once encoded.
+  win.FileReader = class { readAsDataURL(blob) { this.result = `data:${blob.type};base64,COVER${blob.n}`; this.onload(); } };
+  covers = 1;
+  song = { ...song, title: 'COVERED' };
+  bg.syncMusicSession();
+  assert(media.metadata.title === 'COVERED' && covers === 1 && !media.metadata.artwork[0]?.src?.startsWith('data:'),
+    'with the game on screen a new song is retitled at once, its cover left unpainted: it would cost the jukebox frames');
+  doc.hidden = true;
+  doc.fire('visibilitychange');
+  assert(media.metadata.title === 'COVERED' && media.metadata.artwork[0].src === 'data:image/jpeg;base64,COVER2'
+    && media.metadata.artwork[0].sizes === '512x512', 'gone to the lock screen, the song gets its own cover');
+  doc.fire('visibilitychange');
+  assert(covers === 2, 'and only the once');
+  covers = 0;
+  song = { ...song, title: 'NO COVER' };
+  doc.hidden = false;
+  doc.fire('visibilitychange');
+  bg.syncMusicSession();
+  assert(media.metadata.title === 'NO COVER' && media.metadata.artwork[0].src === 'data:image/jpeg;base64,COVER2',
+    'a song with no cover of its own keeps the last one rather than going blank');
+  song = null;
+  bg.syncMusicSession();
+  assert(session.type === 'playback' && session.writes.length === 1 && media.metadata?.title === 'MASHENSTEIN'
+    && media.playbackState === 'none',
+    'with no song the session stays playback — the game\'s own exit needs it — and the card just says MASHENSTEIN');
+  assert(!anchor.playing && anchor.muted === true, 'with no song the stand-in is muted, which takes it off the lock screen');
+  bgCalls.length = 0;
+  const wentBefore = backgrounded;
+  doc.hidden = true;
+  doc.fire('visibilitychange');
+  assert(bgCalls.at(-1) === 'loop:pause' && bgCalls.includes('audio:true') && backgrounded === wentBefore,
+    'hiding with no music pauses the audio as before');
+  doc.hidden = false;
+  doc.fire('visibilitychange');
+  bg.destroy();
+  delete win.navigator.audioSession;
+  delete win.navigator.mediaSession;
+  delete win.MediaMetadata;
+  delete doc.createElement;
+  delete doc.querySelector;
+  delete win.FileReader;
+  delete doc.body;
+  delete win.Blob;
+  delete win.URL;
+}
+
 // Fixed-step loop: paused frames do no work and hidden wall time is discarded.
 let now = 0;
 let raf = [];
@@ -459,8 +629,121 @@ Audio.setLifecyclePaused(true);
 Audio.ensure();
 Audio.setLifecyclePaused(false);
 assert(suspended === 1 && resumed === 1, 'audio context suspends and resumes exactly once');
+
+// THE EXIT: held at once behind a dip too short to hear, and faded back in on return.
+{
+  const ramps = [];
+  const param = {
+    value: 1,
+    cancelScheduledValues() {}, setValueAtTime(v) { this.value = v; },
+    linearRampToValueAtTime(v, t) { ramps.push([v, t]); this.value = v; },
+  };
+  Audio.ctx.currentTime = 5;
+  Audio.exitGain = { gain: param };
+  suspended = 0; resumed = 0;
+  Audio.setLifecyclePaused(true, { fade: true });
+  assert(suspended === 0 && ramps.at(-1)?.[0] === 0 && Math.abs(ramps.at(-1)[1] - 5.06) < 1e-9,
+    'leaving fades to silence first rather than stopping the sound mid-note');
+  await new Promise((r) => setTimeout(r, 400));
+  assert(suspended === 1, 'and holds once the fade and a quarter-second of silence are done');
+  Audio.setLifecyclePaused(false);
+  assert(resumed === 1 && ramps.at(-1)?.[0] === 1 && Math.abs(ramps.at(-1)[1] - 5.06) < 1e-9, 'back, it resumes and fades in');
+  Audio.setLifecyclePaused(true, { fade: true });
+  Audio.setLifecyclePaused(false);
+  await new Promise((r) => setTimeout(r, 400));
+  assert(suspended === 1, 'a return inside the fade calls off the hold');
+  Audio.setLifecyclePaused(true);
+  assert(suspended === 2 && Math.abs(ramps.at(-1)[1] - 5.005) < 1e-9,
+    'without the fade (a beat-locked run, a refresh) the hold is at once, behind a 5 ms dip');
+  Audio.setLifecyclePaused(false);
+  Audio.fadeForExit();
+  assert(ramps.at(-1)?.[0] === 0 && Audio._leaving, 'losing focus ahead of leaving fades it');
+  Audio.fadeBackIn();
+  assert(ramps.at(-1)?.[0] === 1 && !Audio._leaving, 'and focus coming back brings it up again');
+  Audio.exitGain = null;
+}
 assert(Audio.muted && Audio.levels.music === 0.2 && Audio.levels.sfx === 0.8,
   'audio lifecycle preserves mute and volume settings');
+
+// THE EXIT FADE, from the lifecycle's side: a phone fades as focus goes, a desktop does not.
+{
+  const make = (ua, { plays = false, locked = false } = {}) => {
+    const log = [];
+    const lc = new LifecycleController({
+      platform: detectPlatform({ ua, standalone: true, screenW: 412, screenH: 915 }),
+      loop: { pause() {}, resume() {} },
+      input: { setSuspended() {} },
+      audio: {
+        setLifecyclePaused: (v, o) => log.push(`paused:${v}${v && o?.fade ? ':fade' : ''}`),
+        fadeForExit: () => log.push('fadeOut'),
+        fadeBackIn: () => log.push('fadeIn'),
+      },
+      doc, win,
+      nowPlaying: () => (plays ? { title: 'X', album: 'JUKEBOX', paused: false } : null),
+      beatLocked: () => locked,
+    });
+    return { lc, log };
+  };
+  doc.hidden = false;
+  let { lc, log } = make(IPHONE);
+  win.fire('blur');
+  win.fire('focus');
+  assert(log.includes('fadeOut') && log.at(-1) === 'fadeIn', 'on a phone the sound fades as focus goes, and back as it returns');
+  doc.hidden = true; doc.fire('visibilitychange');
+  assert(log.at(-1) === 'paused:true:fade', 'left, it fades and then holds');
+  doc.hidden = false; doc.fire('visibilitychange');
+  lc.destroy();
+  ({ lc, log } = make(DESKTOP));
+  win.fire('blur');
+  assert(!log.includes('fadeOut'), 'a desktop does not fade every time another window is clicked');
+  lc.destroy();
+  ({ lc, log } = make(IPHONE, { plays: true }));
+  win.fire('blur');
+  assert(!log.includes('fadeOut'), 'a song the player chose plays on through Control Center');
+  lc.destroy();
+  ({ lc, log } = make(IPHONE, { locked: true }));
+  doc.hidden = true; doc.fire('visibilitychange');
+  assert(log.at(-1) === 'paused:true', 'a beat-locked run holds its sound with its world, no fade after it');
+  doc.hidden = false; doc.fire('visibilitychange');
+  lc.destroy();
+}
+
+// Safari's summing-junction crash (webkit-junction-guard.js): nothing a connection has just
+// touched may be collected while the audio thread may still be updating it.
+{
+  const { installJunctionGuard, junctionGuardHolding, isWebKitEngine } = await import('../src/engine/webkit-junction-guard.js');
+  assert(isWebKitEngine({ userAgent: IPHONE }) && isWebKitEngine({ userAgent: IPAD_MAC })
+    && !isWebKitEngine({ userAgent: DESKTOP }) && !isWebKitEngine({ userAgent: ANDROID }),
+  'the guard is for Safari\'s engine — every iPhone browser, Safari on a Mac — not Chrome');
+  const log = [];
+  class FakeNode {
+    constructor(name) { this.name = name; }
+    connect(dest) { log.push(`${this.name}>${dest.name}`); return dest; }
+    disconnect(dest) { log.push(`${this.name}x${dest?.name ?? '*'}`); }
+  }
+  assert(!installJunctionGuard({ win: { AudioNode: FakeNode, navigator: { userAgent: DESKTOP } } }),
+    'Chrome is left alone');
+  assert(!installJunctionGuard({ win: { AudioNode: FakeNode, navigator: { userAgent: IPHONE }, __mashNoJunctionGuard: true } }),
+    'and so is a page that opts out for a measurement');
+  assert(installJunctionGuard({ win: { AudioNode: FakeNode, navigator: { userAgent: IPHONE } } }), 'Safari gets the guard');
+  let note = new FakeNode('note');
+  let gain = new FakeNode('gain');
+  const lane = new FakeNode('lane');
+  const param = { name: 'param' };
+  assert(note.connect(gain) === gain && gain.connect(lane) === lane && note.connect(param) === param,
+    'connect still connects, and still hands back its destination');
+  note.disconnect();
+  gain.disconnect(lane);
+  assert(log.join() === 'note>gain,gain>lane,note>param,notex*,gainxlane', 'disconnect still disconnects');
+  // Drop the game's own references: the guard is now all that keeps them.
+  const weak = [new WeakRef(note), new WeakRef(gain), new WeakRef(param)];
+  note = null; gain = null;
+  assert(junctionGuardHolding() >= 4, 'everything a connection just touched is held: the note, its gain, the lane, the param');
+  if (typeof globalThis.gc === 'function') {
+    globalThis.gc();
+    assert(weak.every((w) => w.deref()), 'and survives a collection while held');
+  }
+}
 
 console.log(failed ? 'MOBILE LIFECYCLE: FAILED' : 'MOBILE LIFECYCLE: OK');
 process.exit(failed ? 1 : 0);

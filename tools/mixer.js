@@ -59,10 +59,12 @@ import {
   EFFECT_PRESETS_PATH, readEffectPresets, writeEffectPresetsAtomic, normalizeKnownDefaults,
 } from './lib/effect-presets-source.js';
 import {
-  readVoicesSource, writeVoicesSource, upsertPreset, deletePreset, setMeasured,
+  readVoicesSource, writeVoicesSource, deletePreset,
   readMeasured, tableOf, TABLES, USER_TABLES,
 } from './lib/voices-source.js';
 import { measureVoiceAt, homeLane } from './lib/measure-voice.js';
+import { saveVoice } from './lib/voice-save.js';
+import { exportChipMixes, touchesChipMixes, CHIP_MIXES_FILE } from './lib/chip-results-mixes.js';
 import { compactDict } from '../src/engine/jmjr4/text.js';
 import { JMJR4_DATA } from '../src/engine/jmjr4/data.js';
 
@@ -87,11 +89,6 @@ function cmudictJson() {
   })().catch((e) => { cmudictPromise = null; throw e; });
   return cmudictPromise;
 }
-import { VOICES } from '../src/data/voices.js';
-// Read once, at start-up: the starter set is written by tools/freeze-starter-voices.js,
-// which is a script somebody types, not something this server can cause to happen.
-const STARTER_IDS = new Set(Object.values(VOICES).filter((v) => v.starter).map((v) => v.id));
-const LIBRARY_IDS = new Set(Object.values(VOICES).filter((v) => v.factory).map((v) => v.id));
 
 const require = createRequire(import.meta.url);
 const esbuild = require('esbuild');
@@ -1296,6 +1293,15 @@ const server = createServer(async (req, res) => {
         writeImportedIndex(ROOT);
       }
       writeSongsIndex(join(ROOT, 'src/data/songs'));
+      // A cabinet's 8-bit alternate is mixed here and played by the results screen from an
+      // export of it (tools/lib/chip-results-mixes.js): saving one, or the level it is laid
+      // over, brings the game's copy up to date.
+      if (touchesChipMixes(written)) {
+        try {
+          const chip = await exportChipMixes(ROOT);
+          if (chip.changed) console.log(`exported the 8-bit results mixes to ${CHIP_MIXES_FILE}`);
+        } catch (err) { console.warn(`could not export the 8-bit results mixes: ${err.message}`); }
+      }
 
       console.log(`saved ${written.map((id) => `src/data/songs/${id}.js`).join(', ')}`
         + (snaps.length ? `  (was: work/mix-history/${snaps.join(', ')})` : ''));
@@ -1605,116 +1611,15 @@ const server = createServer(async (req, res) => {
     //
     // A preset is data, so the desk can author one: the entry is rewritten in place in
     // src/data/voices.js, then MEASURED, and the measurement spliced into LEVELS and
-    // PEAKS.
-    //
-    // The measure is not optional and it is not a nicety. `voiceGain` derives a
-    // preset's gain by dividing the lane's target by its measured level, so a preset
-    // whose envelope moved and whose level did not is a preset that is quietly the
-    // wrong loudness in every song and every render. Saving without measuring would
-    // be the one thing this file's own comments warn against.
+    // PEAKS. Why the measure is not optional: see tools/lib/voice-save.js.
     if (req.method === 'POST' && req.url === '/voice-save') {
-      const { id, preset, table, library: requestedLibrary } = await readJson(req);
-      let src = readVoicesSource();
-      const existingTable = tableOf(src, id);
-      const devUpdate = DEV_USER && req.headers['x-mixer-role'] === 'dev';
-      const libraryTable = LIBRARY_IDS.has(id)
-        || (existingTable && Object.values(TABLES).includes(existingTable));
-      const devLibraryCreate = devUpdate && requestedLibrary === true && !existingTable
-        && Object.values(TABLES).includes(table);
-      // Built-in library entries are shipped reference sounds, not user documents.
-      // A client-side guard makes the UI clear, but this server-side check is the
-      // actual boundary so a stale page or hand-written request cannot overwrite one.
-      if (libraryTable && !devUpdate) {
-        res.writeHead(403, { 'content-type': 'text/plain' });
-        res.end(`"${id}" is a library preset and cannot be edited. Save it as a new user preset.`);
-        return;
-      }
-      // The starter table is not writable and this is where that is enforced. A pack
-      // names these, and the whole reason they exist is that a song generated next
-      // month sounds like the pack was written to sound rather than like whatever the
-      // library holds by then — see STARTER in src/data/voices.js. `tableOf` cannot
-      // find one either, so without this the editor's `table` hint would have it write
-      // a SECOND entry under the same id into TONE, and the catalogue would hold two
-      // definitions of one sound.
-      if (STARTER_IDS.has(id)) {
-        res.writeHead(409, { 'content-type': 'text/plain' });
-        res.end(`"${id}" is a starter sound — the New Song generator is written for it,`
-          + ' so it cannot be saved over. Use Save as new to keep your edit under its'
-          + ' own name.');
-        return;
-      }
-      // A song's own copy is keyed `chordsVoice@bitter-lullaby` — which lane of which
-      // song owns it — and that is not a usable identifier in a source file. `commit`
-      // in the editor takes a library name before it ever gets here, so an id like this
-      // arriving means the flag that says "this belongs to a song" was lost somewhere.
-      // Said plainly, because `upsertPreset` throwing on it reaches the desk as a 500
-      // and a stack trace in a terminal nobody is looking at.
-      if (!/^[A-Za-z_$][\w$]*$/.test(id)) {
-        res.writeHead(400, { 'content-type': 'text/plain' });
-        res.end(`"${id}" is not a library name — it is a song's own copy of a preset.`
-          + ' Rename it and save again, and it becomes a preset of its own.');
-        return;
-      }
-      const where = existingTable || table;
-      if (!where) {
-        res.writeHead(400, { 'content-type': 'text/plain' });
-        res.end(`no table for "${id}" — a new preset has to say whether it is user TONE, NOISE or DRUM`);
-        return;
-      }
-      if (!Object.values(USER_TABLES).includes(where)
-        && !(devUpdate && (libraryTable || devLibraryCreate)
-          && Object.values(TABLES).includes(where))) {
-        res.writeHead(403, { 'content-type': 'text/plain' });
-        res.end(devUpdate
-          ? 'presets must be saved to a USER_* table or an existing library table'
-          : 'new presets must be saved to a USER_* table; built-in library tables are read-only');
-        return;
-      }
-      // Written before it is measured, because the measurement runs the real engine
-      // over the real file: there is no way to render a preset that is not in it.
-      const before = src;
-      src = upsertPreset(src, id, preset, where);
-      writeVoicesSource(src);
-      await restartRenderer();          // or the render measures the preset it replaced
-      let level; let peak;
-      try {
-        ({ level, peak } = await measureVoice(id, preset, src));
-      } catch (err) {
-        // Put the file back. A preset that cannot be rendered is one that would sit
-        // in the catalogue sounding fine on the desk and missing from every export,
-        // and leaving it there because the measurement threw is the worst of both.
-        writeVoicesSource(before);
-        await restartRenderer();
-        res.writeHead(500, { 'content-type': 'text/plain' });
-        res.end(`could not render "${id}", so it was not saved:\n\n${err.message || err}`);
-        return;
-      }
-      // Silent is a real outcome, not an error: Tone builds plenty of things that
-      // make no sound. It is reported rather than saved, for the same reason.
-      if (!(level > 0)) {
-        writeVoicesSource(before);
-        await restartRenderer();
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ id, level: 0, peak: 0, silent: true, saved: false }));
-        console.log(`"${id}" renders SILENT — not saved`);
-        return;
-      }
-      // Nearly silent is its own hazard, and a worse one than it looks: `voiceGain`
-      // divides the lane's target by this number, so a preset measuring a thousandth
-      // of one is not a quiet preset — it is one the engine multiplies by about
-      // eleven hundred, and whatever noise floor it has comes up with it. Saved
-      // anyway, because tools/measure-voices.js saves it too and the two must not
-      // disagree, but said.
-      const quiet = level < 0.0004;
-      writeVoicesSource(setMeasured(src, id, { level, peak }));
-      console.log(`saved voice ${id} to src/data/voices.js — level ${level.toFixed(6)}`
-        + `  peak ${peak.toFixed(4)}`
-        + (quiet ? '  ** very quiet: check its envelope **' : ''));
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({
-        id, level: Number(level.toFixed(6)), peak: Number(peak.toFixed(4)),
-        silent: false, quiet, saved: true,
-      }));
+      // The rules, the measure and the roll-back are tools/lib/voice-save.js, shared with
+      // the Banger Sound Palette's editor so the two file a preset the same way.
+      const out = await saveVoice({
+        ...(await readJson(req)), dev: DEV_USER && req.headers['x-mixer-role'] === 'dev',
+      }, { measure: measureVoice, restart: restartRenderer });
+      res.writeHead(out.status, { 'content-type': out.type === 'json' ? 'application/json' : 'text/plain' });
+      res.end(out.type === 'json' ? JSON.stringify(out.body) : out.body);
       return;
     }
 

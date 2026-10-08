@@ -9,6 +9,8 @@ let fade = 0;          // 0 = clear, 1 = fully covered
 let fading = 0;        // -1 fading out (revealing), +1 fading in (covering)
 let transitionStyle = 'shutter';
 const TRANSITION_SPEED = 3.5; // ~0.29s closed + ~0.29s reveal: a gentle beat, not a wait
+/** How long the shutter takes to close: the new screen enters this long after setState. */
+export const TRANSITION_CLOSE_S = 1 / TRANSITION_SPEED;
 const TRANSITION_HEROES = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
 // Null until the game knows who you are. The shutter used to open on a hero
 // from the very first transition — title, difficulty, the opening film — which

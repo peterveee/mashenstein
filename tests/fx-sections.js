@@ -62,7 +62,8 @@ const built = await esbuild.build({
 });
 const html = '<!doctype html><meta charset="utf-8">'
   + `<script>${built.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
-const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
+// Autoplay allowed for the one live case (11); every other render is offline.
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'] });
 const errors = [];
 
 async function freshPage(label) {
@@ -901,6 +902,81 @@ try {
       `a roll repeats each step's slice for its share of the section (${steps.map((st) => `${st.beats} beat ×${st.count + 1}: ${st.worst.toFixed(4)}`).join('; ')})`);
     assert(corr(roll, 8 * SPB + 0.05 * SPB, 0.05 * SPB, 0.5 * SPB) < 0.9,
       'and each step grabs the music afresh rather than cutting up the last one');
+  }
+
+  // ---- 11. a section that switches in a gap between hits, live ------------------------------
+  //
+  // A LIVE context, because only a live one does this. Chromium stops rendering a chain whose
+  // sources have all gone — a drum lane between hits, once a hit's nodes are disconnected —
+  // and a switch that is booked while the lane sounds and falls due after it has gone quiet
+  // was thrown away: rhythm's clap played its bar-2 ping-pong on every clap after it (7 Oct
+  // 2026). Hits are struck as the drum voices strike them, through nodes disconnected when
+  // they end, and everything is booked a little ahead, as the sequencer books it — so no hit
+  // is waiting on the lane when the section ends, which is what lets it go quiet.
+  {
+    const page = await freshPage('live gap');
+    const r = await page.evaluate(async () => {
+      const ctx = new AudioContext();
+      await ctx.resume();
+      window.__Tone.setContext(ctx);
+      // Silent: everything reaches the speakers through a gain of zero.
+      const sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
+      const out = ctx.createGain(); out.connect(sink);
+      const musicBus = ctx.createGain(); const echoBus = ctx.createGain();
+      const songTrim = ctx.createGain(); const master = ctx.createGain();
+      musicBus.connect(songTrim); echoBus.connect(songTrim); songTrim.connect(master);
+      const mixer = window.__createMixer(ctx, { musicBus, echoBus, songTrim, master, destination: out, metered: false });
+      await mixer.ready;
+      const REC = `registerProcessor('rec', class extends AudioWorkletProcessor {
+        process(i) { if (i[0][0]) this.port.postMessage([currentFrame, i[0][0].slice()]); return true; } });`;
+      await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([REC], { type: 'application/javascript' })));
+      const rec = new AudioWorkletNode(ctx, 'rec', { numberOfOutputs: 0, channelCount: 1, channelCountMode: 'explicit' });
+      const blocks = [];
+      rec.port.onmessage = (e) => blocks.push(e.data);
+      out.connect(rec);
+
+      const chain = [{ id: 'gain', params: { gain: -12 } }];
+      mixer.prepareBarEffects([], 120, { hit: { fx: [{ from: [1, 0], to: [2, 0], chain }] } });
+      const strip = mixer.lane('hit');
+      const sr = ctx.sampleRate;
+      const buf = ctx.createBuffer(1, Math.round(0.03 * sr), sr);
+      buf.getChannelData(0).forEach((_, i, d) => { d[i] = 0.2 * Math.sin(2 * Math.PI * 1000 * i / sr); });
+      const hit = (at) => {
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const g = ctx.createGain();
+        src.connect(g); g.connect(strip.dry);
+        src.onended = () => { src.disconnect(); g.disconnect(); };
+        src.start(at);
+      };
+      const until = async (t) => { while (ctx.currentTime < t) await new Promise((res) => setTimeout(res, 5)); };
+      const t0 = ctx.currentTime + 0.3;
+      hit(t0);                                                          // A: before the section
+      await until(t0 + 0.1);                                            // A is over: the lane is idle
+      mixer.scheduleBarEffects('hit', chain, t0 + 0.3, { fresh: true, sixteenth: 0.125 });
+      hit(t0 + 0.4);                                                    // B: inside it
+      await until(t0 + 0.41);                                           // B is sounding...
+      mixer.scheduleBarEffects('hit', [], t0 + 0.6, { sixteenth: 0.125 }); // ...and gone by the end
+      await until(t0 + 0.8);                                            // nothing booked across the end
+      hit(t0 + 1.0);                                                    // C: after it
+      await until(t0 + 1.2);
+      const peak = (t) => {
+        let p = 0;
+        for (const [frame, x] of blocks) {
+          for (let i = 0; i < x.length; i++) {
+            const s = (frame + i) / sr;
+            if (s >= t + 0.005 && s < t + 0.025) p = Math.max(p, Math.abs(x[i]));
+          }
+        }
+        return p;
+      };
+      const levels = [peak(t0), peak(t0 + 0.4), peak(t0 + 1.0)];
+      await ctx.close();
+      return levels;
+    });
+    await page.close();
+    const [a, b, c] = r;
+    assert(a > 0 && Math.abs(dB(b / a) + 12) < 0.5 && Math.abs(dB(c / a)) < 0.5,
+      `live, a section switched on and off in the gaps between a lane's hits takes only the hit inside it (in ${dB(b / a).toFixed(1)} dB, after ${dB(c / a).toFixed(1)} dB)`);
   }
 } finally {
   await browser.close();

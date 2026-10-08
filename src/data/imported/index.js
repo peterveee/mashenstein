@@ -75,8 +75,10 @@ import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
 import * as BARBER_OF_SEVILLE from './barber-of-seville.js';
 import * as BARBER_Q from './barber-q.js';
 import * as BARBER from './barber.js';
+import * as CARDBOARD_8BIT from './cardboard-8bit.js';
 import * as CASTLE from './castle.js';
 import { CHOPIN3 } from './chopin3.js';
+import * as CRYPT_8BIT from './crypt-8bit.js';
 import * as CRYPT_BLACK_ABBEY from './crypt-black-abbey.js';
 import * as CRYPT_CLOCKWORK_SEANCE from './crypt-clockwork-seance.js';
 import * as CRYPT_MIDNIGHT_PROCESSION from './crypt-midnight-procession.js';
@@ -102,14 +104,20 @@ import * as FIELD_SERVICE_ORIGINAL from './field-service-original.js';
 import * as FIELD_SERVICE_OVERCLOCK from './field-service-overclock.js';
 import * as FIELD_SERVICE_REWIRED from './field-service-rewired.js';
 import * as FIELD_SERVICE_SLAP_HAPPY from './field-service-slap-happy.js';
+import * as FINALE_8BIT from './finale-8bit.js';
 import * as FOODCOURTTWEAK from './foodcourttweak.js';
+import * as FROST_8BIT from './frost-8bit.js';
 import * as FROST_REMIX_ABSOLUTE_ZERO from './frost-remix-absolute-zero.js';
 import * as FROST_REMIX_BLACK_ICE from './frost-remix-black-ice.js';
 import * as FROST_REMIX_SNOW_GLOBE from './frost-remix-snow-globe.js';
 import * as GARY_NUMAN_CARS from './gary-numan-cars.js';
+import * as GRAVITY_8BIT from './gravity-8bit.js';
+import * as HUB_8BIT from './hub-8bit.js';
+import * as MEGAMIX_8BIT from './megamix-8bit.js';
 import * as MIN_NEW from './min-new.js';
 import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
+import * as NEON_8BIT from './neon-8bit.js';
 import * as NEON_BLASTERS_ORIGINAL_BANGER_COPY from './neon-blasters-original-banger-copy.js';
 import * as NEON_ORBIT_BANGER_BITTERSWEET from './neon-orbit-banger-bittersweet.js';
 import * as NEON_REMIX_ENDSTATION from './neon-remix-endstation.js';
@@ -117,6 +125,7 @@ import * as NEON_REMIX_FREEFALL from './neon-remix-freefall.js';
 import * as NEON_REMIX_GOLDEN_HOUR from './neon-remix-golden-hour.js';
 import * as NEON_REMIX_LIVE_WIRE from './neon-remix-live-wire.js';
 import * as NEW_THE_FOOD_COURT from './new-the-food-court.js';
+import * as OFFICE_8BIT from './office-8bit.js';
 import * as ORIGINAL_CARDBOARD from './original-cardboard.js';
 import * as ORIGINAL_CRYPT from './original-crypt.js';
 import * as ORIGINAL_FROST from './original-frost.js';
@@ -128,7 +137,9 @@ import * as ORIGINAL_RHYTHM from './original-rhythm.js';
 import * as ORIGINAL_SPEED from './original-speed.js';
 import * as ORIGINAL_SURGE from './original-surge.js';
 import * as ORIGINAL_TITLE from './original-title.js';
+import * as PLUMBER_8BIT from './plumber-8bit.js';
 import * as PLUMBER_PANIC_ALT from './plumber-panic-alt.js';
+import * as RHYTHM_8BIT from './rhythm-8bit.js';
 import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
 import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
 import * as RHYTHM_REMIX_FIRE_SALE from './rhythm-remix-fire-sale.js';
@@ -158,6 +169,7 @@ import * as SESERAGI_V8D_LIFT_D_TO_A from './seseragi-v8d-lift-d-to-a.js';
 import * as SESERAGI_V8E_LIFT_NO_TRANSPOSE from './seseragi-v8e-lift-no-transpose.js';
 import * as SESERAGI_V9_SYNDRUM from './seseragi-v9-syndrum.js';
 import * as SHOP_80BPM from './shop-80bpm.js';
+import * as SHOP_8BIT from './shop-8bit.js';
 import * as SHOP_CHORDS from './shop-chords.js';
 import * as SHOPPING_FULL from './shopping-full.js';
 import * as SHOPPINGCHANNEL_SWING from './shoppingchannel-swing.js';
@@ -170,6 +182,7 @@ import * as SMW_OVERWORLD from './smw-overworld.js';
 import * as SMW_TITLE_2 from './smw-title-2.js';
 import * as SMWGOOD from './smwgood.js';
 import * as SPECIAL_STAGE_1 from './special-stage-1.js';
+import * as SPEED_8BIT from './speed-8bit.js';
 import * as SPEED_HORIZON_LINES_OVERDRIVE from './speed-horizon-lines-overdrive.js';
 import * as SPEED_HORIZON_LINES from './speed-horizon-lines.js';
 import * as SPEED_REMIX_BREAKNECK from './speed-remix-breakneck.js';
@@ -181,6 +194,7 @@ import * as SPEED_ZONE_ALT from './speed-zone-alt.js';
 import * as SPEED_ZONE_ORIGINAL from './speed-zone-original.js';
 import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
 import * as SUPER_MARIO_WORLD from './super-mario-world.js';
+import * as SURGE_8BIT from './surge-8bit.js';
 import * as SURGE_REMIX_HIGH_VOLTAGE from './surge-remix-high-voltage.js';
 import * as SURGE_REMIX_MASHTERPIECE from './surge-remix-mashterpiece.js';
 import * as SURGE_REMIX_OVERLOAD from './surge-remix-overload.js';
@@ -190,6 +204,7 @@ import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
 import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
 import * as THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER from './the-surge-mashterpiece-call-and-answer.js';
 import * as THE_SURGE_MASHTERPIECE_COPY from './the-surge-mashterpiece-copy.js';
+import * as TITLE_8BIT from './title-8bit.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
 import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
 import * as WIPL_BGM_SHOP_COPY from './wipl-bgm-shop-copy.js';
@@ -257,8 +272,10 @@ export const IMPORTED_BY_ID = {
   "barber-of-seville": { bank: BARBER_OF_SEVILLE.bank, title: BARBER_OF_SEVILLE.title, group: "imported", writable: true },
   "barber-q": { bank: BARBER_Q.bank, title: BARBER_Q.title, group: "imported", writable: true },
   "barber": { bank: BARBER.bank, title: BARBER.title, group: "imported", writable: true },
+  "cardboard-8bit": { bank: CARDBOARD_8BIT.bank, title: CARDBOARD_8BIT.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "castle": { bank: CASTLE.bank, title: CASTLE.title, group: "imported", writable: true },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
+  "crypt-8bit": { bank: CRYPT_8BIT.bank, title: CRYPT_8BIT.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-black-abbey": { bank: CRYPT_BLACK_ABBEY.bank, title: CRYPT_BLACK_ABBEY.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-clockwork-seance": { bank: CRYPT_CLOCKWORK_SEANCE.bank, title: CRYPT_CLOCKWORK_SEANCE.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-midnight-procession": { bank: CRYPT_MIDNIGHT_PROCESSION.bank, title: CRYPT_MIDNIGHT_PROCESSION.title, group: "alternate", writable: true, alternateOf: "crypt" },
@@ -284,14 +301,20 @@ export const IMPORTED_BY_ID = {
   "field-service-overclock": { bank: FIELD_SERVICE_OVERCLOCK.bank, title: FIELD_SERVICE_OVERCLOCK.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "field-service-rewired": { bank: FIELD_SERVICE_REWIRED.bank, title: FIELD_SERVICE_REWIRED.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "field-service-slap-happy": { bank: FIELD_SERVICE_SLAP_HAPPY.bank, title: FIELD_SERVICE_SLAP_HAPPY.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "finale-8bit": { bank: FINALE_8BIT.bank, title: FINALE_8BIT.title, group: "alternate", writable: true, alternateOf: "finale" },
   "foodcourttweak": { bank: FOODCOURTTWEAK.bank, title: FOODCOURTTWEAK.title, group: "copy", writable: true },
+  "frost-8bit": { bank: FROST_8BIT.bank, title: FROST_8BIT.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-absolute-zero": { bank: FROST_REMIX_ABSOLUTE_ZERO.bank, title: FROST_REMIX_ABSOLUTE_ZERO.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-black-ice": { bank: FROST_REMIX_BLACK_ICE.bank, title: FROST_REMIX_BLACK_ICE.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-snow-globe": { bank: FROST_REMIX_SNOW_GLOBE.bank, title: FROST_REMIX_SNOW_GLOBE.title, group: "alternate", writable: true, alternateOf: "frost" },
   "gary-numan-cars": { bank: GARY_NUMAN_CARS.bank, title: GARY_NUMAN_CARS.title, group: "imported", writable: true },
+  "gravity-8bit": { bank: GRAVITY_8BIT.bank, title: GRAVITY_8BIT.title, group: "alternate", writable: true, alternateOf: "gravity" },
+  "hub-8bit": { bank: HUB_8BIT.bank, title: HUB_8BIT.title, group: "alternate", writable: true, alternateOf: "hub" },
+  "megamix-8bit": { bank: MEGAMIX_8BIT.bank, title: MEGAMIX_8BIT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
+  "neon-8bit": { bank: NEON_8BIT.bank, title: NEON_8BIT.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-blasters-original-banger-copy": { bank: NEON_BLASTERS_ORIGINAL_BANGER_COPY.bank, title: NEON_BLASTERS_ORIGINAL_BANGER_COPY.title, group: "copy", writable: true },
   "neon-orbit-banger-bittersweet": { bank: NEON_ORBIT_BANGER_BITTERSWEET.bank, title: NEON_ORBIT_BANGER_BITTERSWEET.title, group: "copy", writable: true },
   "neon-remix-endstation": { bank: NEON_REMIX_ENDSTATION.bank, title: NEON_REMIX_ENDSTATION.title, group: "alternate", writable: true, alternateOf: "neon" },
@@ -299,6 +322,7 @@ export const IMPORTED_BY_ID = {
   "neon-remix-golden-hour": { bank: NEON_REMIX_GOLDEN_HOUR.bank, title: NEON_REMIX_GOLDEN_HOUR.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-live-wire": { bank: NEON_REMIX_LIVE_WIRE.bank, title: NEON_REMIX_LIVE_WIRE.title, group: "alternate", writable: true, alternateOf: "neon" },
   "new-the-food-court": { bank: NEW_THE_FOOD_COURT.bank, title: NEW_THE_FOOD_COURT.title, group: "alternate", writable: true, alternateOf: "hub" },
+  "office-8bit": { bank: OFFICE_8BIT.bank, title: OFFICE_8BIT.title, group: "alternate", writable: true, alternateOf: "office" },
   "original-cardboard": { bank: ORIGINAL_CARDBOARD.bank, title: ORIGINAL_CARDBOARD.title, group: "original", writable: false },
   "original-crypt": { bank: ORIGINAL_CRYPT.bank, title: ORIGINAL_CRYPT.title, group: "original", writable: false },
   "original-frost": { bank: ORIGINAL_FROST.bank, title: ORIGINAL_FROST.title, group: "original", writable: false },
@@ -310,7 +334,9 @@ export const IMPORTED_BY_ID = {
   "original-speed": { bank: ORIGINAL_SPEED.bank, title: ORIGINAL_SPEED.title, group: "original", writable: false },
   "original-surge": { bank: ORIGINAL_SURGE.bank, title: ORIGINAL_SURGE.title, group: "original", writable: false },
   "original-title": { bank: ORIGINAL_TITLE.bank, title: ORIGINAL_TITLE.title, group: "original", writable: false },
+  "plumber-8bit": { bank: PLUMBER_8BIT.bank, title: PLUMBER_8BIT.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "plumber-panic-alt": { bank: PLUMBER_PANIC_ALT.bank, title: PLUMBER_PANIC_ALT.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "rhythm-8bit": { bank: RHYTHM_8BIT.bank, title: RHYTHM_8BIT.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-bankruptcy-copy-2": { bank: RHYTHM_BANKRUPTCY_COPY_2.bank, title: RHYTHM_BANKRUPTCY_COPY_2.title, group: "copy", writable: true },
   "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },
   "rhythm-remix-fire-sale": { bank: RHYTHM_REMIX_FIRE_SALE.bank, title: RHYTHM_REMIX_FIRE_SALE.title, group: "alternate", writable: true, alternateOf: "rhythm" },
@@ -340,6 +366,7 @@ export const IMPORTED_BY_ID = {
   "seseragi-v8e-lift-no-transpose": { bank: SESERAGI_V8E_LIFT_NO_TRANSPOSE.bank, title: SESERAGI_V8E_LIFT_NO_TRANSPOSE.title, group: "imported", writable: true },
   "seseragi-v9-syndrum": { bank: SESERAGI_V9_SYNDRUM.bank, title: SESERAGI_V9_SYNDRUM.title, group: "imported", writable: true },
   "shop-80bpm": { bank: SHOP_80BPM.bank, title: SHOP_80BPM.title, group: "imported", writable: true },
+  "shop-8bit": { bank: SHOP_8BIT.bank, title: SHOP_8BIT.title, group: "alternate", writable: true, alternateOf: "shop" },
   "shop-chords": { bank: SHOP_CHORDS.bank, title: SHOP_CHORDS.title, group: "copy", writable: true },
   "shopping-full": { bank: SHOPPING_FULL.bank, title: SHOPPING_FULL.title, group: "copy", writable: true },
   "shoppingchannel-swing": { bank: SHOPPINGCHANNEL_SWING.bank, title: SHOPPINGCHANNEL_SWING.title, group: "copy", writable: true },
@@ -352,6 +379,7 @@ export const IMPORTED_BY_ID = {
   "smw-title-2": { bank: SMW_TITLE_2.bank, title: SMW_TITLE_2.title, group: "imported", writable: true },
   "smwgood": { bank: SMWGOOD.bank, title: SMWGOOD.title, group: "imported", writable: true },
   "special-stage-1": { bank: SPECIAL_STAGE_1.bank, title: SPECIAL_STAGE_1.title, group: "imported", writable: true },
+  "speed-8bit": { bank: SPEED_8BIT.bank, title: SPEED_8BIT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-horizon-lines-overdrive": { bank: SPEED_HORIZON_LINES_OVERDRIVE.bank, title: SPEED_HORIZON_LINES_OVERDRIVE.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-horizon-lines": { bank: SPEED_HORIZON_LINES.bank, title: SPEED_HORIZON_LINES.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-remix-breakneck": { bank: SPEED_REMIX_BREAKNECK.bank, title: SPEED_REMIX_BREAKNECK.title, group: "alternate", writable: true, alternateOf: "speed" },
@@ -363,6 +391,7 @@ export const IMPORTED_BY_ID = {
   "speed-zone-original": { bank: SPEED_ZONE_ORIGINAL.bank, title: SPEED_ZONE_ORIGINAL.title, group: "alternate", writable: true, alternateOf: "speed" },
   "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },
   "super-mario-world": { bank: SUPER_MARIO_WORLD.bank, title: SUPER_MARIO_WORLD.title, group: "copy", writable: true },
+  "surge-8bit": { bank: SURGE_8BIT.bank, title: SURGE_8BIT.title, group: "alternate", writable: true, alternateOf: "surge" },
   "surge-remix-high-voltage": { bank: SURGE_REMIX_HIGH_VOLTAGE.bank, title: SURGE_REMIX_HIGH_VOLTAGE.title, group: "alternate", writable: true, alternateOf: "surge" },
   "surge-remix-mashterpiece": { bank: SURGE_REMIX_MASHTERPIECE.bank, title: SURGE_REMIX_MASHTERPIECE.title, group: "alternate", writable: true, alternateOf: "surge" },
   "surge-remix-overload": { bank: SURGE_REMIX_OVERLOAD.bank, title: SURGE_REMIX_OVERLOAD.title, group: "alternate", writable: true, alternateOf: "surge" },
@@ -372,6 +401,7 @@ export const IMPORTED_BY_ID = {
   "the-food-court-alt": { bank: THE_FOOD_COURT_ALT.bank, title: THE_FOOD_COURT_ALT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "the-surge-mashterpiece-call-and-answer": { bank: THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER.bank, title: THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER.title, group: "copy", writable: true },
   "the-surge-mashterpiece-copy": { bank: THE_SURGE_MASHTERPIECE_COPY.bank, title: THE_SURGE_MASHTERPIECE_COPY.title, group: "copy", writable: true },
+  "title-8bit": { bank: TITLE_8BIT.bank, title: TITLE_8BIT.title, group: "alternate", writable: true, alternateOf: "title" },
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },
   "wiishoppingchannel": { bank: WIISHOPPINGCHANNEL, title: "WIISHOPPINGCHANNEL", group: "imported", writable: false },
   "wipl-bgm-shop-copy": { bank: WIPL_BGM_SHOP_COPY.bank, title: WIPL_BGM_SHOP_COPY.title, group: "copy", writable: true },

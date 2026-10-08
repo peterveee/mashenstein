@@ -238,7 +238,7 @@ assert(run.playerGroundY() === run.groundYAt(run.playerWorldX()),
 
 // A jump taken just before the lip should put him on top of it. Jump must be
 // HELD, not tapped: variable-jump cuts a released jump to VARIABLE_JUMP_CUT
-// (60) the same frame, which is a hop of about a pixel and clears nothing.
+// (60) once MIN_JUMP_RISE_T is up, a ~21px hop that does not reach a slab.
 let landedOn = null;
 dom.keyDown('Space');
 for (let i = 0; i < 90 && !landedOn; i++) {
@@ -1115,6 +1115,9 @@ frames(30);
     frames(2);
     dom.keyUp('Space');
     if (run.player.jumps > before) { jumps++; rolled.add(run.player.jumpFace); }
+    // Back on the ground rather than waiting the hop out: a tap is a ~21px
+    // hop since MIN_JUMP_RISE_T, and waiting each one out spent the 300.
+    run.player.y = 0; run.player.vy = 0; run.player.grounded = true; run.player.jumps = 0;
     frames(4);
   }
   assert(jumps >= 20, `enough real jumps to see the spread (${jumps})`);

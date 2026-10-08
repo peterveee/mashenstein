@@ -200,10 +200,16 @@ export const MusicDirector = {
     // After setBank, which resets the treatment leg along with everything else on the
     // desk. Built at full wet with no cross-fade because this is already a hard change:
     // there is a gap either side of it and nothing to be smooth about yet.
+    //
+    // Through afterMix: the game holds a new song's mix back until the old song has faded
+    // out, and touching the mixer before then would put it on early, under the fade.
     this.treated = !!r.treatment?.length;
-    if (this.treated && Audio.mixer) {
-      Audio.mixer.setTreatment(r.treatment, bank.bpm || Audio.bpm);
-      Audio.mixer.rampTreatment(1, Audio.ctx.currentTime, 0);
+    if (this.treated) {
+      Audio.afterMix(() => {
+        if (!Audio.mixer) return;
+        Audio.mixer.setTreatment(r.treatment, bank.bpm || Audio.bpm);
+        Audio.mixer.rampTreatment(1, Audio.ctx.currentTime, 0);
+      });
     }
     // The treatment's markers over the song's own, which setBank has just armed. Same
     // arming as a song's: seek to the start bar, then arm the region WITHOUT jumping

@@ -183,6 +183,14 @@ const same = (a, b) => JSON.stringify([a.bank, a.mix, a.arrangement]) === JSON.s
     'FORMULA\'s flavour is the groove\'s');
   const lite = makeBanger({ ...rec, infusion: 'synthwave' });
   assert(lite.soundsId === 'fusion:synthwave-lite+reggaeton', 'an INFUSION with a Lab Sound Set plays on it, as the formula alone would');
+  // An INFUSION is always the Club form (8 Oct 2026): never the pop-song form of either formula.
+  const roles = (t) => t.form.map((f) => f.role).join(',');
+  const isClub = (t) => /\bbuild\b/.test(roles(t)) && !/verse|preChorus|middle8/.test(roles(t));
+  assert(!isClub(plain) && isClub(makeBanger({ ...rec, infusion: 'eurobeat' })),
+    'REGGAETON (a pop song) infused with EUROBEAT (a pop song) plays the Club form, not a song');
+  const wild = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => makeBanger({ ...rec, seed, voltage: 3, infusion: 'eurobeat' }));
+  assert(wild.every(isClub), 'Overload\'s form roll never turns an infusion into another form');
+  assert(isClub(makeBanger({ ...rec, mood: 'breakthrough', infusion: 'eurobeat' })), 'a MOOD PAIR over an infusion keeps the Club form');
   const chip = makeBanger({ ...rec, style: 'trance', infusion: null, flavour: null });
   assert(chip.soundsId === 'trance', 'and a plain take is unchanged');
   const asGroove = makeBanger({ ...rec, style: 'chipstep', infusion: 'trance' });

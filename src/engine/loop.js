@@ -36,6 +36,15 @@ let stallTotal = 0;     // stalls this session
 // evidence away by the time anyone looks.
 let sessionWorstMs = 0;
 
+// A frame that was all LOAD — a screen building its caches behind a closed
+// shutter — is not time its opening animation lived through. Left alone, the
+// next callback replays that gap as catch-up ticks, so the reveal and whatever
+// the new screen opens on lurch forward together in one frame. Dropping it holds
+// the cover a beat longer instead, which nobody can see. Consumed by the next
+// callback; it is still counted as a hitch, because the display really did wait.
+let discardGap = false;
+export function discardNextGap() { discardGap = true; }
+
 export function frameRate() { return measuredFps; }
 
 // Per-frame smoothness, for the FPS readout and for anyone diagnosing judder.
@@ -105,6 +114,11 @@ export function startLoop({ update, draw, present }) {
       const gapMs = now - last;
       let dt = gapMs / 1000;
       if (dt > 0.25) dt = 0.25; // tab-switch spike clamp
+      if (discardGap) {
+        discardGap = false;
+        if (dt > TICK) dt = TICK;
+        acc = 0;
+      }
       last = now;
       // Counted on the callback, not on the present: a frame the loop chose to
       // skip on a fast panel is deliberate, whereas a late callback is the

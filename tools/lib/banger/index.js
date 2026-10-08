@@ -27,7 +27,8 @@ import { fuseChannels } from './styles/fusion.js';
 import { validateRiff, parseRiff, pickHook } from './riff.js';
 import { analyseRiff, romanChord, keyName, MODE_INFO } from './analyse.js';
 import { buildForm } from './form.js';
-import { buildSections } from './sections.js';
+import { buildSections, LIFT_SEMIS } from './sections.js';
+import { voiceLeadChords } from './voice-leading.js';
 import { allocateLanes, buildMix, pickRiffSounds, BASS_ECHO } from './lanes.js';
 import { levelMix } from './levels.js';
 import { rollReport } from './report.js';
@@ -73,8 +74,12 @@ export {
  * verse, the third below, the breakdown bell — are fitted to their chords (theory.js fitToChords);
  * a breakdown's walk gives way to a hook that grinds on it; a pedal or walking bass steps off a note
  * a semitone under the tune (clearUnder). Every take with such a moment changes, kept Lab songs too.
+ * 9 (7 Oct 2026): voice leading (voice-leading.js). The coloured chords on the saws, pad, piano and
+ * choir move least from the chord before, with no needless semitone clusters, instead of each sitting
+ * nearest its centre on its own. Peter chose it by ear over the clusters-only fix. Every take with a
+ * coloured chord changes, kept Lab songs too; NEON ORBIT, played from its file, does not.
  */
-export const BANGER_GENERATOR_VERSION = 8;
+export const BANGER_GENERATOR_VERSION = 9;
 
 /** A seed as an unsigned 32-bit number. */
 export const normaliseSeed = (seed) => (Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : 1);
@@ -320,7 +325,11 @@ export function generateBanger({
     scale: key.melodyScale, candidates: analysis.candidates, modeChords: analysis.modeChords,
     dominant: key.own ? romanChord('V', key.own) : romanChord(MODE_INFO[key.mode]?.turn || 'V', key),
   };
-  const { bars, events } = buildSections(ctx);
+  const { bars, events, asWritten } = buildSections(ctx);
+  // The coloured chords voice-led, each moving least from the one before (voice-leading.js) — in
+  // a lifted section, about its centre lifted with it.
+  const liftOf = (bar1) => (form.find((f) => f.from <= bar1 && bar1 <= f.to)?.lifted ? LIFT_SEMIS[options.form.keyLift] || 0 : 0);
+  voiceLeadChords(bars, form, { centres: style.centres, liftOf, asWritten });
   // A bass figure with an echo (Sequencer): the bass again on a channel of its own, a
   // sixteenth behind — the record's delay, written as notes.
   if (BASS_FIGURES.find((f) => f.id === options.parts.bass)?.echo) echoPart(bars, 'bass', 'bassEcho');

@@ -17,6 +17,12 @@ export const AIR_JUMP_SCALE = 0.85;
 // Variable jump: releasing above this snaps down to it. Low enough that a tap
 // is visibly a hop, high enough that the cut never reads as hitting a ceiling.
 export const VARIABLE_JUMP_CUT = 60;
+// ...but never before the jump has risen this long. A release inside the
+// window is honoured when it closes, so the quickest flick — a sub-frame touch
+// tap, a key bounced off — still gets a real hop (~21px, about 37% of a full
+// jump; Sonic's floor is 38%) instead of the 2px the cut used to leave it.
+// Any hold past the window is untouched: the dial above it is the same dial.
+export const MIN_JUMP_RISE_T = 0.065;
 // Terminal fall speed. A long drop stops accelerating before it outruns the
 // player's ability to place the landing.
 export const TERMINAL_VY = -520;
@@ -271,6 +277,9 @@ export class Player {
     this.headless = 0;    // Gary
     this.assemblyGraceUsed = 0;
     this.grounded = true;
+    // Counts down from MIN_JUMP_RISE_T on every jump; the variable-jump cut
+    // waits for it.
+    this.jumpRiseT = 0;
     // Airborne because something threw him, not because he jumped. See launch().
     this.launched = false;
     // THE FALL FACE, and where it is measured from.
@@ -485,6 +494,7 @@ export class Player {
     if (this.grounded || this.jumps < this.maxJumps) {
       if (!this.grounded && this.jumps === 0) this.jumps = 1; // walked off a ledge
       this.vy = jumpV(this.hero) * (this.jumpScale || 1) * (this.jumps > 0 ? AIR_JUMP_SCALE : 1);
+      this.jumpRiseT = MIN_JUMP_RISE_T;
       this.launched = false;
       this.clearSlideState();
       this.standT = 0;
@@ -546,7 +556,11 @@ export class Player {
     // exemption a hero who happened not to be holding jump when he ran over a
     // pad had his 200px arc clipped to 60 on the very next frame, which reads
     // as the pad simply not working.
-    if (!holdJump && !this.launched && this.vy > VARIABLE_JUMP_CUT && this.hero.variableJump) this.vy = VARIABLE_JUMP_CUT;
+    // The cut also waits out MIN_JUMP_RISE_T, so a flick is a hop and not a
+    // twitch. Checked before the countdown so the window is whole frames of
+    // rise: four at 60fps, 67ms.
+    if (!holdJump && !this.launched && this.jumpRiseT <= 0 && this.vy > VARIABLE_JUMP_CUT && this.hero.variableJump) this.vy = VARIABLE_JUMP_CUT;
+    if (this.jumpRiseT > 0) this.jumpRiseT -= dt;
 
     // Float (Mochi): hold jump while falling caps fall speed.
     const floatCap = this.mods.includes('wide') ? -45 : -60;

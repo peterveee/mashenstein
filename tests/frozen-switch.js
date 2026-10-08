@@ -269,7 +269,7 @@ function bareRun(seed = 7) {
 // touch it at all.
 {
   const { HEROES } = await import('../src/data/heroes.js');
-  const { jumpV, gravityFor, PLAYER_H, VARIABLE_JUMP_CUT } = await import('../src/game/player.js');
+  const { jumpV, gravityFor, PLAYER_H, VARIABLE_JUMP_CUT, MIN_JUMP_RISE_T } = await import('../src/game/player.js');
   const sw = OBSTACLES.switch;
   const lip = Math.min(...frost.patterns
     .filter((p) => (p.cells || []).some((c) => c.t === 'switch'))
@@ -292,7 +292,8 @@ function bareRun(seed = 7) {
     const g = gravityFor(hero), v0 = jumpV(hero);
     let y = 0, vy = v0, t = 0, touched = false;
     while (y >= 0 || t === 0) {
-      if (t > hold && hero.variableJump && vy > VARIABLE_JUMP_CUT) vy = VARIABLE_JUMP_CUT;
+      // A release inside the minimum rise is honoured when it closes (player.js).
+      if (t > Math.max(hold, MIN_JUMP_RISE_T) && hero.variableJump && vy > VARIABLE_JUMP_CUT) vy = VARIABLE_JUMP_CUT;
       if (y + PLAYER_H >= sw.alt && y <= sw.alt + sw.h) touched = true;
       vy -= g * DT; y += vy * DT; t += DT;
       if (y < 0) break;

@@ -48,6 +48,12 @@ export function defaultSettings() {
     audioSyncMs: 0,
     audioSyncAsked: false,
     audioSyncReportedMs: null,
+    // SOUNDTRACK: 'original' or '8bit' — every song in its 8-bit version (the 8-bit
+    // alternates; src/game/results-chip.js installSoundtrack). Per install, like the volumes.
+    soundtrack: 'original',
+    // The jukebox's VISUALISER switch: off, a song plays on under the list and the
+    // visualiser never takes over. Per install, like SOUNDTRACK beside it.
+    jukeboxVisualiser: true,
   };
 }
 
@@ -144,6 +150,8 @@ function normalizeSettings(settings) {
   // read of it is inside a beat calculation, and NaN there stops the lane dead.
   next.audioSyncMs = clampAudioSyncMs(next.audioSyncMs);
   next.audioSyncAsked = !!next.audioSyncAsked;
+  if (next.soundtrack !== '8bit') next.soundtrack = 'original';
+  next.jukeboxVisualiser = next.jukeboxVisualiser !== false;
   next.audioSyncReportedMs = Number.isFinite(next.audioSyncReportedMs)
     ? Math.round(next.audioSyncReportedMs) : null;
   // RETIRED TOGGLES — everyone gets the same game. The two accessibility

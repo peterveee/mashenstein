@@ -24,6 +24,7 @@ export function lifecyclePolicy({
   allowPortrait = false,
   presentationRefreshing = false,
   presentationRhythm = false,
+  backgroundAudio = false,
 } = {}) {
   // Phone portrait is now a normal running presentation. Screens that have an
   // authored `portraitMode` still select their tailored frame; older surfaces
@@ -31,13 +32,18 @@ export function lifecyclePolicy({
   // player behind a rotate card while the portrait rollout finishes.
   const phonePortrait = false;
   const lifecycleBlocked = !allowed || !visible || phonePortrait;
+  // A song the player chose — the jukebox, the Lab's club — plays on with the
+  // screen off or the app behind another, as a music app's does. Hiding is the
+  // one blocker it is excused: the picture and input still stop with it.
+  const hiddenWithMusic = allowed && !visible && backgroundAudio;
   return {
     iphonePortrait: phonePortrait,
     paused: lifecycleBlocked || presentationRefreshing,
     // Ordinary levels can keep their soundtrack running while the picture is
     // rebuilt. Beat-locked runs must hold audio with the simulation so their
     // lane cannot advance underneath a paused world.
-    audioPaused: lifecycleBlocked || (presentationRefreshing && presentationRhythm),
+    audioPaused: (lifecycleBlocked && !hiddenWithMusic) || (presentationRefreshing && presentationRhythm),
+    backgroundAudio: hiddenWithMusic,
     // Keep the existing phone rotate card visible when it is the applicable
     // lifecycle surface. The renderer cover sits below it, so a rotation does
     // not flash from card -> black -> card as the backing store settles.
@@ -67,6 +73,19 @@ export function portraitAllowedFor(state, diagPortrait = false) {
   return SHIPPED_PORTRAIT_MODES.has(mode) || !!diagPortrait;
 }
 
+// Two seconds of 8 kHz mono silence as a WAV: the lock screen's stand-in (primeAnchor).
+// WebKit will not make a clip under 0.95 s the thing that is playing.
+function silentWav(seconds = 2, rate = 8000) {
+  const n = Math.round(seconds * rate);
+  const v = new DataView(new ArrayBuffer(44 + n * 2));
+  const tag = (at, s) => { for (let i = 0; i < 4; i++) v.setUint8(at + i, s.charCodeAt(i)); };
+  tag(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); tag(8, 'WAVE');
+  tag(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  tag(36, 'data'); v.setUint32(40, n * 2, true);
+  return v.buffer;
+}
+
 const UPDATE_CHECK_TIMEOUT_MS = 10000;
 const UPDATE_CONFIRM_TIMEOUT_MS = 10000;
 const UPDATE_RELOAD_TIMEOUT_MS = 5000;
@@ -84,6 +103,12 @@ export class LifecycleController {
     allowPortrait = () => false,
     onPortraitJukebox = () => {},
     onDevMenu = null,
+    nowPlaying = () => null,
+    onBackground = () => {},
+    onMediaPause = () => {},
+    onMediaSkip = () => {},
+    songArt = null,
+    beatLocked = () => false,
   }) {
     this.platform = platform;
     this.loop = loop;
@@ -94,6 +119,30 @@ export class LifecycleController {
     this.devMode = devMode;
     this.allowPortrait = allowPortrait;
     this.onPortraitJukebox = onPortraitJukebox;
+    // The song the screen up now is playing — { title, album, paused } — or null. A
+    // song not paused plays on with the page hidden (apply); any song holds the music
+    // session and the NOW PLAYING card (syncMusicSession, once a frame). onBackground
+    // tells that screen it went: no frame of its runs until the page is back.
+    // onMediaPause is the card's own play/pause, handed to the screen, and onMediaSkip
+    // its previous/next (-1/1) for a song that says it `skips`.
+    this.nowPlaying = nowPlaying;
+    this.onBackground = onBackground;
+    this.onMediaPause = onMediaPause;
+    this.onMediaSkip = onMediaSkip;
+    this.mediaSkips = false;
+    // (song) => a canvas: the song's cover on the card (main.js: src/game/song-art.js)
+    this.songArt = songArt;
+    this.cover = null;
+    this.coverKey = null;
+    this.inBackground = false;
+    this.sessionType = null;
+    this.nowPlayingKey = null;
+    this.playbackState = null;
+    this.mediaHandlers = false;
+    this.anchor = null;
+    this.anchorReady = false;
+    this.anchorPriming = false;
+    this.anchorState = null;
     // Supplied by main.js only where a dev menu exists; returns false when it
     // does not, so a published build stays silent instead of promising one.
     this.onDevMenu = onDevMenu;
@@ -127,6 +176,18 @@ export class LifecycleController {
     this.onVisibility = () => this.apply();
     this.onPageHide = () => { this.pageHidden = true; this.apply(); };
     this.onPageShow = () => { this.pageHidden = false; this.apply(); };
+    // THE EXIT FADE. On a phone or tablet the sound fades as focus goes, for whenever focus
+    // goes well ahead of the page being hidden (the app switcher held open, a banner). A plain
+    // swipe home gives it 4 ms (the exit trace, 8 Oct 2026) — leaving itself is the instant
+    // hold in Audio.setLifecyclePaused. Not while a song the player chose plays on (playsOn),
+    // and not on a desktop, where focus goes every time you click into another window and the
+    // game is still in plain sight.
+    this.beatLocked = beatLocked;
+    this.fadesOnBlur = !!(platform && (platform.isIphone || platform.isIpad || platform.isAndroidPhone || platform.isAndroidTablet));
+    this.onBlur = () => {
+      if (this.fadesOnBlur && !this.playsOn() && this.audio.fadeForExit) this.audio.fadeForExit();
+    };
+    this.onFocus = () => { if (this.audio.fadeBackIn) this.audio.fadeBackIn(); };
     this.onViewport = () => this.apply();
     this.onFatalError = () => this.syncErrorReport();
     this.onCopyError = () => { this.copyErrorReport(); };
@@ -191,6 +252,8 @@ export class LifecycleController {
 
     doc.addEventListener('visibilitychange', this.onVisibility);
     win.addEventListener('pagehide', this.onPageHide);
+    win.addEventListener('blur', this.onBlur);
+    win.addEventListener('focus', this.onFocus);
     win.addEventListener('pageshow', this.onPageShow);
     win.addEventListener('orientationchange', this.onViewport);
     win.addEventListener('resize', this.onViewport);
@@ -348,7 +411,239 @@ export class LifecycleController {
       allowPortrait: stateAllowsPortrait || this.portraitJukeboxOpening,
       presentationRefreshing: this.presentationRefreshing,
       presentationRhythm: this.presentationRhythm,
+      // Latched while hidden: once the music has gone into the background it stays
+      // there until the page is back, so a pause from the lock screen holds the
+      // song where it stopped rather than letting a later apply() suspend it.
+      backgroundAudio: this.playsOn() || (this.inBackground && (this.doc.hidden || this.pageHidden)),
     });
+  }
+
+  isHidden() {
+    return !!(this.doc.hidden || this.pageHidden);
+  }
+
+  playsOn() {
+    const song = this.nowPlaying();
+    return !!song && !song.paused;
+  }
+
+  /**
+   * Once a frame while the page is up (main.js), and again after the NOW PLAYING
+   * card's own play/pause.
+   *
+   * The audio session is 'playback', everywhere in the game (navigator.audioSession,
+   * iOS 17; honoured in the background from 17.5). Without it iOS stops feeding a page's
+   * audio the instant the app is left and only formally stops it half a second later, and
+   * in between the phone loops its last buffer — the buzz on every exit outside the
+   * jukebox (the exit trace, 8 Oct 2026: `ctx.suspend()` at the hide never landed). With
+   * it the audio runs on through the way out, so the game can fade and hold it itself,
+   * and a song the player chose can play on with the screen off. Set ahead of time rather
+   * than from visibilitychange, which can arrive after iOS has already decided. The price,
+   * which Peter took (8 Oct 2026: "I don't mind the trade offs"): the game's sound ignores
+   * the silent switch, and starting it stops other apps' audio rather than mixing with it.
+   *
+   * The media session: with no metadata the lock screen's NOW PLAYING card names the
+   * page by its host (mbp14.local, mashenstein.com). This gives it the song, where
+   * it is playing and the game's icon, and routes the card's buttons to the screen —
+   * by way of the anchor (primeAnchor), the only thing WebKit sends them to.
+   */
+  syncMusicSession() {
+    const song = this.nowPlaying();
+    const nav = this.win.navigator || {};
+    const audioSession = nav.audioSession;
+    const type = 'playback';
+    if (audioSession && type !== this.sessionType) {
+      this.sessionType = type;
+      try { audioSession.type = type; } catch (e) { /* a WebKit without the type keeps its default */ }
+    }
+    const media = nav.mediaSession;
+    if (!media) return;
+    if (!this.mediaHandlers) {
+      this.mediaHandlers = true;
+      const press = (paused) => () => {
+        this.onMediaPause(paused);
+        // Played from the lock screen after a pause in the game: the song now plays
+        // on, and apply() is what lets it out of the lifecycle's hold.
+        this.apply();
+        this.syncMusicSession();
+      };
+      try {
+        media.setActionHandler('play', press(false));
+        media.setActionHandler('pause', press(true));
+      } catch (e) { /* an action this browser does not offer */ }
+    }
+    // Previous/next only while the song can take them: offered, iOS shows them in place
+    // of its skip-back/skip-ahead; withdrawn (null), the buttons go.
+    const skips = !!(song && song.skips);
+    if (skips !== this.mediaSkips) {
+      this.mediaSkips = skips;
+      // and the card retitled at once: a locked screen runs no frame to do it
+      const skip = (dir) => () => { this.onMediaSkip(dir); this.syncMusicSession(); };
+      try {
+        media.setActionHandler('previoustrack', skips ? skip(-1) : null);
+        media.setActionHandler('nexttrack', skips ? skip(1) : null);
+      } catch (e) { /* an action this browser does not offer */ }
+    }
+    // (a song gone over to its 8-bit version, or back, is a new cover: song-art.js)
+    const key = song ? `${song.title}\n${song.album}${song.eightBit ? '\n8-BIT' : ''}` : '';
+    if (key !== this.nowPlayingKey) {
+      this.nowPlayingKey = key;
+      // The title at once, under the last cover (the icon before there is one), and the
+      // song's own cover in its place once it is encoded: the card never goes blank.
+      // Painted only with the page hidden — on the lock screen, where it is seen — as it
+      // costs a few frames the jukebox would show as a stutter (apply() paints it then).
+      this.writeMetadata(song, this.cover || this.artwork());
+      if (song && this.isHidden()) this.paintCover(song, key);
+    }
+    const state = !song ? 'none' : song.paused ? 'paused' : 'playing';
+    if (state !== this.playbackState) {
+      this.playbackState = state;
+      try { media.playbackState = state; } catch (e) { /* older WebKit: no playbackState */ }
+    }
+    this.syncPosition(media, song);
+    this.syncAnchor(state);
+  }
+
+  /**
+   * The lock screen's buttons go to a page's <audio> or <video>, never to Web Audio:
+   * WebKit plays and pauses an AudioContext itself, behind the game's back, and drops
+   * previous/next, though it shows them. So a silent looping <audio> stands in as the
+   * thing that is playing — WebKit prefers any media element to Web Audio for NOW
+   * PLAYING — and its buttons reach the mediaSession handlers above.
+   *
+   * Started inside a tap on a music screen (main.js's gesture hook), since iOS lets an
+   * element play without one only after it has played with one; not before a music
+   * screen, because a playing element stops other apps' audio. WebKit only: it is
+   * WebKit's routing this works round.
+   */
+  primeAnchor() {
+    if (this.anchorReady || this.anchorPriming) return;
+    const nav = this.win.navigator || {};
+    if (!nav.audioSession || !nav.mediaSession || typeof this.doc.createElement !== 'function'
+      || !this.win.Blob || !this.win.URL || !this.win.URL.createObjectURL) return;
+    let el = this.anchor;
+    if (!el) {
+      el = this.doc.createElement('audio');
+      el.loop = true;
+      el.preload = 'auto';
+      el.setAttribute('playsinline', '');
+      el.src = this.win.URL.createObjectURL(new this.win.Blob([silentWav()], { type: 'audio/wav' }));
+      if (this.doc.body) this.doc.body.appendChild(el);
+      this.anchor = el;
+    }
+    this.anchorPriming = true;
+    el.muted = false;
+    const settle = (ok) => {
+      this.anchorPriming = false;
+      this.anchorReady = ok;
+      // whatever the screen wants now: it was playing, or failed to
+      this.anchorState = ok ? 'playing' : null;
+      if (ok) this.syncAnchor(this.playbackState);
+    };
+    let played = null;
+    try { played = el.play(); } catch (e) { settle(false); return; }
+    if (played && typeof played.then === 'function') played.then(() => settle(true), () => settle(false));
+    else settle(true);
+  }
+
+  /**
+   * The lock screen's progress bar: where the song is, out of how long (the engine's
+   * songClock), kept true as it loops back and as the club skips. Without it the card
+   * shows the anchor's own two seconds going round (Peter, 8 Oct 2026) — an unbounded
+   * length, the first try, is refused by WebKit, and the anchor's clip is what it fell
+   * back to. Set again only when what the card would be extrapolating has drifted from
+   * the song, and once more, by a timer, as it loops: with the screen off no frame runs
+   * to see it, and the playback session keeps the timer running.
+   */
+  syncPosition(media, song) {
+    if (typeof media.setPositionState !== 'function') return;
+    const clock = song && typeof this.audio.songClock === 'function' ? this.audio.songClock() : null;
+    if (!clock) {
+      if (this.positionSet) {
+        this.positionSet = null;
+        try { media.setPositionState(null); } catch (e) { /* nothing to clear */ }
+      }
+      return;
+    }
+    const now = (this.win.performance?.now?.() ?? Date.now()) / 1000;
+    const rate = song.paused ? 0 : 1;
+    const was = this.positionSet;
+    if (was && was.rate === rate && Math.abs(was.duration - clock.duration) < 0.05
+      && Math.abs(Math.min(was.duration, was.position + (now - was.at) * rate) - clock.position) < 0.3) return;
+    try {
+      media.setPositionState({ duration: clock.duration, position: Math.min(clock.position, clock.duration), playbackRate: 1 });
+    } catch (e) { return; }
+    this.positionSet = { ...clock, rate, at: now };
+    if (this.positionTimer) this.win.clearTimeout(this.positionTimer);
+    this.positionTimer = rate
+      ? this.win.setTimeout(() => { this.positionTimer = null; this.syncMusicSession(); },
+        Math.max(50, (clock.duration - clock.position) * 1000 + 60))
+      : null;
+  }
+
+  /** The anchor follows the song: playing, paused — or muted when there is none, which takes it off the lock screen. */
+  syncAnchor(state) {
+    const el = this.anchor;
+    if (!el || !this.anchorReady || state === this.anchorState) return;
+    this.anchorState = state;
+    el.muted = state === 'none';
+    if (state !== 'playing') { el.pause(); return; }
+    let played = null;
+    try { played = el.play(); } catch (e) { /* settled below */ }
+    // refused after all: the next tap on a music screen starts it again
+    const refuse = () => { this.anchorReady = false; this.anchorState = null; };
+    if (played && typeof played.catch === 'function') played.catch(refuse);
+    else if (!played) refuse();
+  }
+
+  writeMetadata(song, artwork) {
+    const media = this.win.navigator && this.win.navigator.mediaSession;
+    if (!media || !this.win.MediaMetadata) return;
+    // With a playback session the game's own sound is "playing" to iOS too, and Control
+    // Center shows a card for it — named, rather than left as the web address.
+    try {
+      media.metadata = new this.win.MediaMetadata(song
+        ? { title: song.title, artist: 'MASHENSTEIN', album: song.album, artwork }
+        : { title: 'MASHENSTEIN', artwork: this.artwork() });
+    } catch (e) { /* metadata is a nicety; the music plays without it */ }
+  }
+
+  /**
+   * A new cover each time a song comes on (songArt), handed over as a data URL: the
+   * card's artwork is fetched like any image, and a data URL is the one kind every
+   * loader takes. Encoded off the frame (toBlob), and dropped if the song has moved on
+   * by the time it is ready.
+   */
+  paintCover(song, key) {
+    this.coverKey = key;
+    // A cabinet's scenery can take a second or two to paint the first time on a phone
+    // (its bakes), and nothing feeds the sequencer meanwhile: queue the music past it
+    // first, as the desk does before a block it causes on purpose.
+    if (typeof this.audio.prefill === 'function') this.audio.prefill(2);
+    let canvas = null;
+    try { canvas = typeof this.songArt === 'function' ? this.songArt(song) : null; } catch (e) { canvas = null; }
+    if (!canvas || typeof canvas.toBlob !== 'function' || !this.win.FileReader) return;
+    canvas.toBlob((blob) => {
+      if (!blob || key !== this.nowPlayingKey) return;
+      const reader = new this.win.FileReader();
+      reader.onload = () => {
+        if (key !== this.nowPlayingKey || typeof reader.result !== 'string') return;
+        this.cover = [{ src: reader.result, sizes: `${canvas.width}x${canvas.height}`, type: blob.type || 'image/jpeg' }];
+        this.writeMetadata(song, this.cover);
+      };
+      reader.readAsDataURL(blob);
+    }, 'image/jpeg', 0.9);
+  }
+
+  /**
+   * The game's own icon — the dev build's magenta set under the dev server. Tapped, the
+   * lock screen blows it up to most of its width, so it is the 512 the build ships beside
+   * the 192 the page links (build.js ICONS, same name but the size), not the 180/192.
+   */
+  artwork() {
+    const link = this.doc.querySelector && this.doc.querySelector('link[rel="icon"][sizes="192x192"]');
+    if (!link || !link.href || !/-192\.png$/.test(link.href)) return [];
+    return [{ src: link.href.replace(/-192\.png$/, '-512.png'), sizes: '512x512', type: 'image/png' }];
   }
 
   setPresentationRefreshing(active, rhythm = false) {
@@ -588,7 +883,24 @@ export class LifecycleController {
       else this.shell.removeAttribute('aria-hidden');
     }
     this.input.setSuspended(policy.paused);
-    this.audio.setLifecyclePaused(policy.audioPaused);
+    // Left (hidden), it fades before it holds — the playback session keeps it running to —
+    // unless a beat-locked run is up, whose lane must stop with its world, not a fade's
+    // length after it. A presentation refresh holds at once.
+    const fadeOut = this.isHidden() && !this.beatLocked();
+    this.audio.setLifecyclePaused(policy.audioPaused, { fade: fadeOut });
+    // Hidden with the music playing on: the screen puts down whatever only its own
+    // frames would have ended. Back: a context iOS interrupted anyway — an older
+    // iOS, a phone call — is asked to resume rather than waiting for a tap.
+    if (policy.backgroundAudio !== this.inBackground) {
+      this.inBackground = policy.backgroundAudio;
+      if (this.inBackground) this.onBackground();
+      else if (this.audio.resumeContext) this.audio.resumeContext();
+    }
+    // Gone to the lock screen with a song whose cover is not painted yet (syncMusicSession).
+    if (this.isHidden() && this.nowPlayingKey && this.coverKey !== this.nowPlayingKey) {
+      const song = this.nowPlaying();
+      if (song) this.paintCover(song, this.nowPlayingKey);
+    }
     if (policy.paused) this.loop.pause();
     else this.loop.resume();
     return policy;
@@ -597,6 +909,8 @@ export class LifecycleController {
   destroy() {
     this.doc.removeEventListener('visibilitychange', this.onVisibility);
     this.win.removeEventListener('pagehide', this.onPageHide);
+    this.win.removeEventListener('blur', this.onBlur);
+    this.win.removeEventListener('focus', this.onFocus);
     this.win.removeEventListener('pageshow', this.onPageShow);
     this.win.removeEventListener('orientationchange', this.onViewport);
     this.win.removeEventListener('resize', this.onViewport);
@@ -613,6 +927,7 @@ export class LifecycleController {
     this.portraitTitle && this.portraitTitle.removeEventListener('click', this.onTitleTap);
     this.portraitTitle && this.portraitTitle.removeEventListener('pointerup', this.onTitlePointerUp);
     this.win.clearTimeout(this.reloadTimer);
+    if (this.positionTimer) this.win.clearTimeout(this.positionTimer);
     this.buildStamp && this.onStampTap && this.buildStamp.removeEventListener('click', this.onStampTap);
     (this.diagButtons || []).forEach(([el, fn]) => el && el.removeEventListener('click', fn));
   }

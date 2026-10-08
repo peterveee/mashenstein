@@ -2483,11 +2483,12 @@ const SECTION_DEFAULTS = {
   // added, so a default for adding it would be a value nothing could reach.
   'additive.perc': { ratio: 3, gain: 0.72, attack: 0.002, decay: 0.08 },
   // The game synth's tone filter opens WIDE and flat — a lowpass at 4 kHz with no
-  // resonance and `to` equal to `freq`, so switching it on takes nothing away and
-  // sweeps nowhere. Every other section here starts from the sound the engine already
-  // implied; this one has no such sound to start from, so it starts from silence's
-  // opposite: audibly the raw waveform, with all six pots ready to move.
-  filter: { type: 'lowpass', slope: -12, freq: 4000, to: 4000, Q: 0.7, sweep: 0.12 },
+  // resonance, so switching it on takes nothing away. Every other section here starts
+  // from the sound the engine already implied; this one has no such sound to start from,
+  // so it starts from silence's opposite: audibly the raw waveform, with all six pots
+  // ready to move. No `to`/`sweep`: the seed used to carry `to: 4000`, and turning CUTOFF
+  // left it behind as a sweep no control could reach — the Filter Env card moves it now.
+  filter: { type: 'lowpass', slope: -12, freq: 4000, Q: 0.7 },
   // The layer sections. Osc 2 and 3 switch on as USEFUL layers — a sub and an octave,
   // the two the engine voices actually stack — not as silence to dig out of. The
   // per-layer filter opens on the filtered saw's own numbers, the pitch bend on an
@@ -3666,9 +3667,6 @@ const gameCutoffRow = () => {
       if (!voice.filter) addSection(voice, 'filter');
       voice.filter ||= {};
       voice.filter.freq = x;
-      // A filter created from nothing must not invent a sweep. A bypassed authored
-      // filter, however, keeps its own destination when Simple brings it back.
-      if (!baseline.filter && !baseline.held) voice.filter.to = x;
       baseline.projected = projection(voice);
       return SKIP_WRITE;
     },
@@ -4992,6 +4990,11 @@ export function createVoiceEditor({
   // The desk keeps the tally, because the panel forgets everything when it closes and
   // the loss happens later — on the reload after it. See dirtyLibraryVoices.
   onDirty = () => {},
+  // Told once a save has landed in src/data/voices.js: the id it was filed under, the
+  // sound as filed and its measured level. For a host whose catalogue is not the only
+  // copy — the Banger Sound Palette's editor is a frame over the palette page, and the
+  // palette's own copy of the preset has to follow what was saved.
+  onSaved = () => {},
   // The full-window header can move to another preset without importing the catalogue.
   // These callbacks are deliberately supplied by the host: the Song Mixer needs lane
   // rebinding, while the standalone page needs a session-only copy.
@@ -7349,6 +7352,10 @@ export function createVoiceEditor({
       // the ones this panel opened on.
       await rebase();
       onChanged();
+      onSaved({
+        id: saveId, kind: v.kind, preset: asPreset(VOICES[saveId] || v),
+        level: out.level, peak: out.peak, library: isLibraryPreset(VOICES[saveId] || v),
+      });
       // A level this low is not a quiet preset — the gain is DERIVED from it, so the
       // engine is about to multiply this sound by fifty or more, and anything in it
       // that was inaudible comes up with the rest.
@@ -7858,6 +7865,8 @@ export function createVoiceEditor({
      * rather than writing a name itself.
      */
     saveSheet() { if (state) openSaveSheet(); },
+    /** Put the sound back to what was last saved — the footer's Revert, for a host with no footer. */
+    discard() { if (state) discardChanges(); },
     get editing() { return state?.id || null; },
     get dirty() { return !!state?.dirty && !matchesBaseline(); },
     /**

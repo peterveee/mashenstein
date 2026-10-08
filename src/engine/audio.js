@@ -3,6 +3,7 @@
 // Needed only to swap the context around an offline render — see
 // _reversedVoiceBuffer. The rack owns every other use of Tone in the engine.
 import * as Tone from 'tone';
+import { installJunctionGuard } from './webkit-junction-guard.js';
 import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
 import { createMixer, dbToGain, AUX_DEFAULTS } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
@@ -303,6 +304,24 @@ const BENCH_FADE = 0.015;
  * when the next song starts moves.
  */
 const SONG_FADE = 0.012;
+// How long before a new song's downbeat its trim starts to open (setBank): short enough
+// that nothing of the old song's tail can be heard in it, long enough not to click.
+const SONG_OPEN = 0.004;
+// FADE FIRST, THEN CHANGE (setBank, when the game has asked for it — fadeSongChanges).
+// How long songOut stays shut after the old song has faded and songTrim has closed behind
+// it: long enough for the master chain to empty out what it was still holding (a lookahead
+// limiter keeps ~10ms of the old song in its delay line) before the stage opens again.
+const SONG_DRAIN = 0.02;
+// THE EXIT FADE: how long everything takes to go quiet as the app is left, and to come back
+// up on the way in (exitGain; setLifecyclePaused, fadeForExit).
+const EXIT_FADE = 0.06;
+// ...and how long it then runs on in silence before the context is held: the phone keeps a
+// buffer of its own after the page's (a 50 ms request on a phone — phone-audio.js — and more
+// behind it), and a hold the moment the fade lands could leave the end of the sound in it.
+const EXIT_SILENCE = 0.25;
+// ...and the hold that cannot wait (a beat-locked run): a dip too short to hear as a fade,
+// there so the last quantum rendered is not a cut.
+const EXIT_CUT = 0.005;
 
 // How long an arrangement's per-bar PAN takes to travel, and how far ahead of the note
 // it starts so that it arrives on it. A pan stepped under a note that is still ringing
@@ -1075,6 +1094,15 @@ class AudioSys {
     // its music/echo buses and the mixer remains untouched.
     this._previewOutput = null;
     this.songTrim = null;
+    // The music's last stage, after the mixer's master chain and before `master` — the one
+    // place a fade covers everything the song is made of. Live only. See setBank.
+    this.songOut = null;
+    // Off by default: the desk changes songs constantly and holds the mixer itself, so it
+    // keeps the change it always had. The game turns it on (src/main.js).
+    this.fadeSongChanges = false;
+    // A song change's mix, held back until the old song has faded — see _mixToGraph.
+    this._pendingMix = null;
+    this._mixHoldUntil = null;
     this.musicTrim = 1;
     this.pendingStartDelay = 0;
     // Storage/scheduling resolution is a property of the current bank and Note FX,
@@ -1314,6 +1342,9 @@ class AudioSys {
   ensure(ctxOverride = null) {
     if (this.ctx) {
       if (!this.lifecyclePaused && this.ctx.state !== 'running') this.resumeContext();
+      // A tap on a page that has focus back: if the focus event that should have brought
+      // the sound back up never came, this does (fadeForExit).
+      if (this._leaving && typeof document !== 'undefined' && document.hasFocus?.()) this.fadeBackIn();
       return;
     }
     if (ctxOverride) {
@@ -1344,6 +1375,9 @@ class AudioSys {
       // one late DSP callback into a crackle. src/engine/phone-audio.js asks for 50ms
       // there and nowhere else, and the beat judge follows the granted latency by
       // itself (heardLatencySec), so scoring is unaffected by what is granted.
+      // Before the first node exists: Safari aborts the page if a node dies while a connection
+      // change to it is still pending on the audio thread (webkit-junction-guard.js).
+      installJunctionGuard();
       const opts = {};
       if (this.latencyHint) opts.latencyHint = this.latencyHint;
       if (this.sampleRateHint) opts.sampleRate = this.sampleRateHint;
@@ -1383,10 +1417,31 @@ class AudioSys {
     }
     this.master = this.ctx.createGain();
     this.master.gain.value = this.silent ? 0 : this.levels.master;
-    this.master.connect(this.ctx.destination);
+    // The exit fade's own stage, after everything else and on nothing else, so the fade
+    // never fights the volume and mute settings that ride master. Live only: a render
+    // has no app to leave, and stays sample-exact with one node fewer.
+    if (this.offline) {
+      this.exitGain = null;
+      this.master.connect(this.ctx.destination);
+    } else {
+      this.exitGain = this.ctx.createGain();
+      this.exitGain.gain.value = this.lifecyclePaused || this._leaving ? 0 : 1;
+      this.exitGain.connect(this.ctx.destination);
+      this.master.connect(this.exitGain);
+    }
     this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = this.levels.sfx; this.sfxGain.connect(this.master);
     this.portalSend = null; this.portalVerb = null;   // belong to the old ctx
-    this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = this.levels.music; this.musicGain.connect(this.master);
+    this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = this.levels.music;
+    // songOut: the whole song, mixed and mastered, on its way to `master`. Live only, like
+    // exitGain — a render never changes song under itself. A mix held back for a song change
+    // belongs to the context it was built against, so a new graph starts with none.
+    this._dropPendingMix();
+    if (this.offline) this.songOut = null;
+    else {
+      this.songOut = this.ctx.createGain();
+      this.songOut.connect(this.master);
+    }
+    this.musicGain.connect(this.songOut || this.master);
     // The song proper rides on musicBus; the invincibility arpeggio rides on
     // starBus. Two buses so the theme can duck under the star layer without
     // the star layer ducking itself. Both feed musicGain (and so the echo).
@@ -1472,7 +1527,7 @@ class AudioSys {
     this.mixer = createMixer(this.ctx, {
       metered: this.mixerMeteringEnabled,
       musicBus: this.musicBus, echoBus: this.echoBus,
-      master: this.musicGain, destination: this.master,
+      master: this.musicGain, destination: this.songOut || this.master,
       // The original echo's return leg: the mixer splices its EQ and level in
       // between these two, so Delay 1 gets the same controls as the new auxes.
       songTrim: this.songTrim, delayLp: this.delayLp,
@@ -1502,7 +1557,7 @@ class AudioSys {
     // prevent a feedback loop (reversed audio → capture → reversed again).
     this._rewindOut = this.ctx.createGain();
     this._rewindOut.gain.value = this.levels.master;
-    this._rewindOut.connect(this.ctx.destination);
+    this._rewindOut.connect(this.exitGain || this.ctx.destination);
     if (this.lifecyclePaused && this.ctx.state === 'running') this.suspendContext();
   }
 
@@ -2546,12 +2601,63 @@ class AudioSys {
     g.linearRampToValueAtTime(this._recLevel, t + Math.max(0.001, ramp));
   }
 
-  setLifecyclePaused(paused) {
+  /**
+   * `fade`: the app is being LEFT (lifecycle.js — hidden, not a presentation refresh): go
+   * quiet over EXIT_FADE, run on in silence for EXIT_SILENCE, then hold. That needs the audio
+   * still running after the page is hidden, which on an iPhone only the 'playback' session
+   * buys (lifecycle.js syncMusicSession) — without it iOS starved the page's audio from the
+   * hide, no fade or hold landed, and the phone looped its last buffer as a buzz (the exit
+   * trace, 8 Oct 2026). Without `fade` — a beat-locked run, whose lane must stop with its
+   * world, or a presentation refresh — the hold is at once, behind an EXIT_CUT dip. Back, it
+   * fades in over EXIT_FADE.
+   */
+  setLifecyclePaused(paused, { fade = false } = {}) {
     paused = !!paused;
     if (paused === this.lifecyclePaused) return;
     this.lifecyclePaused = paused;
-    if (paused) this.suspendContext();
-    else this.resumeContext();
+    if (this._exitHold) { clearTimeout(this._exitHold); this._exitHold = null; }
+    if (paused) {
+      if (fade && this.exitGain && this.ctx?.state === 'running') {
+        this._rampExit(0);
+        this._exitHold = setTimeout(() => {
+          this._exitHold = null;
+          if (this.lifecyclePaused) this.suspendContext();
+        }, (EXIT_FADE + EXIT_SILENCE) * 1000);
+        return;
+      }
+      this._rampExit(0, EXIT_CUT);
+      this.suspendContext();
+    } else {
+      this._leaving = false;
+      this.resumeContext();
+      this._rampExit(1);
+    }
+  }
+
+  /**
+   * The app is on its way out — focus has gone, the page is not hidden yet. Fade now, while
+   * the audio is still running: by the time iOS stops it, there is nothing left to cut.
+   */
+  fadeForExit() {
+    this._leaving = true;
+    this._rampExit(0);
+  }
+
+  /** ...and it was not left after all (Control Center, a banner), or it is back. */
+  fadeBackIn() {
+    if (!this._leaving) return;
+    this._leaving = false;
+    if (!this.lifecyclePaused) this._rampExit(1);
+  }
+
+  _rampExit(to, seconds = EXIT_FADE) {
+    const g = this.exitGain?.gain;
+    if (!g || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    // anchored on where it is, not cancel-and-held (cancelAndHoldAtTime breaks the ramp)
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(to, t + seconds);
   }
 
   /**
@@ -5966,6 +6072,17 @@ class AudioSys {
     this.voices?.stopPreview?.();
   }
 
+  /** Take songOut to silence over `seconds`, from wherever it is; returns when it gets there. */
+  _fadeSongOut(seconds) {
+    const g = this.songOut.gain;
+    const now = this.ctx.currentTime;
+    // anchored on where it is, not cancel-and-held (cancelAndHoldAtTime breaks the ramp)
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(0, now + seconds);
+    return now + seconds;
+  }
+
   // `gap` is the silence this opens before the new song starts, and half a second is
   // what every caller wants: long enough that the old song's tail cannot run into the
   // new downbeat, short enough to read as a cut rather than a stop. It is a parameter
@@ -6020,6 +6137,14 @@ class AudioSys {
     // at a stroke. Zero offline: a render has no wall clock for the deferred half to wait
     // on, and has to stay sample-exact besides, so it keeps the behaviour it always had.
     const fade = this.offline ? 0 : SONG_FADE;
+    // FADE FIRST, THEN CHANGE. With a song sounding, the game takes the whole of it down
+    // on songOut — after the master chain, so the fade is the fade and no compressor
+    // releases against it — and holds the new mix back until that has finished
+    // (_mixToGraph). Everything below still takes the old song apart over `fade` as it
+    // always did; it is just no longer heard doing it. Not on the desk, not offline, and
+    // not on a suspended context, where nothing is being heard to fade.
+    const fadeEnd = fade > 0 && this.fadeSongChanges && this.bank && this.songOut
+      && this.ctx?.state === 'running' ? this._fadeSongOut(fade) : null;
     // The voice rack is per song: a new bank, or the same bank with a different voice
     // chosen on the desk, wants its own synths. Nothing outlives this call, so
     // auditioning voices cannot silt the graph up with the ones you rejected. Safe to
@@ -6032,7 +6157,12 @@ class AudioSys {
     // sounding — at the top of an offline render there is nothing to cut, and cutting
     // there would put a node change into a render that has to stay sample-exact.
     if (this.bank) this._cutLaneGates(fade);
-    bank = this.applyMix(bank, mixOverride);
+    if (fadeEnd != null) this._mixHoldUntil = fadeEnd;
+    try {
+      bank = this.applyMix(bank, mixOverride);
+    } finally {
+      this._mixHoldUntil = null;
+    }
     this.bank = bank;
     const nextBpm = bank?.bpm || this.bpm;
     const countInBeats = Number.isInteger(countIn) ? Math.max(0, countIn) : 0;
@@ -6065,7 +6195,7 @@ class AudioSys {
       // to where the ear last heard it — which is the whole reason cancelAndHold looked
       // right. This is the same shape `_cutBenchGates` and VoiceRack's `_fadeAndDispose`
       // already use, and they were right to.
-      const down = () => {
+      const down = (openBy = Infinity) => {
         const g = this.songTrim.gain;
         if (!(fade > 0)) {
           g.cancelScheduledValues(now);
@@ -6073,6 +6203,20 @@ class AudioSys {
           return;
         }
         g.cancelScheduledValues(now);
+        if (fadeEnd != null) {
+          // songOut is taking the song down; the trim shuts behind it once it is at the
+          // bottom, unheard, and the stage opens again when the master chain has emptied.
+          const shut = Math.max(now, fadeEnd);
+          if (shut > now) g.setValueAtTime(g.value, now);
+          g.setValueAtTime(0.0001, shut);
+          // Open by the time the new song's trim starts to, even if a short gap (the intro
+          // film's cut) leaves the drain short.
+          const reopen = Math.max(shut, Math.min(shut + SONG_DRAIN, openBy - 2 * SONG_OPEN));
+          const o = this.songOut.gain;
+          o.setValueAtTime(0, reopen);
+          o.linearRampToValueAtTime(1, reopen + SONG_OPEN);
+          return;
+        }
         g.setValueAtTime(g.value, now);
         g.linearRampToValueAtTime(0.0001, now + fade);
       };
@@ -6081,9 +6225,22 @@ class AudioSys {
         // bank after a clean gap. The fade is spent inside that gap — `startGap` is half
         // a second and SONG_FADE is twelve milliseconds — so the new downbeat does not
         // move by so much as a sample.
-        down();
         const start = Number.isFinite(at) ? Math.max(at, now + 0.05) : now + startGap;
-        this.songTrim.gain.setTargetAtTime(this.musicTrim, start, 0.01);
+        down(start);
+        // OPEN BY THE DOWNBEAT, NOT FROM IT. A setTarget from `start` is still at 63%
+        // ten milliseconds into the first note and 90% at twenty-three — exactly the
+        // attack, so a song's first kick came in with its front shaved off (Peter,
+        // 7 Oct 2026: "the beginning of the audio is cutting off slightly"). A ramp
+        // that ENDS on the downbeat has the trim fully up for the first note; it opens
+        // over the last few milliseconds of the gap, long after the old song's tail was
+        // taken down. Live only: an offline render keeps the curve its reference
+        // renders were made with (tests/null-test.js).
+        if (this.offline) this.songTrim.gain.setTargetAtTime(this.musicTrim, start, 0.01);
+        else {
+          const g = this.songTrim.gain;
+          g.setValueAtTime(0.0001, start - SONG_OPEN);
+          g.linearRampToValueAtTime(this.musicTrim, start);
+        }
         this.nextTime = start;
       } else {
         down();
@@ -6120,8 +6277,11 @@ class AudioSys {
     if (formLoop) this.armSongLoop({ seek: !startAtBeginning });
     if (bank && bank.bpm) {
       this.bpm = bank.bpm;
-      // follows delayDivision, and grows the line if this bpm makes it a long one
-      if (this.delay) this.growDelayLine(this.delayTimeSeconds()).delayTime.value = this.delayTimeSeconds();
+      // follows delayDivision, and grows the line if this bpm makes it a long one — once
+      // the new mix is on, which is what sets the division (and, held, may not be yet)
+      this.afterMix(() => {
+        if (this.delay) this.growDelayLine(this.delayTimeSeconds()).delayTime.value = this.delayTimeSeconds();
+      });
     }
     // Unconditional, unlike the tempo above: a song with no swing has to REPLACE the
     // swing of whatever was playing before it, and `0` would fail a truthiness guard and
@@ -6159,7 +6319,7 @@ class AudioSys {
       return this.setBank(bank, mixOverride, arrangementOverride);
     }
     if (arrangementOverride !== undefined) this.arrangement = arrangementOverride;
-    const entry = mixOverride !== undefined ? mixOverride : MIX[trackIdOf(bank)];
+    const entry = this.filterMix(bank, mixOverride !== undefined ? mixOverride : MIX[trackIdOf(bank)]);
     // The MERGE only — not applyMix. The strips already hold this mix: a fader, a pan,
     // an EQ or a send edited on the desk goes straight to the channel and never comes
     // back through here. Running the whole of applyMix would reset all forty strips to
@@ -6307,6 +6467,19 @@ class AudioSys {
     if (this.formLoopArmed) this.armSongLoop();
   }
 
+  // A game-level say over every mix the engine is handed — the SOUNDTRACK setting's 8-bit
+  // versions (src/game/results-chip.js, installSoundtrack). Every way a mix arrives goes
+  // through it: applyMix (setBank's half), reapplyBank, and rampMix (a treatment's
+  // handover), so no path reaches the strips on the other soundtrack. `mixSource` is the mix
+  // as it was HANDED IN, before the filter — what the game sends again when the setting
+  // changes under a song. No filter, which is the desk and every tool, changes nothing.
+  setMixFilter(fn) { this.mixFilter = typeof fn === 'function' ? fn : null; }
+  filterMix(bank, entry) {
+    this.mixSource = entry ?? null;
+    if (!this.mixFilter) return entry;
+    try { return this.mixFilter(bank, entry) ?? entry; } catch { return entry; }
+  }
+
   // Push a song's saved mix onto the channel strips, and merge any voice overrides
   // into the bank. Returns the bank the sequencer should actually play — the same
   // object when there is nothing to merge, so the common case allocates nothing.
@@ -6315,7 +6488,7 @@ class AudioSys {
   // that at schedule time), so a section that sets the same key still wins. Lane
   // trims are relative and live on the strips, so per-section variation survives.
   applyMix(bank, mix = undefined) {
-    const entry = mix !== undefined ? mix : (bank ? MIX[trackIdOf(bank)] : null);
+    const entry = this.filterMix(bank, mix !== undefined ? mix : (bank ? MIX[trackIdOf(bank)] : null));
     // An edit to the mix is how Amount, Glide and the lane's own sound change under a
     // playing song; what was planned from the old one is stale, and so is any gate that
     // was stretched for it.
@@ -6353,6 +6526,54 @@ class AudioSys {
     // Hands back the same object when the mix says neither, which is every song that
     // has not been through the desk's Duplicate or Delete — see deskBank.
     bank = deskBank(bank, entry);
+    this._mixToGraph(bank, entry);
+
+    // `id` was read from the bank as passed in, above, before applyArrangement and
+    // deskBank patched it — which is exactly what the song's preset copies need to be
+    // scoped by. See registerSongVoice.
+    const voiced = withVoices(bank, entry, id);
+    this.refreshTransportResolution(voiced, entry);
+    return voiced;
+  }
+
+  /**
+   * The half of applyMix that edits the GRAPH: every strip, aux, group and the master
+   * chain set to `entry`. The other half — the bank itself — is pure, and applyMix keeps it.
+   *
+   * Split out so a song change can hold this back until the old song has faded (setBank,
+   * fadeSongChanges). A mix applied under a sounding song is heard being applied: the
+   * strips and returns step to the new settings, and a rebuilt master chain with lookahead
+   * starts from an empty delay line, so the old song dropped to digital silence for ~10ms
+   * and then came back through the NEW master for the twenty-odd milliseconds of main
+   * thread it took setBank to reach its own fade (Peter, 8 Oct 2026: "a bit of a cut in
+   * the audio when transitioning from one scene to another"; measured in
+   * work/local/_song-change-click-probe.mjs). Held, it lands on a silent path.
+   *
+   * Nothing waits on the hold for correctness: the first read of `this.mixer` applies a
+   * held mix at once (the getter), so anything that touches the mixer after a song change
+   * — the scheduler, a treatment, the desk — still finds the new song's mix under it, in
+   * order. Only a touch inside the fade gets the old click back.
+   */
+  _mixToGraph(bank, entry) {
+    if (this._mixHoldUntil != null) {
+      this._dropPendingMix();
+      const due = this._mixHoldUntil;
+      const p = { bank, entry, due, after: [], timer: null };
+      // By the audio clock, not the wall: the fade is scheduled on the one, and a timer
+      // runs on the other.
+      const wait = () => {
+        p.timer = null;
+        if (this._pendingMix !== p) return;
+        if (this.ctx?.state === 'running' && this.ctx.currentTime < due) {
+          p.timer = setTimeout(wait, 4);
+          return;
+        }
+        this._flushPendingMix();
+      };
+      p.timer = setTimeout(wait, Math.max(0, (due - (this.ctx?.currentTime ?? 0)) * 1000) + 2);
+      this._pendingMix = p;
+      return;
+    }
     if (this.mixer) {
       this.mixer.reset();
       // No family rule any more. A lane used to be on the delay because of what KIND
@@ -6435,14 +6656,44 @@ class AudioSys {
     // Sends are final by here, so anything unused can be dropped from the graph.
     if (this.mixer) this.mixer.pruneAuxes();
     if (this.mixer && bank) this.mixer.prepareBarEffects(barPlan(bank), bank.bpm || this.bpm, bank.automation);
-
-    // `id` was read from the bank as passed in, above, before applyArrangement and
-    // deskBank patched it — which is exactly what the song's preset copies need to be
-    // scoped by. See registerSongVoice.
-    const voiced = withVoices(bank, entry, id);
-    this.refreshTransportResolution(voiced, entry);
-    return voiced;
   }
+
+  /** Apply a held song-change mix now, then whatever was waiting for it (afterMix). */
+  _flushPendingMix() {
+    const p = this._pendingMix;
+    if (!p) return;
+    this._pendingMix = null;
+    if (p.timer != null) clearTimeout(p.timer);
+    this._mixToGraph(p.bank, p.entry);
+    for (const fn of p.after) fn();
+  }
+
+  /** A held mix that will never be wanted: a newer one replaces it, or its context went. */
+  _dropPendingMix() {
+    const p = this._pendingMix;
+    if (!p) return;
+    this._pendingMix = null;
+    if (p.timer != null) clearTimeout(p.timer);
+  }
+
+  /**
+   * Run `fn` once the song just set has its mix on the graph — at once, unless setBank is
+   * holding one back for its fade. For a mixer edit that belongs to the new song (a cabinet
+   * screen's treatment): made through the getter it would apply the held mix early, inside
+   * the fade. Dropped if another song change replaces the held mix first, because the edit
+   * belonged to the song that was replaced.
+   */
+  afterMix(fn) {
+    if (this._pendingMix) this._pendingMix.after.push(fn);
+    else fn();
+  }
+
+  get mixer() {
+    if (this._pendingMix) this._flushPendingMix();
+    return this._mixer;
+  }
+
+  set mixer(m) { this._mixer = m; }
 
   /**
    * Cache the finest clock the current song or its Note FX actually requests — and,
@@ -6648,7 +6899,7 @@ class AudioSys {
    */
   rampMix(mix, when = this.ctx ? this.ctx.currentTime : 0, seconds = 0) {
     if (!this.mixer) return when;
-    const entry = mix || null;
+    const entry = this.filterMix(this.sourceBank, mix || null);
     const bpm = this.bank?.bpm || this.bpm;
 
     // Every lane the song has, not only the ones the target names. A lane the target
@@ -7086,6 +7337,10 @@ class AudioSys {
   }
 
   schedule() {
+    // A song change's held mix goes on at the first pass after its fade (_mixToGraph). The
+    // frame calls this too, so that is usually the frame after the change, still under the
+    // shutter, rather than whenever a timer gets a turn on a busy main thread.
+    if (this._pendingMix && this.ctx && this.ctx.currentTime >= this._pendingMix.due) this._flushPendingMix();
     if (!this.ctx || !this.bank) return;
     // How much queued audio was left when this pass began — the number that says
     // whether the main thread is keeping the sequencer fed. Normally it hovers a
@@ -9510,6 +9765,21 @@ class AudioSys {
   // back it off by the outstanding lookahead or visuals sync to notes that
   // have not sounded yet. Returns null when there is no song to lock to, so
   // callers can fall back to a wall clock.
+  /**
+   * The song as a music player shows it — how long one pass is and how far into it the
+   * ear is, in seconds — for the lock screen's progress bar (lifecycle.js syncPosition).
+   * "One pass" runs to the song's own loop end where it has one, so the bar fills to where
+   * it goes round, and after it songBeat has already folded the position into the loop.
+   */
+  songClock() {
+    if (!this.ctx || !this.bank || this.offline) return null;
+    const beat = this.songBeat();
+    const sixteenth = (60 / (this.bpm * this.tempo)) / 4;
+    const end = this.loopEnd ?? barPlan(this.bank).length * 16;
+    if (!Number.isFinite(beat) || !(end > 0) || !(sixteenth > 0)) return null;
+    return { duration: end * sixteenth, position: Math.max(0, Math.min(end, beat * 4)) * sixteenth };
+  }
+
   songBeat() {
     if (!this.ctx || !this.bank) return null;
     const spb = (60 / (this.bpm * this.tempo)) / 4;
