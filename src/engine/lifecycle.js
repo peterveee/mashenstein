@@ -2,14 +2,14 @@
 // events never resume subsystems independently; they all recompute this policy.
 import { readDiag, writeDiag, clearDiag, forceRenderer, forceWebglDensity } from './diag.js';
 
-// THE STAND-IN TEST (8 Oct 2026). A tap on the lock screen's NOW PLAYING card opens
-// another of the phone's Home Screen web apps, never this one. Off, to learn whether
-// the silent <audio> stand-in (primeAnchor) is what sends it there: the card then
-// belongs to Web Audio, as before 7 Oct — play/pause go straight to the context
-// (WebKit's own), and previous/next show but do nothing. A build-time switch, since
-// an installed iPhone app has no address bar for a flag and no reachable diagnostics
-// panel. true puts the stand-in back.
-const LOCK_SCREEN_STAND_IN = false;
+// THE LOCK SCREEN'S STAND-IN, and what it costs. With the silent <audio> (primeAnchor) a
+// tap on the NOW PLAYING card opens another of the phone's Home Screen web apps, never
+// this one — an iOS fault no page can steer. Without it the tap does nothing, but the
+// card belongs to Web Audio, as before 7 Oct: play/pause go straight to the context and
+// previous/next show but do nothing. Tried both on the phone (8 Oct 2026); Peter keeps
+// previous/next. A build-time switch, since an installed iPhone app has no address bar
+// for a flag and no reachable diagnostics panel.
+const LOCK_SCREEN_STAND_IN = true;
 
 // One line summarising which overrides are live, so the panel opens saying what
 // state the device is already in rather than looking like a fresh slate.

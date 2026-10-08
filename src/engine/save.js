@@ -54,6 +54,9 @@ export function defaultSettings() {
     // The jukebox's VISUALISER switch: off, a song plays on under the list and the
     // visualiser never takes over. Per install, like SOUNDTRACK beside it.
     jukeboxVisualiser: true,
+    // The jukebox's REPEAT switch: on, a song goes round for as long as it is left; off,
+    // it plays through twice and the next one comes on.
+    jukeboxRepeat: false,
   };
 }
 
@@ -152,6 +155,7 @@ function normalizeSettings(settings) {
   next.audioSyncAsked = !!next.audioSyncAsked;
   if (next.soundtrack !== '8bit') next.soundtrack = 'original';
   next.jukeboxVisualiser = next.jukeboxVisualiser !== false;
+  next.jukeboxRepeat = next.jukeboxRepeat === true;
   next.audioSyncReportedMs = Number.isFinite(next.audioSyncReportedMs)
     ? Math.round(next.audioSyncReportedMs) : null;
   // RETIRED TOGGLES — everyone gets the same game. The two accessibility

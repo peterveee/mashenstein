@@ -44,7 +44,7 @@ assert(JUKEBOX.at(-1).name === 'MASHENSTEIN: THE MONSTER MIX'
 
 Input.usingTouch = true;
 function touchDown(y) {
-  Input.pointer = { x: 120, y, down: true };
+  Input.pointer = { x: 60, y, down: true };   // inside BACK, the bottom row's first quarter
   Input.press('pointer');
   sound.update(1 / 60);
 }
@@ -168,8 +168,8 @@ renderer.setPresentationFrame(defaultFrame());
 
 {
   // VISUALISER: off, a song plays on under the list and the visualiser never takes over;
-  // the switch is kept in the save. Landscape has BACK · 8-BIT · VISUALISER across one row;
-  // portrait gives the two switches a row of their own over BACK.
+  // the switch is kept in the save. Landscape has BACK · 8-BIT · VISUALISER · REPEAT across
+  // one row; portrait gives 8-BIT and VISUALISER a row of their own over BACK and REPEAT.
   const { save } = await import('../src/engine/save.js');
   const kept = save.data;
   save.data = { settings: { jukeboxVisualiser: true }, slots: [null, null, null] };
@@ -179,17 +179,21 @@ renderer.setPresentationFrame(defaultFrame());
   jb.enter();
   const n = jb.tracks.length;
   const press = (key) => { Input.press(key); jb.update(1 / 60); Input.release(key); Input.endFrame(); };
-  const { back, chip, vis } = jb.backPlates();
+  const { back, chip, vis, rep } = jb.backPlates();
   const midY = jb.backY + jb.backH / 2;
-  assert(back.y === chip.y && chip.y === vis.y && back.x < chip.x && chip.x < vis.x
-    && jb.pointerIndex(midY, back.x + 4) === n && jb.pointerIndex(midY, chip.x + 4) === n + 3
-    && jb.pointerIndex(midY, vis.x + 4) === n + 4,
-    'landscape: BACK, 8-BIT and VISUALISER are the bottom row\'s three thirds');
+  assert(back.y === chip.y && chip.y === vis.y && vis.y === rep.y && back.x < chip.x && chip.x < vis.x && vis.x < rep.x
+    && back.w === rep.w && jb.pointerIndex(midY, back.x + 4) === n && jb.pointerIndex(midY, chip.x + 4) === n + 3
+    && jb.pointerIndex(midY, vis.x + 4) === n + 4 && jb.pointerIndex(midY, rep.x + 4) === n + 5
+    && jb.pointerIndex(midY, vis.x + vis.w + 2) === -1,
+    'landscape: BACK, 8-BIT, VISUALISER and REPEAT are the bottom row\'s four quarters');
   jb.idx = n - 1;
   press('down'); const a = jb.idx;
   press('down'); const b = jb.idx;
   press('down'); const c = jb.idx;
-  assert(a === n && b === n + 3 && c === n + 4, 'landscape: down from the last song goes BACK, 8-BIT, VISUALISER');
+  press('down'); const d = jb.idx;
+  press('up');
+  assert(a === n && b === n + 3 && c === n + 4 && d === n + 5,
+    'landscape: down from the last song goes BACK, 8-BIT, VISUALISER, REPEAT');
   press('confirm');
   assert(!jb.visualiserOn && save.data.settings.jukeboxVisualiser === false, 'VISUALISER switches off, into the save');
   jb.update(60);
@@ -210,20 +214,74 @@ renderer.setPresentationFrame(defaultFrame());
   const backY = p.back.y + tall.backH / 2;
   assert(p.chip.y === p.vis.y && p.vis.y + tall.backH <= p.back.y && p.chip.x === p.back.x && p.back.w === p.chip.w
     && tall.pointerIndex(switchY, p.chip.x + 4) === n + 3 && tall.pointerIndex(switchY, p.vis.x + 4) === n + 4
-    && tall.pointerIndex(backY, p.back.x + 4) === n && tall.pointerIndex(backY, p.vis.x + 4) === -1,
-    'portrait: 8-BIT and VISUALISER are the halves of a row over BACK, BACK still the left half under them');
+    && tall.pointerIndex(backY, p.back.x + 4) === n && tall.pointerIndex(backY, p.rep.x + 4) === n + 5
+    && p.rep.x === p.vis.x && p.rep.y === p.back.y,
+    'portrait: 8-BIT and VISUALISER are the halves of a row over BACK and REPEAT');
   const lastRowBottom = tall.listY + tall.visibleRows * tall.rowH;
   assert(lastRowBottom <= p.chip.y && tall.rowH >= 56, 'portrait: the songs stop above the switches, rows still finger-sized');
   tall.idx = n - 1;
   const order = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     Input.press('down'); tall.update(1 / 60); Input.release('down'); Input.endFrame();
     order.push(tall.idx);
   }
-  assert(order.join() === [n + 3, n + 4, n].join(), 'portrait: down from the last song goes 8-BIT, VISUALISER, then BACK');
+  assert(order.join() === [n + 3, n + 4, n, n + 5].join(), 'portrait: down from the last song goes 8-BIT, VISUALISER, then BACK, REPEAT');
   tall.draw(document.createElement('canvas').getContext('2d'));
   tall.exit();
   renderer.setPresentationFrame(defaultFrame());
+  save.data = kept;
+}
+
+{
+  // REPEAT: off (the default), a song plays through twice and the next one comes on, at the
+  // end of its second time round; on, it goes round for as long as it is left. Kept in the save.
+  const { save, defaultSettings } = await import('../src/engine/save.js');
+  const kept = save.data;
+  save.data = { settings: { jukeboxVisualiser: true }, slots: [null, null, null] };
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+  const loopAt = () => ({ when: Audio.ctx?.currentTime ?? 0, start: 0, end: 64 });
+  assert(defaultSettings().jukeboxRepeat === false, 'REPEAT starts off');
+  Input.clearAll();
+  const jb = new SoundTestState({ onDone: () => {}, initialTrack: 2 });
+  jb.enter();
+  const n = jb.tracks.length;
+  jb.onSongLoop(loopAt());
+  await tick();
+  assert(jb.playing === 2 && jb.passes === 1, 'once round, the song plays on');
+  jb.onSongLoop(loopAt());
+  await tick();
+  assert(jb.playing === 3 && jb.idx === 3 && jb.passes === 0 && Audio.sourceBank === JUKEBOX[3].bank,
+    'twice round, the next song comes on, the cursor with it');
+  jb.idx = n;   // the cursor down on BACK stays there
+  jb.onSongLoop(loopAt()); jb.onSongLoop(loopAt());
+  await tick();
+  assert(jb.playing === 4 && jb.idx === n, 'the cursor moves only when it was on the song that finished');
+  jb.idx = n + 5;
+  Input.press('confirm'); jb.update(1 / 60); Input.release('confirm'); Input.endFrame();
+  assert(jb.repeatOn && save.data.settings.jukeboxRepeat === true, 'REPEAT switches on, into the save');
+  for (let i = 0; i < 6; i++) jb.onSongLoop(loopAt());
+  await tick();
+  assert(jb.playing === 4, 'on, a song goes round and round');
+  jb.toggleRepeat();
+  jb.onSongLoop(loopAt());
+  await tick();
+  assert(!jb.repeatOn && jb.playing === 5, 'switched off with the song long since twice round, it gives way at its next loop');
+  jb.toggle(5);   // stopped
+  jb.onSongLoop(loopAt()); jb.onSongLoop(loopAt());
+  await tick();
+  assert(jb.playing === -1, 'a stopped jukebox stays stopped');
+  jb.toggle(n - 1);
+  jb.onSongLoop(loopAt()); jb.onSongLoop(loopAt());
+  await tick();
+  assert(jb.playing === 0, 'after the last song, round to the first');
+  jb.onSongLoop(loopAt()); jb.onSongLoop(loopAt());
+  jb.exit();
+  await tick();
+  assert(jb.playing === 0 && jb.offLoop === null, 'leaving the jukebox lets go of the loop and any change booked');
+  const lab = new SoundTestState({ onDone: () => {}, lab: true });
+  lab.enter();
+  assert(lab.offLoop === null && !lab.backPlates().rep, 'the Lab has no REPEAT and does not listen for loops');
+  lab.exit();
   save.data = kept;
 }
 

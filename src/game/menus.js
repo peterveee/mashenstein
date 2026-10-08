@@ -5042,10 +5042,20 @@ export class SoundTestState {
     // visualiser never takes over (Peter, 8 Oct 2026). Kept in the save, like 8-BIT. In
     // landscape it is the row's third third; in portrait the two switches share a row of
     // their own over BACK, since three across a phone shrank VISUALISER: OFF to fit.
+    //
+    // REPEAT (the jukebox only, index tracks.length + 5): on, the song goes round for as
+    // long as it is left; off, it plays through twice and the next one in the list comes
+    // on (Peter, 8 Oct 2026). Kept in the save. Landscape: the bottom row's fourth quarter;
+    // portrait: the half beside BACK. `passes` counts the playing song's trips round its
+    // loop (onSongLoop); `advanceTimer` is the change booked for the end of the second.
     this.togglesY = JUKEBOX_BACK_TOP;
+    this.passes = 0;
+    this.advanceTimer = null;
+    this.offLoop = null;
   }
   get eightBit() { return soundtrack8bit(); }
   get visualiserOn() { return save.data?.settings?.jukeboxVisualiser !== false; }
+  get repeatOn() { return save.data?.settings?.jukeboxRepeat === true; }
   /** main.js shows its FPS/audio readout while this is true (see `showsStats` there). */
   get wantsStats() { return this.screensaverOff; }
   enter() {
@@ -5084,6 +5094,9 @@ export class SoundTestState {
     this.lastVisualiserIndex = -1;
     this.fullscreenReady = false;
     this.actTok = Input.activity;
+    // The scheduler's own wrap, not a frame: with the screen locked no frame runs, and a
+    // song still has to give way to the next one.
+    if (!this.lab && !this.offLoop) this.offLoop = Audio.onLoop((loop) => this.onSongLoop(loop));
     if (playingOn < 0) Audio.setBank(null);
     if (playingOn < 0 && this.playing >= 0) {
       this.openTrack(this.playing);
@@ -5094,6 +5107,9 @@ export class SoundTestState {
   }
   exit() {
     this.mediaPause(false);
+    this.offLoop?.();
+    this.offLoop = null;
+    this.cancelAdvance();
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
@@ -5327,6 +5343,8 @@ export class SoundTestState {
    */
   openTrack(i) {
     this.mediaPause(false);
+    this.passes = 0;
+    this.cancelAdvance();
     const tr = this.tracks[i];
     if (!tr) { Audio.setBank(null); return; }
     // Sound Test is a listening surface: always play the first bar on the first pass,
@@ -5349,6 +5367,59 @@ export class SoundTestState {
     this.resetIdle();
     Audio.sfx('uiConfirm');
   }
+  /** REPEAT on or off. Off with the song already twice round, it gives way at its next loop. */
+  toggleRepeat() {
+    const settings = save.data?.settings;
+    if (settings) {
+      settings.jukeboxRepeat = !this.repeatOn;
+      save.persist();
+    }
+    if (this.repeatOn) this.cancelAdvance();
+    Audio.sfx('uiConfirm');
+  }
+  cancelAdvance() {
+    if (this.advanceTimer) clearTimeout(this.advanceTimer);
+    this.advanceTimer = null;
+  }
+  /**
+   * The playing song has come round to its loop start (Audio.onLoop, from the scheduler, a
+   * lookahead before it is heard at `loop.when`). The end of the second time through, with
+   * REPEAT off, books the next song for that moment: the old one's last bar plays out, its
+   * fade lands on the bar line, and the next follows after setBank's usual gap — the same
+   * change as choosing it then.
+   */
+  onSongLoop(loop) {
+    if (this.playing < 0 || this.held) return;
+    this.passes += 1;
+    if (this.repeatOn || this.passes < 2 || this.tracks.length < 2 || this.advanceTimer) return;
+    const song = this.playing;
+    const lead = 0.03;   // ahead of the bar line by more than SONG_FADE
+    const wait = Math.max(0, (loop.when - lead - (Audio.ctx?.currentTime ?? 0)) * 1000);
+    this.advanceTimer = setTimeout(() => {
+      this.advanceTimer = null;
+      if (this.playing === song && !this.repeatOn && !this.held) this.autoAdvance();
+    }, wait);
+  }
+  /**
+   * The next song in the list, round to the first after the last. Unlike a choice it leaves
+   * the screen as it is: a visualiser up stays up (on a fresh preset for the new song), and
+   * the cursor moves only if it was on the song that finished. The lock screen's card is
+   * retitled at once — with the screen off, no frame would do it.
+   */
+  autoAdvance() {
+    const from = this.playing;
+    const i = (from + 1) % this.tracks.length;
+    this.playing = i;
+    this.openTrack(i);
+    Audio.schedule();
+    if (this.idx === from) {
+      this.idx = i;
+      this.rowFocus = i;
+      this.keepSelectionVisible();
+    }
+    if (this.visualiser && this.visualState !== 'out') this.switchVisualiser(1);
+    if (typeof window !== 'undefined') window.__mash_lifecycle?.syncMusicSession?.();
+  }
 
   maxListStart() { return Math.max(0, this.tracks.length - this.visibleRows); }
   trackCounter(i) { return `${i + 1}.`; }
@@ -5360,10 +5431,11 @@ export class SoundTestState {
     this.listStart = Math.max(0, Math.min(this.maxListStart(), this.listStart));
   }
   pointerIndex(y, x = 0) {
-    const { back, del, gen, chip, vis } = this.backPlates();
+    const { back, del, gen, chip, vis, rep } = this.backPlates();
     const onRow = (plate) => y >= plate.y && y < plate.y + this.backH;
+    if (rep && onRow(rep) && x >= rep.x) return this.tracks.length + 5;
     if (vis && onRow(vis)) {
-      if (x >= vis.x) return this.tracks.length + 4;
+      if (x >= vis.x && x < vis.x + vis.w) return this.tracks.length + 4;
       if (x >= chip.x && x < chip.x + chip.w) return this.tracks.length + 3;
       // portrait: the switches' own row, the gap between them no button
       if (!onRow(back)) return -1;
@@ -5395,13 +5467,13 @@ export class SoundTestState {
   }
   /**
    * Every selectable index in arrow order: the rows, then BACK, DELETE (when it is up), LAB.
-   * The jukebox's in reading order: BACK, 8-BIT, VISUALISER across one row; in portrait the
-   * switches' row first, BACK under it.
+   * The jukebox's in reading order: BACK, 8-BIT, VISUALISER, REPEAT across one row; in
+   * portrait the switches' row first, then BACK and REPEAT under it.
    */
   selectOrder() {
     const n = this.tracks.length;
     const rows = Array.from({ length: n }, (_, i) => i);
-    if (!this.lab) return portraitMenuActive() ? [...rows, n + 3, n + 4, n] : [...rows, n, n + 3, n + 4];
+    if (!this.lab) return portraitMenuActive() ? [...rows, n + 3, n + 4, n, n + 5] : [...rows, n, n + 3, n + 4, n + 5];
     return this.deletable() ? [...rows, n, n + 2, n + 1] : [...rows, n, n + 1];
   }
   stepSelection(delta) {
@@ -5586,12 +5658,17 @@ export class SoundTestState {
           back: { x: rowX, w: half, y }, del: null, gen: null,
           chip: { x: rowX, w: half, y: top },
           vis: { x: rowX + half + gap, w: half, y: top },
+          rep: { x: rowX + half + gap, w: half, y },
         };
       }
+      // Four quarters: BACK, 8-BIT, VISUALISER, REPEAT.
+      const quarter = (rowW - 3 * gap) / 4;
+      const at = (k) => rowX + k * (quarter + gap);
       return {
-        back: { x: rowX, w: third, y }, del: null, gen: null,
-        chip: { x: rowX + third + gap, w: third, y },
-        vis: { x: rowX + 2 * (third + gap), w: third, y },
+        back: { x: at(0), w: quarter, y }, del: null, gen: null,
+        chip: { x: at(1), w: quarter, y },
+        vis: { x: at(2), w: quarter, y },
+        rep: { x: at(3), w: quarter, y },
       };
     }
     if (this.deletable()) {
@@ -5618,14 +5695,15 @@ export class SoundTestState {
     if (this.lab) return this.tracks.length ? 'CHOOSE A SONG TO PLAY IT LIVE' : 'NO SONGS YET: MAKE ONE WITH NEW BANGER';
     return this.playing >= 0 ? `NOW PLAYING: ${jukeboxTitle(this.tracks[this.playing])}` : 'STOPPED';
   }
-  /** The jukebox's 8-BIT and VISUALISER plates: each teal while it is on, like the Lab's own button. */
+  /** The jukebox's 8-BIT, VISUALISER and REPEAT plates: each teal while it is on, like the Lab's own button. */
   drawSwitches(ctx, inset, h, radius, size, text) {
-    const { chip, vis } = this.backPlates();
+    const { chip, vis, rep } = this.backPlates();
     if (!chip) return;
     const n = this.tracks.length;
     for (const [plate, name, on, sel] of [
       [chip, '8-BIT', this.eightBit, this.idx === n + 3],
       [vis, 'VISUALISER', this.visualiserOn, this.idx === n + 4],
+      [rep, 'REPEAT', this.repeatOn, this.idx === n + 5],
     ]) {
       drawMenuRow(ctx, plate.x, plate.y + inset, plate.w, h, radius, sel ? undefined : (on ? 'rgba(72,224,200,0.14)' : BACK_BUTTON_PLATE));
       text(plate, sel ? '#c9a0ff' : (on ? '#48e0c8' : '#c8c8d8'), size, `${name}: ${on ? 'ON' : 'OFF'}`);
@@ -5758,6 +5836,7 @@ export class SoundTestState {
       else if (this.idx === n + 2) this.askDelete();
       else if (this.idx === n + 3) this.toggleEightBit();
       else if (this.idx === n + 4) this.toggleVisualiser();
+      else if (this.idx === n + 5) this.toggleRepeat();
       else this.toggle(this.idx);
     }
     if (Input.pressed('pointer')) {
@@ -5779,6 +5858,8 @@ export class SoundTestState {
           this.toggleEightBit();
         } else if (i === n + 4) {
           this.toggleVisualiser();
+        } else if (i === n + 5) {
+          this.toggleRepeat();
         } else if (this.idx === i) {
           this.toggle(i);
         } else {
@@ -5806,6 +5887,7 @@ export class SoundTestState {
         else if (i === n + 2) this.askDelete();
         else if (i === n + 3) this.toggleEightBit();
         else if (i === n + 4) this.toggleVisualiser();
+        else if (i === n + 5) this.toggleRepeat();
         else if (i >= 0) {
           this.idx = i;
           this.toggle(i);
