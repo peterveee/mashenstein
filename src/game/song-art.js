@@ -199,10 +199,13 @@ function paintScenery(cab, S, random) {
   return canvas;
 }
 
-/** A cabinet's scenery cover by its id (CABINETS), for a contact sheet or a test. */
-export function paintCabinetArt(id, S = 1024, random = Math.random) {
+/** A cabinet's scenery cover by its id (CABINETS), for a contact sheet or a test; `eightBit`, `tube` as paintSongArtOf's. */
+export function paintCabinetArt(id, S = 1024, random = Math.random, { eightBit = false, tube } = {}) {
   const cab = CABINET_BY_ID[id];
-  return cab && typeof document !== 'undefined' ? paintScenery(cab, S, random) : null;
+  if (!cab || typeof document === 'undefined') return null;
+  const canvas = paintScenery(cab, S, random);
+  canvas.eightBit = eightBit && tubeCover(canvas, tube);
+  return canvas;
 }
 
 // ---- THE 8-BIT COVER ------------------------------------------------------------------
@@ -217,11 +220,14 @@ export function paintCabinetArt(id, S = 1024, random = Math.random) {
 // (a fixed set turned the club to mud): k-means over its cells, then a farthest-point pass
 // so the small things that stand out — an eye, a neon, the toast — keep a colour of their own.
 
-/** Cells across the cover: a face is about forty of them tall, a sprite rather than a blur. */
-const COVER_CELLS = 48;
+// Cells and inks: E of the bake-off (Peter, 8 Oct 2026; work/local/_cover-8bit-bakeoff.mjs).
+// 48 cells and sixteen inks read as a filter, not 8-bit; 28 cells and eight inks, flat and
+// posterised, as a console drew it — a face about twenty-five cells tall, still itself.
+/** Cells across the cover. */
+const COVER_CELLS = 28;
 /** Inks by k-means, and the standouts added after. */
-const COVER_INKS = 12;
-const COVER_STANDOUTS = 4;
+const COVER_INKS = 6;
+const COVER_STANDOUTS = 2;
 // The tube drawn for the cover as it is shown — the lock screen blows a 600px cover up about
 // twice — so the grille's stripes are two pixels each, and a JPEG's colour, kept at half
 // resolution, does not average them away.
@@ -234,7 +240,7 @@ const inkDistance = (a, b) => {
   return 2 * dr * dr + 4 * dg * dg + 3 * db * db;
 };
 
-function coverInks(canvas, n) {
+function coverInks(canvas, n, k = COVER_INKS, standouts = COVER_STANDOUTS) {
   const c = document.createElement('canvas');
   c.width = c.height = n;
   const g = c.getContext('2d', { willReadFrequently: true });
@@ -246,11 +252,11 @@ function coverInks(canvas, n) {
   c.width = c.height = 0;
   const px = [];
   for (let i = 0; i + 3 < d.length; i += 4) px.push([d[i], d[i + 1], d[i + 2]]);
-  if (px.length < COVER_INKS + COVER_STANDOUTS) return null;
+  if (px.length < k + standouts) return null;
   // seeded across the cover's brightness, darkest to lightest, so it comes out the same each time
   const lum = (p) => 2 * p[0] + 4 * p[1] + 3 * p[2];
   const sorted = [...px].sort((a, b) => lum(a) - lum(b));
-  let inks = Array.from({ length: COVER_INKS }, (_, i) => [...sorted[Math.floor(((i + 0.5) / COVER_INKS) * sorted.length)]]);
+  let inks = Array.from({ length: k }, (_, i) => [...sorted[Math.floor(((i + 0.5) / k) * sorted.length)]]);
   const nearest = (p) => {
     let best = 0, bd = Infinity;
     for (let j = 0; j < inks.length; j++) {
@@ -267,7 +273,7 @@ function coverInks(canvas, n) {
     }
     inks = inks.map((ink, j) => (sum[j][3] ? [0, 1, 2].map((ch) => Math.round(sum[j][ch] / sum[j][3])) : ink));
   }
-  for (let s = 0; s < COVER_STANDOUTS; s++) {
+  for (let s = 0; s < standouts; s++) {
     let far = null, fd = -1;
     for (const p of px) {
       const dd = nearest(p)[1];
@@ -280,15 +286,15 @@ function coverInks(canvas, n) {
 }
 
 /** `canvas`, an S px cover, put on the tube in place (THE 8-BIT COVER). False if it could not be. */
-function tubeCover(canvas) {
+function tubeCover(canvas, { cells = COVER_CELLS, inks: k = COVER_INKS, standouts = COVER_STANDOUTS } = {}) {
   const S = canvas.width;
-  const inks = coverInks(canvas, COVER_CELLS);
+  const inks = coverInks(canvas, cells, k, standouts);
   const ctx = canvas.getContext('2d');
   if (!inks || typeof ctx.setTransform !== 'function') return false;
   const u = S / COVER_SHOWN;
   ctx.save();
   ctx.setTransform(COVER_SHOWN, 0, 0, COVER_SHOWN, 0, 0);
-  const done = clubCrt(ctx, { box: { x: 0, y: 0, w: u, h: u, cell: u / COVER_CELLS }, inks, id: 'cover' });
+  const done = clubCrt(ctx, { box: { x: 0, y: 0, w: u, h: u, cell: u / cells }, inks, id: 'cover' });
   ctx.restore();
   if (!done) return false;
   const v = ctx.createRadialGradient(S / 2, S / 2, S * 0.31, S / 2, S / 2, S * 0.77);
@@ -326,12 +332,15 @@ export function paintSongArt(S = 1024, random = Math.random, song = null) {
   return canvas;
 }
 
-/** One subject by id (SONG_ART_SUBJECTS), for a contact sheet or a test; on the tube with `eightBit`. */
-export function paintSongArtOf(id, S = 1024, { eightBit = false } = {}) {
+/**
+ * One subject by id (SONG_ART_SUBJECTS), for a contact sheet or a test; on the tube with
+ * `eightBit`, and `tube` ({ cells, inks, standouts }) to try the tube other ways.
+ */
+export function paintSongArtOf(id, S = 1024, { eightBit = false, tube } = {}) {
   const pick = SUBJECTS.find((s) => s.id === id);
   if (!pick || typeof document === 'undefined') return null;
   const canvas = paint(pick, S);
-  canvas.eightBit = eightBit && tubeCover(canvas);
+  canvas.eightBit = eightBit && tubeCover(canvas, tube);
   return canvas;
 }
 

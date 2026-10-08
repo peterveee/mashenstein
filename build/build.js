@@ -164,6 +164,11 @@ function emitManifest(dist, icons) {
     name: 'MASHENSTEIN: The Unpluggening',
     short_name: 'MASHENSTEIN',
     description: 'A game stitched together from parts of other games.',
+    // The installed app's identity, said outright rather than left to be worked out
+    // from start_url. './' resolves to that same URL, so an existing install is still
+    // the same app. Added 8 Oct 2026 while the lock-screen NOW PLAYING card's tap was
+    // opening an empty web app (and before that, the dev install) instead of this one.
+    id: './',
     start_url: './',
     scope: './',
     display: 'standalone',

@@ -394,6 +394,7 @@ assert(lifecyclePolicy({ allowed: false, visible: false, backgroundAudio: true }
     onMediaPause: (paused) => { pauses.push(paused); if (song) song = { ...song, paused }; },
     onMediaSkip: (dir) => { skips.push(dir); song = { ...song, title: `TRACK ${dir}` }; },
     songArt: () => (covers ? { width: 512, height: 512, toBlob: (cb) => cb({ type: 'image/jpeg', n: ++covers }) } : null),
+    standIn: true,
   });
   bg.syncMusicSession();
   bg.syncMusicSession();

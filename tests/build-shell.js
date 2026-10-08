@@ -24,6 +24,8 @@ const sw = readFileSync(join(root, 'dist/sw.js'), 'utf8');
 const template = readFileSync(join(root, 'build/template.html'), 'utf8');
 
 assert(manifest.orientation === 'any', 'manifest allows iPad and Android rotation');
+assert(manifest.id === './' && manifest.start_url === './',
+  'manifest names its id outright, the same URL as start_url, so an existing install stays the same app');
 assert(statSync(join(root, 'dist/index.html')).size < 50 * 1024, 'initial install gate stays lightweight');
 assert(game.length > html.length * 10, 'full game is emitted as a separate deferred bundle');
 assert(!template.includes('<canvas id="game"') && !template.includes('fonts.googleapis.com/css2'),

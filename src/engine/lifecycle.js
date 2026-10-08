@@ -2,6 +2,15 @@
 // events never resume subsystems independently; they all recompute this policy.
 import { readDiag, writeDiag, clearDiag, forceRenderer, forceWebglDensity } from './diag.js';
 
+// THE STAND-IN TEST (8 Oct 2026). A tap on the lock screen's NOW PLAYING card opens
+// another of the phone's Home Screen web apps, never this one. Off, to learn whether
+// the silent <audio> stand-in (primeAnchor) is what sends it there: the card then
+// belongs to Web Audio, as before 7 Oct — play/pause go straight to the context
+// (WebKit's own), and previous/next show but do nothing. A build-time switch, since
+// an installed iPhone app has no address bar for a flag and no reachable diagnostics
+// panel. true puts the stand-in back.
+const LOCK_SCREEN_STAND_IN = false;
+
 // One line summarising which overrides are live, so the panel opens saying what
 // state the device is already in rather than looking like a fresh slate.
 function describeDiag(d) {
@@ -109,6 +118,7 @@ export class LifecycleController {
     onMediaSkip = () => {},
     songArt = null,
     beatLocked = () => false,
+    standIn = LOCK_SCREEN_STAND_IN,
   }) {
     this.platform = platform;
     this.loop = loop;
@@ -139,6 +149,7 @@ export class LifecycleController {
     this.nowPlayingKey = null;
     this.playbackState = null;
     this.mediaHandlers = false;
+    this.standIn = standIn;
     this.anchor = null;
     this.anchorReady = false;
     this.anchorPriming = false;
@@ -525,7 +536,7 @@ export class LifecycleController {
    * WebKit's routing this works round.
    */
   primeAnchor() {
-    if (this.anchorReady || this.anchorPriming) return;
+    if (!this.standIn || this.anchorReady || this.anchorPriming) return;
     const nav = this.win.navigator || {};
     if (!nav.audioSession || !nav.mediaSession || typeof this.doc.createElement !== 'function'
       || !this.win.Blob || !this.win.URL || !this.win.URL.createObjectURL) return;
