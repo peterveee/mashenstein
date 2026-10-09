@@ -44,7 +44,9 @@ export const gainToDb = (g) => 20 * Math.log10(Math.max(1e-6, g));
 /**
  * THE CEILING — the Banger Lab's limiter, last on the song's bus (Peter, 9 Oct 2026: "should we
  * run a limit on the lab overall?", once its faders went past 0 dB). A song switches it on with
- * `ceiling: true` in its mix; nothing else has it, so every cabinet still plays as it was balanced.
+ * `ceiling: true` in its mix, and every song has it on the listening screens, the jukebox and the
+ * Lab, where the music plays 3 dB up (Audio.setListening). Nothing else has it, so every cabinet
+ * still plays in the game as it was balanced.
  *
  * Not the `limiter` beside it: that is Tone.Limiter, a 30 dB soft knee and a 10 ms release, which
  * barely touches a 0 dBFS peak and which the songs that use it were mixed through. This is a
@@ -1744,6 +1746,15 @@ export function createMixer(ctx, {
   // applyMix() then silently killed on every song load by calling setLimiter().
   const masterOut = ctx.createGain();
   masterOut.gain.value = 1;
+  // ...and what it is set to: the Lab's MASTER fader times the listening screens' lift
+  // (setMasterLevel, setListenGain).
+  let masterLevel = 1;
+  let listenGain = 1;
+  const aimMasterOut = (when, glide) => {
+    const at = Math.max(when, ctx.currentTime);
+    masterOut.gain.cancelScheduledValues(at);
+    masterOut.gain.setTargetAtTime(masterLevel * listenGain, at, glide);
+  };
 
   // The master balance, last thing on the bus and before the limiter — the limiter's
   // ceiling is on what leaves, so nothing goes after it. Explicit stereo in, for the
@@ -2344,9 +2355,18 @@ export function createMixer(ctx, {
      * caller's, so no song change or reset() moves it, and the caller puts it back to 1.
      */
     setMasterLevel(g, when = ctx.currentTime, glide = 0.012) {
-      const at = Math.max(when, ctx.currentTime);
-      masterOut.gain.cancelScheduledValues(at);
-      masterOut.gain.setTargetAtTime(Math.max(0, g), at, glide);
+      masterLevel = Math.max(0, g);
+      aimMasterOut(when, glide);
+    },
+    /**
+     * The listening screens' lift (Audio.setListening), on the same gain as the MASTER fader and
+     * multiplied into it: after the song's own master chain, so it is a level and not more drive
+     * into a bus compressor — every Lab song has a multiband one on its master, and 3 dB ahead
+     * of it came out as about 1.8 — and ahead of THE CEILING, which catches what it pushes over.
+     */
+    setListenGain(g, when = ctx.currentTime, glide = 0.05) {
+      listenGain = Math.max(0, g);
+      aimMasterOut(when, glide);
     },
     clearSolo() { soloed.clear(); soloedGroups.clear(); applySoloAll(); },
     /**

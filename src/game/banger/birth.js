@@ -71,6 +71,8 @@ const ARC = '#a8e6ff';
 
 export class BangerBirthState {
   static portraitMode = 'frame';
+  // The Lab is a listening screen (Audio.setListening), as its list is.
+  static listening = true;
 
   /**
    * `rec` is the song just made; `onDone` opens it. `subject` paints what is brought to life,

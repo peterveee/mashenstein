@@ -313,6 +313,13 @@ const SONG_OPEN = 0.004;
 // it: long enough for the master chain to empty out what it was still holding (a lookahead
 // limiter keeps ~10ms of the old song in its delay line) before the stage opens again.
 const SONG_DRAIN = 0.02;
+// THE LISTENING SCREENS — the jukebox and the Lab — play the music this much louder (Peter,
+// 9 Oct 2026: "Since we are not in game should we raise the music volume in jukebox and lab?").
+// In a game the songs sit under the cues; there, the song is the point. Three dB is about what
+// a song takes before THE CEILING (mixer.js), which is on for every song while listening,
+// starts working on more than its loudest hits: finale and cardboard peak −0.2 and −2.8 dBFS
+// at the default MUSIC. On the mixer's master, after each song's own master chain (setListenGain).
+const LISTENING_BOOST = 10 ** (3 / 20);
 // THE EXIT FADE: how long everything takes to go quiet as the app is left, and to come back
 // up on the way in (exitGain; setLifecyclePaused, fadeForExit).
 const EXIT_FADE = 0.06;
@@ -1171,6 +1178,8 @@ class AudioSys {
     this.muted = false;
     this.sessionMuted = false;
     this.levels = { master: 1, music: 0.7, sfx: 0.9 };
+    // On a listening screen (setListening): the songs LISTENING_BOOST up, THE CEILING on.
+    this.listening = false;
     this.cueGain = 1;
     // Where the cue being built starts on the audio clock, or null for "now" — see cueAt().
     this.cueStart = null;
@@ -1538,6 +1547,7 @@ class AudioSys {
       // between these two, so Delay 1 gets the same controls as the new auxes.
       songTrim: this.songTrim, delayLp: this.delayLp,
     });
+    if (this.listening) this._mixer.setListenGain?.(LISTENING_BOOST, this.ctx.currentTime, 0.005);
     // Offline renders seed the noise so a lane rendered on its own gets exactly the
     // noise it had inside the full mix — that is what lets stems sum back to the
     // mix. Live playback keeps Math.random(): a fresh noise floor every session is
@@ -3089,6 +3099,25 @@ class AudioSys {
     this.musicGain.gain.setTargetAtTime(this.levels.music, t, 0.02);
     this.sfxGain.gain.setTargetAtTime(this.levels.sfx, t, 0.02);
     if (this._rewindOut) this._rewindOut.gain.setTargetAtTime(this.silent ? 0 : this.levels.master, t, 0.02);
+  }
+
+  /**
+   * On a listening screen or off (states.js, from a screen's `static listening`). The lift
+   * glides in now (mixer setListenGain). THE CEILING goes in or out with the next song's mix
+   * (_mixToGraph), never under a sounding one, since rewiring the master is heard (see the note
+   * there). Every listening screen changes song on the way in or out, so that is never long —
+   * and the song change's half-second gap is what lets a ceiling just put in let go before the
+   * first hit: a DynamicsCompressorNode starts fully clamped (measured live, 9 Oct 2026: a Lab
+   * song's first 300 ms peaked the same with the ceiling in as out).
+   *
+   * Through `_mixer`, not the getter: this runs at a screen change, inside the old song's
+   * fade, and the getter would put a held mix on there.
+   */
+  setListening(on) {
+    on = !!on;
+    if (on === this.listening) return;
+    this.listening = on;
+    if (this.ctx) this._mixer?.setListenGain?.(on ? LISTENING_BOOST : 1, this.ctx.currentTime);
   }
 
   // Synthesise the weapon cues into buffers, once, at init. A few ms of math at
@@ -6628,8 +6657,9 @@ class AudioSys {
       // tempo-synced ones for this song's bpm, then lay the saved settings over.
       this.setDelay({ division: 0.75, feedback: 0.35, tone: 2800 });
       this.mixer.retune(bank?.bpm || this.bpm);
-      // The Lab's songs have THE CEILING on (mixer.js CEILING); every other song has it off.
-      this.mixer.setCeiling?.(!!entry?.ceiling);
+      // The Lab's songs have THE CEILING on (mixer.js CEILING), and so does every song on a
+      // listening screen (setListening); every other song has it off.
+      this.mixer.setCeiling?.(!!entry?.ceiling || this.listening);
       if (entry) {
         this.mixer.setMasterTrim(entry.master || 0);
         this.mixer.setMasterPan(entry.masterPan || 0);

@@ -12,6 +12,7 @@
 // listens to first. Browser-safe.
 
 import { BREAKDOWN_WAYS } from './breakdown-ways.js';
+import { BUILD_WAYS } from './build-ways.js';
 
 // `note` is the short line the section lists show beside each kind; `title` the whole of
 // what it does, for the tooltips. A variant is [id, label, what it plays].
@@ -32,7 +33,11 @@ export const SECTION_TYPES = Object.freeze({
   build: { label: 'Build', colour: '#d0852f', hook: false, energy: 0.6, min: 2, max: 16,
     note: 'Snare roll and riser',
     title: 'A snare roll accelerating, the arp and the square double joining for the second half, a riser and a stutter into the drop',
-    variants: [['roll', 'Snare Roll', 'The roll, the arp in the second half'], ['rebuild', 'Rebuild', 'A longer build with the arp from its first bar — after a long breakdown']] },
+    // '' is the Build Type switch's (More Options → Form) — what an undrawn build shows. Rebuild is
+    // the arp from the first bar, climbing the switch's way.
+    variants: [['', 'As Build Type', 'Whatever More Options → Build Type says — Varied: a different way each build'],
+      ['rebuild', 'Rebuild', 'A longer build with the arp from its first bar — after a long breakdown'],
+      ...BUILD_WAYS.map((w) => [w.id, w.label, w.note])] },
   chorus: { label: 'Chorus', colour: '#d1445e', hook: true, energy: 0.8, min: 4, max: 128,
     note: 'The hook in full, full time',
     title: 'The hook in full — its doubles, the chords, the bass and the whole kit, full time. Each chorus hits harder than the last; the last one gets the octave hook, the choir and the ride' },

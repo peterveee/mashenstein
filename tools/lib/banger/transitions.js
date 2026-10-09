@@ -59,8 +59,30 @@ function chordUnder(bar, step) {
   return chordSym(best.r, quality);
 }
 
+/**
+ * `bar`'s hook with a pickup into `target` (a MIDI note) on its last two sixteenths: the note walked
+ * up to from two steps below. A step is a note of the scale or of the chord sounding there that does
+ * not grind on that chord (6 Oct 2026): into A over E major the walk is E, G# rather than F, G.
+ */
+export function withPickup(bar, target, scale) {
+  const out = bar.hook ? { notes: [...bar.hook.notes], lens: [...bar.hook.lens] } : blank();
+  const below = (m, step) => {
+    let x = m - 1;
+    while (x > m - 4 && !scale.includes(pcOf(x))) x--;
+    const sym = chordUnder(bar, step);
+    if (!sym || grindOf(pcOf(x), sym) === 0) return x;
+    const { pcs } = parseChord(sym);
+    for (let y = m - 1; y > m - 6; y--) if ((scale.includes(pcOf(y)) || pcs.includes(pcOf(y))) && grindOf(pcOf(y), sym) === 0) return y;
+    return x;
+  };
+  const second = below(target, 15);
+  out.notes[14] = nameOf(below(second, 14)); out.lens[14] = 1;
+  out.notes[15] = nameOf(second); out.lens[15] = 1;
+  return out;
+}
+
 /** Any part — notes or drums — silenced from `step` on. */
-function cutAny(part, step) {
+export function cutAny(part, step) {
   if (!part) return part;
   if (isDrumPart(part)) return part.map((v, i) => (i < step ? v : false));
   return cut(part, step);
@@ -93,27 +115,11 @@ export function planTransitions({ form, bars, events, options, D, rng, fillPick,
       moves.push('fill');
     };
     const pickup = () => {
-      // The hook's first note, walked up to from two steps below on the last two sixteenths —
-      // only where the hook is not already playing then. A step is a note of the scale or of the
-      // chord sounding there that does not grind on that chord (6 Oct 2026): into A over E major
-      // the walk is E, G# rather than F, G.
+      // Only where the hook is not already playing on the last two sixteenths.
       const first = bars[next.from - 1]?.hook;
       const target = first && pitchesOf(first)[0];
       if (!target || (bar.hook && bar.hook.notes.slice(12).some((v) => v != null))) return;
-      const out = bar.hook ? { notes: [...bar.hook.notes], lens: [...bar.hook.lens] } : blank();
-      const below = (m, step) => {
-        let x = m - 1;
-        while (x > m - 4 && !scale.includes(pcOf(x))) x--;
-        const sym = chordUnder(bar, step);
-        if (!sym || grindOf(pcOf(x), sym) === 0) return x;
-        const { pcs } = parseChord(sym);
-        for (let y = m - 1; y > m - 6; y--) if ((scale.includes(pcOf(y)) || pcs.includes(pcOf(y))) && grindOf(pcOf(y), sym) === 0) return y;
-        return x;
-      };
-      const second = below(target, 15);
-      out.notes[14] = nameOf(below(second, 14)); out.lens[14] = 1;
-      out.notes[15] = nameOf(second); out.lens[15] = 1;
-      bar.hook = out;
+      bar.hook = withPickup(bar, target, scale);
       moves.push('pickup');
     };
 

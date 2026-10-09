@@ -2,10 +2,18 @@
 // a song switches the ceiling on with `ceiling: true` and every other song has it off; under its
 // threshold it hands back what it is given (its make-up gain taken back off); twelve dB of overs
 // come out under full scale; its meter reads what goes in; and setMasterLevel is a gain ahead of
-// it that no song change moves.
+// it that no song change moves. And the LISTENING screens (Audio.setListening, a screen's `static
+// listening`): the music 3 dB up and THE CEILING on for every song, off again outside them.
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { openLiveBrowser } from './lib/live-browser.js';
+import { SoundTestState, TitleState } from '../src/game/menus.js';
+import { BangerClubState } from '../src/game/banger/club.js';
+import { BangerMakerState } from '../src/game/banger/maker.js';
+import { BangerBirthState } from '../src/game/banger/birth.js';
+
+assert([SoundTestState, BangerClubState, BangerMakerState, BangerBirthState].every((s) => s.listening === true) && !TitleState.listening,
+  'the jukebox and every Lab screen are listening screens; the title is not');
 
 const bundle = await build({ stdin: { contents: `import {Audio} from './src/engine/audio.js'; import {bank,mix} from './src/data/songs/rhythm.js'; window.audio = Audio; window.rhythm = {bank,mix};`,
   resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
@@ -63,6 +71,20 @@ try {
     A.applyMix(window.rhythm.bank, { ...window.rhythm.mix, master: 0, masterEffects: [], ceiling: true });
     out.halfAfterApply = await read();
     A.mixer.setMasterLevel(1);
+    // a listening screen: 3 dB more into the ceiling, the MASTER fader multiplied into it, and the
+    // ceiling on for a song with none of its own from its next mix; off again, both back
+    A.setListening(true);
+    out.lift = await read();
+    A.mixer.setMasterLevel(0.5);
+    out.liftHalf = await read();
+    A.mixer.setMasterLevel(1);
+    const plain = { ...window.rhythm.mix, master: 0, masterEffects: [] };
+    A.applyMix(window.rhythm.bank, plain);
+    out.listenOn = A.mixer.ceilingOn;
+    A.setListening(false);
+    out.unlift = await read();
+    A.applyMix(window.rhythm.bank, plain);
+    out.listenOff = !A.mixer.ceilingOn;
     // out: the meter reads nothing, and the same loud tone goes straight past
     A.mixer.setCeiling(false);
     amp.gain.value = loud;
@@ -80,6 +102,12 @@ try {
   assert(Math.abs(db(r.half.inPk) - (db(r.quiet.inPk) - 6.02)) < 0.3,
     `MASTER at a half: 6 dB less into the ceiling (${db(r.half.inPk).toFixed(2)})`);
   assert(Math.abs(db(r.halfAfterApply.inPk) - db(r.half.inPk)) < 0.2, 'and no song change moves it');
+  const lift = db(r.lift.inPk) - db(r.quiet.inPk);
+  assert(Math.abs(lift - 3) < 0.2 && Math.abs(db(r.lift.outPk) - db(r.lift.inPk)) < 0.2,
+    `listening: 3 dB more into the ceiling, still under it (${lift.toFixed(2)})`);
+  assert(Math.abs(db(r.liftHalf.inPk) - (db(r.lift.inPk) - 6.02)) < 0.3, 'listening: the MASTER fader multiplies into the lift');
+  assert(Math.abs(db(r.unlift.inPk) - db(r.quiet.inPk)) < 0.2, 'listening off: back to the level it was');
+  assert(r.listenOn && r.listenOff, 'listening: every song has the ceiling on, and off again after');
   assert(r.offLoud.inPk === 0 && db(r.offLoud.outPk) > 6, `switched out: no meter, and nothing held down (${db(r.offLoud.outPk).toFixed(2)})`);
   console.log('ok: the Lab ceiling and MASTER fader', JSON.stringify({
     quiet: [db(r.quiet.inPk), db(r.quiet.outPk)].map((v) => +v.toFixed(2)),

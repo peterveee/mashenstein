@@ -11,6 +11,8 @@
 // one. It can be picked by name straight away. Giving it `varied: true` re-draws only the takes it
 // wins (variedWay) — but a kept Lab song is made again from its recipe every time it plays, so a
 // change to the draw wants a new recipe expression (src/game/banger/make.js) to keep those as they were.
+import { drawWay } from './ways.js';
+
 export const BREAKDOWN_WAYS = Object.freeze([
   { id: 'half', label: 'Half Speed', note: 'Every note twice as long — the classic', varied: true },
   { id: 'tease', label: 'Tease', note: 'Only the hook\'s opening, every other bar, with echoes filling the gaps', varied: true },
@@ -28,18 +30,5 @@ export const BREAKDOWN_WAY = Object.freeze(Object.fromEntries(BREAKDOWN_WAYS.map
 /** The ways Varied draws from. */
 export const VARIED_WAYS = Object.freeze(BREAKDOWN_WAYS.filter((w) => w.varied).map((w) => w.id));
 
-/**
- * Varied's way for a take. Each way in the draw gets its own number off the take's stream (`rng`, an
- * src/engine/rng.js Rng) and the lowest −ln(u)/weight wins: a fair draw by weight, and one where a way
- * joining the draw takes only the takes it wins — every other take keeps the way it had. `soundSet`:
- * the take is on a Sound Set, so no way that adds a part.
- */
-export function variedWay(rng, { soundSet = false } = {}) {
-  let best = null;
-  for (const w of BREAKDOWN_WAYS) {
-    if (!w.varied || (soundSet && w.part)) continue;
-    const score = -Math.log(1 - rng.stream(w.id).next()) / (w.weight ?? 1);
-    if (!best || score < best.score) best = { id: w.id, score };
-  }
-  return best ? best.id : 'half';
-}
+/** Varied's way for a take's breakdown (ways.js drawWay): `soundSet`, no way that adds a part. */
+export const variedWay = (rng, { soundSet = false } = {}) => drawWay(BREAKDOWN_WAYS, rng, { soundSet }) ?? 'half';

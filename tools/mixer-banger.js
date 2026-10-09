@@ -308,6 +308,10 @@ export function createBangerDesk(desk) {
     if (stored.form && !(stored.prefs >= 2) && (stored.form.breakdownHook ?? 'half') === 'half') {
       stored.form = { ...stored.form, breakdownHook: 'varied' };
     }
+    // Likewise Build Type and Before the Drop (`prefs` 3): one saved before them opens on Varied.
+    if (stored.form && !(stored.prefs >= 3)) {
+      stored.form = { ...stored.form, buildWay: stored.form.buildWay ?? 'varied', dropIn: stored.form.dropIn ?? 'varied' };
+    }
     const start = normaliseBangerOptions(settings ? recipe.options : { ...stored, hook: 'auto' }).options;
     // A take or a preference from early on 7 Oct 2026 named its sound `style` and its groove `fusion`;
     // the desk asks the other way round now: Style the groove, Infusion the sound. Modify keeps the
@@ -644,7 +648,7 @@ export function createBangerDesk(desk) {
     // Remembered as a working preference — everything but the hook, which belongs to a riff.
     const { hook, ...keep } = options;
     void hook;
-    writeStore(BANGER_PREFS_KEY, { ...keep, prefs: 2 });
+    writeStore(BANGER_PREFS_KEY, { ...keep, prefs: 3 });
     const rerolls = modifying ? [...box.querySelectorAll('#bgrerolls button.on')].map((b) => b.dataset.stream) : [];
     // Whatever a button wrote over them (Surprise Me, Go Crazy, a style's defaults), the
     // shape goes back to the take's own.

@@ -29,6 +29,7 @@ import { analyseRiff, romanChord, keyName, MODE_INFO } from './analyse.js';
 import { buildForm } from './form.js';
 import { buildSections, LIFT_SEMIS } from './sections.js';
 import { BREAKDOWN_WAYS } from './breakdown-ways.js';
+import { BUILD_WAYS, DROP_IN_WAYS } from './build-ways.js';
 import { voiceLeadChords } from './voice-leading.js';
 import { allocateLanes, buildMix, pickRiffSounds, BASS_ECHO } from './lanes.js';
 import { levelMix } from './levels.js';
@@ -55,6 +56,7 @@ export { TRACK_EFFECTS_VERSION, TRACK_EFFECTS_MODES, PRODUCTION_ROLES, trackEffe
 export { BANGER_STYLES, BANGER_SOUND_SETS, BANGER_FLAVOURS, styleFor, soundSetOf, soundSetsFor, flavoursFor, flavourOf, moodFlavour, fusionOf } from './styles/index.js';
 export { modifyBanger, describeModify, bangerPrints } from './modify.js';
 export { BREAKDOWN_WAYS, VARIED_WAYS, variedWay } from './breakdown-ways.js';
+export { BUILD_WAYS, DROP_IN_WAYS } from './build-ways.js';
 export { extractRiff, laneVoiceOf, validateRiff, pickHook, riffSummary, parseRiff } from './riff.js';
 export { keyName, MODE_INFO } from './analyse.js';
 export { BANGER_SOUNDS } from './sounds.js';
@@ -86,15 +88,18 @@ export {
  * chord's root (sections.js chordPart). Every take of those styles in those moods changes, kept Lab
  * songs too. The new styles and the Acid bass, ghost notes and filter moves move nothing that existed.
  */
-/* 11 (9 Oct 2026): BREAKDOWN HOOK: VARIED (breakdown-ways.js) — a take with Varied draws how its
- * breakdown plays the hook, any of nine ways, each as often. A request that
- * names its form but no Breakdown Hook was made before there was one, and is Half Speed as it was
- * (options.js), so a desk take re-made from its recipe does not move. Kept Lab songs keep Half
- * Speed by recipe expression 6 (src/game/banger/make.js).
+/* 11 (9 Oct 2026): VARIED WAYS. Breakdown Hook (breakdown-ways.js): how the breakdown plays the hook,
+ * any of nine ways, drawn per take. Build Type and Before the Drop (build-ways.js): how each build
+ * climbs and what its last bar does, drawn per build. A request that names its form but none of these
+ * was made before there were any, and is made as it was — Half Speed, the snare roll, straight in
+ * (options.js) — so a desk take re-made from its recipe does not move. Kept Lab songs stay as they
+ * were by recipe expression 6 (src/game/banger/make.js).
  */
 export const BANGER_GENERATOR_VERSION = 11;
 /** How each way of playing a breakdown reads in a take's note. */
 const BREAKDOWN_WAY_LABELS = { ...Object.fromEntries(BREAKDOWN_WAYS.map((w) => [w.id, w.label])), exposed: 'Hook Alone' };
+const BUILD_WAY_LABELS = Object.fromEntries(BUILD_WAYS.map((w) => [w.id, w.label]));
+const DROP_IN_WAY_LABELS = Object.fromEntries(DROP_IN_WAYS.map((w) => [w.id, w.label]));
 
 /** A seed as an unsigned 32-bit number. */
 export const normaliseSeed = (seed) => (Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : 1);
@@ -211,8 +216,10 @@ export function generateBanger({
     spotFx: stream('spotFx'),
     // The acid line (theory.js acidLine) — drawn only when the bass is Acid.
     acid: stream('acid'),
-    // Breakdown Hook: Varied's way (sections.js BREAKDOWN_WAYS).
+    // Breakdown Hook: Varied's way (breakdown-ways.js); Build Type's and Before the Drop's (build-ways.js).
     breakdown: stream('breakdown'),
+    build: stream('build'),
+    dropIn: stream('dropIn'),
   };
   const warnings = [];
   if (raw?.production?.mode && raw.production.mode !== 'style' && options.production.mode === 'style') {
@@ -468,9 +475,14 @@ export function generateBanger({
     style: style.label, mood: options.mood, key: keyName(key), reads: keyName(analysis.detected), bars: total, bpm, seconds,
     variation: options.variation, hook: hook?.label || hookKey,
   };
-  // A breakdown says how its hook played (Breakdown Hook: Varied draws one per take).
-  const wayOf = (x) => events.breakdowns.find((d) => d.from === x.from)?.mode;
-  const formLines = form.map((x) => `  ${String(x.from).padStart(3)}–${String(x.to).padEnd(3)}  ${x.label}${x.lifted && options.form.keyLift !== 'none' ? ' (lifted)' : ''}${wayOf(x) ? ` — ${BREAKDOWN_WAY_LABELS[wayOf(x)] || wayOf(x)}` : ''}`);
+  // A breakdown says how its hook played, a build how it climbed and went in (the Varied draws).
+  const wayOf = (x) => {
+    const bd = events.breakdowns.find((d) => d.from === x.from);
+    if (bd) return BREAKDOWN_WAY_LABELS[bd.mode] || bd.mode;
+    const bu = events.builds.find((d) => d.from === x.from && d.way);
+    return bu ? [BUILD_WAY_LABELS[bu.way], bu.dropIn && DROP_IN_WAY_LABELS[bu.dropIn]].filter(Boolean).join(' · ') : null;
+  };
+  const formLines = form.map((x) => `  ${String(x.from).padStart(3)}–${String(x.to).padEnd(3)}  ${x.label}${x.lifted && options.form.keyLift !== 'none' ? ' (lifted)' : ''}${wayOf(x) ? ` — ${wayOf(x)}` : ''}`);
   const note = [
     `A BANGER, made on the desk from bars ${riff.source.from + 1}–${riff.source.to + 1} of ${riff.source.title || riff.source.id || 'a song'}.`,
     `${style.label} · ${options.mood} · ${keyName(key)} · ${options.variation} · ${total} bars at ${bpm} BPM, ${seconds}s.`,
@@ -532,6 +544,8 @@ export const BANGER_REROLLS = Object.freeze([
   { stream: 'verse', label: 'Verse Tune', title: 'New verse material, in the forms that have verses' },
   { stream: 'transitions', label: 'Joins', title: 'New moves between sections, in the forms that have them' },
   { stream: 'breakdown', label: 'Breakdown', title: 'Another way for the hook through the breakdown (Breakdown Hook: Varied)' },
+  { stream: 'build', label: 'Builds', title: 'Another way for each build to climb (Build Type: Varied)' },
+  { stream: 'dropIn', label: 'Before the Drop', title: 'Another way into each drop (Before the Drop: Varied)' },
 ]);
 
 /**

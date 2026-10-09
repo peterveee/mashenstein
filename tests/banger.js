@@ -978,9 +978,9 @@ try {
     assert(VOICES[dense.mix.voice[`${hookLane}Voice`]]?.synth !== 'CRLS-1', 'a busy hook never rolls a CRLS-1');
   }
   {
-    // Builds roll faster bar by bar; every drop lands with a crash and an impact; a fill
-    // closes every eight.
-    const out = generateBanger({ riff: HOOK1, options: { length: 'long' }, seed: 9 });
+    // Builds roll faster bar by bar (the Snare Roll, straight in); every drop lands with a crash and
+    // an impact; a fill closes every eight.
+    const out = generateBanger({ riff: HOOK1, options: { length: 'long', form: { template: 'club', buildWay: 'roll', dropIn: 'straight' } }, seed: 9 });
     const snare = laneByLabel(out, /SNARE/);
     for (const b of out.form.filter((f) => f.role === 'build' || f.role === 'build2')) {
       const hits = [];

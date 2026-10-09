@@ -236,6 +236,8 @@ const plateRadius = (h, portrait) => Math.min(h / 2, portrait ? 26 : 11);
 
 export class BangerMakerState {
   static portraitMode = 'frame';
+  // The Lab is a listening screen (Audio.setListening), as its list is.
+  static listening = true;
 
   // `random` picks the grid's preview sound for the visit; tests pass their own.
   // `from` is a kept song to edit (the club's pencil): the grid opens on its riff, style

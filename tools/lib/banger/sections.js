@@ -19,11 +19,14 @@ import { fillIn, passFilled } from './embellish.js';
 import { romanChord, partWeights, chordFit, bestChord, triadOf, chordsOfBar, fitsScale, grindShare } from './analyse.js';
 import { hookCell, phrasePlan, realise, head, cellLength, fragment } from './variation.js';
 import { variedWay } from './breakdown-ways.js';
+import { BUILD_WAYS, DROP_IN_WAYS } from './build-ways.js';
+import { drawWay } from './ways.js';
+import { pitchesOf } from './cohesion.js';
 import { DROP_ROLES, DEFAULT_LAYERS, DEFAULT_GROOVE, layersOn, scriptOn } from './form.js';
 import { DROP_INDEX } from './form-types.js';
 import { songMaterial } from './cohesion.js';
 import { arrangeEnergy } from './energy.js';
-import { planTransitions } from './transitions.js';
+import { planTransitions, withPickup, cutAny } from './transitions.js';
 
 const LIFT_SEMIS = { none: 0, half: 1, whole: 2, third: 4 };
 
@@ -170,6 +173,48 @@ export const BREAKDOWN_LINES = {
   muffled: ({ i, k }) => ({ tune: clonePart(k.cell[i % k.cell.length]) }),
 };
 
+/**
+ * BUILD TYPE (build-ways.js) — each way's drums for bar `i` of an `n`-bar build, as patterns by role
+ * (a pattern of the style's own, or one written here). Snare Roll and Hook Loop are the classic roll,
+ * written where the build is. `D` is the style's drums; `rolls` the Rolls switch.
+ */
+export const BUILD_DRUMS = {
+  // The kick doubling up — the style's own for the first half, eighths, sixteenths for the last bar.
+  kick: ({ i, n, D, rolls }) => ({
+    kick: !rolls || i < n / 2 ? D.kick : i === n - 1 ? 'xxxxxxxxxxxxxxxx' : 'x.x.x.x.x.x.x.x.',
+    clap: i < n - 1 ? D.clap : null,
+    hats: i < n / 2 ? D.hats8 : D.hats16,
+  }),
+  // The snare in quarters, then dotted eighths (three against the beat), then sixteenths.
+  dotted: ({ i, n, D, rolls }) => ({
+    kick: D.kick,
+    clap: i < n / 2 ? D.clap : null,
+    snare: !rolls ? null : i === n - 1 ? 'xxxxxxxxxxxxxxxx' : i < n / 4 ? 'x...x...x...x...' : 'x..x..x..x..x..x',
+    hats: i < n / 2 ? D.hats8 : D.hats16,
+  }),
+  // The drop's groove, steady — the climb is the low-pass opening over the whole mix (fx.js).
+  muffled: ({ i, n, D }) => ({ kick: D.kick, clap: D.clap, hats: i < n / 2 ? D.hats8 : D.hats16 }),
+  drumless: () => ({}),
+};
+
+/**
+ * The opening of a bar of hook — `len` steps from its first note — looped across the bar: Hook Loop's
+ * bar, `left` bars from the drop (half a bar, a beat near the end, half a beat in the last bar).
+ */
+export function hookLoop(part, left, n) {
+  const len = left === 1 ? 2 : left <= Math.max(1, Math.floor(n / 4)) + 1 ? 4 : 8;
+  const f = part.notes.findIndex((v) => v != null);
+  const out = blank();
+  if (f < 0) return out;
+  for (let s = 0; s < 16; s++) {
+    const src = f + (s % len);
+    if (src >= 16 || part.notes[src] == null) continue;
+    out.notes[s] = part.notes[src];
+    out.lens[s] = Math.min(part.lens[src] ?? 1, len - (s % len));
+  }
+  return out;
+}
+
 /** One bar of hook broken into running sixteenths: its notes, low to high, round and round. */
 export function arpOfHook(part) {
   const ms = [...new Set(part.notes.flatMap((v) => (v == null ? [] : Array.isArray(v) ? v : [v])).map(midi))].sort((a, b) => a - b).slice(0, 4);
@@ -276,6 +321,47 @@ export function buildSections(ctx) {
   // Breakdown Hook: Varied — one way for the whole take, off a stream of its own, so drawing it
   // moves nothing else (breakdown-ways.js).
   const breakdownWay = variedWay(rng.breakdown, { soundSet: !!options.parts.soundSet && options.parts.soundSet !== 'style' });
+  // Build Type and Before the Drop: Varied draws one for each build, off streams of their own (one
+  // per build, so a second build never moves the first), never the same as the build before.
+  const drawn = { build: [], dropIn: [] };
+  const wayOf = (kind, asked, table) => {
+    const w = asked === 'varied' ? drawWay(table, rng[kind].stream(String(drawn[kind].length)), { not: drawn[kind].at(-1) }) : asked;
+    drawn[kind].push(w);
+    return w;
+  };
+  const BUILD_IDS = new Set(BUILD_WAYS.map((w) => w.id));
+  // The builds' last bars, each changed once the drop after it is made (applyDropIn).
+  const dropIns = [];
+  /**
+   * BEFORE THE DROP — a build's last bar (`bar0`) played the way `way` says, into the drop `next`.
+   * A way that silences the bar's end silences the build's run-up effect with it (fx.js).
+   */
+  const applyDropIn = ({ bar0, next, build, way }) => {
+    const bar = bars[bar0];
+    build.dropIn = way;
+    const cutAll = (at, keep = []) => {
+      for (const role of Object.keys(bar)) if (role !== 'riser' && !keep.includes(role)) bar[role] = cutAny(bar[role], at);
+    };
+    if (way === 'gap' || way === 'pause') {
+      const at = way === 'gap' ? 12 : 8;
+      cutAll(at);
+      events.stops.push({ bar: bar0 + 1, step: at });
+      build.runup = false;
+    } else if (way === 'dropout') {
+      for (const role of ['kick', 'bass', 'sub', 'clap']) if (bar[role]) bar[role] = cutAny(bar[role], 8);
+    } else if (way === 'pickup') {
+      // The walk is chosen over the chord still sounding, before the rest stops.
+      const first = bars[next.from - 1]?.hook;
+      const target = first && pitchesOf(first)[0];
+      const hook = target ? withPickup({ ...bar, hook: bar.hook && cut(bar.hook, 12) }, target, ctx.scale || key.scale) : bar.hook && cut(bar.hook, 12);
+      cutAll(12, ['hook']);
+      if (hook) bar.hook = hook;
+      build.runup = false;
+    } else if (way === 'solo') {
+      for (const role of Object.keys(bar)) if (role !== 'riser' && role !== 'hook') delete bar[role];
+      build.runup = false;
+    }
+  };
   const put = (bar0, role, part) => {
     if (part == null || !hasNotes(part)) return;
     const prev = bars[bar0][role];
@@ -800,9 +886,14 @@ export function buildSections(ctx) {
     }
 
     if (sec.role === 'build' || sec.role === 'build2') {
-      events.builds.push({ from: sec.from, to: sec.to, intoDrop: !!nextIsDrop });
+      // Build Type: the section's own Plays choice, else the switch (Varied: a draw). Rebuild is
+      // the arp from the first bar, on the switch's way.
+      const way = wayOf('build', BUILD_IDS.has(sec.variant) ? sec.variant : options.form.buildWay || 'roll', BUILD_WAYS);
+      const build = { from: sec.from, to: sec.to, intoDrop: !!nextIsDrop, way };
+      events.builds.push(build);
       const dropIndex = sec.role === 'build' ? 0 : 1;
       const stutter = options.fx.stutter && nextIsDrop;
+      const classic = way === 'roll' || way === 'loop';
       for (let i = 0; i < n; i++) {
         const b = from + i;
         const last = i === n - 1;
@@ -814,6 +905,7 @@ export function buildSections(ctx) {
             ? cut(realise(cell, [pb.src, 'as'], ctx), 12)
             : head(realise(cell, [pb.src, 'as'], ctx));
         }
+        if (way === 'loop') hookBar = hole ? cut(hookLoop(cell[0], n - i, n), 12) : hookLoop(cell[0], n - i, n);
         const c = pb.chords;
         const second = i >= n / 2;
         const lastCut = (part) => (hole ? cut(part, 12) : part);
@@ -824,19 +916,31 @@ export function buildSections(ctx) {
         if (second && options.parts.square) put(b, 'square', up(hookBar));
         put(b, 'bass', lastCut(bassLine(c, R, 0, b)));
         put(b, 'sub', lastCut(subLine(c)));
-        put(b, 'kick', drum('kick', hole ? 'x...x...x.......' : D.kick, i));
-        if (!second) put(b, 'clap', drum('clap', D.clap, i));
-        if (options.drums.rolls) {
-          const left = n - i;
-          const roll = last ? D.rolls[4] : left === 2 ? D.rolls[3] : left === 3 ? D.rolls[2] : left === 4 ? D.rolls[1] : D.rolls[0];
-          put(b, 'snare', P(last && !hole ? D.rolls[3] : roll));
+        if (classic) {
+          put(b, 'kick', drum('kick', hole ? 'x...x...x.......' : D.kick, i));
+          if (!second) put(b, 'clap', drum('clap', D.clap, i));
+          if (options.drums.rolls) {
+            const left = n - i;
+            const roll = last ? D.rolls[4] : left === 2 ? D.rolls[3] : left === 3 ? D.rolls[2] : left === 4 ? D.rolls[1] : D.rolls[0];
+            put(b, 'snare', P(last && !hole ? D.rolls[3] : roll));
+          }
+          put(b, 'hats', drum('hats', !second ? D.hats8 : hole ? 'xxxxxxxxxxxx....' : D.hats16, i));
+        } else {
+          // A roll written here is played as written; the style's own grooves give way to the riff's.
+          const pats = BUILD_DRUMS[way]({ i, n, D, rolls: options.drums.rolls });
+          for (const [role, pat] of Object.entries(pats)) {
+            if (!pat) continue;
+            const own = Object.values(D).includes(pat) ? drum(role, pat, i) : (asIs ? null : P(at(pat, i)));
+            put(b, role, hole ? cutAny(own, 12) : own);
+          }
         }
-        put(b, 'hats', drum('hats', !second ? D.hats8 : hole ? 'xxxxxxxxxxxx....' : D.hats16, i));
         if (options.fx.riser && nextIsDrop && i === n - 2) {
           put(b, 'riser', P(D.crash));
           events.risers.push(b + 1);
         }
       }
+      if (way === 'muffled') events.sweeps.push({ from: sec.from, to: sec.to });
+      if (nextIsDrop) dropIns.push({ bar0: from + n - 1, next, build, way: wayOf('dropIn', options.form.dropIn || 'straight', DROP_IN_WAYS) });
     }
 
     if (DROP_ROLES.has(sec.role)) {
@@ -1105,6 +1209,8 @@ export function buildSections(ctx) {
     // The key lift: every pitched part of a lifted section, up together.
     liftSection(sec);
   });
+  // Before the Drop (build-ways.js), now that the drop after each build is made.
+  for (const d of dropIns) applyDropIn(d);
   // The joins between sections, for every form but Club's (transitions.js).
   if (form[0]?.joins) planTransitions({ form, bars, events, options, D, rng: rng.transitions, fillPick, scale: ctx.scale });
 

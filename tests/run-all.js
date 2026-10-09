@@ -205,6 +205,9 @@ const suites = [
   // Breakdown Hook: Varied (generator v11): each way plays what it says, Varied draws them all, the
   // draw moves nothing outside the breakdown, and old recipes — desk and Lab — keep Half Speed.
   'tests/banger-breakdown.js',
+  // Build Type and Before the Drop: each way plays what it says, Varied never repeats a build in a
+  // song, the draws move nothing outside the builds, and old recipes keep the snare roll, straight in.
+  'tests/banger-builds.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',

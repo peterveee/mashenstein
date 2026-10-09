@@ -228,7 +228,8 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
     const b = posOf(build.to + 1, 0);
     // The music opening through a low-pass across the build — the tune's lanes only, so
     // the roll keeps its crack and the riser its air.
-    if (fx.filterBuild && !build.short) {
+    // (Not over a Muffled Groove build, whose low-pass is over the whole mix — sections.js.)
+    if (fx.filterBuild && !build.short && build.way !== 'muffled') {
       for (const role of ['saws', 'piano', 'pad', 'bass', 'sub', 'arp', 'square']) {
         const key = lane(role);
         if (key) auto = addSections(auto, key, [section(a, b, SWEEP(350, 14000, 'lowpass', 1.1))]);
@@ -246,7 +247,8 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
     // The run-up into the drop (INTO_DROP_RUNUPS): the classic stutter — the whole mix
     // repeating in sixteenths, then thirty-seconds, a high-pass climbing under it — or one
     // of its variations, a different one from the build before.
-    if (own('intoDrop') && fx.stutter && build.intoDrop) intoDrop(drawRunup(), build.to);
+    // None where the bar before the drop falls silent (build-ways.js: The Gap, Hook Alone …).
+    if (own('intoDrop') && fx.stutter && build.intoDrop && build.runup !== false) intoDrop(drawRunup(), build.to);
   }
 
   // Hard stops: everything that could be ringing cut dead — except the riser, which is

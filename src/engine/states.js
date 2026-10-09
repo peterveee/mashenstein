@@ -1,6 +1,7 @@
 // State machine with a CRT-shutter transition between states.
 import { W, H, pushOverlayDraw, beginChromeFrame, commitChromeFrame, setPresentationMode } from './renderer.js';
 import { Input } from './input.js';
+import { Audio } from './audio.js';
 import { drawToon, transitionCameoAction } from '../sprites/toons.js';
 
 let current = null;
@@ -33,10 +34,15 @@ let cameo = true;
 // before the destination measures any height-dependent layout. This keeps a
 // portrait briefing/results screen from entering with the landscape constants
 // and then jumping a frame later when lifecycle publishes it.
+//
+// The music's level is chosen at the same moment, for the same reason: a screen that
+// declares `static listening` (the jukebox, the Lab) has its songs louder and under THE
+// CEILING (Audio.setListening), and it is on before that screen's enter() starts its song.
 function preparePresentation(next) {
   const mode = next?.constructor?.portraitMode;
   if (mode === 'frame') setPresentationMode('portrait');
   else if (mode !== 'stretch') setPresentationMode('landscape');
+  Audio.setListening?.(!!next?.constructor?.listening);
 }
 
 // Debug handles the browser harness drives the game through. Published from

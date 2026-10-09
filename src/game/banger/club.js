@@ -523,6 +523,8 @@ function releaseCanvas(canvas) {
 
 export class BangerClubState {
   static portraitMode = 'frame';
+  // The Lab is a listening screen (Audio.setListening), as its list is.
+  static listening = true;
   static tameSkirtForTest = tameSkirt;
 
   /** `rec` is the kept song to play; `onBack` is where the back button goes. */

@@ -539,8 +539,9 @@ export function newSeed() {
  * Portamento, a slide setting on the lead that GO WILD adds (tools/lib/banger/expression.js).
  * Version 2 adds the VOLTAGE ROLLS (voltageRollsFor). Version 3 adds Voltage-driven section FX. Version 4 (7 Oct
  * 2026) adds the form roll. Version 5 (9 Oct 2026) starts seven styles off the Pop Song (FORMS_BEFORE_5).
- * Version 6 (9 Oct 2026) plays the breakdown Varied — a way drawn each take (the generator's
- * BREAKDOWN_WAYS) — where every recipe before it plays Half Speed.
+ * Version 6 (9 Oct 2026) plays the breakdown, the builds and the bar before each drop Varied — ways
+ * drawn by the take (breakdown-ways.js, build-ways.js) — where every recipe before it plays Half Speed,
+ * the snare roll and straight in.
  * A NEW recipe carries 6 (maker.js); one saved
  * at 1 has the slide but no rolls, and one saved before there was any has no `expression` and reads
  * as 0, and is made EXACTLY as it always was, Go Wild included. A kept song is only its recipe,
@@ -619,11 +620,14 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
     ...rolls.form, mood2: pair.second, moodSwitch: pair.switch } : null;
   // An INFUSION is always the Club form — the build-and-drop banger, never a Pop Song (Peter, 8 Oct 2026).
   const clubForm = beat ? { template: 'club' } : null;
-  // The breakdown (version 6): Varied, or Half Speed as every recipe kept before it — said outright
-  // either way, so the form is always given, on the template the generator would start it on.
-  const breakdownHook = rolls.form?.breakdownHook ?? (expressionVersionOf(expression) >= 6 ? 'varied' : 'half');
+  // The breakdown, the builds and the bar before each drop (version 6): Varied, or as every recipe kept
+  // before it — Half Speed, the snare roll, straight in — said outright either way, so the form is
+  // always given, on the template the generator would start it on.
+  const varied = expressionVersionOf(expression) >= 6;
+  const breakdownHook = rolls.form?.breakdownHook ?? (varied ? 'varied' : 'half');
+  const ways = { buildWay: varied ? 'varied' : 'roll', dropIn: varied ? 'varied' : 'straight' };
   const ownTemplate = beat ? 'club' : styleDefaults(styleFor(style) || styleSettings).form.template;
-  const formOptions = { template: ownTemplate, ...keptForm, ...(pairForm || rolls.form), ...clubForm, breakdownHook };
+  const formOptions = { template: ownTemplate, ...keptForm, ...(pairForm || rolls.form), ...clubForm, breakdownHook, ...ways };
   const options = {
     style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,

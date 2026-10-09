@@ -72,7 +72,9 @@ for (const id of ['trance', 'chipstep', 'synthwave', 'big-room']) {
   };
   const seen = new Map(); let builds = 0; let bare = 0; let twice = 0; const gunIn = new Set();
   for (const id of ['big-room', 'trance', 'dnb', 'chipstep', 'future-bass', 'moombahton']) for (let seed = 1; seed <= 8; seed++) {
-    const out = generateBanger({ riff, options: { style: id, length: 'long' }, seed });
+    // Straight In: a way before the drop that silences the bar silences its run-up (build-ways.js).
+    const form = { ...styleDefaults(BANGER_STYLES.find((s) => s.id === id)).form, dropIn: 'straight' };
+    const out = generateBanger({ riff, options: { style: id, length: 'long', form }, seed });
     const fx = laneFx(out.arrangement.automation, MASTER_KEY);
     // The Club form's builds (a Pop Song's pre-choruses take its transitions' run-ups).
     const into = out.form.filter((f, i) => /^build/.test(f.role) && /drop/.test(out.form[i + 1]?.role || ''));

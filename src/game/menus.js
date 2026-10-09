@@ -4966,6 +4966,8 @@ export class SoundTestState {
   // menus; the visualiser itself still takes over the whole viewport when it
   // wakes. lifecycle.js reads this to decide the rotate overlay stays down here.
   static portraitMode = 'frame';
+  // A listening screen: its songs play louder, under THE CEILING (Audio.setListening).
+  static listening = true;
 
   // `tracks` defaults to the shipped jukebox, so every production route is the list it
   // always was. The dev menu passes a longer one to audition a song that lives on the

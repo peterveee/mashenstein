@@ -341,8 +341,11 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const wild = makeBanger({ ...recipe, wild: true });
   const voltageBpms = [0, 1, 2, 3].map((voltage) => makeBanger({ ...recipe, voltage }).bpm);
   assert(voltageBpms.join() === '138,138,138,140', 'only Overload lifts tempo, capped by Trance\'s range');
+  // (a recipe kept before expression 6: Half Speed, the snare roll, straight in — make.js)
+  const { styleDefaults } = await import('../tools/lib/banger/options.js');
+  const classic = { template: styleDefaults(BANGER_STYLES.find((s) => s.id === recipe.style)).form.template, breakdownHook: 'half', buildWay: 'roll', dropIn: 'straight' };
   const expected = generateBanger({ riff: riffFromNotes(recipe.notes, hookSoundFor(recipe.style, recipe.mood)),
-    options: { style: recipe.style, mood: recipe.mood, variation: 'wild', spot: spotFor(recipe.style, recipe.seed) }, seed: recipe.seed });
+    options: { style: recipe.style, mood: recipe.mood, variation: 'wild', spot: spotFor(recipe.style, recipe.seed), form: classic }, seed: recipe.seed });
   assert(JSON.stringify(wild.bank) === JSON.stringify(expected.bank), 'Go wild uses the generator Wild variation');
   assert(JSON.stringify(wild.bank) !== JSON.stringify(makeBanger(recipe).bank), 'Go wild changes the generated music');
 }
