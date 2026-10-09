@@ -1027,7 +1027,7 @@ export const bank = {
 export const mix = {
   master: 0.3,
   limiter: true,
-  masterEffects: [{ id: "peq", params: { f1: 90, g1: 6, f2: 500, g2: 0, q2: 1, f5: 1000, g5: 0, q5: 1, f3: 2000, g3: 0, q3: 1, f4: 7200, g4: 5 } }, { id: "mbComp", params: { lowFrequency: 180, highFrequency: 2200, "low.threshold": -24, "low.ratio": 2.5, "low.attack": 0.045, "low.release": 0.3, "low.knee": 12, "mid.threshold": -20, "mid.ratio": 2, "mid.attack": 0.03, "mid.release": 0.12, "mid.knee": 18, "high.threshold": -20, "high.ratio": 2, "high.attack": 0.015, "high.release": 0.08, "high.knee": 18 } }],
+  masterEffects: [{ id: "peq", params: { f1: 90, g1: 6, f2: 500, g2: 0, q2: 1, f5: 1000, g5: 0, q5: 1, f3: 2000, g3: 0, q3: 1, f4: 7200, g4: 5 } }, { id: "mbComp", params: { lowFrequency: 180, highFrequency: 2200, "low.threshold": -24, "low.ratio": 2.5, "low.attack": 0.045, "low.release": 0.3, "low.knee": 12, "mid.threshold": -20, "mid.ratio": 2, "mid.attack": 0.03, "mid.release": 0.12, "mid.knee": 18, "high.threshold": -20, "high.ratio": 2, "high.attack": 0.015, "high.release": 0.08, "high.knee": 18 } }, { id: "gain", params: { gain: -0.7 } }],
   layers: [{ key: "tom2", from: "tom" }, { key: "bass3", from: "bass", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "lead2", from: "lead", independent: true }],
   labels: {"kick":"Megamix Kick"},
   voice: {"clapVoice":"snareEngine","rimVoice":"blipZap","tom2Voice":"tomEngine","kickVoice":"sdsKick","snareVoice":"gameBoySnare","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine","crashVoice":"crashEngine","bassVoice":"toneTriangle","bass2Voice":"toneSine","bass3Voice":"toneSine","leadVoice":"toneSquare","chordsVoice":"squareTone2","tomVoice":"tomEngine","lead2Voice":"sawtoothTone2"},
@@ -1045,14 +1045,14 @@ export const mix = {
     rim: { gain: -13.8, pan: 0.248, send: { delay: 0.054 }, effects: [{ id: "delay", params: { sync: 1, division: 0.5, feedback: 0.08, wet: 0.2 } }] },
     hats: { gain: -1.9, pan: -0.388, eq: { high: 0.1 }, effects: [{ id: "exciter" }, { id: "delay", params: { division: 0.25 } }] },
     kick: { gain: -3.5, eq: { low: -0.9 } },
-    snare: { gain: 2.7, send: { delay: 0.004 }, eq: { low: 4.7, mid: 5.8, high: 4.3 } },
+    snare: { gain: 2, send: { delay: 0.004 }, eq: { low: 4.7, mid: 5.8, high: 4.3 } },
     ohats: { gain: -5.6, pan: -0.384, eq: { high: -1 } },
     clap: { gain: 3.8, pan: 0.422, send: { delay: 0.04 }, eq: { high: 3.9 }, effects: [{ id: "reverb", mute: true }] },
     tom2: { gain: 1.9, eq: { low: -14.6 }, effects: [{ id: "pingpong", params: { wet: 0.41 } }] },
     bass: { gain: -11.2, eq: { low: -0.9 }, effects: [{ id: "distortion" }, { id: "compressor" }] },
-    bass2: { gain: -59.7 },
-    bass3: { gain: -20.5, eq: { low: -2.7 } },
-    lead2: { gain: -29.3, pan: 0.106, eq: { mid: 1.7, high: 5.1 }, effects: [{ id: "exciter", params: { timbre: 0.25, tune: 2896.114, drive: 0.81, mix: 0.85 } }, { id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2, detune: 7 } }, { id: "compressor", params: { release: 0.159 } }] },
+    bass2: { gain: -58 },
+    bass3: { gain: -16.7, eq: { low: -2.7 } },
+    lead2: { gain: -24.8, pan: 0.106, eq: { mid: 1.7, high: 5.1 }, effects: [{ id: "exciter", params: { timbre: 0.25, tune: 2896.114, drive: 0.81, mix: 0.85 } }, { id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2, detune: 7 } }, { id: "compressor", params: { release: 0.159 } }] },
   },
 };
 

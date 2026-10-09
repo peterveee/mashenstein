@@ -38,7 +38,7 @@ export const mix = {
     lead: { gain: -6.3, send: { delay: 0.28 } },
     bass: { gain: 3.2 },
     kick: { gain: -0.3 },
-    snare: { gain: -4.4 },
+    snare: { gain: -4.9 },
   },
 };
 

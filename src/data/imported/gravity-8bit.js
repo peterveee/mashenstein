@@ -253,14 +253,13 @@ export const mix = {
   layers: [{ key: "lead2", from: "lead", independent: true }],
   voice: {"kickVoice":"sdsKick","snareVoice":"gameBoySnare","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine","bassVoice":"toneTriangle","leadVoice":"toneSquare","lead2Voice":"squareOrgan","chordsVoice":"toneTriangle","clapVoice":"snareEngine","rimVoice":"vl1Sha","crashVoice":"crashEngine","tomVoice":"tomEngine"},
   lanes: {
-    bass: { gain: -5.2 },
-    lead: { gain: -6.5, pan: -0.08, send: { delay: 0.22 } },
-    lead2: { gain: -4.5, pan: 0.24, send: { delay: 0.3 } },
-    chords: { gain: -2.5 },
-    kick: { gain: 1.2 },
-    snare: { gain: -2.4 },
-    hats: { gain: -1.8 },
-    ohats: { gain: 7.5 },
+    bass: { gain: -1.1 },
+    lead: { gain: -0.1, pan: -0.08, send: { delay: 0.22 } },
+    lead2: { gain: -1.2, pan: 0.24, send: { delay: 0.3 } },
+    chords: { gain: -6.2 },
+    kick: { gain: 1.9 },
+    snare: { gain: -4.9 },
+    hats: { gain: -1.9 },
   },
 };
 

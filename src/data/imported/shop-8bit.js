@@ -200,10 +200,10 @@ export const mix = {
     organChords: { gain: -6, pan: 0.603, send: { delay: 0.004 }, eq: { low: -11, high: 2.7 } },
     organGliss: { pan: -0.249, send: { delay: 0.2 }, eq: { low: -8.1 }, effects: [{ id: "bell", params: { frequency: 3765.275, gain: 6, q: 0.7 } }] },
     organSwoop: { pan: 0.454, send: { delay: 0.2 }, eq: { high: 5.1 } },
-    snare: { gain: -2.88, send: { delay: 0.013 }, eq: { high: 11.2 } },
-    chords2: { gain: -25.9, pan: -0.153, send: { delay: 0.005 } },
+    snare: { gain: -3.28, send: { delay: 0.013 }, eq: { high: 11.2 } },
+    chords2: { gain: -26.1, pan: -0.153, send: { delay: 0.005 } },
     bass: { gain: -0.8, eq: { low: -2.6 } },
-    bass2: { gain: -7.76, eq: { low: -0.7 } },
+    bass2: { gain: -7.16, eq: { low: -0.7 } },
   },
 };
 
