@@ -639,8 +639,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(typeof made.rec.name === 'string' && made.rec.name.length > 0, 'the pending preview is titled before it is kept');
   const kept = keepBanger({ ...made.rec, fresh: false, name: made.rec.name });
   assert(kept === bangerState().kept.at(-1) && bangerState().kept.includes(kept), 'saving the pending recipe keeps the song');
-  assert(kept.expression === 6 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
-    'a new recipe opts into expression version 6 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song, the Varied breakdown), and made again from the kept recipe it is the song just handed over');
+  assert(kept.expression === 7 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
+    'a new recipe opts into expression version 7 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song, the Varied breakdown, Chords Early), and made again from the kept recipe it is the song just handed over');
 
   tap(maker, ...centre(L.buttons[0]));
   made = null;
@@ -2845,7 +2845,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const revised = reviseBanger(rec, made);
   assert(revised === rec && rec.style === other && rec.name === name && rec.n === n && bangerState().kept.length === count,
     'and saving the edit remakes that song in place: same name and number, the new style, no new song');
-  assert(rec.expression === 6, 'and an old recipe edited with the pencil opts into expression version 6');
+  assert(rec.expression === 7, 'and an old recipe edited with the pencil opts into expression version 7');
   assert(JSON.stringify(bangerState().draft) === draftBefore, 'editing a song leaves the NEW BANGER draft alone');
 }
 

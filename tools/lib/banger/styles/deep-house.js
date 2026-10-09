@@ -35,7 +35,8 @@ export const DEEP_HOUSE = Object.freeze({
   chordMemory: { moody: 'm9', mystery: 'm9', dark: 'm7', hypnotic: 'm7' },
   defaults: {
     mood: 'moody',
-    form: { template: 'groove', doubleDrop: false, hardStop: false, keyLift: 'none' },
+    // The chords come in with the second layer, at bar 9 of a Groove song (9 Oct 2026: they waited for bar 17).
+    form: { template: 'groove', doubleDrop: false, hardStop: false, keyLift: 'none', chordsEarly: true },
     drums: { crashes: false, rolls: false, impact: false, fills: false, shaker: true, tambourine: false, ride: false },
     parts: { bass: 'offbeat', sub: false, chords: 'piano', square: false, bell: false, octaveDouble: false, arp: false, choir: true, counter: true },
     fx: { riser: false, filterBuild: false, stutter: false, pump: true, delayThrows: true },

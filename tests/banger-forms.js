@@ -329,8 +329,9 @@ assert(!failed, `${made} bangers in every form, style and length are valid songs
 // ---- the Machine-Gun Sweep (6 Oct 2026): now and then into a drop, in the styles that have it
 {
   const { laneFx, MASTER_KEY } = await import('../src/data/automation.js');
+  // Straight In: a way before the drop that silences the bar silences its run-up (build-ways.js).
   const into = (style, seed) => {
-    const out = generateBanger({ riff: BAND, options: { style, length: 'long' }, seed });
+    const out = generateBanger({ riff: BAND, options: { style, length: 'long', form: { ...styleDefaults(styleFor(style)).form, dropIn: 'straight' } }, seed });
     return laneFx(out.arrangement.automation, MASTER_KEY).filter((x) => x.chain.some((e) => e.id === 'stutter' && !e.params.stop));
   };
   const isSweep = (x) => x.chain.length === 2 && x.chain[0].params.slice === 0.125 && x.chain[0].params.fade === 0
@@ -344,7 +345,7 @@ assert(!failed, `${made} bangers in every form, style and length are valid songs
   assert(takes.some((t) => t.some((x) => x.chain.some((e) => e.id === 'filter' && e.params.type === 'highpass'))),
     'and the rest of the time keep their stutter before the drop');
   const without = ['deep-house', 'eurodance'].flatMap((style) => [1, 2, 3, 4, 5, 6].flatMap((seed) => into(style, seed)));
-  const dnb = (flavour) => [1, 2, 3, 4, 5, 6, 7, 8].flatMap((seed) => laneFx(generateBanger({ riff: BAND, options: { style: 'dnb', flavour, length: 'long' }, seed })
+  const dnb = (flavour) => [1, 2, 3, 4, 5, 6, 7, 8].flatMap((seed) => laneFx(generateBanger({ riff: BAND, options: { style: 'dnb', flavour, length: 'long', form: { ...styleDefaults(styleFor('dnb')).form, dropIn: 'straight' } }, seed })
     .arrangement.automation, MASTER_KEY)).filter((x) => x.chain[1]?.params?.sweepTo === 200);
   assert(!without.some(isSweep) && dnb('liquid').length === 0 && dnb('neuro').length > 0,
     'never in a style without it, nor in Drum & Bass but for Neuro');

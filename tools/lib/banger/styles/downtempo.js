@@ -33,7 +33,8 @@ export const DOWNTEMPO = Object.freeze({
   padUnder: true,
   defaults: {
     mood: 'moody',
-    form: { template: 'groove', doubleDrop: false, hardStop: false, keyLift: 'none' },
+    // The chords come in with the second layer, at bar 9 of a Groove song (9 Oct 2026: they waited for bar 17).
+    form: { template: 'groove', doubleDrop: false, hardStop: false, keyLift: 'none', chordsEarly: true },
     drums: { source: 'replace', crashes: false, rolls: false, impact: false, fills: true, shaker: false, tambourine: false, ride: false },
     parts: { bass: 'offbeat', sub: false, chords: 'piano', square: false, bell: false, octaveDouble: false, arp: false, choir: false, counter: false },
     fx: { riser: false, filterBuild: false, stutter: false, pump: false, delayThrows: true },

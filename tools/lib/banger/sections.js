@@ -19,7 +19,7 @@ import { fillIn, passFilled } from './embellish.js';
 import { romanChord, partWeights, chordFit, bestChord, triadOf, chordsOfBar, fitsScale, grindShare } from './analyse.js';
 import { hookCell, phrasePlan, realise, head, cellLength, fragment } from './variation.js';
 import { variedWay } from './breakdown-ways.js';
-import { BUILD_WAYS, DROP_IN_WAYS } from './build-ways.js';
+import { BUILD_WAYS, DROP_IN_WAYS, buildsNotAfter, dropInsNotAfter } from './build-ways.js';
 import { drawWay } from './ways.js';
 import { pitchesOf } from './cohesion.js';
 import { DROP_ROLES, DEFAULT_LAYERS, DEFAULT_GROOVE, layersOn, scriptOn } from './form.js';
@@ -324,8 +324,8 @@ export function buildSections(ctx) {
   // Build Type and Before the Drop: Varied draws one for each build, off streams of their own (one
   // per build, so a second build never moves the first), never the same as the build before.
   const drawn = { build: [], dropIn: [] };
-  const wayOf = (kind, asked, table) => {
-    const w = asked === 'varied' ? drawWay(table, rng[kind].stream(String(drawn[kind].length)), { not: drawn[kind].at(-1) }) : asked;
+  const wayOf = (kind, asked, table, exclude = []) => {
+    const w = asked === 'varied' ? drawWay(table, rng[kind].stream(String(drawn[kind].length)), { not: drawn[kind].at(-1), exclude }) : asked;
     drawn[kind].push(w);
     return w;
   };
@@ -641,7 +641,8 @@ export function buildSections(ctx) {
   // ---- Build in Layers
   // The parts arriving one at a time (an intro) or leaving one at a time (an outro), in the
   // style's order (`layers`, else form.js's DEFAULT_LAYERS). A layer names roles, or groups:
-  const LAYERS = style.layers || DEFAULT_LAYERS;
+  // Chords Early (9 Oct 2026): the chords move up to the second layer, wherever the style had them.
+  const LAYERS = options.form.chordsEarly ? chordsEarly(style.layers || DEFAULT_LAYERS) : style.layers || DEFAULT_LAYERS;
   const riffDrumRoles = new Set(riffDrums.map((p) => `riff:${p.key}`));
   const GROUP = {
     riff: (r) => r === 'hook' || (r.startsWith('riff:') && !riffDrumRoles.has(r)),
@@ -888,7 +889,9 @@ export function buildSections(ctx) {
     if (sec.role === 'build' || sec.role === 'build2') {
       // Build Type: the section's own Plays choice, else the switch (Varied: a draw). Rebuild is
       // the arp from the first bar, on the switch's way.
-      const way = wayOf('build', BUILD_IDS.has(sec.variant) ? sec.variant : options.form.buildWay || 'roll', BUILD_WAYS);
+      // Never a pair that undoes itself (build-ways.js): what this build follows, then what it goes into.
+      const after = form[si - 1]?.role === 'breakdown' ? events.breakdowns.find((d) => d.to === sec.from - 1)?.mode ?? null : null;
+      const way = wayOf('build', BUILD_IDS.has(sec.variant) ? sec.variant : options.form.buildWay || 'roll', BUILD_WAYS, buildsNotAfter(after));
       const build = { from: sec.from, to: sec.to, intoDrop: !!nextIsDrop, way };
       events.builds.push(build);
       const dropIndex = sec.role === 'build' ? 0 : 1;
@@ -940,7 +943,7 @@ export function buildSections(ctx) {
         }
       }
       if (way === 'muffled') events.sweeps.push({ from: sec.from, to: sec.to });
-      if (nextIsDrop) dropIns.push({ bar0: from + n - 1, next, build, way: wayOf('dropIn', options.form.dropIn || 'straight', DROP_IN_WAYS) });
+      if (nextIsDrop) dropIns.push({ bar0: from + n - 1, next, build, way: wayOf('dropIn', options.form.dropIn || 'straight', DROP_IN_WAYS, dropInsNotAfter(way)) });
     }
 
     if (DROP_ROLES.has(sec.role)) {
@@ -1215,6 +1218,16 @@ export function buildSections(ctx) {
   if (form[0]?.joins) planTransitions({ form, bars, events, options, D, rng: rng.transitions, fillPick, scale: ctx.scale });
 
   return { bars, events, cell, asWritten };
+}
+
+/**
+ * A layer order with the chords (the `chords` group: supersaws, pad, piano) in its second layer —
+ * where the style had them later. A layer the move empties goes.
+ */
+export function chordsEarly(layers) {
+  const at = layers.findIndex((layer) => layer.includes('chords'));
+  if (at <= 1 || layers.length < 2) return layers;
+  return layers.map((layer, i) => (i === 1 ? [...layer, 'chords'] : layer.filter((t) => t !== 'chords'))).filter((layer) => layer.length);
 }
 
 // ---- the way into a lifted key (moods.js LIFT_APPROACHES)

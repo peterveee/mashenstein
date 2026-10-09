@@ -1,13 +1,15 @@
 // BUILD TYPE and BEFORE THE DROP (generator v11, 9 Oct 2026) — the build no longer always the snare
 // roll straight into the drop. Checked as promises: every way in the tables can be asked for, in the
-// dialog and (a build's) in the Form row, and plays what it says; Varied draws every way, and never
-// the same for both builds of a song; the draws move no note outside the builds; a bar before the
+// dialog and (a build's) in the Form row, and plays what it says; Varied draws every way, never the
+// same for both builds of a song, and never a pair that undoes itself (though a pair picked by name
+// plays as asked); the draws move no note outside the builds; a bar before the
 // drop that falls silent has no run-up effect over it; and nothing made before it moves — a request
 // that names its form but neither switch is the snare roll, straight in.
 import { installDom } from './dom-stub.js';
 installDom();
 const { generateBanger, normaliseBangerOptions, BANGER_REROLLS, BANGER_GROUPS } = await import('../tools/lib/banger/index.js');
-const { BUILD_WAYS, DROP_IN_WAYS } = await import('../tools/lib/banger/build-ways.js');
+const { BUILD_WAYS, DROP_IN_WAYS, BUILD_WAY } = await import('../tools/lib/banger/build-ways.js');
+const { BREAKDOWN_WAYS } = await import('../tools/lib/banger/breakdown-ways.js');
 const { SECTION_TYPES } = await import('../tools/lib/banger/form-types.js');
 const { expandOrder } = await import('../src/data/arrangements.js');
 const { laneFx, MASTER_KEY } = await import('../src/data/automation.js');
@@ -135,6 +137,31 @@ const noteOf = (out) => (Array.isArray(out.note) ? out.note.join('\n') : String(
     `Varied draws every build way and every way into the drop (${JSON.stringify(builds)} ${JSON.stringify(ins)})`);
   assert(songs > 0 && same === 0, `the two builds of a song never climb the same way, nor go in the same way (${songs} songs)`);
   assert(!moved, 'the draws move no note outside the builds');
+}
+
+// ---- the pairs Varied never draws
+{
+  const idOf = Object.fromEntries([...BUILD_WAYS, ...DROP_IN_WAYS, ...BREAKDOWN_WAYS].map((w) => [w.label, w.id]));
+  const bad = []; let pairs = 0;
+  for (let seed = 1; seed <= 150; seed++) {
+    const out = generateBanger({ riff: RIFF, seed, options: { style: 'big-room', form: { template: 'club', breakdownHook: 'varied', buildWay: 'varied', dropIn: 'varied' } } });
+    let prev = null;
+    for (const line of noteOf(out).split('\n')) {
+      const m = line.match(/\d+\s+(Breakdown|Build[^—]*) — (.+)$/);
+      if (!m) { if (/\d+–\d+/.test(line)) prev = null; continue; }
+      if (m[1] === 'Breakdown') { prev = idOf[m[2]]; continue; }
+      const [b, d] = m[2].split(' · ').map((l) => idOf[l]);
+      const w = BUILD_WAY[b];
+      pairs++;
+      if ((w.notInto || []).includes(d)) bad.push(`${b} into ${d}`);
+      if (prev && (w.notAfter === true || (w.notAfter || []).includes(prev))) bad.push(`${b} after a ${prev} breakdown`);
+      prev = null;
+    }
+  }
+  assert(pairs > 200 && !bad.length, `Varied never draws a pair that undoes itself (${pairs} builds${bad.length ? `: ${bad.slice(0, 4).join(', ')}` : ''})`);
+  const asked = make('kick', 'dropout');
+  const last = buildOf(asked).to;
+  assert(!steps(barPart(asked, 'kick', last)).some((x) => x >= 8), 'a pair picked by name plays as asked (Kick Roll into Drop-Out)');
 }
 
 console.log(failed ? '\nbanger builds: FAILED' : '\nbanger builds: PASSED');

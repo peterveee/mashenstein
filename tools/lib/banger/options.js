@@ -143,6 +143,8 @@ export const BANGER_GROUPS = Object.freeze([
       title: 'The intro brings the parts in one at a time — drums, bass, chords, the hook last — and the outro takes them away again: on a Long song only (more than 64 bars), or always',
       options: [['off', 'Off', 'Intro and outro as the switches say'], ['long', 'Long Songs', 'Only past 64 bars'], ['always', 'Always', 'Every song builds up and down']] },
     { key: 'grooveIntro', label: 'Drums & Bass Intro', title: 'The intro is the beat and the bass alone, then everything comes in at once (Build in Layers wins where it applies)' },
+    // (9 Oct 2026: the Groove form's chords came in a third of the way through, for a chord-led style.)
+    { key: 'chordsEarly', label: 'Chords Early', title: 'Where the parts come in one at a time — a Groove song, Build in Layers — the chords come with the second lot, before the bass, not after it' },
     { key: 'build', label: 'Build', forms: ['club'], title: 'A build before each drop (Build Type says how it climbs)' },
     { key: 'buildWay', label: 'Build Type', type: 'select',
       title: 'How each build climbs into its drop, in any form. Varied picks a way for each build, never the same twice running. A build drawn in the Form row with its own Plays choice keeps that',
@@ -330,7 +332,7 @@ export const BANGER_DEFAULTS = Object.freeze({
   expression: { autoPortamento: false, version: BANGER_EXPRESSION_VERSION },
   form: {
     template: 'club', sections: null, script: false, intro: true, layers: 'off', grooveIntro: false, build: true, breakdown: true, secondDrop: true, doubleDrop: true, keyLift: 'whole', keyApproach: 'mood', mood2: 'none', moodSwitch: 'breakdown',
-    hardStop: true, falseEnding: false, halfTime: false, outro: true, breakdownHook: 'varied', buildWay: 'varied', dropIn: 'varied',
+    hardStop: true, falseEnding: false, halfTime: false, outro: true, breakdownHook: 'varied', buildWay: 'varied', dropIn: 'varied', chordsEarly: false,
   },
   drums: {
     source: 'add', kit: 'style', crashes: true, fills: true, rolls: true, impact: true,
@@ -478,6 +480,8 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     // ...and no Build Type or Before the Drop, before those (9 Oct 2026): the snare roll, straight in.
     if (group.id === 'form' && given.buildWay == null) out.form.buildWay = 'roll';
     if (group.id === 'form' && given.dropIn == null) out.form.dropIn = 'straight';
+    // ...and no Chords Early, before that (9 Oct 2026): the chords in the style's own place.
+    if (group.id === 'form' && given.chordsEarly == null) out.form.chordsEarly = false;
     for (const [k, given1] of Object.entries(given)) {
       if (group.id === 'sectionFx' && k === 'assignments') { out.sectionFx.assignments = normaliseSectionAssignments(given1, issues); continue; }
       if (group.id === 'production' && k === 'version') continue;

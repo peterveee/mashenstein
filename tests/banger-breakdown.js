@@ -173,7 +173,7 @@ const noteOf = (out) => (Array.isArray(out.note) ? out.note.join('\n') : String(
 
 // ---- the Lab: kept recipes play Half Speed, new ones Varied
 {
-  assert(RECIPE_EXPRESSION === 6, 'a new Lab recipe carries expression 6');
+  assert(RECIPE_EXPRESSION >= 6, 'a new Lab recipe carries expression 6 or later');
   let keptHalf = true; let newVaried = 0; let made = 0;
   for (let seed = 1; seed <= 20; seed++) {
     const r = { notes: DEFAULT_SIMPLE, style: 'big-room', mood: 'anthemic', seed };

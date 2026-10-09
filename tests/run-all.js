@@ -186,6 +186,8 @@ const suites = [
   // The shapes a banger takes beyond build-and-drop: Pop Song, Anthem, Groove, a form
   // drawn in the editor — each fitting every length, hanging together, re-made exactly.
   'tests/banger-forms.js',
+  // Chord-led styles' chords in with the second layer of a Groove song, not halfway through.
+  'tests/banger-chords-early.js',
   'tests/banger-energy.js',
   'tests/banger-production.js',
   'tests/banger-section-effects.js',
@@ -785,7 +787,7 @@ const soundSuites = [
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
-  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-fusion.js', 'tests/banger-mood-pairs.js', 'tests/banger-rolls.js', 'tests/banger-forms.js', 'tests/banger-modify.js',
+  'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-fusion.js', 'tests/banger-mood-pairs.js', 'tests/banger-rolls.js', 'tests/banger-forms.js', 'tests/banger-chords-early.js', 'tests/banger-modify.js',
   'tests/banger-expression.js', 'tests/banger-voice-leading.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',

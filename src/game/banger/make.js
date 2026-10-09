@@ -541,15 +541,17 @@ export function newSeed() {
  * 2026) adds the form roll. Version 5 (9 Oct 2026) starts seven styles off the Pop Song (FORMS_BEFORE_5).
  * Version 6 (9 Oct 2026) plays the breakdown, the builds and the bar before each drop Varied — ways
  * drawn by the take (breakdown-ways.js, build-ways.js) — where every recipe before it plays Half Speed,
- * the snare roll and straight in.
- * A NEW recipe carries 6 (maker.js); one saved
+ * the snare roll and straight in. Version 7 (9 Oct 2026) brings the chords in with the second layer
+ * where a style says Chords Early (Deep House, Nu-Disco, Boogie, Downtempo); every recipe before it
+ * plays them in the style's old place.
+ * A NEW recipe carries 7 (maker.js); one saved
  * at 1 has the slide but no rolls, and one saved before there was any has no `expression` and reads
  * as 0, and is made EXACTLY as it always was, Go Wild included. A kept song is only its recipe,
  * made again whenever it is played, so a recipe that did not say must come out the way it did.
  * It is not RIFF_VERSION (what the grid's numbers mean) and not the generator's version (which
  * the Lab does not record).
  */
-export const RECIPE_EXPRESSION = 6;
+export const RECIPE_EXPRESSION = 7;
 /**
  * The form each of these styles started on before version 5 (9 Oct 2026, Peter: "I'd like less pop
  * songs" — five went to Club and two to Groove). A recipe kept before then is made in its old form.
@@ -626,8 +628,11 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   const varied = expressionVersionOf(expression) >= 6;
   const breakdownHook = rolls.form?.breakdownHook ?? (varied ? 'varied' : 'half');
   const ways = { buildWay: varied ? 'varied' : 'roll', dropIn: varied ? 'varied' : 'straight' };
-  const ownTemplate = beat ? 'club' : styleDefaults(styleFor(style) || styleSettings).form.template;
-  const formOptions = { template: ownTemplate, ...keptForm, ...(pairForm || rolls.form), ...clubForm, breakdownHook, ...ways };
+  const ownForm = styleDefaults(styleFor(style) || styleSettings).form;
+  const ownTemplate = beat ? 'club' : ownForm.template;
+  // Chords Early (version 7): the style's own say; off in every recipe kept before it.
+  const chordsEarly = expressionVersionOf(expression) >= 7 && !!ownForm.chordsEarly;
+  const formOptions = { template: ownTemplate, ...keptForm, ...(pairForm || rolls.form), ...clubForm, breakdownHook, ...ways, chordsEarly };
   const options = {
     style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,

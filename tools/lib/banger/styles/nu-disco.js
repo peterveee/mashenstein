@@ -26,7 +26,8 @@ export const NU_DISCO = Object.freeze({
   enter: { arp: 0 },
   defaults: {
     mood: 'nostalgic',
-    form: { template: 'groove', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
+    // The chords come in with the second layer, at bar 9 of a Groove song (9 Oct 2026: they waited for bar 17).
+    form: { template: 'groove', doubleDrop: false, hardStop: false, keyApproach: 'mood', chordsEarly: true },
     drums: { impact: false, rolls: false, shaker: false, tambourine: true, congas: true, ride: false },
     parts: { bass: 'offbeat', sub: false, chords: 'pad', square: false, bell: false, octaveDouble: false, arp: true, arpPattern: 'style', choir: false, counter: false },
     fx: { riser: false, filterBuild: false, stutter: false, pump: false, delayThrows: true },

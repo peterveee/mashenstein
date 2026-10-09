@@ -26,7 +26,8 @@ export const ELECTRO_FUNK = Object.freeze({
   swing: 55,
   defaults: {
     mood: 'funky',
-    form: { template: 'groove', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
+    // The chords come in with the second layer, at bar 9 of a Groove song (9 Oct 2026: they waited for bar 17).
+    form: { template: 'groove', doubleDrop: false, hardStop: false, keyApproach: 'mood', chordsEarly: true },
     drums: { rolls: false, impact: false, shaker: false, tambourine: false, congas: false, cowbell: true, ride: false },
     parts: { bass: 'offbeat', sub: false, chords: 'piano', square: false, bell: false, octaveDouble: false, arp: false, choir: false, counter: true },
     fx: { riser: false, filterBuild: false, stutter: false, pump: false, delayThrows: true },

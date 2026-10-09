@@ -7,12 +7,12 @@
  * Rng) and the lowest −ln(u)/weight wins: a fair draw by weight, and one where a way joining the draw
  * takes only the takes it wins — every other take keeps the way it had. `soundSet`: no way that adds
  * a part (the phone's budget). `not`: a way to pass over (the one the moment before had), the
- * runner-up playing instead.
+ * runner-up playing instead. `exclude`: ways that never go with what is around them (build-ways.js).
  */
-export function drawWay(ways, rng, { soundSet = false, not = null } = {}) {
+export function drawWay(ways, rng, { soundSet = false, not = null, exclude = [] } = {}) {
   const ranked = [];
   for (const w of ways) {
-    if (!w.varied || (soundSet && w.part)) continue;
+    if (!w.varied || (soundSet && w.part) || exclude.includes(w.id)) continue;
     ranked.push({ id: w.id, score: -Math.log(1 - rng.stream(w.id).next()) / (w.weight ?? 1) });
   }
   ranked.sort((a, b) => a.score - b.score);

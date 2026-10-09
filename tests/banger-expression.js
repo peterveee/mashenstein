@@ -673,9 +673,9 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   // what makeBanger lays over the generator's output: the hook's trim, and THE CEILING on the mix
   const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; o.mix.ceiling = true; return o; };
 
-  assert(RECIPE_EXPRESSION === 6 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
+  assert(RECIPE_EXPRESSION === 7 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,
-  'a recipe\'s expression version is 6 for a new recipe, and anything unreadable reads as none');
+  'a recipe\'s expression version is 7 for a new recipe, and anything unreadable reads as none');
 
   // VOLTAGE ROLLS (expression 2): read off the seed, so a kept take is made again the same;
   // the higher the voltage, the more often the bass and the chord gate move
