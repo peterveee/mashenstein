@@ -262,13 +262,18 @@ expectLeaf({ synth: 'WNDR-9' }, '$humanize.entry', false,
 expectLeaf({ synth: 'WNDR-9' }, '$humanize.filter', false,
   'must be absent because the additive path never reads filter variation');
 
+// One VIB DEPTH for every synth: the pooled classes build the native vibrato now
+// (`_addSlot`), so their dial is the native one — semitones, 0–12 — and VIB DELAY is
+// there too, because their note-on fades the wobble in like every other path's.
 const POOLED_GENERIC_VIBRATO = EDITABLE_SYNTHS.filter((synth) =>
   !['KNDO-5', 'WNDR-9', 'MRDR-3', 'TNGR-2', 'JMJR-4'].includes(synth));
 for (const synth of POOLED_GENERIC_VIBRATO) {
-  const row = leafMap({ synth }).get('$vibrato.depth');
-  if (!row || row.min !== 0 || row.max !== 1 || row.unit !== '') {
-    fail(`${synth}: VIB DEPTH must expose Tone.Vibrato's normalized 0-1 range without semitone units`);
+  const rows = leafMap({ synth });
+  const row = rows.get('$vibrato.depth');
+  if (!row || row.min !== 0 || row.max !== 12 || row.unit !== 'semi') {
+    fail(`${synth}: VIB DEPTH must be the native 0-12 semitone dial`);
   }
+  if (!rows.has('$vibrato.delay')) fail(`${synth}: VIB DELAY must be on the panel`);
 }
 
 // MRDR is deliberately frozen while its AudioWorklet backend is being built. These

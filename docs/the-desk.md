@@ -101,7 +101,7 @@ Four RUN cards under AUDIO REPORTS, and a page that shows what they found:
 | SONG LEVELS: MEASURE | `tools/song-levels.js` | the report only |
 | SONG LEVELS: APPLY | `tools/song-levels.js --apply` | each off-line song's `master` in `src/data/songs/` |
 | BASS REPORT | `tools/bass-report.js <ticked songs> [--lanes]` | the report only; unticked songs keep their last rows |
-| BANGER LEVELS | `tools/banger-levels.js curves`, then `check <ticked styles> [--fit]` | the report; new banger sounds' loudness curves; with + FIT, each channel's average miss into `tools/lib/banger/levels-data.js` |
+| BANGER LEVELS | `tools/banger-levels.js curves`, then `check <ticked styles, flavours and Sound Sets> [--fit]` | the report; new banger sounds' loudness curves; with + FIT, each channel's average miss into `tools/lib/banger/levels-data.js` |
 
 Each tool writes its latest result to `work/local/reports/` wherever it was run
 from, terminal included, so `/reports` is always the last run. The page redraws
@@ -196,4 +196,4 @@ having; one server behind six pages is not.
 
 ### Banger calibration
 
-**BANGER CALIBRATION** measures reusable instrument/phrase offsets and publishes only validated profiles. Choose styles, RUN incrementally, or select FULL REBUILD. **BANGER CALIBRATION COVERAGE** reports missing/stale coverage without rendering. OPEN shows the report. The optional **WEEKLY** switch persists and runs all styles while the desk is open and idle; it is off initially. See [the calibration guide](audio/banger-calibration.md) for cache, command-line and validation details.
+**BANGER CALIBRATION** measures reusable instrument/phrase offsets and publishes only validated profiles. Choose styles — each is followed by its flavours and Sound Sets, which have sounds of their own — RUN incrementally, or select FULL REBUILD. **BANGER CALIBRATION COVERAGE** reports missing/stale coverage without rendering. OPEN shows the report. The optional **WEEKLY** switch persists and runs every style, flavour and Sound Set while the desk is open and idle; it is off initially. See [the calibration guide](audio/banger-calibration.md) for cache, command-line and validation details.

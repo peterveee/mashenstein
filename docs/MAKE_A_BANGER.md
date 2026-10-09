@@ -36,7 +36,7 @@ The quick row has the choices you make every time:
 
 | Control | What it does |
 |---|---|
-| Style | The recipe. **Big-Room House** (128, the ABSOLUTE ZERO shape: pumping supersaws, off-beat bass), **Trance** (138: a rolling sixteenth bass, trance-gated supersaws, a long breakdown with the hook on a piano; Uplifting and Long by default), **Future Bass** (140 at half time: hat rolls, an 808 under a talking wobble, stuttered supersaws, a full-time second drop; Euphoric by default) or **Eurobeat** (155, HAIRPIN's shape: four on the floor, an octave bass in eighths, strings, brass stabs, the razor lead doubling the hook; Anthemic by default) or **Chipstep** (140, CHIPSTEP's shape: chip-house builds on an octave square bass, a half-time first drop with a wobble, full-time drops after it with the wobble stuttering, a Game Boy snare) or **Synthwave** (118, NIGHT DRIVE's outrun: a gated-reverb snare, a root–octave sixteenth bass, a string machine pumping, brass stabs, pre-chorus and chorus, the last chorus a whole step up). Picking a style resets every switch under More Options to that style's defaults. **Shibuya-Kei** (126 with a light swing: a breakbeat with a rim click, a bossa bass, nylon guitar comping, vibes doubling the hook and a flute answering it, strings, organ and a ba-ba choir; a Pop Song in the Lounge mood by default — written from the idea of the genre, not checked against the records). **Drum & Bass** (174: the two-step beat with ghost notes and shuffling hats, a reese bass under held pads, a pluck doubling the hook; Moody by default, the riff's own drums replaced), **Electro** (126: an 808 kit with a syncopated kick, an 808 bass locked to it, stabs on the off-beats, a robot vocoder doubling the hook, no pump; Dark by default) and **16-Bit** (150, sixteen-bit FM: a slap-FM bass in octaves, FM keys on the off-beats, the hook on an FM lead with an FM bell over it, FM toms; a Pop Song in the Heroic mood, no riser, pump or filter build). These three are also written from the idea of the genre — correct them by ear. The chill styles: **Deep House** (122, swung: Rhodes stabs over a pad that breathes with the kick, a Groove with no drops), **Nu-Disco** (112: congas, a picked guitar, walking bass, strings, a flute; a Pop Song) and **Downtempo** (94, swung: a slow crushed break, Rhodes and strings, a muted trumpet; a Groove). |
+| Style | The recipe. **Big-Room House** (128, the ABSOLUTE ZERO shape: pumping supersaws, off-beat bass), **Trance** (138: a rolling sixteenth bass, trance-gated supersaws, a long breakdown with the hook on a piano; Uplifting and Long by default), **Future Bass** (140 at half time: hat rolls, an 808 under a talking wobble, stuttered supersaws, a full-time second drop; Euphoric by default) or **Eurobeat** (155, HAIRPIN's shape: four on the floor, an octave bass in eighths, strings, brass stabs, the razor lead doubling the hook; Anthemic by default) or **Chipstep** (140, CHIPSTEP's shape: chip-house builds on an octave square bass, a half-time first drop with a wobble, full-time drops after it with the wobble stuttering, a Game Boy snare) or **Synthwave** (118, NIGHT DRIVE's outrun: a gated-reverb snare, a root–octave sixteenth bass, a string machine pumping, brass stabs, pre-chorus and chorus, the last chorus a whole step up). Picking a style resets every switch under More Options to that style's defaults. **Shibuya-Kei** (126 with a light swing: a breakbeat with a rim click, a bossa bass, nylon guitar comping, vibes doubling the hook and a flute answering it, strings, organ and a ba-ba choir; a Pop Song in the Lounge mood by default — written from the idea of the genre, not checked against the records). **Drum & Bass** (174: the two-step beat with ghost notes and shuffling hats, a reese bass under held pads, a pluck doubling the hook; Moody by default, the riff's own drums replaced), **Electro** (126: an 808 kit with a syncopated kick, an 808 bass locked to it, stabs on the off-beats, a robot vocoder doubling the hook, no pump; Dark by default) and **16-Bit** (150, sixteen-bit FM: a slap-FM bass in octaves, FM keys on the off-beats, the hook on an FM lead with an FM bell over it, FM toms; a Pop Song in the Heroic mood, no riser, pump or filter build). These three are also written from the idea of the genre — correct them by ear. The chill styles: **Deep House** (122, swung: Rhodes stabs over a pad that breathes with the kick, a Groove with no drops), **Nu-Disco** (112: congas, a picked guitar, walking bass, strings, a flute; a Groove) and **Downtempo** (94, swung: a slow crushed break, Rhodes and strings, a muted trumpet; a Groove). |
 | Mood | Anthemic, Uplifting, Euphoric, Moody, Dark, Gothic, Heroic, Nostalgic or Funky — or one of the seventeen every style shares (`tools/lib/banger/moods.js`), each its own progression: Bittersweet (I–IVmaj7–iv–I–vi7–II7–IVmaj7–Vsus4), Disco (the ii7–V7 vamp, or i7–iv7 in a minor key), Sunshine Pop (Imaj7–iii7–IVmaj7–V, home by ♭VII), Doo-Wop (I–vi–IV–V), Lament (the falling circle of fifths), Lo-Fi (IVmaj7–iii7–ii7–Imaj7), Dreamy (I–II), Wonder (I–♭VI–I–♭III), Boogie (eight-bar blues), Lounge (Imaj7–VI7–ii7–V7, then sliding down by semitones), Boss Fight (i and ♭II a half-bar each, turning on the big V) and Flamenco (called Andalusian until 6 Oct 2026: i–VII–VI–V two chords a bar, resting on the big V — Gothic's descent at twice the pace, without the church) and Hypnotic (I–♭III–IV–V: four bars on I over the new **Sequencer** bass — root, octave, fifth, seventh in sixteenths — then shifting up in blocks; it lifts key by the plain jump) and Fiesta (the Latin party: merengue's I–V7–V7–I–I–IV–V7–I in plain triads in major, the montuno vamp i–iv–V7–iv in minor, over a Root–Fifth bass) and Soulful (gospel house: Imaj7–I7–IVmaj7, home by iii7–VI7–ii7–V7, over a walking bass; it lifts by the walk-up) and Mystery (the line cliché: i–i(maj7)–i7–i6, then the same on iv, then the big V, over a walking bass) and Playful (cartoon mischief: I–♯I°7–ii–V7, then ragtime's VI7–II7–V7; in minor the i–V7 oom-pah and a ♯IV°7 creeping up from the iv; over a Root–Fifth bass). Hopeful was retired on 6 Oct 2026 (it was Moody's major walk and Uplifting's minor one); a banger made in it is made in Uplifting, and one made in Andalusian is made in Flamenco. A quality written on a mood's numeral (I7, i(maj7), i6) is played as written wherever the mood's chord wins the bar, unless the hook leans on a note it drops or rubs a semitone against one it adds — before 6 Oct 2026 it was cut back to the triad and given the mood's colour. Mood picks the chord progression, the chord colours (Moody uses sevenths, Uplifting adds ninths, Funky ninths on the major chords) and how bright the hook is, and can swap parts' sounds (Gothic: organ, harpsichord, tolling bell, timpani; every shared mood has its own too — see `docs/audio/banger-style-parts.md`) and suggest a bass (Funky → Funk Syncopated). |
 | Mode | **Keep**, **Major**, **Minor**, **Dorian** (minor with a raised 6th: bright, groovy), **Phrygian** (minor with a flat 2nd: dark, menacing), **Harmonic Minor** (minor with a raised 7th: dramatic, a big V), **Mixolydian** (major with a flat 7th: rocky, open) or **Lydian** (major with a raised 4th: dreamy, floating). Each mode brings its own chord walks, built on the chord that makes it (dorian's IV, phrygian's flat II, mixolydian's flat VII …), and its turnarounds land there instead of on the dominant. Each mode has a **bright** walk (leaning on its major chords) for Anthemic, Uplifting and Euphoric, and a **dark** one (leaning on its minor chords) for Moody and Dark, so the mood still steers the chords. The list marks which modes **suit** the chosen mood and which **fight** it — Dark suits Minor, Phrygian and Harmonic Minor and fights Major and Lydian; Euphoric suits Lydian and Major — and Surprise Me always rolls one of the modes that suit. Any mode can still be picked with any mood. |
 | Riff Notes | Shown when Mode is not Keep. The banger stays on your riff's own home note either way — to move a finished banger higher or lower, select all its bars on the desk and use **Transpose**. **Keep As Written** (the default) never moves a note: the mode is in the chords — the mode's own wherever your riff sits on them, and your riff's own chords borrowed wherever it plays the note the mode changes, so nothing clashes. **Fit to the Mode** moves your notes into the mode, degree by degree — an A-minor riff in Dorian has every F raised to F♯ — so the riff itself takes on the colour. The readout says how many notes would move. |
@@ -99,8 +99,12 @@ reopens it, and changing Length rescales it. **Reset**, another form, or another
 goes back to the form's own. The switches under More Options that only shape the Club
 form are dimmed when another form, or a drawn one, is chosen.
 
-Each style starts on a form that suits it: **Synthwave** and **Eurobeat** a Pop Song,
-**Trance** an Anthem, the rest the Club form.
+Each style starts on a form that suits it: **Synthwave**, **Eurobeat**, **Shibuya-Kei**, **16-Bit** and
+**Reggaeton** a Pop Song; **Trance** an Anthem; **Deep House**, **Downtempo**, **Acid House**,
+**Techno**, **Nu-Disco** and **Boogie** a Groove; the rest the Club form. (9 Oct 2026, Peter wanted fewer
+Pop Songs: 90s Dance, Italo Disco, Merenhouse, Freestyle and UK Garage went to Club, Nu-Disco and Boogie
+to Groove. A Lab song kept before then — recipe expression under 5, `make.js FORMS_BEFORE_5` — is made
+in the Pop Song it was.)
 
 **Style Defaults** puts every setting back to the chosen style's own — mood, mode, length,
 tempo, variation, the form and everything under More Options — keeping the riff's bars.
@@ -772,8 +776,8 @@ default banger.
   A **Picked Bass** walks root, octave and fifth. A **picked acoustic guitar** is the arp
   (Arp Pattern = Style's Own, a fixed broken-chord figure), with soft **Warm Strings** as
   the chords (Chords = Pad, no pump). The Riff Sound shortlist starts on the **Concert
-  Flute**, which is also the octave lead in the later choruses. It is a **Pop Song** in the
-  Nostalgic mood.
+  Flute**, which is also the octave lead in the later choruses. It is a **Groove** in the
+  Nostalgic mood (a Pop Song until 9 Oct 2026).
 - **Downtempo** (`styles/downtempo.js`): **94**, swing 56. A slow break: the kick plays on
   one, the "and" of two and the "and" of three, with a late kick in the second bar. A
   **Fat Snare** sits on two and four. A bitcrusher on the kick, snare and hats gives the
@@ -805,20 +809,20 @@ mixes. Every sound is already in the catalogue: none of them needed a new preset
   hats and the bass on the off-beats (up an octave on the last one), syncopated **Pop
   Grand** piano stabs (Chords = Piano Stabs) with **Synth Strings** holding under them and
   pumping (`padUnder`). The Riff Sound shortlist starts on the **Super Saw**, and the last
-  chorus plays the hook in octaves. A **Pop Song** in the Anthemic mood, with a riser and a
-  snare roll into each chorus. It is not Eurobeat, which is faster and drives on brass and
+  drop plays the hook in octaves. The **Club** form in the Anthemic mood (a Pop Song until 9 Oct 2026), with a riser and a
+  snare roll into each drop. It is not Eurobeat, which is faster and drives on brass and
   an octave bass.
 - **Italo Disco** (`styles/italo-disco.js`): **118**. A machine four on the floor, a
   **galloping** sixteenth octave bass (Bass = Rolling, on the **FM 80s bass**), a **Crystal
   Trigger** arpeggio in its own figure from the first phrase, **Polar Drift** strings
   (Chords = Pad), and a **disco tom** falling into the end of each eight (the fill slot).
-  The Riff Sound shortlist starts on the **Robot Vox** vocoder. A Pop Song in the Anthemic
-  mood, with no riser, roll, pump or stutter.
+  The Riff Sound shortlist starts on the **Robot Vox** vocoder. The Club form in the Anthemic
+  mood (a Pop Song until 9 Oct 2026), with no riser, roll, pump or stutter.
 - **Boogie** (`styles/electro-funk.js`, id `electro-funk`; renamed from Electro-Funk so it never reads as Electro; **hidden in the Lab** since 7 Oct 2026 — `LAB_HIDDEN` in `src/game/banger/make.js` — so the Lab offers 20, but still on the desk): **108**, swing 55. An 808 boogie kick over
   two bars, a cowbell, a **Synth Slap** bass popping octaves, and a **Wire Clav** comping
   sixteenths through an auto-wah (Chords = Piano Stabs). **Horn stabs** answer in the
   hook's rests (the Counter-Melody slot). The Riff Sound shortlist starts on the **Voice
-  Box 70s** talkbox. A Pop Song in the Funky mood.
+  Box 70s** talkbox. A Groove in the Funky mood (a Pop Song until 9 Oct 2026).
 - **French House** (`styles/french-house.js`): **124**, swing 52. A looped disco phrase:
   chopped **Electric Keys** chords (Chords = Piano Stabs, through a phaser), a **wah
   guitar** scratching through the chords (the arp, in its own figure from the start) and a
@@ -875,7 +879,7 @@ sketch's solo-balanced mix.
   fills. Under them, a **DX Slap** bass bounces root to fifth ahead of the beat, and
   **Bright Pop Grand** chords hit the off-beats (Chords = Piano Stabs). **Brass Section**
   horns answer the hook (Counter-Melody), and the Riff Sound shortlist starts on the
-  **Saxophone**. It is a Pop Song in the **Fiesta** mood, merengue's own walk (the shared
+  **Saxophone**. It is the Club form (a Pop Song until 9 Oct 2026) in the **Fiesta** mood, merengue's own walk (the shared
   mood, so any style can play it).
 
 **New presets** (`src/data/voices.js`, Perc): **Güira · Scrape** is six ridges 14 ms apart,
@@ -975,6 +979,89 @@ so a flavour added later never changes a song that is already saved.
 **To give another style flavours:** add `flavours` (its own first) and `flavourByMood` to
 the style, export the flavour definitions from its file and add them to `BANGER_FLAVOURS`
 in `styles/index.js`, then give each flavour a row in `sounds.js`.
+
+A flavour's recipe may bring its own `progressions`, `modeHarmony` and `moods`; they win over
+the base style's, mood by mood (9 Oct 2026 — before then the base's were rebuilt over them).
+
+### Acid House, Techno, Rave, UK Garage and Freestyle (9 Oct 2026)
+
+Five 80s–90s club styles, chosen from sketches Peter heard (`work/local/_rave-sketches.mjs`,
+`work/auditions/rave-styles/`) and planned in `docs/LAB_STYLES_PLAN.md`. Written from the
+general idea of each genre, not checked against records — correct them by ear. All five are
+**hidden in the Lab** (`LAB_HIDDEN`) until Peter has heard them; the desk has them all.
+
+- **Acid House** (`styles/acid-house.js`): **122**, swing 54. A 909 groove with the clap
+  arriving later, and the **Acid** bass on **Acid 303**: one line for the take, its accents and
+  slides redrawn every eight bars. The line's own low-pass rises and falls across every section
+  (`filterMoves`). One organ stab answers it. A Groove in the Hypnotic mood; the 303 comes in
+  with the kick (`layers`).
+- **Techno** (`styles/techno.js`): **128**, swing 54. A 909 four on the floor with swung hats
+  and a ride, a sequenced bass rolling in sixteenths, warm strings held under (`padUnder`), and
+  the stab as **Chord Memory** (`chordMemory: 'm9'`) with its filter rising and falling every
+  eight bars. A Groove in the Moody mood.
+- **Rave** (`styles/rave.js`): **140**. A kick on every beat with a break on top — its ghost
+  notes are `g` in the backbeat pattern — a deep sub on a 3-3-2, the **Rave Stab** as Chord
+  Memory (`'m7'`) on a 3-3-2, the **Hoover** doubling the hook. The Club form, Dark.
+- **UK Garage** (`styles/uk-garage.js`): **132**, swing 60. The 2-step kick leaving beat three
+  empty, the **Organ Bass** replying in the gaps, snare and clap on two and four, shuffled hats
+  and a shaker, organ stabs as Chord Memory (`'m7'`), a chopped "oh" as the counter-melody. The
+  Club form (a Pop Song until 9 Oct 2026), Moody.
+- **Freestyle** (`styles/freestyle.js`): **116**. An 808 kick on a syncopated figure, claps,
+  sixteenth hats, congas and a cowbell, a sequenced synth bass, strings under the Heroic walk,
+  **Orchestra Hits** on the downbeats (`rhythms.counterStabs`), the hook doubled on a bell. The
+  Club form (a Pop Song until 9 Oct 2026).
+
+All five are `bassFixed` (Peter, 9 Oct 2026): the bass line is the style, so a mood never swaps it
+for the one it suggests (`options.js` `moodBass`) — before this, Acid House kept its acid line only
+in Hypnotic. A flavour still changes it (Acid Techno's acid), and the Lab's voltage rolls still try
+the style's own alternatives.
+
+What they brought to the generator:
+
+- **Per-note velocity.** A part may carry `vels` beside `notes` and `lens`; every part helper
+  keeps it and `packBank` writes it as `${lane}Velocity` (the engine's, `src/engine/lanes.js`).
+  A drum pattern's `g` is a ghost note, a hit at velocity 0.35 (`theory.js` `GHOST`).
+- **The Acid bass** (`BASS_FIGURES` `acid`; `theory.js` `acidLine`, `acidMarks`, `acidBar`):
+  sixteenths over the chord's root — root, octave jumps, flat seventh, fifth, now and then the
+  third — on one of four rhythms. Accents are velocity 1 and plain notes 0.62 (`ACID_PLAIN`); a
+  slide is a note held past the next onset, which a LEGATO preset glides. Its own random stream
+  (`rng.acid`), so it moves nothing else.
+- **Filter moves** (`fx.js` `filterMoveSections`): `filterMoves: { role: { shape, lo, hi, Q,
+  over } }`, the shapes `open`, `close`, `riseFall` and `stepped`, over each section or each
+  eight-bar phrase, never over a build. A split key in fusions, so a part's move travels with it.
+- **Chord Memory** (`chordMemory` on a recipe; `theory.js` `voicing({ memory })`): the main
+  chord part stabs one shape — `'m7'`, `'m9'` — on every chord's root, kept out of voice
+  leading. It may be named mood by mood (`{ moody: 'm9', dark: 'm7', … }`): **Deep House and
+  Afro House** (and its flavours) play it in Moody and Mystery (m9) and Dark and Hypnotic (m7)
+  since generator v10 (Peter, 9 Oct 2026).
+- New sounds (all MRDR-3): **Acid 303** (velocity accent, legato) with **· Square**, **· Deep**
+  and **· Accent**, **Hoover**, **Rave Stab**, **Organ Bass**, **Orchestra Hit**, **Garage
+  Wobble Bass**.
+
+**Flavours added the same day** (each its own `sounds.js` row and seed; the mood picks it):
+
+| Flavour | Of | Picked by |
+|---|---|---|
+| Hi-NRG (130, galloping octave bass, gated clap, brass stabs) | Eurobeat | Dark, Gothic, Flamenco, Lament, Boss Fight |
+| Acid Techno (134, the Acid bass distorted, no chords) | Techno | Dark, Hypnotic, Boss Fight |
+| Happy Hardcore (170, four on the floor, piano riff, saw stabs) | Rave | Uplifting, Euphoric, Sunshine Pop, Playful, Anthemic, Heroic |
+| Speed Garage (134, kick on every beat, Garage Wobble Bass) | UK Garage | Dark, Hypnotic, Boss Fight, Mystery |
+| Jungle (165, chopped break with ghosts, crushed, sub, horn stab) | Drum & Bass | Funky, Boogie, Fiesta |
+| Piano House (123, piano chords, Organ Bass, diva "oh") | Deep House | Uplifting, Euphoric, Soulful, Sunshine Pop, Anthemic, Heroic |
+| New Jack Swing (104, swung hard, gated snare, FM piano, orchestra hits) | Boogie | Moody, Soulful, Lo-Fi, Bittersweet |
+| Trip-Hop (86, dusty break through tape, theremin) | Chillout Room | Dark, Mystery, Gothic, Lament, Hypnotic |
+
+**Whole styles as Lab flavours** (`src/game/banger/make.js` `STYLE_FLAVOURS`): in the Lab,
+**Italo Disco** is a flavour of Eurobeat (Nostalgic, Dreamy, Disco, Wonder, Bittersweet) and
+**French House** of Nu-Disco (Funky, Boogie, Hypnotic, Lounge). A take that lands on one is made
+as that style, whole, so it sounds exactly as it did; the desk keeps both as styles, and songs kept
+on them play as before. A take kept in Eurobeat, Nu-Disco, Deep House, Boogie or the Chillout Room
+before they had flavours plays the style's own (`FLAVOURED_SINCE`).
+
+**The Lab's FORMULA list runs family by family** (`LAB_FAMILIES` in `make.js`), each style with a
+coloured dot by its name (`drawFamilyDot` in `maker.js`): Festival & Euro (blue), UK Rave (red),
+Club (orange), Latin (yellow), Disco & 80s (purple), Synths & Games (green), Chill (white). The
+five new styles and Boogie are in it; Italo Disco and French House are not (they are flavours).
 
 ### Fusions
 

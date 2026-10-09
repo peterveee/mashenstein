@@ -10,8 +10,9 @@
 import {
   P, blank, clonePart, shift, legato, diatonic, octaves, cut, augment, bassBar, padBar,
   chordBar, arpBar, ARP_FIGURES, BASS_FIGURES, BASS_LIFTS, openVoicing, parseChord, withQuality, nameOf, midi, hasNotes, isDrumPart, overlay,
-  chordSym, clampMidi, fitToChords, clearUnder,
+  chordSym, clampMidi, fitToChords, clearUnder, acidLine, acidMarks, acidBar,
 } from './theory.js';
+import { Rng } from '../../../src/engine/rng.js';
 import { moodLifts } from './moods.js';
 import { moodBass } from './options.js';
 import { fillIn, passFilled } from './embellish.js';
@@ -279,7 +280,27 @@ export function buildSections(ctx) {
   // `RR` is the bass rhythms in force: the style's own, or a half-time drop's (below).
   // `dropIndex` 1 and on is a later drop: with Bass Lifts on, it moves to the bass's lift
   // (Off-Beat → Octave Eighths …) — unless the style's bass is its signature (`bassFixed`).
-  const bassLine = (c, RR = R, dropIndex = 0) => {
+  // ACID (9 Oct 2026): one 303 line for the take (theory.js acidLine), from a seed of its own
+  // stream, its accents and slides drawn again for every eight-bar phrase — each phrase's from a
+  // seed of its own too, so a bar's line never depends on which bars were made before it.
+  let acid = null;
+  const acidPart = (c, bar0) => {
+    if (!acid) {
+      const seed = Math.floor((rng.acid ? rng.acid.next() : 0.5) * 2 ** 31);
+      const line = new Rng(seed);
+      acid = { seed, notes: acidLine(() => line.next()), marks: new Map() };
+    }
+    const half = bar0 % 2 ? 'b' : 'a';
+    const phrase = Math.floor(bar0 / 8);
+    const key = `${phrase}${half}`;
+    if (!acid.marks.has(key)) {
+      const r = new Rng((acid.seed + 7919 * (phrase + 1) + (half === 'b' ? 104729 : 0)) >>> 0);
+      acid.marks.set(key, acidMarks(() => r.next(), acid.notes[half]));
+    }
+    return acidBar(triads(c), acid.notes[half], acid.marks.get(key), C.bassFloor);
+  };
+  // `bar0` is the bar the line is for — only the acid line, which evolves by phrase, reads it.
+  const bassLine = (c, RR = R, dropIndex = 0, bar0 = 0) => {
     if (hookIsBass) return null;
     let id = bassId;
     if (id === 'sub' || id === 'none') return null;
@@ -289,6 +310,7 @@ export function buildSections(ctx) {
     if (id === 'rolling') return lowerBass(c, RR.rolling, C.bassFloor);
     const fig = BASS_FIGURES.find((f) => f.id === id);
     if (!fig) return lowerBass(c, RR.offbeat, C.bassFloor);
+    if (fig.acid) return acidPart(c, bar0);
     return fig.tonic ? bassBar(analysis.tonicChord, fig.pat, C.bassFloor) : lowerBass(c, fig.pat, C.bassFloor);
   };
   const subLine = (c, RR = R) => {
@@ -299,15 +321,23 @@ export function buildSections(ctx) {
     if (options.parts.bass === 'sub') return lowerBass(c, RR.sub, C.subFloor);
     return options.parts.sub ? lowerBass(c, RR.subOff, C.subFloor) : null;
   };
+  // A style that plays CHORD MEMORY (`style.chordMemory`, a shape such as 'm7') stabs that one
+  // shape on every chord's root — the mood still chooses the roots, the shape is the style's. Its
+  // main chord part only; the pad and the choir under it keep their chords (theory.js voicing).
+  // `chordMemory` may instead name it MOOD BY MOOD ({ moody: 'm9', … }, 9 Oct 2026: Peter, "let moods
+  // pick the memory chord" for Deep House and Afro House): the section's mood decides.
+  const memoryNow = () => (typeof style.chordMemory === 'string' ? style.chordMemory : style.chordMemory?.[moodId] || null);
   const chordPart = (c) => {
-    const cc = colourAll(c, mood);
+    const memory = memoryNow();
+    const cc = memory ? c : colourAll(c, mood);
+    const mem = memory ? { memory } : {};
     switch (options.parts.chords) {
-      case 'piano': return chordBar(cc, R.pianoStabs, C.piano);
+      case 'piano': return chordBar(cc, R.pianoStabs, C.piano, mem);
       // Supersaw Stabs: the piano's stab rhythm on the supersaws, in their register.
-      case 'stabs': return chordBar(cc, R.pianoStabs, C.saws);
-      case 'pad': return padBar(cc, C.pad);
+      case 'stabs': return chordBar(cc, R.pianoStabs, C.saws, mem);
+      case 'pad': return padBar(cc, C.pad, mem);
       case 'none': return null;
-      default: return padBar(cc, C.saws, { drop: true });
+      default: return padBar(cc, C.saws, { drop: true, ...mem });
     }
   };
   const chordRole = options.parts.chords === 'none' ? null : options.parts.chords === 'stabs' ? 'saws' : options.parts.chords;
@@ -423,7 +453,7 @@ export function buildSections(ctx) {
     const own = ownBass(pb);
     if (own) for (const [role, part] of own) put(b, role, st(part));
     else {
-      put(b, 'bass', st(bassLine(c, RR, dropIndex)));
+      put(b, 'bass', st(bassLine(c, RR, dropIndex, b)));
       put(b, 'sub', st(subLine(c, RR)));
     }
     // Drums.
@@ -596,7 +626,7 @@ export function buildSections(ctx) {
           const own = ownBass(pb);
           if (own) for (const [role, part] of own) put(b, role, part);
           else {
-            put(b, 'bass', bassLine(c));
+            put(b, 'bass', bassLine(c, R, 0, b));
             put(b, 'sub', subLine(c));
           }
         }
@@ -713,7 +743,7 @@ export function buildSections(ctx) {
         if (chordRole && chordRole !== 'pad') put(b, 'pad', lastCut(padBar(colourAll(c, mood), C.pad)));
         if ((second || sec.variant === 'rebuild') && options.parts.arp) put(b, 'arp', lastCut(arp(c, b)));
         if (second && options.parts.square) put(b, 'square', up(hookBar));
-        put(b, 'bass', lastCut(bassLine(c)));
+        put(b, 'bass', lastCut(bassLine(c, R, 0, b)));
         put(b, 'sub', lastCut(subLine(c)));
         put(b, 'kick', drum('kick', hole ? 'x...x...x.......' : D.kick, i));
         if (!second) put(b, 'clap', drum('clap', D.clap, i));
@@ -875,7 +905,7 @@ export function buildSections(ctx) {
           const pb = phraseBar(0, 6 + (i % 2), 0);
           put(b, 'hook', pb.part);
           if (chordRole) put(b, 'pad', padBar(colourAll(pb.chords, mood), C.pad));
-          put(b, 'bass', bassLine(pb.chords));
+          put(b, 'bass', bassLine(pb.chords, R, 0, b));
           sectionDrums(b, i, 0.5);
         } else {
           put(b, 'hook', { notes: [homeNote(), ...Array(15).fill(null)], lens: [16, ...Array(15).fill(null)] });
@@ -928,7 +958,7 @@ export function buildSections(ctx) {
         put(b, singer, fitToChords(line[i], c));
         if (chordRole) put(b, 'pad', padBar(colourAll(c, mood), C.pad));
         if (e >= 0.5 && options.parts.arp) put(b, 'arp', arp(c, b));
-        put(b, 'bass', e >= 0.42 ? bassLine(c) : hookIsBass || options.parts.bass === 'none' ? null : bassBar(triads(c), R.sub, C.bassFloor));
+        put(b, 'bass', e >= 0.42 ? bassLine(c, R, 0, b) : hookIsBass || options.parts.bass === 'none' ? null : bassBar(triads(c), R.sub, C.bassFloor));
         put(b, 'sub', subLine(c));
         sectionDrums(b, i, e, 'verse');
       }
@@ -948,7 +978,7 @@ export function buildSections(ctx) {
         if (chordRole) put(b, 'pad', padBar(colourAll(c, mood), C.pad));
         if (second && chordRole && chordRole !== 'pad') put(b, chordRole, chordPart(c));
         if (second && options.parts.arp) put(b, 'arp', arp(c, b));
-        put(b, 'bass', bassLine(c));
+        put(b, 'bass', bassLine(c, R, 0, b));
         put(b, 'sub', subLine(c));
         sectionDrums(b, i, sec.energy ?? 0.62, 'preChorus');
         if (options.drums.rolls && n - i <= 2) put(b, 'snare', P(n - i === 1 ? D.rolls[3] : D.rolls[2]));
@@ -1041,7 +1071,10 @@ function reharmonise(part, chords, bassLike) {
     for (let i = s - 1; i >= 0; i--) {
       if (out.notes[i] == null) continue;
       const len = out.lens[i] ?? 1;
-      if (i + len > s) { out.notes[s] = out.notes[i]; out.lens[s] = i + len - s; out.lens[i] = s - i; }
+      if (i + len > s) {
+        out.notes[s] = out.notes[i]; out.lens[s] = i + len - s; out.lens[i] = s - i;
+        if (out.vels) out.vels[s] = out.vels[i];
+      }
       break;
     }
   }
@@ -1078,7 +1111,7 @@ function approachLift(bar, id, tonic, minor) {
       const base = first != null ? midi(Array.isArray(first) ? first[0] : first) : null;
       if (base == null) continue;
       const home = nearestIn(base + 5, [tonic]);
-      for (let i = 9; i < 16; i++) { walk.notes[i] = null; walk.lens[i] = null; }
+      for (let i = 9; i < 16; i++) { walk.notes[i] = null; walk.lens[i] = null; if (walk.vels) walk.vels[i] = null; }
       walk.lens[8] = 2;
       [3, 2, 1].forEach((d, k) => { walk.notes[10 + 2 * k] = nameOf(clampMidi(home - d)); walk.lens[10 + 2 * k] = 2; });
     }

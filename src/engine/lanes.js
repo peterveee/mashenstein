@@ -95,6 +95,30 @@ export const lenKey = (laneKey) => `${laneKey}Len`;
 /** Is this bank key a lane's lengths? Nothing else in a bank ends in `Len`. */
 export const isLenKey = (key) => typeof key === 'string' && /Len$/.test(key);
 
+/**
+ * ---- per-note velocity (8 Oct 2026) -------------------------------------------
+ *
+ * A lane may carry a parallel array under `${lane}Velocity`: how hard the note on each
+ * step is struck, 0 to 1. Null — and an absent array, which is every bank written before
+ * this — is full strength, so nothing that exists changes. It is what a 303 line's
+ * ACCENTS are (docs/LAB_STYLES_PLAN.md): one voice, so a slide can run into an accented
+ * note, where an accent on a lane of its own could never be slid to. A drum's ghost note
+ * is the same number.
+ *
+ * NOT `${lane}Vel`. speed, crypt and their remixes carry `Vel` arrays that nothing has
+ * ever read; reading them now would quietly remix songs that were balanced without them.
+ */
+export const velocityKey = (laneKey) => `${laneKey}Velocity`;
+
+/** Is this bank key a lane's velocities? */
+export const isVelocityKey = (key) => typeof key === 'string' && /Velocity$/.test(key);
+
+/** The velocity of the note on `step` of a lane, 0 to 1, or null where none is written. */
+export function stepVelocity(bank, laneKey, step, resolution = resolutionOf(bank)) {
+  const at = sequenceValue(bank, velocityKey(laneKey), step, resolution);
+  return Number.isFinite(at) && at >= 0 ? Math.min(1, at) : null;
+}
+
 /** A length is a real, positive number of steps. Anything else is not a length. */
 export const validLen = (v) => Number.isFinite(v) && v > 0;
 

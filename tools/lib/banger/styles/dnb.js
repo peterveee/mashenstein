@@ -24,10 +24,13 @@ export const DNB = Object.freeze({
     { id: 'rolling', label: 'Rolling', note: 'Two-step, a reese holding two notes a bar, held pads, a pluck' },
     { id: 'liquid', label: 'Liquid', note: 'Soulful: a round sub, Rhodes in sevenths and ninths, an airy pad' },
     { id: 'neuro', label: 'Neuro', note: 'Technical: a reese in jabs, a growl biting, clipped stabs, one chord' },
+    // 9 Oct 2026 (docs/LAB_STYLES_PLAN.md).
+    { id: 'jungle', label: 'Jungle', note: 'The chopped break up front, crushed, a deep sub moving slowly, a horn stab' },
   ],
   flavourByMood: {
     nostalgic: 'liquid', dreamy: 'liquid', lofi: 'liquid', bittersweet: 'liquid', lounge: 'liquid', soulful: 'liquid', uplifting: 'liquid',
     dark: 'neuro', gothic: 'neuro', boss: 'neuro', hypnotic: 'neuro', flamenco: 'neuro', mystery: 'neuro',
+    funky: 'jungle', boogie: 'jungle', fiesta: 'jungle',
   },
   tempoRange: [166, 178],
   defaults: {
@@ -183,6 +186,41 @@ export const DNB_FLAVOURS = Object.freeze([
         piano: { gain: -6, pan: 0.2, send: { delay: 0.3, reverb: 0.25 } },
       },
       labels: { ...DNB.labels, bass: 'BASS Reese', sub: 'GROWL', piano: 'STAB' },
+    },
+  },
+  {
+    // JUNGLE — 165 (9 Oct 2026, from work/local/_rave-sketches.mjs). The chopped break up front — the
+    // kick and snare cut up bar by bar, ghost notes (`g`) between, everything crushed a little — a deep
+    // sub moving slowly underneath, strings holding, and a horn stab on the turnarounds.
+    id: 'jungle', label: 'Jungle',
+    // The strings held under (`padUnder`) and the horn stab as the chords' stabs.
+    remapParts: { bass: { reese: 'offbeat' }, chords: { pad: 'piano' } },
+    recipe: {
+      bpm: 165,
+      padUnder: true,
+      tempoRange: [160, 172],
+      drums: {
+        ...DNB.drums,
+        kick: ['x.........x.....', 'x.x.......x.....', 'x.........x..x..', 'x.x...x...x.....'],
+        clap: ['....x..g.g..x...', '..g.x..x....x..g', '.g..x..g....x..x', '....x..x.x..x.x.'],
+        hats16: 'x.x.x.x.x.x.x.x.',
+      },
+      rhythms: {
+        ...DNB.rhythms,
+        offbeat: 'R:6 . . . . . R:2 . . . R:4 . . . 5:2 .',
+        pianoStabs: '. . . . . . . . . . . . x:1 . x:2 .',
+      },
+      centres: { ...DNB.centres, bassFloor: 'C1' },
+      strips: {
+        ...DNB.strips,
+        kick: { gain: 0, effects: [{ id: 'bitcrusher', params: { bits: 12, downsample: 2, wet: 0.5 } }] },
+        snare: { gain: 1, send: { reverb: 0.15 }, effects: [{ id: 'bitcrusher', params: { bits: 12, downsample: 2, wet: 0.5 } }] },
+        clap: { gain: 0, send: { reverb: 0.15 }, effects: [{ id: 'bitcrusher', params: { bits: 12, downsample: 2, wet: 0.5 } }] },
+        bass: { gain: -2 },
+        piano: { gain: -6, send: { delay: 0.3, reverb: 0.4 } },
+        pad: { gain: -9, eq: { low: -6 }, send: { reverb: 0.6 } },
+      },
+      labels: { ...DNB.labels, bass: 'SUB', piano: 'HORN Stab', pad: 'STRINGS', snare: 'BREAK' },
     },
   },
 ]);

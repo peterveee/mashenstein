@@ -201,7 +201,7 @@ assert(/const gf = held\('global\.filter', v\.global\?\.filter\) \? null : \(v\.
   && /const sectionBypassed = \(voice, key, section = null\)/.test(voicesEngine)
   && /section\?\.enabled === false/.test(voicesEngine)
   && /held\('global\.filter', v\.global\?\.filter\)/.test(voicesEngine)
-  && /if \(gf\) \{[\s\S]*?filterEnv\(chain\.stages, gf\.env/.test(voicesEngine)
+  && /if \(gf\) \{[\s\S]*?filterEnv\(chain\.stages, struck\(gf\.env\)/.test(voicesEngine)
   && /if \(spec\.filter && !held\(`layer\.\$\{layerKey\}\.filter`, spec\.filter\)\)/.test(voicesEngine),
   'MRDR-3 gates the global filter and every layer filter independently, using the same envelope path');
 // The bypass still writes a zero attack, and the engine still adds no shape to it — but

@@ -5,9 +5,9 @@
 // against the records — Peter's ear wins over anything here. 118: a machine four on the
 // floor, a galloping sixteenth octave bass (Bass = Rolling), a glassy arpeggio running from
 // the first phrase in its own figure, synth strings holding the chords (Chords = Pad), the
-// hook on a vocoder, a disco tom dropping into the end of every eight. Song-shaped: a Pop
-// Song in the Anthemic mood, with no riser, roll, impact, pump or stutter — every one still
-// a switch.
+// hook on a vocoder, a disco tom dropping into the end of every eight. The Club form in
+// the Anthemic mood (a Pop Song until 9 Oct 2026: Peter wanted fewer), with no riser, roll,
+// impact, pump or stutter — every one still a switch.
 // Data only, like big-room.js; the sounds are in ../sounds.js.
 import { BIG_ROOM } from './big-room.js';
 
@@ -15,7 +15,7 @@ export const ITALO_DISCO = Object.freeze({
   id: 'italo-disco',
   label: 'Italo Disco',
   note: '118 · galloping octave bass, arpeggios, vocoder',
-  title: '118 BPM: a machine four on the floor, a galloping sixteenth octave bass, a glassy arpeggio, synth strings, the hook on a vocoder and a disco tom into every eight. Starts as a Pop Song in the Anthemic mood',
+  title: '118 BPM: a machine four on the floor, a galloping sixteenth octave bass, a glassy arpeggio, synth strings, the hook on a vocoder and a disco tom into every eight. Starts on the Club form in the Anthemic mood',
   bpm: 118,
   tempoRange: [112, 124],
   // The arpeggio is the style: it plays its own figure, from the first phrase.
@@ -23,13 +23,10 @@ export const ITALO_DISCO = Object.freeze({
   enter: { arp: 0 },
   defaults: {
     mood: 'anthemic',
-    form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
+    form: { template: 'club', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
     drums: { rolls: false, impact: false, shaker: false, tambourine: false, congas: false, ride: false },
     parts: { bass: 'rolling', sub: false, chords: 'pad', square: false, bell: false, octaveDouble: false, arp: true, arpPattern: 'style', choir: false, counter: false },
     fx: { riser: false, filterBuild: false, stutter: false, pump: false, delayThrows: true },
-  },
-  sectionLabels: {
-    build: 'Pre-Chorus', build2: 'Pre-Chorus 2', drop: 'Chorus', drop2: 'Chorus 2', drop3: 'Chorus 3', reprise: 'Last Chorus',
   },
 
   progressions: BIG_ROOM.progressions,

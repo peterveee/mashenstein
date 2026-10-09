@@ -215,6 +215,9 @@ const suites = [
   // ...and the same feature at the ear: rendered slides and clean attacks through the real
   // engine, the worklet core, and the scheduler's notes held against the lane view's.
   'tests/auto-portamento-render.js',
+  // Per-note velocity (`${lane}Velocity`): full strength is the note as it was, a softer
+  // drum is the same sound quieter, Acid 303's accent darkens as well, and a slide still glides.
+  'tests/note-velocity.js',
   // Freeze is a ranged render: sparse tracks walk only their active bars, while Note
   // FX and written gates can extend the end into what will actually sound.
   'tests/freeze-span.js',
@@ -410,6 +413,18 @@ const suites = [
   // preset naming the new keys at zero comes back bit-for-bit identical to what this
   // path rendered before the card existed.
   'tests/game-synth-effects.js',
+  // The same rig for WNDR-9's DRIVE: a drawbar stack scaled to its own ceiling before the
+  // shaper, one shaper per note. Eleven renders.
+  'tests/wndr9-drive.js',
+  // And MRDR-3's and the drum kit's: the knee at each preset's own measured peak, so a
+  // body 20 dB quieter bites the same at the same DRIVE. Seven renders.
+  'tests/drive-ref.js',
+  // CRLS-1's filter envelope on the native shape: the same sweep as KNDO-5 for the same
+  // numbers, and STYLE: CLASSIC still Tone's own. Five renders.
+  'tests/crls-filter-env.js',
+  // A native vibrato starts at the same point in its wobble wherever in a render quantum
+  // its note lands. Twelve renders.
+  'tests/vibrato-start.js',
   'tests/shop-themes.js',
   'tests/shop-menu.js',
   'tests/trophy-workshop.js',
@@ -678,6 +693,10 @@ const browserSuites = new Set([
   'tests/synth-dropdown.js',
   'tests/pitch-curve.js',
   'tests/game-synth-effects.js',
+  'tests/wndr9-drive.js',
+  'tests/drive-ref.js',
+  'tests/crls-filter-env.js',
+  'tests/vibrato-start.js',
   'tests/sfx-routing.js',
   'tests/note-duration.js',
   'tests/song-switch.js',
@@ -703,6 +722,7 @@ const browserSuites = new Set([
   'tests/note-fx-render.js',
   // Renders through headless chromium, one fresh page per song — see the note in the file.
   'tests/auto-portamento-render.js',
+  'tests/note-velocity.js',
   'tests/tngr2-controller.js',
   // The JMJR-4 suites: each asserts a stretch browserlessly and then launches chromium
   // to compare the engine's own output against the reference, which is the same shape
@@ -759,7 +779,7 @@ const soundSuites = [
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',
-  'tests/auto-portamento.js', 'tests/auto-portamento-render.js',
+  'tests/auto-portamento.js', 'tests/auto-portamento-render.js', 'tests/note-velocity.js',
   'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/key-mode-render.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js', 'tests/tngr2-audio.js',
@@ -775,7 +795,7 @@ const soundSuites = [
   'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/synth-dropdown.js',
   'tests/pot-coverage.js',
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
-  'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js',
+  'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js', 'tests/wndr9-drive.js', 'tests/drive-ref.js', 'tests/crls-filter-env.js', 'tests/vibrato-start.js',
   'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/mix-automation.js',
   'tests/fx-sections.js', 'tests/stereo-widener.js',
   'tests/group-buses.js', 'tests/group-buses-data.js', 'tests/group-buses-desk.js', 'tests/chain-reapply.js',

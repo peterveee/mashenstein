@@ -20,6 +20,12 @@ export const DOWNTEMPO = Object.freeze({
   label: 'Downtempo',
   note: '94 · slow crushed breakbeat, Rhodes, muted trumpet',
   title: '94 BPM and swung: a slow, heavy breakbeat with a crushed edge, a deep round bass, trembling Rhodes chords, soft strings, the hook on a muted trumpet, tape wear over it all. Starts as a Groove in the Moody mood, the riff\'s own drums replaced',
+  // FLAVOURS (9 Oct 2026; DOWNTEMPO_FLAVOURS below): the mood picks one, the voltage now and then surprises.
+  flavours: [
+    { id: 'chill', label: 'Chillout', note: 'A slow crushed break, Rhodes and strings, a muted trumpet' },
+    { id: 'triphop', label: 'Trip-Hop', note: 'Slower and dustier: a heavy break through tape, a deep sub, a theremin line' },
+  ],
+  flavourByMood: { dark: 'triphop', mystery: 'triphop', gothic: 'triphop', lament: 'triphop', hypnotic: 'triphop' },
   bpm: 94,
   tempoRange: [90, 108],
   swing: 56,
@@ -120,3 +126,42 @@ export const DOWNTEMPO = Object.freeze({
     clap: 'SNARE Break', piano: 'KEYS Rhodes', pad: 'STRINGS', saws: 'STRINGS', hook: 'HOOK',
   },
 });
+
+// ---- the flavours (flavours.js), from work/local/_rave-sketches.mjs (9 Oct 2026)
+const DUST = [{ id: 'bitcrusher', params: { bits: 10, downsample: 3, wet: 0.45 } }, { id: 'tape', params: { drive: 8, bias: 0.1, tone: 6000, wow: 0.2, flutter: 0.1, wet: 0.7 } }];
+export const DOWNTEMPO_FLAVOURS = Object.freeze([
+  {
+    // TRIP-HOP — 86, swung. A slow, heavy, dusty break — its ghost notes `g`, everything crushed and
+    // run through tape — a deep sub holding long notes, minor-ninth electric piano, strings, and a
+    // theremin line doubling the hook.
+    id: 'triphop', label: 'Trip-Hop',
+    remap: { parts: { square: { false: true } } },
+    recipe: {
+      bpm: 86,
+      tempoRange: [80, 92],
+      swing: 56,
+      drums: {
+        ...DOWNTEMPO.drums,
+        kick: ['x.......x.x.....', 'x.......x..x..x.'],
+        clap: ['....x..g......g.', '..g.x..g....x...'],
+        hats16: 'x.x.x.x.x.x.x.x.',
+        hats8: 'x.x.x.x.x.x.x.x.',
+      },
+      rhythms: {
+        ...DOWNTEMPO.rhythms,
+        offbeat: 'R:10 . . . . . . . . . . . R:4 . . .',
+        pianoStabs: 'x:6 . . . . . . . . . x:5 . . . . .',
+      },
+      strips: {
+        ...DOWNTEMPO.strips,
+        kick: { gain: 0, effects: DUST },
+        snare: { gain: 0, send: { reverb: 0.2 }, effects: DUST },
+        clap: { gain: -1, send: { reverb: 0.2 }, effects: DUST },
+        hats: { gain: -7, pan: 0.2, effects: DUST },
+        piano: { gain: -6, pan: -0.15, send: { delay: 0.2, reverb: 0.35 }, effects: [{ id: 'tape', params: { drive: 4, bias: 0.1, tone: 7000, wow: 0.35, flutter: 0.1, wet: 0.6 } }] },
+        square: { gain: -5, pan: 0.1, send: { delay: 0.3, reverb: 0.6 } },
+      },
+      labels: { ...DOWNTEMPO.labels, bass: 'SUB', piano: 'RHODES', square: 'THEREMIN', snare: 'BREAK' },
+    },
+  },
+]);

@@ -147,7 +147,7 @@ const HEAD = ['label', 'category', 'kind', 'lanes', 'homeLane', 'synth', 'dur'];
 // sound is for, where it came from, then how it is built. `taps` and `tapFalloff`
 // share a line — they are two halves of one idea and both are short.
 const BODY = ['note', 'origin', 'options', 'additive', 'sync', 'layer', 'global', 'osc', 'osc2', 'knock', 'noise', 'ring', 'metal',
-  'drive', 'shape', 'tone', 'humanize', 'taps', 'tapFalloff', 'tapDetune', 'tapTone', 'tapGains', 'tapDecays',
+  'drive', 'shape', 'tone', 'humanize', 'velocity', 'taps', 'tapFalloff', 'tapDetune', 'tapTone', 'tapGains', 'tapDecays',
   'bypassed'];
 
 /**
@@ -202,6 +202,9 @@ export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak'
   if (shaped.length) lines.push(`    ${shaped.join(', ')},`);
   if (has('tone')) lines.push(`    tone: ${flat(v.tone)},`);
   if (has('humanize')) lines.push(`    humanize: ${flat(v.humanize)},`);
+  // How a softer strike reaches the sound (MRDR-3's VEL LEVEL and VEL FILTER) — beside
+  // HUMANISE, as on the panel: both say how one hit differs from the next.
+  if (has('velocity')) lines.push(`    velocity: ${flat(v.velocity)},`);
   // The tap keys travel together and are short — one line reads better than four.
   const taps = ['taps', 'tapFalloff', 'tapGains', 'tapDecays', 'tapDetune', 'tapTone'].filter(has)
     .map((k) => `${k}: ${flat(v[k])}`);

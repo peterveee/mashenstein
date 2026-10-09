@@ -4,7 +4,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setPriority } from 'node:os';
 import { createHash } from 'node:crypto';
-import { discoverProfiles, scenarios, scenarioSong, scenarioPrediction, BANGER_STYLES, BANGER_COMBOS, BANGER_LEVEL_DATA } from './lib/banger-calibration.js';
+import { discoverProfiles, scenarios, scenarioSong, scenarioPrediction, BANGER_COMBOS, BANGER_LEVEL_DATA } from './lib/banger-calibration.js';
+import { BANGER_RECIPES, styleFor } from './lib/banger/styles/index.js';
 import { fingerprint, referenceKey, interpolateProfile, CALIBRATION_VERSION } from './lib/banger/calibration.js';
 import { soundOf, refBars } from './lib/banger/levels.js';
 import { songAt, defaultBangerSong, lanePart } from './lib/banger-refs.js';
@@ -92,8 +93,9 @@ function calibrationLoudness(channels) {
 
 export async function runCalibration({ command = 'refresh', styles = [], full = false, trackEffects = false, maxProfiles = Infinity, dueDays = 0, render: suppliedRender = null } = {}) {
   if (!['refresh', 'report'].includes(command)) throw new Error('command must be refresh or report');
-  for (const id of styles) if (!BANGER_STYLES.some(s => s.id === id)) throw new Error(`unknown style: ${id}`);
-  const selected = styles.length ? BANGER_STYLES.filter(s => styles.includes(s.id)) : BANGER_STYLES;
+  // A style here is any recipe a take is made from: the styles, their flavours and Sound Sets.
+  for (const id of styles) if (!BANGER_RECIPES.some(s => s.id === id)) throw new Error(`unknown style: ${id}`);
+  const selected = styles.length ? BANGER_RECIPES.filter(s => styles.includes(s.id)) : BANGER_RECIPES;
   const stamp = sourceStamp(), inputs = inputStamp();
   const profiles = discoverProfiles({ styles: selected, trackEffects });
   const previous = (await import(`${pathToFileURL(OUTPUT).href}?v=${Date.now()}`)).BANGER_CALIBRATION;
@@ -183,8 +185,11 @@ export async function runCalibration({ command = 'refresh', styles = [], full = 
     // source channel and sends, at unity fader. They are not arbitrary LUFS targets.
     const wantedRoles = new Set(profiles.slice(0, maxProfiles).flatMap(p => p.labels.map(l => l.split('/').slice(-2)[0])));
     const refs = new Map();
-    for (const style of selected) for (const source of [BANGER_LEVEL_DATA.refs[style.id], ...Object.values(BANGER_COMBOS[style.id] || {}).map(c => c.refs)]) {
-      for (const [role, ref] of Object.entries(source || {})) if (wantedRoles.has(role) && !Array.isArray(refBars(ref)[0])) refs.set(referenceKey(ref), { ref, style });
+    // A flavour or Sound Set without references of its own is matched to its base's (levels.js).
+    const refsOf = style => BANGER_LEVEL_DATA.refs[style.id] || BANGER_LEVEL_DATA.refs[style.base];
+    for (const style of selected) for (const source of [refsOf(style), ...Object.values(BANGER_COMBOS[style.id] || {}).map(c => c.refs)]) {
+      // A default banger's reference is read from the style it was made in, not one borrowing it.
+      for (const [role, ref] of Object.entries(source || {})) if (wantedRoles.has(role) && !Array.isArray(refBars(ref)[0])) refs.set(referenceKey(ref), { ref, style: styleFor(ref.style) || style });
     }
     for (const [key, { ref, style }] of refs) {
       if (ref.song) { const path = join(ROOT, 'src/data/imported', `${ref.song}.js`); referenceFiles.set(path, readFileSync(path, 'utf8')); }

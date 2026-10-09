@@ -6,29 +6,26 @@
 // faster, brass and the driving octave bass): 136, a pounding 909 four on the floor, off-beat
 // open hats and an off-beat bass, syncopated grand-piano stabs (Chords = Piano Stabs) with a
 // string pad holding under them and pumping (`padUnder`), the hook on a supersaw, the last
-// chorus in octaves. Song-shaped — a Pop Song in the Anthemic mood, its choruses the drops,
-// with a riser and a snare roll into each.
+// drop in octaves. The Club form in the Anthemic mood,
+// with a riser and a snare roll into each drop (a Pop Song until 9 Oct 2026: Peter wanted fewer).
 // Data only, like big-room.js; the sounds are in ../sounds.js.
 import { BIG_ROOM } from './big-room.js';
 
 export const EURODANCE = Object.freeze({
   id: 'eurodance',
   label: '90s Dance',
-  note: '136 · piano stabs, supersaw chorus, off-beat bass',
-  title: '136 BPM: a pounding four on the floor, off-beat open hats and bass, syncopated grand-piano stabs over pumping strings, a supersaw hook and the last chorus in octaves. Starts as a Pop Song in the Anthemic mood',
+  note: '136 · piano stabs, supersaw drops, off-beat bass',
+  title: '136 BPM: a pounding four on the floor, off-beat open hats and bass, syncopated grand-piano stabs over pumping strings, a supersaw hook and the last drop in octaves. Starts on the Club form in the Anthemic mood',
   bpm: 136,
   tempoRange: [130, 142],
-  // The strings hold under the piano stabs through every chorus, pumping with the kick.
+  // The strings hold under the piano stabs through every drop, pumping with the kick.
   padUnder: true,
   defaults: {
     mood: 'anthemic',
-    form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
+    form: { template: 'club', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
     drums: { impact: false, shaker: false, tambourine: true, congas: false, ride: false },
     parts: { bass: 'offbeat', sub: true, chords: 'piano', square: false, bell: false, octaveDouble: true, arp: false, choir: false, counter: false },
     fx: { riser: true, filterBuild: false, stutter: false, pump: true, delayThrows: true },
-  },
-  sectionLabels: {
-    build: 'Pre-Chorus', build2: 'Pre-Chorus 2', drop: 'Chorus', drop2: 'Chorus 2', drop3: 'Chorus 3', reprise: 'Last Chorus',
   },
 
   progressions: BIG_ROOM.progressions,

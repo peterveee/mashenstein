@@ -12,7 +12,7 @@
 // The rule this file exists to keep: what comes back must equal what went in. A
 // song that reads beautifully and plays differently is worse than an ugly array.
 import { noteName, n, chord, TWO_BARS_OF_SIXTEENTHS } from '../../src/engine/notes.js';
-import { isLenKey } from '../../src/engine/lanes.js';
+import { isLenKey, isVelocityKey } from '../../src/engine/lanes.js';
 import { RESOLUTIONS } from '../../src/data/arrangements.js';
 // The desk's own mix serialisers, so `deskTail` below is the ONE builder of the
 // desk-owned half of a song file. No cycle: mix-source imports only from the engine.
@@ -118,6 +118,8 @@ function valueSource(v, indent, key = null) {
     // about meaning: `bassLen: seq('. . . C1')` is a line that reads as music and is
     // not, and one new octave of note names would produce it.
     if (isLenKey(key)) return JSON.stringify(v);
+    // Velocities too (`${lane}Velocity`, 0 to 1): a lane of them would print as note names.
+    if (isVelocityKey(key)) return JSON.stringify(v);
     if (isLane(v)) return laneSource(v);
     // A list of objects — `sections`, most of the time. Recursed rather than
     // stringified: a section is a partial bank full of lanes, and dumping the lot as

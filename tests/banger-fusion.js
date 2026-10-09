@@ -198,6 +198,52 @@ const same = (a, b) => JSON.stringify([a.bank, a.mix, a.arrangement]) === JSON.s
   const voices = new ClubVoices(flavoured, { ...rec, flavour: 'romantico', infusion: 'trance' });
   assert(voices.ownRow?.kits === BANGER_SOUNDS['reggaeton-romantico'].kits && voices.choices('drums').length > 0,
     'the club swaps an infused take\'s drums among its groove\'s kits');
+  // ...and each sound button steps on into the OTHER style's sounds (Peter, 9 Oct 2026): BASS and
+  // DRUMS borrow the sound's, CHORDS and LEAD the groove's. The DICE only ever rolls a part's own.
+  {
+    const groove = BANGER_SOUNDS['reggaeton-romantico'], sound = BANGER_SOUNDS.trance;
+    const tail = (part) => voices.choices(part).filter((c) => c.borrowed);
+    const ownOf = (part) => voices.choices(part).filter((c) => !c.borrowed);
+    const lent = (part, from, list) => {
+      const own = ownOf(part).map((c) => c.id);
+      const all = voices.choices(part);
+      return tail(part).length > 0 && all.findIndex((c) => c.borrowed) === own.length
+        && tail(part).every((c) => from.random[list].includes(c.id) && !own.includes(c.id));
+    };
+    assert(lent('bass', sound, 'bass') && lent('chords', groove, 'chords') && lent('lead', groove, 'hook'),
+      'BASS steps on into trance\'s basses; CHORDS and LEAD into reggaeton\'s — each after its own, none twice');
+    const kit = tail('drums');
+    assert(kit.length === 1 && kit[0].label === 'TRANCE KIT' && voices.rollChoices('drums').length === voices.choices('drums').length - 1,
+      'DRUMS borrows the one kit that differs: TRANCE KIT, last');
+    const kickLane = [...voices.roles].find(([, r]) => r === 'kick')?.[0];
+    const drums = voices.choices('drums').length - 1;
+    const onKit = { swapped: false, picks: { own: { drums }, swap: {} } };
+    assert(kickLane && voices.voicesFor(onKit).get(kickLane) === sound.kits.style.kick, 'and on it the kick is trance\'s own');
+    const bass = ownOf('bass').length;
+    const named = voices.picksNamed({ swapped: false, picks: { own: { drums, bass }, swap: {} } });
+    const back = voices.stateFor(named);
+    assert(named.own.drums === 'trance:style' && back.picks.own.drums === drums && back.picks.own.bass === bass,
+      `a borrowed kit and bass are kept by name and come back (${JSON.stringify(named.own)})`);
+    let seed = 1;
+    const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    let rolledOwn = true, rolledBack = true;
+    for (let i = 0; i < 200; i++) {
+      voices.pending = null; voices.state = { swapped: false, picks: { own: {}, swap: {} } };
+      voices.shuffle(random);
+      for (const part of ['drums', 'bass', 'chords', 'lead']) rolledOwn &&= (voices.target.picks.own[part] || 0) < voices.rollChoices(part).length;
+      voices.pending = null; voices.state = back;
+      voices.shuffle(random);
+      for (const part of ['drums', 'bass']) rolledBack &&= (voices.target.picks.own[part] || 0) < voices.rollChoices(part).length;
+    }
+    voices.pending = null; voices.state = { swapped: false, picks: { own: {}, swap: {} } };
+    assert(rolledOwn && rolledBack, 'the DICE never lands on a borrowed sound, and takes a part on one back to its own');
+    for (let i = 0; i < ownOf('lead').length; i++) voices.next('lead');
+    assert(voices.choices('lead')[voices.target.picks.own.lead]?.borrowed, 'a tap past the part\'s own sounds is on a borrowed one');
+    voices.pending = null;
+    assert(voices.choices('bass', true).every((c) => !c.borrowed), 'on the 8-Bit set nothing is borrowed');
+    const plainVoices = new ClubVoices(plain, rec);
+    assert(['drums', 'bass', 'chords', 'lead'].every((p) => plainVoices.choices(p).every((c) => !c.borrowed)), 'a take with no infusion borrows nothing');
+  }
   // A song kept in the first hour of fusions (sound in `style`, groove in `fusion`) is made exactly as it was.
   const first = { notes: NOTES, mode: 'simple', style: 'trance', mood: 'dreamy', seed: 5, voltage: 1, expression: 3, fusion: 'reggaeton-romantico' };
   const upgraded = upgradeFusionRecipe({ ...first });

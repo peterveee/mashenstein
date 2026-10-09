@@ -72,8 +72,23 @@ export const withQuality = (sym, quality) => chordSym(parseChord(sym).root, qual
  * closest. `drop` leaves the root out (the bass has it); `spread` drops the lowest
  * note an octave, which opens a close voicing into a pad.
  */
-export function voicing(sym, centre = 'E4', { drop = false, spread = false } = {}) {
+export function voicing(sym, centre = 'E4', { drop = false, spread = false, memory = null } = {}) {
   const { root, ivs } = parseChord(sym);
+  // CHORD MEMORY (9 Oct 2026): not this chord in the key, but one SHAPE — `memory` is a quality,
+  // 'm7' or 'm9' — built on the chord's root, in root position, at the octave nearest `centre`.
+  // Every chord the same shape moved whole, the way a chord-memory button plays it: Detroit's and
+  // the rave stab's parallel harmony. The shape ignores the chord's own quality and the key.
+  if (memory) {
+    const shape = QUALITY[memory] || QUALITY.m7;
+    const c = midi(centre);
+    let best = null;
+    for (let oct = 1; oct <= 7; oct++) {
+      const notes = shape.map((i) => root + 12 * oct + i);
+      const score = Math.abs(notes.reduce((a, b) => a + b, 0) / notes.length - c);
+      if (!best || score < best.score) best = { notes, score };
+    }
+    return best.notes.map((m) => nameOf(clampMidi(m)));
+  }
   let pcs = [...new Set(ivs.map((i) => (root + i) % 12))];
   if (drop && pcs.length > 3) pcs = pcs.filter((pc) => pc !== root);
   pcs.sort((a, b) => a - b);
@@ -163,6 +178,11 @@ export const isDrumPart = (part) => Array.isArray(part);
 export const hasNotes = (part) => !!part && (Array.isArray(part)
   ? part.some(Boolean)
   : part.notes.some((v) => v != null));
+// VELOCITY (9 Oct 2026): a part may carry `vels` beside `notes` and `lens` — how hard each note
+// is struck, 0 to 1, null for full strength — which packBank writes as `${lane}Velocity`. The
+// acid line's accents are the one writer so far. Every helper below that builds a part from
+// another carries it, and only when the source has one, so a part without it never grows one.
+const withVels = (src, vels) => (src?.vels ? { vels } : {});
 
 /**
  * One bar of notes from shorthand: `A4 . C5 E5:3 . A3+C4+E4:16 …`, sixteen tokens.
@@ -186,11 +206,16 @@ export function L(str) {
   });
   return out;
 }
-/** A drum bar from `x...x...` — `x` hits, anything else rests. */
+/** How hard a drum pattern's ghost note (`g`) is struck: a quarter or so of a hit. */
+export const GHOST = 0.35;
+/**
+ * A drum bar from `x...x...` — `x` hits, `g` a GHOST note (9 Oct 2026: a hit at GHOST's
+ * velocity, which packBank writes as `${lane}Velocity`), anything else rests.
+ */
 export function P(str) {
   const s = String(str).replace(/\s|\|/g, '');
   if (s.length !== 16) throw new Error(`drum bar needs 16 steps: ${str}`);
-  return [...s].map((c) => c === 'x' || c === 'X');
+  return [...s].map((c) => (c === 'x' || c === 'X' ? true : c === 'g' ? GHOST : false));
 }
 /** A melodic bar from events: [[step, note|notes, len?], …]. */
 export function E(events) {
@@ -215,14 +240,14 @@ export function partToL(part) {
 export const partToP = (part) => part.map((v) => (v ? 'x' : '.')).join('');
 export const clonePart = (part) => (part == null ? part
   : Array.isArray(part) ? [...part]
-    : { notes: part.notes.map((v) => (Array.isArray(v) ? [...v] : v)), lens: [...part.lens] });
+    : { notes: part.notes.map((v) => (Array.isArray(v) ? [...v] : v)), lens: [...part.lens], ...withVels(part, part.vels && [...part.vels]) });
 
 /** Every name in a part moved by `fn(midi) → midi`, folded into range. */
 export function mapPitches(part, fn) {
   if (!part || Array.isArray(part)) return part;
   const mv = (name) => nameOf(clampMidi(fn(midi(name))));
   const f = (v) => (v == null ? v : Array.isArray(v) ? v.map(mv) : mv(v));
-  return { notes: part.notes.map(f), lens: [...part.lens] };
+  return { notes: part.notes.map(f), lens: [...part.lens], ...withVels(part, part.vels && [...part.vels]) };
 }
 /** Move a melodic part by semitones. */
 export const shift = (part, semis) => (semis ? mapPitches(part, (m) => m + semis) : clonePart(part));
@@ -232,7 +257,7 @@ export function legato(parts, gap = 0, max = 16) {
   const flat = [];
   parts.forEach((p, b) => p.notes.forEach((v, i) => { if (v != null) flat.push({ b, i, at: b * 16 + i }); }));
   const total = parts.length * 16;
-  const out = parts.map((p) => ({ notes: [...p.notes], lens: [...p.lens] }));
+  const out = parts.map((p) => ({ notes: [...p.notes], lens: [...p.lens], ...withVels(p, p.vels && [...p.vels]) }));
   flat.forEach((e, k) => {
     const next = k + 1 < flat.length ? flat[k + 1].at : total;
     out[e.b].lens[e.i] = Math.max(1, Math.min(max, next - e.at - gap));
@@ -259,7 +284,8 @@ export function diatonic(part, steps, scale) {
 }
 
 /** Set one fixed length on every note of a part. */
-export const lenAll = (part, len) => ({ notes: [...part.notes], lens: part.notes.map((v) => (v == null ? null : len)) });
+export const lenAll = (part, len) => ({ notes: [...part.notes], lens: part.notes.map((v) => (v == null ? null : len)),
+  ...withVels(part, part.vels && [...part.vels]) });
 
 /**
  * The tune at half speed: each bar of it becomes two, every step doubled. The rhythm
@@ -267,12 +293,14 @@ export const lenAll = (part, len) => ({ notes: [...part.notes], lens: part.notes
  */
 export function augment(part) {
   const a = blank(); const b = blank();
+  if (part.vels) { a.vels = EMPTY16(); b.vels = EMPTY16(); }
   part.notes.forEach((v, i) => {
     if (v == null) return;
     const at = i * 2;
     const tgt = at < 16 ? a : b;
     tgt.notes[at % 16] = v;
     tgt.lens[at % 16] = (part.lens[i] ?? 1) * 2;
+    if (part.vels) tgt.vels[at % 16] = part.vels[i];
   });
   return [a, b];
 }
@@ -288,14 +316,17 @@ export function cut(part, from) {
       // A note struck before the hole does not ring into it.
       return part.notes[j] != null && l != null && j + l > from ? from - j : l;
     }),
+    ...withVels(part, part.vels && part.vels.map((x, j) => (j >= from ? null : x))),
   };
 }
 /** A part whose note at `at` is shortened to `len` steps. */
-export const clip = (part, at, len) => ({ notes: [...part.notes], lens: part.lens.map((l, j) => (j === at ? len : l)) });
+export const clip = (part, at, len) => ({ notes: [...part.notes], lens: part.lens.map((l, j) => (j === at ? len : l)),
+  ...withVels(part, part.vels && [...part.vels]) });
 /** Every note doubled an octave up — the big-room piano. */
 export const octaves = (part) => ({
   notes: part.notes.map((v) => (v == null ? v : Array.isArray(v) ? v : [v, nameOf(clampMidi(midi(v) + 12))])),
   lens: [...part.lens],
+  ...withVels(part, part.vels && [...part.vels]),
 });
 /** Two parts on one lane: where both strike, the first wins. */
 export function overlay(a, b) {
@@ -305,6 +336,7 @@ export function overlay(a, b) {
   return {
     notes: a.notes.map((v, i) => (v != null ? v : b.notes[i])),
     lens: a.lens.map((l, i) => (a.notes[i] != null ? l : b.lens[i])),
+    ...(a.vels || b.vels ? { vels: a.notes.map((v, i) => (v != null ? a.vels?.[i] ?? null : b.vels?.[i] ?? null)) } : {}),
   };
 }
 
@@ -349,7 +381,8 @@ export function fitToChords(part, chords) {
     }
     return name;
   };
-  return { notes: part.notes.map((v, i) => (v == null ? v : Array.isArray(v) ? v.map((x) => fit(x, i)) : fit(v, i))), lens: [...part.lens] };
+  return { notes: part.notes.map((v, i) => (v == null ? v : Array.isArray(v) ? v.map((x) => fit(x, i)) : fit(v, i))), lens: [...part.lens],
+    ...withVels(part, part.vels && [...part.vels]) };
 }
 
 /**
@@ -377,6 +410,7 @@ export function clearUnder(bass, line, chords) {
       return nameOf(clampMidi(m - below <= 6 ? below : below + 12));
     }),
     lens: [...bass.lens],
+    ...withVels(bass, bass.vels && [...bass.vels]),
   };
 }
 
@@ -493,8 +527,66 @@ export const BASS_FIGURES = Object.freeze([
   // The echo, a sixteenth behind, fills the gaps between the eighths: the gallop is the
   // line and its delay together, as the record does it.
   { id: 'sequencer', label: 'Sequencer', note: 'Root, octave, fifth, seventh in eighths with an echo a sixteenth behind — Munich disco', pat: 'R:1 . O:1 . 5:1 . 7:1 . R:1 . O:1 . 5:1 . 7:1 .', lift: null, echo: true },
+  // A 303 line (9 Oct 2026), written by `acidLine` for the take rather than read off `pat` — the
+  // pattern is only what anything that wants one figure-shaped line gets. Its accents are
+  // velocities and its slides are notes held into the next, so it wants a LEGATO voice that
+  // hears velocity (Acid 303).
+  { id: 'acid', label: 'Acid', note: 'A 303 line in sixteenths — octave jumps, slides and accents, the same notes evolving phrase by phrase', pat: 'R:1 R:1 O:1 R:1 . R:1 7:1 R:1 R:1 5:1 R:1 . 3:1 R:1 R:1 O:1', lift: null, acid: true },
 ]);
 export const BASS_LIFTS = Object.freeze({ offbeat: 'octaves', rolling: 'gallop' });
+
+/**
+ * ACID (9 Oct 2026, docs/LAB_STYLES_PLAN.md). One bass phrase that evolves: the rhythm and the
+ * notes are drawn once for the take, and the accents and slides are drawn again every phrase, so
+ * the line changes while staying the same line.
+ *
+ * The rhythms are sixteenths with a few rests — four of them, so a line never comes out as mush.
+ * The notes are degrees over each chord's root, the bass's own tokens (bassBar): mostly the root,
+ * octave jumps, the flat seventh, the fifth, now and then the third. The second bar of every pair
+ * keeps the first twelve steps and turns its last four round.
+ */
+const ACID_RHYTHMS = [
+  'x x x x . x x x x x x . x x x x',
+  'x . x x x x . x x x x x x . x x',
+  'x x . x x . x x x x . x x x . x',
+  'x x x . x x x x . x x x . x x x',
+];
+const ACID_DEGREES = [['R', 9], ['O', 4], ['7', 2], ['5', 2], ['3', 1]];
+/** How hard a plain note of the line is struck; an accent is 1. The preset says what that does. */
+export const ACID_PLAIN = 0.62;
+const weighted = (rand, table) => {
+  let x = rand() * table.reduce((a, [, w]) => a + w, 0);
+  for (const [v, w] of table) { if ((x -= w) < 0) return v; }
+  return table[0][0];
+};
+/** The line's notes for the take: `{ a, b }`, sixteen degrees (or null rests) for each bar of the pair. */
+export function acidLine(rand) {
+  const rhythm = ACID_RHYTHMS[Math.floor(rand() * ACID_RHYTHMS.length)].split(' ');
+  const a = rhythm.map((x, i) => (x === '.' ? null : i === 0 ? 'R' : weighted(rand, ACID_DEGREES)));
+  const b = a.map((d, i) => (i < 12 || d == null ? d : weighted(rand, ACID_DEGREES)));
+  return { a, b };
+}
+/**
+ * One phrase's accents and slides over the line's notes. A slide needs a sounding next step at a
+ * different degree, or there is nothing to glide to; accents lean off the beat.
+ */
+export function acidMarks(rand, degs) {
+  const accent = degs.map((d, i) => d != null && rand() < (i % 4 ? 0.3 : 0.12));
+  const slide = degs.map((d, i) => d != null && i < 15 && degs[i + 1] != null && degs[i + 1] !== d && rand() < 0.28);
+  return { accent, slide };
+}
+/** A bar of the acid line over `chords`: notes, lengths (a slide held past the next onset) and velocities. */
+export function acidBar(chords, degs, marks, floor = 'E1') {
+  const pat = degs.map((d) => (d == null ? '.' : d)).join(' ');
+  const out = bassBar(chords, pat, floor);
+  out.vels = EMPTY16();
+  degs.forEach((d, i) => {
+    if (d == null) return;
+    out.lens[i] = marks.slide[i] ? 1.3 : 0.55;
+    out.vels[i] = marks.accent[i] ? 1 : ACID_PLAIN;
+  });
+  return out;
+}
 
 /**
  * A delay written as notes: `from`'s part in every bar copied to `to`, `steps` sixteenths
@@ -515,6 +607,7 @@ export function echoPart(bars, from, to, steps = 1) {
       const out = (echoes[tb] ||= blank());
       out.notes[at % 16] = v;
       out.lens[at % 16] = src.lens[i];
+      if (src.vels) (out.vels ||= EMPTY16())[at % 16] = src.vels[i];
     });
   });
   echoes.forEach((part, b) => { if (part && hasNotes(part)) bars[b][to] = part; });
@@ -550,7 +643,10 @@ export function packBank(bars, { bpm, musicTrim = 0.93, drums }) {
       if (DRUM.has(k)) {
         if ((a && !Array.isArray(a)) || (b && !Array.isArray(b))) throw new Error(`lane ${k} holds notes in a drum lane`);
         const lane = [...(a || Array(16).fill(false)), ...(b || Array(16).fill(false))];
-        if (lane.some(Boolean)) sec[k] = lane;
+        if (!lane.some(Boolean)) continue;
+        sec[k] = lane.map(Boolean);
+        // A ghost note is a hit struck softer (`g` in a pattern, P above).
+        if (lane.some((x) => typeof x === 'number')) sec[`${k}Velocity`] = lane.map((x) => (typeof x === 'number' ? x : null));
         continue;
       }
       const pa = a || blank(); const pb = b || blank();
@@ -560,6 +656,11 @@ export function packBank(bars, { bpm, musicTrim = 0.93, drums }) {
       sec[k] = notes;
       const lens = [...pa.lens, ...pb.lens].map((l, j) => (notes[j] == null ? null : l ?? null));
       if (lens.some((l) => l != null)) sec[`${k}Len`] = lens;
+      // How hard each note is struck, where a part says (an acid line's accents) — see `withVels`.
+      if (pa.vels || pb.vels) {
+        const vels = [...(pa.vels || EMPTY16()), ...(pb.vels || EMPTY16())].map((x, j) => (notes[j] == null ? null : x ?? null));
+        if (vels.some((x) => x != null)) sec[`${k}Velocity`] = vels;
+      }
     }
     sections.push(sec);
   }

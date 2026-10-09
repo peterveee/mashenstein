@@ -11,6 +11,7 @@ import { canHostEngineWorklets, createCaptureNode, prepareEngineWorklets } from 
 import {
   laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
   LANE_KEYS, stepLen, toneLen, effectiveStepLen, effectiveToneLength, sequenceValue, lenKey,
+  stepVelocity,
 } from './lanes.js';
 import {
   VoiceRack, pulseTable, createNoteCacheState, setNoteCachePlaybackActive,
@@ -7383,7 +7384,13 @@ class AudioSys {
     if (margin < this._schedMarginMin) this._schedMarginMin = margin;
     if (margin < 0) this._schedLate++;
     const ahead = this.lookahead();
-    while (this.nextTime < this.ctx.currentTime + ahead) this.scheduleStep();
+    while (this.nextTime < this.ctx.currentTime + ahead) {
+      this.scheduleStep();
+      // A song played once ends on a step mid-pass: nothing after it, not even the next
+      // step of this same pass — that was the first sixteenth of bar one, heard after the
+      // last bar (Peter, 8 Oct 2026).
+      if (this.songEnded) break;
+    }
   }
 
   /** The scheduler-starvation counters since last asked, and their reset. */
@@ -7428,7 +7435,10 @@ class AudioSys {
     if (!this.ctx || !this.bank || this.offline || this._previewing) return;
     if (this.songEnded) return;   // played once and ended (setPlayOnce): nothing more to queue
     const upTo = this.ctx.currentTime + Math.min(2, Math.max(0, seconds));
-    while (this.nextTime < upTo) this.scheduleStep();
+    while (this.nextTime < upTo) {
+      this.scheduleStep();
+      if (this.songEnded) break;   // as in schedule(): nothing after a song played once
+    }
   }
 
   /**
@@ -7736,7 +7746,7 @@ class AudioSys {
 
   playVoice(key, b, value, {
     spb, dry, wet, echo = true, delay = 0, durScale = 1, gainScale = 1, len = null,
-    articulation = null,
+    articulation = null, velocity = null,
   }) {
     const seam = seamFor(key);
     const v = seam && voiceOf(b, key);
@@ -7812,6 +7822,9 @@ class AudioSys {
         // How this note joins the one before it, when its lane asked for Auto Portamento.
         // Null otherwise, and then the rack never reads it.
         articulation,
+        // How hard it is struck (`${lane}Velocity`), or null for full strength — see `play`
+        // in voices.js for what each instrument does with it.
+        velocity,
       });
     }
     return true;
@@ -8930,15 +8943,23 @@ class AudioSys {
         const event = planFor(key)?.[i];
         return event?.len ?? effectiveToneLength(b, key, s, i, resolution);
       };
+      // How hard this step's note is struck, where the lane writes it (`${lane}Velocity`,
+      // see lanes.js), else null — full strength, which is every bank written before it.
+      // Read off the same clock as the note's length, so a song-groove drum's ghost note
+      // comes from the bar the drums are actually playing.
+      const velocityOf = (key) => (songRearrangeDrums && PERCUSSION_LANES.includes(baseLane(key))
+        ? stepVelocity(outputBank, key, sOutput, resolution)
+        : stepVelocity(b, key, s, resolution));
       const voiced = (key, value, opts = {}) => {
         lane(key);
         const events = planFor(key);
+        const velocity = velocityOf(key);
         if (events) {
           let played = false;
           const extraDelay = opts.delay == null ? 0 : opts.delay - voiceDelay();
           for (const event of events) {
             played = this.playVoice(key, b, event.freq, {
-              spb, dry, wet, ...opts,
+              spb, dry, wet, velocity, ...opts,
               gainScale: (opts.gainScale ?? 1) * laneGainScale,
               delay: voiceDelay(extraDelay + event.delay), len: event.len,
             }) || played;
@@ -8951,7 +8972,7 @@ class AudioSys {
         // gate that reaches the next note if this one is the source of a slide.
         const slide = this._portamentoFor(key, b, value, own, spb, swingOffset);
         return this.playVoice(key, b, value,
-          { spb, dry, wet, delay: voiceDelay(), len: own, ...opts,
+          { spb, dry, wet, delay: voiceDelay(), len: own, velocity, ...opts,
             gainScale: (opts.gainScale ?? 1) * laneGainScale,
             ...(slide ? { len: slide.len, articulation: slide.articulation } : {}) });
       };

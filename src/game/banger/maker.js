@@ -187,6 +187,13 @@ const C_NOTE = '#48e0c8';
 const PAIR_MARK_W = 0.96;
 const PAIR_MARK_GAP = 0.5;
 const PAIR_MARK_SPAN = PAIR_MARK_W + PAIR_MARK_GAP;
+// A FAMILY dot (drawFamilyDot) and its gap, in the same cap heights; and each family's colour —
+// bright enough to read on the chooser's dark plate, far enough apart to tell at a glance.
+const FAMILY_DOT_SPAN = 0.64 + PAIR_MARK_GAP;
+const FAMILY_COLOURS = Object.freeze({
+  festival: '#4da6ff', ukrave: '#ff5c5c', club: '#ff9d3d', latin: '#ffd84d',
+  disco: '#b87dff', synths: '#5fd36b', chill: '#e6e6f0',
+});
 const C_SILVER = '#c4c8d4';
 const C_GOLD = '#e6bf55';
 
@@ -795,16 +802,34 @@ export class BangerMakerState {
       const labelSize = portraitMenuFit(it.label, 1.05, r.w - 12);
       const description = it.description ?? '';
       const descriptionSize = portraitMenuFit(description, 0.68, r.w - 12);
-      // A MOOD PAIR's mark sits just left of its name, the two centred together.
+      // A MOOD PAIR's mark sits just left of its name, the two centred together; so does a style's
+      // FAMILY dot (9 Oct 2026, make.js LAB_FAMILIES): which styles go together, by colour.
       const scale = portraitMenuScale(labelSize);
-      const markH = it.pair ? scale * TEXT_INK_H : 0;
-      const labelX = r.x + r.w / 2 + (it.pair ? PAIR_MARK_SPAN * markH / 2 : 0);
+      const marked = it.pair || it.family;
+      const markH = marked ? scale * TEXT_INK_H : 0;
+      const span = it.pair ? PAIR_MARK_SPAN : FAMILY_DOT_SPAN;
+      const labelX = r.x + r.w / 2 + (marked ? span * markH / 2 : 0);
       portraitMenuTextCentered(ctx, it.label.toUpperCase(), labelX, textYForMid(labelY, scale),
         sel ? C_SEL : on ? C_NOTE : C_TEXT, labelSize);
-      if (it.pair) this.drawPairMark(ctx, labelX - textWidth(it.label.toUpperCase(), scale) / 2 - PAIR_MARK_GAP * markH, labelY, markH);
+      const markRight = labelX - textWidth(it.label.toUpperCase(), scale) / 2 - PAIR_MARK_GAP * markH;
+      if (it.pair) this.drawPairMark(ctx, markRight, labelY, markH);
+      else if (it.family) this.drawFamilyDot(ctx, markRight, labelY, markH, FAMILY_COLOURS[it.family]);
       if (description) portraitMenuTextCentered(ctx, description, r.x + r.w / 2,
         textYForMid(descriptionY, portraitMenuScale(descriptionSize)), sel ? '#d3c0f4' : '#89899a', descriptionSize);
     });
+  }
+
+  /**
+   * A style's FAMILY dot (9 Oct 2026): a filled circle in its family's colour, a little smaller than
+   * the name's caps. Its right edge is at `right`, its middle at `cy`; `h` is the cap height.
+   */
+  drawFamilyDot(ctx, right, cy, h, colour) {
+    if (!colour) return;
+    const rad = h * 0.32;
+    ctx.save();
+    ctx.fillStyle = colour;
+    ctx.beginPath(); ctx.arc(right - rad, cy, rad, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   /**

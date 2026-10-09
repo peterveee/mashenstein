@@ -15,12 +15,15 @@
 //           8 Oct 2026.
 //   MIXER   a sound button under each fader steps that part through the take's own table:
 //           DRUMS through its six kits, BASS, CHORDS and LEAD through its Riff Sound lists.
-//           With 8-BIT on, the buttons step through the 8-Bit set's instead.
+//           With 8-BIT on, the buttons step through the 8-Bit set's instead. On an infused
+//           take each button steps on past its own style's sounds into the other style's
+//           (borrowedSounds); the DICE only rolls the part's own.
 //
 // Nothing is kept: leaving the floor puts the song's own sounds back (release).
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
-import { KITS, soundsRow } from '../../../tools/lib/banger/sound-rules.js';
-import { withoutStyleSuffix } from '../../../tools/lib/banger/styles/index.js';
+import { KITS, RANDOM_JOBS, phoneStyle, soundAllowed, soundsRow } from '../../../tools/lib/banger/sound-rules.js';
+import { styleFor, withoutStyleSuffix } from '../../../tools/lib/banger/styles/index.js';
+import { fusionIds } from '../../../tools/lib/banger/styles/fusion.js';
 import { CREATIVE_DRUM_KITS } from '../../data/creative-drum-kits.js';
 import { VOICES, baseLane, PERCUSSION_LANES } from '../../data/voices.js';
 import { Audio } from '../../engine/audio.js';
@@ -44,10 +47,13 @@ const KIT_ROLES = Object.freeze(['kick', 'snare', 'clap', 'hats', 'ohats', 'cras
 // The game's kits are the six the desk has always had; the desk's creative kits
 // (src/data/creative-drum-kits.js) stay off the floor.
 const KIT_ORDER = Object.freeze(KITS.map((k) => k.key).filter((k) => !CREATIVE_KIT_KEYS.has(k)));
-/** The parts with a sound button, as the mixer lists them, and which Riff Sound list each walks. */
+/**
+ * The parts with a sound button, as the mixer lists them, and which Riff Sound list each walks.
+ * `groove`: in a fusion the part is the GROOVE style's (styles/fusion.js BEAT_ROLES), not the SOUND's.
+ */
 export const SOUND_PARTS = Object.freeze({
-  drums: { kit: true },
-  bass: { roles: ['bass'], list: 'bass' },
+  drums: { kit: true, groove: true },
+  bass: { roles: ['bass'], list: 'bass', groove: true },
   chords: { roles: ['saws', 'piano', 'pad'], list: 'chords' },
   lead: { roles: ['hook'], list: 'hook' },
 });
@@ -138,6 +144,37 @@ const fresh = () => ({ swapped: false, picks: { own: {}, swap: {} } });
 const copy = (s) => ({ swapped: s.swapped, picks: { own: { ...s.picks.own }, swap: { ...s.picks.swap } } });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+/**
+ * An infused take's sounds from its OTHER style (Peter, 9 Oct 2026), part → choices: DRUMS and
+ * BASS are the groove's, so they borrow the sound's; CHORDS and LEAD are the sound's, so they
+ * borrow the groove's. A button steps through them after its own; the DICE never lands on them,
+ * so a roll keeps the split the infusion made, and a sound from the other side is a tap away.
+ * The kits are the same six in every style but STYLE, so DRUMS borrows that one kit. Each sound
+ * passes the slot's rules (soundAllowed) with the take's never-use list. Empty for a plain take.
+ */
+function borrowedSounds(setId, row) {
+  const pair = fusionIds(setId);
+  if (!pair || !row) return {};
+  const opts = { never: row.never || [], phone: phoneStyle(setId) };
+  const out = {};
+  for (const [part, p] of Object.entries(SOUND_PARTS)) {
+    const otherId = p.groove ? pair.music : pair.beat;
+    const other = BANGER_SOUNDS[otherId];
+    if (!other) continue;
+    if (p.kit) {
+      const kit = other.kits?.style;
+      if (!kit || Object.values(row.kits || {}).some((k) => same(k, kit))) continue;
+      const name = String(styleFor(otherId)?.label || otherId).split(' · ')[0].toUpperCase();
+      out[part] = [{ kit: 'style', row: other, name: `${otherId}:style`, label: `${name} KIT`, borrowed: true }];
+      continue;
+    }
+    const job = RANDOM_JOBS.find((j) => j.key === p.list);
+    out[part] = (other.random?.[p.list] || []).filter((id) => VOICES[id] && soundAllowed(id, job, opts))
+      .map((id) => ({ id, label: voiceLabel(id), borrowed: true }));
+  }
+  return out;
+}
+
 export class ClubVoices {
   /** `song` is what the club plays (make.js makeBanger, or a starter's); `rec` its recipe. */
   constructor(song, rec = null) {
@@ -146,6 +183,8 @@ export class ClubVoices {
     // A fusion's row (`fusion:…`) is its two styles' put together, made once here.
     this.ownSet = soundsRow(BANGER_SOUNDS, song?.soundsId) ? song.soundsId : this.style;
     this.ownRow = soundsRow(BANGER_SOUNDS, this.ownSet) || null;
+    // ...and, on an infused take, what each button borrows from the other style
+    this.borrowed = borrowedSounds(this.ownSet, this.ownRow);
     // on the 8-Bit set already, B-33P crushes it (CRUSH) rather than swapping sets
     this.eightBit = this.ownSet === CHIP_SET;
     this.crushToken = 0;
@@ -178,19 +217,28 @@ export class ClubVoices {
     return null;
   }
 
-  /** The sounds a part's button steps through, starting with the one it has now. */
+  /**
+   * The sounds a part's button steps through, starting with the one it has now: its own, then
+   * (an infused take, off the 8-Bit set) those it borrows from the other style, marked `borrowed`.
+   */
   choices(part, swapped = this.target.swapped) {
     const row = this.rowFor(swapped);
     if (!row) return [];
+    const borrowed = this.onChipSet(swapped) ? [] : this.borrowed[part] || [];
     if (part === 'drums') {
       const own = this.kitIn(row);
-      return [own, ...KIT_ORDER.filter((k) => k !== own && row.kits?.[k])].map((kit) => ({ kit, label: kitLabel(kit) }));
+      return [own, ...KIT_ORDER.filter((k) => k !== own && row.kits?.[k])].map((kit) => ({ kit, label: kitLabel(kit) })).concat(borrowed);
     }
     const lane = this.partLane(part);
     if (!lane) return [];
     const first = this.onChipSet(swapped) ? roleVoice(row, this.kitIn(row), this.roles.get(lane), lane) : this.song?.mix?.voice?.[`${lane}Voice`];
     const list = row.random?.[SOUND_PARTS[part].list] || [];
-    return [first, ...list.filter((id) => id !== first)].filter((id) => VOICES[id]).map((id) => ({ id, label: voiceLabel(id) }));
+    const own = [first, ...list.filter((id) => id !== first)].filter((id) => VOICES[id]);
+    return own.map((id) => ({ id, label: voiceLabel(id) })).concat(borrowed.filter((c) => !own.includes(c.id)));
+  }
+  /** What the DICE rolls between: the part's own sounds, never the borrowed (they come last). */
+  rollChoices(part, swapped = this.target.swapped) {
+    return this.choices(part, swapped).filter((c) => !c.borrowed);
   }
 
   /** The state that will be playing once anything waiting has landed. */
@@ -245,10 +293,11 @@ export class ClubVoices {
     const key = this.pickKey(next.swapped);
     let moved = false;
     for (const part of PART_IDS) {
-      const n = this.choices(part, next.swapped).length;
-      if (n < 2) continue;
+      const n = this.rollChoices(part, next.swapped).length;
       const was = next.picks[key][part] || 0;
-      const k = (was + 1 + Math.floor(random() * (n - 1))) % n;
+      // on a borrowed sound, any of its own; else another of its own
+      if (!n || (n < 2 && was < n)) continue;
+      const k = was >= n ? Math.floor(random() * n) : (was + 1 + Math.floor(random() * (n - 1))) % n;
       if (k) next.picks[key][part] = k; else delete next.picks[key][part];
       moved = true;
     }
@@ -309,7 +358,7 @@ export class ClubVoices {
       if (choice.kit) {
         for (const [lane, role] of this.roles) {
           if (!KIT_ROLES.includes(role)) continue;
-          const id = roleVoice(row, choice.kit, role, lane);
+          const id = roleVoice(choice.row || row, choice.kit, role, lane);
           if (id && VOICES[id]) voices.set(lane, id);
         }
       } else {
@@ -337,7 +386,10 @@ export class ClubVoices {
     if (isClap(laneVoice)) return laneVoice;
     const row = this.rowFor(s.swapped);
     const pick = s.picks[this.pickKey(s.swapped)].drums || 0;
-    const kit = (pick && this.choices('drums', s.swapped)[pick]?.kit) || this.kitIn(row);
+    const choice = pick ? this.choices('drums', s.swapped)[pick] : null;
+    const kit = choice?.kit || this.kitIn(row);
+    const borrowed = choice?.row && roleVoice(choice.row, kit, 'clap');
+    if (isClap(borrowed)) return borrowed;
     for (const k of [kit, ...KIT_ORDER.filter((x) => x !== kit)]) {
       const id = roleVoice(row, k, 'clap');
       if (isClap(id)) return id;
@@ -396,7 +448,7 @@ export class ClubVoices {
     for (const key of ['own', 'swap']) {
       for (const [part, k] of Object.entries(state.picks[key])) {
         const c = this.choices(part, key === 'swap')[k];
-        if (c && k > 0) out[key][part] = c.kit || c.id;
+        if (c && k > 0) out[key][part] = c.name || c.kit || c.id;
       }
     }
     return out;
@@ -408,7 +460,7 @@ export class ClubVoices {
     state.swapped = !!named?.swapped;
     for (const key of ['own', 'swap']) {
       for (const [part, name] of Object.entries(named?.[key] || {})) {
-        const k = this.choices(part, key === 'swap').findIndex((c) => (c.kit || c.id) === name);
+        const k = this.choices(part, key === 'swap').findIndex((c) => (c.name || c.kit || c.id) === name);
         if (k > 0) state.picks[key][part] = k;
       }
     }

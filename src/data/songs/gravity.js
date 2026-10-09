@@ -244,12 +244,15 @@ export const mix = {
           "rolloff": -24
         },
         "filterEnvelope": {
-          "attack": 0.001,
-          "decay": 1.22,
-          "sustain": 0.13,
-          "release": 0.3,
+          "attack": 0.0013,
+          "decay": 0.5329,
+          "sustain": 0.0357,
+          "release": 0.115,
           "baseFrequency": 110,
-          "octaves": 2
+          "octaves": 2,
+          "attackCurve": "exponential",
+          "decayCurve": "exponential",
+          "releaseCurve": "exponential"
         }
       },
       "starter": false,
@@ -330,7 +333,7 @@ export const mix = {
       },
       "starter": false,
       "vibrato": {
-        "depth": 0.03
+        "depth": 0.0408
       },
       "kind": "tone",
       "level": 0.033,

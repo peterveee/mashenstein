@@ -79,6 +79,37 @@ export function stripGate(options, style) {
   return GATES[g] || null;
 }
 
+/**
+ * FILTER MOVES (9 Oct 2026, docs/LAB_STYLES_PLAN.md): one part's slow filter movement over bars
+ * `from`..`to` (1-based, inclusive), as automation sections for its lane. A recipe asks for them by
+ * role, `filterMoves: { bass: { shape, lo, hi, Q, over } }`:
+ *   · `open` — a low-pass opening from `lo` to `hi` across the span; `close`, the other way;
+ *   · `riseFall` — open to `hi` across the first half, closed back to `lo` across the second;
+ *   · `stepped` — held cutoffs climbing from `lo` to `hi` two bars at a time.
+ * `Q` is the resonance (an acid line's movement wants some); `over` is 'section' (the default) or
+ * 'phrase', every eight bars of it. The movement belongs to its part: in a fusion it comes from
+ * whichever style owns that part (fusion.js, a split key).
+ */
+export const FILTER_MOVE_SHAPES = Object.freeze(['open', 'close', 'riseFall', 'stepped']);
+export function filterMoveSections({ shape = 'open', lo = 400, hi = 8000, Q = 0.9 } = {}, from, to) {
+  const n = to - from + 1;
+  if (n < 1) return [];
+  if (shape === 'close') return [section(posOf(from, 0), posOf(to + 1, 0), SWEEP(hi, lo, 'lowpass', Q))];
+  if (shape === 'riseFall' && n >= 2) {
+    const mid = from + Math.floor(n / 2);
+    return [section(posOf(from, 0), posOf(mid, 0), SWEEP(lo, hi, 'lowpass', Q)),
+      section(posOf(mid, 0), posOf(to + 1, 0), SWEEP(hi, lo, 'lowpass', Q))];
+  }
+  if (shape === 'stepped') {
+    const steps = Math.max(1, Math.ceil(n / 2));
+    return Array.from({ length: steps }, (_, k) => {
+      const hz = Math.round(lo * (hi / lo) ** (steps > 1 ? k / (steps - 1) : 1));
+      return section(posOf(from + 2 * k, 0), posOf(Math.min(to + 1, from + 2 * k + 2), 0), LOWPASS(hz, Q));
+    });
+  }
+  return [section(posOf(from, 0), posOf(to + 1, 0), SWEEP(lo, hi, 'lowpass', Q))];
+}
+
 /** Sections added to a lane, alongside whatever it already has. */
 function addSections(auto, key, sections) {
   let out = auto;
@@ -283,6 +314,22 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
   for (const sw of events.sweeps || []) {
     if (introOwned && sw.from <= events.intro.to && sw.to >= events.intro.from) continue;
     auto = addSections(auto, MASTER_KEY, [section(posOf(sw.from, 0), posOf(sw.to + 1, 0), SWEEP(400, 16000))]);
+  }
+
+  // FILTER MOVES: a part's own slow filter movement across each section it plays in (or each
+  // eight-bar phrase of it) — `style.filterMoves`, by role. See `filterMoveSections`. Never over
+  // a build, which has the Filter Build's sweep; written before the gate, which joins it.
+  for (const [role, move] of Object.entries(style.filterMoves || {})) {
+    const key = lane(role);
+    if (!key || !move) continue;
+    const inBuild = (s) => events.builds.some((bd) => s.from <= bd.to && s.to >= bd.from);
+    for (const s of form) {
+      if (inBuild(s)) continue;
+      const spans = move.over === 'phrase'
+        ? Array.from({ length: Math.ceil((s.to - s.from + 1) / 8) }, (_, k) => [s.from + 8 * k, Math.min(s.to, s.from + 8 * k + 7)])
+        : [[s.from, s.to]];
+      for (const [from, to] of spans) auto = addSections(auto, key, filterMoveSections(move, from, to));
+    }
   }
 
   // Chord Gate = By Energy: the chords gated section by section, slower where the song is

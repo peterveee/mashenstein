@@ -18,7 +18,10 @@
 //   node tools/banger-levels.js check [style …]   render the reference parts and a few test
 //                                                 bangers part by part: how far each part
 //                                                 landed from its reference, before levelling
-//                                                 and after. Report-only.
+//                                                 and after. Report-only. A style here is any
+//                                                 recipe — a flavour or Sound Set too, which
+//                                                 is matched to its base's references unless
+//                                                 it has its own.
 //         --bangers=N                             test bangers per style (default 2)
 //         --riff=song:a-b                         make them from these bars instead (e.g. crypt:5-8)
 //         --fit                                   and fold each channel's average miss into
@@ -37,7 +40,7 @@ import { VOICES, VOICE_LANES, voiceGain, PERCUSSION_LANES, seamFor } from '../sr
 import { resolveTrack } from './lib/tracks.js';
 import { extractRiff } from './lib/banger/riff.js';
 import { generateBanger } from './lib/banger/index.js';
-import { BANGER_STYLES } from './lib/banger/styles/index.js';
+import { BANGER_STYLES, BANGER_RECIPES } from './lib/banger/styles/index.js';
 import { BANGER_SOUNDS } from './lib/banger/sounds.js';
 import { BANGER_COMBOS } from './lib/banger/combos.js';
 import { libraryCurveId, copyCurveKey, CURVE_SECONDS, CURVE_MIDI, CURVE_PITCH_SECONDS } from './lib/banger/levels.js';
@@ -355,7 +358,11 @@ function setSound(mix, vk, { voice = null, voiceParams = null } = {}) {
 
 async function check() {
   const data = await readData();
-  const styles = named.length ? BANGER_STYLES.filter((s) => named.includes(s.id)) : BANGER_STYLES;
+  for (const id of named) if (!BANGER_RECIPES.some((s) => s.id === id)) throw new Error(`no style, flavour or Sound Set called ${id}`);
+  const styles = named.length ? BANGER_RECIPES.filter((s) => named.includes(s.id)) : BANGER_RECIPES;
+  // What levels.js matches a recipe to: its own references and offsets, else its base's.
+  const refsOf = (style) => data.refs[style.id] || data.refs[style.base] || {};
+  const baseOf = new Map(styles.map((s) => [s.id, s.base]));
   const count = Math.max(1, Number(flag('bangers') || 2));
   const report = { at: new Date().toISOString(), styles: {} };
   const refLevels = new Map();   // ref.from -> measured LUFS
@@ -406,11 +413,11 @@ async function check() {
               mix.lanes[row.lane].gain = row.before;
             });
           } else if (row.how === 'part') {
-            const ref = data.refs[style.id]?.[row.job];
+            const ref = refsOf(style)[row.job];
             target = ref ? await refLevel(ref) : null;
           } else {
             // A drum on another kit: the banger's pattern on the reference's sound and fader.
-            const ref = data.refs[style.id]?.[row.job];
+            const ref = refsOf(style)[row.job];
             if (!ref?.voice?.id || (ref.voice.id === out.mix.voice?.[vk] && !out.mix.voiceParams?.[vk])) continue;
             target = await soloLevel(song, row.lane, w, (mix) => {
               setSound(mix, vk, { voice: ref.voice.id });
@@ -440,7 +447,8 @@ async function check() {
 
   if (has('fit')) {
     for (const [st, jobs] of Object.entries(misses)) {
-      const offsets = { ...(data.offsets[st] || {}) };
+      // A flavour's own offsets replace its base's whole (levels.js), so it starts from them.
+      const offsets = { ...(data.offsets[st] || data.offsets[baseOf.get(st)] || {}) };
       for (const [job, xs] of Object.entries(jobs)) {
         // The riff's own parts, the hook among them, are matched sound for sound — no offset.
         if (job === 'riff' || job === 'hook') continue;

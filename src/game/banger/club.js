@@ -2238,7 +2238,8 @@ export class BangerClubState {
     const since = this.t - (this.diceAt ?? -Infinity);
     const stop = REEL_S + k * REEL_STAGGER;
     if (!(since >= 0 && since < stop)) return null;
-    const list = this.voices?.choices(PARTS[k].id) || [];
+    // only what the dice rolls between: never a sound borrowed from an infusion's other style
+    const list = this.voices?.rollChoices(PARTS[k].id) || [];
     if (list.length < 2) return null;
     const at = Math.max(0, list.findIndex((c) => c.label === landing));
     // eased: quick at first, the last few sounds slow

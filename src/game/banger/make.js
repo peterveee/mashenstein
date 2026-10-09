@@ -54,6 +54,11 @@ const STYLE_DESCRIPTIONS = Object.freeze({
   'italo-disco': 'Galloping synth bass and a robot singer',
   'electro-funk': 'Slap bass, clav and a talking synth',
   'french-house': 'A filtered disco loop that pumps',
+  'acid-house': 'A squelching 303 line over a 909 groove',
+  techno: 'Driving 909s and parallel chord stabs',
+  rave: 'Breakbeats, hoovers and rave stabs',
+  'uk-garage': 'Skippy 2-step beats and organ bass',
+  freestyle: 'Latin electro beats and orchestra hits',
   reggaeton: 'The dembow beat, an 808 and marimba',
   moombahton: 'Festival-sized dembow, toms and saw stabs',
   merenhouse: 'Fast merengue: güira, tambora and sax',
@@ -90,32 +95,38 @@ const MOOD_DESCRIPTIONS = Object.freeze({
 });
 
 // The Lab's picker order (Peter, 6 Oct 2026: "big room house and trance to be first followed
-// by any related styles … don't want it alphabetical"). A walk through the families, each
-// style next to its nearest relation: festival and hands-up, bass music into Latin by way of
-// moombahton, Afro into house and disco, 80s funk and synths, the game consoles, then chill.
+// by any related styles … don't want it alphabetical"), FAMILY BY FAMILY since 9 Oct 2026
+// (docs/LAB_STYLES_PLAN.md): each family a colour, shown as a dot by the style's name, so the list
+// says what goes together without needing to come in fours. Chillout Room last.
 // A style missing from this list goes on the end, in the desk's order.
-const LAB_STYLE_ORDER = Object.freeze([
-  'big-room', 'trance', 'eurodance', 'eurobeat',
-  'future-bass', 'dnb', 'moombahton', 'reggaeton',
-  'merenhouse', 'afro-house', 'deep-house', 'french-house',
-  'nu-disco', 'italo-disco', 'electro-funk', 'electro',
-  'synthwave', 'megadrive', 'chipstep', 'shibuya',
-  'downtempo',
+export const LAB_FAMILIES = Object.freeze([
+  Object.freeze({ id: 'festival', label: 'Festival & Euro', styles: Object.freeze(['big-room', 'trance', 'future-bass', 'eurodance', 'eurobeat']) }),
+  Object.freeze({ id: 'ukrave', label: 'UK Rave', styles: Object.freeze(['rave', 'dnb', 'uk-garage']) }),
+  Object.freeze({ id: 'club', label: 'Club', styles: Object.freeze(['acid-house', 'techno', 'deep-house', 'afro-house']) }),
+  Object.freeze({ id: 'latin', label: 'Latin', styles: Object.freeze(['moombahton', 'reggaeton', 'merenhouse']) }),
+  Object.freeze({ id: 'disco', label: 'Disco & 80s', styles: Object.freeze(['nu-disco', 'electro-funk', 'electro', 'freestyle']) }),
+  Object.freeze({ id: 'synths', label: 'Synths & Games', styles: Object.freeze(['synthwave', 'megadrive', 'chipstep']) }),
+  Object.freeze({ id: 'chill', label: 'Chill', styles: Object.freeze(['shibuya', 'downtempo']) }),
 ]);
+/** The family a style is in (its dot's colour, in maker.js), or null. */
+export const familyOf = (id) => LAB_FAMILIES.find((f) => f.styles.includes(id))?.id ?? null;
+const LAB_STYLE_ORDER = Object.freeze([...LAB_FAMILIES.flatMap((f) => f.styles), 'italo-disco', 'french-house']);
 // Names the Lab gives a style where the desk's is a record-shop word (Peter, 6 Oct 2026:
 // "could downtempo be called chill or something like that instead", then "chillout room? bit
 // of a throwback").
 const LAB_LABELS = Object.freeze({ downtempo: 'Chillout Room' });
 const labRank = (id) => { const i = LAB_STYLE_ORDER.indexOf(id); return i < 0 ? LAB_STYLE_ORDER.length : i; };
 // Styles the Lab leaves out of its pickers, but still makes and names — the desk keeps them all.
-// Boogie (Peter, 7 Oct 2026: "hide in lab, not desk"), so the list is 20, a multiple of four;
-// it keeps its place in LAB_STYLE_ORDER for when more styles bring it back.
-const LAB_HIDDEN = new Set(['electro-funk']);
+// Italo Disco and French House (9 Oct 2026): in the Lab they are flavours of Eurobeat and Nu-Disco
+// (STYLE_FLAVOURS, below), so a take can land on one but nobody picks it. Boogie, hidden on 7 Oct,
+// came back the same day the five new styles were heard (Peter: "Sounds great").
+const LAB_HIDDEN = new Set(['italo-disco', 'french-house']);
 
 // Every style as the Lab names it, hidden ones too, so a song kept on one still reads as itself.
 const LAB_STYLES = Object.freeze([...BANGER_STYLES]
   .sort((a, b) => labRank(a.id) - labRank(b.id))
-  .map((s) => Object.freeze({ id: s.id, label: caps(LAB_LABELS[s.id] ?? LAB_SOUND_SETS[s.id]?.label ?? s.label), description: STYLE_DESCRIPTIONS[s.id] ?? s.note ?? '' })));
+  .map((s) => Object.freeze({ id: s.id, label: caps(LAB_LABELS[s.id] ?? LAB_SOUND_SETS[s.id]?.label ?? s.label), description: STYLE_DESCRIPTIONS[s.id] ?? s.note ?? '',
+    family: familyOf(s.id) })));
 /** The styles the jukebox offers, in the Lab's order (LAB_STYLE_ORDER). */
 export const MAKER_STYLES = Object.freeze(LAB_STYLES.filter((s) => !LAB_HIDDEN.has(s.id)));
 
@@ -134,13 +145,39 @@ export function labSoundSet(style, seed, voltage = null) {
  * Chance of a surprise by voltage level: Safe, Charged, Surge, Overload.
  */
 export const FLAVOUR_SURPRISE = Object.freeze([0, 1 / 5, 1 / 3, 1 / 2]);
+/**
+ * STYLES PLAYED AS FLAVOURS (9 Oct 2026, docs/LAB_STYLES_PLAN.md). In the Lab, Italo Disco is one of
+ * Eurobeat's flavours and French House one of Nu-Disco's — a surprise the mood or the voltage lands
+ * on, like any flavour (Peter: "I like that they may be a surprise, that's the whole point of
+ * flavours"). The desk keeps both as styles, and a take that lands on one is made as THAT style,
+ * whole — its own recipe, sounds, seed and levels — so each sounds exactly as it always did. Kept as
+ * `{ style: 'eurobeat', flavour: 'italo' }`; a song kept on Italo Disco itself plays as it was.
+ */
+const STYLE_FLAVOURS = Object.freeze({
+  eurobeat: Object.freeze({ italo: Object.freeze({ style: 'italo-disco', moods: Object.freeze(['nostalgic', 'dreamy', 'disco', 'wonder', 'bittersweet']) }) }),
+  'nu-disco': Object.freeze({ french: Object.freeze({ style: 'french-house', moods: Object.freeze(['funky', 'boogie', 'hypnotic', 'lounge']) }) }),
+});
+/** The style a Lab flavour is played as, when it is a whole style (STYLE_FLAVOURS); else null. */
+export const styleFlavour = (style, flavour) => STYLE_FLAVOURS[style]?.[flavour]?.style ?? null;
+/**
+ * Styles whose flavours came after takes of them could be kept without one (9 Oct 2026). A take of
+ * one kept with no flavour was made as the style itself and stays so — never rolled into a flavour
+ * that did not exist when it was kept. Every take made since keeps its flavour (maker.js).
+ */
+const FLAVOURED_SINCE = Object.freeze(new Set(['eurobeat', 'nu-disco', 'deep-house', 'electro-funk', 'downtempo']));
+const keptFlavourOf = (style, flavour) => flavour ?? (FLAVOURED_SINCE.has(style) ? 'style' : null);
 /** The flavour id a take in `style` and `mood` plays, or null for a style without flavours. */
 export function labFlavour(style, mood, seed = null, voltage = null) {
   const st = styleFor(style);
-  if (!st?.flavours?.length) return null;
-  const own = moodFlavour(st, firstMood(mood));
+  const whole = STYLE_FLAVOURS[style] || null;
+  if (!st?.flavours?.length && !whole) return null;
+  const real = st?.flavours?.map((f) => f.id) || [];
+  const m = firstMood(mood);
+  // A whole-style flavour the mood names comes first; otherwise the mood's own flavour, or the style.
+  const own = Object.entries(whole || {}).find(([, w]) => w.moods.includes(m))?.[0]
+    ?? (real.length ? moodFlavour(st, m) : 'style');
   if (seed == null || rollOf(seed, 0x6a09e667) >= (FLAVOUR_SURPRISE[voltageLevel(voltage) ?? 1] ?? 0)) return own;
-  const others = st.flavours.map((f) => f.id).filter((id) => id !== own);
+  const others = [...(real.length ? real : ['style']), ...Object.keys(whole || {})].filter((id) => id !== own);
   return others[Math.floor(rollOf(seed, 0x3c6ef372) * others.length)];
 }
 /** Whether `flavour` is the style's own arrangement (or the style has none). */
@@ -152,6 +189,8 @@ const ownFlavour = (style, flavour) => !flavour || flavour === 'style' || flavou
  */
 function soundsIdFor(style, seed, voltage, mood = null, flavour = null) {
   const f = flavour ?? labFlavour(style, mood, seed, voltage);
+  const whole = styleFlavour(style, f);
+  if (whole) return soundsIdFor(whole, seed, voltage, mood, 'style');
   if (!ownFlavour(style, f) && BANGER_SOUNDS[`${style}-${f}`]) return `${style}-${f}`;
   const set = seed == null ? LAB_SOUND_SETS[style]?.set : labSoundSet(style, seed, voltage);
   return soundSetOf(styleFor(style), set)?.id ?? style;
@@ -203,12 +242,16 @@ export const infusionStyle = (infusion) => {
 export function labInfusion(id, mood) {
   const st = styleFor(infusionStyle(id));
   if (!st) return null;
+  const whole = Object.values(STYLE_FLAVOURS[st.id] || {}).find((w) => w.moods.includes(firstMood(mood)));
+  if (whole) return whole.style;
   const f = moodFlavour(st, firstMood(mood));
   if (!f || f === st.flavours?.[0]?.id) return st.id;
   return BANGER_FLAVOURS.find((x) => x.base === st.id && x.flavour === f)?.id ?? st.id;
 }
 /** The recipe FORMULA's groove plays on: its flavour where that is not its own, else the style on its Lab Sound Set. */
 function grooveRecipeId(style, flavour, seed, voltage) {
+  const whole = styleFlavour(style, flavour);
+  if (whole) return grooveRecipeId(whole, 'style', seed, voltage);
   if (!ownFlavour(style, flavour)) {
     const f = BANGER_FLAVOURS.find((x) => x.base === style && x.flavour === flavour);
     if (f) return f.id;
@@ -379,6 +422,12 @@ const BASS_ROLLS = Object.freeze({
   moombahton: ['reese', 'long808', 'octaves', 'rolling'],
   merenhouse: ['rootFifth', 'walking', 'octaves', 'funk'],
   'afro-house': ['rolling', 'sequencer', 'arpeggiated', 'pedal'],
+  // The 303 sound plays the others too, without slides or accents.
+  'acid-house': ['rolling', 'octaves', 'pedal'],
+  techno: ['acid', 'octaves', 'pedal', 'offbeat'],
+  rave: ['rolling', 'octaves', 'reese', 'long808'],
+  'uk-garage': ['funk', 'walking', 'octaves', 'rootFifth'],
+  freestyle: ['octaves', 'funk', 'gallop', 'offbeat'],
 });
 // `stabs` in a gate draw is Supersaw Stabs in place of a gate.
 const GATE_ROLLS = Object.freeze(['pump', 'eighths', 'sixteenths', 'dotted', 'energy', 'stabs']);
@@ -408,18 +457,20 @@ export const VOLTAGE_ROLL_ODDS = Object.freeze({
  * another style's beat (`beat`, a recipe id) the bass lines and the chords' gate are the beat's.
  * `version` is the recipe's expression version: the form roll is 4's.
  */
-export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, version = 3) {
+export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, version = 3, flavour = null) {
   const plain = BANGER_STYLES.find((s) => s.id === styleId);
   const style = (beat && plain && fusionOf(plain, beat)) || plain;
   // whose per-style tables (bass lines, the chords' gate) the groove is: the beat recipe's own style
   const groove = style?.fusion ? (styleFor(beat)?.base || beat) : styleId;
   // The style's own lead stays in the draw, one take in as many as there are leads to draw from:
   // Riff Sound = Random alone always moves off it.
-  const leads = resolveSounds(BANGER_SOUNDS, soundsIdFor(styleId, seed, voltage, moodId), moodId).random?.hook?.length || 1;
+  const leads = resolveSounds(BANGER_SOUNDS, soundsIdFor(styleId, seed, voltage, moodId, flavour), moodId).random?.hook?.length || 1;
   const out = { parts: rollOf(seed, 0x0f6a5f3d) < 1 / leads ? {} : { riffSound: 'random' } };
   if (!style) return out;
   const level = voltageLevel(voltage) ?? 1;
   const own = styleDefaults(style);
+  // A recipe kept before its style's form moved (FORMS_BEFORE_5) rolls from the form it had.
+  if (!beat && formBefore(styleId, version)) own.form.template = formBefore(styleId, version);
   // Each roll has its own salt, so one coming up never moves another.
   const rolls = (key, salt) => rollOf(seed, salt) < VOLTAGE_ROLL_ODDS[key][level];
   const pick = (list, salt) => list[Math.floor(rollOf(seed, salt) * list.length)];
@@ -487,14 +538,24 @@ export function newSeed() {
  * A recipe's EXPRESSION VERSION: which playing policy it was made under — today only Auto
  * Portamento, a slide setting on the lead that GO WILD adds (tools/lib/banger/expression.js).
  * Version 2 adds the VOLTAGE ROLLS (voltageRollsFor). Version 3 adds Voltage-driven section FX. Version 4 (7 Oct
- * 2026) adds the form roll. A NEW recipe carries 4 (maker.js); one saved
+ * 2026) adds the form roll. Version 5 (9 Oct 2026) starts seven styles off the Pop Song (FORMS_BEFORE_5).
+ * A NEW recipe carries 5 (maker.js); one saved
  * at 1 has the slide but no rolls, and one saved before there was any has no `expression` and reads
  * as 0, and is made EXACTLY as it always was, Go Wild included. A kept song is only its recipe,
  * made again whenever it is played, so a recipe that did not say must come out the way it did.
  * It is not RIFF_VERSION (what the grid's numbers mean) and not the generator's version (which
  * the Lab does not record).
  */
-export const RECIPE_EXPRESSION = 4;
+export const RECIPE_EXPRESSION = 5;
+/**
+ * The form each of these styles started on before version 5 (9 Oct 2026, Peter: "I'd like less pop
+ * songs" — five went to Club and two to Groove). A recipe kept before then is made in its old form.
+ */
+export const FORMS_BEFORE_5 = Object.freeze({
+  eurodance: 'pop', 'italo-disco': 'pop', merenhouse: 'pop', freestyle: 'pop', 'uk-garage': 'pop', 'nu-disco': 'pop', 'electro-funk': 'pop',
+});
+/** The form a style starts on in a recipe of `version`, if it is not the style's form today; else null. */
+const formBefore = (styleId, version) => (version < 5 && FORMS_BEFORE_5[styleId]) || null;
 /** A recipe's expression version, read safely: a whole number from 1, anything else 0 — none. */
 export const expressionVersionOf = (value) => (Number.isFinite(value) && value >= 1 ? Math.floor(value) : 0);
 
@@ -515,18 +576,21 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   let beat = null;
   const sound = infusionStyle(infusion);
   if (sound && sound !== style) {
-    beat = grooveRecipeId(style, keptFlavour ?? labFlavour(style, mood, seed, voltage), seed, voltage);
+    beat = grooveRecipeId(style, keptFlavourOf(style, keptFlavour) ?? labFlavour(style, mood, seed, voltage), seed, voltage);
     style = sound;
     keptFlavour = styleFor(infusion).flavour ?? 'style';
   }
+  // The take's flavour: the one its recipe kept (maker.js, so a flavour added later never moves a
+  // saved song), else rolled. One that is a whole style (STYLE_FLAVOURS) is made as that style.
+  let flavour = keptFlavourOf(style, keptFlavour) ?? labFlavour(style, mood, seed, voltage);
+  const whole = styleFlavour(style, flavour);
+  if (whole) { style = whole; flavour = 'style'; }
   const spot = spotFor(style, seed);
   const selectedVariation = ['faithful', 'some', 'more', 'wild'].includes(variation) ? variation : (wild ? 'wild' : null);
   const palette = savedPalette || (useCurrentPalette ? BANGER_PALETTE : null);
   const hasHookPalette = !!resolvePalette(palette, style, mood)?.['riff:hook']?.length;
   const styleSettings = BANGER_STYLES.find((candidate) => candidate.id === style);
-  // The take's flavour: the one its recipe kept (maker.js, so a flavour added later never moves a
-  // saved song), else rolled. One that is not the style's own plays instead of the Lab's Sound Set.
-  const flavour = keptFlavour ?? labFlavour(style, mood, seed, voltage);
+  // (The flavour, above: one that is not the style's own plays instead of the Lab's Sound Set.)
   // Overload's boost is on the tempo the take plays at — its flavour's, inside its flavour's range
   // (6 Oct 2026: it was the style's own, so Romántico and Darksynth jumped 8 and Outrun slowed).
   const voltageBpmBoost = voltageSettings(voltage).bpmBoost || 0;
@@ -543,15 +607,17 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   // it is how the lead is played, not which notes it plays.
   const slides = expressionVersionOf(expression) >= 2 ? !!wild
     : selectedVariation === 'wild' && expressionVersionOf(expression) >= 1;
-  const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed, beat, expressionVersionOf(expression)) : {};
+  const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed, beat, expressionVersionOf(expression), flavour) : {};
   const soundSet = ownFlavour(style, flavour) ? labSoundSet(style, seed, voltage) : 'style';
   const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}) };
   // A pair's switch goes on the form, which must name its template (a form that names none is Club).
-  const pairForm = pair ? { template: rolls.form?.template ?? (styleSettings && styleDefaults((beat && fusionOf(styleSettings, beat)) || styleSettings).form.template),
+  // A recipe kept before its style's form moved is made in the form it had (FORMS_BEFORE_5).
+  const keptForm = !beat && formBefore(style, expressionVersionOf(expression)) ? { template: formBefore(style, expressionVersionOf(expression)) } : null;
+  const pairForm = pair ? { template: rolls.form?.template ?? keptForm?.template ?? (styleSettings && styleDefaults((beat && fusionOf(styleSettings, beat)) || styleSettings).form.template),
     ...rolls.form, mood2: pair.second, moodSwitch: pair.switch } : null;
   // An INFUSION is always the Club form — the build-and-drop banger, never a Pop Song (Peter, 8 Oct 2026).
   const clubForm = beat ? { template: 'club' } : null;
-  const formOptions = pairForm || rolls.form || clubForm ? { ...(pairForm || rolls.form), ...clubForm } : null;
+  const formOptions = pairForm || rolls.form || clubForm || keptForm ? { ...keptForm, ...(pairForm || rolls.form), ...clubForm } : null;
   const options = {
     style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,

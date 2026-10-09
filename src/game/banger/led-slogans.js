@@ -96,6 +96,16 @@ export const LED_STYLE_LINES = Object.freeze({
     scroll: ['SCRAPE THAT GUIRA', 'SAXOPHONE ON THE ROOF', 'MERENGUE ALL NIGHT', 'FASTER FASTER FASTER'] },
   'afro-house': { hold: ['AFRO', 'DJEMBE', 'SUNSET', 'DEEP', 'UBUNTU'],
     scroll: ['THE DRUMS ARE TALKING', 'DANCE UNTIL SUNRISE', 'FEEL THE DJEMBE', 'DEEPER INTO THE GROOVE'] },
+  'acid-house': { hold: ['ACID!', 'SQUELCH', '303', 'SMILEY', 'WAREHOUSE'],
+    scroll: ['TURN THE CUTOFF', 'ACID ACID ACID', 'SMILE IT IS 1988', 'SQUELCH UNTIL SUNRISE'] },
+  techno: { hold: ['TECHNO', '909', 'MACHINES', 'LOOP', 'DETROIT'],
+    scroll: ['THE MACHINES ARE DANCING', 'ONE MORE LOOP', 'STRINGS IN THE DARK', 'NO LIGHTS JUST KICKS'] },
+  rave: { hold: ['RAVE!', 'HOOVER', 'HARDCORE', '140', 'HANDS UP'],
+    scroll: ['MIND THE HOOVER', 'RAVE IN THE FIELD', 'WHISTLES AT THE READY', 'LASERS ON'] },
+  'uk-garage': { hold: ['2-STEP', 'GARAGE', 'WHEEL UP', 'SKIPPY', 'SUNDAY'],
+    scroll: ['SKIP THE THIRD BEAT', 'SUNDAY AFTERNOON SESSION', 'ORGAN BASS BOUNCE', 'WHEEL IT BACK'] },
+  freestyle: { hold: ['FREESTYLE', 'LATIN', 'ORCH HIT', 'BOOGIE', 'HEARTBREAK'],
+    scroll: ['DANCING THROUGH THE HEARTBREAK', 'ORCHESTRA HIT INCOMING', 'CONGAS AND 808S', 'ONE MORE DRAMATIC CHORUS'] },
 });
 
 /** A board line with the song's details filled in. */

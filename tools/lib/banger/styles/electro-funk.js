@@ -5,8 +5,8 @@
 // against the records — Peter's ear wins over anything here. 108 and swung: an 808 boogie
 // beat with a cowbell, a slap synth bass popping octaves, a clav comping sixteenths (Chords =
 // Piano Stabs), horn stabs answering in the hook's rests (the counter-melody), the hook on a
-// talkbox. Song-shaped: a Pop Song in the Funky mood, with no riser, roll, impact, pump or
-// stutter — every one still a switch.
+// talkbox. A Groove in the Funky mood (a Pop Song until 9 Oct 2026: Peter wanted fewer), with
+// no riser, roll, impact, pump or stutter — every one still a switch.
 // Data only, like big-room.js; the sounds are in ../sounds.js.
 import { BIG_ROOM } from './big-room.js';
 
@@ -14,19 +14,22 @@ export const ELECTRO_FUNK = Object.freeze({
   id: 'electro-funk',
   label: 'Boogie',
   note: '108 · 808 boogie, slap bass, clav, talkbox',
-  title: '108 BPM and swung: an 808 boogie beat with a cowbell, a slap synth bass, a clav comping sixteenths, horn stabs in the gaps, the hook on a talkbox. Starts as a Pop Song in the Funky mood',
+  title: '108 BPM and swung: an 808 boogie beat with a cowbell, a slap synth bass, a clav comping sixteenths, horn stabs in the gaps, the hook on a talkbox. Starts as a Groove in the Funky mood — no drops',
+  // FLAVOURS (9 Oct 2026; ELECTRO_FUNK_FLAVOURS below): the mood picks one, the voltage now and then surprises.
+  flavours: [
+    { id: 'boogie', label: 'Boogie', note: 'Electro-funk: slap bass, clav, talk box' },
+    { id: 'newjack', label: 'New Jack Swing', note: 'Swung hard: a pushing 808 kick, a huge gated snare, FM piano and orchestra hits' },
+  ],
+  flavourByMood: { moody: 'newjack', soulful: 'newjack', lofi: 'newjack', bittersweet: 'newjack' },
   bpm: 108,
   tempoRange: [100, 116],
   swing: 55,
   defaults: {
     mood: 'funky',
-    form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
+    form: { template: 'groove', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
     drums: { rolls: false, impact: false, shaker: false, tambourine: false, congas: false, cowbell: true, ride: false },
     parts: { bass: 'offbeat', sub: false, chords: 'piano', square: false, bell: false, octaveDouble: false, arp: false, choir: false, counter: true },
     fx: { riser: false, filterBuild: false, stutter: false, pump: false, delayThrows: true },
-  },
-  sectionLabels: {
-    build: 'Pre-Chorus', build2: 'Pre-Chorus 2', drop: 'Chorus', drop2: 'Chorus 2', drop3: 'Chorus 3', reprise: 'Last Chorus',
   },
 
   progressions: BIG_ROOM.progressions,
@@ -104,3 +107,40 @@ export const ELECTRO_FUNK = Object.freeze({
     piano: 'CLAV', counter: 'HORNS', megaSaw: 'LEAD 8VA', cowbell: 'PERC Cowbell',
   },
 });
+
+// ---- the flavours (flavours.js), from work/local/_rave-sketches.mjs (9 Oct 2026)
+export const ELECTRO_FUNK_FLAVOURS = Object.freeze([
+  {
+    // NEW JACK SWING — 104, swung hard. An 808 kick pushing ahead of the beat, a huge gated snare
+    // and clap, swung sixteenth hats, a synth slap bass, FM-piano chords stabbed on the swing, and
+    // orchestra hits punctuating (the counter-melody, as stabs).
+    id: 'newjack', label: 'New Jack Swing',
+    recipe: {
+      bpm: 104,
+      tempoRange: [98, 110],
+      swing: 62,
+      drums: {
+        ...ELECTRO_FUNK.drums,
+        kick: ['x.....x...x..x..', 'x..x..x...x.....'],
+        clap: '....x.......x...',
+        hats16: 'x.xxx.xxx.xxx.xx',
+        ohats: '..............x.',
+      },
+      rhythms: {
+        ...ELECTRO_FUNK.rhythms,
+        offbeat: 'R:1 . . R:1 . . O:1 . R:1 . . 5:1 . R:1 7:1 .',
+        pianoStabs: '. . x:1 . . . x:2 . . . . x:1 . . x:1 .',
+        counterStabs: 'x:2 . . . . . . . . . . x:1 . . . .',
+      },
+      centres: { ...ELECTRO_FUNK.centres, stabs: 'E3' },
+      strips: {
+        ...ELECTRO_FUNK.strips,
+        snare: { gain: 1, effects: [{ id: 'reverb', params: { decay: 1.8, preDelay: 0.005, wet: 0.5 } }, { id: 'noisegate', params: { threshold: -34, attack: 0.002, release: 0.08 } }] },
+        clap: { gain: -1, effects: [{ id: 'reverb', params: { decay: 1.8, preDelay: 0.005, wet: 0.5 } }, { id: 'noisegate', params: { threshold: -34, attack: 0.002, release: 0.08 } }] },
+        piano: { gain: -8, pan: -0.1, send: { reverb: 0.3 } },
+        counter: { gain: -6, send: { reverb: 0.4 } },
+      },
+      labels: { ...ELECTRO_FUNK.labels, bass: 'SYNTH SLAP', piano: 'FM PIANO', counter: 'ORCH HIT' },
+    },
+  },
+]);

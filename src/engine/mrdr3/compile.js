@@ -18,7 +18,7 @@
 import { MRDR3_NATIVE, isMrdrVoice } from './identity.js';
 import { mrdr3SyncKind, mrdr3SyncKey } from './tables.js';
 import { mrdr3SyncBendSteps } from './env.js';
-import { driveCurve, DRIVE_HEADROOM } from '../drive-curve.js';
+import { driveCurve, DRIVE_HEADROOM, driveRef } from '../drive-curve.js';
 
 /**
  * A number in [0,1) that depends only on its salt — the engine's `hitRandom`, at the one
@@ -317,8 +317,12 @@ export function compileMrdr3(voice) {
     // The table the native WaveShaper reads, shipped verbatim (src/engine/drive-curve.js),
     // and the trim into it: the table spans ±DRIVE_HEADROOM, so the core scales the
     // group into it exactly as the gain in front of the native shaper does.
-    driveCurve: (voice.drive ?? 0) > 0 ? driveCurve(voice.drive, voice.shape) : null,
-    driveIn: 1 / DRIVE_HEADROOM,
+    // The knee at the preset's own PEAK, as the native path puts it (`driveRef`): the
+    // group goes in at 1/ref, and the table hands back values ref times larger, so the
+    // core's per-sample cost is the multiply it already makes.
+    driveCurve: (voice.drive ?? 0) > 0
+      ? driveCurve(voice.drive, voice.shape).map((y) => y * driveRef(voice)) : null,
+    driveIn: 1 / (DRIVE_HEADROOM * ((voice.drive ?? 0) > 0 ? driveRef(voice) : 1)),
     toneStages: (voice.drive ?? 0) > 0 && voice.tone ? 1 : 0,
     toneKind: voice.tone ? (FILTER_KIND[voice.tone.type] ?? 0) : 0,
     toneFreq: voice.tone ? (voice.tone.freq ?? 8000) : 8000,

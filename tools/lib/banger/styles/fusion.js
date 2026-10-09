@@ -34,9 +34,13 @@ export const FUSION_KEYS = Object.freeze({
   beat: Object.freeze(['bpm', 'tempoRange', 'tempoFeel', 'swing', 'drums', 'pump', 'bassFixed', 'wobbleSub', 'halfTimeUntil', 'fullTimeFrom']),
   // The song: harmony, arrangement, the parts over the beat, the FX moves and the master.
   music: Object.freeze(['progressions', 'moods', 'modeHarmony', 'breakdown', 'breakdownHook', 'enter', 'arpFixed', 'padUnder',
-    'master', 'exciter', 'sectionLabels', 'form', 'machineGunSweep', 'layers', 'grooveParts', 'harmony', 'script', 'blips']),
+    'master', 'exciter', 'sectionLabels', 'form', 'machineGunSweep', 'layers', 'grooveParts', 'harmony', 'script', 'blips',
+    // Chord Memory's one shape (9 Oct 2026) is the harmony's.
+    'chordMemory']),
   // Shared out part by part, below.
-  split: Object.freeze(['rhythms', 'centres', 'strips', 'labels', 'defaults', 'remapParts', 'remap', 'balance', 'phone']),
+  // `filterMoves` (9 Oct 2026, fx.js): each part's slow filter movement travels with the part —
+  // the bass's from the groove, the rest from the sound.
+  split: Object.freeze(['rhythms', 'centres', 'strips', 'labels', 'defaults', 'remapParts', 'remap', 'balance', 'phone', 'filterMoves']),
   // A fusion's own, or left behind: it has no flavours and no seed song of its own.
   own: Object.freeze(['id', 'label', 'note', 'title', 'base', 'flavour', 'soundSet', 'flavours', 'flavourByMood', 'seed']),
 });
@@ -118,6 +122,7 @@ export function makeFusion(music, beat) {
     centres: byKey(music.centres, beat.centres, (k) => BEAT_CENTRES.has(k)) || {},
     strips: fuseRoles(music.strips, beat.strips),
     labels: fuseRoles(music.labels, beat.labels),
+    ...(music.filterMoves || beat.filterMoves ? { filterMoves: fuseRoles(music.filterMoves, beat.filterMoves) } : {}),
     defaults: fuseDefaults(music.defaults, beat.defaults),
     balance: { ...mBal, roleGainDb: fuseRoles(mBal.roleGainDb, bBal.roleGainDb) },
     // A phone can carry it only if it can carry both.

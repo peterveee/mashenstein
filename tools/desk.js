@@ -25,7 +25,7 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync, renameSync, statSyn
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listBrowsers, stopBrowser } from './browsers.js';
-import { BANGER_STYLES } from './lib/banger/styles/index.js';
+import { BANGER_STYLES, BANGER_RECIPES } from './lib/banger/styles/index.js';
 import { BANGER_LEVEL_DATA } from './lib/banger/levels-data.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -239,6 +239,8 @@ function saveBalanceOverride({ styleId, balance, reset = false }) {
   return balancePageData();
 }
 
+// The banger cards' toggles: every style, each followed by its flavours and Sound Sets.
+const BANGER_RECIPE_IDS = BANGER_RECIPES.map(style => style.id);
 ACTIONS.push(
   {
     id: 'songlevels', group: 'audio', label: 'SONG LEVELS: MEASURE',
@@ -269,8 +271,8 @@ ACTIONS.push(
   },
   {
     id: 'bangerlevels', group: 'audio', label: 'BANGER LEVELS',
-    blurb: 'makes test bangers in the ticked styles and renders them channel by channel: how far each channel lands from the part it is matched to (the style’s seed banger once you have used one, else its seed remix), before levelling and after (tools/banger-levels.js). Measures any new banger sound first. Writes only the report. About ten minutes a style. + FIT folds each channel’s average miss into the levels.',
-    choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive', 'deep-house', 'nu-disco', 'downtempo', 'eurodance', 'italo-disco', 'electro-funk', 'french-house', 'reggaeton', 'moombahton', 'merenhouse', 'afro-house'],
+    blurb: 'makes test bangers in the ticked styles, flavours and Sound Sets and renders them channel by channel: how far each channel lands from the part it is matched to (the style’s seed banger once you have used one, else its seed remix), before levelling and after (tools/banger-levels.js). Measures any new banger sound first. Writes only the report. About ten minutes each. + FIT folds each channel’s average miss into the levels.',
+    choices: BANGER_RECIPE_IDS,
     options: [{ key: 'fit', label: '+ FIT', flag: '--fit' }],
     needsIds: true,
     speed: 'background',
@@ -303,8 +305,8 @@ ACTIONS.push({
   speed: 'background', steps: [niced(['build/build.js'])], openPath: () => null,
 }, {
   id: 'bangercalibration', group: 'audio', label: 'BANGER CALIBRATION',
-  blurb: 'Measures instruments playing short, sustained, busy and chord phrases through their channels. Reuses unchanged measurements, checks unseen phrases, publishes validated offsets, then rebuilds the game. The first full run is lengthy; interrupted runs resume from cached renders. FULL rebuilds everything selected. Weekly runs use all styles while the desk is open.',
-  choices: ['big-room', 'trance', 'future-bass', 'eurobeat', 'chipstep', 'synthwave', 'shibuya', 'dnb', 'electro', 'megadrive', 'deep-house', 'nu-disco', 'downtempo', 'eurodance', 'italo-disco', 'electro-funk', 'french-house', 'reggaeton', 'moombahton', 'merenhouse', 'afro-house'],
+  blurb: 'Measures instruments playing short, sustained, busy and chord phrases through their channels. Reuses unchanged measurements, checks unseen phrases, publishes validated offsets, then rebuilds the game. The first full run is lengthy; interrupted runs resume from cached renders. FULL rebuilds everything selected. Weekly runs use every style, flavour and Sound Set while the desk is open.',
+  choices: BANGER_RECIPE_IDS,
   options: [{ key: 'full', label: 'FULL REBUILD', flag: '--full' }], needsIds: true, speed: 'background', buildAfter: true,
   steps: args => [niced(['tools/banger-calibrate.js', 'refresh', ...idsFrom(args), ...optionFlags('bangercalibration', args)])],
   openPath: reportHref('banger-calibration.json', 'calibration'),

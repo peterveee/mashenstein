@@ -51,6 +51,11 @@ const STYLE = {
   moombahton: { echo: 0.8, lush: 0.5, room: 0.5 },
   merenhouse: { echo: 0.5, lush: 0.4, room: 0.6 },
   'afro-house': { echo: 1, lush: 0.8, room: 0.8 },
+  'acid-house': { echo: 0.8, lush: 0.3, room: 0.4 },
+  techno: { echo: 1, lush: 0.6, room: 0.7 },
+  rave: { echo: 0.7, lush: 0.6, room: 0.6 },
+  'uk-garage': { echo: 0.8, lush: 0.6, room: 0.5 },
+  freestyle: { echo: 0.7, lush: 0.7, room: 0.6 },
   chipstep: { echo: 0.5, lush: 0, room: 0.3 },
 };
 const AIRY = new Set(['dreamy', 'wonder', 'nostalgic', 'euphoric', 'gothic', 'lament']);

@@ -1148,7 +1148,7 @@ export const banger = {
       "id": "club:build:1",
       "role": "build",
       "type": "build",
-      "label": "Pre-Chorus",
+      "label": "Build",
       "from": 5,
       "to": 8,
       "energy": 0.6
@@ -1157,7 +1157,7 @@ export const banger = {
       "id": "club:drop:1",
       "role": "drop",
       "type": "drop",
-      "label": "Chorus",
+      "label": "Drop",
       "from": 9,
       "to": 32,
       "energy": 0.85
@@ -1175,7 +1175,7 @@ export const banger = {
       "id": "club:build:2",
       "role": "build2",
       "type": "build",
-      "label": "Pre-Chorus 2",
+      "label": "Build 2",
       "from": 41,
       "to": 44,
       "energy": 0.65
@@ -1184,7 +1184,7 @@ export const banger = {
       "id": "club:drop:2",
       "role": "drop2",
       "type": "drop",
-      "label": "Chorus 2",
+      "label": "Drop 2",
       "from": 45,
       "to": 60,
       "energy": 0.9

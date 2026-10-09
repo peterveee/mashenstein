@@ -81,6 +81,12 @@ export const TOLERANCE = 5e-6;
 // mbCompN → l7 master. Rendered twice against itself it now differs by 7.838e-6 with the
 // master and 6.985e-7 with the master removed (work/local/_plumber-determinism.mjs) —
 // the same mechanism, at a smaller gain, and over 5e-6 every run.
+//
+// The 6–7e-2 warning plumber.mix gave until 9 Oct 2026, at a different sample on every
+// run, was not this. Its lead's chorus LFO stopped turning during the lead's rest whenever
+// garbage collection let go of the finished notes, and so came back at a phase set by the
+// collector — see `keepTurning` in src/engine/voices.js. A warning that moves between runs
+// is a render depending on timing; re-baselining does not fix that.
 export const LOOSE_TOLERANCE = 5e-4;
 export const looseIds = new Set(['megamix.mix', 'plumber.mix']);
 export const toleranceFor = (id, suffix) => (looseIds.has(`${id}${suffix}`) ? LOOSE_TOLERANCE : TOLERANCE);

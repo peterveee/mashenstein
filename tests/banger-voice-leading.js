@@ -91,7 +91,7 @@ const isTriad = (set) => set.length === 3 && set.some((r) => ['0,4,7', '0,3,7'].
 {
   const riff = riffFromNotes([7, -1, 5, -1, 4, -1, 2, -1, 0, -1, 2, -1, 4, -1, 5, -1], 'simpleSquare', 'simple');
   const one = generateBanger({ riff, seed: 3, options: { style: 'trance', mood: 'nostalgic' } });
-  assert(BANGER_GENERATOR_VERSION === 9 && one.banger.generator === 9, 'generator v9, and a take records it');
+  assert(BANGER_GENERATOR_VERSION === 10 && one.banger.generator === 10, 'generator v10, and a take records it');
 
   let takes = 0, coloured = 0, avoidable = 0, outside = 0;
   for (const st of BANGER_STYLES) {
@@ -101,11 +101,15 @@ const isTriad = (set) => set.length === 3 && set.some((r) => ['0,4,7', '0,3,7'].
       takes++;
       const o = s.banger.options;
       const recipe = styleFor(o.style);
-      const centres = (flavourOf(recipe, o.flavour, { seed: s.banger.seed, mood: o.mood }) || recipe).centres;
+      const played = flavourOf(recipe, o.flavour, { seed: s.banger.seed, mood: o.mood }) || recipe;
+      const centres = played.centres;
+      // CHORD MEMORY's stabs are one shape on purpose (9 Oct 2026) and never voice-led: not judged here.
+      const memory = typeof played.chordMemory === 'string' ? played.chordMemory : played.chordMemory?.[o.mood];
+      const fixedRole = memory ? ({ stabs: 'saws', none: null }[o.parts.chords] ?? o.parts.chords) : null;
       const lift = (bar1) => (s.form.find((f) => f.from <= bar1 && bar1 <= f.to)?.lifted ? LIFT_SEMIS[o.form.keyLift] || 0 : 0);
       for (const role of VOICE_LED_ROLES) {
         const lane = s.laneOf[role];
-        if (!lane || !centres?.[role]) continue;
+        if (!lane || !centres?.[role] || role === fixedRole) continue;
         s.bank.sections.forEach((sec, block) => (sec[lane] || []).forEach((v, step) => {
           if (!Array.isArray(v) || v.length < 3) return;
           const n = v.map((f) => Math.round(69 + 12 * Math.log2(f / 440))).sort((a, b) => a - b);

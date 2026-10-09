@@ -19,11 +19,20 @@ export const DEEP_HOUSE = Object.freeze({
   label: 'Deep House',
   note: '122 · soft four-on-the-floor, Rhodes stabs, no drops',
   title: '122 BPM with a light swing: a soft four on the floor, minor-ninth Rhodes stabs on the off-beats, a warm round bass, a pad breathing with the kick, an "ooh" answering the hook. Starts as a Groove in the Moody mood — no drops',
+  // FLAVOURS (9 Oct 2026; DEEP_HOUSE_FLAVOURS below): the mood picks one, the voltage now and then surprises.
+  flavours: [
+    { id: 'deep', label: 'Deep House', note: 'Rhodes stabs, a round bass, a pad breathing with the kick' },
+    { id: 'piano', label: 'Piano House', note: 'The bright end: big piano chords, an organ bass and a diva "oh"' },
+  ],
+  flavourByMood: { uplifting: 'piano', euphoric: 'piano', soulful: 'piano', sunshine: 'piano', anthemic: 'piano', heroic: 'piano' },
   bpm: 122,
   tempoRange: [118, 126],
   swing: 54,
   // The pad holds under the stabs through every groove section, breathing with the kick.
   padUnder: true,
+  // CHORD MEMORY, by mood (9 Oct 2026, Peter): in the darker moods the stabs are one shape moved
+  // onto every root — the warehouse side of deep house — and in the rest they stay voiced to the key.
+  chordMemory: { moody: 'm9', mystery: 'm9', dark: 'm7', hypnotic: 'm7' },
   defaults: {
     mood: 'moody',
     form: { template: 'groove', doubleDrop: false, hardStop: false, keyLift: 'none' },
@@ -112,3 +121,36 @@ export const DEEP_HOUSE = Object.freeze({
     piano: 'KEYS Stabs', pad: 'PAD', saws: 'CHORDS Pad', choir: 'CHOIR', counter: 'VOX Ooh', square: 'HOOK DOUBLE', shaker: 'PERC Shaker',
   },
 });
+
+// ---- the flavours (flavours.js), from work/local/_rave-sketches.mjs (9 Oct 2026)
+export const DEEP_HOUSE_FLAVOURS = Object.freeze([
+  {
+    // PIANO HOUSE — 123. The bright end of house: a 909 groove with a tambourine, an organ bass
+    // bouncing round the kick, big piano chords on the off-beat syncopation, a diva "oh" answering.
+    id: 'piano', label: 'Piano House',
+    remap: { drums: { tambourine: { false: true } } },
+    recipe: {
+      bpm: 123,
+      tempoRange: [120, 128],
+      padUnder: false,
+      drums: {
+        ...DEEP_HOUSE.drums,
+        perc: { ...DEEP_HOUSE.drums.perc, tambourine: '....x.......x...' },
+      },
+      rhythms: {
+        ...DEEP_HOUSE.rhythms,
+        offbeat: 'R:1 . . R:1 . . O:1 . . R:1 . R:1 . . O:1 .',
+        pianoStabs: '. . x:2 . . . x:1 . . x:2 . . x:2 . . .',
+      },
+      centres: { ...DEEP_HOUSE.centres, piano: 'G4' },
+      strips: {
+        ...DEEP_HOUSE.strips,
+        tambourine: { gain: -12, pan: 0.3 },
+        bass: { gain: -10 },
+        piano: { gain: -9.5, pan: -0.1, send: { reverb: 0.3 } },
+        counter: { gain: -5, pan: 0.15, send: { delay: 0.25, reverb: 0.5 } },
+      },
+      labels: { ...DEEP_HOUSE.labels, bass: 'ORGAN BASS', piano: 'PIANO', counter: 'VOX Diva' },
+    },
+  },
+]);

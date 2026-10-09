@@ -28,6 +28,10 @@ export const AFRO_HOUSE = Object.freeze({
   bpm: 122,
   tempoRange: [118, 126],
   swing: 52,
+  // CHORD MEMORY, by mood (9 Oct 2026, Peter: "incorporate also with Afro"): Moody's organic stabs and
+  // Dark and Hypnotic's tech ones are one shape moved onto every root; the brighter moods stay in key.
+  // Its flavours inherit it with the rest of the recipe.
+  chordMemory: { moody: 'm9', mystery: 'm9', dark: 'm7', hypnotic: 'm7' },
   defaults: {
     mood: 'moody',
     form: { template: 'club', doubleDrop: false, hardStop: false, keyLift: 'none' },

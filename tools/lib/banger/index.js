@@ -79,7 +79,12 @@ export {
  * nearest its centre on its own. Peter chose it by ear over the clusters-only fix. Every take with a
  * coloured chord changes, kept Lab songs too; NEON ORBIT, played from its file, does not.
  */
-export const BANGER_GENERATOR_VERSION = 9;
+/* 10 (9 Oct 2026): CHORD MEMORY picked by the mood in Deep House and Afro House (and its flavours) —
+ * Moody and Mystery stab one minor-ninth shape, Dark and Hypnotic one minor-seventh, moved onto every
+ * chord's root (sections.js chordPart). Every take of those styles in those moods changes, kept Lab
+ * songs too. The new styles and the Acid bass, ghost notes and filter moves move nothing that existed.
+ */
+export const BANGER_GENERATOR_VERSION = 10;
 
 /** A seed as an unsigned 32-bit number. */
 export const normaliseSeed = (seed) => (Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : 1);
@@ -194,6 +199,8 @@ export function generateBanger({
     sectionFx: stream('sectionFx'),
     // The builds' Machine-Gun Sweep (fx.js) — drawn only in a style that has one.
     spotFx: stream('spotFx'),
+    // The acid line (theory.js acidLine) — drawn only when the bass is Acid.
+    acid: stream('acid'),
   };
   const warnings = [];
   if (raw?.production?.mode && raw.production.mode !== 'style' && options.production.mode === 'style') {
@@ -329,7 +336,13 @@ export function generateBanger({
   // The coloured chords voice-led, each moving least from the one before (voice-leading.js) — in
   // a lifted section, about its centre lifted with it.
   const liftOf = (bar1) => (form.find((f) => f.from <= bar1 && bar1 <= f.to)?.lifted ? LIFT_SEMIS[options.form.keyLift] || 0 : 0);
-  voiceLeadChords(bars, form, { centres: style.centres, liftOf, asWritten });
+  // Chord Memory's stabs keep their one shape (sections.js chordPart): the main chord part's role.
+  const chordRoleOf = { none: null, stabs: 'saws' };
+  // (By mood, when the style says so: the song's mood or its second one.)
+  const memoryOn = typeof style.chordMemory === 'string'
+    || [options.mood, options.form?.mood2].some((m) => m && style.chordMemory?.[m]);
+  const fixedRole = memoryOn ? (Object.hasOwn(chordRoleOf, options.parts.chords) ? chordRoleOf[options.parts.chords] : options.parts.chords) : null;
+  voiceLeadChords(bars, form, { centres: style.centres, liftOf, asWritten, fixed: fixedRole ? [fixedRole] : [] });
   // A bass figure with an echo (Sequencer): the bass again on a channel of its own, a
   // sixteenth behind — the record's delay, written as notes.
   if (BASS_FIGURES.find((f) => f.id === options.parts.bass)?.echo) echoPart(bars, 'bass', 'bassEcho');

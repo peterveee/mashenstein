@@ -9,7 +9,7 @@
 // chords hit the off-beats (Chords = Piano Stabs) and the hook is a fast sax riff. The
 // güira and tambora presets were made for it (src/data/voices.js).
 //
-// Song-shaped: a Pop Song in the Fiesta mood (moods.js) — merengue's own walk, the tonic and
+// The Club form (a Pop Song until 9 Oct 2026: Peter wanted fewer) in the Fiesta mood (moods.js) — merengue's own walk, the tonic and
 // its dominant seventh in plain triads. No riser, roll or pump.
 // Data only, like big-room.js; the sounds are in ../sounds.js.
 import { BIG_ROOM } from './big-room.js';
@@ -18,18 +18,15 @@ export const MERENHOUSE = Object.freeze({
   id: 'merenhouse',
   label: 'Merenhouse',
   note: '132 · merengue on a house kick, güira, tambora, sax',
-  title: '132 BPM: merengue on a four-on-the-floor kick — a güira scraping sixteenths, the tambora knocking under it, a slap bass, off-beat piano and the hook on a fast sax. Starts as a Pop Song in the Fiesta mood',
+  title: '132 BPM: merengue on a four-on-the-floor kick — a güira scraping sixteenths, the tambora knocking under it, a slap bass, off-beat piano and the hook on a fast sax. Starts on the Club form in the Fiesta mood',
   bpm: 132,
   tempoRange: [126, 140],
   defaults: {
     mood: 'fiesta',
-    form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
+    form: { template: 'club', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
     drums: { rolls: false, impact: false, shaker: true, tambourine: false, congas: true, cowbell: false, ride: false },
     parts: { bass: 'offbeat', sub: false, chords: 'piano', square: false, bell: false, octaveDouble: false, arp: false, choir: false, counter: true },
     fx: { riser: false, filterBuild: false, stutter: false, pump: false, delayThrows: true },
-  },
-  sectionLabels: {
-    build: 'Pre-Chorus', build2: 'Pre-Chorus 2', drop: 'Chorus', drop2: 'Chorus 2', drop3: 'Chorus 3', reprise: 'Last Chorus',
   },
 
   progressions: BIG_ROOM.progressions,

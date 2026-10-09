@@ -9,6 +9,7 @@ import { BANGER_SOUNDS } from '../tools/lib/banger/sounds.js';
 import { generateBanger } from '../tools/lib/banger/index.js';
 import { BANGER_STYLES, BANGER_FLAVOURS, styleFor, flavourOf, flavoursFor, moodFlavour } from '../tools/lib/banger/styles/index.js';
 import { normaliseBangerOptions } from '../tools/lib/banger/options.js';
+import { makeFlavour, twoBarChords } from '../tools/lib/banger/styles/flavours.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -110,6 +111,44 @@ assert(flavourOf(styleFor('big-room'), 'random', { seed: 5 }) === null && flavou
   const over = (mood, flavour) => makeBanger({ notes: DEFAULT_SIMPLE, style: 'synthwave', mood, seed: 7, expression: 3, voltage: 3, flavour }).bpm;
   assert(over('dark', 'darksynth') === 116 && over('uplifting', 'outrun') === 132,
     `Overload is the flavour's tempo + 4 (Darksynth ${over('dark', 'darksynth')}, Outrun ${over('uplifting', 'outrun')})`);
+}
+
+// WHOLE STYLES AS LAB FLAVOURS (9 Oct 2026, make.js STYLE_FLAVOURS): Italo Disco is a flavour of
+// Eurobeat and French House of Nu-Disco in the Lab. A take that lands on one is made as that style —
+// the same samples as asking for the style itself — and a take kept before a style had flavours
+// stays the style's own.
+{
+  const { makeBanger, labFlavour, styleFlavour } = await import('../src/game/banger/make.js');
+  const { DEFAULT_SIMPLE } = await import('../src/game/banger/riff.js');
+  const take = (style, flavour, mood) => makeBanger({ notes: DEFAULT_SIMPLE, style, mood, seed: 11, expression: 3, voltage: 1, ...(flavour ? { flavour } : {}) });
+  const same = (a, b) => JSON.stringify([a.bank, a.mix, a.arrangement]) === JSON.stringify([b.bank, b.mix, b.arrangement]);
+  assert(labFlavour('eurobeat', 'nostalgic') === 'italo' && labFlavour('nu-disco', 'funky') === 'french'
+    && labFlavour('eurobeat', 'dark') === 'hinrg' && labFlavour('eurobeat', 'anthemic') === 'eurobeat' && labFlavour('nu-disco', 'nostalgic') === 'style',
+  'the mood picks Italo under Eurobeat and French House under Nu-Disco; Dark picks Hi-NRG; the default moods stay the styles\' own');
+  assert(styleFlavour('eurobeat', 'italo') === 'italo-disco' && styleFlavour('nu-disco', 'french') === 'french-house' && styleFlavour('eurobeat', 'hinrg') === null,
+    'Italo and French House are whole styles, Hi-NRG a flavour of Eurobeat');
+  assert(same(take('eurobeat', 'italo', 'nostalgic'), take('italo-disco', null, 'nostalgic'))
+    && same(take('nu-disco', 'french', 'funky'), take('french-house', null, 'funky')),
+  'a take that lands on Italo or French House is exactly that style\'s take');
+  assert(same(take('eurobeat', null, 'dark'), take('eurobeat', 'style', 'dark')) && same(take('deep-house', null, 'uplifting'), take('deep-house', 'style', 'uplifting')),
+    'a take kept before its style had flavours plays the style\'s own, not the flavour its mood now picks');
+}
+
+// A flavour's own chord walks, mode harmony and moods are its own (8 Oct 2026). makeFlavour
+// used to rebuild the base's over the recipe, so a flavour that brought its own — Italo Disco
+// moving under Eurobeat — lost them. What it does not name stays the base's.
+{
+  const base = styleFor('synthwave');
+  const walk = { major: [['I'], ['I'], ['I'], ['I'], ['IV'], ['IV'], ['V'], ['V']], minor: [['i'], ['i'], ['i'], ['i'], ['iv'], ['iv'], ['v'], ['v']] };
+  const f = makeFlavour(base, { id: 'probe', label: 'Probe', recipe: {
+    progressions: { anthemic: walk }, moods: { anthemic: { ...base.moods.anthemic, high: 1.23 } } } });
+  assert(JSON.stringify(f.progressions.anthemic) === JSON.stringify(walk)
+    && ['major', 'minor'].every((m) => JSON.stringify(f.progressions.dark[m]) === JSON.stringify(base.progressions.dark[m]))
+    && f.moods.anthemic.high === 1.23 && f.moods.dark === base.moods.dark,
+  'a flavour keeps its own progressions and moods, and takes the base\'s for the rest');
+  const held = makeFlavour(base, { id: 'probe2', label: 'Probe 2', reshape: twoBarChords, recipe: { progressions: { anthemic: walk } } });
+  assert(JSON.stringify(held.progressions.anthemic.major) === JSON.stringify(twoBarChords(walk.major)),
+    'a flavour\'s reshape applies to its own progressions too');
 }
 
 if (failed) { console.error('\nbanger-flavours: FAILED'); process.exit(1); }

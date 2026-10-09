@@ -1410,7 +1410,7 @@ try {
   let weight = 0; let grind = 0;
   for (const style of ['eurodance', 'synthwave', 'nu-disco', 'italo-disco', 'reggaeton']) {
     for (let k = 0; k < 3; k++) {
-      const out = generateBanger({ riff: riffFromNotes(luckyNotes('simple', random, 4)), options: { style }, seed: 40 + k, level: false });
+      const out = generateBanger({ riff: riffFromNotes(luckyNotes('simple', random, 4)), options: { style, form: { template: 'pop' } }, seed: 40 + k, level: false });
       const { bank, laneOf, form } = out;
       const pad = laneOf.pad || laneOf.saws || laneOf.piano;
       for (const sec of form.filter((f) => f.role === 'preChorus' || f.role === 'middle8')) {

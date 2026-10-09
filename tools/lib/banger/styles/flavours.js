@@ -23,11 +23,19 @@ const mapWalk = (walk, reshape) => ({ major: reshape(walk.major), minor: reshape
 /** The flavour `def` of the recipe `base` (with its shared moods in), as a recipe of its own. */
 export function makeFlavour(base, def) {
   const reshape = def.reshape || ((p) => p);
-  const progressions = Object.fromEntries(Object.entries(base.progressions || {}).map(([id, w]) => [id, mapWalk(w, reshape)]));
-  const modeHarmony = Object.fromEntries(Object.entries(base.modeHarmony || {}).map(([mode, walks]) => [mode,
+  // A flavour's OWN progressions, mode harmony and moods win over the base's, mood by mood
+  // and mode by mode; whatever it does not name is the base's. Before 8 Oct 2026 the base's
+  // were rebuilt over the top of the recipe, so a flavour that brought its own chord walks
+  // (Italo Disco moving under Eurobeat, docs/LAB_STYLES_PLAN.md) lost them without a word.
+  // No flavour carried any until then, so every existing one is made exactly as before.
+  const own = def.recipe || {};
+  const progressions = Object.fromEntries(Object.entries({ ...base.progressions, ...own.progressions })
+    .map(([id, w]) => [id, mapWalk(w, reshape)]));
+  const modeHarmony = Object.fromEntries(Object.entries({ ...base.modeHarmony, ...own.modeHarmony }).map(([mode, walks]) => [mode,
     Object.fromEntries(Object.entries(walks).map(([k, h]) => [k, { ...h, progression: reshape(h.progression) }]))]));
   // `recolour` rewrites every mood's chord colours (and anything else a mood holds) the same way.
-  const moods = def.recolour ? Object.fromEntries(Object.entries(base.moods || {}).map(([id, m]) => [id, def.recolour(m)])) : base.moods;
+  const ownMoods = own.moods ? { ...base.moods, ...own.moods } : base.moods;
+  const moods = def.recolour ? Object.fromEntries(Object.entries(ownMoods || {}).map(([id, m]) => [id, def.recolour(m)])) : ownMoods;
   return Object.freeze({
     ...base,
     ...(def.recipe || {}),

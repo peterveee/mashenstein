@@ -898,5 +898,29 @@ for (const forbidden of ['document', 'window', 'AudioContext', 'currentFrame', '
   assert(!hit, `the core never reaches for '${forbidden.replace('\\b', '')}'`);
 }
 
+// ---- KEY FOLLOW measures from A2 (110 Hz), as MRDR-3 and KNDO-5 do ---------------
+// At the reference note KEY FOLLOW moves nothing, so full tracking and none are the same
+// sound there; an octave up, full tracking is an octave brighter.
+{
+  const at = (keyTrack, hz) => renderTngr2({ tables, sampleRate: RATE, seconds: 0.3,
+    patch: patchWith({ oscA: { table: 'sawForm', position: 0.5, level: 0.9 }, filter: { type: 'lowpass', cutoff: 500, resonance: 1, keyTrack } }),
+    events: [noteOn(1, 0.01, hz, RATE), noteOff(1, 0.25, RATE)] }).channels;
+  assert(maxDiff(at(1, 110), at(0, 110)) < 1e-6, 'KEY FOLLOW does nothing at A2, its reference note');
+  assert(maxDiff(at(1, 220), at(0, 220)) > 1e-3, '...and moves the cutoff an octave away from it');
+}
+
+// ---- a note's level above 1 is a boost, not a cap -------------------------------
+// The rack hands the core the note's whole level — `voiceGain`'s boost for a quiet
+// preset, a trim, a bar's automation — and the core used to cap it at 1, so every boost
+// was silently thrown away. Twice the level is twice the samples.
+{
+  const at = (velocity) => renderTngr2({ tables, sampleRate: RATE, seconds: 0.4, patch,
+    events: [noteOn(1, 0.01, 220, RATE, { velocity }), noteOff(1, 0.3, RATE)] }).channels;
+  const one = at(1); const two = at(2);
+  let worst = 0;
+  for (let c = 0; c < one.length; c++) for (let i = 0; i < one[c].length; i++) worst = Math.max(worst, Math.abs(two[c][i] - 2 * one[c][i]));
+  assert(peak(one) > 0.05 && worst < 1e-5, `a note at level 2 is exactly twice a note at level 1 (max diff ${worst.toExponential(2)})`);
+}
+
 console.log(failed ? `\nTNGR-2 DSP: ${failed} FAILED` : '\nTNGR-2 DSP: PASSED');
 process.exit(failed ? 1 : 0);

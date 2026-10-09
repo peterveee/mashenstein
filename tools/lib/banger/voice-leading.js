@@ -109,10 +109,13 @@ function restartsOf(bars, form, role) {
  * `liftOf(bar1)` the semitones a bar's section is lifted by; `asWritten` holds `${bar0}:${role}`
  * for a chord part playing the riff as written. Returns how many chords were re-voiced.
  */
-export function voiceLeadChords(bars, form, { centres, liftOf = () => 0, asWritten = new Set() } = {}) {
+export function voiceLeadChords(bars, form, { centres, liftOf = () => 0, asWritten = new Set(), fixed = [] } = {}) {
   let moved = 0;
   for (const role of VOICE_LED_ROLES) {
     if (!centres?.[role]) continue;
+    // A role playing one fixed shape on purpose (Chord Memory, sections.js) is not re-voiced:
+    // moving its chords to the nearest inversion is exactly what the shape is there not to do.
+    if (fixed.includes(role)) continue;
     const centre = midi(centres[role]);
     const restarts = restartsOf(bars, form, role);
     let prev = null;

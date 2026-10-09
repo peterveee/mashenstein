@@ -36,7 +36,7 @@
  * allocator, the queue, or the parity this file's tests establish.
  */
 
-import { driveCurveTable, DRIVE_HEADROOM, DRIVE_CURVE_POINTS } from '../drive-curve.js';
+import { driveCurveTable, DRIVE_HEADROOM, DRIVE_CURVE_POINTS, TNGR2_DRIVE_STAGE } from '../drive-curve.js';
 
 /**
  * The core, as source. Pure: no DOM, no Tone, no VoiceRack, no mixer or game state, and
@@ -409,13 +409,27 @@ var TNGR2_FILTER_MODES = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3 };
 // pasted in here because this string cannot import. Until it was, TNGR-2's worklet had a
 // drive of its own (a Padé tanh with a reflecting fold and a 16-step crush) while its
 // native fallback used the shared one, so the same DRIVE read two ways on one synth.
+//
+// A voice reaches it TNGR2_DRIVE_STAGE times too quiet (see src/engine/drive-curve.js), so
+// it is read that much louder — folded into the scale the read already makes — and the
+// table hands back values that much smaller, divided out once when the table is built.
 var tngr2DriveTable = (${driveCurveTable.toString()});
-var TNGR2_DRIVE_IN = ${1 / DRIVE_HEADROOM};
+var TNGR2_DRIVE_HEADROOM = ${DRIVE_HEADROOM};
+var TNGR2_DRIVE_STAGE = ${TNGR2_DRIVE_STAGE};
+var TNGR2_DRIVE_IN = ${TNGR2_DRIVE_STAGE / DRIVE_HEADROOM};
 var TNGR2_DRIVE_POINTS = ${DRIVE_CURVE_POINTS};
+
+// KEY FOLLOW's reference note, A2 — the one MRDR-3 and KNDO-5 use (base / 110).
+var TNGR2_KEY_REF = 110;
+
+// The most a note's level may be: +24 dB. voiceGain boosts at most +12 dB and a trim,
+// a bar's automation and an accent multiply on top; past this it is a mistake upstream.
+var TNGR2_MAX_LEVEL = 16;
 
 /**
  * The drive's table, read exactly as a WaveShaperNode reads one at oversample 'none':
- * linear interpolation, ends held. The signal is scaled into the table's ±headroom first.
+ * linear interpolation, ends held. The signal is lifted and scaled into the table's
+ * ±headroom first.
  */
 function tngr2Shape(curve, x) {
   var n = curve.length;
@@ -513,8 +527,10 @@ function tngr2CompilePatch(patch) {
     // small path rather than a matrix slot, because it is one fixed job.
     vibrato: {
       depth: Math.min(24, Math.max(0, Number(p.vibrato && p.vibrato.depth) || 0)),
-      hz: Math.min(64, Math.max(0.01, Number(p.vibrato && p.vibrato.rate) || 5)),
+      hz: Math.min(64, Math.max(0.01, p.vibrato && p.vibrato.rate != null ? Number(p.vibrato.rate) || 0 : 5)),
       delay: Math.max(0, Number(p.vibrato && p.vibrato.delay) || 0),
+      // The native paths' names: a sawtooth is this core's saw.
+      shape: ({ triangle: TNGR2_LFO_TRIANGLE, sawtooth: TNGR2_LFO_SAW, square: TNGR2_LFO_SQUARE })[p.vibrato && p.vibrato.type] || TNGR2_LFO_SINE,
       delaySamples: 0
     },
     sources: [],
@@ -523,7 +539,8 @@ function tngr2CompilePatch(patch) {
   // The drive's table, built once per patch: a pot move is a new patch, never a new table
   // per note.
   if (out.drive.amount > 0) {
-    out.drive.curve = tngr2DriveTable(out.drive.amount, p.shape, 1 / TNGR2_DRIVE_IN, TNGR2_DRIVE_POINTS);
+    out.drive.curve = tngr2DriveTable(out.drive.amount, p.shape, TNGR2_DRIVE_HEADROOM, TNGR2_DRIVE_POINTS);
+    for (var di = 0; di < out.drive.curve.length; di++) out.drive.curve[di] /= TNGR2_DRIVE_STAGE;
   }
   var lfoSpecs = [p.lfo1];
   for (var li = 0; li < 1; li++) {
@@ -790,13 +807,20 @@ Tngr2Voice.prototype.start = function start(note, age, patch, tables, core, star
   this.age = age;
   this.patch = patch;
   this.hz = Math.max(0, Number(note.hz) || 0);
-  this.velocity = Math.min(1, Math.max(0, note.velocity != null ? Number(note.velocity) : 1));
+  // The note's LEVEL, as the rack hands it: the lane's measured gain, its trim and any bar
+  // automation multiplied together. Not capped at 1 — it used to be, which silently threw
+  // away every boost a quiet preset's voiceGain asked for. Bounded only against a value
+  // nothing sane would send.
+  this.velocity = Math.min(TNGR2_MAX_LEVEL, Math.max(0, note.velocity != null ? Number(note.velocity) : 1));
   this.level = this.velocity;
   this.pendingLevel = -1;
   this.pitchDirty = false;
-  // Key tracking, in octaves from middle C: what §7.4's filter keyTrack scales, and a
-  // modulation source in its own right.
-  this.keyTrack = Math.log2(Math.max(1e-6, this.hz) / 261.6255653005986);
+  // Key tracking, in octaves from A2 (110 Hz): what §7.4's filter keyTrack scales. A2
+  // because it is where MRDR-3 and KNDO-5 measure KEY FOLLOW from, so the same CUTOFF and
+  // KEY FOLLOW put the filter in the same place on every synth. It was middle C, which
+  // made TNGR-2 1.25 octaves darker than its neighbours at the same reading; the presets
+  // that use it had their CUTOFF moved by exactly that when this changed.
+  this.keyTrack = Math.log2(Math.max(1e-6, this.hz) / TNGR2_KEY_REF);
   this.stages = patch.stages;
   for (var r = 0; r < 4; r++) { this.svfL[r].reset(); this.svfR[r].reset(); }
   this.toneL = 0;
@@ -840,7 +864,7 @@ Tngr2Voice.prototype.start = function start(note, age, patch, tables, core, star
   this.lfo1.gate(patch.lfos[0], startFrame, seed);
   if (patch.usesVibrato) {
     this.vib.gate({
-      shape: TNGR2_LFO_SINE, hz: patch.vibrato.hz, phase: 0,
+      shape: patch.vibrato.shape, hz: patch.vibrato.hz, phase: 0,
       delaySamples: patch.vibrato.delaySamples, retrigger: true
     }, startFrame, seed + 977);
   }
@@ -906,7 +930,7 @@ Tngr2Voice.prototype.retarget = function retarget(note, patch, regate, tables, c
   var target = Math.max(1e-6, Number(note.hz) || 0);
   var from = Math.max(1e-6, this.hz);
   this.hz = target;
-  this.keyTrack = Math.log2(target / 261.6255653005986);
+  this.keyTrack = Math.log2(target / TNGR2_KEY_REF);
   // Only when the lane has actually been given a different patch — which never happens
   // inside a render, so a bounce is sample-for-sample what it was.
   if (regate && this.patch !== patch) this.rebind(patch, tables, core);
@@ -945,7 +969,7 @@ Tngr2Voice.prototype.retarget = function retarget(note, patch, regate, tables, c
     // The strike belongs to the new note, so it is struck at the new note's velocity —
     // but a gain swapped under a sounding envelope is a click, so it waits for the sample
     // the choke reaches silence. See tick(). Nothing to cover means nothing to wait for.
-    this.velocity = Math.min(1, Math.max(0,
+    this.velocity = Math.min(TNGR2_MAX_LEVEL, Math.max(0,
       note.velocity != null ? Number(note.velocity) : 1));
     if (this.env.stage === TNGR2_STAGE_RESTRIKE) this.pendingLevel = this.velocity;
     else { this.level = this.velocity; this.pendingLevel = -1; }

@@ -7,7 +7,7 @@
 import { BIG_ROOM } from './big-room.js';
 import { TRANCE } from './trance.js';
 import { FUTURE_BASS } from './future-bass.js';
-import { EUROBEAT } from './eurobeat.js';
+import { EUROBEAT, EUROBEAT_FLAVOURS } from './eurobeat.js';
 import { CHIPSTEP } from './chipstep.js';
 import { CHIPSTEP_LITE } from './chipstep-lite.js';
 import { CHIPSTEP_8BIT } from './chipstep-8bit.js';
@@ -17,10 +17,10 @@ import { SHIBUYA } from './shibuya.js';
 import { DNB, DNB_FLAVOURS } from './dnb.js';
 import { ELECTRO } from './electro.js';
 import { MEGADRIVE } from './megadrive.js';
-import { DEEP_HOUSE } from './deep-house.js';
+import { DEEP_HOUSE, DEEP_HOUSE_FLAVOURS } from './deep-house.js';
 import { NU_DISCO } from './nu-disco.js';
-import { DOWNTEMPO } from './downtempo.js';
-import { ELECTRO_FUNK } from './electro-funk.js';
+import { DOWNTEMPO, DOWNTEMPO_FLAVOURS } from './downtempo.js';
+import { ELECTRO_FUNK, ELECTRO_FUNK_FLAVOURS } from './electro-funk.js';
 import { FRENCH_HOUSE } from './french-house.js';
 import { EURODANCE } from './eurodance.js';
 import { ITALO_DISCO } from './italo-disco.js';
@@ -28,13 +28,20 @@ import { REGGAETON, REGGAETON_FLAVOURS } from './reggaeton.js';
 import { MOOMBAHTON } from './moombahton.js';
 import { MERENHOUSE } from './merenhouse.js';
 import { AFRO_HOUSE, AFRO_HOUSE_FLAVOURS } from './afro-house.js';
+import { ACID_HOUSE } from './acid-house.js';
+import { TECHNO, TECHNO_FLAVOURS } from './techno.js';
+import { RAVE, RAVE_FLAVOURS } from './rave.js';
+import { UK_GARAGE, UK_GARAGE_FLAVOURS } from './uk-garage.js';
+import { FREESTYLE } from './freestyle.js';
 import { withSharedMoods } from '../moods.js';
 import { makeFlavour, seedRoll } from './flavours.js';
 import { makeFusion, fusionIds } from './fusion.js';
 
 // Every style plays the shared moods (moods.js) unless it has its own take on one.
 export const BANGER_STYLES = Object.freeze([BIG_ROOM, TRANCE, FUTURE_BASS, EUROBEAT, CHIPSTEP, SYNTHWAVE, SHIBUYA, DNB, ELECTRO, MEGADRIVE, DEEP_HOUSE, NU_DISCO, DOWNTEMPO,
-  EURODANCE, ITALO_DISCO, ELECTRO_FUNK, FRENCH_HOUSE, REGGAETON, MOOMBAHTON, MERENHOUSE, AFRO_HOUSE].map(withSharedMoods));
+  EURODANCE, ITALO_DISCO, ELECTRO_FUNK, FRENCH_HOUSE, REGGAETON, MOOMBAHTON, MERENHOUSE, AFRO_HOUSE,
+  // 9 Oct 2026 (docs/LAB_STYLES_PLAN.md): hidden in the Lab until Peter has heard them.
+  ACID_HOUSE, TECHNO, RAVE, UK_GARAGE, FREESTYLE].map(withSharedMoods));
 
 // SOUND SETS (5 Oct 2026): a style's music on another set of sounds — Light (the cheap synths
 // only, for a phone) and 8-Bit (chip blips). Each is a recipe with `base` (the style it
@@ -49,8 +56,23 @@ export const BANGER_FLAVOURS = Object.freeze([
   ...REGGAETON_FLAVOURS.map((def) => makeFlavour(withSharedMoods(REGGAETON), def)),
   ...SYNTHWAVE_FLAVOURS.map((def) => makeFlavour(withSharedMoods(SYNTHWAVE), def)),
   ...DNB_FLAVOURS.map((def) => makeFlavour(withSharedMoods(DNB), def)),
+  // 9 Oct 2026 (docs/LAB_STYLES_PLAN.md).
+  ...EUROBEAT_FLAVOURS.map((def) => makeFlavour(withSharedMoods(EUROBEAT), def)),
+  ...DEEP_HOUSE_FLAVOURS.map((def) => makeFlavour(withSharedMoods(DEEP_HOUSE), def)),
+  ...DOWNTEMPO_FLAVOURS.map((def) => makeFlavour(withSharedMoods(DOWNTEMPO), def)),
+  ...ELECTRO_FUNK_FLAVOURS.map((def) => makeFlavour(withSharedMoods(ELECTRO_FUNK), def)),
+  ...TECHNO_FLAVOURS.map((def) => makeFlavour(withSharedMoods(TECHNO), def)),
+  ...RAVE_FLAVOURS.map((def) => makeFlavour(withSharedMoods(RAVE), def)),
+  ...UK_GARAGE_FLAVOURS.map((def) => makeFlavour(withSharedMoods(UK_GARAGE), def)),
 ]);
 const BY_ID = new Map([...BANGER_STYLES, ...BANGER_SOUND_SETS, ...BANGER_FLAVOURS].map((s) => [s.id, s]));
+/**
+ * Every recipe a take can be made from, each style followed by its flavours and Sound Sets —
+ * what the desk's BANGER LEVELS and BANGER CALIBRATION cards offer, so a new one is on both
+ * the day it is registered.
+ */
+export const BANGER_RECIPES = Object.freeze(BANGER_STYLES.flatMap((s) => [s,
+  ...BANGER_FLAVOURS.filter((f) => f.base === s.id), ...BANGER_SOUND_SETS.filter((x) => x.base === s.id)]));
 
 // FUSIONS (7 Oct 2026, fusion.js): one recipe's music over another's beat. Not listed — there is
 // one for every pair — but made on asking, by the name a take records, and kept once made.

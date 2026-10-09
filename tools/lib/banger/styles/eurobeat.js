@@ -16,6 +16,14 @@ export const EUROBEAT = Object.freeze({
   // What the Style list says beside it, and its tooltip.
   note: '155 · octave bass, strings, brass stabs',
   title: '155 BPM, HAIRPIN\'s shape: four on the floor, an octave bass in eighths, strings, brass stabs on the off-beats, a razor lead doubling the hook. Starts as a Pop Song',
+  // FLAVOURS (9 Oct 2026, docs/LAB_STYLES_PLAN.md; EUROBEAT_FLAVOURS below): the mood picks one, the
+  // voltage now and then surprises. In the Lab Italo Disco is one of them too (src/game/banger/make.js
+  // STYLE_FLAVOURS) — a whole style the take turns into.
+  flavours: [
+    { id: 'eurobeat', label: 'Eurobeat', note: 'Fast drums, an octave bass in eighths, brass stabs and strings' },
+    { id: 'hinrg', label: 'Hi-NRG', note: 'Slower and harder: a galloping octave bass, a big clap, brass stabbing the off-beats' },
+  ],
+  flavourByMood: { dark: 'hinrg', gothic: 'hinrg', flamenco: 'hinrg', lament: 'hinrg', boss: 'hinrg' },
   bpm: 155,
   // Its bass is its signature: Bass Lifts never moves it.
   bassFixed: true,
@@ -181,3 +189,35 @@ export const EUROBEAT = Object.freeze({
     saws: 'CHORDS', counter: 'STABS', bass: 'BASS Octave',
   },
 });
+
+// ---- the flavours (flavours.js), from work/local/_rave-sketches.mjs (9 Oct 2026)
+export const EUROBEAT_FLAVOURS = Object.freeze([
+  {
+    // HI-NRG — 130. The faster, harder side of the eighties dancefloor, slower than Eurobeat: a four
+    // on the floor with a big gated clap, the octave bass galloping, PWM brass stabbing the off-beats
+    // over held strings, a bright lead.
+    id: 'hinrg', label: 'Hi-NRG',
+    recipe: {
+      bpm: 130,
+      tempoRange: [126, 136],
+      drums: {
+        ...EUROBEAT.drums,
+        hats16: '..x...x...x...x.',
+        hats8: '..x...x...x...x.',
+        ohats: '..............x.',
+      },
+      rhythms: {
+        ...EUROBEAT.rhythms,
+        offbeat: 'R:1 . O:1 O:1 R:1 . O:1 O:1 R:1 . O:1 O:1 R:1 . O:1 O:1',
+        pianoStabs: '. . x:1 . . . x:1 . . . x:1 . . . x:1 .',
+      },
+      strips: {
+        ...EUROBEAT.strips,
+        clap: { gain: 1, send: { reverb: 0.4 }, effects: [{ id: 'reverb', params: { decay: 1.8, preDelay: 0.005, wet: 0.5 } }, { id: 'noisegate', params: { threshold: -34, attack: 0.002, release: 0.08 } }] },
+        bass: { gain: -2, effects: [{ id: 'filter', params: { type: 'lowpass', frequency: 1600, Q: 1 } }] },
+        piano: { gain: -6, pan: 0.15, send: { reverb: 0.3 } },
+      },
+      labels: { ...EUROBEAT.labels, bass: 'BASS Gallop', piano: 'BRASS Stabs' },
+    },
+  },
+]);

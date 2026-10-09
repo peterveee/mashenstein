@@ -112,11 +112,12 @@ function assert(cond, msg) {
 
 // ---------------------------------------------------------------- the generator
 assert(!MAKER_STYLES.some((s) => s.id === 'kraftwerk'), 'Kraftwerk is out');
-// Boogie is hidden in the Lab, not the desk (7 Oct 2026), so the Lab offers a multiple of four;
-// a song kept on it still reads as BOOGIE.
-assert(!MAKER_STYLES.some((s) => s.id === 'electro-funk') && BANGER_STYLES.some((s) => s.id === 'electro-funk')
-  && MAKER_STYLES.length % 4 === 0 && formulaLabel('electro-funk') === 'BOOGIE',
-  `Boogie is out of the Lab but still on the desk, and the Lab offers ${MAKER_STYLES.length} styles`);
+// Boogie came back to the Lab with the five new styles (9 Oct 2026). Italo Disco and French House are
+// flavours there (make.js STYLE_FLAVOURS) and styles on the desk; a song kept on one still reads as itself.
+assert(MAKER_STYLES.some((s) => s.id === 'electro-funk') && MAKER_STYLES.length === 24
+  && ['italo-disco', 'french-house'].every((id) => !MAKER_STYLES.some((s) => s.id === id) && BANGER_STYLES.some((s) => s.id === id))
+  && formulaLabel('electro-funk') === 'BOOGIE' && formulaLabel('italo-disco') === 'ITALO DISCO',
+  `the Lab offers ${MAKER_STYLES.length} styles: Boogie back, Italo Disco and French House flavours there and styles on the desk`);
 // Chipstep and synthwave play on their LIGHT Sound Set (5 Oct 2026): no MRDR-3, no JMJR-4 —
 // and chipstep, as CHIPTUNE, comes out on 8-Bit blips now and then, by its seed — more often the
 // higher the voltage (1 in 6 at Safe up to 1 in 2 at Overload).
@@ -634,8 +635,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(typeof made.rec.name === 'string' && made.rec.name.length > 0, 'the pending preview is titled before it is kept');
   const kept = keepBanger({ ...made.rec, fresh: false, name: made.rec.name });
   assert(kept === bangerState().kept.at(-1) && bangerState().kept.includes(kept), 'saving the pending recipe keeps the song');
-  assert(kept.expression === 4 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
-    'a new recipe opts into expression version 4 (Go Wild\'s slide on the lead, the voltage rolls, the form roll), and made again from the kept recipe it is the song just handed over');
+  assert(kept.expression === 5 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
+    'a new recipe opts into expression version 5 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song), and made again from the kept recipe it is the song just handed over');
 
   tap(maker, ...centre(L.buttons[0]));
   made = null;
@@ -2737,7 +2738,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const revised = reviseBanger(rec, made);
   assert(revised === rec && rec.style === other && rec.name === name && rec.n === n && bangerState().kept.length === count,
     'and saving the edit remakes that song in place: same name and number, the new style, no new song');
-  assert(rec.expression === 4, 'and an old recipe edited with the pencil opts into expression version 4');
+  assert(rec.expression === 5, 'and an old recipe edited with the pencil opts into expression version 5');
   assert(JSON.stringify(bangerState().draft) === draftBefore, 'editing a song leaves the NEW BANGER draft alone');
 }
 

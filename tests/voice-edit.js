@@ -223,15 +223,16 @@ async function main() {
       hit('bass', id);
       const rebuilt = poolOf('bass', id);
       say(rebuilt && rebuilt.slots[0].vib, '...and the next note has the vibrato node');
-      // Depth and rate are signals on a node that already exists: settable, no rebuild.
+      // Depth and rate are params on nodes that already exist: settable, no rebuild.
+      // Depth in cents on the synth's detune — semitones × 100, as on every native path.
       const vibbed = rebuilt.slots[0].synth;
       VOICES[id].vibrato.depth = 0.8;
       VOICES[id].vibrato.rate = 3;
       rack.refresh(id);
       say(poolOf('bass', id) === rebuilt && rebuilt.slots[0].synth === vibbed,
         'moving an existing vibrato does not rebuild');
-      say(Math.abs(settled(rebuilt.slots[0].vib.depth) - 0.8) < 1e-3
-        && Math.abs(settled(rebuilt.slots[0].vib.frequency) - 3) < 1e-3,
+      say(Math.abs(rebuilt.slots[0].vib.heading?.cents - 80) < 1e-3
+        && Math.abs(rebuilt.slots[0].vib.heading?.rate - 3) < 1e-3,
         '...and the wobble actually moved');
     }
 

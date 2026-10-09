@@ -6,8 +6,8 @@
 // lightest swing: an easy four on the floor, a snare on two and four, open hats on the
 // off-beats, congas and a tambourine; a bass guitar walking root, octave and fifth; a
 // picked acoustic guitar running through the chords from the start; soft strings holding
-// them; the hook on a flute. Song-shaped: a Pop Song in the Nostalgic mood (the royal road,
-// IV–V–iii–vi) with no riser, roll, impact, pump or stutter — every one still a switch.
+// them; the hook on a flute. A Groove (a Pop Song until 9 Oct 2026: Peter wanted fewer) in
+// the Nostalgic mood (the royal road, IV–V–iii–vi) with no riser, roll, impact, pump or stutter — every one still a switch.
 // Data only, like big-room.js; the sounds are in ../sounds.js.
 import { BIG_ROOM } from './big-room.js';
 
@@ -17,7 +17,7 @@ export const NU_DISCO = Object.freeze({
   id: 'nu-disco',
   label: 'Nu-Disco',
   note: '112 · slow disco, picked guitar, congas, flute',
-  title: '112 BPM: an easy four on the floor with congas and a tambourine, a walking bass guitar, a picked acoustic guitar through the chords, soft strings, the hook on a flute. Starts as a Pop Song in the Nostalgic mood',
+  title: '112 BPM: an easy four on the floor with congas and a tambourine, a walking bass guitar, a picked acoustic guitar through the chords, soft strings, the hook on a flute. Starts as a Groove in the Nostalgic mood — no drops',
   bpm: 112,
   tempoRange: [104, 118],
   swing: 52,
@@ -26,13 +26,10 @@ export const NU_DISCO = Object.freeze({
   enter: { arp: 0 },
   defaults: {
     mood: 'nostalgic',
-    form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
+    form: { template: 'groove', doubleDrop: false, hardStop: false, keyApproach: 'mood' },
     drums: { impact: false, rolls: false, shaker: false, tambourine: true, congas: true, ride: false },
     parts: { bass: 'offbeat', sub: false, chords: 'pad', square: false, bell: false, octaveDouble: false, arp: true, arpPattern: 'style', choir: false, counter: false },
     fx: { riser: false, filterBuild: false, stutter: false, pump: false, delayThrows: true },
-  },
-  sectionLabels: {
-    build: 'Pre-Chorus', build2: 'Pre-Chorus 2', drop: 'Chorus', drop2: 'Chorus 2', drop3: 'Chorus 3', reprise: 'Last Chorus',
   },
 
   progressions: BIG_ROOM.progressions,

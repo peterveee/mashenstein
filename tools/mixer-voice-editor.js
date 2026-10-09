@@ -1032,6 +1032,32 @@ const ADDITIVE_HUMANISE_GROUP = humaniseGroupFor(['gain', 'pitch']);
 const PERCUSSION_HUMANISE_GROUP = humaniseGroupFor(['gain', 'pitch', 'filter']);
 
 /**
+ * MRDR-3's Humanise card, with VELOCITY under it (8 Oct 2026): how much of a softer strike
+ * the preset hears when a song writes one (`${lane}Velocity`; see `_playLayer`). Here
+ * because both answer the same question — how one hit differs from the next — HUMANISE by
+ * chance and VELOCITY by what the song wrote. Its own object, so the shared card the
+ * other engines take is left exactly as it was.
+ *
+ * The defaults are what every preset without the key already does: LEVEL 1, a soft note's
+ * gain is its velocity, as on every other instrument; FILTER 0, the envelope is untouched.
+ */
+const MRDR3_HUMANISE_GROUP = {
+  ...HUMANISE_GROUP,
+  fold: (v) => HUMANISE_GROUP.fold(v)
+    && (getAt(v, '$velocity.level') ?? 1) === 1 && (getAt(v, '$velocity.filter') ?? 0) === 0,
+  rows: [
+    ...HUMANISE_GROUP.rows,
+    n('$velocity.level', 'VEL LEVEL', 0, 1, 0.01, fixed(2), 1, '', null,
+      { startRow: true,
+        tip: 'How much quieter a softer note is. 1: its level is its velocity; 0: velocity '
+          + 'leaves the level alone' }),
+    n('$velocity.filter', 'VEL FILTER', 0, 4, 0.1, fixed(1), 0, 'oct', null,
+      { tip: 'How many octaves of filter envelope a note struck at zero loses — the 303 '
+          + 'accent, with the preset as the accented note' }),
+  ],
+};
+
+/**
  * The nine drawbars, labelled the way they are labelled on the console.
  *
  * Footages, not ratios: 8′ is the fundamental, 4′ the octave above it, 16′ the octave
@@ -1070,8 +1096,10 @@ const drawbarRows = () => DRAWBAR_LABELS.map((label, i) => ({
  * switched-off layer takes its sub-cards' title bars with it. Layers 2 and 3 are
  * optional the way the drum sections are; layer 1 is the voice and is always there.
  *
- * No pitch-wobble target on the LFO and no vibrato rows here: `$vibrato` in the Note
- * card is the pitch wobble, one key with one meaning on every preset in the library.
+ * No vibrato rows here: `$vibrato` in the Note card is the pitch wobble, one key with one
+ * meaning on every preset in the library. The Mod LFO can ALSO reach pitch (TARGET:
+ * PITCH), which is a separate, deliberately larger modulator for sirens and swoops, and it
+ * sums with the vibrato on the same detune.
  */
 /**
  * The pitch envelope's five rows, for any path that has one.
@@ -1346,7 +1374,10 @@ const layerGroups = () => {
       when: (v) => (i === 1 || sectionOn(v, p)) && sectionOn(v, `${p}.filter`),
       rows: [
         envTime(`$${p}.filter.env.attack`, 'ATTACK', 0, secs, 0.01),
-        envTime(`$${p}.filter.env.decay`, 'DECAY', 0, secs, 1),
+        // 0, which is what the engine plays when a preset has no DECAY (`centsEnv`'s
+        // `e.decay ?? 0`). It said 1 s, so a fresh ENV AMOUNT was a 10 ms blip under a
+        // DECAY that read a second.
+        envTime(`$${p}.filter.env.decay`, 'DECAY', 0, secs, 0),
         // Live at every DECAY, as on the amp envelope: the cutoff settles at
         // ENV AMOUNT × SUSTAIN rather than returning all the way to the cutoff.
         sustainPct(`$${p}.filter.env.sustain`, 0),
@@ -1431,7 +1462,7 @@ const layerGroups = () => {
     when: (v) => sectionOn(v, 'global.filter'),
     rows: [
       envTime('$global.filter.env.attack', 'ATTACK', 0, secs, 0.01),
-      envTime('$global.filter.env.decay', 'DECAY', 0, secs, 1),
+      envTime('$global.filter.env.decay', 'DECAY', 0, secs, 0),
       sustainPct('$global.filter.env.sustain', 0),
       envTime('$global.filter.env.release', 'RELEASE', 0, secs, 0.015),
     ],
@@ -1619,7 +1650,7 @@ const SYNTH_GROUPS = {
     // written-in `bassRepeat` taken out. `_playLayer` does not read `taps` either —
     // a card removed while the engine still honoured the key would be exactly the
     // hidden parameter tests/pot-coverage.js exists to catch.
-    HUMANISE_GROUP,
+    MRDR3_HUMANISE_GROUP,
   ],
   /**
    * Additive: a stack of sine partials, which is the drawbar organ and — once the
@@ -1778,7 +1809,7 @@ const SYNTH_GROUPS = {
     // one. Defaults mirror the global stage's, so a pot left alone says what happens.
     { key: 'filterenv', title: 'Filter Env', when: (v) => sectionOn(v, 'filter'), rows: [
       envTime('$filter.env.attack', 'ATTACK', 0, secs, 0.01, 's', null, { startRow: true }),
-      envTime('$filter.env.decay', 'DECAY', 0, secs, 1),
+      envTime('$filter.env.decay', 'DECAY', 0, secs, 0),
       // Live at every DECAY, as on MRDR-3's: the cutoff settles at ENV AMOUNT x SUSTAIN
       // rather than returning all the way to the cutoff.
       sustainPct('$filter.env.sustain', 0),
@@ -1826,7 +1857,21 @@ const SYNTH_GROUPS = {
     { key: 'filterEnvelope', title: 'Filter Env',
       // Keep this card in the board when Filter is Off so Advanced never changes width;
       // `bodyWhen` disables its controls on both surfaces until the Filter switch returns.
-      bodyWhen: (v) => sectionOn(v, 'options.filter'), rows: adsr('filterEnvelope') },
+      //
+      // STYLE first, because it decides what the four times and ENV AMOUNT mean. STANDARD
+      // is the envelope every other synth has (see `crlsFilterEnv` in the engine): ENV
+      // AMOUNT in octaves, DECAY the time to SUSTAIN. CLASSIC is Tone's own — linear in
+      // hertz on a squared curve, with its own timing — kept for the few presets whose
+      // sound could not be matched on the standard one when the change landed.
+      bodyWhen: (v) => sectionOn(v, 'options.filter'), rows: [
+        pick('filterEnvelope.style', 'STYLE', ['standard', 'classic'], 'standard', null, {
+          tip: 'STANDARD moves the cutoff the way every other synth does: ENV AMOUNT in octaves, '
+            + 'DECAY the time it takes to reach SUSTAIN. CLASSIC is Tone\'s own filter envelope — '
+            + 'linear in hertz on a squared curve, with its own faster timing — kept for presets '
+            + 'whose sound depends on it.',
+        }),
+        ...adsr('filterEnvelope'),
+      ] },
     // AMP LAST, as on TNGR-2: signal order reads left to right — what the oscillator IS,
     // what the filter and its envelope do to it, and only then the level it comes out at.
     { key: 'envelope', title: 'Amp', rows: adsr('envelope') },
@@ -2949,30 +2994,21 @@ const commonRows = (voice = {}) => noteOrder(withParts([
     // pitch modulators look like one feature and editing both could stack them. It is
     // retired, and the shared preset-vibrato layer below is now every synth's only one.
     ...([
-      // Tone.Vibrato exposes a normalized depth, not a semitone amount. Its rack path
-      // clamps at 1, so giving pooled classes the native engines' 0-12 semi dial made
-      // eleven twelfths of the travel inert and labelled the remaining part incorrectly.
-      ...(isPooled(voice)
-        ? [n('$vibrato.depth', 'VIB DEPTH', 0, 1, 0.01, fixed(2), 0, '', null,
-          { scale: VIB_DEPTH_SCALE, startRow: true })]
-        : [n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi', jmjr4Singing,
-          { scale: VIB_DEPTH_SCALE, startRow: true })]),
+      // One dial for every synth: semitones of wobble, ×100 cents onto the pitch. The
+      // pooled classes had a 0–1 dial of their own while they ran `Tone.Vibrato`, whose
+      // depth was a fraction of a delay sweep and whose wobble grew with RATE; they build
+      // the native vibrato now (see `_addSlot`), so the same reading is the same wobble.
+      n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi', jmjr4Singing,
+        { scale: VIB_DEPTH_SCALE, startRow: true }),
       n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
         (v) => vibratoOn(v) && jmjr4Singing(v), { scale: SLOW_END_SCALE }),
       // The third of the three, beside the two it belongs with rather than stranded on one
       // synth's own card — and ONLY on the paths that have one.
       //
-      // Every native path ramps the vibrato depth up from nothing over this, measured from
-      // its own note-on. The Tone path cannot: its LFO is a `Tone.Vibrato` living in the
-      // pool, free-running across notes, with no note-on for a delay to be measured from
-      // and no fade parameter to write one into. It was greyed there for a while, which is
-      // what this window does with a control that is momentarily inapplicable — but greyed
-      // says "turn something else on and this comes alive", and on a Tone synth nothing
-      // ever will. So it is not built at all: the row is absent from the panel rather than
-      // present and permanently dead.
-      ...(NATIVE_SYNTHS.includes(voice?.synth)
-        ? [envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's', (v) => vibratoOn(v) && jmjr4Singing(v))]
-        : []),
+      // Every path ramps the vibrato depth up from nothing over this, measured from its
+      // own note-on — the pooled classes too, now that their vibrato is a fade the
+      // note-on writes rather than a `Tone.Vibrato` free-running in the pool.
+      envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's', (v) => vibratoOn(v) && jmjr4Singing(v)),
       // The ensemble control. At zero every unison voice wobbles at one rate in one phase,
       // which is one singer through a chorus however many oscillators are running; wound up,
       // each voice takes its own rate and its own starting phase and the stack becomes a
@@ -3047,7 +3083,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
  * on its own rather than needing a second list kept in step.
  *
  * Minus whatever `commonRows` also owns — `vibrato` is on the KNDO-5 panel (for its
- * DELAY, which only that path can honour) AND on every preset, and wiping a preset's
+ * DELAY) AND on every preset, and wiping a preset's
  * vibrato because you changed its oscillator class would be a change to the sound nobody
  * asked for.
  *

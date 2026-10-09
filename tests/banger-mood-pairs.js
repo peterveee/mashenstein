@@ -49,7 +49,7 @@ const moodIds = new Set(BANGER_MOODS.map((m) => m.id));
   const maker = new BangerMakerState({ onDone: () => {}, onMade: () => {} });
   maker.enter();
   maker.setInfusion(null);
-  maker.setStyle('nu-disco');
+  maker.setStyle('reggaeton');
   const line = () => maker.moodItems().find((m) => m.id === 'breakthrough').description;
   assert(/every chorus$/.test(line()), 'ELEMENT\'s line for a Pop Song formula says choruses');
   maker.setInfusion('big-room');

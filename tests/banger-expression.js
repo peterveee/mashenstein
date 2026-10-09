@@ -656,7 +656,7 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   const { riffFromNotes, DEFAULT_SIMPLE } = await import('../src/game/banger/riff.js');
   const make = await import('../src/game/banger/make.js');
   const store = await import('../src/game/banger/store.js');
-  const { makeBanger, MAKER_STYLES, defaultMoodFor, hookSoundFor, labSoundSet, spotFor, RECIPE_EXPRESSION, expressionVersionOf, RIFF_TRIM_DB } = make;
+  const { makeBanger, MAKER_STYLES, defaultMoodFor, hookSoundFor, labSoundSet, spotFor, RECIPE_EXPRESSION, expressionVersionOf, RIFF_TRIM_DB, FORMS_BEFORE_5 } = make;
   const { keepBanger, reviseBanger, songFor, bangerState } = store;
   const notes = DEFAULT_SIMPLE;
   const recipe = (style, seed = 3, extra = {}) => ({ notes, mode: 'simple', style, mood: defaultMoodFor(style), seed, ...extra });
@@ -671,9 +671,9 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   const hookTrim = (style) => { const t = balanceForStyle(BANGER_STYLES.find((st) => st.id === style)).riffTrimDb; return Number.isFinite(t) ? t : RIFF_TRIM_DB; };
   const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; return o; };
 
-  assert(RECIPE_EXPRESSION === 4 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
+  assert(RECIPE_EXPRESSION === 5 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,
-  'a recipe\'s expression version is 4 for a new recipe, and anything unreadable reads as none');
+  'a recipe\'s expression version is 5 for a new recipe, and anything unreadable reads as none');
 
   // VOLTAGE ROLLS (expression 2): read off the seed, so a kept take is made again the same;
   // the higher the voltage, the more often the bass and the chord gate move
@@ -695,6 +695,19 @@ const plannedAt = (fixture, lane, set) => createLaneView({
       assert(Math.abs(changed(club, 'club') - 1 / 6) < 0.06, `a Club style changes half as often (${changed(club, 'club').toFixed(2)})`);
       assert(changed(formOf('reggaeton', 0, 4), 'pop') === 0 && changed(formOf('reggaeton', 3, 3), 'pop') === 0,
         'never at Safe, and never in a recipe made before version 4');
+    }
+    {
+      // OFF THE POP SONG (recipe expression 5, 9 Oct 2026, Peter: fewer Pop Songs): five styles start on the
+      // Club form and two on the Groove; a recipe kept before then is made in the Pop Song it was.
+      const shape = (style, expression) => makeBanger({ ...recipe(style), expression }).form.map((f) => f.type).join(' ');
+      const pop = 'intro verse preChorus chorus verse preChorus chorus middle8 chorus outro';
+      const moved = Object.keys(FORMS_BEFORE_5);
+      assert(moved.length === 7 && moved.every((s) => shape(s, 4) === pop && shape(s, 0) === pop),
+        'a recipe kept before version 5 plays the Pop Song its style started on then');
+      assert(['eurodance', 'merenhouse', 'freestyle', 'uk-garage'].every((s) => !shape(s, 5).includes('verse') && shape(s, 5).includes('drop'))
+        && ['nu-disco', 'electro-funk'].every((s) => shape(s, 5).split(' ').every((t) => t === 'groove'))
+        && shape('synthwave', 5) === pop,
+        'a new recipe starts them on the Club form or the Groove; Synthwave is still a Pop Song');
     }
     const bass = [0, 1, 2, 3].map((v) => rate('big-room', 'anthemic', v, (r) => r.parts.bass));
     // (the gate is counted over the takes that keep their supersaws — piano stabs are never gated)
@@ -736,8 +749,8 @@ const plannedAt = (fixture, lane, set) => createLaneView({
       }
     }
     assert(!extra.length, `every Lab style makes Overload takes, with no channel more than its Charged ones (${[...new Set(extra)].join('; ') || 'none'})`);
-    assert(hv.every(({ st, rolls }) => rolls.every((r) => !r.form || r.form.template === styleDefaults(st).form.template)),
-      'a rolled form keeps the style\'s own template (a form naming none is read as Club)');
+    assert(hv.every(({ st, rolls }) => rolls.every((r) => !r.form || r.form.template === (FORMS_BEFORE_5[st.id] || styleDefaults(st).form.template))),
+      'a rolled form keeps the style\'s own template — before version 5 (these rolls are 3), the one it had then (a form naming none is read as Club)');
     assert(hv.every(({ rolls }) => rolls.some((r) => r.spot?.intoDrop) && rolls.every((r) => !r.spot?.ending && r.spot?.intoDrop !== 'tapeStop')),
       'Overload rolls Spot FX — never an ending, the jukebox loops the song');
     const lead = rate('big-room', 'anthemic', 1, (r) => r.parts.riffSound === 'random');
@@ -763,7 +776,8 @@ const plannedAt = (fixture, lane, set) => createLaneView({
       for (const wild of [false, true]) {
         const r = recipe(st.id, seed);
         const as = makeBanger({ ...r, wild });
-        const expected = trimmed(direct(r, wild ? { variation: 'wild' } : {}));
+        // (in the form its style started on then: FORMS_BEFORE_5)
+        const expected = trimmed(direct(r, { ...(FORMS_BEFORE_5[st.id] ? { form: { template: FORMS_BEFORE_5[st.id] } } : {}), ...(wild ? { variation: 'wild' } : {}) }));
         if (!(same(as.bank, expected.bank) && same(as.mix, expected.mix) && same(as.arrangement, expected.arrangement))) legacyOk = false;
         for (const expression of [0, undefined, null, 'x', -1, Number.NaN]) {
           if (!same(makeBanger({ ...r, wild, expression }).mix, as.mix)) legacyOk = false;

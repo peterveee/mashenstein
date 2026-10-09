@@ -125,7 +125,8 @@ if (!isDeepStrictEqual(crls1FilteredSimple, [
   'WAVE', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'CUTOFF', 'RESONANCE',
 ]) || crls1FilteredRows.find((row) => row.label === 'ATTACK')?.startRow
   || crls1Vibrato?.startRow || crls1Vibrato?.path !== '$vibrato.depth'
-  || crls1Vibrato?.max !== 1 || crls1Vibrato?.scale !== 3
+  // The native semitone dial: the pooled classes build the native vibrato now.
+  || crls1Vibrato?.max !== 12 || crls1Vibrato?.scale !== 3
   || crls1FilteredRows.some((row) => row.label === 'UNISON')) {
   fail(`CRLS-1 filtered Simple surface is ${JSON.stringify(crls1FilteredSimple)}`);
 } else if (!crls1FilteredSimple.includes('CUTOFF') || !crls1FilteredSimple.includes('RESONANCE')) {

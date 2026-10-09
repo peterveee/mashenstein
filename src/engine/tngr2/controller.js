@@ -157,8 +157,12 @@ export const tngr2VibratoOf = (voice) => {
   if (!(depth > 0)) return null;
   return {
     depth: Math.min(24, depth),
-    rate: Math.min(64, Math.max(0.01, Number(vib.rate) || 5)),
+    // An unset rate is 5 Hz, as on every path; a rate of ZERO is the slowest the pot
+    // allows, as on every native path — it used to fall back to 5 here.
+    rate: Math.min(64, Math.max(0.01, Number(vib.rate ?? 5) || 0)),
     delay: Math.max(0, Number(vib.delay) || 0),
+    // The waveform, which every other path honours and this one used to ignore.
+    type: vib.type || 'sine',
   };
 };
 
