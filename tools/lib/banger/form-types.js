@@ -11,6 +11,8 @@
 // `hook` says the section carries the hook at full strength — what the level matching
 // listens to first. Browser-safe.
 
+import { BREAKDOWN_WAYS } from './breakdown-ways.js';
+
 // `note` is the short line the section lists show beside each kind; `title` the whole of
 // what it does, for the tooltips. A variant is [id, label, what it plays].
 export const SECTION_TYPES = Object.freeze({
@@ -43,10 +45,15 @@ export const SECTION_TYPES = Object.freeze({
   breakdown: { label: 'Breakdown', colour: '#7861b5', hook: false, energy: 0.25, min: 4, max: 32,
     note: 'Drums out, the hook over a pad',
     title: 'The drums out: the hook over a held pedal and an open pad, the choir above it',
-    variants: [['pedal', 'Half-Speed Hook', 'The hook at half speed — every note twice as long'],
+    // '' is no choice of its own — the Breakdown Hook switch's (More Options → Form) — and is what an
+    // undrawn breakdown shows.
+    variants: [['', 'As Breakdown Hook', 'Whatever More Options → Breakdown Hook says — Varied: a different way each take'],
+      ['pedal', 'Half-Speed Hook', 'The hook at half speed — every note twice as long'],
       ['written', 'Hook As Written', 'The hook at its own speed over the pad, the choir and the pedal'],
       ['exposed', 'Hook Alone', 'The hook as written over the pad alone; the choir and the pedal join halfway'],
-      ['none', 'No Hook', 'The pad, the choir and the pedal alone — the hook rests']] },
+      ['none', 'No Hook', 'The pad, the choir and the pedal alone — the hook rests'],
+      // ...and every other way (breakdown-ways.js), by its own id.
+      ...BREAKDOWN_WAYS.filter((w) => !['half', 'written', 'none'].includes(w.id)).map((w) => [w.id, w.label, w.note])] },
   middle8: { label: 'Middle 8', colour: '#3d8cc2', hook: false, energy: 0.5, min: 4, max: 16,
     note: 'Somewhere new before the last chorus',
     title: 'Somewhere new: chords the chorus never plays, the hook\'s tail motif developed, half-time drums and a walking bass — ending on the dominant with the hook\'s first notes as a pickup into the chorus' },

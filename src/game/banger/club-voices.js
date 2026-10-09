@@ -80,6 +80,27 @@ const PART_IDS = Object.keys(SOUND_PARTS);
  */
 export const voiceLabel = (id) => withoutStyleSuffix(VOICES[id]?.label || id || '')
   .replace(/^=\s*/, '').replace(/\s*\(starter\)/i, '').toUpperCase();
+/**
+ * What a preset is, for a sound list: its name as a button says it and its sound, the numbers to
+ * two figures so a re-measured drive or trim is not a new sound. A style's seed is often the
+ * library preset it was kept from, unchanged under another id (seedBigRoomBass is detuneBass),
+ * and a list offering both had the one sound twice under one name (Peter, 9 Oct 2026).
+ */
+const SOUND_META = new Set(['id', 'label', 'note', 'level', 'peak', 'songOrigin', 'songSourceId', 'starter',
+  'factory', 'user', 'origin', 'category', 'homeLane', 'kind']);
+const soundIds = new Map();
+const soundId = (id) => {
+  let key = soundIds.get(id);
+  if (key == null) {
+    const v = VOICES[id];
+    key = `${voiceLabel(id)}\n${JSON.stringify(v, (k, x) => (typeof x === 'number' ? +x.toPrecision(2)
+      : x && typeof x === 'object' && !Array.isArray(x)
+        ? Object.fromEntries(Object.keys(x).sort().filter((n) => !(x === v && SOUND_META.has(n))).map((n) => [n, x[n]]))
+        : x))}`;
+    soundIds.set(id, key);
+  }
+  return key;
+};
 /** A kit's name as a button says it: 909 KIT, CR-78 KIT, STYLE KIT. */
 export const kitLabel = (key) => `${String(KITS.find((k) => k.key === key)?.label || key).replace(/ kit$/i, '').toUpperCase()} KIT`;
 
@@ -329,7 +350,8 @@ export class ClubVoices {
 
   /**
    * The sounds a part's button steps through, starting with the one it has now: its own, then
-   * (an infused take, off the 8-Bit set) those it borrows from the other style, marked `borrowed`.
+   * (an infused take, off the 8-Bit set) those it borrows from the other style, marked `borrowed`
+   * — each sound once, however many ids it is kept under (soundId).
    */
   choices(part, swapped = this.target.swapped) {
     const row = this.rowFor(swapped);
@@ -343,8 +365,10 @@ export class ClubVoices {
     if (!lane) return [];
     const first = this.onChipSet(swapped) ? roleVoice(row, this.kitIn(row), this.roles.get(lane), lane) : this.song?.mix?.voice?.[`${lane}Voice`];
     const list = row.random?.[SOUND_PARTS[part].list] || [];
-    const own = [first, ...list.filter((id) => id !== first)].filter((id) => VOICES[id]);
-    return own.map((id) => ({ id, label: voiceLabel(id) })).concat(borrowed.filter((c) => !own.includes(c.id)));
+    const seen = new Set();
+    const once = (id) => !seen.has(soundId(id)) && !!seen.add(soundId(id));
+    const own = [first, ...list.filter((id) => id !== first)].filter((id) => VOICES[id] && once(id));
+    return own.map((id) => ({ id, label: voiceLabel(id) })).concat(borrowed.filter((c) => !own.includes(c.id) && (!VOICES[c.id] || once(c.id))));
   }
   /** What the DICE rolls between: the part's own sounds, never the borrowed (they come last). */
   rollChoices(part, swapped = this.target.swapped) {
@@ -363,6 +387,26 @@ export class ClubVoices {
     const s = this.target;
     const list = this.choices(part, s.swapped);
     return list[(s.picks[this.pickKey(s.swapped)][part] || 0) % Math.max(1, list.length)]?.label || '';
+  }
+
+  /** Which of `choices(part)` the part has, or is about to have. */
+  picked(part) {
+    const s = this.target;
+    return (s.picks[this.pickKey(s.swapped)][part] || 0) % Math.max(1, this.choices(part, s.swapped).length);
+  }
+
+  /**
+   * A part's sound list (a long press on its button): its `i`th sound, from the next bar line,
+   * as a tap on the button would get there. False when that is the one it has.
+   */
+  pick(part, i) {
+    const next = copy(this.target);
+    const n = this.choices(part, next.swapped).length;
+    if (!(i >= 0 && i < n) || i === this.picked(part)) return false;
+    const key = this.pickKey(next.swapped);
+    if (i) next.picks[key][part] = i; else delete next.picks[key][part];
+    this.queue(next);
+    return true;
   }
 
   /** Whether a part's sound (or the whole set) is waiting for its beat or bar line. */
@@ -592,13 +636,18 @@ export class ClubVoices {
     return out;
   }
 
-  /** The state sounds kept by name (picksNamed) describe; a sound no longer offered is let go. */
+  /**
+   * The state sounds kept by name (picksNamed) describe: a preset kept under an id the list
+   * no longer shows is the one it shows with that sound; a sound no longer offered is let go.
+   */
   stateFor(named) {
     const state = fresh();
     state.swapped = !!named?.swapped;
     for (const key of ['own', 'swap']) {
       for (const [part, name] of Object.entries(named?.[key] || {})) {
-        const k = this.choices(part, key === 'swap').findIndex((c) => (c.name || c.kit || c.id) === name);
+        const list = this.choices(part, key === 'swap');
+        let k = list.findIndex((c) => (c.name || c.kit || c.id) === name);
+        if (k < 0 && VOICES[name]) k = list.findIndex((c) => c.id && VOICES[c.id] && soundId(c.id) === soundId(name));
         if (k > 0) state.picks[key][part] = k;
       }
     }

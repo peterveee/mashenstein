@@ -539,14 +539,16 @@ export function newSeed() {
  * Portamento, a slide setting on the lead that GO WILD adds (tools/lib/banger/expression.js).
  * Version 2 adds the VOLTAGE ROLLS (voltageRollsFor). Version 3 adds Voltage-driven section FX. Version 4 (7 Oct
  * 2026) adds the form roll. Version 5 (9 Oct 2026) starts seven styles off the Pop Song (FORMS_BEFORE_5).
- * A NEW recipe carries 5 (maker.js); one saved
+ * Version 6 (9 Oct 2026) plays the breakdown Varied — a way drawn each take (the generator's
+ * BREAKDOWN_WAYS) — where every recipe before it plays Half Speed.
+ * A NEW recipe carries 6 (maker.js); one saved
  * at 1 has the slide but no rolls, and one saved before there was any has no `expression` and reads
  * as 0, and is made EXACTLY as it always was, Go Wild included. A kept song is only its recipe,
  * made again whenever it is played, so a recipe that did not say must come out the way it did.
  * It is not RIFF_VERSION (what the grid's numbers mean) and not the generator's version (which
  * the Lab does not record).
  */
-export const RECIPE_EXPRESSION = 5;
+export const RECIPE_EXPRESSION = 6;
 /**
  * The form each of these styles started on before version 5 (9 Oct 2026, Peter: "I'd like less pop
  * songs" — five went to Club and two to Groove). A recipe kept before then is made in its old form.
@@ -617,7 +619,11 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
     ...rolls.form, mood2: pair.second, moodSwitch: pair.switch } : null;
   // An INFUSION is always the Club form — the build-and-drop banger, never a Pop Song (Peter, 8 Oct 2026).
   const clubForm = beat ? { template: 'club' } : null;
-  const formOptions = pairForm || rolls.form || clubForm || keptForm ? { ...keptForm, ...(pairForm || rolls.form), ...clubForm } : null;
+  // The breakdown (version 6): Varied, or Half Speed as every recipe kept before it — said outright
+  // either way, so the form is always given, on the template the generator would start it on.
+  const breakdownHook = rolls.form?.breakdownHook ?? (expressionVersionOf(expression) >= 6 ? 'varied' : 'half');
+  const ownTemplate = beat ? 'club' : styleDefaults(styleFor(style) || styleSettings).form.template;
+  const formOptions = { template: ownTemplate, ...keptForm, ...(pairForm || rolls.form), ...clubForm, breakdownHook };
   const options = {
     style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,
@@ -626,7 +632,7 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
     ...(Object.keys(parts).length ? { parts } : {}),
     ...(rolls.fx ? { fx: rolls.fx } : {}),
     ...(rolls.drums ? { drums: rolls.drums } : {}),
-    ...(formOptions ? { form: formOptions } : {}),
+    form: formOptions,
     ...(Object.keys(spot).length || rolls.spot ? { spot: { ...rolls.spot, ...spot } } : {}),
   };
   const out = generateBanger({ riff: riffFromNotes(notes, hookSoundFor(style, mood, seed, voltage, flavour), mode, lengths), options, seed,

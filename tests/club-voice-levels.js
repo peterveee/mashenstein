@@ -33,6 +33,32 @@ const PARTS = ['bass', 'chords', 'lead'];
   'a lane\'s bars come back out of the bank in play order, as note names, its drums as rows');
 }
 
+// Every Lab style, each of its flavours, on its own set and on 8-BIT: a part's sound list names
+// each sound once (Peter, 9 Oct 2026: two WIDE DETUNE BASS on big-room's, one a seed kept from the
+// other unchanged) — a seed that is its preset under another id shown once, one tuned off it
+// under its own name.
+{
+  const { flavoursFor } = await import('../tools/lib/banger/styles/index.js');
+  const twice = [];
+  let lists = 0;
+  for (const style of MAKER_STYLES) {
+    for (const flavour of [null, ...flavoursFor(style.id).map((f) => f.id)]) {
+      let song;
+      try { song = makeBanger({ notes: NOTES, mode: 'simple', style: style.id, seed: 3, flavour }); } catch { continue; }
+      const v = new ClubVoices(song, { style: style.id, flavour });
+      for (const part of ['drums', ...PARTS]) {
+        for (const swapped of [false, true]) {
+          const names = v.choices(part, swapped).map((c) => c.label);
+          lists++;
+          const dup = names.find((n, i) => names.indexOf(n) !== i);
+          if (dup) twice.push(`${style.id}${flavour ? `/${flavour}` : ''} ${part}${swapped ? ' (8-BIT)' : ''}: ${dup}`);
+        }
+      }
+    }
+  }
+  assert(lists > 100 && !twice.length, `no sound list names a sound twice (${lists} lists${twice.length ? `; ${twice.join('; ')}` : ''})`);
+}
+
 // Every Lab style: a part's sounds land together once each has its trim on.
 const spreads = [];
 let clampedRight = true, beyond = 0;

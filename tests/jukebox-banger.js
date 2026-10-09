@@ -636,8 +636,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(typeof made.rec.name === 'string' && made.rec.name.length > 0, 'the pending preview is titled before it is kept');
   const kept = keepBanger({ ...made.rec, fresh: false, name: made.rec.name });
   assert(kept === bangerState().kept.at(-1) && bangerState().kept.includes(kept), 'saving the pending recipe keeps the song');
-  assert(kept.expression === 5 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
-    'a new recipe opts into expression version 5 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song), and made again from the kept recipe it is the song just handed over');
+  assert(kept.expression === 6 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
+    'a new recipe opts into expression version 6 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song, the Varied breakdown), and made again from the kept recipe it is the song just handed over');
 
   tap(maker, ...centre(L.buttons[0]));
   made = null;
@@ -1540,7 +1540,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     tap(club, f.x + f.w / 2, (f.top + f.bot) / 2);
   }
   // ...and under each fader the part's sound: a tap is its next one, from the next bar line,
-  // and the LED board names it
+  // and the LED board names it — on the finger lifting, since held it is the sound list (below)
   {
     club.draw(ctx);
     const before = club.voices.label('drums');
@@ -1548,6 +1548,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     Audio.reapplyBank = () => {};
     assert(club.boxes.sounds.length === PARTS.length && before.endsWith('KIT'), 'under each fader, the part\'s sound');
     tap(club, ...centre(club.boxes.sounds[0]));
+    club.update(1 / 60);
     club.update(1 / 60);
     assert(club.voices.label('drums') !== before && club.voices.label('drums').endsWith('KIT') && club.led?.text.startsWith('DRUMS: '),
       'a tap on DRUMS swaps the kit, and the LED board says which');
@@ -1567,6 +1568,39 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       const row = bangerRow(club.rec);
       const lane = Object.keys(row.mix.voice || {}).find((k) => row.mix.voice[k] !== club.song.mix.voice?.[k]);
       assert(!!lane, `the Lab plays a kept song with the sounds it was left with (${lane})`);
+    }
+    // ...and a sound button HELD is its part's list of every sound it steps through (Peter, 9 Oct
+    // 2026): a sound tapped there goes in as the button's taps would get it there, and the list
+    // shuts; a tap off the list shuts it with nothing changed; a finger slid off the button first
+    // is neither the list nor the tap
+    {
+      const part = 'lead', k = PARTS.findIndex((p) => p.id === part);
+      const list = club.voices.choices(part), was = club.voices.picked(part);
+      const hold = (x, y, slide = null) => {
+        club.draw(ctx);
+        Input.pointer = { x, y, down: true };
+        Input.press('pointer'); club.update(1 / 60); Input.endFrame();
+        if (slide) Input.pointer = { ...slide, down: true };
+        for (let f = 0; f < 40 && !club.soundList; f++) { club.update(1 / 60); Input.endFrame(); }
+        Input.release('pointer'); Input.pointer.down = false;
+        club.update(1 / 60); Input.endFrame();
+        club.draw(ctx);
+      };
+      const btn = club.boxes.sounds[k];
+      hold(...centre(btn));
+      const opened = club.soundList?.k === k && club.voices.picked(part) === was;
+      const items = club.boxes.soundList?.items || [];
+      const to = (was + 2) % list.length;
+      tap(club, ...centre(items[to]));
+      assert(list.length > 2 && opened && items.length === list.length && !club.soundList && club.voices.picked(part) === to,
+        `a sound button held opens its part's sound list, and a sound picked there is the part's (${was} → ${club.voices.picked(part)} of ${list.length})`);
+      hold(...centre(btn));
+      const p = club.boxes.panel;
+      tap(club, p.x + p.w / 2, p.y - 4);
+      const shut = !club.soundList && club.voices.picked(part) === to && club.mixerOpen;
+      hold(...centre(btn), { x: btn.x + btn.w / 2, y: btn.y - btn.h * 2 });
+      assert(shut && !club.soundList && club.voices.picked(part) === to,
+        '...a tap off it shuts it with nothing changed, the mixer still open; and a finger slid off the button is neither');
     }
     // ...and RESET on the panel puts it all back (Peter, 5 Oct 2026): every fader up, every
     // sound the song's own, and nothing kept on the record
@@ -2808,7 +2842,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const revised = reviseBanger(rec, made);
   assert(revised === rec && rec.style === other && rec.name === name && rec.n === n && bangerState().kept.length === count,
     'and saving the edit remakes that song in place: same name and number, the new style, no new song');
-  assert(rec.expression === 5, 'and an old recipe edited with the pencil opts into expression version 5');
+  assert(rec.expression === 6, 'and an old recipe edited with the pencil opts into expression version 6');
   assert(JSON.stringify(bangerState().draft) === draftBefore, 'editing a song leaves the NEW BANGER draft alone');
 }
 

@@ -202,6 +202,9 @@ const suites = [
   // Voice leading (generator v9): coloured chords move least from the one before, with no needless
   // semitone clusters; triads, open voicings and the riff as written stay as placed; loops repeat.
   'tests/banger-voice-leading.js',
+  // Breakdown Hook: Varied (generator v11): each way plays what it says, Varied draws them all, the
+  // draw moves nothing outside the breakdown, and old recipes — desk and Lab — keep Half Speed.
+  'tests/banger-breakdown.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',

@@ -24,6 +24,15 @@ export const TRANSITION_TAPE_STOP = (beats) => ({ id: 'stutter', params: { slice
 export const DELAY_THROW = { id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.6, wet: 0.5 } };
 // A gentle eighth-note ping-pong: the space a scripted section opens up (Kraftwerk's Isolation).
 export const PING_PONG = { id: 'pingpong', params: { sync: 1, division: 0.5, feedback: 0.35, wet: 0.3 } };
+/**
+ * The effect a way of playing the breakdown (breakdown-ways.js) puts over the part playing it, across
+ * the breakdown. Tease: dotted-eighth echoes off the hook's opening, ringing on into the bar it leaves
+ * empty. Muffled: a low-pass opening from dull to bright.
+ */
+export const BREAKDOWN_FX = Object.freeze({
+  tease: { id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.5, wet: 0.4 } },
+  muffled: SWEEP(300, 12000),
+});
 export const LOWPASS = (frequency, Q = 0.9) => ({ id: 'filter', params: { type: 'lowpass', frequency, Q } });
 /**
  * The Machine-Gun Sweep (Peter's, 6 Oct 2026): the last half bar before a drop held in
@@ -273,6 +282,11 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
     }
   }
 
+  // A breakdown's way with an effect of its own, over the part playing it.
+  for (const d of events.breakdowns || []) {
+    const key = lane(d.role);
+    if (key && BREAKDOWN_FX[d.mode]) auto = addSections(auto, key, [section(posOf(d.from, 0), posOf(d.to + 1, 0), BREAKDOWN_FX[d.mode])]);
+  }
   // A scripted form's own moves (sections.js, Style's Own Form): an echo over a block, a
   // low-pass closing a step a bar from 5 kHz to 250 Hz, a fade to silence.
   for (const e of events.echoes || []) {

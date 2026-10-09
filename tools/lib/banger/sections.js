@@ -17,7 +17,8 @@ import { moodLifts } from './moods.js';
 import { moodBass } from './options.js';
 import { fillIn, passFilled } from './embellish.js';
 import { romanChord, partWeights, chordFit, bestChord, triadOf, chordsOfBar, fitsScale, grindShare } from './analyse.js';
-import { hookCell, phrasePlan, realise, head, cellLength } from './variation.js';
+import { hookCell, phrasePlan, realise, head, cellLength, fragment } from './variation.js';
+import { variedWay } from './breakdown-ways.js';
 import { DROP_ROLES, DEFAULT_LAYERS, DEFAULT_GROOVE, layersOn, scriptOn } from './form.js';
 import { DROP_INDEX } from './form-types.js';
 import { songMaterial } from './cohesion.js';
@@ -126,6 +127,81 @@ function counterLine(hookPart, chords, prev) {
   return out;
 }
 
+/** A breakdown's own Plays choice (form-types.js variants) → the way it plays: its id, else these. */
+const BREAKDOWN_VARIANTS = { pedal: 'half' };
+/** The ways the trance piano plays the hook as written on, whatever their line — as it always has. */
+const PIANO_AS_WRITTEN = new Set(['half', 'written', 'exposed']);
+
+/**
+ * BREAKDOWN HOOK (breakdown-ways.js) — each way's line, bar `i` of an `n`-bar breakdown: `tune`, what
+ * the hook plays (the chord under the bar is chosen to fit it), and for a way with another part,
+ * `extra(c)` → [role, part] over the chord the bar settles on. `k` is the breakdown's material:
+ * `cell` (the hook's bars), `aug` (them at half speed), `up` (into a lead's register), `scale`.
+ */
+export const BREAKDOWN_LINES = {
+  half: ({ i, k }) => ({ tune: k.aug[i % k.aug.length] }),
+  written: ({ i, k }) => ({ tune: clonePart(k.cell[i % k.cell.length]) }),
+  exposed: ({ i, k }) => ({ tune: clonePart(k.cell[i % k.cell.length]) }),
+  none: () => ({ tune: blank() }),
+  // The hook's opening (its first half bar, to the note on beat three) every other bar, then every
+  // bar for the last quarter — echoed (fx.js BREAKDOWN_FX). The drop gets the whole hook back.
+  tease: ({ i, n, k }) => ({ tune: i % 2 === 0 || i >= n - Math.max(1, Math.floor(n / 4)) ? head(k.cell[0]) : blank() }),
+  // Nothing until the last two bars (one, in a short breakdown): the hook's first two, as written.
+  late: ({ i, n, k }) => {
+    const from = n - Math.min(n, n >= 8 ? 2 : 1);
+    return { tune: i >= from ? clonePart(k.cell[(i - from) % k.cell.length]) : blank() };
+  },
+  outline: ({ i, k }) => ({ tune: outlineOf(k.cell[i % k.cell.length]) }),
+  piano: ({ i, k }) => ({ tune: k.up(clonePart(k.cell[i % k.cell.length])) }),
+  // The middle 8's way (cohesion.js bridgeLine): the hook's tail motif sequenced, the head as the
+  // pickup out of it.
+  tune: ({ i, n, k }) => ({
+    tune: i === n - 1 ? head(k.cell[0])
+      : diatonic(fragment(i % 2 ? k.cell[i % k.cell.length] : k.cell[k.cell.length - 1], k.scale), [0, 0, 2, 2, -1, -1, 1, 1][Math.floor((i * 8) / n) % 8], k.scale),
+  }),
+  arp: ({ i, k }) => ({ tune: arpOfHook(k.cell[i % k.cell.length]) }),
+  // The hook for a bar, then its opening on the bell an octave up, fitted to the next bar's chord.
+  answer: ({ i, k }) => {
+    const call = k.cell[Math.floor(i / 2) % k.cell.length];
+    return i % 2 === 0 ? { tune: clonePart(call) }
+      : { tune: blank(), extra: (c) => ['bell', fitToChords(shift(k.up(head(call)), 12), c)] };
+  },
+  // As written, under a low-pass that opens across the breakdown (fx.js BREAKDOWN_FX).
+  muffled: ({ i, k }) => ({ tune: clonePart(k.cell[i % k.cell.length]) }),
+};
+
+/** One bar of hook broken into running sixteenths: its notes, low to high, round and round. */
+export function arpOfHook(part) {
+  const ms = [...new Set(part.notes.flatMap((v) => (v == null ? [] : Array.isArray(v) ? v : [v])).map(midi))].sort((a, b) => a - b).slice(0, 4);
+  if (!ms.length) return blank();
+  if (ms.length === 1) ms.push(ms[0] + 12);
+  const out = blank();
+  for (let s = 0; s < 16; s++) { out.notes[s] = nameOf(ms[s % ms.length]); out.lens[s] = 1; }
+  return out;
+}
+
+/**
+ * One bar of hook as its outline: a long note on each half — the note sounding on the beat (struck
+ * on it or still ringing over it), else the half's first — and one held note where both are the same.
+ */
+export function outlineOf(part) {
+  const out = blank();
+  for (const h of [0, 8]) {
+    let pick = null;
+    for (let s = h; s >= 0; s--) {
+      if (part.notes[s] == null) continue;
+      if (s + (part.lens[s] ?? 1) > h) pick = part.notes[s];
+      break;
+    }
+    for (let s = h; pick == null && s < h + 8; s++) if (part.notes[s] != null) pick = part.notes[s];
+    if (pick != null) { out.notes[h] = pick; out.lens[h] = 8; }
+  }
+  if (out.notes[0] != null && JSON.stringify(out.notes[0]) === JSON.stringify(out.notes[8])) {
+    out.notes[8] = null; out.lens[8] = null; out.lens[0] = 16;
+  }
+  return out;
+}
+
 /**
  * The song, as bars of roles. Returns `{ bars, events }`.
  *
@@ -195,8 +271,11 @@ export function buildSections(ctx) {
   const asWritten = new Set();
   const events = {
     builds: [], drops: [], stops: [], throws: [], intro: null, risers: [], finalDrops: [], octaveBars: [],
-    echoes: [], filterDowns: [], fadeOuts: [], trims: [], sweeps: [], transitions: [],
+    echoes: [], filterDowns: [], fadeOuts: [], trims: [], sweeps: [], transitions: [], breakdowns: [],
   };
+  // Breakdown Hook: Varied — one way for the whole take, off a stream of its own, so drawing it
+  // moves nothing else (breakdown-ways.js).
+  const breakdownWay = variedWay(rng.breakdown, { soundSet: !!options.parts.soundSet && options.parts.soundSet !== 'style' });
   const put = (bar0, role, part) => {
     if (part == null || !hasNotes(part)) return;
     const prev = bars[bar0][role];
@@ -832,19 +911,25 @@ export function buildSections(ctx) {
     }
 
     if (sec.role === 'breakdown') {
-      // What the hook does here: the section's own variant, else the Breakdown Hook switch.
-      // Half Speed (the default: every note twice as long), As Written, None (the pad, the
-      // choir and the pedal alone), or Exposed (an anthem's: as written over the pad alone,
-      // the choir and the pedal joining for the second half).
-      const mode = { pedal: 'half', exposed: 'exposed', written: 'written', none: 'none' }[sec.variant]
-        || options.form.breakdownHook || 'half';
+      // What the hook does here: the section's own Plays choice, else the Breakdown Hook switch —
+      // a way from breakdown-ways.js, or Exposed (an anthem's: as written over the pad alone, the
+      // choir and the pedal joining for the second half). Varied is the take's own draw.
+      const own = BREAKDOWN_VARIANTS[sec.variant] || (BREAKDOWN_LINES[sec.variant] ? sec.variant : null);
+      const asked = own || options.form.breakdownHook || 'half';
+      const mode = asked === 'varied' ? breakdownWay : asked;
       const exposed = mode === 'exposed';
       const noHook = mode === 'none';
-      const aug = cell.flatMap((bar) => augment(bar));
       const prog = modeHarmony?.breakdown || style.breakdown[key.minor ? 'minor' : 'major'];
+      // The trance breakdown plays the hook as written on a piano whatever Half Speed or As
+      // Written say; the ways with a line of their own play that line on it. Piano: any style's.
+      const onPiano = mode === 'piano' || style.breakdownHook === 'piano';
+      const role = onPiano ? 'piano' : 'hook';
+      events.breakdowns.push({ from: sec.from, to: sec.to, mode, role });
+      const line = BREAKDOWN_LINES[mode] || BREAKDOWN_LINES.written;
+      const k = { cell, aug: cell.flatMap((bar) => augment(bar)), up, scale: ctx.scale || key.scale };
       for (let i = 0; i < n; i++) {
         const b = from + i;
-        const tune = noHook ? blank() : mode === 'half' ? aug[i % aug.length] : clonePart(cell[i % cell.length]);
+        const { tune, extra } = line({ i, n, k });
         const joins = !exposed || i >= n / 2;
         const want = romanChord(prog[i % prog.length], key);
         const w = partWeights(tune);
@@ -857,12 +942,11 @@ export function buildSections(ctx) {
           const colours = parseChord(best).quality === 'm' ? ['m9', 'm7', 'madd9'] : ['add9', 'maj7', '6'];
           c = colours.map((q) => withQuality(best, q)).find((x) => inKey(x) && grindShare(w, x) <= grindShare(w, best)) || best;
         }
-        // The trance breakdown: the hook as written, on a piano, rather than at half speed
-        // on its own sound.
-        if (noHook) { /* the hook rests */ } else if (style.breakdownHook === 'piano') {
-          put(b, 'piano', clonePart(cell[i % cell.length]));
+        if (noHook) { /* the hook rests */ } else if (onPiano) {
+          put(b, 'piano', PIANO_AS_WRITTEN.has(mode) ? clonePart(cell[i % cell.length]) : tune);
           asWritten.add(`${b}:piano`);
         } else put(b, 'hook', tune);
+        if (extra) put(b, ...extra(c));
         if (chordRole) put(b, 'pad', padBar(c, C.pad, { open: true }));
         if (options.parts.choir && joins) put(b, 'choir', { notes: [openVoicing(c, 'E5'), ...Array(15).fill(null)], lens: [16, ...Array(15).fill(null)] });
         if (options.parts.bell && i % 2 === 0 && mode === 'half') put(b, 'bell', fitToChords(shift(up(head(cell[(i / 2) % cell.length])), 12), c));

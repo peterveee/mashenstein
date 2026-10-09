@@ -18,6 +18,7 @@ import {
   EXPRESSION_ROLES, EXPRESSION_POLICY, modifyBanger, describeModify, bangerPrints,
 } from '../tools/lib/banger/index.js';
 import { BANGER_STYLES } from '../tools/lib/banger/styles/index.js';
+import { styleDefaults } from '../tools/lib/banger/options.js';
 import { balanceForStyle } from '../tools/lib/banger/style-balance.js';
 import { L, packBank } from '../tools/lib/banger/theory.js';
 import { songSlots, laneKeysOf } from '../tools/lib/banger/modify.js';
@@ -672,9 +673,9 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   // what makeBanger lays over the generator's output: the hook's trim, and THE CEILING on the mix
   const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; o.mix.ceiling = true; return o; };
 
-  assert(RECIPE_EXPRESSION === 5 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
+  assert(RECIPE_EXPRESSION === 6 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,
-  'a recipe\'s expression version is 5 for a new recipe, and anything unreadable reads as none');
+  'a recipe\'s expression version is 6 for a new recipe, and anything unreadable reads as none');
 
   // VOLTAGE ROLLS (expression 2): read off the seed, so a kept take is made again the same;
   // the higher the voltage, the more often the bass and the chord gate move
@@ -777,8 +778,10 @@ const plannedAt = (fixture, lane, set) => createLaneView({
       for (const wild of [false, true]) {
         const r = recipe(st.id, seed);
         const as = makeBanger({ ...r, wild });
-        // (in the form its style started on then: FORMS_BEFORE_5)
-        const expected = trimmed(direct(r, { ...(FORMS_BEFORE_5[st.id] ? { form: { template: FORMS_BEFORE_5[st.id] } } : {}), ...(wild ? { variation: 'wild' } : {}) }));
+        // (in the form its style started on then: FORMS_BEFORE_5; with the Half Speed breakdown every
+        // breakdown had before version 6)
+        const form = { template: FORMS_BEFORE_5[st.id] || styleDefaults(BANGER_STYLES.find((x) => x.id === st.id)).form.template, breakdownHook: 'half' };
+        const expected = trimmed(direct(r, { form, ...(wild ? { variation: 'wild' } : {}) }));
         if (!(same(as.bank, expected.bank) && same(as.mix, expected.mix) && same(as.arrangement, expected.arrangement))) legacyOk = false;
         for (const expression of [0, undefined, null, 'x', -1, Number.NaN]) {
           if (!same(makeBanger({ ...r, wild, expression }).mix, as.mix)) legacyOk = false;

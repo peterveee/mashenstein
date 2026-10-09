@@ -91,7 +91,7 @@ const isTriad = (set) => set.length === 3 && set.some((r) => ['0,4,7', '0,3,7'].
 {
   const riff = riffFromNotes([7, -1, 5, -1, 4, -1, 2, -1, 0, -1, 2, -1, 4, -1, 5, -1], 'simpleSquare', 'simple');
   const one = generateBanger({ riff, seed: 3, options: { style: 'trance', mood: 'nostalgic' } });
-  assert(BANGER_GENERATOR_VERSION === 10 && one.banger.generator === 10, 'generator v10, and a take records it');
+  assert(BANGER_GENERATOR_VERSION === 11 && one.banger.generator === 11, 'generator v11, and a take records it');
 
   let takes = 0, coloured = 0, avoidable = 0, outside = 0;
   for (const st of BANGER_STYLES) {

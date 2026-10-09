@@ -16,6 +16,7 @@ import { normaliseSections } from './form-types.js';
 import { FORM_TEMPLATES } from './templates.js';
 import { SHARED_MOODS, LIFT_APPROACHES, RETIRED_MOODS, currentMood } from './moods.js';
 import { FILL_INS, FILL_EVERY, FILL_NOTES } from './embellish.js';
+import { BREAKDOWN_WAYS, BREAKDOWN_WAY, VARIED_WAYS } from './breakdown-ways.js';
 
 export const BANGER_MOODS = Object.freeze([
   { id: 'anthemic', label: 'Anthemic', title: 'Big minor-key festival chords, bright hook — the ABSOLUTE ZERO sound' },
@@ -143,8 +144,9 @@ export const BANGER_GROUPS = Object.freeze([
     { key: 'build', label: 'Build', forms: ['club'], title: 'A snare-roll build before each drop' },
     { key: 'breakdown', label: 'Breakdown', forms: ['club'], title: 'A breakdown between the drops: the drums out, the hook over a pedal and an open pad (Breakdown Hook says what the hook does there)' },
     { key: 'breakdownHook', label: 'Breakdown Hook', type: 'select',
-      title: 'What the hook does in a breakdown, in any form: at half speed (every note twice as long), as written at full speed, or resting so the pad, the choir and the pedal play alone. A breakdown drawn in the Form row with its own Plays choice keeps that',
-      options: [['half', 'Half Speed', 'Every note twice as long — the classic'], ['written', 'As Written', 'The hook at its own speed, over the pad'], ['none', 'No Hook', 'The pad, the choir and the pedal alone']] },
+      title: 'What the hook does in a breakdown, in any form. Varied picks a way each take. A breakdown drawn in the Form row with its own Plays choice keeps that',
+      options: [['varied', 'Varied', `A different way each take — ${VARIED_WAYS.map((id) => BREAKDOWN_WAY[id].label).join(', ')}`],
+        ...BREAKDOWN_WAYS.map((w) => [w.id, w.label, w.note])] },
     { key: 'secondDrop', label: 'Second Drop', forms: ['club'], title: 'Come back for another drop after the breakdown' },
     { key: 'doubleDrop', label: 'Double Drop', forms: ['club'], title: 'Drop two runs straight into a third, harder one' },
     { key: 'keyLift', label: 'Key Lift', type: 'select', title: 'The last drop goes up',
@@ -320,7 +322,7 @@ export const BANGER_DEFAULTS = Object.freeze({
   expression: { autoPortamento: false, version: BANGER_EXPRESSION_VERSION },
   form: {
     template: 'club', sections: null, script: false, intro: true, layers: 'off', grooveIntro: false, build: true, breakdown: true, secondDrop: true, doubleDrop: true, keyLift: 'whole', keyApproach: 'mood', mood2: 'none', moodSwitch: 'breakdown',
-    hardStop: true, falseEnding: false, halfTime: false, outro: true, breakdownHook: 'half',
+    hardStop: true, falseEnding: false, halfTime: false, outro: true, breakdownHook: 'varied',
   },
   drums: {
     source: 'add', kit: 'style', crashes: true, fills: true, rolls: true, impact: true,
@@ -462,6 +464,9 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     // A request that spells out its form but names no template was made before there were
     // templates (2 Oct 2026): it is the Club form, so an old take re-makes as it was.
     if (group.id === 'form' && given.template == null) out.form.template = 'club';
+    // Likewise one that names no Breakdown Hook was made before Varied (9 Oct 2026): Half Speed,
+    // as every breakdown played then. (The Lab says its own outright: make.js.)
+    if (group.id === 'form' && given.breakdownHook == null) out.form.breakdownHook = 'half';
     for (const [k, given1] of Object.entries(given)) {
       if (group.id === 'sectionFx' && k === 'assignments') { out.sectionFx.assignments = normaliseSectionAssignments(given1, issues); continue; }
       if (group.id === 'production' && k === 'version') continue;

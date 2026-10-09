@@ -60,7 +60,7 @@ import {
   HERO_MOVES, PARTS, nextBeatAt, nextSixteenthAt, nowAt, nextBarAt, nextTwoOrFourAt, landingFor, playMove, startHold, dragHold, endHold, setPartLevel,
   releaseClub, moveSeconds, gridReady, setSpeed, stepTime, startChipGate, endChipGate, CHIP_GATE_CHANCE, lastBarBeforeSection, chipGateRoll, throwBeat, echoLevel,
   stopTape, nextStopStep, partOf, partGain, startWobble, setWobble, endWobble,
-  PITCH_RANGE, clampPitch, setPitchWarp, LEVEL_TOP, LEVEL_TOP_DB, clampLevel, levelDb, levelOfDb, setMasterLevel,
+  PITCH_RANGE, clampPitch, setPitchWarp, LEVEL_TOP, clampLevel, levelDb, levelOfDb, setMasterLevel,
 } from './club-fx.js';
 
 const BODY_FONT = "'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
@@ -202,8 +202,8 @@ const VU_PEAK_HOLD_S = 1.4;  // the peak line sits this long (PEAK_HOLD)...
 const VU_PEAK_FALL = 0.3;    // ...then slides down this much of the scale a second (PEAK_FALL)
 const VU_INK = Object.freeze({ go: '#3fb950', solo: '#d9a441', hot: '#e5534b', ink: '#e6e9ef' });
 const LIMIT_HOLD_S = 0.3;   // the LIMIT lamp: on from half a dB of pull, and held this long so it does not flicker
-/** The level faders' scale: a tick at each, in dB; the ends and 0 dB longer. */
-const LEVEL_TICKS_DB = Object.freeze([3, 0, -3, -6, -12, -18, -24, -36]);
+/** A part's sound button held this long opens its sound list; let go sooner, it is a tap. */
+const SOUND_LIST_HOLD_S = 0.4;
 
 /** The LED board: its size in dots, and what it says. */
 export const LED_COLS = 72, LED_ROWS = 7;   // wider (Peter, 3 Oct 2026)
@@ -589,6 +589,8 @@ export class BangerClubState {
     this.mixerOpen = false;
     this.mixSel = 0;           // the fader the keys move: a part's, MASTER_STRIP or PITCH_STRIP
     this.dragging = null;      // the fader under the finger (the same numbering)
+    this.soundHold = null;     // a finger on a part's sound button: { k, t0 } until it lifts or the list opens
+    this.soundList = null;     // ...held, that part's list of sounds, open: { k, sel } (sel: the keys' pick)
     this.popup = null;         // { text, t }
     this.iconsAt = 0;          // when the mixer was last used
     this.ballAt = Infinity;    // when the ball last started its drop
@@ -2455,6 +2457,7 @@ export class BangerClubState {
   openMixer(open = !this.mixerOpen) {
     this.mixerOpen = open;
     this.dragging = null;
+    this.soundHold = this.soundList = null;
     this.iconsAt = this.t;
     Audio.sfx('ui');
   }
@@ -2722,6 +2725,18 @@ export class BangerClubState {
       // ability key is back to 0 dB; on the PITCH strip (the last) up/down are half a percent,
       // and the ability key back to the middle.
       this.readMeter(dt);
+      // a part's sound button under the finger: held SOUND_LIST_HOLD_S, its list opens; let go
+      // sooner, still on it, and it is the tap it always was — the next sound; slid off, neither
+      const hold = this.soundHold;
+      if (hold && !Input.held('pointer')) {
+        this.soundHold = null;
+        if (inside(this.boxes.sounds[hold.k])) this.nextSound(hold.k);
+      } else if (hold && !inside(this.boxes.sounds[hold.k])) this.soundHold = null;
+      else if (hold && this.t - hold.t0 >= SOUND_LIST_HOLD_S) {
+        this.soundHold = null;
+        this.openSoundList(hold.k);
+      }
+      if (this.soundList) { this.soundListInput(inside); Input.endFrame(); return; }
       const strips = PITCH_STRIP + 1, onPitch = this.mixSel === PITCH_STRIP;
       if (Input.pressed('right')) this.mixSel = (this.mixSel + 1) % strips;
       if (Input.pressed('left')) this.mixSel = (this.mixSel + strips - 1) % strips;
@@ -2747,7 +2762,7 @@ export class BangerClubState {
         const tr = this.boxes.transport.findIndex(inside);
         if (this.boxes.reset && inside(this.boxes.reset)) this.resetMixer();
         else if (this.boxes.dice && inside(this.boxes.dice)) this.rollSounds();
-        else if (s >= 0) { this.mixSel = s; this.nextSound(s); }
+        else if (s >= 0) { this.mixSel = s; this.soundHold = { k: s, t0: this.t }; }
         else if (mu >= 0) { this.mixSel = mu; this.toggleMute(mu); }
         else if (so >= 0) { this.mixSel = so; this.toggleSolo(so); }
         else if (k >= 0) { this.dragging = k; this.mixSel = k; this.levelFromY(k, y); }
@@ -2861,6 +2876,53 @@ export class BangerClubState {
     if (!part) return;
     this.iconsAt = this.t;
     Audio.sfx(this.voices.next(part) ? 'ui' : 'uiBad');
+  }
+
+  /**
+   * A part's SOUND LIST (Peter, 9 Oct 2026: "a long press on the presets bring up a list of all
+   * of them so user doesn't have to click through"): every sound its button steps through, over
+   * the mixer panel, the keys starting on the one it has.
+   */
+  openSoundList(k) {
+    const part = PARTS[k]?.id;
+    if (!part || (this.voices?.choices(part).length || 0) < 2) { Audio.sfx('uiBad'); return; }
+    this.mixSel = k;
+    this.soundList = { k, sel: this.voices.picked(part) };
+    this.iconsAt = this.t;
+    Audio.sfx('ui');
+  }
+
+  /**
+   * The sound list open: a sound tapped — or picked on the keys, up and down it and left and
+   * right across its columns — goes in from the next bar line, as a tap on the button would, and
+   * the list shuts; a tap off it, its close button, or Back shuts it with nothing changed.
+   */
+  soundListInput(inside) {
+    const list = this.soundList, b = this.boxes.soundList;
+    const part = PARTS[list.k].id, n = this.voices?.choices(part).length || 0;
+    if (!n) { this.soundList = null; return; }
+    const rows = b?.rows || n;
+    list.sel = Math.min(list.sel, n - 1);
+    if (Input.pressed('down')) list.sel = (list.sel + 1) % n;
+    if (Input.pressed('up')) list.sel = (list.sel + n - 1) % n;
+    if (Input.pressed('right')) list.sel = Math.min(n - 1, list.sel + rows);
+    if (Input.pressed('left')) list.sel = Math.max(0, list.sel - rows);
+    if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('ability')) this.pickSound(list.sel);
+    else if (Input.pressed('back')) { this.soundList = null; Audio.sfx('ui'); }
+    else if (Input.pressed('pointer') && b) {
+      const i = b.items.findIndex(inside);
+      if (i >= 0) this.pickSound(i);
+      else if (inside(b.close) || !inside(b)) { this.soundList = null; Audio.sfx('ui'); }
+    }
+  }
+
+  /** The sound list's `i`th sound for its part, from the next bar line, and the list shut. */
+  pickSound(i) {
+    const k = this.soundList.k;
+    this.soundList = null;
+    this.iconsAt = this.t;
+    this.voices.pick(PARTS[k].id, i);
+    Audio.sfx('ui');
   }
 
   /** A sound swap has landed: the LED board says what the band is playing now. */
@@ -5466,6 +5528,7 @@ export class BangerClubState {
     }
     this.boxes.faders = [];
     this.boxes.sounds = [];
+    this.boxes.soundList = null;
     this.boxes.mutes = [];
     this.boxes.solos = [];
     this.boxes.panel = null;
@@ -5539,9 +5602,15 @@ export class BangerClubState {
       }
       const S = (portraitV, landV) => (portrait ? portraitV * P : L(landV));
       const pad = S(12, 6);
-      // a fader's scale, left of its slot: how far off the slot the ticks stand (closer in: Peter,
-      // 9 Oct 2026), and how long they are — the long ones at the ends and at 0 dB
-      const tickGap = S(2, 0.9), tickLong = S(8, 3.6), tickShort = S(4, 1.8);
+      // a fader's one mark, where it starts — 0 dB, or the tempo's middle — straight across the
+      // slot, drawn before it so it runs under the slot and the cap, and a little short of the
+      // cap's width so the cap hides it at home (Peter, 9 Oct 2026: the rest of the scale went —
+      // unlabelled, it told the player nothing)
+      const homeTick = (cx, ty) => {
+        const half = S(34, 15) / 2 * 0.9;
+        ctx.strokeStyle = 'rgba(206,208,222,0.28)'; ctx.lineWidth = 0.6 * u;
+        ctx.beginPath(); ctx.moveTo(cx - half, ty); ctx.lineTo(cx + half, ty); ctx.stroke();
+      };
       const cw = (pw - pad * 2 - masterW - pitchW) / PARTS.length;
       // a fader's cap: a brushed-metal knob with its grip line across the middle, on a soft shadow
       const faderCap = (cx, capY, lit, sel) => {
@@ -5568,21 +5637,12 @@ export class BangerClubState {
       const chipH = S(24, 9), chipY = py + ph - S(10, 4) - chipH;
       const labelY = chipY - S(9, 3.5);
       const top = msY + msH + S(22, 9), bot = labelY - S(22, 9.5);
-      // a LEVEL fader, a part's or the MASTER's: its scale left of the slot — a tick at each of
-      // LEVEL_TICKS_DB, long at the top, the bottom and 0 dB, where every fader starts (Peter, 9 Oct
-      // 2026: "a longer ticker for zero like we do for peak and mute") — the slot, sunk into the
-      // panel and lit in silver up to the cap, and the cap.
+      // a LEVEL fader, a part's or the MASTER's: its mark at 0 dB, where every fader starts, the
+      // slot, sunk into the panel and lit in silver up to the cap, and the cap.
       const levelY = (level) => bot - (bot - top) * Math.min(1, level / LEVEL_TOP);
       const levelFader = (cx, level, lit, sel) => {
-        const tw = S(5, 2.4), x1 = cx - tw / 2 - tickGap;
-        ctx.strokeStyle = 'rgba(206,208,222,0.28)'; ctx.lineWidth = 0.6 * u;
-        ctx.beginPath();
-        for (const db of LEVEL_TICKS_DB) {
-          const ty = levelY(levelOfDb(db));
-          ctx.moveTo(x1, ty); ctx.lineTo(x1 - (db === LEVEL_TOP_DB || db === 0 ? tickLong : tickShort), ty);
-        }
-        ctx.moveTo(x1, bot); ctx.lineTo(x1 - tickLong, bot);
-        ctx.stroke();
+        const tw = S(5, 2.4);
+        homeTick(cx, levelY(levelOfDb(0)));
         const capY = levelY(level);
         ctx.fillStyle = '#07070d';
         rr(ctx, cx - tw / 2, top, tw, bot - top, tw / 2); ctx.fill();
@@ -5775,17 +5835,10 @@ export class BangerClubState {
           ctx.fillText(txt, cx, msY + msH / 2 + 0.5 * u);
           ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
         }
-        // the scale: a tick each 2%, the ends and the middle longer
+        // its mark at the middle, the written tempo
         const tw = S(5, 2.4), mid = (top + bot) / 2, half = (bot - top) / 2;
         this.boxes.pitch = { x: cx - pitchW / 2, y: top - 8 * u, w: pitchW, h: bot - top + 16 * u, top, bot };
-        ctx.strokeStyle = 'rgba(206,208,222,0.28)'; ctx.lineWidth = 0.6 * u;
-        ctx.beginPath();
-        for (let n = -4; n <= 4; n++) {
-          const ty = mid - half * n / 4, long = n % 4 === 0;
-          const x1 = cx - tw / 2 - tickGap;
-          ctx.moveTo(x1, ty); ctx.lineTo(x1 - (long ? tickLong : tickShort), ty);
-        }
-        ctx.stroke();
+        homeTick(cx, mid);
         // + at the top, − at the bottom, by the scale's ends — past the cap, which rides over them
         const side = cx + S(34, 15) / 2 + S(5, 2.2);
         ctx.fillStyle = 'rgba(206,208,222,0.5)';
@@ -5828,6 +5881,64 @@ export class BangerClubState {
         ctx.fillText(num, cx, chipY + chipH / 2);
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'left';
+      }
+      // A PART'S SOUND LIST (openSoundList), over the whole panel: the part's icon and name, a
+      // close button, and every sound its button steps through as buttons like it, in its order
+      // down the columns — the one it has lit (pulsing while it waits for the bar line), the
+      // keys' pick ringed — each name at the size the strips' buttons start at, shrunk only to fit.
+      if (this.soundList) {
+        const part = PARTS[this.soundList.k];
+        const list = this.voices?.choices(part.id) || [];
+        const has = this.voices?.picked(part.id) ?? 0, waiting = this.voices?.waiting(part.id);
+        const rad = portrait ? 16 * P : L(7);
+        ctx.fillStyle = '#0e0e18';
+        rr(ctx, px, py, pw, ph, rad); ctx.fill();
+        ctx.strokeStyle = 'rgba(206,208,222,0.4)'; ctx.lineWidth = 0.8 * u; ctx.stroke();
+        const head = S(44, 19), hy = py + head / 2;
+        ctx.strokeStyle = SILVER; ctx.fillStyle = SILVER; ctx.lineWidth = 0.9 * u;
+        icons[part.id](ctx, px + pad + S(12, 5.5), hy, S(13, 6.5), { u, beat, on: true, cut: '#0e0e18' });
+        ctx.font = `600 ${S(12, 5.5)}px ${BODY_FONT}`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(part.label, px + pad + S(30, 13.5), hy + 0.5 * u);
+        // close: an X in a ring at the top right
+        const xr = S(11, 4.8), xcx = px + pw - pad - xr, xs = xr * 0.4;
+        const close = { x: xcx - xr * 1.6, y: hy - xr * 1.6, w: xr * 3.2, h: xr * 3.2 };
+        ctx.fillStyle = '#1d1a2c';
+        ctx.beginPath(); ctx.arc(xcx, hy, xr, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = SILVER_DIM; ctx.lineWidth = 0.8 * u; ctx.stroke();
+        ctx.strokeStyle = SILVER; ctx.lineWidth = 1.1 * u;
+        ctx.beginPath();
+        ctx.moveTo(xcx - xs, hy - xs); ctx.lineTo(xcx + xs, hy + xs);
+        ctx.moveTo(xcx + xs, hy - xs); ctx.lineTo(xcx - xs, hy + xs);
+        ctx.stroke();
+        // the grid: as few columns as fit the panel's height, none wider than a long name needs
+        const n = list.length, gx = px + pad, gy = py + head, gw = pw - pad * 2, gh = ph - head - pad;
+        const rowH = chipH + S(8, 3);
+        const cols = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(gh / rowH))));
+        const rows = Math.ceil(n / cols), pitchY = Math.min(rowH, gh / rows);
+        const colW = Math.min(gw / cols, S(150, 64)), left = gx + (gw - colW * cols) / 2;
+        const bh = Math.min(chipH, pitchY - S(4, 1.5)), bw = colW - S(8, 3);
+        const items = [];
+        list.forEach((c, i) => {
+          const col = Math.floor(i / rows), row = i % rows;
+          const box = { x: left + col * colW + (colW - bw) / 2, y: gy + row * pitchY + (pitchY - bh) / 2, w: bw, h: bh };
+          items.push(box);
+          const lit = i === has, ring = i === this.soundList.sel && !Input.usingTouch;
+          ctx.fillStyle = lit ? (waiting ? `rgba(242,243,250,${0.6 + 0.4 * Math.sin(t * 10)})` : '#f2f3fa') : '#1d1a2c';
+          rr(ctx, box.x, box.y, box.w, box.h, bh / 2); ctx.fill();
+          ctx.strokeStyle = ring ? '#c9a0ff' : lit ? '#f2f3fa' : SILVER_DIM;
+          ctx.lineWidth = (ring ? 1.4 : 0.8) * u; ctx.stroke();
+          const room = bw - bh * 0.6;
+          let fs = S(10, 3.8);
+          ctx.font = `600 ${fs}px ${BODY_FONT}`;
+          const wide = ctx.measureText(c.label).width;
+          if (wide > room) { fs = Math.max(fs * 0.6, fs * room / wide); ctx.font = `600 ${fs}px ${BODY_FONT}`; }
+          ctx.fillStyle = lit ? '#14141e' : SILVER;
+          ctx.textAlign = 'center';
+          ctx.fillText(c.label, box.x + bw / 2, box.y + bh / 2 + 0.5 * u, room);
+        });
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        this.boxes.soundList = { x: px, y: py, w: pw, h: ph, items, close, rows };
       }
     }
     // NO DRUMS / YES DRUMS: a popup over the icons when a part is switched
