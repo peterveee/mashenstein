@@ -150,7 +150,7 @@ export const mix = {
       "starter": false,
       "knock": 0.3,
       "kind": "drum",
-      "level": 0.06,
+      "level": 0.0516,
       "peak": 0.7,
       "songOrigin": "library",
       "songSourceId": "kickVoice"
@@ -181,7 +181,7 @@ export const mix = {
       "id": "ds808Snare",
       "kind": "drum",
       "factory": true,
-      "level": 0.014,
+      "level": 0.022,
       "peak": 0.7
     },
     "hatsVoice": {
@@ -200,8 +200,8 @@ export const mix = {
       "id": "hatEngine",
       "kind": "drum",
       "factory": true,
-      "level": 0.012,
-      "peak": 0.8382
+      "level": 0.0146,
+      "peak": 0.7082
     },
     "ohatsVoice": {
       "label": "= Engine Open Hat",
@@ -219,7 +219,7 @@ export const mix = {
       "id": "ohatEngine",
       "kind": "drum",
       "factory": true,
-      "level": 0.01,
+      "level": 0.0566,
       "peak": 0.9765
     },
     "bassVoice": {
@@ -258,8 +258,8 @@ export const mix = {
       "starter": false,
       "id": "roundBass",
       "kind": "tone",
-      "level": 0.09,
-      "peak": 1.183,
+      "level": 0.0589,
+      "peak": 0.712,
       "user": true
     },
     "leadVoice": {
@@ -298,8 +298,8 @@ export const mix = {
       "drive": 0,
       "drivePlace": "pre",
       "kind": "tone",
-      "level": 0.105,
-      "peak": 1.0661,
+      "level": 0.0386,
+      "peak": 0.6634,
       "songOrigin": "library",
       "songSourceId": "leadVoice"
     },
@@ -336,8 +336,8 @@ export const mix = {
         "depth": 0.0408
       },
       "kind": "tone",
-      "level": 0.033,
-      "peak": 0.21778041797154252,
+      "level": 0.0159,
+      "peak": 0.2118,
       "songOrigin": "library",
       "songSourceId": "lead3Voice"
     },
@@ -426,8 +426,8 @@ export const mix = {
         "width": 0.73
       },
       "kind": "tone",
-      "level": 0.039,
-      "peak": 0.670031805693217,
+      "level": 0.1182,
+      "peak": 0.5125,
       "songOrigin": "library",
       "songSourceId": "lead4Voice"
     }

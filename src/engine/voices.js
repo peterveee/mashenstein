@@ -6587,8 +6587,11 @@ export class VoiceRack {
         // Its intrinsic value first: an oscillator started mid render-quantum runs at the 440 Hz
         // default up to the automation event, so a note's wobble began wherever in its cycle
         // the block boundary left it. With the value set, every note starts at phase zero.
-        lfo.frequency.value = rate * vary(vibSpread * 0.1, ensembleTime, 911 + key);
-        lfo.frequency.setValueAtTime(rate * vary(vibSpread * 0.1, ensembleTime, 911 + key), time);
+        // One draw for both: the same seed twice is the same number, and a second call site
+        // would read to tests/mixer-layout.js's site count as a source `layerVariesWithTime` misses.
+        const spreadRate = rate * vary(vibSpread * 0.1, ensembleTime, 911 + key);
+        lfo.frequency.value = spreadRate;
+        lfo.frequency.setValueAtTime(spreadRate, time);
         lfo.setPeriodicWave(phasedWave(ctx, vib.type, hitRandom(ensembleTime, 977 + key) * 2 * Math.PI * vibSpread));
       } else {
         lfo.type = nativeWave(vib.type, 'sine');

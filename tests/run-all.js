@@ -180,6 +180,8 @@ const suites = [
   'tests/banger-rolls.js',
   // B-33P's 8-bit gate: one bar before a new section, now and then.
   'tests/club-chip-gate.js',
+  // The club mixer's sound swaps land at the level of the sound they replace.
+  'tests/club-voice-levels.js',
   'tests/creative-drum-kits.js',
   // The shapes a banger takes beyond build-and-drop: Pop Song, Anthem, Groove, a form
   // drawn in the editor — each fitting every length, hanging together, re-made exactly.
@@ -586,6 +588,8 @@ const suites = [
   // builds the context — after ensure() the request is a no-op that looks like a fix.
   'tests/phone-audio.js',
   'tests/mixer-metering.js',
+  // The Banger Lab's limiter and MASTER fader, on a live graph: on only for a song that asks.
+  'tests/lab-ceiling.js',
   'tests/gate.js',
   'tests/gate-dev.js',
   'tests/gate-allowed.js',
@@ -675,6 +679,7 @@ const browserSuites = new Set([
   'tests/render-culling-browser.js',
   'tests/lcd-cache-browser.js',
   'tests/mixer-metering.js',
+  'tests/lab-ceiling.js',
   'tests/held-keys.js',
   'tests/key-mode-render.js',
   'tests/tngr2-audio.js',
@@ -769,7 +774,7 @@ for (const s of suites) {
 // most important thing to find out about — and it is the reason this group is not
 // simply "the fast ones".
 const soundSuites = [
-  'tests/sound-test-menu.js', 'tests/jukebox-banger.js', 'tests/visualisers.js', 'tests/mix.js',
+  'tests/sound-test-menu.js', 'tests/jukebox-banger.js', 'tests/lab-ceiling.js', 'tests/visualisers.js', 'tests/mix.js',
   'tests/song-analysis.js', 'tests/beat-detect.js', 'tests/beat-detect-audio.js',
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',

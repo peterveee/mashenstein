@@ -6628,6 +6628,8 @@ class AudioSys {
       // tempo-synced ones for this song's bpm, then lay the saved settings over.
       this.setDelay({ division: 0.75, feedback: 0.35, tone: 2800 });
       this.mixer.retune(bank?.bpm || this.bpm);
+      // The Lab's songs have THE CEILING on (mixer.js CEILING); every other song has it off.
+      this.mixer.setCeiling?.(!!entry?.ceiling);
       if (entry) {
         this.mixer.setMasterTrim(entry.master || 0);
         this.mixer.setMasterPan(entry.masterPan || 0);

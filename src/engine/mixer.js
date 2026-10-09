@@ -41,6 +41,22 @@ import { GROUP_IDS, groupIdOf, isGroupKey, groupSettings } from '../data/group-b
 export const dbToGain = (db) => 10 ** (db / 20);
 export const gainToDb = (g) => 20 * Math.log10(Math.max(1e-6, g));
 
+/**
+ * THE CEILING — the Banger Lab's limiter, last on the song's bus (Peter, 9 Oct 2026: "should we
+ * run a limit on the lab overall?", once its faders went past 0 dB). A song switches it on with
+ * `ceiling: true` in its mix; nothing else has it, so every cabinet still plays as it was balanced.
+ *
+ * Not the `limiter` beside it: that is Tone.Limiter, a 30 dB soft knee and a 10 ms release, which
+ * barely touches a 0 dBFS peak and which the songs that use it were mixed through. This is a
+ * native DynamicsCompressorNode with a hard knee at 20:1. Web Audio gives that node a make-up gain
+ * of its own — (1 / the curve's gain at 0 dBFS) ^ 0.6, 1.71 dB at these settings — so a trim after
+ * it takes exactly that back off: below the threshold the ceiling is unity, measured (Chromium and
+ * WebKit, 9 Oct 2026, work/local/_lab-ceiling-comp.mjs), and 12 dB of overs come out at −1 dBFS.
+ * Like any DynamicsCompressorNode it costs 6 ms of latency while it is in.
+ */
+export const CEILING = Object.freeze({ threshold: -3, knee: 0, ratio: 20, attack: 0.002, release: 0.15 });
+const CEILING_MAKEUP_DB = -0.6 * CEILING.threshold * (1 - 1 / CEILING.ratio);
+
 // Shelf/peak corners. Broad and musical rather than surgical — this is for
 // balancing a chiptune mix, not repairing a recording.
 const EQ_LOW_HZ = 250;
@@ -1723,7 +1739,7 @@ export function createMixer(ctx, {
   let limiterOn = false;
 
   // masterOut exists so the limiter can be switched in and out without touching
-  // masterTrim's own connections. Rewiring used to call masterTrim.disconnect(),
+  // masterTrim's own connections. (Its gain is the Lab's MASTER fader: setMasterLevel.) Rewiring used to call masterTrim.disconnect(),
   // which tore off EVERY downstream node — including the master meter, which
   // applyMix() then silently killed on every song load by calling setLimiter().
   const masterOut = ctx.createGain();
@@ -1743,6 +1759,30 @@ export function createMixer(ctx, {
   let masterInputMeter = null;
   let masterMeterSource = null;
 
+  // THE CEILING (see CEILING), built the first time a song asks for it: in at `ceilingIn`, out of
+  // `ceilingOut`, and from `ceilingIn` a stereo tap — what goes INTO the ceiling, so its meter can
+  // show the overs it is catching — that the Lab's MASTER strip reads (ceilingLevels).
+  let ceilingOn = false;
+  let ceiling = null;
+  const makeCeiling = () => {
+    const comp = ctx.createDynamicsCompressor();
+    for (const k of ['threshold', 'knee', 'ratio', 'attack', 'release']) comp[k].value = CEILING[k];
+    const input = ctx.createGain();
+    const out = ctx.createGain();
+    out.gain.value = dbToGain(-CEILING_MAKEUP_DB);
+    input.connect(comp);
+    comp.connect(out);
+    const split = ctx.createChannelSplitter(2);
+    input.connect(split);
+    const taps = [0, 1].map((ch) => {
+      const a = ctx.createAnalyser();
+      a.fftSize = 2048;   // 46 ms at 44.1k: longer than a frame, so no peak falls between two reads
+      split.connect(a, ch);
+      return a;
+    });
+    return { comp, input, out, taps, buf: new Float32Array(2048) };
+  };
+
   const wireMaster = () => {
     if (!master) return;
     if (masterMeter && masterMeterSource) {
@@ -1751,6 +1791,10 @@ export function createMixer(ctx, {
     }
     masterOut.disconnect();
     masterPan.disconnect();
+    if (ceiling) {
+      try { Tone.disconnect(limiter, ceiling.input); } catch { /* not fed from there */ }
+      ceiling.out.disconnect();
+    }
     masterOut.connect(masterPan);
     let finalSource = masterPan;
     if (limiterOn) {
@@ -1758,6 +1802,11 @@ export function createMixer(ctx, {
       finalSource = limiter;
     } else {
       limiter.disconnect();
+    }
+    if (ceilingOn) {
+      ceiling ||= makeCeiling();
+      Tone.connect(finalSource, ceiling.input);
+      finalSource = ceiling.out;
     }
     Tone.connect(finalSource, destination);
     if (masterMeter) {
@@ -2264,6 +2313,41 @@ export function createMixer(ctx, {
     get limiterOn() { return limiterOn; },
     /** Costs 6ms of output latency whenever it is on — see the note where it is built. */
     setLimiter(on) { limiterOn = !!on; wireMaster(); },
+    get ceilingOn() { return ceilingOn; },
+    /** THE CEILING (see CEILING) in or out; also 6 ms of latency while it is in. */
+    setCeiling(on) {
+      if (!!on === ceilingOn) return;
+      ceilingOn = !!on;
+      wireMaster();
+    },
+    /**
+     * What is going into the ceiling — [left, right], the peak over the last 46 ms, linear — and
+     * how far its curve pulls that peak down (dB, 0 or less). Zeros while it is out. The
+     * reduction is the curve's, not the node's own `reduction`, which is a slow meter: it reads
+     * −15 dB on a node just made with nothing going in, and takes a second to come back to 0.
+     */
+    ceilingLevels() {
+      if (!ceilingOn || !ceiling) return { peaks: [0, 0], reduction: 0 };
+      const peaks = ceiling.taps.map((a) => {
+        a.getFloatTimeDomainData(ceiling.buf);
+        let p = 0;
+        for (let i = 0; i < ceiling.buf.length; i++) { const v = Math.abs(ceiling.buf[i]); if (v > p) p = v; }
+        return p;
+      });
+      const over = Math.max(0, gainToDb(Math.max(...peaks)) - CEILING.threshold);
+      return { peaks, reduction: -over * (1 - 1 / CEILING.ratio) };
+    },
+    /**
+     * The whole song's level after everything else on its bus — the inserts and the master
+     * sections — and before the pan, the limiters and the meter: the Lab's MASTER fader, a gain
+     * from `when`, gliding over `glide` s. A live control like a strip's setLiveLevel: it is the
+     * caller's, so no song change or reset() moves it, and the caller puts it back to 1.
+     */
+    setMasterLevel(g, when = ctx.currentTime, glide = 0.012) {
+      const at = Math.max(when, ctx.currentTime);
+      masterOut.gain.cancelScheduledValues(at);
+      masterOut.gain.setTargetAtTime(Math.max(0, g), at, glide);
+    },
     clearSolo() { soloed.clear(); soloedGroups.clear(); applySoloAll(); },
     /**
      * Every channel back to the pan its MIX says, with no arrangement offset on it.

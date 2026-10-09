@@ -1,5 +1,6 @@
 // THE MIXER'S ICONS — the head of each strip on the Lab club's mixer panel: a part's (drums,
-// bass, chords, lead) over its MUTE and SOLO, and the tempo's over the PITCH strip.
+// bass, chords, lead) over its MUTE and SOLO, a speaker over the MASTER strip, and the tempo's
+// over the PITCH strip.
 //
 // Each is `(g, x, y, r, o)`: centred on (x, y), `r` the strip's icon size (the panel's own
 // units, club.js drawControls), in the ink the caller has set as both strokeStyle and fillStyle
@@ -163,6 +164,18 @@ export function metronome(g, x, y, r, beat, { lw = 0.12, solid = false, cut = '#
   g.restore();
 }
 
+/** A loudspeaker, outlined — its box, its cone, and two waves off it; the line `lw` of r. */
+export function speaker(g, x, y, r, { lw = 0.12 } = {}) {
+  pen(g, r, lw);
+  const bx = x - r * 0.6, cx = x - r * 0.26, mx = x + r * 0.08;
+  g.beginPath();
+  g.moveTo(bx, y - r * 0.22); g.lineTo(cx, y - r * 0.22); g.lineTo(mx, y - r * 0.56);
+  g.lineTo(mx, y + r * 0.56); g.lineTo(cx, y + r * 0.22); g.lineTo(bx, y + r * 0.22);
+  g.closePath(); g.stroke();
+  seg(g, cx, y - r * 0.22, cx, y + r * 0.22);
+  for (const rad of [0.3, 0.56]) { g.beginPath(); g.arc(mx, y, r * rad, -0.85, 0.85); g.stroke(); }
+}
+
 // ----------------------------------------------------------------------------------- the set
 
 /** The caller's line, as a fraction of the icon's size: the strip's own fine line. */
@@ -179,6 +192,7 @@ export const MIXER_ICONS = Object.freeze({
     pen(g, r, lw); quavers(g, x, y, r, { stem: lw, beam: 0.14 });
     g.restore();
   },
+  master: (g, x, y, r) => { g.save(); speaker(g, x, y, r, { lw: fine(g, r) }); g.restore(); },
   tempo: (g, x, y, r, { beat = 0 } = {}) => {
     g.save(); metronome(g, x, y, r, beat, { lw: fine(g, r), plinth: 0.11, weight: [0.22, 0.15] }); g.restore();
   },

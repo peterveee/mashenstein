@@ -639,8 +639,8 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   // `form` is the song's sections (role, bars from–to, counted from 1): the club fires its
   // crowd moments on their changes. `laneOf` (each part's lane), `kit` and `soundsId` (whose
   // row of the sounds table the take plays) are what the club's sound swaps need
-  // (club-voices.js).
-  return { bank: out.bank, mix: out.mix, arrangement: out.arrangement, bpm: out.bank.bpm,
+  // (club-voices.js). The mix carries THE CEILING (mixer.js CEILING): the club's faders go to +3 dB.
+  return { bank: out.bank, mix: { ...out.mix, ceiling: true }, arrangement: out.arrangement, bpm: out.bank.bpm,
     trackEffects: out.trackEffects,
     paletteSnapshot: out.banger.paletteSnapshot,
     laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style',

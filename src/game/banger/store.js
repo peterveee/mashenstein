@@ -235,7 +235,7 @@ export function deleteBanger(rec, save = defaultSave) {
 }
 
 /**
- * A kept song's club mixer — `{ levels: { drums, bass, chords, lead }, sounds: { own, swap } }`,
+ * A kept song's club mixer — `{ levels: { drums, bass, chords, lead }, master?, pitch?, sounds: { own, swap } }`,
  * the faders and each part's sound by name (club-voices.js picksNamed) — kept on its recipe
  * (Peter, 5 Oct 2026: "save the mixer settings, esp since we can now change the presets"). Null,
  * or every fader up and no sound changed, takes it off again. Not part of what makes the song:
@@ -243,7 +243,7 @@ export function deleteBanger(rec, save = defaultSave) {
  */
 export function keepMixer(rec, mixer, save = defaultSave) {
   if (!rec) return;
-  const plain = !mixer || (Object.values(mixer.levels || {}).every((v) => v === 1) && !mixer.pitch && !mixer.sounds?.swapped
+  const plain = !mixer || (Object.values(mixer.levels || {}).every((v) => v === 1) && (mixer.master ?? 1) === 1 && !mixer.pitch && !mixer.sounds?.swapped
     && !Object.keys(mixer.sounds?.own || {}).length && !Object.keys(mixer.sounds?.swap || {}).length);
   if (plain) delete rec.mixer; else rec.mixer = structuredClone(mixer);
   save.persist?.();

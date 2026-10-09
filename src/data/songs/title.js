@@ -69,115 +69,31 @@ export const bank = {
 };
 
 // ---- THE DESK WRITES BELOW HERE ----------------------------------------------
-// Rewritten whole by the mixing desk. Nothing below this line is hand-edited,
-// and nothing above it is ever touched by the desk.
+// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
   master: -19.4,
   limiter: true,
   masterEffects: [{ id: "compressor", bypass: true, params: { threshold: -12, ratio: 2, attack: 0.03, release: 0.25 } }, { id: "reverb", params: { decay: 7, wet: 0.36, preDelay: 0.034 } }, { id: "gain", params: { gain: 8.9 } }],
-  layers: [
-    {
-      key: "bass2",
-      from: "bass",
-    },
-    {
-      key: "bass3",
-      from: "bass",
-    },
-  ],
-  voice: {
-    bass2Voice: "tpAlienChorus",
-  },
-  voiceParams: {"bass3Voice": {"label": "Title Sub", "category": "Bass", "synth": "MRDR-3", "dur": 7.4, "note": "The title bass an octave down: the same slow sine, felt under the nocturne rather than heard. Added 30 Sep 2026 because the song had nothing under 60 Hz (bass report: sub 38 dB under the cabinets).", "layer": {"osc1": {"type": "sine", "ratio": 0.5, "gain": 1, "attack": 0.25, "decay": 7.4}}, "kind": "tone", "level": 0.221732, "peak": 0.7, "songOrigin": "user", "songSourceId": "bass3Voice"}},
+  layers: [{ key: "bass2", from: "bass" }, { key: "bass3", from: "bass" }],
+  voice: {"bass2Voice":"tpAlienChorus"},
+  voiceParams: {"bass3Voice":{"label":"Title Sub","category":"Bass","synth":"MRDR-3","dur":7.4,"note":"The title bass an octave down: the same slow sine, felt under the nocturne rather than heard. Added 30 Sep 2026 because the song had nothing under 60 Hz (bass report: sub 38 dB under the cabinets).","layer":{"osc1":{"type":"sine","ratio":0.5,"gain":1,"attack":0.25,"decay":7.4}},"kind":"tone","level":0.1127,"peak":0.7,"songOrigin":"user","songSourceId":"bass3Voice"}},
   lanes: {
-    sweeps: {
-      gain: -1.2,
-      pan: 0.923,
-      send: {
-        delay: 0.81,
-        reverb: 0.475,
-      },
-      eq: {
-        mid: 3.3,
-        high: 5.4,
-      },
-    },
-    bass: {
-      gain: 3.7,
-      pan: -0.211,
-      send: {
-        delay: 0.31,
-      },
-    },
-    leadHarm: {
-      pan: 0.07,
-      send: {
-        delay: 0.53,
-      },
-      eq: {
-        high: 5.7,
-      },
-    },
-    twinkle: {
-      pan: 0.24,
-      send: {
-        delay: 0.92,
-      },
-      eq: {
-        low: -2.6,
-        mid: -4.4,
-        high: 3.9,
-      },
-    },
-    keyGliss: {
-      gain: 3.6,
-      pan: -0.326,
-      send: {
-        delay: 1.04,
-      },
-    },
-    chords: {
-      gain: -2.8,
-      send: {
-        delay: 0.88,
-        reverb: 0.61,
-      },
-      effects: [
-        {
-          id: "vibrato",
-          params: {
-            wet: 0.71,
-          },
-        },
-        {
-          id: "autopanner",
-          params: {
-            rateSync: 1,
-            rateDivision: 8,
-            wet: 0.74,
-            depth: 0.49,
-          },
-        },
-      ],
-    },
-    lead: {
-      pan: -0.169,
-      send: {
-        delay: 0.695,
-      },
-    },
-    bass2: {
-      gain: -9,
-      pan: 0.42,
-      send: {
-        delay: 0.31,
-      },
-    },
-    bass3: {
-      gain: -7.5,
-    },
+    sweeps: { gain: -1.2, pan: 0.923, send: { delay: 0.81, reverb: 0.475 }, eq: { mid: 3.3, high: 5.4 } },
+    bass: { gain: 3.7, pan: -0.211, send: { delay: 0.31 } },
+    leadHarm: { pan: 0.07, send: { delay: 0.53 }, eq: { high: 5.7 } },
+    twinkle: { pan: 0.24, send: { delay: 0.92 }, eq: { low: -2.6, mid: -4.4, high: 3.9 } },
+    keyGliss: { gain: 3.6, pan: -0.326, send: { delay: 1.04 } },
+    chords: { gain: -2.8, send: { delay: 0.88, reverb: 0.61 }, effects: [{ id: "vibrato", params: { wet: 0.71 } }, { id: "autopanner", params: { rateSync: 1, rateDivision: 8, wet: 0.74, depth: 0.49 } }] },
+    lead: { pan: -0.169, send: { delay: 0.695 } },
+    bass2: { gain: -9, pan: 0.42, send: { delay: 0.31 } },
+    bass3: { gain: -7.5 },
   },
 };
 
 export const arrangement = null;
+
+export const variants = null;
+
+// M8TRX is a Mixer-only parked recipe. It is intentionally not a game alternate.
+export const m8trx = null;

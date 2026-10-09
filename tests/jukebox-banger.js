@@ -214,8 +214,9 @@ assert(threw, 'an empty grid is refused');
     const st = b.kept[0];
     const song = st && songFor(st);
     assert(b.kept.length === 1 && st.preset === 'neon-orbit' && st.n === 1 && bangerTitle(st) === `NEON ORBIT (BIG-ROOM HOUSE/${NEON.banger.options.mood.toUpperCase()})`
-      && song.bank === NEON.bank && song.mix === NEON.mix && song.form.length >= 7 && song.form[0].from === 1 && song.form.every((f, i) => !i || f.from === song.form[i - 1].to + 1),
-    'a first-time Lab opens on NEON ORBIT, the desk song exactly as saved');
+      && song.bank === NEON.bank && Object.entries(NEON.mix).every(([k, v]) => song.mix[k] === v)
+      && Object.keys(song.mix).length === Object.keys(NEON.mix).length + 1 && song.mix.ceiling === true && song.form.length >= 7 && song.form[0].from === 1 && song.form.every((f, i) => !i || f.from === song.form[i - 1].to + 1),
+    'a first-time Lab opens on NEON ORBIT, the desk song exactly as saved (with THE CEILING on, as every Lab song)');
     assert(st.mode === 'advanced' && st.notes.length === 32 && st.notes.filter((n) => n >= 0).length === 9 && !st.options,
       'and it carries its riff on the ADVANCED grid, for the pencil');
     deleteBanger(st, fake);
@@ -1515,7 +1516,29 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   tap(club, f.x + f.w / 2, f.bot);
   assert(club.levels.drums === 0 && !club.parts.has('drums') && club.popup?.text === 'NO DRUMS', 'the drum fader pulled to the bottom: NO DRUMS');
   tap(club, f.x + f.w / 2, (f.top + f.bot) / 2);
-  assert(club.levels.drums > 0.4 && club.levels.drums < 0.6 && club.popup?.text === 'YES DRUMS', 'and halfway up: YES DRUMS, at half');
+  {
+    const { levelDb, LEVEL_TOP } = await import('../src/game/banger/club-fx.js');
+    assert(Math.abs(levelDb(club.levels.drums) - levelDb(LEVEL_TOP / 2)) < 0.2 && club.popup?.text === 'YES DRUMS',
+      `and halfway up: YES DRUMS, at −9 dB (${club.levels.drums})`);
+  }
+  // ...and the top is +3 dB, 0 dB (where every fader starts) 84% of the way up, and a snap onto it
+  // within a dB (Peter, 9 Oct 2026: "make the levels go up to + 6db", then "perhaps only go up 3db
+  // louder", then "can we snap to zero when near it?")
+  {
+    const { LEVEL_TOP, levelDb, levelOfDb } = await import('../src/game/banger/club-fx.js');
+    tap(club, f.x + f.w / 2, f.top);
+    const top = club.levels.drums;
+    club.setLevel(0, levelOfDb(0.9));
+    const click = club.levels.drums;
+    club.setLevel(0, levelOfDb(-0.9));
+    const clickDown = club.levels.drums;
+    club.setLevel(0, levelOfDb(1.3));
+    const past = club.levels.drums;
+    tap(club, f.x + f.w / 2, f.bot - (f.bot - f.top) / LEVEL_TOP);
+    assert(Math.abs(levelDb(top) - 3) < 1e-9 && click === 1 && clickDown === 1 && past > 1 && club.levels.drums === 1,
+      `the drum fader's top is +3 dB, and it snaps onto 0 dB within a dB of it (${top}, ${click}, ${clickDown}, ${past}, ${club.levels.drums})`);
+    tap(club, f.x + f.w / 2, (f.top + f.bot) / 2);
+  }
   // ...and under each fader the part's sound: a tap is its next one, from the next bar line,
   // and the LED board names it
   {
@@ -1676,6 +1699,53 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     club.draw(ctx);
     tap(club, ...centre(club.boxes.reset));
     assert(club.pitch === 0 && near(Audio.tempo, 1) && club.mixerPlain, 'and RESET puts the pitch back too');
+    club.draw(ctx);
+  }
+  // THE MASTER strip between the parts and the PITCH (Peter, 9 Oct 2026: "an overall level (with
+  // built in vu lights)"): the parts' scale, to +3 dB; kept with the song; its readout a tap back
+  // to 0 dB, and RESET too; on the keys between LEAD and the pitch. And every Lab song carries
+  // THE CEILING (mixer.js), which the MASTER drives into.
+  {
+    const { LEVEL_TOP, levelDb } = await import('../src/game/banger/club-fx.js');
+    club.draw(ctx);
+    const m = club.boxes.master, last = club.boxes.faders[PARTS.length - 1], p = club.boxes.pitch;
+    assert(m && club.boxes.masterZero && m.x >= last.x + last.w - 1 && m.x + m.w <= p.x + 1 && club.masterLevel === 1,
+      'a MASTER strip between the parts and the pitch, at 0 dB');
+    assert(club.song.mix.ceiling === true, 'the Lab song has THE CEILING on');
+    tap(club, m.x + m.w / 2, m.top);
+    club.update(1 / 60); club.update(1 / 60);   // the finger is off: the mixer is kept on the frame after
+    assert(club.masterLevel === LEVEL_TOP && club.rec.mixer?.master === LEVEL_TOP && !club.mixerPlain,
+      `MASTER to the top: +3 dB, kept with the song (${club.masterLevel}, ${JSON.stringify(club.rec.mixer)})`);
+    tap(club, m.x + m.w / 2, (m.top + m.bot) / 2);
+    club.update(1 / 60); club.update(1 / 60);
+    assert(Math.abs(levelDb(club.masterLevel) - levelDb(LEVEL_TOP / 2)) < 0.2, `and halfway, −9 dB (${club.masterLevel})`);
+    const again = new BangerClubState({ rec: club.rec, onBack: () => {} });
+    again.enter();
+    const back = again.masterLevel === club.masterLevel;
+    again.exit();
+    Audio.setBank(club.song.bank, club.song.mix, club.song.arrangement, { startAtBeginning: true });
+    assert(back, 'opened again, the MASTER is where it was left');
+    club.draw(ctx);
+    tap(club, ...centre(club.boxes.masterZero));
+    club.update(1 / 60);
+    assert(club.masterLevel === 1 && club.mixerPlain && !club.rec.mixer, 'its readout is a tap back to 0 dB');
+    club.setMaster(0.5);
+    club.draw(ctx);
+    tap(club, ...centre(club.boxes.reset));
+    assert(club.masterLevel === 1 && club.mixerPlain, 'and RESET puts the MASTER back too');
+    const key = (k) => { Input.press(k); club.update(1 / 60); Input.release(k); Input.endFrame(); };
+    club.mixSel = PARTS.length - 1;
+    key('right');
+    const onMaster = club.mixSel;
+    key('up');
+    const up = club.masterLevel;
+    key('right');
+    const onPitch = club.mixSel;
+    key('left');
+    key('ability');
+    assert(onMaster === PARTS.length && up > 1 && onPitch === PARTS.length + 1 && club.masterLevel === 1,
+      `on the keys: right from LEAD is the MASTER, up raises it, then the PITCH; X back to 0 dB (${onMaster}, ${up}, ${onPitch})`);
+    club.update(1 / 60);
     club.draw(ctx);
   }
   for (let k = 0; k < 600; k++) club.update(1 / 60);

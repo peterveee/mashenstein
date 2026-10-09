@@ -20,12 +20,26 @@
 //           (borrowedSounds); the DICE only rolls the part's own.
 //
 // Nothing is kept: leaving the floor puts the song's own sounds back (release).
+//
+// LEVELLED (Peter, 9 Oct 2026: "can we do it when swapping by hand also? there seems to huge
+// variation even when its done with the dice"). A preset arrives at its lane's target for ONE
+// note (voiceGain), but the fader under it was set by the generator for the sound the take was
+// made with, playing the take's own notes — and a pad held through the bar, a pluck in sixteenths
+// and a chord of four deliver very different amounts from the same note. So each swapped lane's
+// fader moves by what the generator itself would have moved it for that sound (trimFor): the
+// lane's own notes on its own sound against the same notes on the new one, by the level model
+// (tools/lib/banger/levels.js), as a Random riff sound is levelled when a take is made. The
+// buttons, the DICE and 8-BIT all go through it; the fader on the panel stays where it is.
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
 import { KITS, RANDOM_JOBS, phoneStyle, soundAllowed, soundsRow } from '../../../tools/lib/banger/sound-rules.js';
 import { styleFor, withoutStyleSuffix } from '../../../tools/lib/banger/styles/index.js';
 import { fusionIds } from '../../../tools/lib/banger/styles/fusion.js';
 import { CREATIVE_DRUM_KITS } from '../../data/creative-drum-kits.js';
+import { predictedProcessedPart, levelWindow, soundOf, LEVEL_WINDOW_BARS, MAX_LEVEL_MOVE } from '../../../tools/lib/banger/levels.js';
+import { laneVoiceOf } from '../../../tools/lib/banger/riff.js';
+import { nameOf, hasNotes } from '../../../tools/lib/banger/theory.js';
 import { VOICES, baseLane, PERCUSSION_LANES } from '../../data/voices.js';
+import { laneSettings } from '../../data/mix.js';
 import { Audio } from '../../engine/audio.js';
 
 export const CHIP_SET = 'chipstep-8bit';
@@ -128,8 +142,8 @@ export function mixWithKept(song, rec, sounds) {
   return v.eightBit && state.swapped ? { ...mix, masterEffects: [crushLink(), ...(mix?.masterEffects || [])] } : mix;
 }
 
-/** The song's mix with `voices` (lane → preset) put on its lanes. */
-export function mixWithVoices(mix, voices) {
+/** The song's mix with `voices` (lane → preset) put on its lanes, and `trims` (lane → dB) on their faders. */
+export function mixWithVoices(mix, voices, trims = null) {
   if (!voices.size) return mix;
   const out = { ...mix, voice: { ...(mix?.voice || {}) }, voiceParams: { ...(mix?.voiceParams || {}) } };
   for (const [lane, id] of voices) {
@@ -137,7 +151,61 @@ export function mixWithVoices(mix, voices) {
     // a song's own one-off preset would win over the swap (withVoices applies it last)
     delete out.voiceParams[`${lane}Voice`];
   }
+  if (trims?.size) {
+    out.lanes = { ...(mix?.lanes || {}) };
+    for (const [lane, db] of trims) {
+      const strip = out.lanes[lane] || {};
+      out.lanes[lane] = { ...strip, gain: Math.round(((strip.gain ?? 0) + db) * 10) / 10 };
+    }
+  }
   return out;
+}
+
+/** The most a swap's fader comes DOWN, in dB (ClubVoices.trimFor). Up, it is MAX_LEVEL_MOVE. */
+const TRIM_CUT_DB = 12;
+
+/**
+ * A lane's bars out of a song's bank, in play order, as the level model reads a part
+ * (levels.js partLevel): `{ notes, lens }` by note name, or a drum row; null where it rests.
+ */
+export function laneBars(bank, lane) {
+  const drum = PERCUSSION_LANES.includes(baseLane(lane));
+  const sections = bank?.sections || [bank || {}];
+  const order = bank?.order || sections.map((_, i) => i);
+  const name = (v) => (typeof v === 'number' ? nameOf(Math.round(69 + 12 * Math.log2(v / 440))) : v);
+  const out = [];
+  for (const e of order) {
+    const sec = sections[typeof e === 'number' ? e : e?.s] || {};
+    const from = typeof e === 'number' ? 0 : (e?.from ?? 0);
+    const count = typeof e === 'number' ? 2 : (e?.bars ?? 2);
+    for (let h = from; h < from + count; h++) {
+      const steps = Array.isArray(sec[lane]) ? sec[lane].slice(h * 16, h * 16 + 16) : [];
+      if (!steps.some((v) => (drum ? !!v : v != null && v !== false))) { out.push(null); continue; }
+      if (drum) { out.push(steps.map(Boolean)); continue; }
+      const lens = Array.isArray(sec[`${lane}Len`]) ? sec[`${lane}Len`].slice(h * 16, h * 16 + 16) : [];
+      out.push({
+        notes: steps.map((v) => (v == null || v === false ? null : Array.isArray(v) ? v.map(name) : name(v))),
+        lens: steps.map((_, i) => lens[i] ?? null),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * The bars a lane's level is read over: its window in the fullest drop (levels.js levelWindow),
+ * as the generator read it — or, in a song with no form (a starter), the first eight it plays.
+ */
+function windowBars(song, lane) {
+  const all = laneBars(song?.bank, lane);
+  const plays = (b) => hasNotes(all[b]);
+  let win = song?.form?.length ? levelWindow(song.form, plays) : null;
+  if (!win) {
+    const b = all.findIndex((_, i) => plays(i));
+    if (b < 0) return null;
+    win = [b, Math.min(all.length - 1, b + LEVEL_WINDOW_BARS - 1)];
+  }
+  return all.slice(win[0], win[1] + 1);
 }
 
 const fresh = () => ({ swapped: false, picks: { own: {}, swap: {} } });
@@ -194,6 +262,48 @@ export class ClubVoices {
     this.state = fresh();      // what plays now
     this.pending = null;       // what plays from the next beat or bar line
     this.pendingAt = null;
+    this.trims = new Map();    // `lane\nid` → dB (trimFor), and each lane's bars it is read on
+    this.barsOf = new Map();
+  }
+
+  /**
+   * How far `lane`'s fader moves with preset `id` on it, in dB: the lane's own notes on the
+   * song's own sound against the same notes on `id`, each through the lane's channel (its
+   * widener), by the level model the generator sets every fader with — so a swap lands as
+   * loud as what it replaced. Up by no more than the generator moves a fader on a prediction
+   * (MAX_LEVEL_MOVE): a guess that a sound wants MORE is the one that hurts when it is wrong.
+   * Down by up to TRIM_CUT_DB, because a cut is safe. To the tenth of a dB a fader holds; 0 on
+   * the lane's own sound, or where there is nothing to read.
+   */
+  trimFor(lane, id) {
+    const key = `${lane}\n${id}`;
+    if (this.trims.has(key)) return this.trims.get(key);
+    let db = 0;
+    const own = laneVoiceOf(this.song?.bank, this.song?.mix, lane);
+    if (id && id !== own.id) {
+      if (!this.barsOf.has(lane)) this.barsOf.set(lane, windowBars(this.song, lane));
+      const bars = this.barsOf.get(lane);
+      const bpm = this.song?.bpm || this.song?.bank?.bpm || 120;
+      const strip = this.song?.mix?.lanes?.[lane];
+      const level = (sound) => (bars ? predictedProcessedPart({ bars, bpm, lane, sound, strip }) : null);
+      const was = level(soundOf(own));
+      const now = level(soundOf({ id }));
+      if (was != null && now != null) {
+        db = Math.round(Math.max(-TRIM_CUT_DB, Math.min(MAX_LEVEL_MOVE, was - now)) * 10) / 10;
+      }
+    }
+    this.trims.set(key, db);
+    return db;
+  }
+
+  /** Lane → dB for lanes playing `voices` (lane → preset): each one's trimFor, the zeros left out. */
+  trimsFor(voices) {
+    const out = new Map();
+    for (const [lane, id] of voices) {
+      const db = this.trimFor(lane, id);
+      if (db) out.set(lane, db);
+    }
+    return out;
   }
 
   /** The take's kit, read off its kick, for a song that does not say. */
@@ -369,7 +479,10 @@ export class ClubVoices {
     return voices;
   }
 
-  mixFor(state) { return mixWithVoices(this.song?.mix, this.voicesFor(state)); }
+  mixFor(state) {
+    const voices = this.voicesFor(state);
+    return mixWithVoices(this.song?.mix, voices, this.trimsFor(voices));
+  }
 
   /**
    * The clap the floor's CLAP pad plays (club-hits.js): the band's own, as heard — the clap
@@ -411,8 +524,33 @@ export class ClubVoices {
     this.state = state;
     // Only onto the song this club is playing: reapplyBank on any other bank is a song change.
     if (Audio.sourceBank !== this.song?.bank || !Audio.bank) return;
-    try { Audio.reapplyBank(this.song.bank, this.mixFor(state)); } catch { /* the song carries on as it was */ }
+    const mix = this.mixFor(state);
+    try {
+      Audio.reapplyBank(this.song.bank, mix);
+      this.restrip(this.mixFor(was), mix);
+    } catch { /* the song carries on as it was */ }
     if (this.eightBit && !!state.swapped !== !!was.swapped) this.crush(!!state.swapped);
+  }
+
+  /**
+   * The faders a swap moved (trimFor), onto their strips from the step the swap lands on.
+   * reapplyBank re-merges the voices and leaves every strip as it stands, so the new level is
+   * put there here — read off the mix as the engine took it (its filter in), and after a song
+   * change's held mix (afterMix), which would otherwise land over it.
+   */
+  restrip(before, after) {
+    const lanes = new Set([...Object.keys(before?.lanes || {}), ...Object.keys(after?.lanes || {})]);
+    const moved = [...lanes].filter((lane) => (before?.lanes?.[lane]?.gain ?? 0) !== (after?.lanes?.[lane]?.gain ?? 0));
+    if (!moved.length) return;
+    Audio.afterMix(() => {
+      const mixer = Audio.mixer, ctx = Audio.ctx;
+      if (!mixer?.lane || !ctx || Audio.sourceBank !== this.song?.bank) return;
+      const when = Math.max(ctx.currentTime, Number.isFinite(Audio.nextTime) ? Audio.nextTime : 0);
+      for (const lane of moved) {
+        const s = laneSettings(Audio.mixEntry?.lanes?.[lane]);
+        mixer.lane(lane)?.rampTo?.({ gain: s.gain, mute: s.mute }, when, 0.012);
+      }
+    });
   }
 
   /**

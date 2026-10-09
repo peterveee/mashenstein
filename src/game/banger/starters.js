@@ -45,7 +45,8 @@ export const STARTERS = Object.freeze({
       mode: 'advanced', notes: NEON_ORBIT_GRID, style: NEON_ORBIT.banger.options.style,
       mood: NEON_ORBIT.banger.options.mood, seed: NEON_ORBIT.banger.seed, bpm: NEON_ORBIT.bank.bpm,
     }),
-    song: () => ({ bank: NEON_ORBIT.bank, mix: NEON_ORBIT.mix, arrangement: NEON_ORBIT.arrangement,
+    // with THE CEILING on, as every Lab song has (make.js makeBanger)
+    song: () => ({ bank: NEON_ORBIT.bank, mix: { ...NEON_ORBIT.mix, ceiling: true }, arrangement: NEON_ORBIT.arrangement,
       bpm: NEON_ORBIT.bank.bpm, form: NEON_ORBIT.banger.form ? formOf(NEON_ORBIT.banger) : NEON_ORBIT_FORM.map((f) => ({ ...f })) }),
   }),
 });

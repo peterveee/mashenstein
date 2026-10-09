@@ -60,7 +60,7 @@ import {
   HERO_MOVES, PARTS, nextBeatAt, nextSixteenthAt, nowAt, nextBarAt, nextTwoOrFourAt, landingFor, playMove, startHold, dragHold, endHold, setPartLevel,
   releaseClub, moveSeconds, gridReady, setSpeed, stepTime, startChipGate, endChipGate, CHIP_GATE_CHANCE, lastBarBeforeSection, chipGateRoll, throwBeat, echoLevel,
   stopTape, nextStopStep, partOf, partGain, startWobble, setWobble, endWobble,
-  PITCH_RANGE, clampPitch, setPitchWarp,
+  PITCH_RANGE, clampPitch, setPitchWarp, LEVEL_TOP, LEVEL_TOP_DB, clampLevel, levelDb, levelOfDb, setMasterLevel,
 } from './club-fx.js';
 
 const BODY_FONT = "'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
@@ -185,6 +185,25 @@ const REFLECT_SQUASH = 0.72;   // as src/engine/reflections.js
 const REFLECT_SCALE = 0.5;     // the cache's resolution against the screen's
 const REFLECT_EVERY = 3;       // frames between refreshes of it
 const MIX_K = 1.7;
+/** The mixer's strips past the parts', in their order on the panel (and the keys'): MASTER, then PITCH. */
+const MASTER_STRIP = PARTS.length, PITCH_STRIP = PARTS.length + 1;
+/**
+ * The MASTER strip's meter (Peter, 9 Oct 2026: "an overall level (with built in vu lights)", then
+ * "style the vu more like the song mixer's vu with a line for peak"): what goes into THE CEILING
+ * (mixer.js), drawn as the desk draws its meters (tools/mixer-entry.js tick, .meter in
+ * mixer-shell.html) — a bar a side on a dB scale from −48 to full scale, green into amber at 78%
+ * and red at 94% (−2.9 dBFS, where the ceiling starts), falling at its rate; a line where the
+ * loudest moment was, held and then sliding down; the well's edge red the moment the song reaches
+ * full scale, where it would have clipped without the ceiling. The desk's own numbers and inks.
+ */
+const VU_FLOOR_DB = 48;
+const VU_FALL = 0.55;        // of the scale per second (the desk's METER_FALL)
+const VU_PEAK_HOLD_S = 1.4;  // the peak line sits this long (PEAK_HOLD)...
+const VU_PEAK_FALL = 0.3;    // ...then slides down this much of the scale a second (PEAK_FALL)
+const VU_INK = Object.freeze({ go: '#3fb950', solo: '#d9a441', hot: '#e5534b', ink: '#e6e9ef' });
+const LIMIT_HOLD_S = 0.3;   // the LIMIT lamp: on from half a dB of pull, and held this long so it does not flicker
+/** The level faders' scale: a tick at each, in dB; the ends and 0 dB longer. */
+const LEVEL_TICKS_DB = Object.freeze([3, 0, -3, -6, -12, -18, -24, -36]);
 
 /** The LED board: its size in dots, and what it says. */
 export const LED_COLS = 72, LED_ROWS = 7;   // wider (Peter, 3 Oct 2026)
@@ -550,8 +569,14 @@ export class BangerClubState {
     this.acting = null;        // { i, when, bar } — a hero doing their move, from `when`
     this.caption = null;       // { i, when, bar }
     this.holding = null;       // { i, source } — a held move, while its hero is held down
-    // Each part's fader, 0–1 (club-fx.js setPartLevel). 0 is NO DRUMS.
+    // Each part's fader (club-fx.js setPartLevel): 1 is 0 dB, the song as made, up to +3 dB
+    // (LEVEL_TOP). 0 is NO DRUMS.
     this.levels = Object.fromEntries(PARTS.map((p) => [p.id, 1]));
+    // ...and the MASTER fader past them, the same scale, on the whole song (club-fx.js
+    // setMasterLevel), kept with the song like the parts'; its meter (VU_FLOOR_DB): per side the
+    // bar shown and the peak line held, each a fraction of the scale, and whether it hit full scale
+    this.masterLevel = 1;
+    this.vu = { shown: [0, 0], held: [0, 0], heldAt: [0, 0], clip: false, limitAt: -Infinity };
     // ...and its MUTE and SOLO (Peter, 6 Oct 2026): live switches over the fader, not kept with
     // the song. `heard` is what each part plays at under them — the fader, or 0 — and is what
     // the moves, the boost and the floor read; `levels` stays where the faders sit.
@@ -562,7 +587,7 @@ export class BangerClubState {
     // it was written at (club-fx.js PITCH_RANGE), kept with the song like the faders
     this.pitch = 0;
     this.mixerOpen = false;
-    this.mixSel = 0;           // the fader the keys move: a part's, or PARTS.length for the pitch
+    this.mixSel = 0;           // the fader the keys move: a part's, MASTER_STRIP or PITCH_STRIP
     this.dragging = null;      // the fader under the finger (the same numbering)
     this.popup = null;         // { text, t }
     this.iconsAt = 0;          // when the mixer was last used
@@ -624,7 +649,7 @@ export class BangerClubState {
     this.waveAt = -Infinity;   // when the last Mexican wave started (on the song's loop)
     this.lastBeat = null;
     this.focus = 0;            // keyboard / pad focus: the floor's slots, then the part icons, then back
-    this.boxes = { heroes: [], mixer: null, transport: [], panel: null, faders: [], sounds: [], mutes: [], solos: [], reset: null, dice: null, back: null, reroll: null, ball: null, led: null, floor: null };
+    this.boxes = { heroes: [], mixer: null, transport: [], panel: null, faders: [], sounds: [], mutes: [], solos: [], master: null, masterZero: null, reset: null, dice: null, back: null, reroll: null, ball: null, led: null, floor: null };
     // The sound swaps: B-33P's 8-BIT and the mixer's sound buttons (club-voices.js).
     this.voices = new ClubVoices(this.song, this.rec);
     this.padHits = [];         // floor pads struck: { pad, x, y, when (audio), t }
@@ -2090,13 +2115,49 @@ export class BangerClubState {
   setLevel(k, level) {
     const p = PARTS[k];
     const was = this.levels[p.id];
-    const v = level < 0.04 ? 0 : Math.min(1, Math.round(level * 100) / 100);
+    const v = clampLevel(level);
     this.levels[p.id] = v;
     this.mixerDirty = true;
     this.applyHeard();
     if (was > 0 && v === 0) this.popup = { text: `NO ${p.label}`, t: this.t };
     if (was === 0 && v > 0) this.popup = { text: `YES ${p.label}`, t: this.t };
     this.iconsAt = this.t;
+  }
+
+  /** THE MASTER fader moved: the whole song, heard at once — past 0 dB, into THE CEILING. */
+  setMaster(level) {
+    const v = clampLevel(level);
+    this.iconsAt = this.t;
+    if (v === this.masterLevel) return;
+    this.masterLevel = v;
+    this.mixerDirty = true;
+    setMasterLevel(v);
+  }
+
+  /** The MASTER strip's readout button: back to 0 dB. */
+  zeroMaster() {
+    if (this.masterLevel === 1) { Audio.sfx('uiBad'); return; }
+    this.setMaster(1);
+    Audio.sfx('ui');
+  }
+
+  /**
+   * The MASTER strip's meter, read off THE CEILING's input each frame the panel is open, with the
+   * desk's ballistics: the bar up at once to a peak and down at VU_FALL; the peak line up with it,
+   * held VU_PEAK_HOLD_S, then down at VU_PEAK_FALL, never under the bar; and the LIMIT lamp's moment.
+   */
+  readMeter(dt) {
+    const { peaks, reduction } = Audio.mixer?.ceilingLevels?.() ?? { peaks: [0, 0], reduction: 0 };
+    const vu = this.vu;
+    for (let c = 0; c < 2; c++) {
+      const db = 20 * Math.log10(Math.max(1e-6, peaks[c]));
+      const pos = Math.max(0, Math.min(1, (db + VU_FLOOR_DB) / VU_FLOOR_DB));
+      vu.shown[c] = Math.max(pos, vu.shown[c] - VU_FALL * dt);
+      if (pos >= vu.held[c]) { vu.held[c] = pos; vu.heldAt[c] = this.t; }
+      else if (this.t - vu.heldAt[c] > VU_PEAK_HOLD_S) vu.held[c] = Math.max(vu.shown[c], vu.held[c] - VU_PEAK_FALL * dt);
+    }
+    vu.clip = Math.max(...peaks) >= 1;
+    if (reduction <= -0.5) vu.limitAt = this.t;
   }
 
   /**
@@ -2169,6 +2230,7 @@ export class BangerClubState {
     this.mixerDirty = false;
     if (this.pending || !this.rec) { this.mixerDirty = true; return; }
     const kept = { levels: { ...this.levels }, sounds: this.voices?.picksNamed() || { own: {}, swap: {} } };
+    if (this.masterLevel !== 1) kept.master = this.masterLevel;
     if (this.pitch) kept.pitch = this.pitch;
     keepMixer(this.rec, kept);
   }
@@ -2176,33 +2238,37 @@ export class BangerClubState {
   /** The song's kept mixer back on: its faders and its pitch at once, its sounds from the first note. */
   restoreMixer() {
     const m = this.rec?.mixer;
-    // always, kept or not: setBank has just put the transport back to the song's own speed
+    // always, kept or not: setBank has just put the transport back to the song's own speed, and
+    // the MASTER is this club's to set (the last one left it at 0 dB)
     this.pitch = clampPitch(m?.pitch ?? 0);
     setPitchWarp(this.pitch);
+    this.masterLevel = clampLevel(m?.master ?? 1);
+    setMasterLevel(this.masterLevel, 0.005);
     if (!m) return;
     for (const p of PARTS) {
       const v = Number(m.levels?.[p.id]);
       if (!Number.isFinite(v)) continue;
-      this.levels[p.id] = Math.max(0, Math.min(1, v));
+      this.levels[p.id] = Math.max(0, Math.min(LEVEL_TOP, v));
     }
     this.applyHeard(0.005, true);
     this.voices?.restorePicks(m.sounds);
   }
 
-  /** Every fader up, the pitch in the middle and every sound the song's own — what a take arrives with. */
+  /** Every fader at 0 dB, the pitch in the middle and every sound the song's own — what a take arrives with. */
   get mixerPlain() {
-    return PARTS.every((p) => this.levels[p.id] === 1) && !this.pitch && (this.voices?.own ?? true) && !this.muted.size && !this.soloed.size;
+    return PARTS.every((p) => this.levels[p.id] === 1) && this.masterLevel === 1 && !this.pitch && (this.voices?.own ?? true) && !this.muted.size && !this.soloed.size;
   }
 
   /**
    * RESET on the mixer panel (Peter, 5 Oct 2026: "a restore button … to go back to the default
-   * levels and patches"): every fader back up, the pitch to the middle, every part back on the
+   * levels and patches"): every fader back to 0 dB, the pitch to the middle, every part back on the
    * song's own sound, at once — and the kept mixer taken off the song's record (keepMixer drops a
    * plain one).
    */
   resetMixer() {
     if (this.mixerPlain) { Audio.sfx('uiBad'); return; }
     for (const p of PARTS) this.levels[p.id] = 1;
+    this.setMaster(1);
     this.setPitch(0);
     this.muted.clear();
     this.soloed.clear();
@@ -2369,19 +2435,21 @@ export class BangerClubState {
   }
 
   /**
-   * The fader `k` set from a pointer height. PARTS.length is the pitch, up faster, and it moves
-   * by how far the finger has gone since it pressed (`pitchGrab`) rather than jumping to it: a
-   * tap on the slot must not throw the tempo 8% out.
+   * The fader `k` set from a pointer height: a part's, or the MASTER's, from the bottom of its
+   * travel (0) to the top (+3 dB). PITCH_STRIP is the pitch, up faster, and it moves by how far
+   * the finger has gone since it pressed (`pitchGrab`) rather than jumping to it: a tap on the
+   * slot must not throw the tempo 8% out.
    */
   levelFromY(k, y) {
-    if (k === PARTS.length) {
+    if (k === PITCH_STRIP) {
       const f = this.boxes.pitch, g = this.pitchGrab;
       if (f && g) this.setPitch(g.pitch + PITCH_RANGE * (g.y - y) / ((f.bot - f.top) / 2));
       return;
     }
-    const f = this.boxes.faders[k];
+    const f = k === MASTER_STRIP ? this.boxes.master : this.boxes.faders[k];
     if (!f) return;
-    this.setLevel(k, (f.bot - y) / (f.bot - f.top));
+    const level = LEVEL_TOP * (f.bot - y) / (f.bot - f.top);
+    if (k === MASTER_STRIP) this.setMaster(level); else this.setLevel(k, level);
   }
 
   openMixer(open = !this.mixerOpen) {
@@ -2650,15 +2718,21 @@ export class BangerClubState {
 
     if (this.mixerOpen) {
       // THE MIXER PANEL owns the keys while it is open: left/right a fader, up/down its level,
-      // and the ability key (X, or Shift) the selected part's next sound. On the PITCH strip
-      // (the last) up/down are half a percent, and the ability key back to the middle.
-      const strips = PARTS.length + 1, onPitch = this.mixSel === PARTS.length;
+      // and the ability key (X, or Shift) the selected part's next sound. On the MASTER strip the
+      // ability key is back to 0 dB; on the PITCH strip (the last) up/down are half a percent,
+      // and the ability key back to the middle.
+      this.readMeter(dt);
+      const strips = PITCH_STRIP + 1, onPitch = this.mixSel === PITCH_STRIP;
       if (Input.pressed('right')) this.mixSel = (this.mixSel + 1) % strips;
       if (Input.pressed('left')) this.mixSel = (this.mixSel + strips - 1) % strips;
       if (onPitch) {
         if (Input.pressed('up')) this.setPitch(this.pitch + 0.005);
         if (Input.pressed('down')) this.setPitch(this.pitch - 0.005);
         if (Input.pressed('ability') || Input.pressed('jump')) this.zeroPitch();
+      } else if (this.mixSel === MASTER_STRIP) {
+        if (Input.pressed('up')) this.setMaster(this.masterLevel + 0.1);
+        if (Input.pressed('down')) this.setMaster(this.masterLevel - 0.1);
+        if (Input.pressed('ability') || Input.pressed('jump')) this.zeroMaster();
       } else {
         if (Input.pressed('up')) this.setLevel(this.mixSel, this.levels[PARTS[this.mixSel].id] + 0.1);
         if (Input.pressed('down')) this.setLevel(this.mixSel, this.levels[PARTS[this.mixSel].id] - 0.1);
@@ -2677,9 +2751,14 @@ export class BangerClubState {
         else if (mu >= 0) { this.mixSel = mu; this.toggleMute(mu); }
         else if (so >= 0) { this.mixSel = so; this.toggleSolo(so); }
         else if (k >= 0) { this.dragging = k; this.mixSel = k; this.levelFromY(k, y); }
-        else if (this.boxes.pitchZero && inside(this.boxes.pitchZero)) { this.mixSel = PARTS.length; this.zeroPitch(); }
+        else if (this.boxes.masterZero && inside(this.boxes.masterZero)) { this.mixSel = MASTER_STRIP; this.zeroMaster(); }
+        else if (this.boxes.master && inside(this.boxes.master)) {
+          this.dragging = this.mixSel = MASTER_STRIP;
+          this.levelFromY(MASTER_STRIP, y);
+        }
+        else if (this.boxes.pitchZero && inside(this.boxes.pitchZero)) { this.mixSel = PITCH_STRIP; this.zeroPitch(); }
         else if (this.boxes.pitch && inside(this.boxes.pitch)) {
-          this.dragging = this.mixSel = PARTS.length;
+          this.dragging = this.mixSel = PITCH_STRIP;
           this.pitchGrab = { y, pitch: this.pitch };
         }
         else if (tr >= 0) this.pressTransport(tr);   // the transport sits beside the mixer, open or shut
@@ -5392,6 +5471,8 @@ export class BangerClubState {
     this.boxes.panel = null;
     this.boxes.reset = null;
     this.boxes.dice = null;
+    this.boxes.master = null;
+    this.boxes.masterZero = null;
     this.boxes.pitch = null;
     this.boxes.pitchZero = null;
     if (this.mixerOpen) {
@@ -5407,10 +5488,11 @@ export class BangerClubState {
       // phone's cover crop the tabs were cut off (Peter, 6 Oct 2026)
       // (bigger than they were, and at the panel's two top corners: Peter, 8 Oct 2026)
       const tabFs = portrait ? 15 * P : L(6), tabRise = tabFs * 2 * 0.82;
-      // the PITCH strip's column, at the right end: landscape's panel grows by it, portrait's
-      // parts share their width with it
-      const pitchW = portrait ? W * 0.84 * 0.17 : L(28);
-      const pw = portrait ? W * 0.84 : L(156) + pitchW, ph = portrait ? 262 * P : Math.min(L(122), my - r - 6 - stageTop - tabRise - 6);
+      // the MASTER and PITCH strips' columns, at the right end: landscape's panel grows by them
+      // (its parts a little narrower for the MASTER), portrait's is wider and its parts share
+      // their width with them
+      const pitchW = portrait ? W * 0.84 * 0.17 : L(28), masterW = portrait ? W * 0.84 * 0.18 : L(30);
+      const pw = portrait ? W * 0.93 : L(146) + masterW + pitchW, ph = portrait ? 262 * P : Math.min(L(122), my - r - 6 - stageTop - tabRise - 6);
       const px = portrait ? (W - pw) / 2 : W - safeR - 10 - pw;
       const py = (portrait ? my - r - 16 * P : my - r - 6) - ph;
       this.boxes.panel = { x: px, y: py, w: pw, h: ph };
@@ -5457,7 +5539,10 @@ export class BangerClubState {
       }
       const S = (portraitV, landV) => (portrait ? portraitV * P : L(landV));
       const pad = S(12, 6);
-      const cw = (pw - pad * 2 - pitchW) / PARTS.length;
+      // a fader's scale, left of its slot: how far off the slot the ticks stand (closer in: Peter,
+      // 9 Oct 2026), and how long they are — the long ones at the ends and at 0 dB
+      const tickGap = S(2, 0.9), tickLong = S(8, 3.6), tickShort = S(4, 1.8);
+      const cw = (pw - pad * 2 - masterW - pitchW) / PARTS.length;
       // a fader's cap: a brushed-metal knob with its grip line across the middle, on a soft shadow
       const faderCap = (cx, capY, lit, sel) => {
         const capW = S(34, 15), capH = S(18, 8);
@@ -5483,6 +5568,35 @@ export class BangerClubState {
       const chipH = S(24, 9), chipY = py + ph - S(10, 4) - chipH;
       const labelY = chipY - S(9, 3.5);
       const top = msY + msH + S(22, 9), bot = labelY - S(22, 9.5);
+      // a LEVEL fader, a part's or the MASTER's: its scale left of the slot — a tick at each of
+      // LEVEL_TICKS_DB, long at the top, the bottom and 0 dB, where every fader starts (Peter, 9 Oct
+      // 2026: "a longer ticker for zero like we do for peak and mute") — the slot, sunk into the
+      // panel and lit in silver up to the cap, and the cap.
+      const levelY = (level) => bot - (bot - top) * Math.min(1, level / LEVEL_TOP);
+      const levelFader = (cx, level, lit, sel) => {
+        const tw = S(5, 2.4), x1 = cx - tw / 2 - tickGap;
+        ctx.strokeStyle = 'rgba(206,208,222,0.28)'; ctx.lineWidth = 0.6 * u;
+        ctx.beginPath();
+        for (const db of LEVEL_TICKS_DB) {
+          const ty = levelY(levelOfDb(db));
+          ctx.moveTo(x1, ty); ctx.lineTo(x1 - (db === LEVEL_TOP_DB || db === 0 ? tickLong : tickShort), ty);
+        }
+        ctx.moveTo(x1, bot); ctx.lineTo(x1 - tickLong, bot);
+        ctx.stroke();
+        const capY = levelY(level);
+        ctx.fillStyle = '#07070d';
+        rr(ctx, cx - tw / 2, top, tw, bot - top, tw / 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.6 * u; ctx.stroke();
+        if (level > 0) {
+          const g = ctx.createLinearGradient(cx - tw / 2, 0, cx + tw / 2, 0);
+          const [edge, mid] = lit ? ['#7e8196', '#e4e6ef'] : ['#3a3b4a', '#5a5c6e'];
+          g.addColorStop(0, edge); g.addColorStop(0.5, mid); g.addColorStop(1, edge);
+          ctx.fillStyle = g;
+          rr(ctx, cx - tw / 2 + 0.6 * u, capY, tw - 1.2 * u, bot - capY, (tw - 1.2 * u) / 2); ctx.fill();
+        }
+        faderCap(cx, capY, lit, sel);
+      };
+      const masterCx = px + pad + cw * PARTS.length + masterW * 0.42;   // the MASTER's slot, left of its meter
       PARTS.forEach((p, k) => {
         const cx = px + pad + cw * (k + 0.5);
         const level = this.levels[p.id];
@@ -5507,29 +5621,7 @@ export class BangerClubState {
           ctx.fillText(txt, bx + msW / 2, msY + msH / 2 + 0.5 * u);
           ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
         });
-        // the scale: a tick each tenth on the left of the slot, the ends and the middle longer
-        const tw = S(5, 2.4);
-        ctx.strokeStyle = 'rgba(206,208,222,0.28)'; ctx.lineWidth = 0.6 * u;
-        ctx.beginPath();
-        for (let n = 0; n <= 10; n++) {
-          const ty = bot - (bot - top) * n / 10, long = n % 5 === 0;
-          const x1 = cx - tw / 2 - S(5, 2.2);
-          ctx.moveTo(x1, ty); ctx.lineTo(x1 - (long ? S(8, 3.6) : S(4, 1.8)), ty);
-        }
-        ctx.stroke();
-        // the slot, sunk into the panel, and lit in silver up to the cap
-        const capY = bot - (bot - top) * level;
-        ctx.fillStyle = '#07070d';
-        rr(ctx, cx - tw / 2, top, tw, bot - top, tw / 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.6 * u; ctx.stroke();
-        if (level > 0) {
-          const g = ctx.createLinearGradient(cx - tw / 2, 0, cx + tw / 2, 0);
-          const [edge, mid] = heard ? ['#7e8196', '#e4e6ef'] : ['#3a3b4a', '#5a5c6e'];
-          g.addColorStop(0, edge); g.addColorStop(0.5, mid); g.addColorStop(1, edge);
-          ctx.fillStyle = g;
-          rr(ctx, cx - tw / 2 + 0.6 * u, capY, tw - 1.2 * u, bot - capY, (tw - 1.2 * u) / 2); ctx.fill();
-        }
-        faderCap(cx, capY, heard, sel);
+        levelFader(cx, level, heard, sel);
         ctx.fillStyle = level > 0 ? (heard ? '#c8c8d8' : '#6a6a7c') : '#e04848';
         ctx.font = `600 ${S(11, 5.5)}px ${BODY_FONT}`;
         ctx.textAlign = 'center';
@@ -5574,13 +5666,91 @@ export class BangerClubState {
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'left';
       });
+      // THE MASTER strip, past a rule after the parts, on their rows: a speaker; the level in dB
+      // where they have MUTE and SOLO, a tap back to 0 dB; the fader, on their scale, with its
+      // meter beside it (left and right, the desk's) clear of the cap; MASTER; and a LIMIT lamp
+      // where they have their sound, lit while THE CEILING is holding the song down.
+      {
+        const colL = px + pad + cw * PARTS.length, mid = colL + masterW / 2;
+        const cx = masterCx;
+        const level = this.masterLevel, on = level > 0;
+        const sel = this.mixSel === MASTER_STRIP && !Input.usingTouch;
+        ctx.strokeStyle = 'rgba(206,208,222,0.16)'; ctx.lineWidth = 0.6 * u;
+        ctx.beginPath(); ctx.moveTo(colL, py + S(16, 6)); ctx.lineTo(colL, py + ph - S(16, 6)); ctx.stroke();
+        ctx.strokeStyle = on ? SILVER : OFF_INK; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 0.9 * u;
+        (icons.master || MIXER_ICONS.master)(ctx, mid, iconY, S(13, 6.5), { u, beat, on, cut: PANEL_INK });
+        // the level, on the MUTE / SOLO row: lit while it is off 0 dB
+        {
+          const off = level !== 1;
+          const bw = Math.min(masterW - S(8, 2.5), S(52, 22)), bx = mid - bw / 2;
+          this.boxes.masterZero = { x: bx - S(2, 1), y: msY - S(4, 1.5), w: bw + S(4, 2), h: msH + S(8, 3) };
+          ctx.fillStyle = '#1d1a2c';
+          rr(ctx, bx, msY, bw, msH, msH * 0.3); ctx.fill();
+          ctx.strokeStyle = off ? SILVER : SILVER_DIM; ctx.lineWidth = 0.8 * u; ctx.stroke();
+          const db = levelDb(level);
+          const txt = !on ? 'OFF' : !off ? '0 dB' : `${db > 0 ? '+' : '−'}${Math.abs(db).toFixed(1)} dB`;
+          let fs = S(10, 4);
+          ctx.font = `700 ${fs}px ${BODY_FONT}`;
+          const wide = ctx.measureText(txt).width, room = bw - S(6, 2);
+          if (wide > room) { fs *= room / wide; ctx.font = `700 ${fs}px ${BODY_FONT}`; }
+          ctx.fillStyle = off ? '#ffffff' : '#a3a6ba';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(txt, mid, msY + msH / 2 + 0.5 * u);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        }
+        this.boxes.master = { x: colL, y: top - 8 * u, w: masterW, h: bot - top + 16 * u, top, bot };
+        levelFader(cx, level, on, sel);
+        // the meter, as the desk draws its master's: a dark well the fader's height, a bar a side
+        // with an unlit gutter between, the one gradient over the whole scale, the peak line, and
+        // the well's edge red while the song is at full scale
+        {
+          const barW = S(3.5, 1.7), gutter = S(1, 0.4), edge = S(1, 0.45);
+          const wx = cx + S(34, 15) / 2 + S(3, 1.3), ww = barW * 2 + gutter + edge * 2, wh = bot - top;
+          ctx.fillStyle = '#07070d';
+          rr(ctx, wx, top, ww, wh, S(2, 0.8)); ctx.fill();
+          ctx.strokeStyle = this.vu.clip ? VU_INK.hot : 'rgba(206,208,222,0.22)';
+          ctx.lineWidth = (this.vu.clip ? 1.4 : 0.6) * u; ctx.stroke();
+          const g = ctx.createLinearGradient(0, bot - edge, 0, top + edge);
+          g.addColorStop(0, VU_INK.go); g.addColorStop(0.78, VU_INK.solo); g.addColorStop(0.94, VU_INK.hot);
+          const travel = wh - edge * 2, lineH = Math.max(u, S(2, 0.8));
+          for (let c = 0; c < 2; c++) {
+            const bx = wx + edge + c * (barW + gutter);
+            const h = travel * this.vu.shown[c];
+            if (h > 0) { ctx.fillStyle = g; ctx.fillRect(bx, bot - edge - h, barW, h); }
+            const held = this.vu.held[c];
+            if (held > 0.005) {
+              ctx.fillStyle = VU_INK.ink;
+              ctx.fillRect(bx, Math.max(top + edge, bot - edge - travel * held - lineH / 2), barW, lineH);
+            }
+          }
+        }
+        ctx.fillStyle = on ? '#c8c8d8' : '#e04848';
+        ctx.font = `600 ${S(11, 5.5)}px ${BODY_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.fillText('MASTER', mid, labelY, masterW - S(4, 1.5));
+        // LIMIT, where the parts have their sound
+        const limiting = this.t - this.vu.limitAt < LIMIT_HOLD_S;
+        const chipW = masterW - S(8, 3);
+        ctx.fillStyle = limiting ? '#e04848' : '#07070d';
+        rr(ctx, mid - chipW / 2, chipY, chipW, chipH, chipH / 2); ctx.fill();
+        ctx.strokeStyle = limiting ? '#e04848' : 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.6 * u; ctx.stroke();
+        let fs = S(10, 4);
+        ctx.font = `700 ${fs}px ${BODY_FONT}`;
+        const wide = ctx.measureText('LIMIT').width, room = chipW - chipH * 0.5;
+        if (wide > room) { fs *= room / wide; ctx.font = `700 ${fs}px ${BODY_FONT}`; }
+        ctx.fillStyle = limiting ? '#ffffff' : OFF_INK;
+        ctx.textBaseline = 'middle';
+        ctx.fillText('LIMIT', mid, chipY + chipH / 2);
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
+      }
       // THE PITCH strip, past a rule at the right end, on the parts' rows: a metronome ticking
       // with the song; the percent off the written tempo, a tap back to it; the fader, up
       // faster, with the turntable's lamp at its middle, lit while it sits there; and the BPM
       // the song is playing at.
       {
         const cx = px + pw - pad - pitchW / 2;
-        const sel = this.mixSel === PARTS.length && !Input.usingTouch;
+        const sel = this.mixSel === PITCH_STRIP && !Input.usingTouch;
         const off = this.pitch !== 0;
         ctx.strokeStyle = 'rgba(206,208,222,0.16)'; ctx.lineWidth = 0.6 * u;
         ctx.beginPath(); ctx.moveTo(cx - pitchW / 2, py + S(16, 6)); ctx.lineTo(cx - pitchW / 2, py + ph - S(16, 6)); ctx.stroke();
@@ -5612,8 +5782,8 @@ export class BangerClubState {
         ctx.beginPath();
         for (let n = -4; n <= 4; n++) {
           const ty = mid - half * n / 4, long = n % 4 === 0;
-          const x1 = cx - tw / 2 - S(5, 2.2);
-          ctx.moveTo(x1, ty); ctx.lineTo(x1 - (long ? S(8, 3.6) : S(4, 1.8)), ty);
+          const x1 = cx - tw / 2 - tickGap;
+          ctx.moveTo(x1, ty); ctx.lineTo(x1 - (long ? tickLong : tickShort), ty);
         }
         ctx.stroke();
         // + at the top, − at the bottom, by the scale's ends — past the cap, which rides over them

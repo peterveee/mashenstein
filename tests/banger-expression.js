@@ -669,7 +669,8 @@ const plannedAt = (fixture, lane, set) => createLaneView({
     options: { style: r.style, mood: r.mood, energy: 'full', ...(spotFor(r.style, r.seed) && Object.keys(spotFor(r.style, r.seed)).length ? { spot: spotFor(r.style, r.seed) } : {}), ...labSet(r), ...labFlav(r), ...options } });
   // The Lab's hook trim: the style's own riffTrimDb (style-balance.js) where it sets one, RIFF_TRIM_DB otherwise.
   const hookTrim = (style) => { const t = balanceForStyle(BANGER_STYLES.find((st) => st.id === style)).riffTrimDb; return Number.isFinite(t) ? t : RIFF_TRIM_DB; };
-  const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; return o; };
+  // what makeBanger lays over the generator's output: the hook's trim, and THE CEILING on the mix
+  const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; o.mix.ceiling = true; return o; };
 
   assert(RECIPE_EXPRESSION === 5 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,

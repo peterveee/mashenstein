@@ -582,8 +582,34 @@ export function playMove(move, at, { song = null, levels = null } = {}) {
   Audio.masterLiveUntil = until;
 }
 
-/** A fader position (0–1) as a gain: squared, so the travel feels even to the ear. */
-export const partGain = (level) => Math.max(0, Math.min(1, level)) ** 2;
+/**
+ * A LEVEL fader — a part's, or the MASTER's — and what it reads. Its value is the square root of
+ * its gain, so the travel feels even to the ear: 1 is 0 dB, the song as made, where every fader
+ * starts and RESET puts it back; 0 is the part gone. The top is +3 dB (Peter, 9 Oct 2026: "make
+ * the levels go up to +6db", then "perhaps only go up 3db louder"), which puts 0 dB 84% of the way
+ * up. THE CEILING (mixer.js) catches what the extra 3 dB, a part's and the MASTER's, push over. A kept
+ * mixer from before keeps its values: they mean the same gain as they did.
+ */
+export const LEVEL_TOP_DB = 3;
+export const LEVEL_TOP = 10 ** (LEVEL_TOP_DB / 40);
+/**
+ * Within this many dB of 0 dB a fader snaps onto it (Peter, 9 Oct 2026: "can we snap to zero when
+ * near it?"), as the PITCH fader does onto the middle: about 5% of the travel either side.
+ */
+export const LEVEL_DETENT_DB = 1;
+/** A level as a gain: squared. */
+export const partGain = (level) => Math.max(0, Math.min(LEVEL_TOP, level)) ** 2;
+/** A level in dB, −Infinity at the bottom; and a dB back to a level. */
+export const levelDb = (level) => 40 * Math.log10(Math.max(0, level));
+export const levelOfDb = (db) => 10 ** (db / 40);
+/** A level onto its fader's travel: its hundredths, its ends (the top exactly +3 dB), and the click at 0 dB. */
+export function clampLevel(level) {
+  const v = Number(level);
+  if (!Number.isFinite(v) || v < 0.04) return 0;
+  if (Math.abs(40 * Math.log10(v)) < LEVEL_DETENT_DB) return 1;
+  if (v > LEVEL_TOP - 0.005) return LEVEL_TOP;
+  return Math.round(v * 100) / 100;
+}
 
 /**
  * A part's level (a fader, 0–1), from `at` (or now), gliding over `glide` seconds — on each
@@ -623,8 +649,17 @@ export function holeGates(song, levels, keep, at = null) {
 /** A part on or off, from `at` (or now). */
 export function setPart(song, id, on, at = null) { setPartLevel(song, id, on ? 1 : 0, at); }
 
-/** Leaving the club: every gate open again, the master's section let go, the song back at
- *  its own speed — the pitch fader's too — now. */
+/**
+ * The MASTER fader (a level, as a part's): the whole song, after the moves and before THE
+ * CEILING (mixer.js) — so pushed past 0 dB it drives the song into it, and never past it.
+ */
+export function setMasterLevel(level, glide = 0.012) {
+  const ctx = Audio.ctx;
+  if (ctx) Audio.mixer?.setMasterLevel?.(partGain(level), ctx.currentTime, glide);
+}
+
+/** Leaving the club: every gate open again, the MASTER fader back to 0 dB, the master's section
+ *  let go, the song back at its own speed — the pitch fader's too — now. */
 export function releaseClub(song) {
   LIVE.clear();
   pitchWarp = 1;
@@ -633,6 +668,7 @@ export function releaseClub(song) {
   const ctx = Audio.ctx;
   if (!mixer || !ctx) return;
   const now = ctx.currentTime;
+  mixer.setMasterLevel?.(1, now, 0.005);
   for (const key of song?.mix?.order || []) {
     const lane = mixer.lane(key);
     lane?.setLiveLevel?.(1, now, 0.005);
