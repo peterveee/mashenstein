@@ -728,7 +728,10 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(styles === 40 && moods === 40 && voltages.size === BANGER_VOLTAGES.length && dnas.size === 3 && !dnas.has('faithful')
       && maker.energy === voltageSettings(maker.voltage).energy && maker.notes.join() === notes,
     'EXPERIMENT picks a new formula and element every time, any voltage, DNA Hybrid, Spliced or Mutant (never Pure), and leaves the notes alone');
-    assert(infused > 4 && infused < 30, 'and an INFUSION now and then, NONE the rest');
+    // EXPERIMENT_INFUSION: NONE about a third of the time (35%), an infusion the rest. Over
+    // 40 rolls that is ~14 NONE and ~26 infused; the old `< 30` bound, from when an infusion
+    // was the rare one, failed about one run in eight.
+    assert(infused > 10 && 40 - infused > 4, 'and an INFUSION most of the time, NONE now and then');
     maker.setStyle(was.style); maker.setInfusion(null); maker.mood = was.mood; maker.setVoltage(was.voltage, false); maker.setVariation(was.variation);
   }
   // ZAP fires as the finger lifts, on the next frame (held, it opens the list of tunes instead)
@@ -2110,12 +2113,17 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   club.smokeAt = Infinity;
   for (const kind of [...CLUB_MOMENTS, 'smoke']) club.startMoment(kind);
   {
-    // The song held where it is for these eight seconds: a section change heard while they play
-    // out brings a new moment of its own, and the check failed whenever the song crossed one.
+    // The song held where it is while they play out: a section change heard meanwhile brings
+    // a new moment of its own, and the check failed whenever the song crossed one.
+    //
+    // Eight seconds, or the longest moment's own life if that is longer: the beach ball runs
+    // on beats, and a pair of balls on a long path at the club song's 174 bpm is over 8.4 s
+    // (about one run in two hundred), which failed the deploy on 10 Oct 2026.
     const realBeat = club.beat;
     const held = club.beat();
     club.beat = () => held;
-    for (let k = 0; k < 80; k++) { club.update(1 / 10); club.draw(ctx); }
+    const span = Math.max(8, ...club.moments.map((m) => m.life + 1));
+    for (let k = 0; k < span * 10; k++) { club.update(1 / 10); club.draw(ctx); }
     club.beat = realBeat;
   }
   assert(!club.moments.some(m => [...CLUB_MOMENTS, 'smoke'].includes(m.kind)), 'the crowd moments (beach ball, confetti, glow sticks, the smoke machine) play and clear');

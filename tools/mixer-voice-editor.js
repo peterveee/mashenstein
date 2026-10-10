@@ -2292,12 +2292,15 @@ const oscRows = (sec) => [
 /** The modulator that hangs off one of them — same rows, same defaults, either card. */
 const oscFmRows = (sec) => [
   pick(`$${sec}.fm.type`, 'WAVE', WAVES, 'sine'),
-  n(`$${sec}.fm.ratio`, 'RATIO', 0.1, 12, 0.01, fixed(2), 1.4),
+  // Down to 0.005: below about 0.05 the modulator is no longer a timbre but a slow
+  // wobble across the hit — the Disco crash's pew rides one at 0.005.
+  n(`$${sec}.fm.ratio`, 'RATIO', 0.005, 12, 0.005, fixed(3), 1.4),
   // Resets to what the switch seeds — see FM_INDEX_SEED. A double-click that landed
   // somewhere the switch never goes would make "put it back" a third value.
   n(`$${sec}.fm.index`, 'FM DEPTH', 0, 8, 0.05, fixed(2), FM_INDEX_SEED),
   envTime(`$${sec}.fm.attack`, 'ATTACK', 0.001, secs, 0.001, 's', null,
     { startRow: true, foot: true }),
+  envTime(`$${sec}.fm.hold`, 'HOLD', 0, secs, 0),
   envTime(`$${sec}.fm.decay`, 'DECAY', 0.001, secs, 0.35),
 ];
 
@@ -2329,7 +2332,7 @@ const DRUM_GROUPS = [
     onTip: 'Take the noise half out — the oscillator on its own',
     offTip: 'Put the seeded noise source back in',
     rows: [
-      n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
+      n('$noise.gain', 'LEVEL', 0, 3, 0.01, fixed(2), 1),
       // COLOUR FIRST, directly under LEVEL — where WAVE sits on the Oscillator and on
       // Metal, and for the same reason: it is the one pick that says what the source IS,
       // and the filter under it is what is then DONE to it. It was last on the card, below
@@ -2351,11 +2354,12 @@ const DRUM_GROUPS = [
       drumFilterCutoff('$noise.to', 'SWEEP TO', 2600),
       envTime('$noise.sweep', 'SWEEP TIME', 0.001, secs, 0.12),
       drumFilterResonance('$noise.Q', '$noise.freq', 0.7),
-      // Floor 0.1ms, not 1ms: the engine takes `attack` raw (`sec.attack ?? 0.001`
-      // is a fallback, not a clamp), and `dsKickHard` ships 0.343ms — a pot that
-      // cannot reach a factory preset's own value rewrites it on first touch, which
-      // is exactly what tests/pot-coverage.js exists to forbid.
-      envTime('$noise.attack', 'ATTACK', 0.0001, secs, 0.001, 's', null,
+      // Floor 0, not 1ms: the engine takes `attack` raw (`sec.attack ?? 0.001`
+      // is a fallback, not a clamp), `dsKickHard` ships 0.343ms and the tr808/tr909/
+      // cr78 noise sections ship 0 — a pot that cannot reach a factory preset's own
+      // value rewrites it on first touch, which is exactly what tests/pot-coverage.js
+      // exists to forbid.
+      envTime('$noise.attack', 'ATTACK', 0, secs, 0.001, 's', null,
         { startRow: true, foot: true }),
       envTime('$noise.hold', 'HOLD', 0, secs, 0),
       envTime('$noise.decay', 'DECAY', 0.001, secs, 0.12),
@@ -2384,7 +2388,7 @@ const DRUM_GROUPS = [
       envTime('$ring.sweep', 'SWEEP TIME', 0.001, secs, 0.25),
       // The one that changes what it IS rather than how it sounds: a couple of
       // milliseconds is a stick, twenty is a mallet, past fifty it is a burst again.
-      n('$ring.hit', 'STRIKE', 0.0005, 0.05, 0.0005, secs, 0.002, 's', null,
+      n('$ring.hit', 'STRIKE', 0.0001, 0.05, 0.0001, secs, 0.002, 's', null,
         { scale: SHORT_TIME_SCALE }),
       // `ringQ`, not `resQ` — this is the one RESONANCE on the desk that runs to 120,
       // because here the Q is the MATERIAL rather than a filter setting. See its note.
@@ -2810,7 +2814,7 @@ const isPooled = (v) => !isOneShot(v) && POOLED_SYNTHS.includes(synthFamily(v?.s
  *
  *   pooled Tone   taps, tapFalloff                     `play`
  *   drum          + tapGains, tapDecays, tapTone,       `_playDrum`
- *                   tapDetune
+ *                   tapDetune, tapScatter
  *   WNDR-9 + tapDetune                           `_playAdditive`
  *   KNDO-5        none — no card at all                 `_playGame` has no tap loop
  *   MRDR-3    none — no card at all                 `_playLayer` has no tap loop
@@ -2837,6 +2841,9 @@ const TAP_KEYS = (v) => ({
   // the pot would sit there doing nothing — which is how `bigRoomClap` came to carry a
   // `tapDetune: 0.94` that never moved a sample. Same rule as `decays` above.
   detune: v?.kind === 'drum' && !!(v.osc || v.ring || v.metal || v.knock > 0),
+  // SCATTER moves where in the noise buffer each tap starts, in `_playDrum`'s noise
+  // section only — no noise, nothing to scatter.
+  scatter: v?.kind === 'drum' && !!v?.noise,
 });
 
 /**
@@ -2933,7 +2940,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
   // scheduleStep, BEFORE the rack is asked to play anything, so it lands on a hat
   // exactly as it lands on a lead. Which is why it is also the only thing left on a
   // one-shot's Note card (plus KLNG-8's sound-level TUNE directly below it).
-  n('$trim', 'TRIM', -6, 6, 0.1, fixed(1), 0, 'dB'),
+  n('$trim', 'TRIM', -12, 6, 0.1, fixed(1), 0, 'dB'),
   // Drum tuning is a property of the sound, not of the note that triggers it. It is
   // optional and neutral at zero so existing drums remain source-identical until touched.
   ...(voice.kind === 'drum'
@@ -3158,6 +3165,7 @@ export function panelKeys(voice = {}) {
       if (t.decays) keys.add('tapDecays');
       if (t.tone) keys.add('tapTone');
       if (t.detune) keys.add('tapDetune');
+      if (t.scatter) keys.add('tapScatter');
     }
     (g.rows || []).flat(Infinity).forEach(add);
   }
@@ -3767,7 +3775,7 @@ const crls1SimpleRows = (voice) => [
 export const quickRows = (voice) => {
   if (voice.kind === 'drum') {
     const rows = [
-      n('$trim', 'LEVEL', -6, 6, 0.1, fixed(1), 0, 'dB'),
+      n('$trim', 'LEVEL', -12, 6, 0.1, fixed(1), 0, 'dB'),
       ...(getAt(voice, '$osc') || getAt(voice, '$osc2') || getAt(voice, '$ring')
         || getAt(voice, '$metal')
         ? [n('$tune', 'TUNE', -24, 24, 1, semiSteps, 0, 'st')]
@@ -3809,7 +3817,7 @@ export const quickRows = (voice) => {
   }
   if (voice.synth === 'TNGR-2') {
     return [
-      n('$trim', 'LEVEL', -6, 6, 0.1, fixed(1), 0, 'dB'),
+      n('$trim', 'LEVEL', -12, 6, 0.1, fixed(1), 0, 'dB'),
       simplePanelRow(voice, '$transpose'),
       n('$tngr2.quick.position', 'POSITION', 0, 1, 0.01, fixed(2), 0, '', null, {
         read: (_raw, v) => Number(v.tngr2?.oscA?.position ?? 0),
@@ -3853,7 +3861,7 @@ export const quickRows = (voice) => {
 
   if (isMrdrVoice(voice)) {
     return [
-      n('$trim', 'LEVEL', -6, 6, 0.1, fixed(1), 0, 'dB'),
+      n('$trim', 'LEVEL', -12, 6, 0.1, fixed(1), 0, 'dB'),
       simplePanelRow(voice, '$transpose'),
       collectiveRow('$quick.attack', 'ATTACK', 'attack', mrdrStagePaths,
         { min: 0.001, def: 0.01 }),
@@ -6254,6 +6262,23 @@ export function createVoiceEditor({
         w.label.textContent = walk.label;
         w.wrap.title = walk.tip;
         walks.append(w.wrap);
+      }
+      // SCATTER is not a walk — 0, not 1, is no scatter — so it is its own pot after them.
+      if (tapKeys.scatter) {
+        const scatter = knob({
+          min: 0, max: 0.1, step: 0.0001, value: state.voice.tapScatter ?? 0, reset: 0,
+          fmt: (x) => (x > 0 ? `${(x * 1000).toFixed(1)}ms` : 'OFF'),
+          onStart: beginGesture, onEnd: endGesture,
+          onInput: (x) => {
+            if (x > 0) state.voice.tapScatter = x;
+            else delete state.voice.tapScatter;
+            touched();
+          },
+        });
+        scatter.label.textContent = 'SCATTER';
+        scatter.wrap.title = 'Starts each tap further into the noise, so taps close together '
+          + 'do not comb into a pitch — brushes, rolls';
+        walks.append(scatter.wrap);
       }
       wrap.append(walks);
     } else {

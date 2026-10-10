@@ -1040,7 +1040,8 @@ assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
 // timed is `osc.sweep` on a KLNG8 preset now, which is an envelope time like any other.
 assert(/const SHORT_TIME_SCALE = 2;/.test(editor)
   && !/'STRIKE'[\s\S]{0,120}taper:/.test(editor)
-  && /'STRIKE', 0\.0005, 0\.05, 0\.0005/.test(editor)
+  // From 0.1ms, not 0.5ms: cr78Rim is struck for 0.3ms (10 Oct 2026)
+  && /'STRIKE', 0\.0001, 0\.05, 0\.0001/.test(editor)
   && /'GLIDE', 0, 0\.5, ENV_TIME_STEP/.test(editor),
   'the sub-second time pots (STRIKE, GLIDE) keep their own shorter taper and '
   + 'are still dialled to the millisecond');
