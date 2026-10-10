@@ -1502,7 +1502,7 @@ const MARKER_ON_DARK = '#48e0c8', MARKER_ON_PALE = '#0d5f57';
 // the only reason it is a callback rather than the caller drawing the staff
 // themselves: standing behind a counter is a Z-ORDER, and the one place that
 // ordering can be stated correctly is inside the thing doing the occluding.
-export function drawCounter(ctx, x, y, w, h, { t = 0, server = null, variant = 'serving' } = {}) {
+export function drawCounter(ctx, x, y, w, h, { t = 0, server = null, variant = 'serving', card = true } = {}) {
   const pawn = variant === 'pawn';
   const P = pawn ? PAWN_PAL : COUNTER_PAL;
   const u = olU(w);
@@ -1636,17 +1636,21 @@ export function drawCounter(ctx, x, y, w, h, { t = 0, server = null, variant = '
   // and by hand, which is an improvement. Deep marker rather than bright: this is
   // cream card, and backwall.js already learned that the teal which reads
   // beautifully on a black lightbox disappears on paper.
+  // The hub has signs over the counters now (drawCounterSign), so it asks for
+  // the counter without its card; other callers keep it.
   const word = pawn ? 'PAWN' : 'REPAIRS';
-  const cardW = w * 0.32, cardH = tall(10);
-  const cardX = X(0.40) - cardW / 2, cardY = up(16.5);
-  shape(ctx, '#ded8c8', Math.max(10, u * 0.6), (c) => rr(c, cardX, cardY, cardW, cardH, w * 0.005));
-  for (const tx of [0.02, 0.80]) {
-    plain(ctx, 'rgba(236,236,246,0.34)',
-      (c) => c.rect(cardX + cardW * tx, cardY - cardH * 0.20, cardW * 0.18, cardH * 0.36));
+  if (card) {
+    const cardW = w * 0.32, cardH = tall(10);
+    const cardX = X(0.40) - cardW / 2, cardY = up(16.5);
+    shape(ctx, '#ded8c8', Math.max(10, u * 0.6), (c) => rr(c, cardX, cardY, cardW, cardH, w * 0.005));
+    for (const tx of [0.02, 0.80]) {
+      plain(ctx, 'rgba(236,236,246,0.34)',
+        (c) => c.rect(cardX + cardW * tx, cardY - cardH * 0.20, cardW * 0.18, cardH * 0.36));
+    }
+    const cs = Math.min(0.62, (cardW * 0.82) / Math.max(1, textWidth(word, 1, 'marker')));
+    drawText(ctx, word, cardX + cardW * 0.5 - textWidth(word, cs, 'marker') / 2,
+      cardY + cardH * 0.5 - cs * 4.6, MARKER_ON_PALE, cs, 'marker');
   }
-  const cs = Math.min(0.62, (cardW * 0.82) / Math.max(1, textWidth(word, 1, 'marker')));
-  drawText(ctx, word, cardX + cardW * 0.5 - textWidth(word, cs, 'marker') / 2,
-    cardY + cardH * 0.5 - cs * 4.6, MARKER_ON_PALE, cs, 'marker');
 
   // Floor grime along the kick plate: the strip of tile in front of a serving
   // counter is the most walked-on square metre in any food court, and it is the
@@ -1655,4 +1659,97 @@ export function drawCounter(ctx, x, y, w, h, { t = 0, server = null, variant = '
   ctx.globalAlpha = 0.30;
   plain(ctx, '#0e0a16', (c) => c.ellipse(X(0.5), floor + tall(1), w * 0.54, tall(3.4), 0, 0, Math.PI * 2));
   ctx.restore();
+}
+
+// ------------------------------------------------------------- seating
+// THE BOLTED TABLE. The food court's own furniture: one pedestal carrying a
+// laminate top, with two swivel seats on arms off the same foot. None of it
+// moves, which is what makes it a food-court table rather than a café one.
+// Picked from the seating bake-off (lab foodcourt-seating-bakeoff, 1 ships)
+// on 11 Oct 2026.
+//
+// Drawn side on and standing on `floorY`, in hub world units: the top sits at
+// 21, a little under a hero's waist, and the seats at 13. `lit` is the light
+// the spot is getting, 0..1, as castLit hands it to the cast — the colours are
+// pulled toward the room's dark by what is missing, so a set under a dead tube
+// goes dim with the people standing next to it. `tray` leaves a meal on it: a
+// cup with a straw and a carton of fries, which is what says somebody ate here.
+export const TABLE_W = 38;
+const TABLE_TOP = 21, TABLE_SEAT = 13;
+const TABLE_DARK = '#1a1424';
+const SEAT_COLOURS = ['#f08a3c', '#48b0b8'];
+export function drawFoodCourtTable(ctx, cx, floorY, { lit = 1, seat = 0, tray = false } = {}) {
+  const k = Math.max(0, Math.min(1, (1 - lit) * 0.75));
+  const c = (col) => (k > 0 ? mix(col, TABLE_DARK, k) : col);
+  const top = floorY - TABLE_TOP, seatY = floorY - TABLE_SEAT;
+  const u = 10;
+  // Contact shadow, so the set stands on the tiles rather than in front of them.
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  plain(ctx, '#0e0a16', (p) => p.ellipse(cx, floorY + 1, TABLE_W * 0.63, 2.6, 0, 0, Math.PI * 2));
+  ctx.restore();
+  // The shared foot, the pedestal, and the two arms out to the seats.
+  const base = c('#6a6a78');
+  plain(ctx, base, (p) => p.rect(cx - 14, floorY - 2, 28, 2));
+  plain(ctx, base, (p) => p.rect(cx - 1, top, 2, floorY - top));
+  stroke(ctx, base, 1.6, (p) => {
+    p.moveTo(cx, floorY - 4); p.lineTo(cx - 14, floorY - 4); p.lineTo(cx - 14, seatY);
+    p.moveTo(cx, floorY - 4); p.lineTo(cx + 14, floorY - 4); p.lineTo(cx + 14, seatY);
+  });
+  const seatCol = c(SEAT_COLOURS[seat % SEAT_COLOURS.length]);
+  for (const s of [-1, 1]) shape(ctx, seatCol, u, (p) => rr(p, cx + s * 14 - 5, seatY - 2.5, 10, 3, 1.3));
+  shape(ctx, c('#e8e0d0'), u, (p) => rr(p, cx - 11, top - 2, 22, 2.4, 0.8));
+  plain(ctx, c('#b8b0a0'), (p) => p.rect(cx - 11, top + 0.2, 22, 0.6));
+  if (!tray) return;
+  const tx = cx + (seat % 2 ? 2 : -2), ty = top - 2;
+  plain(ctx, c('#8a6a56'), (p) => p.rect(tx - 7, ty - 1.4, 14, 1.4));
+  shape(ctx, c('#e8e0d0'), u, (p) => {
+    p.moveTo(tx + 1, ty - 1.4); p.lineTo(tx + 5, ty - 1.4); p.lineTo(tx + 5.6, ty - 9); p.lineTo(tx + 0.4, ty - 9); p.closePath();
+  });
+  plain(ctx, c('#e04848'), (p) => p.rect(tx + 0.6, ty - 6.5, 4.8, 2));
+  plain(ctx, c('#c8c8d8'), (p) => p.rect(tx + 0.2, ty - 9.8, 5.6, 1));
+  stroke(ctx, c('#f6d33c'), 0.7, (p) => { p.moveTo(tx + 3.6, ty - 9.8); p.lineTo(tx + 5, ty - 14); });
+  plain(ctx, c('#f6d33c'), (p) => {
+    p.moveTo(tx - 5.5, ty - 7); p.lineTo(tx - 5, ty - 3.5); p.lineTo(tx - 5.5, ty - 1.4);
+    p.lineTo(tx - 1, ty - 1.4); p.lineTo(tx - 1.5, ty - 3.5); p.lineTo(tx - 1, ty - 7);
+  });
+  plain(ctx, c('#c83a2e'), (p) => p.rect(tx - 5.4, ty - 4.6, 4.3, 3.2));
+}
+
+// ------------------------------------------------------------- unit signs
+// THE COUNTER SIGNS. Each counter's unit is signed the way every food-court
+// unit is: one lit fascia on the wall above it with the trade in plain capitals.
+// They replaced Dolores's menu board on 11 Oct 2026, once the postcard mural over
+// the plaza had taken over the job of saying "food court" — the board, its NOW
+// SERVING readout and its grade card were three objects doing it a second time,
+// and Gary's unit had nothing above it at all. Now the two counters match.
+//
+// `topY` is set by the hub just clear of the counter's lamp hood, so each sign
+// reads as belonging to the unit under it (Peter, 11 Oct 2026). Tapping one
+// opens that counter's screen. A lightbox keeps a little of its own light however dark the stretch
+// (SIGN_SELF_LIT), the same courtesy the menu board had.
+export const COUNTER_SIGN_W = 92, COUNTER_SIGN_H = 17;
+export const SIGN_SELF_LIT = 0.42;
+const SIGN_PAL = {
+  serving: { box: '#2a3542', face: '#e8b04a', ink: '#2a1c06' },
+  pawn: { box: '#2e2438', face: '#f890b8', ink: '#3a0c2a' },
+};
+export function drawCounterSign(ctx, cx, topY, text, { variant = 'serving', dark = 0 } = {}) {
+  const P = SIGN_PAL[variant] || SIGN_PAL.serving;
+  const w = COUNTER_SIGN_W, h = COUNTER_SIGN_H, x = cx - w / 2;
+  // Two short hangers up to the ceiling line, so it reads as fixed, not floating.
+  plain(ctx, '#3a3248', (c) => c.rect(x + 8, topY - 6, 1.2, 6));
+  plain(ctx, '#3a3248', (c) => c.rect(x + w - 9.2, topY - 6, 1.2, 6));
+  shape(ctx, P.box, 12, (c) => rr(c, x, topY, w, h, 1.6));
+  plain(ctx, P.face, (c) => c.rect(x + 2.2, topY + 2.2, w - 4.4, h - 4.4));
+  const s = Math.min(0.78, (w - 14) / Math.max(1, textWidth(text, 1, 'title')));
+  drawText(ctx, text, cx - textWidth(text, s, 'title') / 2, topY + h / 2 - s * 4.6, P.ink, s, 'title');
+  // The room's light over the face: `dark` is how much of it is missing.
+  if (dark > 0.001) {
+    ctx.save();
+    ctx.globalAlpha = dark;
+    ctx.fillStyle = '#0b0812';
+    ctx.fillRect(x - 1, topY - 6, w + 2, h + 7);
+    ctx.restore();
+  }
 }

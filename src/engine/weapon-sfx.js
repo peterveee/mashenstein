@@ -161,15 +161,6 @@ export const CUES = [
     osc(b, SR, { duration: 0.3, f0: 180, f1: 880, gain: 0.38, type: 'triangle', tremolo: 48 });
     noise(b, SR, { seed: 11, duration: 0.28, gain: 0.25, cutoff: 3300, mode: 'highpass', attack: 0.045 });
   }],
-  ['12-mochi-compress-squish.wav', 0.3, (b, SR) => {
-    osc(b, SR, { duration: 0.25, f0: 520, f1: 105, gain: 0.52, type: 'sine' });
-    noise(b, SR, { seed: 12, duration: 0.15, gain: 0.18, cutoff: 560 });
-    impulse(b, SR, 0.165, 0.16);
-  }],
-  ['13-mochi-compress-spring.wav', 0.32, (b, SR) => {
-    osc(b, SR, { duration: 0.28, f0: 760, f1: 155, gain: 0.45, type: 'triangle', tremolo: 22 });
-    osc(b, SR, { start: 0.13, duration: 0.15, f0: 170, f1: 390, gain: 0.28, type: 'sine' });
-  }],
   ['14-miss-chomp-hard-snap.wav', 0.28, (b, SR) => {
     impulse(b, SR, 0.055, 0.52, 0.012);
     noise(b, SR, { seed: 14, start: 0.05, duration: 0.16, gain: 0.42, cutoff: 820 });

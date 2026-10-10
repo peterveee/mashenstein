@@ -69,7 +69,7 @@ export const GROUND_Y = 232;
 export let ZOOM = 2;
 // How far the dolly is allowed to pull back for a tall jump. Against
 // GROUND_Y + PAN_MAX it clears 173px of hero altitude, which covers everything
-// short of a mochi carrying both the cape and the triple mod.
+// short of a double-jumper carrying the cape.
 export const ZOOM_MIN = 1.3;
 // How far the dolly may CRANE UP — shift the whole frame down in screen px —
 // before it starts pulling back instead. A crane leaves the world's scale
@@ -619,6 +619,30 @@ export const GUARD_APPROACH_K = 9;
 // order as FALL_CATCHUP, and the reason is the same — past this the camera stops
 // reading as a camera.
 export const GUARD_SPEED = 280;
+
+// THE GROUND STAYS IN SHOT.
+//
+// The crane above is sized to hold the hero's crown at the tallest jump in the
+// game, and it used to be allowed to spend all of it: past the apron the floor
+// went off the bottom of the frame, on the reasoning that only a triple ever got
+// that high. Low gravity broke that reasoning (it doubled every jump), and a
+// closer zoom shrinks the apron in world px, so on a phone an ordinary hop was
+// craning the ground away. What you are about to land on matters more than the
+// top of your own jump, so the order is now the other way round: the crane may
+// lift the frame only until the hero's own floor sits GROUND_KEEP px above the
+// bottom edge, and past that the hero goes off the TOP, where the run draws a
+// marker on the edge over him (run.js drawHeroAboveMarker).
+//
+// Measured against the hero's floor rather than GROUND_Y, through the same
+// `groundLift` the rest of the guard takes: standing on an island, the island is
+// the ground that has to stay in shot, and the lane under it may go. Never
+// LESS than the flat lane's cap, though: a hero in a rolling dip is standing
+// below the anchor, and capping him tighter than the lane would take the crane
+// away from exactly the hops it has always framed there.
+export const GROUND_KEEP = 8;
+export function guardGroundCap(groundLift = 0, z = ZOOM) {
+  return Math.max(0, H - GROUND_KEEP - frameGroundY() + Math.max(0, Number(groundLift) || 0) * z);
+}
 
 // The UNCLAMPED crane a hero `y` px above their floor needs to keep the guard
 // margin above their crown. Same shape as framingFor's `need * ZOOM - anchor`,

@@ -33,8 +33,7 @@
 // ---------------------------------------------------------------------------
 // THE RAIDER used to be worked out here. SETTLED, and shipped as CLARA VAULT:
 // her spec is TOON_SPECS.clara, her palette HERO_SPRITES.clara, her row is in
-// HEROES (she took Mochi's slot — Mochi retired to the same held-for-a-cameo
-// standing as Miss Chomp). A candidate list for a decision that has been made
+// HEROES. A candidate list for a decision that has been made
 // is a second source of truth for her costume, which is exactly the drift this
 // file exists to avoid.
 //

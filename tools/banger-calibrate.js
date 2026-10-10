@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, readdirSync, rmSync
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setPriority } from 'node:os';
-import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { discoverProfiles, scenarios, scenarioSong, scenarioPrediction, BANGER_COMBOS, BANGER_LEVEL_DATA } from './lib/banger-calibration.js';
 import { BANGER_RECIPES, styleFor } from './lib/banger/styles/index.js';
 import { fingerprint, referenceKey, interpolateProfile, CALIBRATION_VERSION } from './lib/banger/calibration.js';
@@ -16,6 +16,7 @@ import { BANGER_SOUNDS } from './lib/banger/sounds.js';
 import { takeRenderSlot, releaseRenderSlot } from './lib/render-slots.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const esbuild = createRequire(import.meta.url)('esbuild');
 const LOCAL = join(ROOT, 'work/local/banger-calibration');
 const REPORT = join(ROOT, 'work/local/reports/banger-calibration.json');
 const OUTPUT = join(ROOT, 'tools/lib/banger/calibration-data.js');
@@ -27,26 +28,31 @@ export function atomicWrite(path, text) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.tmp`; writeFileSync(tmp, text); renameSync(tmp, path);
 }
-function sourceStamp() {
-  const files = [];
-  const walk = dir => { for (const e of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
-    const p = `${dir}/${e.name}`; if (e.isDirectory()) walk(p); else if (p.endsWith('.js')) files.push(p);
-  } };
-  walk('src/engine');
-  files.push('tools/lib/render-bank-page.js', 'tools/lib/loudness.js',
-    'tools/lib/banger/levels.js', 'tools/lib/banger/calibration.js', 'tools/lib/banger-calibration.js');
-  const hash = createHash('sha256');
-  // Instrument definitions are fingerprinted per profile; only shared gain logic
-  // invalidates the entire cache when the voice library changes.
+// The stamp names what a render actually runs, so only audio edits invalidate a run.
+// The engine files come from esbuild's own input list for the renderer's bundle rather
+// than a folder walk: the bundle also drags in gameplay, scenery and the song files,
+// none of which change a measurement (instrument definitions are fingerprinted per
+// profile), and a hard-coded list would drift. npm packages count by version.
+function sourceParts() {
+  const { metafile } = esbuild.buildSync({ entryPoints: ['tools/lib/render-bank-page.js'], absWorkingDir: ROOT,
+    bundle: true, write: false, metafile: true, logLevel: 'silent' });
+  const inputs = Object.keys(metafile.inputs);
+  const files = [...inputs.filter(p => p.startsWith('src/engine/')), 'tools/lib/render-bank-page.js', 'tools/lib/loudness.js',
+    'tools/lib/banger/levels.js', 'tools/lib/banger/calibration.js', 'tools/lib/banger-calibration.js'];
+  const parts = new Map(files.sort().map(p => [p, readFileSync(join(ROOT, p), 'utf8')]));
+  // Only shared gain logic invalidates the entire cache when the voice library changes.
   const voices = readFileSync(join(ROOT, 'src/data/voices.js'), 'utf8');
-  hash.update(voices.slice(0, voices.indexOf('const TONE =')));
-  hash.update(readFileSync(join(ROOT, 'package-lock.json')));
-  for (const p of files.sort()) hash.update(p).update(readFileSync(join(ROOT, p)));
-  return hash.digest('hex');
+  parts.set('src/data/voices.js (shared gain logic)', voices.slice(0, voices.indexOf('const TONE =')));
+  const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8')).packages;
+  const packages = new Set(inputs.map(p => p.match(/^node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1]).filter(Boolean));
+  for (const name of [...packages].sort()) parts.set(`${name} (npm)`, lock[`node_modules/${name}`]?.version);
+  return parts;
 }
-function inputStamp() {
-  return fingerprint(['sounds', 'channels', 'combos', 'levels-data'].map(n => readFileSync(join(ROOT, `tools/lib/banger/${n}.js`), 'utf8')));
+function inputParts() {
+  return new Map(['sounds', 'channels', 'combos', 'levels-data'].map(n => `tools/lib/banger/${n}.js`).map(p => [p, readFileSync(join(ROOT, p), 'utf8')]));
 }
+const stampOf = parts => fingerprint([...parts]);
+const changedParts = (before, after) => [...new Set([...before.keys(), ...after.keys()])].filter(k => before.get(k) !== after.get(k));
 function lock() {
   mkdirSync(LOCAL, { recursive: true });
   if (existsSync(LOCK)) {
@@ -96,7 +102,7 @@ export async function runCalibration({ command = 'refresh', styles = [], full = 
   // A style here is any recipe a take is made from: the styles, their flavours and Sound Sets.
   for (const id of styles) if (!BANGER_RECIPES.some(s => s.id === id)) throw new Error(`unknown style: ${id}`);
   const selected = styles.length ? BANGER_RECIPES.filter(s => styles.includes(s.id)) : BANGER_RECIPES;
-  const stamp = sourceStamp(), inputs = inputStamp();
+  const sources = sourceParts(), stamp = stampOf(sources), inputs = stampOf(inputParts());
   const profiles = discoverProfiles({ styles: selected, trackEffects });
   const previous = (await import(`${pathToFileURL(OUTPUT).href}?v=${Date.now()}`)).BANGER_CALIBRATION;
   const signature = fingerprint({ stamp, inputs, styles: selected.map(s => s.id), trackEffects });
@@ -107,7 +113,6 @@ export async function runCalibration({ command = 'refresh', styles = [], full = 
     console.log('Calibration is current and not due yet.'); return lastSuccess;
   }
   const cache = readJSON(CACHE, { measurements: {} });
-  const referenceFiles = new Map();
   const report = { at: new Date().toISOString(), signature, status: command === 'report' ? 'coverage' : 'running',
     styles: selected.map(s => s.id), trackEffects, total: profiles.length, ready: 0, measured: 0, reused: 0, rejected: [], errors: [], published: false, rows: [], mixes: [] };
   const validPrevious = previous.engine === stamp;
@@ -154,6 +159,16 @@ export async function runCalibration({ command = 'refresh', styles = [], full = 
   };
   try {
     saveReport();
+    // The run measures a frozen copy: Node loaded the banger tables at start-up, and the
+    // renderer bundles the engine once, here, for every render it makes. So edits saved
+    // while it works cannot reach it, and need no check at the end; the next run sees
+    // the new stamp and redoes what they touch. Bundle now, not at the first uncached
+    // render, and confirm the stamp still describes what was bundled.
+    if (!suppliedRender) {
+      const { openRenderer } = await import('./lib/render-bank-browser.js'); renderer = await openRenderer();
+      const moved = changedParts(sources, sourceParts());
+      if (moved.length) throw new Error(`Audio sources changed as calibration started (${moved.join(', ')}); run refresh again.`);
+    }
     for (const p of profiles.slice(0, maxProfiles)) {
       const row = { label: p.labels[0], aliases: p.labels.length, key: p.key };
       if (!full && next.profiles[p.key]?.validated) { row.status = 'current'; report.rows.push(row); continue; }
@@ -192,7 +207,6 @@ export async function runCalibration({ command = 'refresh', styles = [], full = 
       for (const [role, ref] of Object.entries(source || {})) if (wantedRoles.has(role) && !Array.isArray(refBars(ref)[0])) refs.set(referenceKey(ref), { ref, style: styleFor(ref.style) || style });
     }
     for (const [key, { ref, style }] of refs) {
-      if (ref.song) { const path = join(ROOT, 'src/data/imported', `${ref.song}.js`); referenceFiles.set(path, readFileSync(path, 'utf8')); }
       const song = ref.song ? await songAt(ROOT, 'src/data/imported', ref.song) : await defaultBangerSong(style, ref.variant || 0);
       const part = lanePart(song, ref.lane, ...ref.window);
       if (!part) { report.errors.push(`Reference has no part: ${ref.from}`); continue; }
@@ -235,7 +249,6 @@ export async function runCalibration({ command = 'refresh', styles = [], full = 
       saveReport();
       if (hotterClip || louder) throw new Error(`Generated ${style.id} seed ${seed} became too loud; the previous calibration table was preserved.`);
     }
-    if (sourceStamp() !== stamp || inputStamp() !== inputs || [...referenceFiles].some(([p, text]) => readFileSync(p, 'utf8') !== text)) throw new Error('Sources changed during calibration. Cached renders are safe; run refresh again. Published table was not replaced.');
     next.at = new Date().toISOString();
     // Atomic publication: generation never sees a partly-written table.
     atomicWrite(OUTPUT, '// Generated by tools/banger-calibrate.js. Only validated phrase profiles are published.\nexport const BANGER_CALIBRATION = ' + JSON.stringify(next) + ';\n');

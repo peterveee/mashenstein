@@ -11,6 +11,16 @@ claimed 8020, the character editor and the composition tuner both claimed 8030 �
 so half of them could not run at the same time and nobody found out until the
 second one failed to boot.
 
+## Restart
+
+RESTART in the header restarts the desk from the page: it stops what this desk
+started — tools and running actions, exactly as ^C does — and a fresh desk takes
+its place, reading `tools/desk.js` from disk again. It takes two clicks; the armed
+button names what will stop. The page reloads itself once the new desk answers.
+
+`npm run desk` runs a small supervisor that does the restarting; the desk proper
+is its child (`MASH_DESK_WORKER=1`). ^C still stops both.
+
 ## Straight in
 
 Every tool has a URL on the desk that goes to the tool:

@@ -72,3 +72,17 @@ console.log('creative-drum-kits: all 15 kits calibrated, offered and generated c
     'Jungle\'s own kit reads BREAKBEAT KIT, once');
   console.log('creative-drum-kits: a Style Kit that is a named kit goes by its name');
 }
+
+// Any other Style Kit goes by the style it is: the style, or a flavour with a kit of its own.
+{
+  const { ClubVoices, styleKitLabel } = await import('../src/game/banger/club-voices.js');
+  const v = new ClubVoices({ soundsId: 'reggaeton', laneOf: {}, bank: {}, mix: { order: ['kick'], voice: {} } }, { style: 'reggaeton' });
+  const labels = v.choices('drums').map((c) => c.label);
+  assert(labels[0] === 'REGGAETON KIT' && !labels.includes('STYLE KIT'), 'Reggaeton\'s own kit reads REGGAETON KIT');
+  assert(styleKitLabel('downtempo-triphop') === 'TRIP-HOP KIT' && styleKitLabel('deep-house-piano') === 'DEEP HOUSE KIT'
+    && styleKitLabel('fusion:trance+reggaeton') === 'REGGAETON KIT',
+    'a flavour with its own kit goes by the flavour, one sharing its style\'s by the style, a fusion by its beat');
+  assert(Object.keys(BANGER_SOUNDS).every((id) => !CREATIVE_DRUM_KITS.some((k) => `${k.label.toUpperCase()} KIT` === styleKitLabel(id))),
+    'no Style Kit takes a named kit\'s name');
+  console.log('creative-drum-kits: every other Style Kit goes by its style');
+}

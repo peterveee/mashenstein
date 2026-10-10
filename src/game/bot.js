@@ -3,7 +3,7 @@
 // press/release, and never touches Input.activity — so attract mode can tell
 // the bot from a human.
 import { Input } from '../engine/input.js';
-import { PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, VARIABLE_JUMP_CUT, jumpV } from './player.js';
+import { PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, VARIABLE_JUMP_CUT, jumpV, floatLaunch } from './player.js';
 import { isOpenGap } from './entities.js';
 
 // A HOLE IS THE ONE MISTAKE THE BOT MAY NOT MAKE.
@@ -93,7 +93,7 @@ export class DemoBot {
    *
    * `airtimeFor` is the hero's arc in still air. This is the arc the lane is
    * actually running under right now, and the difference is what a power-up
-   * does: lowgrav stretches the flight by half again. That moves where he comes
+   * does: lowgrav stretches the flight by up to 1.4x. That moves where he comes
    * down by more than the width of a hole, so a bot that aims with the hero's
    * paper airtime aims into the hole on exactly the runs where the lane is
    * strangest.
@@ -223,7 +223,7 @@ export class DemoBot {
     const a = this.arc();
     if (!a) return { airtime: 0.55, cut: null, lapse: null };
     // A LOW-GRAVITY CAPSULE RUNNING OUT UNDER HIM. It stretches the flight by
-    // half again, and it ends on its own clock: take off with two tenths left
+    // up to 1.4x, and it ends on its own clock: take off with two tenths left
     // on it and the arc that cleared the hole on paper comes down inside it,
     // which is how the demo went through the ice stage's second break. The
     // plain-gravity arc is the floor under that, and the floor is what a hole
@@ -298,8 +298,10 @@ export class DemoBot {
     const p = run.player;
     const hero = p.hero;
     if (!hero) return null;
-    const g = p.gravity * (run.powerups?.gravityMultiplier?.() ?? 1);
-    const v = jumpV(hero) * (p.jumpScale || 1);
+    const scale = run.powerups?.gravityMultiplier?.() ?? 1;
+    const g = p.gravity * scale;
+    // Launched for the gravity it flies under, exactly as jumpPressed does it.
+    const v = jumpV(hero) * (p.jumpScale || 1) * floatLaunch(scale);
     if (!(g > 0) || !(v > 0)) return null;
     return { v, g, apex: v / g, airtime: 2 * v / g, peak: (v * v) / (2 * g) };
   }
@@ -795,13 +797,14 @@ export class DemoBot {
         : crossing.stones.find((st) => st.x + st.w > px + PLAYER_SPRITE_W);
       // Not inside MIN_JUMP_RISE_T: a release there is not cut until the window
       // closes, higher and further on than the arc solved here.
+      const cutV = VARIABLE_JUMP_CUT * floatLaunch(run.player.gravityScale);
       if (!run.player.grounded && this.jumpHold && target && !(run.player.jumpRiseT > 0)
-        && run.player.vy > VARIABLE_JUMP_CUT && run.player.hero?.variableJump) {
+        && run.player.vy > cutV && run.player.hero?.variableJump) {
         const a = this.arc();
         const g = a ? a.g : run.player.gravity;
         const y = Math.max(0, run.player.y);
         const fall = (v) => (v + Math.sqrt(v * v + 2 * g * y)) / g;
-        const cutLand = px + this.spanOver(fall(VARIABLE_JUMP_CUT));
+        const cutLand = px + this.spanOver(fall(cutV));
         const fullLand = px + this.spanOver(fall(run.player.vy));
         const from = target.x + target.w * 0.22;
         const to = target.x + target.w * 0.92;

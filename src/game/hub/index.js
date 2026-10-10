@@ -14,14 +14,15 @@ import {
   DIVE_OUT_SMILE, DIVE_LEAP_AT,
 } from './cabinet-dive.js';
 import { drawProp } from '../../sprites/props.js';
+import { drawFoodCourtMural, MURAL_W } from '../../sprites/mural.js';
 import {
   cabinetPalette, cabinetBrownoutAlpha, cabinetScreenRect, cabinetStyle, deadScreenArt, drawCabinetShell, drawCabinetScreen, drawCabinetSignalInterference, drawDeadScreen, drawScreenSweep,
   stickGlint,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, drawCounter, COUNTER_W, COUNTER_H, COUNTER_STAFF_X,
+  drawFoodCourtTable, drawCounterSign, SIGN_SELF_LIT, COUNTER_SIGN_W, COUNTER_SIGN_H,
 } from '../../sprites/arcade.js';
 import {
-  hubWallBays, BAY_W, drawWallBay, drawPoster, wallLitFrom, POSTER_W, POSTER_H,
-  MENU_PANEL_CENTRE, MENU_PANEL_W,
+  BAY_W, drawPoster, wallLitFrom, POSTER_W, POSTER_H,
 } from '../../sprites/backwall.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { mix as HUB_MIX, arrangement as HUB_ARRANGEMENT } from '../../data/songs/hub.js';
@@ -563,11 +564,34 @@ const DIVE_SHAPES = { PORTAL_BREATH };
 // visual padding: stations() advances the world cursor by it, so camera bounds,
 // lighting, free floor, NPC homes and their far-wall clamp all grow with it.
 const OVERTIME_EMPTY_BAY = 88;
+// THE SEATING. A food court is somewhere you sit down and eat, and until 11 Oct
+// 2026 this one had no tables in it: from across the room it read as an arcade
+// with a snack bar at the far end. Bolted tables (drawFoodCourtTable) stand in
+// two places, and both are real floor that stations() advances the cursor by,
+// so lighting, NPC homes and the camera bounds all grow with them.
+//
+// The plaza between the last machine and the serving line was 96: room to walk
+// from one to the other and nothing else. One cabinet pitch more fits three
+// tables with an aisle at each end, so a hero walking up to Dolores passes the
+// tables rather than threading between them.
+const PLAZA_W = 96 + 88;
+const PLAZA_TABLES = 3;
+// And one table in a bay of its own just before the Trophy Room, always there,
+// so the far end of the concourse is food court too and not only doors.
+const TROPHY_TABLE_BAY = 88;
 const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // The serving line stands on the same floor as everything else. It is twice a
 // door's width and half its height on purpose: a counter is a horizontal thing,
 // and the whole point of it is that you can see over it to the person behind.
 const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
+// Each counter's sign hangs just above its lamp hood (64 off the floor), with
+// two units of air, so it reads as the unit's own fascia.
+const COUNTER_SIGN_TOP = HUB_FLOOR_PIN_Y - 64 - 2 - COUNTER_SIGN_H;
+function counterSignHit(station, worldX, worldY) {
+  return (station.type === 'bench' || station.type === 'shop')
+    && Math.abs(worldX - station.x) <= COUNTER_SIGN_W / 2
+    && worldY >= COUNTER_SIGN_TOP - 6 && worldY <= COUNTER_SIGN_TOP + COUNTER_SIGN_H;
+}
 // The renderer publishes a taller logical frame in phone portrait. The
 // landscape-scale cabinets still own their authored floor line, but the phone
 // gets a deliberate presentation band: extra air below the fixtures and above
@@ -994,19 +1018,14 @@ function nearestTo(list, x, r) {
 }
 
 // The serving counter is wider and taller than its station's approach radius.
-// Its menu board is the sign behind Dolores, so both rendered surfaces belong
-// to the same interaction. Dolores herself remains a character target.
+// Dolores herself remains a character target. (Its sign is handled ahead of
+// this: a tap on either counter's sign opens that counter outright.)
 function benchVisualHit(station, worldX, worldY, dolores, layout = hubPresentation()) {
   const onCounter = Math.abs(worldX - station.x) <= COUNTER_W / 2
     && worldY >= CTR_Y && worldY <= layout.floorY;
-  const boardLeft = station.x - BAY_W * (MENU_PANEL_CENTRE + MENU_PANEL_W / 2);
-  const boardRight = station.x - BAY_W * (MENU_PANEL_CENTRE - MENU_PANEL_W / 2);
-  const onSign = worldX >= boardLeft && worldX <= boardRight
-    && worldY >= layout.wallDressY0 && worldY <= layout.wallDressY0
-      + (layout.wallY1 - layout.wallDressY0) * 0.57;
   const onDolores = dolores && Math.abs(worldX - dolores.x) <= NPC_H * 0.42
     && worldY >= layout.floorY - (dolores.staffH || DOLORES_H) && worldY <= layout.floorY;
-  return (onCounter || onSign) && !onDolores;
+  return onCounter && !onDolores;
 }
 
 export function heroIdFor(flow) {
@@ -1818,8 +1837,20 @@ export class HubState {
     }
     // A plaza between the machines and the service doors. The two banks used to
     // butt together with 40 units between them, which left the crowd nowhere to
-    // stand but among the cabinets; this gives them somewhere to spill into.
-    x += 96;
+    // stand but among the cabinets; this gives them somewhere to spill into —
+    // and, since the seating went in, somewhere to sit. See PLAZA_W.
+    const plazaFrom = x - 88 + CAB_W / 2;
+    x += PLAZA_W;
+    const plazaTo = x - COUNTER_W / 2;
+    // The mural hangs centred over the tables (see sprites/mural.js).
+    this.muralX = (plazaFrom + plazaTo) / 2;
+    // Spread across the plaza with an aisle kept at the machine end and a
+    // shorter one at the counter, which is the end people queue at.
+    const tables = [];
+    const aisleL = 14, aisleR = 10, span = plazaTo - plazaFrom - aisleL - aisleR;
+    for (let k = 0; k < PLAZA_TABLES; k++) {
+      tables.push({ x: plazaFrom + aisleL + span * ((k + 0.5) / PLAZA_TABLES), seat: k, tray: k !== 1 });
+    }
     // The two counters. Wider berths than the doors they replaced: a counter is
     // 118 across where a door was 44, and butting them at the old 88/98 pitch
     // ran the serving line straight into the pawn till with no floor between
@@ -1831,7 +1862,7 @@ export class HubState {
     // two staffed stations in the room both belong to somebody.
     st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" }); x += 180;
     st.push({ type: 'shop', x, label: "GARY'S LEGAL PAWN SHOP" }); x += 140;
-    st.push({ type: 'arcade', x, label: 'ARCADE CORNER' }); x += 88;
+    st.push({ type: 'arcade', x, label: 'THE GRAVEYARD' }); x += 88;
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
     if (finaleUnlocked(slot) && !slot.campaign.storyFlags.sawEnding) {
       st.push({ type: 'socket', x, label: 'THE SOCKET' }); x += 88;
@@ -1848,6 +1879,11 @@ export class HubState {
       x += OVERTIME_EMPTY_BAY;
       st.push({ type: 'overtime', cab: OVERTIME_CAB, x, label: 'OVERTIME CABINET (HR HAS APPROVED NONE OF THIS)' }); x += 88;
     }
+    // The table bay: one more set, centred in the slot a station would have
+    // taken, so it stands a full pitch clear of the door either side.
+    tables.push({ x, seat: 1, tray: true });
+    x += TROPHY_TABLE_BAY;
+    this.tables = tables;
     // The Trophy Room is the right-hand boundary, mirroring EXIT.
     // There is no decorative tail beyond it: the last walkable player position
     // is the centre of this door, so crossing it is unambiguously leaving the
@@ -2638,6 +2674,14 @@ export class HubState {
       }
       const worldX = Input.pointer.x / layout.zoom + this.camX();
       const worldY = Input.pointer.y / layout.zoom + layout.camY;
+      // A counter's sign is its front door: tapping it opens the counter's
+      // screen from anywhere it is visible, no walk first.
+      const signHit = st.find((s) => counterSignHit(s, worldX, worldY));
+      if (signHit) {
+        this.interact(signHit);
+        Input.endFrame();
+        return;
+      }
       const bench = st.find((s) => s.type === 'bench');
       const dolores = this.npcs().find((n) => n.id === 'dolores' && !n.clearingStation);
       const visualBenchHit = bench && benchVisualHit(bench, worldX, worldY, dolores, layout) ? bench : null;
@@ -3223,7 +3267,11 @@ export class HubState {
         n.timer = Math.max(n.timer, 0.6);
         const dir = left < NPC_MIN_X ? 1
           : right > this.npcFarX() ? -1
-            : Math.sign(n.x - (left + right) / 2) || (n.cycles % 2 ? -1 : 1);
+            // Dead centre, step aside toward home: that is where the wander is
+            // about to walk them anyway. Stepping the other way put them on the
+            // band's far edge facing back across it, and the first stride home
+            // walked them straight back into the doorway they had just cleared.
+            : Math.sign(n.x - (left + right) / 2) || Math.sign(n.home - n.x) || (n.cycles % 2 ? -1 : 1);
         n.facing = dir;
         n.x += dir * Math.min(dir > 0 ? right - n.x : n.x - left, 42 * dt);
         if (this.addressing === n.id) {
@@ -3437,13 +3485,28 @@ export class HubState {
     // plainly darker than a lit one — without the player pulsing as they walk.
     const castLit = (sx) => CAST_LIT_FLOOR
       + (1 - CAST_LIT_FLOOR) * Math.max(wallLit(sx), benchLit(sx));
-    // Room furniture first (the menu board), then ONE poster per cabinet.
-    for (const bay of hubWallBays(this.stations())) {
-      const bx = bay.x - cam;
-      if (bx + BAY_W < 0 || bx > layout.viewW) continue;
-      drawWallBay(ctx, bx, layout.wallDressY0, BAY_W, layout.wallY1 - layout.wallDressY0, bay.id, {
-        t: this.t, seed: bay.x, lit: wallLit, base: false,
+    // Room furniture first (the two counter signs), then ONE poster per
+    // cabinet. The signs took over from Dolores's menu board on 11 Oct 2026 —
+    // see drawCounterSign. Lit like any wall dressing, with a lightbox's floor.
+    for (const s of this.stations()) {
+      if (s.type !== 'bench' && s.type !== 'shop') continue;
+      const sx = s.x - cam;
+      if (sx < -60 || sx > layout.viewW + 60) continue;
+      const lit = Math.max(SIGN_SELF_LIT, wallLit(sx));
+      drawCounterSign(ctx, sx, COUNTER_SIGN_TOP, s.type === 'shop' ? 'PAWN SHOP' : 'REPAIRS', {
+        variant: s.type === 'shop' ? 'pawn' : 'serving',
+        dark: Math.max(0, Math.min(1, 1 - lit)) * 0.88,
       });
+    }
+    // The postcard mural over the plaza tables: wall dressing like the board,
+    // lit the same way. Its top edge sits ON the poster line — level with the
+    // cabinet posters and the menu board's housing — so the three read as one
+    // row along the wall (Peter, 11 Oct 2026).
+    if (this.muralX != null) {
+      const mx = this.muralX - cam;
+      if (mx + MURAL_W / 2 > 0 && mx - MURAL_W / 2 < layout.viewW) {
+        drawFoodCourtMural(ctx, mx, layout.posterY, { lit: wallLit });
+      }
     }
     // A poster hangs above the machine it advertises, centred on it — that is
     // the whole placement rule, and it is why there is exactly one. Tiled three
@@ -3574,7 +3637,19 @@ export class HubState {
     // the reflection.
     const hiddenInMirror = (mirror, lowestY) => mirror && lowestY < mirrorTopY;
     const drawStations = (ctx, mirror = false) => {
-    for (const s of this.stations()) {
+    // The tables first: they stand out on the floor, but every one of them is
+    // lower than anything at a station, and drawing them behind the row keeps
+    // that true if a table and a door ever end up sharing a few units of x.
+    // Lit as a body is (castLit), not as the wall, since they stand where the
+    // cast stands. The whole set is under PLAYER_H, so all of it is in the
+    // mirror.
+    const stations = this.stations();
+    for (const tb of this.tables || []) {
+      const x = tb.x - cam;
+      if (x < -40 || x > layout.viewW + 40) continue;
+      drawFoodCourtTable(ctx, x, layout.floorY, { lit: castLit(x), seat: tb.seat, tray: tb.tray });
+    }
+    for (const s of stations) {
       const x = Math.round(s.x - cam);
       if (x < -80 || x > layout.viewW + 40) continue;
       if (s.type === 'cabinet') {
@@ -3680,6 +3755,7 @@ export class HubState {
         drawCounter(ctx, x - COUNTER_W / 2, CTR_Y, COUNTER_W, COUNTER_H, {
           t: this.t,
           variant: s.type === 'shop' ? 'pawn' : 'serving',
+          card: false,
           server: staff ? (c) => drawToon(c, staff.id, {
             kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t,
             grounded: true, facing: staff.facing || 1, vy: 0,
@@ -6264,7 +6340,7 @@ export class ArcadeState {
     const center = (safe.left + safe.right) / 2;
     const labelRight = costRight - css(28);
     const labelWidth = Math.max(css(120), labelRight - textLeft);
-    const title = 'ARCADE CORNER';
+    const title = 'THE GRAVEYARD';
     const titleS = Math.min(3.4, width / Math.max(1, textWidth(title, 1, 'title')));
     const info = `${ARCADE_PLAY_COST} COINS A GO. WIN: +${REWARDS.arcadeWin} AND A POWER-UP.`;
     const infoS = Math.min(1.7, width / Math.max(1, textWidth(info, 1)));
@@ -6279,7 +6355,7 @@ export class ArcadeState {
     drawTextVectorCentered(ctx, info, center,
       textYForMid(safe.top + css(92), infoS), '#c8c8d8', infoS);
     if (touch) {
-      const note = 'THE ARCADE CABINETS REQUIRE A KEYBOARD.';
+      const note = 'THESE CABINETS REQUIRE A KEYBOARD.';
       const noteS = Math.min(1.6, width / Math.max(1, textWidth(note, 1, 'bold')));
       drawTextVectorCentered(ctx, note, center,
         textYForMid(safe.top + css(140), noteS, 'bold'), '#f6d33c', noteS, 'bold');
@@ -6317,7 +6393,7 @@ export class ArcadeState {
     }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'ARCADE CORNER', W / 2, 16, '#48e0c8', 2, 'title');
+    drawTextCentered(ctx, 'THE GRAVEYARD', W / 2, 16, '#48e0c8', 2, 'title');
     drawTextCentered(ctx, `${ARCADE_PLAY_COST} COINS A GO. WIN: +${REWARDS.arcadeWin} AND A POWER-UP.`, W / 2, 40, '#8a8a98');
     const touch = Input.isTouchDevice();
     const broke = this.save.slot.coins < ARCADE_PLAY_COST;

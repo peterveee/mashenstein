@@ -675,8 +675,21 @@ async function handle(req, res) {
     return res.end(html);
   }
 
+  // RESTART: the desk stops what it started, exactly as ^C does, then exits with
+  // RESTART_CODE, and the supervisor `npm run desk` really runs (superviseDesk, below)
+  // starts a fresh one that reads its code from disk again.
+  if (url.pathname === '/api/restart' && req.method === 'POST') {
+    if (!process.env.MASH_DESK_WORKER || !stopDesk) {
+      return json(res, 409, { ok: false, error: 'this desk was started without its supervisor — restart it from the terminal' });
+    }
+    json(res, 200, { ok: true, boot: process.pid });
+    setTimeout(() => stopDesk(RESTART_CODE), 50);
+    return;
+  }
+
   if (url.pathname === '/api/status') {
     return json(res, 200, {
+      boot: process.pid,
       tools: await Promise.all(TOOLS.map(statusOf)),
       actions: ACTIONS.map(actionStatus),
       browsers: listBrowsers(),
@@ -827,7 +840,29 @@ const asServer = process.argv[1] && import.meta.url === pathToFileURL(process.ar
 
 export { TOOLS, ACTIONS, probe, setBand };
 
-if (asServer) startDesk();
+const RESTART_CODE = 75;
+let stopDesk = null;
+if (asServer) process.env.MASH_DESK_WORKER ? startDesk() : superviseDesk();
+
+// What `npm run desk` actually runs: a few lines that keep a desk going, so RESTART
+// can be a click on the page. The desk itself is a child; when it exits with
+// RESTART_CODE a fresh one takes its place. Any other exit — ^C, a crash, the port
+// taken — ends both, as before.
+function superviseDesk() {
+  let stopping = false, child = null;
+  const run = () => {
+    child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+      { stdio: 'inherit', env: { ...process.env, MASH_DESK_WORKER: '1' } });
+    child.on('exit', (code, signal) => {
+      if (code === RESTART_CODE && !stopping) { console.log('\n  RESTARTING THE DESK\n'); return run(); }
+      process.exit(code ?? (signal ? 1 : 0));
+    });
+  };
+  // ^C reaches the whole process group, the desk included; a kill aimed at this pid
+  // alone is passed on, so the desk still stops what it started.
+  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stopping = true; child?.kill(sig); });
+  run();
+}
 
 function startDesk() {
 const server = createServer((req, res) => handle(req, res).catch((err) => {
@@ -835,14 +870,20 @@ const server = createServer((req, res) => handle(req, res).catch((err) => {
   if (!res.headersSent) json(res, 500, { ok: false, error: err.message });
 }));
 
-// Nothing this desk started outlives it. What it adopted is untouched.
-const shutdown = () => {
+// Nothing this desk started outlives it — tools or running actions. What it adopted
+// is untouched. A running action gets a SIGTERM; calibration keeps its cache on one.
+let stopping = false;
+const shutdown = (code = 0) => {
+  if (stopping) return;
+  stopping = true;
   for (const [id, entry] of mine) if (entry.child) { entry.child.kill('SIGTERM'); console.log(`  stopped ${id}`); }
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 500).unref();
+  for (const [id, state] of runs) if (state.child) { state.child.kill('SIGTERM'); console.log(`  stopped ${id}`); }
+  server.close(() => process.exit(code));
+  setTimeout(() => process.exit(code), 500).unref();
 };
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+stopDesk = shutdown;
+process.on('SIGINT', () => shutdown());
+process.on('SIGTERM', () => shutdown());
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {

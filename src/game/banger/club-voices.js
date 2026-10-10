@@ -112,6 +112,24 @@ const soundId = (id) => {
 export const kitLabel = (key) => `${String(KITS.find((k) => k.key === key)?.label || key).replace(/ kit$/i, '').toUpperCase()} KIT`;
 
 /**
+ * Sound set `setId`'s Style Kit as a button says it — the style it is: REGGAETON KIT, and a
+ * flavour with a kit of its own goes by the flavour (JUNGLE KIT), else by its style. A fusion's
+ * kits are its beat's. Where that name is a named kit's, the whole name (DRUM & BASS NEURO KIT);
+ * STYLE KIT for a set without a name.
+ */
+export function styleKitLabel(setId) {
+  const pair = fusionIds(setId);
+  const id = pair ? pair.beat : setId;
+  const style = styleFor(id);
+  if (!style?.label) return kitLabel('style');
+  const [base, flavour] = String(style.label).split(' · ');
+  const own = flavour && !same(BANGER_SOUNDS[id]?.kits?.style, BANGER_SOUNDS[style.base]?.kits?.style);
+  const name = own ? flavour : base;
+  const taken = KITS.some((k) => k.key !== 'style' && k.label.replace(/ kit$/i, '').toUpperCase() === name.toUpperCase());
+  return `${(taken && own ? `${base} ${flavour}` : name).toUpperCase()} KIT`;
+}
+
+/**
  * A lane's job, for a song that does not say (the starter is a desk file, with no `laneOf`):
  * the part its sound was chosen for in the style's own table, else what its lane is for.
  */
@@ -260,8 +278,7 @@ function borrowedSounds(setId, row) {
     if (p.kit) {
       const kit = other.kits?.style;
       if (!kit || Object.values(row.kits || {}).some((k) => same(k, kit))) continue;
-      const name = String(styleFor(otherId)?.label || otherId).split(' · ')[0].toUpperCase();
-      out[part] = [{ kit: 'style', row: other, name: `${otherId}:style`, label: `${name} KIT`, borrowed: true }];
+      out[part] = [{ kit: 'style', row: other, name: `${otherId}:style`, label: styleKitLabel(otherId), borrowed: true }];
       continue;
     }
     const job = RANDOM_JOBS.find((j) => j.key === p.list);
@@ -378,8 +395,9 @@ export class ClubVoices {
       // and its creative ones are the ordinary creative kits, not 8-bit at all.
       const pool = this.onChipSet(swapped) ? MACHINE_KITS : KIT_ORDER;
       const kits = pool.filter((k) => k !== own && k !== as && row.kits?.[k]);
-      const item = (kit) => ({ kit, label: kitLabel(kit) });
-      return [{ kit: own, label: kitLabel(as || own) }, ...kits.filter((k) => suits.has(k)).map(item), ...kits.filter((k) => !suits.has(k)).map(item)]
+      const named = (kit) => (kit === 'style' ? styleKitLabel(this.onChipSet(swapped) ? CHIP_SET : this.ownSet) : kitLabel(kit));
+      const item = (kit) => ({ kit, label: named(kit) });
+      return [{ kit: own, label: named(as || own) }, ...kits.filter((k) => suits.has(k)).map(item), ...kits.filter((k) => !suits.has(k)).map(item)]
         .concat(borrowed);
     }
     const lane = this.partLane(part);

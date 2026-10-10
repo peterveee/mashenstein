@@ -9,8 +9,10 @@
 import { installDom } from './dom-stub.js';
 import {
   ZOOM, PAN_MAX, framingFor, guardNeed, guardFraming, guardApproach, guardRelease,
-  guardFloorPan, ballisticApex, GUARD_DWELL, GUARD_TOP_MARGIN, GUARD_SPEED,
+  guardFloorPan, guardGroundCap, ballisticApex, GUARD_DWELL, GUARD_TOP_MARGIN, GUARD_SPEED,
+  GROUND_KEEP, GROUND_Y, setRestingZoom,
 } from '../src/engine/camera.js';
+import { H } from '../src/engine/renderer.js';
 import { GRAVITY, BASE_JUMP_V, AIR_JUMP_SCALE } from '../src/game/player.js';
 
 let failed = false;
@@ -24,8 +26,8 @@ installDom({});
 const DT = 1 / 60;
 
 // The guard's state machine, lifted out of run.js's jumpGuard() so the shape
-// under test is the shipped one and not a paraphrase of it. run.js adds the
-// uncapped crown clamp on top; this is everything below that.
+// under test is the shipped one and not a paraphrase of it, ground cap and
+// crown clamp included.
 function makeGuard() {
   let need = guardNeed(0, 0);
   let dwell = 0;
@@ -41,7 +43,9 @@ function makeGuard() {
         ? Math.max(demand, guardRelease(need, rest, dt))
         : Math.max(need, demand);
       const framing = guardFraming(need);
-      pan = Math.max(guardApproach(pan, framing.pan, dt), guardFloorPan(y, 0, framing.zoom));
+      const cap = guardGroundCap(0, framing.zoom);
+      pan = Math.max(guardApproach(pan, Math.min(cap, framing.pan), dt),
+        Math.min(cap, guardFloorPan(y, 0, framing.zoom)));
       return { pan, zoom: framing.zoom, need };
     },
   };
@@ -122,17 +126,33 @@ assert(Math.abs(guard.pan - held) < 0.5,
 for (let t = 0; t < 1.5; t += DT) guard.step(0, 0, true);
 assert(guard.pan < 0.5, 'then comes all the way back to the resting frame');
 
-// ---- 6. the hero is never off the top --------------------------------------
+// ---- 6. the ground is never off the bottom; the hero may go off the top ------
 //
-// The guard's whole contract. Crown screen y is `GUARD_TOP_MARGIN` when the pan
-// has caught up and lower only while it is still gliding, so the assertion is
-// that the glide is never so far behind that the crown crosses zero.
-for (const [mult, air, label] of [[1, 0, 'a single'], [1, 1, 'a double'], [1.1, 2, 'the tallest jump in the cast']]) {
+// The guard's contract, in priority order. The floor he will land on stays
+// GROUND_KEEP px above the bottom edge at every zoom, whatever the jump. Under
+// that, the crown stays inside: crown screen y is `GUARD_TOP_MARGIN` when the
+// pan has caught up and lower only while it is still gliding. Only a jump the
+// ground cap binds on — the tallest in the cast — is let off the top, where
+// run.js draws the edge marker over him.
+const groundScreen = (p) => GROUND_Y + p.pan;
+for (const [mult, air, label, fits] of [[1, 0, 'a single', true], [1, 1, 'a double', true],
+  [1.1, 2, 'the tallest jump in the cast', false]]) {
   const trace = flight(mult, air);
+  const lowest = Math.max(...trace.map(groundScreen));
+  assert(lowest <= H - GROUND_KEEP + 1e-6,
+    `${label} keeps the ground in shot (lowest ${lowest.toFixed(1)} <= ${H - GROUND_KEEP})`);
   // screen y of the crown at the pan and zoom that frame actually chose.
   const worst = Math.min(...trace.map((p) => p.pan - guardFloorPan(p.y, 0, p.zoom)));
-  assert(worst >= 0, `${label} keeps the crown inside the frame (${worst.toFixed(1)}px)`);
+  if (fits) assert(worst >= 0, `${label} keeps the crown inside the frame (${worst.toFixed(1)}px)`);
+  else assert(worst < 0, `${label} goes off the top rather than craning the ground away (${worst.toFixed(1)}px)`);
 }
+// And on the phone's closer zoom, where the apron is fewer world px.
+setRestingZoom(2.2);
+for (const [mult, air, label] of [[1, 1, 'a phone double'], [1.1, 2, 'a phone triple']]) {
+  const lowest = Math.max(...flight(mult, air).map(groundScreen));
+  assert(lowest <= H - GROUND_KEEP + 1e-6, `${label} keeps the ground in shot (${lowest.toFixed(1)})`);
+}
+setRestingZoom(2);
 
 // ---- 7. the zoom is a backstop ordinary play never reaches ------------------
 assert(Math.min(...dbl.map((p) => p.zoom)) === ZOOM, 'a double jump does not touch the zoom');

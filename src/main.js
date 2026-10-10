@@ -57,6 +57,11 @@ import { paintSongArt } from './game/song-art.js';
 import { readPlatform } from './engine/platform.js';
 import { setInk, PHONE_INK } from './sprites/toons.js';
 import { applyPhoneAudioProfile, applyMobileSynthQuality } from './engine/phone-audio.js';
+import { setMrdrComparisonBackend, mrdrComparisonBackend } from './engine/mrdr3/identity.js';
+import {
+  setMrdrFarm, setMrdrFarmAhead, setMrdrFarmWorkers, useMrdr3Farm,
+} from './engine/mrdr3/farm.js';
+import { mrdr3FarmReport } from './engine/mrdr3/controller.js';
 import { efficiencyProfile } from './engine/render-efficiency.js';
 import { setLCDPanelCacheEnabled } from './engine/stylePacks/index.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
@@ -653,6 +658,8 @@ const Flow = {
 //          profile ASKS for 50ms; this is the only place that says what was granted.
 const audioProbe = { at: 0, ctxAt: 0, ratio: 0, margin: null, late: 0 };
 let audioTxt = '';
+// Set from ?mrdrbackend=farm, below — read by the readout to tell FARM from AW.
+let farmRequested = false;
 // The same fields split for the chrome box, whose rows are short on purpose so the
 // lettering can grow in a phone's narrow side pillar rather than shrinking to fit.
 let audioRows = [];
@@ -695,8 +702,20 @@ function sampleAudioHealth() {
   // so an A/B with ?mrdr=full can be read off the screen rather than remembered.
   const synthTier = Audio.mrdrQuality && Audio.mrdrQuality !== 'full' ? `SYNTH ${Audio.mrdrQuality.toUpperCase()}` : '';
   if (synthTier) audioRows.push(synthTier);
+  // Which MRDR-3 BACKEND, when ?mrdrbackend= chose one (docs/WASM-audio-engine-plan.md
+  // §6): `AW` for the JS core on the audio thread; `FARM U<underruns> L<tightest lead>`
+  // for the worker farm, or `FARM OFF` when the page is not isolated and it fell back.
+  let backendTxt = '';
+  if (mrdrComparisonBackend() === 'worklet') {
+    if (farmRequested) {
+      const f = mrdr3FarmReport(ctx);
+      backendTxt = useMrdr3Farm(ctx) ? `FARM U${f.underruns} L${f.worstLead ?? '-'}` : 'FARM OFF';
+    } else backendTxt = 'AW';
+    audioRows.push(backendTxt);
+  }
   audioTxt = `C${audioProbe.ratio.toFixed(2)} ${marginTxt} L${lat}ms ${rate}k`
-    + (noWorklet ? ' NOWORKLET' : '') + (synthTier ? ` ${synthTier}` : '');
+    + (noWorklet ? ' NOWORKLET' : '') + (synthTier ? ` ${synthTier}` : '')
+    + (backendTxt ? ` ${backendTxt}` : '');
 }
 
 // The same numbers for the beacon, so a phone reports without anyone holding it.
@@ -805,6 +824,24 @@ function boot() {
   // or `?mrdr=phone` forces either on any device, to A/B the two by ear.
   applyMobileSynthQuality(Audio, platform,
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('mrdr') : null);
+  // Stage 4 of docs/WASM-audio-engine-plan.md: `?mrdrbackend=worklet` plays MRDR-3 through
+  // the JS core on the audio thread, `?mrdrbackend=farm` through the same core on worker
+  // threads (`&farmahead=<frames>`, `&farmworkers=<n>`). A session A/B, never saved. The
+  // farm needs a cross-origin isolated page, which the dev server and the service worker
+  // give only to a URL asking for it; without that it falls back to the worklet and the
+  // readout says FARM OFF.
+  if (typeof window !== 'undefined') {
+    const q = new URLSearchParams(window.location.search);
+    const backend = q.get('mrdrbackend');
+    if (backend === 'worklet' || backend === 'farm') setMrdrComparisonBackend('worklet');
+    if (backend === 'native') setMrdrComparisonBackend('native');
+    if (backend === 'farm') {
+      farmRequested = true;
+      setMrdrFarm(true);
+      if (q.get('farmahead')) setMrdrFarmAhead(q.get('farmahead'));
+      if (q.get('farmworkers')) setMrdrFarmWorkers(q.get('farmworkers'));
+    }
+  }
   // EVERY CABINET SONG'S TNGR-2 TABLES, built while nobody is waiting on them (see
   // Audio.warmSongTables) — the neon cabinet's song alone asks ~700 ms of them. In a
   // BACKGROUND WORKER, so it costs the main thread nothing and can start at once: by

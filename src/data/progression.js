@@ -34,10 +34,6 @@ export const MODS = [
   { id: 'tagspeed', name: 'MOMENTUM GUY', hero: 'rusty', source: 'mastery', desc: 'RUSTY GAINS STACKING SPEED AFTER EVERY TAG.' },
   { id: 'bash', name: 'BROADHEAD', hero: 'fernwick', source: 'mastery', desc: 'THE ARROW PUNCHES THROUGH ONE HAZARD AND KEEPS GOING.' },
   { id: 'charge', name: 'CHARGE SHOT', hero: 'b33p', source: 'mastery', desc: 'PELLETS PIERCE GROUND AND FLYING OBSTACLES.' },
-  // Mochi is out of the roster (held for a cameo), so 'wide' is unreachable —
-  // mastery XP only accrues to playable heroes. The row stays so an old save
-  // that owns it keeps a name for what it owns.
-  { id: 'wide', name: 'EXTRA FULL OF AIR', hero: 'mochi', source: 'mastery', desc: 'FLOATS MORE SLOWLY BUT BECOMES WIDER WHILE FLOATING.' },
   { id: 'force', name: 'REASONABLE FORCE', hero: 'kiko', source: 'mastery', desc: 'THE WARNING SHOT IS WIDER BUT TRAVELS SLOWER.' },
   { id: 'serial', name: 'SERIALIZED', hero: 'clara', source: 'mastery', desc: 'THE SHOT IS FASTER BUT SMALLER. THE AUDIENCE GASPS.' },
   { id: 'head', name: 'FREELANCE FIST', hero: 'ramon', source: 'mastery', desc: 'THE ROCKET FIST COLLECTS COINS BEFORE RETURNING.' },

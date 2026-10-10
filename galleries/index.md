@@ -32,8 +32,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-10 | `58262f8` | [2026-09-10-58262f8.html](2026-09-10-58262f8.html) | [bake-offs](2026-09-10-58262f8-lab.html) | Refactor character editor and gallery to remove Rusty as a guest hero |
 | 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
 | 2026-09-27 | `833af42` | [2026-09-27-833af42.html](2026-09-27-833af42.html) | [bake-offs](2026-09-27-833af42-lab.html) | feat: add audio reports functionality and UI updates |
-| 2026-10-03 | `950d1ce` | [2026-10-03-950d1ce.html](2026-10-03-950d1ce.html) | [bake-offs](2026-10-03-950d1ce-lab.html) | feat: THE LAB opens with NEON ORBIT, a starter song |
-| 2026-10-03 | `edd636b` | [2026-10-03-edd636b.html](2026-10-03-edd636b.html) | [bake-offs](2026-10-03-edd636b-lab.html) | Add mirror ball candidates, dance legs, LED slogans, mood names, and mood song name generation |
 | 2026-10-04 | `ce94f69` | [2026-10-04-ce94f69.html](2026-10-04-ce94f69.html) | [bake-offs](2026-10-04-ce94f69-lab.html) | Archive published build edd636b |
 | 2026-10-04 | `c25625e` | [2026-10-04-c25625e.html](2026-10-04-c25625e.html) | [bake-offs](2026-10-04-c25625e-lab.html) | feat: add new Banger report and section effects functionality |
 | 2026-10-05 | `cac6fcc` | [2026-10-05-cac6fcc.html](2026-10-05-cac6fcc.html) | [bake-offs](2026-10-05-cac6fcc-lab.html) | feat: add 'more' variation to banger options and update related functionality |
@@ -50,3 +48,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-08 | `1bac968` | [2026-10-08-1bac968.html](2026-10-08-1bac968.html) | [bake-offs](2026-10-08-1bac968-lab.html) | Enhance app manifest and lifecycle handling for lock screen integration; update tests for consistency |
 | 2026-10-08 | `3d80115` | [2026-10-08-3d80115.html](2026-10-08-3d80115.html) | [bake-offs](2026-10-08-3d80115-lab.html) | Jukebox REPEAT switch; lock-screen stand-in back on |
 | 2026-10-09 | `3093b8d` | [2026-10-09-3093b8d.html](2026-10-09-3093b8d.html) | [bake-offs](2026-10-09-3093b8d-lab.html) | Update chip result trims for improved audio balance across various tracks |
+| 2026-10-10 | `dcb355e` | [2026-10-10-dcb355e.html](2026-10-10-dcb355e.html) | [bake-offs](2026-10-10-dcb355e-lab.html) | Fix the deploy: pots reach the new kit presets, two flaky jukebox checks |

@@ -515,7 +515,14 @@ function startProxy(host, port, upstreamPort, tls = null) {
         // Its own socket per request keeps that from starving a pool.
         agent: false,
       }, (upstreamRes) => {
-        res.writeHead(upstreamRes.statusCode, upstreamRes.headers);
+        // ?mrdrbackend=farm needs SharedArrayBuffer, which needs the page cross-origin
+        // isolated (docs/WASM-audio-engine-plan.md §6.1). Only a URL asking for the farm
+        // gets the headers, so every other dev session is served exactly as before.
+        const isolate = url.searchParams.get('mrdrbackend') === 'farm' ? {
+          'cross-origin-opener-policy': 'same-origin',
+          'cross-origin-embedder-policy': 'require-corp',
+        } : {};
+        res.writeHead(upstreamRes.statusCode, { ...upstreamRes.headers, ...isolate });
         upstreamRes.pipe(res);
       });
       upstream.on('error', () => {

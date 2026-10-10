@@ -176,6 +176,71 @@ one in every card: "only the background will change our game lane remains as is"
   register. B4–B8 are the brief's other ingredients on their own; mid-century modern and
   shadow puppetry are A level.
 
+## The second bake-off: Corporate Kombat, 10 Oct 2026 (open)
+
+Peter: "the graph paper background is very boring... it's the 2nd last level - it needs to be
+fancier... the whole working your way through an office building". Unlike the crypt card, the
+composition itself is new, not just the hand.
+
+- **The climb.** The three stages become three floors of one tower, and the view out of the
+  window says how high you are: 8-1 the lobby at nine (the street at eye level), 8-2 floor 23
+  at noon (cubicles, blinds, rooftops), 8-3 floor 88 at dusk (panelling, the founder's portrait,
+  the boardroom, the city far below).
+- **Interior parallax.** The city outside barely moves (0.015 / 0.04, the lobby's street 0.1),
+  the back wall moves at 0.24, the furniture at 0.48, and the floor between them has joints that
+  shear from the wall's rate to the lane's. The slab under the lane moves at the lane's rate, and a
+  front pass (a pillar, plants, a chair back) moves at 1.5 after the lane. Each style also paints
+  the slab under the lane: the doodle's biro line only works on paper, so there is no neutral
+  lane to borrow.
+- **Seven styles.** Gouache (Hopper's *Office at Night*), mid-century modern (Mad Men, walnut
+  and orange, not Speed's desert palette), wax crayon on kraft, art deco (the 1930s tower),
+  ligne claire (Tintin), a Richard Scarry cutaway (the cut slab shows the floor below, the
+  ceiling the floor above's feet) and vaporwave (Win95 corporate). The shipped doodle is the
+  control.
+- **Gallery:** lab section *CORPORATE KOMBAT — backdrop styles, the climb*, three tiles per
+  style (one per floor). The camera runs at 120 px/s (¾ of BASE_SPEED) on a 12 s loop.
+- **Code:**
+  - `src/dev/office-styles/plan.js` holds the shared composition. `officeFrame(floor, camX, t)`
+    resolves it, and `OFFICE_KINDS` sizes every item.
+  - `scene.js` is the card, and `blockout.js` is the plan in grey blocks, a worked example of
+    reading a frame.
+  - Each style has its own file there; `src/dev/office-style-candidates.js` lists them.
+- **Render:** `node tools/office-style-shot.js src/dev/office-styles/<id>.js [--times 0,4,8]`,
+  or `--sheet <files…>` for one contact sheet (a row per style, a column per floor) at
+  `work/local/office-styles/sheet.png`. Its ms/frame understates real cost, because the canvas
+  defers drawing until it is read back. Several painters measured 2–5 ms with a readback per frame.
+- **Cost.** Every style bakes its static layers into tiles. The first frame costs 15–220 ms, and
+  each floor holds about 15–21 MB at 2x. One run holds one floor; shipping would still warm it in
+  `RunState.enter`.
+- **The founder's portrait** in every card is the silver professor, the shipped villain
+  (`props.js`), painted in each hand. Peter asked for it on 11 Oct.
+- **Round two, 11 Oct: '80s infusions.** Peter: vaporwave "unexpectedly is really fitting as it
+  fits in with the time period we have set the game in late 80's / 90's … would we take one of
+  the more beautiful ones and infuse it with a slightly tacky 80s / 90's vibe?" Style (the hand)
+  and period (the set and palette) come apart. Three hands are kept exactly and re-dressed as a
+  1986–89 tower:
+  - **Gouache '88** (`gouache88.js`): Nakatomi Plaza and Wall Street. A pink neon EGGCORP
+    over a koi pond, rose granite, vertical blinds, green-screen terminals, and an airbrushed
+    dusk with the city's neon coming on.
+  - **Deco '86** (`deco86.js`): the postmodern deco revival. Trump Tower pink marble, Graves
+    keystones, broken pediments over LED lift counters, Chippendale tops and laser searchlights.
+  - **Ligne '89** (`ligne89.js`): Ever Meulen and Chaland's clear line in the Memphis and Swatch
+    palette, with glass block. The founder hangs as a Nagel print.
+
+  Lab section *CORPORATE KOMBAT — '80s infusions (round two)*, with vaporwave repeated first for
+  comparison.
+- **Round three, 11 Oct.** Peter put Ligne '89 first ("not ligne 89?"). Deco '86 was "not as
+  good as the original", and gouache is already Crypt's. Two new cards:
+  - **Ligne '89 — lit** (`ligne89lit.js`): the same card with the lights on, in flat shapes.
+    Neon halo rings, a sign that washes its wall and streaks the floor, flat reflections, sun
+    shafts, a banded 80s sun, rim-lit towers, lamp wedges and pools.
+  - **Deco '88** (`deco88.js`): the original deco palette with only the props moved to the 80s.
+    A neon tube in the sunburst, LED lift counters, smoked mirror, terminals, a brick phone and a
+    limo.
+
+  Lab section *CORPORATE KOMBAT — LIGNE '89 lit vs DECO '88 (round three)*, each card shown after
+  the one it came from.
+
 ## Compared with our paper
 
 Paper is the house style of the first two acts: Plumber, Speed and Frost all share

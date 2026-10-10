@@ -16,12 +16,16 @@ export const MARKER_R = 3.2;
 // r * 1.02 below that center once the outline is counted, so this leaves ~7
 // units of air — close enough to point, far enough not to graze a hat.
 export const MARKER_GAP = 10;
-export function drawPlayerMarker(ctx, cx, cy, r) {
+//
+// `dir` -1 turns it over to point UP: the run's edge marker for a hero who has
+// jumped off the top of the frame (run.js drawHeroAboveMarker). Same wedge, so
+// it reads as the same "that's you" everywhere it appears.
+export function drawPlayerMarker(ctx, cx, cy, r, dir = 1) {
   const path = (c) => {
     c.beginPath();
-    c.moveTo(cx - r * 0.78, cy - r * 0.5);
-    c.lineTo(cx + r * 0.78, cy - r * 0.5);
-    c.lineTo(cx, cy + r * 0.62);
+    c.moveTo(cx - r * 0.78, cy - dir * r * 0.5);
+    c.lineTo(cx + r * 0.78, cy - dir * r * 0.5);
+    c.lineTo(cx, cy + dir * r * 0.62);
     c.closePath();
   };
   ctx.save();

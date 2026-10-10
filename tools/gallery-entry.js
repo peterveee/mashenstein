@@ -99,6 +99,8 @@ import { PIG_FLOCK_CANDIDATES, drawPigFlockScene, drawPigFlockCloseUp, drawPigle
 import { FUJI_EXIT_CANDIDATES, fujiExitGoldenMood, fujiExitNightMood } from '../src/dev/neon-fuji-exit-candidates.js';
 import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
 import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
+import { OFFICE_STYLE_SHIPPED, OFFICE_STYLE_CANDIDATES, OFFICE_STYLE_INFUSIONS, OFFICE_STYLE_ROUND_THREE, OFFICE_SCREENS, drawOfficeStyleScene } from '../src/dev/office-style-candidates.js';
+import { FRONTS_CANDIDATES, SEATING_CANDIDATES, PLAZA_WALL_CANDIDATES, INTERLEAVE_CANDIDATES, drawInterleaveMock, drawFrontsMock, drawSeatingMock, drawPlazaWallMock } from '../src/dev/foodcourt-candidates.js';
 import { ARC_STILLS, drawArcTimelapse, drawArcStill, drawArcRibbon } from '../src/dev/speed-mcm/time-arc.js';
 import { SHIPPED_STILLS, drawShippedStill, JONES_SHOWS, drawJonesShow } from '../src/dev/speed-mcm/shipped.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
@@ -9844,6 +9846,124 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
     });
   }, { animated: true, wide: true });
   looks.forEach((look, i) => roomCard(grid, `${look.letter} — ${look.name}`, look.description, rooms[i]));
+}
+
+// CORPORATE KOMBAT — backdrop styles (Peter, 10 Oct 2026: "not totally happy with the corporate
+// kombat cabinet... the graph paper background is very boring... do a bake off with some
+// significantly more elaborate backgrounds with paralax ... it's the 2nd last level - it needs to
+// be fancier... the whole working your way through an office buliding hall perhaps"). Seven
+// hands over one composition — THE CLIMB, src/dev/office-styles/plan.js — with real office
+// hazards and the hero on top; candidates in src/dev/office-style-candidates.js, one file per
+// style under src/dev/office-styles/. Render one headless: node tools/office-style-shot.js.
+function officeStyleTiles(grid, tag, cand) {
+  for (const screen of OFFICE_SCREENS) {
+    tile(grid, `${tag} ${cand.name} — ${screen.name}`, cand.note, W, H,
+      (ctx, t) => drawOfficeStyleScene(ctx, t, cand.style === null ? null : cand, screen), { animated: true });
+  }
+}
+{
+  const grid = section('office-style-bakeoff', 'CORPORATE KOMBAT — backdrop styles, the climb (bake-off)',
+    'Asked 10 Oct 2026: something far more elaborate than the graph paper for the second-last cabinet, with parallax. '
+    + 'Every card paints the same plan — THE CLIMB, three floors of one tower, the view out of the window telling you how high '
+    + 'you are: 8-1 the lobby at nine in the morning (the street through a double-height glass front, lift banks, the EGGCORP '
+    + 'sign, reception), 8-2 floor 23 at noon (the cubicle farm under fluorescent tubes, blinds, rooftops and water towers, a '
+    + 'window cleaner), 8-3 floor 88 at dusk (glass walls, panelling, the founder\'s portrait, the boardroom where the mandatory '
+    + 'meeting dozes, the city far below). Depth: the city outside barely moves, the back wall at 0.24, the furniture at 0.48, '
+    + 'a floor whose joints shear between them, the slab at the lane\'s rate, and a pillar or a plant sweeping past in front at '
+    + '1.5. Each style also paints the floor slab under the lane (the doodle\'s biro line only works on paper). 0 is the shipped '
+    + 'doodle. 1–3 are the A-level styles from the crypt bake-off (gouache, mid-century modern, crayon); 4–7 are new (art deco, '
+    + 'ligne claire, a Richard Scarry cutaway with the floors above and below, vaporwave). The camera runs at 120 px/s — three '
+    + 'quarters of the run\'s base speed — on a twelve-second loop, and the hero hops real office hazards. ANIMATED.',
+    '2026-10-10');
+  officeStyleTiles(grid, '0', OFFICE_STYLE_SHIPPED);
+  OFFICE_STYLE_CANDIDATES.forEach((cand, n) => officeStyleTiles(grid, `${n + 1}`, cand));
+}
+// Round two (Peter, 11 Oct 2026): vaporwave "unexpectedly is really fitting as it fits in with
+// the time period we have set the game in late 80's / 90's … would we take one of the more
+// beautiful ones and infuse it with a slightly tacky 80s / 90's vibe?" — and every founder's
+// portrait became the silver professor, the shipped villain.
+{
+  const grid = section('office-style-infusions', 'CORPORATE KOMBAT — ’80s infusions (round two)',
+    'Asked 11 Oct 2026: the game is set in the late 80s / early 90s, which is why vaporwave fit so well — so three of the '
+    + 'beautiful hands are kept exactly and the set and palette are re-dressed as a 1986–89 corporate tower: tacky in the '
+    + 'props, never in the painting. 8 GOUACHE ’88 (Die Hard\'s Nakatomi Plaza, Wall Street: rose granite, a pink neon EGGCORP '
+    + 'over a koi pond, vertical blinds, green-screen terminals, an airbrushed dusk with the city\'s neon coming on); 9 DECO ’86 '
+    + '(the postmodern deco revival — Trump Tower pink marble, Graves keystones, broken pediments over LED lift counters, '
+    + 'Chippendale tops, laser searchlights); 10 LIGNE ’89 (Ever Meulen / Chaland clear line in the Memphis and Swatch palette, '
+    + 'glass block, Nagel prints — the founder hangs as one). 7 VAPORWAVE is repeated first for comparison. Same plan, lane and '
+    + 'loop as the section above, whose cards now also hang the silver professor as the founder. ANIMATED.',
+    '2026-10-11');
+  officeStyleTiles(grid, '7', OFFICE_STYLE_CANDIDATES[6]);
+  OFFICE_STYLE_INFUSIONS.forEach((cand, n) => officeStyleTiles(grid, `${n + 8}`, cand));
+}
+// Round three (Peter, 11 Oct 2026): LIGNE ’89 first — "not ligne 89?" — and DECO ’86 "looks great
+// but not as good as the original"; gouache is already Crypt's. So a light pass on LIGNE ’89 for
+// "fancier", and DECO ’88: the original deco's palette with only the props moved to the 80s.
+{
+  const grid = section('office-style-round-three', 'CORPORATE KOMBAT — LIGNE ’89 lit vs DECO ’88 (round three)',
+    'Asked 11 Oct 2026, after round two: LIGNE ’89 is the frontrunner (a style nobody else uses, the late-80s period itself, '
+    + 'the clean line the cast is drawn in, the cheapest to run), but the least atmospheric; and DECO ’86 lost the original\'s '
+    + 'black-and-gold drama. 11 LIGNE ’89 — LIT is the same card with the lights on, all in flat shapes: neon halo rings that '
+    + 'buzz, the sign washing its wall and streaking a polished floor, flat reflections, sun shafts and long flat shadows, a '
+    + 'banded 80s sun at dusk, rim-lit towers, lamp wedges and pools. 12 DECO ’88 is the ORIGINAL deco — black lacquer, gold '
+    + 'leaf, rouge marble, the Ferriss night — with the props moved on to the 80s power tower: a neon tube in the sunburst, '
+    + 'red LED counters beside the brass dials, smoked mirror, terminals, a fax, perms and shoulder pads, a brick phone, a '
+    + 'stretch limo, a Chippendale top. Each sits after the card it came from (10 LIGNE ’89, 4 ART DECO). ANIMATED.',
+    '2026-10-11');
+  OFFICE_STYLE_ROUND_THREE.forEach(({ tag, cand }) => officeStyleTiles(grid, tag, cand));
+}
+
+// MAKING THE FOOD COURT READ AS ONE. Two bake-offs off one ask (11 Oct 2026):
+// the wall behind the cabinet bank, and the empty plaza before the serving
+// line. Hub-scale mocks from the room's real painters; candidates live in
+// src/dev/foodcourt-candidates.js and nothing is wired into HubState.
+{
+  const grid = section('foodcourt-fronts-bakeoff', 'THE FOOD COURT — food units behind the cabinets (bake-off)',
+    'Asked 11 Oct 2026: make the hub read as a food court rather than an arcade with a snack bar at the end. '
+    + 'Today each cabinet has a poster above it on bare wall (0). Each candidate replaces the posters with the food '
+    + 'units the machines were parked in front of, one unit per cabinet, at the hub\'s own camera and zoom: '
+    + 'cabinets 2–5 with Lorenzo for scale. Wall dressing is dimmed to the room\'s light so nothing wins by being '
+    + 'brighter than the hub would draw it. Landscape only; portrait not checked. ANIMATED (sign flicker).',
+    '2026-10-11');
+  tile(grid, '0 TODAY', 'one poster per cabinet (blanked here)', W, H, (ctx, t) => drawFrontsMock(ctx, t, null), { animated: true });
+  for (const cand of FRONTS_CANDIDATES) {
+    tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawFrontsMock(ctx, t, cand), { animated: true });
+  }
+}
+{
+  const grid = section('foodcourt-seating-bakeoff', 'THE FOOD COURT — seating in the plaza (bake-off)',
+    'Asked 11 Oct 2026, with the food units above. The plaza between the last cabinet and Dolores\'s counter is bare '
+    + 'tile (0, at today\'s 96 units). Each candidate furnishes it — and every candidate card widens the plaza by one '
+    + 'cabinet pitch (to 184) to fit the furniture and still leave a walking gap, which would be part of shipping it. '
+    + 'Clara stands at the first table for scale; nobody sits, because no hero has a seated pose. Landscape only. '
+    + 'ANIMATED (only lights and the palm move).',
+    '2026-10-11');
+  tile(grid, '0 TODAY', 'bare plaza, 96 units', W, H, (ctx, t) => drawSeatingMock(ctx, t, null), { animated: true });
+  for (const cand of SEATING_CANDIDATES) {
+    tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawSeatingMock(ctx, t, cand), { animated: true });
+  }
+}
+{
+  const grid = section('foodcourt-plaza-wall-bakeoff', 'THE FOOD COURT — the wall behind the tables (bake-off)',
+    'Asked 11 Oct 2026, once the bolted tables were in: the wall over the plaza is the one bare stretch between the '
+    + 'last cabinet\'s poster and Dolores\'s menu board. Each card is the shipped plaza (three tables, the real menu '
+    + 'board, the counter) with one candidate centred on that wall, shaded to the service end\'s light. 0 is the wall '
+    + 'as shipped. Landscape only. ANIMATED.',
+    '2026-10-11');
+  tile(grid, '0 AS SHIPPED', 'bare wall over the tables', W, H, (ctx, t) => drawPlazaWallMock(ctx, t, null), { animated: true });
+  for (const cand of PLAZA_WALL_CANDIDATES) {
+    tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawPlazaWallMock(ctx, t, cand), { animated: true });
+  }
+}
+{
+  const grid = section('foodcourt-interleave-bakeoff', 'THE FOOD COURT — cabinets between the food stalls (bake-off)',
+    'Asked 11 Oct 2026, instead of food units behind every machine: the cabinet bank breaks into three groups of three '
+    + 'with a food stall in each of the two gaps. Each card shows the end of one group, the stall, and the start of the '
+    + 'next, at hub scale. Adds about two stall widths (~230 units) of walking. Landscape only. ANIMATED.',
+    '2026-10-11');
+  for (const cand of INTERLEAVE_CANDIDATES) {
+    tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawInterleaveMock(ctx, t, cand), { animated: true });
+  }
 }
 
 // ---------------------------------------------------------------- driver

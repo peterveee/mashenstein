@@ -288,6 +288,12 @@ const suites = [
   // is ONE event whose tones sum into one shaper (docs/MRDR-3-worklet-spec.md §5.1), so the
   // unit that has to survive a stem, a panic and a teardown is the GROUP, not the note.
   'tests/mrdr3-worklet-proof.js',
+  // Stage 0 of docs/WASM-audio-engine-plan.md: a C core compiled to WebAssembly runs in a
+  // worklet in Chromium AND WebKit, bit-identical to JS, with shared memory reaching it.
+  'tests/wasm-worklet-proof.js',
+  // Stage 4: an MRDR-3 lane rendered by the worker farm is sample-identical, live, to the
+  // same lane rendered on the audio thread — in Chromium and WebKit.
+  'tests/mrdr3-farm.js',
   // The rule about a STRING that nothing else would enforce: two dispatch identities
   // exist during the worklet project and only one may ever be seen by a player, and the
   // native-only cache machinery must stay unreachable from the family predicate — which
@@ -707,6 +713,8 @@ const browserSuites = new Set([
   'tests/tngr2-jit-bounce.js',
   'tests/tngr2-worklet-proof.js',
   'tests/mrdr3-worklet-proof.js',
+  'tests/wasm-worklet-proof.js',
+  'tests/mrdr3-farm.js',
   'tests/mrdr3-primitives.js',
   'tests/mrdr3-params.js',
   'tests/mrdr3-dsp-parity.js',
@@ -810,7 +818,7 @@ const soundSuites = [
   'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/key-mode-render.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js', 'tests/tngr2-audio.js',
-  'tests/tngr2-worklet-proof.js', 'tests/mrdr3-worklet-proof.js', 'tests/mrdr3-primitives.js', 'tests/mrdr3-params.js', 'tests/mrdr3-dsp-parity.js', 'tests/mrdr3-controller.js',
+  'tests/tngr2-worklet-proof.js', 'tests/mrdr3-worklet-proof.js', 'tests/wasm-worklet-proof.js', 'tests/mrdr3-farm.js', 'tests/mrdr3-primitives.js', 'tests/mrdr3-params.js', 'tests/mrdr3-dsp-parity.js', 'tests/mrdr3-controller.js',
   'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js',
   'tests/tngr2-tables.js', 'tests/tngr2-schema.js', 'tests/tngr2-controller.js',
   // The preset schema: defaults, validation, and the migration that has to carry all 43

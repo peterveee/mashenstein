@@ -3,7 +3,7 @@ import { efficiencyProfile } from '../engine/render-efficiency.js';
 // spawner, missions, powerups, style packs, HUD.
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, setScreenFlip, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome, screen as renderScreen } from '../engine/renderer.js';
 import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
-import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, ballisticApex, GUARD_DWELL } from '../engine/camera.js';
+import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, guardGroundCap, ballisticApex, GUARD_DWELL } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { TICK } from '../engine/loop.js';
 import { Input } from '../engine/input.js';
@@ -76,6 +76,7 @@ import {
   FROST_FLYPAST_CLEAR, FROST_FLYPAST_LEAD, flypastAt, flypastPathY, flypastScaleFor,
 } from '../sprites/sleigh.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX, POLE_STANDOFF, POLE_H } from './finishMarker.js';
+import { drawPlayerMarker } from './player-marker.js';
 import { drawHeroSprite, drawWorldEntity, lurkDrop, LURK_AT, drawPortal, drawCopter, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
 import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave, neonTrainAround, neonTrainHeadroom, neonTrainInterior, neonTrainInFrontCar, drawNeonTrainShell, TRAIN_FLOOR_LIFT, trainArrival, drawNeonFlypast, TRAIN_FLIGHT_LEAD_PX, shapeNeonTrainNoses, neonNoseDrop, neonStationSignSpan, NEON_SIGN_REACH } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, tunnelSweepOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
@@ -3764,7 +3765,10 @@ export class RunState {
       // screen, measured at the zoom that was just eased to. Correct by
       // construction rather than by tuning, and in ordinary play it binds on
       // nothing at all.
-      const floorPan = guardFloorPan(this.player.y, lift, this.camZoom);
+      // Unless keeping it would push his own floor off the bottom: the ground
+      // wins that one (see guardGroundCap), and the hero goes off the top.
+      const floorPan = Math.min(guardFloorPan(this.player.y, lift, this.camZoom),
+        guardGroundCap(lift, this.camZoom));
       if (this.camPan < floorPan) {
         this.camPan = floorPan;
         // Fold it back into the latch, or the next frame's approach eases
@@ -3849,11 +3853,12 @@ export class RunState {
     this.camFloorV = (this.camFloorY - fromFloorY) / dt;
     // Giving the anchor back moves the hero toward one edge or the other, so
     // both are re-asserted. This is the same contract the two branches above
-    // make in their own terms — the crown does not leave the top, the feet do
-    // not leave the bottom — restated once, here, because this is the last
-    // thing to touch either number.
+    // make in their own terms — the crown does not leave the top (unless the
+    // ground would: guardGroundCap outranks it), the feet do not leave the
+    // bottom — restated once, here, because this is the last thing to touch
+    // either number.
     const lift = this.camFloorY - floor;
-    const floorPan = guardFloorPan(this.player?.y || 0, lift, z);
+    const floorPan = Math.min(guardFloorPan(this.player?.y || 0, lift, z), guardGroundCap(lift, z));
     if (this.camPan < floorPan) {
       this.camPan = floorPan;
       this.camGuardNeed = Math.max(Number(this.camGuardNeed) || 0, floorPan);
@@ -3898,11 +3903,15 @@ export class RunState {
     // non-zero only while the anchor is still catching up with a climbing road.
     const rest = guardNeed(0, lift);
     const latched = Number.isFinite(Number(this.camGuardNeed)) ? Number(this.camGuardNeed) : rest;
+    // The frame never lifts the hero's own floor off the bottom edge. Applied to
+    // the TARGET, so a cap that drops (stepping off an island onto the lane) is
+    // glided down to by the approach rather than cut to.
+    const cap = guardGroundCap(lift, this.camZoom);
     if (!p) {
       this.camGuardNeed = rest;
       this.camGuardDwell = 0;
       const framing = guardFraming(rest);
-      return { pan: guardApproach(this.camPan, framing.pan, dt), zoom: framing.zoom };
+      return { pan: guardApproach(this.camPan, Math.min(cap, framing.pan), dt), zoom: framing.zoom };
     }
     // `y <= 0.01` rather than `grounded` alone for the same reason the portrait
     // branch does it: a hero standing on a lip can be one flag behind.
@@ -3918,7 +3927,7 @@ export class RunState {
       : Math.max(latched, demand);
     this.camGuardNeed = need;
     const framing = guardFraming(need);
-    return { pan: guardApproach(this.camPan, framing.pan, dt), zoom: framing.zoom };
+    return { pan: guardApproach(this.camPan, Math.min(cap, framing.pan), dt), zoom: framing.zoom };
   }
 
   // Translate a draw callback down to the terrain. Sampling ONE point floats
@@ -7055,6 +7064,26 @@ export class RunState {
    *  overlay dodges. See heroScreenRect for why a jump is not allowed to count. */
   heroRestRect(z = this.camZoom, pan = this.camPan, floorY = this.camFloorY) {
     return this.heroScreenRect(z, pan, floorY, true);
+  }
+  /**
+   * THE HERO ABOVE THE FRAME. The camera keeps the ground in shot ahead of the
+   * hero's crown (camera.js guardGroundCap), so a tall jump on a close zoom
+   * carries him off the top edge — and while he is up there, the gold "that's
+   * you" wedge turned over sits on the edge over his column. Keyed to his FEET,
+   * not his crown: while any of him is still in the picture the picture is the
+   * marker, and a wedge laid over his own legs only cluttered them. It fades in
+   * over the last few pixels so it never pops on a jump that only grazes the
+   * edge. Over the HUD, because a hero under the HUD is still a hero.
+   */
+  drawHeroAboveMarker(d, z, pan, floorY) {
+    if (!this.player || this.dead || !this.rhythmHeroVisible()) return;
+    const rect = this.heroScreenRect(z, pan, floorY);
+    const alpha = Math.min(1, (16 - rect.y1) / 10);
+    if (!(alpha > 0)) return;
+    d.save();
+    d.globalAlpha = alpha;
+    drawPlayerMarker(d, (rect.x0 + rect.x1) / 2, 6, 5, -1);
+    d.restore();
   }
   playerBox() {
     return this.player.box(this.camX, this.playerGroundY(), this.heroScreenX());
@@ -17122,7 +17151,10 @@ export class RunState {
       // rather than with the sky so the pack's post pass, the HUD and every
       // other overlay are underneath it: whatever gradient is left on screen
       // over this band is then not ours by construction. Ships off.
-      if (!this.captureCleanPlate && !this.recordBackground) drawHud(d, this);
+      if (!this.captureCleanPlate && !this.recordBackground) {
+        drawHud(d, this);
+        this.drawHeroAboveMarker(d, z, pan, floorY);
+      }
       if (this.introFreeze > 0 && this.introText) {
         drawActBanner(d, this.introText, {
           t: this.introT,

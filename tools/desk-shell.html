@@ -54,6 +54,9 @@
   .meta-chip { color: var(--gold); }
   .meta-chip.quiet { color: var(--muted); }
   .meta-chip.hot { color: var(--hazard); border-color: rgba(240, 106, 99, .45); background: rgba(240, 106, 99, .08); }
+  button.meta-chip { font: inherit; font-size: 11px; background: none; cursor: pointer; }
+  button.meta-chip:hover:not(:disabled) { color: var(--ink); border-color: var(--mint); background: rgba(87, 223, 196, .1); }
+  button.meta-chip.armed, button.meta-chip.armed:hover:not(:disabled) { color: var(--hazard); border-color: var(--hazard); background: rgba(240, 106, 99, .12); }
   main, footer { max-width: none; margin: 0 auto; padding-left: 28px; padding-right: 28px; }
   main { padding-top: 30px; }
   .desk-intro {
@@ -247,6 +250,7 @@
       <span class="meta-chip quiet" id="browser-chip" title="automated Chromiums running on this machine">0 BROWSERS</span>
       <a class="meta-chip" href="/reports" target="_blank" style="text-decoration:none">REPORTS</a>
       <span class="meta-chip">:8000</span>
+      <button class="meta-chip" id="restart">RESTART</button>
     </div>
   </div>
 </header>
@@ -899,9 +903,43 @@ function drawActionsNow(actions) {
   drawBalanceStatus(actions);
 }
 
+// RESTART DESK: the desk stops what it started (as ^C does) and a fresh one, running
+// whatever tools/desk.js says now, takes its place. Two clicks, like KILL, because it
+// stops the tools and runs this desk started; the armed button names them. The page
+// reloads once a different desk answers, so desk-shell.html edits arrive too.
+const restartBtn = document.getElementById('restart');
+let restartArmed = null; // timer
+let restartingFrom = null; // the old desk's pid, until a new one answers
+function stoppedByRestart() {
+  return [...last.filter((t) => t.mine).map((t) => t.label), ...lastActions.filter((a) => a.running).map((a) => a.label)];
+}
+function drawRestart() {
+  const stops = stoppedByRestart();
+  restartBtn.disabled = !!restartingFrom;
+  restartBtn.className = `meta-chip${restartArmed ? ' armed' : ''}`;
+  restartBtn.textContent = restartingFrom ? 'RESTARTING…'
+    : restartArmed ? (stops.length ? `RESTART — STOPS ${stops.join(', ')}` : 'RESTART?') : 'RESTART';
+}
+restartBtn.onclick = async () => {
+  if (!restartArmed) {
+    restartArmed = setTimeout(() => { restartArmed = null; drawRestart(); }, 4000);
+    return drawRestart();
+  }
+  clearTimeout(restartArmed);
+  restartArmed = null;
+  errBox.textContent = '';
+  try {
+    const body = await (await fetch('/api/restart', { method: 'POST' })).json();
+    if (!body.ok) errBox.textContent = body.error;
+    else { restartingFrom = body.boot; setInterval(refresh, 400); }
+  } catch (e) { errBox.textContent = e.message; }
+  drawRestart();
+};
+
 async function refresh() {
   try {
-    const { tools, actions, browsers = [] } = await (await fetch('/api/status')).json();
+    const { boot, tools, actions, browsers = [] } = await (await fetch('/api/status')).json();
+    if (restartingFrom && boot !== restartingFrom) return location.reload();
     last = tools;
     keepPlace(() => { draw(tools); drawBrowsers(browsers); });
     lastBrowsers = browsers;
@@ -912,7 +950,8 @@ async function refresh() {
     }
     lastActions = actions;
     drawActions(actions);
-  } catch (e) { errBox.textContent = `the desk stopped answering: ${e.message}`; }
+    drawRestart();
+  } catch (e) { if (!restartingFrom) errBox.textContent = `the desk stopped answering: ${e.message}`; }
 }
 
 refresh();

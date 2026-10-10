@@ -41,7 +41,7 @@ This is instrument/part calibration, not full-song mastering. Per-profile peaks 
 - The cache key covers the sound definition, channel processing, notes, tempo, renderer and engine signature. Editing an instrument invalidates its affected profiles; changing shared DSP invalidates all affected renders.
 - A process lock prevents overlapping refreshes. Rendering uses the existing machine-wide slots and runs at reduced priority.
 - `work/local/reports/banger-calibration.json` is the latest coverage or run report.
-- `tools/lib/banger/calibration-data.js` is the published runtime table. Publication is atomic, and rendering errors leave the previous table intact. Source edits during a run prevent publication; rerun to reuse unaffected cached measurements.
+- `tools/lib/banger/calibration-data.js` is the published runtime table. Publication is atomic, and rendering errors leave the previous table intact. A run measures a frozen copy — the renderer bundles the engine once at the start — so edits saved while it works don't stop it publishing; the next run sees the new engine signature and redoes what they touch. The signature covers only the engine files the renderer bundles, so gameplay and art edits never invalidate it.
 - A full sweep can require tens of thousands of renders. Start with selected styles; the first sweep is much longer than later incremental runs.
 - After changing an instrument, effects chain, library gain behavior or engine, run refresh and rebuild the game. From the Desk, MEASURE + BUILD does both. Review rejected profiles instead of compensating with large blanket boosts.
 

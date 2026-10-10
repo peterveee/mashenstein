@@ -114,13 +114,6 @@ export const HEROES = [
     ],
   },
   {
-    // Clara takes Mochi's slot the way Kiko took Miss Chomp's: the roster
-    // stays at eight and EIGHT HEROES. ONE SOCKET. stays true. Mochi is not
-    // deleted — her rig, palette and lines all survive, held for a cameo —
-    // she is simply off every surface that enumerates this array. The double
-    // jump did NOT come across (Kiko already carries it, and hosts the
-    // tutorial lesson now); the float retired with her.
-    //
     // The cliffhanger jump is Lorenzo's trade taken further — x1.10 against
     // his x1.08 — and the difference lives in data the same way the three
     // shooters differ by shotSpeed/shotSize rather than by id checks. Both came
@@ -144,19 +137,15 @@ export const HEROES = [
     powerDesc: 'FIRES BOTH PISTOLS',
     abilityDesc: 'FIRES A QUICK PAIR OF SLUGS THAT DESTROY GROUND OBSTACLES.',
     sidegrades: [
-      // NOT 'wide' or 'force' — sidegrade ids are one global namespace
+      // NOT 'force' — sidegrade ids are one global namespace
       // (modIds.includes). Rides the same shotSpeed/shotSize pair REASONABLE
       // FORCE does, traded the other way.
       { id: 'serial', name: 'SERIALIZED', desc: 'THE SHOT IS FASTER BUT SMALLER. THE AUDIENCE GASPS.' },
     ],
   },
   {
-    // Kiko takes this slot in place, which is what keeps the roster at eight and
-    // leaves EIGHT HEROES. ONE SOCKET. true. Miss Chomp is not deleted — she
-    // steps back to the food court as an NPC (see game/cast.js).
-    //
-    // maxJumps 2 was Mochi's, and only the JUMP came across: canFloat stays
-    // false. The second jump is her wall kick; the hover is somebody else's.
+    // Kiko is the roster's double jump. The second jump is her wall kick, not
+    // a hover: canFloat stays false.
     //
     // x0.85 IS WHAT THE SECOND JUMP COSTS, and it is the lowest single hop in
     // the cast on purpose. At x1.00 she reached 98u against Clara's 63 — the
@@ -186,8 +175,6 @@ export const HEROES = [
     powerDesc: 'FIRES A BALL OF ENERGY',
     abilityDesc: 'FIRES A SLOW BALL OF ENERGY THAT DESTROYS GROUND OBSTACLES.',
     sidegrades: [
-      // NOT id 'wide' — that is Mochi's, and sidegrade ids are one global
-      // namespace (modIds.includes).
       { id: 'force', name: 'REASONABLE FORCE', desc: 'THE WARNING SHOT IS WIDER BUT TRAVELS SLOWER.' },
     ],
   },

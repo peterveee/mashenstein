@@ -67,7 +67,7 @@ const TICK = 1 / 60;
   for (const stage of STAGES.slice(0, 12)) {
     for (let s = 1; s <= 3; s++) {
       const run = new RunState({
-        stage, team: ['lorenzo', 'mochi', 'grumpos'], save, seed: s * 7919,
+        stage, team: ['lorenzo', 'kiko', 'grumpos'], save, seed: s * 7919,
         difficulty: 1, devInvuln: true, onEnd: () => {},
       });
       run.enter();
@@ -127,7 +127,7 @@ const TICK = 1 / 60;
   assert(cast.length >= 8 && cast.every((h) => !('stomp' in h)),
     `no hero in the cast carries a stomp flag (${cast.length} heroes)`);
   const run = new RunState({
-    stage: STAGES[0], team: ['mochi', 'lorenzo'], save, seed: 7919,
+    stage: STAGES[0], team: ['kiko', 'lorenzo'], save, seed: 7919,
     difficulty: 1, devInvuln: true, onEnd: () => {},
   });
   run.enter();

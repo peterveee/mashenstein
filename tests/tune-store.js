@@ -217,7 +217,7 @@ assert(T.tuningAvailable(), 'a plugin-built bundle registers its tunables');
   assert(limit >= TALLEST,
     `the crane holds the tallest jump in the game before the zoom is touched (${limit.toFixed(1)}px vs ${TALLEST}px)`);
 
-  // Kiko carries the double jump now that Mochi has retired. Her jumpMult came
+  // Kiko carries the double jump. Her jumpMult came
   // down to 0.85 — the double is a TOOL she pays for rather than a free bonus
   // (see heroes.js) — so the budget this pins fell from 98px to 83.3px. The
   // crane assertions below are the ones that matter and they got LOOSER; this

@@ -33,7 +33,7 @@ import { drawSoftContactShadow } from '../engine/shadows.js';
 // Lorenzo's 89px peak carried him clean off the top and into the HUD chips on a
 // good flip, which reads as overshooting the goal rather than topping it out.
 // 96 clears the tallest single jump in the cast, so a PERFECT always lands ON
-// the pole. Mochi's second jump still goes over, which is Mochi being Mochi.
+// the pole.
 export const POLE_H = 96;
 // And its width, which the flip bracket and the signage are both placed off.
 // Two. It was five (a post), then three, and three still carried a visible

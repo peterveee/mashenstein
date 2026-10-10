@@ -51,8 +51,7 @@ export function phoneDressing() {
 // Exported so the promo renders (tools/render-social.js) can put a cabinet's own
 // star on its attract screen without keeping a second copy of the casting, which
 // would quietly go stale the first time one of these changes.
-// Mochi's rhythm poster came down with her retirement, and the re-cast rides
-// the "obvious casting is the joke" rule: Clara fronts the CRYPT — the mall
+// Casting rides the "obvious casting is the joke" rule: Clara fronts the CRYPT — the mall
 // raider on the tomb game is the plumber-fronts-the-plumber-game gag — which
 // bumps Grumpos from crypt to rhythm, where DAD OF BOY becomes BOY BAND.
 export const CABINET_STAR = {

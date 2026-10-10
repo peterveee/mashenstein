@@ -361,6 +361,11 @@ export class Save {
     for (const s of data.slots) {
       if (!s) continue;
       if (s.tutor) delete s.tutor.firstPassive;
+      // 'wide' was a retired hero's sidegrade and no longer exists. Dropped so an
+      // equipped copy cannot hold a mod slot the bench has no row to free.
+      if (s.mods) for (const k of ['found', 'equipped']) {
+        if (Array.isArray(s.mods[k])) s.mods[k] = s.mods[k].filter((id) => id !== 'wide');
+      }
       heroIdsMigrated = migrateHeroIds(s) || heroIdsMigrated;
     }
     this.data = data;

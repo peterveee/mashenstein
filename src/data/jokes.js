@@ -84,7 +84,6 @@ export const TAG_LINES = {
   rusty: 'FINALLY.',            // Gnash's, on loan, until Rusty has his own
   fernwick: 'THE RECEIPT FORETOLD THIS.',
   b33p: 'LOW ON CYAN.',
-  mochi: 'POYO.',
   clara: 'SUDDENLY: CLARA VAULT.',
   kiko: 'THIS IS A CRIME SCENE.',
   ramon: 'HANDS OFF. LITERALLY.',
@@ -137,11 +136,6 @@ export const EXIT_LINES = {
     'CHASSIS POWERING DOWN. CYAN LEVEL: CRITICAL.',
     'HANDING OFF. LOGGING THIS AS A SUCCESS. IT WAS NOT.',
     'SHIFT COMPLETE. UPDATE STILL WILL NOT INSTALL.',
-  ],
-  mochi: [
-    'POYO. (THE PIXELS WARP SLIGHTLY.)',
-    'POYO.',
-    'POYO? (IT IS A GOODBYE. PROBABLY.)',
   ],
   clara: [
     'SHE LEFT THE WAY SHE ARRIVED: DRAMATICALLY, AND MID-SENTENCE.',
@@ -268,8 +262,6 @@ export const SNAKE_SHOT_SHORT = [
 //     sentences, under ~110 characters — the speech box wraps to 3 lines.
 //   - No fourth-wall breaks: they can gripe about the food court, HR, or the
 //     arcade, but not about "the player" or "the game" as external concepts.
-//   - Mochi's bit is voice-only ("POYO" in varying punctuation/emphasis); a
-//     bracketed stage direction has to still carry the word, not replace it.
 export const HUB_LINES = {
   lorenzo: [
     'THE PIPES HERE ARE DECORATIVE. IT DISGUSTS ME.',
@@ -311,16 +303,6 @@ export const HUB_LINES = {
     'MY LEMON CANNON REQUIRES MAINTENANCE. MY LEMON CANNON WILL NOT RECEIVE IT.',
     'ERROR 404: MORALE NOT FOUND. REPORTING ADEQUATE ANYWAY.',
     'THE PRINTER NEXT DOOR AND I HAVE MUCH IN COMMON. NEITHER OF US HAS CYAN.',
-  ],
-  mochi: [
-    'POYO.',
-    'POYO. (THE STARS LEAN CLOSER.)',
-    'POYO?',
-    'POYO!',
-    'POYO... (A STAR WINKS OUT, POLITELY.)',
-    'POYO POYO.',
-    'POYO. (MOCHI FLOATS. THE ROOM FEELS SLIGHTLY MORE BLESSED.)',
-    'POYO?? POYO.',
   ],
   // CLARA. Her bit is NARRATION: she lives inside a pulp adventure serial and
   // reads it out — breathless third person, past tense, chapter numbers — while

@@ -4,6 +4,119 @@ Written 10 Oct 2026. An experiment, not a migration: every stage ends in a numbe
 every stage can be stopped at. Nothing here reaches a player until Peter has heard it and
 the numbers say it is worth it.
 
+## 0. Status
+
+*10 Oct 2026: Stage 0 is done, on headless browsers and on the iPhone.*
+
+**What exists:**
+- `src/engine/mrdr3wasm/{hello.c, hello.wasm.js, host.js}`
+- `tools/build-wasm.js`, with its core list in `tools/lib/wasm-cores.js`
+- `tests/wasm-worklet-proof.js`, which is in `run-all`
+- `tools/wasm-probe.js`, the device probe on :8040
+
+**What headless Chromium and WebKit show:**
+- The wasm worklet output equals JS bit for bit, offline at 44.1k and 48k, in a live
+  context, and in a worker.
+- Shared memory reaches the audio thread.
+- A worker sleeping on `Atomics.wait` is woken by the page.
+- Isolation works both when the server sends the headers and when a service worker adds
+  them.
+- Cloning a compiled `WebAssembly.Module` into the worklet works in both engines.
+
+**Test-harness lesson.** A `page.route`-fulfilled page in Playwright WebKit reports
+`crossOriginIsolated` but leaves `SharedArrayBuffer` undefined. A catch-all route also
+swallows the processor's blob: URL. Serve the page from a real localhost server instead.
+
+**iPhone (iOS 18.7, Safari 27), via `node tools/wasm-probe.js`.** Every check passed in a
+Safari tab (`/direct/`) and in the Home Screen app, both on `/direct/` and on `/sw/`:
+- output equal to JS bit for bit, offline, live, and in a worker
+- shared memory reaching the audio thread
+- a worker woken from `Atomics.wait`
+- both ways of loading the module into the worklet
+
+So service-worker isolation works in the Home Screen app, and §6.1 needs no hosting
+change; GitHub Pages stays. The iPhone reports 4 cores (`hardwareConcurrency`), so a
+farm there has at most 2 workers. Mac Safari was not run; headless WebKit stands in for
+it.
+
+### Stage 1 (10 Oct 2026): MISSED on the iPhone at 1.38x
+
+`node tools/wasm-kernel-bench.js`; results in `work/local/wasm-kernel-bench.txt`.
+
+- **Agreement first.** The C kernel (`tools/wasm-kernel-bench/kernel.c`) and the JS kernel
+  built on the production primitives agree exactly on all four shapes, with a max
+  difference of 0.
+- **The kernel is representative.** Its JS cost tracks the shipping `Mrdr3Core` on real
+  presets. A 6-note pad costs 55 ms/s against bestVowelPad's 68, and an 8-voice section
+  56 against mrdrViolinSection's 55.
+
+| ms per audio second | pad 6x4 | section 8x2 | lead 1x2 | mono 1x1 | geomean |
+| --- | --- | --- | --- | --- | --- |
+| Node: JS / WASM | 55.5 / 32.2 | 56.2 / 33.5 | 7.0 / 4.2 | 5.9 / 3.8 | 1.66x |
+| Chromium worklet | 53.6 / 32.6 | 56.0 / 34.6 | 7.4 / 4.3 | 6.6 / 3.8 | 1.68x |
+| WebKit worklet | 46.3 / 28.2 | 50.5 / 29.1 | 7.0 / 5.2 | 6.0 / 4.6 | **1.51x** |
+
+The WebKit gate passed, but only just.
+- **The heavy shapes are 1.63–1.74x faster.** They are the ones that saturate a phone.
+- **The cheap single-note shapes are 1.3–1.4x.** They pull the mean down.
+- **The machine was busy.** Load was 6–7 throughout, from other sessions, so it was not
+  a quiet machine. The ratios held steady across three runs, but the absolute times
+  are pessimistic.
+
+**iPhone (iOS 18.7, Safari 27):**
+
+| shape | worker JS / WASM | ratio | worklet JS / WASM | ratio |
+| --- | --- | --- | --- | --- |
+| pad 6x4 | 35.7 / 23.2 | 1.54x | 36.0 / 27.8 | 1.29x (±22%) |
+| section 8x2 | 40.6 / 30.2 | 1.34x | 41.4 / 30.5 | 1.36x |
+| lead 1x2 | 5.8 / 4.2 | 1.38x | 6.0 / 4.3 | 1.40x |
+| mono 1x1 | 5.2 / 3.8 | 1.37x | 5.4 / 3.9 | 1.38x |
+
+The geometric mean is **1.38x**, below the 1.5x gate. Every shape on the phone comes out
+1.3–1.5x. The saving is real but smaller than on the Mac: on the phone, JavaScriptCore
+narrows the gap. Following §3's stop rule, the single-thread WASM claim is dead and the
+bar does not move. Next is Stage 4 on the **JS** core (config D-js). WASM can come back
+later as a stacking gain once the farm exists, because a 1.38x cheaper core means fewer
+worker cores for the same song.
+
+### Stage 4 (10–11 Oct 2026): built, and measured on the Mac; iPhone pending
+
+**What was built:**
+- **The farm,** `src/engine/mrdr3/farm.js`. The controller now talks to `lane.port`, so a
+  farm lane stands in for a worklet lane.
+- **The switch,** `?mrdrbackend=native|worklet|farm` in the game. The dev server isolates
+  only the URLs that ask for the farm. The stats readout shows `AW`,
+  `FARM U<underruns> L<lead>` or `FARM OFF`.
+- **The test,** `tests/mrdr3-farm.js`. A farm lane is sample-identical, live, to a worklet
+  lane in Chromium and WebKit; it passed 5 runs out of 5 after the fixes below.
+
+**Fixes the measurements forced:**
+- **The horizon defaults to 4096 frames, not 2048.** A phone-setup context renders 2048
+  frames per callback, so 2048 left no margin.
+- **The farm keeps its own always-pulled clock node.** The workers sleep on it, so a lane
+  whose reader is not connected yet stays current.
+- **Each lane's patch warms the worker's JIT** on a throwaway core before the lane gets
+  its ring. Before this, a cold worker underran on its first chord.
+
+**Mac results, full songs (`tools/mrdr3-farm-headroom.js`, silent):**
+
+| song | Chromium trace: native / worklet / farm | WebKit burner: native / worklet / farm |
+| --- | --- | --- |
+| HAIRPIN | 33% / 37% / **20%** | 30% / 32% / 31% |
+| NIGHT DRIVE | 35% / 35% / **25%** | 28% / 26% / 27% |
+| MASHTERPIECE | — | 42% / 30% / 45% |
+| plumber | — | 30% / 22% / 28% |
+
+- **Chromium's trace counts the audio thread's own work.** By that count the farm takes
+  10–17 points off it, with zero underruns at 4096.
+- **WebKit's burner measures headroom, and shows no gain.** It is ±5–10 points, and it
+  counts contention as load: this Mac ran at a load average of 4–6 from other sessions,
+  plus the farm's own 4 busy workers.
+- **The workers did 98–218 ms of rendering per audio second.**
+
+These two results disagree, and the Mac cannot settle it. The iPhone run decides: a
+quiet device, with a real-time audio thread.
+
 ## 1. The question, and why MRDR-3
 
 Two separate claims are under test. They are measured separately because either can
@@ -37,8 +150,8 @@ port has a reference implementation to null against, rather than a node graph.
 | Decision | Choice | Why |
 | --- | --- | --- |
 | Language | **C11, freestanding** (no libc, no Emscripten) | The smallest toolchain and no JS glue. The same file compiles into an iOS Core Audio app later, if that ever happens. Rust would work too, but adds a toolchain and gains nothing here. |
-| Toolchain | Homebrew `llvm` + `lld` (`clang --target=wasm32 -nostdlib -Wl,--no-entry`) | Apple's `/usr/bin/clang` has no wasm32 target. Nothing else is installed (no emcc, no rustc). |
-| Maths library | A vendored subset of musl's libm (`sin`, `cos`, `exp`, `pow`, `log`, `tanh`), MIT | Freestanding has no libm. musl's is small, correct and portable. |
+| Toolchain | Homebrew `llvm` + `lld` + `wasi-libc` (see `tools/lib/wasm-cores.js`) | Apple's `/usr/bin/clang` has no wasm32 target. Nothing else is installed (no emcc, no rustc). |
+| Maths library | musl's libm, taken from Homebrew's `wasi-libc`, linked from `libc.a` with no WASI startup | Freestanding has no libm. The build refuses any module with an import, so nothing WASI leaks in. |
 | Precision | `double`, as the JS core uses | Keeps the null against the JS core tight. `float` and SIMD are a later, separately measured optimisation (§5.4). |
 | Loading | The `.wasm` bytes embedded as base64 in a JS module, compiled **synchronously inside the processor** | This matches how processors already load (Blob URL, no origin, so offline renders work). Stage 0 must prove sync compile works in a WebKit worklet. |
 | Generated artifact | `src/engine/mrdr3wasm/core.wasm.js`, **tracked** | The precedent is `tngr2/generated-tables.js`. The game builds without LLVM installed, and a test fails if the bytes are stale against the C source hash. |

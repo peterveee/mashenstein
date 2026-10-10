@@ -57,7 +57,7 @@ p.grab('lowgrav');
 assert(p.gravityMultiplier() === 0.5 && p.active.lowgrav.t === 16, 'overcharged Low Gravity reduces gravity to 50%');
 
 const normalJumper = new Player('lorenzo');
-// Kiko is the roster's double-jump hero now that Mochi has retired.
+// Kiko is the roster's double-jump hero.
 const doubleJumper = new Player('kiko');
 const capeJumper = new Player('lorenzo', ['cape']);
 const fullJumper = new Player('kiko', ['cape']);
@@ -71,6 +71,31 @@ const lowGravityJumper = new Player('lorenzo');
 lowGravityJumper.grounded = false; lowGravityJumper.y = 30; lowGravityJumper.vy = 0;
 lowGravityJumper.update(0.1, { held: () => false }, { speed: 160, gravityScale: 0.65 });
 assert(lowGravityJumper.vy === -58.5, 'Low Gravity scales player physics after hero gravity');
+// Low Gravity buys airtime, not altitude: the launch is floated by sqrt(scale),
+// so a held jump peaks where it always peaks and simply takes longer about it.
+// It used to double every jump at 0.5, which craned the ground off a phone.
+const flyJump = (scale) => {
+  const pl = new Player('lorenzo');
+  const world = { speed: 160, gravityScale: scale };
+  pl.update(1 / 60, { held: () => false }, world);
+  pl.jumpPressed(null);
+  let peak = 0; let t = 0;
+  while (t < 5) {
+    t += 1 / 240;
+    pl.update(1 / 240, { held: () => true }, world);
+    peak = Math.max(peak, pl.y);
+    if (pl.grounded) break;
+  }
+  return { peak, t };
+};
+const plainArc = flyJump(1);
+for (const scale of [0.65, 0.5]) {
+  const lowArc = flyJump(scale);
+  assert(Math.abs(lowArc.peak - plainArc.peak) < 1,
+    `Low Gravity ${scale} jumps no higher (${lowArc.peak.toFixed(1)} vs ${plainArc.peak.toFixed(1)}px)`);
+  assert(Math.abs(lowArc.t / plainArc.t - 1 / Math.sqrt(scale)) < 0.03,
+    `Low Gravity ${scale} hangs ${(lowArc.t / plainArc.t).toFixed(2)}x as long`);
+}
 
 p = new Powerups(bench);
 assert(!p.isInvincible(), 'not invincible before grabbing unpeel');

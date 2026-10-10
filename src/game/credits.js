@@ -552,7 +552,7 @@ const SCRIPT = [
   { k: 'gap', px: 14 },
   // The punchline is the incoming department's line, and Clara arriving at the
   // CAST banner narrating her own billing is the most on-the-nose place her
-  // bit can land. (Mochi held this beat with 'POYO.' before she retired.)
+  // bit can land.
   { k: 'handoff', a: 'AUDIO', b: 'CAST', from: 'b33p', to: 'clara', lineA: 'Your turn.', lineB: 'Chapter one: the credits.' },
   { k: 'gap', px: 16 },
 
@@ -577,9 +577,6 @@ const SCRIPT = [
   //   Miss Chomp — she is neither any more. Out of the relay and out of the food
   //     court, held for a cameo; billing her for a part she is not in is the one
   //     joke this list cannot make straight-faced.
-  //   Mochi — same standing as Miss Chomp now: out of the roster, held for a
-  //     cameo, nowhere in the building. Clara took her slot, her credits beat,
-  //     and her handoff row.
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'QUALITY ASSURANCE' },

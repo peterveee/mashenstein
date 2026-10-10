@@ -138,19 +138,14 @@ function drawParadeAccent(ctx, id, x, feetY, p) {
   } else if (id === 'b33p') {
     ctx.fillStyle = '#e8f8ff';
     ctx.fillRect(x + 10, feetY - 16, 5, 1); ctx.fillRect(x + 12, feetY - 18, 1, 5);
-  } else if (id === 'mochi') {
-    const yy = feetY - 27 - p * 5;
-    ctx.fillStyle = '#c9a3f0';
-    ctx.fillRect(x - 4, yy, 2, 2); ctx.fillRect(x, yy, 2, 2);
-    ctx.fillRect(x - 3, yy + 2, 4, 2); ctx.fillRect(x - 2, yy + 4, 2, 2);
   } else if (id === 'chompo') {
     ctx.fillStyle = '#ffd184';
     ctx.fillRect(x + 11, feetY - 13, 2, 2); ctx.fillRect(x + 15, feetY - 17, 2, 2);
   } else if (id === 'kiko') {
     // The orb she is holding out, in her ki blue, plus its two loose sparks.
     // ROUND — it was a 4x4 fillRect and read as exactly that: a square
-    // fireball. The neighbours above are pixel marks on purpose (Mochi's
-    // sparkle, Chompo's crumbs) and squares suit them; a ball of energy is the
+    // fireball. The neighbours above are pixel marks on purpose (Chompo's
+    // crumbs) and squares suit them; a ball of energy is the
     // one thing in this row that has to be a circle, so it is drawn as arcs
     // like Ramon's rocket-fist trail beside it.
     ctx.fillStyle = '#8fe4ff';
@@ -4708,7 +4703,7 @@ const GUIDE_PAGES = [
       { s: 'capStar', name: 'STAR', desc: 'SCORE MULTIPLIER. IT IS A STAR. THE TARGET IS THE RED ONE.' },
       { s: 'capAirJump', name: 'AIR JUMP', desc: 'ONE EXTRA AIR-JUMP. STACKS WITH KIKO AND THE CAPE.' },
       { s: 'capSpeed', name: 'SPEED BURST', desc: 'RUNS FASTER. THE SCENERY OBJECTS.' },
-      { s: 'capLowGrav', name: 'LOW GRAVITY', desc: 'YOUR JUMPS GET BIGGER. PHYSICS FILES A COMPLAINT.' },
+      { s: 'capLowGrav', name: 'LOW GRAVITY', desc: 'YOUR JUMPS HANG IN THE AIR. PHYSICS FILES A COMPLAINT.' },
       { s: 'capUnpeel', name: 'UNPEELABLE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
       { s: 'capRewind', name: 'REWIND', desc: 'RARE. YOUR NEXT MISTAKE UNDOES ITSELF. EVEN A PIT.' },
     ],

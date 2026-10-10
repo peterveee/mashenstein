@@ -17,6 +17,24 @@ export const AIR_JUMP_SCALE = 0.85;
 // Variable jump: releasing above this snaps down to it. Low enough that a tap
 // is visibly a hop, high enough that the cut never reads as hitting a ceiling.
 export const VARIABLE_JUMP_CUT = 60;
+
+// LOW GRAVITY BUYS AIRTIME, NOT ALTITUDE.
+//
+// Every launch the button makes — the jump, the air jump, the cut — is scaled by
+// the square root of the gravity scale it is flown under. Apex goes as v² / g,
+// so the root cancels exactly: the jump peaks where it always peaks, and the
+// only thing a lighter world changes is how long it takes to get there and back
+// (1/sqrt(g): 1.24x at 0.65, 1.41x at 0.5). The spring pad was already solved
+// this way (run.js springLaunch); this brings the button in line with it.
+//
+// It used to be the full multiplier on the arc, which doubled every jump at the
+// overcharged 0.5 — a single went from 57px to 114px, past what the frame can
+// hold over its own groundline on a phone, so the camera craned the floor off
+// the bottom of the screen on an ordinary hop.
+export function floatLaunch(gravityScale = 1) {
+  const g = Number(gravityScale);
+  return g > 0 ? Math.sqrt(g) : 1;
+}
 // ...but never before the jump has risen this long. A release inside the
 // window is honoured when it closes, so the quickest flick — a sub-frame touch
 // tap, a key bounced off — still gets a real hop (~21px, about 37% of a full
@@ -205,6 +223,9 @@ export class Player {
     this.y = 0;           // height of feet above ground (positive = up)
     this.vy = 0;
     this.jumps = 0;
+    // The gravity scale the last update ran under, so a press between updates
+    // launches for the world it is about to fly in (see floatLaunch).
+    this.gravityScale = 1;
     // Which jump face to wear while airborne (toons.js expressionFor's `jf`
     // lookup) — rolled fresh per hop by run.js's rollJumpFace, not here.
     //
@@ -355,7 +376,6 @@ export class Player {
   get maxJumps() {
     let m = this.hero.maxJumps;
     if (this.mods.includes('cape')) m += 1;
-    if (this.mods.includes('triple') && this.heroId === 'mochi') m += 1;
     m += this.powerJumpBonus;
     return m;
   }
@@ -363,7 +383,6 @@ export class Player {
   get hitW() {
     let w = PLAYER_W;
     if (this.compressT > 0) w = 5;
-    if (this.mods.includes('wide') && this.heroId === 'mochi' && this.floating) w += 4;
     return w;
   }
   get rolling() { return this.rollT > 0; }
@@ -493,7 +512,8 @@ export class Player {
     if (this.rollT > 0 || this.stumbleT > 0 || this.slipT > 0 || this.slideSlamming) return false;
     if (this.grounded || this.jumps < this.maxJumps) {
       if (!this.grounded && this.jumps === 0) this.jumps = 1; // walked off a ledge
-      this.vy = jumpV(this.hero) * (this.jumpScale || 1) * (this.jumps > 0 ? AIR_JUMP_SCALE : 1);
+      this.vy = jumpV(this.hero) * (this.jumpScale || 1) * (this.jumps > 0 ? AIR_JUMP_SCALE : 1)
+        * floatLaunch(this.gravityScale);
       this.jumpRiseT = MIN_JUMP_RISE_T;
       this.launched = false;
       this.clearSlideState();
@@ -520,6 +540,7 @@ export class Player {
     // Cleared here rather than by whoever reads it, so the flag means "timed out
     // on THIS frame" no matter which of the run's three update paths drives it.
     this.abilityReadyEdge = false;
+    this.gravityScale = world?.gravityScale ?? 1;
     for (const id of Object.keys(this.abilityCooldowns)) {
       const was = this.abilityCooldowns[id];
       const now = Math.max(0, was - dt);
@@ -559,11 +580,14 @@ export class Player {
     // The cut also waits out MIN_JUMP_RISE_T, so a flick is a hop and not a
     // twitch. Checked before the countdown so the window is whole frames of
     // rise: four at 60fps, 67ms.
-    if (!holdJump && !this.launched && this.jumpRiseT <= 0 && this.vy > VARIABLE_JUMP_CUT && this.hero.variableJump) this.vy = VARIABLE_JUMP_CUT;
+    // The cut is a launch too, so it is floated the same way: a hop is the same
+    // height in a light world, not a taller one.
+    const cut = VARIABLE_JUMP_CUT * floatLaunch(this.gravityScale);
+    if (!holdJump && !this.launched && this.jumpRiseT <= 0 && this.vy > cut && this.hero.variableJump) this.vy = cut;
     if (this.jumpRiseT > 0) this.jumpRiseT -= dt;
 
-    // Float (Mochi): hold jump while falling caps fall speed.
-    const floatCap = this.mods.includes('wide') ? -45 : -60;
+    // Float (hero.canFloat): hold jump while falling caps fall speed.
+    const floatCap = -60;
     this.floating = !this.grounded && holdJump && this.hero.canFloat && this.vy < 0;
     const minVy = this.slideSlamming ? TERMINAL_VY
       : (this.compressT > 0 ? -70 : (this.floating ? floatCap : TERMINAL_VY));

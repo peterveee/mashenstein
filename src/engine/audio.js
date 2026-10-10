@@ -810,7 +810,7 @@ export const SFX_TRIM = {
   dogBark: 0.275,
   // 0.25, not the 1.08 this carried, which was a trap rather than a bug: nothing calls
   // `sfx('impact')`, so the number never ran. impactCrash is reached in play only as
-  // playContact's fallback — gnash and mochi have no baked contact cue — and that path
+  // playContact's fallback — gnash has no baked contact cue — and that path
   // sets cueGain from ATTACK_MASTER_TRIM instead, landing at -11.8 dBFS peak / -33.8
   // RMS, alongside `hit`. Through the dead door it summed its three layers to +0.8
   // dBFS: clipping on its own, before any music was under it. Matched to the live

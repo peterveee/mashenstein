@@ -30,6 +30,7 @@ import { compileMrdr3, mrdr3Duties, mrdr3Colours, mrdr3PatchSyncTables } from '.
 import { mrdr3Tables, mrdr3SyncSet } from './tables.js';
 import { mrdr3NoiseSet } from './noise.js';
 import { frameAt } from './dsp.js';
+import { useMrdr3Farm, ensureMrdr3Farm, createMrdr3FarmLane, mrdr3FarmStats } from './farm.js';
 
 export { canHostMrdr3, frameAt };
 
@@ -122,13 +123,33 @@ export async function mrdr3Lane(ctx, laneKey, { voice, voices, maxGroups = 12, m
     syncMrdr3Patch(existing, voice);
     return existing;
   }
-  await ensureMrdr3Dsp(ctx);
   const assets = assetsFor(ctx, voices);
-  const node = createMrdr3Node(ctx, {
-    tables: assets.tables, noise: assets.noise, patch, maxGroups, maxTones,
-  });
+  // ON THE FARM when it is turned on and this context can host it (docs/WASM-audio-
+  // engine-plan.md §6): the core renders in a worker and `node` only reads its ring. The
+  // rest of this file cannot tell — it talks to `lane.port` either way.
+  let node;
+  let port;
+  let farm = null;
+  if (useMrdr3Farm(ctx)) {
+    await ensureMrdr3Farm(ctx, assets);
+    ({ node, port, farm } = createMrdr3FarmLane(ctx, {
+      patch, syncs: syncTablesOf(patch), maxGroups, maxTones,
+    }));
+  } else {
+    await ensureMrdr3Dsp(ctx);
+    node = createMrdr3Node(ctx, {
+      tables: assets.tables, noise: assets.noise, patch, maxGroups, maxTones,
+    });
+    port = node.port;
+  }
+  // Built while this call was awaiting? Then that lane is the lane, and this one goes.
+  const raced = state.lanes.get(laneKey);
+  if (raced) {
+    if (farm) farm.release();
+    return raced;
+  }
   const lane = {
-    key: laneKey, node, ctx, patch, problems,
+    key: laneKey, node, port, farm, ctx, patch, problems,
     // Which sync pyramids this node already holds — see syncMrdr3Patch.
     syncKeys: new Set(mrdr3PatchSyncTables(patch).map((t) => t.key)),
     voiceId: voice?.id || null,
@@ -165,10 +186,10 @@ export function syncMrdr3Patch(lane, voice) {
   const syncs = syncTablesOf(patch, lane.syncKeys);
   const fresh = Object.keys(syncs);
   if (fresh.length) {
-    lane.node.port.postMessage({ type: 'installSyncTables', syncs });
+    lane.port.postMessage({ type: 'installSyncTables', syncs });
     for (const k of fresh) lane.syncKeys.add(k);
   }
-  lane.node.port.postMessage({ type: 'installPatch', patch });
+  lane.port.postMessage({ type: 'installPatch', patch });
   lane.patch = patch;
   lane.problems = problems;
   lane.signature = signature;
@@ -183,7 +204,7 @@ export function setMrdr3LayerSolo(lane, layers = null) {
   const key = list.slice().sort().join(',');
   if (key === lane.soloSignature) return false;
   lane.soloSignature = key;
-  lane.node.port.postMessage({ type: 'soloLayers', layers: list });
+  lane.port.postMessage({ type: 'soloLayers', layers: list });
   return true;
 }
 
@@ -229,7 +250,7 @@ export function mrdr3NoteOn(lane, { at, hz, durSeconds, velocity = 1, eventId, r
   const durs = Array.isArray(durSeconds)
     ? hzs.map((_, i) => frameAt(durSeconds[i] ?? durSeconds[0], rate))
     : frameAt(durSeconds, rate);
-  lane.node.port.postMessage({
+  lane.port.postMessage({
     type: 'noteOn', frame: frameAt(at, rate), eventId, hz: hzs, durFrames: durs, velocity,
     // false: a key coming up handing the note back — see Mrdr3Core.applyDue
     ...(regate === false ? { regate: false } : {}),
@@ -245,14 +266,14 @@ export function mrdr3NoteOn(lane, { at, hz, durSeconds, velocity = 1, eventId, r
 /** A CUT at `at` — what is sounding stops, what is booked after it plays. */
 export function mrdr3Choke(lane, { at }) {
   if (!lane) return false;
-  lane.node.port.postMessage({ type: 'choke', frame: frameAt(at, lane.ctx.sampleRate) });
+  lane.port.postMessage({ type: 'choke', frame: frameAt(at, lane.ctx.sampleRate) });
   return true;
 }
 
 /** End a held note. Sequenced notes carry their own length and need none of this. */
 export function mrdr3NoteOff(lane, { at, eventId }) {
   if (!lane) return false;
-  lane.node.port.postMessage({
+  lane.port.postMessage({
     type: 'noteOff', frame: frameAt(at, lane.ctx.sampleRate), eventId,
   });
   return true;
@@ -299,7 +320,7 @@ export async function mrdr3LaneReport(ctx) {
 /** Clear everything sounding AND everything queued behind it. */
 export function mrdr3Panic(lane, { at = 0 } = {}) {
   if (!lane) return false;
-  lane.node.port.postMessage({
+  lane.port.postMessage({
     type: 'panic', frame: frameAt(at, lane.ctx.sampleRate),
   });
   return true;
@@ -321,7 +342,7 @@ export function mrdr3Health(lane, timeout = 500) {
     // That is the worst possible bug in a diagnostic: it does not break the sound, it
     // breaks the account of the sound, and it is triggered BY looking. `addEventListener`
     // stacks instead of replacing, and the listener removes itself either way.
-    const port = lane.node.port;
+    const port = lane.port;
     let done = false;
     const finish = (value) => {
       if (done) return;
@@ -342,7 +363,8 @@ export function releaseMrdr3Lane(ctx, laneKey) {
   const state = stateFor(ctx);
   const lane = state.lanes.get(laneKey);
   if (!lane) return false;
-  try { lane.node.port.postMessage({ type: 'stop' }); } catch { /* already gone */ }
+  try { lane.port.postMessage({ type: 'stop' }); } catch { /* already gone */ }
+  lane.farm?.release();
   try { lane.node.disconnect(); } catch { /* never connected */ }
   try { lane.out?.disconnect(); } catch { /* ditto */ }
   lane.node.port.onmessage = null;
@@ -397,6 +419,12 @@ export function releaseMrdr3Context(ctx) {
   for (const key of [...state.lanes.keys()]) releaseMrdr3Lane(ctx, key);
   state.lanes.clear();
   return n;
+}
+
+/** The farm lanes' rings on a context, summed: underruns and the tightest lead seen. */
+export function mrdr3FarmReport(ctx) {
+  const state = contexts.get(ctx);
+  return mrdr3FarmStats(state ? state.lanes.values() : []);
 }
 
 /** What the desk can show about a context's lanes. */

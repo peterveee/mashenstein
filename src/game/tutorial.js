@@ -530,8 +530,7 @@ const STEPS = [
   },
   {
     // Kiko is the only hero who jumps twice, and she jumps LOW — 57px against
-    // Lorenzo's 89 (Mochi's numbers exactly; the lesson moved to Kiko when
-    // Mochi retired from the roster). That is the whole reason the swap
+    // Lorenzo's 89. That is the whole reason the swap
     // happens here: a stack this tall is one Lorenzo would have strolled over,
     // so the section can only be completed by the thing it is teaching.
     // Granting a borrowed air jump to a hero who did not need one taught
@@ -547,8 +546,6 @@ const STEPS = [
     label: 'DOUBLE JUMP',
     legend: (touch) => touch ? [['UP/SPC', 'JUMP x2']]
       : [['UP / SPACE / LEFT CLICK', 'JUMP x2']],
-    // "AND NOT VERY HIGH" came out of the brief with Mochi: it described a
-    // hero who FLOATS, and Kiko does not.
     brief: (touch) => (touch
       ? 'KIKO JUMPS TWICE. TAP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'
       : 'KIKO JUMPS TWICE. JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'),
@@ -1780,9 +1777,9 @@ export class TutorialState {
   }
 
   // The same dolly a run uses: the groundline stays welded to its screen y and
-  // the frame cranes up for a tall jump. Mochi's double jump reaches 98px,
-  // which is past what the resting frame holds above the line, so without this
-  // her apex would clip out of the top of the very section teaching it.
+  // the frame cranes up for a tall jump. Kiko's double jump reaches past what
+  // the resting frame holds above the line, so without this her apex would
+  // clip out of the top of the very section teaching it.
   updateCamera(dt) {
     const want = framingFor(this.player.y, 0);
     this.camPan = easePan(this.camPan, want.pan, dt);
