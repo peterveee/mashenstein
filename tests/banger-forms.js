@@ -38,7 +38,7 @@ const BAND = riffOf([...HOOK.parts,
     bars: ['D2:2 . D3:2 . D2:2 . D3:2 . A1:2 . A2:2 . A1:2 . A2:2 .', 'F1:2 . F2:2 . F1:2 . F2:2 . C2:2 . C3:2 . C2:2 . C3:2 .'] },
   { key: 'kick', label: 'Kick', kind: 'drum', role: 'drums', voice: null, voiceParams: null, engineKeys: null, strip: null, bars: ['x...x...x...x...', 'x...x...x...x.x.'] }]);
 const LENGTHS = [['short'], ['medium'], ['long'], ['custom', 24], ['custom', 40], ['custom', 256]];
-const TEMPLATES = ['pop', 'anthem', 'groove'];
+const TEMPLATES = ['pop', 'anthem', 'groove', 'double', 'fakeout', 'dropfirst', 'longbuild', 'peaks'];
 
 // ---------------------------------------------------------------- the registry
 assert(Object.values(ROLE_TYPE).every((t) => SECTION_TYPES[t]), 'every Club role is a kind of section');
@@ -74,6 +74,29 @@ for (const style of BANGER_STYLES) {
   }
 }
 assert(!failed, `${made} bangers in every form, style and length are valid songs`);
+
+// ---------------------------------------------------------------- Club Shape: Varied (10 Oct 2026)
+{
+  const { CLUB_SHAPES } = await import('../tools/lib/banger/templates.js');
+  const shapeOf = (out) => { const n = Array.isArray(out.note) ? out.note.join('\n') : out.note; return n.match(/Shape: (.+) \(a Club song/)?.[1] || 'Club'; };
+  const tally = (style, n, extra = {}) => {
+    const t = {};
+    for (let seed = 1; seed <= n; seed++) { const k = shapeOf(generateBanger({ riff: HOOK, options: { style, ...extra }, seed })); t[k] = (t[k] || 0) + 1; }
+    return t;
+  };
+  const big = tally('big-room', 120);
+  assert(CLUB_SHAPES.every((w) => big[w.label] > 0) && big.Club > 40 && big.Club < 80,
+    `a new Big Room song is the Club form about half the time, each shape now and then (${JSON.stringify(big)})`);
+  const house = tally('french-house', 60);
+  assert(!house['Fake-Out Drop'] && !house['Long Build'], `Fake-Out Drop and Long Build only where they suit (${JSON.stringify(house)})`);
+  const named = tally('big-room', 20, { form: { template: 'club' } });
+  assert(Object.keys(named).join() === 'Club', 'a request naming its form without Club Shape is the Club form, as it was');
+  const era3 = tally('big-room', 30, { waysEra: 3 });
+  assert(Object.keys(era3).join() === 'Club', 'and a Lab song kept before Ways Era 4 keeps the Club form');
+  const again = generateBanger({ riff: HOOK, options: { style: 'big-room' }, seed: 7 });
+  assert(again.banger.options.form.template === 'club' && again.banger.options.form.clubShape === 'varied',
+    'the take still says Club, Varied — so Another Take draws its shape again');
+}
 
 // ---------------------------------------------------------------- old recipes, defaults
 {

@@ -13,13 +13,16 @@ import { generateBanger } from '../../../tools/lib/banger/index.js';
 import { normaliseTrackEffects } from '../../../tools/lib/banger/production.js';
 import { BANGER_STYLES, BANGER_FLAVOURS, styleFor, soundSetOf, moodFlavour, flavourOf, fusionOf } from '../../../tools/lib/banger/styles/index.js';
 import { BANGER_LIMITS, BANGER_MOODS, styleDefaults, moodBass, BANGER_EXPRESSION_VERSION } from '../../../tools/lib/banger/options.js';
-import { currentMood, MOOD_PAIRS, firstMood } from '../../../tools/lib/banger/moods.js';
+import { currentMood, MOOD_PAIRS, firstMood, STYLE_MOODS } from '../../../tools/lib/banger/moods.js';
 import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
 import { BANGER_PALETTE, resolvePalette } from '../../../tools/lib/banger/palette.js';
 import { resolveSounds } from '../../../tools/lib/banger/sound-rules.js';
 import { balanceForStyle } from '../../../tools/lib/banger/style-balance.js';
+import { kitRollsFor } from '../../../tools/lib/banger/kit-rolls.js';
 import { riffFromNotes, hasNotes } from './riff.js';
 import { voltageLevel, voltageSettings } from './voltage.js';
+import { VOICES } from '../../data/voices.js';
+import { synthFamily, MRDR3, TNGR2, KNDO5, WNDR9 } from '../../engine/synth-families.js';
 
 // SOUND SETS in the Lab (5 Oct 2026). Chipstep and synthwave were held back after the 3 Oct
 // WebKit measurement (work/local/_banger-headroom-webkit-2026-10-03.txt): synthwave climbed
@@ -108,6 +111,37 @@ export const LAB_FAMILIES = Object.freeze([
   Object.freeze({ id: 'synths', label: 'Synths & Games', styles: Object.freeze(['synthwave', 'megadrive', 'chipstep']) }),
   Object.freeze({ id: 'chill', label: 'Chill', styles: Object.freeze(['shibuya', 'downtempo']) }),
 ]);
+/**
+ * The INFUSIONS EXPERIMENT leans to over each FORMULA (Peter, 10 Oct 2026): from another family, sharing
+ * two or more of FORMULA's recommended moods (moods.js STYLE_MOODS), real-world hybrids where there is one —
+ * liquid DnB, UK funky, moombahton's slowed Dutch house. Picked on paper, none heard yet.
+ */
+export const LAB_INFUSIONS = Object.freeze({
+  'big-room': ['rave', 'synthwave', 'chipstep'],
+  trance: ['rave', 'synthwave', 'afro-house'],
+  'future-bass': ['shibuya', 'synthwave', 'downtempo'],
+  eurodance: ['freestyle', 'rave', 'synthwave'],
+  eurobeat: ['megadrive', 'synthwave', 'rave'],
+  rave: ['acid-house', 'trance', 'chipstep'],
+  dnb: ['deep-house', 'downtempo', 'techno', 'synthwave'],
+  'uk-garage': ['deep-house', 'afro-house', 'nu-disco'],
+  'acid-house': ['electro', 'rave'],
+  techno: ['electro', 'downtempo', 'uk-garage'],
+  'deep-house': ['downtempo', 'uk-garage', 'dnb'],
+  'afro-house': ['reggaeton', 'uk-garage', 'trance'],
+  moombahton: ['big-room', 'afro-house', 'eurodance'],
+  reggaeton: ['afro-house', 'eurodance', 'electro'],
+  merenhouse: ['nu-disco', 'electro-funk'],
+  'nu-disco': ['shibuya', 'merenhouse'],
+  'electro-funk': ['megadrive', 'uk-garage'],
+  electro: ['acid-house', 'techno', 'megadrive'],
+  freestyle: ['synthwave', 'eurodance'],
+  synthwave: ['freestyle', 'eurobeat', 'shibuya'],
+  megadrive: ['eurobeat', 'electro-funk', 'rave'],
+  chipstep: ['big-room', 'eurobeat', 'rave'],
+  shibuya: ['nu-disco', 'future-bass', 'synthwave'],
+  downtempo: ['deep-house', 'dnb', 'synthwave'],
+});
 /** The family a style is in (its dot's colour, in maker.js), or null. */
 export const familyOf = (id) => LAB_FAMILIES.find((f) => f.styles.includes(id))?.id ?? null;
 const LAB_STYLE_ORDER = Object.freeze([...LAB_FAMILIES.flatMap((f) => f.styles), 'italo-disco', 'french-house']);
@@ -248,6 +282,71 @@ export function labInfusion(id, mood) {
   if (!f || f === st.flavours?.[0]?.id) return st.id;
   return BANGER_FLAVOURS.find((x) => x.base === st.id && x.flavour === f)?.id ?? st.id;
 }
+/**
+ * LENGTH and SHAPE (Peter, 10 Oct 2026): picked in MUTATIONS' chooser, kept on the recipe as `songLength`
+ * and `shape`. Absent is DEFAULT — the formula's own, as every recipe before them — so nothing kept moves.
+ * A picked SHAPE is never rolled away by the voltage's form roll. Over an INFUSION DEFAULT is the Club form,
+ * and a picked SHAPE overrides it (Peter: "let user override an infusion so it can be not club").
+ */
+export const LAB_LENGTHS = Object.freeze([
+  // Named for records (Peter, 10 Oct 2026); the ids are the desk's lengths, and the fourth, the Lab's own,
+  // is the desk's Custom length at `bars`.
+  // (`bars` is the desk's length, BANGER_LENGTHS; MUTATIONS' hint turns it into a running time, labLengthHint)
+  Object.freeze({ id: 'short', label: 'Radio Edit', bars: 48 }),
+  Object.freeze({ id: 'medium', label: 'Single', bars: 64 }),
+  Object.freeze({ id: 'long', label: 'Album Version', bars: 112 }),
+  Object.freeze({ id: 'xlong', label: '12 Inch', bars: 160, custom: true }),
+]);
+export const LAB_SHAPES = Object.freeze([
+  Object.freeze({ id: 'club', label: 'Club', description: 'Build and drop, a breakdown, then a bigger drop' }),
+  Object.freeze({ id: 'pop', label: 'Pop Song', description: 'Verses, choruses and a middle 8' }),
+  Object.freeze({ id: 'anthem', label: 'Anthem', description: 'A long breakdown into one huge final drop' }),
+  Object.freeze({ id: 'groove', label: 'Groove', description: 'No drops: one groove, its parts coming and going' }),
+]);
+/** LENGTH as the generator's options: a length it names, or Extra Long as its Custom length. Nothing for DEFAULT. */
+const lengthOptions = (id) => {
+  const l = LAB_LENGTHS.find((x) => x.id === id);
+  return !l ? {} : l.custom ? { length: 'custom', customBars: l.bars } : { length: l.id };
+};
+/**
+ * A LENGTH's hint in MUTATIONS: its bars and about how long they run at FORMULA's tempo (the groove's, which an
+ * INFUSION keeps) — `112 bars, about 3:30 at 128 BPM`. Rounded to five seconds: a flavour's own tempo and
+ * Overload's push move it a little.
+ */
+export function labLengthHint(id, style) {
+  const l = LAB_LENGTHS.find((x) => x.id === id);
+  const bpm = styleFor(style)?.bpm;
+  if (!l) return '';
+  if (!bpm) return `${l.bars} bars`;
+  const s = Math.round((l.bars * 4 * 60 / bpm) / 5) * 5;
+  return `${l.bars} bars, about ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} at ${bpm} BPM`;
+}
+/** A recipe's LENGTH or SHAPE as one the Lab offers, or null (DEFAULT). */
+export const labLength = (id) => (LAB_LENGTHS.some((l) => l.id === id) ? id : null);
+export const labShape = (id) => (LAB_SHAPES.some((t) => t.id === id) ? id : null);
+/**
+ * What DEFAULT is for FORMULA (and INFUSION): `{ songLength, shape }`. The length is the sound's — the
+ * infusion's when there is one, as the generator reads it — and the shape the formula's own, Club with an
+ * infusion.
+ */
+export function labDefaults(style, infusion = null) {
+  const sound = styleFor(infusionStyle(infusion) || style);
+  const own = sound ? styleDefaults(sound) : null;
+  return { songLength: own?.length ?? 'medium', shape: infusion ? 'club' : (styleFor(style) ? styleDefaults(styleFor(style)).form.template : 'club') };
+}
+/**
+ * The moods ELEMENT marks as suiting the song (moods.js STYLE_MOODS): FORMULA's, or with an INFUSION
+ * the ones both suit — the mood's chords come from the infusion, its tempo and bass from FORMULA —
+ * and the infusion's own where the two share none.
+ */
+export function labSuitedMoods(style, infusion = null) {
+  const suits = (id) => STYLE_MOODS[styleFor(id)?.base ?? id] ?? [];
+  const groove = suits(style);
+  if (!infusion) return groove;
+  const sound = suits(infusion);
+  const both = sound.filter((m) => groove.includes(m));
+  return both.length ? both : sound;
+}
 /** The recipe FORMULA's groove plays on: its flavour where that is not its own, else the style on its Lab Sound Set. */
 function grooveRecipeId(style, flavour, seed, voltage) {
   const whole = styleFlavour(style, flavour);
@@ -285,13 +384,72 @@ export const moodLabel = (id) => MAKER_MOODS.find((m) => m.id === id)?.label ?? 
 
 /**
  * The riff plays on the style's own hook sound — the first on its shortlist (Electric
- * Grand for Big-Room House and Trance) — never on the plain lead the grid previews
- * with. Peter, 3 Oct 2026.
+ * Grand for Big-Room House and Trance) — never on the plain lead the grid previewed
+ * with. Peter, 3 Oct 2026. The grid previews on one of the style's leads that holds a note
+ * (labLeadSound), which is this one when it does.
  */
 export function hookSoundFor(styleId, moodId, seed = null, voltage = null, flavour = null) {
+  return hookShortlist(styleId, moodId, seed, voltage, flavour)[0] ?? 'simpleSquare';
+}
+/** The style's lead sounds, its own hook first. */
+function hookShortlist(styleId, moodId, seed = null, voltage = null, flavour = null) {
   // With no seed (a preview), the Lab's own set for the style rather than an occasional one.
   const id = soundsIdFor(styleId, seed, voltage, moodId, flavour);
-  return resolveSounds(BANGER_SOUNDS, id, moodId).random?.hook?.[0] ?? 'simpleSquare';
+  return resolveSounds(BANGER_SOUNDS, id, moodId).random?.hook ?? [];
+}
+
+// A held note keeps at least half its level for as long as it is held. The desk's own line for a
+// slide (engine/auto-portamento.js) is a fifth, which still lets a clav or a pluck through.
+const HELD_SUSTAIN = 0.5;
+/**
+ * Does this preset hold a note for as long as the grid drew it? Read off whichever envelope owns
+ * the level in its engine. A struck piano or a bell dies away however long the note is, so a long
+ * note and a short one sound alike on it.
+ */
+export function presetHolds(id) {
+  const v = VOICES[id];
+  if (!v || v.kind !== 'tone') return false;
+  // A KNDO-5 length of its own is the note's length in a preview (audio.js noteSeconds).
+  if (v.fixedLength > 0) return false;
+  const family = synthFamily(v.synth);
+  if (family === MRDR3) {
+    // Each layer's own sustain, through the global VCA's when there is one, weighed by its level.
+    const vca = v.global?.vca ? (v.global.vca.sustain ?? 0) : 1;
+    const layers = ['osc1', 'osc2', 'osc3'].map((k) => v.layer?.[k]).filter((l) => l && (l.gain ?? 1) > 0);
+    const sum = layers.reduce((a, l) => a + (l.gain ?? 1), 0);
+    const held = layers.reduce((a, l) => a + (l.gain ?? 1) * (l.vca === 'through' ? 1 : (l.sustain ?? 0)), 0);
+    return sum > 0 && (held / sum) * vca >= HELD_SUSTAIN;
+  }
+  if (family === TNGR2) return (v.tngr2?.amp?.sustain ?? 0.7) >= HELD_SUSTAIN;
+  if (family === WNDR9) return (v.additive?.sustain ?? 0) >= HELD_SUSTAIN;
+  // KNDO-5 is a gate unless it says otherwise; CRLS-1 and RMND-2 state theirs.
+  return (v.options?.envelope?.sustain ?? (family === KNDO5 ? 1 : 0)) >= HELD_SUSTAIN;
+}
+
+/**
+ * The lead the Lab's grid plays the riff on (Peter, 10 Oct 2026): one of the lead sounds a take in
+ * this FORMULA, INFUSION and ELEMENT draws its hook from — resolved as makeBanger resolves them, with
+ * no seed, so the Lab's own Sound Set and the mood's own flavour, and the infusion's sound over a
+ * groove. The first on that list that holds a note (presetHolds), so a long note on the grid sounds
+ * long; with `noTngr2` (the dev build, Peter) the first that is not a TNGR-2 either. None of them
+ * does: Simple Square.
+ */
+export function labLeadSound(style, mood, infusion = null, { noTngr2 = false } = {}) {
+  mood = currentMood(mood);
+  if (MOOD_PAIRS[mood]) mood = MOOD_PAIRS[mood].first;
+  let flavour = null;
+  // the infusion as a take keeps it (maker.js make): its mood's flavour of it
+  const kept = infusion ? labInfusion(infusion, mood) : null;
+  const sound = infusionStyle(kept);
+  if (sound && sound !== style) {
+    style = sound;
+    flavour = styleFor(kept)?.flavour ?? 'style';
+  }
+  flavour = flavour ?? labFlavour(style, mood);
+  const whole = styleFlavour(style, flavour);
+  if (whole) { style = whole; flavour = 'style'; }
+  const ok = (id) => presetHolds(id) && !(noTngr2 && synthFamily(VOICES[id].synth) === TNGR2);
+  return hookShortlist(style, mood, null, null, flavour).find(ok) ?? 'simpleSquare';
 }
 
 /**
@@ -433,6 +591,7 @@ const BASS_ROLLS = Object.freeze({
 const GATE_ROLLS = Object.freeze(['pump', 'eighths', 'sixteenths', 'dotted', 'energy', 'stabs']);
 const CHOP_ROLLS = Object.freeze(['eighths', 'sixteenths', 'dotted', 'stabs']);
 const CHORD_ROLLS = Object.freeze(['saws', 'stabs', 'piano', 'pad']);
+// The kits a recipe before version 11 rolls to; from 11, the style's own list (kit-rolls.js).
 const KIT_ROLLS = Object.freeze(['studio', '909', '808', 'ds', 'cr78']);
 const SPOT_ROLLS = Object.freeze({
   intoDrop: ['stutter', 'repeat', 'sweep', 'wash'], outOf: ['throw', 'wash', 'lowpass'], quiet: ['echo', 'reverb'],
@@ -446,18 +605,25 @@ const OWN_GATE = { trance: 'sixteenths', 'future-bass': 'eighths' };
 export const VOLTAGE_ROLL_ODDS = Object.freeze({
   bass: [0, 0, 1 / 4, 1 / 2], gate: [0, 1 / 4, 1 / 2, 3 / 4], choir: [0, 0, 1 / 4, 1 / 2],
   chords: [0, 0, 0, 1 / 3], chop: [0, 0, 0, 1 / 2], kit: [0, 0, 0, 1 / 3],
-  keyLift: [0, 0, 0, 1 / 3], halfTime: [0, 0, 0, 1 / 4], falseEnding: [0, 0, 0, 1 / 4],
+  keyLift: [0, 0, 1 / 3, 1 / 2], keyLiftChill: [0, 0, 0, 1 / 4], halfTime: [0, 0, 0, 1 / 4], falseEnding: [0, 0, 0, 1 / 4],
   spot: [0, 0, 1 / 4, 1 / 2], radio: [0, 0, 0, 1 / 4], buildUp: [0, 0, 1 / 4, 1 / 3],
-  approach: [0, 0, 0, 1 / 2], breakdownHook: [0, 0, 0, 1 / 4],
+  approach: [0, 0, 1 / 3, 1 / 2], breakdownHook: [0, 0, 0, 1 / 4],
   form: [0, 1 / 6, 1 / 4, 1 / 3],
 });
+/**
+ * The key lift and its approach before version 9 (10 Oct 2026): Overload alone, one take in three lifted a
+ * major third and one in two came in another way. A recipe kept before 9 still rolls these.
+ */
+const KEY_ROLL_ODDS_BEFORE_9 = Object.freeze({ keyLift: [0, 0, 0, 1 / 3], approach: [0, 0, 0, 1 / 2] });
+/** The lifts a take can roll to (version 9): the style's own is left out, so a roll is always a change. */
+const KEY_LIFT_ROLLS = Object.freeze(['none', 'half', 'whole', 'third']);
 
 /**
  * This take's voltage rolls, as partial generator options: `{ parts, fx?, drums?, form?, spot? }`. Over
  * another style's beat (`beat`, a recipe id) the bass lines and the chords' gate are the beat's.
  * `version` is the recipe's expression version: the form roll is 4's.
  */
-export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, version = 3, flavour = null) {
+export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, version = 3, flavour = null, shape = null) {
   const plain = BANGER_STYLES.find((s) => s.id === styleId);
   const style = (beat && plain && fusionOf(plain, beat)) || plain;
   // whose per-style tables (bass lines, the chords' gate) the groove is: the beat recipe's own style
@@ -495,12 +661,27 @@ export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, ver
     }
   }
   if (own.parts.choir && (own.fx.pump || out.fx?.pump) && rolls('choir', 0xab1c5ed5)) set('fx', 'gateChoir', true);
-  if (rolls('kit', 0x428a2f98)) set('drums', 'kit', pick(KIT_ROLLS, 0x71374491));
-  if (own.form.keyLift !== 'third' && rolls('keyLift', 0xb5c0fbcf)) set('form', 'keyLift', 'third');
+  if (rolls('kit', 0x428a2f98)) set('drums', 'kit', pick(version >= 11 ? kitRollsFor(groove, { lab: true }) : KIT_ROLLS, 0x71374491));
+  // THE KEY LIFT (version 9, 10 Oct 2026; Peter: the Lab's lift was predictable — every take of a style
+  // lifted the same way below Overload). From Surge a style that lifts draws another lift — none, half,
+  // whole or third, never its own — one take in three, one in two at Overload. A style that says none
+  // (the chill grooves) stays unlifted below Overload, where one take in four lifts a half step. Before
+  // 9, Overload alone, one in three, and only up to a third.
+  if (version >= 9) {
+    if (own.form.keyLift === 'none') {
+      if (rolls('keyLiftChill', 0xb5c0fbcf)) set('form', 'keyLift', 'half');
+    } else if (rolls('keyLift', 0xb5c0fbcf)) {
+      set('form', 'keyLift', pick(KEY_LIFT_ROLLS.filter((l) => l !== own.form.keyLift), 0x7a3d9c41));
+    }
+  } else if (own.form.keyLift !== 'third' && rollOf(seed, 0xb5c0fbcf) < KEY_ROLL_ODDS_BEFORE_9.keyLift[level]) {
+    set('form', 'keyLift', 'third');
+  }
   // The form, now and then (version 4) — Club, mostly, for a style that is not Club already.
   // Over another style's beat (an INFUSION) the form is Club's, always (Peter, 8 Oct 2026) — no roll.
-  let template = beat ? 'club' : own.form.template;
-  if (version >= 4 && !beat) {
+  // A SHAPE the player picked (labShape) is the form, over an INFUSION's beat too: no roll moves it.
+  const picked = labShape(shape);
+  let template = picked || (beat ? 'club' : own.form.template);
+  if (version >= 4 && !beat && !picked) {
     const club = template === 'club';
     if (rollOf(seed, 0x2f8bd2a1) < VOLTAGE_ROLL_ODDS.form[level] * (club ? 1 / 2 : 1)) {
       template = !club && rollOf(seed, 0x6d1f3b55) < 3 / 4 ? 'club' : pick(FORM_ROLLS.filter((t) => t !== 'club' && t !== template), 0x4c1a7e93);
@@ -514,13 +695,16 @@ export function voltageRollsFor(styleId, moodId, voltage, seed, beat = null, ver
   }
   if (rolls('radio', 0xd807aa98)) set('spot', 'intro', 'radio');
   if (own.form.layers === 'off' && !own.form.grooveIntro && rolls('buildUp', 0x12835b01)) {
-    if (rollOf(seed, 0x243185be) < 1 / 2) set('form', 'layers', 'always'); else set('form', 'grooveIntro', true);
+    // From version 8 always the layers — riff first under Tune First — never the Drums & Bass Intro,
+    // which keeps a casual listener waiting for a tune (Peter, 9 Oct 2026).
+    if (version >= 8 || rollOf(seed, 0x243185be) < 1 / 2) set('form', 'layers', 'always'); else set('form', 'grooveIntro', true);
   }
-  if (rolls('approach', 0x550c7dc3)) set('form', 'keyApproach', pick(APPROACH_ROLLS, 0x72be5d74));
+  // How the lift arrives: from Surge too since version 9 (the ear hears the approach bar before the new key).
+  if (rollOf(seed, 0x550c7dc3) < (version >= 9 ? VOLTAGE_ROLL_ODDS : KEY_ROLL_ODDS_BEFORE_9).approach[level]) set('form', 'keyApproach', pick(APPROACH_ROLLS, 0x72be5d74));
   if (rolls('breakdownHook', 0x80deb1fe)) set('form', 'breakdownHook', pick(['written', 'none'].filter((h) => h !== own.form.breakdownHook), 0x9bdc06a7));
   // A form that names no template is read as Club (options.js, for takes made before there
   // were templates): say the style's own, or Eurobeat's pop song would become a club track.
-  if (out.form) out.form = { template: beat ? 'club' : own.form.template, ...out.form };
+  if (out.form) out.form = { template: picked || (beat ? 'club' : own.form.template), ...out.form };
   return out;
 }
 
@@ -540,18 +724,29 @@ export function newSeed() {
  * Version 2 adds the VOLTAGE ROLLS (voltageRollsFor). Version 3 adds Voltage-driven section FX. Version 4 (7 Oct
  * 2026) adds the form roll. Version 5 (9 Oct 2026) starts seven styles off the Pop Song (FORMS_BEFORE_5).
  * Version 6 (9 Oct 2026) plays the breakdown, the builds and the bar before each drop Varied — ways
- * drawn by the take (breakdown-ways.js, build-ways.js) — where every recipe before it plays Half Speed,
- * the snare roll and straight in. Version 7 (9 Oct 2026) brings the chords in with the second layer
+ * drawn by the take (breakdown-ways.js, build-ways.js); every recipe before it plays Half Speed, the
+ * snare roll and straight in. Version 7 (9 Oct 2026) brings the chords in with the second layer
  * where a style says Chords Early (Deep House, Nu-Disco, Boogie, Downtempo); every recipe before it
- * plays them in the style's old place.
- * A NEW recipe carries 7 (maker.js); one saved
+ * plays them in the style's old place. Version 8 (9–10 Oct 2026) plays the intro, the riser, its
+ * Spot FX, the drop hit and drop 2 Varied (intro-ways.js, build-ways.js, drop-ways.js) with Tune First
+ * on and a Groove's parts every four bars, and never rolls the Drums & Bass Intro; every
+ * recipe before it plays the riff intro, the slow layers and the noise riser, as it did. Version 9
+ * (10 Oct 2026) rolls the key lift from Surge — none, half, whole or third, never the style's own; a
+ * style that says none lifts a half step one Overload take in four — and the lift's approach from Surge;
+ * every recipe before it lifts the style's own way below Overload, and at Overload a third one take in three.
+ * Version 10 (10 Oct 2026) plays the breakdown's backing and a Club song's shape Varied (breakdown-ways.js,
+ * templates.js CLUB_SHAPES); every recipe before it plays the pad and choir, and the Club form.
+ * Version 11 (10 Oct 2026) rolls the drum kit from the style's own list — the five machine kits and
+ * the creative kits that suit it (tools/lib/banger/kit-rolls.js); every recipe before it rolls from
+ * the five alone.
+ * A NEW recipe carries 11 (maker.js); one saved
  * at 1 has the slide but no rolls, and one saved before there was any has no `expression` and reads
  * as 0, and is made EXACTLY as it always was, Go Wild included. A kept song is only its recipe,
  * made again whenever it is played, so a recipe that did not say must come out the way it did.
  * It is not RIFF_VERSION (what the grid's numbers mean) and not the generator's version (which
  * the Lab does not record).
  */
-export const RECIPE_EXPRESSION = 7;
+export const RECIPE_EXPRESSION = 11;
 /**
  * The form each of these styles started on before version 5 (9 Oct 2026, Peter: "I'd like less pop
  * songs" — five went to Club and two to Groove). A recipe kept before then is made in its old form.
@@ -568,8 +763,11 @@ export const expressionVersionOf = (value) => (Number.isFinite(value) && value >
  * A recipe → the song: { bank, mix, arrangement, bpm }. Throws if the generator
  * refuses (an empty grid, an unknown style).
  */
-export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, wild = false, variation = null, energy = 'full', expression = 0, production = null, voltage = null, paletteSnapshot: savedPalette = null, useCurrentPalette = false, flavour: keptFlavour = null, infusion = null }) {
+export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood, seed, wild = false, variation = null, energy = 'full', expression = 0, production = null, voltage = null, paletteSnapshot: savedPalette = null, useCurrentPalette = false, flavour: keptFlavour = null, infusion = null, songLength = null, shape = null }) {
   if (!hasNotes(notes)) throw new Error('the grid is empty');
+  // LENGTH and SHAPE (LAB_LENGTHS, LAB_SHAPES): null is DEFAULT, the formula's own — the Club form over an
+  // INFUSION. A picked SHAPE wins over both.
+  songLength = labLength(songLength);
   // A song kept in a mood since retired is made in the mood it became.
   mood = currentMood(mood);
   // A MOOD PAIR (moods.js): its first mood makes the song, and its second takes over where it says
@@ -612,37 +810,49 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   // it is how the lead is played, not which notes it plays.
   const slides = expressionVersionOf(expression) >= 2 ? !!wild
     : selectedVariation === 'wild' && expressionVersionOf(expression) >= 1;
-  const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed, beat, expressionVersionOf(expression), flavour) : {};
+  const picked = labShape(shape);
+  const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed, beat, expressionVersionOf(expression), flavour, picked) : {};
   const soundSet = ownFlavour(style, flavour) ? labSoundSet(style, seed, voltage) : 'style';
   const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}) };
   // A pair's switch goes on the form, which must name its template (a form that names none is Club).
   // A recipe kept before its style's form moved is made in the form it had (FORMS_BEFORE_5).
-  const keptForm = !beat && formBefore(style, expressionVersionOf(expression)) ? { template: formBefore(style, expressionVersionOf(expression)) } : null;
-  const pairForm = pair ? { template: rolls.form?.template ?? keptForm?.template ?? (styleSettings && styleDefaults((beat && fusionOf(styleSettings, beat)) || styleSettings).form.template),
+  const keptForm = !beat && !picked && formBefore(style, expressionVersionOf(expression)) ? { template: formBefore(style, expressionVersionOf(expression)) } : null;
+  const pairForm = pair ? { template: picked ?? rolls.form?.template ?? keptForm?.template ?? (styleSettings && styleDefaults((beat && fusionOf(styleSettings, beat)) || styleSettings).form.template),
     ...rolls.form, mood2: pair.second, moodSwitch: pair.switch } : null;
-  // An INFUSION is always the Club form — the build-and-drop banger, never a Pop Song (Peter, 8 Oct 2026).
-  const clubForm = beat ? { template: 'club' } : null;
+  // An INFUSION is the Club form — the build-and-drop banger, never a Pop Song (Peter, 8 Oct 2026) — unless
+  // the player picked a SHAPE (10 Oct 2026).
+  const clubForm = beat && !picked ? { template: 'club' } : null;
   // The breakdown, the builds and the bar before each drop (version 6): Varied, or as every recipe kept
   // before it — Half Speed, the snare roll, straight in — said outright either way, so the form is
   // always given, on the template the generator would start it on.
   const varied = expressionVersionOf(expression) >= 6;
   const breakdownHook = rolls.form?.breakdownHook ?? (varied ? 'varied' : 'half');
-  const ways = { buildWay: varied ? 'varied' : 'roll', dropIn: varied ? 'varied' : 'straight' };
+  // The intro, Tune First and the riser (version 8), likewise.
+  const opens = expressionVersionOf(expression) >= 8;
+  // The breakdown's backing and the Club shape (version 10), likewise.
+  const shapes = expressionVersionOf(expression) >= 10;
+  const ways = { buildWay: varied ? 'varied' : 'roll', dropIn: varied ? 'varied' : 'straight', introWay: opens ? 'varied' : 'riff', tuneFirst: opens, groovePace: opens ? 'four' : 'eight', drop2Way: opens ? 'varied' : 'more',
+    breakdownBacking: shapes ? 'varied' : 'classic', clubShape: shapes ? 'varied' : 'club' };
   const ownForm = styleDefaults(styleFor(style) || styleSettings).form;
   const ownTemplate = beat ? 'club' : ownForm.template;
   // Chords Early (version 7): the style's own say; off in every recipe kept before it.
   const chordsEarly = expressionVersionOf(expression) >= 7 && !!ownForm.chordsEarly;
-  const formOptions = { template: ownTemplate, ...keptForm, ...(pairForm || rolls.form), ...clubForm, breakdownHook, ...ways, chordsEarly };
+  const formOptions = { template: ownTemplate, ...keptForm, ...(pairForm || rolls.form), ...(picked ? { template: picked } : {}), ...clubForm, breakdownHook, ...ways, chordsEarly };
   const options = {
-    style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
+    // The Varied draws of its time (ways.js WAYS_ERA): the first for versions 6 and 7, the third for 8
+    // and 9, the fourth from 10.
+    waysEra: shapes ? 4 : opens ? 3 : 1,
+    style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), ...lengthOptions(songLength), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,
     ...(expressionVersionOf(expression) >= 3 ? { sectionFx: { mode: voltageSettings(voltage).sectionFx } } : {}),
     ...(slides ? { expression: { autoPortamento: true, version: BANGER_EXPRESSION_VERSION } } : {}),
     ...(Object.keys(parts).length ? { parts } : {}),
-    ...(rolls.fx ? { fx: rolls.fx } : {}),
+    // (and the riser: Varied from version 8, the noise riser before it — said outright, as the form's ways are)
+    fx: { ...rolls.fx, riserWay: opens ? 'varied' : 'noise', dropHit: opens ? 'varied' : 'style' },
     ...(rolls.drums ? { drums: rolls.drums } : {}),
     form: formOptions,
-    ...(Object.keys(spot).length || rolls.spot ? { spot: { ...rolls.spot, ...spot } } : {}),
+    // (Riser FX: Varied from version 8, none before it — said outright, so Spot FX is always given)
+    spot: { ...rolls.spot, ...spot, riser: opens ? 'varied' : 'none' },
   };
   const out = generateBanger({ riff: riffFromNotes(notes, hookSoundFor(style, mood, seed, voltage, flavour), mode, lengths), options, seed,
     palette });

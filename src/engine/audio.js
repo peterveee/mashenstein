@@ -8821,6 +8821,24 @@ class AudioSys {
           if (drop) this._percPending.splice(0, drop);
         }
       }
+      // SIDECHAIN DUCKS hear their trigger track here (makeSidechainDuck in effects.js):
+      // its notes, at the time its own body plays them — the bar's nudge and the swing.
+      // After the arrangement has taken out the bars it takes the kick out of, and BEFORE
+      // the frozen lanes are suppressed and the desk's muted lanes nulled below, because a
+      // frozen kick ducks from its notes and a muted one still ducks (Peter, 10 Oct 2026).
+      // A song with no duck has no triggers, and this is one empty walk.
+      const duckTriggers = this.mixer?.duckTriggers?.();
+      if (duckTriggers?.size) {
+        for (const key of duckTriggers) {
+          const v = at(key);
+          const sounds = Array.isArray(v)
+            ? v.some((x) => Number.isFinite(x) && x > 0)
+            : v === true || (Number.isFinite(v) && v > 0);
+          if (sounds) {
+            this.mixer.keyHit(key, this.nextTime + barValue(bar.offset, key) * spb / 2 + swingOffset);
+          }
+        }
+      }
       // Frozen audio has now contributed to the musical/visual tally. From this point
       // its source notes are suppressed so the synth is not layered under its PCM.
       suppressFrozen = true;

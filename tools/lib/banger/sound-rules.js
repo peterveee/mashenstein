@@ -96,8 +96,10 @@ export const KIT_ROLES = Object.freeze([
   { key: 'fill', label: 'Fill Toms', prefer: ['Tom'], family: 'tom', kind: 'drum', phrase: 'fill' },
 ]);
 export const KITS = Object.freeze([
-  { key: 'style', label: 'Style Kit' }, { key: 'studio', label: 'Studio' }, { key: '909', label: '909' },
-  { key: '808', label: '808' }, { key: 'ds', label: 'DS' }, { key: 'cr78', label: 'CR-78' },
+  { key: 'style', label: 'Style Kit' }, { key: 'studio', label: 'Studio', retired: true }, { key: '909', label: '909' },
+  // DS is RETIRED (Peter, 10 Oct 2026: little lost — the accurate 808 and Studio cover it): offered
+  // nowhere, rolled by nothing new, still a kit a kept recipe that says it plays (options.js).
+  { key: '808', label: '808' }, { key: 'ds', label: 'DS', retired: true }, { key: 'cr78', label: 'CR-78' },
   ...CREATIVE_DRUM_KITS.map(({ key, label, description }) => ({ key, label, title: description })),
 ]);
 

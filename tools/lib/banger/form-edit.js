@@ -26,7 +26,8 @@ export function fromForm(form, keepRoles = false) {
   return form.map((f) => ({
     ...(f.id ? { id: f.id } : {}), type: f.type, bars: f.bars, label: f.label, energy: f.energy,
     ...(f.lifted ? { lift: true } : {}),
-    ...(f.variant && f.variant !== 'riff' ? { variant: f.variant } : {}),
+    // (An intro's The Riff is a choice of its own since Intro Type, 9 Oct 2026: one with none is Varied's.)
+    ...(f.variant && (f.variant !== 'riff' || f.type === 'intro') ? { variant: f.variant } : {}),
     ...(keepRoles ? { role: f.role } : {}),
   }));
 }

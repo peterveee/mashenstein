@@ -9623,6 +9623,7 @@ installEffectCards({
   // Declared some seven thousand lines below this, so it is wrapped rather than captured.
   deskTempo: () => deskTempo(),
   fmtDelay,
+  songTracks: () => deskLanes(viewBank(), 1).map(({ key, label }) => ({ key, label })),
 });
 
 const l7LevelPosition = (linear) => clamp((20 * Math.log10(Math.max(1e-6, linear)) + 48) / 48 * 100, 0, 100);
@@ -10114,7 +10115,7 @@ const EFFECT_GROUP_ROWS = [
     ['Space, Width & Pitch', ['reverb', 'ambience', 'spring', 'doubler', 'widener', 'shifter', 'pitch']],
   ],
   [
-    ['Dynamics', ['l7', 'compressor', 'noisegate', 'msComp', 'mbCompN']],
+    ['Dynamics', ['l7', 'compressor', 'noisegate', 'msComp', 'mbCompN', 'duck']],
     ['Character & Lo-Fi', ['exciter', 'distortion', 'tape', 'chebyshev', 'bitcrusher', 'ringmod']],
   ],
 ];
@@ -16628,7 +16629,7 @@ function updateStatus() {
   // the saved copy IS the song, and going back to it is the ordinary thing to want.
   const revertButton = $('revert');
   if (revertButton) revertButton.hidden = !DEV_USER && !isDeskSong(track);
-  // A banger's takes: Another Take always, Previous / Next only where there is one.
+  // A banger's takes: Remix always, Previous / Next only where there is one.
   // Guarded because the desk can paint its status while booting, before the banger
   // desk further down this file exists — and a `const` read that early throws.
   try { bangerDesk.syncButtons(); } catch { /* not wired yet */ }

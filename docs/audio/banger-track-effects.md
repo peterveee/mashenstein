@@ -8,7 +8,7 @@ no separate Banger effects path. The desk's Make a Banger dialog and the Lab bot
 Keep Style is the generator's default, including recipes saved before this feature.
 A fresh Lab draft starts on Subtle Variation. The selected mode and policy version are
 saved with Lab recipes; the cache includes them. An unknown future policy keeps the
-style's production. Another Take changes the seeded choices; Modify This Take can also
+style's production. Remix changes the seeded choices; Modify This Take can also
 re-roll Track Effects separately from the notes and instruments.
 
 The planner reads each part's actual notes, lengths, density, polyphony, pitch and

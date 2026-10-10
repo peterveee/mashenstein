@@ -33,7 +33,7 @@ assert.deepEqual(after.banger.sectionEffects.decisions[0].chain, row.chain);
 assert.ok(!fx.some(x => x.from >= posOf(drops[1].from, 0)), 'other Drop has no explicit echo');
 const reopened = make(JSON.parse(JSON.stringify(after.banger.options)));
 assert.deepEqual(reopened, after);
-assert.equal(generateBanger({ riff, seed: 23, options: after.banger.options }).banger.options.sectionFx.assignments[f.id][0].chain[0].params.wet, .37, 'Another Take retains assignment');
+assert.equal(generateBanger({ riff, seed: 23, options: after.banger.options }).banger.options.sectionFx.assignments[f.id][0].chain[0].params.wet, .37, 'Remix retains assignment');
 for (const range of ['first', 'second', 'last2']) {
   const [a, z] = sectionEffectRange(f, range);
   const partial = make({ sectionFx: { mode: 'off', assignments: { [f.id]: [{ ...row, range }] } } });

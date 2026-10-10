@@ -59,11 +59,12 @@ const same = (a, b) => JSON.stringify([a.bank, a.mix, a.arrangement]) === JSON.s
   for (const style of EARLY) for (const mood of ['anthemic', 'dreamy', 'dark']) for (const seed of [1, 2]) {
     spans.push([style, chordSpan(makeBanger({ notes: NOTES, mode: 'simple', style, mood, seed, voltage: 1, expression: RECIPE_EXPRESSION }))]);
   }
-  assert(spans.every(([, s]) => s && s[0] === 9 && s[1] === 56), `a new Lab take in each comes in with chords at bar 9 and keeps them to bar 56 (${spans.map(([st, s]) => `${st}:${s}`).join(' ')})`);
+  // (Groove Pace: Every 4 Bars from expression 8 — Peter, 10 Oct 2026 — brings them in at bar 5.)
+  assert(spans.every(([, s]) => s && s[0] === 5 && s[1] === 56), `a new Lab take in each comes in with chords at bar 5 and keeps them to bar 56 (${spans.map(([st, s]) => `${st}:${s}`).join(' ')})`);
   const kept = EARLY.map((style) => chordSpan(makeBanger({ notes: NOTES, mode: 'simple', style, mood: 'anthemic', seed: 1, voltage: 1, expression: 6 })));
   assert(kept.every((s) => s && s[0] === 17 && s[1] === 48), `a recipe kept before version 7 still waits for bar 17 (${kept.join(' ')})`);
   const acid = ['acid-house', 'techno'].map((style) => chordSpan(makeBanger({ notes: NOTES, mode: 'simple', style, mood: 'anthemic', seed: 1, voltage: 1, expression: RECIPE_EXPRESSION })));
-  assert(acid.every((s) => s && s[0] === 17), `Acid House and Techno keep their sparse start (${acid.join(' ')})`);
+  assert(acid.every((s) => s && s[0] > 5), `Acid House and Techno keep their sparser start: chords after the chord-led styles' (${acid.join(' ')})`);
 }
 
 // ---------------------------------------------------------------- the desk: nothing old moves
@@ -75,7 +76,9 @@ const same = (a, b) => JSON.stringify([a.bank, a.mix, a.arrangement]) === JSON.s
   assert(same(named, off) && named.banger.options.form.chordsEarly === false && chordSpan(named)[0] === 17,
     'a desk request that names its form but no Chords Early was made before it: off, as it was');
   const fresh = make({ style: 'deep-house', mood: 'dreamy' });
-  assert(fresh.banger.options.form.chordsEarly === true && chordSpan(fresh)[0] === 9, 'a new desk take on Deep House starts on the style\'s say: on');
+  assert(fresh.banger.options.form.chordsEarly === true && chordSpan(fresh)[0] === 5, 'a new desk take on Deep House starts on the style\'s say: on (chords at bar 5, Groove Pace: Every 4 Bars)');
+  const slow = make({ style: 'deep-house', mood: 'dreamy', form: { template: 'groove', chordsEarly: true, groovePace: 'eight' } });
+  assert(chordSpan(slow)[0] === 9, 'at Every 8 Bars Chords Early brings them in at bar 9, not 17');
   const asked = make({ style: 'big-room', mood: 'anthemic', form: { template: 'groove', chordsEarly: true } });
   const notAsked = make({ style: 'big-room', mood: 'anthemic', form: { template: 'groove', chordsEarly: false } });
   assert(chordSpan(asked)[0] < chordSpan(notAsked)[0], `and any style can ask for it (Big Room on Groove: bar ${chordSpan(asked)[0]}, not ${chordSpan(notAsked)[0]})`);

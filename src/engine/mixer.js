@@ -1900,6 +1900,15 @@ export function createMixer(ctx, {
         : strips.get(target)?._slot);
   // Every insert and section slot a group has built, for the walks that retune them.
   const groupSlots = () => [...groupBuses.values()].flatMap((b) => [b.slot, ...b.sections.slots]);
+  // Every slot an effect can sit in — channel inserts, their Spot FX branches, the aux
+  // returns, the master and its sections, the groups — for the walks that visit them all.
+  const everySlot = () => [
+    ...[...strips.values()].map((s) => s._slot),
+    ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
+    ...[...auxes.values()].map((a) => a.slot),
+    masterSlot, treatSlot, ...(masterSections?.slots || []),
+    ...groupSlots(),
+  ].filter(Boolean);
 
   return {
     lanes: LANES.map((l) => l.key),
@@ -2013,14 +2022,7 @@ export function createMixer(ctx, {
       // Native modulation effects own their LFO sources rather than delegating to
       // Tone.Transport. Re-apply their current state with the new bpm so a synced
       // Chorus 2, Flanger, or Ring Mod changes rate without rebuilding its chain.
-      const slots = [
-        ...[...strips.values()].map((s) => s._slot),
-        ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
-        ...[...auxes.values()].map((a) => a.slot),
-        masterSlot, treatSlot, ...(masterSections?.slots || []),
-        ...groupSlots(),
-      ].filter(Boolean);
-      for (const slot of slots) {
+      for (const slot of everySlot()) {
         for (const link of slot.chain || []) {
           if (link.def?.params?.includes('rateSync')) link.set({}, bpm);
         }
@@ -2127,19 +2129,38 @@ export function createMixer(ctx, {
      */
     scheduleEffects(step, when, sixteenth, bpm = 120, swing = 50) {
       for (const strip of strips.values()) strip._commitScheduledState(when);
-      const slots = [
-        ...[...strips.values()].map((s) => s._slot),
-        ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
-        ...[...auxes.values()].map((a) => a.slot),
-        masterSlot, treatSlot, ...(masterSections?.slots || []),
-        ...groupSlots(),
-      ].filter(Boolean);
-      for (const slot of slots) {
+      for (const slot of everySlot()) {
         for (const link of slot.chain || []) {
           if (typeof link.scheduleRhythm === 'function') {
             link.scheduleRhythm(step, when, sixteenth, bpm, swing);
           }
         }
+      }
+    },
+
+    /**
+     * The tracks some Sidechain Duck is keyed to, anywhere in the mix — the only tracks the
+     * sequencer reports hits for (see keyHit). Empty on every song without a duck, which is
+     * every song before 10 Oct 2026, so their step walk does nothing new.
+     */
+    duckTriggers() {
+      const keys = new Set();
+      for (const slot of everySlot()) {
+        for (const link of slot.chain || []) {
+          const key = link.keyedTo?.();
+          if (key) keys.add(key);
+        }
+      }
+      return keys;
+    },
+
+    /**
+     * A trigger track's note, at the audio time it plays: every duck keyed to it dips there.
+     * From the sequencer's notes rather than the track's audio — see makeSidechainDuck.
+     */
+    keyHit(key, when) {
+      for (const slot of everySlot()) {
+        for (const link of slot.chain || []) link.keyHit?.(key, when);
       }
     },
 

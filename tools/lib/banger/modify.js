@@ -1,7 +1,7 @@
 // MAKE A BANGER — Modify This Take. 3 Oct 2026.
 //
 // A take re-made with changed settings, keeping everything the change does not reach.
-// Another Take is a new seed: every part is drawn again. Modify keeps the SEED, so the
+// Remix is a new seed: every part is drawn again. Modify keeps the SEED, so the
 // generator makes the same song part for part — the streams (index.js) see to that —
 // except where the settings, or a part asked to be re-rolled, say otherwise. Comparing
 // the two part by part says exactly what the change touched, and only that comes in.

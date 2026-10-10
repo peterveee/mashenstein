@@ -115,7 +115,7 @@ function readSongDir(root, songDir, out, seen) {
       writable: bank && src.includes('// ---- THE DESK WRITES BELOW HERE'),
       alternateOf: bank && parentLiteral ? JSON.parse(parentLiteral[1]) : null,
       // Made by the desk's Make a Banger… — the file carries its own recipe, which the
-      // index hands to the registry so the desk can offer Another Take on it.
+      // index hands to the registry so the desk can offer Remix on it.
       banger: bank && /^export const banger\s*=/m.test(src),
       file,
       dir: songDir,

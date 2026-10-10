@@ -1649,7 +1649,7 @@ Grouped, and **priced** with each effect's measured cost as a percentage of one 
 | Modulation | Chorus, Phaser, Tremolo, Vibrato, Auto Filter, Auto Wah, Auto Panner |
 | Drive | Exciter, Distortion, Chebyshev |
 | Space & stereo | Reverb, Doubler, Stereo Widener, Frequency Shifter, Pitch Shift |
-| Dynamics | L7 Limiter, Compressor, Mid/Side Compressor, Multiband Compressor |
+| Dynamics | L7 Limiter, Compressor, Mid/Side Compressor, Multiband Compressor, Sidechain Duck |
 
 The **Stutter** is not in this catalogue: it does nothing without a section to tell it when to
 grab, so only a Spot FX section offers it — see [Spot FX](#spot-fx-sections-the-master-and-the-stutter).
@@ -1887,6 +1887,45 @@ It costs **LOOKAHEAD of latency**, 3ms at the default, so a lane carrying one si
 that far behind the others — put it on the master rather than one channel unless the
 lateness is what you are after. Bypassed it costs nothing at all, and it is
 sample-exact transparent whenever the signal is under the threshold.
+
+#### Sidechain Duck
+
+The bass ducking under the kick: put it on the track you want to dip, pick the track that
+dips it, and every note that track plays pulls this one down and lets it back up.
+
+It listens to the trigger's **notes**, not its sound. The sequencer knows when every kick
+lands before it plays, so there is no detector and no lag: the duck is all the way down *as*
+the kick arrives, not a few milliseconds after, which is what a compressor with a sidechain
+input would give you. It renders the same every time and costs next to nothing.
+
+| Control | Does |
+| --- | --- |
+| **TRIGGER** | the track whose notes duck this one — any track in the song, the kick by default — or **Every bar / 1/2 / 1/4 / 1/8**, the grid, with no track at all |
+| **DEPTH** | how far down on each hit: 0 not at all, 1 to silence. 0.65 by default |
+| **ATTACK** | how long it takes to go down, 1–50ms. It starts that long *before* the hit, so it is all the way down as the hit lands |
+| **HOLD** | how long it stays down after the hit, 0–500ms |
+| **RELEASE** | how long it takes to come back up, in a straight line, 10ms–1s |
+
+What counts as a hit:
+
+- **A muted trigger still ducks.** A mute is you listening, not the song: mute the kick to hear
+  what it is doing to the bass.
+- **A frozen trigger still ducks**, from its notes.
+- **A bar the arrangement takes the trigger out of does not.** The kick is not in the song
+  there, so neither is the duck — a breakdown with no kick stops pumping.
+- **Swing moves it** with the kick.
+- A hit that comes while the last one is still coming back up starts from wherever it had got
+  to; the line never jumps.
+
+**On the grid** — TRIGGER set to Every 1/4 and the rest — it pumps on every beat (or bar, half,
+eighth) whatever any track plays: the regular pump for a song whose kick is not four on the
+floor. On a kick that *is* on every beat, Every 1/4 and the kick are the same samples.
+
+It goes anywhere an insert goes: a track, a **group bus** (one duck, every synth in the
+group), the master, or a Spot FX section (it ducks only inside the section). Between hits it
+is exactly unity, so a duck keyed to a track the song does not have, or at DEPTH 0, changes
+nothing. A preset sets the sound and leaves TRIGGER alone. **Stems** still sum to the mix:
+a stem render keeps the trigger track in, muted, so the ducked track's stem is ducked.
 
 #### Doubler
 

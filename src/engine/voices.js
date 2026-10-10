@@ -5342,7 +5342,15 @@ export class VoiceRack {
           v.tapDecays ? { ...n, decay: v.tapDecays[i] ?? n.decay } : n, 0.12);
         len = Math.max(len, nlen);
         src.connect(chain.head); chain.tail.connect(g); g.connect(into);
-        src.start(t); src.stop(t + nlen + 0.03);
+        // `tapScatter` starts each tap that many seconds further into the buffer. Every
+        // tap otherwise reads the same noise from the top, so taps a millisecond or two
+        // apart are one waveform laid over itself late — a comb filter, heard as a pitch.
+        // Four clap hands ten milliseconds apart get away with it; a brush is
+        // dozens of bristles a millisecond apart and does not. Opt-in, so every preset
+        // without it renders sample-identically. Still deterministic: same buffer, same
+        // offsets.
+        const offset = v.tapScatter > 0 ? (i * v.tapScatter) % (src.buffer.duration || 0.5) : 0;
+        src.start(t, offset); src.stop(t + nlen + 0.03);
         sources.push(src);
       }
       // ---- the resonator ----------------------------------------------------

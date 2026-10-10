@@ -189,44 +189,33 @@ const GROOVES = [
  */
 export const KITS = [
   ...CREATIVE_DRUM_KITS.map(({ label, voices }) => [label, voices]),
-  // `ds808Hat`, `ds909Hat` and `hatClosed` were the closed hats these three kits named
-  // until they were dropped from the library, which left the lane falling back rather
-  // than erroring — see the kit-voice check in tests/arrangement.js. The open partners
-  // survived, so each kit is re-paired below with the nearest closed hat still offered.
+  // The three machines, rebuilt from Roland's service notes and measured units and taken by
+  // Peter for all three on 10 Oct 2026 — see the `tr808*`/`tr909*`/`cr78*` presets in
+  // src/data/voices.js. The ds808*/ds909*/dsCr78* presets they replace stay in the library,
+  // because songs name them. The banger kits made the same swap (tools/lib/banger/sounds.js).
   //
-  // 808: the deleted one was a metal cluster clipped to a tick, and no metallic closed
-  // hat is left at all. It was `hatGrit` — a square in a resonant band, pushed hard —
-  // until 6 Oct 2026, when Peter heard that square as a clave on eighths ("too
-  // distracting"). The plain highpassed tick now, the same closed hat as 909's; the
-  // banger kits made the same swap (tools/lib/banger/sounds.js).
+  // 808: the closed hat is metal again — the six oscillators at the 808's own frequencies,
+  // kept above 8 kHz. The last metallic one (`hatGrit`, one square in a resonant band) was
+  // what Peter heard as a clave on eighths on 6 Oct; this one has no pitch left to read.
   ['808', {
-    kick: 'ds808Kick', snare: 'ds808Snare', clap: 'ds808Clap',
-    hats: 'dsHatClosed', ohats: 'ds808OpenHat', tom: 'ds808Tom',
+    kick: 'tr808Kick', snare: 'tr808Snare', clap: 'tr808Clap', rim: 'tr808Rim',
+    hats: 'tr808ClosedHat', ohats: 'tr808OpenHat', tom: 'tr808Tom', crash: 'tr808Cymbal',
   }],
-  // 909: the closest match left, and close on the numbers rather than by name — highpass
-  // 7.8k against the deleted one's 7.2k, decay 0.032 against 0.035. Its Q is 1.2, which
-  // is `ds909OpenHat`'s Q exactly, so the closed and open pair still read as one hat.
+  // 909: the hats and crash were 6-bit samples on the machine, which this engine cannot
+  // play, so those are approximations; `ds909Crash` stays as the crash.
   ['909', {
-    kick: 'ds909Kick', snare: 'ds909Snare', clap: 'ds909Clap', rim: 'ds909Rim',
-    hats: 'dsHatClosed', ohats: 'ds909OpenHat', tom: 'ds909Tom', crash: 'ds909Crash',
+    kick: 'tr909Kick', snare: 'tr909Snare', clap: 'tr909Clap', rim: 'tr909Rim',
+    hats: 'tr909ClosedHat', ohats: 'tr909OpenHat', tom: 'tr909Tom', crash: 'ds909Crash',
   }],
+  // CR-78: the machine has no handclap and no toms — its tambourine in the clap slot (Peter's
+  // pick, 10 Oct 2026: a clap made it generic) and the low conga in the tom slot.
   ['CR-78', {
-    kick: 'dsCr78Kick', snare: 'dsCr78Snare', clap: 'dsCr78Clap',
-    hats: 'dsCr78Hat', tom: 'dsCr78Tom',
+    kick: 'cr78Kick', snare: 'cr78Snare', clap: 'cr78Tambourine', rim: 'cr78Rim',
+    hats: 'cr78Hat', tom: 'cr78Conga', crash: 'cr78Cymbal',
   }],
-  ['DS', {
-    kick: 'dsKick', snare: 'dsSnare', clap: 'dsClap', rim: 'dsRim',
-    hats: 'dsHatClosed', ohats: 'dsHatOpen', tom: 'dsTom',
-  }],
-  // The kick, tom and crash here were the Tone drum classes and are KLNG8 now — the same
-  // three sounds, built the way everything else in the kit already was.
-  // Studio: this kit is the game's own drums as presets — `snareCrisp` is the engine
-  // snare, and `hatEngine` is the engine's closed hat, exactly. The deleted `hatClosed`
-  // was the plain tick standing in for it, so this is the sound the kit was reaching for.
-  ['Studio', {
-    kick: 'ds909KickPunch', snare: 'snareCrisp', clap: 'clap808', rim: 'rimWood',
-    hats: 'hatEngine', ohats: 'hatOpen', tom: 'ds909Tom', crash: 'ds909Crash',
-  }],
+  // DS was here until 10 Oct 2026, retired with the banger kit (sound-rules.js); its sounds stay in
+  // the library for the songs that name them.
+  // Studio was here until 10 Oct 2026, retired the same way (Peter: "remove studio completely").
 ];
 
 /**

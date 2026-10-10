@@ -13,12 +13,15 @@ import { SECTION_FX_FIELDS, SECTION_FX_DEFAULTS, normaliseSectionAssignments } f
 import { styleFor, BANGER_STYLES } from './styles/index.js';
 import { ARP_FIGURES, BASS_FIGURES } from './theory.js';
 import { normaliseSections } from './form-types.js';
-import { FORM_TEMPLATES } from './templates.js';
+import { FORM_TEMPLATES, CLUB_SHAPES } from './templates.js';
 import { SHARED_MOODS, LIFT_APPROACHES, RETIRED_MOODS, currentMood } from './moods.js';
 import { FILL_INS, FILL_EVERY, FILL_NOTES } from './embellish.js';
-import { BREAKDOWN_WAYS, BREAKDOWN_WAY, VARIED_WAYS } from './breakdown-ways.js';
-import { BUILD_WAYS, DROP_IN_WAYS } from './build-ways.js';
-import { wayOptions } from './ways.js';
+import { BREAKDOWN_WAYS, BREAKDOWN_WAY, VARIED_WAYS, BACKING_WAYS } from './breakdown-ways.js';
+import { BUILD_WAYS, DROP_IN_WAYS, RISER_WAYS, RISER_FX_WAYS, DROP_HIT_WAYS } from './build-ways.js';
+import { INTRO_WAYS } from './intro-ways.js';
+import { DROP2_WAYS } from './drop-ways.js';
+import { wayOptions, WAYS_ERA } from './ways.js';
+import { kitRollsFor } from './kit-rolls.js';
 
 export const BANGER_MOODS = Object.freeze([
   { id: 'anthemic', label: 'Anthemic', title: 'Big minor-key festival chords, bright hook — the ABSOLUTE ZERO sound' },
@@ -138,7 +141,14 @@ export const BANGER_GROUPS = Object.freeze([
       options: [['club', 'Club'], ...Object.entries(FORM_TEMPLATES).map(([id, t]) => [id, t.label])] },
     { key: 'script', label: 'Style\'s Own Form', forms: ['club'],
       title: 'The style\'s own arrangement, bar by bar, in place of the switches below. No style has one at present; styles without one ignore it' },
-    { key: 'intro', label: 'Intro', title: 'Open on the riff as written' },
+    { key: 'intro', label: 'Intro', title: 'An intro before the first build (Intro Type says how it opens)' },
+    { key: 'introWay', label: 'Intro Type', type: 'select',
+      title: 'How the song opens. Varied picks one each song. Build in Layers and Drums & Bass Intro win where they are on; an intro drawn in the Form row with its own Plays choice keeps that',
+      options: wayOptions(INTRO_WAYS) },
+    { key: 'groovePace', label: 'Groove Pace', type: 'select',
+      title: 'How fast a Groove song\'s parts arrive while it builds up',
+      options: [['four', 'Every 4 Bars', 'A part more every four bars: everything in by bar 17 or so'], ['eight', 'Every 8 Bars', 'A part more each eight-bar section — the old slow build']] },
+    { key: 'tuneFirst', label: 'Tune First', title: 'The riff or the chords from the first two bars: Build in Layers opens on the riff, two bars a part, and a Groove plays its riff from the first bar. For a casual listener — off for a DJ\'s slow build' },
     { key: 'layers', label: 'Build in Layers', type: 'select',
       title: 'The intro brings the parts in one at a time — drums, bass, chords, the hook last — and the outro takes them away again: on a Long song only (more than 64 bars), or always',
       options: [['off', 'Off', 'Intro and outro as the switches say'], ['long', 'Long Songs', 'Only past 64 bars'], ['always', 'Always', 'Every song builds up and down']] },
@@ -157,7 +167,16 @@ export const BANGER_GROUPS = Object.freeze([
       title: 'What the hook does in a breakdown, in any form. Varied picks a way each take. A breakdown drawn in the Form row with its own Plays choice keeps that',
       options: [['varied', 'Varied', `A different way each take — ${VARIED_WAYS.map((id) => BREAKDOWN_WAY[id].label).join(', ')}`],
         ...BREAKDOWN_WAYS.map((w) => [w.id, w.label, w.note])] },
+    { key: 'breakdownBacking', label: 'Breakdown Backing', type: 'select',
+      title: 'What plays under the hook in a breakdown. Varied picks one each song',
+      options: wayOptions(BACKING_WAYS) },
+    { key: 'clubShape', label: 'Club Shape', type: 'select', forms: ['club'],
+      title: 'How a Club song is laid out. Varied keeps the classic about half the time and picks one of the other shapes the rest',
+      options: wayOptions(CLUB_SHAPES) },
     { key: 'secondDrop', label: 'Second Drop', forms: ['club'], title: 'Come back for another drop after the breakdown' },
+    { key: 'drop2Way', label: 'Drop 2', type: 'select',
+      title: 'How the second drop (or chorus) differs from the first. Varied picks one each song; the drops after it are the full drop again',
+      options: wayOptions(DROP2_WAYS) },
     { key: 'doubleDrop', label: 'Double Drop', forms: ['club'], title: 'Drop two runs straight into a third, harder one' },
     { key: 'keyLift', label: 'Key Lift', type: 'select', title: 'The last drop goes up',
       options: [['none', 'None', 'Stays in one key'], ['half', 'Half Step', 'Up a semitone — subtle'], ['whole', 'Whole Step', 'Up a tone — the classic'], ['third', 'Major Third', 'Up four semitones — huge']] },
@@ -183,7 +202,9 @@ export const BANGER_GROUPS = Object.freeze([
     { key: 'source', label: 'Source Drums', type: 'select', title: 'What happens to drums already in the riff',
       options: [['add', 'Keep and Add', 'Your drums play, the style\'s kit joins'], ['replace', 'Replace', 'The style\'s kit instead of yours'], ['asis', 'Keep As-Is', 'Only your drums, as written']] },
     { key: 'kit', label: 'Kit', type: 'select', title: 'The drum sounds',
-      options: KITS.map(({ key, label, title }) => [key, label, title || `${label} drum sounds`]) },
+      options: KITS.filter((k) => !k.retired).map(({ key, label, title }) => [key, label, title || `${label} drum sounds`]),
+      // A kit no longer offered, still valid in a request that says it — a kept recipe plays as it did.
+      retired: KITS.filter((k) => k.retired).map((k) => k.key) },
     { key: 'crashes', label: 'Crashes', title: 'A crash on the one of every phrase' },
     { key: 'fills', label: 'Fills', title: 'A snare-and-tom fill every eight bars' },
     { key: 'rolls', label: 'Snare Rolls', title: 'The snare accelerating through every build' },
@@ -268,13 +289,20 @@ export const BANGER_GROUPS = Object.freeze([
       title: 'An effect over the intro. Style: the Low-Pass Intro and Bitcrush Intro switches',
       options: [['style', 'Style', 'The switches\' own'], ['lowpass', 'Low-Pass', 'Through a wall, opening up'], ['bitcrush', 'Bitcrush', 'Crushed to a few bits'],
         ['radio', 'Radio', 'Thin and boxy, like a small speaker'], ['none', 'None', 'Clean']] },
+    { key: 'riser', label: 'Riser FX', type: 'select',
+      title: 'An effect over every riser, for as long as it climbs. Varied picks one each song (sometimes none)',
+      options: wayOptions(RISER_FX_WAYS) },
     { key: 'ending', label: 'Ending', type: 'select',
       title: 'An effect over the last bars. Style: the Tape-Stop Ending switch',
       options: [['style', 'Style', 'The switches\' own'], ['tapeStop', 'Tape Stop', 'Winding down — and the song does not loop'],
         ['echo', 'Echo Out', 'The last bars repeating away'], ['fade', 'Fade', 'Everything fading over the last four bars'], ['none', 'None', 'Clean']] },
   ] },
   { id: 'fx', label: 'FX', fields: [
-    { key: 'riser', label: 'Riser', title: 'A two-bar noise riser into every drop' },
+    { key: 'riser', label: 'Riser', title: 'A riser into every drop (Riser Type says which)' },
+    { key: 'riserWay', label: 'Riser Type', type: 'select', title: 'The sound that lifts into every drop. Varied picks one each song',
+      options: wayOptions(RISER_WAYS) },
+    { key: 'dropHit', label: 'Drop Hit', type: 'select', title: 'What lands on the one of every drop, after the riser (the Impact\'s sound). Varied picks one each song',
+      options: wayOptions(DROP_HIT_WAYS) },
     { key: 'filterBuild', label: 'Filter Build', title: 'The music opens up through a low-pass across each build' },
     { key: 'stutter', label: 'Stutter Before Drop', title: 'A run-up on the end of every build into a drop: the mix stuttering in 1/16s then 1/32s, or one of its variations (Spot FX → Into a Drop) — a different one from the build before' },
     { key: 'pump', label: 'Sidechain Pump', title: 'The chords gated in time — on every beat by default. Chord Gate says at what rate' },
@@ -325,6 +353,9 @@ export const BANGER_DEFAULTS = Object.freeze({
   // A FLAVOUR (styles/flavours.js), for a style that has them: 'mood' (the one the mood plays),
   // 'style' (its own), 'random' (drawn from the seed), or one by its id.
   flavour: 'mood',
+  // Which generation of the Varied draws (ways.js WAYS_ERA): a new request the latest; the Lab says its
+  // recipe's own, so a kept song keeps the ways it was drawn.
+  waysEra: WAYS_ERA,
   // Recipes without this retain their original production. New UI requests can opt in.
   production: { mode: 'style', version: TRACK_EFFECTS_VERSION },
   sectionFx: SECTION_FX_DEFAULTS,
@@ -332,7 +363,7 @@ export const BANGER_DEFAULTS = Object.freeze({
   expression: { autoPortamento: false, version: BANGER_EXPRESSION_VERSION },
   form: {
     template: 'club', sections: null, script: false, intro: true, layers: 'off', grooveIntro: false, build: true, breakdown: true, secondDrop: true, doubleDrop: true, keyLift: 'whole', keyApproach: 'mood', mood2: 'none', moodSwitch: 'breakdown',
-    hardStop: true, falseEnding: false, halfTime: false, outro: true, breakdownHook: 'varied', buildWay: 'varied', dropIn: 'varied', chordsEarly: false,
+    hardStop: true, falseEnding: false, halfTime: false, outro: true, breakdownHook: 'varied', buildWay: 'varied', dropIn: 'varied', introWay: 'varied', tuneFirst: true, groovePace: 'four', drop2Way: 'varied', breakdownBacking: 'varied', clubShape: 'varied', chordsEarly: false,
   },
   drums: {
     source: 'add', kit: 'style', crashes: true, fills: true, rolls: true, impact: true,
@@ -342,9 +373,9 @@ export const BANGER_DEFAULTS = Object.freeze({
     bass: 'offbeat', sub: true, chords: 'saws', square: true, bell: true, octaveDouble: true,
     riffBass: 'replace', bassLift: true, thirdBelow: false, arp: true, arpPattern: 'vary', choir: true, counter: false, fillIn: 'off', fillEvery: '2', fillNotes: '2', writeLead: 'auto', riffSound: 'keep', partSounds: 'roll', soundSet: 'style',
   },
-  spot: { intoDrop: 'style', outOf: 'style', quiet: 'none', intro: 'style', ending: 'style' },
+  spot: { intoDrop: 'style', outOf: 'style', quiet: 'none', intro: 'style', ending: 'style', riser: 'varied' },
   fx: {
-    gate: 'style', riser: true, filterBuild: true, stutter: true, pump: true, delayThrows: true,
+    gate: 'style', riser: true, riserWay: 'varied', dropHit: 'varied', filterBuild: true, stutter: true, pump: true, delayThrows: true,
     lowpassIntro: false, bitcrushIntro: false, tapeStop: false, gateChoir: false,
   },
 });
@@ -375,6 +406,9 @@ export function styleDefaults(style = styleFor(BANGER_DEFAULTS.style)) {
 export function classicDefaults(style = styleFor(BANGER_DEFAULTS.style)) {
   const d = styleDefaults(style);
   d.parts = { ...d.parts, partSounds: 'style', arpPattern: 'style', bassLift: false };
+  // ...and its own riser and drop hit, every take (build-ways.js) — and the Club form's own shape.
+  d.fx = { ...d.fx, riserWay: 'noise', dropHit: 'style' };
+  d.form.clubShape = 'club';
   d.form = { ...d.form, template: 'club', sections: null };
   return d;
 }
@@ -430,6 +464,11 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     else issues.push(`a tempo is ${BANGER_LIMITS.minBpm}–${BANGER_LIMITS.maxBpm} BPM, not ${raw.bpm}`);
   }
   if (raw?.hook != null) out.hook = String(raw.hook);
+  // Only its shape: a whole number from 1 (an era later than this generator knows draws as its latest).
+  if (raw?.waysEra != null) {
+    if (Number.isInteger(raw.waysEra) && raw.waysEra >= 1) out.waysEra = Math.min(raw.waysEra, WAYS_ERA);
+    else issues.push(`a Ways Era is a whole number from 1, not ${JSON.stringify(raw.waysEra)}`);
+  }
   // Only its shape: which flavours a style has is the generator's to know (flavourOf), and a
   // style without them plays its own whatever is asked.
   if (raw?.flavour !== undefined) {
@@ -480,6 +519,18 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     // ...and no Build Type or Before the Drop, before those (9 Oct 2026): the snare roll, straight in.
     if (group.id === 'form' && given.buildWay == null) out.form.buildWay = 'roll';
     if (group.id === 'form' && given.dropIn == null) out.form.dropIn = 'straight';
+    // ...and no Intro Type or Tune First: the riff as written, and the slow layered build-ups.
+    if (group.id === 'form' && given.introWay == null) out.form.introWay = 'riff';
+    if (group.id === 'form' && given.tuneFirst == null) out.form.tuneFirst = false;
+    if (group.id === 'form' && given.groovePace == null) out.form.groovePace = 'eight';
+    if (group.id === 'form' && given.drop2Way == null) out.form.drop2Way = 'more';
+    if (group.id === 'form' && given.breakdownBacking == null) out.form.breakdownBacking = 'classic';
+    if (group.id === 'form' && given.clubShape == null) out.form.clubShape = 'club';
+    // ...and its effects no Riser Type: the noise riser.
+    if (group.id === 'fx' && given.riserWay == null) out.fx.riserWay = 'noise';
+    if (group.id === 'fx' && given.dropHit == null) out.fx.dropHit = 'style';
+    // ...and its Spot FX no Riser FX: none.
+    if (group.id === 'spot' && given.riser == null) out.spot.riser = 'none';
     // ...and no Chords Early, before that (9 Oct 2026): the chords in the style's own place.
     if (group.id === 'form' && given.chordsEarly == null) out.form.chordsEarly = false;
     for (const [k, given1] of Object.entries(given)) {
@@ -492,7 +543,7 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
       const v = group.id === 'form' && k === 'layers' && typeof given1 === 'boolean' ? (given1 ? 'always' : 'off') : given1;
       if (!field) { issues.push(`${group.label} has no switch called "${k}"`); continue; }
       if (field.type === 'select') {
-        if (field.options.some(([id]) => id === v)) out[group.id][k] = v;
+        if (field.options.some(([id]) => id === v) || field.retired?.includes(v)) out[group.id][k] = v;
         else issues.push(`${field.label} "${v}" is not one of ${field.options.map(([id]) => id).join(', ')}`);
       } else if (typeof v === 'boolean') out[group.id][k] = v;
       else issues.push(`${field.label} is on or off, not ${JSON.stringify(v)}`);
@@ -516,7 +567,7 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
  */
 export const BANGER_STRUCTURE = Object.freeze({
   top: ['style', 'length', 'customBars'],
-  form: ['template', 'sections', 'script', 'intro', 'layers', 'build', 'breakdown', 'secondDrop', 'doubleDrop', 'falseEnding', 'outro'],
+  form: ['template', 'sections', 'script', 'intro', 'layers', 'build', 'breakdown', 'secondDrop', 'doubleDrop', 'falseEnding', 'outro', 'clubShape'],
 });
 
 /** `options` with the take's shape put back from `from`. */
@@ -582,7 +633,8 @@ export function surpriseBangerOptions(rng, base = BANGER_DEFAULTS) {
   for (const [g, k] of SPICE) if (rng.next() < 0.25) out[g][k] = !out[g][k];
   if (rng.next() < 0.25) out.form.keyLift = pickOf(['none', 'half', 'whole', 'third']);
   out.parts.riffSound = rng.next() < 2 / 3 ? 'random' : 'keep';
-  if (rng.next() < 1 / 3) out.drums.kit = pickOf(['style', 'studio', '909', '808', 'ds', 'cr78']);
+  // The style's own roll list (kit-rolls.js): the five machine kits and the creative kits that suit it.
+  if (rng.next() < 1 / 3) out.drums.kit = pickOf(['style', ...kitRollsFor(style.base || style.id)]);
   out.parts.bass = moodBass(style, out.mood);
   if (rng.next() < 1 / 3) out.parts.bass = pickOf(['offbeat', 'rolling', ...BASS_FIGURES.map((f) => f.id)]);
   if (rng.next() < 1 / 3) out.parts.chords = pickOf(['saws', 'piano', 'pad']);

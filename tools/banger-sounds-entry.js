@@ -216,13 +216,13 @@ function renderTest() {
     field('Mood', plainSelect({ label: 'Mood', options: BANGER_MOODS.map((m) => [m.id, m.label]), value: t.mood, onChange: (v) => { t.mood = v; } })),
     field('Variation', plainSelect({ label: 'Variation', options: BANGER_VARIATIONS.map((v) => [v.id, v.label]), value: t.variation, onChange: (v) => { t.variation = v; } })),
     field('Length', plainSelect({ label: 'Length', options: BANGER_LENGTHS.filter((l) => l.bars).map((l) => [l.id, `${l.label} · ${l.bars} bars`]), value: t.length, onChange: (v) => { t.length = v; } })),
-    field('Kit', plainSelect({ label: 'Kit', options: KITS.map((k) => [k.key, k.label]), value: t.kit, onChange: (v) => { t.kit = v; } })),
+    field('Kit', plainSelect({ label: 'Kit', options: KITS.filter((k) => !k.retired).map((k) => [k.key, k.label]), value: t.kit, onChange: (v) => { t.kit = v; } })),
     field('Riff Sound', plainSelect({ label: 'Riff Sound', options: [['keep', 'Keep'], ['random', 'Random']], value: t.riffSound, onChange: (v) => { t.riffSound = v; } })),
     Object.keys(BANGER_COMBOS[state.styleId] || {}).length
       ? field('Sounds', plainSelect({ label: 'Sounds', options: [['', 'Style Sounds'], ...Object.entries(BANGER_COMBOS[state.styleId]).map(([id, c]) => [id, c.label])], value: t.combo || '', onChange: (v) => { t.combo = v || null; } }))
       : '',
     field('Seed', h('input', { type: 'number', min: 1, value: t.seed, oninput: (e) => { t.seed = Number(e.target.value) || 1; } })),
-    h('button', { onclick: () => { t.seed = Math.floor(Math.random() * 1e6) + 1; renderTest(); if (state.playing === 'test') { stop(); playTest(); } }, title: 'A new seed — another take' }, 'Another Take'),
+    h('button', { onclick: () => { t.seed = Math.floor(Math.random() * 1e6) + 1; renderTest(); if (state.playing === 'test') { stop(); playTest(); } }, title: 'A new seed — the same settings remixed' }, 'Remix'),
     h('button', { id: 'testplay', class: 'primary', 'data-play': 'test', onclick: () => (state.playing === 'test' ? stop() : playTest()) }, state.playing === 'test' ? '■ Stop' : '▶ Play'),
     h('button', { id: 'testdesk', onclick: openOnDesk, title: 'Write this test banger as a banger of its own and open it on the desk, to tune its sounds in a whole mix' }, 'Open on the Desk'),
   );

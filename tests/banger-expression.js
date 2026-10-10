@@ -673,9 +673,9 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   // what makeBanger lays over the generator's output: the hook's trim, and THE CEILING on the mix
   const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; o.mix.ceiling = true; return o; };
 
-  assert(RECIPE_EXPRESSION === 7 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
+  assert(RECIPE_EXPRESSION === 11 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,
-  'a recipe\'s expression version is 7 for a new recipe, and anything unreadable reads as none');
+  'a recipe\'s expression version is 11 for a new recipe, and anything unreadable reads as none');
 
   // VOLTAGE ROLLS (expression 2): read off the seed, so a kept take is made again the same;
   // the higher the voltage, the more often the bass and the chord gate move
@@ -710,6 +710,33 @@ const plannedAt = (fixture, lane, set) => createLaneView({
         && ['nu-disco', 'electro-funk'].every((s) => shape(s, 5).split(' ').every((t) => t === 'groove'))
         && shape('synthwave', 5) === pop,
         'a new recipe starts them on the Club form or the Groove; Synthwave is still a Pop Song');
+    }
+    {
+      // THE KEY LIFT ROLL (recipe expression 9, 10 Oct 2026, Peter: the lift was predictable): from Surge a style
+      // that lifts draws another lift — never its own — one take in three, one in two at Overload; a style
+      // that says none stays unlifted below Overload, where one take in four lifts a half step. The approach
+      // rolls from Surge too. Before 9 nothing moves below Overload, and Overload only lifts a third.
+      const liftsOf = (style, v, version) => seeds.map((s) => voltageRollsFor(style, defaultMoodFor(style), v, s, null, version).form?.keyLift ?? null);
+      const moved = (list) => list.filter(Boolean).length / list.length;
+      const kinds = (list) => new Set(list.filter(Boolean));
+      const surge = liftsOf('big-room', 2, 9); const over = liftsOf('big-room', 3, 9);
+      assert(Math.abs(moved(surge) - 1 / 3) < 0.07 && Math.abs(moved(over) - 1 / 2) < 0.07,
+        `a lifting style draws another lift one Surge take in three and one Overload take in two (${moved(surge).toFixed(2)}, ${moved(over).toFixed(2)})`);
+      assert([...kinds(surge)].sort().join() === 'half,none,third' && [...kinds(over)].sort().join() === 'half,none,third',
+        `the draw is none, half or third — never the whole step Big Room lifts on its own (${[...kinds(over)].join(' ')})`);
+      assert([0, 1].every((v) => moved(liftsOf('big-room', v, 9)) === 0), 'never at Safe or Charged');
+      const chill = liftsOf('deep-house', 3, 9);
+      assert([0, 1, 2].every((v) => moved(liftsOf('deep-house', v, 9)) === 0) && Math.abs(moved(chill) - 1 / 4) < 0.06 && [...kinds(chill)].join() === 'half',
+        `a style with no lift stays unlifted below Overload, and lifts a half step one Overload take in four there (${moved(chill).toFixed(2)}, ${[...kinds(chill)].join(' ')})`);
+      assert(moved(liftsOf('big-room', 2, 8)) === 0 && [...kinds(liftsOf('big-room', 3, 8))].join() === 'third'
+        && [...kinds(liftsOf('deep-house', 3, 8))].join() === 'third' && Math.abs(moved(liftsOf('deep-house', 3, 8)) - 1 / 3) < 0.07,
+        'a recipe kept before 9 lifts as it did: the style\'s own below Overload, and at Overload a third one take in three — a chill style too');
+      const approach = (style, v, version) => seeds.filter((s) => voltageRollsFor(style, defaultMoodFor(style), v, s, null, version).form?.keyApproach).length / seeds.length;
+      assert(Math.abs(approach('big-room', 2, 9) - 1 / 3) < 0.07 && Math.abs(approach('big-room', 3, 9) - 1 / 2) < 0.07 && approach('big-room', 1, 9) === 0
+        && approach('big-room', 2, 8) === 0 && Math.abs(approach('big-room', 3, 8) - 1 / 2) < 0.07,
+        `the approach rolls from Surge under 9 (${approach('big-room', 2, 9).toFixed(2)}), and only at Overload before it`);
+      const take = (v, version) => makeBanger(recipe('big-room', 11, { voltage: v, expression: version }));
+      assert(same(take(2, 9).mix, take(2, 9).mix), 'a Surge take at 9 is made the same every time');
     }
     const bass = [0, 1, 2, 3].map((v) => rate('big-room', 'anthemic', v, (r) => r.parts.bass));
     // (the gate is counted over the takes that keep their supersaws — piano stabs are never gated)
@@ -778,10 +805,10 @@ const plannedAt = (fixture, lane, set) => createLaneView({
       for (const wild of [false, true]) {
         const r = recipe(st.id, seed);
         const as = makeBanger({ ...r, wild });
-        // (in the form its style started on then: FORMS_BEFORE_5; with the Half Speed breakdown every
-        // breakdown had before version 6)
+        // (in the form its style started on then: FORMS_BEFORE_5; with the breakdown, builds, intro
+        // and riser every song had before version 6 — a form or effects named without them are those)
         const form = { template: FORMS_BEFORE_5[st.id] || styleDefaults(BANGER_STYLES.find((x) => x.id === st.id)).form.template, breakdownHook: 'half' };
-        const expected = trimmed(direct(r, { form, ...(wild ? { variation: 'wild' } : {}) }));
+        const expected = trimmed(direct(r, { form, fx: { riserWay: 'noise' }, spot: { ...spotFor(r.style, r.seed), riser: 'none' }, ...(wild ? { variation: 'wild' } : {}) }));
         if (!(same(as.bank, expected.bank) && same(as.mix, expected.mix) && same(as.arrangement, expected.arrangement))) legacyOk = false;
         for (const expression of [0, undefined, null, 'x', -1, Number.NaN]) {
           if (!same(makeBanger({ ...r, wild, expression }).mix, as.mix)) legacyOk = false;

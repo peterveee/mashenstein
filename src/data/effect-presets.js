@@ -671,6 +671,47 @@ export const EFFECT_PRESETS = {
         }
       }
     },
+    "duck": {
+      "default": {
+        "trigger": "kick",
+        "depth": 0.65,
+        "attack": 0.01,
+        "hold": 0,
+        "release": 0.16
+      },
+      "presets": {
+        "Pump": {
+          "depth": 0.65,
+          "attack": 0.02,
+          "hold": 0,
+          "release": 0.16
+        },
+        "Gentle": {
+          "depth": 0.35,
+          "attack": 0.005,
+          "hold": 0,
+          "release": 0.12
+        },
+        "Tight": {
+          "depth": 0.5,
+          "attack": 0.002,
+          "hold": 0,
+          "release": 0.07
+        },
+        "Deep": {
+          "depth": 0.9,
+          "attack": 0.01,
+          "hold": 0.02,
+          "release": 0.3
+        },
+        "Extreme": {
+          "depth": 1,
+          "attack": 0.002,
+          "hold": 0.05,
+          "release": 0.4
+        }
+      }
+    },
     "stutter": {
       "default": {
         "slice": 0.25,

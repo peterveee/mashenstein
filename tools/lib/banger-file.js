@@ -5,7 +5,7 @@
 // server restart). This file only WRITES what the page made: a song in its own drawer,
 // work/bangers/ (BANGER_DIR), its recipe in `export const banger` above the desk's marker.
 //
-// TAKES. Another Take re-rolls the same recipe with a new seed into the SAME song. The
+// TAKES. Remix re-rolls the same recipe with a new seed into the SAME song. The
 // take it replaces is kept whole — music and all — as
 // work/mix-history/banger-<id>-take-NNN.js. Whole, not the desk-tail snapshot every save
 // writes: a take's MUSIC is above the marker, which is exactly the half the desk's own

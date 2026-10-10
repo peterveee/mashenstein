@@ -12,14 +12,14 @@ const {
   upgradeDraft, upgradeRecipeNotes, luckyNotes, hasNotes,
 } = riffMod;
 const DEFAULT_NOTES = DEFAULT_SIMPLE;
-const { MAKER_STYLES, MAKER_MOODS, makeBanger, defaultMoodFor, hookSoundFor, RIFF_TRIM_DB, tapeStopFor, TAPE_STOP_CHANCE,
+const { MAKER_STYLES, MAKER_MOODS, makeBanger, defaultMoodFor, hookSoundFor, labLeadSound, presetHolds, LAB_INFUSIONS, RIFF_TRIM_DB, tapeStopFor, TAPE_STOP_CHANCE,
   spotFor, INTRO_LOWPASS_CHANCE, INTRO_BITCRUSH_CHANCE, UNDERWATER_CHANCE, formulaLabel } = await import('../src/game/banger/make.js');
 const { BANGER_STYLES } = await import('../tools/lib/banger/styles/index.js');
 const { generateBanger } = await import('../tools/lib/banger/index.js');
 const {
   bangerState, keepBanger, reviseBanger, saveDraft, bangerRow, MAX_KEPT, deleteBanger, lastPlayedBanger,
 } = await import('../src/game/banger/store.js');
-const { BangerMakerState, RIFF_VOICES, MAKER_VARIATIONS, MUTATION_LADDER } = await import('../src/game/banger/maker.js');
+const { BangerMakerState, MAKER_VARIATIONS } = await import('../src/game/banger/maker.js');
 const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { BangerClubState, LED_COLS, DICE_LINES } = await import('../src/game/banger/club.js');
@@ -341,11 +341,11 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const wild = makeBanger({ ...recipe, wild: true });
   const voltageBpms = [0, 1, 2, 3].map((voltage) => makeBanger({ ...recipe, voltage }).bpm);
   assert(voltageBpms.join() === '138,138,138,140', 'only Overload lifts tempo, capped by Trance\'s range');
-  // (a recipe kept before expression 6: Half Speed, the snare roll, straight in — make.js)
+  // (a recipe kept before expression 6: Half Speed, the snare roll, straight in, the riff intro, the noise riser — make.js)
   const { styleDefaults } = await import('../tools/lib/banger/options.js');
   const classic = { template: styleDefaults(BANGER_STYLES.find((s) => s.id === recipe.style)).form.template, breakdownHook: 'half', buildWay: 'roll', dropIn: 'straight' };
   const expected = generateBanger({ riff: riffFromNotes(recipe.notes, hookSoundFor(recipe.style, recipe.mood)),
-    options: { style: recipe.style, mood: recipe.mood, variation: 'wild', spot: spotFor(recipe.style, recipe.seed), form: classic }, seed: recipe.seed });
+    options: { style: recipe.style, mood: recipe.mood, variation: 'wild', spot: { ...spotFor(recipe.style, recipe.seed), riser: 'none' }, form: classic, fx: { riserWay: 'noise' } }, seed: recipe.seed });
   assert(JSON.stringify(wild.bank) === JSON.stringify(expected.bank), 'Go wild uses the generator Wild variation');
   assert(JSON.stringify(wild.bank) !== JSON.stringify(makeBanger(recipe).bank), 'Go wild changes the generated music');
 }
@@ -358,24 +358,29 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.enter();
   let L = maker.layout();
   assert(BANGER_VOLTAGES.map((preset) => preset.label).join() === 'Safe,Charged,Surge,Overload'
-    && maker.voltage === 1 && maker.mutationLabel() === 'CHARGED · HYBRID', 'the maker opens on MUTATION at Charged · Hybrid');
+    && maker.voltage === 1 && maker.mutationLabel() === 'CHARGED · HYBRID', 'the maker opens on MUTATIONS at Charged · Hybrid');
   assert(L.pickers.length === 4 && !('voltageBox' in L), 'Formula, Infusion, Element and Mutation share one selector row');
   assert(!('wildBox' in L) && !('energyBox' in L) && !('effectsBox' in L), 'Go Wild, Energy and Track Effects are merged');
-  // MUTATION is Voltage and DNA in one selector: a 4×4 grid, Voltage down the side, DNA across.
+  // MUTATIONS (Peter, 10 Oct 2026): ENERGY and YOUR TUNE each a row of their own in its chooser, made by OK.
   const chooseMutation = (level, dna) => {
     const control = L.pickers[3];
     tap(maker, control.x + control.w / 2, control.y + control.h / 2);
-    const { cells, grid } = maker.chooserLayout(maker.layout());
-    assert(maker.chooser?.picker === 3 && cells.length === 16 && grid, 'MUTATION opens a grid of all sixteen');
+    const { cells } = maker.chooserLayout(maker.layout());
+    const items = maker.chooser?.items || [];
+    assert(maker.chooser?.picker === 3 && items.filter((it) => it.kind === 'energy').length === 4 && items.filter((it) => it.kind === 'notes').length === 4,
+      'MUTATIONS opens with a row for ENERGY and a row for YOUR TUNE');
     maker.draw(document.createElement('canvas').getContext('2d'));
-    const k = level * 4 + MAKER_VARIATIONS.findIndex((v) => v.id === dna);
-    tap(maker, cells[k].x + cells[k].w / 2, cells[k].y + cells[k].h / 2);
+    const at = (kind, value) => items.findIndex((it) => it.kind === kind && it.value === value);
+    tap(maker, ...centre(cells[at('energy', level)]));
+    tap(maker, ...centre(cells[at('notes', dna)]));
+    assert(maker.chooser?.stage.voltage === level && maker.chooser.stage.variation === dna, 'a tap on each row marks it and leaves the chooser open');
+    tap(maker, ...centre(cells[items.findIndex((it) => it.kind === 'ok')]));
   };
   assert(maker.variation === 'some', 'DNA starts on Hybrid, not Pure');
   maker.setVariation('nonsense');
   assert(maker.variation === 'some', 'an unreadable DNA setting reads as Hybrid');
   chooseMutation(0, 'some');
-  assert(!maker.chooser && maker.voltage === 0 && maker.energy === 'lean' && maker.trackEffects === 'style' && maker.variation === 'some', 'Safe · Hybrid keeps the formula intact and sequences the riff, and a tap closes the grid');
+  assert(!maker.chooser && maker.voltage === 0 && maker.energy === 'lean' && maker.trackEffects === 'style' && maker.variation === 'some', 'Safe · Hybrid keeps the formula intact and sequences the riff, and OK closes the grid');
   chooseMutation(2, 'some');
   assert(maker.voltage === 2 && maker.energy === 'huge' && maker.trackEffects === 'adventurous' && maker.variation === 'some', 'Surge maps to high energy and bold FX');
   chooseMutation(3, 'some');
@@ -383,13 +388,14 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   chooseMutation(3, 'faithful');
   assert(maker.voltage === 3 && maker.energy === 'maximum' && maker.variation === 'faithful', 'Overload · Pure: everything flat out, the riff as written — every pairing is still there');
   {
+    // MUTATIONS has no arrows: either end of it opens the chooser and changes nothing
     const control = L.pickers[3];
-    assert(MUTATION_LADDER.join() === '0,4,5,10,12,15', 'its arrows step six: Safe·Pure, Charged·Pure, Charged·Hybrid, Surge·Spliced, Overload·Pure, Overload·Mutant');
     maker.setMutation(6);
-    tap(maker, control.x + control.w * 0.1, control.y + control.h / 2);
-    assert(maker.mutation === 5, 'from off the ladder, the left arrow steps down to the next step below');
-    tap(maker, control.x + control.w - 3, control.y + control.h / 2);
-    assert(maker.mutation === 10 && maker.voltage === 2 && maker.variation === 'more', 'and the right arrow up to Surge · Spliced');
+    for (const x of [control.x + 3, control.x + control.w - 3]) {
+      tap(maker, x, control.y + control.h / 2);
+      assert(maker.chooser?.picker === 3 && maker.mutation === 6, 'either end of MUTATIONS opens its chooser, no arrow stepping it');
+      maker.chooser = null;
+    }
   }
   chooseMutation(1, 'some');
   assert(maker.voltage === 1 && !maker.wild && maker.energy === 'full' && maker.trackEffects === 'subtle', 'Charged maps to medium energy and subtle FX');
@@ -427,25 +433,128 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(!maker.chooser && maker.mood === before, 'and confirm on it closes with nothing changed');
   }
   {
-    // The style and mood are remembered; the grid's preview sound changes every visit.
+    // LENGTH and SHAPE in MUTATIONS' chooser (Peter, 10 Oct 2026): staged with the other rows, made by OK, dropped by
+    // CANCEL. DEFAULT names the formula's own, and the other buttons are the rest.
+    const control = L.pickers[3];
+    const open = () => { tap(maker, ...centre(control)); return maker.chooserLayout(maker.layout()).cells; };
+    const at = (kind, value) => maker.chooser.items.findIndex((it) => it.kind === kind && (value === undefined || it.value === value));
+    const ctx = document.createElement('canvas').getContext('2d');
+    const was = { style: maker.style, mutation: maker.mutation };
+    maker.setStyle('big-room');
+    let cells = open();
+    const labels = (kind) => maker.chooser.items.filter((it) => it.kind === kind).map((it) => it.sub ? `${it.label}·${it.sub}` : it.label).join(' ');
+    assert(labels('length') === 'RADIO EDIT SINGLE·DEFAULT ALBUM VERSION 12 INCH' && labels('shape') === 'CLUB·DEFAULT POP SONG ANTHEM GROOVE',
+      `LENGTH and SHAPE keep their own order, Big-Room House's own marked DEFAULT (${labels('length')} / ${labels('shape')})`);
+    maker.draw(ctx);
+    tap(maker, ...centre(cells[at('length', 'long')]));
+    tap(maker, ...centre(cells[at('shape', 'groove')]));
+    tap(maker, ...centre(cells[at('energy', 3)]));
+    assert(maker.chooser && maker.songLength === null && maker.shape === null && maker.mutation === was.mutation,
+      'taps mark LENGTH, SHAPE and ENERGY, and change nothing yet');
+    maker.draw(ctx);
+    tap(maker, ...centre(cells[at('cancel')]));
+    assert(!maker.chooser && maker.songLength === null && maker.shape === null && maker.mutation === was.mutation, 'CANCEL leaves everything as it was');
+    cells = open();
+    tap(maker, ...centre(cells[at('length', 'long')]));
+    tap(maker, ...centre(cells[at('shape', 'groove')]));
+    tap(maker, ...centre(cells[at('ok')]));
+    assert(!maker.chooser && maker.songLength === 'long' && maker.shape === 'groove' && maker.mutationValue() === `${maker.mutationLabel()} · ALBUM VERSION · GROOVE`,
+      `OK makes them, and the selector says the ones that are not DEFAULT (${maker.mutationValue()})`);
+    assert(maker.draft().songLength === 'long' && maker.draft().shape === 'groove', 'the draft remembers them');
+    cells = open();
+    assert(maker.chooser.stage.songLength === 'long' && maker.chooser.stage.shape === 'groove', 'and the chooser opens on them');
+    tap(maker, ...centre(cells[at('shape', null)]));
+    tap(maker, ...centre(cells[at('ok')]));
+    assert(maker.shape === null && maker.mutationValue() === `${maker.mutationLabel()} · ALBUM VERSION`, 'DEFAULT puts SHAPE back to the formula\'s own');
+    // Trance is long already: DEFAULT · LONG, and the selector no longer says it
+    maker.setStyle('trance');
+    cells = open();
+    assert(labels('length') === 'RADIO EDIT SINGLE ALBUM VERSION·DEFAULT 12 INCH' && labels('shape') === 'CLUB POP SONG ANTHEM·DEFAULT GROOVE' && maker.chooser.stage.songLength === null,
+      `the same order for Trance, DEFAULT now under Album Version and Anthem, and a picked Long is its DEFAULT (${labels('length')} / ${labels('shape')})`);
+    maker.chooser = null;
+    assert(maker.mutationValue() === maker.mutationLabel(), 'and the selector says only the mutation');
+    // under an INFUSION, DEFAULT is the Club form, and a SHAPE can still be picked over it
+    maker.setStyle('big-room'); maker.shape = null; maker.setInfusion('trance');
+    cells = open();
+    assert(labels('shape') === 'CLUB·DEFAULT POP SONG ANTHEM GROOVE', `with an INFUSION, DEFAULT is the Club form (${labels('shape')})`);
+    tap(maker, ...centre(cells[at('shape', 'pop')]));
+    maker.draw(ctx);
+    tap(maker, ...centre(cells[at('ok')]));
+    assert(maker.shape === 'pop' && maker.size().shape === 'pop' && maker.mutationValue().endsWith('· POP SONG'),
+      'and Pop Song can be picked over it, made and shown');
+    maker.shape = null;
+    maker.setInfusion(null);
+    // the arrows walk the uneven rows: down from ENERGY to YOUR TUNE, LENGTH, then SONG TYPE, CANCEL and OK
+    cells = open();
+    assert(maker.chooser.items[maker.chooser.sel].kind === 'energy' && maker.chooser.items[maker.chooser.sel].value === maker.voltage, 'the focus starts on the ENERGY marked');
+    frame(maker, 'down');
+    assert(maker.chooser.items[maker.chooser.sel].kind === 'notes', 'down reaches YOUR TUNE');
+    frame(maker, 'down');
+    assert(maker.chooser.items[maker.chooser.sel].kind === 'length', 'and LENGTH');
+    frame(maker, 'down'); frame(maker, 'down');
+    assert(maker.chooser.items[maker.chooser.sel].kind === 'ok' || maker.chooser.items[maker.chooser.sel].kind === 'cancel', 'and on down to CANCEL and OK');
+    frame(maker, 'right');
+    const onOk = maker.chooser.items[maker.chooser.sel].kind === 'ok' ? maker.chooser.sel : null;
+    if (onOk === null) frame(maker, 'right');
+    assert(maker.chooser.items[maker.chooser.sel].kind === 'ok', 'along the row to OK');
+    for (let k = 0; k < 6; k++) frame(maker, 'up');
+    assert(maker.chooser.sel === -1, 'and up off the top to BACK');
+    frame(maker, 'confirm');
+    assert(!maker.chooser, 'which closes it');
+    // a recipe carries them; a reroll keeps them
+    maker.songLength = 'short'; maker.shape = 'anthem';
+    made = null;
+    maker.make();
+    for (let i = 0; i < 400 && !made; i++) frame(maker);
+    assert(made && made.rec.songLength === 'short' && made.rec.shape === 'anthem' && made.song.form.at(-1).to === 48,
+      `BRING TO LIFE makes them, and the song is 48 bars (${made?.song.form.at(-1).to})`);
+    const { rerollRecipe: reroll } = await import('../src/game/banger/maker.js');
+    assert(reroll(made.rec, 99).songLength === 'short' && reroll(made.rec, 99).shape === 'anthem', 'a BOLT reroll keeps LENGTH and SHAPE');
+    maker.songLength = null; maker.shape = null; maker.setStyle(was.style); maker.setMutation(was.mutation);
+    made = null;
+  }
+  {
+    // The style and mood are remembered, and the grid plays the riff on one of the leads the song
+    // draws from, FORMULA's or INFUSION's, following each change — the first that holds a note, never
+    // a TNGR-2 in the dev build, Simple Square if none will do (Peter, 10 Oct 2026).
+    const { VOICES } = await import('../src/data/voices.js');
     const left = { style: MAKER_STYLES[MAKER_STYLES.length - 1].id, mood: MAKER_MOODS[MAKER_MOODS.length - 1].id };
-    saveDraft({ ...bangerState().draft, ...left });
-    const voices = new Set();
-    let kept = true;
-    let repeats = 0;
-    let last = null;
-    for (let k = 0; k < 30; k++) {
-      const m = new BangerMakerState({ onDone: () => {}, onMade: () => {} });
-      m.enter();
-      if (m.style !== left.style || m.mood !== left.mood) kept = false;
-      if (m.riffVoice === last) repeats++;
-      voices.add(m.riffVoice);
-      last = m.riffVoice;
-      m.exit();
-    }
-    assert(kept, 'each visit opens on the style and mood it was left on');
-    assert(voices.size >= 6 && repeats === 0 && [...voices].every((id) => RIFF_VOICES.includes(id)),
-      `and plays the grid on a different soft preset each visit, never last visit's (${voices.size} heard in 30)`);
+    saveDraft({ ...bangerState().draft, ...left, infusion: null });
+    const m = new BangerMakerState({ onDone: () => {}, onMade: () => {} });
+    m.enter();
+    assert(m.style === left.style && m.mood === left.mood, 'each visit opens on the style and mood it was left on');
+    assert(m.riffVoice === labLeadSound(left.style, left.mood), `and plays the grid on that formula's own lead (${m.riffVoice})`);
+    m.setStyle('big-room');
+    m.mood = defaultMoodFor('big-room');
+    assert(hookSoundFor('big-room', m.mood) === 'mrdrElectricGrand' && m.riffVoice === 'tngrClassicSquare',
+      `a new FORMULA brings its lead: Big-Room House's own is Electric Grand, a struck piano, so the grid plays Classic Square (${m.riffVoice})`);
+    assert(labLeadSound('big-room', m.mood, null, { noTngr2: true }) === 'bestScreamerLead',
+      'and the dev build passes over its TNGR-2s to Screamer Lead');
+    const bigRoom = m.riffVoice;
+    m.setInfusion('techno');
+    assert(m.riffVoice === labLeadSound('big-room', m.mood, 'techno') && m.riffVoice !== bigRoom,
+      `an INFUSION brings its own (${m.riffVoice})`);
+    m.setInfusion(null);
+    const leads = MAKER_MOODS.map((x) => labLeadSound('eurobeat', x.id));
+    const other = MAKER_MOODS[leads.findIndex((id) => id !== leads[0])];
+    m.setStyle('eurobeat');
+    m.mood = MAKER_MOODS[0].id;
+    const first = m.riffVoice;
+    m.mood = other.id;
+    assert(other && m.riffVoice !== first && m.riffVoice === labLeadSound('eurobeat', other.id),
+      `and an ELEMENT whose flavour has another lead brings that (${first} → ${m.riffVoice})`);
+    const missing = MAKER_STYLES.flatMap((st) => MAKER_MOODS.map((x) => labLeadSound(st.id, x.id)).filter((id) => !VOICES[id]));
+    assert(!missing.length, `every formula's lead in every element is a real preset (${missing.join(', ') || 'all'})`);
+    const every = (opts) => MAKER_STYLES.flatMap((st) => [null, ...(LAB_INFUSIONS[st.id] ?? [])].flatMap((inf) =>
+      MAKER_MOODS.map((x) => labLeadSound(st.id, x.id, inf, opts))));
+    const struck = [...new Set(every().filter((id) => !presetHolds(id)))];
+    assert(presetHolds('simpleSquare') && !struck.length, `and every one of them holds a note (${struck.join(', ') || 'all'})`);
+    const tngr = [...new Set(every({ noTngr2: true }).filter((id) => VOICES[id].synth === 'TNGR-2'))];
+    assert(!tngr.length, `with noTngr2, none is a TNGR-2 (${tngr.join(', ') || 'none'})`);
+    assert(!presetHolds('mrdrElectricGrand') && !presetHolds('tngrWireHarp') && !presetHolds('toneSquare') && presetHolds('bestHeroLead'),
+      'a piano, a pluck and a fixed-length blip do not hold; Hero Lead does');
+    m.setStyle(left.style); m.mood = left.mood;
+    m.exit();
   }
   {
     // Landscape SIMPLE shows all eleven rows, G4 to C6, and does not scroll (Peter, 5 Oct 2026).
@@ -575,14 +684,16 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   // up from the top row reaches the mode switch.
   maker.focus = { area: 'grid', col: maker.steps - 1, row: maker.rows - 1, picker: 0, button: 3 };
   frame(maker, 'down');
-  assert(maker.focus.area === 'picker' && maker.focus.picker === 3, 'down from the grid reaches MUTATION in the same selector row');
+  assert(maker.focus.area === 'picker' && maker.focus.picker === 3, 'down from the grid reaches MUTATIONS in the same selector row');
   maker.setMutation(0);
   frame(maker, 'right');
-  assert(maker.voltage === 1 && maker.variation === 'faithful', 'right steps MUTATION from Safe · Pure to Charged · Pure');
-  frame(maker, 'right');
-  assert(maker.variation === 'some', 'then Charged · Hybrid');
-  frame(maker, 'right'); frame(maker, 'right'); frame(maker, 'right'); frame(maker, 'right');
-  assert(maker.voltage === 3 && maker.variation === 'wild', 'left and right step the ladder, stopping at Overload · Mutant');
+  assert(maker.mutation === 0 && maker.focus.picker === 3, 'right on MUTATIONS changes nothing: it has no arrows');
+  frame(maker, 'left');
+  assert(maker.mutation === 0 && maker.focus.picker === 2, 'left moves along to ELEMENT');
+  frame(maker, 'confirm');
+  maker.chooser = null;
+  // (and on to Overload · Mutant, where the checks below expect it)
+  maker.setMutation(15);
   maker.focus.picker = 1;
   frame(maker, 'right');
   assert(maker.infusion && maker.infusion !== maker.style, 'right turns INFUSION from NONE to another formula');
@@ -620,7 +731,9 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     assert(infused > 4 && infused < 30, 'and an INFUSION now and then, NONE the rest');
     maker.setStyle(was.style); maker.setInfusion(null); maker.mood = was.mood; maker.setVoltage(was.voltage, false); maker.setVariation(was.variation);
   }
+  // ZAP fires as the finger lifts, on the next frame (held, it opens the list of tunes instead)
   tap(maker, ...centre(L.buttons[1]));
+  frame(maker);
   assert(hasNotes(maker.notes) && maker.notes.length === 16, 'ZAP writes a riff into the grid on show');
   const lucky = [...maker.notes];
 
@@ -639,8 +752,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(typeof made.rec.name === 'string' && made.rec.name.length > 0, 'the pending preview is titled before it is kept');
   const kept = keepBanger({ ...made.rec, fresh: false, name: made.rec.name });
   assert(kept === bangerState().kept.at(-1) && bangerState().kept.includes(kept), 'saving the pending recipe keeps the song');
-  assert(kept.expression === 7 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
-    'a new recipe opts into expression version 7 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song, the Varied breakdown, Chords Early), and made again from the kept recipe it is the song just handed over');
+  assert(kept.expression === 11 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
+    'a new recipe opts into expression version 11 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song, the Varied breakdown, Chords Early, the Varied intro and riser, the key lift roll, the breakdown backing and Club shape, the style\'s own kit rolls), and made again from the kept recipe it is the song just handed over');
 
   tap(maker, ...centre(L.buttons[0]));
   made = null;
@@ -778,6 +891,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   maker.draw(document.createElement('canvas').getContext('2d'));
   // ZAP at four bars writes four: a cabinet's own phrase (this maker's random is 0), or one of its own
   tap(maker, ...centre(L.buttons[1]));
+  frame(maker);
   assert(maker.notes.length === 32 && hasNotes(maker.notes.slice(16)), 'ZAP at four bars writes four bars');
   tap(maker, ...centre(L.buttons[0]));
   maker.setBars(2);
@@ -2714,6 +2828,39 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
       tap(glass, ...centre(glass.boxes.reroll));
       step(glass, 1);
       assert(made === 1 && glass.rerolling > 0, 'a second tap makes the new take');
+      // held (Peter, 10 Oct 2026: "a hold on the bolt to activate the remix. Only ask for a second
+      // tap if they do not hold"): the finger that armed it, kept on the bolt, lets it go — and
+      // whatever the phone reports while it is down (a mouse press made up after a touch) is not a yes
+      const was = new Map(Input.touches);
+      const held = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, onReroll: () => { made++; return { commit: () => {} }; } });
+      held.enter();
+      held.draw(ctx);
+      const [hx, hy] = centre(held.boxes.reroll);
+      Input.touches.clear();
+      Input.touches.set(7, { x0: hx, y0: hy, x: hx, y: hy });
+      tap(held, hx, hy);
+      step(held, 20);
+      const mouse = (() => { Input.usingTouch = false; tap(held, hx, hy); Input.usingTouch = true; return held.rerolling; })();
+      assert(made === 1 && !held.rerolling && !mouse && held.rerollHeld && held.rerollArmed(), 'a bolt held a moment is still waiting, and says HOLD rather than TAP AGAIN');
+      step(held, 15);
+      assert(made === 2 && held.rerolling > 0, 'held for half a second, the bolt lets go without a second tap');
+      // lifted before then it was a tap: armed, and it asks for the second one
+      const quick = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, onReroll: () => { made++; return { commit: () => {} }; } });
+      quick.enter();
+      quick.draw(ctx);
+      Input.touches.clear();
+      Input.touches.set(9, { x0: hx, y0: hy, x: hx, y: hy });
+      tap(quick, hx, hy);
+      step(quick, 10);
+      Input.touches.delete(9);
+      step(quick, 60);
+      assert(made === 2 && !quick.rerolling && !quick.rerollHeld && quick.rerollArmed(), 'a finger lifted before the hold only arms it');
+      Input.touches.set(10, { x0: hx, y0: hy, x: hx, y: hy });
+      tap(quick, hx, hy);
+      step(quick, 1);
+      Input.touches.clear();
+      for (const [k, v] of was) Input.touches.set(k, v);
+      assert(made === 3 && quick.rerolling > 0, 'a new finger once the first has lifted makes the take');
       const other = new BangerClubState({ rec, onBack: () => {}, onEdit: () => {}, onReroll: () => { made++; return { commit: () => {} }; } });
       other.enter();
       other.draw(ctx);
@@ -2743,7 +2890,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
     step(hover, 30);
     seen.push(hover.tip?.key === 'transport1' && hover.tipText('transport1'));
     hover.draw(ctx);
-    assert(seen.join() === 'EDIT RIFF / STYLE,NEW TAKE,SAVE,MIXER,PAUSE', `the bottom row's tooltips say what each button does (${seen.join()})`);
+    assert(seen.join() === 'EDIT TUNE / STYLE,REMIX,SAVE,MIXER,PAUSE', `the bottom row's tooltips say what each button does (${seen.join()})`);
     Input.pointer = { x: 240, y: 135, down: false };
     step(hover, 1);
     assert(!hover.tip, 'and go when the pointer leaves');
@@ -2845,7 +2992,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const revised = reviseBanger(rec, made);
   assert(revised === rec && rec.style === other && rec.name === name && rec.n === n && bangerState().kept.length === count,
     'and saving the edit remakes that song in place: same name and number, the new style, no new song');
-  assert(rec.expression === 7, 'and an old recipe edited with the pencil opts into expression version 7');
+  assert(rec.expression === 11, 'and an old recipe edited with the pencil opts into expression version 11');
   assert(JSON.stringify(bangerState().draft) === draftBefore, 'editing a song leaves the NEW BANGER draft alone');
 }
 

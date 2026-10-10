@@ -11,7 +11,7 @@
 //   Some      + sequenced up the scale (+2 / +4 degrees, ABSOLUTE ZERO's drop) · a
 //             turnaround onto the dominant · the head alone · a chop
 //   Wild      + a fragment developed across the bar · displaced by an eighth · a leap
-//             at the phrase's peak
+//             at the phrase's peak (a fifth up the scale)
 //
 // WILD IS NEVER A ONE-OFF. A new idea heard once sounds like a mistake; heard again, it
 // is part of the tune. So the fragment comes back in the same bar of the phrase's second
@@ -130,14 +130,19 @@ export function displace(part, by = 2) {
   return out;
 }
 
-/** A leap at the peak: the bar's last note an octave up, while that stays singable. */
-export function leap(part) {
+/**
+ * A leap at the peak: the bar's last note a fifth up the scale (four degrees), while that
+ * stays singable. It was an octave until 10 Oct 2026: the next bar comes straight back
+ * down, so the octave was heard as one stray note; Peter chose the fifth by ear.
+ */
+export function leap(part, scale) {
   const out = clonePart(part);
   const last = lastStruckBefore(out, 15);
   if (last < 0) return out;
-  const v = out.notes[last];
-  const names = Array.isArray(v) ? v : [v];
-  if (names.every((x) => midi(x) + 12 <= 96)) out.notes[last] = Array.isArray(v) ? v.map((x) => nameOf(midi(x) + 12)) : nameOf(midi(v) + 12);
+  const one = blank();
+  one.notes[0] = out.notes[last]; one.lens[0] = 1;
+  const up = diatonic(one, 4, scale).notes[0];
+  if ((Array.isArray(up) ? up : [up]).every((x) => midi(x) <= 96)) out.notes[last] = up;
   return out;
 }
 
@@ -257,7 +262,7 @@ export function realise(cell, [src, op], { scale, dominant }) {
     case 'chop': return chop(bar);
     case 'frag': return fragment(bar, scale);
     case 'disp': return displace(bar);
-    case 'leap': return leap(bar);
+    case 'leap': return leap(bar, scale);
     case 'cut': return cut(bar, 12);
     default: return clonePart(bar);
   }

@@ -92,7 +92,7 @@ try {
   assert.equal(posts[2].direction,'modify');
   assert.deepEqual(generated.bank,posts[1].generated.bank,'FX modification retains the notes');
   await page.locator('#navbtn').click(); await page.locator('#bangeragain').click(); await waitPosts(4);
-  assert.equal(generated.banger.options.sectionFx.assignments[intro.id][0].chain[0].params.wet,.3,'Another Take retains explicit settings');
+  assert.equal(generated.banger.options.sectionFx.assignments[intro.id][0].chain[0].params.wet,.3,'Remix retains explicit settings');
   await page.locator('#navbtn').click(); await page.locator('#bangersettings').click(); await choose(1);
   await page.locator('#bgformreset').click(); await choose();
   assert.equal(await page.locator('[data-fx-row]').count(),0,'form reset clears explicit assignments');

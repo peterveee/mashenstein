@@ -13,7 +13,7 @@
 //    41–48   Drop 3 (lifted)
 // 
 // Written by tools/lib/banger/ (Make a Banger…). The recipe — riff, options, seed — is in
-// `banger` below, which is what Another Take re-rolls. Mix it freely: the desk saves under
+// `banger` below, which is what Remix re-rolls. Mix it freely: the desk saves under
 // the marker and never touches the music above it.
 //
 // THE LAB'S STARTER SONG (3 Oct 2026): copied from work/bangers/neon-orbit-banger.js as

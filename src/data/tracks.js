@@ -55,7 +55,7 @@ export function registerTrack({
     // a parent guessed from a title is a parent that writes over the wrong song.
     ...(alternateOf ? { alternateOf } : {}),
     // A song the desk's Make a Banger… wrote: the recipe it was made from (the riff,
-    // the options, the seed), which is what Another Take re-rolls. See tools/lib/banger/.
+    // the options, the seed), which is what Remix re-rolls. See tools/lib/banger/.
     ...(banger ? { banger } : {}),
   });
   // Never over the id a built-in already gave this bank. The moment an imported bank

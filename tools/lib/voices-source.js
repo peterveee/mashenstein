@@ -148,7 +148,7 @@ const HEAD = ['label', 'category', 'kind', 'lanes', 'homeLane', 'synth', 'dur'];
 // share a line — they are two halves of one idea and both are short.
 const BODY = ['note', 'origin', 'options', 'additive', 'sync', 'layer', 'global', 'osc', 'osc2', 'knock', 'noise', 'ring', 'metal',
   'drive', 'shape', 'tone', 'humanize', 'velocity', 'taps', 'tapFalloff', 'tapDetune', 'tapTone', 'tapGains', 'tapDecays',
-  'bypassed'];
+  'tapScatter', 'bypassed'];
 
 /**
  * One catalogue entry, as source, indented to sit in a table.
@@ -206,7 +206,7 @@ export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak'
   // HUMANISE, as on the panel: both say how one hit differs from the next.
   if (has('velocity')) lines.push(`    velocity: ${flat(v.velocity)},`);
   // The tap keys travel together and are short — one line reads better than four.
-  const taps = ['taps', 'tapFalloff', 'tapGains', 'tapDecays', 'tapDetune', 'tapTone'].filter(has)
+  const taps = ['taps', 'tapFalloff', 'tapGains', 'tapDecays', 'tapDetune', 'tapTone', 'tapScatter'].filter(has)
     .map((k) => `${k}: ${flat(v[k])}`);
   if (taps.length) lines.push(`    ${taps.join(', ')},`);
   // What the panel's On/Off switches are holding — sections that are switched OFF, kept

@@ -112,6 +112,24 @@ const noteOf = (out) => (Array.isArray(out.note) ? out.note.join('\n') : String(
   assert(JSON.stringify(hookBars(muffled)) === JSON.stringify(written) && sweeps.length > 0, 'Muffled: the hook as written, under a low-pass that opens');
   assert(Object.keys(BREAKDOWN_FX).every((id) => BREAKDOWN_WAYS.some((w) => w.id === id)), 'every breakdown effect belongs to a way');
 
+  // The three auditioned and kept (10 Oct 2026): gated, an octave up and echoed, an octave down.
+  const gated = make('gated');
+  assert(laneFx(gated.arrangement.automation, hookLane(gated)).some((x) => x.chain.some((e) => e.id === 'rhythmgate')), 'Gated Hook: the hook through a gate');
+  const up8 = make('octaveEcho'); const wr = make('written');
+  const top = (out) => Math.max(...hookBars(out).flat().map(([, v]) => [].concat(v).map((x) => (typeof x === 'number' ? x : 0))).flat());
+  const firstNote = (out) => barPart(out, hookLane(out), breakdownOf(out).from).find((v) => v != null);
+  assert(firstNote(up8) && Math.round(12 * Math.log2(firstNote(up8) / firstNote(wr))) === 12, 'Octave Echo: the hook an octave up');
+  const lo = make('low');
+  assert(firstNote(lo) && Math.round(12 * Math.log2(firstNote(lo) / firstNote(wr))) === -12, 'Low and Muffled: the hook an octave down');
+  const era1 = new Set();
+  for (let seed = 1; seed <= 80; seed++) {
+    const m = noteOf(generateBanger({ riff: RIFF, seed, options: { style: 'big-room', waysEra: 1, form: { template: 'club', breakdownHook: 'varied' } } })).match(/Breakdown[^\n]*— ([A-Za-z ]+)$/m);
+    if (m) era1.add(m[1]);
+  }
+  assert(!['Gated Hook', 'Octave Echo', 'Low and Muffled'].some((l) => era1.has(l)), 'a request of the first Ways Era (a Lab song kept before them) never draws the three');
+  assert(['gated', 'octaveEcho', 'low'].every((id) => VARIED_WAYS.includes(id)) && !BREAKDOWN_WAYS.some((w) => w.id === 'choir'),
+    'the three are in Varied; the Choir Hook is gone (the choir\'s attack too slow for a tune)');
+
   const half = hookBars(make('half'));
   assert(half[0].length > 0 && half[0].length < onsets(barPart(make('written'), hookLane(make('written')), bd.from)).length,
     'Half Speed is still the hook at half speed: fewer notes a bar than As Written');
@@ -169,6 +187,21 @@ const noteOf = (out) => (Array.isArray(out.note) ? out.note.join('\n') : String(
     if (adding.includes(m?.[1])) adds++;
   }
   assert(adds === 0, 'under a Sound Set (the phone\'s budget) Varied never draws a way that adds a part');
+}
+
+// ---- Breakdown Backing: Varied from Ways Era 4, every way drawn, never one the style rules out
+{
+  const { BACKING_WAYS } = await import('../tools/lib/banger/breakdown-ways.js');
+  const seen = new Set(); const old = new Set();
+  for (let seed = 1; seed <= 80; seed++) {
+    const m = noteOf(generateBanger({ riff: RIFF, seed, options: { style: 'big-room', form: { template: 'club', breakdownHook: 'half', breakdownBacking: 'varied' } } })).match(/Breakdown[^\n]*— Half Speed(?: · (.+))?$/m);
+    seen.add(m?.[1] || 'Pad and Choir');
+    const o = noteOf(generateBanger({ riff: RIFF, seed, options: { style: 'big-room', waysEra: 3, form: { template: 'club', breakdownHook: 'half', breakdownBacking: 'varied' } } })).match(/Breakdown[^\n]*— Half Speed(?: · (.+))?$/m);
+    old.add(o?.[1] || 'Pad and Choir');
+  }
+  assert(BACKING_WAYS.every((w) => seen.has(w.label)), `Varied draws every backing (${[...seen].join(', ')})`);
+  assert([...old].join() === 'Pad and Choir', 'a request of an earlier Ways Era keeps the pad and choir');
+  assert(normaliseBangerOptions({ form: { template: 'club' } }).options.form.breakdownBacking === 'classic', 'one naming its form without it, too');
 }
 
 // ---- the Lab: kept recipes play Half Speed, new ones Varied

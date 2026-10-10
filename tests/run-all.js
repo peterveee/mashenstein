@@ -176,10 +176,15 @@ const suites = [
   'tests/banger-fusion.js',
   // Two moods under one name: the Lab's MOOD PAIRS in ELEMENT.
   'tests/banger-mood-pairs.js',
+  // The moods that suit each style: the dots in the Lab's ELEMENT.
+  'tests/lab-mood-suits.js',
+  'tests/lab-length-shape.js',
   // Every rolling style builds into its drop with a roll, a swell and a sweep of its own.
   'tests/banger-rolls.js',
   // B-33P's 8-bit gate: one bar before a new section, now and then.
   'tests/club-chip-gate.js',
+  // A double tap on the club's mirror ball brings up a visualiser over the room.
+  'tests/club-visualiser.js',
   // The club mixer's sound swaps land at the level of the sound they replace.
   'tests/club-voice-levels.js',
   'tests/creative-drum-kits.js',
@@ -210,6 +215,11 @@ const suites = [
   // Build Type and Before the Drop: each way plays what it says, Varied never repeats a build in a
   // song, the draws move nothing outside the builds, and old recipes keep the snare roll, straight in.
   'tests/banger-builds.js',
+  // Intro Type, Tune First and Riser Type: every intro has a tune in its first two bars, the layers and
+  // the Groove open on the riff, every riser struck its own length before the drop, old recipes kept.
+  'tests/banger-intros.js',
+  // Drop 2: each way changes the second drop and nothing else; Varied passes over what a song cannot play.
+  'tests/banger-drop2.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
@@ -647,6 +657,9 @@ const suites = [
   // Group buses, rendered: a track routed into a group reaches the mix once, through it;
   // a group's Spot FX act on its members and nothing else; no groups is the same samples.
   'tests/group-buses.js',
+  // The Sidechain Duck, rendered: it dips on the trigger's notes — muted, frozen, swung,
+  // on a group, in a section — is a wire when it hears nothing, and its stems still sum.
+  'tests/sidechain-duck.js',
   // Re-applying a mix is not a rebuild: the same mix laid back over a playing song keeps
   // every effect chain's nodes and changes no sample — the drum-preset dropout of 2 Oct.
   'tests/chain-reapply.js',
@@ -720,6 +733,7 @@ const browserSuites = new Set([
   'tests/fx-sections.js',
   'tests/stereo-widener.js',
   'tests/group-buses.js',
+  'tests/sidechain-duck.js',
   'tests/chain-reapply.js',
   'tests/music-variant.js',
   'tests/music-variant-render.js',
@@ -811,7 +825,7 @@ const soundSuites = [
   'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js', 'tests/wndr9-drive.js', 'tests/drive-ref.js', 'tests/crls-filter-env.js', 'tests/vibrato-start.js',
   'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/mix-automation.js',
   'tests/fx-sections.js', 'tests/stereo-widener.js',
-  'tests/group-buses.js', 'tests/group-buses-data.js', 'tests/group-buses-desk.js', 'tests/chain-reapply.js',
+  'tests/group-buses.js', 'tests/group-buses-data.js', 'tests/group-buses-desk.js', 'tests/sidechain-duck.js', 'tests/chain-reapply.js',
   'tests/stem-linearity.js', 'tests/music-variant.js',
   'tests/music-variant-render.js', 'tests/null-test.js', 'tests/render-length.js',
   'tests/new-effects.js', 'tests/engine-worklets.js',

@@ -425,7 +425,11 @@ for (const v of drum) {
     assert(v.ring.freq > 0, `${v.id}: the resonator has a pitch to ring at`);
     // Below about ten a bandpass colours rather than rings, and a resonator that does
     // not ring is a noise section with extra steps.
-    assert((v.ring.Q ?? 40) >= 5, `${v.id}: the resonator is narrow enough to ring`);
+    // A highpass or lowpass `ring` is a click (a filtered strike), not a resonator, and
+    // the library uses it that way — the rule is for the bandpass that rings.
+    if ((v.ring.type || 'bandpass') === 'bandpass') {
+      assert((v.ring.Q ?? 40) >= 5, `${v.id}: the resonator is narrow enough to ring`);
+    }
     assert((v.ring.hit ?? 0.002) > 0 && (v.ring.hit ?? 0.002) <= 0.08,
       `${v.id}: the strike is a strike, not a burst`);
   }

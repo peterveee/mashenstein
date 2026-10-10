@@ -190,7 +190,7 @@ export function createBangerDesk(desk) {
       + '<div class="bangergrid"><fieldset class="bgprimary"><legend>Sound &amp; feel</legend><div class="bgfields">'
       + `<label class="askfield" title="The recipe: the drums, the bass, the chords, the sounds and the form it starts on. Picking one resets everything under More Options to its defaults">Style<select id="bgstyle">${BANGER_STYLES.map((s) => `<option value="${s.id}" data-note="${escapeHtml(s.note || '')}"${sel(o.style, s.id)}>${escapeHtml(s.label)}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" id="bgcombofield" title="The style's own sounds, or a Sound Combo saved from a banger tuned on the desk"${Object.keys(BANGER_COMBOS[o.style] || {}).length ? '' : ' hidden'}>Sounds<select id="bgcombo">${comboOptions(o.style, o.combo)}</select></label>`
-      + `<label class="askfield" id="bgflavourfield" title="Which of the style's arrangements a take is — its drums, rhythms, sounds and how long its chords are held. By Mood: the one the mood plays. Random: drawn from the take's seed, so Another Take can land on any of them"${flavoursFor(o.style).length ? '' : ' hidden'}>Flavour<select id="bgflavour">${flavourOptions(o.style, o.flavour || 'mood', o.mood)}</select></label>`
+      + `<label class="askfield" id="bgflavourfield" title="Which of the style's arrangements a take is — its drums, rhythms, sounds and how long its chords are held. By Mood: the one the mood plays. Random: drawn from the take's seed, so Remix can land on any of them"${flavoursFor(o.style).length ? '' : ' hidden'}>Flavour<select id="bgflavour">${flavourOptions(o.style, o.flavour || 'mood', o.mood)}</select></label>`
       + `<label class="askfield" id="bginfusionfield" title="Infusion: another style's sound — its chords, instruments and form — over this style's groove: its drums, percussion, bass and tempo. None: the style's own sound">Infusion<select id="bginfusion">${infusionOptions(o.style, o.infusion)}</select></label>`
       + `<label class="askfield" title="The feel: the chord progression, the chord colours, how bright the hook is — and it can swap sounds and suggest a bass">Mood<select id="bgmood">${BANGER_MOODS.map((m) => `<option value="${m.id}" data-note="${escapeHtml(m.title)}"${sel(o.mood, m.id)}>${m.label}</option>`).join('')}</select></label>`
       + `<label class="askfield bgfull" title="Major or minor with one note changed — that note is the flavour">Mode<select id="bgmode">${modeOptions(o.mood, o.mode)}</select></label>`
@@ -312,6 +312,17 @@ export function createBangerDesk(desk) {
     if (stored.form && !(stored.prefs >= 3)) {
       stored.form = { ...stored.form, buildWay: stored.form.buildWay ?? 'varied', dropIn: stored.form.dropIn ?? 'varied' };
     }
+    // ...and Intro Type, Tune First and Riser Type (`prefs` 4).
+    if (stored.form && !(stored.prefs >= 4)) {
+      stored.form = { ...stored.form, introWay: stored.form.introWay ?? 'varied', tuneFirst: stored.form.tuneFirst ?? true };
+      stored.fx = { ...(stored.fx || {}), riserWay: stored.fx?.riserWay ?? 'varied', dropHit: stored.fx?.dropHit ?? 'varied' };
+    }
+    // ...and Riser FX (`prefs` 5).
+    if (stored.form && !(stored.prefs >= 5)) stored.spot = { ...(stored.spot || {}), riser: stored.spot?.riser ?? 'varied' };
+    // ...and Groove Pace, Every 4 Bars since 10 Oct 2026 (`prefs` 6).
+    if (stored.form && !(stored.prefs >= 6)) stored.form = { ...stored.form, groovePace: 'four', drop2Way: stored.form.drop2Way ?? 'varied' };
+    // ...and Breakdown Backing and Club Shape, Varied since 10 Oct 2026 (`prefs` 7).
+    if (stored.form && !(stored.prefs >= 7)) stored.form = { ...stored.form, breakdownBacking: 'varied', clubShape: 'varied' };
     const start = normaliseBangerOptions(settings ? recipe.options : { ...stored, hook: 'auto' }).options;
     // A take or a preference from early on 7 Oct 2026 named its sound `style` and its groove `fusion`;
     // the desk asks the other way round now: Style the groove, Infusion the sound. Modify keeps the
@@ -648,7 +659,7 @@ export function createBangerDesk(desk) {
     // Remembered as a working preference — everything but the hook, which belongs to a riff.
     const { hook, ...keep } = options;
     void hook;
-    writeStore(BANGER_PREFS_KEY, { ...keep, prefs: 3 });
+    writeStore(BANGER_PREFS_KEY, { ...keep, prefs: 7 });
     const rerolls = modifying ? [...box.querySelectorAll('#bgrerolls button.on')].map((b) => b.dataset.stream) : [];
     // Whatever a button wrote over them (Surprise Me, Go Crazy, a style's defaults), the
     // shape goes back to the take's own.
@@ -780,7 +791,7 @@ export function createBangerDesk(desk) {
     forget(id);
     const state = await takes();
     if (!state) return;
-    const verb = direction === 'another' ? 'Another Take' : direction === 'previous' ? 'Previous Take' : 'Next Take';
+    const verb = direction === 'another' ? 'Remix' : direction === 'previous' ? 'Previous Take' : 'Next Take';
     if (!await okToLeave(state, verb)) return;
     let out = generated;
     const recipe = state.banger || track.banger;

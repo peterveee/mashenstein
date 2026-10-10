@@ -76,10 +76,61 @@ bassline in the drops wherever the hook plays as written; where the hook is vari
 or set over other chords, the Bass setting fills in. The readout says which, when the riff
 has a bassline.
 
-A breakdown's hook is the **Breakdown Hook** switch (More Options → Form, every form):
-**Half Speed** (the default — every note twice as long), **As Written** (its own speed over
-the pad), or **No Hook** (the pad, the choir and the pedal alone). A breakdown in the Form
-row can say its own (Plays: Half-Speed Hook, Hook As Written, Hook Alone, No Hook).
+A breakdown's hook is the **Breakdown Hook** switch (More Options → Form, every form).
+**Varied** (the default) draws one way per take: Half Speed (every note twice as long), Tease
+(the hook's opening every other bar, echoed), Held Back (the hook only for the last two bars),
+Outline (long notes on the strong beats), Piano (as written on the style's piano), New Tune
+(the hook's tail developed), Arp (its notes in running sixteenths), Call and Answer (the bell
+answering it), Muffled (as written, opening up), Gated Hook (chopped in sixteenths), Octave Echo
+(an octave up, echoing) or Low and Muffled (an octave down under a low-pass). As Written and No
+Hook can be picked by name. A breakdown in the Form row can say its own (Plays).
+
+The other moments are drawn the same way (9 Oct 2026, generator v11), each a table of ways in
+`tools/lib/banger/` — a new way is one entry plus its code, and `varied: true` puts it in the
+draw:
+
+- **Build Type** (`build-ways.js`), per build, never the same twice in a song: Snare Roll, Kick
+  Roll, Dotted Roll, Hook Loop, Muffled Groove, Drumless.
+- **Before the Drop**, per build: Straight In, The Gap, The Pause, Drop-Out, Hook Pickup, Hook
+  Alone. A bar that falls silent loses its run-up effect. Pairs that undo each other are never
+  drawn (a roll into Hook Alone, Kick Roll or Drumless into Drop-Out, Drumless straight after a
+  breakdown, Muffled Groove after a Muffled breakdown); picked by name, they play as asked.
+- **Intro Type** (`intro-ways.js`), per song: The Riff, Chorus Quote, Cold Open, Arp Intro, Riff over Pad —
+  every one with the riff or the chords in its first two bars. Build in Layers and Drums & Bass
+  Intro win where they are on.
+- **Riser Type** (More Options → FX, `build-ways.js`), per song: Noise Riser, Long Riser (four
+  bars), Whoosh (one), Wind, Pitch Riser, Fifths Riser, Reverse Cymbal (the last two beats), Stutter
+  Riser (the noise gated in quickening eighths, sixteenths, thirty-seconds) — levelled to sit where
+  the Noise Riser does. Pitch and Fifths land on the note the section they lift into starts on; a
+  lifted final drop's risers land a step up, on a second riser lane.
+- **Riser FX** (More Options → Spot FX), per song: None, Jet Flanger, Echo, Ping-Pong, Auto-Pan,
+  Metallic Rise, Bitcrush or Reverb Wash, over each riser as it climbs.
+- **Drop 2** (More Options → Form), per song: how the second drop differs from the first. Varied is
+  More On (drop one with more parts — the classic), with Half-Time Start about one song in four in
+  Big Room, Future Bass, Drum & Bass, Electro, Chipstep, Moombahton and Reggaeton. New Bass,
+  Counter-Melody and Breakbeat can be picked by name.
+- **Drop Hit** (More Options → FX), per song: what lands on the one after the riser — the style's
+  own impact, Boom, Blast, Noise Crash, Long Crash or Sub Drop (a sine falling two octaves from the
+  home note), each trimmed to sit where the style's impact does.
+
+Some ways are not for every style or mood (`notFor` in the tables): no Stutter, Pitch or Fifths Riser,
+Metallic Rise or Bitcrush in the chill styles (Deep House, Downtempo, Nu-Disco, Afro House,
+Shibuya-Kei) or moods (Dreamy, Lo-Fi, Lounge, Lament, Soulful); no Metallic Rise in the disco
+styles; no Wind or Reverb Wash in the 8-bit ones; no Boom or Sub Drop for chill or disco. A way
+picked by name plays as asked. A way that joins a draw later says `since` its **Ways Era**
+(`ways.js`), and a request of an earlier era — a Lab song kept before it — never draws it.
+
+**Tune First** (on by default; Peter: a casual audience, not DJs) keeps the listener from
+waiting for a tune: Build in Layers opens on the riff, two bars a part, and a Groove plays its
+riff from the first bar. Off, the layers and grooves build up as they did. **Groove Pace** says
+how fast a Groove's parts arrive: Every 4 Bars (the default since 10 Oct 2026) or Every 8 Bars (as
+it was).
+
+A request that names its form (or its effects) without these switches was made before them,
+and plays as it did — Half Speed, the snare roll, straight in, the riff intro, the slow
+layers, the noise riser; so does a Lab recipe kept before expression version 6 (the breakdown
+and builds) or 8 (the intro, the riser, Tune First). Every drawn way shows in the take's note,
+and Modify This Take can draw any of them again on its own.
 
 Half time is its own kind of section, the **Half-Time Drop**: the hook and chords at full
 speed over a half-time kick and backbeat. A **Drop** or **Chorus** is always full time.
@@ -124,11 +175,11 @@ rolls and the riser.
 
 | Group | Switches |
 |---|---|
-| Form | (the form itself is the Form row) Style's Own Form · Intro · Build in Layers (Off, Long Songs, Always) · Drums & Bass Intro · Chords Early · Build · Breakdown · Second Drop · Double Drop · Key Lift (none, half step, whole step, major third) · Second Mood (None or any mood: its chords, chord colours, the bass it suggests — unless the bass was picked by hand — and its key-change approach; the sounds stay the first mood's) · Switch At (After the Break — from the breakdown or middle 8 on; Final Chorus — the last drop or chorus on; Choruses Only — the drops and choruses, the verses and builds keep the first mood; in a Groove, which has no drops, its fullest sections) · Key Change (how the lift arrives, on the last half-bar before it: Mood's Own, Straight, Pivot — the new V7, Two-Step — ii7–V7, Borrowed Step — ♭VI–♭VII, Walk-Up — the bass climbing in by semitones; Mood's Own gives each kind of lifted section the same approach every time, the mood's first for the first kind) · Hard Stop · False Ending · Half-Time Switch · Outro. Intro, Outro, Build in Layers, Drums & Bass Intro, Key Lift, Hard Stop (as the pause before a final chorus) and False Ending (before the final chorus) shape every form; the rest only the Club form. |
-| Drums | Source Drums (Keep and Add / Replace / Keep As-Is) · Kit (Style, Studio, 909, 808, DS, CR-78) · Crashes · Fills · Snare Rolls · Impact · Shaker · Tambourine · Congas · Cowbell · Ride |
+| Form | (the form itself is the Form row) Style's Own Form · Intro · Intro Type · Tune First · Build in Layers (Off, Long Songs, Always) · Drums & Bass Intro · Chords Early · Build · Build Type · Before the Drop · Breakdown · Breakdown Hook · Second Drop · Double Drop · Key Lift (none, half step, whole step, major third) · Second Mood (None or any mood: its chords, chord colours, the bass it suggests — unless the bass was picked by hand — and its key-change approach; the sounds stay the first mood's) · Switch At (After the Break — from the breakdown or middle 8 on; Final Chorus — the last drop or chorus on; Choruses Only — the drops and choruses, the verses and builds keep the first mood; in a Groove, which has no drops, its fullest sections) · Key Change (how the lift arrives, on the last half-bar before it: Mood's Own, Straight, Pivot — the new V7, Two-Step — ii7–V7, Borrowed Step — ♭VI–♭VII, Walk-Up — the bass climbing in by semitones; Mood's Own gives each kind of lifted section the same approach every time, the mood's first for the first kind) · Hard Stop · False Ending · Half-Time Switch · Outro. Intro, Outro, Build in Layers, Drums & Bass Intro, Key Lift, Hard Stop (as the pause before a final chorus) and False Ending (before the final chorus) shape every form; the rest only the Club form. |
+| Drums | Source Drums (Keep and Add / Replace / Keep As-Is) · Kit (Style, 909, 808, CR-78, the creative kits) · Crashes · Fills · Snare Rolls · Impact · Shaker · Tambourine · Congas · Cowbell · Ride |
 | Bass & Chords | Bass (Off-Beat, Rolling 16ths, Octave Eighths, Root–Fifth, Funk Syncopated, Long 808, Reese Drone, Gallop, Arpeggiated, Pedal, Walking, Sub Only, None) · Bass Lifts (later drops move to a busier related bass) · Sub Layer · Chords (Pumping Supersaws, Piano Stabs, Pad, None) · Square Double · Bell Octave · Octave Hook · Third Below · Arp · Arp Pattern (Varied, Style's Own, or one of thirteen figures) · Choir · Counter-Melody · Write a Lead (When Needed / Always / Off) · Riff Sound (Keep / Random) · Part Sounds (Roll / Style's Own) · Fill In (`tools/lib/banger/embellish.js`: Off, Repeat — the first half of each bar's long notes struck twice, Passing — a scale note between notes a third or more apart, Neighbour — long notes stepping up and back; every added note in the banger's key) · Fill Every (Every Pass, Every 2nd, Every 4th — the last pass of each group is the filled one, so it answers the plain ones) · Fill Notes (One, Two, Every Gap — figures a filled bar gets, earliest first). The same bar on the same pass is always filled the same way; the chords are chosen under the plain tune; a busy riff has no room and is left alone |
 | Spot FX | Effects chosen by what they are for — each **Style** (the switches' own moves) by default. **Into a Drop** (the last bar before every drop or chorus: Stutter, Beat Repeat, High-Pass Sweep, Reverb Wash, Tape Stop, None) · **Out of a Drop** (the last bar before the song drops down: Delay Throw, Reverb Wash, Low-Pass Down, Tape Stop, None — a transition's Tape Stop winds the mix down over the bar's last beat, two from 160 BPM, and stands still on the bar line) · **Breakdowns** (over every breakdown and middle 8: Underwater, Ping-Pong Echo, Big Reverb) · **Intro FX** (Low-Pass, Bitcrush, Radio, None) · **Ending** (Tape Stop, Echo Out, Fade, None). Surprise Me rolls each one time in four. All written as the desk's Spot FX, so they can be edited afterwards |
-| FX | Riser · Filter Build · Stutter Before Drop (in Big-Room, Trance, Future Bass, Chipstep, Electro and Drum & Bass · Neuro, one build in three closes instead with the **Machine-Gun Sweep**: the last half bar held in 1/32s through a low-pass closing 18 kHz → 200 Hz — the desk's Machine Gun + Sweep Down presets) · Sidechain Pump · **Chord Gate** (Style's Own — Trance sixteenths, Future Bass eighths, the rest a quarter-note pump — or Pump, Eighths, Sixteenths, Dotted Eighths, or By Energy: a pump in quiet sections, eighths building, sixteenths in the drops) · Delay Throws · Low-Pass Intro · Bitcrush Intro · Tape-Stop Ending |
+| FX | Riser · Riser Type · Filter Build · Stutter Before Drop (in Big-Room, Trance, Future Bass, Chipstep, Electro and Drum & Bass · Neuro, one build in three closes instead with the **Machine-Gun Sweep**: the last half bar held in 1/32s through a low-pass closing 18 kHz → 200 Hz — the desk's Machine Gun + Sweep Down presets) · Sidechain Pump · **Chord Gate** (Style's Own — Trance sixteenths, Future Bass eighths, the rest a quarter-note pump — or Pump, Eighths, Sixteenths, Dotted Eighths, or By Energy: a pump in quiet sections, eighths building, sixteenths in the drops) · Delay Throws · Low-Pass Intro · Bitcrush Intro · Tape-Stop Ending |
 
 **Build in Layers** turns the intro into a build-up: the parts arrive one at a time, a few
 bars apart — on a banger the kick alone, then the rest of the kit, the bass, the chords and
@@ -200,15 +251,32 @@ kit. A riff with drums:
     note FX stay with the part.
   - Drums keep their sounds; the **Kit** switch is how the drums change.
   - The pick follows the seed, so a take re-made from its recipe sounds the same and
-    Another Take rolls new sounds.
+    Remix rolls new sounds.
 
 **The drum sounds** come from a fixed set, not a random one (the page's **Drum Kits**).
 
 - The **Kit** switch picks it:
   - **Style Kit** is ABSOLUTE ZERO's: 909 Punch kick, DS snare, Big Room clap, DS closed
     hat, 909 open hat, 808 long crash, 909 fill toms.
-  - **Studio**, **909**, **808**, **DS** and **CR-78** are the step sequencer's kits, with
-    the style's crash and fill toms wherever a kit has none.
+  - **909**, **808** and **CR-78** are the step sequencer's kits, with
+    the style's crash and fill toms wherever a kit has none. Since 10 Oct 2026 the 808, 909
+    and CR-78 are the measured rebuilds (`tr808*`, `tr909*`, `cr78*`); the CR-78 has no clap, so
+    its tambourine plays in the clap slot (and NES's pulse zap in its).
+  - The creative kits (src/data/creative-drum-kits.js) — Glasshouse, Havana Patio, Moon Dust,
+    Neon Origami, Pocket Pixel, Rio Lanterns, Rubber Factory, Velvet Basement, Eighties,
+    Breakbeat, NES, Simmons, Neuro, Brushes and Disco (the Syndrum one) — are all on the switch too.
+    Several styles' own Style Kit is one of them (Jungle Breakbeat, Neuro Neuro, Darksynth
+    Simmons, Italo Disco Disco, Synthwave and Outrun Eighties, Shibuya-Kei Brushes).
+    The 70s Disco kit and Gritbox were deleted on 10 Oct 2026 (Nu-Disco, New Jack and Trip-Hop went back to
+    their own Style Kits).
+- A kit ROLL (Surprise Me, and the Lab at Overload from recipe expression 11) draws from the
+  three machine kits and the creative kits that suit the style — tools/lib/banger/kit-rolls.js.
+  In the Lab's mixer the DRUMS button, its long-press list and its DICE reach every kit the Lab
+  offers, the suited ones first; a Style Kit that is a named kit (Jungle's Breakbeat) goes by that
+  name. On the 8-Bit set it keeps the machine kits. DS and Studio are retired: offered and rolled
+  nowhere new, still played by a kept recipe that says it.
+  The first eight creative kits (Glasshouse … Velvet Basement) are desk-only: `lab: false` in
+  creative-drum-kits.js keeps them out of the Lab's mixer and its kit roll.
 - The impact (Deep Pew), the percussion (shaker, tambourine, conga, 808 cowbell, 909 ride)
   and the noise riser are the same in every kit.
 - A riff drum that stands in for the kit keeps its own sound.
@@ -377,7 +445,7 @@ is folded into the levels.
 
 A banger shows four extra buttons in the drawer's *This song* section:
 
-- **Another Take** re-rolls the same settings with a new seed, into the same song.
+- **Remix** re-rolls the same settings with a new seed, into the same song.
 - **Previous Take** and **Next Take** move between takes. Each appears only when there is
   a take to go to.
 - **Banger Settings…** opens the dialog on this banger's recipe. Its riff is fixed;
@@ -396,7 +464,7 @@ you come back to it.
 
 The jukebox's **THE LAB** makes bangers with the same generator (`src/game/banger/make.js`).
 **NEW BANGER** opens a piano roll with four selectors: **FORMULA** (the style), **INFUSION**
-(another style's sound, or NONE), **ELEMENT** (the mood) and **MUTATION** (Voltage and DNA
+(another style's sound, or NONE), **ELEMENT** (the mood) and **MUTATIONS** (Voltage and DNA
 together). **BRING TO LIFE** makes the song. A kept song is stored as its recipe (notes, style, mood, seed) and made
 again each time it plays.
 
@@ -408,6 +476,7 @@ FORMULA's **groove** (its drums, bass and tempo). See [Fusions](#fusions).
   flavour is the groove.
 - **Phones.** Both formulas play on their Lab Sound Sets (chipstep and synthwave on Light).
 - **Tempo.** The preview loop keeps FORMULA's tempo.
+- **Lead.** The preview loop plays the riff on INFUSION's lead, the one the song would play it on.
 - **Edge cases.** INFUSION's list leaves FORMULA out. Moving FORMULA onto the infusion's own
   style sets INFUSION back to NONE.
 - **EXPERIMENT** rolls an INFUSION one time in three.
@@ -440,16 +509,33 @@ At:
 - **How they were chosen.** Each second mood starts on the first's tonic. They were picked from
   the progressions, not by ear yet.
 
-**MUTATION** (7 Oct 2026) is VOLTAGE and DNA in one selector, which reads `SURGE · SPLICED`.
+**MUTATIONS** (10 Oct 2026, Peter; MUTATION from 7 Oct, a 4×4 grid of ENERGY and YOUR NOTES with
+arrows on the selector) has no arrows: a tap opens its chooser. The selector reads `SURGE · SPLICED`,
+adding LENGTH and SONG TYPE only when they are not DEFAULT: `SURGE · SPLICED · SHORT · GROOVE`.
 
-- **The grid.** Its chooser is a 4×4 grid. Down the side is ENERGY (Safe, Charged, Surge,
-  Overload); across the top is YOUR NOTES (Pure, Hybrid, Spliced, Mutant). Under the grid, the
-  chosen or focused cell's two descriptions are shown. One tap picks any of the sixteen
-  pairings, so an Overload take can still keep the riff as written.
-- **The arrows** step a ladder of six (`maker.js MUTATION_LADDER`), from wherever the selector
-  is: Safe · Pure, Charged · Pure, Charged · Hybrid (where NEW BANGER opens), Surge · Spliced,
-  Overload · Pure, Overload · Mutant. The grid does not mark them: there, every cell is one tap.
-- **Saved songs** still keep `voltage` and `variation` separately, so nothing kept changes.
+- **Four rows of buttons**, each its own pick: **ENERGY** (Safe, Charged, Surge, Overload),
+  **YOUR TUNE** (Pure, Hybrid, Spliced, Mutant), **LENGTH** and **SONG TYPE**. NEW BANGER opens on
+  Charged · Hybrid. Under the rows, what the focused or last touched button does.
+- **LENGTH** is Radio Edit (48 bars), Single (64), Album Version (112) or 12 Inch (160, the desk's Custom
+  length; `make.js LAB_LENGTHS`). Its hint gives the bars and about how long they run at the formula's
+  tempo (`labLengthHint`). **SONG TYPE** is Club, Pop Song, Anthem or Groove (`LAB_SHAPES`). Both rows
+  keep that order always; the formula's own says **DEFAULT** under its name (Long and Anthem for
+  Trance), and picking it is DEFAULT. Under an INFUSION, SONG TYPE's DEFAULT is the Club form, and a
+  picked SONG TYPE overrides it.
+- **Staged.** A tap marks a choice; **OK** makes them all; **CANCEL**, BACK or a tap outside leaves
+  everything as it was.
+- **What a recipe keeps**: `voltage` and `variation` as ever, and `songLength` and `shape` only when
+  picked. Absent is DEFAULT, so every song kept before them plays as it did. A picked SONG TYPE is never
+  rolled away by the voltage's form roll; THE BOLT keeps both.
+- **12 Inch** stretches a Club, Pop Song or Anthem's sections rather than adding more: its drops
+  and choruses are longer. A Groove grows more eight-bar sections.
+- **The key lift** (10 Oct 2026, recipe expression 9; Peter: every take of a style lifted the same
+  way) rolls from Surge. A style that lifts draws another lift — none, half, whole or third, never
+  its own — one Surge take in three and one Overload take in two; a style that says none (the
+  chill grooves) stays unlifted below Overload, where one take in four lifts a half step. How the
+  lift arrives (Key Change) rolls from Surge too, one in three, one in two at Overload. A recipe
+  kept before 9 lifts as it did: the style's own below Overload, a third one Overload take in
+  three (`make.js KEY_ROLL_ODDS_BEFORE_9`).
 
 **The grid** is SIMPLE (eighths on the eleven notes of A minor, G4 to C6) or ADVANCED
 (sixteenths on every semitone), and two bars or four (Peter, 6 Oct 2026):
@@ -494,6 +580,37 @@ only stretches that fit G4–C6 are taken. THE FOOD COURT's tune is moved up a m
 theremin's four bars; SIMPLE gets the riffs that sit on its A-minor rows. CARDBOARD KINGDOM,
 CORPORATE KOMBAT and THE SURGE have none: their song files are two-bar loops.
 
+**Tunes everyone knows** (10 Oct 2026). On top of the cabinet riffs' one in three, one ZAP in eight
+(one in two in a dev build, to hear them) is a public-domain tune, named in the floatie the same way
+(`src/game/banger/tunes.js`). The carols come up all year round. **Held** (0.4 s, or the confirm key
+held on it), ZAP opens CHOOSE A TUNE instead: every tune, with who it is by. A tap on ZAP fires as
+the finger lifts. A tune with sharps says ADVANCED there, and picking it takes the grid to ADVANCED.
+WILLIAM TELL, which has no four bars, takes a four-bar grid to two.
+
+| Kind | Tunes |
+|---|---|
+| Nursery and folk | TWINKLE TWINKLE, MARY HAD A LITTLE LAMB, FRERE JACQUES, OLD MACDONALD, BINGO, LONDON BRIDGE, ROUND THE MOUNTAIN |
+| Christmas | JINGLE BELLS, DECK THE HALLS, JOY TO THE WORLD, GOD REST YE MERRY, CAROL OF THE BELLS, O LITTLE TOWN (Forest Green) |
+| Classics | ODE TO JOY, FIFTH SYMPHONY, FUR ELISE, TURKISH MARCH, SYMPHONY NO. 40, EINE KLEINE NACHTMUSIK, TOCCATA AND FUGUE, PACHELBEL'S CANON, MOUNTAIN KING, CAN-CAN, CAN-CAN 2, WILLIAM TELL, FUNERAL MARCH, HERE COMES THE BRIDE, THE ENTERTAINER |
+| Other | KOROBEINIKI, BIG BEN |
+
+Lemmings (1991) played LONDON BRIDGE, ROUND THE MOUNTAIN, O LITTLE TOWN, TURKISH MARCH, FUNERAL
+MARCH, HERE COMES THE BRIDE and a part of the Galop that is not the famous one, here CAN-CAN 2 (the
+Galop's first theme). The list says so. Its in-copyright borrowings (How Much Is That Doggie,
+Mission: Impossible) are not here.
+
+Each tune is moved to sit in G4–C6, in C major or A minor wherever it has no sharps, so SIMPLE gets
+it too. FUR ELISE, THE ENTERTAINER, FUNERAL MARCH, MOUNTAIN KING, TOCCATA AND FUGUE and TURKISH MARCH
+have sharps, so they are ADVANCED only. Each runs at about its own pace for a song near 124 BPM,
+its quick notes on the grid's eighths or sixteenths, whichever is nearer. Each tune has two bars
+and four, the four being the line and its answer. FUNERAL MARCH and HERE COMES THE BRIDE are twice
+their pace in two bars and at their own in four. WILLIAM TELL and SYMPHONY NO. 40 are their
+sixteenths, so ADVANCED has those and SIMPLE gets them at half speed in eighths. Carol of the
+Bells and Für Elise are squared into four. CAN-CAN, BINGO, TURKISH MARCH, KOROBEINIKI, THE
+ENTERTAINER, FUR ELISE, PACHELBEL'S CANON, ROUND THE MOUNTAIN and O LITTLE TOWN were checked
+against published ABC transcriptions; the rest are from memory. Only out-of-copyright melodies go
+in: no Rudolph, Frosty, Winter Wonderland, Little Drummer Boy and the like.
+
 **Why four bars.** On Pure, a ZAP's two bars sat the whole drop on one chord in about one
 take in five; four bars of its own give a four-chord progression in about seven in ten
 (measured 6 Oct 2026). Bars 3–4 that only repeat 1–2 with a new ending barely change the song.
@@ -501,7 +618,23 @@ take in five; four bars of its own give a four-chord progression in about seven 
 The grid's preview loop plays every bar that is set, and a held note plays as long as it is
 drawn (before 6 Oct 2026 it read the wrong column's length).
 
+It plays the riff on one of the song's leads (10 Oct 2026; `make.js labLeadSound`): the first hook
+sound of FORMULA's Lab Sound Set, in the flavour ELEMENT picks, or INFUSION's when there is one, that
+holds a note (`presetHolds`: sustain at least half), so a long note on the grid sounds long. Struck
+pianos, bells, plucks and fixed-length blips are passed over. The dev build passes over TNGR-2s too.
+If none is left it plays Simple Square. It changes as they do. Before, it was a soft preview preset
+drawn fresh each visit.
+
 ## Forms beyond the drop
+
+**The Club shapes** (10 Oct 2026) are the build-and-drop banger laid out other ways, picked by name
+in the Form row: **Double Breakdown** (a short second breakdown and build before the lifted final
+drop), **Fake-Out Drop** (the first build lands on a half-time fake drop, builds again, then the real
+drop), **Drop First** (four bars of the drop open the song, then the intro and the build), **Long
+Build** (no breakdown: one long build into a long drop that lifts for its second half) and **Peak and
+Valley** (drop, breakdown, drop, breakdown, final drop, each bigger than the last). Drop 2's twist
+goes on the second full drop (eight bars or more, not half time, not the lifted last) and never
+where a half-time drop came first. Renders: `node tools/render-banger-way-auditions.js forms`.
 
 Everything but the Club form is a list of typed sections (`tools/lib/banger/form-types.js`):
 intro, verse, pre-chorus, build, chorus, drop, breakdown, middle 8, groove, false ending,
@@ -934,7 +1067,7 @@ the Banger Sounds page. They are not in the style list. What decides the flavour
   Melodic. Dark, Hypnotic, Gothic, Boss Fight, Flamenco and Mystery play Tech.
 - **The desk's Flavour list**, shown only for a style that has flavours: By Mood (it names
   the flavour that mood plays), each flavour by name, or Random. Random is drawn from the
-  take's seed, so Another Take can land on any of them.
+  take's seed, so Remix can land on any of them.
 - **The Lab**, with no control of its own (`make.js labFlavour`). It plays the mood's
   flavour, and sometimes another: never on Safe, 1 take in 5 on Charged, 1 in 3 on Surge
   and 1 in 2 on Overload. A re-roll can surprise you.
@@ -1215,7 +1348,7 @@ named by part alone (`KICK`, `HATS`).
 | `tools/lib/banger-file.js` | Writing a banger song into `work/bangers/`, its takes, and the one-time move out of `work/scratch/` |
 | `tools/lib/banger/form-types.js`, `templates.js`, `cohesion.js`, `transitions.js`, `form-edit.js`, `lead.js` | The kinds of section; the Pop Song, Anthem and Groove forms; the verse, pre-chorus and middle 8 grown from the hook; the joins; the form editor's moves; Write a Lead |
 | `tools/lib/banger/theory.js` `grindOf`, `fitToChords`, `clearUnder`; `analyse.js` `chordFit`, `grindShare` | What grinds, and how the generator keeps it out |
-| `src/game/banger/` | THE LAB: `riff.js` (the grid, two bars or four, ZAP's own riffs, `settleBars`), `maker.js` (the screen: bar numbers, + / −, the repeat, the lines), `game-riffs.js` (the cabinet riffs, two bars and four), `make.js` (the game's call into the generator), `store.js` (what is kept) |
+| `src/game/banger/` | THE LAB: `riff.js` (the grid, two bars or four, ZAP's own riffs, `settleBars`), `maker.js` (the screen: bar numbers, + / −, the repeat, the lines), `game-riffs.js` (the cabinet riffs, two bars and four), `tunes.js` (ZAP's public-domain tunes), `make.js` (the game's call into the generator), `store.js` (what is kept) |
 | `tools/mixer-banger.js`, `tools/mixer-banger-form.js` | The dialog and the take buttons; the Form row's strip and editor |
 | `tools/mixer.js` | `POST /make-banger`, `GET /banger-takes`, `POST /banger-take` |
 | `tools/banger-audition.js` | Make and render bangers from the command line |

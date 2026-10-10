@@ -21,8 +21,10 @@ import { fileURLToPath } from 'url';
 import { songBlocks, barPlan, LANE_KEYS } from '../../src/engine/lanes.js';
 import { trackIdOf } from '../../src/data/tracks.js';
 import {
-  applyArrangement, bpmOf, swingOf, loopOf, loopSteps, SWING_STRAIGHT,
+  ARRANGEMENTS, applyArrangement, bpmOf, swingOf, loopOf, loopSteps, SWING_STRAIGHT,
 } from '../../src/data/arrangements.js';
+import { MIX } from '../../src/data/mix.js';
+import { DUCK_GRID } from '../../src/engine/effects.js';
 import { DEFAULT_SEED } from './render-bank-page.js';
 
 const require = createRequire(import.meta.url);
@@ -39,6 +41,25 @@ export { DEFAULT_SEED };
 // Lane gating works by removing the other lanes from the bank — and from every
 // section, or a section would hand them straight back — which is how a single-lane
 // stem is rendered.
+//
+// Except a track some SIDECHAIN DUCK is keyed to: the duck moves on that track's notes
+// (makeSidechainDuck), so a bass stem rendered without the kick would not duck and the
+// stems would not sum. Such a track stays in the bank and is muted in the mix instead —
+// the duck still hears it, and nothing of it reaches the stem.
+function duckTriggersIn(...where) {
+  const found = new Set();
+  const walk = (v) => {
+    if (!v || typeof v !== 'object') return;
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    // A duck on the grid (EVERY 1/4 …) hears no track.
+    const trigger = v.params?.trigger ?? 'kick';
+    if (v.id === 'duck' && !v.bypass && !DUCK_GRID[trigger]) found.add(trigger);
+    for (const x of Object.values(v)) walk(x);
+  };
+  where.forEach(walk);
+  return found;
+}
+
 function gateLanes(bank, lanes) {
   if (!lanes) return bank;
   const strip = (o) => {
@@ -108,10 +129,18 @@ export async function openRenderer({ headless = true } = {}) {
     repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId, arrangement, warp,
     songLoop = false, fineLaneSkip = true, rearrangement = null, range = null,
   } = {}) {
-    const gated = gateLanes(bank, lanes);
     // Resolved in Node, where bank identity still holds; the page cannot do this
     // because the bank reaches it as JSON.
     const id = trackId !== undefined ? trackId : trackIdOf(bank);
+    // A stem keeps every track a duck is keyed to, muted (see gateLanes).
+    const savedMix = mix !== undefined ? mix : (id ? (MIX[id] || null) : null);
+    const heard = lanes && [...duckTriggersIn(savedMix, arrangement ?? ARRANGEMENTS[id])]
+      .filter((k) => !lanes.has(k));
+    if (heard?.length) {
+      mix = { ...(savedMix || {}), lanes: { ...(savedMix?.lanes || {}) } };
+      for (const k of heard) mix.lanes[k] = { ...(mix.lanes[k] || {}), mute: true };
+    }
+    const gated = gateLanes(bank, heard?.length ? new Set([...lanes, ...heard]) : lanes);
     // The tempo the song is played at, written onto the bank before it crosses. The
     // desk saves a retuned tempo onto the song's arrangement, and the page cannot look
     // one up — `trackIdOf` on a JSON copy finds nothing, which is why the mix is

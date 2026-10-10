@@ -54,6 +54,7 @@ import { MIXER_ICONS } from './mixer-icons.js';
 import { drawBoltButton, boltAttractK, BOLT_SETTLE_S } from './bolt-button.js';
 import { drawBolt } from './birth.js';
 import { drawTeslaBolt } from './club-bolts.js';
+import { ClubVisualiser } from './club-visualiser.js';
 import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
 import { LED_SLOGANS, LED_SCROLLS, LED_STYLE_LINES, fillLed } from './led-slogans.js';
 import {
@@ -118,10 +119,13 @@ const PLASMA = '#b77bff';
 const STRIKE_THUNDER_GAIN = 0.3;
 // On the glass THE BOLT asks first (Peter, 6 Oct 2026: a stray tap would ruin the take playing):
 // a tap arms it for REROLL_CONFIRM_S, and a second one — not a double-tap's bounce — lets it go.
-const REROLL_CONFIRM_S = 3, REROLL_CONFIRM_MIN_S = 0.25;
+// Or it is HELD (Peter, 10 Oct 2026: "a hold on the bolt to activate the remix. Only ask for a
+// second tap if they do not hold"): a finger kept on it for REROLL_HOLD_S lets it go there and
+// then, and the second tap is asked for only once a finger lifts before that.
+const REROLL_CONFIRM_S = 3, REROLL_CONFIRM_MIN_S = 0.25, REROLL_HOLD_S = 0.5;
 // ...and it says CHARGING... from the press to the swap, then, over the new take's club for
 // STRIKE_DONE_S, one of these to say it is done — never the same twice running (Peter, 7 Oct 2026)
-const STRIKE_DONE = Object.freeze(['HERE YOU HAVE!', 'TA-DA!', 'FRESH TAKE!', 'SERVED HOT!', 'ALL YOURS!']);
+const STRIKE_DONE = Object.freeze(['HERE YOU HAVE!', 'TA-DA!', 'FRESH MIX!', 'SERVED HOT!', 'ALL YOURS!']);
 const STRIKE_DONE_S = 1.8;
 let lastStrikeDone = null;
 function pickStrikeDone() {
@@ -144,6 +148,15 @@ const WALK_SPEED = 0.26;
  *  hero's height, over TURN_BEATS. */
 const TURN_GAP_BARS = [6, 18], TURN_BACK_BARS = [2, 6];
 const TURN_BEATS = 0.5, TURN_HOP = 0.1;
+/** AFLOAT (Peter, 10 Oct 2026: "when the lab is underwater the other heroes should float a little
+ *  bit and settle when the water level drops"): under Lorenzo's water everyone but him comes up
+ *  off the floor, bobbing up to FLOAT_BOB of a hero's height about it — each on their own slow swell —
+ *  once the water is FLOAT_DEPTH of a hero over their soles. How high is how deep he has the room
+ *  (Peter: "they go higher when it's underwater the most, ie. most muted"): FLOAT_RISE[0] of a
+ *  hero dragged right up to the surface (the filter at its most open), FLOAT_RISE[1] dragged to
+ *  the bottom (its most muffled). They drift there over about FLOAT_UP_S — following the drag as
+ *  it goes — and come down with the surface, over about FLOAT_DOWN_S, as it drains past them. */
+const FLOAT_RISE = [0.02, 0.24], FLOAT_BOB = 0.03, FLOAT_DEPTH = 0.6, FLOAT_UP_S = 0.7, FLOAT_DOWN_S = 0.25;
 /** THE GLANCES (Peter, 6 Oct 2026: "make their pupils look around now and then so they're not
  *  always front on"). Each GLANCE_SLOT_S, a hero may (GLANCE_CHANCE) look off for GLANCE_HOLD_S —
  *  to one side by up to GLANCE_X, up or down by up to GLANCE_Y (the painter's gaze, in its u) —
@@ -564,6 +577,8 @@ export class BangerClubState {
     this.strikeTargets = this.room?.strike?.targets ?? [];
     this.strikeDone = this.room?.strike ? pickStrikeDone() : null;   // ...and what the bolt says it brought
     this.rerollArm = null;    // when a tap on the glass armed THE BOLT (it asks first there)
+    this.rerollFinger = null; // ...and the finger (pointer id) that armed it
+    this.rerollHeld = false;  // ...while that finger is still on the bolt: a hold, not yet a tap
     this.tip = null;           // the bottom row's tooltip: { key, since } while a button is hovered or focused
     // Moves run on the AUDIO clock, not a beat count: the song loops, and its step count
     // goes back to the top when it does.
@@ -622,6 +637,9 @@ export class BangerClubState {
     // the hop round each is in the middle of, and the beat each next turns on (updateFacing).
     this.facing = this.room?.facing?.length === HERO_MOVES.length ? [...this.room.facing] : HERO_MOVES.map(() => null);
     this.turns = HERO_MOVES.map(() => null);
+    this.afloat = HERO_MOVES.map(() => 0);   // how far up off the floor each is floated, in heroes (AFLOAT)
+    this.afloatV = HERO_MOVES.map(() => 0);  // ...and how fast they are going up (or down)
+    this.afloatT = null;
     this.turnAt = HERO_MOVES.map(() => Infinity);
     this.lastTurnBeat = -Infinity;
     this.danceOrder = HERO_MOVES.map((_, i) => i).sort(() => Math.random() - 0.5);
@@ -678,6 +696,8 @@ export class BangerClubState {
     this.ballSwing = { a: 0, va: 0, stretch: 1, vs: 0 };   // ...swung on its wire: angle (rad), stretch, and their speeds
     this.ballGrab = null;      // ...held: { touch, dx, dy, lastX, vSpin } while a finger has it
     this.ballAnchor = null;    // where its wire hangs from, as last drawn: { x, y, len, r }
+    this.ballTapAt = -Infinity; // ...last tapped (not dragged): a second tap within DOUBLE_TAP_S is the visualiser
+    this.vis = new ClubVisualiser();   // the full-screen visualiser a double tap on it brings up (club-visualiser.js)
     this.mirrorFlashAt = this.room?.strike ? 0 : -Infinity;   // ...flaring from the first frame after THE BOLT's discharge
     this.buttonsAt = -Infinity; // the floor woke the bottom buttons: a tap on it, or the pointer over it
     this.echoes = [];          // Grumpos's boomerangs in flight: { when (audio, the beat thrown), wet, feedback }
@@ -728,11 +748,42 @@ export class BangerClubState {
     if (!this.onReroll || this.rerolling || this.rerolled) return;
     this.iconsAt = this.t;
     // on the glass a first tap only arms it, and the ball starts to crackle; a second makes the take
-    if (Input.usingTouch) {
-      if (!this.rerollArmed()) { this.rerollArm = this.t; Audio.sfx('ui'); return; }
+    const armed = this.rerollArmed();
+    if (Input.usingTouch || armed) {
+      if (!armed) {
+        this.rerollArm = this.t;
+        this.rerollFinger = [...(Input.touches?.keys() || [])].at(-1) ?? null;
+        this.rerollHeld = Input.usingTouch && this.rerollFinger != null;   // followed by followRerollHold
+        Audio.sfx('ui');
+        return;
+      }
       if (this.t - this.rerollArm < REROLL_CONFIRM_MIN_S) return;   // a double-tap's bounce is not a yes
+      // ...and the yes is a new finger, once the one that armed it has left the glass: holding the
+      // bolt is one press however the phone reports it (Peter, 10 Oct 2026: "holding the bolt also
+      // triggers the remix"), and a mouse press the glass makes up after a touch is not a tap
+      if (!Input.usingTouch || (this.rerollFinger != null && Input.touches?.has(this.rerollFinger))) return;
     }
+    this.strike();
+  }
+
+  /**
+   * THE BOLT held on the glass: the finger that armed it, kept on the bolt for REROLL_HOLD_S,
+   * lets it go; lifted (or slid off) sooner, it was a tap, and the bolt asks for the second one —
+   * its REROLL_CONFIRM_S counted from the lift.
+   */
+  followRerollHold() {
+    if (!this.rerollHeld) return;
+    const b = this.boxes.reroll, tch = Input.touches?.get(this.rerollFinger);
+    const on = tch && b && (tch.x ?? tch.x0) >= b.x && (tch.x ?? tch.x0) <= b.x + b.w && (tch.y ?? tch.y0) >= b.y && (tch.y ?? tch.y0) <= b.y + b.h;
+    if (this.rerollArm == null || this.rerolling || this.rerolled) this.rerollHeld = false;
+    else if (!on) { this.rerollHeld = false; this.rerollArm = this.t; }
+    else if (this.t - this.rerollArm >= REROLL_HOLD_S) { this.rerollHeld = false; this.strike(); }
+  }
+
+  /** THE BOLT let go: the charge starts. */
+  strike() {
     this.rerollArm = null;
+    this.rerollHeld = false;
     this.strikeDue = this.strikePlan();
     this.strikeFrames = this.strikeDue?.frames ?? STRIKE_CHARGE_FRAMES;
     this.strikeFlashed = false;
@@ -803,12 +854,12 @@ export class BangerClubState {
   /** What a bottom-row button does, for its tooltip. */
   tipText(key) {
     if (key === 'transport1') return this.paused ? 'PLAY' : 'PAUSE';
-    return { edit: 'EDIT RIFF / STYLE', reroll: 'NEW TAKE', save: 'SAVE', mixer: 'MIXER', transport0: 'PREVIOUS SECTION', transport2: 'NEXT SECTION' }[key] ?? null;
+    return { edit: 'EDIT TUNE / STYLE', reroll: 'REMIX', save: 'SAVE', mixer: 'MIXER', transport0: 'PREVIOUS SECTION', transport2: 'NEXT SECTION' }[key] ?? null;
   }
 
   /** THE BOLT armed by a first tap on the glass, waiting for the second. */
   rerollArmed() {
-    return this.rerollArm != null && this.t - this.rerollArm < REROLL_CONFIRM_S;
+    return this.rerollArm != null && (this.rerollHeld || this.t - this.rerollArm < REROLL_CONFIRM_S);
   }
 
   /** Where the ball's arcs land: three to five of the floor, a hero's head or two, a speaker. */
@@ -863,6 +914,7 @@ export class BangerClubState {
   // The song plays on back in the Lab (Peter, 3 Oct 2026) — with every part back in and no
   // move left on — and stops there when it is chosen again or the Lab is left.
   exit() {
+    this.vis.drop();
     setVisualiserFullscreen(false);
     // a pause belongs to this room: the Lab carries on playing the song
     if (this.paused) { this.paused = false; Audio.setPlayerPaused(false); }
@@ -1357,6 +1409,11 @@ export class BangerClubState {
       if (g.moved < 3 && this.t - g.t0 < 0.35) {
         this.spinV = BALL_TAP_SPIN * (Math.sign(this.spinV) || 1);
         this.mirrorFlashAt = this.t;
+        // ...and a second tap straight after brings up the visualiser (Peter, 10 Oct 2026)
+        if (g.t0 - this.ballTapAt < DOUBLE_TAP_S) {
+          this.ballTapAt = -Infinity;
+          this.vis.start({ bpm: this.playedBpm, title: bangerTitle(this.rec) });
+        } else this.ballTapAt = g.t0;
       }
     }
     // swinging free: a pendulum on its wire, damped, and the wire springing back
@@ -1694,6 +1751,24 @@ export class BangerClubState {
   underwater() {
     const a = this.acting;
     return !!(a && HERO_MOVES[a.i]?.drain && this.heardNow() >= a.when);
+  }
+
+  /** How deep Lorenzo has the room, 0 (dragged up to the surface) to 1 (the bottom, most muffled), as drawMoveRoom shades it. */
+  waterDepth() {
+    const a = this.acting, move = a && HERO_MOVES[a.i];
+    const level = this.holding?.i === a.i ? this.holding.held?.level ?? move.drag.start : a.drain?.level ?? move.drag.start;
+    return 1 - Math.max(0, Math.min(1, level));
+  }
+
+  /**
+   * Where Lorenzo's water's surface is, as drawMoveRoom draws it (wave aside): the ceiling while
+   * he is held, and down to the floor as it drains; null while the room is dry.
+   */
+  waterSurface(stageTop, stageBot) {
+    if (!this.underwater()) return null;
+    const d = this.acting.drain;
+    const out = d ? Math.max(0, Math.min(1, (this.heardNow() - d.from) / Math.max(1e-3, d.until - d.from))) : 0;
+    return stageBot - (stageBot - stageTop) * (1 - out * out * (3 - 2 * out));
   }
 
   startMoment(kind, options = {}) {
@@ -2549,6 +2624,7 @@ export class BangerClubState {
   update(dt) {
     this.t += dt;
     this.tipOn();
+    this.followRerollHold();
     // A SLOW DEVICE gets a lighter room (Peter, 3 Oct 2026: slowdown on the phone): the frame
     // time, smoothed, switches it on past ~24ms and off again under ~19ms.
     // `dt` is the fixed simulation tick (1/60s), even when rendering has fallen
@@ -2556,16 +2632,21 @@ export class BangerClubState {
     // actually engages on a slow phone. Until the first sample, keep the default.
     const fps = frameRate();
     const observedFrameMs = fps > 0 ? 1000 / fps : dt * 1000;
-    this.frameMs = (this.frameMs ?? 16) * 0.95 + Math.min(100, observedFrameMs) * 0.05;
-    if (!this.lite && this.frameMs > 24) this.lite = true;
-    else if (this.lite && this.frameMs < 19) this.lite = false;
+    // (not while the visualiser is up: that is its frame time, not the room's)
+    if (!this.vis.open) {
+      this.frameMs = (this.frameMs ?? 16) * 0.95 + Math.min(100, observedFrameMs) * 0.05;
+      if (!this.lite && this.frameMs > 24) this.lite = true;
+      else if (this.lite && this.frameMs < 19) this.lite = false;
+    }
+    // the visualiser's fades, and its full screen taken and handed back, before the room fits its own
+    this.vis.tick(dt);
     // THE WHOLE SCREEN on a wide landscape display — a phone on its side — rather than the
     // 16:9 picture with bars down the sides (Peter, 3 Oct 2026): the jukebox visualiser's
     // cover crop, which keeps the full width and trims the top and bottom, and draw() lays
     // the room out in what is left, the heroes kept clear of the notch. Set in enter(),
     // behind the closed shutter — switched in view it shows a frame stretched — and here
-    // only when the phone is turned.
-    this.fitScreen();
+    // only when the phone is turned. (The visualiser has the screen while it is up.)
+    if (!this.vis.full) this.fitScreen();
     if (this.shownAt == null && !isTransitioning()) {
       this.shownAt = this.t;
       if (this.room && !this.room.strike) this.titleAt = this.t;
@@ -2718,6 +2799,12 @@ export class BangerClubState {
       // the ball spins up through the charge from its kick, slowly and then hard
       const k = this.strikeSpun();
       if (k != null) this.spinV = Math.max(this.spinV, STRIKE_SPIN_KICK + (STRIKE_SPIN - STRIKE_SPIN_KICK) * k * k);
+    }
+    // THE VISUALISER has the glass and the keys while it is up (club-visualiser.js); pause still pauses
+    if (this.vis.input()) {
+      if (Input.pressed('pause')) this.togglePause();
+      Input.endFrame();
+      return;
     }
     if (this.savePrompt) { this.updateSavePrompt(); return; }
 
@@ -3615,6 +3702,15 @@ export class BangerClubState {
   }
 
   draw(ctx) {
+    // the visualiser up over the room: the room under its fade, or not drawn at all
+    if (this.vis.open) {
+      this.vis.draw(ctx, (c) => this.drawRoom(c));
+      return;
+    }
+    this.drawRoom(ctx);
+  }
+
+  drawRoom(ctx) {
     this.ballHits = [];   // where lasers land on the mirror ball this frame
     const portrait = portraitMenuActive();
     // Portrait is the mock-up's phone layout at the game's width; u scales its strokes.
@@ -4080,6 +4176,11 @@ export class BangerClubState {
     const danceBeat = this.danceBeat(beat);
     const jolt = this.stutterJolt(beat);
     const boostHop = this.boostHop();
+    // Lorenzo's water's surface (null when the room is dry), and the time since the floaters were last eased
+    const surf = this.waterSurface(stageTop, stageBot);
+    const rise = surf == null ? 0 : FLOAT_RISE[0] + (FLOAT_RISE[1] - FLOAT_RISE[0]) * this.waterDepth();
+    const floatDt = this.afloatT == null ? 0 : Math.max(0, Math.min(0.1, t - this.afloatT));
+    this.afloatT = t;
     // Fernwick has the crowd while he draws: its crouch and jump (crowdMotion), not the party's.
     const crowd = this.crowdMotion();
     // Grumpos's echo, seen: ghosts of the floor thrown out one side and back the other, behind
@@ -4298,6 +4399,23 @@ export class BangerClubState {
         pose = { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 };
         dance = null;
         lift = 0;
+      }
+      // AFLOAT: up off the floor while the water is over them, down with it as it drains
+      // eased on a damped spring, so they set off and arrive gently, the drag moving them included
+      const under = surf == null || isActing ? 0 : Math.max(0, Math.min(1, (groundY - surf) / (toonH * FLOAT_DEPTH)));
+      const to = under * rise, was = this.afloat[i] || 0;
+      const w = 4 / (to > was ? FLOAT_UP_S : FLOAT_DOWN_S);
+      // in steps of no more than 1/120 s, so a slow frame cannot throw them past where they are going
+      let x = was, v = this.afloatV[i] || 0;
+      for (let n = Math.ceil(floatDt * 120), h = floatDt / Math.max(1, n); n > 0; n--) {
+        v += (w * w * (to - x) - 2 * w * v) * h;
+        x += v * h;
+      }
+      this.afloat[i] = Math.max(0, x); this.afloatV[i] = v;
+      if (this.afloat[i] > 1e-4) {
+        // the bob as big as how high they are: never down through the floor floating low
+        const k = Math.min(1, this.afloat[i] / FLOAT_RISE[1]);
+        lift += (this.afloat[i] + k * FLOAT_BOB * Math.sin(t * 1.5 + i * 2.1)) * toonH;
       }
       // ...and now and then they look off — to one side, up, down — rather than always straight out
       const glance = !this.paused && !walking && !isActing ? heroGlance(i, t) : null;
@@ -5724,7 +5842,28 @@ export class BangerClubState {
           }
           ctx.restore();
           ctx.textAlign = 'center';
-        } else { fit(name); ctx.fillText(name, cx, chipY + chipH / 2, room); }
+        } else {
+          // A name that would shrink well below the chip's size goes on two lines instead, larger
+          // (Peter, 10 Oct 2026: "the small text is too small")
+          fit(name);
+          const full = S(10, 3.8);
+          const words = name.split(' ');
+          // (the size it is really drawn at: fillText squeezes it further into `room`)
+          const shrunk = Math.min(1, room / ctx.measureText(name).width) * parseFloat(ctx.font.match(/(\d+(?:\.\d+)?)px/)[1]);
+          if (words.length > 1 && shrunk < full * 0.85) {
+            let fs = Math.min(full * 0.92, chipH * 0.4);
+            ctx.font = `600 ${fs}px ${BODY_FONT}`;
+            // the break that leaves the wider line narrowest
+            const splits = words.slice(1).map((_, k) => [words.slice(0, k + 1).join(' '), words.slice(k + 1).join(' ')]);
+            const widthOf = (pair) => Math.max(...pair.map((t) => ctx.measureText(t).width));
+            const lines = splits.reduce((best, pair) => (widthOf(pair) < widthOf(best) ? pair : best));
+            const wide = widthOf(lines);
+            if (wide > room) { fs *= room / wide; ctx.font = `600 ${fs}px ${BODY_FONT}`; }
+            if (fs > shrunk) {
+              lines.forEach((t, i) => ctx.fillText(t, cx, chipY + chipH / 2 + (i - 0.5) * fs * 1.05, room));
+            } else { fit(name); ctx.fillText(name, cx, chipY + chipH / 2, room); }
+          } else ctx.fillText(name, cx, chipY + chipH / 2, room);
+        }
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'left';
       });
@@ -5984,8 +6123,10 @@ export class BangerClubState {
     const tipOf = (key) => (key.startsWith('transport') ? this.boxes.transport?.[Number(key.slice(9))] : this.boxes[key]);
     if (this.rerolling > 0 && this.boxes.reroll) {
       this.drawTip(ctx, this.boxes.reroll, 'CHARGING', { portrait, P, safeL, safeR, lit: true, dots: true });
+    } else if (this.rerollHeld && this.boxes.reroll) {
+      this.drawTip(ctx, this.boxes.reroll, 'HOLD TO REMIX', { portrait, P, safeL, safeR, lit: true });
     } else if (this.rerollArmed() && this.boxes.reroll) {
-      this.drawTip(ctx, this.boxes.reroll, 'TAP AGAIN FOR A NEW TAKE', { portrait, P, safeL, safeR, lit: true });
+      this.drawTip(ctx, this.boxes.reroll, 'TAP AGAIN TO REMIX', { portrait, P, safeL, safeR, lit: true });
     } else if (this.strikeDone && this.t - this.strikeAt < STRIKE_DONE_S && this.boxes.reroll) {
       const a = Math.min(1, (STRIKE_DONE_S - (this.t - this.strikeAt)) / 0.3);
       this.drawTip(ctx, this.boxes.reroll, this.strikeDone, { portrait, P, safeL, safeR, lit: true, alpha: a });

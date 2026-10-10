@@ -39,8 +39,8 @@ export const DEFAULT_LAYERS = Object.freeze([
 export const LAYERS_FROM_BARS = 64;
 /** Does a song of `total` bars build in layers? Off, Long Songs (past 64 bars) or Always. */
 export const layersOn = (form, total) => form.layers === 'always' || (form.layers === 'long' && total > LAYERS_FROM_BARS);
-/** Bars a layered intro wants: four a layer. A layered outro wants eight. */
-const layerBars = (style) => 4 * (style?.layers || DEFAULT_LAYERS).length;
+/** Bars a layered intro wants: four a layer, or two under Tune First (options.js). A layered outro wants eight. */
+const layerBars = (style, tuneFirst = false) => (tuneFirst ? 2 : 4) * (style?.layers || DEFAULT_LAYERS).length;
 /** What plays in a Drums & Bass Intro, unless a style says otherwise (`grooveParts`). */
 export const DEFAULT_GROOVE = Object.freeze(['kick', 'clap', 'snare', 'hats', 'ohats', 'fill', 'perc', 'riffDrums', 'bass', 'sub']);
 /** The least a layered intro or outro is shrunk to — below that it is not a build any more. */
@@ -67,7 +67,7 @@ const GROW = [
  */
 function wanted(form, natural = {}, style = null, layered = false) {
   const out = [];
-  if (form.intro) out.push({ role: 'intro', bars: layered ? natural.layers ?? layerBars(style) : natural.intro ?? 4 });
+  if (form.intro) out.push({ role: 'intro', bars: layered ? natural.layers ?? layerBars(style, form.tuneFirst) : natural.intro ?? 4 });
   if (form.build) out.push({ role: 'build', bars: 4 });
   out.push({ role: 'drop', bars: 16 });
   if (form.breakdown) out.push({ role: 'breakdown', bars: natural.breakdown ?? 8 });
@@ -145,8 +145,9 @@ export function formFromList(list, options, style = null, total = sectionsBars(l
     if (def.hook) hookN++;
     if (type === 'build') buildN++;
     let variant = s.variant || null;
+    // An intro with no variant of its own is left to Intro Type (sections.js), as the Club form's is.
     if (type === 'intro' && (!variant || variant === 'riff' || variant === 'quote')) {
-      variant = layered ? 'layers' : options.form.grooveIntro ? 'groove' : variant || 'riff';
+      variant = layered ? 'layers' : options.form.grooveIntro ? 'groove' : variant;
     }
     if (type === 'outro' && layered && (!variant || variant === 'riff')) variant = 'layers';
     const energy = s.energy ?? def.energy;

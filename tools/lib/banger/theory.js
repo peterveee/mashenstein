@@ -695,6 +695,78 @@ export function orderWithBarExtras(order, byBar) {
  * 250 Hz to 8 kHz while it fades in, then cut. For `voiceParams` on a crash layer — the
  * library's sweeps all end inside a second, and a build wants two bars.
  */
+/**
+ * The riser for a RISER TYPE (build-ways.js RISER_WAYS), as a song-local voice: `bpm` the song's
+ * tempo, `tonic` the pitch class a tonal riser (Pitch, Fifths) lands on. The Noise Riser is `riser`'s,
+ * exactly as it always was.
+ */
+export function riserVoice(way, bpm, tonic = 9) {
+  const pc = ((tonic % 12) + 12) % 12;
+  const hz = (m) => 440 * 2 ** ((m - 69) / 12);
+  const bar = 240 / bpm;
+  // Undriven, so the level is the gains' alone: each set so the riser sits where the Noise Riser does
+  // on the same fader (measured 9 Oct 2026). Peter's by-ear trims on top are the fader's (build-ways.js
+  // RISER_WAYS trimDb): a section gain here also reshapes its exponential swell.
+  const sweep = (seconds, label, note, noise, extra = {}) => ({
+    label, category: 'Sweep', homeLane: 'crash', kind: 'drum', dur: seconds, note, noise, drive: 0, peak: 0.034, ...extra,
+  });
+  if (way === 'long') return { ...riser(4 * bar), label: 'Long Riser' };
+  // The Noise Riser, gated (fx.js RISER_GATE) — the gate takes about half of it away, so it runs hotter.
+  if (way === 'stutter') {
+    const r = riser(2 * bar);
+    return { ...r, label: 'Stutter Riser', note: `${r.note} Chopped by a quickening gate.`, noise: { ...r.noise, gain: 1.5 } };
+  }
+  if (way === 'whoosh') {
+    const s = bar;
+    return sweep(s, 'Whoosh', `White noise rushing 600 Hz to 12 kHz over ${s.toFixed(2)}s.`,
+      { type: 'bandpass', freq: 600, to: 12000, sweep: s, Q: 1.2, slope: -24, color: 'white', attack: s * 0.85, hold: 0, decay: s * 0.15, curve: 'exp', gain: 0.95 });
+  }
+  if (way === 'wind') {
+    const s = 2 * bar;
+    return sweep(s, 'Wind', `Pink noise through a low-pass opening 300 Hz to 9 kHz over ${s.toFixed(2)}s.`,
+      { type: 'lowpass', freq: 300, to: 9000, sweep: s, Q: 2.5, slope: -24, color: 'pink', attack: s * 0.95, hold: 0, decay: s * 0.05, curve: 'exp', gain: 0.12 });
+  }
+  if (way === 'fifths') {
+    // Two saws a fifth apart, climbing together to the root and fifth of the chord to come.
+    const s = 2 * bar;
+    const from = 36 + pc;
+    const saw = (m) => ({ type: 'sawtooth', from: hz(m), to: hz(m + 36), sweep: s, pitchCurve: 'exp', attack: s * 0.9, hold: 0, decay: s * 0.1, curve: 'exp', gain: 0.16 });
+    return sweep(s, 'Fifths Riser', `Two saws a fifth apart climbing three octaves to the chord to come over ${s.toFixed(2)}s, over a little noise.`,
+      { type: 'bandpass', freq: 250, to: 8000, sweep: s, Q: 1.6, slope: -24, color: 'white', attack: s * 0.92, hold: 0, decay: s * 0.08, curve: 'exp', gain: 0.3 },
+      { osc: saw(from), osc2: saw(from + 7) });
+  }
+  if (way === 'pitch') {
+    const s = 2 * bar;
+    const from = 36 + pc;
+    return sweep(s, 'Pitch Riser', `A saw climbing three octaves to the home note over ${s.toFixed(2)}s, over a little noise.`,
+      { type: 'bandpass', freq: 250, to: 8000, sweep: s, Q: 1.6, slope: -24, color: 'white', attack: s * 0.92, hold: 0, decay: s * 0.08, curve: 'exp', gain: 0.37 },
+      { osc: { type: 'sawtooth', from: hz(from), to: hz(from + 36), sweep: s, pitchCurve: 'exp', attack: s * 0.9, hold: 0, decay: s * 0.1, curve: 'exp', gain: 0.22 } });
+  }
+  if (way === 'reverse') {
+    const s = bar / 2;
+    return sweep(s, 'Reverse Cymbal', `Bright noise swelling into the downbeat over ${s.toFixed(2)}s.`,
+      { type: 'highpass', freq: 2500, to: 9000, sweep: s, Q: 0.9, slope: -24, color: 'white', attack: s * 0.97, hold: 0, decay: s * 0.03, curve: 'exp', gain: 0.4 });
+  }
+  return riser(2 * bar);
+}
+
+/**
+ * Drop Hit's Sub Drop (build-ways.js DROP_HIT_WAYS): a sine from the home note (`tonic`, a pitch class)
+ * an octave under middle C, falling two octaves over most of a bar, with a short dark noise thump.
+ */
+export function subDropVoice(bpm, tonic = 9) {
+  const s = Math.min(2.4, 240 / bpm);
+  const from = 440 * 2 ** ((48 + (((tonic % 12) + 12) % 12) - 69) / 12);
+  return {
+    label: 'Sub Drop', category: 'Impact', homeLane: 'tom', kind: 'drum', dur: s,
+    note: `A sine falling two octaves from the home note over ${s.toFixed(2)}s, a dark thump on the front.`,
+    // Levelled to sit where the style's own impacts do on the same fader (measured 9 Oct 2026).
+    osc: { type: 'sine', from, to: from / 4, sweep: s * 0.85, pitchCurve: 'exp', attack: 0.002, hold: 0.04, decay: s, curve: 'exp', gain: 0.03 },
+    noise: { type: 'lowpass', freq: 2500, to: 150, sweep: 0.3, Q: 0.7, slope: -12, color: 'white', attack: 0.001, hold: 0, decay: 0.3, curve: 'exp', gain: 0.0075 },
+    drive: 0, peak: 0.034,
+  };
+}
+
 export function riser(seconds) {
   return {
     label: 'Noise Riser', category: 'Sweep', homeLane: 'crash', kind: 'drum', dur: seconds,

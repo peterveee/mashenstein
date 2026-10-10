@@ -123,6 +123,7 @@ import * as FROST_8BIT from './frost-8bit.js';
 import * as FROST_REMIX_ABSOLUTE_ZERO from './frost-remix-absolute-zero.js';
 import * as FROST_REMIX_BLACK_ICE from './frost-remix-black-ice.js';
 import * as FROST_REMIX_SNOW_GLOBE from './frost-remix-snow-globe.js';
+import * as GARY_NUMAN_CARS_2 from './gary-numan-cars-2.js';
 import * as GARY_NUMAN_CARS from './gary-numan-cars.js';
 import * as GRAVITY_8BIT from './gravity-8bit.js';
 import * as HUB_8BIT from './hub-8bit.js';
@@ -333,6 +334,7 @@ export const IMPORTED_BY_ID = {
   "frost-remix-absolute-zero": { bank: FROST_REMIX_ABSOLUTE_ZERO.bank, title: FROST_REMIX_ABSOLUTE_ZERO.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-black-ice": { bank: FROST_REMIX_BLACK_ICE.bank, title: FROST_REMIX_BLACK_ICE.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-snow-globe": { bank: FROST_REMIX_SNOW_GLOBE.bank, title: FROST_REMIX_SNOW_GLOBE.title, group: "alternate", writable: true, alternateOf: "frost" },
+  "gary-numan-cars-2": { bank: GARY_NUMAN_CARS_2.bank, title: GARY_NUMAN_CARS_2.title, group: "imported", writable: true },
   "gary-numan-cars": { bank: GARY_NUMAN_CARS.bank, title: GARY_NUMAN_CARS.title, group: "imported", writable: true },
   "gravity-8bit": { bank: GRAVITY_8BIT.bank, title: GRAVITY_8BIT.title, group: "alternate", writable: true, alternateOf: "gravity" },
   "hub-8bit": { bank: HUB_8BIT.bank, title: HUB_8BIT.title, group: "alternate", writable: true, alternateOf: "hub" },

@@ -972,7 +972,7 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Another Take (the page sends the new take it made), Previous Take, Next Take. The
+    // Remix (the page sends the new take it made), Previous Take, Next Take. The
     // take being left is always kept whole first — music, mix and all.
     if (req.method === 'POST' && req.url === '/banger-take') {
       const body = await readJson(req);

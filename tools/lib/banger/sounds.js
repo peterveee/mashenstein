@@ -30,13 +30,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "seedBigRoomKick", snare: "seedBigRoomSnare", clap: "seedBigRoomClap",
@@ -53,8 +54,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -95,6 +96,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -313,13 +349,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "seedTranceKick", snare: "seedTranceSnare", clap: "seedTranceClap",
@@ -336,8 +373,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -378,6 +415,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -594,13 +666,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "seedFutureBassKick", snare: "seedFutureBassSnare", clap: "seedFutureBassClap",
@@ -617,8 +690,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -659,6 +732,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -874,13 +982,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909Kick", snare: "dsSnare", clap: "ds909Clap",
@@ -897,8 +1006,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -939,6 +1048,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -1158,13 +1302,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "seedChipstepKick", snare: "seedChipstepSnare", clap: "seedChipstepClap",
@@ -1181,8 +1326,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -1223,6 +1368,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -1438,13 +1618,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "kickClickTop", snare: "gameBoySnare", clap: "ds909SnareCrack",
@@ -1461,8 +1642,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -1503,6 +1684,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -1613,6 +1829,41 @@ export const BANGER_SOUNDS = {
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
       },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
+      },
     },
     random: {
       hook: ["toneSquare", "squareTone2", "toneSawtooth", "sawtoothTone2", "toneTriangle"],
@@ -1639,13 +1890,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "sdsKick", snare: "sdsSnare", clap: "sdCrack",
@@ -1662,8 +1914,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -1704,6 +1956,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -1915,17 +2202,18 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
-        kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ohat909SixBit", crash: "ds909Crash",
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", crash: "kit_80s_pop_crash",
         fill: "sdsTomHigh",
       },
       studio: {
@@ -1938,8 +2226,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -1980,6 +2268,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -2198,13 +2521,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
@@ -2221,8 +2545,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -2263,6 +2587,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -2306,18 +2665,19 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
-        kick: "dsKick", snare: "snareCrisp", clap: "dsRim",
-        hats: "dsHatClosed", ohats: "dsHatOpen", crash: "ds909Crash",
-        fill: "dsTom",
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_rim",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", crash: "kit_brushes_crash",
+        fill: "kit_brushes_tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -2329,8 +2689,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -2371,6 +2731,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -2411,13 +2806,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "snareTight", clap: "dsCrackSnare2",
@@ -2434,8 +2830,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -2476,6 +2872,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -2513,13 +2944,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
@@ -2536,8 +2968,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -2578,6 +3010,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -2612,13 +3079,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "seedMegadriveKick", snare: "seedMegadriveSnare", clap: "seedMegadriveClap",
@@ -2635,8 +3103,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -2677,6 +3145,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -2711,13 +3214,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
@@ -2734,8 +3238,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -2776,6 +3280,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -2813,13 +3352,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Snare",
@@ -2836,8 +3376,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -2878,6 +3418,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -2917,13 +3492,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909Kick", snare: "snareFat", clap: "snareFat",
@@ -2940,8 +3516,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -2982,6 +3558,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -3016,13 +3627,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
@@ -3039,8 +3651,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3081,6 +3693,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -3118,13 +3765,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
@@ -3141,8 +3789,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3183,6 +3831,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -3217,13 +3900,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
@@ -3240,8 +3924,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3282,6 +3966,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -3319,18 +4038,19 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
-        kick: "seedItaloDiscoKick", snare: "seedItaloDiscoSnare", clap: "seedItaloDiscoClap",
-        hats: "seedItaloDiscoHats", ohats: "seedItaloDiscoOhats", crash: "seedItaloDiscoCrash",
-        fill: "seedItaloDiscoFill",
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", crash: "kit_syndrum_disco_crash",
+        fill: "kit_syndrum_disco_tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -3342,8 +4062,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3384,6 +4104,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -3421,13 +4176,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "seedReggaetonKick", snare: "seedReggaetonSnare", clap: "seedReggaetonClap",
@@ -3444,8 +4200,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3486,6 +4242,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -3520,13 +4311,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "dsSnare", clap: "snareTight",
@@ -3543,8 +4335,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3585,6 +4377,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -3619,13 +4446,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
@@ -3642,8 +4470,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3684,6 +4512,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -3721,13 +4584,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -3739,8 +4603,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3781,6 +4645,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
       style: {
         kick: "ds909KickPunch", snare: "dsSnare", clap: "clap808",
@@ -3820,13 +4719,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -3838,8 +4738,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3880,6 +4780,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
       style: {
         kick: "ds909Kick", snare: "dsSnare", clap: "ds909Clap",
@@ -3916,13 +4851,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -3934,8 +4870,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -3976,6 +4912,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
       style: {
         kick: "ds909KickPunch", snare: "dsSnare", clap: "clap808",
@@ -4012,13 +4983,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds808Kick", snare: "clvRosewood", clap: "clvRosewood",
@@ -4035,8 +5007,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4077,6 +5049,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4108,13 +5115,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds808Kick", snare: "snareTight", clap: "snareTight",
@@ -4131,8 +5139,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4173,6 +5181,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4204,17 +5247,18 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
-        kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ohat909SixBit", crash: "ds909Crash",
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", crash: "kit_80s_pop_crash",
         fill: "sdsTomHigh",
       },
       studio: {
@@ -4227,8 +5271,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4269,6 +5313,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4311,18 +5390,19 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
-        kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ohat909SixBit", crash: "ds909Crash",
-        fill: "sdsTomHigh",
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", crash: "sdsCymbal",
+        fill: "sdsTomMid",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -4334,8 +5414,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4376,6 +5456,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4415,13 +5530,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "snareTight", clap: "dsCrackSnare2",
@@ -4438,8 +5554,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4480,6 +5596,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4511,18 +5662,19 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
-        kick: "ds909KickPunch", snare: "dsCrackSnare2", clap: "dsCrackSnare2",
-        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", crash: "kit_neuro_crash",
+        fill: "kit_neuro_tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -4534,8 +5686,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4576,6 +5728,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4607,13 +5794,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
@@ -4630,8 +5818,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4672,6 +5860,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4706,13 +5929,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
@@ -4729,8 +5953,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4771,6 +5995,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4802,13 +6061,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "ds909Clap",
@@ -4825,8 +6085,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4867,6 +6127,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4891,28 +6186,29 @@ export const BANGER_SOUNDS = {
   },
   "uk-garage": {
     parts: {
-      bass: "mrdrOrganBass", sub: "stSubSine", square: "mrdrVocalOh",
-      squareDense: "mrdrVocalOh", bell: "tngrIceBell", megaSaw: "mrdrHouseOrganStab",
-      third: "rmndTineEP", arp: "tngrCrystalTrigger", counter: "mrdrVocalOh",
-      choir: "jmjrChoirOoh", saws: "mrdrHouseOrganStab", pad: "tngrCloudMemory",
-      piano: "mrdrHouseOrganStab", impact: "syn3PewDeep", shaker: "dsShaker",
-      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
-      ride: "ride909SixBit", fallbackMelodic: "rmndTineEP",
+      bass: "seedUkGarageBass", sub: "seedUkGarageSub", square: "seedUkGarageSquare",
+      squareDense: "mrdrVocalOh", bell: "seedUkGarageBell", megaSaw: "seedUkGarageMegaSaw",
+      third: "seedUkGarageThird", arp: "seedUkGarageArp", counter: "seedUkGarageCounter",
+      choir: "seedUkGarageChoir", saws: "mrdrHouseOrganStab", pad: "seedUkGaragePad",
+      piano: "seedUkGaragePiano", impact: "syn3PewDeep", shaker: "seedUkGarageShaker",
+      tambourine: "seedUkGarageTambourine", congas: "seedUkGarageCongas", cowbell: "seedUkGarageCowbell",
+      ride: "seedUkGarageRide", fallbackMelodic: "rmndTineEP",
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "clapTight",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "seedUkGarageKick", snare: "seedUkGarageSnare", clap: "seedUkGarageClap",
+        hats: "seedUkGarageHats", ohats: "seedUkGarageOhats", crash: "seedUkGarageCrash",
+        fill: "seedUkGarageFill",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -4924,8 +6220,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -4966,6 +6262,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -4997,13 +6328,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
@@ -5020,8 +6352,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5062,6 +6394,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -5093,13 +6460,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "ds909Snare", clap: "clapRoom",
@@ -5116,8 +6484,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5158,6 +6526,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -5203,13 +6606,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
@@ -5226,8 +6630,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5268,6 +6672,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -5305,13 +6744,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "fatKick", snare: "snareFat", clap: "snareFat",
@@ -5328,8 +6768,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5370,6 +6810,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -5404,13 +6879,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds808Kick", snare: "snareFat", clap: "clapRoom",
@@ -5427,8 +6903,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5469,6 +6945,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -5506,13 +7017,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "ds909Snare", clap: "ds909Clap",
@@ -5529,8 +7041,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5571,6 +7083,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -5602,13 +7149,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "ds909Clap",
@@ -5625,8 +7173,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5667,6 +7215,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -5701,13 +7284,14 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
         kick: "ds909KickPunch", snare: "rim909TwoMode", clap: "clapTight",
@@ -5724,8 +7308,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5766,6 +7350,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {
@@ -5797,18 +7416,19 @@ export const BANGER_SOUNDS = {
     },
     kits: {
       "808": {
-        kick: "ds808Kick", snare: "ds808Snare", clap: "ds808Clap",
-        hats: "dsHatClosed", ohats: "ds808OpenHat", fill: "ds808Tom",
+        kick: "tr808Kick", snare: "tr808Snare", clap: "tr808Clap",
+        hats: "tr808ClosedHat", ohats: "tr808OpenHat", crash: "tr808Cymbal",
+        fill: "tr808Tom",
       },
       "909": {
-        kick: "ds909Kick", snare: "ds909Snare", clap: "ds909Clap",
-        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "tr909Kick", snare: "tr909Snare", clap: "tr909Clap",
+        hats: "tr909ClosedHat", ohats: "tr909OpenHat", crash: "ds909Crash",
+        fill: "tr909Tom",
       },
       style: {
-        kick: "fatKick", snare: "snareCrisp", clap: "snareCrisp",
-        hats: "hatEngine", ohats: "hatOpen", crash: "ds909Crash",
-        fill: "ds909Tom",
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", crash: "kit_breakbeat_crash",
+        fill: "kit_breakbeat_tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -5820,8 +7440,8 @@ export const BANGER_SOUNDS = {
         hats: "dsHatClosed", ohats: "dsHatOpen", fill: "dsTom",
       },
       cr78: {
-        kick: "dsCr78Kick", snare: "dsCr78Snare", clap: "dsCr78Clap",
-        hats: "dsCr78Hat", fill: "dsCr78Tom",
+        kick: "cr78Kick", snare: "cr78Snare", clap: "cr78Tambourine",
+        hats: "cr78Hat", crash: "cr78Cymbal", fill: "cr78Conga",
       },
       glasshouse: {
         kick: "kit_glasshouse_kick", snare: "kit_glasshouse_snare", clap: "kit_glasshouse_clap",
@@ -5862,6 +7482,41 @@ export const BANGER_SOUNDS = {
         kick: "kit_velvet_basement_kick", snare: "kit_velvet_basement_snare", clap: "kit_velvet_basement_clap",
         hats: "kit_velvet_basement_hats", ohats: "kit_velvet_basement_ohats", fill: "kit_velvet_basement_tom",
         crash: "kit_velvet_basement_crash",
+      },
+      "80s-pop": {
+        kick: "kit_80s_pop_kick", snare: "kit_80s_pop_snare", clap: "kit_80s_pop_clap",
+        hats: "kit_80s_pop_hats", ohats: "kit_80s_pop_ohats", fill: "kit_80s_pop_tom",
+        crash: "kit_80s_pop_crash",
+      },
+      breakbeat: {
+        kick: "kit_breakbeat_kick", snare: "kit_breakbeat_snare", clap: "kit_breakbeat_clap",
+        hats: "kit_breakbeat_hats", ohats: "kit_breakbeat_ohats", fill: "kit_breakbeat_tom",
+        crash: "kit_breakbeat_crash",
+      },
+      nes: {
+        kick: "kit_nes_kick", snare: "kit_nes_snare", clap: "kit_nes_clap",
+        hats: "kit_nes_hats", ohats: "kit_nes_ohats", fill: "kit_nes_tom",
+        crash: "kit_nes_crash",
+      },
+      simmons: {
+        kick: "sdsKick", snare: "sdsSnare", clap: "kit_simmons_clap",
+        hats: "kit_simmons_hats", ohats: "kit_simmons_ohats", fill: "sdsTomMid",
+        crash: "sdsCymbal",
+      },
+      neuro: {
+        kick: "kit_neuro_kick", snare: "kit_neuro_snare", clap: "kit_neuro_clap",
+        hats: "kit_neuro_hats", ohats: "kit_neuro_ohats", fill: "kit_neuro_tom",
+        crash: "kit_neuro_crash",
+      },
+      brushes: {
+        kick: "kit_brushes_kick", snare: "kit_brushes_snare", clap: "kit_brushes_clap",
+        hats: "kit_brushes_hats", ohats: "kit_brushes_ohats", fill: "kit_brushes_tom",
+        crash: "kit_brushes_crash",
+      },
+      "syndrum-disco": {
+        kick: "kit_syndrum_disco_kick", snare: "kit_syndrum_disco_snare", clap: "kit_syndrum_disco_clap",
+        hats: "kit_syndrum_disco_hats", ohats: "kit_syndrum_disco_ohats", fill: "kit_syndrum_disco_tom",
+        crash: "kit_syndrum_disco_crash",
       },
     },
     random: {

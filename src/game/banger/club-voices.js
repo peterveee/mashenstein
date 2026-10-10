@@ -34,7 +34,8 @@ import { BANGER_SOUNDS } from '../../../tools/lib/banger/sounds.js';
 import { KITS, RANDOM_JOBS, phoneStyle, soundAllowed, soundsRow } from '../../../tools/lib/banger/sound-rules.js';
 import { styleFor, withoutStyleSuffix } from '../../../tools/lib/banger/styles/index.js';
 import { fusionIds } from '../../../tools/lib/banger/styles/fusion.js';
-import { CREATIVE_DRUM_KITS } from '../../data/creative-drum-kits.js';
+import { kitRollsFor } from '../../../tools/lib/banger/kit-rolls.js';
+import { inLab } from '../../data/creative-drum-kits.js';
 import { predictedProcessedPart, levelWindow, soundOf, LEVEL_WINDOW_BARS, MAX_LEVEL_MOVE } from '../../../tools/lib/banger/levels.js';
 import { laneVoiceOf } from '../../../tools/lib/banger/riff.js';
 import { nameOf, hasNotes } from '../../../tools/lib/banger/theory.js';
@@ -56,11 +57,17 @@ export const CRUSH = Object.freeze({ bits: 12, downsample: 8, wet: 1 });
 /** CRUSH as a chain link, fresh each time: a chain slot keeps the params it is handed. */
 export const crushLink = () => ({ id: 'bitcrusher', params: { ...CRUSH } });
 const isCrush = (chain) => !!chain?.some?.((link) => link?.def?.id === 'bitcrusher');
-const CREATIVE_KIT_KEYS = new Set(CREATIVE_DRUM_KITS.map((k) => k.key));
 const KIT_ROLES = Object.freeze(['kick', 'snare', 'clap', 'hats', 'ohats', 'crash', 'fill']);
-// The game's kits are the six the desk has always had; the desk's creative kits
-// (src/data/creative-drum-kits.js) stay off the floor.
-const KIT_ORDER = Object.freeze(KITS.map((k) => k.key).filter((k) => !CREATIVE_KIT_KEYS.has(k)));
+// Every kit the Lab offers is on the floor (Peter, 10 Oct 2026: "Can we have them in the mixer?") —
+// the six the desk has always had and the creative kits (src/data/creative-drum-kits.js) not marked
+// `lab: false` (the first eight, which stay on the desk). The DRUMS button, its long-press list
+// and the DICE reach all of them (Peter, 10 Oct 2026: "allow the dice roll in the mixer to pick
+// any kit"); the ones that suit the style (tools/lib/banger/kit-rolls.js) come first — see `choices`.
+const KIT_ORDER = Object.freeze(KITS.filter((k) => !k.retired).map((k) => k.key).filter(inLab));
+// The kits the floor had before (less DS and Studio, retired): what the 8-Bit set offers.
+const MACHINE_KITS = Object.freeze(['style', '909', '808', 'cr78']);
+// Where the clap pad looks for a clap, in the order it always has (DS and Studio still there: it is looking, not offering).
+const CLAP_SEARCH = Object.freeze(['style', 'studio', '909', '808', 'ds', 'cr78']);
 /**
  * The parts with a sound button, as the mixer lists them, and which Riff Sound list each walks.
  * `groove`: in a fusion the part is the GROOVE style's (styles/fusion.js BEAT_ROLES), not the SOUND's.
@@ -269,6 +276,8 @@ export class ClubVoices {
   constructor(song, rec = null) {
     this.song = song;
     this.style = rec?.style ?? null;
+    // Whose kits the DICE rolls: the drums are the groove's, so an infused take's other style.
+    this.drumStyle = (rec?.infusion && (styleFor(rec.infusion)?.base || rec.infusion)) || this.style;
     // A fusion's row (`fusion:…`) is its two styles' put together, made once here.
     this.ownSet = soundsRow(BANGER_SOUNDS, song?.soundsId) ? song.soundsId : this.style;
     this.ownRow = soundsRow(BANGER_SOUNDS, this.ownSet) || null;
@@ -359,7 +368,19 @@ export class ClubVoices {
     const borrowed = this.onChipSet(swapped) ? [] : this.borrowed[part] || [];
     if (part === 'drums') {
       const own = this.kitIn(row);
-      return [own, ...KIT_ORDER.filter((k) => k !== own && row.kits?.[k])].map((kit) => ({ kit, label: kitLabel(kit) })).concat(borrowed);
+      // A Style Kit that IS one of the named kits (Jungle's is Breakbeat) goes by that kit's name,
+      // and the kit is not listed again further down.
+      const as = this.sameKit(row, own);
+      // The kits the style rolls first, then every other kit the Lab offers. Borrowed last, as for
+      // every part.
+      const suits = new Set(['style', ...kitRollsFor(this.drumStyle, { lab: true })]);
+      // On the 8-Bit set (B-33P) the six it has always had: its machine slots are console kits,
+      // and its creative ones are the ordinary creative kits, not 8-bit at all.
+      const pool = this.onChipSet(swapped) ? MACHINE_KITS : KIT_ORDER;
+      const kits = pool.filter((k) => k !== own && k !== as && row.kits?.[k]);
+      const item = (kit) => ({ kit, label: kitLabel(kit) });
+      return [{ kit: own, label: kitLabel(as || own) }, ...kits.filter((k) => suits.has(k)).map(item), ...kits.filter((k) => !suits.has(k)).map(item)]
+        .concat(borrowed);
     }
     const lane = this.partLane(part);
     if (!lane) return [];
@@ -368,7 +389,25 @@ export class ClubVoices {
     const seen = new Set();
     const once = (id) => !seen.has(soundId(id)) && !!seen.add(soundId(id));
     const own = [first, ...list.filter((id) => id !== first)].filter((id) => VOICES[id] && once(id));
-    return own.map((id) => ({ id, label: voiceLabel(id) })).concat(borrowed.filter((c) => !own.includes(c.id) && (!VOICES[c.id] || once(c.id))));
+    const out = own.map((id) => ({ id, label: voiceLabel(id) })).concat(borrowed.filter((c) => !own.includes(c.id) && (!VOICES[c.id] || once(c.id))));
+    // Two different sounds under one name — a seed tuned off a library preset keeps the preset's name,
+    // and the button drops the style it was kept for: that one says it, so each is named once.
+    for (const c of out) {
+      if (c.id && out.some((o) => o !== c && o.label === c.label) && / · /.test(VOICES[c.id]?.label || '')) {
+        c.label = String(VOICES[c.id].label).replace(/^=\s*/, '').replace(/\s*\(starter\)/i, '').toUpperCase();
+      }
+    }
+    return out;
+  }
+  /**
+   * The named kit `row`'s kit `own` is — the same kick, snare and hats; a style may have swapped
+   * its clap slot (Shibuya-Kei's is the Brushes cross-stick) — else null.
+   */
+  sameKit(row, own) {
+    if (own !== 'style') return null;
+    const mine = row?.kits?.style || {};
+    return KIT_ORDER.find((k) => k !== 'style' && row.kits?.[k]
+      && ['kick', 'snare', 'hats'].every((r) => row.kits[k][r] && row.kits[k][r] === mine[r])) || null;
   }
   /** What the DICE rolls between: the part's own sounds, never the borrowed (they come last). */
   rollChoices(part, swapped = this.target.swapped) {
@@ -547,7 +586,7 @@ export class ClubVoices {
     const kit = choice?.kit || this.kitIn(row);
     const borrowed = choice?.row && roleVoice(choice.row, kit, 'clap');
     if (isClap(borrowed)) return borrowed;
-    for (const k of [kit, ...KIT_ORDER.filter((x) => x !== kit)]) {
+    for (const k of [kit, ...CLAP_SEARCH.filter((x) => x !== kit)]) {
       const id = roleVoice(row, k, 'clap');
       if (isClap(id)) return id;
     }

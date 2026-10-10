@@ -13,6 +13,7 @@
 
 import { BREAKDOWN_WAYS } from './breakdown-ways.js';
 import { BUILD_WAYS } from './build-ways.js';
+import { INTRO_WAYS } from './intro-ways.js';
 
 // `note` is the short line the section lists show beside each kind; `title` the whole of
 // what it does, for the tooltips. A variant is [id, label, what it plays].
@@ -20,8 +21,9 @@ export const SECTION_TYPES = Object.freeze({
   intro: { label: 'Intro', colour: '#5d7ea3', hook: false, energy: 0.3, min: 2, max: 32,
     note: 'Opens the song',
     title: 'Opens the song — the riff as written, a filtered quote of the chorus, the parts arriving one at a time, or drums and bass alone',
-    variants: [['riff', 'The Riff', 'The riff as you played it, the kick and hats joining'],
-      ['quote', 'Chorus Quote', 'The chorus\'s hook and chords through a low-pass that opens across it'],
+    // '' is the Intro Type switch's (More Options → Form) — what an undrawn intro shows.
+    variants: [['', 'As Intro Type', 'Whatever More Options → Intro Type says — Varied: a different opening each song'],
+      ...INTRO_WAYS.map((w) => [w.id, w.label, w.note]),
       ['layers', 'In Layers', 'The parts arriving one at a time — kick, kit, bass, chords, the hook last'],
       ['groove', 'Drums & Bass', 'The beat and the bass alone, so the next section comes in all at once']] },
   verse: { label: 'Verse', colour: '#3f9a86', hook: false, energy: 0.45, min: 4, max: 32,

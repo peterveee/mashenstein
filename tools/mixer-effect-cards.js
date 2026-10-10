@@ -15,7 +15,7 @@ import {
   EFFECT_BY_ID, paramRange, visibleParams, sweepStartOf, SYNC_DIVISIONS, RATE_DIVISIONS,
   AUTOPANNER_RATE_DIVISIONS, syncSeconds, STUTTER_SLICES, STUTTER_RETRIGGERS, STUTTER_STOPS,
   effectPresetNames, resolveEffectPreset, resolveEffectSnapshot, matchEffectPreset,
-  PEQ_BANDS, peqResponse,
+  PEQ_BANDS, peqResponse, DUCK_GRID,
 } from '../src/engine/effects.js';
 import { responseGraph } from './mixer-synth-graphs.js';
 import { paramLabel, checkRow, divisionRow, optionRow, radioRow } from './mixer-controls.js';
@@ -27,13 +27,15 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const h = (el) => (el ? el.getBoundingClientRect().height : 0);
 
 // ---- the seam ---------------------------------------------------------------
-// Four things the cards need that are not theirs: the desk's slider row, its drag
-// gesture, the song tempo a sync division is read against, and how it spells one.
-let slider, dragNumber, deskTempo, fmtDelay;
+// Five things the cards need that are not theirs: the desk's slider row, its drag
+// gesture, the song tempo a sync division is read against, how it spells one, and the
+// song's tracks as the desk names them (a Sidechain Duck's TRIGGER is one of them).
+let slider, dragNumber, deskTempo, fmtDelay, songTracks = () => [];
 
-/** Hand the cards the four desk facts they cannot work out for themselves. */
+/** Hand the cards the five desk facts they cannot work out for themselves. */
 export function installEffectCards(deps) {
   ({ slider, dragNumber, deskTempo, fmtDelay } = deps);
+  if (deps.songTracks) songTracks = deps.songTracks;
 }
 
 /**
@@ -619,6 +621,10 @@ function fillEffectControls({
     const row = optionRow('PRESET', ['Custom', 'Default', ...presetNames], currentPreset, (name) => {
       if (name === 'Custom') return;
       const resolved = resolveEffectPreset(def.id, name, presetScope);
+      // A preset is a sound, not a routing: a duck keeps the track it is keyed to.
+      for (const p of def.params || []) {
+        if (resolved && paramRange(p, def).lanes && entryParams[p] != null) resolved[p] = entryParams[p];
+      }
       if (!resolved || !applySnapshot(resolved, 'preset')) return;
       rebuild();
     }, def.defaultPresetName ? { Default: def.defaultPresetName } : null);
@@ -761,6 +767,21 @@ function fillEffectControls({
         toggle.dataset.l7Param = pname;
       }
       grid.append(toggle);
+      continue;
+    }
+    // A track of this song, by the name its strip has, or the grid (EVERY 1/4 and the rest,
+    // after the tracks). One the song does not have (a duck copied in from another song)
+    // stays listed as itself, so the card says what it holds.
+    if (rng.lanes) {
+      const value = entryParams[pname] ?? def.defaults?.[pname];
+      const tracks = songTracks();
+      const keys = [...tracks.map((t) => t.key), ...Object.keys(DUCK_GRID)];
+      const texts = Object.fromEntries([...tracks.map((t) => [t.key, t.label]),
+        ...Object.entries(DUCK_GRID).map(([k, g]) => [k, g.label])]);
+      const row = optionRow(paramLabel(pname, def), keys.includes(value) ? keys : [value, ...keys],
+        value, (next) => applyPatch({ [pname]: next }), texts);
+      explain(row.querySelector('.k'), pname);
+      grid.append(row);
       continue;
     }
     if (rng.options) {

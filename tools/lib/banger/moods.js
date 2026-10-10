@@ -272,3 +272,39 @@ export function withSharedMoods(style) {
   }
   return { ...style, progressions, moods };
 }
+
+/**
+ * The moods that SUIT each style (Peter, 10 Oct 2026: "are some better choices than others we could
+ * bubble up?"): the ones its genre is usually written in, the style's own mood first. Guidance, never a
+ * rule — every mood plays in every style. The Lab's ELEMENT marks them with a dot in FORMULA's family
+ * colour (src/game/banger/make.js labSuitedMoods). Drafted from what each genre usually does, not
+ * looked up; a mood suited nowhere would be fine, but each is suited somewhere.
+ */
+export const STYLE_MOODS = Object.freeze({
+  'big-room': ['anthemic', 'euphoric', 'uplifting', 'heroic', 'dark'],
+  trance: ['uplifting', 'euphoric', 'anthemic', 'bittersweet', 'wonder'],
+  'future-bass': ['euphoric', 'dreamy', 'wonder', 'bittersweet', 'nostalgic', 'uplifting'],
+  eurobeat: ['anthemic', 'heroic', 'dark', 'boss', 'uplifting'],
+  chipstep: ['anthemic', 'heroic', 'playful', 'boss', 'euphoric'],
+  synthwave: ['anthemic', 'nostalgic', 'heroic', 'dark', 'bittersweet', 'dreamy', 'gothic'],
+  shibuya: ['lounge', 'sunshine', 'nostalgic', 'dreamy', 'playful', 'doowop'],
+  dnb: ['moody', 'dark', 'dreamy', 'soulful', 'mystery', 'bittersweet'],
+  electro: ['dark', 'mystery', 'hypnotic', 'moody', 'funky'],
+  megadrive: ['heroic', 'boss', 'playful', 'funky', 'dark', 'gothic'],
+  'deep-house': ['moody', 'soulful', 'lofi', 'lounge', 'hypnotic', 'mystery'],
+  'nu-disco': ['nostalgic', 'disco', 'funky', 'sunshine', 'boogie', 'soulful'],
+  downtempo: ['moody', 'lofi', 'mystery', 'lament', 'dreamy', 'bittersweet'],
+  eurodance: ['anthemic', 'uplifting', 'euphoric', 'moody', 'bittersweet'],
+  'italo-disco': ['anthemic', 'nostalgic', 'disco', 'dreamy', 'bittersweet', 'wonder'],
+  'electro-funk': ['funky', 'boogie', 'disco', 'soulful', 'playful'],
+  'french-house': ['funky', 'disco', 'boogie', 'hypnotic', 'lounge', 'nostalgic'],
+  reggaeton: ['uplifting', 'moody', 'dark', 'fiesta', 'flamenco'],
+  moombahton: ['uplifting', 'anthemic', 'dark', 'fiesta', 'euphoric'],
+  merenhouse: ['fiesta', 'sunshine', 'disco', 'uplifting', 'funky'],
+  'afro-house': ['moody', 'uplifting', 'euphoric', 'dark', 'hypnotic', 'soulful'],
+  'acid-house': ['hypnotic', 'dark', 'moody', 'mystery', 'euphoric'],
+  techno: ['moody', 'hypnotic', 'dark', 'mystery'],
+  rave: ['dark', 'euphoric', 'anthemic', 'uplifting', 'boss'],
+  'uk-garage': ['moody', 'soulful', 'funky', 'dark', 'bittersweet'],
+  freestyle: ['heroic', 'bittersweet', 'moody', 'anthemic', 'lament'],
+});

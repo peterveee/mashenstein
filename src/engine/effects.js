@@ -2952,6 +2952,9 @@ function makeRhythmicGate(ctx, params = {}) {
       gate.gain.cancelScheduledValues(when);
       gate.gain.setValueAtTime(floor, when);
     }
+    // The clock running on from the sixteenth before, with the pulses already scheduled
+    // drawing the line through this edge — see the anchor below.
+    const continuing = lastStep != null && !discontinuity;
     lastStep = step;
     lastWhen = when;
     lastSixteenth = sixteenth;
@@ -2971,8 +2974,18 @@ function makeRhythmicGate(ctx, params = {}) {
     // where that opening ACTUALLY started, so a swung boundary is not treated as though
     // it had opened early — a negative result means it has not opened yet, which
     // `levelAt` already reads as the floor.
-    gate.gain.setValueAtTime(
-      levelAt((startBeat - currentBoundary) * beatSeconds - swungBy(currentBoundary)), when);
+    //
+    // While the clock runs on, that level is reached with a RAMP, not set. The pulse
+    // before has already drawn the line through this edge, and a ramp lands on it. A
+    // setValueAtTime here turned the pulse's ramp into a hold instead — Web Audio ramps
+    // from the event before, and this was the event before — so every ATTACK or DECAY
+    // longer than the stretch to the next sixteenth sat still until the edge and then
+    // jumped. The Lab's pump (ATTACK 160 ms) held at 0.35 for a whole sixteenth and leapt
+    // to 0.84 in a sample (found 10 Oct 2026; tests/sidechain-duck.js). A fresh start or
+    // a jump has no line to land on, so it still sets.
+    const anchor = levelAt((startBeat - currentBoundary) * beatSeconds - swungBy(currentBoundary));
+    if (continuing) gate.gain.linearRampToValueAtTime(anchor, when);
+    else gate.gain.setValueAtTime(anchor, when);
     const schedulePulse = (boundary, t) => {
       if (t < when - 1e-7 || t > when + sixteenth + 1e-7) return;
       gate.gain.setValueAtTime(floor, t);
@@ -2996,6 +3009,113 @@ function makeRhythmicGate(ctx, params = {}) {
   node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
   node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
   node.dispose = () => { node.disconnect(); for (const n of [input, gate, output]) { try { n.disconnect(); } catch { /* fine */ } } };
+  return node;
+}
+
+/**
+ * The Sidechain Duck's grid triggers: what TRIGGER can name instead of a track, each a hit
+ * every `beats`. Values that cannot be a lane key, so a saved trigger says which it is.
+ */
+export const DUCK_GRID = Object.freeze({
+  '1/1': { beats: 4, label: 'Every bar' },
+  '1/2': { beats: 2, label: 'Every 1/2' },
+  '1/4': { beats: 1, label: 'Every 1/4' },
+  '1/8': { beats: 0.5, label: 'Every 1/8' },
+});
+
+/**
+ * SIDECHAIN DUCK (10 Oct 2026): this track dips every time another one plays — the bass
+ * under the kick — and comes back up.
+ *
+ * Keyed off the trigger track's NOTES, not its sound. The sequencer knows when every
+ * kick lands before it plays, and hands each one here (`keyHit`, from Audio's step walk
+ * through mixer.keyHit) at the same audio time the kick itself is given. So there is no
+ * detector: nothing listens to the kick, and the duck can be all the way down AS it
+ * lands rather than a few milliseconds after, which is what a compressor with a key input
+ * would do. It costs one gain and a few automation points per hit, renders the same
+ * samples every time, and connects no audio into an AudioParam — the WebKit
+ * summing-junction crash (8 Oct, on the iPhone) lives in exactly that kind of junction.
+ *
+ * Peter's calls: a MUTED trigger still ducks (a mute is monitoring, not the song), and a
+ * FROZEN one ducks from its notes. A bar the arrangement takes the kick out of does not:
+ * the kick is not in the song there. See the hook in Audio.scheduleStep.
+ *
+ * Or the GRID instead of a track (Peter, 10 Oct 2026: "regular pumping but the kick isn't
+ * strictly 4/4"): TRIGGER set to one of DUCK_GRID pumps on every bar, half, beat or eighth
+ * from the sequencer's clock (scheduleRhythm, like the Rhythmic Gate), whatever any track
+ * plays. All four land on even sixteenths, which swing never moves.
+ *
+ * The shape is the Rhythmic Gate's pump in straight lines — down over ATTACK, ending on
+ * the hit; flat for HOLD; back to unity over RELEASE — so the Lab's quarter-note pump and
+ * this, on a kick on every beat, are the same line. Between hits the gain is exactly 1.
+ */
+function makeSidechainDuck(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const duck = ctx.createGain();
+  input.connect(duck); duck.connect(output);
+  duck.gain.value = 1;
+  const state = { trigger: 'kick', depth: 0.65, attack: 0.01, hold: 0, release: 0.16, ...params };
+  // The line as written to `duck.gain`: points joined by straight ramps, the last one held.
+  // Kept so a hit that lands while the last is still coming back up starts from exactly
+  // where the line is at that moment — `gain.value` is now, not when the hit begins.
+  let points = [];
+  const levelAt = (t) => {
+    let i = points.length - 1;
+    while (i >= 0 && points[i].t > t) i--;
+    if (i < 0) return 1;
+    const a = points[i];
+    const b = points[i + 1];
+    return b ? a.v + (b.v - a.v) * ((t - a.t) / (b.t - a.t)) : a.v;
+  };
+  const node = { input, output, _custom: true };
+  node.applyState = () => {};
+  node.setState = (patch) => { Object.assign(state, patch); };
+  node.keyedTo = () => (DUCK_GRID[state.trigger] ? null : state.trigger);
+  node.keyHit = (key, when) => { if (key === state.trigger) duckAt(when); };
+  // On the grid: a hit at the edge of every sixteenth that starts one of its periods.
+  node.scheduleRhythm = (step, when) => {
+    const period = DUCK_GRID[state.trigger]?.beats;
+    if (!period || !Number.isInteger(step)) return;
+    const n = step / 4 / period;
+    if (Math.abs(n - Math.round(n)) < 1e-9) duckAt(when);
+  };
+  const duckAt = (when) => {
+    if (!Number.isFinite(when)) return;
+    const floor = 1 - Math.max(0, Math.min(1, Number(state.depth) || 0));
+    if (floor >= 1) return;                      // DEPTH 0: a wire, not a duck by nothing
+    const attack = Math.max(0.001, Number(state.attack) || 0.001);
+    const hold = Math.max(0, Number(state.hold) || 0);
+    const release = Math.max(0.001, Number(state.release) || 0.001);
+    const g = duck.gain;
+    const from = Math.max(when - attack, ctx.currentTime);
+    const hit = Math.max(when, from);
+    const level = levelAt(from);
+    // Everything from `from` on is this hit's. What was there was the tail of the hit
+    // before, and it is rewritten as the same straight line cut short at `from` — a ramp
+    // from the last point that stays to the level the line had reached. (A setValueAtTime
+    // anchor here would hold the last point's value flat up to `from` instead.)
+    g.cancelScheduledValues(from);
+    while (points.length && points[points.length - 1].t >= from) points.pop();
+    if (points.length) g.linearRampToValueAtTime(level, from);
+    else g.setValueAtTime(level, from);
+    points.push({ t: from, v: level });
+    if (hit > from) g.linearRampToValueAtTime(floor, hit);
+    else g.setValueAtTime(floor, hit);
+    points.push({ t: hit, v: floor });
+    if (hold > 0) {
+      g.linearRampToValueAtTime(floor, hit + hold);
+      points.push({ t: hit + hold, v: floor });
+    }
+    g.linearRampToValueAtTime(1, hit + hold + release);
+    points.push({ t: hit + hold + release, v: 1 });
+    // A hit only ever rewrites from its own start, which is never far behind the last one
+    // written — the sequencer's look-ahead, or a jump back to now. A few bars is plenty.
+    if (points.length > 64) points = points.slice(-32);
+  };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => { node.disconnect(); for (const n of [input, duck, output]) { try { n.disconnect(); } catch { /* fine */ } } };
   return node;
 }
 
@@ -3869,6 +3989,32 @@ export const EFFECTS = [
     // the short end is dialable at all: a gate's decay is the whole character of it.
     ranges: { gateLength: { min: 0.01, max: 1, step: 0.01 }, attack: { min: 0.001, max: 0.25, step: 0.001, unit: 's', log: true }, decay: { min: 0.001, max: 1, step: 0.001, unit: 's', log: true } },
     labels: { division: 'RATE', gateLength: 'GATE LENGTH', attack: 'ATTACK', decay: 'DECAY', depth: 'DEPTH' } },
+  // A gain and its automation, like the Gate's own; estimated from that, not measured.
+  // TRIGGER is a track of the song, so its list is the desk's to fill (`lanes` below; see
+  // fillEffectControls), and a song without the named track simply never ducks — or one of
+  // DUCK_GRID, which needs no track at all.
+  { id: 'duck', name: 'Sidechain Duck', short: 'Duck', cost: 0.03, custom: makeSidechainDuck,
+    params: ['trigger', 'depth', 'attack', 'hold', 'release'],
+    defaults: { trigger: 'kick', depth: 0.65, attack: 0.01, hold: 0, release: 0.16 },
+    ranges: {
+      // Not `options`: the list is the song's, and a fixed one would turn every other
+      // track back into the kick wherever a snapshot is resolved.
+      trigger: { lanes: true },
+      attack: { min: 0.001, max: 0.05, step: 0.001, unit: 's', log: true },
+      hold: { min: 0, max: 0.5, step: 0.005, unit: 's' },
+      release: { min: 0.01, max: 1, step: 0.005, unit: 's', log: true },
+    },
+    labels: { trigger: 'TRIGGER', depth: 'DEPTH', attack: 'ATTACK', hold: 'HOLD', release: 'RELEASE' },
+    tips: {
+      trigger: 'The track whose notes duck this one. Its notes, not its sound: muting or'
+        + ' freezing it still ducks, and a bar the arrangement takes it out of does not.'
+        + ' Or EVERY 1/4 (and the rest) to pump on the beat whatever any track plays.',
+      depth: 'How far down it goes on each hit: 0 not at all, 1 to silence.',
+      attack: 'How long it takes to go down. It starts that long BEFORE the hit, so it is'
+        + ' all the way down as the hit lands.',
+      hold: 'How long it stays down after the hit.',
+      release: 'How long it takes to come back up, in a straight line.',
+    } },
   // Offered only on a bar-effect section, which is what tells it when to grab — see
   // `makeStutter` and SECTION_EFFECTS. The cost is an estimate from what it is built of
   // (one delay line and four gains, against the gate's two), not yet a measurement.
@@ -4334,6 +4480,9 @@ export function matchEffectPreset(id, params = {}, scope = 'inserts') {
   const def = EFFECT_BY_ID[id];
   if (!def) return null;
   const same = (a, b) => (def.params || []).every((key) => {
+    // Which TRACK a duck listens to is routing, not sound: a preset is the same preset
+    // keyed to the kick or the snare, and choosing one leaves the trigger alone.
+    if (paramRange(key, def).lanes) return true;
     if (typeof a?.[key] === 'number' || typeof b?.[key] === 'number') {
       return Math.abs(Number(a?.[key]) - Number(b?.[key]))
         <= Math.max(1e-7, Number(paramRange(key, def).step || 0) * 0.51);
@@ -4675,6 +4824,10 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
         ? (step, when, sixteenth, b, swing) =>
           node.scheduleRhythm(step, when, sixteenth, b ?? bpm, swing ?? 50)
         : null,
+      // A Sidechain Duck: which track it listens to, and that track's hits as they are
+      // scheduled — see makeSidechainDuck and mixer.keyHit.
+      keyedTo: typeof node.keyedTo === 'function' ? () => node.keyedTo() : null,
+      keyHit: typeof node.keyHit === 'function' ? (key, when) => node.keyHit(key, when) : null,
       // A hand-written effect reaches its params through setState, which ramps them
       // from ctx.currentTime and takes no time argument. Rather than pretend, say so:
       // custom effects are not eligible for a scheduled transition, and the desk keeps

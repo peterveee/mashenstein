@@ -10,7 +10,7 @@
 //
 // Deterministic: the same riff, options and seed always make the same song (the seed is
 // split into streams — harmony, drums, form — so changing one concern does not reshuffle
-// the others). That is what lets a take be re-made from its seed, and lets Another Take
+// the others). That is what lets a take be re-made from its seed, and lets Remix
 // be nothing more than a new seed.
 //
 // Browser-safe: no `node:*` imports. The static mixer runs this in the page; the server
@@ -26,10 +26,14 @@ import { styleFor, soundSetOf, flavourOf, fusionOf } from './styles/index.js';
 import { fuseChannels } from './styles/fusion.js';
 import { validateRiff, parseRiff, pickHook } from './riff.js';
 import { analyseRiff, romanChord, keyName, MODE_INFO } from './analyse.js';
-import { buildForm } from './form.js';
+import { buildForm, scriptOn } from './form.js';
 import { buildSections, LIFT_SEMIS } from './sections.js';
-import { BREAKDOWN_WAYS } from './breakdown-ways.js';
-import { BUILD_WAYS, DROP_IN_WAYS } from './build-ways.js';
+import { BREAKDOWN_WAYS, BACKING_WAYS } from './breakdown-ways.js';
+import { CLUB_SHAPES } from './templates.js';
+import { drawWay, unsuited } from './ways.js';
+import { BUILD_WAYS, DROP_IN_WAYS, RISER_WAYS, RISER_FX_WAYS, DROP_HIT_WAYS, DROP_HIT_WAY } from './build-ways.js';
+import { INTRO_WAYS } from './intro-ways.js';
+import { DROP2_WAYS } from './drop-ways.js';
 import { voiceLeadChords } from './voice-leading.js';
 import { allocateLanes, buildMix, pickRiffSounds, BASS_ECHO } from './lanes.js';
 import { levelMix } from './levels.js';
@@ -56,7 +60,9 @@ export { TRACK_EFFECTS_VERSION, TRACK_EFFECTS_MODES, PRODUCTION_ROLES, trackEffe
 export { BANGER_STYLES, BANGER_SOUND_SETS, BANGER_FLAVOURS, styleFor, soundSetOf, soundSetsFor, flavoursFor, flavourOf, moodFlavour, fusionOf } from './styles/index.js';
 export { modifyBanger, describeModify, bangerPrints } from './modify.js';
 export { BREAKDOWN_WAYS, VARIED_WAYS, variedWay } from './breakdown-ways.js';
-export { BUILD_WAYS, DROP_IN_WAYS } from './build-ways.js';
+export { BUILD_WAYS, DROP_IN_WAYS, RISER_WAYS, RISER_FX_WAYS, DROP_HIT_WAYS } from './build-ways.js';
+export { INTRO_WAYS } from './intro-ways.js';
+export { DROP2_WAYS } from './drop-ways.js';
 export { extractRiff, laneVoiceOf, validateRiff, pickHook, riffSummary, parseRiff } from './riff.js';
 export { keyName, MODE_INFO } from './analyse.js';
 export { BANGER_SOUNDS } from './sounds.js';
@@ -100,6 +106,13 @@ export const BANGER_GENERATOR_VERSION = 11;
 const BREAKDOWN_WAY_LABELS = { ...Object.fromEntries(BREAKDOWN_WAYS.map((w) => [w.id, w.label])), exposed: 'Hook Alone' };
 const BUILD_WAY_LABELS = Object.fromEntries(BUILD_WAYS.map((w) => [w.id, w.label]));
 const DROP_IN_WAY_LABELS = Object.fromEntries(DROP_IN_WAYS.map((w) => [w.id, w.label]));
+const INTRO_WAY_LABELS = { ...Object.fromEntries(INTRO_WAYS.map((w) => [w.id, w.label])), layers: 'In Layers', groove: 'Drums & Bass' };
+const RISER_WAY_LABELS = Object.fromEntries(RISER_WAYS.map((w) => [w.id, w.label]));
+const DROP_HIT_LABELS = Object.fromEntries(DROP_HIT_WAYS.map((w) => [w.id, w.label]));
+const RISER_FX_LABELS = Object.fromEntries(RISER_FX_WAYS.map((w) => [w.id, w.label]));
+const DROP2_LABELS = Object.fromEntries(DROP2_WAYS.map((w) => [w.id, w.label]));
+const BACKING_LABELS = Object.fromEntries(BACKING_WAYS.map((w) => [w.id, w.label]));
+const SHAPE_LABELS = Object.fromEntries(CLUB_SHAPES.map((w) => [w.id, w.label]));
 
 /** A seed as an unsigned 32-bit number. */
 export const normaliseSeed = (seed) => (Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : 1);
@@ -220,6 +233,17 @@ export function generateBanger({
     breakdown: stream('breakdown'),
     build: stream('build'),
     dropIn: stream('dropIn'),
+    // Intro Type's and Riser Type's (intro-ways.js, build-ways.js).
+    intro: stream('intro'),
+    riser: stream('riser'),
+    hit: stream('hit'),
+    riserFx: stream('riserFx'),
+    // Drop 2's twist (drop-ways.js).
+    drop2: stream('drop2'),
+    // Breakdown Backing's way and New Chord Walk's progression (breakdown-ways.js).
+    backing: stream('backing'),
+    // Club Shape's (templates.js CLUB_SHAPES).
+    shape: stream('shape'),
   };
   const warnings = [];
   if (raw?.production?.mode && raw.production.mode !== 'style' && options.production.mode === 'style') {
@@ -341,7 +365,15 @@ export function generateBanger({
   const hookPart = tparts.find((p) => p.key === hookKey);
   const bpm = bangerBpm(options, style, riff.source?.bpm);
   const total = bangerBars(options);
-  const form = buildForm(options, total, style);
+  // CLUB SHAPE (templates.js CLUB_SHAPES): a Club song, nothing drawn by hand, laid out another way now
+  // and then — the form is built from that template, the request keeps saying Club (Another Take draws again).
+  let shape = 'club';
+  if ((options.form.template || 'club') === 'club' && !options.form.sections && !scriptOn(options, style)) {
+    const asked = options.form.clubShape || 'club';
+    const groove = options.fusion && options.fusion !== 'none' ? (styleFor(options.fusion)?.base || options.fusion) : options.style;
+    shape = asked === 'varied' ? drawWay(CLUB_SHAPES, rng.shape, { era: options.waysEra, exclude: unsuited(CLUB_SHAPES, { style: groove, mood: options.mood }) }) ?? 'club' : asked;
+  }
+  const form = buildForm(shape === 'club' ? options : { ...options, form: { ...options.form, template: shape } }, total, style);
 
   const ctx = {
     options, style, form, key, analysis, riffParts: tparts, hookPart, rng,
@@ -373,8 +405,11 @@ export function generateBanger({
   const laneBars = bars.map((b) => Object.fromEntries(Object.entries(b).map(([role, part]) => [laneOf.get(role), part])));
   const drumLanes = [...laneOf.values()].filter((lane) => PERCUSSION_LANES.includes(baseLane(lane)));
   // Riff Sound = Random: the riff's tuned parts re-voiced (see pickRiffSounds).
+  // How busy each riff part plays in the song as made, a bar on average — from Ways Era 4 a part busy in
+  // the song (more than eight notes a bar) never gets a CRLS-1 either (the CPU budget).
+  const busyInSong = options.waysEra >= 4 ? (role) => bars.reduce((n, b) => n + (b[role] && !isDrumPart(b[role]) ? b[role].notes.filter((v) => v != null).length : 0), 0) / bars.length > 8 : null;
   const riffSounds = options.parts.riffSound === 'random'
-    ? pickRiffSounds({ riffParts: tparts, laneOf, hookKey, rng: rng.sounds, sounds, palette: paletteForTake }) : new Map();
+    ? pickRiffSounds({ riffParts: tparts, laneOf, hookKey, rng: rng.sounds, sounds, palette: paletteForTake, busyInSong }) : new Map();
   const bank = packBank(laneBars, { bpm, drums: drumLanes });
   // A style that plays only BLIPS (chipstep-8bit.js): every tuned note cut to `blips` steps.
   if (style.blips > 0) blipBank(bank, style.blips);
@@ -410,7 +445,7 @@ export function generateBanger({
   const hookOnsets = hookPart.parsed.reduce((n, bar) => n + bar.notes.filter((v) => v != null).length, 0);
   const mix = buildMix({
     style, sounds, options, laneOf, riffParts: tparts, hookKey, coreFromRiff: ctx.coreFromRiff, bpm,
-    denseHook: hookOnsets / hookPart.parsed.length > 8, riffSounds,
+    denseHook: hookOnsets / hookPart.parsed.length > 8, riffSounds, riserWay: events.riserWay, dropHit: events.dropHit, tonic: key.tonic, riserLands: events.riserLands,
   });
   // Palette production is ordinary channel data. Apply it before the production planner
   // so the planner sees authored inserts/sends and leaves that channel alone.
@@ -438,6 +473,11 @@ export function generateBanger({
   // Every channel's fader, from what its part plays and on what (levels.js). `level: false`
   // is for tools/banger-levels.js, which reads the style's own default parts from here.
   const levels = level ? levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts: tparts, hookKey, refs: combo?.refs, data: levelData, calibration }) : [];
+  // A Drop Hit that is not the style's own sits where the style's impacts do (build-ways.js `trim`).
+  const hitLane = laneOf.get('impact');
+  if (hitLane && mix.lanes[hitLane] && DROP_HIT_WAY[events.dropHit]?.trim) {
+    mix.lanes[hitLane].gain = Math.round(((mix.lanes[hitLane].gain ?? 0) + DROP_HIT_WAY[events.dropHit].trim) * 10) / 10;
+  }
   for (const [lane, choice] of paletteByLane) {
     if (choice.trimDb) mix.lanes[lane].gain = Math.round(((mix.lanes[lane].gain || 0) + choice.trimDb) * 10) / 10;
   }
@@ -478,9 +518,12 @@ export function generateBanger({
   // A breakdown says how its hook played, a build how it climbed and went in (the Varied draws).
   const wayOf = (x) => {
     const bd = events.breakdowns.find((d) => d.from === x.from);
-    if (bd) return BREAKDOWN_WAY_LABELS[bd.mode] || bd.mode;
+    if (bd) return [BREAKDOWN_WAY_LABELS[bd.mode] || bd.mode, bd.backing && bd.backing !== 'classic' && BACKING_LABELS[bd.backing]].filter(Boolean).join(' · ');
+    const dr = events.drops.find((d) => d.from === x.from && d.twist);
+    if (dr) return DROP2_LABELS[dr.twist] || dr.twist;
     const bu = events.builds.find((d) => d.from === x.from && d.way);
-    return bu ? [BUILD_WAY_LABELS[bu.way], bu.dropIn && DROP_IN_WAY_LABELS[bu.dropIn]].filter(Boolean).join(' · ') : null;
+    if (bu) return [BUILD_WAY_LABELS[bu.way], bu.dropIn && DROP_IN_WAY_LABELS[bu.dropIn]].filter(Boolean).join(' · ');
+    return x.role === 'intro' && events.introWay ? INTRO_WAY_LABELS[events.introWay] || events.introWay : null;
   };
   const formLines = form.map((x) => `  ${String(x.from).padStart(3)}–${String(x.to).padEnd(3)}  ${x.label}${x.lifted && options.form.keyLift !== 'none' ? ' (lifted)' : ''}${wayOf(x) ? ` — ${wayOf(x)}` : ''}`);
   const note = [
@@ -492,10 +535,13 @@ export function generateBanger({
       ...trackEffects.roles.map(x => `  ${(mix.labels[x.lane] || x.role).split(' · ')[0]}: ${x.treatment} — ${x.reason}.`)] : []),
     '',
     ...formLines,
+    ...(shape !== 'club' ? ['', `Shape: ${SHAPE_LABELS[shape] || shape} (a Club song laid out another way).`] : []),
+    ...(options.fx.riser && events.risers?.length ? ['', `Riser: ${RISER_WAY_LABELS[events.riserWay] || events.riserWay}${events.riserFx && events.riserFx !== 'none' ? `, through ${RISER_FX_LABELS[events.riserFx] || events.riserFx}` : ''}.`] : []),
+    ...(options.drums.impact && laneOf.has('impact') ? [`Drop hit: ${DROP_HIT_LABELS[events.dropHit] || events.dropHit}.`] : []),
     ...(events.transitions?.length ? ['', 'Joins:', ...events.transitions.map((t) => `  bar ${String(t.bar).padStart(3)}  ${t.from} → ${t.to}: ${t.moves.join(', ')}`)] : []),
     '',
     'Written by tools/lib/banger/ (Make a Banger…). The recipe — riff, options, seed — is in',
-    '`banger` below, which is what Another Take re-rolls. Mix it freely: the desk saves under',
+    '`banger` below, which is what Remix re-rolls. Mix it freely: the desk saves under',
     'the marker and never touches the music above it.',
   ].join('\n');
   const resolvedPaletteSnapshot = paletteSnapshot(palette, style.id, options.mood, { sounds: table });
@@ -546,6 +592,12 @@ export const BANGER_REROLLS = Object.freeze([
   { stream: 'breakdown', label: 'Breakdown', title: 'Another way for the hook through the breakdown (Breakdown Hook: Varied)' },
   { stream: 'build', label: 'Builds', title: 'Another way for each build to climb (Build Type: Varied)' },
   { stream: 'dropIn', label: 'Before the Drop', title: 'Another way into each drop (Before the Drop: Varied)' },
+  { stream: 'intro', label: 'Intro', title: 'Another way to open the song (Intro Type: Varied)' },
+  { stream: 'riser', label: 'Riser', title: 'Another riser into the drops (Riser Type: Varied)' },
+  { stream: 'hit', label: 'Drop Hit', title: 'Another hit on the one of each drop (Drop Hit: Varied)' },
+  { stream: 'riserFx', label: 'Riser FX', title: 'Another effect over the risers (Spot FX → Riser FX: Varied)' },
+  { stream: 'drop2', label: 'Drop 2', title: 'Another way for the second drop to differ from the first (Drop 2: Varied)' },
+  { stream: 'backing', label: 'Breakdown Backing', title: 'Something else under the breakdown\'s hook (Breakdown Backing: Varied)' },
 ]);
 
 /**
@@ -565,7 +617,7 @@ export function sourceRiff(riff) {
   return out;
 }
 
-/** A banger re-made from a stored recipe with a new seed — Another Take. */
+/** A banger re-made from a stored recipe with a new seed — Remix. */
 export function anotherTake(recipe, seed, sounds = BANGER_SOUNDS) {
   return generateBanger({ riff: recipe.riff, options: recipe.options, seed, sounds });
 }

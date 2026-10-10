@@ -31,6 +31,7 @@ import { SHARED_MOODS, moodLifts } from '../tools/lib/banger/moods.js';
 import { DROP_ROLES } from '../tools/lib/banger/form.js';
 import { approachChords } from '../tools/lib/banger/sections.js';
 import { sectionIds } from '../tools/lib/banger/fx.js';
+import { kitRollsFor } from '../tools/lib/banger/kit-rolls.js';
 import { laneFx, laneCurve } from '../src/data/automation.js';
 import {
   bangerSource, writeBangerSong, moveTake, modifyTake, takesState, listTakes, readTake, deleteTakes,
@@ -134,7 +135,8 @@ try {
       if (['sub', 'none'].includes(o.parts.bass) || o.parts.chords === 'none' || !o.parts.sub
         || !o.drums.rolls || !o.drums.crashes || !o.fx.riser) backbone = false;
     }
-    assert(backbone && kits.size === 6 && basses.size >= 8 && chords.size === 3,
+    // Every kit the style rolls (kit-rolls.js), and its own Style Kit.
+    assert(backbone && kits.size === 1 + kitRollsFor('big-room').length && basses.size >= 8 && chords.size === 3,
       `Surprise Me changes the backbone's sound — every kit, ${basses.size} bass lines, all three chord treatments — but never takes it away`);
     let newSounds = 0;
     for (let s3 = 1; s3 <= 300; s3++) if (surpriseBangerOptions(new Rng(s3), BANGER_DEFAULTS).parts.riffSound === 'random') newSounds++;
@@ -401,7 +403,8 @@ try {
       check(count(a) > count(base), `${how}: the hook has more notes (${count(a)} against ${count(base)})`);
       check(JSON.stringify(hookBars(a)) === JSON.stringify(hookBars(b)), `${how}: the same take fills in the same way`);
     }
-    const opts = (parts) => ({ variation: 'faithful', key: 'keep', mode: 'keep', parts: { fillIn: 'repeat', ...parts } });
+    // (the Club form's own shape: the passes are counted from the first drop)
+    const opts = (parts) => ({ variation: 'faithful', key: 'keep', mode: 'keep', parts: { fillIn: 'repeat', ...parts }, form: { template: 'club' } });
     const hookAt = (out, bar) => onsets(barPart(out, laneByLabel(out, /HOOK$/), bar)).map(([i]) => i);
     const every = generateBanger({ riff: plain, options: opts({ fillEvery: '1', fillNotes: 'all' }), seed: 9 });
     const drop = every.form.find((f) => f.hook) || every.form.find((f) => f.role === 'drop');
@@ -1114,8 +1117,11 @@ try {
       `the bass, chords, hook double and kick are levelled, and a hook on its own sound is left alone (${[...jobs].join(' ')})`);
     const offsets = BANGER_LEVEL_DATA.offsets['big-room'] || {};
     const caution = (r) => (LEAD_ROLES.includes(r.job) ? LEAD_CAUTION_DB : 0);
-    assert(keep.levels.every((r) => Math.abs(r.after - r.base - (offsets[r.job] ?? 0) - caution(r)) <= MAX_LEVEL_MOVE + 0.05),
-      `no prediction moves a fader more than ${MAX_LEVEL_MOVE} dB from its reference's`);
+    // A part measured on both sides (calibration-data.js) may come down further — levels.js lets a
+    // calibrated move reach 18 dB under — and is raised no more than a lead may be.
+    const moved = (r) => r.after - r.base - (r.calibrated ? 0 : offsets[r.job] ?? 0) - caution(r);
+    assert(keep.levels.every((r) => (r.calibrated ? moved(r) >= -18.05 && moved(r) <= LEAD_MAX_RAISE + 0.05 : Math.abs(moved(r)) <= MAX_LEVEL_MOVE + 0.05)),
+      `no prediction moves a fader more than ${MAX_LEVEL_MOVE} dB from its reference's (a calibrated one up to 18 dB down: ${keep.levels.filter((r) => r.calibrated).map((r) => `${r.job} ${moved(r).toFixed(1)}`).join(', ') || 'none'})`);
     // the leads err soft: never raised past LEAD_MAX_RAISE, and set LEAD_CAUTION_DB under the prediction
     assert(keep.levels.filter((r) => LEAD_ROLES.includes(r.job)).length > 0
       && keep.levels.filter((r) => LEAD_ROLES.includes(r.job)).every((r) => r.after - r.base - (offsets[r.job] ?? 0) <= LEAD_MAX_RAISE + LEAD_CAUTION_DB + 0.05),
@@ -1200,7 +1206,7 @@ try {
     let now = moveTake(temp, 'test-banger', await meta(), { direction: 'another', generated: next, title: 'TEST BANGER' });
     state = takesState(temp, 'test-banger', await meta());
     assert(now === 2 && state.take === 2 && state.takes.join() === '1,2' && readTake(temp, 'test-banger', 1) === take1,
-      'Another Take writes take 2 and keeps take 1 whole');
+      'Remix writes take 2 and keeps take 1 whole');
     const take2 = readFileSync(path, 'utf8');
     now = moveTake(temp, 'test-banger', await meta(), { direction: 'previous' });
     assert(now === 1 && readFileSync(path, 'utf8') === take1, 'Previous Take puts take 1 back byte for byte');

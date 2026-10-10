@@ -214,7 +214,7 @@ export function songFile({
     + `\n`
     + `export const bank = ${bankSource(bank)};\n\n`
     // A banger's recipe — the riff it was made from, the options, the seed — above the
-    // marker with the music, because it IS the music's provenance: Another Take re-rolls
+    // marker with the music, because it IS the music's provenance: Remix re-rolls
     // it, and a desk save (which rewrites only below the marker) must never lose it.
     // See tools/lib/banger/.
     + (banger ? `export const banger = ${JSON.stringify(banger, null, 2)};\n\n` : '');

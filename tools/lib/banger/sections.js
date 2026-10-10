@@ -15,12 +15,15 @@ import {
 import { Rng } from '../../../src/engine/rng.js';
 import { moodLifts } from './moods.js';
 import { moodBass } from './options.js';
+import { styleFor } from './styles/index.js';
 import { fillIn, passFilled } from './embellish.js';
 import { romanChord, partWeights, chordFit, bestChord, triadOf, chordsOfBar, fitsScale, grindShare } from './analyse.js';
 import { hookCell, phrasePlan, realise, head, cellLength, fragment } from './variation.js';
-import { variedWay } from './breakdown-ways.js';
-import { BUILD_WAYS, DROP_IN_WAYS, buildsNotAfter, dropInsNotAfter } from './build-ways.js';
-import { drawWay } from './ways.js';
+import { variedWay, BACKING_WALKS, BREAKDOWN_WAYS, BACKING_WAYS } from './breakdown-ways.js';
+import { BUILD_WAYS, DROP_IN_WAYS, RISER_WAYS, RISER_WAY, RISER_FX_WAYS, DROP_HIT_WAYS, buildsNotAfter, dropInsNotAfter } from './build-ways.js';
+import { INTRO_WAYS } from './intro-ways.js';
+import { drawWay, unsuited } from './ways.js';
+import { DROP2_WAYS, DROP2_BASSES } from './drop-ways.js';
 import { pitchesOf } from './cohesion.js';
 import { DROP_ROLES, DEFAULT_LAYERS, DEFAULT_GROOVE, layersOn, scriptOn } from './form.js';
 import { DROP_INDEX } from './form-types.js';
@@ -171,6 +174,10 @@ export const BREAKDOWN_LINES = {
   },
   // As written, under a low-pass that opens across the breakdown (fx.js BREAKDOWN_FX).
   muffled: ({ i, k }) => ({ tune: clonePart(k.cell[i % k.cell.length]) }),
+  // As written, gated in sixteenths (fx.js); an octave up, echoed; an octave down, muffled.
+  gated: ({ i, k }) => ({ tune: clonePart(k.cell[i % k.cell.length]) }),
+  octaveEcho: ({ i, k }) => ({ tune: shift(clonePart(k.cell[i % k.cell.length]), 12) }),
+  low: ({ i, k }) => ({ tune: shift(clonePart(k.cell[i % k.cell.length]), -12) }),
 };
 
 /**
@@ -316,20 +323,42 @@ export function buildSections(ctx) {
   const asWritten = new Set();
   const events = {
     builds: [], drops: [], stops: [], throws: [], intro: null, risers: [], finalDrops: [], octaveBars: [],
-    echoes: [], filterDowns: [], fadeOuts: [], trims: [], sweeps: [], transitions: [], breakdowns: [],
+    echoes: [], filterDowns: [], fadeOuts: [], trims: [], sweeps: [], transitions: [], breakdowns: [], laneSweeps: [], swells: [],
   };
   // Breakdown Hook: Varied — one way for the whole take, off a stream of its own, so drawing it
   // moves nothing else (breakdown-ways.js).
-  const breakdownWay = variedWay(rng.breakdown, { soundSet: !!options.parts.soundSet && options.parts.soundSet !== 'style' });
+  const era = options.waysEra;
+  // The style and mood rules (ways.js unsuited): on every draw new with the intro and the riser, and on
+  // the breakdown's, the builds' and the drop-ins' from Ways Era 3 — a Lab song kept before keeps its own.
+  // A fusion is judged by its groove's style, however it was asked for (Style + Infusion, or a fusion).
+  const grooveStyle = options.fusion && options.fusion !== 'none' ? (styleFor(options.fusion)?.base || options.fusion) : options.style;
+  const fit = { style: grooveStyle, mood: options.mood, soundSet: options.parts.soundSet };
+  const ruled = (table) => (era >= 3 ? unsuited(table, fit) : []);
+  const breakdownWay = variedWay(rng.breakdown, { soundSet: !!options.parts.soundSet && options.parts.soundSet !== 'style', era, exclude: ruled(BREAKDOWN_WAYS) });
+  const backingWay = options.form.breakdownBacking === 'varied'
+    ? drawWay(BACKING_WAYS, rng.backing.stream('way'), { era, exclude: ruled(BACKING_WAYS), soundSet: !!options.parts.soundSet && options.parts.soundSet !== 'style' }) ?? 'classic'
+    : options.form.breakdownBacking || 'classic';
   // Build Type and Before the Drop: Varied draws one for each build, off streams of their own (one
   // per build, so a second build never moves the first), never the same as the build before.
   const drawn = { build: [], dropIn: [] };
   const wayOf = (kind, asked, table, exclude = []) => {
-    const w = asked === 'varied' ? drawWay(table, rng[kind].stream(String(drawn[kind].length)), { not: drawn[kind].at(-1), exclude }) : asked;
+    const w = asked === 'varied' ? drawWay(table, rng[kind].stream(String(drawn[kind].length)), { not: drawn[kind].at(-1), exclude, era }) : asked;
     drawn[kind].push(w);
     return w;
   };
   const BUILD_IDS = new Set(BUILD_WAYS.map((w) => w.id));
+  // Intro Type and Riser Type: one each for the song (intro-ways.js, build-ways.js).
+  const introWay = options.form.introWay === 'varied' ? drawWay(INTRO_WAYS, rng.intro, { era, exclude: unsuited(INTRO_WAYS, fit) }) : options.form.introWay || 'riff';
+  // (Never one the style or mood rules out — `notFor`.)
+  const riserWay = options.fx.riserWay === 'varied' ? drawWay(RISER_WAYS, rng.riser, { exclude: unsuited(RISER_WAYS, fit), era }) ?? 'noise' : options.fx.riserWay || 'noise';
+  events.riserWay = riserWay;
+  // Riser FX (Spot FX): one effect over every riser, for the song.
+  events.riserFx = options.spot.riser === 'varied' ? drawWay(RISER_FX_WAYS, rng.riserFx, { exclude: unsuited(RISER_FX_WAYS, fit), era }) ?? 'none' : options.spot.riser || 'none';
+  // Drop Hit: what lands after the riser, one for the song (build-ways.js) — the impact lane's sound.
+  events.dropHit = options.fx.dropHit === 'varied' ? drawWay(DROP_HIT_WAYS, rng.hit, { exclude: unsuited(DROP_HIT_WAYS, fit), era }) ?? 'style' : options.fx.dropHit || 'style';
+  // TUNE FIRST (options.js): the riff or the chords from the first two bars, wherever a song opens.
+  const tuneFirst = !!options.form.tuneFirst;
+  const isRiff = (role) => named(['riff'], role);
   // The builds' last bars, each changed once the drop after it is made (applyDropIn).
   const dropIns = [];
   /**
@@ -465,9 +494,9 @@ export function buildSections(ctx) {
     return acidBar(triads(c), acid.notes[half], acid.marks.get(key), C.bassFloor);
   };
   // `bar0` is the bar the line is for — only the acid line, which evolves by phrase, reads it.
-  const bassLine = (c, RR = R, dropIndex = 0, bar0 = 0) => {
+  const bassLine = (c, RR = R, dropIndex = 0, bar0 = 0, instead = null) => {
     if (hookIsBass) return null;
-    let id = bassId;
+    let id = instead || bassId;
     if (id === 'sub' || id === 'none') return null;
     if (dropIndex >= 1 && options.parts.bassLift && !style.bassFixed) {
       id = (BASS_LIFTS[id] ?? BASS_FIGURES.find((f) => f.id === id)?.lift) || id;
@@ -543,6 +572,29 @@ export function buildSections(ctx) {
   // answer, remembered from the first time it was played. Chained bar to bar it was a new
   // line every time — the same tune answered differently on every pass, which sounds
   // generated rather than written. Only new material is led on from the bar before.
+  /**
+   * A descant over a busy hook: a long chord tone each half bar, high above it, each the nearest to the
+   * one before — Drop 2's Counter-Melody where the hook leaves no rests to answer in.
+   */
+  const descantPart = (c) => {
+    const out = blank();
+    const cs = Array.isArray(c) ? c : [c];
+    let last = counterPrev.value;
+    for (const h of [0, 8]) {
+      const { pcs } = parseChord(triadOf(cs[Math.min(cs.length - 1, Math.floor(h / (16 / cs.length)))]));
+      let best = null;
+      for (let m = 76; m <= 88; m++) {
+        if (!pcs.includes(m % 12)) continue;
+        const d = Math.abs(m - last) + (m === last ? 1 : 0);
+        if (!best || d < best.d) best = { m, d };
+      }
+      out.notes[h] = nameOf(best.m);
+      out.lens[h] = 8;
+      last = best.m;
+    }
+    counterPrev.value = last;
+    return out;
+  };
   const counterPart = (tune, c) => {
     if (R.counterStabs) return chordBar(triads(c), R.counterStabs, C.stabs || 'B4');
     if (R.counterFigure) return arpBar(triads(c), R.counterFigure, C.counter || 'A5', 1);
@@ -591,7 +643,7 @@ export function buildSections(ctx) {
    * music with every part already joined; which of them sound is the layers' business.
    */
   const dropBar = (b, s) => {
-    const { p, k, i, dropIndex, final, DD, RR, half, fill, fillHere, stopHere, layered = false } = s;
+    const { p, k, i, dropIndex, final, DD, RR, half, fill, fillHere, stopHere, layered = false, twist = 'more' } = s;
     const pb = phraseBar(p, i, dropIndex, p * 8 + k);
     const tune = pb.part;
     const c = pb.chords;
@@ -606,6 +658,11 @@ export function buildSections(ctx) {
     if (options.parts.thirdBelow && (dropIndex === 1 || final)) put(b, 'third', st(fitToChords(diatonic(up(tune), -2, ctx.scale), c)));
     if (options.parts.choir && final) put(b, 'choir', st(choirPart(c)));
     if (options.parts.counter && joined('counter', p, dropIndex, layered)) put(b, 'counter', st(counterPart(up(tune), c)));
+    // Drop 2's Counter-Melody: the counter in the hook's rests — or, where it leaves none, a descant.
+    else if (twist === 'answer') {
+      const cp = counterPart(up(tune), c);
+      put(b, 'counter', st(hasNotes(cp) ? cp : descantPart(c)));
+    }
     // The riff's own counter-lines go where the hook is played as written or
     // sequenced — moved with it, so the two still agree.
     for (const rp of riffCounters) {
@@ -618,7 +675,7 @@ export function buildSections(ctx) {
     const own = ownBass(pb);
     if (own) for (const [role, part] of own) put(b, role, st(part));
     else {
-      put(b, 'bass', st(bassLine(c, RR, dropIndex, b)));
+      put(b, 'bass', st(bassLine(c, RR, dropIndex, b, twist === 'bass' ? drop2Bass : null)));
       put(b, 'sub', st(subLine(c, RR)));
     }
     // Drums.
@@ -628,9 +685,11 @@ export function buildSections(ctx) {
       put(b, 'clap', drum('clap', '....x...........', k));
       put(b, 'hats', drum('hats', 'xxxxxxxxxxxx....', k));
     } else {
-      put(b, 'kick', drum('kick', half ? DD.halfKick : DD.kick, k));
-      put(b, 'clap', drum('clap', half ? DD.halfClap : DD.clap, k));
-      put(b, 'snare', P(fillHere ? fill.snare : at(half ? DD.halfClap : DD.clap, k)));
+      // Breakbeat: the kick broken up under a backbeat — written here, so the riff's own kick gives way.
+      const breaks = twist === 'breakbeat' && !half;
+      put(b, 'kick', breaks ? (asIs ? null : P('x.....x...x.....')) : drum('kick', half ? DD.halfKick : DD.kick, k));
+      put(b, 'clap', breaks ? (asIs ? null : P('....x.......x...')) : drum('clap', half ? DD.halfClap : DD.clap, k));
+      put(b, 'snare', P(fillHere ? fill.snare : breaks ? '....x.......x...' : at(half ? DD.halfClap : DD.clap, k)));
       if (!half) put(b, 'ohats', drum('ohats', DD.ohats, k));
       // A half-time bar's hats: the style's own (`halfHats` — reggaeton's trap rolls), else eighths.
       put(b, 'hats', drum('hats', half ? DD.halfHats || DD.hats8 : DD.hats16, k));
@@ -689,6 +748,14 @@ export function buildSections(ctx) {
     const gap = 2 ** Math.floor(Math.log2(Math.max(1, n / count)));
     const arrives = (li) => (li === 0 ? 0 : Math.max(0, n - (count - li) * gap));
     const leaves = (li) => (li === 0 ? n : Math.min(n, (count - li) * gap));
+    // Tune First: the riff's layer opens alone and the rest arrive after it, a part each `gap`
+    // bars from the start — so everything is in early, however long the intro has grown.
+    if (tuneFirst && !leaving) {
+      const first = layerOf('hook');
+      const order = [first, ...LAYERS.map((_, li) => li).filter((li) => li !== first)];
+      stretch(from, n, (role, j) => j >= order.indexOf(layerOf(role)) * gap);
+      return;
+    }
     stretch(from, n, (role, j) => (leaving ? j < leaves(layerOf(role)) : j >= arrives(layerOf(role))));
   };
   /**
@@ -843,6 +910,13 @@ export function buildSections(ctx) {
   const isDrumRole = (role) => ['kick', 'clap', 'snare', 'hats', 'ohats', 'fill', 'hatsSoft', 'rim', 'crash', 'impact']
     .includes(role) || GROUP.perc(role) || GROUP.riffDrums(role);
 
+  // ---- Drop 2 (drop-ways.js): how the second drop differs from the first, one for the song. Varied
+  // passes over what this song cannot play (a new bass where the style's bass is its signature or the
+  // hook is the bass) and what its style does not suit.
+  const drop2Cant = [...(style.bassFixed || hookIsBass || ['sub', 'none'].includes(bassId) ? ['bass'] : []), ...unsuited(DROP2_WAYS, fit)];
+  const drop2Way = options.form.drop2Way === 'varied' ? drawWay(DROP2_WAYS, rng.drop2, { exclude: drop2Cant, era }) ?? 'more' : options.form.drop2Way || 'more';
+  const drop2Bass = rng.drop2.stream('bass').pick(DROP2_BASSES.filter((id) => id !== bassId));
+
   // ---- walk the form
   form.forEach((sec, si) => {
     useMood(sec, si);
@@ -851,9 +925,10 @@ export function buildSections(ctx) {
     const next = form[si + 1] || null;
     const nextIsDrop = next && DROP_ROLES.has(next.role);
 
-    // How an intro opens: the Club form by its switches; any other form by the section's
-    // own variant (form.js formFromList has already let the switches have their say).
-    const introMode = sec.role === 'intro' ? sec.variant || (inLayers ? 'layers' : options.form.grooveIntro ? 'groove' : 'riff') : null;
+    // How an intro opens: its own variant, else the switches (form.js formFromList has already
+    // let them have their say in the other forms), else Intro Type (intro-ways.js).
+    const introMode = sec.role === 'intro' ? sec.variant || (inLayers ? 'layers' : options.form.grooveIntro ? 'groove' : introWay) : null;
+    if (introMode) events.introWay = introMode;
     if (introMode === 'layers') {
       events.intro = { from: sec.from, to: sec.to };
       layered(from, n, false);
@@ -871,6 +946,45 @@ export function buildSections(ctx) {
         if (chordRole) put(from + i, 'pad', padBar(colourAll(pb.chords, mood), C.pad));
         if (i >= n / 2) put(from + i, 'hats', drum('hats', D.hats8, i));
         if (n < 4 || i >= n - 2) put(from + i, 'kick', drum('kick', D.kick, i));
+      }
+      if (options.drums.crashes) put(from, 'crash', P(D.crash));
+    } else if (introMode === 'cold') {
+      // Straight in on the hook: its bars over their chords, the bass and a light beat — the kick
+      // and the hats — so the song is moving from its first bar.
+      events.intro = { from: sec.from, to: sec.to };
+      for (let i = 0; i < n; i++) {
+        const b = from + i;
+        const pb = phraseBar(0, i % 8, 0, i);
+        put(b, 'hook', pb.part);
+        if (chordRole) put(b, 'pad', padBar(colourAll(pb.chords, mood), C.pad));
+        put(b, 'bass', bassLine(pb.chords, R, 0, b));
+        put(b, 'sub', subLine(pb.chords));
+        put(b, 'kick', drum('kick', D.kick, i));
+        put(b, 'hats', drum('hats', D.hats8, i));
+      }
+    } else if (introMode === 'pad') {
+      // The riff as written over a held pad of its own chords, no kick: the hats join halfway, and
+      // the build brings the beat.
+      events.intro = { from: sec.from, to: sec.to };
+      riffAsWritten(from, n);
+      for (let i = 0; i < n; i++) {
+        put(from + i, 'pad', padBar(colourAll(analysis.riffChords[i % L0], mood), C.pad));
+        if (i >= n / 2) put(from + i, 'hats', drum('hats', D.hats8, i));
+      }
+      if (options.drums.crashes) put(from, 'crash', P(D.crash));
+    } else if (introMode === 'arp') {
+      // The riff's chords as the arp over the pad, the riff (as written) and the hats joining
+      // halfway, the kick for the last two bars.
+      events.intro = { from: sec.from, to: sec.to };
+      const half = Math.floor(n / 2);
+      if (n - half > 0) riffAsWritten(from + half, n - half);
+      for (let i = 0; i < n; i++) {
+        const b = from + i;
+        const c = analysis.riffChords[i % L0];
+        put(b, 'pad', padBar(colourAll(c, mood), C.pad));
+        put(b, 'arp', arp(c, b));
+        if (i >= half) put(b, 'hats', drum('hats', D.hats8, i));
+        if (n < 4 ? i === n - 1 : i >= n - 2) put(b, 'kick', drum('kick', D.kick, i));
       }
       if (options.drums.crashes) put(from, 'crash', P(D.crash));
     } else if (sec.role === 'intro') {
@@ -891,7 +1005,7 @@ export function buildSections(ctx) {
       // the arp from the first bar, on the switch's way.
       // Never a pair that undoes itself (build-ways.js): what this build follows, then what it goes into.
       const after = form[si - 1]?.role === 'breakdown' ? events.breakdowns.find((d) => d.to === sec.from - 1)?.mode ?? null : null;
-      const way = wayOf('build', BUILD_IDS.has(sec.variant) ? sec.variant : options.form.buildWay || 'roll', BUILD_WAYS, buildsNotAfter(after));
+      const way = wayOf('build', BUILD_IDS.has(sec.variant) ? sec.variant : options.form.buildWay || 'roll', BUILD_WAYS, [...buildsNotAfter(after), ...ruled(BUILD_WAYS)]);
       const build = { from: sec.from, to: sec.to, intoDrop: !!nextIsDrop, way };
       events.builds.push(build);
       const dropIndex = sec.role === 'build' ? 0 : 1;
@@ -943,7 +1057,7 @@ export function buildSections(ctx) {
         }
       }
       if (way === 'muffled') events.sweeps.push({ from: sec.from, to: sec.to });
-      if (nextIsDrop) dropIns.push({ bar0: from + n - 1, next, build, way: wayOf('dropIn', options.form.dropIn || 'straight', DROP_IN_WAYS, dropInsNotAfter(way)) });
+      if (nextIsDrop) dropIns.push({ bar0: from + n - 1, next, build, way: wayOf('dropIn', options.form.dropIn || 'straight', DROP_IN_WAYS, [...dropInsNotAfter(way), ...ruled(DROP_IN_WAYS)]) });
     }
 
     if (DROP_ROLES.has(sec.role)) {
@@ -952,7 +1066,12 @@ export function buildSections(ctx) {
       const dropIndex = sec.typed ? sec.dropIndex : DROP_INDEX[sec.role];
       const final = sec.typed ? sec.final : sec.lifted || (sec.role === 'drop2' && !form.some((s) => s.role === 'drop3'))
         || (sec.role === 'drop' && !form.some((s) => s.role === 'drop2'));
-      events.drops.push({ from: sec.from, to: sec.to, role: sec.role, final });
+      // Drop 2's twist goes on the second full drop (eight bars or more, not half time, not the lifted
+      // last) — never where a half-time drop came first, which was the song's switch already.
+      const before = form.slice(0, si).filter((x) => DROP_ROLES.has(x.role));
+      const twistHere = before.filter((x) => x.type !== 'halfDrop' && x.bars >= 8).length === 1 && sec.type !== 'halfDrop'
+        && n >= 8 && !sec.lifted && !before.some((x) => x.type === 'halfDrop');
+      events.drops.push({ from: sec.from, to: sec.to, role: sec.role, final, ...(twistHere ? { twist: drop2Way } : {}) });
       if (final) events.finalDrops.push({ from: sec.from, to: sec.to });
       const phrases = Math.ceil(n / 8);
       // A style played half time can switch to full time from a given drop on (future
@@ -983,7 +1102,8 @@ export function buildSections(ctx) {
       for (let p = 0; p < phrases; p++) {
         const len = Math.min(8, n - p * 8);
         // The Half-Time Switch is the Club form's (a drawn Club form keeps it).
-        const half = halfAll || (!sec.joins && options.form.halfTime && sec.role === 'drop2' && p === 0);
+        const twist = twistHere ? drop2Way : 'more';
+        const half = halfAll || (!sec.joins && options.form.halfTime && sec.role === 'drop2' && p === 0) || (twist === 'halftime' && p === 0);
         const crashEvery = dropIndex >= 1 ? 4 : 8;
         const fill = fillPick();
         for (let k = 0; k < len; k++) {
@@ -991,7 +1111,7 @@ export function buildSections(ctx) {
           const lastBarOfSection = p * 8 + k === n - 1;
           const stopHere = lastBarOfSection && nextIsDrop && options.form.hardStop;
           const fillHere = options.drums.fills && k === len - 1 && !stopHere;
-          dropBar(b, { p, k, i: planIndex(len, k), dropIndex, final, DD, RR, half, fill, fillHere, stopHere, layered: allIn });
+          dropBar(b, { p, k, i: planIndex(len, k), dropIndex, final, DD, RR, half, fill, fillHere, stopHere, layered: allIn, twist });
           if (stopHere) events.stops.push({ bar: b + 1, step: 12 });
           if (options.drums.crashes && k % crashEvery === 0) put(b, 'crash', P(D.crash));
           if (options.drums.impact && p === 0 && k === 0) put(b, 'impact', P(D.crash));
@@ -1026,12 +1146,15 @@ export function buildSections(ctx) {
       const mode = asked === 'varied' ? breakdownWay : asked;
       const exposed = mode === 'exposed';
       const noHook = mode === 'none';
-      const prog = modeHarmony?.breakdown || style.breakdown[key.minor ? 'minor' : 'major'];
+      // Breakdown Backing (breakdown-ways.js BACKING_WAYS): what plays under the hook — Varied's, one for the song.
+      const backing = backingWay;
+      const prog = backing === 'walk' ? rng.backing.pick(BACKING_WALKS[key.minor ? 'minor' : 'major'])
+        : modeHarmony?.breakdown || style.breakdown[key.minor ? 'minor' : 'major'];
       // The trance breakdown plays the hook as written on a piano whatever Half Speed or As
       // Written say; the ways with a line of their own play that line on it. Piano: any style's.
       const onPiano = mode === 'piano' || style.breakdownHook === 'piano';
       const role = onPiano ? 'piano' : 'hook';
-      events.breakdowns.push({ from: sec.from, to: sec.to, mode, role });
+      events.breakdowns.push({ from: sec.from, to: sec.to, mode, role, backing: backingWay });
       const line = BREAKDOWN_LINES[mode] || BREAKDOWN_LINES.written;
       const k = { cell, aug: cell.flatMap((bar) => augment(bar)), up, scale: ctx.scale || key.scale };
       for (let i = 0; i < n; i++) {
@@ -1054,13 +1177,28 @@ export function buildSections(ctx) {
           asWritten.add(`${b}:piano`);
         } else put(b, 'hook', tune);
         if (extra) put(b, ...extra(c));
-        if (chordRole) put(b, 'pad', padBar(c, C.pad, { open: true }));
-        if (options.parts.choir && joins) put(b, 'choir', { notes: [openVoicing(c, 'E5'), ...Array(15).fill(null)], lens: [16, ...Array(15).fill(null)] });
+        // The chords: an open pad — or an arp, or held piano chords where the piano is not the hook's.
+        if (backing === 'arp') put(b, 'arp', arp(c, b));
+        else if (backing === 'piano' && !onPiano) put(b, 'piano', padBar(c, C.piano || C.pad, { open: true }));
+        else if (chordRole) put(b, 'pad', padBar(c, C.pad, { open: true }));
+        if (options.parts.choir && joins && backing !== 'stripped') put(b, 'choir', { notes: [openVoicing(c, 'E5'), ...Array(15).fill(null)], lens: [16, ...Array(15).fill(null)] });
+        if (backing === 'kick' && i >= n / 2) put(b, 'kick', drum('kick', D.kick, i));
+        if (backing === 'halftime') {
+          put(b, 'clap', drum('clap', D.halfClap, i));
+          put(b, 'hats', drum('hats', D.hats8, i));
+        }
         if (options.parts.bell && i % 2 === 0 && mode === 'half') put(b, 'bell', fitToChords(shift(up(head(cell[(i / 2) % cell.length])), 12), c));
         // the pedal holds home unless the hook leans on the note just above it
-        if (options.parts.bass !== 'none' && !hookIsBass && joins) put(b, 'bass', clearUnder(bassBar(analysis.tonicChord, R.pedal, C.bassFloor), tune, c));
-        if (options.parts.sub && options.parts.bass !== 'none' && !(hookIsBass && style.wobbleSub) && joins) put(b, 'sub', clearUnder(bassBar(analysis.tonicChord, R.pedal, C.subFloor), tune, c));
+        const held = backing !== 'stripped';
+        const pedal = backing === 'pulse' ? 'R:2 . R:2 . R:2 . R:2 . R:2 . R:2 . R:2 . R:2 .' : R.pedal;
+        if (held && options.parts.bass !== 'none' && !hookIsBass && joins) put(b, 'bass', clearUnder(bassBar(analysis.tonicChord, pedal, C.bassFloor), tune, c));
+        if (held && options.parts.sub && options.parts.bass !== 'none' && !(hookIsBass && style.wobbleSub) && joins) put(b, 'sub', clearUnder(bassBar(analysis.tonicChord, R.pedal, C.subFloor), tune, c));
       }
+      // The backing's own moves (fx.js): the kick opening up, the pad swelling each bar, the light beat quiet.
+      const half = sec.from + Math.floor(n / 2);
+      if (backing === 'kick') events.laneSweeps.push({ role: 'kick', from: half, to: sec.to, lo: 250, hi: 12000 });
+      if (backing === 'swell') for (let i = 0; i < n; i++) events.swells.push({ role: 'pad', bar: sec.from + i });
+      if (backing === 'halftime') for (const r of ['clap', 'hats']) events.trims.push({ role: r, from: sec.from, to: sec.to, db: -7 });
       if (options.drums.crashes) put(from, 'crash', P(D.crash));
     }
 
@@ -1203,8 +1341,15 @@ export function buildSections(ctx) {
       // the drums.
       const count = LAYERS.length;
       const k = Math.max(1, Math.min(count, Math.round((sec.energy ?? 0.6) * count)));
+      // Tune First: the riff plays from the first groove on. When the rest arrives is the layers'
+      // (Chords Early moves the chords up; Acid House and Techno keep their sparse start) — or, at
+      // Groove Pace: Every 4 Bars, one more part every four bars from the first groove, while it rises.
+      const riseFrom = (form.find((x) => x.role === 'groove')?.from ?? 1) - 1;
+      const rising = options.form.groovePace === 'four' && k < count
+        && form.slice(si + 1).some((x) => x.role === 'groove' && (x.energy ?? 0) > (sec.energy ?? 0));
+      const kAt = (j) => (rising ? Math.max(k, Math.min(count, 1 + Math.floor((from + j - riseFrom) / 4))) : k);
       if (sec.variant === 'dip') stretch(from, n, (role) => !isDrumRole(role));
-      else stretch(from, n, (role) => layerOf(role) < k);
+      else stretch(from, n, (role, j) => layerOf(role) < kAt(j) || (tuneFirst && isRiff(role)));
       if (k === count && sec.variant !== 'dip' && options.drums.crashes) put(from, 'crash', P(D.crash));
     }
 
@@ -1216,6 +1361,45 @@ export function buildSections(ctx) {
   for (const d of dropIns) applyDropIn(d);
   // The joins between sections, for every form but Club's (transitions.js).
   if (form[0]?.joins) planTransitions({ form, bars, events, options, D, rng: rng.transitions, fillPick, scale: ctx.scale });
+  // Riser Type: every riser is struck two bars before the section it lifts into; one that is longer
+  // or shorter (build-ways.js `bars`) is struck that much before it instead.
+  const riserBars = RISER_WAY[riserWay]?.bars ?? 2;
+  const tonal = !!RISER_WAY[riserWay]?.tonal;
+  events.riserHits = [];
+  events.riserLands = {};
+  if (riserBars !== 2 || tonal) {
+    const hits = [];
+    bars.forEach((bar, b) => { if (bar.riser) { hits.push(b + 2); delete bar.riser; } });
+    // A tonal riser lands on the note the section it lifts into starts on: its bass's first note (the
+    // lift already in it), else home, lifted with its section. A second such note gets `riser2`.
+    const liftAt = (t) => (form.find((x) => x.from - 1 <= t && t <= x.to - 1)?.lifted ? LIFT_SEMIS[options.form.keyLift] || 0 : 0);
+    const landOf = (t) => {
+      const line = bars[t]?.bass || bars[t]?.sub;
+      const first = line && !isDrumPart(line) ? line.notes.find((v) => v != null) : null;
+      const m = first == null ? key.tonic + liftAt(t) : midi(Array.isArray(first) ? first[0] : first);
+      return ((m % 12) + 12) % 12;
+    };
+    for (const target of hits) {
+      const at = Math.max(0, Math.round(target * 16 - riserBars * 16));
+      const b = Math.floor(at / 16);
+      if (b >= total) continue;
+      let role = 'riser';
+      if (tonal) {
+        const pc = landOf(target);
+        events.riserLands.riser ??= pc;
+        if (pc !== events.riserLands.riser) { events.riserLands.riser2 ??= pc; role = 'riser2'; }
+      }
+      bars[b][role] = P(`${'.'.repeat(at % 16)}x${'.'.repeat(15 - (at % 16))}`);
+    }
+  }
+  // Where each riser is struck (1-based bar, step, which lane, how long it climbs) — what a gated
+  // riser is chopped from and its Riser FX spans (fx.js).
+  bars.forEach((bar, b) => {
+    for (const role of ['riser', 'riser2']) {
+      const at = bar[role] ? bar[role].findIndex(Boolean) : -1;
+      if (at >= 0) events.riserHits.push({ bar: b + 1, step: at, role, bars: riserBars });
+    }
+  });
 
   return { bars, events, cell, asWritten };
 }

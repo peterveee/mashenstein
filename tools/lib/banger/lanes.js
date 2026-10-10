@@ -9,14 +9,15 @@
 import { stripGate } from './fx.js';
 import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { baseLane, VOICES } from '../../../src/data/voices.js';
-import { riser } from './theory.js';
+import { riserVoice, subDropVoice } from './theory.js';
+import { DROP_HIT_WAY, RISER_WAY } from './build-ways.js';
 import { RANDOM_JOBS, soundAllowed, slotChoices } from './sound-rules.js';
 import { weightedPalettePick } from './palette.js';
 
 /** Which lane family each generated role lives in. */
 export const ROLE_FAMILY = Object.freeze({
   kick: 'kick', snare: 'snare', clap: 'clap', hats: 'hats', hatsSoft: 'hats', ohats: 'ohats', crash: 'crash',
-  riser: 'crash', impact: 'tom', fill: 'tom', shaker: 'rim', tambourine: 'rim', cowbell: 'rim',
+  riser: 'crash', riser2: 'crash', impact: 'tom', fill: 'tom', shaker: 'rim', tambourine: 'rim', cowbell: 'rim',
   congas: 'tom', ride: 'crash', rim: 'rim',
   bass: 'bass', sub: 'bass', bassEcho: 'bass',
   saws: 'chords', pad: 'chords', piano: 'chords',
@@ -25,12 +26,12 @@ export const ROLE_FAMILY = Object.freeze({
 });
 /** The order roles are given lanes in — and the desk's strip order, kit first. */
 export const ROLE_ORDER = Object.freeze([
-  'kick', 'snare', 'clap', 'hats', 'hatsSoft', 'ohats', 'crash', 'riser', 'impact', 'fill',
+  'kick', 'snare', 'clap', 'hats', 'hatsSoft', 'ohats', 'crash', 'riser', 'riser2', 'impact', 'fill',
   'shaker', 'tambourine', 'cowbell', 'congas', 'ride', 'rim',
   'bass', 'sub', 'bassEcho', 'saws', 'piano', 'pad',
   'square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter', 'sonar', 'vocoder', 'word',
 ]);
-export const DRUM_ROLES = new Set(['kick', 'snare', 'clap', 'hats', 'hatsSoft', 'ohats', 'crash', 'riser', 'impact',
+export const DRUM_ROLES = new Set(['kick', 'snare', 'clap', 'hats', 'hatsSoft', 'ohats', 'crash', 'riser', 'riser2', 'impact',
   'fill', 'shaker', 'tambourine', 'cowbell', 'congas', 'ride', 'rim']);
 /**
  * Roles that play another role's sound on a channel of their own: the soft hats are the
@@ -101,11 +102,11 @@ const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
  * the part had, never one another riff part already got. Only when the shortlist leaves
  * nothing does it widen to the library's allowed sounds of the job's categories. Drums keep
  * theirs: the Kit switch is how the drums change. Seeded, so a take re-made from its recipe
- * gets the same sounds and Another Take rolls new ones.
+ * gets the same sounds and Remix rolls new ones.
  *
  * Returns Map(part key → { id, label }).
  */
-export function pickRiffSounds({ riffParts, laneOf, hookKey, rng, sounds, palette = null }) {
+export function pickRiffSounds({ riffParts, laneOf, hookKey, rng, sounds, palette = null, busyInSong = null }) {
   const out = new Map();
   const taken = new Set();
   const never = sounds?.never || [];
@@ -120,7 +121,9 @@ export function pickRiffSounds({ riffParts, laneOf, hookKey, rng, sounds, palett
     const lane = laneOf.get(isHook ? 'hook' : `riff:${p.key}`);
     if (!lane) continue;
     const onsets = p.parsed.reduce((n, bar) => n + bar.notes.filter((v) => v != null).length, 0);
-    const slot = { ...job, family: baseLane(lane), busy: onsets / p.parsed.length > 8 };
+    // Busy in the riff, or in the song as made (`busyInSong`: a Varied way can play a hook busier than
+    // the riff does — the Arp breakdown's sixteenths, a Hook Loop).
+    const slot = { ...job, family: baseLane(lane), busy: onsets / p.parsed.length > 8 || !!busyInSong?.(isHook ? 'hook' : `riff:${p.key}`) };
     // Ordinary random rolls avoid leaving the riff on its original voice. A preset
     // audition is deliberately pinned, though: it must still be heard when it happens
     // to be the same preset as the source riff.
@@ -149,6 +152,7 @@ export function pickRiffSounds({ riffParts, laneOf, hookKey, rng, sounds, palett
  */
 export function buildMix({
   style, sounds, options, laneOf, riffParts, hookKey, coreFromRiff, bpm, denseHook = false, riffSounds = new Map(),
+  riserWay = 'noise', dropHit = 'style', tonic = 9, riserLands = {},
 }) {
   const mood = style.moods[options.mood] || {};
   // The chosen kit, with the style kit's sound wherever it leaves a drum out.
@@ -213,13 +217,18 @@ export function buildMix({
       continue;
     }
     const as = SOUND_OF[role] || role;
-    if (role === 'riser') mix.voiceParams[vk] = riser((2 * 240) / bpm);
+    // The riser: the take's Riser Type (build-ways.js), a voice of the song's own.
+    // A tonal one lands on its sections' note — `riser2`, a second note's (sections.js).
+    if (role === 'riser' || role === 'riser2') mix.voiceParams[vk] = riserVoice(riserWay, bpm, riserLands[role] ?? tonic);
+    // The impact: the take's Drop Hit (build-ways.js) — the style's own, a library preset, or the Sub Drop.
+    else if (role === 'impact' && dropHit === 'sub') mix.voiceParams[vk] = subDropVoice(bpm, tonic);
+    else if (role === 'impact' && VOICES[DROP_HIT_WAY[dropHit]?.voice]) mix.voice[vk] = DROP_HIT_WAY[dropHit].voice;
     else if (DRUM_ROLES.has(role)) mix.voice[vk] = kit[as] || sounds.parts[as] || kit.fill;
     else if (role === 'square' && denseHook) mix.voice[vk] = sounds.parts.squareDense;
     else mix.voice[vk] = sounds.parts[as];
     const strip = role === 'bassEcho'
       ? { ...clone(style.strips.bass || {}), gain: (style.strips.bass?.gain ?? 0) + BASS_ECHO.gain, pan: BASS_ECHO.pan }
-      : clone(style.strips[role] || {});
+      : clone(style.strips[role === 'riser2' ? 'riser' : role] || {});
     // The chords' gate: the style's own, or the one Chord Gate names (fx.js stripGate).
     const gate = stripGate(options, style);
     // Supersaw Stabs are a rhythm already: never gated. Gate the Choir chops the choir with the chords.
@@ -228,12 +237,15 @@ export function buildMix({
     if (role === 'pad' && gate && (options.parts.chords === 'pad' || style.padUnder)) {
       strip.effects = [...(strip.effects || []), { ...clone(gate), params: { ...gate.params, depth: 0.5 } }];
     }
+    // The riser's fader moves by its Riser Type's trim (build-ways.js RISER_WAYS).
+    if ((role === 'riser' || role === 'riser2') && RISER_WAY[riserWay]?.trimDb) strip.gain = (strip.gain ?? 0) + RISER_WAY[riserWay].trimDb;
     mix.lanes[lane] = strip;
     // A tuned part's strip says what it is AND what it plays — `PAD · Polar Drift` — because
     // the sound is editable on the Banger Sounds page and a name baked into the label would
     // go on naming the old one. A drum's part name is enough.
     const base = role === 'saws' && options.parts.chords === 'stabs' ? 'CHORDS Stabs'
-      : style.labels[role] || (role === 'bassEcho' ? BASS_ECHO.label : role.toUpperCase());
+      : role === 'riser2' ? `${style.labels.riser || 'RISER'} 2`
+        : style.labels[role] || (role === 'bassEcho' ? BASS_ECHO.label : role.toUpperCase());
     const preset = DRUM_ROLES.has(role) ? null : VOICES[mix.voice[vk]]?.label;
     mix.labels[lane] = preset ? `${base} · ${preset}` : base;
   }

@@ -17,7 +17,8 @@
 // while SIMPLE shows it converted down, and comes back as it was unless SIMPLE has been
 // written in since. ZAP (Peter, 3 Oct 2026; it was SURPRISE ME) writes a random riff in
 // whichever is showing — or, one time in three, a cabinet's own hook (game-riffs.js, Peter,
-// 5 Oct 2026), named as it lands. A cabinet riff goes into ADVANCED as written and SIMPLE
+// 5 Oct 2026), named as it lands; or, one in eight (one in two in a dev build), a tune everyone
+// knows — a nursery rhyme, a carol, a classic (tunes.js, Peter, 10 Oct 2026), named likewise. A cabinet riff goes into ADVANCED as written and SIMPLE
 // shows it converted down, as if ADVANCED had been switched from. EXPERIMENT (Peter, 5 Oct
 // 2026) is ZAP for everything else: a random FORMULA, ELEMENT, VOLTAGE and DNA (Hybrid,
 // Spliced or Mutant), leaving the notes alone.
@@ -25,10 +26,10 @@
 // FOUR SELECTORS (Peter, 7 Oct 2026): FORMULA, INFUSION, ELEMENT and MUTATION.
 //   · INFUSION is NONE, or another formula whose SOUND — its chords, instruments and arrangement —
 //     plays over FORMULA's GROOVE: its drums, bass and tempo (tools/lib/banger/styles/fusion.js).
-//   · MUTATION is what VOLTAGE and DNA were, in one selector. Its chooser is a 4×4 grid — down the side
-//     the energy and effects (Safe to Overload), across how much the riff's own notes change (Pure to
-//     Mutant) — so every one of the sixteen is a single tap. Its arrows step a ladder of six
-//     (MUTATION_LADDER) from wherever it is.
+//   · MUTATIONS (Peter, 10 Oct 2026; MUTATION before, a 4×4 grid of VOLTAGE and DNA with arrows on the
+//     selector) has no arrows: a tap opens its chooser, four rows of buttons — ENERGY (Safe to Overload),
+//     YOUR TUNE (how much the tune drawn on the grid changes, Pure to Mutant), LENGTH and SONG TYPE — each its own
+//     pick, made together by OK.
 //
 // The grid loops while you edit, over a plain kick, hat and light clap at four BPM below
 // the chosen style's lower tempo limit. It runs its own clock through Audio.voiceSfx rather
@@ -50,7 +51,7 @@ import { TRACK_EFFECTS_VERSION } from '../../../tools/lib/banger/production.js';
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawMenuRow, MENU_ROW_HILITE, BACK_BUTTON_PLATE, textYForMid, textWidth, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
+import { drawMenuRow, platePath, MENU_ROW_HILITE, BACK_BUTTON_PLATE, textYForMid, textWidth, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
 import {
   portraitMenuActive, portraitMenuSafeTop, portraitMenuSafeBottom, portraitMenuScale,
   portraitMenuText, portraitMenuTextCentered, portraitMenuFit, portraitMenuWrap,
@@ -59,10 +60,14 @@ import {
   RIFF_MODES, RIFF_BPM, RIFF_BARS, modeOf, semitoneOf, rowName, isSharp, rowHz, semitoneHz, toggleNote, hasNotes,
   normaliseNotes, normaliseLengths, simplify, expand, sixteenths, luckyNotes, perOf, stepsOf, barsOf, settleBars,
 } from './riff.js';
-import { GAME_RIFF_ODDS, pickGameRiff, gameRiffGrid } from './game-riffs.js';
-import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION, labFlavour, labInfusion, infusionStyle, pairDescription } from './make.js';
+import { pickGameRiff, gameRiffGrid } from './game-riffs.js';
+import { zapKind, pickTune, tuneFor, TUNES, TUNE_LIST } from './tunes.js';
+import { MAKER_STYLES, MAKER_MOODS, makeBanger, newSeed, RECIPE_EXPRESSION, labFlavour, labInfusion, infusionStyle, pairDescription, labSuitedMoods, LAB_INFUSIONS,
+  LAB_LENGTHS, LAB_SHAPES, labDefaults, labLength, labShape, labLengthHint, labLeadSound } from './make.js';
+import { VOICES } from '../../data/voices.js';
 import { styleDefaults } from '../../../tools/lib/banger/options.js';
 import { styleFor } from '../../../tools/lib/banger/styles/index.js';
+import { MOOD_PAIRS } from '../../../tools/lib/banger/moods.js';
 import { bangerState, saveDraft, pendingRecipe } from './store.js';
 import { BANGER_VOLTAGES, voltageFor, voltageSettings } from './voltage.js';
 
@@ -71,7 +76,7 @@ import { BANGER_VOLTAGES, voltageFor, voltageSettings } from './voltage.js';
 // 7 Oct the two are one selector, MUTATION, whose grid keeps every pairing. DNA is the desk's
 // Variation: PURE Faithful, HYBRID Some, SPLICED More, MUTANT Wild.
 export const MAKER_VARIATIONS = Object.freeze([
-  Object.freeze({ id: 'faithful', label: 'Pure', description: 'Your notes, as written' }),
+  Object.freeze({ id: 'faithful', label: 'Pure', description: 'Your tune, as written' }),
   Object.freeze({ id: 'some', label: 'Hybrid', description: 'Sequenced up, phrase ends turned round' }),
   // Between the two (Peter, 5 Oct 2026): Hybrid, with one Mutant move a phrase.
   Object.freeze({ id: 'more', label: 'Spliced', description: 'Hybrid, plus a leap or a fragment' }),
@@ -83,6 +88,12 @@ const FORMULA = 0;
 const INFUSION = 1;
 const ELEMENT = 2;
 const MUTATION = 3;
+/** Not a selector: the chooser ZAP opens when held, every tune to pick from (tunes.js, Peter, 10 Oct 2026). */
+const TUNE_PICK = 4;
+/** How often EXPERIMENT lands on a recommended ELEMENT (an outlined one) rather than any. */
+const EXPERIMENT_SUITED = 0.75;
+/** EXPERIMENT's INFUSION (Peter, 10 Oct 2026): NONE, a recommended one, and the rest any other formula. */
+const EXPERIMENT_INFUSION = Object.freeze({ none: 0.35, recommended: 0.55 });
 /** INFUSION's first choice: FORMULA's own sound. */
 const NONE = 'none';
 /**
@@ -92,16 +103,12 @@ const NONE = 'none';
 const CHOOSER_NOTES = Object.freeze([
   () => 'The kind of music: its beat, tempo, instruments and how the song is built',
   (formula) => `The one you pick brings its chords and instruments. ${formula} keeps its drums, bass and tempo`,
-  () => 'The mood: the chords your riff is played over, and how the song changes key',
-  () => 'ENERGY is how hard the effects and arrangement push. YOUR NOTES is how much your riff is rewritten',
+  (formula, infusion) => `The chords your tune is played over. Outlined: recommended for ${infusion ? `${formula} with ${infusion}` : formula}`,
+  () => 'ENERGY: how hard the effects and arrangement push. YOUR TUNE: how much it is rewritten',
+  () => 'A tune to start from. Marked ADVANCED: it has sharps, so the grid goes to ADVANCED for it',
 ]);
-/**
- * MUTATION's sixteen as one number, `voltage × 4 + DNA` (DNA in MAKER_VARIATIONS' order), and the six
- * its arrows step: Safe·Pure, Charged·Pure, Charged·Hybrid (where NEW BANGER opens), Surge·Spliced,
- * Overload·Pure (the riff as written, everything else flat out) and Overload·Mutant.
- */
+/** ENERGY and YOUR TUNE as one number, `voltage × 4 + DNA` (DNA in MAKER_VARIATIONS' order). */
 const mutationOf = (voltage, variation) => voltage * 4 + Math.max(0, MAKER_VARIATIONS.findIndex((v) => v.id === variation));
-export const MUTATION_LADDER = Object.freeze([0, 4, 5, 10, 12, 15]);
 
 /**
  * The club's BOLT: `src`'s song as RECHARGE would make it with nothing changed — the riff,
@@ -120,7 +127,9 @@ export function rerollRecipe(src, seed = newSeed()) {
   return { notes, lengths: normaliseLengths(src.lengths, notes, mode), mode, style: src.style, mood: src.mood, voltage, variation,
     wild: preset.wild, energy: preset.energy, expression: RECIPE_EXPRESSION,
     production: { mode: preset.production, version: TRACK_EFFECTS_VERSION }, seed, flavour,
-    ...(src.infusion ? { infusion: src.infusion } : {}) };
+    ...(src.infusion ? { infusion: src.infusion } : {}),
+    // LENGTH and SHAPE the player picked stay picked (make.js LAB_LENGTHS, LAB_SHAPES)
+    ...(labLength(src.songLength) ? { songLength: src.songLength } : {}), ...(labShape(src.shape) ? { shape: src.shape } : {}) };
 }
 
 /**
@@ -143,22 +152,21 @@ export function rerollTake(src, from = null) {
 }
 
 const LOOKAHEAD_S = 0.12;
-// The grid's own preview sound, a different one each visit, drawn from gentle voices
-// with a real sustain stage. Struck pianos, mallets, plucks and fixed-length test tones
-// sound lovely on a tap but hide the difference between short and held notes. These
-// have quick attacks and an audible sustain; no MRDR-3 voices, to keep the Lab light on
-// a phone. Only this screen hears them: the song uses the style's hook sound.
-export const RIFF_VOICES = Object.freeze([
-  'simpleTriangle', 'softKeys', 'padTriangle', 'amOrgan', 'tngrSoftPiano',
-  'tngrHollowKeys', 'tngrMemoryOrgan', 'tngrAirFlute',
-]);
+// The grid plays the riff on one of the leads the song draws from: FORMULA's, or INFUSION's, in this
+// ELEMENT (make.js labLeadSound), and it follows every change of them (Peter, 10 Oct 2026). Only
+// one that holds a note: struck pianos and plucks hide the difference between short and held notes,
+// and some styles' own leads are exactly those. Never a TNGR-2 in the dev build (Peter).
+const NO_TNGR2 = typeof window !== 'undefined' && window.__MASH_DEV__ === true;
 // The riff over the loop: about 6 dB down from full — at 1 it was far too loud over the
 // kick and hat (Peter, 3 Oct 2026).
 const RIFF_GAIN = 0.5;
 // BRING TO LIFE was GENER8 (Peter, 3 Oct 2026: the IT'S ALIVE! angle — birth.js). Editing a
 // kept song shows RECHARGE instead — the same make, for a song already alive (Peter, 4 Oct 2026).
 const BUTTONS = ['CLEAR', 'ZAP', 'EXPERIMENT', 'BRING TO LIFE'];
+const ZAP = 1;
 const GENER8 = 3;
+/** ZAP held this long opens the list of tunes; let go sooner and it is a tap. As the club's SOUND buttons (club.js). */
+const ZAP_HOLD_S = 0.4;
 /**
  * Rows on show in landscape. ADVANCED scrolls, showing the A-to-A grid's thirteen so the squares
  * stay their size; SIMPLE shows all eleven, a little shorter, and needs no arrows (Peter, 5 Oct 2026).
@@ -178,6 +186,8 @@ const BARS_SAY = Object.freeze({ add: 'BARS 3-4 ADDED', drop: 'BACK TO 2 BARS', 
 const C_BG = '#0b0b14';
 const C_TEXT = '#c8c8d8';
 const C_SEL = '#c9a0ff';
+// ELEMENT's outline round a recommended mood: quieter than the focus, apart from the choice's teal
+const C_SUITS = 'rgba(232,230,240,0.55)';
 const C_ARROW_OFF = 'rgba(200,200,216,0.22)';
 // The grid's bar line: plain light, not the selection's violet (Peter, 5 Oct 2026).
 const C_BAR_LINE = 'rgba(255,255,255,0.2)';
@@ -231,6 +241,26 @@ function drawSharp(ctx, x, capTop, capH, colour) {
 const hueOf = (semi) => (172 + (((semi % 12) + 12) % 12) * 30) % 360;
 const noteColour = (mode, row) => `hsl(${hueOf(semitoneOf(mode, row))}, 78%, ${isSharp(mode, row) ? 58 : 64}%)`;
 const cellColour = (mode, row, alpha) => `hsla(${hueOf(semitoneOf(mode, row))}, 55%, ${isSharp(mode, row) ? 30 : 55}%, ${alpha})`;
+/**
+ * The arrows in a chooser whose rows differ in width: along the row (round at the ends), or to the nearest
+ * choice in the next row up or down. Up from the top row is BACK (-1); any arrow from BACK is the first choice.
+ */
+function gridStep(cells, sel, dir) {
+  if (sel < 0) return dir === 'up' ? -1 : 0;
+  const mid = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+  const at = mid(cells[sel]);
+  if (dir === 'left' || dir === 'right') {
+    const row = cells.map((r, i) => ({ i, ...mid(r) })).filter((r) => Math.abs(r.y - at.y) < 1).sort((a, b) => a.x - b.x);
+    const k = row.findIndex((r) => r.i === sel);
+    return row[(k + (dir === 'right' ? 1 : row.length - 1)) % row.length].i;
+  }
+  const down = dir === 'down';
+  const beyond = cells.map((r, i) => ({ i, ...mid(r) })).filter((r) => (down ? r.y > at.y + 1 : r.y < at.y - 1));
+  if (!beyond.length) return down ? sel : -1;
+  const y = down ? Math.min(...beyond.map((r) => r.y)) : Math.max(...beyond.map((r) => r.y));
+  return beyond.filter((r) => Math.abs(r.y - y) < 1).sort((a, b) => Math.abs(a.x - at.x) - Math.abs(b.x - at.x))[0].i;
+}
+
 /** Rounded plates: near-pill on the short controls. */
 const plateRadius = (h, portrait) => Math.min(h / 2, portrait ? 26 : 11);
 
@@ -239,7 +269,7 @@ export class BangerMakerState {
   // The Lab is a listening screen (Audio.setListening), as its list is.
   static listening = true;
 
-  // `random` picks the grid's preview sound for the visit; tests pass their own.
+  // `random` draws ZAP and EXPERIMENT; tests pass their own.
   // `from` is a kept song to edit (the club's pencil): the grid opens on its riff, style
   // and mood, and BRING TO LIFE remakes that song rather than adding one. The NEW BANGER
   // draft is left as it was.
@@ -264,13 +294,14 @@ export class BangerMakerState {
     this.setGrid('advanced', d.advanced, d.advancedLengths);
     this.simpleEdited = !!d.simpleEdited;
     // The style and mood it was left on (store.js has already checked they still exist).
-    // What changes every visit is only the grid's preview sound — never last visit's
-    // (Peter, 3 Oct 2026).
     this.style = d.style;
     this.infusion = d.infusion ?? null;
     this.mood = d.mood;
     this.setVoltage(voltageFor(d), false);
     this.setVariation(d.variation);
+    // LENGTH and SHAPE, picked in MUTATION's chooser: null is DEFAULT, the formula's own.
+    this.songLength = labLength(d.songLength);
+    this.shape = labShape(d.shape);
     const src = this.seed || this.from;
     if (src) {
       this.mode = src.mode;
@@ -284,10 +315,11 @@ export class BangerMakerState {
       // A recipe with no DNA of its own (the starter, a song from before the picker) was made
       // at the generator's default, Hybrid — Mutant if it went wild.
       this.setVariation(src.variation ?? (src.wild ? 'wild' : 'some'));
+      this.songLength = labLength(src.songLength);
+      this.shape = labShape(src.shape);
     }
-    const voices = RIFF_VOICES.filter((id) => id !== BangerMakerState.lastVoice);
-    this.riffVoice = voices[Math.floor(this.random() * voices.length)];
-    BangerMakerState.lastVoice = this.riffVoice;
+    this.leadKey = null;
+    void this.riffVoice; // its worklet, if it has one, is built before the first note
     const first = this.notes.findIndex((n) => n >= 0);
     this.scroll = 0;
     this.scrollToNotes();
@@ -300,6 +332,7 @@ export class BangerMakerState {
     this.pointerNote = null;
     this.messageT = 0;
     this.chooser = null;       // the STYLE / MOOD chooser while it is open
+    this.zapHold = null;       // ZAP pressed and not yet let go: { t, key } (ZAP_HOLD_S)
     this.making = 0;
     this.loopT0 = null;
     this.scheduled = -1;
@@ -319,7 +352,12 @@ export class BangerMakerState {
     const keep = (a, m) => (held ? a : a.slice(0, stepsOf(m, 2)));
     return { mode: this.mode, bars: this.bars, simple: keep(this.simple, 'simple'), advanced: keep(this.advanced, 'advanced'),
       simpleLengths: keep(this.simpleLengths, 'simple'), advancedLengths: keep(this.advancedLengths, 'advanced'), simpleEdited: this.simpleEdited, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy,
-      production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, ...(this.infusion ? { infusion: this.infusion } : {}) };
+      production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, ...(this.infusion ? { infusion: this.infusion } : {}), ...this.size() };
+  }
+
+  /** LENGTH and SHAPE as a recipe carries them: only what was picked (make.js LAB_LENGTHS, LAB_SHAPES). */
+  size() {
+    return { ...(this.songLength ? { songLength: this.songLength } : {}), ...(this.shape ? { shape: this.shape } : {}) };
   }
 
   /** A mode's whole grid, all four bars of it, and its lengths. */
@@ -368,6 +406,22 @@ export class BangerMakerState {
     return (style?.tempoRange?.[0] ?? style?.bpm ?? RIFF_BPM) - 4;
   }
   get previewSixteenthS() { return 60 / this.previewBpm / 4; }
+  /**
+   * The sound the grid plays the riff on: a lead a take in this FORMULA, INFUSION and ELEMENT draws
+   * its hook from, one that holds a note (make.js labLeadSound), worked out again only when one of
+   * them changes. A lead on a worklet (TNGR-2, MRDR-3) has its node built then, so its first note is
+   * not late.
+   */
+  get riffVoice() {
+    const key = `${this.style}|${this.infusion ?? ''}|${this.mood}`;
+    if (this.leadKey !== key) {
+      this.leadKey = key;
+      this.lead = labLeadSound(this.style, this.mood, this.infusion, { noTngr2: NO_TNGR2 });
+      const voice = VOICES[this.lead];
+      try { Audio.voices?.warmWorkletLane?.(voice, voice?.homeLane || 'bass')?.catch?.(() => {}); } catch { /* nothing to warm */ }
+    }
+    return this.lead;
+  }
   /** FORMULA — the groove, and everything else unless there is an INFUSION. An infusion of itself goes. */
   setStyle(id) {
     if (this.infusion === id) this.infusion = null;
@@ -386,8 +440,17 @@ export class BangerMakerState {
    */
   moodItems() {
     const st = styleFor(this.style);
-    const template = this.infusion || !st ? 'club' : styleDefaults(st).form.template;
-    return MAKER_MOODS.map((m) => (m.pair ? { ...m, description: pairDescription(m.id, template) } : m));
+    const template = this.shape || (this.infusion || !st ? 'club' : styleDefaults(st).form.template);
+    // The moods that suit the song are outlined (make.js labSuitedMoods; Peter, 10 Oct 2026) — a pair
+    // when both its moods do.
+    const suited = new Set(labSuitedMoods(this.style, this.infusion));
+    return MAKER_MOODS.map((m) => {
+      const pair = MOOD_PAIRS[m.id];
+      const suits = pair ? suited.has(pair.first) && suited.has(pair.second) : suited.has(m.id);
+      const out = pair ? { ...m, description: pairDescription(m.id, template) } : { ...m };
+      if (suits) out.suits = true;
+      return out;
+    });
   }
   /** INFUSION's choices: NONE, then every formula but FORMULA itself. */
   infusionItems() {
@@ -402,15 +465,18 @@ export class BangerMakerState {
     this.setVoltage(Math.floor(k / 4), false);
     this.setVariation(MAKER_VARIATIONS[k % 4].id);
   }
-  /** MUTATION's arrows: the next step of the ladder up or down from wherever it is, and no further. */
-  stepMutation(dir) {
-    const at = this.mutation;
-    const next = dir > 0 ? MUTATION_LADDER.find((m) => m > at) : [...MUTATION_LADDER].reverse().find((m) => m < at);
-    if (next != null) this.setMutation(next);
-  }
-  /** MUTATION as the selector reads it: CHARGED · HYBRID. */
+  /** ENERGY and YOUR TUNE as the selector names them: CHARGED · HYBRID. */
   mutationLabel(m = this.mutation) {
     return `${BANGER_VOLTAGES[Math.floor(m / 4)].label} · ${MAKER_VARIATIONS[m % 4].label}`.toUpperCase();
+  }
+  /** MUTATIONS' value: ENERGY and YOUR TUNE, then LENGTH and SONG TYPE where they are not DEFAULT — CHARGED · HYBRID · LONG · GROOVE. */
+  mutationValue() {
+    const own = labDefaults(this.style, this.infusion);
+    const extra = [
+      this.songLength && this.songLength !== own.songLength ? LAB_LENGTHS.find((l) => l.id === this.songLength).label : null,
+      this.shape && this.shape !== own.shape ? LAB_SHAPES.find((t) => t.id === this.shape).label : null,
+    ].filter(Boolean);
+    return [this.mutationLabel(), ...extra.map((x) => x.toUpperCase())].join(' · ');
   }
   /** The loop starts again at the tempo it is now. */
   restartLoop() {
@@ -481,7 +547,7 @@ export class BangerMakerState {
     this.simpleEdited = false;
   }
 
-  /** ZAP's cabinet riff: written into ADVANCED, SIMPLE converted down from it. */
+  /** ZAP's cabinet riff or tune: written into ADVANCED, SIMPLE converted down from it. */
   zapGameRiff(riff) {
     const { notes, lengths } = gameRiffGrid(riff);
     this.setGrid('advanced', notes, lengths);
@@ -489,6 +555,30 @@ export class BangerMakerState {
     BangerMakerState.lastGameRiff = riff.id;
     this.scrollToNotes();
     this.say(riff.from);
+  }
+
+  /**
+   * ZAP held (Peter, 10 Oct 2026): every tune (tunes.js), to pick one rather than draw one. One that
+   * cannot land on this grid says where it goes: ADVANCED for its sharps, or the length it comes in.
+   */
+  openTunes() {
+    const items = TUNE_LIST.map(({ from, by }) => {
+      const at = tuneFor(from, this.mode, this.bars);
+      const moves = at.mode !== this.mode ? ' · ADVANCED' : at.bars !== this.bars ? ` · ${at.bars} BARS` : '';
+      return { id: from, label: from, description: `${by}${moves}` };
+    });
+    const cur = this.pickerValue(TUNE_PICK);
+    this.chooser = { picker: TUNE_PICK, items, grid: false, sel: Math.max(0, items.findIndex((it) => it.id === cur)) };
+    Audio.sfx('ui');
+  }
+
+  /** A tune off ZAP's list: its version for this grid, or the grid goes where it has one (tunes.js tuneFor). */
+  chooseTune(from) {
+    const at = tuneFor(from, this.mode, this.bars);
+    if (!at) return;
+    if (at.mode !== this.mode) this.setMode(at.mode);
+    if (at.bars !== this.bars) this.setBars(at.bars);
+    this.zapGameRiff(at.tune);
   }
 
   setMode(id) {
@@ -660,7 +750,7 @@ export class BangerMakerState {
     } else if (picker === ELEMENT) {
       const i = MAKER_MOODS.findIndex((m) => m.id === this.mood);
       this.mood = MAKER_MOODS[(i + dir + MAKER_MOODS.length) % MAKER_MOODS.length].id;
-    } else this.stepMutation(dir);
+    } else return;
     Audio.sfx('ui');
   }
 
@@ -668,7 +758,10 @@ export class BangerMakerState {
 
   /**
    * EXPERIMENT: a new FORMULA and ELEMENT (never the ones on show), any VOLTAGE, and DNA Hybrid, Spliced or
-   * Mutant — never Pure (Peter, 5 Oct 2026). One time in three an INFUSION too, else NONE. The notes stay.
+   * Mutant — never Pure (Peter, 5 Oct 2026). Its INFUSION by EXPERIMENT_INFUSION: NONE, one of FORMULA's
+   * LAB_INFUSIONS (make.js), or any other formula — the surprise. The notes stay.
+   * The ELEMENT is one ELEMENT outlines for the new pair (moodItems) EXPERIMENT_SUITED of the time, else
+   * any (Peter, 10 Oct 2026: "skew towards recommended moods").
    */
   experiment() {
     const other = (list, cur) => {
@@ -676,8 +769,13 @@ export class BangerMakerState {
       return (rest.length ? rest : list)[Math.floor(this.random() * (rest.length || list.length))].id;
     };
     this.setStyle(other(MAKER_STYLES, this.style));
-    this.setInfusion(this.random() < 1 / 3 ? other(MAKER_STYLES, this.style) : null);
-    this.mood = other(MAKER_MOODS, this.mood);
+    const picks = (LAB_INFUSIONS[this.style] || []).filter((id) => MAKER_STYLES.some((s) => s.id === id)).map((id) => ({ id }));
+    const roll = this.random();
+    this.setInfusion(roll < EXPERIMENT_INFUSION.none ? null
+      : picks.length && roll < EXPERIMENT_INFUSION.none + EXPERIMENT_INFUSION.recommended ? other(picks, null)
+        : other(MAKER_STYLES, this.style));
+    const suited = this.moodItems().filter((it) => it.suits && it.id !== this.mood);
+    this.mood = suited.length && this.random() < EXPERIMENT_SUITED ? other(suited, null) : other(MAKER_MOODS, this.mood);
     this.setVoltage(Math.floor(this.random() * BANGER_VOLTAGES.length), false);
     const dna = MAKER_VARIATIONS.filter((v) => v.id !== 'faithful');
     this.setVariation(dna[Math.floor(this.random() * dna.length)].id);
@@ -693,24 +791,80 @@ export class BangerMakerState {
   // title, a line on what the choice does (CHOOSER_NOTES).
   openChooser(picker) {
     const items = picker === FORMULA ? MAKER_STYLES : picker === INFUSION ? this.infusionItems() : picker === ELEMENT ? this.moodItems()
-      : Array.from({ length: 16 }, (_, m) => ({ id: String(m), label: this.mutationLabel(m),
-        description: `${BANGER_VOLTAGES[Math.floor(m / 4)].helper}. ${MAKER_VARIATIONS[m % 4].description}` }));
-    const cur = this.pickerValue(picker);
+      : this.mutationItems();
+    const cur = picker === MUTATION ? `energy:${this.voltage}` : this.pickerValue(picker);
     this.chooser = { picker, items, grid: picker === MUTATION, sel: Math.max(0, items.findIndex((it) => it.id === cur)) };
+    // MUTATION's chooser is staged (Peter, 10 Oct 2026): a tap marks a choice, OK makes them all, CANCEL
+    // (or BACK, or a tap outside) leaves everything as it was.
+    if (this.chooser.grid) {
+      const own = labDefaults(this.style, this.infusion);
+      this.chooser.stage = { voltage: this.voltage, variation: this.variation,
+        songLength: this.songLength === own.songLength ? null : this.songLength,
+        shape: this.shape === own.shape ? null : this.shape };
+    }
     Audio.sfx('ui');
+  }
+
+  /**
+   * MUTATIONS' choices, a row of each: ENERGY (`kind` 'energy', `value` the voltage level), YOUR TUNE ('notes',
+   * the DNA), then LENGTH and SHAPE — each in its own order, the formula's own marked DEFAULT (the Club form
+   * under an INFUSION) — then CANCEL and OK.
+   */
+  mutationItems() {
+    const own = labDefaults(this.style, this.infusion);
+    const formula = MAKER_STYLES.find((s) => s.id === this.style)?.label ?? 'The formula';
+    // Every LENGTH and SHAPE in its own order, always (Peter, 10 Oct 2026); the formula's own says DEFAULT under
+    // its name, and is `value` null — picking it is DEFAULT.
+    // (a LENGTH's hint is its bars and about how long they run at FORMULA's tempo)
+    const hint = (kind, x) => (kind === 'length' ? labLengthHint(x.id, this.style) : x.description);
+    const row = (kind, list, ownId) => list.map((x) => (x.id === ownId
+      ? { kind, value: null, id: `${kind}:default`, label: x.label.toUpperCase(), sub: 'DEFAULT',
+        description: kind === 'shape' && this.infusion ? `The default with an INFUSION: ${hint(kind, x)}` : `${formula}'s own: ${hint(kind, x)}` }
+      : { kind, value: x.id, id: `${kind}:${x.id}`, label: x.label.toUpperCase(), description: hint(kind, x) }));
+    return [
+      ...BANGER_VOLTAGES.map((v, k) => ({ kind: 'energy', value: k, id: `energy:${k}`, label: v.label.toUpperCase(), description: v.helper })),
+      ...MAKER_VARIATIONS.map((v) => ({ kind: 'notes', value: v.id, id: `notes:${v.id}`, label: v.label.toUpperCase(), description: v.description })),
+      ...row('length', LAB_LENGTHS, own.songLength),
+      ...row('shape', LAB_SHAPES, own.shape),
+      { kind: 'cancel', id: 'cancel', label: 'CANCEL', description: 'Leave everything as it was' },
+      { kind: 'ok', id: 'ok', label: 'OK', description: 'Make the song this way' },
+    ];
   }
 
   choose(i) {
     const c = this.chooser;
     const it = c.items[i];
+    if (c.grid) { this.chooseStaged(it, i); return; }
     if (it) {
       if (c.picker === FORMULA) this.setStyle(it.id);
       else if (c.picker === INFUSION) this.setInfusion(it.id);
       else if (c.picker === ELEMENT) this.mood = it.id;
-      else this.setMutation(Number(it.id));
+      else if (c.picker === TUNE_PICK) this.chooseTune(it.id);
     }
     this.chooser = null;
     Audio.sfx('uiConfirm');
+  }
+
+  /** MUTATIONS' chooser: a choice is marked (`stage`), and only OK makes them. */
+  chooseStaged(it, i) {
+    const c = this.chooser;
+    if (!it) return;
+    c.info = i;
+    if (it.kind === 'cancel') { this.chooser = null; Audio.sfx('ui'); return; }
+    if (it.kind === 'ok') {
+      this.setVoltage(c.stage.voltage, false);
+      this.setVariation(c.stage.variation);
+      this.songLength = c.stage.songLength;
+      this.shape = c.stage.shape;
+      this.chooser = null;
+      Audio.sfx('uiConfirm');
+      return;
+    }
+    if (it.kind === 'energy') c.stage.voltage = it.value;
+    else if (it.kind === 'notes') c.stage.variation = it.value;
+    else if (it.kind === 'length') c.stage.songLength = it.value;
+    else if (it.kind === 'shape') c.stage.shape = it.value;
+    Audio.sfx('ui');
   }
 
   chooserLayout(L) {
@@ -718,31 +872,48 @@ export class BangerMakerState {
     const n = c.items.length;
     const pad = L.portrait ? 14 : 6, gap = L.portrait ? 8 : 4, titleH = L.portrait ? 50 : 18;
     // the line under the title: two lines of it on a phone
-    const noteH = L.portrait ? 46 : 14;
+    const noteH = L.portrait ? 54 : 16;
     const top = titleH + noteH;
-    const panel = { x: 8, y: L.top, w: W - 16, h: (L.buttons[0].y + L.buttons[0].h) - L.top };
+    // (down over every button in portrait: the chooser is the whole screen there, and its text the larger for it)
+    const last = L.portrait ? L.buttons.at(-1) : L.buttons[0];
+    const panel = { x: 8, y: L.top, w: W - 16, h: (last.y + last.h) - L.top };
     // BACK, the Lab's own disc, at the left of the title
     const r = L.backBox.r, cy = panel.y + pad + titleH / 2;
     const back = { x: panel.x + pad - 4, y: cy - r * 1.4, w: r * 2.8, h: r * 2.8, cx: panel.x + pad + r, cy, r };
     if (c.grid) {
-      // MUTATION: the DNA names across the top, the VOLTAGE names down the side, the chosen cell's
-      // two descriptions under it.
-      const headH = L.portrait ? 64 : 26, infoH = L.portrait ? 64 : 24, labW = Math.round(panel.w * (L.portrait ? 0.27 : 0.2));
-      const cw = (panel.w - pad * 2 - labW - gap * 4) / 4;
-      const ch = Math.min(L.portrait ? 96 : 40, (panel.h - pad * 2 - top - headH - infoH - gap * 5) / 4);
-      const x0 = panel.x + pad + labW + gap;
-      const y0 = panel.y + pad + top + headH + gap;
-      const cells = c.items.map((_, i) => ({ x: x0 + (i % 4) * (cw + gap), y: y0 + Math.floor(i / 4) * (ch + gap), w: cw, h: ch }));
-      const cols = [0, 1, 2, 3].map((k) => ({ x: x0 + k * (cw + gap), y: panel.y + pad + top, w: cw, h: headH }));
-      const rows = [0, 1, 2, 3].map((k) => ({ x: panel.x + pad, y: y0 + k * (ch + gap), w: labW, h: ch }));
-      const info = { x: panel.x + pad, y: y0 + 4 * ch + 4 * gap, w: panel.w - pad * 2, h: infoH };
-      panel.h = pad * 2 + top + headH + gap + 4 * ch + 4 * gap + infoH;
-      return { panel, cells, cols: 4, titleH, noteH, pad, back, grid: { cols, rows, info, corner: { x: panel.x + pad, y: panel.y + pad + top, w: labW, h: headH } } };
+      // MUTATIONS: four rows of buttons — ENERGY, YOUR TUNE, LENGTH, SONG TYPE — then what the focused (or last
+      // touched) choice does, and CANCEL and OK. In landscape each row's name is beside it; in portrait it is a
+      // heading over the row, the buttons take the whole width, and the rows spread to fill the screen
+      // (Peter, 10 Oct 2026: "heading for each line on portrait… so buttons are bigger").
+      const P = L.portrait;
+      const infoH = P ? 72 : 28, labW = P ? 0 : Math.round(panel.w * 0.2), headH = P ? 34 : 0;
+      const free = (panel.h - pad * 2 - top - infoH - gap * 7 - headH * 4) / (P ? 4.8 : 4 + 26 / 34);
+      const rowH = Math.min(P ? 136 : 34, free);
+      const okH = P ? Math.min(80, rowH * 0.8) : 26;
+      const x0 = panel.x + pad + (labW ? labW + gap : 0);
+      const span = panel.x + panel.w - pad - x0;
+      const across = (n, y, h) => Array.from({ length: n }, (_, k) => ({ x: x0 + k * ((span - gap * (n - 1)) / n + gap), y, w: (span - gap * (n - 1)) / n, h }));
+      const kinds = ['energy', 'notes', 'length', 'shape'];
+      const NAMES = { energy: 'ENERGY', notes: 'YOUR TUNE', length: 'LENGTH', shape: 'SONG TYPE' };
+      const y0 = panel.y + pad + top + gap;
+      const cells = [];
+      const names = kinds.map((kind, k) => {
+        const y = y0 + k * (headH + rowH + gap);
+        cells.push(...across(c.items.filter((it) => it.kind === kind).length, y + headH, rowH));
+        return P ? { kind, label: NAMES[kind], x: x0, y, w: span, h: headH, heading: true }
+          : { kind, label: NAMES[kind], x: panel.x + pad, y, w: labW, h: rowH };
+      });
+      const infoY = y0 + 4 * (headH + rowH + gap);
+      const okY = infoY + infoH + gap;
+      cells.push(...across(2, okY, okH));
+      const info = { x: panel.x + pad, y: infoY, w: panel.w - pad * 2, h: infoH };
+      panel.h = okY + okH + pad - panel.y;
+      return { panel, cells, cols: 4, titleH, noteH, pad, back, grid: { names, info } };
     }
-    const cols = L.portrait ? 2 : (n > 10 ? 4 : 2);
+    const cols = L.portrait ? (n > 24 ? 3 : 2) : (n > 24 ? 5 : n > 10 ? 4 : 2);
     const rows = Math.ceil(n / cols);
     const cw = (panel.w - pad * 2 - gap * (cols - 1)) / cols;
-    const ch = Math.min(L.portrait ? 56 : 42, (panel.h - pad * 2 - top - gap * (rows - 1)) / rows);
+    const ch = Math.min(L.portrait ? 70 : 42, (panel.h - pad * 2 - top - gap * (rows - 1)) / rows);
     const cells = c.items.map((_, i) => ({
       x: panel.x + pad + (i % cols) * (cw + gap), y: panel.y + pad + top + Math.floor(i / cols) * (ch + gap), w: cw, h: ch,
     }));
@@ -755,8 +926,11 @@ export class BangerMakerState {
     const { panel, cells, cols, back } = this.chooserLayout(L);
     const n = c.items.length;
     const close = () => { this.chooser = null; Audio.sfx('ui'); };
-    // `sel` -1 is BACK: up from the top row reaches it, and any arrow comes back to the first choice
-    if (c.sel < 0) {
+    // `sel` -1 is BACK: up from the top row reaches it, and any arrow comes back to the first choice.
+    // MUTATION's rows are not all four wide, so its arrows go to the nearest choice that way.
+    if (c.grid) {
+      for (const dir of ['left', 'right', 'up', 'down']) if (Input.pressed(dir)) c.sel = gridStep(cells, c.sel, dir);
+    } else if (c.sel < 0) {
       if (Input.pressed('right') || Input.pressed('left') || Input.pressed('down')) c.sel = 0;
     } else {
       if (Input.pressed('right')) c.sel = (c.sel + 1) % n;
@@ -783,27 +957,45 @@ export class BangerMakerState {
     ctx.fillRect(0, 0, W, H);
     drawMenuRow(ctx, panel.x, panel.y, panel.w, panel.h, plateRadius(28, L.portrait), 'rgba(16,14,28,0.98)');
     this.drawBack(ctx, L, showFocus && c.sel < 0, back);
-    const title = ['CHOOSE A FORMULA', 'CHOOSE AN INFUSION', 'CHOOSE AN ELEMENT', 'CHOOSE A MUTATION'][c.picker];
+    const title = ['CHOOSE A FORMULA', 'CHOOSE AN INFUSION', 'CHOOSE AN ELEMENT', 'CHOOSE MUTATIONS', 'CHOOSE A TUNE'][c.picker];
     // centred, clear of BACK on either side
     const titleS = portraitMenuFit(title, 1.3, panel.w - 2 * (back.x + back.w - panel.x + 4));
     portraitMenuTextCentered(ctx, title, W / 2, textYForMid(panel.y + pad + titleH / 2, portraitMenuScale(titleS)), '#fff', titleS);
-    const noteS = L.portrait ? 0.8 : 0.72;
+    // (larger since 10 Oct 2026, Peter: "the small text is too small")
+    const noteS = L.portrait ? 0.95 : 0.8;
     const formula = MAKER_STYLES.find((s) => s.id === this.style)?.label ?? '';
-    const notes = portraitMenuWrap(CHOOSER_NOTES[c.picker](formula), panel.w - pad * 2, noteS, L.portrait ? 2 : 1);
+    const infusion = MAKER_STYLES.find((s) => s.id === this.infusion)?.label ?? null;
+    const note = CHOOSER_NOTES[c.picker](formula, infusion);
+    const wrap = (text) => portraitMenuWrap(text, panel.w - pad * 2, noteS, L.portrait ? 2 : 1);
+    // in portrait ELEMENT's recommendation starts its own line, where both halves fit one each
+    const halves = L.portrait ? note.split(/(?<=\.) (?=Outlined)/) : [];
+    const notes = halves.length === 2 && halves.every((h) => wrap(h).length === 1) ? halves : wrap(note);
     // set close under the title, with the larger gap below, before the choices
     notes.forEach((line, k) => portraitMenuTextCentered(ctx, line, W / 2,
-      textYForMid(panel.y + pad + titleH + noteH * (L.portrait ? 0.2 + 0.36 * k : 0.4), portraitMenuScale(noteS)), '#89899a', noteS));
+      textYForMid(panel.y + pad + titleH + noteH * (L.portrait ? 0.18 + 0.36 * k : 0.4), portraitMenuScale(noteS)), '#89899a', noteS));
     if (grid) { this.drawMutationGrid(ctx, L, cells, grid, showFocus); return; }
     const cur = this.pickerValue(c.picker);
     c.items.forEach((it, i) => {
       const r = cells[i];
       const on = it.id === cur, sel = showFocus && c.sel === i;
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), sel ? MENU_ROW_HILITE : on ? 'rgba(72,224,200,0.2)' : BACK_BUTTON_PLATE);
-      const labelY = r.y + r.h * 0.34;
+      // ELEMENT's recommended moods (moodItems): outlined, the note under the title saying so
+      if (it.suits) {
+        ctx.save();
+        ctx.strokeStyle = C_SUITS; ctx.lineWidth = Math.max(0.75, r.h * 0.03);
+        platePath(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait)); ctx.stroke();
+        ctx.restore();
+      }
+      const description = it.description ?? '';
+      // The line under the name: larger than it was (Peter, 10 Oct 2026), and on two lines where one would
+      // have to shrink it and the cell has the height.
+      const descBase = L.portrait ? 0.82 : 0.74;
+      const oneLine = portraitMenuFit(description, descBase, r.w - 12);
+      const descLines = oneLine < descBase * 0.9 && r.h >= 46 ? portraitMenuWrap(description, r.w - 12, descBase, 2) : [description];
+      const descriptionSize = descLines.length > 1 ? Math.min(...descLines.map((t) => portraitMenuFit(t, descBase, r.w - 12))) : oneLine;
+      const labelY = r.y + r.h * (descLines.length > 1 ? 0.25 : 0.34);
       const descriptionY = r.y + r.h * 0.72;
       const labelSize = portraitMenuFit(it.label, 1.05, r.w - 12);
-      const description = it.description ?? '';
-      const descriptionSize = portraitMenuFit(description, 0.68, r.w - 12);
       // A MOOD PAIR's mark sits just left of its name, the two centred together; so does a style's
       // FAMILY dot (9 Oct 2026, make.js LAB_FAMILIES): which styles go together, by colour.
       const scale = portraitMenuScale(labelSize);
@@ -816,8 +1008,9 @@ export class BangerMakerState {
       const markRight = labelX - textWidth(it.label.toUpperCase(), scale) / 2 - PAIR_MARK_GAP * markH;
       if (it.pair) this.drawPairMark(ctx, markRight, labelY, markH);
       else if (it.family) this.drawFamilyDot(ctx, markRight, labelY, markH, FAMILY_COLOURS[it.family]);
-      if (description) portraitMenuTextCentered(ctx, description, r.x + r.w / 2,
-        textYForMid(descriptionY, portraitMenuScale(descriptionSize)), sel ? '#d3c0f4' : '#89899a', descriptionSize);
+      const lineStep = portraitMenuScale(descriptionSize) * TEXT_INK_H * 1.7;
+      if (description) descLines.forEach((t, k) => portraitMenuTextCentered(ctx, t, r.x + r.w / 2,
+        textYForMid(descLines.length > 1 ? r.y + r.h * 0.58 + (k - 0.15) * lineStep : descriptionY, portraitMenuScale(descriptionSize)), sel ? '#d3c0f4' : '#89899a', descriptionSize));
     });
   }
 
@@ -853,43 +1046,57 @@ export class BangerMakerState {
   }
 
   /**
-   * MUTATION's grid: YOUR NOTES over the DNA names, ENERGY beside the VOLTAGE names, a cell for each
-   * pairing — the chosen one teal with a dot —
-   * and, under it, what the chosen (or focused) cell does.
+   * MUTATIONS' chooser: a row of buttons for each of ENERGY, YOUR TUNE, LENGTH and SONG TYPE, the marked one teal;
+   * then what the focused (or last touched) choice does, and CANCEL and OK. What is marked is the chooser's
+   * `stage`, made only by OK.
    */
   drawMutationGrid(ctx, L, cells, grid, showFocus) {
     const c = this.chooser;
-    const cur = this.mutation;
     const fit = (text, size, w) => portraitMenuFit(text, size, w);
     const centred = (text, r, mid, size, colour) => portraitMenuTextCentered(ctx, text, r.x + r.w / 2, textYForMid(mid, portraitMenuScale(size)), colour, size);
-    // the axes
-    const cap = 0.62;
-    centred('YOUR NOTES', { x: grid.cols[0].x, w: grid.cols[3].x + grid.cols[3].w - grid.cols[0].x }, grid.cols[0].y + grid.cols[0].h * 0.24, fit('YOUR NOTES', cap, grid.cols[0].w * 4), '#89899a');
-    centred('ENERGY', grid.corner, grid.corner.y + grid.corner.h * 0.72, fit('ENERGY', cap, grid.corner.w - 8), '#89899a');
-    grid.cols.forEach((r, k) => {
-      const label = MAKER_VARIATIONS[k].label.toUpperCase();
-      centred(label, r, r.y + r.h * 0.72, fit(label, 0.95, r.w - 6), k === cur % 4 ? C_NOTE : C_TEXT);
+    // a portrait heading sits over its row's left edge, in the quieter grey of the chooser's notes
+    grid.names.forEach((r) => (r.heading
+      ? portraitMenuText(ctx, r.label, r.x + 4, textYForMid(r.y + r.h * 0.45, portraitMenuScale(1)), '#9a9aac', 1)
+      : centred(r.label, r, r.y + r.h / 2, fit(r.label, 0.95, r.w - 6), C_TEXT)));
+    const marked = (it) => (it.kind === 'energy' ? it.value === c.stage.voltage
+      : it.kind === 'notes' ? it.value === c.stage.variation
+        : it.kind === 'length' ? it.value === c.stage.songLength
+          : it.kind === 'shape' ? it.value === c.stage.shape : false);
+    c.items.forEach((it, i) => {
+      const r = cells[i];
+      const on = marked(it), sel = showFocus && c.sel === i;
+      const plate = sel ? MENU_ROW_HILITE : on ? 'rgba(72,224,200,0.28)' : it.kind === 'ok' ? 'rgba(72,224,200,0.14)' : BACK_BUTTON_PLATE;
+      drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), plate);
+      // a marked choice keeps its teal under the focus, so the focus never hides what is marked
+      const colour = on ? C_NOTE : sel ? C_SEL : it.kind === 'ok' ? C_NOTE : C_TEXT;
+      // the formula's own says DEFAULT under its name where there is room, beside it where there is not
+      // (larger on the big portrait buttons, where a name too wide for one line — ALBUM VERSION — takes two)
+      const big = L.portrait ? 1.35 : 1;
+      const size = 0.9 * big;
+      const words = it.label.split(' ');
+      const lines = L.portrait && words.length > 1 && fit(it.label, size, r.w - 8) < size
+        ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [it.label];
+      if (lines.length > 1) {
+        const lineSize = Math.min(...lines.map((t) => fit(t, size, r.w - 8)));
+        const step = portraitMenuScale(lineSize) * TEXT_INK_H * 1.6;
+        const mid = r.y + r.h * (it.sub ? 0.42 : 0.5);
+        lines.forEach((t, k) => centred(t, r, mid + (k - 0.5) * step - (it.sub ? step * 0.25 : 0), lineSize, colour));
+        if (it.sub) centred(it.sub, r, r.y + r.h * 0.74, fit(it.sub, 0.8 * big, r.w - 8), sel ? '#d3c0f4' : '#89899a');
+      } else if (it.sub && r.h >= 30) {
+        centred(it.label, r, r.y + r.h * 0.38, fit(it.label, size, r.w - 8), colour);
+        centred(it.sub, r, r.y + r.h * 0.66, fit(it.sub, 0.8 * big, r.w - 8), sel ? '#d3c0f4' : '#89899a');
+      } else {
+        const text = it.sub ? `${it.label} · ${it.sub}` : it.label;
+        centred(text, r, r.y + r.h / 2, fit(text, 0.9 * big, r.w - 8), colour);
+      }
     });
-    grid.rows.forEach((r, k) => {
-      const label = BANGER_VOLTAGES[k].label.toUpperCase();
-      centred(label, r, r.y + r.h / 2, fit(label, 0.95, r.w - 6), k === Math.floor(cur / 4) ? C_NOTE : C_TEXT);
-    });
-    cells.forEach((r, i) => {
-      const on = i === cur, sel = showFocus && c.sel === i;
-      drawMenuRow(ctx, r.x, r.y, r.w, r.h, plateRadius(r.h, L.portrait), sel ? MENU_ROW_HILITE : on ? 'rgba(72,224,200,0.28)' : BACK_BUTTON_PLATE);
-      // only the chosen cell is marked (the arrows' six steps were too, until Peter: "why the faded dots?")
-      if (!on) return;
-      const rad = Math.max(1.5, Math.min(r.w, r.h) * 0.12);
-      ctx.save();
-      ctx.fillStyle = C_NOTE;
-      ctx.beginPath(); ctx.arc(r.x + r.w / 2, r.y + r.h / 2, rad, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    });
-    const it = c.items[showFocus && c.sel >= 0 ? c.sel : cur];
-    const head = it.label;
+    const shown = showFocus && c.sel >= 0 ? c.sel : c.info ?? c.items.findIndex((it) => it.kind === 'energy' && it.value === c.stage.voltage);
+    const it = c.items[shown];
+    const NAMES = { energy: 'ENERGY', notes: 'YOUR TUNE', length: 'LENGTH', shape: 'SONG TYPE' };
+    const head = NAMES[it.kind] ? `${NAMES[it.kind]} · ${it.label}${it.sub ? ` · ${it.sub}` : ''}` : it.label;
     const r = grid.info;
-    centred(head, r, r.y + r.h * 0.3, fit(head, 0.95, r.w - 8), C_NOTE);
-    centred(it.description, r, r.y + r.h * 0.74, fit(it.description, 0.7, r.w - 8), '#89899a');
+    centred(head, r, r.y + r.h * 0.28, fit(head, 1.05, r.w - 8), C_NOTE);
+    centred(it.description, r, r.y + r.h * 0.72, fit(it.description, L.portrait ? 0.92 : 0.8, r.w - 8), '#9a9aac');
   }
 
   press(button) {
@@ -899,8 +1106,12 @@ export class BangerMakerState {
       this.setGrid(this.mode, null, null);
       Audio.sfx('ui');
     } else if (name === 'ZAP') {
-      // a cabinet riff as long as the grid: two bars, or a four-bar phrase (game-riffs.js)
-      const riff = this.random() < GAME_RIFF_ODDS ? pickGameRiff(this.mode, this.random, BangerMakerState.lastGameRiff, this.bars) : null;
+      // a cabinet riff as long as the grid: two bars, or a four-bar phrase (game-riffs.js); now and
+      // then a tune everyone knows (tunes.js); otherwise one of ZAP's own
+      const kind = zapKind(this.random());
+      const last = BangerMakerState.lastGameRiff;
+      const riff = kind === 'cabinet' ? pickGameRiff(this.mode, this.random, last, this.bars)
+        : kind === 'tune' ? pickTune(this.mode, this.random, last, this.bars) : null;
       if (riff) this.zapGameRiff(riff);
       else this.setGrid(this.mode, luckyNotes(this.mode, Math.random, this.bars), null);
       Audio.sfx('uiConfirm');
@@ -923,7 +1134,7 @@ export class BangerMakerState {
     // sound, and by voltage a new bass line and chord gate); an old recipe kept without it is made as it was.
     const { notes, lengths } = settleBars(this.notes, this.lengths, this.mode);
     const recipe = { notes, lengths, mode: this.mode, style: this.style, mood: this.mood, voltage: this.voltage, variation: this.variation, wild: this.wild, energy: this.energy, expression: RECIPE_EXPRESSION,
-      production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, seed: newSeed() };
+      production: { mode: this.trackEffects, version: TRACK_EFFECTS_VERSION }, seed: newSeed(), ...this.size() };
     // INFUSION: that style, or the flavour of it this mood plays (make.js labInfusion), kept with the
     // take so a flavour added later never moves it.
     if (this.infusion) recipe.infusion = labInfusion(this.infusion, this.mood);
@@ -974,8 +1185,14 @@ export class BangerMakerState {
       else if (dy > 0 && f.row === this.rows - 1) { f.area = 'picker'; f.picker = Math.min(this.pickerCols() - 1, Math.floor((f.col % this.lineCols) * this.pickerCols() / this.lineCols)); }
       else if (dy) { f.row = Math.max(0, Math.min(this.rows - 1, f.row + dy)); this.showRow(f.row); }
     } else if (f.area === 'picker') {
-      if (dx) { this.cycle(f.picker, dx); return true; }
       const cols = this.pickerCols();
+      // MUTATIONS has no arrows, so left and right there move along its row of selectors
+      if (dx && f.picker === MUTATION) {
+        const to = f.picker + dx;
+        if (to >= 0 && to < PICKERS && Math.floor(to / cols) === Math.floor(f.picker / cols)) f.picker = to;
+        return true;
+      }
+      if (dx) { this.cycle(f.picker, dx); return true; }
       if (dy < 0 && f.picker >= cols) f.picker -= cols;
       else if (dy < 0) {
         // up from the selectors into the last line, under the selector's column
@@ -1015,6 +1232,8 @@ export class BangerMakerState {
 
   /** What a picker shows, as its chooser's id. */
   pickerValue(picker) {
+    // the tune on the grid, if ZAP's last was one
+    if (picker === TUNE_PICK) return TUNES.find((t) => t.id === BangerMakerState.lastGameRiff)?.from ?? null;
     return picker === FORMULA ? this.style : picker === INFUSION ? this.infusion ?? NONE : picker === ELEMENT ? this.mood : String(this.mutation);
   }
 
@@ -1037,7 +1256,8 @@ export class BangerMakerState {
     for (let i = 0; i < L.pickers.length; i++) {
       const r = L.pickers[i];
       // the arrows at the ends step; the middle opens every choice at once
-      if (inside(r)) return { area: 'picker', picker: i, dir: x < r.x + r.w * 0.22 ? -1 : x > r.x + r.w * 0.78 ? 1 : 0 };
+      // MUTATIONS has no arrows: anywhere on it opens its chooser
+      if (inside(r)) return { area: 'picker', picker: i, dir: i === MUTATION ? 0 : x < r.x + r.w * 0.22 ? -1 : x > r.x + r.w * 0.78 ? 1 : 0 };
     }
     for (let i = 0; i < L.buttons.length; i++) if (inside(L.buttons[i])) return { area: 'button', button: i };
     return null;
@@ -1050,6 +1270,16 @@ export class BangerMakerState {
     const L = this.layout();
     const f = this.focus;
     if (this.chooser) { this.updateChooser(L); Input.endFrame(); return; }
+    // ZAP under the finger (or the confirm key on it): held ZAP_HOLD_S, the list of tunes opens; let go
+    // sooner, still on it, and it is the tap it always was; slid off, neither
+    const hold = this.zapHold;
+    if (hold) {
+      const b = L.buttons[ZAP], p = Input.pointer;
+      const on = hold.key || (p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h);
+      if (!Input.held(hold.key ? 'confirm' : 'pointer')) { this.zapHold = null; if (on) this.press(ZAP); }
+      else if (!on) this.zapHold = null;
+      else if ((hold.t += dt) >= ZAP_HOLD_S) { this.zapHold = null; this.openTunes(); Input.endFrame(); return; }
+    }
     this.moveFocus();
     this.wheelAcc += Input.wheelY;
     while (Math.abs(this.wheelAcc) >= WHEEL_ROW) {
@@ -1075,6 +1305,7 @@ export class BangerMakerState {
       else if (f.area === 'bars') this.setBars(this.bars === 2 ? 4 : 2, true);
       else if (f.area === 'grid') this.toggle(f.col, f.row);
       else if (f.area === 'picker') this.openChooser(f.picker);
+      else if (f.button === ZAP) this.zapHold = { t: 0, key: true };
       else this.press(f.button);
     }
     if (Input.pressed('pointer')) {
@@ -1093,7 +1324,10 @@ export class BangerMakerState {
         f.area = 'picker'; f.picker = hit.picker;
         if (hit.dir) this.cycle(hit.picker, hit.dir); else this.openChooser(hit.picker);
       }
-      else if (hit?.area === 'button') { f.area = 'button'; f.button = hit.button; this.press(hit.button); }
+      else if (hit?.area === 'button') {
+        f.area = 'button'; f.button = hit.button;
+        if (hit.button === ZAP) this.zapHold = { t: 0, key: false }; else this.press(hit.button);
+      }
     }
     if (this.pointerNote && Input.pointer.down) {
       const at = this.pointerHit(L, Input.pointer.x, Input.pointer.y);
@@ -1151,7 +1385,7 @@ export class BangerMakerState {
       { label: 'FORMULA', value: (MAKER_STYLES.find((s) => s.id === this.style)?.label ?? '').toUpperCase() },
       { label: 'INFUSION', value: this.infusion ? (MAKER_STYLES.find((s) => s.id === this.infusion)?.label ?? '').toUpperCase() : 'NONE' },
       { label: 'ELEMENT', value: (MAKER_MOODS.find((m) => m.id === this.mood)?.label ?? '').toUpperCase() },
-      { label: 'MUTATION', value: this.mutationLabel() },
+      { label: 'MUTATIONS', value: this.mutationValue() },
     ];
     L.pickers.forEach((r, i) => {
       const sel = showFocus && this.focus.area === 'picker' && this.focus.picker === i;
@@ -1160,11 +1394,15 @@ export class BangerMakerState {
       const valueMid = r.y + r.h * 0.7;
       const arrowS = 1.2;
       const ay = textYForMid(valueMid, portraitMenuScale(arrowS));
-      portraitMenuText(ctx, '<', r.x + 12, ay, sel ? C_SEL : C_TEXT, arrowS);
-      portraitMenuText(ctx, '>', r.x + r.w - 12 - portraitMenuScale(arrowS) * 5, ay, sel ? C_SEL : C_TEXT, arrowS);
-      const labelSize = portraitMenuFit(selectors[i].label, 0.9, r.w - 12);
-      // between the arrows, with a little air either side (MUTATION's two names are the longest)
-      const valueSize = portraitMenuFit(selectors[i].value, L.portrait ? 1 : 0.86, r.w - 2 * (18 + textWidth('<', portraitMenuScale(arrowS))));
+      // MUTATIONS has no arrows (Peter, 10 Oct 2026): a tap opens it
+      const arrows = i !== MUTATION;
+      if (arrows) {
+        portraitMenuText(ctx, '<', r.x + 12, ay, sel ? C_SEL : C_TEXT, arrowS);
+        portraitMenuText(ctx, '>', r.x + r.w - 12 - portraitMenuScale(arrowS) * 5, ay, sel ? C_SEL : C_TEXT, arrowS);
+      }
+      const labelSize = portraitMenuFit(selectors[i].label, L.portrait ? 1 : 0.9, r.w - 12);
+      // between the arrows, with a little air either side; MUTATIONS, the longest, has the width to itself
+      const valueSize = portraitMenuFit(selectors[i].value, L.portrait ? 1.15 : 0.86, arrows ? r.w - 2 * (18 + textWidth('<', portraitMenuScale(arrowS))) : r.w - 16);
       portraitMenuTextCentered(ctx, selectors[i].label, r.x + r.w / 2,
         textYForMid(labelMid, portraitMenuScale(labelSize)), sel ? C_SEL : '#89899a', labelSize);
       portraitMenuTextCentered(ctx, selectors[i].value, r.x + r.w / 2,
@@ -1213,7 +1451,7 @@ export class BangerMakerState {
       const seg = { x: b.x + (i * b.w) / items.length, w: b.w / items.length };
       const on = current === id;
       if (on) drawMenuRow(ctx, seg.x + 2, b.y + 2, seg.w - 4, b.h - 4, Math.max(0, r - 2), 'rgba(72,224,200,0.22)');
-      const s = portraitMenuFit(label, 0.72, seg.w - 8);
+      const s = portraitMenuFit(label, portraitMenuActive() ? 0.85 : 0.72, seg.w - 8);
       portraitMenuTextCentered(ctx, label, seg.x + seg.w / 2, textYForMid(b.y + b.h / 2, portraitMenuScale(s)),
         on ? C_NOTE : (focused ? C_SEL : '#7a7a8c'), s);
     });
@@ -1222,7 +1460,7 @@ export class BangerMakerState {
   /** A line's bar numbers along its top (Peter, 6 Oct 2026), the repeat's dim like its notes. */
   drawRuler(ctx, L, g) {
     // about the size of the note names, so they read on a phone
-    const size = L.portrait ? 0.8 : 0.7;
+    const size = L.portrait ? 0.95 : 0.75;
     const ty = textYForMid(g.rulerY + g.rulerH / 2, portraitMenuScale(size));
     const repeat = this.repeats();
     for (let b = 0; b < g.span / 16; b++) {
@@ -1263,7 +1501,7 @@ export class BangerMakerState {
     const steps = this.steps;
     const per = this.per;                    // sixteenths per column
     const pad = g.pad;
-    const labelS = Math.min(0.85, g.cellH / (portrait ? 20 : 12));
+    const labelS = Math.min(portrait ? 1 : 0.85, g.cellH / (portrait ? 20 : 12));
     // Only the rows on show (landscape scrolls); `top` is the first, a visual row.
     const top = this.scrollRow;
     const shown = [];

@@ -29,9 +29,31 @@ export const PING_PONG = { id: 'pingpong', params: { sync: 1, division: 0.5, fee
  * the breakdown. Tease: dotted-eighth echoes off the hook's opening, ringing on into the bar it leaves
  * empty. Muffled: a low-pass opening from dull to bright.
  */
+/**
+ * The Stutter Riser's gate (build-ways.js), over the riser's two bars from where it is struck, in
+ * sixteenths: eighths for the first bar, sixteenths for the next half, thirty-seconds into the drop.
+ */
+export const RISER_GATE = Object.freeze([
+  [0, 16, 0.5], [16, 24, 0.25], [24, 32, 0.125],
+].map(([from, to, division]) => ({ from, to, chain: { id: 'rhythmgate', params: { division, gateLength: 0.5, attack: 0.002, decay: 0.02, depth: 1 } } })));
+
+/** RISER FX (build-ways.js RISER_FX_WAYS): the chain over a riser, by way. */
+export const RISER_FX = Object.freeze({
+  flanger: { id: 'flanger', params: { rateSync: 0, rateDivision: 2, frequency: 0.3, delayMs: 3, depth: 0.9, feedback: 0.75, spread: 180, tone: 9000, wet: 0.7 } },
+  echo: { id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.5, wet: 0.4 } },
+  pingpong: { id: 'pingpong', params: { sync: 1, division: 0.5, feedback: 0.45, wet: 0.45 } },
+  pan: { id: 'autopanner', params: { rateSync: 0, rateDivision: 2, frequency: 4, depth: 1, wet: 1 } },
+  shift: { id: 'shifter', params: { frequency: 0, wet: 0.6, sweep: 1, frequencyTo: 300, wetTo: 0.6 } },
+  crush: { id: 'bitcrusher', params: { bits: 6, downsample: 4, wet: 0.7 } },
+  wash: { id: 'reverb', params: { decay: 4.5, preDelay: 0.02, low: 0, mid: 0, high: -3, width: 1, wet: 0.5 } },
+});
+
 export const BREAKDOWN_FX = Object.freeze({
   tease: { id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.5, wet: 0.4 } },
   muffled: SWEEP(300, 12000),
+  gated: { id: 'rhythmgate', params: { division: 0.25, gateLength: 0.5, attack: 0.002, decay: 0.03, depth: 1 } },
+  octaveEcho: { id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.6, wet: 0.45 } },
+  low: { id: 'filter', params: { type: 'lowpass', frequency: 900, Q: 0.9 } },
 });
 export const LOWPASS = (frequency, Q = 0.9) => ({ id: 'filter', params: { type: 'lowpass', frequency, Q } });
 /**
@@ -257,7 +279,7 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
   // chord are struck — those ring on into the silence, which is the point of it.
   for (const stop of events.stops) {
     const at = posOf(stop.bar, stop.step);
-    const spare = new Set([lane('riser'), ...(stop.false ? [lane('crash'), lane('impact'), lane('pad')] : [])]);
+    const spare = new Set([lane('riser'), lane('riser2'), ...(stop.false ? [lane('crash'), lane('impact'), lane('pad')] : [])]);
     for (const key of lanesSounding(stop.bar)) {
       if (spare.has(key)) continue;
       auto = addLaneCut(auto, key, at);
@@ -284,6 +306,21 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
     }
   }
 
+  // The risers' own effects, from each hit for as long as it climbs: a Stutter Riser's quickening
+  // gate, then its Riser FX (build-ways.js) — a riser on the second lane too.
+  const riserFx = RISER_FX[events.riserFx] || null;
+  if (events.riserWay === 'stutter' || riserFx) {
+    const end = posOf(total + 1, 0);
+    for (const h of events.riserHits || []) {
+      const key = lane(h.role || 'riser');
+      if (!key) continue;
+      const at = posOf(h.bar, h.step);
+      const spans = events.riserWay === 'stutter' ? RISER_GATE.map((g) => ({ from: g.from, to: g.to, chain: [g.chain] }))
+        : [{ from: 0, to: Math.max(1, Math.round((h.bars ?? 2) * 16)), chain: [] }];
+      auto = addSections(auto, key, spans.filter((g) => at + g.from < end)
+        .map((g) => section(at + g.from, Math.min(end, at + g.to), riserFx ? [...g.chain, riserFx] : g.chain)));
+    }
+  }
   // A breakdown's way with an effect of its own, over the part playing it.
   for (const d of events.breakdowns || []) {
     const key = lane(d.role);
@@ -319,6 +356,16 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
 
   // A section sung under the chorus (a verse, a pre-chorus, a middle 8 on the hook's own
   // lane) a little under it — the chorus is the loudest the tune gets.
+  // Breakdown Backing's moves (sections.js): a lane opening up through a low-pass; a lane swelling in
+  // over a bar, from well under its fader up to it.
+  for (const sw of events.laneSweeps || []) {
+    const key = lane(sw.role);
+    if (key) auto = addSections(auto, key, [section(posOf(sw.from, 0), posOf(sw.to + 1, 0), SWEEP(sw.lo, sw.hi))]);
+  }
+  for (const sw of events.swells || []) {
+    const key = lane(sw.role);
+    if (key) auto = setLaneFade(auto, key, posOf(sw.bar, 0), posOf(sw.bar + 1, 0), -16, 0, 'even');
+  }
   for (const t of events.trims || []) {
     const key = lane(t.role);
     if (key) auto = setLaneFade(auto, key, posOf(t.from, 0), posOf(t.to + 1, 0), t.db, t.db, 'even');
