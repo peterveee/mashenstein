@@ -150,12 +150,12 @@ Unplayed heroes loiter in the concourse, wandering and hopping. Press DOWN to ta
 | II | CRYPT SHIFT | VHS | Horror | 3 | — |
 | II | TERMINAL VELOCITY | neon vector | SHMUP | 3 | — |
 | III | CARDBOARD KINGDOM | cardboard | Fake-o-rama | 3 | Eggshell & The Power Strip (end of Act III) |
-| III | CORPORATE KOMBAT | doodle | Office Action | 3 | — |
+| III | CORPORATE KOMBAT | office / clear line | Office Action | 3 | — |
 | III | THE SURGE | mashup | Everything | 3 | — |
 
 Each stage opens on a briefing screen (typewriter, 70 chars/sec) stating the mission objective, a memo block for comedy, and a cabinet-specific validation prompt. One input completes the text; a second proceeds.
 
-**Stage duration:** Act I ~60s, Act II ~90s, Act III ~120s.
+**Nominal stage duration:** Plumber/Speed 60s; Rhythm and Act II 90s; Cardboard 95s, Corporate Kombat 100s, and The Surge 110s.
 
 ### 3.4 The Finale
 
@@ -379,7 +379,7 @@ Each cabinet has a distinct visual identity — palette, ground/enemy art, sky c
 | CRYPT SHIFT | VHS | Dark purple/grey | Tombstones, zombies, darkness radius |
 | RHYTHM BANKRUPTCY | LCD handheld | Olive/muted green | Beat-synced bars, on-beat bonus |
 | CARDBOARD KINGDOM | cardboard | Warm tan/brown | Collapsing scenery, fake perspective props |
-| CORPORATE KOMBAT | doodle | Light grey/white | Chairs, printers, paperwork obstacles |
+| CORPORATE KOMBAT | office / LIGNE ’89 lit | Morning lobby → noon floor 23 → violet dusk floor 88 | Chairs, printers, paperwork obstacles |
 | THE SURGE | mashup | Dark everything | Remixes elements from all eight previous cabinets |
 
 ### 7.5 Sprite System

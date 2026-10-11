@@ -48,6 +48,8 @@ import {
 import { drawFrostWildlife } from './frostWildlife.js';
 import { frostFortressShape } from './frostFortresses.js';
 import { FROST_COMBINED_SCENERY_FINISH } from './frostSceneryFinish.js';
+import { solidRuns, apronRuns } from './groundRuns.js';
+import { officePack } from './officeLigne.js';
 import { drawCryptGouache, cryptNight } from './cryptGouache.js';
 import { CRYPT_LIFE, cryptWitches, paintCryptWitch } from './cryptLife.js';
 import { gateCreak, gateBank } from './cryptGates.js';
@@ -182,44 +184,6 @@ function plumberLandscapeSceneryOffset(context = null) {
 // of them. Two packs need this and they draw their ground nothing like each
 // other — one lays a flat apron, one lays a five-row checkered perspective road
 // — so what they share is the arithmetic of where the road ISN'T.
-
-function solidRuns(camX, obstacles, viewW = W) {
-  const right = Math.max(0, Number.isFinite(viewW) ? viewW : W);
-  const cuts = [];
-  for (const ob of obstacles || []) {
-    if (ob.live && ob.def && ob.def.isGap) cuts.push([ob.x - camX, ob.x - camX + ob.w]);
-  }
-  cuts.sort((a, b) => a[0] - b[0]);
-  const runs = [];
-  let open = 0;
-  for (const [a, b] of cuts) {
-    if (a > open) runs.push([open, Math.min(a, right)]);
-    open = Math.max(open, b);
-  }
-  if (open < right) runs.push([open, right]);
-  return runs.filter(([a, b]) => b > a);
-}
-
-// The pixel pack's apron is the ground UNDER the lane, not the lane surface.
-// A tunnel roof owns that space, so foreground texture has to stop there even
-// though the playable road continues across the overhang.
-function apronRuns(camX, obstacles, overhangs = [], viewW = W) {
-  const cut = (overhangs || []).map((sp) => [sp.x - camX, sp.x + sp.w - camX]);
-  const body = [];
-  for (const [a, b] of solidRuns(camX, obstacles, viewW)) {
-    let pieces = [[a, b]];
-    for (const [ca, cb] of cut) {
-      const next = [];
-      for (const [p, q] of pieces) {
-        if (ca > p) next.push([p, Math.min(q, ca)]);
-        if (cb < q) next.push([Math.max(p, cb), q]);
-      }
-      pieces = next.filter(([p, q]) => q > p);
-    }
-    body.push(...pieces);
-  }
-  return body;
-}
 
 function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhangs = [], t = 0, viewW = W, bodyBottomY = H) {
   // A gap is drawn by NOT drawing, rather than by painting a black rectangle
@@ -18261,7 +18225,7 @@ function doodlePack(settings) {
 // CABINETS (that would pull every song into this module), so it can drift when a
 // cabinet changes style — it did, keeping faux3d and vhs after Speed went mcm and Crypt
 // went gouache. tests/surge-cycle.js holds it to the cabinets' styles.
-const SURGE_CYCLE = Object.freeze(['pixel', 'mcm', 'neon', 'watercolor', 'gouache', 'lcd', 'cardboard', 'doodle']);
+const SURGE_CYCLE = Object.freeze(['pixel', 'mcm', 'neon', 'watercolor', 'gouache', 'lcd', 'cardboard', 'office']);
 
 function surgePack(settings) {
   // THE SURGE cycles every cabinet's look on its song's bar line, changing with a move
@@ -18317,8 +18281,8 @@ function surgePack(settings) {
         ctx.restore();
       });
     },
-    ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W, portraitViewW = null) {
-      cur().ground(ctx, camX, cab, obstacles, overhangs, t, viewW, portraitViewW);
+    ground(...args) {
+      cur().ground(...args);
     },
     // The light a pack lays on the hero and the routes, which the run asks the wrapper
     // for: gouache's night veil and route-ground motion, mcm's afternoon light.
@@ -18348,7 +18312,7 @@ function surgePack(settings) {
 
 const FACTORIES = {
   pixel: pixelPack, faux3d: faux3dPack, mcm: mcmPack, neon: neonPack, watercolor: watercolorPack,
-  vhs: vhsPack, gouache: gouachePack, lcd: lcdPack, cardboard: cardboardPack, doodle: doodlePack, surge: surgePack,
+  vhs: vhsPack, gouache: gouachePack, lcd: lcdPack, cardboard: cardboardPack, doodle: doodlePack, office: officePack, surge: surgePack,
 };
 
 export function getStylePack(name, settings) {

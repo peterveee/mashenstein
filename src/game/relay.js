@@ -11,7 +11,7 @@ import { HEROES } from '../data/heroes.js';
 import { TAG_LINES } from '../data/jokes.js';
 
 // Runs finish ahead of their nominal duration because speed ramps as they go —
-// about 11% early across all three stage lengths.
+// about 11% early across the campaign's stage lengths.
 const RAMP_FINISH = 0.89;
 // Handoff points as fractions of the real run. Two for a short stage (3 heroes),
 // three for a long one (4). Front-loaded slightly so the last hero still gets a

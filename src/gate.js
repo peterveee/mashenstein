@@ -7,6 +7,7 @@ import { formatBuildTime, formatBuildTimeLines } from './engine/build-time.js';
 const GAME_FONT_URL = 'https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&display=swap';
 const GAME_FONT_FACES = [
   "400 32px 'Lilita One'",
+  "400 12px 'Fredoka'",
   "500 12px 'Fredoka'",
   "600 12px 'Fredoka'",
   "400 12px 'Permanent Marker'",

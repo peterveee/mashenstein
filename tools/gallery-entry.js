@@ -7,6 +7,13 @@
 // the one accommodation is that entity tiles crop the game's fixed 480x270
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
+import { drawOfficeProductionScene, drawOfficeRoomScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
+import { OFFICE_ROOM_STYLES } from '../src/engine/stylePacks/officeLigne/rooms.js';
+import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
+import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
+import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
+import { PAL as OFFICE_LIGNE_PAL } from '../src/engine/stylePacks/officeLigne/line.js';
+const OFFICE_ART_PAL = { ink: '#2a2433' };
 import { W, H } from '../src/engine/renderer.js';
 import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld } from '../src/engine/camera.js';
 // The game's cameras, read from the modules that own them so the zoom-levels
@@ -100,6 +107,7 @@ import { FUJI_EXIT_CANDIDATES, fujiExitGoldenMood, fujiExitNightMood } from '../
 import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
 import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
 import { OFFICE_STYLE_SHIPPED, OFFICE_STYLE_CANDIDATES, OFFICE_STYLE_INFUSIONS, OFFICE_STYLE_ROUND_THREE, OFFICE_SCREENS, drawOfficeStyleScene } from '../src/dev/office-style-candidates.js';
+import { drawFoodStall, STALLS, SMOOTHIES, SMOOTHIE_DUDS, SMOOTHIE_ROWS } from '../src/sprites/stalls.js';
 import { FRONTS_CANDIDATES, SEATING_CANDIDATES, PLAZA_WALL_CANDIDATES, INTERLEAVE_CANDIDATES, drawInterleaveMock, drawFrontsMock, drawSeatingMock, drawPlazaWallMock } from '../src/dev/foodcourt-candidates.js';
 import { ARC_STILLS, drawArcTimelapse, drawArcStill, drawArcRibbon } from '../src/dev/speed-mcm/time-arc.js';
 import { SHIPPED_STILLS, drawShippedStill, JONES_SHOWS, drawJonesShow } from '../src/dev/speed-mcm/shipped.js';
@@ -3135,7 +3143,70 @@ let labClub = null;
   }
 }
 
-beginLab();
+// The selected office hand is a production reference; every bake-off remains below.
+{
+  const grid = section('office-climb', 'CORPORATE KOMBAT — the climb, as shipped',
+    'Selected 11 Oct 2026: LIGNE ’89 — lit. Lobby at morning, floor 23 at noon, floor 88 at dusk. '
+    + 'The actual office pack, lane camera and slab; portrait grows the room upward. Pillars are disabled. ANIMATED.',
+    '2026-10-11');
+  for (const screen of OFFICE_SCREENS) {
+    tile(grid, screen.name, 'Production office pack · landscape', 480, 270,
+      (ctx, t) => drawOfficeProductionScene(ctx, t, screen), { animated: true });
+    tile(grid, `${screen.name} — portrait`, 'Production office pack · phone portrait at 2.2× world zoom', 480, OFFICE_PORTRAIT_FRAME.height,
+      (ctx, t) => drawOfficeProductionScene(ctx, t, screen, true), { animated: true, displayScale: 0.82 });
+  }
+}
+
+// The founder on the office walls: every piece, in its frame, at the size it hangs.
+{
+  const FLOORS = { lobby: 'lobby', open: 'floor 23', exec: 'floor 88' };
+  const entries = Object.entries(PROFESSOR_PIECES);
+  const selected = new Set(Object.values(PROFESSOR_BY_FLOOR).flat());
+  const drawPosters = (grid, posters) => {
+    for (const [id, d] of posters) {
+      const where = Object.entries(PROFESSOR_BY_FLOOR).filter(([, ids]) => ids.includes(id)).map(([f]) => FLOORS[f]).join(', ');
+      const location = where || `candidate only · suggested: ${(d.suggestedFloors || []).map(f => FLOORS[f] || f).join(', ') || 'unplaced'}`;
+      tile(grid, d.name, `${d.style} · ${d.pose} · ${location}`, d.w + 8, d.h + 10,
+        (ctx) => paintFramedProfessor(ctx, id, 3, 3, OFFICE_ART_PAL));
+    }
+  };
+  const live = entries.filter(([id]) => selected.has(id));
+  const candidates = entries.filter(([id]) => !selected.has(id));
+  const gameGrid = section('office-founder-art', 'CORPORATE KOMBAT — founder posters in the game',
+    `The ${live.length} selected portraits below are the only Founder posters used on office walls. `
+    + 'Each card names its floor rotation. Deco and Gouache use the office-style portraits with simple solid frames.');
+  drawPosters(gameGrid, live);
+
+  // The office's own motivational posters, hung among the desks on floor 23.
+  const seenPosters = new Set();
+  const officePosters = Object.values(OFFICE_POSTERS).flat().filter((p) => {
+    const key = `${p.label}|${p.sub || ''}|${p.bg || ''}`;
+    if (seenPosters.has(key)) return false;
+    seenPosters.add(key);
+    return true;
+  });
+  const posterGrid = section('office-posters', 'CORPORATE KOMBAT — office posters in the game',
+    `The ${officePosters.length} motivational posters that hang on floor 23, out among the desks, at the size they hang.`);
+  for (const p of officePosters) {
+    const { w, h } = officePosterSize(p);
+    tile(posterGrid, p.sub ? `${p.label} — ${p.sub}` : p.label, 'Office poster · floor 23', w + 8, h + 10,
+      (ctx) => paintOfficePoster(ctx, { x: 3, y: 3, w, h, ...p }, OFFICE_LIGNE_PAL.open));
+  }
+  // Every framed print the office walls draw from, once each, in each floor's own frame.
+  const printGrid = section('office-prints', 'CORPORATE KOMBAT — framed prints in the game',
+    'The framed prints that fill the other wall bays, per floor. Each hangs at 66–86 × 64–84; shown at 76 × 74.');
+  for (const [floor, kinds] of Object.entries(OFFICE_PRINTS)) {
+    kinds.forEach((kind, i) => {
+      tile(printGrid, `${kind} — ${FLOORS[floor]}`, `Framed print · ${FLOORS[floor]}`, 84, 84,
+        (ctx) => paintOfficePrint(ctx, { x: 3, y: 3, w: 76, h: 74, seed: 101 + i * 7, kind }, floor, OFFICE_LIGNE_PAL[floor]));
+    });
+  }
+  beginLab();
+  const candidateGrid = section('office-founder-art-candidates', 'CORPORATE KOMBAT — Founder poster candidates',
+    `These ${candidates.length} unselected designs are gallery candidates only; they do not appear on office walls.`);
+  drawPosters(candidateGrid, candidates);
+}
+
 // Keep the open cape question at the front of the lab page. The larger Eggshell
 // redesign section below contains the face/outfit history, but this is the row
 // Peter came here to judge and it should not be buried after every other lab.
@@ -9863,15 +9934,15 @@ function officeStyleTiles(grid, tag, cand) {
 }
 {
   const grid = section('office-style-bakeoff', 'CORPORATE KOMBAT — backdrop styles, the climb (bake-off)',
-    'Asked 10 Oct 2026: something far more elaborate than the graph paper for the second-last cabinet, with parallax. '
+    'Settled 11 Oct 2026: LIGNE ’89 — lit selected; candidates preserved. Asked 10 Oct 2026: something far more elaborate than the graph paper for the second-last cabinet, with parallax. '
     + 'Every card paints the same plan — THE CLIMB, three floors of one tower, the view out of the window telling you how high '
     + 'you are: 8-1 the lobby at nine in the morning (the street through a double-height glass front, lift banks, the EGGCORP '
     + 'sign, reception), 8-2 floor 23 at noon (the cubicle farm under fluorescent tubes, blinds, rooftops and water towers, a '
     + 'window cleaner), 8-3 floor 88 at dusk (glass walls, panelling, the founder\'s portrait, the boardroom where the mandatory '
     + 'meeting dozes, the city far below). Depth: the city outside barely moves, the back wall at 0.24, the furniture at 0.48, '
     + 'a floor whose joints shear between them, the slab at the lane\'s rate, and a pillar or a plant sweeping past in front at '
-    + '1.5. Each style also paints the floor slab under the lane (the doodle\'s biro line only works on paper). 0 is the shipped '
-    + 'doodle. 1–3 are the A-level styles from the crypt bake-off (gouache, mid-century modern, crayon); 4–7 are new (art deco, '
+    + '1.5. Each style also paints the floor slab under the lane (the doodle\'s biro line only works on paper). 0 is the previous shipped '
+    + 'doodle baseline. 1–3 are the A-level styles from the crypt bake-off (gouache, mid-century modern, crayon); 4–7 are new (art deco, '
     + 'ligne claire, a Richard Scarry cutaway with the floors above and below, vaporwave). The camera runs at 120 px/s — three '
     + 'quarters of the run\'s base speed — on a twelve-second loop, and the hero hops real office hazards. ANIMATED.',
     '2026-10-10');
@@ -9884,7 +9955,7 @@ function officeStyleTiles(grid, tag, cand) {
 // portrait became the silver professor, the shipped villain.
 {
   const grid = section('office-style-infusions', 'CORPORATE KOMBAT — ’80s infusions (round two)',
-    'Asked 11 Oct 2026: the game is set in the late 80s / early 90s, which is why vaporwave fit so well — so three of the '
+    'Settled 11 Oct 2026: LIGNE ’89 — lit selected; candidates preserved. Asked 11 Oct 2026: the game is set in the late 80s / early 90s, which is why vaporwave fit so well — so three of the '
     + 'beautiful hands are kept exactly and the set and palette are re-dressed as a 1986–89 corporate tower: tacky in the '
     + 'props, never in the painting. 8 GOUACHE ’88 (Die Hard\'s Nakatomi Plaza, Wall Street: rose granite, a pink neon EGGCORP '
     + 'over a koi pond, vertical blinds, green-screen terminals, an airbrushed dusk with the city\'s neon coming on); 9 DECO ’86 '
@@ -9901,7 +9972,7 @@ function officeStyleTiles(grid, tag, cand) {
 // "fancier", and DECO ’88: the original deco's palette with only the props moved to the 80s.
 {
   const grid = section('office-style-round-three', 'CORPORATE KOMBAT — LIGNE ’89 lit vs DECO ’88 (round three)',
-    'Asked 11 Oct 2026, after round two: LIGNE ’89 is the frontrunner (a style nobody else uses, the late-80s period itself, '
+    'Settled 11 Oct 2026: LIGNE ’89 — lit selected; candidates preserved. Asked 11 Oct 2026, after round two: LIGNE ’89 is the frontrunner (a style nobody else uses, the late-80s period itself, '
     + 'the clean line the cast is drawn in, the cheapest to run), but the least atmospheric; and DECO ’86 lost the original\'s '
     + 'black-and-gold drama. 11 LIGNE ’89 — LIT is the same card with the lights on, all in flat shapes: neon halo rings that '
     + 'buzz, the sign washing its wall and streaking a polished floor, flat reflections, sun shafts and long flat shadows, a '
@@ -9963,6 +10034,63 @@ function officeStyleTiles(grid, tag, cand) {
     '2026-10-11');
   for (const cand of INTERLEAVE_CANDIDATES) {
     tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawInterleaveMock(ctx, t, cand), { animated: true });
+  }
+}
+{
+  // Every smoothie the board can show, paged: each card is the real stall
+  // painter with seven picks and one dud, walking both lists in order.
+  const grid = section('smoothie-board-pages', 'THE FOOD COURT — every smoothie on the board',
+    'Asked 11 Oct 2026. In the hub the board draws seven from SMOOTHIES and one from SMOOTHIE_DUDS at random each '
+    + 'visit (sprites/stalls.js). These cards page through every entry in order so the whole list can be read at '
+    + 'the size it hangs.',
+    '2026-10-11');
+  const per = SMOOTHIE_ROWS - 1;
+  const pages = Math.max(Math.ceil(SMOOTHIES.length / per), SMOOTHIE_DUDS.length);
+  const plugs = (n) => `${n} PLUG${n === 1 ? '' : 'S'}`;
+  for (let pg = 0; pg < Math.ceil(SMOOTHIES.length / per); pg++) {
+    const picks = SMOOTHIES.slice(pg * per, pg * per + per);
+    const dud = SMOOTHIE_DUDS[pg % SMOOTHIE_DUDS.length];
+    const menu = [...picks, dud].map(([n, p]) => [n, plugs(p)]);
+    tile(grid, `PAGE ${pg + 1}`, `${picks.length} smoothies + ${dud[0]}`, 130, 150, (ctx) => {
+      ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, 130, 150);
+      ctx.save(); ctx.translate(65 - 56, -62);
+      drawFoodStall(ctx, 56, 212, STALLS[0], { t: 1, lit: 1, menu });
+      ctx.restore();
+    }, { hires: 6 });
+  }
+  // The duds the pages above did not reach.
+  const shown = Math.ceil(SMOOTHIES.length / per);
+  if (SMOOTHIE_DUDS.length > shown) {
+    tile(grid, 'MORE DUDS', 'the rest of SMOOTHIE_DUDS', 130, 150, (ctx) => {
+      ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, 130, 150);
+      ctx.save(); ctx.translate(9, -62);
+      drawFoodStall(ctx, 56, 212, STALLS[0], { t: 1, lit: 1, menu: SMOOTHIE_DUDS.slice(shown, shown + SMOOTHIE_ROWS).map(([n, p]) => [n, plugs(p)]) });
+      ctx.restore();
+    }, { hires: 6 });
+  }
+}
+
+// ------------------------------------------ CORPORATE KOMBAT — meeting rooms with depth (lab)
+// Asked 12 Oct 2026: the frameless glass rooms read as people painted on the wall. Four ways
+// to give a meeting room depth, against the current look, in the real scene (rooms.js,
+// setOfficeRoomStyle). Floor 23's meeting room and HR review, and floor 88's meeting room.
+{
+  const NAMES = {
+    glass: 'CURRENT — frameless glass on the windows',
+    recess: 'A — RECESS: set back into the building',
+    box: 'B — GLASS BOX: standing out into the corridor',
+    frosted: 'C — RECESS behind a frosted band, lit cooler',
+    partition: 'D — PARTITION wall, door and a deep window',
+  };
+  const grid = section('office-room-depth-bakeoff', 'CORPORATE KOMBAT — meeting room depth bake-off',
+    'Asked 12 Oct 2026: the glass meeting rooms look like the people are on the wall. Each row is one treatment, '
+    + 'in the production scene: floor 23 meeting room, floor 23 HR review, floor 88 meeting room. Pick a letter.',
+    '12 Oct 2026');
+  for (const style of OFFICE_ROOM_STYLES) {
+    for (const [floor, kind, where] of [['open', 'meeting', 'floor 23 meeting'], ['open', 'interview', 'floor 23 HR review'], ['exec', 'meeting', 'floor 88 meeting']]) {
+      tile(grid, `${NAMES[style]} · ${where}`, `roomStyle ${style}`, 480, 270,
+        (ctx, t) => drawOfficeRoomScene(ctx, t, { floor, kind, style }), { animated: true });
+    }
   }
 }
 

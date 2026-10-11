@@ -29,8 +29,8 @@ import { STYLE as BLOCKOUT } from './office-styles/blockout.js';
 export { drawOfficeStyleScene, OFFICE_SCREENS, OFFICE_STYLE_LOOP } from './office-styles/scene.js';
 
 export const OFFICE_STYLE_SHIPPED = {
-  id: 'shipped', name: 'SHIPPED — doodle', style: null,
-  note: 'What ships: graph paper held still behind the run, a margin, two punch holes, a coffee ring, five biro '
+  id: 'shipped', name: 'PREVIOUS SHIPPED — doodle', style: null,
+  note: 'The previous shipped look: graph paper held still behind the run, a margin, two punch holes, a coffee ring, five biro '
     + 'office blocks, a wobbly ballpoint ground line and a biro underline under each hazard. It does not follow '
     + 'the shared composition; it is the control.',
 };

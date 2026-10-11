@@ -367,7 +367,7 @@ function clearIntro(run) {
     while (d < target) { d += Math.min(1.6, 1 + 0.03 * Math.sqrt(t)) * dt; t += dt; }
     return t;
   };
-  for (const [durationSec, heroes] of [[60, 3], [90, 4], [120, 4]]) {
+  for (const [durationSec, heroes] of [[60, 3], [90, 4], [95, 4], [100, 4], [110, 4]]) {
     const sch = portalSchedule(durationSec);
     const real = realSeconds(durationSec);
     const taken = sch.filter((s) => s < real).length;

@@ -35,6 +35,8 @@ const suites = [
   'tests/desk.js',
   // Every visible lab section has a date, and file order stays old to new.
   'tests/gallery-section-order.js',
+  // The Food Court board never repeats a title word or fruit family across rows.
+  'tests/smoothie-menu.js',
   'tests/story-beats.js',
   'tests/intro-sequence.js',
   'tests/tutorial.js',
@@ -51,6 +53,8 @@ const suites = [
   'tests/speed-mcm.js',
   // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.
   'tests/surge-cycle.js',
+  'tests/office-climb.js',
+  'tests/office-scroll.js',
   'tests/frost-aurora.js',
   'tests/frost-weather.js',
   'tests/crypt-weather.js',

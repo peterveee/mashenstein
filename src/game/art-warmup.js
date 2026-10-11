@@ -20,6 +20,7 @@ import {
 } from '../sprites/props.js';
 import { cryptGouacheWarmJobs } from '../engine/stylePacks/cryptGouache.js';
 import { cryptLifeWarmJobs } from '../engine/stylePacks/cryptLife.js';
+import { officeWarmJobs } from '../engine/stylePacks/officeLigne.js';
 import { speedMcmWarmJobs } from '../engine/stylePacks/speedMcm.js';
 
 // The two rim colours drawWorldEntity composes hazard outlines from. They are
@@ -31,6 +32,7 @@ const RIM_DARK = '#101018';
 let queue = [];
 let cursor = 0;
 let builtFor = null;
+let queuedStage = null;
 
 // A prop's drawn identity, matching drawWorldEntity: art keys on the entity
 // TYPE where one exists, then on a per-instance skin, then on the def's sprite.
@@ -100,21 +102,23 @@ const CACHE_BUDGET_BYTES = 80 * 1024 * 1024;
 // A BAKED BACKDROP goes first: it is on screen from the run's first frame, where a prop
 // has a screen's width of travel. Its jobs are steps of one bake (`run`), not props, and
 // they stay out of artWarmupQueueFor, which is the prop list the tests hold to account.
-function backdropJobs(cabinet) {
+function backdropJobs(cabinet, stageIndex) {
   const gouache = () => [...cryptGouacheWarmJobs(), ...cryptLifeWarmJobs()];
   if (cabinet?.style === 'gouache') return gouache().map((run) => ({ run }));
   if (cabinet?.style === 'mcm') return speedMcmWarmJobs().map((run) => ({ run }));
   // THE SURGE cycles through both, and its first cut to either must not stall on a bake.
-  if (cabinet?.style === 'surge') return [...speedMcmWarmJobs(), ...gouache()].map((run) => ({ run }));
+  if (cabinet?.style === 'office') return officeWarmJobs(stageIndex).map((run) => ({ run }));
+  if (cabinet?.style === 'surge') return [...speedMcmWarmJobs(), ...gouache(), ...officeWarmJobs(stageIndex)].map((run) => ({ run }));
   return [];
 }
 
-export function beginStageArtWarmup(cabinet) {
+export function beginStageArtWarmup(cabinet, stageIndex = 1) {
   const id = cabinet?.id || null;
-  if (builtFor === id && cursor < queue.length) return;   // already queued, keep going
+  if (builtFor === id && queuedStage === stageIndex && cursor < queue.length) return;   // already queued, keep going
+  queuedStage = stageIndex;
   const changed = builtFor !== id;
   builtFor = id;
-  queue = [...backdropJobs(cabinet), ...stageJobs(cabinet)];
+  queue = [...backdropJobs(cabinet, stageIndex), ...stageJobs(cabinet)];
   cursor = 0;
   if (changed && propCacheStats().residentBytes > CACHE_BUDGET_BYTES) {
     // Keep what this stage is about to ask for; everything else was the last
@@ -166,4 +170,4 @@ export function stepArtWarmup(budgetMs = 2) {
 
 // For tests and diagnostics.
 export function artWarmupQueueFor(cabinet) { return stageJobs(cabinet); }
-export function resetArtWarmup() { queue = []; cursor = 0; builtFor = null; }
+export function resetArtWarmup() { queue = []; cursor = 0; builtFor = null; queuedStage = null; }

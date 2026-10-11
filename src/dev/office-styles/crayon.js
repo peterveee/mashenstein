@@ -158,8 +158,8 @@ function buildStore(k) {
 }
 
 function prepare(ctx) {
-  const m = ctx.getTransform();
-  const k = Math.max(1, Math.min(3, Math.round(Math.hypot(m.a, m.b))));
+  const m = ctx.getTransform?.();
+  const k = m ? Math.max(1, Math.min(3, Math.round(Math.hypot(m.a, m.b)))) : 1;
   S = STORE.get(k);
   if (!S) { S = buildStore(k); STORE.set(k, S); }
 }
@@ -2262,6 +2262,17 @@ function portrait(ctx, h, x, y, seed) {
   // the picture light
   box(ctx, seed + 32, cx - 14, fy - 12, 28, 4, { cols: [GOLD], cover: 0.9, alpha: 1, len: 3, gap: 1, width: 1, line: '#5a3a10', lw: 0.5 });
   line(ctx, [cx, fy - 8, cx, fy - 6], seed + 33, '#5a3a10', 1, 1);
+}
+
+// Reuse the gallery's carved-wax Founder portrait at poster size, with its
+// gilded frame, picture light and nameplate all drawn by the original painter.
+export function paintFounderGalleryPortrait(ctx, x, y, w, h) {
+  prepare(ctx); // the paper and wax textures, when the crayon cabinet has not run first
+  const fw = Math.min(w - 18, 58);
+  const fh = Math.min(h - 38, 54);
+  const fx = x + (w - fw) / 2;
+  const fy = y + 13;
+  portrait(ctx, { w: fw, h: fh }, fx, fy, 73);
 }
 
 // ---- the wall strip

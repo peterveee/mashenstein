@@ -46,6 +46,8 @@ const BASE = `http://localhost:${PORT}`;
 
 // Cabinets 1-6 in the registry's order; the rest have nothing of note on them yet.
 const CABINETS = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon'];
+// Asked for by name only (not in the default run).
+const NAMED_ONLY = ['office'];
 const PHONE = { w: 393, h: 852, dpr: 3 };
 const DENSITY = { portrait: 2, landscape: 3 };
 const BUDGET = 16.7;
@@ -62,7 +64,7 @@ const quick = flag('--quick');
 const seconds = valueOf('--seconds', 6);
 const numericArgs = new Set(args.flatMap((a, i) => (a === '--seconds' ? [i + 1] : [])));
 const named = args.filter((a, i) => !a.startsWith('--') && !numericArgs.has(i));
-const unknown = named.filter((c) => !CABINETS.includes(c));
+const unknown = named.filter((c) => !CABINETS.includes(c) && !NAMED_ONLY.includes(c));
 if (unknown.length) {
   console.error(`not one of cabinets 1-6: ${unknown.join(', ')} (${CABINETS.join(', ')})`);
   process.exit(1);
@@ -225,7 +227,7 @@ for (const cab of cabinets) {
 // A partial run (named cabinets) keeps the other cabinets' last rows, so the page
 // always shows all six.
 const kept = named.length && previous?.rows ? previous.rows.filter((r) => !cabinets.includes(r.cab)) : [];
-const order = (r) => CABINETS.indexOf(r.cab) * 10 + Number(r.stage.split('-')[1]) + (r.orient === 'landscape' ? 0.5 : 0);
+const order = (r) => [...CABINETS, ...NAMED_ONLY].indexOf(r.cab) * 10 + Number(r.stage.split('-')[1]) + (r.orient === 'landscape' ? 0.5 : 0);
 const all = [...kept, ...rows].sort((a, b) => order(a) - order(b));
 
 mkdirSync(dirname(reportPath), { recursive: true });

@@ -2275,10 +2275,11 @@ function portrait(g, h, P, k) {
   // Don K. Eggshell PhD, the founder, in oils: the silver professor in his caped collar,
   // on a varnished old-master ground. Gilt frame, picture light, brass plate.
   const gilt = { body: [190, 146, 66], dark: [118, 84, 34], lit: [255, 226, 150] };
-  const fw = 5;
-  frameBox(g, h.x, h.y, h.w, h.h, fw, gilt, h.x);
+  // `simple`: the office poster, just the canvas inside the poster's own plain frame.
+  const fw = h.simple ? 0 : 5;
+  if (!h.simple) frameBox(g, h.x, h.y, h.w, h.h, fw, gilt, h.x);
   const R = rng(17);
-  for (let i = 0; i < 48; i++) {
+  for (let i = 0; !h.simple && i < 48; i++) {
     const t = R();
     const side = (R() * 4) | 0;
     const x = side < 2 ? h.x + t * h.w : (side === 2 ? h.x + 2.4 : h.x + h.w - 2.4);
@@ -2292,7 +2293,7 @@ function portrait(g, h, P, k) {
   const ih = h.h - fw * 2;
   const cx = ix + iw / 2;
   const spr = massSprite(k * 2, [ix, iy, iw, ih], (gg) => gg.fillRect(ix, iy, iw, ih), {
-    body: [62, 56, 40], dark: [30, 28, 22], lit: [120, 100, 64], dabs: 0.7, dab: 2, seed: 313, g0: 0,
+    body: [62, 56, 40], dark: [30, 28, 22], lit: [120, 100, 64], dabs: h.simple ? 0.15 : 0.7, dab: 2, seed: 313, g0: 0,
   }, (gg, RR) => {
     // a varnished old-master ground, warm behind his head
     const gl = gg.createRadialGradient(cx - 3, iy + ih * 0.32, 2, cx, iy + ih * 0.4, iw * 0.8);
@@ -2308,6 +2309,7 @@ function portrait(g, h, P, k) {
   blit(g, spr, 0, 0);
   // varnish: a warm sheen where the picture light falls
   vgrad(g, ix, iy, iw, ih * 0.5, P.warm, 0.14, P.warm, 0);
+  if (h.simple) return;
   // the brass picture light on its arm, and the plate
   box(g, h.x + h.w / 2 - 14, h.y - 7, 28, 3.4, { body: P.brass, dark: P.brassDark, lit: P.brassLit, dabs: 0, rimA: 0.9, seed: h.x + 5 });
   g.fillStyle = css(P.brassDark);
@@ -2315,6 +2317,16 @@ function portrait(g, h, P, k) {
   box(g, h.x + h.w / 2 - 15, h.y + h.h + 3, 30, 6.6, { body: P.brass, dark: P.brassDark, lit: P.brassLit, dabs: 0, rimA: 0.9, seed: h.x + 6 });
   text(g, h.label, h.x + h.w / 2, h.y + h.h + 8.3, 4.6, [60, 40, 18], { weight: 'bold', face: PLATE, track: 0.5 });
 }
+
+// Reuse the actual office-style portrait in the Founder poster collection. The
+// gallery painter owns its frame, varnished canvas and brass nameplate.
+export function paintFounderGalleryPortrait(g, x, y, w, h) {
+  // This is a single featured portrait, not a corridor-wide bake: retain its
+  // fine opaque-brush grain at four-times logical resolution. Only the executive
+  // palette carries the warm varnish colour it needs.
+  portrait(g, { x, y, w, h, simple: true }, PAL.exec, 4);
+}
+
 function trophyCase(g, h, P) {
   box(g, h.x - 2, h.y - 3, h.w + 4, h.h + 3, { body: P.wood, dark: P.woodDark, lit: P.woodLit, rimLeft: true, dabs: 0.1, seed: h.x });
   // lit inside: a warm box of light behind the glass

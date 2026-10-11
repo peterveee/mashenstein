@@ -385,3 +385,100 @@ anything not listed hurts. Nothing alive can be kicked.
 | Breaks it | crate, !-crate, snowman, big snowman, ice crystals | `SLIDE_PLOWABLE` (run.js) |
 | Punts it | traffic cone, barrel (heavy), road-works panda / frog / monkey, office chair, printer, cardboard monster | `punt` on the def (entities.js) |
 | Nothing — you take the hit | everything else, including every animal, the rake, cacti and thistles, tombstones, fire, floor traps and blades, razor hurdle and beat bar | — |
+
+## Corporate Kombat — THE CLIMB (11 Oct 2026)
+
+The `office` pack ships **LIGNE ’89 — lit**: 8-1 lobby/G in the morning, 8-2 floor 23
+at noon, 8-3 floor 88 at dusk. Content lives in `stylePacks/officeClimb.js`; the adapter
+is `officeLigne.js`, and the split painters are in `officeLigne/`. The lab reads the
+same composition and selected painter through re-export shims.
+
+Production uses `officeLigne/progression.js` to separate ordinary repeating corridors
+from finite landmarks. Lobby: entrance 6%, reception 23%, public coffee shop 39%,
+HR interview room 55%, sculpture court 73%, lift lobby 94%. Floor 23: project studio
+8%, staff training 23%, meeting room 40%, staff canteen 59%, records 78%, operations
+lift lobby 94%. Floor 88: meeting room 12%, boardroom 32%, executive lounge 52%,
+library 72%, CEO 94%. Visitors encounter reception before the coffee shop and HR;
+internal mail is replaced by coffee, and training belongs on the staff floor.
+`officeLigne/rooms.js` paints the additional occupied rooms, including the cafe's
+espresso counter and visitor seating, and animated sandwiches and steam in the
+canteen. Each room appears once, anchored to the actual stage distance. Reception,
+named doors, founder portraits, trophies and conference tables never enter the
+production strips. Whole furniture groups are omitted around these rooms so
+workers cannot be clipped. The old looping composition remains in the historical
+style comparison cards. The founder's floor-23 art positions occupy the new gaps.
+
+The office's readable wall and room copy uses Fredoka, with the path alphabet kept
+for graphic logos and neon. Ground-floor jokes address visitors: reception says
+PLEASE WAIT. WE VALUE YOUR TIME; the cafe sells PRODUCTIVITY SOLD SEPARATELY.
+HR retains WHERE DO YOU SEE YOURSELF? / STILL IN THIS MEETING, the sculpture
+retains ART BY COMMITTEE, and the lifts promise UPWARD MOBILITY PENDING. The
+entrance carries a straightforward direction to reception.
+
+Floor 23 houses staff bureaucracy: training teaches HOW TO LOOK BUSY / ATTENDANCE
+IS THE GOAL, projects have a DEADLINE: YESTERDAY, and a visibly paper-filled archive
+claims PAPERLESS SINCE 1989. The meeting and canteen jokes are retained. On 88,
+decisions are deferred, the boardroom's empty chair is labelled ACCOUNTABILITY,
+the lounge says BREAKS ARE FOR MANAGEMENT, the library has BOOKS PURCHASED BY THE
+METRE, and the CEO awards himself BOSS OF THE YEAR: JUDGE - ME.
+
+Cubicle screens say ASAP or UNREAD; the cooler bans gossip, the copier reports
+JAM, and filing drawers run NOW / LATER / LATER / NEVER. Forecast charts retain
+VIBES with a full Q1-Q4 axis. Posters say SYNERGY / ASK SOMEONE ELSE, HANG IN /
+UNTIL FRIDAY and CREDIT UPSTAIRS. The meeting door is IN USE / NO END TIME;
+extinguishers have ordinary FIRE labels. Gary's Pawn and Payday Loans share the
+street, a billboard says NO DAYS OFF, the blimp promises WE ARE FAMILY. TERMS APPLY.,
+and the window cleaner is TEMP. The executive helicopter is OUT TO LUNCH. The
+historical desk painter retains ASK MY ASSISTANT; production's CEO landmark is
+an entrance to the suite, rather than a view of the desk inside.
+
+`officeLigne/artwork.js` supplies a changing collection of 13 artwork subjects:
+landscapes, cityscapes, botanical prints, vases, portraits, waves, fish, mobiles,
+jazz collages, constellations, egg blueprints and meeting certificates. Each floor
+has its own selection, with varied palettes, frame finishes and proportions.
+Placement uses absolute wall coordinates so architectural repeats change their
+artwork; frames avoid clocks, posters and whiteboards and share the wall's motion.
+
+Room and furniture movement uses the floor projection at each foot line:
+`(footY - YH) / (LANE_TOP - YH)`. The office backdrop is now deeper: walls and
+named rooms use factor 0.16 at y 204; furniture and workers use factor 0.28 at
+y 208. The horizon, floor and ceiling perspective derive from the wall factor,
+so the backdrop scrolls about a third slower while feet stay fixed to the floor.
+Wall artwork and cached scenery share continuous camera coordinates. The boardroom and CEO frontage
+are wider (620 and 660 authored px) to extend their passage without drifting.
+The production gallery tours a representative 26,208 px stage over 90 seconds.
+
+All motion uses the run's `backgroundT`: it continues during the opening and finish,
+and freezes on pause. The front pass shares the exact background frame and clock.
+
+| Item / floor | Timing or placement control |
+|---|---|
+| Lift doors / historical lab | `liftOpen`: 7 s cycle; production has a single operations entrance |
+| Clock hands / all | `OFFICE_FLOORS[floor].clock`; seconds from `backgroundT % 60` |
+| Revolving entrance / historical lab | `officeFrame.revolving`: 4 s revolution; production has one main entrance |
+| Receptionist / lobby | `resolveMid`: head bob at 1.3 rad/s, amplitude 0.6 authored px |
+| Traffic / lobby | `OFFICE_FLOORS.lobby.outside.cars[].speed`; 900 authored px wrap |
+| Birds / lobby, blimp / 23, helicopter / 88 | `outside.flyer.speed`, 1100 authored px wrap; bob 0.7 rad/s, rotor/wing phase 9 Hz |
+| Cubicle heads / 23 | `resolveMid`: seated bob 1.1 + desk × 0.13 rad/s; prairie-dog `popAt` every 6 s, per-item offset 1.7 s |
+| Water cooler / 23 | `resolveMid`: bubble cycle 0.45 Hz, active first 35% |
+| Copier / 23 | `resolveMid`: scan cycle 0.4 Hz, active first 50% |
+| Fluorescent tube / 23 | `flickerAt`: 4.2 s cycle, dropout window 3.2–3.75 s; `lights.flicker` selects tube 3 |
+| Window cleaner / 23 | `resolveWall` cradle: 0.35 rad/s bob (6 authored px); squeegee at 2.4 rad/s |
+| Meeting residents / 88 | `resolveMid`: nod cycle 0.31 Hz with per-seat phase; slow fall over 85%, quick recovery |
+| Tall-clock pendulum / 88 | `resolveMid`: `sin(t * Math.PI)`, 2 s cycle |
+| EGGCORP neon / lobby | `officeLigne/wall.js` `buzz`: 6.7 s cycle; buzzing 5.1–5.8 s at 22 Hz |
+| Chrome glints / all | `officeLigne/wall.js` `glints`: 1.3 rad/s, visible above sine threshold 0.9 |
+| City carpet / 88 | `CITY_LIGHTS`: seeded rates 0.8–2.8 rad/s; 520 authored px wrap |
+| Tower windows / 88 | `officeLigne/outside.js` `towerLights`: seeded window clocks, no gameplay cues |
+| Plants / chair backs / all | `front.items`, `front.period`; scroll factor `FACTORS.front = 1.5`; `OFFICE_FRONT_CLEARANCE = 8` authored px below lane; suppressed over pits |
+| Front pillars | Disabled in production; retained in the bake-off |
+
+The room follows the full lane camera. The distant view follows vertical motion at
+`OFFICE_OUTSIDE_FOLLOW = 0.3`. Portrait grows windows and wall panels upward, keeping
+furniture at authored size and the floor/slab join fixed to the lane; the ceiling's
+screen anchor is `OFFICE_CEILING_SCREEN_Y = 100`. World geometry and hazard skins are unchanged.
+
+The active floor's static strips bake at `OFFICE_BAKE_SCALE = 2`, independently of camera
+zoom and render scale. Briefing/run-in warm-up queues this floor, including Surge. Switching
+Surge looks does not evict it; changing floors releases previous strips. Pits cut the slab
+and the receding floor plane, with a dark shaft; tunnel overhangs use shared `apronRuns`.

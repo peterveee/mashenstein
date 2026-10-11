@@ -176,11 +176,19 @@ one in every card: "only the background will change our game lane remains as is"
   register. B4–B8 are the brief's other ingredients on their own; mid-century modern and
   shadow puppetry are A level.
 
-## The second bake-off: Corporate Kombat, 10 Oct 2026 (open)
+## The second bake-off: Corporate Kombat, 10 Oct 2026 (settled 11 Oct)
 
 Peter: "the graph paper background is very boring... it's the 2nd last level - it needs to be
 fancier... the whole working your way through an office building". Unlike the crypt card, the
 composition itself is new, not just the hand.
+
+
+**Decision, 11 Oct 2026:** Peter selected **LIGNE ’89 — lit**. Corporate Kombat now uses
+the `office` pack; Surge includes it in place of doodle. Production source is
+`src/engine/stylePacks/officeClimb.js`, `officeLigne.js` and `officeLigne/`. The lab keeps
+re-export shims and every candidate. Pillars are disabled; plants and chair backs are clipped
+below the lane and omitted over pits. The production gallery includes all three floors in
+landscape and portrait. Device and visual acceptance remain separate from build checks.
 
 - **The climb.** The three stages become three floors of one tower, and the view out of the
   window says how high you are: 8-1 the lobby at nine (the street at eye level), 8-2 floor 23
@@ -292,7 +300,7 @@ Of the three paper cabinets, to my eye:
 | Crypt Shift | **gouache (shipped 25 Sep)** | — | The thinnest backdrop in the game, so the biggest gain. The scanlines went with the tape. Puppet was the runner-up. |
 | Terminal Velocity | neon | keep | Already distinct. |
 | Cardboard Kingdom | `cardboard` | **crayon** (or voxel) | A kids' craft world: crayon on construction paper or card fits the theme, and today's pack is very thin. Voxel reads as boxes. |
-| Corporate Kombat | `doodle` (graph paper) | keep doodle | Already a sketchbook look; crayon would be too close to it. |
+| Corporate Kombat | `office` (LIGNE ’89 — lit) | selected 11 Oct 2026 | THE CLIMB: lobby morning, floor 23 noon, floor 88 dusk. Doodle retained in the lab. |
 | The Surge | cycles every cabinet's shipped pack, glitching | keep `SURGE_CYCLE` in step | The cycle is a list in `stylePacks/index.js` (`SURGE_CYCLE`), not derived. When a cabinet changes style, swap its entry; `tests/surge-cycle.js` fails until you do. Since 1 Oct the look changes on the Surge song's bar line (four bars a look, each stage opening three looks on), with a random move each change, and glitches between, worse each stage and reaching the lane from surge-2: `stylePacks/surgeCut.js`, picked in the lab sections *surge-look-changes* and *surge-glitching*. Each pack paints with the Surge's colours and stage index, so cabinet-gated extras (Frost's crayon sky, the plumber sun) stay off unless the pack opts the Surge in, as `mcm` does. |
 
 Where the rest of the A level could go:

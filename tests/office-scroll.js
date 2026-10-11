@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import { installDom } from './dom-stub.js';
+installDom();
+const { bakeStrip, drawStrip } = await import('../src/engine/stylePacks/officeLigne/line.js');
+const { officeFrame, FACTORS, OFFICE_ZOOM, WALL_BASE, LANE_TOP } = await import('../src/engine/stylePacks/officeClimb.js');
+const { OFFICE_CORRIDORS, OFFICE_FURNITURE_BASE, officeLandmarks } = await import('../src/engine/stylePacks/officeLigne/progression.js');
+const { YH, xOf } = await import('../src/engine/stylePacks/officeLigne/line.js');
+const { officeArtworks } = await import('../src/engine/stylePacks/officeLigne/artwork.js');
+
+const strip = bakeStrip(1200, 20, 204, 2, () => {});
+for (const tile of strip.tiles) assert.equal(tile.c.width, tile.w * 2 + 2, 'filtered tiles retain neighbour pixels');
+const wallStrip = bakeStrip(1200, 20, 204, 4, () => {}, true);
+assert.equal(wallStrip.tiles.length, 0, 'fine wall scrolls as one continuous image');
+assert.ok(wallStrip.image.width > 1200 * 4);
+function positions(shift, coverage) {
+  const draws = [];
+  const ctx = {
+    __officeCoverage: coverage,
+    save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    drawImage: (...args) => draws.push(args),
+  };
+  drawStrip(ctx, strip, shift);
+  return draws;
+}
+for (const coverage of [undefined, { left: -600, right: 1000 }]) {
+  const a = positions(10.1, coverage), b = positions(10.2, coverage);
+  assert.equal(a.length, b.length);
+  for (let i = 0; i < a.length; i++) {
+    assert.equal(a[i][0], b[i][0]);
+    assert.ok(Math.abs(a[i][5] - b[i][5] - 0.1) < 1e-9, 'subpixel camera changes move every cached tile continuously');
+  }
+  assert.deepEqual(positions(10.1 + strip.P, coverage), a, 'period wrapping preserves the same image positions');
+}
+const wallDraws = (shift) => {
+  const draws = [];
+  drawStrip({
+    __officeCoverage: { left: -600, right: 1000 },
+    save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    drawImage: (...args) => draws.push(args),
+  }, wallStrip, shift);
+  return draws;
+};
+const wallA = wallDraws(10.1), wallB = wallDraws(10.2);
+assert.equal(wallA.length, wallB.length);
+for (let i = 0; i < wallA.length; i++) {
+  assert.equal(wallA[i][0], wallStrip.image);
+  assert.ok(Math.abs(wallA[i][1] - wallB[i][1] - 0.1) < 1e-9,
+    'each seamless wall copy retains fractional camera movement');
+}
+assert.deepEqual(wallDraws(10.1 + wallStrip.P), wallA);
+for (const floor of ['lobby', 'open', 'exec']) {
+  const coverage = { left: -2000, right: 2000 };
+  const a = officeFrame(floor, 100.1, 0, coverage, OFFICE_CORRIDORS[floor]);
+  const b = officeFrame(floor, 100.2, 0, coverage, OFFICE_CORRIDORS[floor]);
+  const wallRate = (WALL_BASE - YH) / (LANE_TOP - YH);
+  const furnitureRate = (OFFICE_FURNITURE_BASE - YH) / (LANE_TOP - YH);
+  assert.ok(Math.abs(wallRate - 0.16) < 1e-9, 'the wall is a third slower');
+  assert.ok(Math.abs(furnitureRate - 0.28) < 1e-9, 'furniture stands deeper on the projected floor');
+  assert.equal(OFFICE_CORRIDORS[floor].mid.factor, furnitureRate);
+  for (const l of officeLandmarks(floor, 0, 16800).filter(l => l.section))
+    assert.ok(Math.abs(l.rate - wallRate * OFFICE_ZOOM) < 1e-9, 'a wall section scrolls with the wall');
+  for (const [rate, shift] of [[wallRate, a.wall.shift], [furnitureRate, a.mid.shift]]) {
+    assert.ok(Math.abs(xOf(0, a.camX * OFFICE_ZOOM, rate) - xOf(0, 0, rate) + shift) < 1e-9,
+      'each backdrop layer moves exactly with the floor beneath it');
+  }
+  assert.equal(FACTORS.front, 1, 'foreground decoration also scrolls more slowly');
+  const clockA = a.wall.hangs.find(h => h.kind === 'clock');
+  if (clockA) {
+    const clockB = b.wall.hangs.find(h => h.kind === 'clock' && h.i === clockA.i);
+    assert.ok(Math.abs(clockA.cx - clockB.cx - (b.wall.shift - a.wall.shift)) < 1e-9,
+      'clock overlays travel the same exact distance as their cached wall');
+  }
+  const artA = officeArtworks(a), artB = officeArtworks(b);
+  assert.ok(artA.length > 0);
+  for (const art of artA) {
+    const next = artB.find(other => other.seed === art.seed);
+    assert.ok(next);
+    assert.ok(Math.abs(art.x - next.x - (b.wall.shift - a.wall.shift)) < 1e-9,
+      'artwork stays attached to the wall during subpixel movement');
+  }
+}
+console.log('ok: continuous office strip scrolling, overlay alignment, wrap and filter gutters');

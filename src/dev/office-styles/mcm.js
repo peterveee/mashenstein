@@ -2198,6 +2198,14 @@ function portrait(g, x, y, w, h, lbl, seed) {
   inkRect(g, x, y, w, h, seed, REG.wall, { a: 0.65 });
 }
 
+// Gallery and in-world Founder posters use this exact MCM wall portrait, including
+// its cut-paper sunburst, brass frame and inset plate.
+export function paintFounderGalleryPortrait(g, x, y, w, h) {
+  const fw = Math.min(w - 16, 66);
+  const fh = Math.min(h - 22, 58);
+  portrait(g, x + (w - fw) / 2, y + 11, fw, fh, 'FOUNDER', 17);
+}
+
 function trophyCase(g, x, y, w, h, seed) {
   box(g, x, y, w, h, C.walnutD);
   g.beginPath();

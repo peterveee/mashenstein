@@ -2460,6 +2460,12 @@ function professorCanvas(g, px, py, pw, ph, bg) {
 
 function portrait(g, h) {
   const x = h.x, y = h.y, w = h.w, ht = h.h;
+  if (h.simple) {
+    // The office poster: just the canvas, inside the poster's own plain frame; no gilt
+    // crest, lamp or name plate.
+    professorCanvas(g, x, y, w, ht, PORTRAIT_BG);
+    return;
+  }
   // picture light
   rect(g, x + w / 2 - 10, y - 9, 20, 2.5, goldV(g, y - 9, y - 6.5));
   rect(g, x + w / 2 - 0.6, y - 7, 1.2, 4, GOLD.lo);
@@ -2499,6 +2505,12 @@ function portrait(g, h) {
   g.lineWidth = 0.6;
   g.strokeRect(x + w / 2 - 13.5, by + 0.5, 27, 6);
   decoText(g, h.label, x + w / 2, by + 1.7, 3.4, { color: GOLD.hi, lw: 0.55, track: 1.7 });
+}
+
+// Exact Art Deco portrait used by the office-style gallery, scaled to the
+// Founder collection's framed poster footprint.
+export function paintFounderGalleryPortrait(g, x, y, w, h) {
+  portrait(g, { x, y, w, h, simple: true });
 }
 
 function paintWall(fl) {

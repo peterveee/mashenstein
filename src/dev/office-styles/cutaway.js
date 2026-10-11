@@ -1869,6 +1869,15 @@ function portrait(g, x, y, w, h, label) {
   letters(g, 'DON K. EGGSHELL PHD', x + w / 2, y + h + 13.2, 2.3, { seed: 952, w: 0.42, col: '#4a3218', bounce: 0.4 });
 }
 
+// Keep the gallery's storybook cutaway portrait intact when it is used as a
+// Founder poster: the hand-painted frame, lamp and lettered brass plate are part
+// of this artwork rather than a generic outer mat.
+export function paintFounderGalleryPortrait(g, x, y, w, h) {
+  const fw = Math.min(w - 16, 70);
+  const fh = Math.min(h - 23, fw * 0.95);
+  portrait(g, x + (w - fw) / 2, y + h - fh - 17, fw, fh, 'FOUNDER');
+}
+
 function trophyCase(g, x, y, w, h, seed) {
   paint(g, rectPts(x, y, w, h), '#6b3a1f', { seed, w: 0.8, blooms: 2 });
   paint(g, rectPts(x + 4, y + 6, w - 8, h - 22), '#f2d79a', { seed: seed + 1, w: 0.6, blooms: 3, grad: [0.15, -0.15] });

@@ -1,5 +1,5 @@
 // Render CORPORATE KOMBAT backdrop-style candidates headless, to PNGs.
-//   node tools/office-style-shot.js <src/dev/office-styles/<id>.js | shipped> [--times 0,4] [--scale 2] [--floors lobby,open,exec]
+//   node tools/office-style-shot.js <src/dev/office-styles/<id>.js | shipped | doodle> [--times 0,4] [--scale 2] [--floors lobby,open,exec]
 //   node tools/office-style-shot.js --sheet <style files or shipped ...> [--t 3] [--scale 1.5]
 // Writes work/local/office-styles/out/<id>-<floor>-t<t>.png, or with --sheet one contact
 // sheet (a row per style, a column per floor) to work/local/office-styles/sheet.png. Each
@@ -31,28 +31,31 @@ const outDir = join(root, 'work/local/office-styles/out');
 mkdirSync(outDir, { recursive: true });
 
 async function bundle(target) {
-  const importStyle = target === 'shipped'
+  const importStyle = target === 'shipped' || target === 'doodle'
     ? 'const STYLE = null;'
     : `import { STYLE } from ${JSON.stringify('./' + target)};`;
   const entry = `
 ${importStyle}
+import { drawOfficeProductionScene } from './src/dev/office-production.js';
+const production = ${target === 'shipped'};
 import { drawOfficeStyleScene, OFFICE_SCREENS } from './src/dev/office-styles/scene.js';
-window.__name = STYLE ? STYLE.name : 'SHIPPED — doodle';
+window.__name = STYLE ? STYLE.name : production ? 'SHIPPED — LIGNE ’89 lit' : 'PREVIOUS SHIPPED — doodle';
 window.__shot = (floor, t, scale) => {
   const c = document.createElement('canvas');
   c.width = Math.round(480 * scale); c.height = Math.round(270 * scale);
   const ctx = c.getContext('2d');
   ctx.scale(scale, scale);
   const screen = OFFICE_SCREENS.find((s) => s.floor === floor);
-  drawOfficeStyleScene(ctx, t, STYLE, screen);
+  const draw = (at) => production ? drawOfficeProductionScene(ctx, at, screen) : drawOfficeStyleScene(ctx, at, STYLE, screen);
+  draw(t);
   // time a few more frames of the same floor, after the first (which may bake)
   const t0 = performance.now();
-  for (let k = 1; k <= 6; k++) drawOfficeStyleScene(ctx, t + k / 24, STYLE, screen);
+  for (let k = 1; k <= 6; k++) draw(t + k / 24);
   const ms = (performance.now() - t0) / 6;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, c.width, c.height);
   ctx.scale(scale, scale);
-  drawOfficeStyleScene(ctx, t, STYLE, screen);
+  draw(t);
   return { url: c.toDataURL('image/png'), ms };
 };
 `;

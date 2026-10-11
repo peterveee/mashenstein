@@ -11,7 +11,7 @@
 const CAB_DURATION = {
   plumber: 60, speed: 60, rhythm: 90,
   frost: 90, crypt: 90, neon: 90,
-  cardboard: 120, office: 120, surge: 120,
+  cardboard: 95, office: 100, surge: 110,
 };
 
 const S = (cab, idx, mission, challenge, opts = {}) => ({
@@ -375,12 +375,10 @@ export const STAGES = [
   S('office', 1,
     { type: 'reach', desc: 'GET THROUGH THE OFFICE. AVOID EYE CONTACT WITH MEETINGS.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
-    { intro: 'THE PRINTERS SMELL FEAR. AND TONER. MOSTLY TONER.',
-      pits: [{ at: 0.38, w: 52 }] }),
+    { intro: 'THE PRINTERS SMELL FEAR. AND TONER. MOSTLY TONER.' }),
   S('office', 2,
     { type: 'targets', n: 5, targetType: 'printer', desc: 'DESTROY 5 HOSTILE PRINTERS. HR HAS APPROVED THIS.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { pits: [{ at: 0.40, w: 56 }] }),
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
   S('office', 3,
     { type: 'rescue', n: 4, desc: 'ESCORT 4 CABINET RESIDENTS OUT OF A MANDATORY MEETING.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' }),

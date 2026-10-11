@@ -79,7 +79,35 @@ bar does not move. Next is Stage 4 on the **JS** core (config D-js). WASM can co
 later as a stacking gain once the farm exists, because a 1.38x cheaper core means fewer
 worker cores for the same song.
 
-### Stage 4 (10–11 Oct 2026): built, and measured on the Mac; iPhone pending
+### Stage 4 on the iPhone (11 Oct 2026): a modest gain, and not clean
+
+iOS 18.7, 4 cores (2 workers). Burner method, 90 s per run, silent.
+
+| song | native PHONE | native FULL | worklet | farm |
+| --- | --- | --- | --- | --- |
+| HAIRPIN, median / worst 4 s | 42 / 44 | 46 / 48 | 48 / 52 | **41 / 47** |
+| NIGHT DRIVE, median / worst 4 s | 43 / 48 | 45 / 52 | 48 / 58 | **41 / 42** |
+
+**What the farm gained:**
+- **7 points off the worklet and 4–5 off native FULL.** At FULL quality, that is about
+  what today's PHONE tier costs.
+- **NIGHT DRIVE's worst 4 s fell from 58 to 42.**
+
+**What it cost:**
+- **2 underruns on HAIRPIN.** NIGHT DRIVE had none, but its tightest lead was 896 frames.
+- **The workers did 118–162 ms of rendering per audio second.** Total CPU is about 1.2x
+  the worklet's.
+- **Live input can arrive up to 93 ms late.**
+
+**Against the provisional gate:**
+- Worst 4 s ≤ 60%: passed. So did every other backend: neither song saturates this phone.
+- Zero underruns: **failed**.
+- Total CPU ≤ 1.3x: passed.
+
+The device was not saturating to begin with. Peter's minimum target, an iPhone 13, was not
+the device measured.
+
+### Stage 4 (10–11 Oct 2026): built, and measured on the Mac
 
 **What was built:**
 - **The farm,** `src/engine/mrdr3/farm.js`. The controller now talks to `lane.port`, so a

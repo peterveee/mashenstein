@@ -4285,7 +4285,7 @@ export class RunState {
     // Queue this stage's artwork. Normally the briefing has already started it
     // and most of it is built by now; a dev launch that skips the briefing
     // starts it here and drains it across the banner and the run-in instead.
-    beginStageArtWarmup(this.cabinet);
+    beginStageArtWarmup(this.cabinet, this.stage?.index ?? 1);
     // Off-screen entrance. Armed on the same fresh-entry gate as the card (so a
     // death-restart drops the hero straight onto the anchor), but independent of
     // the card's seen/done fade: it plays on every first entry, card or not. A
@@ -4745,6 +4745,7 @@ export class RunState {
     this.style = getStylePack(this.styleName, {
       ...this.save.settings,
       paperCabinet: this.cabinet.id,
+      stageIndex: this.stage?.index ?? 1,
       // A known query preset is an intentional dev bakeoff override. It wins
       // over a stage's review default so the same authored level can show the
       // baseline and the candidate without editing stage data.
@@ -16082,6 +16083,8 @@ export class RunState {
         .map((ob) => ({ x: ob.x, w: ob.w })),
       backgroundXOffset: portraitXOffset,
       worldZoom: z,
+      worldPan: pan,
+      worldFloorY: floorY,
       worldXOffset: portraitXOffset,
       // Keep the responsive depth composition scoped to portrait until each
       // cabinet's landscape baseline has been explicitly reviewed. The common

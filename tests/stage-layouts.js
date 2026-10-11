@@ -49,6 +49,8 @@ for (const s of STAGES) {
   const l = resolveLayout(s, CABINET_BY_ID[s.cabinet]);
   const raw = STAGE_LAYOUTS[s.id];
   const pitCount = (raw.pits || []).length;
+  ok(s.durationSec === raw.durationSec,
+    `${s.id}: stage metadata and layout agree on duration`);
   ok(l.durationSec === raw.durationSec && l.speedMult === raw.speedMult,
     `${s.id}: resolver reads the file's duration and speed`);
   ok((l.pits || []).length === pitCount,
@@ -57,6 +59,14 @@ for (const s of STAGES) {
     `${s.id}: resolver reads the appliance placement`);
   ok(l.checkpoints.length > 0 && l.checkpoints.every((f) => f > 0 && f < 1),
     `${s.id}: checkpoints resolve to fractions inside the stage`);
+}
+
+for (const [cabinet, durationSec] of Object.entries({ cardboard: 95, office: 100, surge: 110 })) {
+  for (let index = 1; index <= 3; index++) {
+    const id = `${cabinet}-${index}`;
+    ok(STAGE_LAYOUTS[id].durationSec === durationSec,
+      `${id}: configured duration is ${durationSec}s`);
+  }
 }
 
 // Plumber-2 teaches the two ordinary pit responses before its set-piece:

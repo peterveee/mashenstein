@@ -15,11 +15,12 @@ import {
 } from './cabinet-dive.js';
 import { drawProp } from '../../sprites/props.js';
 import { drawFoodCourtMural, MURAL_W } from '../../sprites/mural.js';
+import { drawFoodStall, pickSmoothieMenu, STALLS, STALL_W, COUNTER_UNITS, COUNTER_UNIT_W, UNIT_FASCIA_TOP, UNIT_FASCIA_H } from '../../sprites/stalls.js';
 import {
   cabinetPalette, cabinetBrownoutAlpha, cabinetScreenRect, cabinetStyle, deadScreenArt, drawCabinetShell, drawCabinetScreen, drawCabinetSignalInterference, drawDeadScreen, drawScreenSweep,
   stickGlint,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, drawCounter, COUNTER_W, COUNTER_H, COUNTER_STAFF_X,
-  drawFoodCourtTable, drawCounterSign, SIGN_SELF_LIT, COUNTER_SIGN_W, COUNTER_SIGN_H,
+  drawFoodCourtTable,
 } from '../../sprites/arcade.js';
 import {
   BAY_W, drawPoster, wallLitFrom, POSTER_W, POSTER_H,
@@ -574,7 +575,9 @@ const OVERTIME_EMPTY_BAY = 88;
 // from one to the other and nothing else. One cabinet pitch more fits three
 // tables with an aisle at each end, so a hero walking up to Dolores passes the
 // tables rather than threading between them.
-const PLAZA_W = 96 + 88;
+// Widened again (+50) on 11 Oct so the tables stand clear of both the last
+// machine and the serving line, with real aisles either side of the set.
+const PLAZA_W = 96 + 88 + 50;
 const PLAZA_TABLES = 3;
 // And one table in a bay of its own just before the Trophy Room, always there,
 // so the far end of the concourse is food court too and not only doors.
@@ -584,13 +587,12 @@ const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // door's width and half its height on purpose: a counter is a horizontal thing,
 // and the whole point of it is that you can see over it to the person behind.
 const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
-// Each counter's sign hangs just above its lamp hood (64 off the floor), with
-// two units of air, so it reads as the unit's own fascia.
-const COUNTER_SIGN_TOP = HUB_FLOOR_PIN_Y - 64 - 2 - COUNTER_SIGN_H;
+// Each counter stands in a unit like the food stalls', signed on the same
+// fascia band (sprites/stalls.js). Tapping the sign opens the counter.
 function counterSignHit(station, worldX, worldY) {
   return (station.type === 'bench' || station.type === 'shop')
-    && Math.abs(worldX - station.x) <= COUNTER_SIGN_W / 2
-    && worldY >= COUNTER_SIGN_TOP - 6 && worldY <= COUNTER_SIGN_TOP + COUNTER_SIGN_H;
+    && Math.abs(worldX - station.x) <= COUNTER_UNIT_W / 2
+    && worldY >= UNIT_FASCIA_TOP - 4 && worldY <= UNIT_FASCIA_TOP + UNIT_FASCIA_H + 4;
 }
 // The renderer publishes a taller logical frame in phone portrait. The
 // landscape-scale cabinets still own their authored floor line, but the phone
@@ -1815,7 +1817,11 @@ export class HubState {
   // remains on the established composition.
   static portraitMode = 'frame';
 
-  constructor({ save, flow }) { this.save = save; this.flow = flow; }
+  constructor({ save, flow }) {
+    this.save = save; this.flow = flow;
+    // A fresh smoothie board every time you walk into the food court.
+    this.smoothieMenu = pickSmoothieMenu();
+  }
 
   stations() {
     const slot = this.save.slot;
@@ -1826,7 +1832,12 @@ export class HubState {
     // Enough bare wall that the exit reads as its own fixture rather than part
     // of the arcade bank — but not the corridor 130 opened up.
     let x = 96;
-    for (const cab of CABINETS) {
+    // THE BANK IS THREE GROUPS OF THREE, with a food stall standing in each
+    // gap (sprites/stalls.js). The stall is real floor: the cursor steps over
+    // it, so everything measured off stations() — fixtures, NPC homes, the
+    // camera — makes room for it.
+    const stalls = [];
+    for (const [ci, cab] of CABINETS.entries()) {
       const unlocked = cabinetUnlocked(slot, cab.id);
       st.push({ type: 'cabinet', cab, x, unlocked, started: cabinetStarted(slot, cab.id), label: cab.name });
       // 88 apart rather than the original 64. The viewport is 369 units wide,
@@ -1834,7 +1845,15 @@ export class HubState {
       // each other — room to look at each one, without the stretch of bare wall
       // between them that 110 opened up.
       x += 88;
+      if ((ci === 2 || ci === 5) && stalls.length < STALLS.length) {
+        // The cursor is a pitch past this machine; the stall stands centred
+        // in the gap with four units of wall either side of it.
+        const sx = x - 88 + 88 / 2 + STALL_W / 2 + 4;
+        stalls.push({ x: sx, stall: STALLS[stalls.length] });
+        x = sx + STALL_W / 2 + 4 + 88 / 2;
+      }
     }
+    this.stalls = stalls;
     // A plaza between the machines and the service doors. The two banks used to
     // butt together with 40 units between them, which left the crowd nowhere to
     // stand but among the cabinets; this gives them somewhere to spill into —
@@ -1847,7 +1866,7 @@ export class HubState {
     // Spread across the plaza with an aisle kept at the machine end and a
     // shorter one at the counter, which is the end people queue at.
     const tables = [];
-    const aisleL = 14, aisleR = 10, span = plazaTo - plazaFrom - aisleL - aisleR;
+    const aisleL = 40, aisleR = 36, span = plazaTo - plazaFrom - aisleL - aisleR;
     for (let k = 0; k < PLAZA_TABLES; k++) {
       tables.push({ x: plazaFrom + aisleL + span * ((k + 0.5) / PLAZA_TABLES), seat: k, tray: k !== 1 });
     }
@@ -1860,7 +1879,11 @@ export class HubState {
     // bench here since it became the serving line, and naming it after the woman
     // standing at it puts it in the same shape as Gary's unit next door — the
     // two staffed stations in the room both belong to somebody.
-    st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" }); x += 180;
+    st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" });
+    // One table between the two units, with 40 extra units so it has an aisle
+    // either side of it rather than touching both shopfronts.
+    tables.push({ x: x + 110, seat: 0, tray: true });
+    x += 220;
     st.push({ type: 'shop', x, label: "GARY'S LEGAL PAWN SHOP" }); x += 140;
     st.push({ type: 'arcade', x, label: 'THE GRAVEYARD' }); x += 88;
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
@@ -1928,7 +1951,20 @@ export class HubState {
     const done = Math.max(0, Math.min(1, totalPlugs(slot) / UNLOCKS.finale));
     const service = SERVICE_LIT_FLOOR + (1 - SERVICE_LIT_FLOOR) * done;
     const out = [];
-    for (let x = phase - pitch; x < this.width; x += pitch) {
+    // Hung over the GAPS of the bank. Since the stalls split it into groups,
+    // a fixed pitch from the first machine drifts out of phase after the first
+    // stall and hangs tubes straight over cabinets, so the gap positions are
+    // listed: one before the first machine, one between each neighbouring
+    // pair, and across a stall gap one at each end and one over the stall.
+    // Past the last machine the fixed pitch resumes.
+    const xs = [phase - pitch];
+    for (let i = 0; i + 1 < cabs.length; i++) {
+      const a = cabs[i].x, b = cabs[i + 1].x;
+      if (b - a <= pitch + 1) xs.push((a + b) / 2);
+      else xs.push(a + pitch / 2, (a + b) / 2, b - pitch / 2);
+    }
+    for (let x = lastCab + pitch / 2; x < this.width; x += pitch) xs.push(x);
+    for (const x of xs) {
       let k;
       if (x > lastCab) k = service;
       else {
@@ -3485,18 +3521,20 @@ export class HubState {
     // plainly darker than a lit one — without the player pulsing as they walk.
     const castLit = (sx) => CAST_LIT_FLOOR
       + (1 - CAST_LIT_FLOOR) * Math.max(wallLit(sx), benchLit(sx));
-    // Room furniture first (the two counter signs), then ONE poster per
-    // cabinet. The signs took over from Dolores's menu board on 11 Oct 2026 —
-    // see drawCounterSign. Lit like any wall dressing, with a lightbox's floor.
+    // Room furniture first (the two counters' units), then ONE poster per
+    // cabinet. Dolores and Gary each trade from a unit like the food stalls',
+    // signed on the same fascia band (11 Oct 2026; it replaced the menu board).
     for (const s of this.stations()) {
       if (s.type !== 'bench' && s.type !== 'shop') continue;
       const sx = s.x - cam;
       if (sx < -60 || sx > layout.viewW + 60) continue;
-      const lit = Math.max(SIGN_SELF_LIT, wallLit(sx));
-      drawCounterSign(ctx, sx, COUNTER_SIGN_TOP, s.type === 'shop' ? 'PAWN SHOP' : 'REPAIRS', {
-        variant: s.type === 'shop' ? 'pawn' : 'serving',
-        dark: Math.max(0, Math.min(1, 1 - lit)) * 0.88,
-      });
+      drawFoodStall(ctx, sx, layout.floorY, COUNTER_UNITS[s.type], { t: this.t, lit: wallLit, width: COUNTER_UNIT_W });
+    }
+    // The food stalls in the gaps of the cabinet bank.
+    for (const st of this.stalls || []) {
+      const sx = st.x - cam;
+      if (sx + STALL_W / 2 < -10 || sx - STALL_W / 2 > layout.viewW + 10) continue;
+      drawFoodStall(ctx, sx, layout.floorY, st.stall, { t: this.t, lit: wallLit, menu: this.smoothieMenu });
     }
     // The postcard mural over the plaza tables: wall dressing like the board,
     // lit the same way. Its top edge sits ON the poster line — level with the

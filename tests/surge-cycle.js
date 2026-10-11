@@ -7,6 +7,7 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
+const { officeWarmJobs } = await import('../src/engine/stylePacks/officeLigne.js');
 const { getStylePack, __testing } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS, CABINET_BY_ID } = await import('../src/data/cabinets.js');
 const { speedMcmWarmJobs } = await import('../src/engine/stylePacks/speedMcm.js');
@@ -204,7 +205,7 @@ resetArtWarmup();
 beginStageArtWarmup({ id: 'plain-probe', style: 'pixel' });
 const without = artWarmupPending();
 resetArtWarmup();
-const bakes = speedMcmWarmJobs().length + cryptGouacheWarmJobs().length + cryptLifeWarmJobs().length;
-assert(withBakes - without === bakes, `a Surge run warms the mcm and gouache bakes (${withBakes - without} of ${bakes})`);
+const bakes = speedMcmWarmJobs().length + cryptGouacheWarmJobs().length + cryptLifeWarmJobs().length + officeWarmJobs().length;
+assert(withBakes - without === bakes, `a Surge run warms the mcm, gouache and office bakes (${withBakes - without} of ${bakes})`);
 
 if (failed) process.exit(1);

@@ -2,6 +2,7 @@
 // finale, settings. All keyboard + touch navigable.
 import { W, H, bakeSS, onPresentationChanged, screen, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
+import { beginStageArtWarmup, stepArtWarmup } from './art-warmup.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import {
@@ -742,19 +743,16 @@ function drawFlyingToasters(ctx, t, singleOpening) {
     // appliance body enough scale to read clearly over the portrait cards.
     const size = layout.portrait
       ? 96 + shaderHash21(pass.trip + i + 13, 59) * 32
-      : 68 + shaderHash21(pass.trip + i + 13, 59) * 24;
+      : 48 + shaderHash21(pass.trip + i + 13, 59) * 16;
     const h = size * 0.82;
     const y = pass.centerY + offsets[i] + Math.sin(t * 2.2 + i * 0.8 + pass.trip) * 1.5;
-    // The old edge fade was tied to the small toaster's centre point. With
-    // portrait bodies this large, the appliance could still be clipped while
-    // its centre was fading in. Use the actual half-width and a real inner
-    // gutter so the body never appears beyond the screen's left/right edges.
+    // Keep the appliance fully visible until its centre reaches the edge,
+    // then fade it as it exits. The old body-half-width boundary made it
+    // disappear while most of the toaster was still on screen.
     const edgeFade = 18;
-    const bodyHalf = size / 2;
-    if (x < bodyHalf || x > W - bodyHalf) continue;
     const edge = Math.min(1,
-      Math.max(0, (x - bodyHalf) / edgeFade),
-      Math.max(0, (W - bodyHalf - x) / edgeFade));
+      Math.max(0, (x + edgeFade) / edgeFade),
+      Math.max(0, (W + edgeFade - x) / edgeFade));
     const animationOffset = titleToasterStagger(pass.trip, i);
     const frame = Math.floor((t + animationOffset) * propFps('appliance')) % propFrames('appliance');
     // Rasterize one authored appliance size and scale it only at draw time.
@@ -3054,6 +3052,8 @@ export class BriefingState {
     return `RECALIBRATE AUDIO SYNC (${ms > 0 ? '+' : ''}${ms} MS)`;
   }
   enter() {
+    this.warmOffice = this.cab?.style === 'office' || this.cab?.style === 'surge';
+    if (this.warmOffice) beginStageArtWarmup(this.cab, this.stage?.index ?? 1);
     this.reveal = 0;
     this.t = 0;
     // PLAY preselected: a player who taps straight through — which is most of
@@ -3074,6 +3074,7 @@ export class BriefingState {
     this.top = BRIEF_TOP + Math.max(0, (band - this.layout.height) / 2);
   }
   update(dt) {
+    if (this.warmOffice) stepArtWarmup(2);
     this.t += dt;
     this.reveal += dt;
     const acting = Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer');

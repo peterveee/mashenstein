@@ -21,7 +21,6 @@ const PROFILES = {
   speed:     { amp: 10, period: 560, phase: 120 },
   frost:     { amp: 14, period: 500, phase: 250 },
   cardboard: { amp: 18, period: 460, phase: 80 },
-  office:    { amp: 9, period: 620, phase: 310 },
 };
 
 // ---------------------------------------------------------- per-stage waves

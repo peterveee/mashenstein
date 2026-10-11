@@ -948,11 +948,11 @@ export const CABINETS = [
     taunt: 'THAT CASTLE IS FOUR INCHES TALL. LIKE MY PATIENCE.',
   },
   {
-    id: 'office', name: 'CORPORATE KOMBAT', act: 3, style: 'doodle',
-    unlockPlugs: 34, speedBonus: 0.3,
+    id: 'office', name: 'CORPORATE KOMBAT', act: 3, style: 'office',
+    unlockPlugs: 34, speedBonus: 0.3125,
     mechanic: 'meetings', // printers, chairs, paperwork
-    sky: ['#e8e8f0', '#f4f4f8'], ground: '#b0b0c0', groundDark: '#8a8a98',
-    far: '#c8c8d8', hills: '#b8b8c8',
+    sky: ['#f5d7ed', '#cbe7e8'], ground: '#d6a7ba', groundDark: '#654c68',
+    far: '#b9b2d2', hills: '#789da4',
     music: OFFICE.bank,
     patterns: [
       ...ANIMALS.office,

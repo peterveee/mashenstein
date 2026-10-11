@@ -48,7 +48,9 @@ Worth stating plainly, because most of the design falls out of it.
 palette, speed bonus, mechanic, route set pieces and the pattern bank. Twenty-seven
 **stages** (`src/data/stages.js:12`, three per cabinet) carry mission, challenge,
 duration, speed multiplier and the scripted pins. A stage's length is TIME —
-60/90/120s by act — and distance is derived: `duration * baseSpeed() * 1.05`
+60s for Plumber/Speed, 90s for Rhythm and Act II, then 95s for Cardboard, 100s
+for Corporate Kombat, and 110s for The Surge — and distance is derived:
+`duration * baseSpeed() * 1.05`
 (`run.js:1683`). There is no par time; the clock running out is the fail.
 
 **Patterns are data, not code.** `P(tier, cells, opts)` (`cabinets.js:23`), where

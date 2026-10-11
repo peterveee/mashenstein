@@ -75,7 +75,7 @@ function recorder(coverage) {
     restore() { const p = stack.pop(); if (p) { tx = p[0]; sx = p[1]; } },
     translate(x) { if (Number.isFinite(x)) tx += x * sx; },
     scale(x) { if (Number.isFinite(x)) sx *= x; },
-    rotate() {}, clip() {},
+    rotate() {}, transform() {}, clip() {},
     // drawImage has three signatures. In the nine-argument form the first
     // pair is the SOURCE rectangle, and reading it as the destination puts
     // every baked sprite at x 0.
@@ -124,6 +124,7 @@ const CASES = [
   ['gouache', 'crypt'],
   ['neon', 'neon'],
   ['cardboard', 'cardboard'],
+  ['office', 'office'],
 ];
 
 for (const [style, cabinetId] of CASES) {

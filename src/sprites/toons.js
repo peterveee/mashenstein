@@ -7888,10 +7888,34 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
     // the same split, so every part of the ribbon is painted exactly once.
     const runCut = x - 0.018 * u - (spec.quiverStrapWidth ?? 0.030) * u / 2 - 0.006 * u;
     const runMask = () => ctx.rect(runCut, g.slingSocketY, 2 * u, 2 * u);
+    // ...BUT NOT WHEN THE ARM HANGS ALONG THE RUN (Peter, 11 Oct 2026: her arm
+    // "cuts through her shoulder strap" in some dances). The run goes over the
+    // arm where the arm CROSSES it, leaving the sling's root. An upper arm
+    // hanging straight down beside the chest covers the run and the underarm
+    // return together, and the one straight edge at `runCut` then lands inside
+    // the sleeve: a ribbon laid on the arm that stops dead mid-arm. So whenever
+    // the arm's own bones cover the cut line at the return's height, the whole
+    // run goes under the arm like the return does, and only the crown stays over.
+    const armAlong = (() => {
+      const a = g.slingArm;
+      if (!a) return false;
+      const segDist = (ax, ay, bx, by, qx, qy) => {
+        const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1e-9;
+        const k = Math.max(0, Math.min(1, ((qx - ax) * dx + (qy - ay) * dy) / l2));
+        return Math.hypot(qx - (ax + k * dx), qy - (ay + k * dy));
+      };
+      const y0 = returnY - 0.012 * u, y1 = returnY + 0.012 * u;
+      for (let k = 0; k <= 2; k++) {
+        const y = y0 + (y1 - y0) * k / 2;
+        if (Math.min(segDist(...a.root, ...a.elbow, runCut, y), segDist(...a.elbow, ...a.hand, runCut, y)) < a.half) return true;
+      }
+      return false;
+    })();
+    const overRun = g.slingOverRun && !armAlong;
     ctx.save(); ctx.beginPath();
     ctx.rect(px - 2 * u, torsoTop - 2 * u, 4 * u, 4 * u);
     socketMask(); ctx.clip('evenodd');
-    if (g.slingOverRun) {
+    if (overRun) {
       ctx.beginPath(); ctx.rect(px - 2 * u, torsoTop - 2 * u, 4 * u, 4 * u);
       runMask(); ctx.clip('evenodd');
     }
@@ -7907,7 +7931,7 @@ function paintPrincessCostume(ctx, spec, p, u, ow, lod, g) {
       }
       // Both masks wind the same way, so the nonzero clip is their union.
       ctx.beginPath(); socketMask();
-      if (g.slingOverRun) runMask();
+      if (overRun) runMask();
       ctx.clip(); paintStrip(); ctx.restore();
     });
     }
@@ -13514,6 +13538,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // calls slingOverArm; the strip's run goes over the arm there.
       slingOverRun: stand && !raisedArmStudyFront && !armsReachFront && !clapFront
         && !armOverHead && !armsInFront,
+      // The near arm's two bones as drawFrontArm seats them, so the sling can
+      // tell whether the arm lies ALONG its run (see `armAlong` there).
+      slingArm: (() => {
+        const dx = nearArmSeated ? -sideF * ARM_SEAT_IN * u : 0, dy = nearArmSeated ? ARM_SEAT_DOWN * u : 0;
+        const [ex, ey] = joint(shF, armYF, handF[0], handF[1], armSeg, elbF, armSeg);
+        return { root: [shF + dx, armYF + dy], elbow: [ex + dx, ey + dy], hand: [handF[0] + dx, handF[1] + dy], half: armWF / 2 };
+      })(),
       // The celebration hop's lift, handed over rather than reached for: the
       // hop belongs to this painter and the skirt is drawn by another one.
       celebLift: cm ? cm.lift || 0 : 0, vy: pose.vy || 0, celebrating: pose.kind === 'celebrate',
