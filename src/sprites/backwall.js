@@ -1,4 +1,4 @@
-// The wall behind the cabinets. THE LAST FUNCTIONING FOOD COURT used to be a
+// The wall behind the cabinets. THE FOOD COURT used to be a
 // flat #241c30 rectangle from the ceiling to the floor line, which read as
 // "dark" rather than as "derelict" — nothing in it said anyone had ever worked
 // here. These are candidate dressings for that band: five ways to fill it,

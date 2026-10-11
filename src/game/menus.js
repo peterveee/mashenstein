@@ -1261,7 +1261,7 @@ function drawRetainedMarquee(ctx, alpha) {
 function titleScene(ctx, t, poke, frightStart, eaten, scatter, wispsDismissed, tapBombs, shots, profile, titleShooters) {
   const layout = titleLayout();
   const activeShooters = titleShooters || new Set();
-  // night sky over the last functioning food court
+  // night sky over the food court
   // Under WebGL the sky is generated on the GPU — gradient, drifting nebula,
   // parallax twinkle and the odd shooting star — so we leave a transparent
   // hole for it. Reduced flashing freezes its clock instead of animating.
@@ -2170,7 +2170,10 @@ export class TitleState {
     // to erase, and the opening isn't a rerun you'd want early — starting a file
     // plays it for you.
     const anyFile = this.save.data.slots.some(Boolean);
-    const choices = [{ id: 'howto', label: 'HOW TO PLAY', act: () => this.onHowTo() }];
+    const choices = [
+      { id: 'settings', label: 'ADVANCED SETTINGS', act: () => this.onSettings() },
+      { id: 'howto', label: 'HOW TO PLAY', act: () => this.onHowTo() },
+    ];
     if (this.onTutorial) choices.push({ id: 'tutorial', label: 'MANDATORY TRAINING', act: () => this.onTutorial() });
     // Until now the opening was reachable only by starting a brand new file —
     // so the one way to read it twice was to erase your progress.
@@ -2180,7 +2183,6 @@ export class TitleState {
     // The player's own songs, made from a riff and played live in the club.
     if (this.onLab) choices.push({ id: 'lab', label: 'THE LAB', act: () => this.onLab() });
     if (anyFile) choices.push({ id: 'erase', label: 'ERASE A SHIFT', act: () => this.beginErase() });
-    choices.push({ id: 'settings', label: 'SETTINGS', act: () => this.onSettings() });
     choices.push({ id: 'back', label: 'BACK', cancel: true });
     return choices;
   }
@@ -4621,7 +4623,7 @@ export class FinaleState {
 // campfire sat under the footer. So the ground floor is split by what a thing
 // DOES rather than padded out: things in the lane, things that stand still, and
 // things that come at you.
-const GUIDE_PAGES = [
+const ALL_GUIDE_PAGES = [
   {
     title: 'HAZARDS: GROUND FLOOR', color: '#e04848', hint: 'RED = AVOID. JUMP THESE.',
     rows: [
@@ -4775,6 +4777,11 @@ const GUIDE_PAGES = [
     ],
   },
 ];
+
+// Hazards are left out of the guide for now (the pages stay in ALL_GUIDE_PAGES): the red pages are
+// the four HAZARDS pages and the office floors' own hazard pages.
+const GUIDE_HAZARDS_HIDDEN = true;
+const GUIDE_PAGES = ALL_GUIDE_PAGES.filter((p) => !GUIDE_HAZARDS_HIDDEN || p.color !== '#e04848');
 
 export class FieldGuideState {
   static portraitMode = 'frame';
@@ -6545,7 +6552,9 @@ export class SettingsState {
 
   // `onDevMenu` is passed only by a dev build (main.js, when Dev.enabled): it puts a
   // DEV MENU row at the top of the list, the phone's way in without the five-tap corner.
-  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null }) {
+  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, pause = false, onExitTitle = null }) {
+    this.pause = pause;
+    this.onExitTitle = onExitTitle;
     this.save = save;
     this.onDone = onDone;
     this.onDevMenu = onDevMenu;
@@ -6642,6 +6651,19 @@ export class SettingsState {
   }
   options() {
     const s = this.save.settings;
+    // The food court's pause: audio, ASSIST SPEED, EXIT TO TITLE and BACK, nothing else.
+    if (this.pause) {
+      return [
+        { label: `MUTE: ${s.muted ? 'ON' : 'OFF'}`, act: () => { s.muted = !s.muted; Audio.setMuted(s.muted); } },
+        this.volumeOption('music', 'MUSIC VOLUME'),
+        this.volumeOption('sfx', 'SFX VOLUME'),
+        { label: `SOUNDTRACK: ${soundtrack8bit() ? '8-BIT' : 'ORIGINAL'}`, act: () => setSoundtrack8bit(!soundtrack8bit()) },
+        this.audioSyncOption(),
+        { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
+        { label: 'EXIT TO TITLE', act: () => { this.save.persist(); this.onExitTitle(); } },
+        { label: 'BACK', act: () => { this.save.persist(); this.onDone(); } },
+      ];
+    }
     return [
       ...(this.onDevMenu ? [{ label: 'DEV MENU', act: () => this.onDevMenu() }] : []),
       { label: `MUTE: ${s.muted ? 'ON' : 'OFF'}`, act: () => { s.muted = !s.muted; Audio.setMuted(s.muted); } },
@@ -6785,7 +6807,7 @@ export class SettingsState {
     const opts = this.options();
     const doneIndex = opts.length - 1;
     const band = leftBand(opts.slice(0, doneIndex).map((o) => o.label), LEFT_MENU_ITEM_S);
-    drawText(ctx, 'SETTINGS', band.textX, 30, '#fff', 2, 'title');
+    drawText(ctx, this.pause ? 'SETTINGS' : 'ADVANCED SETTINGS', band.textX, 30, '#fff', 2, 'title');
     opts.slice(0, doneIndex).forEach((o, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
@@ -6833,7 +6855,7 @@ export class SettingsState {
     const band = leftBand(labels, portraitMenuScale(itemS));
     const titleX = band.textX;
     const titleMid = portraitMenuSafeTop() + 34;
-    portraitMenuText(ctx, 'SETTINGS', titleX,
+    portraitMenuText(ctx, this.pause ? 'SETTINGS' : 'ADVANCED SETTINGS', titleX,
       portraitMenuTextY(titleMid, 3.1, 'title'), '#fff', 3.1, 'title');
 
     labels.forEach((_, i) => {

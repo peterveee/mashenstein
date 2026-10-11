@@ -199,6 +199,7 @@ export function defaultSlot() {
   return {
     createdAt: 0,
     playtimeSec: 0,
+    hero: 'lorenzo', // who you were when you last left the food court; a new file is Lorenzo
     difficulty: 1, // 1..5 (1-4 identical; 5 = UNPLUGGED)
     campaign: {
       act: 1,

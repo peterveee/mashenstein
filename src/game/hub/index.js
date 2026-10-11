@@ -1,10 +1,11 @@
-// THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
+// THE FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legal Pawn Shop, arcade corner.
 import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
 import { H, W, chrome as chromeGeo, clientToLogical, isPhonePortraitPresentation, onPresentationChanged, presentationFrame, shake } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { discardNextGap } from '../../engine/loop.js';
 import { Audio, PORTAL_BREATH } from '../../engine/audio.js';
+import { ChipResults } from '../results-chip.js';
 import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H, BACK_BUTTON_PLATE } from '../../engine/sprites.js';
 import { hubChromeButtons, declareHubChrome } from '../touchchrome.js';
 import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
@@ -14,8 +15,8 @@ import {
   DIVE_OUT_SMILE, DIVE_LEAP_AT,
 } from './cabinet-dive.js';
 import { drawProp } from '../../sprites/props.js';
-import { drawFoodCourtMural, MURAL_W } from '../../sprites/mural.js';
-import { drawFoodStall, pickSmoothieMenu, STALLS, STALL_W, COUNTER_UNITS, COUNTER_UNIT_W, UNIT_FASCIA_TOP, UNIT_FASCIA_H } from '../../sprites/stalls.js';
+import { drawFoodCourtMural, MURAL_W, MURAL_H } from '../../sprites/mural.js';
+import { drawFoodStall, drawSmoothieMenuBoard, MENU_BOARD_H, drawWokMenuBoard, WOK_BOARD_H, pickSmoothieMenu, STALLS, STALL_W, COUNTER_UNITS, COUNTER_UNIT_W, UNIT_FASCIA_TOP, UNIT_FASCIA_H } from '../../sprites/stalls.js';
 import {
   cabinetPalette, cabinetBrownoutAlpha, cabinetScreenRect, cabinetStyle, deadScreenArt, drawCabinetShell, drawCabinetScreen, drawCabinetSignalInterference, drawDeadScreen, drawScreenSweep,
   stickGlint,
@@ -589,10 +590,15 @@ const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
 // Each counter stands in a unit like the food stalls', signed on the same
 // fascia band (sprites/stalls.js). Tapping the sign opens the counter.
-function counterSignHit(station, worldX, worldY) {
-  return (station.type === 'bench' || station.type === 'shop')
-    && Math.abs(worldX - station.x) <= COUNTER_UNIT_W / 2
-    && worldY >= UNIT_FASCIA_TOP - 4 && worldY <= UNIT_FASCIA_TOP + UNIT_FASCIA_H + 4;
+// Any part of the unit — sign, menu board, serving counter, the cabinet behind — opens the
+// counter, except the person standing at it (tapping Dolores or Gary themselves walks to them).
+function counterSignHit(station, worldX, worldY, staff = null, floorY = HUB_FLOOR_PIN_Y, lift = 0) {
+  if (station.type !== 'bench' && station.type !== 'shop') return false;
+  if (Math.abs(worldX - station.x) > COUNTER_UNIT_W / 2) return false;
+  if (worldY < UNIT_FASCIA_TOP - lift - 4 || worldY > floorY) return false;
+  const onStaff = staff && Math.abs(worldX - staff.x) <= NPC_H * 0.42
+    && worldY >= floorY - (staff.staffH || NPC_H) && worldY <= floorY;
+  return !onStaff;
 }
 // The renderer publishes a taller logical frame in phone portrait. The
 // landscape-scale cabinets still own their authored floor line, but the phone
@@ -600,7 +606,7 @@ function counterSignHit(station, worldX, worldY) {
 // the cabinet row makes the room read as a room instead of a tall crop.
 const PORTRAIT_HUB_FLOOR_RATIO = 0.70;
 const PORTRAIT_WALL_DRESS_DROP = 48;
-const PORTRAIT_POSTER_LIFT = 48;
+const PORTRAIT_POSTER_LIFT = 20; // posters, shop units and boards share this top edge
 
 // Not a door and not a cabinet: THE SOCKET is a hole in the wall, and the whole
 // joke is that it looks like one. Exported because the opening film ends on it —
@@ -799,7 +805,7 @@ export const REFLECT_SOLE_DROP = 1.5;
 // cannot see. It climbs from here to 1 as the plug count approaches the finale
 // (see ceilingFixtures), which is the far end doing double duty as a progress
 // readout. Held low so restoring power moves the concourse from black to dingy
-// rather than to bright — this is THE LAST FUNCTIONING FOOD COURT, and the
+// rather than to bright — this is THE FOOD COURT, and the
 // reward for a full clear is legibility, not cheer.
 const SERVICE_LIT_FLOOR = 0.24;
 // The brightest the ROOM ever gets, even directly under a working tube. Without
@@ -2682,6 +2688,29 @@ export class HubState {
         ? st.find((s) => (s.type === 'cabinet' || s.type === 'overtime')
           && Math.abs(s.x - pwx) < POSTER_W / 2 + 4)
         : null;
+      // The food court's own sheets answer the same way: the postcard mural and
+      // the smoothie stall's menu board (both hang on the poster line).
+      const tappedArt = tappedPoster ? null
+        : (this.muralX != null && Math.abs(pwx - this.muralX) < MURAL_W / 2
+          && pwy > layout.posterY && pwy < layout.posterY + MURAL_H)
+          ? { kind: 'mural', x: this.muralX, y: layout.posterY, w: MURAL_W, h: MURAL_H }
+          : (() => {
+            const lift = POSTER_TOP_Y - layout.posterY;
+            const my = UNIT_FASCIA_TOP - lift + UNIT_FASCIA_H + 7;
+            const mw = STALL_W - 16;
+            const wok = (this.stalls || []).find((q) => q.stall.menu === 'wok'
+              && Math.abs(pwx - q.x) < (mw - 4) / 2 && pwy > my - 1 && pwy < my - 1 + WOK_BOARD_H);
+            if (wok) return { kind: 'wok', x: wok.x, y: my - 1, w: mw - 4, h: WOK_BOARD_H };
+            const hit = (this.stalls || []).find((q) => q.stall.open && !q.stall.shell
+              && Math.abs(pwx - q.x) < mw / 2 && pwy > my && pwy < my + MENU_BOARD_H);
+            return hit ? { kind: 'menu', x: hit.x, y: my, w: mw, h: MENU_BOARD_H } : null;
+          })();
+      if (tappedArt) {
+        this.poster = { art: tappedArt, t: 0 };
+        Audio.sfx('uiConfirm');
+        Input.endFrame();
+        return;
+      }
       if (tappedPoster) {
         this.poster = { station: tappedPoster, t: 0, ...posterLook(tappedPoster.x) };
         Audio.sfx('uiConfirm');
@@ -2712,7 +2741,9 @@ export class HubState {
       const worldY = Input.pointer.y / layout.zoom + layout.camY;
       // A counter's sign is its front door: tapping it opens the counter's
       // screen from anywhere it is visible, no walk first.
-      const signHit = st.find((s) => counterSignHit(s, worldX, worldY));
+      const signHit = st.find((s) => counterSignHit(s, worldX, worldY,
+        this.npcs().find((n) => n.id === (s.type === 'bench' ? 'dolores' : 'gary') && !n.clearingStation),
+        layout.floorY, POSTER_TOP_Y - layout.posterY));
       if (signHit) {
         this.interact(signHit);
         Input.endFrame();
@@ -2967,7 +2998,8 @@ export class HubState {
       }
     }
     if (this.talk && (this.talk.t -= dt) <= 0) this.talk = null;
-    if (Input.pressed('back')) this.flow.toTitle();
+    // Escape and the corner pause button: the pause settings (audio, assist, EXIT TO TITLE).
+    if (Input.pressed('back')) this.flow.toHubPause();
     // Persisted, like the identical toggle in run.js. Without the save the hub was
     // the one screen where M only lasted the session: it unmuted, sounded unmuted,
     // and came back silent on the next load with nothing to show for it.
@@ -3528,13 +3560,13 @@ export class HubState {
       if (s.type !== 'bench' && s.type !== 'shop') continue;
       const sx = s.x - cam;
       if (sx < -60 || sx > layout.viewW + 60) continue;
-      drawFoodStall(ctx, sx, layout.floorY, COUNTER_UNITS[s.type], { t: this.t, lit: wallLit, width: COUNTER_UNIT_W });
+      drawFoodStall(ctx, sx, layout.floorY, COUNTER_UNITS[s.type], { t: this.t, lit: wallLit, width: COUNTER_UNIT_W, lift: POSTER_TOP_Y - layout.posterY });
     }
     // The food stalls in the gaps of the cabinet bank.
     for (const st of this.stalls || []) {
       const sx = st.x - cam;
       if (sx + STALL_W / 2 < -10 || sx - STALL_W / 2 > layout.viewW + 10) continue;
-      drawFoodStall(ctx, sx, layout.floorY, st.stall, { t: this.t, lit: wallLit, menu: this.smoothieMenu });
+      drawFoodStall(ctx, sx, layout.floorY, st.stall, { t: this.t, lit: wallLit, menu: this.smoothieMenu, lift: POSTER_TOP_Y - layout.posterY });
     }
     // The postcard mural over the plaza tables: wall dressing like the board,
     // lit the same way. Its top edge sits ON the poster line — level with the
@@ -4235,9 +4267,9 @@ export class HubState {
       const resourceW = plugsW + resourceGap + coinsW;
       drawFooterText(ctx, plugs, W / 2 - resourceW / 2, statusY, '#48e0c8', statusS);
       drawFooterText(ctx, coins, W / 2 + resourceW / 2 - coinsW, statusY, '#f6d33c', statusS);
-      drawFooterTextCentered(ctx, 'THE LAST FUNCTIONING FOOD COURT', W / 2, promptLastY, '#3f8a80', statusS);
+      drawFooterTextCentered(ctx, 'THE FOOD COURT', W / 2, promptLastY, '#3f8a80', statusS);
     } else if (!hideHubFooter) {
-      drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, statusY, '#3f8a80', statusS);
+      drawText(ctx, 'THE FOOD COURT', 8, statusY, '#3f8a80', statusS);
       const coinsW = textWidth(coins, statusS);
       drawText(ctx, coins, W - 8 - coinsW, statusY, '#f6d33c', statusS);
       drawText(ctx, plugs, W - 20 - coinsW - textWidth(plugs, statusS), statusY, '#48e0c8', statusS);
@@ -4338,9 +4370,42 @@ export class HubState {
   // It grows out of its own place on the wall rather than fading up centred.
   // The tap meant "that one", and travelling from there is what makes the big
   // version read as the same object rather than as a card about it.
+  // The mural and the smoothie menu board, held up the same way: grown from
+  // where they hang to fill the frame, over the same dim.
+  drawArtZoom(ctx) {
+    const a = this.poster.art;
+    const layout = hubPresentation();
+    const e = (() => { const k = Math.min(1, this.poster.t / 0.22); return k * k * (3 - 2 * k); })();
+    const lerp = (x, y) => x + (y - x) * e;
+    const fit = Math.min((W - (layout.portrait ? 24 : 40)) / a.w, (H - (layout.portrait ? 120 : 56)) / a.h);
+    const sc = lerp(layout.zoom, fit);
+    const srcCx = (a.x - this.camX()) * layout.zoom;
+    const srcCy = (a.y + a.h / 2 - layout.camY) * layout.zoom;
+    const cx = lerp(srcCx, W / 2), cy = lerp(srcCy, (H - 12) / 2);
+    ctx.save();
+    ctx.globalAlpha = e;
+    ctx.fillStyle = 'rgba(6,4,12,0.95)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(sc, sc);
+    if (a.kind === 'mural') drawFoodCourtMural(ctx, 0, -a.h / 2, { lit: 1 });
+    else if (a.kind === 'wok') drawWokMenuBoard(ctx, -a.w / 2, -a.h / 2, a.w);
+    else drawSmoothieMenuBoard(ctx, -a.w / 2, -a.h / 2, a.w, this.smoothieMenu);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = e;
+    const closeText = Input.isTouchDevice() ? 'TAP TO CLOSE' : 'CLICK OR ESC TO CLOSE';
+    if (layout.portrait) drawTextVectorCentered(ctx, closeText, W / 2, textYForMid(H - 26, 2.2), '#c0c0d0', 2.2);
+    else drawTextCentered(ctx, closeText, W / 2, H - 14, '#8a8a98', HINT_S);
+    ctx.restore();
+  }
+
   drawPosterZoom(ctx) {
     const p = this.poster;
     const s = p.station;
+    if (p.art) { this.drawArtZoom(ctx); return; }
     const layout = hubPresentation();
     const k = Math.min(1, p.t / 0.22);
     const e = k * k * (3 - 2 * k);
@@ -4549,7 +4614,8 @@ export class TrophyRoomState {
   setChromeWalkButtons() {
     this.chromeGen = chromeGeo.gen;
     this.chromeTouch = Input.usingTouch;
-    Input.setChromeButtons(Input.usingTouch ? hubChromeButtons() : []);
+    // (the trophy room has no pause: BACK leaves it)
+    Input.setChromeButtons(Input.usingTouch ? hubChromeButtons().filter((b) => b.id !== 'hubPause') : []);
   }
 
   drawChromeWalkButtons() {
@@ -6046,9 +6112,12 @@ export class ShopState {
     this.syncLayout();
     if (!isPhonePortraitPresentation()) fitRows(this, this.options().length);
     Audio.setBank(COUNTER_DANCE_MIX_THEME);
+    // Gary's shop theme in its 8-bit version, on the next beat (results-chip.js).
+    this.chip = new ChipResults();
+    this.chip.start();
     Input.setMenuButtons();
   }
-  exit() { Audio.setBank(HUB_THEME); primeFoodCourtAudio(); }
+  exit() { this.chip?.stop(); this.chip = null; Audio.setBank(HUB_THEME); primeFoodCourtAudio(); }
   options() {
     const slot = this.save.slot;
     const opts = MODS.filter((m) => m.source === 'shop' || slot.mods.found.includes(m.id)).map((m) => {
@@ -6069,6 +6138,7 @@ export class ShopState {
   update(dt) {
     this.t += dt;
     this.enterT += dt;
+    this.chip?.tick();
     this.syncLayout();
     const sel = listMenu(this, this.options());
     if (sel) {

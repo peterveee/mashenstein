@@ -287,7 +287,7 @@ export const OFFICE_FLOORS = Object.freeze({
       hangs: [],
       cradle: null,
     },
-    lights: { variant: 'pendant', period: 1200, us: [120, 360, 600, 840, 1080], flicker: -1, drop: 58 },
+    lights: { variant: 'pendant', period: 1200, us: [100, 300, 500, 700, 900, 1100], flicker: -1, drop: 84, downs: { period: 1440, us: [[45, 'd'], [225, 'd'], [525, 'd'], [705, 'd'], [1005, 'd'], [1185, 'd']] } },
     mid: {
       period: 1200,
       items: [
@@ -299,7 +299,10 @@ export const OFFICE_FLOORS = Object.freeze({
         { kind: 'sofa', u: 664, w: 80 },
         { kind: 'plant', u: 780, variant: 'palm' },
         { kind: 'tallclock', u: 860 },
-        { kind: 'sofa', u: 930, w: 80 },
+        // a pair of Grand Confort armchairs either side of a side table
+        { kind: 'sofa', u: 916, w: 34, seat: 'single' },
+        { kind: 'sidetable', u: 958, w: 18 },
+        { kind: 'sofa', u: 984, w: 34, seat: 'single' },
         { kind: 'plant', u: 1050, variant: 'ficus' },
         { kind: 'globe', u: 1120 },
       ],
@@ -348,6 +351,7 @@ export const OFFICE_KINDS = Object.freeze({
   reception: 'curved reception desk w wide, ~34 tall, a receptionist\'s head and shoulders behind it, a bell and a monitor',
   turnstiles: 'security gates across w: 4 waist-high posts ~26 tall with glass flaps',
   sofa: 'low lounge sofa w x ~26',
+  sidetable: 'smoked-glass disc on a chrome pedestal, ~16 tall',
   sculpture: 'an abstract lobby sculpture ~40x60 on a plinth (corporate modern: a twisted ribbon / an egg on a stand)',
   plant: 'potted plant: ficus ~30x60, palm ~40x70, snake ~16x34, bonsai ~18x20 on a stand',
   cooler: 'water cooler ~14x44 with a big bottle on top; bubble 0..1 = a glug rising in the bottle (-1 none)',
@@ -579,6 +583,9 @@ export function officeFrame(floorId, camX, t, coverage = { left: 0, right: FRAME
     lights: L.us.flatMap((u, i) => instances(u, lightsShift, L.period, 40, coverage).map((x) => ({
       i, x, variant: L.variant, y: F.ceilingY + L.drop, on: i === L.flicker ? flickerAt(t) : 1,
     }))),
+    // recessed ceiling downlights, between the main fittings, at the same rate
+    downs: L.downs || null,
+    wallShift: camX * (F.wall.factor ?? FACTORS.wall) * ZOOM,
     mid: resolveMid(F, camX, t, coverage),
     front: F.front.items.flatMap((it, i) => instances(it.u, frontShift, F.front.period, (it.w || 60) + 20, coverage)
       .map((x) => ({ i, kind: it.kind, x, w: it.w ?? 0 }))),

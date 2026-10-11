@@ -3,7 +3,7 @@ import { OFFICE_FLOORS, WALL_BASE, FACTORS, MID_BASE } from '../officeClimb.js';
 import { PAL, bakeStrip, drawStrip, W, box, line } from './line.js';
 import { paintFar, paintNear, cloudShape, sky, stars, sun, clouds, cityLights, towerLights, vehicle, flyer, cradle } from './outside.js';
 import { paintWall, liftDoors, clockHands, revolvingDoor, signNeon, floorLights, noonWall, sunShafts, noonShafts, glints } from './wall.js';
-import { paintMid, ceiling, floorPlane, slab, midActors, midDevices, lampSheen, lights } from './room.js';
+import { paintMid, ceiling, ceilingLights, floorPlane, slab, midActors, midDevices, lampSheen, lights } from './room.js';
 import { OFFICE_ZOOM as ZOOM } from '../officeClimb.js';
 import { paintFront } from './front.js';
 import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections, officeLiftSpans } from './progression.js';
@@ -221,6 +221,10 @@ export const STYLE = {
     if (f.floor === 'open') noonWall(ctx, lit);
     ctx.restore();
     if (options.slab !== false) slab(ctx, f, P);
+    // floor 88's corridor downlights, behind every room and lift lobby
+    ctx.save();
+    ceilingLights(ctx, f);
+    ctx.restore();
 
     // Wall-side landmarks sit behind the corridor furniture. The canteen is
     // readable as a room at the back of the hallway, with desks and people

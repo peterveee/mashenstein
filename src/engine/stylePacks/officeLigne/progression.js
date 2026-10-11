@@ -2,7 +2,7 @@
 import { OFFICE_FLOORS, FACTORS, OFFICE_ZOOM, WALL_BASE, MID_BASE, LANE_TOP } from '../officeClimb.js';
 import { box, line, poly, circ, ell, letters, OFFICE_FONT, PAL, YH, VPX, canvas } from './line.js';
 import { ceoDoor, founderPortrait, trophyCase, bookshelf, lobbyLogo, signNeon, lobbyWallBay, openWallBay, execPanels, lobbyLift, steelLift, liftDoors } from './wall.js';
-import { reception, midActors, plant, sculpture, boardroomBack, boardroomFront, easel, chairFromBehind } from './room.js';
+import { reception, midActors, plant, sculpture, boardroomBack, boardroomFront, easel, chairFromBehind, sofa } from './room.js';
 import { glassMeetingRoom, paintExtraOfficeRoom, officeRoomStyle, roomWithDepth } from './rooms.js';
 import { PROFESSOR_PLAN } from './professorArt.js';
 
@@ -36,7 +36,7 @@ export const OFFICE_CORRIDORS = Object.fromEntries(Object.entries(OFFICE_FLOORS)
     cradle:null,
   },
   outside:{...F.outside,nearFactor:(F.outside.nearFactor??FACTORS.cityNear)*OUTSIDE_SLOWER},
-  mid:{...F.mid,factor:ROOM_FACTOR,items:F.mid.items.filter(it=>['plant','sofa','cubicles','cooler','copier','cabinet'].includes(it.kind))},
+  mid:{...F.mid,factor:ROOM_FACTOR,items:F.mid.items.filter(it=>['plant','sofa','sidetable','cubicles','cooler','copier','cabinet'].includes(it.kind))},
 }]));
 
 // Meeting-room fronts and the archive use the corridor-furniture plane.
@@ -107,7 +107,7 @@ export const OFFICE_ITINERARIES={
   open:[['lift',0.02,LIFT_BAY],['training',0.23,270],['meeting',0.40,270],
     ['lift',0.50,LIFT_BAY],['canteen',0.59,210],['interview',0.78,270]],
   exec:[['lift',0.04,LIFT_BAY],['meeting',0.12,270],['boardroom',0.32,360],['lounge',0.52,320],
-    ['lift',0.62,LIFT_BAY],['library',0.72,270],['secretary',0.82,160],['ceo',0.94,400]],
+    ['lift',0.62,LIFT_BAY],['library',0.72,270],['secretary',0.82,240],['ceo',0.94,400]],
 };
 // A wall section's span: the window bay nearest its itinerary place, in the wall's absolute
 // coordinates (screen x = u - wall shift). Two sections never share a bay.
@@ -681,6 +681,8 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       plaque(g,'EXECUTIVE ASSISTANT',c-73,OFFICE_SIGN_MIN_Y,146,P);
       gagNote(g,'YOUR WAIT IS PRODUCTIVE',c-70,OFFICE_SIGN_MIN_Y+16,140,P);
       const deskX=c-58,deskW=116;
+      // the waiting area: a Grand Confort armchair either side of her desk
+      for(const ax of [deskX-46,deskX+deskW+12])sofa(g,{x:ax,w:34,seat:'single'},P,true);
       box(g,c-12,b-52,24,20,'#353242',P.ink,0.6);
       box(g,c-8,b-50,16,15,'#554e62',P.ink,0.4);
       midActors(g,{mid:{items:[{kind:'reception',x:deskX,w:deskW,dy:Math.sin(f.t*1.3)*0.5}]}},P);

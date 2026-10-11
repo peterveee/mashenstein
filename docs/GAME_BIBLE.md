@@ -127,7 +127,7 @@ song clock, so a muted phone, a headless test and a video render all play the
 identical 32.20-second film and cut on the identical frame. Alternate opening
 themes remain a separate audition pass.
 
-### 3.2 The Hub — The Last Functioning Food Court
+### 3.2 The Hub — The Food Court
 
 Side-scrolling walk-around returned to between every stage. Contains:
 - Nine arcade cabinets in a row (most dark, unlocked with plugs)

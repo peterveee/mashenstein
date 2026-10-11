@@ -1608,6 +1608,8 @@ function resizeChrome(winW, winH, ox, oy, dpr, portraitSurface = null) {
         x: surface.x + b.cx, y: surface.y + b.cy, r: b.r,
       };
     });
+    const hubPause = layout.controls.pause;
+    if (hubPause) hub.unshift({ id: 'hubPause', action: 'back', x: surface.x + hubPause.cx, y: surface.y + hubPause.cy, r: hubPause.r });
     Object.assign(chrome, {
       run: controls(true), runNoPower: controls(false),
       hub, split: surface.x + surface.width / 2, scale: screen.scale,

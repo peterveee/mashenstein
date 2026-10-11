@@ -1,5 +1,5 @@
 // Food-court furniture: the arcade cabinet fronts and the service doors that
-// line THE LAST FUNCTIONING FOOD COURT. Same flat-cartoon vector language as
+// line THE FOOD COURT. Same flat-cartoon vector language as
 // sprites/props.js — whose helpers this borrows rather than forking — but with
 // one difference that earns the separate module: these are PALETTED. Nine
 // cabinets are one silhouette in nine colour sets, and PROP_PAINTERS' cache key

@@ -264,7 +264,7 @@ function hero(g, iw, ih) {
   const fy = ih - 17;
   box(g, 0, fy, iw, 17, '#3a2d5c');
   for (let k = 0; k < 8; k++) line(g, cx + (k - 3.5) * 3, fy, cx + (k - 3.5) * 11, ih - 11, '#6a58a0', 0.4);
-  const skin = PROF.skin, mid = '#dfb08a', shirt = '#f6f4fb', fold = '#c9c5dc', lo = '#c99a72';
+  const skin = PROF.skin, mid = '#dfb08a', shirt = '#f3f1f8', fold = '#8f89b4', lo = '#c99a72';
   // the head is a big one, a whole third of the shoulders' width, and the body hangs below it
   const s = 0.98, hy = 20.4, dy = 10, F = fy - dy;
   g.save();

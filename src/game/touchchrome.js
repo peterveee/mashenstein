@@ -174,13 +174,13 @@ export function declareRunChrome(state) {
 // The food court's walk arrows: the same discs with a sideways triangle.
 export function declareHubChrome() {
   if (!chromeCtx || devMenuOpen()) return;
-  const discs = discsOf(Input.chromeButtons).filter((b) => b.id === 'hubLeft' || b.id === 'hubRight');
+  const discs = discsOf(Input.chromeButtons).filter((b) => b.id === 'hubLeft' || b.id === 'hubRight' || b.id === 'hubPause');
   if (!discs.length) return;
   let sig = `hub|${chrome.gen}`;
   for (const b of discs) sig += `|${b.id}${Input.held(b.action) ? '*' : ''}`;
   paintChrome(sig, (ctx) => {
     for (const b of discs) {
-      drawRoundButton(ctx, { ...box(b), icon: b.id === 'hubLeft' ? 'left' : 'right' },
+      drawRoundButton(ctx, { ...box(b), icon: b.id === 'hubLeft' ? 'left' : b.id === 'hubPause' ? 'cog' : 'right' },
         glassWhiteStyle(Input.held(b.action)));
     }
   });

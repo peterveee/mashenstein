@@ -7,7 +7,9 @@
 // the one accommodation is that entity tiles crop the game's fixed 480x270
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
+import { drawFoodStall, STALLS, COUNTER_UNITS, COUNTER_UNIT_W, WOK_MENU_STYLES } from '../src/sprites/stalls.js';
 import { drawOfficeProductionScene, drawOfficeFontSample, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
+import { ARMCHAIRS as OFFICE_ARMCHAIRS } from '../src/dev/office-armchairs.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -9218,6 +9220,56 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
     + 'in each candidate. Pick a letter.', '12 Oct 2026');
   for (const [name, stack] of FACES) {
     tile(grid, name, 'office signs, posters, boards', 480, 150, (ctx) => drawOfficeFontSample(ctx, stack), { animated: true });
+  }
+}
+
+// ------------------------------------------------ WOK THIS WAY menu bake-off
+// 12 Oct 2026. The wok is shuttered three-quarters; its menu hangs on the wall
+// above the opening, so it stays up when the roller is down. B is what ships
+// until one is picked (WOK_MENU_STYLE in sprites/stalls.js). Dolores's unit is
+// beside them to show the NOW SERVING sign back on her counter.
+{
+  const grid = section('wok-menu-bakeoff', 'WOK THIS WAY — menu',
+    'A: faded photo board, five tiles sold out. B: handwritten sheet taped up, BACK IN 5 MIN amended again and again. '
+    + 'C: neon, one dish, ask the wok. In-run size, shown in the unit as it hangs. Last tile: Dolores with her NOW SERVING sign.',
+    '12 Oct 2026');
+  const STALL = STALLS.find((x) => x.name === 'WOK THIS WAY');
+  const TW = 128, TH = 176, FLOOR = 172;
+  const NOTES = { A: 'photo board, sold out', B: 'handwritten sheet (ships)', C: 'neon, ask the wok' };
+  for (const style of WOK_MENU_STYLES) {
+    tile(grid, `Wok menu ${style}`, NOTES[style], TW, TH, (ctx, t) => {
+      ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, TW, TH);
+      drawFoodStall(ctx, TW / 2, FLOOR, { ...STALL, menuStyle: style }, { t, lit: 1 });
+    });
+  }
+  tile(grid, 'Dolores — NOW SERVING', "DOLORES' REPAIRS unit with the readout", COUNTER_UNIT_W + 16, TH, (ctx, t) => {
+    ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, COUNTER_UNIT_W + 16, TH);
+    drawFoodStall(ctx, (COUNTER_UNIT_W + 16) / 2, FLOOR, COUNTER_UNITS.bench, { t, lit: 1, width: COUNTER_UNIT_W });
+  }, { animated: true });
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — floor 88 armchair bake-off
+// 12 Oct 2026. Floor 88's seating went from candy Memphis to an oxblood Grand Confort suite; this
+// is the single seater beside the assistant's desk and in the corridor. Candidates in
+// src/dev/office-armchairs.js, at the size the corridor draws them, in front of floor 88's wall.
+{
+  const grid = section('office-armchair-bakeoff', 'CORPORATE KOMBAT — floor 88 armchairs',
+    'The single seater for floor 88 (beside the assistant and in the corridor). A is what ships; the rest are '
+    + 'other 80s corporate classics. In-run size, front on, on floor 88. Pick a letter.', '12 Oct 2026');
+  const P = OFFICE_LIGNE_PAL.exec;
+  for (const chair of OFFICE_ARMCHAIRS) {
+    tile(grid, chair.name, chair.note, 96, 60, (ctx) => {
+      // floor 88's panelled wall, its skirting and the carpet, in the room's own colours
+      ctx.fillStyle = '#2b2440'; ctx.fillRect(0, 0, 96, 60);
+      ctx.strokeStyle = '#3d3356'; ctx.lineWidth = 0.6;
+      for (const px of [4, 36, 68]) ctx.strokeRect(px, 6, 26, 34);
+      ctx.fillStyle = '#ff6fb0'; ctx.fillRect(0, 42.5, 96, 0.6);
+      ctx.fillStyle = '#1d1828'; ctx.fillRect(0, 43, 96, 3);
+      ctx.fillStyle = '#4b3d63'; ctx.fillRect(0, 46, 96, 14);
+      ctx.fillStyle = 'rgba(255,200,232,0.14)';
+      ctx.beginPath(); ctx.ellipse(48, 54, 30, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+      chair.paint(ctx, 28, 54, P);
+    });
   }
 }
 

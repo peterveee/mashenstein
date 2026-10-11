@@ -318,7 +318,15 @@ const Flow = {
   // end of every run to whoever was holding the baton when it finished — so the
   // relay's own shuffling gradually puts you in most of the cast without ever
   // asking, and the food court always shows the one you just were.
-  hubAvatar: null,
+  // Remembered in the save (slot.hero), so leaving for the title and choosing the shift again
+  // brings you back as the same hero.
+  _hubAvatar: null,
+  get hubAvatar() { return this._hubAvatar; },
+  set hubAvatar(id) {
+    this._hubAvatar = id;
+    const slot = save.slot;
+    if (id && slot && slot.hero !== id) { slot.hero = id; save.persist(); }
+  },
   pendingCab: null,
   pendingStage: null,
   pendingCorrupted: [],
@@ -353,9 +361,9 @@ const Flow = {
     onAttract: () => Flow.startAttract(),
     onSlotChosen: (i, isNew) => {
       Flow.hubPosition = null;
-      // Who you are is session memory, not save data. Choosing a shift starts
-      // it as Lorenzo rather than as whoever you last played in another one.
-      Flow.hubAvatar = null;
+      // Who you are comes from this shift's own save (a new file is Lorenzo), not from
+      // whoever you last played in another one.
+      Flow._hubAvatar = save.data.slots[i]?.hero || null;
       Flow.lastTeam = null;
       setTransitionHero(Flow.heroId());
       if (isNew) {
@@ -445,6 +453,14 @@ const Flow = {
       onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()),
       onSaveFile: () => Flow.toSaveFile(() => Flow.toSettings()),
       onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
+  },
+
+  // The food court's pause: the settings list cut down to audio, assist speed, EXIT TO TITLE, BACK.
+  toHubPause() {
+    setState(new SettingsState({ save, pause: true,
+      onDone: () => Flow.toHub(false),
+      onExitTitle: () => Flow.toTitle(),
+      onCalibrate: () => Flow.toCalibrate(() => Flow.toHubPause()) }));
   },
 
   toCalibrate(onDone) {

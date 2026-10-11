@@ -3,7 +3,7 @@
 // food court fitted a few machines in between its counters, rather than an
 // arcade with a snack bar at the end. One is still trading (SMOOTHIE OPERATOR:
 // lit, stocked, menu up) and one gave up (WOK THIS WAY: shutter down, sign dead) —
-// the last FUNCTIONING food court, and only just.
+// a food court that is still just about functioning.
 //
 // Picked 11 Oct 2026 from the lab's interleave bake-off (I1 + I2, one of each).
 // Wall dressing: drawn after the wall and before the machines, lit by the
@@ -58,7 +58,7 @@ function cupIcon(ctx, cx, cy, s, col, band = '#f590c8') {
 }
 export const STALLS = [
   { name: 'SMOOTHIE OPERATOR', box: '#f590c8', ink: '#3a0c2a', open: true, tagline: 'WE BLEND. WE DO NOT JUDGE.' },
-  { name: 'WOK THIS WAY', box: '#c83a2e', ink: '#ffffff', open: false },
+  { name: 'WOK THIS WAY', box: '#c83a2e', ink: '#ffffff', open: false, shut: 0.75, menu: 'wok' },
 ];
 
 // A countertop blender, about six units wide and twenty tall: a chrome motor
@@ -195,48 +195,12 @@ function neonFascia(ctx, x0, top, w, h, stall, on, t) {
   glow(ctx, x0 + w / 2, top + h / 2, w * 0.62, h * 1.3, col, 0.14 * on);
 }
 
-export function drawFoodStall(ctx, cx, floorY, stall, { t = 0, lit = 1, width = STALL_W, menu = null } = {}) {
-  const STALL_W = width;
-  const x0 = cx - STALL_W / 2, top = FASCIA_TOP;
-  // The unit's two side pilasters, full height.
-  for (const px of [x0, x0 + STALL_W]) {
-    plain(ctx, '#2e2840', (c) => c.rect(px - 3, top - 8, 6, floorY - top + 8));
-    plain(ctx, '#3a3450', (c) => c.rect(px - 3, top - 8, 1.5, floorY - top + 8));
-  }
-  const on = stall.open ? flick(t, 4) : 0;
-  // The fascia is a neon sign, painted LAST in each branch below: it makes its
-  // own light, so the room's shade must not fall over it.
-  const fascia = () => neonFascia(ctx, x0, top, STALL_W, FASCIA_H, stall, on, t);
-
-  const iy = top + FASCIA_H + 3, ix = x0 + 4, iw = STALL_W - 8;
-  if (stall.shell) {
-    // A tenant whose own counter is drawn by the hub (Dolores's repairs, Gary's
-    // pawn shop): the same unit — pilasters, fascia — over a dark interior,
-    // and the counter stands in it. Lit like an open stall: they are trading.
-    plain(ctx, '#1e1824', (c) => c.rect(ix, iy, iw, floorY - iy));
-    plain(ctx, '#2a2232', (c) => c.rect(ix, iy, iw, 2));
-    if (stall.board) drawPriceBoard(ctx, ix + 8, iy + 5, iw - 16, stall.board);
-    const own = typeof lit === 'function' ? (x) => Math.max(OPEN_SELF_LIT, lit(x)) : Math.max(OPEN_SELF_LIT, lit);
-    shadeWall(ctx, x0 - 3, top - 8, STALL_W + 6, floorY - top + 8, own);
-    glow(ctx, cx, top + FASCIA_H + 4, STALL_W * 0.6, 18, stall.box, 0.18 * on);
-    fascia();
-    return;
-  }
-  if (!stall.open) {
-    // The roller shutter, slats and a bottom rail.
-    plain(ctx, '#4a4c5a', (c) => c.rect(ix, iy, iw, floorY - iy));
-    for (let sy = iy + 3.2; sy < floorY; sy += 3.2) plain(ctx, '#3a3c48', (c) => c.rect(ix, sy, iw, 0.7));
-    plain(ctx, '#2e2e3a', (c) => c.rect(ix, floorY - 3, iw, 3));
-    plain(ctx, '#3a3648', (c) => c.rect(ix - 1, iy - 3, iw + 2, 3));
-    shadeWall(ctx, x0 - 3, top - 8, STALL_W + 6, floorY - top + 8, lit);
-    fascia();
-    return;
-  }
-  // Open and trading: a warm interior, the menu board, the counter.
-  plain(ctx, '#2a1e24', (c) => c.rect(ix, iy, iw, floorY - iy));
+export const MENU_BOARD_H = 45.5;
+// Also drawn blown-up when the board is tapped (hub), hence its own function.
+export function drawSmoothieMenuBoard(ctx, x, y, w, menu = null) {
   // The menu board: wide, five puns deep, every price in plugs, one of them
   // corrected in marker like Dolores's board was, and the small print under it.
-  const mb = { x: ix + 4, y: iy + 4, w: iw - 8, h: 45.5 };
+  const mb = { x, y, w, h: MENU_BOARD_H };
   plain(ctx, '#161022', (c) => c.rect(mb.x, mb.y, mb.w, mb.h));
   ctx.save(); ctx.globalAlpha = 0.16;
   plain(ctx, '#f6d33c', (c) => c.rect(mb.x + 1, mb.y + 1, mb.w - 2, mb.h - 2));
@@ -258,6 +222,165 @@ export function drawFoodStall(ctx, cx, floorY, stall, { t = 0, lit = 1, width = 
   stroke(ctx, '#e04848', 0.55, (c) => { c.moveTo(mb.x + mb.w - 5 - kw, ky); c.lineTo(mb.x + mb.w - 3, ky); });
   drawText(ctx, 'FREE!!', mb.x + mb.w - 26 - kw, ky - 3.4, '#48e0c8', 0.4, 'marker');
   drawTextCentered(ctx, 'ADD WHEATGRASS: +1 PLUG. ASK US WHY. WE DO NOT KNOW.', mb.x + mb.w / 2, mb.y + mb.h - 4.6, '#a8a8c0', 0.26, 'bold');
+}
+
+export const WOK_BOARD_H = 35;
+const WOK_MENU = [
+  { item: 'PEKING DUCK, TABLESIDE', price: '3 PLUGS' },
+  { item: 'CENTURY EGG', price: '2 PLUGS', note: 'AGED IN-HOUSE. AN ACTUAL CENTURY.' },
+  { item: 'MANCHU IMPERIAL FEAST', price: '5 PLUGS', note: '108 COURSES. ONE TRAY.' },
+  { item: 'WHOLE LOBSTER', price: 'MARKET PRICE' },
+];
+export const WOK_MENU_STYLES = ['A', 'B', 'C'];
+export const WOK_MENU_STYLE = 'B'; // shipped until Peter picks
+// WOK THIS WAY's menu hangs on the wall above the opening, so it is still up
+// when the roller is down. Three candidates (bake-off): A photo board, B taped
+// handwritten sheet, C neon. B fills the w x WOK_BOARD_H box; A and C were
+// drawn 30 tall and sit centred in it.
+export function drawWokMenuBoard(ctx, x, y, w, style = 'B') {
+  const H = style === 'B' ? WOK_BOARD_H : 30;
+  if (style !== 'B') y += (WOK_BOARD_H - H) / 2;
+  const fit = (str, sc, room) => Math.min(sc, room / Math.max(1, textWidth(str, 1, 'bold')));
+  if (style === 'A') {
+    // Backlit photo board gone to seed: six numbered tiles, five stickered SOLD OUT.
+    plain(ctx, '#1a1218', (c) => c.rect(x, y, w, H));
+    plain(ctx, '#c83a2e', (c) => c.rect(x, y, w, 3));
+    const tw = (w - 8) / 3, th = 11.5;
+    const food = ['#c8843c', '#8a5a2c', '#d8a040', '#a06030', '#b8742c', '#9a6a3a'];
+    for (let i = 0; i < 6; i++) {
+      const tx = x + 2 + (i % 3) * (tw + 2), ty = y + 5 + Math.floor(i / 3) * (th + 2.4);
+      plain(ctx, '#f0e4c4', (c) => c.rect(tx, ty, tw, th));
+      plain(ctx, food[i], (c) => { c.moveTo(tx + tw * 0.5 + th * 0.3, ty + th * 0.55); c.arc(tx + tw * 0.5, ty + th * 0.55, th * 0.3, 0, Math.PI); });
+      plain(ctx, '#f6d33c', (c) => c.rect(tx + tw * 0.3, ty + th * 0.3, tw * 0.4, 0.8));
+      drawText(ctx, String(i + 1), tx + 1, ty + 0.6, '#c83a2e', 0.32, 'bold');
+      if (i === 2) {
+        plain(ctx, '#161022', (c) => c.rect(tx + tw - 11.5, ty + th - 3.8, 11.5, 3.8));
+        drawText(ctx, '3 PLUGS', tx + tw - 11, ty + th - 3.3, '#f6d33c', 0.22, 'bold');
+      } else {
+        ctx.save(); ctx.translate(tx + tw / 2, ty + th / 2); ctx.rotate(-0.2);
+        plain(ctx, '#e04848', (c) => c.rect(-tw * 0.42, -2, tw * 0.84, 4));
+        drawTextCentered(ctx, 'SOLD OUT', 0, -1.4, '#ffffff', 0.26, 'bold');
+        ctx.restore();
+      }
+    }
+    return;
+  }
+  if (style === 'C') {
+    // A neon "menu" of one dish.
+    plain(ctx, '#0c0812', (c) => c.rect(x, y, w, H));
+    const col = '#ff5aa8';
+    glow(ctx, x + w / 2, y + H / 2, w * 0.55, H * 0.8, col, 0.18);
+    stroke(ctx, col, 0.7, (c) => rr(c, x + 1.5, y + 1.5, w - 3, H - 3, 2));
+    drawTextCentered(ctx, 'TODAY: THE WOK', x + w / 2, y + 4, '#48e0c8', fit('TODAY: THE WOK', 0.46, w - 12), 'bold');
+    drawTextCentered(ctx, 'PRICE: ASK THE WOK', x + w / 2, y + 12, '#f6d33c', fit('PRICE: ASK THE WOK', 0.4, w - 12), 'bold');
+    drawTextCentered(ctx, 'THE WOK IS ASLEEP', x + w / 2, y + 20, mix(col, INK, 0.35), fit('THE WOK IS ASLEEP', 0.34, w - 12), 'bold');
+    drawText(ctx, 'z', x + w - 9, y + 5, '#48e0c8', 0.3, 'bold');
+    drawText(ctx, 'z', x + w - 6, y + 2.6, '#48e0c8', 0.22, 'bold');
+    return;
+  }
+  // B: a sheet of paper taped up: a banquet menu, at a food-court wok, at
+  // food-court prices.
+  plain(ctx, '#e8e0c8', (c) => c.rect(x, y, w, H));
+  plain(ctx, '#c8bea0', (c) => c.rect(x, y + H - 1, w, 1));
+  const tp = (tx) => { ctx.save(); ctx.globalAlpha = 0.7; plain(ctx, '#d8d0a8', (c) => c.rect(tx, y - 1.4, 7, 3)); ctx.restore(); };
+  tp(x + 3); tp(x + w - 10);
+  const INKB = '#2a2a38', GREY = '#6a6470', RED = '#c83a2e', ms = 0.32, ns = 0.27;
+  // A row with a line of small print under it takes the extra height; one without does not.
+  let ry = y + 3;
+  WOK_MENU.forEach(({ item, price, note, marker, right }) => {
+    const pw = textWidth(price, ms, 'bold');
+    const is = Math.min(ms, (w - 12 - pw) / Math.max(1, textWidth(item, 1, 'bold')));
+    drawText(ctx, item, x + 4, ry + (ms - is) * 4.6, INKB, is, 'bold');
+    drawText(ctx, price, x + w - 4 - pw, ry, INKB, ms, 'bold');
+    if (note) {
+      const font = marker ? 'marker' : 'bold';
+      const nx = right ? x + w - 4 - textWidth(note, ns, font) : x + 4;
+      drawText(ctx, note, nx, ry + 3.6, marker ? RED : GREY, ns, font);
+    }
+    ry += note ? 7.4 : 5;
+  });
+  plain(ctx, '#b8ae94', (c) => c.rect(x + 4, ry + 0.6, w - 8, 0.4));
+  drawTextCentered(ctx, 'RESERVATIONS ESSENTIAL', x + w / 2, ry + 1.8, INKB, 0.3, 'bold');
+}
+
+// Dolores's NOW SERVING readout: she calls NEXT; nobody has taken a number in years.
+export function drawNowServing(ctx, x, y, w = 24, h = 22) {
+  plain(ctx, '#1e1a2c', (c) => c.rect(x, y, w, h));
+  plain(ctx, '#3a3450', (c) => c.rect(x, y, w, 0.8));
+  drawTextCentered(ctx, 'NOW', x + w / 2, y + 2.2, 'rgba(200,200,216,0.7)', 0.3, 'bold');
+  drawTextCentered(ctx, 'SERVING', x + w / 2, y + 5.6, 'rgba(200,200,216,0.7)', Math.min(0.3, (w - 4) / Math.max(1, textWidth('SERVING', 1, 'bold'))), 'bold');
+  drawTextCentered(ctx, '0', x + w / 2, y + 10.6, '#f6d33c', 0.78, 'bold');
+}
+
+// `lift`: how much taller the unit stands (phone portrait raises the wall posters; the unit rises
+// with them so the two share a top edge).
+export function drawFoodStall(ctx, cx, floorY, stall, { t = 0, lit = 1, width = STALL_W, menu = null, lift = 0 } = {}) {
+  const STALL_W = width;
+  const x0 = cx - STALL_W / 2, top = FASCIA_TOP - lift;
+  // The unit's two side pilasters, full height.
+  for (const px of [x0, x0 + STALL_W]) {
+    plain(ctx, '#2e2840', (c) => c.rect(px - 3, top - 8, 6, floorY - top + 8));
+    plain(ctx, '#3a3450', (c) => c.rect(px - 3, top - 8, 1.5, floorY - top + 8));
+  }
+  const on = stall.open ? flick(t, 4) : 0;
+  // The fascia is a neon sign, painted LAST in each branch below: it makes its
+  // own light, so the room's shade must not fall over it.
+  const fascia = () => neonFascia(ctx, x0, top, STALL_W, FASCIA_H, stall, on, t);
+
+  const iy = top + FASCIA_H + 3, ix = x0 + 4, iw = STALL_W - 8;
+  if (stall.shell) {
+    // A tenant whose own counter is drawn by the hub (Dolores's repairs, Gary's
+    // pawn shop): the same unit — pilasters, fascia — over a dark interior,
+    // and the counter stands in it. Lit like an open stall: they are trading.
+    plain(ctx, '#1e1824', (c) => c.rect(ix, iy, iw, floorY - iy));
+    plain(ctx, '#2a2232', (c) => c.rect(ix, iy, iw, 2));
+    const signW = stall.sign === 'serving' ? 26 : 0;
+    if (stall.board) drawPriceBoard(ctx, ix + 8, iy + 5, iw - 16 - signW, stall.board);
+    if (signW) drawNowServing(ctx, ix + iw - 8 - 24, iy + 5);
+    const own = typeof lit === 'function' ? (x) => Math.max(OPEN_SELF_LIT, lit(x)) : Math.max(OPEN_SELF_LIT, lit);
+    shadeWall(ctx, x0 - 3, top - 8, STALL_W + 6, floorY - top + 8, own);
+    glow(ctx, cx, top + FASCIA_H + 4, STALL_W * 0.6, 18, stall.box, 0.18 * on);
+    fascia();
+    return;
+  }
+  if (!stall.open) {
+    // Closed for the night: the roller stopped part-way (`shut`, default all the
+    // way), a heat lamp still on behind it, a pale sill across the opening.
+    // The wok's menu is fixed to the wall above the opening, so it stays up when the roller moves.
+    const wok = stall.menu === 'wok';
+    const ty = wok ? iy + WOK_BOARD_H + 6 : iy;
+    if (wok) {
+      plain(ctx, '#2a2634', (c) => c.rect(ix, iy, iw, ty - iy));
+      drawWokMenuBoard(ctx, ix + 6, iy + 3, iw - 12, stall.menuStyle || WOK_MENU_STYLE);
+    }
+    const gh = floorY - ty, rh = gh * (stall.shut ?? 1);
+    plain(ctx, '#0a0810', (c) => c.rect(ix, ty, iw, gh));
+    if (rh < gh) {
+      const pool = ctx.createLinearGradient(0, floorY, 0, ty);
+      pool.addColorStop(0, 'rgba(246,168,60,0.50)');
+      pool.addColorStop(0.28, 'rgba(246,168,60,0.26)');
+      pool.addColorStop(0.72, 'rgba(246,168,60,0.04)');
+      pool.addColorStop(1, 'rgba(246,168,60,0)');
+      ctx.save(); ctx.fillStyle = pool; ctx.fillRect(ix, ty, iw, gh); ctx.restore();
+      const fw = iw * 0.64;
+      ctx.save(); ctx.fillStyle = 'rgba(255,214,140,0.85)';
+      ctx.fillRect(cx - fw / 2, ty + rh + gh * 0.03, fw, Math.max(0.6, gh * 0.03));
+      ctx.restore();
+      const cy = floorY - 26;
+      plain(ctx, '#8a7a64', (c) => c.rect(ix - 1, cy - 2, iw + 2, 3));
+    }
+    plain(ctx, '#4a4c5a', (c) => c.rect(ix, ty, iw, rh));
+    for (let sy = ty + 3.2; sy < ty + rh - 3; sy += 3.2) plain(ctx, '#3a3c48', (c) => c.rect(ix, sy, iw, 0.7));
+    plain(ctx, '#2e2e3a', (c) => c.rect(ix, ty + rh - 3, iw, 3));
+    plain(ctx, '#3a3648', (c) => c.rect(ix - 1, iy - 3, iw + 2, 3));
+    shadeWall(ctx, x0 - 3, top - 8, STALL_W + 6, floorY - top + 8, lit);
+    fascia();
+    return;
+  }
+  // Open and trading: a warm interior, the menu board, the counter.
+  plain(ctx, '#2a1e24', (c) => c.rect(ix, iy, iw, floorY - iy));
+  const mb = { x: ix + 4, y: iy + 4, w: iw - 8, h: MENU_BOARD_H };
+  drawSmoothieMenuBoard(ctx, mb.x, mb.y, mb.w, menu);
   if (stall.tagline) {
     // A strapline under the name, in the gap between fascia and board.
     drawTextCentered(ctx, stall.tagline, cx, iy + 0.6, mix(stall.box, '#ffffff', 0.4), 0.3, 'bold');
@@ -503,7 +626,7 @@ export function drawFruitDisplay(ctx, x, y) {
 
 // Dolores's and Gary's units, signed the same way as the stalls.
 export const COUNTER_UNITS = {
-  bench: { name: "DOLORES' REPAIRS", box: '#e8b04a', ink: '#2a1c06', open: true, shell: true, board: {
+  bench: { name: "DOLORES' REPAIRS", box: '#e8b04a', ink: '#2a1c06', open: true, shell: true, sign: 'serving', board: {
     title: 'REPAIRS WHILE U WAIT', foot: 'ESTIMATES ARE ESTIMATES. WAITING IS EXTRA.',
     rows: [['HINGE REALIGNMENT', '2 PLUGS'], ['JOYSTICK DE-STICKING', '3 PLUGS'], ['FUSE, NEW (OLD)', '1 PLUG'],
       ['HAVE YOU TRIED UNPLUGGING IT', 'FREE'], ['FIXING WHAT GARY SOLD YOU', '5 PLUGS']],

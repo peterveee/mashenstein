@@ -147,6 +147,24 @@ function glassFront(g,x0,x1,top,bottom,{tint='rgba(190,225,236,0.14)',edges=true
   g.restore();
   if(edges)for(const u of [x0+0.6,x1-0.6])line(g,u,top,u,bottom,'rgba(235,250,252,0.85)',1.1);
 }
+// The way in: a frameless glass door at the left end of the front pane, hung on chrome patch
+// fittings at its hinge side, with a long chrome pull handle by its free edge and a hairline gap
+// where it meets the fixed glass.
+const DOOR_W=30;
+function glassDoor(g,x0,top,bottom){
+  const x=x0+3,x1=x+DOOR_W,h=bottom-top;
+  box(g,x,top+0.6,DOOR_W,h-1.2,'rgba(220,242,248,0.12)');
+  line(g,x1,top+0.6,x1,bottom-0.6,'rgba(30,40,60,0.45)',0.9);
+  line(g,x1+0.9,top+0.6,x1+0.9,bottom-0.6,'rgba(240,252,255,0.9)',0.6);
+  line(g,x,top+0.6,x,bottom-0.6,'rgba(240,252,255,0.7)',0.5);
+  // the patch fittings, top and bottom on the hinge side
+  for(const y of [top+0.6,bottom-3.4])box(g,x,y,6,2.8,'#c9ced8','rgba(40,36,50,0.6)',0.35);
+  // the pull: a long chrome bar on two stand-offs
+  const hx=x1-4.4,hy0=top+h*0.36,hy1=top+h*0.66;
+  for(const y of [hy0+2,hy1-2])line(g,hx-1.6,y,hx,y,'#9aa0ae',0.8);
+  line(g,hx,hy0,hx,hy1,'#7d8494',1.8);
+  line(g,hx-0.3,hy0+0.4,hx-0.3,hy1-0.4,'#eef0f4',0.6);
+}
 // The inside of a room seen through its front: ceiling, two side walls, floor and back wall in
 // one-point perspective, a wide window in the back wall, and `contents` drawn scaled onto the
 // far floor line.
@@ -242,6 +260,7 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
     }
     box(g,fx0,ft-2.4,fx1-fx0,2.4,P.frame||'#898594',P.ink,0.4);
     box(g,fx0,fb,fx1-fx0,1.4,'rgba(20,16,30,0.3)');
+    glassDoor(g,fx0,ft,fb);
   }else if(style==='frosted'){
     interior(g,x0,x1,top,bottom,f,P,contents,{cool:0.1});
     glassFront(g,x0,x1,top,bottom,{tint:'rgba(200,230,240,0.1)'});

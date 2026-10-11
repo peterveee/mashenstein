@@ -916,6 +916,25 @@ export function drawRoundButton(ctx, b, opts = {}) {
     ctx.closePath();
     ctx.stroke();
     ctx.fill();
+  } else if (icon === 'cog') {
+    // The settings cog: eight square teeth round a body, with a hole through it (even-odd fill).
+    const teeth = 8, ro = r * 0.46, rb = r * 0.34, rh = r * 0.14, half = Math.PI / teeth * 0.5;
+    ctx.beginPath();
+    for (let i = 0; i < teeth; i++) {
+      const a = (i / teeth) * Math.PI * 2;
+      const pts = [[a - half * 1.15, rb], [a - half * 0.7, ro], [a + half * 0.7, ro], [a + half * 1.15, rb]];
+      pts.forEach(([ang, rad], j) => {
+        const x = cx + Math.cos(ang) * rad, y = cy + Math.sin(ang) * rad;
+        if (i === 0 && j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      const next = ((i + 1) / teeth) * Math.PI * 2 - half * 1.15;
+      ctx.arc(cx, cy, rb, a + half * 1.15, next);
+    }
+    ctx.closePath();
+    ctx.moveTo(cx + rh, cy);
+    ctx.arc(cx, cy, rh, 0, Math.PI * 2, true);
+    ctx.stroke();
+    ctx.fill('evenodd');
   } else if (icon === 'pause') {
     const bh = r * 0.68, bw = r * 0.3, gap = r * 0.24, rad = r * 0.05;
     for (const bx of [cx - gap / 2 - bw, cx + gap / 2]) {

@@ -48,6 +48,9 @@ export const HUB_DISCS = [
   { id: 'hubLeft',  action: 'left',  cx: 40,  cy: 240, r: 22 },
   { id: 'hubRight', action: 'right', cx: 450, cy: 240, r: 22 },
 ];
+// The food court's pause button: the run's pause disc, on the picture's top-right corner. It
+// opens the pause settings (Escape does the same: input 'back' in the hub).
+export const HUB_PAUSE_DISC = { id: 'hubPause', action: 'back', cx: 450, cy: 19, r: 16 };
 // CSS px a thumb may land outside a disc and still be on it (input.js).
 export const DISC_SLOP = 6;
 // A margin thinner than this is fit rounding, not a place for a zone: on a
@@ -281,6 +284,11 @@ function hubList(fit) {
   const m = margins(fit);
   const discs = HUB_DISCS.map((d) => disc(d, fit));
   const r = discs[0].r;
+  // On a pillar or a notched phone the corner is not always on the picture: keep the disc inside
+  // the safe area, as the run's own pause is.
+  const pause = disc(HUB_PAUSE_DISC, fit);
+  pause.x = Math.min(pause.x, fit.vw - fit.safe.right - pause.r - RAIL_PAD);
+  pause.y = Math.max(pause.y, fit.safe.top + pause.r + RAIL_PAD);
   // A pillar wide enough to hold the arrow clear of its inset takes it (a wide
   // desktop window, an Android tablet); otherwise the arrow stays on the
   // picture where the run's discs are. On a Pro iPhone the pillar is 76pt and
@@ -314,7 +322,7 @@ function hubList(fit) {
   if (m.left) zones.push(zone('left', 'left', 0, 0, m.left, fit.vh));
   if (m.right) zones.push(zone('right', 'right', fit.vw - m.right, 0, m.right, fit.vh));
   zones.push(...bandZones(fit, m, 'left', 'right', 'left', 'right'));
-  return [...discs, ...zones];
+  return [pause, ...discs, ...zones];
 }
 
 // fit: { vw, vh, ox, oy, cssW, cssH, scale, safe:{top,right,bottom,left} } in

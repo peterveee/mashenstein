@@ -14,6 +14,17 @@ function ceiling(ctx, f, P) {
   if (f.floor === 'exec') {
     box(ctx, left - 2, top, f.W - left + 4, cy - top, P.ceil);
     box(ctx, -2, cy - 4, f.W + 4, 4, P.ceilDk, P.ink, LW);
+    // the ceiling plane above it, ruled toward the vanishing point like floor 23's grid, so the
+    // downlights have something to be set into
+    {
+      const S = f.floorPlane.shiftBottom, hc = (YH - cy) / FACTORS.wall;
+      const fy = (y) => (YH - y) / hc, f0 = fy(cy - 4), f1 = fy(top), T = 96;
+      const uA = S + VPX + (left - 20 - VPX) / f0, uB = S + VPX + (f.W + 20 - VPX) / f0;
+      ctx.beginPath();
+      for (let U = Math.floor(uA / T) * T; U < uB; U += T) { ctx.moveTo(xOf(U, S, f0), cy - 4); ctx.lineTo(xOf(U, S, f1), top); }
+      pen(ctx, 'rgba(255,190,226,0.1)', 0.5);
+      ctx.stroke();
+    }
     return;
   }
   // floor 23: the suspended grid, ruled toward the vanishing point
@@ -60,9 +71,73 @@ function flickerOn(t) {
 
 // `part`: 'all', or for floor 88's pendants 'glow' (the wedge and pool of lamplight, which the
 // furniture and workers stand in) and 'lamp' (the shades, which hang in front of everything).
+// Recessed downlights and the hanging pendants, all fixed to the ceiling plane. The plane above the
+// wall's top edge recedes in the same perspective as floor 23's grid, so a fixture mounted at a depth
+// on it sits up in the dark area. They are laid out in the WALL's own coordinates, down the middle
+// of the glass bays, so they scroll with the wall and never fall across a solid bay or a lift; two
+// downlights in three, every third a pendant. Flat fills only.
+// how far below the ceiling the pendant shades hang: low, over the furniture, as they first did
+const PENDANT_DROP = 84;
+const ROOMS_LIT_BY_DOWNLIGHTS = new Set(['meeting', 'boardroom']);
+function ceilingFixtures(f) {
+  if (!f.downs) return [];
+  const cy = f.ceilingY;
+  const hc = (YH - cy) / FACTORS.wall;
+  const yd = Math.max(f.roomTop ?? 0, cy - 11) + 0.5;
+  const k = (YH - yd) / hc / FACTORS.wall;
+  const P0 = f.downs.period, left = f.coverage?.left ?? 0, out = [];
+  // Only the wall's own lifts are avoided here: they scroll with the fixtures, so the choice never
+  // changes on screen. Lift lobbies and the CEO's suite stand nearer and move at their own rate;
+  // they are painted OVER the corridor downlights (ceilingLights) rather than culling them, which
+  // would make a light vanish mid-screen.
+  const blocked = (x) => f.wall.hangs.some((h) => h.kind === 'lift' && x > h.x - 20 && x < h.x + h.w + 20);
+  // The meeting rooms are lit by downlights ONLY: their stretch of ceiling gets a row of them and
+  // no pendant hangs there, whatever the corridor plan says.
+  const rooms = (f.landmarks || []).filter((l) => ROOMS_LIT_BY_DOWNLIGHTS.has(l.kind)).map((l) => [l.x, l.x + l.w]);
+  const inRoom = (x) => rooms.some(([a, b]) => x > a - 12 && x < b + 12);
+  for (const [a, b] of rooms) {
+    if (b < left - 60 || a > f.W + 60) continue;
+    const n = Math.max(3, Math.round((b - a) / 70));
+    for (let i = 0; i < n; i++) out.push({ x: a + ((i + 0.5) * (b - a)) / n, kind: 'd', yd, k, room: true });
+  }
+  for (const [u, kind] of f.downs.us) {
+    for (let n = Math.floor((f.wallShift + left - 60 - u) / P0); n <= Math.ceil((f.wallShift + f.W + 60 - u) / P0); n++) {
+      const x = u + n * P0 - f.wallShift;
+      if (x < left - 60 || x > f.W + 60 || blocked(x) || inRoom(x)) continue;
+      out.push({ x, kind, yd, k });
+    }
+  }
+  return out;
+}
+
+function downlights(ctx, f, fixtures) {
+  const cone = ['rgba(255,196,228,0.125)', 'rgba(255,220,240,0.14)'];
+  const pool = ['rgba(255,200,232,0.2)', 'rgba(255,230,244,0.3)'];
+  const y1 = MID_BASE;
+  for (const d of fixtures) {
+    if (d.kind !== 'd') continue;
+    const { x, yd, k } = d;
+    poly(ctx, [x - 3.4, yd, x + 3.4, yd, x + 26, y1, x - 26, y1], cone[0]);
+    poly(ctx, [x - 2.4, yd, x + 2.4, yd, x + 13, y1, x - 13, y1], cone[1]);
+    ell(ctx, x, y1 + 1.5, 28, 3.6, pool[0]);
+    ell(ctx, x, y1 + 1.5, 14, 1.9, pool[1]);
+    ell(ctx, x, yd, 6.6 * k, 1.9 * k, '#3a2a46', '#1b1625', 0.35);
+    ell(ctx, x, yd + 0.2, 5 * k, 1.3 * k, '#150f1e');
+    ell(ctx, x, yd + 0.3, 4 * k, 1 * k, '#fffbe8');
+  }
+}
+
+// The corridor's downlights, painted before the rooms and lift lobbies so those stand in front.
+function ceilingLights(ctx, f) {
+  downlights(ctx, f, ceilingFixtures(f).filter((d) => !d.room));
+}
+
 function lights(ctx, f, P, part = 'all') {
+  // the meeting rooms' own downlights light the room, so they go over its glass
+  if (part !== 'lamp') downlights(ctx, f, ceilingFixtures(f).filter((d) => d.room));
   for (const l of f.lights) {
-    if ((f.noLights || []).some(([a, b]) => l.x > a && l.x < b)) continue;
+    // the pendants hang in the foreground, nearer than any lift lobby, so nothing culls them
+    if (l.variant !== 'pendant' && (f.noLights || []).some(([a, b]) => l.x > a && l.x < b)) continue;
     // floor 23's strip lights are lit ceiling tiles, painted with the grid in ceiling()
     if (l.variant === 'tube') continue;
     if (l.variant === 'globe') {
@@ -86,7 +161,11 @@ function lights(ctx, f, P, part = 'all') {
       ell(ctx, l.x, fb + 2, 24, 2.4, 'rgba(255,224,242,0.22)');
     }
     if (part === 'glow') continue;
-    line(ctx, l.x, 0, l.x, y - 7, '#2a1a14', 0.5);
+    // the cord comes down from a canopy fixed to the ceiling: a flat ellipse of brass on the soffit
+    // and a short collar, then the cord to the shade
+    // the cord runs all the way up out of the top of the screen, no canopy: these hang in the
+    // foreground, nearer than the ceiling plane the downlights are set into
+    line(ctx, l.x, -40, l.x, y - 7, '#2a1a14', 0.5);
     ell(ctx, l.x, y + 1.2, 13, 4.6, 'rgba(255,214,236,0.18)');
     poly(ctx, [l.x - 2.4, y - 7, l.x + 2.4, y - 7, l.x + 8, y + 1, l.x - 8, y + 1], '#ff8fc0', P.ink, LWF);
     poly(ctx, [l.x - 2.4, y - 7, l.x - 1, y - 7, l.x - 4.4, y + 1, l.x - 8, y + 1], '#ffc2dc');
@@ -632,14 +711,44 @@ function sofa(g, it, P, exec) {
   const ink = P.inkM;
   shadowFoot(g, x, w, b);
   if (exec) {
-    // grey leather in a chrome cage
-    box(g, x + 2, b - 25, w - 4, 12, '#8e889a', ink, LWM);
-    line(g, x + w / 3, b - 25, x + w / 3, b - 13, ink, 0.4);
-    line(g, x + (2 * w) / 3, b - 25, x + (2 * w) / 3, b - 13, ink, 0.4);
-    box(g, x + 1, b - 14, w - 2, 7, '#9b95a8', ink, LWM);
-    box(g, x - 1, b - 22, 4, 15, '#8e889a', ink, LWM);
-    box(g, x + w - 3, b - 22, 4, 15, '#8e889a', ink, LWM);
-    lines(g, [x - 1.5, b - 7, x + w + 1.5, b - 7, x, b - 7, x, b, x + w, b - 7, x + w, b], P.chrome, 1);
+    // 80s boardroom lounge, the Grand Confort kind: oxblood leather cushions held in a polished
+    // chrome tube cage. Corporate, heavy, expensive; nothing candy coloured up here.
+    const [hide, hideDk, hideLt] = ['#6e2232', '#4c1522', '#a0475a'];
+    const chrome = P.chrome, chromeDk = '#7d8494';
+    // `seat: 'single'` is the armchair: one back cushion, one seat, the same cage
+    const n = it.seat === 'single' ? 1 : Math.max(2, Math.round((w - 16) / 26));
+    const cw = (w - 16) / n;
+    // back cushions, standing in a row
+    for (let i = 0; i < n; i++) {
+      const cx0 = x + 8 + i * cw;
+      rbox(g, cx0 + 0.4, b - 27, cw - 0.8, 15, 2.2, hide, ink, LWM);
+      line(g, cx0 + 2, b - 25.4, cx0 + cw - 2, b - 25.4, hideLt, 0.6);
+    }
+    // seat cushions
+    for (let i = 0; i < n; i++) {
+      const cx0 = x + 8 + i * cw;
+      rbox(g, cx0 + 0.4, b - 13, cw - 0.8, 7, 1.8, hide, ink, LWM);
+      line(g, cx0 + 2, b - 11.6, cx0 + cw - 2, b - 11.6, hideLt, 0.5);
+    }
+    // the arm cushions: square blocks of leather inside the cage
+    for (const ax of [x + 1, x + w - 8]) {
+      rbox(g, ax, b - 22, 7, 16, 1.6, hideDk, ink, LWM);
+      line(g, ax + 1.6, b - 20.6, ax + 1.6, b - 8, hide, 0.6);
+    }
+    // the chrome cage: a rail round the arms' tops and along the seat's foot, posts at the corners
+    lines(g, [
+      x, b - 22.6, x + 8.4, b - 22.6, x + w - 8.4, b - 22.6, x + w, b - 22.6,
+      x, b - 5.4, x + w, b - 5.4,
+      x + 0.3, b - 22.6, x + 0.3, b - 1, x + w - 0.3, b - 22.6, x + w - 0.3, b - 1,
+      x + 8.4, b - 22.6, x + 8.4, b - 5.4, x + w - 8.4, b - 22.6, x + w - 8.4, b - 5.4,
+    ], chromeDk, 1.4);
+    lines(g, [
+      x, b - 22.9, x + 8.4, b - 22.9, x + w - 8.4, b - 22.9, x + w, b - 22.9,
+      x, b - 5.7, x + w, b - 5.7,
+      x + 0.1, b - 22.6, x + 0.1, b - 1, x + w - 0.5, b - 22.6, x + w - 0.5, b - 1,
+    ], chrome, 0.6);
+    // little feet
+    for (const fx of [x - 0.6, x + w - 1.6]) box(g, fx, b - 1.2, 2.2, 1.2, '#1b1a22');
     return;
   }
   // Memphis seating: a slab back, a seat, drum arms, a grid cushion, in one of three
@@ -660,6 +769,18 @@ function sofa(g, it, P, exec) {
   grid(g, x + w * 0.58, b - 23, 12, 8, 2.4, '#f4f2f6', '#9f9ab0', 0.3);
   poly(g, [x + 6, b - 7, x + 9, b - 7, x + 4, b], '#1f1d26', ink, 0.3);
   poly(g, [x + w - 6, b - 7, x + w - 9, b - 7, x + w - 4, b], '#1f1d26', ink, 0.3);
+}
+// An 80s side table: a disc of smoked glass on a chrome pedestal, a heavy ashtray and a magazine.
+function sideTable(g, it, P) {
+  const { x, w } = it;
+  const b = MID_BASE;
+  const c = x + w / 2;
+  line(g, c, b - 14, c, b - 1.5, P.chrome, 1.4);
+  ell(g, c, b - 1, w * 0.4, 1, '#7d8494', P.inkM, 0.3);
+  ell(g, c, b - 15, w / 2 + 1, 1.8, 'rgba(60,52,78,0.85)', P.inkM, 0.4);
+  line(g, c - w / 2 + 2, b - 15.6, c, b - 15.6, 'rgba(255,255,255,0.45)', 0.5);
+  ell(g, c - 3, b - 16.6, 2.6, 0.9, '#c9ced8', P.inkM, 0.3);
+  box(g, c + 0.5, b - 17.4, 6, 1.4, '#f2e7d3', P.inkM, 0.3);
 }
 const SOFA_TONES = [
   ['#86d2c8', '#f2a9c6', '#f2e28a'], // teal back, pink seat, lemon arms
@@ -907,14 +1028,16 @@ function easel(g, x, P) {
   lines(g, [x + 3, b, x + 9, b - 52, x + 21, b, x + 15, b - 52, x + 12, b - 20, x + 12, b - 52], '#6a4a2e', 1);
   box(g, x, b - 50, 24, 30, '#e3dccb', ink, LWM);
   box(g, x - 1, b - 51.4, 26, 2.4, '#3d3f48', ink, 0.35);
-  lines(g, [x + 3, b - 46, x + 3, b - 24, x + 3, b - 24, x + 21, b - 24], '#3a5aa8', 0.5);
+  // the chart sits below a title big enough to read in passing
+  const cy = (dy) => b - 25.5 + (dy + 24) * 0.66;
+  lines(g, [x + 3, b - 40, x + 3, b - 25.5, x + 3, b - 25.5, x + 21, b - 25.5], '#3a5aa8', 0.5);
   g.beginPath();
-  g.moveTo(x + 4, b - 44);
-  [[7, -36], [10, -38], [12, -29], [15, -27], [17, -33], [21, -42]].forEach(([dx, dy]) => g.lineTo(x + dx, b + dy));
-  pen(g, '#c8433a', 0.7);
+  g.moveTo(x + 4, cy(-44));
+  [[7, -36], [10, -38], [12, -29], [15, -27], [17, -33], [21, -42]].forEach(([dx, dy]) => g.lineTo(x + dx, cy(dy)));
+  pen(g, '#c8433a', 0.8);
   g.stroke();
-  letters(g, 'VIBES', x + 12, b - 47, 1.8, { ink: '#3a5aa8', lw: 0.25, align: 'center', track: 0.2 });
-  letters(g, 'Q1 Q2 Q3 Q4', x + 12, b - 21, 1.3, { ink: '#3a5aa8', lw: 0.4, align: 'center' });
+  letters(g, 'VIBES', x + 12, b - 42.6, 5.2, { ink: '#2c4a96', lw: 0.7, align: 'center', track: 0.3 });
+  letters(g, 'Q1 Q2 Q3 Q4', x + 12, b - 21.6, 2.3, { ink: '#2c4a96', lw: 0.4, align: 'center' });
 }
 
 function execDesk(g, it, P) {
@@ -1040,6 +1163,7 @@ function paintMid(g, F, P, u0, u1, layer, selection = 'all') {
         case 'reception': reception(g, m, PP, 'front'); break;
         case 'turnstiles': turnstiles(g, m, PP); break;
         case 'sofa': sofa(g, m, PP, F.id === 'exec'); break;
+        case 'sidetable': sideTable(g, m, PP); break;
         case 'sculpture': sculpture(g, m, PP); break;
         case 'cooler': cooler(g, m, PP); break;
         case 'copier': copier(g, m, PP); break;
@@ -1167,4 +1291,4 @@ function midDevices(ctx, f, P) {
   }
 }
 
-export { chairFromBehind, ceiling, lights, globeGlint, floorPlane, sunPatches, slab, CHIP_P, CHIPS, chips, memphisRug, padded, BAKING, lampSheen, SKINS, HAIRS, STYLES, SHIRTS, personFor, head, shadowFoot, pot, leaf, plant, reception, turnstiles, sofa, sculpture, cubiclesBack, cubiclesFront, deskList, cooler, copier, cabinet, boardroomBack, boardroomFront, easel, execDesk, libGlobe, tallClock, paintMid, midActors, headset, midDevices };
+export { chairFromBehind, ceiling, ceilingLights, lights, globeGlint, floorPlane, sunPatches, slab, CHIP_P, CHIPS, chips, memphisRug, padded, BAKING, lampSheen, SKINS, HAIRS, STYLES, SHIRTS, personFor, head, shadowFoot, pot, leaf, plant, reception, turnstiles, sofa, sculpture, cubiclesBack, cubiclesFront, deskList, cooler, copier, cabinet, boardroomBack, boardroomFront, easel, execDesk, libGlobe, tallClock, paintMid, midActors, headset, midDevices };

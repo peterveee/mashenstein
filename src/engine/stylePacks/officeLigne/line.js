@@ -225,6 +225,9 @@ function textPath(str, x, y, size, o = {}) {
 export let OFFICE_FONT = "'Jost', 'Futura', 'Century Gothic', 'Trebuchet MS', system-ui, sans-serif";
 // Font bake-off only (gallery): swap the office's face. Baked layers keep what they were drawn in.
 export function setOfficeFont(stack) { const was = OFFICE_FONT; OFFICE_FONT = stack; return was; }
+// The default weight of the office's lettering; a call can still pass its own `weight`.
+export let OFFICE_WEIGHT = 400;
+export function setOfficeWeight(w) { const was = OFFICE_WEIGHT; OFFICE_WEIGHT = w; return was; }
 
 function letters(g, str, x, y, size, o = {}) {
   const fontSize = size * 1.18;
@@ -233,7 +236,7 @@ function letters(g, str, x, y, size, o = {}) {
   g.lineJoin = 'round';
   g.lineCap = 'round';
   g.save();
-  g.font = `${o.weight ?? 400} ${fontSize}px ${OFFICE_FONT}`;
+  g.font = `${o.weight ?? OFFICE_WEIGHT} ${fontSize}px ${OFFICE_FONT}`;
   g.textAlign = o.align ?? 'left';
   g.textBaseline = 'alphabetic';
   if ('letterSpacing' in g) {

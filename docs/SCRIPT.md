@@ -103,7 +103,7 @@ The load-bearing joke remains the relay rule: **only one hero can play at a time
 
 ---
 
-## THE STANDING SET — THE LAST FUNCTIONING FOOD COURT
+## THE STANDING SET — THE FOOD COURT
 
 *The hub. Side-scrolling walk-around. Returned to between every stage.*
 
