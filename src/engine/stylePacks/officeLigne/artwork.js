@@ -8,7 +8,8 @@ import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from './pr
 
 const COLLECTIONS={
   lobby:['sunrise','jazz','botanical','city','waves','mobile','vase','mountains'],
-  open:['fish','blueprint','jazz','portrait','mobile','waves','botanical','certificate'],
+  // floor 23's prints, with a sales chart or two sprinkled in
+  open:['fish','jazz','bars','portrait','line','waves','botanical','certificate'],
   exec:['mountains','portrait','constellation','vase','city','waves','botanical','sunrise'],
 };
 // Floor 23's walls carry the office's own motivational posters, out among the desks: each
@@ -181,8 +182,45 @@ export function officeArtworks(f){
  }
  return out.sort((a,b)=>a.x-b.x);
 }
-function motif(g,kind,seed,C){
+// Sales charts: white card, a title bar, axes, and the figures going (mostly) up.
+const CHART_TITLES={bars:['Q3 SALES','UNITS SHIPPED','REGIONAL TARGETS'],line:['GROWTH','REVENUE','SYNERGIES'],pie:['MARKET SHARE','TIME SPENT','BUDGET']};
+// `aspect` is the print's height over width: the motif is stretched to fill the mat, so a
+// pie's x radius is scaled back by it to stay round.
+function chart(g,kind,seed,aspect=1){
+ const ink='#2a2433',grid='#d9dbe3',cols=['#3f6fb5','#e2483e','#f2c94c','#4aa37a'];
+ box(g,0,0,100,100,'#fbfbf7');
+ const titles=CHART_TITLES[kind],title=titles[Math.floor(hash(seed+31)*titles.length)];
+ box(g,0,0,100,16,'#2f3a52');
+ letters(g,title,50,11.5,6.4,{ink:'#ffffff',lw:0.9,weight:600,align:'center',track:0.4});
+ if(kind==='pie'){
+  let a=-Math.PI/2;
+  [0.46,0.27,0.17,0.10].forEach((v,i)=>{
+   g.beginPath();g.moveTo(42,58);g.ellipse(42,58,28*aspect,28,0,a,a+v*Math.PI*2);g.closePath();
+   g.fillStyle=cols[i];g.fill();g.strokeStyle='#fbfbf7';g.lineWidth=1.4;g.stroke();a+=v*Math.PI*2;
+  });
+  for(let i=0;i<4;i++){box(g,78,36+i*12,7,7,cols[i]);line(g,88,39.5+i*12,96,39.5+i*12,'#9aa0ad',1.4);}
+  return;
+ }
+ for(let i=0;i<5;i++)line(g,14,30+i*14,94,30+i*14,grid,0.8);
+ line(g,14,24,14,88,ink,1.4);line(g,14,88,96,88,ink,1.4);
+ if(kind==='bars'){
+  const n=6;
+  for(let i=0;i<n;i++){
+   const h=18+i*8+hash(seed+i)*10;
+   box(g,19+i*12.6,88-h,8.5,h,i===n-1?cols[1]:cols[0]);
+  }
+  poly(g,[80,30,92,24,90,32],cols[1]);
+ }else{
+  const pts=[];
+  for(let i=0;i<8;i++)pts.push(16+i*11,80-i*6-hash(seed+i*3)*12+(i===5?14:0));
+  for(let i=0;i<pts.length-2;i+=2)line(g,pts[i],pts[i+1],pts[i+2],pts[i+3],cols[0],2.2);
+  for(let i=0;i<pts.length;i+=2)circ(g,pts[i],pts[i+1],1.8,'#fbfbf7',cols[0],1);
+  line(g,16,70,94,46,cols[1],1);
+ }
+}
+function motif(g,kind,seed,C,aspect=1){
  const [paper,a,b,c]=C;
+ if(CHART_TITLES[kind])return chart(g,kind,seed,aspect);
  box(g,0,0,100,100,paper);
  if(kind==='mountains'||kind==='sunrise'){
   circ(g,kind==='sunrise'?69:25,27,16,c);
@@ -313,7 +351,7 @@ export function paintOfficePrint(g,{x,y,w,h,seed,kind},floor,P){
   box(g,x+3,y+3,w-6,h-6,'#f4eddf',P.ink,.35);
   g.save();g.beginPath();g.rect(x+7,y+7,w-14,h-14);g.clip();
   g.translate(x+7,y+7);g.scale((w-14)/100,(h-14)/100);
-  motif(g,kind,seed,C);g.restore();
+  motif(g,kind,seed,C,(h-14)/(w-14));g.restore();
   line(g,x+1,y+1,x+w-1,y+1,'rgba(255,255,255,.55)',.7);
 }
 export const OFFICE_PRINTS=COLLECTIONS;

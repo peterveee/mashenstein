@@ -1,7 +1,7 @@
 // One-off occupied rooms behind the office corridor.
 import { MID_BASE, WALL_BASE } from '../officeClimb.js';
-import { box, line, poly, circ, ell, letters, textW } from './line.js';
-import { boardroomBack, midActors, sofa, plant, libGlobe } from './room.js';
+import { box, line, poly, circ, ell, letters, textW, YH, VPX } from './line.js';
+import { boardroomBack, chairFromBehind, midActors, sofa, plant, libGlobe } from './room.js';
 
 function caption(g,text,x,y,w,P){
   box(g,x,y,w,17,'#302c40',P.chrome,0.6);
@@ -12,10 +12,11 @@ function gagNote(g,text,x,y,w,P){
   box(g,x,y,w,14,'#f4ecd2',P.ink,0.45);
   letters(g,text,x+w/2,y+10,size,{ink:P.ink,lw:0.4,align:'center',track});
 }
-function sitters(g,xs,f,P,seed=20){
-  const chairs=xs.map((x,i)=>({x,sitter:true,seed:seed+i,nod:(Math.sin(f.t*0.7+i)+1)*0.08}));
-  boardroomBack(g,{},P,chairs);
+function sitters(g,xs,f,P,seed=20,away=false){
+  const chairs=xs.map((x,i)=>({x,sitter:true,seed:seed+i,away,nod:(Math.sin(f.t*0.7+i)+1)*0.08}));
+  if(!away)boardroomBack(g,{},P,chairs);
   midActors(g,{mid:{items:[{kind:'boardroom',chairs}]}},P);
+  if(away)for(const ch of chairs)chairFromBehind(g,ch,P);
 }
 function table(g,x,w,P){
   const b=MID_BASE;
@@ -75,9 +76,17 @@ function standingWhiteboard(g,x,y,P,{title='AGENDA',detail=['1. PLAN THE NEXT','
   for(const u of [x+9,x+w-9])circ(g,u,b-1,1.4,'#d1cdd1',P.ink,0.3);
 }
 
+// The glass-box rooms seat everyone on the near side of the table, facing the whiteboard on the
+// wall; the glass room of old faced them out at the corridor.
 function meetingPeople(g,l,f,P,{training,interview,c,b}){
-  const {x,w}=l;
+  const {x,w}=l,away=OFFICE_ROOM_STYLE!=='glass';
   const xs=interview?[c-47,c+47]:[c-73,c-24,c+24,c+73];
+  if(away){
+    table(g,x+42,w-84,P);
+    for(const px of xs){box(g,px-9,b-30,17,1.5,'#fffef1',P.ink,0.3);circ(g,px+12,b-31,2.5,'#d7b580',P.ink,0.3);}
+    sitters(g,xs,f,P,training?60:40,true);
+    return;
+  }
   sitters(g,xs,f,P,training?60:40);
   table(g,x+42,w-84,P);
   for(const px of xs){box(g,px-9,b-30,17,1.5,'#fffef1',P.ink,0.3);circ(g,px+12,b-31,2.5,'#d7b580',P.ink,0.3);}
@@ -105,15 +114,19 @@ function meetingContents(g,l,f,P,o){
 //   frosted  — the recess behind a frosted manifestation band, the room lit cooler than
 //              the corridor
 //   partition — a solid partition wall with a door and a deep internal window into the recess
-export const OFFICE_ROOM_STYLES=['glass','recess','box','frosted','partition'];
-// `?roomStyle=recess` previews a style in the real game.
+//   boxfrost  — B with its lower glass frosted from the table top down: the legs go away
+//   boxdesk   — B with a modesty panel down the front of the table: only the feet show
+export const OFFICE_ROOM_STYLES=['glass','recess','box','frosted','partition','boxfrost','boxdesk'];
+// Picked 12 Oct 2026: B2, the glass box frosted below the table (lightly). `?roomStyle=recess`
+// previews another style in the real game.
+const OFFICE_ROOM_PICK='boxfrost';
 let OFFICE_ROOM_STYLE=(()=>{
   const q=typeof location!=='undefined'?new URLSearchParams(location.search).get('roomStyle'):null;
-  return OFFICE_ROOM_STYLES.includes(q)?q:'glass';
+  return OFFICE_ROOM_STYLES.includes(q)?q:OFFICE_ROOM_PICK;
 })();
 export function setOfficeRoomStyle(style){
   const was=OFFICE_ROOM_STYLE;
-  OFFICE_ROOM_STYLE=OFFICE_ROOM_STYLES.includes(style)?style:'glass';
+  OFFICE_ROOM_STYLE=OFFICE_ROOM_STYLES.includes(style)?style:OFFICE_ROOM_PICK;
   return was;
 }
 export function officeRoomStyle(){return OFFICE_ROOM_STYLE;}
@@ -160,30 +173,79 @@ function interior(g,x0,x1,top,bottom,f,P,contents,{inset=16,floorH=10,k=0.82,coo
   g.restore();
   if(cool)box(g,x0,top,x1-x0,bottom-top,`rgba(70,110,150,${cool})`);
 }
-function roomWithDepth(g,l,f,P,style,contents){
+// how much nearer the glass box's front stands than the wall, as a perspective scale
+const BOX_DEPTH=1.3;
+// A whiteboard fixed to a wall, as wide as it is given: frame, surface, bold title and two lines,
+// and a marker tray along the foot.
+function wallWhiteboard(g,x,y,w,h,P,{title,detail}){
+  box(g,x+1.4,y+1.8,w,h,'rgba(40,36,50,0.18)');
+  box(g,x,y,w,h,'#51505b',P.ink,0.8);
+  box(g,x+3,y+3,w-6,h-6,'#fffef9',P.ink,0.3);
+  const ts=Math.min(16,h*0.26);
+  whiteboardText(g,title,x+w/2,y+h*0.3,ts,w-24,'#202733',700);
+  for(let i=0;i<detail.length;i++)whiteboardText(g,detail[i],x+w/2,y+h*0.58+i*ts*0.85,ts*0.72,w-28,'#4a5360',600);
+  box(g,x+w*0.2,y+h-1,w*0.6,3,'#7d8490',P.ink,0.4);
+  for(const [u,col] of [[0.3,'#2f6fd0'],[0.36,'#e2483e'],[0.42,'#2a8a4a']])box(g,x+w*u,y+h-2.6,7,1.8,col);
+}
+export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
   const {x,w}=l,top=f.ceilingY+(f.floor==='open'?14:8)+(MID_BASE-WALL_BASE),bottom=MID_BASE;
   const x0=x,x1=x+w;
   if(style==='recess'){
     interior(g,x0,x1,top,bottom,f,P,contents);
     glassFront(g,x0,x1,top,bottom);
     box(g,x0,top,w,2.2,P.frame||'#898594',P.ink,0.4);
-  }else if(style==='box'){
-    // the people sit on the wall line; the glass box's front stands 10px further out
-    const d=10,fx0=x0-6,fx1=x1+6,fb=bottom+d;
-    box(g,x0,top,w,bottom-top,'rgba(205,220,232,0.25)');
-    g.save();g.translate(0,0);contents();g.restore();
-    poly(g,[x0,bottom,x1,bottom,fx1,fb,fx0,fb],'rgba(150,170,190,0.35)',P.ink,0.4);
-    poly(g,[x0,top,fx0,top-3,fx0,fb,x0,bottom],'rgba(200,232,240,0.3)');
-    poly(g,[x1,top,fx1,top-3,fx1,fb,x1,bottom],'rgba(170,205,220,0.35)');
-    for(const [a,b2] of [[x0,fx0],[x1,fx1]]){line(g,a,top,b2,top-3,'rgba(235,250,252,0.9)',1);line(g,a,bottom,b2,fb,'rgba(235,250,252,0.9)',1);}
-    glassFront(g,fx0,fx1,top-3,fb);
-    box(g,fx0,top-5,fx1-fx0,2.4,P.frame||'#898594',P.ink,0.4);
-    box(g,fx0-2,fb,fx1-fx0+4,1.6,'rgba(20,16,30,0.3)');
+  }else if(style==='box'||style==='boxfrost'||style==='boxdesk'){
+    // A real box in the room's one-point perspective. Its back is the wall opening; its front is
+    // the same rectangle a little nearer: scaled about the vanishing point by BOX_DEPTH, exactly
+    // as the floor tiles are (line.js xOf/yOfF), so its feet stay on the floor and its front
+    // slides at the speed of the floor beneath it. The people sit halfway in.
+    const vy=YH+(MID_BASE-WALL_BASE);
+    const at=(k)=>(px,py)=>[VPX+(px-VPX)*k,vy+(py-vy)*k];
+    const F=at(BOX_DEPTH),M=at((1+BOX_DEPTH)/2);
+    const [fx0,ft]=F(x0,top),[fx1,fb]=F(x1,bottom);
+    const glassSide='rgba(200,232,240,0.28)',edge='rgba(235,250,252,0.9)';
+    // the floor inside, the back wall glass, then the far side pane
+    poly(g,[x0,bottom,x1,bottom,fx1,fb,fx0,fb],'rgba(150,170,190,0.28)');
+    box(g,x0,top,w,bottom-top,'rgba(205,220,232,0.22)');
+    if(backWall)backWall(top,bottom);
+    const nearLeft=(x0+x1)/2>VPX; // the side facing the vanishing point is the one we look into
+    // a side pane, and with B2 its frosting from the table top down, running round from the front
+    const frostY=bottom-24,[,ffy]=F(x0,frostY);
+    const side=(bx,fx)=>{
+      poly(g,[bx,top,fx,ft,fx,fb,bx,bottom],glassSide);
+      if(style==='boxfrost'){
+        poly(g,[bx,frostY,fx,ffy,fx,fb,bx,bottom],'rgba(244,247,251,0.6)');
+        line(g,bx,frostY,fx,ffy,'rgba(255,255,255,0.95)',0.8);
+        line(g,bx,frostY+2.2,fx,ffy+2.2,'rgba(160,180,200,0.6)',0.5);
+      }
+    };
+    side(nearLeft?x1:x0,nearLeft?fx1:fx0);
+    g.save();
+    g.translate(VPX,vy);g.scale((1+BOX_DEPTH)/2,(1+BOX_DEPTH)/2);g.translate(-VPX,-vy);
+    contents();
+    if(style==='boxdesk'){
+      const tx=x0+42,tw=w-84;
+      box(g,tx+1,bottom-23.5,tw-2,19.5,f.floor==='exec'?'#5a4636':'#d9c193',P.ink,0.5);
+    }
+    g.restore();
+    side(nearLeft?x0:x1,nearLeft?fx0:fx1);
+    // the edges where the panes meet: along the floor and ceiling, and up each corner
+    for(const [bx,fx] of [[x0,fx0],[x1,fx1]]){line(g,bx,top,fx,ft,edge,0.9);line(g,bx,bottom,fx,fb,edge,0.9);}
+    glassFront(g,fx0,fx1,ft,fb);
+    if(style==='boxfrost'){
+      // frosted from the table top down, with a crisp pinstripe at its edge
+      const fy=ffy;
+      box(g,fx0,fy,fx1-fx0,fb-fy-0.6,'rgba(244,247,251,0.6)');
+      line(g,fx0,fy,fx1,fy,'rgba(255,255,255,0.95)',0.8);
+      line(g,fx0,fy+2.2,fx1,fy+2.2,'rgba(160,180,200,0.6)',0.5);
+    }
+    box(g,fx0,ft-2.4,fx1-fx0,2.4,P.frame||'#898594',P.ink,0.4);
+    box(g,fx0,fb,fx1-fx0,1.4,'rgba(20,16,30,0.3)');
   }else if(style==='frosted'){
     interior(g,x0,x1,top,bottom,f,P,contents,{cool:0.1});
     glassFront(g,x0,x1,top,bottom,{tint:'rgba(200,230,240,0.1)'});
     // the frosted band at seated eye level, with a pinstripe either side
-    const fy=bottom-46;
+    const fy=bottom-30;
     box(g,x0,fy,w,13,'rgba(246,248,252,0.72)');
     line(g,x0,fy-1.5,x1,fy-1.5,'rgba(246,248,252,0.8)',0.6);
     line(g,x0,fy+14.5,x1,fy+14.5,'rgba(246,248,252,0.8)',0.6);
@@ -191,10 +253,10 @@ function roomWithDepth(g,l,f,P,style,contents){
   }else{
     // partition: an opening with a deep reveal into the recessed room, and a door
     const T=ROOM_TONES[f.floor]||ROOM_TONES.open,wallC=f.floor==='exec'?'#3a2f48':'#e6e0ea';
-    const door=34,ox0=x0+12,ox1=x1-door-22,oy0=top+12,oy1=bottom-34;
+    const door=34,ox0=x0+12,ox1=x1-door-22,oy0=top+12,oy1=bottom-16;
     box(g,x0,top,w,bottom-top,wallC,P.ink,0.6);
     g.save();g.beginPath();g.rect(ox0,oy0,ox1-ox0,oy1-oy0);g.clip();
-    interior(g,ox0-20,ox1+20,oy0-12,bottom,f,P,contents,{inset:18,floorH:8,k:0.8});
+    interior(g,ox0-20,ox1+20,oy0-12,bottom,f,P,contents,{inset:18,floorH:8,k:0.86});
     g.restore();
     // the reveal: the thickness of the wall round the opening
     poly(g,[ox0,oy0,ox1,oy0,ox1-4,oy0+4,ox0+4,oy0+4],T.dark);
@@ -252,8 +314,14 @@ export function paintExtraOfficeRoom(g,l,f,P){
     const training=kind==='training',interview=kind==='interview',executive=kind==='meeting'&&f.floor==='exec';
     const upperMeeting=kind==='meeting'&&f.floor!=='lobby';
     if(OFFICE_ROOM_STYLE!=='glass'){
-      roomWithDepth(g,l,f,P,OFFICE_ROOM_STYLE,()=>meetingContents(g,l,f,P,{training,interview,executive,upperMeeting,c,b}));
-      if(training)caption(g,'MANDATORY TRAINING',c-111,58,222,P);
+      const o={training,interview,executive,upperMeeting,c,b};
+      roomWithDepth(g,l,f,P,OFFICE_ROOM_STYLE,()=>meetingPeople(g,l,f,P,o),(top,bottom)=>{
+        // the whiteboard is fixed to the back wall and fills it, above the heads
+        const title=training?'HOW TO LOOK BUSY':interview?'HR REVIEW':executive?'EXECUTIVE ALIGNMENT':'AGENDA';
+        const detail=training?['ATTENDANCE IS','THE GOAL']:interview?['WHERE DO YOU SEE','YOURSELF IN 5 YEARS?']
+          :executive?['DECISION DEFERRED','FOLLOW UP NEXT QUARTER']:['1. PLAN THE NEXT','MEETING'];
+        wallWhiteboard(g,x+14,top+8,w-28,bottom-top-56,P,{title,detail});
+      });
       return true;
     }
 

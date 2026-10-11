@@ -46,7 +46,7 @@ import { PIT_FLOOR, PIT_APRON_DEPTH, fillSurface } from './pitFill.js';
 import { HERO_BY_ID, heroShoots } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
-import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
+import { CABINET_BY_ID, CABINETS, cabinetForStage } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, SNAKE_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { plumberBarnAtCamFor, plumberBarnFracAt, getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
@@ -4409,7 +4409,9 @@ export class RunState {
       });
     } else {
       this.spawner = new Spawner({
-        cabinet: this.cabinet,
+        // The stage's own bank: Corporate Kombat deals a different floor's
+        // furniture on each of its three stages (data/cabinets.js).
+        cabinet: cabinetForStage(this.cabinet, this.stage?.index),
         rng: this.rng.stream('spawn'),
         tierMax: this.overtime ? 2 : Math.min(2, (this.stage ? this.stage.index - 1 : 0) + (this.cabinet.act - 1)),
         react,

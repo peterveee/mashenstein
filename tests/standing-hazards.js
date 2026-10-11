@@ -24,7 +24,7 @@ const { OBSTACLES, DEBRIS, makeObstacle } = await import('../src/game/entities.j
 const {
   hasProp, propSprite, propFrames, propTall, propDetailScale, propHazardRim,
 } = await import('../src/sprites/props.js');
-const { CABINETS } = await import('../src/data/cabinets.js');
+const { CABINETS, CABINET_BY_ID, cabinetForStage } = await import('../src/data/cabinets.js');
 const { worstJumpApex } = await import('../src/game/spawner.js');
 
 let failed = false;
@@ -102,7 +102,12 @@ assert(carries('plumber', 'popSpikes') && carries('plumber', 'floorSaw'),
   'Plumber gets the two floor traps — its ground game was two things that stand UP');
 assert(carries('crypt', 'brazier'), 'Crypt gets the brazier: the dark cabinet gets the lit hazard');
 assert(carries('speed', 'fireBarrel'), 'Speed gets the drum fire, beside its puntable cones');
-assert(carries('office', 'fireBarrel'), 'Corporate gets the bin fire');
+// Corporate Kombat dresses each slot per floor (data/cabinets.js OFFICE_FLOORS):
+// its fire is an ash urn in the lobby, the bin fire on 23, the confidential bin on 88.
+const floorCarries = (floor, type) => cabinetForStage(CABINET_BY_ID.office, floor).patterns
+  .some((p) => p.cells.some((c) => c.t === type));
+assert(floorCarries(1, 'ashUrnFire') && floorCarries(2, 'binFire') && floorCarries(3, 'confidentialBin'),
+  'Corporate gets a fire on every floor — urn, bin, confidential papers');
 // The Act I spread: the floor hazards stopped being one cabinet's private
 // vocabulary. Each line here is a variety decision — losing one narrows a
 // stage back down to the bag it had before the rebalance.
@@ -171,9 +176,12 @@ for (const id of HAZARDS) {
   assert(carries('speed', 'boomBarrier') && carries('neon', 'boomBarrier')
     && carries('plumber', 'boomBarrier'),
     'all three Act I cabinets deal the hurdle — the short jump recurs across themes');
-  assert(carries('rhythm', 'boomBarrier') && carries('cardboard', 'boomBarrier')
-    && carries('office', 'boomBarrier'),
-    'and the barrier travels on — crossing gate, toll gate, car park');
+  assert(carries('rhythm', 'boomBarrier') && carries('cardboard', 'boomBarrier'),
+    'and the barrier travels on — crossing gate, toll gate');
+  // Corporate Kombat keeps the short jump in its own furniture: a velvet rope in
+  // the lobby, spilled drawing pins on 23, a gold rope on 88.
+  assert(floorCarries(1, 'velvetRope') && floorCarries(2, 'drawingPins') && floorCarries(3, 'velvetRopeGold'),
+    'and Corporate keeps the short jump on every floor, dressed for it');
   // FROST IS THE EXCEPTION, and deliberately so: the ice deals its own hazard
   // instead. A striped gate on the snow was the one pattern in that bank that
   // could have come from any cabinet, and the bear trap does the same short

@@ -266,17 +266,30 @@ export function drawFoodStall(ctx, cx, floorY, stall, { t = 0, lit = 1, width = 
   plain(ctx, '#5a4c3e', (c) => c.rect(ix, cy, iw, 26));
   plain(ctx, '#8a7a64', (c) => c.rect(ix - 1, cy - 2, iw + 2, 3));
   plain(ctx, mix(stall.box, INK, 0.2), (c) => c.rect(ix, cy + 7, iw, 4));
-  // The chiller, cups lined up behind the glass in the fruit colours.
-  ['#f590c8', '#f6d33c', '#9fd86a', '#f08a3c'].forEach((band, k) => cupIcon(ctx, ix + 16 + k * 9, cy - 6, 0.7, '#e8e0d0', band));
-  ctx.save(); ctx.globalAlpha = 0.25;
-  plain(ctx, '#cfe4f0', (c) => c.rect(ix + 9, cy - 13, 40, 11));
+  // The chiller: a glass-fronted cabinet sat on the counter, cups lined up on
+  // its shelf so they read as stock behind glass, not loose cups. Kept narrow
+  // so the fruit basket beside it stays clear.
+  const chL = ix + 8, chW = 30, chT = cy - 17;
+  plain(ctx, '#1c2630', (c) => c.rect(chL, chT, chW, 15));
+  plain(ctx, '#2e4050', (c) => c.rect(chL + 1, chT + 1, chW - 2, 3));
+  plain(ctx, '#8a9aa8', (c) => c.rect(chL + 1, cy - 3.6, chW - 2, 1.2));
+  ['#f590c8', '#f6d33c', '#9fd86a', '#f08a3c'].forEach((band, k) => cupIcon(ctx, chL + 6 + k * 7, cy - 6.6, 0.7, '#e8e0d0', band));
+  ctx.save(); ctx.globalAlpha = 0.22;
+  plain(ctx, '#cfe4f0', (c) => c.rect(chL + 1, chT + 1, chW - 2, 13));
+  ctx.globalAlpha = 0.35;
+  stroke(ctx, '#ffffff', 0.5, (c) => { c.moveTo(chL + 4, chT + 12); c.lineTo(chL + 9, chT + 2); });
   ctx.restore();
+  // Frame, a lit cap, and a cold-light LED.
+  plain(ctx, '#b8c4cc', (c) => c.rect(chL - 1, chT - 1.6, chW + 2, 1.8));
+  plain(ctx, '#ecf4f8', (c) => c.rect(chL - 1, chT - 1.6, chW + 2, 0.4));
+  plain(ctx, '#6a7884', (c) => { c.rect(chL - 1, chT, 1.4, 15); c.rect(chL + chW - 0.4, chT, 1.4, 15); });
+  plain(ctx, '#48e0c8', (c) => c.rect(chL + chW - 4, chT - 1.1, 2.4, 0.7));
   // The fruit display: what goes in the cups, out on the counter to sell it.
   drawFruitDisplay(ctx, ix + 56, cy - 0.5);
   // Five blenders lined up on the back shelf, under the menu board, mid-shift:
   // four full in the fruit colours (one still frothing), one rinsed and empty.
-  // The shelf they stand on: a lit top surface, a thick front edge, and two
-  // brackets down to the wall, so it reads as a shelf with weight on it.
+  // The shelf they stand on: a lit top surface, a thick front edge, no
+  // brackets: it floats.
   // Kept to the left half of the unit: the till end on the right is where an
   // operator would stand, so nothing on the shelf may sit behind them.
   const shY = cy - 22, shL = ix + 6, shR = ix + 6 + 5 * 11 + 6;
@@ -284,9 +297,6 @@ export function drawFoodStall(ctx, cx, floorY, stall, { t = 0, lit = 1, width = 
   plain(ctx, '#8a7864', (c) => c.rect(shL, shY, shR - shL, 2.6));
   plain(ctx, '#d8c8b0', (c) => c.rect(shL, shY, shR - shL, 0.4));
   plain(ctx, '#1a1418', (c) => c.rect(shL, shY + 2.6, shR - shL, 1.2));
-  for (const bx of [shL + 6, shR - 6]) {
-    plain(ctx, '#8a8a98', (c) => { c.moveTo(bx - 1.2, shY + 2.6); c.lineTo(bx + 1.2, shY + 2.6); c.lineTo(bx + 1.2, shY + 9); c.closePath(); });
-  }
   [['#f590c8', 0], ['#9fd86a', 1], ['#f08a3c', 2], ['#b07ad8', 3], [null, 4]].forEach(([fill, k]) => {
     drawBlender(ctx, shL + 8 + k * 11, cy - 22, fill, k, t);
   });

@@ -194,6 +194,77 @@ const ICE_PATTERNS = BASE_PATTERNS.map((pattern) => ({
 // (src/dev/pit-candidates.js — it throws no light, so it costs a bright cabinet
 // nothing). Name one per cabinet as the sheet is settled; 'none' opts a cabinet
 // back out to an open break.
+// CORPORATE KOMBAT, FLOOR BY FLOOR (12 Oct 2026). The climb's three stages are
+// three floors of one tower (stylePacks/officeLigne), and since the obstacle
+// bake-off each floor deals its own furniture — nothing that already stands in
+// that floor's backdrop (Peter: "i want to avoid items that are in the
+// background in level 2"). OFFICE_BANK is written in the lane's shared
+// vocabulary; OFFICE_FLOORS renames its cells per floor. Every floor type copies
+// the box, flags and answer of the hazard it replaces (game/entities.js), so the
+// tiers, gaps and coin lines are exactly the bank's. A pattern with nothing to
+// rename keeps its identity — which the peel's once-group and the Surge's
+// dedup both rely on.
+const OFFICE_BANK = [
+  ...ANIMALS.office,
+  ...BASE_PATTERNS.filter((p) => p.tier > 0),
+  P(0, [{ t: 'chair', dx: 0 }]),
+  P(0, [{ t: 'printer', dx: 0 }]),
+  P(1, [{ t: 'chair', dx: 0 }, { t: 'printer', dx: 110 }]),
+  P(1, [{ t: 'paperwork', dx: 0 }]),
+  P(2, [{ t: 'printer', dx: 0 }, { t: 'paperwork', dx: 90 }, coinArc(140)]),
+  P(2, [{ t: 'chair', dx: 0 }, { t: 'chair', dx: 120 }]),
+  // The fire: an ash urn in the lobby, a bin fire on floor 23, the
+  // CONFIDENTIAL papers going up on 88 — the warm read in a pastel room.
+  P(1, [{ t: 'fireBarrel', dx: 0 }]),
+  P(2, [{ t: 'fireBarrel', dx: 0 }, { t: 'paperwork', dx: 90 }]),
+  // Target supply: office-2's mission is DESTROY 5 HOSTILE SHREDDERS (the
+  // printer berths, on floor 23), and it was running off a three-pattern
+  // stock. Two more berths keep the mission's clock honest without the
+  // spawner needing to know about it.
+  P(1, [{ t: 'printer', dx: 0 }, coinLine(50)]),
+  P(2, [{ t: 'printer', dx: 0 }, { t: 'printer', dx: 130 }]),
+  // The short jump Act III gets (see OBSTACLES.boomBarrier): a velvet rope
+  // in the lobby, spilled drawing pins on 23, a gold rope on 88.
+  P(1, [{ t: 'boomBarrier', dx: 0 }]),
+  P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'chair', dx: 130 }]),
+  // The peel by the coffee point (see PEEL_ONCE for the cap and the group):
+  // its one Act III shape, so the gag can land in the back third of the
+  // campaign without waiting for Surge's union.
+  P(1, [{ t: 'chair', dx: 0 }, { t: 'bananaPeel', dx: 76 }], { once: true, onceGroup: 'peel' }),
+];
+
+const OFFICE_FLOORS = {
+  // 8-1, the lobby at 9am: the cleaner's round and the morning deliveries.
+  1: {
+    cactus: 'wetFloorSign', cactusBig: 'waterDolly', crate: 'newsBundle',
+    chair: 'mopBucket', barrel: 'mopBucket', fireBarrel: 'ashUrnFire', boomBarrier: 'velvetRope',
+    drone: 'artMobile', paperwork: 'artMobile', buzzbird: 'pigeon',
+    // No target on the lobby: its printer berths stand a wet floor sign instead.
+    printer: 'wetFloorSign',
+  },
+  // 8-2, floor 23 at noon: admin, filing, and somebody's birthday. The printer
+  // berths are the shredders office-2's mission counts.
+  2: {
+    cactus: 'coatStand', cactusBig: 'snackMachine', crate: 'archiveBox',
+    chair: 'mailCart', barrel: 'mailCart', fireBarrel: 'binFire', boomBarrier: 'drawingPins',
+    drone: 'birthdayBunting', paperwork: 'birthdayBunting', buzzbird: 'partyBalloon',
+    printer: 'shredder',
+  },
+  // 8-3, floor 88 at dusk: money.
+  3: {
+    cactus: 'founderBust', cactusBig: 'officeSafe', crate: 'briefcase',
+    chair: 'drinksTrolley', barrel: 'drinksTrolley', fireBarrel: 'confidentialBin', boomBarrier: 'velvetRopeGold',
+    drone: 'chandelier', paperwork: 'chandelier', buzzbird: 'champagneCork',
+    printer: 'founderBust',
+  },
+};
+
+const OFFICE_BY_FLOOR = Object.fromEntries(Object.entries(OFFICE_FLOORS).map(([floor, swap]) => [floor,
+  OFFICE_BANK.map((pattern) => (pattern.cells.some((c) => swap[c.t])
+    ? { ...pattern, cells: pattern.cells.map((c) => (swap[c.t] ? { ...c, t: swap[c.t] } : c)) }
+    : pattern)),
+]));
+
 export const CABINETS = [
   {
     id: 'plumber', name: 'FIELD SERVICE', act: 1, style: 'pixel',
@@ -950,37 +1021,16 @@ export const CABINETS = [
   {
     id: 'office', name: 'CORPORATE KOMBAT', act: 3, style: 'office',
     unlockPlugs: 34, speedBonus: 0.3125,
-    mechanic: 'meetings', // printers, chairs, paperwork
+    mechanic: 'meetings', // floor-by-floor furniture: see OFFICE_FLOORS
     sky: ['#f5d7ed', '#cbe7e8'], ground: '#d6a7ba', groundDark: '#654c68',
     far: '#b9b2d2', hills: '#789da4',
     music: OFFICE.bank,
-    patterns: [
-      ...ANIMALS.office,
-      ...BASE_PATTERNS.filter((p) => p.tier > 0),
-      P(0, [{ t: 'chair', dx: 0 }]),
-      P(0, [{ t: 'printer', dx: 0 }]),
-      P(1, [{ t: 'chair', dx: 0 }, { t: 'printer', dx: 110 }]),
-      P(1, [{ t: 'paperwork', dx: 0 }]),
-      P(2, [{ t: 'printer', dx: 0 }, { t: 'paperwork', dx: 90 }, coinArc(140)]),
-      P(2, [{ t: 'chair', dx: 0 }, { t: 'chair', dx: 120 }]),
-      // A bin fire in the office, which is the joke and also the read: Corporate
-      // Kombat's lane is all pale greys, and this is the only warm thing in it.
-      P(1, [{ t: 'fireBarrel', dx: 0 }]),
-      P(2, [{ t: 'fireBarrel', dx: 0 }, { t: 'paperwork', dx: 90 }]),
-      // Printer supply: office-2's mission is DESTROY 5 PRINTERS, and it was
-      // running off a three-pattern stock. Two more berths keep the mission's
-      // clock honest without the spawner needing to know about it.
-      P(1, [{ t: 'printer', dx: 0 }, coinLine(50)]),
-      P(2, [{ t: 'printer', dx: 0 }, { t: 'printer', dx: 130 }]),
-      // The parking hurdle — the office finally guards its own car park, and
-      // Act III gets the short jump (see OBSTACLES.boomBarrier).
-      P(1, [{ t: 'boomBarrier', dx: 0 }]),
-      P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'chair', dx: 130 }]),
-      // The peel in the cafeteria (see PEEL_ONCE for the cap and the group):
-      // its one Act III shape, so the gag can land in the back third of the
-      // campaign without waiting for Surge's union.
-      P(1, [{ t: 'chair', dx: 0 }, { t: 'bananaPeel', dx: 76 }], { once: true, onceGroup: 'peel' }),
-    ],
+    // The bank is written once in the lane's shared vocabulary and dressed per
+    // floor (OFFICE_FLOORS, above). `patterns` is floor 23 — the office as the
+    // Surge samples it and as anything stage-blind reads it — and the run deals
+    // the stage's own floor through cabinetForStage().
+    patterns: OFFICE_BY_FLOOR[2],
+    floorPatterns: OFFICE_BY_FLOOR,
     taunt: 'THIS MEETING COULD HAVE BEEN AN EMAIL. THE EMAIL IS ALSO A TRAP.',
   },
   {
@@ -1083,6 +1133,19 @@ const FT_DROP_BASE = {
 export const FINALE_THEME = FINALE.bank;
 
 export const CABINET_BY_ID = Object.fromEntries(CABINETS.map((c) => [c.id, c]));
+
+// The cabinet as a stage deals it: a cabinet whose stages are different places
+// (Corporate Kombat's floors) carries `floorPatterns`, and the stage's own bank
+// replaces `patterns`. Everything else is the cabinet itself. Memoised, so a
+// stage always gets the same object back.
+const stageCabinets = new Map();
+export function cabinetForStage(cabinet, stageIndex) {
+  const patterns = cabinet?.floorPatterns?.[stageIndex];
+  if (!patterns || patterns === cabinet.patterns) return cabinet;
+  const key = `${cabinet.id}:${stageIndex}`;
+  if (!stageCabinets.has(key)) stageCabinets.set(key, { ...cabinet, patterns });
+  return stageCabinets.get(key);
+}
 
 // THE SURGE remixes every other cabinet: its bank is the union of all their
 // patterns (BASE_PATTERNS included once, not nine times). Without this the

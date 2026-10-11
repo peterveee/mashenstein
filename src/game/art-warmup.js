@@ -14,6 +14,7 @@
 // point is to never be the reason a frame is late — including the frames of the
 // screens it runs behind.
 import { OBSTACLES, PICKUPS } from './entities.js';
+import { cabinetForStage } from '../data/cabinets.js';
 import {
   hasProp, propFrames, propSprite, propRimPair, propTall, propHazardRim,
   propCacheStats, evictPropsExcept,
@@ -118,7 +119,8 @@ export function beginStageArtWarmup(cabinet, stageIndex = 1) {
   queuedStage = stageIndex;
   const changed = builtFor !== id;
   builtFor = id;
-  queue = [...backdropJobs(cabinet, stageIndex), ...stageJobs(cabinet)];
+  // The stage's own bank: Corporate Kombat's floors each deal their own furniture.
+  queue = [...backdropJobs(cabinet, stageIndex), ...stageJobs(cabinetForStage(cabinet, stageIndex))];
   cursor = 0;
   if (changed && propCacheStats().residentBytes > CACHE_BUDGET_BYTES) {
     // Keep what this stage is about to ask for; everything else was the last

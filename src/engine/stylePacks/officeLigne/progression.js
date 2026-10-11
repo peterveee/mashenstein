@@ -1,9 +1,9 @@
 // Ordinary architecture repeats; named rooms are finite, stage-relative places.
 import { OFFICE_FLOORS, FACTORS, OFFICE_ZOOM, WALL_BASE, MID_BASE, LANE_TOP } from '../officeClimb.js';
 import { box, line, poly, circ, ell, letters, OFFICE_FONT, PAL, YH, VPX, canvas } from './line.js';
-import { ceoDoor, founderPortrait, trophyCase, bookshelf, lobbyLogo, signNeon, lobbyWallBay, openWallBay, execPanels, revolvingDoor } from './wall.js';
-import { reception, midActors, plant, sculpture, boardroomBack, boardroomFront, easel } from './room.js';
-import { glassMeetingRoom, paintExtraOfficeRoom } from './rooms.js';
+import { ceoDoor, founderPortrait, trophyCase, bookshelf, lobbyLogo, signNeon, lobbyWallBay, openWallBay, execPanels, lobbyLift, steelLift, liftDoors } from './wall.js';
+import { reception, midActors, plant, sculpture, boardroomBack, boardroomFront, easel, chairFromBehind } from './room.js';
+import { glassMeetingRoom, paintExtraOfficeRoom, officeRoomStyle, roomWithDepth } from './rooms.js';
 import { PROFESSOR_PLAN } from './professorArt.js';
 
 // Furniture must travel with the floor directly under its feet. The furniture and the workers are
@@ -93,14 +93,17 @@ function officeLandmarkRate(floor,kind){
   const base=officeLandmarkBase(floor,kind);
   return ((base-YH)/(LANE_TOP-YH))*OFFICE_ZOOM;
 }
+// The lift block's width: the pair of 1.2x lifts with their surrounds and the call panel.
+const LIFT_BAY=136;
 export const OFFICE_ITINERARIES={
   // Ground floor serves visitors; staff facilities belong above reception.
-  lobby:[['entrance',0.06,230],['reception',0.23,340],['cafe',0.39,280],
-    ['lounge',0.68,280],['lobbyLifts',0.94,112]],
-  open:[['lift',0.02,112],['training',0.23,270],['meeting',0.40,270],
-    ['lift',0.50,112],['canteen',0.59,210],['interview',0.78,270]],
-  exec:[['lift',0.04,112],['meeting',0.12,270],['boardroom',0.32,360],['lounge',0.52,320],
-    ['lift',0.62,112],['library',0.72,270],['secretary',0.82,160],['ceo',0.94,400]],
+  // In through the revolving door, past reception, to the lifts; then the visitors' lobby.
+  lobby:[['entrance',0.03,230],['reception',0.11,340],['lobbyLifts',0.2,LIFT_BAY],
+    ['cafe',0.45,280],['lounge',0.78,280]],
+  open:[['lift',0.02,LIFT_BAY],['training',0.23,270],['meeting',0.40,270],
+    ['lift',0.50,LIFT_BAY],['canteen',0.59,210],['interview',0.78,270]],
+  exec:[['lift',0.04,LIFT_BAY],['meeting',0.12,270],['boardroom',0.32,360],['lounge',0.52,320],
+    ['lift',0.62,LIFT_BAY],['library',0.72,270],['secretary',0.82,160],['ceo',0.94,400]],
 };
 // A wall section's span: the window bay nearest its itinerary place, in the wall's absolute
 // coordinates (screen x = u - wall shift). Two sections never share a bay.
@@ -136,7 +139,8 @@ function officePlaces(floor,totalDist){
         // The whole window run becomes plain wall, so no window, sill or radiator is ever cut
         // part-way; the place itself sits in the middle of it.
         const {u0,u1}=best;
-        section={u0,u1};
+        // the entrance keeps its glass: the revolving door stands in the curtain wall
+        section=kind==='entrance'?{u0,u1,glass:true}:{u0,u1};
         w=Math.min(w,u1-u0);
         worldX=((u0+u1)/2-112)/rate;
       }else worldX=Math.max(worldX,lastX+1); // a stage too short to clear a bay for it
@@ -162,9 +166,13 @@ export function officeLandmarks(floor,camX,totalDist){
 // way along (professorArt.js), in the wall's own absolute coordinates, and the spans the named
 // rooms cover, which no picture may hang under. Endless runs have no length, so no plan.
 const PLAN_CACHE=new Map();
-// The window run nearest the middle of the view when the hero crosses the finish line, cleared
+// The window run the hero passes just before the finish line, cleared
 // to plain wall for the founder (lobby and floor 23 only), clear of every other section.
-const OFFICE_FINISH_FOUNDER=new Set(['lobby','open']),OFFICE_FINISH_SCREEN_X=280;
+// (screen x at the moment of finishing: the hero stands at 112, so the portrait is passed just
+// before the line, in full view on the run up to it)
+// how far the lift block stands out of the wall, as a perspective scale (rooms' glass box: 1.3)
+const LIFT_DEPTH=1.18;
+const OFFICE_FINISH_FOUNDER=new Set(['lobby','open']),OFFICE_FINISH_SCREEN_X=40,OFFICE_FINISH_CLEAR=420;
 export function officeFinishWall(floor,totalDist){
   if(!OFFICE_FINISH_FOUNDER.has(floor)||!Number.isFinite(totalDist)||totalDist<=0)return null;
   const def=OFFICE_CORRIDORS[floor].wall,per=def.period;
@@ -172,7 +180,8 @@ export function officeFinishWall(floor,totalDist){
   const used=officePlaces(floor,totalDist).filter(p=>p.section).map(p=>[p.section.u0,p.section.u1]);
   let best=null;
   for(let j=Math.floor(target/per)-1;j<=Math.floor(target/per)+1;j++)for(const b of def.bays){
-    if(b.type!=='glass')continue;
+    // any stretch at least as wide as a piece and its margins: a window run is cleared to wall
+    if(b.u1-b.u<110)continue;
     const u0=b.u+j*per,u1=b.u1+j*per;
     if(used.some(([a,c])=>u1>a&&u0<c))continue;
     const d=Math.abs((u0+u1)/2-target);
@@ -192,12 +201,14 @@ export function officeFounderPlan(floor,totalDist){
       // on the lobby and floor 23 the last piece hangs alone on a stretch of wall in full view
       // of the finish line
       finish:finish&&{...finish,id:PROFESSOR_PLAN[floor].at(-1)[0]},
+      // and nothing else hangs anywhere near it
       // the wall that sections, rooms and lifts cover (at camera 0 screen x is wall x)
       avoid:officeLandmarks(floor,0,totalDist).filter(l=>l.section||officeStandsOut(l.kind))
         // the CEO suite has the founder's own portrait: no other picture beside it
         // (a room or lift covers only its own front, and a lift its pot plants)
         .map(l=>OFFICE_NEAR_LIFT_LANDMARKS.has(l.kind)?[l.x-42,l.x+l.w+58]:officeStandsOut(l.kind)?[l.x-14,l.x+l.w+14]
-          :[l.section.u0-(l.kind==='ceo'?130:0),l.section.u1+(l.kind==='ceo'?130:0)]),
+          :[l.section.u0-(l.kind==='ceo'?130:0),l.section.u1+(l.kind==='ceo'?130:0)])
+        .concat(finish?[[finish.u0-OFFICE_FINISH_CLEAR,finish.u1+OFFICE_FINISH_CLEAR]]:[]),
       // each cleared window run and the part of it its place actually covers (a lift with its
       // pot plants, a room's front, or all of a built-in)
       walls:officeLandmarks(floor,0,totalDist).filter(l=>l.section).map(l=>({u0:l.section.u0,u1:l.section.u1,
@@ -327,8 +338,10 @@ function facade(g,l,f,P){
     for(const u of [x+6,x+w-22])pilaster(g,u,top+1,b,P);
   }else if(glassRoom){
     // Frameless glazing (rooms.js): only a slim ceiling track and the room's shadow on the floor.
-    box(g,x,top,w,2.2,P.frame||'#898594',P.ink,0.4);
-    box(g,x,MID_BASE-1.2,w,1.2,'rgba(30,24,40,0.25)');
+    if(officeRoomStyle()==='glass'){
+      box(g,x,top,w,2.2,P.frame||'#898594',P.ink,0.4);
+      box(g,x,MID_BASE-1.2,w,1.2,'rgba(30,24,40,0.25)');
+    }
   }else{
     // Glazed room partitions and a low coloured wall replace the grand portico.
     box(g,x+6,151,w-12,b-151,l.kind==='canteen'?'#b1d3bd':f.floor==='exec'?'#282235':'#b9cdd1');
@@ -340,6 +353,42 @@ function facade(g,l,f,P){
     poly(g,[x,b,x+w,b,x+w+9,MID_BASE,x-9,MID_BASE],P.slab||'#aaa4bc',P.ink,0.6);
     line(g,x-9,MID_BASE,x+w+9,MID_BASE,P.brass||'#e4daca',1);
   }
+}
+
+// The lobby's revolving door, standing in the curtain wall: a glass drum under a plain steel
+// canopy, four glass wings with steel rails turning on a steel post.
+function revolvingEntrance(g,c,b,turn,P){
+  // brushed steel, as in the LIGNE '89 bake-off
+  const brass='#c9ced8',brassDk='#8e94a2',frame='#34313f';
+  const R=30,top=96,y0=top+14,y1=b-3;
+  // the curtain wall's glass and the street show through the drum
+  ell(g,c,y1,R+2,3.4,'rgba(60,64,80,0.45)',P.ink,0.4);
+  const wings=[0,1,2,3].map(q=>{const a=turn*Math.PI+q*Math.PI/2;return {x:Math.cos(a)*(R-1),z:Math.sin(a)};});
+  // Each wing's shade follows how far round it has turned (z: +1 at the back, -1 at the front),
+  // so the steel lightens and the glass clears smoothly instead of flipping as it passes the post.
+  const steel=(t)=>{const k=(1-t)/2,m=(a,b)=>Math.round(a+(b-a)*k);return `rgb(${m(142,201)},${m(148,206)},${m(162,216)})`;};
+  const wing=(wg)=>{
+    const x1=c+wg.x,lo=Math.min(c,x1),wd=Math.abs(x1-c),near=(1-wg.z)/2,col=steel(wg.z);
+    if(wd>0.6){
+      box(g,lo,y0+2,wd,y1-y0-5,`rgba(${Math.round(200+30*near)},${Math.round(225+23*near)},${Math.round(235+17*near)},${(0.22+0.13*near).toFixed(3)})`);
+      line(g,lo,y0+2,lo+wd,y0+2,col,1.2);
+      box(g,lo,y1-9,wd,6,col);
+      line(g,lo,(y0+y1)/2,lo+wd,(y0+y1)/2,col,1.4);
+      if(wd>9&&near>0.5)line(g,lo+wd*0.3,y0+18,lo+wd*0.65,y0+44,`rgba(255,255,255,${(0.75*(near-0.5)*2).toFixed(3)})`,0.8);
+    }
+    line(g,x1,y0+1,x1,y1-2,col,2);
+  };
+  wings.sort((a,b)=>b.z-a.z);
+  for(const wg of wings)if(wg.z>=0)wing(wg);
+  box(g,c-1.6,y0,3.2,y1-y0,brassDk,P.ink,0.35);
+  for(const wg of wings)if(wg.z<0)wing(wg);
+  // the curved glass of the drum: a faint tint, bright edges, a soft sheen
+  box(g,c-R,y0,R*2,y1-y0,'rgba(215,242,248,0.14)');
+  for(const [u,a] of [[-R+3,0.75],[R-3,0.55],[-R*0.45,0.35]])line(g,c+u,y0+2,c+u,y1-4,`rgba(255,255,255,${a})`,1);
+  line(g,c-R,y0,c-R,y1,frame,1.6);line(g,c+R,y0,c+R,y1,frame,1.6);
+  // a plain steel canopy over the drum
+  box(g,c-R-4,top,R*2+8,11,'#d3d7df',P.ink,0.6);
+  line(g,c-R-4,top+9,c+R+4,top+9,'#9aa0ad',0.7);
 }
 
 // The 80s lift lobby's brushed-steel bin: a tall cylinder with a dark mouth near the top, a
@@ -356,7 +405,7 @@ function ashtray(g,cx,P){
   for(let k=0;k<4;k++)line(g,x+1.5+k*2.6,b-h-1.4,x+2.5+k*2.6,b-h+0.2,'#8b919c',0.3);
   box(g,x-0.4,b-1.8,w+0.8,1.8,'#1f1d26',P.ink,0.3);
 }
-function foregroundLift(g,l,P,floorNumber,ceilingY,open=0){
+function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open'){
   // A narrow floor-to-ceiling wall bay makes the compact lift read as part of
   // the building. Its furniture cut matches the bay, so corridor props do not
   // show through the foreground structure.
@@ -372,40 +421,23 @@ function foregroundLift(g,l,P,floorNumber,ceilingY,open=0){
   line(g,x+w-11,wallTop+10,x+w-11,bottom-9,wallTrim,0.55);
   line(g,x+2,bottom-2,x+w-2,bottom-2,P.ink,0.8);
 
-  box(g,c-20,87,40,9,'#292834',P.ink,0.65);
-  letters(g,'LIFT',c,94,4.2,{ink:'#f3eee0',lw:0.5,align:'center',track:0.25});
-  box(g,c-10,98,20,9,'#1b2028',P.ink,0.55);
-  letters(g,String(floorNumber),c,105,6,{ink:'#8fd8cf',lw:0.8,align:'center'});
-
-  box(g,left-3,top-2,72,bottom-top+2,'#383744',P.ink,0.9);
-  box(g,left+3,top+4,60,bottom-top-8,'#aeb3bd',P.ink,0.6);
-  box(g,left+7,top+12,52,bottom-top-20,'#30313b',P.ink,0.5);
-  const dt=top+13,dh=bottom-top-22,slide=25*open;
-  if(open>0.01){
-    // the lit car behind the doors: a warm back wall, a handrail and a floor
-    box(g,left+8,dt,50,dh,'#efe2bf');
-    box(g,left+8,dt,50,4,'#fff6d8');
-    for(const u of [left+20,left+33,left+46])line(g,u,dt+4,u,dt+dh-6,'#d9c79c',0.5);
-    line(g,left+10,dt+dh*0.55,left+56,dt+dh*0.55,'#b9a477',1);
-    box(g,left+8,dt+dh-5,50,5,'#8a7a62');
-  }
-  // the two door leaves slide apart into the frame
+  // A bank of two lifts in the floor's own LIGNE '89 dress (wall.js: the lobby's lacquer
+  // ziggurats with Memphis doors, floor 23's steel, floor 88's wood), drawn a fifth larger than
+  // the wall-strip originals. The first stands open and closes as the hero arrives.
+  const s=1.2,lw=36,lh=82;
   g.save();
-  g.beginPath();g.rect(left+8,dt,50,dh);g.clip();
-  box(g,left+8-slide,dt,25,dh,'#c7cbd2',P.ink,0.55);
-  box(g,left+33+slide,dt,25,dh,'#b7bcc6',P.ink,0.55);
-  line(g,left+10-slide,dt+5,left+10-slide,bottom-12,'#eef0f2',0.45);
-  line(g,left+56+slide,dt+5,left+56+slide,bottom-12,'#e8eaed',0.45);
+  g.translate(c,bottom);g.scale(s,s);g.translate(-c,-WALL_BASE);
+  const lifts=[{x:c-lw-10,open},{x:c+10,open:0}].map(q=>({kind:'lift',x:q.x,y:WALL_BASE-lh,w:lw,h:lh,label:String(floorNumber),open:q.open,buttons:false}));
+  for(const h of lifts){
+    if(floor==='lobby')lobbyLift(g,h,P);else steelLift(g,h,P,floor==='exec');
+  }
+  liftDoors(g,{floor,wall:{hangs:lifts}},P);
+  // one call panel for the pair, on the wall between them
+  const py=WALL_BASE-lh*0.54,plate=floor==='exec'?(P.brass||'#d1bc78'):floor==='lobby'?(P.chrome||'#d7dbe3'):(P.steelLt||'#e8ebf1');
+  box(g,c-3.5,py,7,13,plate,P.ink,0.5);
+  circ(g,c,py+3.6,1.3,floor==='lobby'?'#ff6fae':'#f6ecd0',P.ink,0.3);
+  circ(g,c,py+9.2,1.3,floor==='lobby'?'#2fbcb0':'#f6ecd0',P.ink,0.3);
   g.restore();
-  if(open<=0.01)line(g,c,dt,c,bottom-9,'#535662',0.75);
-  line(g,left+10,bottom-11,left+56,bottom-11,'#f2f3f5',0.45);
-
-  const bx=left+68,by=148;
-  box(g,bx,by,10,22,'#292a35',P.ink,0.5);
-  circ(g,bx+5,by+6,2.1,'#eee8d8',P.ink,0.35);
-  poly(g,[bx+5,by+4.6,bx+3.8,by+6.1,bx+6.2,by+6.1],'#606174');
-  circ(g,bx+5,by+16,2.1,'#eee8d8',P.ink,0.35);
-  poly(g,[bx+3.8,by+15.9,bx+6.2,by+15.9,bx+5,by+17.4],'#606174');
 }
 
 // A built-in is the back wall itself: the floor's own solid wall bay painted over the window
@@ -445,17 +477,82 @@ function wallSection(g,l,f,P){
   g.drawImage(c,x0-2,top,span+4,WALL_BASE-top+2);
 }
 
-// The executive suite is set back into the wall: a soffit across the top of the opening, the
-// inner side wall on the side away from the vanishing point, and a sill of floor at its foot.
-function recess(g,l,f){
-  const span=l.section.u1-l.section.u0,x0=l.x+l.w/2-span/2,x1=x0+span;
-  const top=officeUnderBulkhead(f),bottom=WALL_BASE,shade='rgba(14,10,24,0.42)';
-  const left=x0+span/2<VPX,edge=left?x0:x1,d=Math.max(4,Math.min(12,Math.abs(edge-VPX)*0.04));
-  poly(g,[x0,top,x1,top,x1-(left?0:d),top+7,x0+(left?d:0),top+7],shade);
-  poly(g,left?[x0,top,x0+d,top+7,x0+d,bottom-2,x0,bottom]:[x1,top,x1-d,top+7,x1-d,bottom-2,x1,bottom],shade);
-  line(g,x0,top,x1,top,'#120d1c',1);
-  for(const x of [x0,x1])line(g,x,top,x,bottom,'#120d1c',1);
-  box(g,x0,bottom-2,span,2,'rgba(255,214,236,0.18)');
+// The executive suite stands out of the wall as a solid block, as far as the meeting-room boxes:
+// its front is the suite's panelled wall scaled about the vanishing point by CEO_DEPTH, with the
+// side wall that faces us joining it to the wall. Floor to ceiling, like the lifts. Leaves the
+// front's transform in place for the suite's contents.
+const CEO_DEPTH=1.3;
+// The boss gets no office wainscot: black lacquer veined in gold, a brass Deco cornice stepped
+// over the middle, fluted gold pilasters at the corners and a polished black marble plinth.
+function bossFacade(g,x0,x1,top,bot){
+  const gold='#d7b975',goldDk='#927041',goldLt='#ffe9b0',w=x1-x0,c=(x0+x1)/2;
+  box(g,x0,top,w,bot-top,'#17121f');
+  // a faint marble veining, fixed to the suite so it never shimmers
+  for(let i=0;i<9;i++){
+    const vx=x0+w*((i*0.37)%1),vy=top+(bot-top)*((i*0.53)%1);
+    line(g,vx,vy,vx+28,vy+46,'rgba(215,185,117,0.16)',0.7);
+    line(g,vx+28,vy+46,vx+20,vy+80,'rgba(215,185,117,0.1)',0.6);
+  }
+  // diagonal sheen bands
+  for(const u of [0.18,0.62])poly(g,[x0+w*u,top,x0+w*u+26,top,x0+w*u-34,bot,x0+w*u-60,bot],'rgba(255,255,255,0.035)');
+  // the stepped brass cornice
+  box(g,x0,top,w,6,goldDk,'#1f1d26',0.5);
+  box(g,x0,top+5,w,2,gold);
+  for(let k=0;k<3;k++)box(g,c-90+k*16,top+7+k*4,180-k*32,4,k%2?goldDk:gold,'#1f1d26',0.4);
+  // fluted gold pilasters at the corners
+  for(const px of [x0+4,x1-16]){
+    box(g,px,top+7,12,bot-top-15,'#2a2232','#1f1d26',0.5);
+    for(let k=0;k<3;k++)line(g,px+3+k*3,top+12,px+3+k*3,bot-12,k===1?goldLt:gold,0.7);
+    box(g,px-2,top+7,16,4,gold,'#1f1d26',0.4);
+    box(g,px-2,bot-12,16,4,gold,'#1f1d26',0.4);
+  }
+  // the plinth: polished black marble with a gold edge
+  box(g,x0,bot-8,w,8,'#0e0b13','#1f1d26',0.5);
+  line(g,x0,bot-8,x1,bot-8,gold,1);
+  line(g,x0,bot-5,x1,bot-5,'rgba(255,233,176,0.25)',0.5);
+}
+function ceoBlock(g,l,f,P){
+  const F=OFFICE_CORRIDORS[f.floor],span=l.section.u1-l.section.u0,x0=l.x+l.w/2-span/2,x1=x0+span;
+  const top=f.ceilingY,bot=WALL_BASE,k=CEO_DEPTH;
+  const T=(px,py)=>[VPX+(px-VPX)*k,YH+(py-YH)*k];
+  // the side walls carry the facade round: lacquer, the brass cornice, gold flutes and the
+  // marble plinth, all in the side's own perspective
+  const gold='#d7b975',goldDk='#927041';
+  for(const ex of [x0,x1]){
+    const at=(t,y)=>{const [fx,fy]=T(ex,y);return [ex+(fx-ex)*t,y+(fy-y)*t];};
+    const band=(y0,y1,fill)=>{const a=at(0,y0),b=at(1,y0),c2=at(1,y1),d=at(0,y1);poly(g,[...a,...b,...c2,...d],fill);};
+    const seg=(t0,y0,t1,y1,col,lw)=>{const a=at(t0,y0),b=at(t1,y1);line(g,a[0],a[1],b[0],b[1],col,lw);};
+    band(top,bot,'#120e19');
+    band(top,top+7,goldDk);
+    seg(0,top+6,1,top+6,gold,1);
+    for(const t of [0.3,0.55,0.8])seg(t,top+12,t,bot-12,gold,0.7);
+    band(bot-8,bot,'#0b0910');
+    seg(0,bot-8,1,bot-8,gold,1);
+    const [fx,ft]=T(ex,top),[,fb]=T(ex,bot);
+    poly(g,[ex,top,fx,ft,fx,fb,ex,bot],null,P.ink,0.6);
+  }
+  g.translate(VPX,YH);g.scale(k,k);g.translate(-VPX,-YH);
+  g.save();
+  g.beginPath();g.rect(x0,top,span,bot-top);g.clip();
+  bossFacade(g,x0,x1,top,bot);
+  g.restore();
+  box(g,x0,top,span,bot-top,null,P.ink,0.8);
+}
+
+// Screen spans of the lift blocks' fronts: no ceiling light hangs over a lift.
+export function officeLiftSpans(f){
+  const out=[];
+  for(const l of f.landmarks||[]){
+    if(l.kind==='ceo'&&l.section){
+      const span=l.section.u1-l.section.u0,a=l.x+l.w/2-span/2;
+      out.push([VPX+(a-VPX)*CEO_DEPTH-24,VPX+(a+span-VPX)*CEO_DEPTH+24]);
+      continue;
+    }
+    if(!OFFICE_NEAR_LIFT_LANDMARKS.has(l.kind))continue;
+    const k=LIFT_DEPTH;
+    out.push([VPX+(l.x-VPX)*k-24,VPX+(l.x+l.w-VPX)*k+24]);
+  }
+  return out;
 }
 
 // The cleared stretches of wall, painted with the wall itself, before anything hangs on it.
@@ -464,7 +561,7 @@ export function paintOfficeWallSections(g,f){
   const extra=fin?[{x:fin.u0-f.wall.shift,w:fin.u1-fin.u0,section:fin}]:[];
   for(const l of [...(f.landmarks||[]),...extra]){
     // glass rooms keep the building's windows behind them
-    if(!l.section||OFFICE_FORWARD_LANDMARKS.has(l.kind))continue;
+    if(!l.section||l.section.glass||(OFFICE_FORWARD_LANDMARKS.has(l.kind)&&officeRoomStyle()==='glass'))continue;
     const span=l.section.u1-l.section.u0,a=l.x+l.w/2-span/2;
     if(a+span<f.coverage.left-10||a>f.coverage.right+10)continue;
     wallSection(g,l,f,PAL[f.floor]);
@@ -480,12 +577,27 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
     const drop=MID_BASE-officeLandmarkBase(f.floor,kind);
     const P=kind==='ceo'?{...PAL[f.floor],brass:'#d7b975',brassDk:'#927041',brassLt:'#ffe9b0'}:PAL[f.floor];
     g.save();
-    if(kind==='ceo')recess(g,l,f);
+    if(kind==='ceo')ceoBlock(g,l,f,P);
     g.translate(0,-drop);
-    if(OFFICE_NEAR_LIFT_LANDMARKS.has(kind))standOut(g,l,officeUnderBulkhead(f)+drop,MID_BASE,f.floor==='exec'?'#241c2e':OFFICE_NEAR_LIFT_LANDMARKS.has(kind)?'#8d889a':'#b8b0c4',drop);
     if(kind==='lobbyLifts'||kind==='operations'||kind==='lift'){
       const floorNumber=kind==='lobbyLifts'?'G':(OFFICE_FLOORS[f.floor]?.label||'23');
-      // a pot plant either side of the doors
+      // The lift bay is a solid block standing out of the wall, in the floor's own one-point
+      // perspective (as the meeting-room boxes): its front is the wall opening scaled about the
+      // vanishing point by LIFT_DEPTH, and its side walls join the two.
+      const k=LIFT_DEPTH,vy=YH+drop,T=(px,py)=>[VPX+(px-VPX)*k,vy+(py-vy)*k];
+      // floor to ceiling: its side's top edge then lies in the ceiling plane, which recedes to
+      // the same vanishing point, so the block reads solid (the eye is near the floor, so the
+      // block's top is never seen)
+      const wt=f.ceilingY+drop,bt=MID_BASE;
+      const side=f.floor==='exec'?'#2a2133':f.floor==='lobby'?'#cbb4b8':'#bdb7c9';
+      for(const ex of [x,x+w]){
+        const [fx,fy0]=T(ex,wt),[,fy1]=T(ex,bt);
+        poly(g,[ex,wt,fx,fy0,fx,fy1,ex,bt],side,P.ink,0.6);
+        line(g,ex,bt,fx,fy1,'rgba(20,16,30,0.35)',1);
+      }
+      g.save();
+      g.translate(VPX,vy);g.scale(k,k);g.translate(-VPX,-vy);
+      // a pot plant either side of the doors, and the bin
       const pv=f.floor==='lobby'?'palm':f.floor==='exec'?'bonsai':'ficus';
       plant(g,x-40,MID_BASE,pv,P,kind.length+3);
       plant(g,x+w+6,MID_BASE,pv,P,kind.length+7);
@@ -493,7 +605,10 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       // waiting open, and the doors close as the hero comes up to them
       const ahead=x+w/2-112,open=Math.max(0,Math.min(1,(ahead-70)/150));
       const ease=open*open*(3-2*open);
-      foregroundLift(g,l,P,floorNumber,officeUnderBulkhead(f)+drop,ease);
+      foregroundLift(g,l,P,floorNumber,wt,ease,f.floor);
+      g.restore();
+      // its shadow along the floor at the foot of the front
+      {const [a0,y1]=T(x,bt),[a1]=T(x+w,bt);box(g,a0,y1,a1-a0,1.6,'rgba(20,16,30,0.3)');}
       g.restore();
       continue;
     }
@@ -532,23 +647,30 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       plant(g,x+12,MID_BASE,'snake',P,9);
       plant(g,x+w-30,MID_BASE,'snake',P,11);
     }else if(kind==='entrance'){
-      // A revolving door in a glazed brass surround, turning slowly; no signs.
-      box(g,c-46,90,92,b-90,'#3b3846',P.ink,0.8);
-      box(g,c-41,95,82,b-95,'#b5dae0',P.ink,0.6);
-      for(const u of [c-27,c+27])line(g,u,95,u,b,'#8d9aa6',0.7);
-      box(g,c-46,90,92,4,P.brass,P.ink,0.5);
-      revolvingDoor(g,{revolving:f.revolving,glass:{transom:96,bottom:b},wall:{bays:[{revolvingDoor:c}]}},P);
+      revolvingEntrance(g,c,b,f.revolving,P);
       plant(g,x+24,MID_BASE,'snake',P,5);
       plant(g,x+w-46,MID_BASE,'snake',P,7);
     }else if(kind==='boardroom'){
-      plaque(g,'BOARD OF DIRECTORS',c-88,66,176,P);
       const room={kind:'boardroom',x0:x+40,x1:x+w-62};
       const chairs=Array.from({length:7},(_,i)=>({x:room.x0+(i+0.5)*(room.x1-room.x0)/7,sitter:i!==2,seed:i+400,nod:(Math.sin(f.t*0.5+i)+1)*0.35}));
-      boardroomBack(g,room,P,chairs);
-      midActors(g,{mid:{items:[{...room,chairs}]}},P);
-      boardroomFront(g,room,P);easel(g,room.x1+5,P);
-      gagNote(g,'ACCOUNTABILITY',chairs[2].x-43,154,86,P);
-      glassMeetingRoom(g,l,f,P);
+      const away=officeRoomStyle()!=='glass';
+      const contents=away?()=>{
+        // the board faces the far wall and its chart, backs to the corridor
+        easel(g,room.x1+5,P);
+        boardroomFront(g,room,P);
+        const seated=chairs.map(ch=>({...ch,away:true}));
+        midActors(g,{mid:{items:[{...room,chairs:seated}]}},P);
+        for(const ch of seated)chairFromBehind(g,ch,P);
+        gagNote(g,'ACCOUNTABILITY',chairs[2].x-43,154,86,P);
+      }:()=>{
+        boardroomBack(g,room,P,chairs);
+        midActors(g,{mid:{items:[{...room,chairs}]}},P);
+        boardroomFront(g,room,P);easel(g,room.x1+5,P);
+        gagNote(g,'ACCOUNTABILITY',chairs[2].x-43,154,86,P);
+      };
+      if(officeRoomStyle()==='glass'){contents();glassMeetingRoom(g,l,f,P);}
+      else roomWithDepth(g,l,f,P,officeRoomStyle(),contents);
+      plaque(g,'BOARD OF DIRECTORS',c-88,66,176,P);
     }else if(kind==='secretary'){
       plaque(g,'EXECUTIVE ASSISTANT',c-73,39,146,P);
       gagNote(g,'YOUR WAIT IS PRODUCTIVE',c-70,55,140,P);

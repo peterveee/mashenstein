@@ -7,8 +7,7 @@
 // the one accommodation is that entity tiles crop the game's fixed 480x270
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
-import { drawOfficeProductionScene, drawOfficeRoomScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
-import { OFFICE_ROOM_STYLES } from '../src/engine/stylePacks/officeLigne/rooms.js';
+import { drawOfficeProductionScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -33,11 +32,7 @@ import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entiti
 import { PUNT, HEAVY_PUNT, startPunt, stepPunt } from '../src/game/punt.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
 import { HERO_DANCE_LAB_CANDIDATES, drawHeroDanceCard } from '../src/dev/hero-dance-candidates.js';
-import {
-  PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, SILVER_TOASTER_FINISH,
-  PORTAL_SPRITE, PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME,
-  eggshellCopterArt, switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T,
-} from '../src/sprites/props.js';
+import { PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE, PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME, eggshellCopterArt, switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
   cabinetPalette, drawCabinetShell, drawCabinetScreen,
@@ -102,25 +97,30 @@ import { FROST_IDEAS } from '../src/dev/frost-ideas.js';
 import { FROST_BG_V2, drawFrostV2Scene, drawFrostV2CloseUp } from '../src/dev/frost-background-v2.js';
 import { FROST_SLEIGH_V2, drawSleighFinishScene, drawSleighCloseUp } from '../src/dev/frost-sleigh-v2.js';
 import { WOLVES_FIRE_CANDIDATES, drawWolvesFireScene, drawWolvesFireCloseUp } from '../src/dev/wolves-fire-candidates.js';
-import { PIG_FLOCK_CANDIDATES, drawPigFlockScene, drawPigFlockCloseUp, drawPigletLineup } from '../src/dev/pig-flock-candidates.js';
 import { FUJI_EXIT_CANDIDATES, fujiExitGoldenMood, fujiExitNightMood } from '../src/dev/neon-fuji-exit-candidates.js';
 import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
 import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
 import { OFFICE_STYLE_SHIPPED, OFFICE_STYLE_CANDIDATES, OFFICE_STYLE_INFUSIONS, OFFICE_STYLE_ROUND_THREE, OFFICE_SCREENS, drawOfficeStyleScene } from '../src/dev/office-style-candidates.js';
-import { drawFoodStall, STALLS, SMOOTHIES, SMOOTHIE_DUDS, SMOOTHIE_ROWS } from '../src/sprites/stalls.js';
-import { FRONTS_CANDIDATES, SEATING_CANDIDATES, PLAZA_WALL_CANDIDATES, INTERLEAVE_CANDIDATES, drawInterleaveMock, drawFrontsMock, drawSeatingMock, drawPlazaWallMock } from '../src/dev/foodcourt-candidates.js';
-import { ARC_STILLS, drawArcTimelapse, drawArcStill, drawArcRibbon } from '../src/dev/speed-mcm/time-arc.js';
-import { SHIPPED_STILLS, drawShippedStill, JONES_SHOWS, drawJonesShow } from '../src/dev/speed-mcm/shipped.js';
+import {
+  OFFICE_OBSTACLE_CANDIDATES, OFFICE_OBSTACLE_SLOTS, OFFICE_OBSTACLE_LANE_H,
+  slotEnvelope, drawOfficeObstacleLane, drawOfficeObstacleControl,
+} from '../src/dev/office-obstacle-candidates.js';
+import {
+  drawControlLineup, drawCandidateLineup, drawCandidateLane, candidateCaption, laneHeight,
+} from '../src/dev/obstacle-bakeoff-kit.js';
+import { BAKEOFF as PLUMBER_OBSTACLES } from '../src/dev/plumber-obstacle-candidates.js';
+import { BAKEOFF as SPEED_OBSTACLES } from '../src/dev/speed-obstacle-candidates.js';
+import { BAKEOFF as RHYTHM_OBSTACLES } from '../src/dev/rhythm-obstacle-candidates.js';
+import { BAKEOFF as FROST_OBSTACLES } from '../src/dev/frost-obstacle-candidates.js';
+import { BAKEOFF as CRYPT_OBSTACLES } from '../src/dev/crypt-obstacle-candidates.js';
+import { BAKEOFF as NEON_OBSTACLES } from '../src/dev/neon-obstacle-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
 import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SLOT_BEATS, drawSurgeFx } from '../src/dev/surge-transition-candidates.js';
 import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
 import { drawCryptDistantZombieScene } from '../src/dev/crypt-distant-zombie-procession.js';
-import { CRYPT_LANE_CANDIDATES, CRYPT_SELECTED_CANDIDATES, drawCryptLaneStudy } from '../src/dev/crypt-lane-enemy-candidates.js';
 import { CRYPT_MOVIE_LANE, CRYPT_MOVIE_BACKDROPS, CRYPT_MOVIE_MOMENTS, drawCryptMovieLane, drawCryptMovieBackdrop } from '../src/dev/crypt-movie-bakeoff.js';
-import { CRYPT_HALLOWEEN_BACKGROUNDS, CRYPT_HALLOWEEN_LANE, drawCryptHalloweenBackground, drawCryptHalloweenLane } from '../src/dev/crypt-halloween-bakeoff.js';
-import { CRYPT_GATE_CANDIDATES, drawCryptGateScene, drawCryptGateCloseUp, drawCryptGateSwingStrip } from '../src/dev/crypt-gate-bakeoff.js';
 import { FROST_FORTRESS_CANDIDATES, FROST_ROCK_CANDIDATES, drawFrostRockFortressScene } from '../src/dev/frost-rock-fortress-candidates.js';
 
 import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL } from '../src/dev/hero-candidates.js';
@@ -131,8 +131,6 @@ import {
   EGGSHELL_CAPES,
 } from '../src/dev/eggshell-redesigns.js';
 import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
-import { MIRRORBALL_CANDIDATES } from '../src/dev/mirrorball-candidates.js';
-import { BEACHBALL_CANDIDATES } from '../src/dev/beachball-candidates.js';
 import { HERO_MOVES, PARTS, drainSeconds } from '../src/game/banger/club-fx.js';
 import { BangerClubState } from '../src/game/banger/club.js';
 // The dance-floor sheet (main page): the party's bookkeeping, the club's beach ball, and the
@@ -140,31 +138,16 @@ import { BangerClubState } from '../src/game/banger/club.js';
 import { PARTY_BEATS, partyAlive } from '../src/game/banger/club-party.js';
 import { drawBeachBall, BEACH_BALL_COLOURS, BEACH_BALL_COLOURS_2 } from '../src/game/banger/beachball.js';
 import { screen as rendererScreen } from '../src/engine/renderer.js';
-import { drawPaperFish, FISHES, anglerJaws } from '../src/game/banger/club-fish.js';
-import { FISH_CANDIDATES } from '../src/dev/fish-candidates.js';
-import { FISH_STYLES } from '../src/dev/fish-styles.js';
-import { drawSpeakerStack, PORT_HORN, PA_HORN } from '../src/game/banger/speakers.js';
-import { HORN_CANDIDATES } from '../src/dev/speaker-horn-candidates.js';
-import { BABY_SHARK_HATS, babyBonnet } from '../src/dev/baby-shark-hats.js';
-import { ANGLER_MOUTHS, anglerMaroon } from '../src/dev/angler-mouth-candidates.js';
+import { drawPaperFish, FISHES } from '../src/game/banger/club-fish.js';
+import { drawSpeakerStack } from '../src/game/banger/speakers.js';
 import { createFishTankLab, tankPaper, TANK_DIVER } from '../src/engine/visualisers.js';
 import { DIVERS, STANDING_DIVER } from '../src/dev/diver-candidates.js';
 import { MERMAIDS } from '../src/dev/mermaid-candidates.js';
 import { MIXER_ICON_CANDIDATES } from '../src/dev/mixer-icon-candidates.js';
 import { MIXER_ICONS, MIXER_ICONS_BEFORE } from '../src/game/banger/mixer-icons.js';
-import { BOLT_ATTRACT_CANDIDATES } from '../src/dev/bolt-attract-candidates.js';
-import { drawBoltButton, drawBoltPlain, boltAttractAlpha } from '../src/game/banger/bolt-button.js';
-import { BangerBirthState, BIRTH_S, BIRTH_STEPS, SWITCH_AT, FLASH_AT } from '../src/game/banger/birth.js';
-import { BIRTH_SWITCHES, PLUNGER_AT_SIDE } from '../src/game/banger/birth-switches.js';
-import { BIRTH_FACES } from '../src/game/banger/birth-faces.js';
-import { TOASTER_SIZE, makeToaster, toasterAt, toasterLoop, drawToaster } from '../src/game/banger/club-toaster.js';
-import { applianceBefore } from '../src/dev/toaster-top-before.js';
 import { TOASTER_WING_CANDIDATES } from '../src/dev/toaster-wings.js';
 import { TOASTER_CROWN_CANDIDATES } from '../src/dev/toaster-crowns.js';
 import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
-import { definePropVariant } from '../src/sprites/props.js';
-import { BANANA_PEELS, bananaPeelBefore } from '../src/dev/banana-peels.js';
-import { CRT_8BIT, CRT_4BIT_CANDIDATES } from '../src/dev/crt-4bit-candidates.js';
 
 // RUSTY WAS THE GUEST HERE from 1 to 10 Sep 2026 — a candidate drawn through
 // drawToon's spec/pal seam and spliced into every cast-wide line-up by a
@@ -194,6 +177,11 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 // Lab sections that have been retired from the chooser remain in source for
 // reference, but are intentionally omitted from the rendered gallery.
 const HIDDEN_GALLERY_SECTIONS = new Set([
+  // SETTLED 12 Oct 2026: Peter picked per-floor sets from it ("i like your recos —
+  // yes destroy shredders"), and they are in the game — sprites/officeProps.js,
+  // OFFICE_FLOORS in data/cabinets.js, and the production sheet 'office-obstacles'.
+  // src/dev/office-obstacle-candidates.js stays as the record of the twenty.
+  'office-obstacle-bakeoff',
   // SETTLED 22 Sep 2026: GRID CITY at six layers won and is in the game —
   // neonPack.bg() paints it, and on Neon 1 it ARRIVES rather than opening
   // finished (see the arrival sheet below, and neonCityReveal). The sheet stays
@@ -3154,6 +3142,39 @@ let labClub = null;
       (ctx, t) => drawOfficeProductionScene(ctx, t, screen), { animated: true });
     tile(grid, `${screen.name} — portrait`, 'Production office pack · phone portrait at 2.2× world zoom', 480, OFFICE_PORTRAIT_FRAME.height,
       (ctx, t) => drawOfficeProductionScene(ctx, t, screen, true), { animated: true, displayScale: 0.82 });
+  }
+}
+
+// Corporate Kombat's obstacles, floor by floor, as the run draws them: the real office
+// pack and the real drawWorldEntity path (raster, shadow, red tick), one tile per floor.
+// The bank is data/cabinets.js OFFICE_FLOORS; the art is sprites/officeProps.js.
+{
+  const grid = section('office-obstacles', 'CORPORATE KOMBAT — obstacles, floor by floor, as shipped',
+    'Picked 12 Oct 2026 from the obstacle bake-off. Each floor deals its own furniture and none of it stands in that '
+    + 'floor\'s backdrop. Left to right: standing, big, stacked (two high), rolling, fire, short hurdle, the target '
+    + '(floor 23 only — DESTROY 5 HOSTILE SHREDDERS), slide-under, high flyer. ANIMATED.',
+    '2026-10-12');
+  const FLOORS = [
+    ['lobby', '8-1 the lobby', ['wetFloorSign', 'waterDolly', 'newsBundle', 'mopBucket', 'ashUrnFire', 'velvetRope', null, 'artMobile', 'pigeon']],
+    ['open', '8-2 floor 23', ['coatStand', 'snackMachine', 'archiveBox', 'mailCart', 'binFire', 'drawingPins', 'shredder', 'birthdayBunting', 'partyBalloon']],
+    ['exec', '8-3 floor 88', ['founderBust', 'officeSafe', 'briefcase', 'drinksTrolley', 'confidentialBin', 'velvetRopeGold', null, 'chandelier', 'champagneCork']],
+  ];
+  // World x of each slot, screen-relative; the hero runs at 59.
+  const AT = [2, 22, 80, 100, 120, 142, 168, 192, 218];
+  // BEFORE: what every floor dealt until 12 Oct, slot for slot above the three floors.
+  {
+    const was = ['cactus', 'cactusBig', 'crate', 'chair', 'fireBarrel', 'boomBarrier', 'printer', 'drone', 'buzzbird'];
+    const list = was.map((type, i) => makeObstacle(type, AT[i], { n: OBSTACLES[type].stack ? 2 : 1 }));
+    const screen = { floor: 'open', hazards: [], world: (ctx, t) => { for (const e of list) drawWorldEntity(ctx, e, 0, t, null, {}); } };
+    tile(grid, 'BEFORE — every floor, until 12 Oct', was.join(' · '), 480, 270,
+      (ctx, t) => drawOfficeProductionScene(ctx, t, screen, false, 1200 + (t * 40) % 2400), { animated: true });
+  }
+  for (const [floor, name, types] of FLOORS) {
+    const list = types.map((type, i) => type && makeObstacle(type, AT[i], { n: OBSTACLES[type].stack ? 2 : 1 })).filter(Boolean);
+    // Fixed in the frame: rollers and fliers hold their slot rather than closing.
+    const screen = { floor, hazards: [], world: (ctx, t) => { for (const e of list) drawWorldEntity(ctx, e, 0, t, null, {}); } };
+    tile(grid, name, types.filter(Boolean).join(' · '), 480, 270,
+      (ctx, t) => drawOfficeProductionScene(ctx, t, screen, false, 1200 + (t * 40) % 2400), { animated: true });
   }
 }
 
@@ -8346,33 +8367,6 @@ function cryptStyleTiles(grid, tag, cand) {
   }
 }
 
-// Second round: foreground style judged with shipped cast and a neutral close-up.
-{
- const grid=section('crypt-lane-enemy-bakeoff','CRYPT SHIFT — larger zombies, lane styles (round 2)',
-  'Three costumes × three art directions, plus three slab-only headstones. A: soft cast cartoon. B: chunky cel. C: bold comic. '
-  + 'Zombies are 28 world units tall, roughly 50% above round one; headstones are 23. The first pair preserves the original designs. '
-  + 'Every new candidate appears between the real Lorenzo and Gary in the gameplay view and on a neutral close-up stage at equal scale. '
-  + 'The lane has its own visual identity: no backdrop texture or fog is applied to these figures. Art proposals only; collision and gameplay unchanged.', '26 Sep 2026');
- tile(grid,'REF Round one — gameplay','Z1, Z2, Z3 and O1 at their previous sizes.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,null),{animated:true});
- tile(grid,'REF Round one — close','Original four designs on a neutral stage.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,null,true),{animated:true});
- for(const item of CRYPT_LANE_CANDIDATES){
-  const title=`${item.id} ${item.name} · ${item.style.name}`;
-  tile(grid,title+' — gameplay',item.style.note,W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,item),{animated:true});
-  tile(grid,title+' — close',item.role==='stone'?'Upright slab only. No roots, arms or pedestal. Shipped heroes for comparison.':'Larger overall. Shipped Lorenzo and Gary are drawn at the same scale for comparison.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,item,true),{animated:true});
- }
-}
-
-// Approved selection. Original alternatives remain above for future reuse.
-{
- const grid=section('crypt-selected-enemies','CRYPT SHIFT — selected lane cast',
-  'Shipped: A costumes with vacant eyes and slack jaws, plus BH with the original mouth animation. '
-  + 'Larger zombie art; slab-only headstone. All earlier alternatives remain in the gallery.', '26 Sep 2026');
- for(const item of CRYPT_SELECTED_CANDIDATES){
-  tile(grid,item.id+' '+item.name+' — gameplay','Selected production painter, alongside Lorenzo and Gary.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,item),{animated:true});
-  tile(grid,item.id+' '+item.name+' — close','Neutral close-up. Same painter used in the live level.',W,H,(ctx,t)=>drawCryptLaneStudy(ctx,t,item,true),{animated:true});
- }
-}
-
 // Crypt movie-night expansion: review-only gameplay props, stage-specific country,
 // and tiny animated cameos. Each backdrop card uses the shipped gouache painter's
 // study seam at its proposed depth and stage; lane props retain the lane's own art.
@@ -8410,141 +8404,6 @@ function cryptStyleTiles(grid, tag, cand) {
       (ctx,t)=>drawCryptMovieBackdrop(ctx,t,item), {animated:true});
     tile(grid, `${item.id} ${item.name} — detail`, `Same animated painter on the level ${item.stage} hill.`, W, H,
       (ctx,t)=>drawCryptMovieBackdrop(ctx,t,item,true), {animated:true});
-  }
-}
-
-// Halloween props, with a deliberate style split: all environmental objects are painted
-// by GOUACHE_KIT inside the real graveyard hill; lane hazards use the Crypt's crisp game
-// outline style at run scale. Nothing here is hooked to gameplay.
-{
-  const grid = section('crypt-halloween-backdrop-bakeoff', 'CRYPT SHIFT — Halloween backdrop objects (gouache bake-off)',
-    'Ten Halloween props across the near bank, graveyard hill and far ridge. All use the gouache kit; the skeleton dances in a looping two-step. Each has a real scene card with runner scale and a held close-up. Review only.',
-    '26 Sep 2026');
-  for (const item of CRYPT_HALLOWEEN_BACKGROUNDS) {
-    tile(grid, `${item.name} — running`, item.note, W, H,
-      (ctx, t) => drawCryptHalloweenBackground(ctx, t, item), { animated: true });
-    tile(grid, `${item.name} — close`, 'Same gouache painter, camera held on the hill.', W, H,
-      (ctx, t) => drawCryptHalloweenBackground(ctx, t, item, true, W, H), { animated: true });
-  }
-}
-{
-  const grid = section('crypt-halloween-lane-bakeoff', 'CRYPT SHIFT — Halloween lane obstacles (game art bake-off)',
-    'Four classic Halloween obstacle ideas in the game’s bold, outlined lane style. Each shows the real Crypt scene at gameplay scale and the same painter enlarged between Lorenzo and Gary. JUMP and SLIDE are visual reads only; gameplay, hitboxes and spawns are unchanged. ANIMATED.',
-    '26 Sep 2026');
-  for (const item of CRYPT_HALLOWEEN_LANE) {
-    tile(grid, `${item.id} ${item.name} · ${item.action}`, item.note, W, H,
-      (ctx, t) => drawCryptHalloweenLane(ctx, t, item), { animated: true });
-    tile(grid, `${item.id} ${item.name} — close`, `${item.action} read at inspection size, between shipped heroes.`, W, H,
-      (ctx, t) => drawCryptHalloweenLane(ctx, t, item, true), { animated: true });
-  }
-}
-
-// ------------------------------------------ PLUMBER — a piglet with the brown collie (lab)
-// Peter, 27 Sep 2026: "do a bake off where we have a pig along with the brown sheepdog in
-// the plumbers panic level... the pig is a little baby pig in the style of the pig in the
-// movie Babe. give me several options". Candidates in src/dev/pig-flock-candidates.js; each
-// draws the shipped figure-of-eight flock through PLUMBER_FLOCK_KIT and adds the piglet.
-{
-  const grid = section('pig-flock-bakeoff', 'PLUMBER PANIC — a Babe piglet with the brown collie (B ships)',
-    'SETTLED 27 Sep 2026: "lets ship B" — B is the brown collie\'s flock in the game now, and its cards draw the shipped '
-    + 'painter; 0 is the flock as it was before. Asked 27 Sep 2026: "a pig along with the brown sheepdog … a little baby pig in the style of the pig in the movie '
-    + 'Babe. give me several options". The piglet is the same in every option — a pale-pink Large White with pricked '
-    + 'ears tipping forward, a snub snout and a curly tail, in the flock\'s cut paper, lamb-sized — and the options '
-    + 'are what he does. A trails her round the figure of eight and sits '
-    + 'where she stopped. B is the sheep-pig: he runs the flock (the sheep answer him) while she sits up on the '
-    + 'crest watching him — hopping round to keep him in view, wagging and panting when he stops to ask (redone 27 Sep: '
-    + '"I don\'t notice the dog watching"; she had lain in her working crouch). C sits on the crest in the gap, hops round to keep her in view and gets up when she comes close. D runs '
-    + 'at her side and drops flat when she crouches. E thinks he is a sheep: he roots in the grass in the right-hand '
-    + 'knot and is moved on with them. Each option: plumber-1 with the camera held, then 2.6x on the flock. Last card: '
-    + 'the piglet alone, every pose. ANIMATED.',
-    '27 Sep 2026');
-  for (const c of PIG_FLOCK_CANDIDATES) {
-    tile(grid, `${c.label} · plumber-1`, 'The flock on the near summit, the hero running.', W, H,
-      (ctx, t) => drawPigFlockScene(ctx, t, c.id), { animated: true });
-    tile(grid, `${c.label} · close-up`, 'On the flock, 2.6x.', W, H,
-      (ctx, t) => drawPigFlockCloseUp(ctx, t, c.id), { animated: true });
-  }
-  tile(grid, 'The piglet — every pose', 'Trot, stand, ask, sit, flat, root and the hop round, 5.2x.', W, H,
-    (ctx, t) => drawPigletLineup(ctx, t), { animated: true });
-}
-
-// ------------------------------------------ SPEED ZONE — one afternoon across the act (lab)
-// Peter, 27 Sep 2026: "could we gradually adjust it as each level progresses so each
-// change starts like the end of the previous one". Keyframes, blending and the stage
-// placement in src/dev/speed-mcm/time-arc.js.
-{
-  const grid = section('speed-mcm-time-arc', 'SPEED ZONE — MCM light across the act (one afternoon)',
-    'Asked 27 Sep 2026: the mid-century palette moving through the day as the act goes on, each stage opening in '
-    + 'the light the last one closed in. Five authored palettes — MIDDAY (speed-1 opens), AFTERNOON and GOLDEN at the '
-    + 'stage joins, SUNSET halfway through speed-3 and DUSK at its finish (added 27 Sep: "a deeper sunset … early '
-    + 'evening but things are still visible": the sun down, an indigo-to-amber afterglow, an evening star) — blended '
-    + 'colour by colour in between; the steel swaps from terracotta to teal as the sky warms and goes to a dark slate '
-    + 'at dusk, and the sun sinks and swells until it sets behind the hills. From golden hour the clouds are lit from '
-    + 'underneath, and the road and hero take the light too: a warm cast to sunset, then cooling and dimming into dusk. First '
-    + 'card: every colour across the act, to spot a muddy stretch. Second: the whole act in 24 s. Then stills at the '
-    + 'opening, halfway and finish of each stage, the camera where the run has it (so each shows that stage\'s own '
-    + 'landmarks) — a stage\'s finish and the next one\'s opening are the same light. ANIMATED.',
-    '27 Sep 2026');
-  tile(grid, 'The colours across the act', 'Left to right is speed-1 opening to speed-3 finish.', W, H,
-    (ctx) => drawArcRibbon(ctx, W, H));
-  tile(grid, 'Time-lapse — the whole act in 24 s', 'Eight seconds a stage; the light runs continuously.', W, H,
-    (ctx, t) => drawArcTimelapse(ctx, t), { animated: true });
-  for (const still of ARC_STILLS) {
-    tile(grid, `speed-${still.stage} · ${still.label}`, `${Math.round(still.p * 100)}% into the stage.`, W, H,
-      (ctx, t) => drawArcStill(ctx, t, still), { animated: true });
-  }
-}
-
-// ------------------------------------------ CRYPT SHIFT — the gates, animated (lab)
-// Peter, 27 Sep 2026: "there are a lot of gates in the crypt levels.. maybe it would be
-// nice if they were animated swinging or if some were about to fall off... do a bakeoff
-// with some animate4d options". Painters in src/dev/crypt-gate-bakeoff.js, handed to the
-// shipped backdrop through its cryptGate seam (the posts stay baked, the leaves are live).
-{
-  const grid = section('crypt-gate-bakeoff', 'CRYPT SHIFT — the graveyard gates, animated (A ships, with the odd F)',
-    'SHIPPED 27 Sep 2026: "A mostly with the occasional slam shut (to make it special)" — the gates creak (A), and in '
-    + 'landscape one in four is F instead (with its clang, the gateSlam cue, on the beat; never in portrait). Both '
-    + 'cards draw the shipped painters (cryptGates.js), and 0 is the gate as it was. '
-    + 'Asked 27 Sep 2026: the near bank\'s iron gates swinging, or some about to fall off. The posts stay in the '
-    + 'painting; only the leaves move, redrawn stroke for stroke from the shipped gate. '
-    + 'A creaks ajar in the wind; B is blown open and slammed shut; C sags off a rusted top hinge; D leans out on its '
-    + 'last hinge and lurches; E is D until the runner comes up, then falls flat. F (asked 27 Sep: "I like A and B … '
-    + 'slam shut JUST before the hero gets to them … like denying him entry") is B held open until the gate is a stride '
-    + 'ahead of him, then banged shut in his face. The two gates on the bank can each '
-    + 'take a different one. Each option: crypt-1 with the camera running, then the camera held at 3.2x. Last card: the '
-    + 'swing in steps, to judge the rotation without the clock skipping it. ANIMATED.',
-    '27 Sep 2026');
-  for (const c of CRYPT_GATE_CANDIDATES) {
-    tile(grid, `${c.id} ${c.name} · crypt-1`, c.note, W, H,
-      (ctx, t) => drawCryptGateScene(ctx, t, c), { animated: true });
-    tile(grid, `${c.id} ${c.name} · close-up`, 'The camera held on the gate, 3.2x.', W, H,
-      (ctx, t) => drawCryptGateCloseUp(ctx, t, c, W, H), { animated: true });
-  }
-  tile(grid, 'The swing in steps', 'The right leaf from shut to nearly edge-on.', W, H,
-    (ctx) => drawCryptGateSwingStrip(ctx, W, H));
-}
-
-// ------------------------------------------ SPEED ZONE — mid-century modern, shipped (lab)
-// Peter, 28 Sep 2026: ship the MCM desert — the afternoon arc, the Chuck Jones coyote,
-// every object as painted, the road and hero taking the late light. The run's own pack,
-// and the coyote's new shows (it only howled in the bake-off). src/dev/speed-mcm/shipped.js.
-{
-  const grid = section('speed-mcm-shipped', 'SPEED ZONE — mid-century modern, as shipped',
-    'SHIPPED 28 Sep 2026: Speed Zone\'s backdrop is the mid-century modern desert (the mcm pack). Its light runs one '
-    + 'afternoon across the act, midday at speed-1\'s opening to dusk at speed-3\'s finish; the coyote is the Chuck '
-    + 'Jones one; every object is the lab\'s; the road and the hero take the warm cast of golden hour and the violet of '
-    + 'dusk. First nine cards: the run\'s own pack at each stage\'s opening, halfway and finish (the camera creeping, '
-    + 'so the country moves). Then the Jones coyote in each show the desert deals — new for the game: lying down to '
-    + 'doze, singing with a pup, and sat square on to wink (at speed-3\'s finish it only blinks until the hero is on '
-    + 'the pad). ANIMATED.',
-    '28 Sep 2026');
-  for (const still of SHIPPED_STILLS) {
-    tile(grid, `speed-${still.stage} · ${still.label}`, `${Math.round(still.p * 100)}% into the stage.`, W, H,
-      (ctx, t) => drawShippedStill(ctx, t, still), { animated: true });
-  }
-  for (const show of JONES_SHOWS) {
-    tile(grid, `The coyote · ${show.name}`, 'The Chuck Jones coyote, 3.6x.', W, H,
-      (ctx, t) => drawJonesShow(ctx, t, show, W, H), { animated: true });
   }
 }
 
@@ -8886,129 +8745,6 @@ function cryptStyleTiles(grid, tag, cand) {
   }
 }
 
-// The club's mirror ball: today's against five new looks (Peter, 3 Oct 2026: "it could
-// look a lot nicer"). Each at the size it hangs in the club, and again close up.
-{
-  const s = sectionEl('mirrorball-bakeoff', 'BANGER LAB — mirror ball looks',
-    'SETTLED 3 Oct 2026: 2 DISCO is the club’s ball now (src/game/banger/mirrorball.js), so 0 and 2 match. 1–5 were the candidates. CHROME and DISCO draw each tile on the sphere and shade it by what it reflects '
-    + '(bright ceiling above, the floor’s colours below); CARTOON is fewer, bigger tiles with an inked edge; GEM a faceted crystal; MIDNIGHT a dark ball '
-    + 'with a light band sweeping across. Left card: club size; right: close-up. The ball turns and the sparkles twinkle.',
-    '2026-10-03');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const backdrop = (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0f0d24'); g.addColorStop(1, '#1a1236');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-  };
-  // today's ball, through the club's own painter on a stand-in club
-  const today = Object.assign(Object.create(BangerClubState.prototype), { song: { bpm: 128 }, ballAt: -100, ballScale: 1, boxes: {} });
-  const todayAt = (ctx, w, h, t, scale) => {
-    ctx.save(); ctx.scale(scale, scale);
-    today.drawBall(ctx, { portrait: false, P: 1, u: 1, t, sx: 0, sw: w / scale, sh: h / scale, stageTop: h / scale / 2 - 55,   // the ball hangs 55 below the truss: centred in the card
-      pulse: 0.5 + 0.5 * Math.sin(t * 4), accent: '#c9a0ff', beatN: Math.floor(t * 2) });
-    ctx.restore();
-  };
-  tile(grid, '0 — TODAY (club size)', 'The ball as the club draws it now.', 140, 100, (ctx, t) => { backdrop(ctx, 140, 100); todayAt(ctx, 140, 100, t, 1); }, { animated: true });
-  tile(grid, '0 — TODAY (close-up)', 'The same, two and a half times.', 240, 200, (ctx, t) => { backdrop(ctx, 240, 200); todayAt(ctx, 240, 200, t, 2.5); }, { animated: true });
-  Object.entries(MIRRORBALL_CANDIDATES).forEach(([name, paint], k) => {
-    const state = (t) => ({ t, pulse: 0.5 + 0.5 * Math.sin(t * 4), accent: '#c9a0ff' });
-    tile(grid, `${k + 1} — ${name.toUpperCase()} (club size)`, 'At the size it hangs in the club.', 140, 100,
-      (ctx, t) => { backdrop(ctx, 140, 100); paint(ctx, 70, 50, 20, state(t)); }, { animated: true });
-    tile(grid, `${k + 1} — ${name.toUpperCase()} (close-up)`, 'Close up.', 240, 200,
-      (ctx, t) => { backdrop(ctx, 240, 200); paint(ctx, 120, 100, 60, state(t)); }, { animated: true });
-  });
-}
-
-// The club's beach ball: today's pinwheel against six balls drawn as gores on a turning
-// sphere (Peter, 4 Oct 2026: "make a better looking beach ball … bake off"). Each crosses a
-// full 480x270 dance floor on the club's own path and tempo, over heroes at the club's
-// landscape height, then turns close up.
-{
-  const s = sectionEl('beachball-bakeoff', 'BANGER LAB — beach ball looks',
-    'SETTLED 4 Oct 2026: E VINYL is the club’s ball now (src/game/banger/beachball.js), so 0 and E match. The ball it replaced was six pie wedges from the centre, which turned flat like a pinwheel (0 close-up). '
-    + 'A–F draw the panels as GORES that run pole to pole on a sphere spun about a leaning axis, so the stripes curve and sweep round in depth. '
-    + 'A CLASSIC gloss; B CEL, the cast’s flat look and ink; C RAINBOW; D CLUB-LIT, dimmed to the room and rim-lit on the beat; '
-    + 'E VINYL, an inflatable with a valve that squashes when it lands on a head; F UV GLOW. '
-    + 'Left card: the club’s path at 128 BPM over heroes at the club’s 66px; right: close-up.',
-    '2026-10-04');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const FW = 480, FH = 270, FLOOR = FH - 46, TOON_H = 66, BPM = 128;
-  const CROSS = 16, BOUNCE = 8, REST = 6;   // club.js BALL_BEATS / BALL_BOUNCE_BEATS, and a breath between
-  const dancers = Object.keys(HERO_BY_ID).slice(0, 5);
-  const room = (ctx, t, ids = dancers, at = (i) => FW * (i + 0.5) / ids.length) => {
-    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
-    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
-    ctx.strokeStyle = 'rgba(201,160,255,0.18)'; ctx.lineWidth = 1;
-    for (let x = -FW; x < FW * 2; x += 40) { ctx.beginPath(); ctx.moveTo(FW / 2 + (x - FW / 2) * 0.55, FLOOR); ctx.lineTo(x, FH); ctx.stroke(); }
-    ids.forEach((id, i) => drawToon(ctx, id, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, at(i), FLOOR, TOON_H));
-  };
-  // where the ball is, on club.js's path: across in 16 beats, bounding off heads every 8
-  const flight = (t) => {
-    const beat = t * BPM / 60, lap = Math.floor(beat / (CROSS + REST)), ballBeat = beat - lap * (CROSS + REST);
-    if (ballBeat > CROSS) return null;
-    const dir = lap % 2 ? -1 : 1, r = TOON_H * 0.43;
-    const bf = ballBeat / BOUNCE % 1;
-    const x = (dir > 0 ? -r : FW + r) + dir * (FW + 2 * r) * (ballBeat / CROSS);
-    const y = FLOOR - TOON_H * 1.05 - r - Math.sin(Math.PI * bf) * TOON_H * 1.25;
-    const fromLanding = Math.min(bf, 1 - bf) * BOUNCE;   // beats either side of a head
-    return { x, y, r, dir, bf, ballBeat, spin: ballBeat * 0.9, squash: Math.max(0, 1 - fromLanding / 0.3) };
-  };
-  const shadow = (ctx, f) => {
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.ellipse(f.x, FLOOR + 2, f.r * (0.7 + 0.3 * (1 - Math.sin(Math.PI * f.bf))), f.r * 0.18, 0, 0, Math.PI * 2); ctx.fill();
-  };
-  // today's ball through the club's own painter, on a stand-in club
-  // all eight heroes in the club's own cells, so the ball's hops land where they do in the club
-  const CLUB_CELL = (FW - 8) / HERO_MOVES.length;
-  const today = Object.assign(Object.create(BangerClubState.prototype), { song: { bpm: BPM }, floorConfetti: [], moments: [],
-    ballLayout: { heroL: 4, cellW: CLUB_CELL, perRow: HERO_MOVES.length } });
-  const LAP = 32;   // beats: room for a pair's 24, then a breath
-  tile(grid, '0 — TODAY (club)', 'The ball as the club draws it now (club.js drawMoments): smaller since 5 Oct, hopping head to head on a path drawn fresh each crossing (how many it skips, how long and how high each hop); every other crossing here a pair.', FW, FH, (ctx, t) => {
-    room(ctx, t, HERO_MOVES.map((m) => m.hero), (i) => 4 + CLUB_CELL * (i + 0.5));
-    const beat = t * BPM / 60, lap = Math.floor(beat / LAP);
-    today.t = t;
-    // a fresh path each lap, as the club draws one each crossing
-    if (today.lap !== lap) {
-      today.lap = lap;
-      const balls = lap % 2 ? 2 : 1;
-      today.moments = [{ kind: 'ball', t0: lap * LAP * 60 / BPM, dir: lap % 2 ? -1 : 1, life: 99, balls,
-        paths: Array.from({ length: balls }, () => BangerClubState.ballHops(HERO_MOVES.length)) }];
-    }
-    today.drawMoments(ctx, 'front', { u: 1, floorRef: FLOOR, toonH: TOON_H, stageTop: 0, stageBot: FH, beat });
-  }, { animated: true });
-  const closeBackdrop = (ctx) => {
-    const g = ctx.createLinearGradient(0, 0, 0, 200); g.addColorStop(0, '#0f0d24'); g.addColorStop(1, '#1a1236');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, 200, 200);
-  };
-  tile(grid, '0 — BEFORE (close-up)', 'The pie-wedge ball VINYL replaced.', 200, 200, (ctx, t) => {
-    closeBackdrop(ctx);
-    const r = 70;
-    ctx.save(); ctx.translate(100, 100); ctx.rotate(t * BPM / 60 * 0.12);   // club.js: 0.12 rad a beat
-    ['#ff3355', '#ffffff', '#ffd23f', '#ffffff', '#3fb8ff', '#ffffff'].forEach((c, i) => {
-      ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, i * Math.PI / 3, (i + 1) * Math.PI / 3); ctx.closePath(); ctx.fill();
-    });
-    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2); ctx.fill();
-    const sh = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
-    sh.addColorStop(0, 'rgba(255,255,255,0.45)'); sh.addColorStop(1, 'rgba(0,0,0,0.25)');
-    ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }, { animated: true });
-  for (const c of BEACHBALL_CANDIDATES) {
-    tile(grid, `${c.letter} — ${c.name} (club)`, c.description, FW, FH, (ctx, t) => {
-      room(ctx, t);
-      const f = flight(t);
-      if (!f) return;
-      shadow(ctx, f);
-      c.paint(ctx, f.x, f.y, f.r, { t, spin: f.spin, dir: f.dir, squash: f.squash, accent: '#3fe0ff' });
-    }, { animated: true });
-    tile(grid, `${c.letter} — ${c.name} (close-up)`, 'Turning in place.', 200, 200, (ctx, t) => {
-      closeBackdrop(ctx);
-      const beat = t * BPM / 60;
-      c.paint(ctx, 100, 104, 70, { t, spin: beat * 0.9, dir: 1, squash: Math.max(0, 1 - (beat % 4) / 0.3), accent: '#3fe0ff' });
-    }, { animated: true });
-  }
-}
-
 // Eight regular Lab choreographies per hero, plus the occasional moonwalk for Lorenzo, B-33P and Rusty.
 {
   const s = sectionEl('hero-dance-bakeoff', 'BANGER LAB — hero dance moves',
@@ -9035,383 +8771,6 @@ function cryptStyleTiles(grid, tag, cand) {
         240, 176, (ctx, t) => drawHeroDanceCard(ctx, candidate, t * bpm / 60),
         { animated: true, hires: 3, displayScale: 1.5 });
     }
-  }
-}
-
-// Lorenzo's fish (Peter, 5 Oct 2026: "can we do a bake off to get better fish for lorenzo... a
-// bunch of different styles... perhaps a bit larger and more comical"). Each swims across the
-// flooded club at the club's landscape scale, and every other crossing dives through the floor
-// as the water drains, as club.js fishOn has it; then close up.
-{
-  const s = sectionEl('fish-bakeoff', 'BANGER LAB — Lorenzo’s fish',
-    'SETTLED 5 Oct 2026: all eight swam in the club, in CUT PAPER (see the drawing styles below), at random and up to three at a time (src/game/banger/club-fish.js) — 0 is the club’s, cycling through them. H FISHBOWL was taken out again the same day: seven swim now. '
-    + 'Hold LORENZO two bars and fish swim across the flooded club; let go and they dive through the floor as the water drains. '
-    + 'The fish it replaced was a third of a hero long. A–H are bigger, half a hero and more, and each has a joke of its own: '
-    + 'A GOOGLY, an eye that rattles and lips that go BLUB; B PUFFER, blowing up on the beat; C SHADES, the club fish; D SNORKEL, dressed for the flood; '
-    + 'E ANGLER, a lamp on a stalk; F BIG LIPS, a grumpy grouper blowing kisses; G PARTY SHARK; H FISHBOWL, a goldfish carried across in its bowl. '
-    + 'Left card: the club at 128 BPM over heroes at its 66px, a crossing, then one that dives; right: close up.',
-    '2026-10-05');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const FW = 480, FH = 270, FLOOR = FH - 46, TOON_H = 66, BPM = 128;
-  const CROSS = 6, REST = 2, DIVE_AT = 2.7, DIVE_S = 0.55, SPLASH_S = 0.7;   // beats, beats, beats in, seconds, seconds
-  const CELL = (FW - 8) / HERO_MOVES.length;
-  const room = (ctx, t) => {
-    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
-    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
-    HERO_MOVES.forEach((m, i) => drawToon(ctx, m.hero, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, 4 + CELL * (i + 0.5), FLOOR, TOON_H));
-    // the flood, as club.js drawMoveRoom draws it at Lorenzo's own depth
-    ctx.save();
-    ctx.globalAlpha = 0.34; ctx.fillStyle = '#0b5f6a'; ctx.fillRect(0, 0, FW, FH);
-    ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(150,255,235,1)'; ctx.lineWidth = 0.9;
-    for (let j = 0; j < 6; j++) {
-      ctx.globalAlpha = 0.07;
-      const y0 = FLOOR + (j + 0.5) / 6 * (FH - FLOOR);
-      ctx.beginPath();
-      for (let x = 0; x <= FW; x += 6) { const y = y0 + Math.sin(x * 0.045 + t * 2.2 + j * 1.7) * 2.2 + Math.sin(x * 0.11 - t * 1.3 + j); if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
-      ctx.stroke();
-    }
-    ctx.restore();
-  };
-  const splash = (ctx, x, y, L, age) => {
-    ctx.save(); ctx.strokeStyle = '#bff8ff'; ctx.lineWidth = Math.max(0.6, L * 0.05);
-    for (const lag of [0, 0.25]) {
-      const q = age - lag;
-      if (q <= 0 || q >= 1) continue;
-      ctx.globalAlpha = 0.7 * (1 - q);
-      ctx.beginPath(); ctx.ellipse(x, y, L * (0.25 + q * 0.95), L * (0.08 + q * 0.3), 0, 0, Math.PI * 2); ctx.stroke();
-    }
-    ctx.restore();
-  };
-  // the club's own: the eight in cut paper, a different one each crossing
-  const today = { letter: '0', name: 'TODAY (club)', size: 0.55,
-    description: 'The fish the club draws now (club-fish.js): all but the fishbowl, in cut paper, a different one each crossing.',
-    paint: (ctx, L, o) => drawPaperFish(ctx, FISHES[Math.floor(o.beat / 8) % FISHES.length], L, o) };
-  for (const c of [today, ...FISH_CANDIDATES]) {
-    tile(grid, `${c.letter} — ${c.name}`, c.description, FW, FH, (ctx, t) => {
-      room(ctx, t);
-      const beat = t * BPM / 60, beatS = 60 / BPM;
-      const lap = Math.floor(beat / (CROSS + REST)), at = beat - lap * (CROSS + REST);
-      if (at > CROSS) return;
-      const dir = lap % 2 ? -1 : 1, dives = lap % 2 === 1;
-      const L = TOON_H * c.size;
-      const swimX = (p) => (dir > 0 ? -L + p * (FW + 2 * L) : FW + L - p * (FW + 2 * L));
-      const y0 = FLOOR - (FLOOR - 0) * 0.45;
-      let x = swimX(at / CROSS), y = y0 + Math.sin(t * 2.6) * L * 0.18, tip = 0, sc = 1, alpha = 1;
-      if (dives && at > DIVE_AT) {
-        const k = Math.min(1, (at - DIVE_AT) * beatS / DIVE_S);
-        const floorY = FLOOR + (FH - FLOOR) * 0.45;
-        x = swimX(DIVE_AT / CROSS) + dir * L * 1.2 * k;
-        y = y0 + Math.sin((lap * (CROSS + REST) + DIVE_AT) * beatS * 2.6) * L * 0.18 * (1 - k) + (floorY - y0) * k * k;
-        tip = Math.min(1.2, k * 2.4);
-        if (k > 0.75) { sc = 1 - (k - 0.75) / 0.25 * 0.7; alpha = 1 - (k - 0.75) / 0.25; }
-        const since = (at - DIVE_AT) * beatS - DIVE_S;
-        if (since >= 0) { if (since < SPLASH_S) splash(ctx, x, floorY, L, since / SPLASH_S); return; }
-      }
-      ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.scale(dir * sc, sc); ctx.rotate(tip);
-      c.paint(ctx, L, { t, beat, wag: Math.sin(t * 13), dive: tip / 1.2 });
-      ctx.restore();
-    }, { animated: true });
-    tile(grid, `${c.letter} — close up`, c.name, 240, 176, (ctx, t) => {
-      const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#0e4a56'); g.addColorStop(1, '#0a2e3a');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176);
-      ctx.save(); ctx.translate(112, 96);
-      c.paint(ctx, 112, { t, beat: t * BPM / 60, wag: Math.sin(t * 13), dive: 0 });
-      ctx.restore();
-    }, { animated: true, hires: 3, displayScale: 1.5 });
-  }
-}
-
-// Round two (Peter, 5 Oct 2026: "I like all the fish, id like to see them in a few different
-// drawing styles"): all eight in each of the game's own looks (src/dev/fish-styles.js), a
-// parade across the flooded club at the club's scale, then each close up.
-{
-  const s = sectionEl('fish-styles-bakeoff', 'BANGER LAB — Lorenzo’s fish, drawing styles',
-    'SETTLED 5 Oct 2026: CUT PAPER, all eight of them (src/game/banger/club-fish.js). '
-    + 'Every fish from the bake-off above in six of the game’s own looks, drawn by the same painters: CEL, the cast’s (as above); '
-    + 'CUT PAPER, the Plumber world’s; NEON, the club’s signs; 8-BIT, B-33P’s; CRAYON, the Frost sky’s; MID-CENTURY, the Speed Zone’s print. '
-    + 'Each look opens with all eight swimming across the flooded club at the club’s 66px heroes and 128 BPM, then each fish close up.',
-    '2026-10-05');
-  const FW = 480, FH = 270, FLOOR = FH - 46, TOON_H = 66, BPM = 128, CYCLE = 22, CROSS = 7;
-  const CELL = (FW - 8) / HERO_MOVES.length;
-  const room = (ctx, t) => {
-    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
-    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
-    HERO_MOVES.forEach((m, i) => drawToon(ctx, m.hero, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, 4 + CELL * (i + 0.5), FLOOR, TOON_H));
-    ctx.save(); ctx.globalAlpha = 0.34; ctx.fillStyle = '#0b5f6a'; ctx.fillRect(0, 0, FW, FH); ctx.restore();
-  };
-  for (const style of FISH_STYLES) {
-    const title = document.createElement('h3'); title.textContent = `${style.name} — ${style.description}`;
-    const grid = document.createElement('div'); grid.className = 'grid';
-    s.append(title, grid);
-    tile(grid, `${style.name} — the parade`, 'All eight across the flooded club, in turn, at the club’s scale.', FW, FH, (ctx, t) => {
-      room(ctx, t);
-      const beat = t * BPM / 60;
-      FISH_CANDIDATES.forEach((c, i) => {
-        const b = (((beat - i * 2.4) % CYCLE) + CYCLE) % CYCLE;
-        if (b >= CROSS) return;
-        const L = TOON_H * c.size, dir = i % 2 ? -1 : 1, p = b / CROSS;
-        const x = dir > 0 ? -L + p * (FW + 2 * L) : FW + L - p * (FW + 2 * L);
-        const y = FLOOR * (0.32 + 0.33 * ((i * 0.618) % 1)) + Math.sin(t * 2.6 + i) * L * 0.18;
-        ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
-        style.paint(ctx, c, L, { t, beat, wag: Math.sin(t * 13 + i), dive: 0 });
-        ctx.restore();
-      });
-    }, { animated: true });
-    for (const c of FISH_CANDIDATES) {
-      tile(grid, `${style.name} — ${c.letter} ${c.name}`, '', 240, 176, (ctx, t) => {
-        const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#0e4a56'); g.addColorStop(1, '#0a2e3a');
-        ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176);
-        ctx.save(); ctx.translate(112, 96);
-        style.paint(ctx, c, 112, { t, beat: t * BPM / 60, wag: Math.sin(t * 13), dive: 0 });
-        ctx.restore();
-      }, { animated: true, hires: 3, displayScale: 1.5 });
-    }
-  }
-}
-
-// The club speakers' horn (Peter, 5 Oct 2026: a pasted spec for "a detailed high-frequency horn
-// tweeter" in the top box's slot, "but give me a few variations as well"). Every candidate on
-// the club's own cabinets (speakers.js), the cones pumping on a 128 BPM kick; then the top box
-// close up.
-{
-  const s = sectionEl('speaker-horn-bakeoff', 'BANGER LAB — the speakers’ horn',
-    'SETTLED 5 Oct 2026: B is the club’s horn now (src/game/banger/speakers.js PA_HORN), so 0 and B match; the dark port it replaced is last. '
-    + 'The top box’s slot, a dark port till then, as a proper PA horn. A is Peter’s spec to the letter (neutral greys); B the same horn in the cabinet’s purples; '
-    + 'C a rounded waveguide, D a bi-radial, E a multicell, F an acoustic lens. Every horn fills the same slot: as wide as the two woofers, 58% of one high. '
-    + 'No lights, no movement — only the cones pump. First card: all of them side by side at the club’s size; then each at club size and close up.',
-    '2026-10-05');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const BPM = 128;
-  const rig = (x, floor) => ({ w: 54, subH: 84, topH: 56, floor, top: floor - 140, xs: [x] });
-  const room = (ctx, w, h, floor) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.7, '#1a1236'); g.addColorStop(1, '#120d26');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#17112e'; ctx.fillRect(0, floor, w, h - floor);
-  };
-  const thumpAt = (t) => { const b = t * BPM / 60; return Math.exp(-(b - Math.floor(b)) * 4 * 0.9); };   // a kick on every beat, as club.js kickThump falls
-  const all = [{ letter: '0', name: 'TODAY (club)', paint: PA_HORN, description: 'The horn the club draws now: B.' }, ...HORN_CANDIDATES,
-    { letter: 'X', name: 'THE OLD PORT', paint: PORT_HORN, description: 'The dark port the club had until 5 Oct 2026.' }];
-  const LW = 18 + all.length * 66;
-  tile(grid, 'All side by side (club size)', '0 the club’s (B), A–F, and X the old port, at the club’s landscape size.', LW, 180, (ctx, t) => {
-    room(ctx, LW, 180, 166);
-    all.forEach((c, i) => {
-      const x = 14 + i * 66;
-      drawSpeakerStack(ctx, x, rig(x, 166), 1, thumpAt(t), { horn: c.paint });
-      ctx.fillStyle = '#c9a0ff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(c.letter, x + 27, 176);
-    });
-  }, { animated: true, wide: true, hires: 3 });
-  for (const c of all) {
-    tile(grid, `${c.letter} — ${c.name} (club size)`, c.description, 90, 170, (ctx, t) => {
-      room(ctx, 90, 170, 160);
-      drawSpeakerStack(ctx, 18, rig(18, 160), 1, thumpAt(t), { horn: c.paint });
-    }, { animated: true, hires: 3 });
-    tile(grid, `${c.letter} — close up`, 'The top box at four times.', 240, 240, (ctx, t) => {
-      room(ctx, 240, 240, 240);
-      ctx.save(); ctx.scale(4, 4);
-      drawSpeakerStack(ctx, 3, rig(3, 142), 1, thumpAt(t) * 0.4, { horn: c.paint });
-      ctx.restore();
-    }, { animated: true, hires: 2 });
-  }
-}
-
-// The baby shark's hat (Peter, 6 Oct 2026: "i don't love the bonnet - give me a few different
-// options"). Every candidate on the baby following the party shark across the flooded club at
-// the club's size, as club.js drawFish has them; then the baby close up.
-{
-  const s = sectionEl('baby-shark-bakeoff', 'BANGER LAB — the baby shark’s hat',
-    'SETTLED 6 Oct 2026 on C, the big bow (club-fish.js babyBow), so 0 and C match; the bonnet it replaced is X. Its dummy was turned the same day to point down off its jaw, where a shark’s mouth is. '
-    + 'The party shark’s baby, which follows it across Lorenzo’s flood (club.js BABY_SHARK), got a frilled pink bonnet tied under its chin, a big eye and a dummy on 6 Oct 2026. '
-    + 'Peter didn’t love the bonnet: A–G were the alternatives (src/dev/baby-shark-hats.js). Every one keeps the dummy, the big eye and the rosy cheek. '
-    + 'First card: all of them side by side at the club’s size. Then each crossing the club behind its parent at 128 BPM over the club’s 66px heroes, and close up.',
-    '2026-10-06');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const FW = 480, FH = 270, FLOOR = FH - 46, TOON_H = 66, BPM = 128, CROSS = 6, REST = 1.5, LAG = 0.75;
-  const shark = FISHES.find((f) => f.name === 'PARTY SHARK');
-  const BABY_L = TOON_H * shark.size * 0.5;   // club.js BABY_SHARK
-  const CELL = (FW - 8) / HERO_MOVES.length;
-  const room = (ctx, t) => {
-    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
-    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
-    HERO_MOVES.forEach((m, i) => drawToon(ctx, m.hero, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, 4 + CELL * (i + 0.5), FLOOR, TOON_H));
-    ctx.save(); ctx.globalAlpha = 0.34; ctx.fillStyle = '#0b5f6a'; ctx.fillRect(0, 0, FW, FH); ctx.restore();
-  };
-  const water = (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0e4a56'); g.addColorStop(1, '#0a2e3a');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-  };
-  const baby = (ctx, c, L, t) => drawPaperFish(ctx, shark, L, { t, beat: t * BPM / 60, wag: Math.sin(t * 26), dive: 0, baby: true, babyHat: c.paint, heroH: L / (shark.size * 0.5) });
-  const all = [{ letter: '0', name: 'TODAY (club)', paint: undefined, description: 'What the club draws now: C, the big bow.' }, ...BABY_SHARK_HATS,
-    { letter: 'X', name: 'THE OLD BONNET', paint: babyBonnet,
-      description: 'What it had first: a pink bonnet over its crown, a white frill round the brim, a ribbon down its cheek tied in a bow under its chin.' }];
-  const LW = 12 + all.length * 58;
-  tile(grid, 'All side by side (club size)', `0 the club’s (C), A–G, and X the old bonnet, each ${Math.round(BABY_L)}px nose to tail as in the club.`, LW, 74, (ctx, t) => {
-    water(ctx, LW, 74);
-    all.forEach((c, i) => {
-      ctx.save(); ctx.translate(30 + i * 58, 34); baby(ctx, c, BABY_L, t + i * 0.3); ctx.restore();
-      ctx.fillStyle = '#bff8ff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(c.letter, 30 + i * 58, 70);
-    });
-  }, { animated: true, wide: true, hires: 3 });
-  for (const c of all) {
-    tile(grid, `${c.letter} — ${c.name}`, c.description, FW, FH, (ctx, t) => {
-      room(ctx, t);
-      const beat = t * BPM / 60, lap = CROSS + REST + LAG;
-      for (const [L, lag, dy, isBaby] of [[TOON_H * shark.size, 0, 0, false], [BABY_L, LAG, 0.12, true]]) {
-        const at = ((beat % lap) + lap) % lap - lag;
-        if (at < 0 || at > CROSS) continue;
-        const x = -L + (at / CROSS) * (FW + 2 * L);
-        const y = 92 + dy * 90 + Math.sin(t * 2.6 + lag) * L * 0.18;
-        ctx.save(); ctx.translate(x, y);
-        if (isBaby) baby(ctx, c, L, t);
-        else drawPaperFish(ctx, shark, L, { t, beat, wag: Math.sin(t * 13), dive: 0 });
-        ctx.restore();
-      }
-    }, { animated: true });
-    tile(grid, `${c.letter} — close up`, c.name, 240, 176, (ctx, t) => {
-      water(ctx, 240, 176);
-      ctx.save(); ctx.translate(110, 92); baby(ctx, c, 140, t); ctx.restore();
-    }, { animated: true, hires: 3, displayScale: 1.5 });
-  }
-}
-
-// THE FLYING TOASTER (Peter, 6 Oct 2026): one of the club's crowd moments, never under water;
-// a tap sends it round a loop-the-loop. club-toaster.js draws it; club.js starts it and takes the tap.
-{
-  const s = sectionEl('flying-toaster', 'BANGER LAB — the flying toaster',
-    'NEW 6 Oct 2026: one of the club’s crowd moments (club.js CLUB_MOMENTS), never while the room is under water. '
-    + 'Since 7 Oct it is the game’s own SILVER TOASTER (props.js applianceSilver, the one that pays only coins) — the first version was a new chrome toaster that read as the same object. '
-    + 'It crosses the room over the heroes’ heads and under the mirror ball, its wingbeat put on the beat and its toast on a two-bar cycle. '
-    + 'A tap sends it round a loop-the-loop; its chrome flashes once on the way round, where it turns through the light. '
-    + 'First card: the club at its landscape size (480x270, heroes 66px) at 128 BPM, a loop on every crossing. Then close up, flying and looping.',
-    '2026-10-06');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const FW = 480, FH = 270, FLOOR = 224, TOON_H = 66, BPM = 128;
-  const CELL = (FW - 8) / HERO_MOVES.length;
-  const sky = { width: FW, top: 83, bottom: FLOOR - TOON_H, S: TOON_H * TOASTER_SIZE };
-  const room = (ctx, t) => {
-    const g = ctx.createLinearGradient(0, 0, 0, FH); g.addColorStop(0, '#0f0d24'); g.addColorStop(0.75, '#1d1440'); g.addColorStop(1, '#120c26');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, FW, FH);
-    ctx.fillStyle = '#17112e'; ctx.fillRect(0, FLOOR, FW, FH - FLOOR);
-    ctx.fillStyle = '#2a2244'; ctx.beginPath(); ctx.arc(FW / 2, 57, 20, 0, Math.PI * 2); ctx.fill();   // where the mirror ball hangs
-    HERO_MOVES.forEach((m, i) => drawToon(ctx, m.hero, { kind: 'idle', grounded: true, menu: true, time: t + i * 0.37 }, 4 + CELL * (i + 0.5), FLOOR, TOON_H));
-  };
-  // a crossing every 9 seconds, alternate ways, tapped 2.5 seconds in
-  const crossing = (t) => {
-    const n = Math.floor(t / 9), k = t - n * 9;
-    let seed = n + 1;
-    const m = makeToaster(() => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; });
-    m.dir = n % 2 ? -1 : 1;
-    if (k >= 2.5) m.loops.push(toasterLoop(m, 2.5, sky));
-    return { m, k };
-  };
-  tile(grid, 'In the club, looping', 'Crossing the club at its size, tapped on every crossing.', FW, FH, (ctx, t) => {
-    room(ctx, t);
-    const { m, k } = crossing(t), at = toasterAt(m, k, sky);
-    ctx.save(); ctx.translate(at.x, at.y); ctx.scale(at.dir, 1);
-    drawToaster(ctx, sky.S, { beat: t * BPM / 60, pitch: at.pitch });
-    ctx.restore();
-  }, { animated: true });
-  const close = (ctx) => { const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#1a1538'); g.addColorStop(1, '#0f0d24'); ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176); };
-  tile(grid, 'Close up, flying', 'A wingbeat a beat; the toast’s cycle over two bars.', 240, 176, (ctx, t) => {
-    close(ctx);
-    ctx.save(); ctx.translate(120, 96); drawToaster(ctx, 110, { beat: t * BPM / 60, pitch: 0.06 }); ctx.restore();
-  }, { animated: true, hires: 3, displayScale: 1.5 });
-  tile(grid, 'Close up, looping', 'Round and round: the flash where it turns through the light.', 240, 176, (ctx, t) => {
-    close(ctx);
-    ctx.save(); ctx.translate(120, 92); drawToaster(ctx, 90, { beat: t * BPM / 60, pitch: -t * 2.4 }); ctx.restore();
-  }, { animated: true, hires: 3, displayScale: 1.5 });
-}
-
-// The angler's mouth (Peter, 6 Oct 2026: "whats the maroon bit for this fish, it's mouth? looks
-// odd can you bake off some fixes"). Every candidate chomping at 128 BPM, at the club's size and
-// close up, as drawPaperFish draws it in the flood.
-{
-  const s = sectionEl('angler-mouth-bakeoff', 'BANGER LAB — the angler’s mouth',
-    'SETTLED 6 Oct 2026 on C, the tongue; then on 7 Oct taken further (Peter: “not have a mouth area and just show teeth and tongue side on”): '
-    + '0 is the club’s now (club-fish.js anglerJaws), side on with no hole in the face — a lower jaw of its own hinged at the corner, the teeth crossing between the lips, a little tongue at the back by the corner, and open water in the gap in front of it. '
-    + 'C is the tongue in its dark throat as it shipped on 6 Oct; the maroon mouth before that is X. '
-    + 'The maroon wedge on the ANGLER (club-fish.js) is the inside of its open mouth. It reads oddly because it is laid on the face as one more cut-out, '
-    + 'so it casts a shadow like a sticker instead of sitting in the face like a hole; maroon on dark purple is muddy and reads as meat; its front edge runs straight down the silhouette, '
-    + 'so the face looks sliced off; and nothing says which part is jaw. A–F were the fixes (src/dev/angler-mouth-candidates.js). '
-    + 'The tail, the lamp, the eye and the fin are the same in every one, and every one keeps the chomp: shut on the beat, open between. '
-    + 'First cards: all of them side by side at the club’s size (the angler is 0.6 of a 66px hero) and at twice it. Then each close up.',
-    '2026-10-06');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const TOON_H = 66, BPM = 128;
-  const angler = FISHES.find((f) => f.name === 'ANGLER');
-  const CLUB_L = TOON_H * angler.size;
-  const all = [{ letter: '0', name: 'TODAY (club)', paint: anglerJaws, description: 'What the club draws now: side on, a hinged jaw, the teeth, a little tongue at the back and nothing else between the lips (7 Oct 2026).' }, ...ANGLER_MOUTHS,
-    { letter: 'X', name: 'THE OLD MAROON', paint: anglerMaroon, description: 'What it had until 6 Oct 2026: a maroon wedge laid over the face.' }];
-  const water = (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#21434f'); g.addColorStop(1, '#16313d');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-  };
-  const fish = (ctx, c, L, t) => drawPaperFish(ctx, angler, L, { t, beat: t * BPM / 60, wag: Math.sin(t * 13), dive: 0, jaws: c.paint, heroH: TOON_H });
-  for (const [k, label] of [[1, 'club size'], [2, 'twice club size']]) {
-    const L = CLUB_L * k, step = Math.round(L * 1.6), LW = 16 + all.length * step, LH = Math.round(L * 1.22 + 14);
-    tile(grid, `All side by side (${label})`, `0 the club’s (C), A–F, and X the old maroon, each ${Math.round(L)}px nose to tail.`, LW, LH, (ctx, t) => {
-      water(ctx, LW, LH);
-      all.forEach((c, i) => {
-        ctx.save(); ctx.translate(8 + step * (i + 0.36), L * 0.8); fish(ctx, c, L, t + i * 0.11); ctx.restore();
-        ctx.fillStyle = '#bff8ff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
-        ctx.fillText(c.letter, 8 + step * (i + 0.5), LH - 4);
-      });
-    }, { animated: true, wide: true, hires: 3 });
-  }
-  for (const c of all) {
-    tile(grid, `${c.letter} — ${c.name}`, c.description, 240, 176, (ctx, t) => {
-      water(ctx, 240, 176);
-      ctx.save(); ctx.translate(86, 114); fish(ctx, c, 140, t); ctx.restore();
-    }, { animated: true, hires: 3, displayScale: 1.5 });
-  }
-}
-
-// THE GOLDEN TOASTER'S TOP (Peter, 7 Oct 2026: "i kinda like the current one but the top perspective
-// where the toast comes out is off"). PROP_PAINTERS.appliance now builds its end plane, cap, slot and
-// slice off one pair of axes; src/dev/toaster-top-before.js keeps the painter as it was, for comparison.
-{
-  const s = sectionEl('golden-toaster-top', 'GOLDEN TOASTER — the top, in perspective',
-    'FIXED 7 Oct 2026, in the game (props.js appliance), for the gold toaster and the silver one alike. AFTER is the game’s toaster as it is now, so it also has the rounded top settled below (toaster-crowns-bakeoff, F). '
-    + 'The cap over the toaster used to be a level band sat on an end plane seen almost level — two views at once — with the slot level and the slice sheared to suit neither. '
-    + 'Now one box in one view: the end plane’s top and the cap’s sides run the same way back, the slot runs down the middle of the cap, '
-    + 'and the slice stands in it square to the face, rising straight up, with a sliver of its back crust showing its thickness. Nothing else changed: the wings, the chrome and the clock are the same. '
-    + '(The A–E redesign bake-off that was here is gone: Peter kept the current toaster.) '
-    + 'First card: before and after at the pickup’s real size through the run’s world camera, a hero for scale. Then close up, before and after, gold and silver.',
-    '2026-10-07');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const BOX = { w: 22, h: 18 }, OVER = 4 / 3;   // entities.js appliance; draw.js draws pickups 4/3 their box
-  const dw = BOX.w * OVER, dh = BOX.h * OVER;
-  const frameAt = (t, k = 0) => Math.floor(t * 24 + k * 7) % 96;
-  const hover = (t, k = 0) => Math.sin(t * 2.4 + k) * 2;
-  const looks = [
-    ['BEFORE', (ctx, w, h, f) => applianceBefore(ctx, w, h, f)],
-    ['AFTER', (ctx, w, h, f) => PROP_PAINTERS.appliance(ctx, w, h, f)],
-    ['BEFORE (silver)', (ctx, w, h, f) => applianceBefore(ctx, w, h, f, SILVER_TOASTER_FINISH)],
-    ['AFTER (silver)', (ctx, w, h, f) => PROP_PAINTERS.applianceSilver(ctx, w, h, f)],
-  ];
-  const LW = 40 + looks.length * 40;
-  tile(grid, 'Before and after (lane size)', 'At the pickup’s real size through the run’s world camera; the hero for scale.',
-    LW * WORLD_Z, 60 * WORLD_Z, (ctx, t) => {
-      ctx.fillStyle = '#1d2a3a'; ctx.fillRect(0, 0, LW * WORLD_Z, 60 * WORLD_Z);
-      ctx.scale(WORLD_Z, WORLD_Z);
-      ctx.fillStyle = '#2c4a3a'; ctx.fillRect(0, 52, LW, 8);
-      drawToon(ctx, 'lorenzo', { kind: 'run', grounded: true, time: t, phase: (t * 1.6) % 1 }, 16, 52, HERO_DRAW_H);
-      looks.forEach(([name, paint], i) => {
-        ctx.save(); ctx.translate(36 + i * 40, 16 + hover(t, i)); paint(ctx, dw, dh, frameAt(t)); ctx.restore();
-        ctx.fillStyle = '#ffe890'; ctx.font = 'bold 4px monospace'; ctx.textAlign = 'center';
-        ctx.fillText(name, 36 + i * 40 + dw / 2, 58);
-      });
-    }, { animated: true, wide: true, hires: 3 });
-  for (const [name, paint] of looks) {
-    tile(grid, `${name} — close up`, 'Watch the slice come up out of the slot.', 240, 176, (ctx, t) => {
-      const g = ctx.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#24314a'); g.addColorStop(1, '#141c2c');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, 240, 176);
-      ctx.save(); ctx.translate(30, 18 + hover(t) * 3); paint(ctx, 180, 180 * BOX.h / BOX.w, frameAt(t)); ctx.restore();
-    }, { animated: true, hires: 3, displayScale: 1.5 });
   }
 }
 
@@ -9665,260 +9024,6 @@ const paperHere = (ctx) => { const m = ctx.getTransform(); return tankPaper(ctx,
   }
 }
 
-// THE BOLT's attract (Peter, 7 Oct 2026: "a little attraction effect on the lightning icon to attract
-// attention ... fade in if dimmed and a glisten or do something so user notice it. Icon may need to
-// change"). Each look on a loop of two bars: a bar of the moment, then a bar at rest, faded as the
-// bottom row fades when nobody has touched it (club.js ICONS_ASLEEP).
-{
-  const s = sectionEl('bolt-attract-bakeoff', 'BANGER LAB — THE BOLT getting itself noticed',
-    'SETTLED 7 Oct 2026 on A, the glint, once a visit: on the first bar line 7 s after the room comes up (the welcome card gone), if the bolt has not been touched (src/game/banger/bolt-button.js), so 0 is A; X is the plain button it had. '
-    + 'THE BOLT (a new take of the song, on a new seed) sits faint in the bottom row with the pencil and SAVE, and nobody found it. '
-    + 'Each look gives it an attract moment: for one bar the button fades up however faint the row has gone and does something. '
-    + 'A GLINT a shine sweeps the disc and a star twinkles on the tip; B CHARGE the bolt fills with gold from its point up, then flashes and throws sparks; C PING two rings go out from the rim; '
-    + 'D JIGGLE it hops and wobbles on three beats; E CRACKLE little arcs crackle off the rim, the bolt flickering; F SPIN ARROW a new icon, the bolt inside a reroll arrow that spins once; '
-    + 'G GOLD the bolt turns gold on a glow, pulsing on the beat (src/dev/bolt-attract-candidates.js). '
-    + 'Here every loop is two bars at 124 BPM: the moment, then a bar at rest. First card: all of them at the club’s size between the pencil and SAVE; then each close up.',
-    '2026-10-07');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const BPM = 124, R = 11, ASLEEP = 0.18;
-  const all = [{ letter: '0', name: 'TODAY (A)', paint: drawBoltButton, description: 'The club’s now: A, the glint.' }, ...BOLT_ATTRACT_CANDIDATES,
-    { letter: 'X', name: 'NO MOMENT', paint: drawBoltPlain, description: 'The plain button it had until 7 Oct 2026.' }];
-  const room = (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#1a1236'); g.addColorStop(1, '#120d26');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-  };
-  // the moment for the first bar of each two, at rest for the second
-  const at = (t) => { const beat = t * BPM / 60, b = beat % 8; return { beat, k: b < 4 ? b / 4 : -1 }; };
-  const button = (ctx, c, x, y, r, t, u = 1) => {
-    const { beat, k } = at(t);
-    const still = c.paint === drawBoltPlain;
-    const alpha = still ? ASLEEP : Math.max(ASLEEP, boltAttractAlpha(k));
-    c.paint(ctx, { x, y, r, u, alpha, rim: 'rgba(206,208,222,0.7)', ink: '#dcdee8', k: still ? -1 : k, beat, t });
-    ctx.globalAlpha = 1;
-  };
-  const plain = (ctx, x, y, r) => {          // the pencil's and SAVE's discs either side, asleep
-    ctx.globalAlpha = ASLEEP; ctx.fillStyle = 'rgba(11,11,20,0.78)';
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(206,208,222,0.7)'; ctx.lineWidth = 0.8; ctx.stroke(); ctx.globalAlpha = 1;
-  };
-  const STEP = R * 2.8 + 8, CW = STEP * 3 + 12, LW = all.length * CW + 10;
-  tile(grid, 'All side by side (club size)', 'Each between the pencil and SAVE, the row asleep; the moment on the first bar of every two.', LW, 64, (ctx, t) => {
-    room(ctx, LW, 64);
-    all.forEach((c, i) => {
-      const x0 = 10 + i * CW + R + 4, y = 30;
-      plain(ctx, x0, y, R); plain(ctx, x0 + STEP * 2, y, R);
-      button(ctx, c, x0 + STEP, y, R, t);
-      ctx.fillStyle = '#c9a0ff'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(c.letter, x0 + STEP, 58);
-    });
-  }, { animated: true, wide: true, hires: 3 });
-  for (const c of all) {
-    tile(grid, `${c.letter} — ${c.name}, close up`, c.description, 160, 120, (ctx, t) => {
-      room(ctx, 160, 120);
-      ctx.save(); ctx.scale(4, 4);
-      button(ctx, c, 20, 15, R, t);
-      ctx.restore();
-    }, { animated: true, hires: 2 });
-  }
-}
-
-// IT'S ALIVE! — what Gary throws (Peter, 7 Oct 2026: "give me a bake off for the switch scene with
-// gary when creating new bangers... i particularly don't love the switch"; then, "i like them all, so
-// make the choice random but keep the bake off in case I want to tweak or remove one").
-{
-  const s = sectionEl('birth-switch-bakeoff', 'BANGER LAB — IT’S ALIVE!, what Gary throws',
-    'SHIPS ALL SIX, AT RANDOM (7 Oct 2026): every new banger’s birth picks one of A–F (src/game/banger/birth-switches.js; '
-    + 'take one out of BIRTH_SWITCHES to take it out of the game). X is the small knife switch on a panel he had until now. '
-    + 'A BIG KNIFE SWITCH the same idea made to read, a slate board with a fat copper blade, red knob and red/green lamps; '
-    + 'B FLOOR LEVER a signal-box lever he leans out for and hauls back into the last notch; '
-    + 'C BIG RED BUTTON he flicks the cover open, winds up and slams it; D PLUNGER both hands close together on the short T-bar of a tall, thin charger post, elbows out, driven home '
-    + '(OPEN, 7 Oct 2026: D2 is the same post out at his side, one hand — not in the game until picked); '
-    + 'E AMP KNOB a combo amp’s giant chicken-head knob cranked round to 11; F MASTER FADER shoved to the top, its meter filling with the charge. '
-    + 'Everything lands on the same beat the old switch did (the power sound, the coils waking). '
-    + 'First the whole birth for each, then each throw close up at 3x, looping its first 1.8 s.',
-    '2026-10-07');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const rec = { name: 'CRYSTAL BEETLE', style: 'big-room', mood: 'dark', n: 1 };
-  const STEP_S = (FLASH_AT - SWITCH_AT) / BIRTH_STEPS.length;
-  const all = [...BIRTH_SWITCHES, { ...PLUNGER_AT_SIDE, letter: 'D2' },
-    { letter: 'X', name: 'THE KNIFE SWITCH HE HAD', description: 'The small knife switch on its panel, until 7 Oct 2026 (birth.js drawGary, drawn when no switch is given).' }];
-  // what update() would have left behind by time t: the step it is on
-  const at = (b, t) => {
-    b.t = t;
-    b.step = t < SWITCH_AT ? -1 : Math.min(BIRTH_STEPS.length - 1, Math.floor((t - SWITCH_AT) / STEP_S));
-    return b;
-  };
-  const LOOP = BIRTH_S + 0.8, THROW = 1.8, Z = 3, CX = 70, CY = 92, CW = 160, CH = 132;   // tall enough for D's box on the floor
-  for (const c of all) {
-    const b = new BangerBirthState({ rec, onDone() {}, lever: c.letter === 'X' ? null : c });
-    tile(grid, `${c.letter} — ${c.name}`, c.description, W, H, (ctx, t) => {
-      at(b, Math.min(t % LOOP, BIRTH_S)).draw(ctx);
-    }, { animated: true });
-  }
-  for (const c of all) {
-    const b = new BangerBirthState({ rec, onDone() {}, lever: c.letter === 'X' ? null : c });
-    tile(grid, `${c.letter} — ${c.name}, the throw close up`, 'Gary’s corner of the lab at 3x, looping the reach, the throw and the let-go.', CW * Z, CH * Z, (ctx, t) => {
-      // magnified to be seen, not a push-in: Gary inked as the menu inks him (scale 1)
-      ctx.save(); ctx.scale(Z, Z); ctx.translate(-CX, -CY); setInkScale(1);
-      try { at(b, t % THROW).draw(ctx); } finally { setInkScale(); ctx.restore(); }
-    }, { animated: true });
-  }
-}
-
-// IT'S ALIVE! — boomboxes and cassettes, each with a face (Peter, 7 Oct 2026: "can we do a bake off
-// of different boomboxes and cassettes. I like how the casset has a face, comes alive, so don't want to
-// lose that effect, I feel we could do that with a boom box if we wanted to as well").
-{
-  const s = sectionEl('birth-faces-bakeoff', 'BANGER LAB — IT’S ALIVE!, boomboxes and cassettes with faces',
-    'SHIPS FIVE, AT RANDOM (7 Oct 2026: "i like x,a,b,c (remove the pencil on b though) and d.. mix it up"): every new '
-    + 'banger’s birth stands one of these on the slab (src/game/banger/birth-faces.js; take one out of BIRTH_FACES to take '
-    + 'it out of the game). Each keeps the effect — grey and asleep with its eyes shut, then at the flash its colours, its '
-    + 'eyes open, a grin, the song’s name, and moving to the beat. X GIANT CASSETTE the first; A CLEAR CASSETTE, its tape '
-    + 'the mouth; B MIXTAPE, marker brows and teeth; C CHROME CASSETTE, a half-lid smirk; D SILVER BOOMBOX, speaker eyes '
-    + 'and a tape-door mouth. (E DOUBLE-DECK BLASTER and F, the cassette inside a boombox, were not kept.) '
-    + 'First the whole birth for each, then the slab close up at 3x, looping from the charge through the flash.',
-    '2026-10-07');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const rec = { name: 'CRYSTAL BEETLE', style: 'big-room', mood: 'dark', n: 1 };
-  const STEP_S = (FLASH_AT - SWITCH_AT) / BIRTH_STEPS.length;
-  const all = BIRTH_FACES;
-  const at = (b, t) => {
-    b.t = t;
-    b.step = t < SWITCH_AT ? -1 : Math.min(BIRTH_STEPS.length - 1, Math.floor((t - SWITCH_AT) / STEP_S));
-    return b;
-  };
-  const make = (c) => new BangerBirthState({ rec, onDone() {}, lever: BIRTH_SWITCHES[0], subject: c.paint });
-  const LOOP = BIRTH_S + 0.8, Z = 3, CX = 165, CY = 68, CW = 150, CH = 145;
-  const FROM = FLASH_AT - 1.2, SPAN = 4.2;
-  for (const c of all) {
-    const b = make(c);
-    tile(grid, `${c.letter} — ${c.name}`, c.description, W, H, (ctx, t) => {
-      at(b, Math.min(t % LOOP, BIRTH_S)).draw(ctx);
-    }, { animated: true });
-  }
-  for (const c of all) {
-    const b = make(c);
-    tile(grid, `${c.letter} — ${c.name}, close up`, 'The slab at 3x: charging, the flash, alive.', CW * Z, CH * Z, (ctx, t) => {
-      ctx.save(); ctx.scale(Z, Z); ctx.translate(-CX, -CY); setInkScale(1);
-      try { at(b, FROM + (t % SPAN)).draw(ctx); } finally { setInkScale(); ctx.restore(); }
-    }, { animated: true });
-  }
-}
-
-// THE BANANA PEEL, second bake-off (Peter, 7 Oct 2026: "could we do a bakeoff for the banana peel
-// obstacle, still not 100% happy with it"). Candidates in src/dev/banana-peels.js; each one is
-// registered as a variant of the real prop and drawn through drawWorldEntity on an entity wearing
-// it as `skin`, so the raster, the 4/3 inflation, the contact shadow and the rim are the game's.
-{
-  const s = sectionEl('banana-peel-bakeoff', 'Banana peel — bake-off II, the anatomy',
-    'SETTLED 7 Oct 2026 on D, RIPE (“D”): it is props.js bananaPeel now, so 0 and D match; the peel it replaced is X, last. '
-    + 'The first bake-off (27 Aug) settled the size (10x6, lying on the road), the lemon yellow and the warm contour; every candidate keeps them. '
-    + 'What it left is the anatomy: the peel it shipped (X) grows its skins from a root in the pile and carries the stalk on the end of one of them, so nothing joins the parts and one skin floats above the rest. '
-    + 'In A–F every skin hangs from the one crown the stalk stands on. A, B and C are three ways that peel can have landed; D, E and F are finishes on A’s shape, each portable to whichever shape wins. '
-    + 'First the whole field side by side in the three cabinets that deal a peel, at the run’s own size; then each one met at running speed on Plumber Panic, and close up.',
-    '2026-10-07');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const all = [
-    { letter: '0', name: 'TODAY', sprite: 'bananaPeel', description: 'The peel in the game now (props.js bananaPeel): D.' },
-    ...[...BANANA_PEELS, { letter: 'X', name: 'THE PEEL D REPLACED', paint: bananaPeelBefore,
-      description: 'props.js bananaPeel until 7 Oct 2026: four skins from a root in the pile, the stalk on the end of the one standing up.' }]
-      .map((c) => {
-        const sprite = `bananaPeel:${c.letter}`;
-        definePropVariant(sprite, 'bananaPeel', c.paint, c.rim ? { rim: true } : {});
-        return { ...c, sprite };
-      }),
-  ];
-  const peelAt = (x, c) => { const e = makeObstacle('bananaPeel', x); if (c.sprite !== 'bananaPeel') e.skin = c.sprite; return e; };
-  const frame = (ctx, t, cabId, camX, draw) => {
-    const cab = CABINETS.find((c) => c.id === cabId);
-    const pack = getStylePack(cab.style, {});
-    const bc = { stageIndex: 1, progress: 0.3 };
-    pack.bg(ctx, t, camX, cab, Infinity, bc, 0, bc);
-    ctx.save();
-    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
-    pack.ground(ctx, camX, cab, [], [], t * 60, VIEW_W);
-    draw(pack);
-    ctx.restore();
-    if (pack.post) pack.post(ctx, t);
-  };
-  // The field in a row, ahead of the hero, in each cabinet that deals a peel (cabinets.js PEEL_ONCE).
-  for (const [cabId, label] of [['plumber', 'PLUMBER PANIC'], ['speed', 'SPEED ZONE — the road is the peel’s own orange'], ['office', 'CORPORATE KOMBAT']]) {
-    tile(grid, `All side by side — ${label}`, '0 the game’s (D), A–F, and X the peel D replaced, at the run’s size beside Lorenzo.', W, H, (ctx, t) => {
-      const camX = 2000;
-      frame(ctx, t, cabId, camX, (pack) => {
-        drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
-        all.forEach((c, i) => {
-          const x = 84 + i * 19;
-          drawWorldEntity(ctx, peelAt(camX + x, c), camX, t, pack, {});
-          ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
-          ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillText(c.letter, x + 5.5, GROUND_Y + 10.5);
-          ctx.fillStyle = '#fff6c8'; ctx.fillText(c.letter, x + 5, GROUND_Y + 10);
-        });
-      });
-    }, { animated: true });
-  }
-  // Each one met at running speed: the peel scrolls in from the right at BASE_SPEED and Lorenzo hops it.
-  const LOOP = 2.2, PEEL_X = 2300;
-  for (const c of all) {
-    tile(grid, `${c.letter} — ${c.name}`, c.description, W, H, (ctx, t) => {
-      const camX = 2000 + (t % LOOP) * BASE_SPEED;
-      frame(ctx, t, 'plumber', camX, (pack) => {
-        const ahead = PEEL_X - camX - PLAYER_X;   // world units from the hero's x to the peel's
-        const hop = ahead < 25 && ahead > -35 ? (ahead - 25) / -60 : -1;
-        const lift = hop >= 0 ? Math.sin(Math.PI * hop) * 26 : 0;
-        drawWorldEntity(ctx, peelAt(PEEL_X, c), camX, t, pack, {});
-        drawToon(ctx, 'lorenzo', pose(hop >= 0 ? 'jump' : 'run', t), PLAYER_X, GROUND_Y - lift, HERO_DRAW_H);
-      });
-    }, { animated: true });
-    tile(grid, `${c.letter} — close up`, 'The painter at ten times its world size.', 150, 92, (ctx) => {
-      drawProp(ctx, c.sprite, 10, 6, 130, 80);
-    }, { animated: false, hires: 3 });
-  }
-}
-
-// 4-BIT, SEEN (Peter, 8 Oct 2026: "give me a bake off to see 8 bit vs 4 bit crt"). B-33P on a take
-// already on the 8-Bit set crushes the mix and calls it 4-BIT (club-voices.js CRUSH), and the room
-// has no tube for it yet. Each look is the club's own tube (club-crt.js clubCrt) through the club's
-// `crtLook` seam, on the floor section's stand-in room: no song, no sound, sixteen bars a lap, the
-// LED board tapped on bar 7. Candidates in src/dev/crt-4bit-candidates.js.
-{
-  const s = sectionEl('crt-4bit-bakeoff', 'BANGER LAB — 4-BIT on the tube',
-    'PICKED 8 Oct 2026: D, CHUNKIER — 4-BIT puts the room on it now (club-crt.js FOUR_BIT_TUBE), so D is what ships; 0 is still 8-BIT’s. '
-    + 'B-33P on a take that is already 8-bit now crushes the mix and calls it 4-BIT; these are the tube it could put the room on, '
-    + 'each lower-fi than the 8-BIT tube the room goes on for a take that is not. 0 is 8-BIT as it ships (a hero 22 cells tall, the club’s 47 inks). '
-    + 'A CHUNKY bigger cells only (14 tall); B SIXTEEN OF OURS 14 tall on sixteen of the club’s own inks — 4 bits of colour; '
-    + 'C THE PC’S SIXTEEN 14 tall on the old 4-bit RGBI palette, the room pushed darker and louder first (as it is, it all went to the palette’s two greys); D CHUNKIER B’s inks, 10 tall; E GREEN SCREEN 14 tall, four levels of one green phosphor. '
-    + 'The LED board and the sign keep tubes of their own in every one, as in 8-BIT. The room is the floor section’s stand-in club, sixteen bars a lap, '
-    + 'no song and no sound. First the heroes from every look side by side, then each whole room.',
-    '2026-10-08');
-  const grid = document.createElement('div'); grid.className = 'grid'; s.append(grid);
-  const { room, sharedRoom, roomCard, cue } = labClub;
-  const looks = [CRT_8BIT, ...CRT_4BIT_CANDIDATES];
-  // what draw() reads off the band while it plays on the 8-Bit set: swapped, and not an 8-Bit take
-  const onTube = { swappedNow: true, swapped: true, eightBit: false, waiting: () => false, label: () => '' };
-  const rooms = looks.map((look) => sharedRoom(room({ lap: 64, seed: 1,
-    setup: (club) => Object.assign(club, { voices: onTube, crtLook: look }),
-    each: (club, b, n, at) => cue(club, 'led', b, 24, at, () => club.tapLedBoard()) })));
-  // the heroes and the floor under them, the middle of the room
-  const CROP = [150, 118, 180, 132];
-  const [, , cw, ch] = CROP, GAP = 6, LABEL = 12, COLS = 3;
-  const SW = COLS * (cw + GAP) - GAP, SH = Math.ceil(looks.length / COLS) * (ch + LABEL + GAP) - GAP;
-  tile(grid, 'All side by side', 'The middle of the floor from every look, at the room’s own size: 0 is 8-BIT today.', SW, SH, (ctx, t) => {
-    ctx.fillStyle = '#0e0e18'; ctx.fillRect(0, 0, SW, SH);
-    looks.forEach((look, i) => {
-      const x = (i % COLS) * (cw + GAP), y = Math.floor(i / COLS) * (ch + LABEL + GAP);
-      ctx.save();
-      ctx.translate(x, y + LABEL);
-      ctx.beginPath(); ctx.rect(0, 0, cw, ch); ctx.clip();
-      rooms[i](ctx, t, CROP);
-      ctx.restore();
-      ctx.fillStyle = '#c9a0ff'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'left';
-      ctx.fillText(`${look.letter} ${look.name}`, x, y + 9);
-    });
-  }, { animated: true, wide: true });
-  looks.forEach((look, i) => roomCard(grid, `${look.letter} — ${look.name}`, look.description, rooms[i]));
-}
-
 // CORPORATE KOMBAT — backdrop styles (Peter, 10 Oct 2026: "not totally happy with the corporate
 // kombat cabinet... the graph paper background is very boring... do a bake off with some
 // significantly more elaborate backgrounds with paralax ... it's the 2nd last level - it needs to
@@ -9984,115 +9089,101 @@ function officeStyleTiles(grid, tag, cand) {
   OFFICE_STYLE_ROUND_THREE.forEach(({ tag, cand }) => officeStyleTiles(grid, tag, cand));
 }
 
-// MAKING THE FOOD COURT READ AS ONE. Two bake-offs off one ask (11 Oct 2026):
-// the wall behind the cabinet bank, and the empty plaza before the serving
-// line. Hub-scale mocks from the room's real painters; candidates live in
-// src/dev/foodcourt-candidates.js and nothing is wired into HubState.
+// ------------------------------------------ CORPORATE KOMBAT — obstacles for the climb (lab)
+// Asked 12 Oct 2026: "we need significantly better obstacles for the corporate cabinets.
+// almost none of the ones we have work anymore". Twenty office objects in the LIGNE ’89 hand,
+// each in a slot the lane already deals (src/dev/office-obstacle-candidates.js), shown in
+// the real production frame on all three floors at in-run size — no enlargements (Peter,
+// 12 Oct: "zoom x 1 is plenty"). Port a winner via sprites/props.js (see the file header).
 {
-  const grid = section('foodcourt-fronts-bakeoff', 'THE FOOD COURT — food units behind the cabinets (bake-off)',
-    'Asked 11 Oct 2026: make the hub read as a food court rather than an arcade with a snack bar at the end. '
-    + 'Today each cabinet has a poster above it on bare wall (0). Each candidate replaces the posters with the food '
-    + 'units the machines were parked in front of, one unit per cabinet, at the hub\'s own camera and zoom: '
-    + 'cabinets 2–5 with Lorenzo for scale. Wall dressing is dimmed to the room\'s light so nothing wins by being '
-    + 'brighter than the hub would draw it. Landscape only; portrait not checked. ANIMATED (sign flicker).',
-    '2026-10-11');
-  tile(grid, '0 TODAY', 'one poster per cabinet (blanked here)', W, H, (ctx, t) => drawFrontsMock(ctx, t, null), { animated: true });
-  for (const cand of FRONTS_CANDIDATES) {
-    tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawFrontsMock(ctx, t, cand), { animated: true });
-  }
-}
-{
-  const grid = section('foodcourt-seating-bakeoff', 'THE FOOD COURT — seating in the plaza (bake-off)',
-    'Asked 11 Oct 2026, with the food units above. The plaza between the last cabinet and Dolores\'s counter is bare '
-    + 'tile (0, at today\'s 96 units). Each candidate furnishes it — and every candidate card widens the plaza by one '
-    + 'cabinet pitch (to 184) to fit the furniture and still leave a walking gap, which would be part of shipping it. '
-    + 'Clara stands at the first table for scale; nobody sits, because no hero has a seated pose. Landscape only. '
-    + 'ANIMATED (only lights and the palm move).',
-    '2026-10-11');
-  tile(grid, '0 TODAY', 'bare plaza, 96 units', W, H, (ctx, t) => drawSeatingMock(ctx, t, null), { animated: true });
-  for (const cand of SEATING_CANDIDATES) {
-    tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawSeatingMock(ctx, t, cand), { animated: true });
-  }
-}
-{
-  const grid = section('foodcourt-plaza-wall-bakeoff', 'THE FOOD COURT — the wall behind the tables (bake-off)',
-    'Asked 11 Oct 2026, once the bolted tables were in: the wall over the plaza is the one bare stretch between the '
-    + 'last cabinet\'s poster and Dolores\'s menu board. Each card is the shipped plaza (three tables, the real menu '
-    + 'board, the counter) with one candidate centred on that wall, shaded to the service end\'s light. 0 is the wall '
-    + 'as shipped. Landscape only. ANIMATED.',
-    '2026-10-11');
-  tile(grid, '0 AS SHIPPED', 'bare wall over the tables', W, H, (ctx, t) => drawPlazaWallMock(ctx, t, null), { animated: true });
-  for (const cand of PLAZA_WALL_CANDIDATES) {
-    tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawPlazaWallMock(ctx, t, cand), { animated: true });
-  }
-}
-{
-  const grid = section('foodcourt-interleave-bakeoff', 'THE FOOD COURT — cabinets between the food stalls (bake-off)',
-    'Asked 11 Oct 2026, instead of food units behind every machine: the cabinet bank breaks into three groups of three '
-    + 'with a food stall in each of the two gaps. Each card shows the end of one group, the stall, and the start of the '
-    + 'next, at hub scale. Adds about two stall widths (~230 units) of walking. Landscape only. ANIMATED.',
-    '2026-10-11');
-  for (const cand of INTERLEAVE_CANDIDATES) {
-    tile(grid, `${cand.key} ${cand.name}`, cand.note, W, H, (ctx, t) => drawInterleaveMock(ctx, t, cand), { animated: true });
-  }
-}
-{
-  // Every smoothie the board can show, paged: each card is the real stall
-  // painter with seven picks and one dud, walking both lists in order.
-  const grid = section('smoothie-board-pages', 'THE FOOD COURT — every smoothie on the board',
-    'Asked 11 Oct 2026. In the hub the board draws seven from SMOOTHIES and one from SMOOTHIE_DUDS at random each '
-    + 'visit (sprites/stalls.js). These cards page through every entry in order so the whole list can be read at '
-    + 'the size it hangs.',
-    '2026-10-11');
-  const per = SMOOTHIE_ROWS - 1;
-  const pages = Math.max(Math.ceil(SMOOTHIES.length / per), SMOOTHIE_DUDS.length);
-  const plugs = (n) => `${n} PLUG${n === 1 ? '' : 'S'}`;
-  for (let pg = 0; pg < Math.ceil(SMOOTHIES.length / per); pg++) {
-    const picks = SMOOTHIES.slice(pg * per, pg * per + per);
-    const dud = SMOOTHIE_DUDS[pg % SMOOTHIE_DUDS.length];
-    const menu = [...picks, dud].map(([n, p]) => [n, plugs(p)]);
-    tile(grid, `PAGE ${pg + 1}`, `${picks.length} smoothies + ${dud[0]}`, 130, 150, (ctx) => {
-      ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, 130, 150);
-      ctx.save(); ctx.translate(65 - 56, -62);
-      drawFoodStall(ctx, 56, 212, STALLS[0], { t: 1, lit: 1, menu });
-      ctx.restore();
-    }, { hires: 6 });
-  }
-  // The duds the pages above did not reach.
-  const shown = Math.ceil(SMOOTHIES.length / per);
-  if (SMOOTHIE_DUDS.length > shown) {
-    tile(grid, 'MORE DUDS', 'the rest of SMOOTHIE_DUDS', 130, 150, (ctx) => {
-      ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, 130, 150);
-      ctx.save(); ctx.translate(9, -62);
-      drawFoodStall(ctx, 56, 212, STALLS[0], { t: 1, lit: 1, menu: SMOOTHIE_DUDS.slice(shown, shown + SMOOTHIE_ROWS).map(([n, p]) => [n, plugs(p)]) });
-      ctx.restore();
-    }, { hires: 6 });
-  }
-}
-
-// ------------------------------------------ CORPORATE KOMBAT — meeting rooms with depth (lab)
-// Asked 12 Oct 2026: the frameless glass rooms read as people painted on the wall. Four ways
-// to give a meeting room depth, against the current look, in the real scene (rooms.js,
-// setOfficeRoomStyle). Floor 23's meeting room and HR review, and floor 88's meeting room.
-{
-  const NAMES = {
-    glass: 'CURRENT — frameless glass on the windows',
-    recess: 'A — RECESS: set back into the building',
-    box: 'B — GLASS BOX: standing out into the corridor',
-    frosted: 'C — RECESS behind a frosted band, lit cooler',
-    partition: 'D — PARTITION wall, door and a deep window',
-  };
-  const grid = section('office-room-depth-bakeoff', 'CORPORATE KOMBAT — meeting room depth bake-off',
-    'Asked 12 Oct 2026: the glass meeting rooms look like the people are on the wall. Each row is one treatment, '
-    + 'in the production scene: floor 23 meeting room, floor 23 HR review, floor 88 meeting room. Pick a letter.',
+  const s = sectionEl('office-obstacle-bakeoff', 'CORPORATE KOMBAT — obstacles for the climb (bake-off)',
+    'Asked 12 Oct 2026: almost none of the office obstacles work in front of the Ligne ’89 climb. Twenty office '
+    + 'objects of 1986–89, drawn in the room’s own hand — one ink, flat colour, saturated where the room is pastel — '
+    + 'each in a slot the lane already deals, so a pick swaps a drawing and keeps the jump. First tile is what the '
+    + 'office deals today. Rollers ride upright on their casters (today’s chair cartwheels like a barrel). Pick letters, '
+    + 'as many as you like — several slots can take more than one skin, the way the cactus already does. ANIMATED.',
     '12 Oct 2026');
-  for (const style of OFFICE_ROOM_STYLES) {
-    for (const [floor, kind, where] of [['open', 'meeting', 'floor 23 meeting'], ['open', 'interview', 'floor 23 HR review'], ['exec', 'meeting', 'floor 88 meeting']]) {
-      tile(grid, `${NAMES[style]} · ${where}`, `roomStyle ${style}`, 480, 270,
-        (ctx, t) => drawOfficeRoomScene(ctx, t, { floor, kind, style }), { animated: true });
+  const sub = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = note;
+    s.appendChild(p);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+  const caption = (cand) => {
+    const slot = OFFICE_OBSTACLE_SLOTS[cand.slot];
+    const env = slotEnvelope(cand);
+    return `${slot.name} · in place of ${slot.was} · art ${env.w}x${env.h}u over a ${env.bw}x${env.bh} box<br>${cand.note}`;
+  };
+  {
+    const grid = sub('1. In the lane, on all three floors',
+      'The production office pack, lane camera and slab, cropped to the lane: 8-1 lobby, 8-2 floor 23, 8-3 floor 88. '
+      + 'The room scrolls; Lorenzo and the candidate hold still, the candidate at its in-run size with the run’s '
+      + 'contact shadow and red tick. Stackers are shown single and two high. This is the read that decides it.');
+    tile(grid, 'NOW — what the office deals today',
+      'cactus · crate · chair · printer · fireBarrel · boomBarrier · bananaPeel · paperwork · drone · buzzbird, through the real run painter',
+      480, OFFICE_OBSTACLE_LANE_H, (ctx, t) => drawOfficeObstacleControl(ctx, t), { animated: true, wide: true });
+    for (const cand of OFFICE_OBSTACLE_CANDIDATES) {
+      tile(grid, `${cand.letter} — ${cand.name}`, caption(cand), 480, OFFICE_OBSTACLE_LANE_H,
+        (ctx, t) => drawOfficeObstacleLane(ctx, t, cand), { animated: true, wide: true });
     }
   }
 }
+
+// ------------------------------------------ OBSTACLES, cabinet by cabinet (lab)
+// Asked 12 Oct 2026, after the office sheet: "can you examine obstacles in other cabinets
+// (except cardboard) and recommend new items or replacements that fit in more with their
+// style". One section per cabinet, each candidate in that cabinet's own hand and in a slot
+// its lane already deals (src/dev/obstacle-bakeoff-kit.js; one module per cabinet,
+// src/dev/<cabinet>-obstacle-candidates.js), shown in the cabinet's real style pack at
+// in-run size with the hero for scale. No enlarged row: "zoom x 1 is plenty" (Peter, 12 Oct).
+function obstacleBakeoff(s, B) {
+  const sub = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = note;
+    s.appendChild(p);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+  const H = laneHeight(B.strips);
+  {
+    const sets = sub('1. The two sets, side by side',
+      'Top: what the cabinet deals today, through the real run painter. Bottom: the ten candidates, lettered, at the '
+      + 'same spacing and in-run size on the same scenery — one column each, fliers at their own height.');
+    tile(sets, 'NOW — what this cabinet deals today', [...new Set(B.control.map(([type]) => type))].join(' · '),
+      480, H, (ctx, t) => drawControlLineup(ctx, t, B.cabinet, B.strips, B.control), { animated: true, wide: true });
+    tile(sets, 'NEW — the ten candidates', B.candidates.map((c) => `${c.letter} ${c.name}`).join(' · '),
+      480, H, (ctx, t) => drawCandidateLineup(ctx, t, B.cabinet, B.strips, B.candidates), { animated: true, wide: true });
+    const grid = sub('2. Each in the lane',
+      'The cabinet’s own style pack and ground, cropped to the lane. The scenery scrolls; Lorenzo and the candidate '
+      + 'hold still, the candidate at its in-run size with the run’s contact shadow and red tick. Stackers are shown '
+      + 'single and two high.');
+    for (const cand of B.candidates) {
+      tile(grid, `${cand.letter} — ${cand.name}`, candidateCaption(cand), 480, H,
+        (ctx, t) => drawCandidateLane(ctx, t, B.cabinet, B.strips, cand), { animated: true, wide: true });
+    }
+  }
+}
+obstacleBakeoff(sectionEl('plumber-obstacle-bakeoff', PLUMBER_OBSTACLES.title, PLUMBER_OBSTACLES.note, '12 Oct 2026'), PLUMBER_OBSTACLES);
+obstacleBakeoff(sectionEl('speed-obstacle-bakeoff', SPEED_OBSTACLES.title, SPEED_OBSTACLES.note, '12 Oct 2026'), SPEED_OBSTACLES);
+obstacleBakeoff(sectionEl('rhythm-obstacle-bakeoff', RHYTHM_OBSTACLES.title, RHYTHM_OBSTACLES.note, '12 Oct 2026'), RHYTHM_OBSTACLES);
+obstacleBakeoff(sectionEl('frost-obstacle-bakeoff', FROST_OBSTACLES.title, FROST_OBSTACLES.note, '12 Oct 2026'), FROST_OBSTACLES);
+obstacleBakeoff(sectionEl('crypt-obstacle-bakeoff', CRYPT_OBSTACLES.title, CRYPT_OBSTACLES.note, '12 Oct 2026'), CRYPT_OBSTACLES);
+obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OBSTACLES.note, '12 Oct 2026'), NEON_OBSTACLES);
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.

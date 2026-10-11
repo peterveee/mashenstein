@@ -6,7 +6,7 @@ import { paintWall, liftDoors, clockHands, revolvingDoor, signNeon, floorLights,
 import { paintMid, ceiling, floorPlane, slab, midActors, midDevices, lampSheen, lights } from './room.js';
 import { OFFICE_ZOOM as ZOOM } from '../officeClimb.js';
 import { paintFront } from './front.js';
-import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections } from './progression.js';
+import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections, officeLiftSpans } from './progression.js';
 import { paintOfficeArtwork, warmOfficeArtwork, officeArtworkBytes } from './artwork.js';
 
 const CACHE = new Map();
@@ -50,12 +50,15 @@ function scaleOf(ctx) {
 // renderer rungs: 2x scenery, 4x fine wall lines. Keep only the active floor warm.
 export const OFFICE_BAKE_SCALE = 2;
 export const OFFICE_WALL_BAKE_SCALE = 4;
+// The founder's pictures are painted once and drawn as images; at 2x they were visibly soft
+// and stepped on a phone, where the room is drawn at 3x-4x. A handful per floor, so 4x is cheap.
+export const OFFICE_ART_BAKE_SCALE = 4;
 export function officeWarmJobs(floor) {
   return [() => {
     const keep = `${floor}@${OFFICE_BAKE_SCALE}`;
     for (const key of PRODUCTION_CACHE.keys()) if (key !== keep) PRODUCTION_CACHE.delete(key);
     bakeFor(floor, OFFICE_BAKE_SCALE, PRODUCTION_CACHE);
-    warmOfficeArtwork(floor, OFFICE_BAKE_SCALE);
+    warmOfficeArtwork(floor, OFFICE_ART_BAKE_SCALE);
   }];
 }
 export function officeCacheStats() {
@@ -154,7 +157,7 @@ export const STYLE = {
     ctx.save();
     // windows cleared to plain wall for the named places, then what hangs on the wall
     if (f.landmarks) paintOfficeWallSections(ctx, f);
-    if(options.production)paintOfficeArtwork(ctx,f,P,k);
+    if(options.production)paintOfficeArtwork(ctx,f,P,OFFICE_ART_BAKE_SCALE);
     liftDoors(ctx, f, P);
     clockHands(ctx, f, P);
     revolvingDoor(ctx, f, P);
@@ -165,7 +168,7 @@ export const STYLE = {
     const cuts = f.landmarks?.length ? officeFurnitureCuts(f, f.landmarks) : [];
     // Daylight only comes in through windows that are still windows: a wall section has
     // replaced the glass it stands on.
-    const walled = (f.landmarks || []).filter((l) => l.section).map((l) => {
+    const walled = (f.landmarks || []).filter((l) => l.section && !l.section.glass).map((l) => {
       const span = l.section.u1 - l.section.u0, a = l.x + l.w / 2 - span / 2;
       return [a, a + span];
     });
@@ -186,6 +189,7 @@ export const STYLE = {
     };
 
     // 3. ceiling; 4. floor, its reflections and the light lying on it, the slab
+    f.noLights = officeLiftSpans(f);
     ceiling(ctx, f, P);
     floorPlane(ctx, lit, P, 0);
     if (f.floor === 'lobby') {

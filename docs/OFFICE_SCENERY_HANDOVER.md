@@ -11,11 +11,28 @@ at every landmark crossing (`work/local/_office-pos.mjs`), not yet seen by Peter
   (snapped in `officePlaces`, progression.js), painted with the floor's own solid-wall bay so it
   is flush with the wall and scrolls exactly with it; the place sits in the middle of it. No
   window, sill, radiator, picture or clock is ever cut part-way.
+- **Lifts** stand out of the wall as solid blocks in the same perspective (`LIFT_DEPTH` 1.18,
+  progression.js): side walls and soffit join the wall opening to the scaled front. They are a bank of two in each floor's original LIGNE '89 dress (wall.js `lobbyLift` /
+  `steelLift` / `liftDoors`, 1.2x) in front of a wall bay; the first closes as the hero arrives.
+- **Entrance** keeps its glass run (`section.glass`): a plain steel revolving drum stands in
+  the curtain wall, street visible through it.
+- **CEO suite** stands out of the wall as a solid floor-to-ceiling block, as far as the boxes
+  (`ceoBlock`, `CEO_DEPTH` 1.3); its front is black lacquer and gold (`bossFacade`), not wainscot, and carries the doors, portrait and near-miss
+  case; no ceiling lights over it.
 - **Glass rooms** are frameless: no back wall of their own (the building's windows show
   through), a slim ceiling track, bright pane edges and butt joints, long diagonal sheens
   (`glassMeetingRoom`, rooms.js); their window runs are not cleared to wall.
+- **Meeting rooms: B2 picked 12 Oct** — glass box standing into the corridor, lightly frosted
+  below the table (`OFFICE_ROOM_PICK = 'boxfrost'`, rooms.js); boardroom too. The box is in the
+  floor's own perspective: its front is the wall opening scaled about the vanishing point
+  (VPX, YH) by `BOX_DEPTH` 1.3, so its feet stay on the floor; people sit halfway in, facing the whiteboard (`away`, backs and chair backs to the corridor).
+- **Meeting-room depth bake-off (12 Oct)** — `?roomStyle=recess|box|frosted|partition`
+  previews in game (also `boxfrost`, `boxdesk`); Lab section `office-room-depth-bakeoff`. 
+- **Floor 23 prints** include a sales chart or two (bars, line, pie; `chart`, artwork.js).
+- **Founder pictures** are baked at 4x (`OFFICE_ART_BAKE_SCALE`); 2x looked stepped on phones.
 - **Finish founder** — on the lobby and floor 23 the last planned piece hangs alone on the
-  window run in view at the finish line, cleared to wall (`officeFinishWall`).
+  stretch of wall the hero passes just before the finish line (`officeFinishWall`), with
+  nothing else hung within 420px of it.
 - **Rooms and lift bays** — meeting, training, HR review (replaced the records archive),
   boardroom and the lifts hang on the wall and scroll exactly with it. `standOut()` gives
   each a shallow return on the side facing the vanishing point and a contact shadow, so it

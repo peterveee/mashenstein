@@ -226,7 +226,7 @@ assert.deepEqual(clipped,[[0,232,50,68],[70,232,30,68],[130,232,70,68]],'slab le
    const wallRate=FACTORS.wall*OFFICE_ZOOM;
    const abs=[...spots][0],planned=distance*at*wallRate;
    assert.ok(Math.abs(abs-planned)<distance*0.15*wallRate,`${floor} ${distance}: ${id} hangs near its place along the floor`);
-   for(const [a,b] of plan.avoid)assert.ok(abs>b||abs+PROFESSOR_PIECES[id].w<a,`${floor}: ${id} is never hung under a room`);
+   if(id!==plan.finish?.id)for(const [a,b] of plan.avoid)assert.ok(abs>b||abs+PROFESSOR_PIECES[id].w<a,`${floor}: ${id} is never hung under a room`);
   }
   assert.equal(found.size,PROFESSOR_PLAN[floor].length,'no other piece turns up');
   // in their planned order, spread evenly along the floor

@@ -10,7 +10,9 @@ import { makeObstacle } from '../game/entities.js';
 import { drawWorldEntity, HERO_DRAW_H } from '../game/draw.js';
 import { drawToon } from '../sprites/toons.js';
 import { PLAYER_X } from '../game/player.js';
-const packs = new Map(), hazards = new Map();
+// Hazards are cached per screen object, not per floor: two sections can show the same floor
+// with different hazards (or none), and a floor-keyed cache handed every caller the first one's.
+const packs = new Map(), hazards = new WeakMap();
 export const OFFICE_PORTRAIT_FRAME = frameForViewport({ mode: 'phone-portrait', viewportWidth: 393, viewportHeight: 852 });
 export function drawOfficeProductionScene(ctx, t, screen, portrait = false, at = null) {
   const previous = getActiveFrame();
@@ -20,7 +22,7 @@ export function drawOfficeProductionScene(ctx, t, screen, portrait = false, at =
     const stageIndex = ['lobby', 'open', 'exec'].indexOf(screen.floor) + 1;
     const key = `${stageIndex}:${portrait}`;
     if (!packs.has(key)) packs.set(key, officePack({ stageIndex, gallery: true }));
-    if (!hazards.has(key)) hazards.set(key, screen.hazards.map(h => makeObstacle(h.type, PLAYER_X + h.dx)));
+    if (!hazards.has(screen)) hazards.set(screen, screen.hazards.map(h => makeObstacle(h.type, PLAYER_X + h.dx)));
     const pack = packs.get(key), cab = CABINET_BY_ID.office;
     // Tour the entire finite floor, including its one destination near the end.
     const tourDistance = 26208;
@@ -38,7 +40,9 @@ export function drawOfficeProductionScene(ctx, t, screen, portrait = false, at =
     applyWorld(ctx, zoom, 0, GROUND_Y, xOffset);
     pack.ground(ctx, camX, cab, [], [], t, (480 - xOffset) / zoom, null, null,
       worldYForScreenY(frame.height, zoom, 0, GROUND_Y) + 8);
-    for (const e of hazards.get(key)) drawWorldEntity(ctx, e, camX, t, pack, {});
+    for (const e of hazards.get(screen)) drawWorldEntity(ctx, e, camX, t, pack, {});
+    // Optional extra world-space art (a bake-off's candidate), drawn where hazards are.
+    if (screen.world) screen.world(ctx, t, camX);
     drawToon(ctx, 'lorenzo', { kind: 'run', phase: t * 1.6 % 1, time: t, grounded: true, facing: 1 }, PLAYER_X, GROUND_Y, HERO_DRAW_H);
     ctx.restore();
     pack.post(ctx);

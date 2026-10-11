@@ -41,6 +41,8 @@ function ceiling(ctx, f, P) {
   for (let U = Math.floor(uA / T) * T - T; U < uB + T; U += T) {
     const n = Math.round(U / T);
     if (((n % 3) + 3) % 3) continue;
+    const mid = xOf(U + T / 2, S, fy(cy - 15));
+    if ((f.noLights || []).some(([a, b]) => mid > a && mid < b)) continue;
     const on = ((n % 7) + 7) % 7 === 3 ? flickerOn(f.t) : 1;
     if (on > 0.5) poly(ctx, quad(U - 8, U + T + 8, cy - 7, cy - 23), 'rgba(255,252,236,0.18)');
     poly(ctx, quad(U, U + T, cy - 9, cy - 21), on > 0.5 ? '#fffbe6' : '#c9c8bc', P.ink, LWF);
@@ -60,6 +62,7 @@ function flickerOn(t) {
 // furniture and workers stand in) and 'lamp' (the shades, which hang in front of everything).
 function lights(ctx, f, P, part = 'all') {
   for (const l of f.lights) {
+    if ((f.noLights || []).some(([a, b]) => l.x > a && l.x < b)) continue;
     // floor 23's strip lights are lit ceiling tiles, painted with the grid in ceiling()
     if (l.variant === 'tube') continue;
     if (l.variant === 'globe') {
@@ -391,7 +394,7 @@ function head(g, x, y, r, p, face, ink, lw, closed = false) {
   g.clip();
   g.fillStyle = p.hair;
   if (p.style === 'bald') {
-    if (face === 'back') g.fillRect(x - r, y - r * 0.05, r * 2, r * 0.7);
+    if (face === 'back') g.fillRect(x - r, y + r * 0.3, r * 2, r * 0.7); // the fringe round the back, low on the head
     else { g.fillRect(x - r, y - r * 0.15, r * 0.45, r * 0.6); g.fillRect(x + r * 0.55, y - r * 0.15, r * 0.45, r * 0.6); }
   } else if (face === 'back') {
     g.fillRect(x - r, y - r, r * 2, r * (p.style === 'bob' || p.style === 'bun' || p.style === 'perm' ? 1.75 : 1.45));
@@ -851,6 +854,17 @@ function cabinet(g, it, P) {
   }
 }
 
+// A swivel chair seen from behind: its padded back hides the sitter's lower back.
+function chairFromBehind(g, c, P) {
+  const b = MID_BASE;
+  const ink = P.inkM;
+  topRound(g, c.x - 8.5, b - 32, 17, 20, 5, '#2a2832', ink, LWM);
+  topRound(g, c.x - 6.5, b - 30, 13, 15, 4, '#3a3844', null, 0);
+  line(g, c.x, b - 12, c.x, b - 3, P.chrome, 1.5);
+  line(g, c.x - 7, b - 2, c.x + 7, b - 2, '#24222c', 1.5);
+  circ(g, c.x - 7, b - 1.5, 1.4, '#24222c');
+  circ(g, c.x + 7, b - 1.5, 1.4, '#24222c');
+}
 function boardroomBack(g, it, P, chairs) {
   const b = MID_BASE;
   const ink = P.inkM;
@@ -1066,6 +1080,26 @@ function midActors(ctx, f, P) {
         const p = personFor(c.seed + 400);
         const suit = ['#3d3a4e', '#5a5470', '#2f3346', '#6a6480'][c.seed % 4];
         const y = b - 40 + c.nod * 3.4;
+        if (c.away) {
+          // Facing the far wall and its whiteboard: the back of the jacket and the head, with
+          // the chair back drawn over them by the caller. Below the seat the legs dangle either
+          // side of the chair's stem, shoes clear of the floor, swinging a little.
+          const trousers = ['#2b2936', '#3a3548', '#262a36', '#4a4458'][c.seed % 4];
+          for (const side of [-1, 1]) {
+            const kx = c.x + side * 4, sw = Math.sin(c.nod * 9 + side * 1.7 + c.seed) * 0.9;
+            const fx = kx + side * 0.6 + sw, fy = b - 8;
+            poly(ctx, [kx - 2.1, b - 15, kx + 2.1, b - 15, fx + 1.8, fy, fx - 1.8, fy], trousers, ink, 0.4);
+            rbox(ctx, fx - 2.6, fy - 0.8, 5.2, 3.6, 1.2, '#1b1922', ink, 0.35);
+          }
+          padded(ctx, c.x, b - 33.5, 18, 10.5, suit, ink, LWM);
+          const pp = { ...p, style: p.style === 'bun' || p.style === 'quiff' ? 'short' : p.style, hair: c.seed % 3 === 0 ? '#c9c4ba' : p.hair };
+          ctx.save();
+          ctx.translate(c.x, y + 4);
+          ctx.rotate(c.nod * 0.18 * (c.seed % 2 ? 1 : -1));
+          head(ctx, 0, -4, 5, pp, 'back', ink, LWM);
+          ctx.restore();
+          continue;
+        }
         // Seated legs remain visible beneath the open conference table.
         for(const side of [-1,1]){
           const hip=c.x+side*3.5;
@@ -1133,4 +1167,4 @@ function midDevices(ctx, f, P) {
   }
 }
 
-export { ceiling, lights, globeGlint, floorPlane, sunPatches, slab, CHIP_P, CHIPS, chips, memphisRug, padded, BAKING, lampSheen, SKINS, HAIRS, STYLES, SHIRTS, personFor, head, shadowFoot, pot, leaf, plant, reception, turnstiles, sofa, sculpture, cubiclesBack, cubiclesFront, deskList, cooler, copier, cabinet, boardroomBack, boardroomFront, easel, execDesk, libGlobe, tallClock, paintMid, midActors, headset, midDevices };
+export { chairFromBehind, ceiling, lights, globeGlint, floorPlane, sunPatches, slab, CHIP_P, CHIPS, chips, memphisRug, padded, BAKING, lampSheen, SKINS, HAIRS, STYLES, SHIRTS, personFor, head, shadowFoot, pot, leaf, plant, reception, turnstiles, sofa, sculpture, cubiclesBack, cubiclesFront, deskList, cooler, copier, cabinet, boardroomBack, boardroomFront, easel, execDesk, libGlobe, tallClock, paintMid, midActors, headset, midDevices };

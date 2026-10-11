@@ -19,17 +19,18 @@ import { officeFrame } from './plan.js';
 export const OFFICE_STYLE_LOOP = 12;
 const SCROLL = 120;
 
-// One screen per floor of the climb. Hazards are placed ahead of the hero in world px.
+// One screen per floor of the climb. Hazards are placed ahead of the hero in world px —
+// each floor's own furniture since 12 Oct 2026 (data/cabinets.js OFFICE_FLOORS).
 export const OFFICE_SCREENS = Object.freeze([
   { id: 'lobby', floor: 'lobby', name: '8-1 the lobby (G, morning)', camX: 0,
-    hazards: [{ type: 'chair', dx: 130 }, { type: 'fireBarrel', dx: 300 }, { type: 'printer', dx: 620 },
-      { type: 'chair', dx: 900 }, { type: 'boomBarrier', dx: 1180 }, { type: 'fireBarrel', dx: 1420 }] },
+    hazards: [{ type: 'mopBucket', dx: 130 }, { type: 'ashUrnFire', dx: 300 }, { type: 'wetFloorSign', dx: 620 },
+      { type: 'mopBucket', dx: 900 }, { type: 'velvetRope', dx: 1180 }, { type: 'ashUrnFire', dx: 1420 }] },
   { id: 'open', floor: 'open', name: '8-2 open plan (floor 23, noon)', camX: 0,
-    hazards: [{ type: 'printer', dx: 120 }, { type: 'paperwork', dx: 220 }, { type: 'printer', dx: 340 },
-      { type: 'chair', dx: 640 }, { type: 'paperwork', dx: 900 }, { type: 'fireBarrel', dx: 1160 }, { type: 'printer', dx: 1400 }] },
+    hazards: [{ type: 'shredder', dx: 120 }, { type: 'birthdayBunting', dx: 220 }, { type: 'shredder', dx: 340 },
+      { type: 'mailCart', dx: 640 }, { type: 'birthdayBunting', dx: 900 }, { type: 'binFire', dx: 1160 }, { type: 'shredder', dx: 1400 }] },
   { id: 'exec', floor: 'exec', name: '8-3 executive floor (88, dusk)', camX: 0,
-    hazards: [{ type: 'chair', dx: 130 }, { type: 'dogSnarler', dx: 280 }, { type: 'printer', dx: 640 },
-      { type: 'paperwork', dx: 900 }, { type: 'chair', dx: 1160 }, { type: 'dogSnarler', dx: 1420 }] },
+    hazards: [{ type: 'drinksTrolley', dx: 130 }, { type: 'dogSnarler', dx: 280 }, { type: 'founderBust', dx: 640 },
+      { type: 'chandelier', dx: 900 }, { type: 'drinksTrolley', dx: 1160 }, { type: 'dogSnarler', dx: 1420 }] },
 ]);
 
 const HERO = 'lorenzo';

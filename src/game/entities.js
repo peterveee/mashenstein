@@ -221,6 +221,55 @@ export const OBSTACLES = {
   chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true, punt: true, puntLabel: 'CHAIR' },
   printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true, punt: true, puntLabel: 'PRINTER' },
   paperwork:  { w: 8, h: 6,   sprite: null, alt: 13, armored: false, action: 'slide', paper: true, bob: true, airDrift: { amp: 5, speed: 0.9 } },
+  // --- CORPORATE KOMBAT, FLOOR BY FLOOR (12 Oct 2026) -----------------------
+  // Each floor of the climb deals its own furniture (OFFICE_FLOORS in
+  // data/cabinets.js; the art is sprites/officeProps.js). Every type below is a
+  // COPY of the hazard it stands in for — same box, same flags, same answer —
+  // so the bank's spacing, tiers and fairness are what they were; only the
+  // object changed. The one behavioural difference is deliberate: the rollers
+  // drop `roll`, so a mop bucket comes at you on its casters instead of
+  // cartwheeling like a barrel. A punt still sets roll per instance, so a
+  // kicked one tumbles.
+  //
+  // In place of the cactus (13x12):
+  wetFloorSign: { w: 13, h: 12, sprite: 'wetFloorSign', ground: true, breakable: true, action: 'jump' },
+  coatStand:    { w: 13, h: 12, sprite: 'coatStand', ground: true, breakable: true, action: 'jump' },
+  founderBust:  { w: 13, h: 12, sprite: 'founderBust', ground: true, breakable: true, action: 'jump' },
+  // In place of the big cactus (17x14):
+  waterDolly:   { w: 17, h: 14, sprite: 'waterDolly', ground: true, breakable: true, action: 'jump' },
+  snackMachine: { w: 17, h: 14, sprite: 'snackMachine', ground: true, breakable: true, action: 'jump' },
+  officeSafe:   { w: 17, h: 14, sprite: 'officeSafe', ground: true, breakable: true, action: 'jump' },
+  // In place of the crate (12x11, stacks):
+  newsBundle:   { w: 12, h: 11, sprite: 'newsBundle', ground: true, breakable: true, action: 'jump', stack: true },
+  archiveBox:   { w: 12, h: 11, sprite: 'archiveBox', ground: true, breakable: true, action: 'jump', stack: true },
+  briefcase:    { w: 12, h: 11, sprite: 'briefcase', ground: true, breakable: true, action: 'jump', stack: true },
+  // In place of the chair and the barrel (the chair's box and pace):
+  mopBucket:    { w: 12, h: 10, sprite: 'mopBucket', ground: true, breakable: true, action: 'jump', vx: -34, punt: true, puntLabel: 'MOP BUCKET' },
+  mailCart:     { w: 12, h: 10, sprite: 'mailCart', ground: true, breakable: true, action: 'jump', vx: -34, punt: true, puntLabel: 'MAIL CART' },
+  drinksTrolley: { w: 12, h: 10, sprite: 'drinksTrolley', ground: true, breakable: true, action: 'jump', vx: -34, punt: true, puntLabel: 'DRINKS TROLLEY' },
+  // In place of the burning barrel (13x13, shootable, not kickable):
+  ashUrnFire:   { w: 13, h: 13, sprite: 'ashUrnFire', ground: true, breakable: true, action: 'jump' },
+  binFire:      { w: 13, h: 13, sprite: 'binFire', ground: true, breakable: true, action: 'jump' },
+  confidentialBin: { w: 13, h: 13, sprite: 'confidentialBin', ground: true, breakable: true, action: 'jump' },
+  // In place of the razor hurdle (16x9, armoured). Floor 23's is the spilled
+  // drawing pins instead: the spike plate's box, bedded, without its lurk.
+  velvetRope:   { w: 16, h: 9, sprite: 'velvetRope', ground: true, armored: true, breakable: false, action: 'jump', splitFeet: true },
+  velvetRopeGold: { w: 16, h: 9, sprite: 'velvetRopeGold', ground: true, armored: true, breakable: false, action: 'jump', splitFeet: true },
+  drawingPins:  { w: 15, h: 7, sprite: 'drawingPins', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
+  // In place of the drone and the paperwork: hung from the ceiling at the
+  // drone's slide height and lift. They hang still — the swing is in the art —
+  // so none of them drifts or bobs out of its slot.
+  artMobile:    { w: 12, h: 7, sprite: 'artMobile', alt: 13, artLift: 6, armored: true, action: 'slide' },
+  birthdayBunting: { w: 12, h: 7, sprite: 'birthdayBunting', alt: 13, artLift: 6, armored: true, action: 'slide' },
+  chandelier:   { w: 12, h: 7, sprite: 'chandelier', alt: 13, artLift: 6, armored: true, action: 'slide' },
+  // In place of the songbird (12x7 at alt 34, closing at -28). The pigeon is
+  // the one animal of the three; the balloon and the cork are just things.
+  pigeon:       { w: 12, h: 7, sprite: 'pigeon', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28, animal: true },
+  partyBalloon: { w: 12, h: 7, sprite: 'partyBalloon', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },
+  champagneCork: { w: 12, h: 7, sprite: 'champagneCork', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },
+  // In place of the printer, on floor 23 only: office-2's mission is DESTROY 5
+  // HOSTILE SHREDDERS (Peter, 12 Oct). The printer's box, its shot and its punt.
+  shredder:     { w: 12, h: 7, sprite: 'shredder', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true, punt: true, puntLabel: 'SHREDDER' },
   // `punt`: light enough that a boot sends it somewhere rather than through a
   // debris cloud. It stays `action: 'jump'` — jumping is still the answer the
   // spawner and the fairness sim budget for, and the punt is an ALTERNATIVE a
@@ -484,6 +533,23 @@ export const DEBRIS = {
   cardBox:     { colors: ['#c8a068', '#8a6a3a', '#f890b8'], size: 2.8, mat: 'soft' },
   chair:       { colors: ['#4a5a6c', '#3a4a5a', '#2a3542'], size: 2.8, mat: 'wood' },
   printer:     { colors: ['#b0b0c0', '#fff', '#48e0c8'], size: 2.6, mat: 'metal' },
+  // Corporate Kombat's floor furniture (sprites/officeProps.js), in its own inks.
+  wetFloorSign: { colors: ['#f6df4a', '#d1ae1c', '#1f1d26'], size: 2.6, mat: 'soft' },
+  coatStand:    { colors: ['#d9b67a', '#6a3a22', '#ff6fae'], size: 2.6, mat: 'wood' },
+  founderBust:  { colors: ['#f5f1eb', '#d5cdc3', '#2a2833'], size: 2.8, mat: 'stone' },
+  waterDolly:   { colors: ['#74c4ec', '#c6ecfb', '#c9ced8'], size: 3.2, count: 14, mat: 'soft' },
+  snackMachine: { colors: ['#e0203a', '#f6df4a', '#ff6fae'], size: 3.2, count: 14, mat: 'metal' },
+  officeSafe:   { colors: ['#34323f', '#d9ae45', '#8fcf8a'], size: 3.2, count: 14, mat: 'metal' },
+  newsBundle:   { colors: ['#f6bfae', '#ffffff', '#1f1d26'], size: 3, mat: 'soft' },
+  archiveBox:   { colors: ['#d99a5c', '#b07440', '#ffffff'], size: 3, mat: 'soft' },
+  briefcase:    { colors: ['#7a1f2b', '#1f1d26', '#d9ae45'], size: 3, mat: 'soft' },
+  mopBucket:    { colors: ['#f6df4a', '#d1ae1c', '#8fb9ca'], size: 2.8, mat: 'soft' },
+  mailCart:     { colors: ['#2fbcb0', '#ffffff', '#c9ced8'], size: 2.8, mat: 'soft' },
+  drinksTrolley: { colors: ['#d9ae45', '#cfeefa', '#d88a2a'], size: 2.8, mat: 'metal' },
+  ashUrnFire:   { colors: ['#c9ced8', '#d9ae45', '#ff8a3d'], size: 3, mat: 'metal' },
+  binFire:      { colors: ['#3f5fd8', '#ffffff', '#ff8a3d'], size: 3, mat: 'metal' },
+  confidentialBin: { colors: ['#d9ae45', '#ffffff', '#e0203a'], size: 3, mat: 'metal' },
+  shredder:     { colors: ['#3a3846', '#ffffff', '#ff6fae'], size: 2.6, mat: 'metal' },
   zombie:      { colors: ['#9ec89e', '#5a6a8a', '#4a6a4a'], size: 2.4, count: 12, mat: 'soft' },
   drone:       { colors: ['#8858c8', '#5a3890', '#c8b8e8'], size: 2.4, spark: '#f6d33c', mat: 'metal' },
   shooterDrone:{ colors: ['#8858c8', '#5a3890', '#e04848'], size: 2.4, spark: '#f6d33c', mat: 'metal' },

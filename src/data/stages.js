@@ -377,7 +377,7 @@ export const STAGES = [
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
     { intro: 'THE PRINTERS SMELL FEAR. AND TONER. MOSTLY TONER.' }),
   S('office', 2,
-    { type: 'targets', n: 5, targetType: 'printer', desc: 'DESTROY 5 HOSTILE PRINTERS. HR HAS APPROVED THIS.' },
+    { type: 'targets', n: 5, targetType: 'shredder', desc: 'DESTROY 5 HOSTILE SHREDDERS. HR HAS APPROVED THIS.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
   S('office', 3,
     { type: 'rescue', n: 4, desc: 'ESCORT 4 CABINET RESIDENTS OUT OF A MANDATORY MEETING.' },

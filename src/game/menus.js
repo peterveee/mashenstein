@@ -59,7 +59,23 @@ const GUIDE_ICON_SIZES = {
   // is a 15px column, and a 15px column in an 18px row lands on the two rows
   // under it. The guide wants the shape, not the stature.
   bearTrap: [16, 11], boomBarrier: [16, 9], trafficCone: [10, 13], springPad: [14, 9],
+  // Corporate Kombat's floor furniture, by the same rule: def box, height times
+  // PROP_TALL. The three that hang from the ceiling are drawn cropped to the
+  // part that hits you (GUIDE_ICON_HANGING) — their cables are the rest of a
+  // 56px-tall raster.
+  wetFloorSign: [13, 19], coatStand: [13, 19], founderBust: [13, 19],
+  waterDolly: [17, 20], snackMachine: [17, 20], officeSafe: [17, 20],
+  newsBundle: [12, 11], archiveBox: [12, 11], briefcase: [12, 11],
+  mopBucket: [12, 14], mailCart: [12, 14], drinksTrolley: [12, 14],
+  ashUrnFire: [13, 22], binFire: [13, 22], confidentialBin: [13, 22],
+  velvetRope: [16, 9], velvetRopeGold: [16, 9], drawingPins: [15, 12],
+  pigeon: [16, 9], partyBalloon: [16, 13], champagneCork: [16, 9], shredder: [12, 15],
 };
+// Hanging props in the guide: [width, height of the crop]. Drawn at their true
+// aspect — a 12x7 box under PROP_TALL 8 — and clipped to the bottom of the
+// raster, where the fitting is.
+const GUIDE_ICON_HANGING = { artMobile: [16, 14], birthdayBunting: [16, 14], chandelier: [16, 14] };
+const GUIDE_HANGING_ASPECT = (7 * 8) / 12;
 import {
   DIFFICULTIES, FINALE_BEATS, FINALE_CODA, RANK_LINES,
   FINALE_THANKS_TITLE, FINALE_THANKS, FINALE_SIGNOFF,
@@ -4615,10 +4631,6 @@ const GUIDE_PAGES = [
       { s: 'crate', name: 'CRATE', desc: 'WOOD. SOMETIMES STACKED. JUMP OR SMASH IT.' },
       { s: '_pipe', name: 'HYDRAULIC BOLLARD', desc: 'SEALED. UNBREAKABLE. JUMP IT.' },
       { s: 'barrel', name: 'BARREL', desc: 'ROLLS AT YOU. JUMP IT.' },
-      // Not "faster": the chair rolls at -34 and the barrel at -40 (OBSTACLES).
-      // It is the SMALLER one, which is the read that actually distinguishes
-      // them at a glance and the one the line now makes.
-      { s: 'chair', name: 'OFFICE CHAIR', desc: 'ALSO ROLLS AT YOU. SMALLER, A TOUCH SLOWER. JUMP IT.' },
       { s: '_gap', name: 'PIT', desc: 'A HOLE WHERE FLOOR SHOULD BE. JUMP IT.' },
       { s: 'zombieWalk', name: 'ZOMBIE', desc: 'SHAMBLES TOWARD YOU. JUMP IT.' },
       // The one hazard in the game whose ONLY answer is the jump: nothing
@@ -4675,8 +4687,52 @@ const GUIDE_PAGES = [
       { s: 'buzzbird', name: 'BUZZBIRD', desc: 'MID-AIR MENACE. DO NOT JUMP INTO IT.' },
       { s: 'icicle', name: 'ICICLE', desc: 'FALLS WHEN YOU GET CLOSE. WATCH ITS SHADOW.' },
       { s: 'beatBar', name: 'BEAT ARROWS', desc: 'UP MEANS JUMP. DO IT ON THE BEAT.' },
-      { s: '_paper', name: 'PAPERWORK', desc: 'FLIES LOW. SLIDE. DO NOT SIGN IT.' },
       { s: 'cardboardMonster', name: 'BOX MONSTER', desc: 'CARDBOARD. STILL COUNTS. JUMP IT.' },
+    ],
+  },
+  // CORPORATE KOMBAT deals its own furniture on each floor (data/cabinets.js
+  // OFFICE_FLOORS), so it gets a page per floor rather than a row per slot on
+  // the shared pages. Each floor's objects stand in for the shared hazards in
+  // the same order: standing, big, stacked, rolling, burning, low, hanging,
+  // flying.
+  {
+    title: 'THE OFFICE: LOBBY (8-1)', color: '#e04848', hint: 'RED = AVOID. THE CLEANER GOT HERE FIRST.',
+    rows: [
+      { s: 'wetFloorSign', name: 'WET FLOOR SIGN', desc: 'THE FLOOR IS NOT WET. THE SIGN IS THE HAZARD. JUMP IT.' },
+      { s: 'waterDolly', name: 'WATER DELIVERY', desc: 'THREE JUGS ON A HAND TRUCK. JUMP IT OR SMASH IT.' },
+      { s: 'newsBundle', name: 'NEWSPAPERS', desc: 'TODAY\'S. SOMETIMES STACKED. JUMP OR SMASH THEM.' },
+      { s: 'mopBucket', name: 'MOP BUCKET', desc: 'ROLLS AT YOU. JUMP IT, OR SLIDE AND KICK IT.' },
+      { s: 'ashUrnFire', name: 'ASH URN', desc: 'SOMEONE DID NOT PUT IT OUT. SHOOT IT OR JUMP IT.' },
+      { s: 'velvetRope', name: 'VELVET ROPE', desc: 'THE LOBBY QUEUE. NOTHING BREAKS IT. JUMP IT.' },
+      { s: 'artMobile', name: 'ART INSTALLATION', desc: 'HANGS AT HEAD HEIGHT. SLIDE UNDER IT. IT COST MORE THAN YOU.' },
+      { s: 'pigeon', name: 'PIGEON', desc: 'CAME IN THROUGH THE DOOR. DO NOT JUMP INTO IT.' },
+    ],
+  },
+  {
+    title: 'THE OFFICE: FLOOR 23 (8-2)', color: '#e04848', hint: 'RED = AVOID. IT IS SOMEBODY\'S BIRTHDAY.',
+    rows: [
+      { s: 'coatStand', name: 'COAT STAND', desc: 'SOMEONE\'S COAT IS STILL ON IT. JUMP IT.' },
+      { s: 'snackMachine', name: 'SNACK MACHINE', desc: 'ONE BAG STUCK. JUMP IT OR SMASH IT.' },
+      { s: 'archiveBox', name: 'ARCHIVE BOXES', desc: 'Q3 1987. SOMETIMES STACKED. JUMP OR SMASH.' },
+      { s: 'mailCart', name: 'MAIL CART', desc: 'INTERNAL MAIL. ROLLS AT YOU. JUMP OR KICK IT.' },
+      { s: 'binFire', name: 'BIN FIRE', desc: 'THE MEMOS. SHOOT IT OR JUMP IT. NO KICKING.' },
+      { s: 'drawingPins', name: 'DRAWING PINS', desc: 'POINTS UP. NOTHING BREAKS THEM. JUMP THEM.' },
+      { s: 'birthdayBunting', name: 'BUNTING', desc: 'STRUNG LOW ACROSS THE AISLE. SLIDE UNDER IT.' },
+      { s: 'partyBalloon', name: 'BALLOON', desc: 'GOT AWAY. DO NOT JUMP INTO IT.' },
+      { s: 'shredder', name: 'SHREDDER', desc: 'SPITS CONFETTI. SHOOT IT OR RAM IT TO BREAK IT.' },
+    ],
+  },
+  {
+    title: 'THE OFFICE: FLOOR 88 (8-3)', color: '#e04848', hint: 'RED = AVOID. ALL OF THIS WAS EXPENSED.',
+    rows: [
+      { s: 'founderBust', name: 'FOUNDER BUST', desc: 'MARBLE. HE INSISTED. JUMP IT OR BREAK IT.' },
+      { s: 'officeSafe', name: 'THE SAFE', desc: 'FULL. JUMP IT OR CRACK IT.' },
+      { s: 'briefcase', name: 'BRIEFCASES', desc: 'STACKED. EMPTY. JUMP OR SMASH THEM.' },
+      { s: 'drinksTrolley', name: 'DRINKS TROLLEY', desc: 'ROLLS AT YOU. JUMP IT, OR KICK IT.' },
+      { s: 'confidentialBin', name: 'CONFIDENTIAL', desc: 'THE EVIDENCE. SHOOT IT OR JUMP IT. NO KICKING.' },
+      { s: 'velvetRopeGold', name: 'GOLD ROPE', desc: 'THE EXECUTIVE SUITE. NOTHING BREAKS IT. JUMP IT.' },
+      { s: 'chandelier', name: 'CHANDELIER', desc: 'HANGS AT HEAD HEIGHT. SLIDE UNDER IT.' },
+      { s: 'champagneCork', name: 'CHAMPAGNE CORK', desc: 'SOMEONE GOT A BONUS. DO NOT JUMP INTO IT.' },
     ],
   },
   {
@@ -4685,7 +4741,6 @@ const GUIDE_PAGES = [
       { s: '_qcrate', name: '!-CRATE', desc: 'FLOATS. TOUCH TO BREAK. DROPS COINS.' },
       { s: 'target', name: 'TARGET', desc: 'FLOATING TARGET. TOUCH TO DESTROY.' },
       { s: 'cardBox', name: 'CARD BOX', desc: 'RHYTHM STAGES. SHOOT ON THE BEAT. OPENS ON THE NEXT.' },
-      { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
       { s: 'switch', name: 'POWER BLOCK', desc: 'HOP INTO IT, OR SHOOT IT. BRIDGES THE PIT BEHIND IT.' },
       { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },
       { s: 'springPad', name: 'SPRING PAD', desc: 'RUN OVER IT. IT THROWS YOU UP TO THE FLOOR ABOVE.' },
@@ -4784,6 +4839,18 @@ export class FieldGuideState {
     if (key === '_qcrate') {
       const bob = Math.round(Math.sin(this.t * 3) * 2);
       drawProp(ctx, 'qcrate', cx - 6, top(11) + bob, 12, 11);
+      return;
+    }
+    if (GUIDE_ICON_HANGING[key]) {
+      const [cw, ch] = GUIDE_ICON_HANGING[key];
+      const fullH = cw * GUIDE_HANGING_ASPECT;
+      const frame = Math.floor(this.t * 11);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cx - cw / 2, top(ch), cw, ch);
+      ctx.clip();
+      drawProp(ctx, key, cx - cw / 2, top(ch) + ch - fullH, cw, fullH, frame);
+      ctx.restore();
       return;
     }
     if (hasProp(key)) {

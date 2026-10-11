@@ -14,6 +14,12 @@ import {
 } from './animals.js';
 
 import { GRAVITY_PAINTERS } from './gravity.js';
+// Corporate Kombat's floor-by-floor furniture registers the same way, one
+// spread per table (see sprites/officeProps.js).
+import {
+  OFFICE_PROP_NAMES, OFFICE_PROP_PAINTERS, OFFICE_PROP_FRAMES, OFFICE_PROP_FPS, OFFICE_PROP_TALL,
+  OFFICE_PROP_DETAIL, OFFICE_PROP_VISUAL,
+} from './officeProps.js';
 
 export const OUTLINE = 'rgba(26,16,40,0.34)';
 
@@ -1645,6 +1651,7 @@ export const SILVER_TOASTER_FINISH = {
 export const PROP_PAINTERS = {
   ...GRAVITY_PAINTERS,
   ...ANIMAL_PAINTERS,
+  ...OFFICE_PROP_PAINTERS,
   ...FINISH_DOG_PAINTERS,
   // --- ground hazards ---------------------------------------------------
   // A thorn cactus: saguaro silhouette — fat trunk, two arms elbowing upward —
@@ -5548,6 +5555,7 @@ export const PROP_FRAMES = {
   eggshellCopter: 12,
   rake: RAKE_FRAMES,
   ...ANIMAL_FRAMES,
+  ...OFFICE_PROP_FRAMES,
   ...finishDogTable(ANIMAL_FRAMES),
   // Live and dead. Not an animation — the film cuts between them on one frame.
   powerStrip: 2,
@@ -5601,6 +5609,7 @@ const PROP_FPS = {
   eggshellCopter: 24,
   rake: 1,
   ...ANIMAL_FPS,
+  ...OFFICE_PROP_FPS,
   ...finishDogTable(ANIMAL_FPS),
   qcrate: 12, appliance: 24, applianceSilver: 24, buzzbird: 16,
   // Fire is fast or it looks like jelly; the spike plate is slow because it is
@@ -5628,6 +5637,7 @@ const PROP_FPS = {
 export const PROP_TALL = {
   oxygenRack: 1.25,
   ...ANIMAL_TALL,
+  ...OFFICE_PROP_TALL,
   ...finishDogTable(ANIMAL_TALL),
   cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4, iceCrystals: 1.5,
   // IDENTICAL to the cactus by design. A pattern swap that also changed the
@@ -5685,6 +5695,7 @@ const PROP_DETAIL_SCALE = {
   // are 1u lines. Neither survives single detail.
   eggshell: 2, eggshellFace: 3, eggshellCopter: 2, eggshellBalloon: 2,
   ...ANIMAL_DETAIL,
+  ...OFFICE_PROP_DETAIL,
   ...finishDogTable(null, 3), // the one detail-3 exception — see FINISH_DOG_ALIASES
   // The sign's head is the finest drawing in the lane per pixel: a silhouette
   // with fangs and a nostril inside a board about 17px wide. At detail 2 the
@@ -5767,6 +5778,7 @@ export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 // misjudge.
 const PROP_VISUAL_SCALE = {
   ...ANIMAL_VISUAL,
+  ...OFFICE_PROP_VISUAL,
   ...finishDogTable(ANIMAL_VISUAL),
   // The dog sign draws over its box, where its two siblings do not. They
   // carry a word, which is legible or not at any size; this one carries a
@@ -5810,6 +5822,8 @@ export function maxPropVisualScale() {
 // undoing the lighter authored contour.
 const SELF_OUTLINED_PROPS = new Set([
   ...ANIMAL_NAMES,
+  // Drawn in the Ligne ink, as the room behind them is.
+  ...OFFICE_PROP_NAMES,
   ...Object.keys(FINISH_DOG_ALIASES),
   'cactus', 'cactusBig', 'snowman', 'snowmanBig', 'iceCrystals',
   // Standing hazards author heavy INK contours of their own. The

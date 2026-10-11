@@ -386,7 +386,8 @@ function lobbyLift(g, h, P) {
   // the LED panel over the doors (its digits are lit per frame)
   box(g, x + w / 2 - 8, y - 13, 16, 8, '#18161e', P.ink, LWF);
   box(g, x + w / 2 - 8, y - 13, 16, 8, null, P.chrome, 0.5);
-  // the call buttons
+  // the call buttons (a bank of lifts shares one panel: `buttons: false`)
+  if (h.buttons === false) return;
   box(g, x + w + 1.6, y + hh * 0.48, 2.6, 6, P.chrome, P.ink, LWF);
   circ(g, x + w + 2.9, y + hh * 0.48 + 1.7, 0.7, M89.pink);
   circ(g, x + w + 2.9, y + hh * 0.48 + 4.3, 0.7, M89.teal);
@@ -485,9 +486,9 @@ function openGlass(g, x0, x1, b, P, F) {
   box(g, x0, G.top, x1 - x0, 1.6, P.frame, P.ink, LWF);
   // vertical blinds: louvres hung from a headrail, drawn across part of the window, the
   // rest stacked at the side; a bead chain along their feet
+  // (no daylight wash on the wall above the glass: it is the same wall as the stretches
+  // between the windows, and a paler band over each window read as a different material)
   box(g, x0, G.top - 2.4, x1 - x0, 2.4, P.frameLt, P.ink, LWF);
-  box(g, x0, G.top - 14, x1 - x0, 11.6, 'rgba(255,253,240,0.22)');
-  box(g, x0, G.top - 7, x1 - x0, 4.6, 'rgba(255,253,240,0.22)');
   const cover = Math.max(6, (x1 - x0) * b.blinds);
   const slat = b.blinds > 0 ? 2.6 : 1.4;
   const step = b.blinds > 0 ? 4.2 : 1.6;
@@ -542,7 +543,8 @@ function steelLift(g, h, P, wood = false) {
   line(g, x + 5, y + hh * 0.55, x + w - 5, y + hh * 0.55, P.brassDk, 0.9);
   // the indicator panel
   box(g, x + w / 2 - 8, y - 13, 16, 8, wood ? P.brass : '#2e3036', P.ink, LWF);
-  // call buttons
+  // call buttons (a bank of lifts shares one panel: `buttons: false`)
+  if (h.buttons === false) return;
   box(g, x + w + 6, y + hh * 0.46, 3, 7, wood ? P.brass : P.steelLt, P.ink, LWF);
   circ(g, x + w + 7.5, y + hh * 0.46 + 2, 0.8, '#f6ecd0', P.ink, 0.25);
   circ(g, x + w + 7.5, y + hh * 0.46 + 5, 0.8, '#f6ecd0', P.ink, 0.25);
