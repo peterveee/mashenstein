@@ -4,7 +4,9 @@ import { setPresentationFrame } from '../engine/renderer.js';
 import { GROUND_Y, applyWorld, worldYForScreenY } from '../engine/camera.js';
 import { officePack } from '../engine/stylePacks/officeLigne.js';
 import { officeLandmarks } from '../engine/stylePacks/officeLigne/progression.js';
-import { setOfficeRoomStyle } from '../engine/stylePacks/officeLigne/rooms.js';
+import { setOfficeFont, letters, PAL } from '../engine/stylePacks/officeLigne/line.js';
+import { poster } from '../engine/stylePacks/officeLigne/wall.js';
+import { setOfficeRoomStyle, wallWhiteboard } from '../engine/stylePacks/officeLigne/rooms.js';
 import { CABINET_BY_ID } from '../data/cabinets.js';
 import { makeObstacle } from '../game/entities.js';
 import { drawWorldEntity, HERO_DRAW_H } from '../game/draw.js';
@@ -57,4 +59,25 @@ export function drawOfficeRoomScene(ctx, t, { floor, kind, style, portrait = fal
   const was = setOfficeRoomStyle(style);
   try { drawOfficeProductionScene(ctx, t, { floor, hazards: [] }, portrait, camX); }
   finally { setOfficeRoomStyle(was); }
+}
+
+// One sample board per face: the office's own painters, drawn in a swapped OFFICE_FONT.
+export function drawOfficeFontSample(ctx, stack) {
+  const was = setOfficeFont(stack);
+  try {
+    const P = PAL.open, PX = PAL.exec;
+    ctx.fillStyle = '#dcd5e8'; ctx.fillRect(0, 0, 480, 150);
+    poster(ctx, { x: 8, y: 8, w: 56, h: 74, label: 'TEAMWORK' }, P);
+    poster(ctx, { x: 72, y: 8, w: 56, h: 74, label: 'SUCCESS' }, P);
+    poster(ctx, { x: 136, y: 8, w: 56, h: 80, label: 'HANG IN THERE', bg: '#a9e3d6', sub: 'UNTIL Q4' }, P);
+    wallWhiteboard(ctx, 204, 8, 150, 80, P, { title: 'AGENDA', detail: ['1. PLAN THE NEXT', 'MEETING'] });
+    wallWhiteboard(ctx, 364, 8, 108, 80, PX, { title: 'HR REVIEW', detail: ['WHERE DO YOU SEE', 'YOURSELF IN 5 YEARS?'] });
+    ctx.fillStyle = '#23212f'; ctx.fillRect(8, 98, 170, 16);
+    letters(ctx, 'EXECUTIVE SUITE', 93, 110, 6.4, { ink: '#f7ead0', lw: 0.7, weight: 600, align: 'center', track: 0.4 });
+    ctx.fillStyle = '#302c40'; ctx.fillRect(188, 98, 150, 16);
+    letters(ctx, 'COFFEE SHOP', 263, 110, 6.4, { ink: '#f6e9d3', lw: 0.75, weight: 600, align: 'center' });
+    ctx.fillStyle = '#f6df4a'; ctx.fillRect(348, 98, 124, 16);
+    letters(ctx, 'EGGCORP: TOO BIG TO FRY', 410, 109.5, 5, { ink: '#2c2540', lw: 0.8, weight: 700, align: 'center', track: 0.2 });
+    letters(ctx, 'RADIO WRECK   PIZZA HURT   BLOCKBUSTED   0123456789', 240, 134, 7, { ink: '#2a2433', lw: 0.8, weight: 700, align: 'center', track: 0.3 });
+  } finally { setOfficeFont(was); }
 }

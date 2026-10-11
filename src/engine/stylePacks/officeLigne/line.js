@@ -220,7 +220,11 @@ function textPath(str, x, y, size, o = {}) {
   return p;
 }
 
-export const OFFICE_FONT = "'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
+// Jost, a Futura-style geometric sans: picked 12 Oct 2026 from the typeface bake-off (Lab) as the
+// closest match to the LIGNE '89 art. Loaded in gate.js.
+export let OFFICE_FONT = "'Jost', 'Futura', 'Century Gothic', 'Trebuchet MS', system-ui, sans-serif";
+// Font bake-off only (gallery): swap the office's face. Baked layers keep what they were drawn in.
+export function setOfficeFont(stack) { const was = OFFICE_FONT; OFFICE_FONT = stack; return was; }
 
 function letters(g, str, x, y, size, o = {}) {
   const fontSize = size * 1.18;

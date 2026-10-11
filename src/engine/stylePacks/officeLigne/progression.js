@@ -45,6 +45,10 @@ export const OFFICE_LANDMARK_BASE=OFFICE_FURNITURE_BASE;
 export const OFFICE_LANDMARK_DROP=MID_BASE-OFFICE_LANDMARK_BASE;
 export const OFFICE_LANDMARK_FACTOR=(OFFICE_LANDMARK_BASE-YH)/(LANE_TOP-YH);
 export const OFFICE_LANDMARK_RATE=OFFICE_LANDMARK_FACTOR*OFFICE_ZOOM;
+// Signage never sits above this scene y: the HUD covers the top of a zoomed-in view (desktop
+// "zoom in" 2.0, phone landscape 2.2 show the room from about y 21; the HUD runs to about y 58).
+export const OFFICE_SIGN_MIN_Y=66;
+
 // Three depths, and nothing in between:
 // - Wall sections (reception, coffee shop, canteen, ...) are part of the back wall. Each one
 //   takes over whole window bays, column to column, so it never lies across a window, a
@@ -482,6 +486,9 @@ function wallSection(g,l,f,P){
 // side wall that faces us joining it to the wall. Floor to ceiling, like the lifts. Leaves the
 // front's transform in place for the suite's contents.
 const CEO_DEPTH=1.3;
+// The suite's contents are drawn in the block's own scaled space, so a sign at this y shows at
+// OFFICE_SIGN_MIN_Y on screen.
+const CEO_SIGN_Y=Math.ceil(YH+(OFFICE_SIGN_MIN_Y-YH)/CEO_DEPTH);
 // The boss gets no office wainscot: black lacquer veined in gold, a brass Deco cornice stepped
 // over the middle, fluted gold pilasters at the corners and a polished black marble plinth.
 function bossFacade(g,x0,x1,top,bot){
@@ -621,15 +628,13 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
     if(kind==='ceo'){
       // A single ceremonial entrance: broad double doors, a stepped crown,
       // fluted marble, brass inlay, founder portrait and his case of near misses.
-      ceoDoor(g,{x:c-53,y:91,w:106,h:b-91},P);
-      for(let k=0;k<3;k++)box(g,c-75+k*7,73+k*5,150-k*14,5,P.brass,P.ink,0.5);
-      circ(g,c,64,10,P.brass,P.ink,0.8);
-      letters(g,'E',c,68,9,{ink:P.ink,lw:1.2,align:'center'});
-      founderPortrait(g,{x:x+41,y:85,w:61,h:76},P);
+      ceoDoor(g,{x:c-53,y:CEO_SIGN_Y+32,w:106,h:b-CEO_SIGN_Y-32},P);
+      // (signage stays below OFFICE_SIGN_MIN_Y: the HUD covers the top of a zoomed-in view)
+      founderPortrait(g,{x:x+46,y:CEO_SIGN_Y+4,w:51,h:62},P);
       plaque(g,'FOUNDER',x+42,166,60,P);
-      trophyCase(g,{x:x+w-112,y:89,w:76,h:b-89,runnerUp:true},P); // he never wins
-      plaque(g,'EXECUTIVE SUITE',c-69,37,138,P);
-      gagNote(g,'BOSS OF THE YEAR: JUDGE - ME',c-90,54,180,P);
+      trophyCase(g,{x:x+w-112,y:CEO_SIGN_Y+30,w:76,h:b-CEO_SIGN_Y-30,runnerUp:true},P); // he never wins
+      plaque(g,'EXECUTIVE SUITE',c-69,CEO_SIGN_Y,138,P);
+      gagNote(g,'BOSS OF THE YEAR: JUDGE - ME',c-90,CEO_SIGN_Y+16,180,P);
       for(const px of [c-78,c+71]){
         box(g,px,111,7,38,P.brass,P.ink,0.5);
         box(g,px-3,116,13,24,'#ffe4b1',P.ink,0.5);
@@ -638,7 +643,7 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       plant(g,x+w-27,MID_BASE,'bonsai',P,24);
     }else if(kind==='reception'){
       // The company sign on the wall over a compact counter: no portico, no directories.
-      plaque(g,'RECEPTION',c-60,40,120,P);
+      plaque(g,'RECEPTION',c-60,OFFICE_SIGN_MIN_Y+4,120,P);
       const logo={kind:'logo',x:c-79,y:98,w:158,h:56};
       lobbyLogo(g,logo,P);
       signNeon(g,{t:f.t,wall:{hangs:[logo]}},P);
@@ -671,10 +676,10 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       };
       if(officeRoomStyle()==='glass'){contents();glassMeetingRoom(g,l,f,P);}
       else roomWithDepth(g,l,f,P,officeRoomStyle(),contents);
-      plaque(g,'BOARD OF DIRECTORS',c-88,66,176,P);
+      plaque(g,'BOARD OF DIRECTORS',c-88,OFFICE_SIGN_MIN_Y,176,P);
     }else if(kind==='secretary'){
-      plaque(g,'EXECUTIVE ASSISTANT',c-73,39,146,P);
-      gagNote(g,'YOUR WAIT IS PRODUCTIVE',c-70,55,140,P);
+      plaque(g,'EXECUTIVE ASSISTANT',c-73,OFFICE_SIGN_MIN_Y,146,P);
+      gagNote(g,'YOUR WAIT IS PRODUCTIVE',c-70,OFFICE_SIGN_MIN_Y+16,140,P);
       const deskX=c-58,deskW=116;
       box(g,c-12,b-52,24,20,'#353242',P.ink,0.6);
       box(g,c-8,b-50,16,15,'#554e62',P.ink,0.4);
@@ -698,12 +703,12 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
         line(g,dx+0.5,b-17,dx+1.5,b-17,'#e2d8c2',0.55);
       }
     }else if(kind==='library'){
-      plaque(g,'EXECUTIVE LIBRARY',c-85,39,170,P);
-      gagNote(g,'BOOKS PURCHASED BY THE METRE',c-77,55,154,P);
+      plaque(g,'EXECUTIVE LIBRARY',c-85,OFFICE_SIGN_MIN_Y,170,P);
+      gagNote(g,'BOOKS PURCHASED BY THE METRE',c-77,OFFICE_SIGN_MIN_Y+16,154,P);
       const shelfW=Math.min(96,(w-84)/2);
-      for(const dx of [x+24,x+w-24-shelfW])bookshelf(g,{x:dx,y:72,w:shelfW,h:b-72},P);
+      for(const dx of [x+24,x+w-24-shelfW])bookshelf(g,{x:dx,y:100,w:shelfW,h:b-100},P);
     }else if(kind==='sculpture'){
-      plaque(g,'THE EGG / 1989',c-76,67,152,P);
+      plaque(g,'THE EGG / 1989',c-76,OFFICE_SIGN_MIN_Y,152,P);
       gagNote(g,'ART BY COMMITTEE',c-58,86,116,P);
       sculpture(g,{x:c-20},P);
       for(const dx of [x+27,x+w-55])plant(g,dx,MID_BASE,'snake',P,8);

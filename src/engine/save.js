@@ -405,6 +405,12 @@ export class Save {
     for (const s of data.slots) if (s) migrateHeroIds(s);
     this.data = data;
     this.slotIndex = Math.min(this.slotIndex, this.data.slots.length - 1);
+    // The imported file may have nothing in the slot that was open (or in this one only):
+    // move to a filled slot so the hub never opens on a slot that is not there.
+    if (!this.data.slots[this.slotIndex]) {
+      const filled = this.data.slots.findIndex(Boolean);
+      if (filled >= 0) this.slotIndex = filled;
+    }
     if (!this.persist()) throw new Error('THIS DEVICE WOULD NOT STORE THE SAVE.');
     return this;
   }

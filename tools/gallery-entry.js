@@ -7,7 +7,7 @@
 // the one accommodation is that entity tiles crop the game's fixed 480x270
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
-import { drawOfficeProductionScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
+import { drawOfficeProductionScene, drawOfficeFontSample, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -9193,6 +9193,33 @@ obstacleBakeoff(sectionEl('rhythm-obstacle-bakeoff', RHYTHM_OBSTACLES.title, RHY
 obstacleBakeoff(sectionEl('frost-obstacle-bakeoff', FROST_OBSTACLES.title, FROST_OBSTACLES.note, '12 Oct 2026'), FROST_OBSTACLES);
 obstacleBakeoff(sectionEl('crypt-obstacle-bakeoff', CRYPT_OBSTACLES.title, CRYPT_OBSTACLES.note, '12 Oct 2026'), CRYPT_OBSTACLES);
 obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OBSTACLES.note, '12 Oct 2026'), NEON_OBSTACLES);
+
+// ------------------------------------------ CORPORATE KOMBAT — office typeface bake-off (lab)
+// Asked 12 Oct 2026: a face for the office that matches the LIGNE '89 art better than Fredoka.
+// The office's own posters, whiteboards, plaques and banners, set in each candidate (the live
+// scene's baked layers keep Fredoka until a pick is wired in).
+{
+  const FACES = [
+    ['CURRENT — Fredoka', "'Fredoka', 'Trebuchet MS', sans-serif", 'Fredoka:wght@400..700'],
+    ['A — Jost (Futura / Avant Garde)', "'Jost', 'Futura', sans-serif", 'Jost:wght@400..800'],
+    ['B — Righteous (80s rounded display)', "'Righteous', sans-serif", 'Righteous'],
+    ['C — Michroma (wide, 80s tech)', "'Michroma', sans-serif", 'Michroma'],
+    ['D — Poppins (geometric, heavy)', "'Poppins', sans-serif", 'Poppins:wght@500;600;700'],
+  ];
+  if (typeof document !== 'undefined') {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?${FACES.map((f) => 'family=' + f[2]).join('&')}&display=swap`;
+    document.head.appendChild(link);
+    for (const f of FACES) document.fonts?.load?.(`600 12px ${f[1]}`);
+  }
+  const grid = section('office-typeface-bakeoff', 'CORPORATE KOMBAT — office typeface bake-off',
+    'Asked 12 Oct 2026: which face suits the LIGNE ’89 office? PICKED: A, Jost. The same posters, whiteboards, plaques and banners '
+    + 'in each candidate. Pick a letter.', '12 Oct 2026');
+  for (const [name, stack] of FACES) {
+    tile(grid, name, 'office signs, posters, boards', 480, 150, (ctx) => drawOfficeFontSample(ctx, stack), { animated: true });
+  }
+}
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.

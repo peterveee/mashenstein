@@ -218,8 +218,8 @@ try {
 // EMERALD CODE RAIN draws real text, but it bakes a glyph atlas the first time
 // it draws, so the face has to be resident before any frame is rendered or the
 // whole clip keeps the fallback.
-const GAME_FONT_URL = 'https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&display=swap';
-const GAME_FONT_FACES = ["400 32px 'Lilita One'", "500 12px 'Fredoka'", "400 12px 'Permanent Marker'"];
+const GAME_FONT_URL = 'https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&family=Jost:wght@400..800&display=swap';
+const GAME_FONT_FACES = ["400 32px 'Lilita One'", "500 12px 'Fredoka'", "400 12px 'Permanent Marker'", "600 12px 'Jost'", "700 12px 'Jost'"];
 
 const html = `<!doctype html><meta charset="utf-8">
 <link rel="stylesheet" href="${GAME_FONT_URL}">

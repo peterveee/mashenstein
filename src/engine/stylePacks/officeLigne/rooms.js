@@ -1,6 +1,7 @@
 // One-off occupied rooms behind the office corridor.
 import { MID_BASE, WALL_BASE } from '../officeClimb.js';
-import { box, line, poly, circ, ell, letters, textW, YH, VPX } from './line.js';
+import { box, line, poly, circ, ell, letters, textW, YH, VPX, OFFICE_FONT } from './line.js';
+import { OFFICE_SIGN_MIN_Y } from './progression.js';
 import { boardroomBack, chairFromBehind, midActors, sofa, plant, libGlobe } from './room.js';
 
 function caption(g,text,x,y,w,P){
@@ -47,7 +48,7 @@ export function glassMeetingRoom(g,l,f,P){
 }
 
 function whiteboardText(g,text,x,y,size,maxWidth,color,weight=600){
-  const family='Arial, Helvetica, sans-serif';
+  const family=OFFICE_FONT;
   g.save();
   g.textAlign='center';
   g.textBaseline='middle';
@@ -177,7 +178,7 @@ function interior(g,x0,x1,top,bottom,f,P,contents,{inset=16,floorH=10,k=0.82,coo
 const BOX_DEPTH=1.3;
 // A whiteboard fixed to a wall, as wide as it is given: frame, surface, bold title and two lines,
 // and a marker tray along the foot.
-function wallWhiteboard(g,x,y,w,h,P,{title,detail}){
+export function wallWhiteboard(g,x,y,w,h,P,{title,detail}){
   box(g,x+1.4,y+1.8,w,h,'rgba(40,36,50,0.18)');
   box(g,x,y,w,h,'#51505b',P.ink,0.8);
   box(g,x+3,y+3,w-6,h-6,'#fffef9',P.ink,0.3);
@@ -277,7 +278,7 @@ export function paintExtraOfficeRoom(g,l,f,P){
   const {x,w,kind}=l,c=x+w/2,b=MID_BASE;
   if(kind==='canteen'){
     // A small staff kitchen let into the wall: a tiled serving hatch and one table.
-    caption(g,'STAFF CANTEEN',x+8,58,w-16,P);
+    caption(g,'STAFF CANTEEN',x+8,OFFICE_SIGN_MIN_Y,w-16,P);
     const kitchen=x+w-106;
     box(g,kitchen,100,94,60,'#cde2d5',P.ink,0.7);
     for(let yy=110;yy<160;yy+=11)line(g,kitchen,yy,kitchen+94,yy,'#90b4aa',0.45);
@@ -320,12 +321,13 @@ export function paintExtraOfficeRoom(g,l,f,P){
         const title=training?'HOW TO LOOK BUSY':interview?'HR REVIEW':executive?'EXECUTIVE ALIGNMENT':'AGENDA';
         const detail=training?['ATTENDANCE IS','THE GOAL']:interview?['WHERE DO YOU SEE','YOURSELF IN 5 YEARS?']
           :executive?['DECISION DEFERRED','FOLLOW UP NEXT QUARTER']:['1. PLAN THE NEXT','MEETING'];
-        wallWhiteboard(g,x+14,top+8,w-28,bottom-top-56,P,{title,detail});
+        const by=Math.max(top+8,OFFICE_SIGN_MIN_Y+2);
+        wallWhiteboard(g,x+14,by,w-28,Math.min(bottom-by-50,92),P,{title,detail});
       });
       return true;
     }
 
-    if(training)caption(g,'MANDATORY TRAINING',c-111,58,222,P);
+    if(training)caption(g,'MANDATORY TRAINING',c-111,OFFICE_SIGN_MIN_Y,222,P);
     if(!training){
       const title=interview?'HR REVIEW':executive?'EXECUTIVE ALIGNMENT':'AGENDA';
       const detail=interview?['WHERE DO YOU SEE','YOURSELF IN 5 YEARS?']
@@ -347,7 +349,7 @@ export function paintExtraOfficeRoom(g,l,f,P){
     return true;
   }
   if(kind==='cafe'){
-    caption(g,'COFFEE SHOP',c-111,58,222,P);
+    caption(g,'COFFEE SHOP',c-111,OFFICE_SIGN_MIN_Y,222,P);
     // Visitor seating beside an espresso counter, rather than staff mail slots.
     const kitchen=x+w-122;
     box(g,kitchen,98,91,58,'#cde2d5',P.ink,0.7);
@@ -388,7 +390,7 @@ export function paintExtraOfficeRoom(g,l,f,P){
       plant(g,x+w/2-7,MID_BASE,'palm',P,8);
       return true;
     }
-    caption(g,'EXECUTIVE RECHARGING',c-109,58,218,P);
+    caption(g,'EXECUTIVE RECHARGING',c-109,OFFICE_SIGN_MIN_Y,218,P);
     box(g,c-53,90,106,48,'#211b32',P.brass,1);
     poly(g,[c-45,131,c-18,98,c+12,131],'#a789bd',P.ink,0.6);
     circ(g,c+25,107,10,'#efb784',P.ink,0.5);

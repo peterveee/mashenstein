@@ -66,13 +66,13 @@ function layoutBay(floor,def,bay,j,pick,target=null,posterFor=null,plan=null){
  const d=target||(professor&&PROFESSOR_PIECES[professor])||(poster&&officePosterSize(poster));
  const w=d?.w??[66,76,86][Math.floor(hash(seed+1)*3)];
  const h=d?.h??[64,74,84][Math.floor(hash(seed+2)*3)];
- const y0=d?62+Math.floor(hash(seed+11)*10):62+Math.floor(hash(seed+3)*14);
+ const y0=d?66+Math.floor(hash(seed+11)*6):66+Math.floor(hash(seed+3)*10); // clear of the HUD when zoomed in
  if(w>x1-x0-24)return [];
  // centred on the plain wall actually there
  const [s0,s1]=wallSpan(plan,x0,x1);
  const center=(s0+s1-w)/2;
  const xs=[center,x0+12,x1-w-12].filter((x,i,a)=>a.indexOf(x)===i);
- const ys=[y0,54,72].filter((y,i,a)=>a.indexOf(y)===i);
+ const ys=[y0,66,72].filter((y,i,a)=>a.indexOf(y)===i);
  const cost=({x,y})=>Math.abs(x-center)+Math.abs(y-y0)*0.35;
  const candidates=xs.flatMap(x=>ys.map(y=>({x,y}))).sort((a,b)=>cost(a)-cost(b));
  const place=candidates.find(({x,y})=>!hangs.some(o=>x+w+8>o.x&&x-8<o.x+o.w&&y+h+8>o.y&&y-8<o.y+o.h));
