@@ -63,7 +63,7 @@ assert(fontLink && !body.children.some((el) => el.tagName === 'SCRIPT'),
 
 fontLink.onload();
 await Promise.resolve();
-assert(loadedFaces.length === 4 && !body.children.some((el) => el.tagName === 'SCRIPT'),
+assert(loadedFaces.length === 5 && !body.children.some((el) => el.tagName === 'SCRIPT'),
   'game bundle waits for every required font face');
 
 fontResolvers.forEach((resolve) => resolve([]));

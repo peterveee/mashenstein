@@ -577,7 +577,8 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
     const drop=MID_BASE-officeLandmarkBase(f.floor,kind);
     const P=kind==='ceo'?{...PAL[f.floor],brass:'#d7b975',brassDk:'#927041',brassLt:'#ffe9b0'}:PAL[f.floor];
     g.save();
-    if(kind==='ceo')ceoBlock(g,l,f,P);
+    // (a stage too short to clear a bay for it, as in a surge cut, keeps the suite flat on the wall)
+    if(kind==='ceo'&&l.section)ceoBlock(g,l,f,P);
     g.translate(0,-drop);
     if(kind==='lobbyLifts'||kind==='operations'||kind==='lift'){
       const floorNumber=kind==='lobbyLifts'?'G':(OFFICE_FLOORS[f.floor]?.label||'23');

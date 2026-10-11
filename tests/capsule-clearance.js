@@ -46,6 +46,10 @@ for (const stage of STAGES.filter((s) => s.index >= 1)) {
     // Keep the probe on the placement branch: a hazard reaction adds hitstop
     // and a death would restart the lane, neither of which this is about.
     run.collide = () => {};
+    // Projectiles hit through takeHit, not collide: a drone's shot killed the probe on
+    // office-2 and the respawn re-dealt the same capsule at the same x — one capsule seen
+    // twice, not two capsules.
+    run.takeHit = () => {};
     const seen = new Set();
     const lane = [];
     for (let i = 0; i < 60 * 70 && !run.ended; i++) {

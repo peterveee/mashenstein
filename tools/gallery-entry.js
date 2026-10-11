@@ -3178,6 +3178,7 @@ let labClub = null;
   }
 }
 
+let officeFounderCandidates = null;
 // The founder on the office walls: every piece, in its frame, at the size it hangs.
 {
   const FLOORS = { lobby: 'lobby', open: 'floor 23', exec: 'floor 88' };
@@ -3223,9 +3224,8 @@ let labClub = null;
     });
   }
   beginLab();
-  const candidateGrid = section('office-founder-art-candidates', 'CORPORATE KOMBAT — Founder poster candidates',
-    `These ${candidates.length} unselected designs are gallery candidates only; they do not appear on office walls.`);
-  drawPosters(candidateGrid, candidates);
+  // The unselected candidates are a lab section of their own, further down in date order.
+  officeFounderCandidates = { candidates, drawPosters };
 }
 
 // Keep the open cape question at the front of the lab page. The larger Eggshell
@@ -9087,6 +9087,15 @@ function officeStyleTiles(grid, tag, cand) {
     + 'stretch limo, a Chippendale top. Each sits after the card it came from (10 LIGNE ’89, 4 ART DECO). ANIMATED.',
     '2026-10-11');
   OFFICE_STYLE_ROUND_THREE.forEach(({ tag, cand }) => officeStyleTiles(grid, tag, cand));
+}
+
+// ------------------------------------------ CORPORATE KOMBAT — founder poster candidates (lab)
+{
+  const { candidates, drawPosters } = officeFounderCandidates;
+  const candidateGrid = section('office-founder-art-candidates', 'CORPORATE KOMBAT — Founder poster candidates',
+    `These ${candidates.length} unselected designs are gallery candidates only; they do not appear on office walls.`,
+    '2026-10-11');
+  drawPosters(candidateGrid, candidates);
 }
 
 // ------------------------------------------ CORPORATE KOMBAT — obstacles for the climb (lab)

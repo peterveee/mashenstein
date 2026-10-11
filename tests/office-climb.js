@@ -144,7 +144,9 @@ try {
 } finally {STYLE.paint=paint;STYLE.paintFront=front;setActiveFrame(defaultFrame());}
 for(const floor of [1,2,3,1]){
  officeWarmJobs(floor).forEach(job=>job());
- const stats=officeCacheStats();assert.equal(stats.entries,1);assert.ok(stats.residentBytes<40*1024*1024);
+ // 48 MB: the lobby's glass runs to the floor again (the street, 12 Oct) and the founder's
+ // pictures bake at 4x; the lobby measures ~45 MB, the upper floors ~37.
+ const stats=officeCacheStats();assert.equal(stats.entries,1);assert.ok(stats.residentBytes<48*1024*1024,`office warm cache ${(stats.residentBytes/1048576).toFixed(1)} MB`);
 }
 const ground=recorder(), rectangles=[];
 let clipped;
