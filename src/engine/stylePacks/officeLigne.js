@@ -60,6 +60,8 @@ function gapPath(ctx, frame, gaps, bottom) {
 
 export function officePack(settings = {}) {
   let floor = officeFloorFor(settings.stageIndex);
+  // Which of a lift bank's two doors stands open: a fresh draw each run (the gallery keeps one)
+  const liftSeed = settings.gallery === true ? 0 : Math.random();
   let frontFrame = null;
   let frontMatrix = null;
   let frontGaps = [];
@@ -73,6 +75,7 @@ export function officePack(settings = {}) {
       const frame = officeFrame(floor, camX, t, camera.coverage, OFFICE_CORRIDORS[floor]);
       frame.landmarks = officeLandmarks(floor, camX, totalDist);
       frame.founderPlan = officeFounderPlan(floor, totalDist);
+      frame.liftSeed = liftSeed;
       // Floor 88's helicopter is a single fly-past part-way along the stage, not a fixture.
       // Floor 23's blimp keeps its own drift, but only over about half the stage.
       if (floor === 'open' && frame.outside.flyer) {

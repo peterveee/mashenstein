@@ -758,8 +758,8 @@ function drawFlyingToasters(ctx, t, singleOpening) {
     // These are a foreground gag now, not distant sky decoration. Give the
     // appliance body enough scale to read clearly over the portrait cards.
     const size = layout.portrait
-      ? 96 + shaderHash21(pass.trip + i + 13, 59) * 32
-      : 48 + shaderHash21(pass.trip + i + 13, 59) * 16;
+      ? 56 + shaderHash21(pass.trip + i + 13, 59) * 18
+      : 36 + shaderHash21(pass.trip + i + 13, 59) * 12;
     const h = size * 0.82;
     const y = pass.centerY + offsets[i] + Math.sin(t * 2.2 + i * 0.8 + pass.trip) * 1.5;
     // Keep the appliance fully visible until its centre reaches the edge,
@@ -1605,7 +1605,7 @@ const TITLE_STATUS_TEXT_S = 1.15;
 // A card's contents are one centred GROUP, not lines pinned to its edges. Fixed
 // y's had the heading 7 units under the top rule, the status 10 above the
 // bottom one and 21 units of nothing between the two — a hole the progress bar
-// only half bridges on a started file and doesn't bridge at all on a CLOCK IN
+// only half bridges on a started file and doesn't bridge at all on a NEW GAME
 // card, where the heading and its status read as belonging to different cards.
 // Every tier is measured from the INK (a glyph box is half ascender slack these
 // capitals never use), stacked on one gap, and the stack centred in the card, so
@@ -1619,8 +1619,8 @@ const TITLE_CARD_STACK_TOP =
 const TITLE_CARD_LABEL_MID = TITLE_CARD_STACK_TOP + TITLE_LABEL_INK / 2;
 const TITLE_CARD_PROGRESS_Y = TITLE_CARD_STACK_TOP + TITLE_LABEL_INK + TITLE_CARD_STACK_GAP;
 const TITLE_CARD_STATUS_MID = TITLE_CARD_H - TITLE_CARD_STACK_TOP - TITLE_STATUS_INK / 2;
-// The bar's row is held even on a slot with no file, so a started shift and a
-// CLOCK IN sitting side by side keep their headings on one line across the row.
+// The bar's row is held even on a slot with no file, so a started file and a
+// NEW GAME sitting side by side keep their headings on one line across the row.
 // STAFF ONLY has no third tier at all, so its two words are their own block,
 // centred on the card and set on the same leading as the stack beside it.
 const TITLE_CARD_LINE1_MID =
@@ -2149,15 +2149,15 @@ export class TitleState {
       const plugs = s ? totalPlugs(s) : 0;
       opts.push({
         id: 'slot' + i,
-        label: `SHIFT ${i + 1}`,
-        status: s ? `${plugs}/${MAX_PLUGS} PLUGS` : 'CLOCK IN',
+        label: `FILE ${i + 1}`,
+        status: s ? `${plugs}/${MAX_PLUGS} PLUGS` : 'NEW GAME',
         progress: s ? plugs / MAX_PLUGS : null,
         act: () => this.onSlotChosen(i, !s),
       });
     });
     // Everything that isn't "start playing" lives one tap deeper. Nine rows in
     // a 100-unit band meant 11-unit rows, which on a phone is a 16px target —
-    // and ERASE A SHIFT sat two of them below SHIFT 3, where a miss is
+    // and ERASE A SAVE FILE sat two of them below FILE 3, where a miss is
     // destructive. Four or five rows is what lets a row be worth tapping.
     opts.push({ id: 'extras', label: 'STAFF ONLY', act: () => { this.extras = { idx: 0 }; Audio.sfx('ui'); } });
     return opts;
@@ -2182,7 +2182,7 @@ export class TitleState {
     choices.push({ id: 'soundtest', label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
     // The player's own songs, made from a riff and played live in the club.
     if (this.onLab) choices.push({ id: 'lab', label: 'THE LAB', act: () => this.onLab() });
-    if (anyFile) choices.push({ id: 'erase', label: 'ERASE A SHIFT', act: () => this.beginErase() });
+    if (anyFile) choices.push({ id: 'erase', label: 'ERASE A SAVE FILE', act: () => this.beginErase() });
     choices.push({ id: 'back', label: 'BACK', cancel: true });
     return choices;
   }
@@ -2212,7 +2212,7 @@ export class TitleState {
   eraseChoices() {
     if (this.erase.step === 'choose') {
       return [
-        ...this.erase.slots.map((i) => ({ label: `SHIFT ${i + 1}: ${totalPlugs(this.save.data.slots[i])}/${MAX_PLUGS} PLUGS, ${formatCoins(this.save.data.slots[i].coins)} COINS`, slot: i })),
+        ...this.erase.slots.map((i) => ({ label: `SAVE FILE ${i + 1}: ${totalPlugs(this.save.data.slots[i])}/${MAX_PLUGS} PLUGS, ${formatCoins(this.save.data.slots[i].coins)} COINS`, slot: i })),
         { label: 'BACK', cancel: true },
       ];
     }
@@ -2596,14 +2596,14 @@ export class TitleState {
     } else if (profile.ui && !pushOverlayDraw(ui)) ui(ctx);
   }
   drawEraseModal(d) {
-    let title = 'ERASE WHICH SHIFT?';
+    let title = 'ERASE WHICH SAVE FILE?';
     let note = 'CHOOSE CAREFULLY';
     let warningPulse = 0.5 + 0.5 * Math.sin(this.t * 3.2);
     if (this.erase.step === 'confirm') {
-      title = `ERASE SHIFT ${this.erase.slot + 1}?`;
-      note = 'ALL PROGRESS IN THIS SHIFT WILL BE LOST';
+      title = `ERASE SAVE FILE ${this.erase.slot + 1}?`;
+      note = 'ALL PROGRESS IN THIS SAVE FILE WILL BE LOST';
     } else if (this.erase.step === 'final') {
-      title = `FINAL WARNING: ERASE SHIFT ${this.erase.slot + 1}?`;
+      title = `FINAL WARNING: ERASE SAVE FILE ${this.erase.slot + 1}?`;
       note = 'THIS CANNOT BE UNDONE.';
     }
     // Every step here already shows a cancel row in the list itself (BACK, NO
@@ -2670,7 +2670,7 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
   }
   const titleMid = fullPortrait ? portraitMenuSafeTop() + 34 : g.y + 16;
   const titleFit = fullPortrait ? portraitMenuFit(title, modalTitleS, W - 48, 'title') : modalTitleS;
-  // A long title (FINAL WARNING: ERASE SHIFT 3?) shrunk to fit one line read
+  // A long title (FINAL WARNING: ERASE SAVE FILE 3?) shrunk to fit one line read
   // smaller than the plain option rows under it — the one piece of type that
   // most needs to dominate the card ended up the runt of it. Wrapping instead,
   // no smaller than the rows themselves, keeps it the biggest thing on the card.
@@ -2782,7 +2782,7 @@ const DIFF_NAME_S = 1.3, DIFF_GLOSS_S = 1.05;
 
 function difficultyLayout() {
   if (!portraitMenuActive()) {
-    const rows = [...DIFFICULTIES, { id: 0, name: 'BACK', desc: 'RETURN TO SHIFT SELECT' }]
+    const rows = [...DIFFICULTIES, { id: 0, name: 'BACK', desc: '' }]
       .map((d, i) => ({ d, y: DIFF_TOP + i * DIFF_ROW + (i === DIFFICULTIES.length ? DIFF_BACK_GAP : 0), h: DIFF_ROW }));
     return { portrait: false, rows };
   }
@@ -2792,17 +2792,16 @@ function difficultyLayout() {
   const x = screen.safeLeft + 18;
   const right = W - screen.safeRight - 18;
   const w = Math.max(1, right - x);
-  const firstY = safeTop + 104;
+  const firstY = safeTop + 74;
   const bottom = safeBottom - 22;
   const gap = 10;
   const rowH = Math.max(72, Math.min(132,
     (bottom - firstY - gap * (count - 1)) / count));
-  const rows = [...DIFFICULTIES, { id: 0, name: 'BACK', desc: 'RETURN TO SHIFT SELECT' }]
+  const rows = [...DIFFICULTIES, { id: 0, name: 'BACK', desc: '' }]
     .map((d, i) => ({ d, y: firstY + i * (rowH + gap), h: rowH }));
   return {
     portrait: true, x, w, rows,
     titleY: safeTop + 34,
-    subtitleY: safeTop + 75,
   };
 }
 
@@ -2830,10 +2829,6 @@ function drawDifficultyPortrait(ctx, state, layout) {
   const titleS = portraitMenuFit('SELECT DIFFICULTY', 2.8, layout.w, 'title');
   portraitMenuTextCentered(ctx, 'SELECT DIFFICULTY', W / 2,
     portraitMenuTextY(layout.titleY, titleS, 'title'), '#fff', titleS, 'title');
-  const subtitleS = portraitMenuFit('CHOOSE THE TERMS OF YOUR SHIFT', 1.2,
-    layout.w, 'ui');
-  portraitMenuTextCentered(ctx, 'CHOOSE THE TERMS OF YOUR SHIFT', W / 2,
-    portraitMenuTextY(layout.subtitleY, subtitleS), '#8a8a98', subtitleS);
 
   layout.rows.forEach(({ d, y, h }, i) => {
     const selected = i === state.idx;
@@ -2842,10 +2837,10 @@ function drawDifficultyPortrait(ctx, state, layout) {
     if (selected || isBack) drawMenuRow(ctx, layout.x, y, layout.w, h, 8,
       selected ? 'rgba(201,160,255,0.12)' : BACK_BUTTON_PLATE);
     const nameS = portraitMenuFit(d.name, 2.35, layout.w - 40, 'bold');
-    const glossS = portraitMenuFit(d.desc, 1.55, layout.w - 40, 'ui');
+    const glossS = d.desc ? portraitMenuFit(d.desc, 1.55, layout.w - 40, 'ui') : 0;
     const nameH = TEXT_INK_H * portraitMenuScale(nameS);
-    const glossH = TEXT_INK_H * portraitMenuScale(glossS);
-    const pairGap = 12;
+    const glossH = d.desc ? TEXT_INK_H * portraitMenuScale(glossS) : 0;
+    const pairGap = d.desc ? 12 : 0;
     const pairH = nameH + pairGap + glossH;
     const pairTop = y + Math.max(0, (h - pairH) / 2);
     const nameMid = pairTop + nameH / 2;
@@ -2853,7 +2848,7 @@ function drawDifficultyPortrait(ctx, state, layout) {
     const color = danger ? '#e04848' : selected ? '#c9a0ff' : '#f0eef6';
     portraitMenuTextCentered(ctx, d.name, W / 2,
       portraitMenuTextY(nameMid, nameS, 'bold'), color, nameS, 'bold');
-    portraitMenuTextCentered(ctx, d.desc, W / 2,
+    if (d.desc) portraitMenuTextCentered(ctx, d.desc, W / 2,
       portraitMenuTextY(glossMid, glossS), selected ? '#c9a0ff' : '#8f8b9e', glossS);
     // Keep the little joke attached to the enlarged name rather than letting
     // it become a second, misaligned column on the phone.
@@ -2943,7 +2938,7 @@ export class DifficultyState {
     const names = centredBand(DIFFICULTIES.map((d) => d.name), DIFF_NAME_S);
     const glosses = centredBand(DIFFICULTIES.map((d) => d.desc), DIFF_GLOSS_S);
     const band = names.w >= glosses.w ? names : glosses;
-    [...DIFFICULTIES, { id: 0, name: 'BACK', desc: 'RETURN TO SHIFT SELECT' }].forEach((d, i) => {
+    [...DIFFICULTIES, { id: 0, name: 'BACK', desc: '' }].forEach((d, i) => {
       const sel = i === this.idx;
       const danger = d.id === 5;
       const label = d.name;
@@ -2954,9 +2949,10 @@ export class DifficultyState {
         sel ? 'rgba(201,160,255,0.055)' : BACK_BUTTON_PLATE);
       // The name/gloss pair centres in the band as one block, so the band the
       // finger finds is the band the words sit in the middle of.
-      const nameY = textYForMid(rowTop + DIFF_ROW / 2, DIFF_NAME_S) - DIFF_GLOSS_DY / 2;
+      // BACK has no gloss, so its name alone takes the middle of the band.
+      const nameY = textYForMid(rowTop + DIFF_ROW / 2, DIFF_NAME_S) - (d.desc ? DIFF_GLOSS_DY / 2 : 0);
       drawTextCentered(ctx, label, W / 2, nameY, color, DIFF_NAME_S);
-      drawTextCentered(ctx, d.desc, W / 2, nameY + DIFF_GLOSS_DY, '#5a5a68', DIFF_GLOSS_S);
+      if (d.desc) drawTextCentered(ctx, d.desc, W / 2, nameY + DIFF_GLOSS_DY, '#5a5a68', DIFF_GLOSS_S);
       // the skull is smiling
       if (d.id === 3 && sel) drawText(ctx, ':)', W / 2 + textWidth(label, DIFF_NAME_S) / 2 + 18, nameY, '#8a8a98', DIFF_NAME_S);
     });

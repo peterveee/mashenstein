@@ -52,3 +52,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-12 | `b5dca4b` | [2026-10-12-b5dca4b.html](2026-10-12-b5dca4b.html) | [bake-offs](2026-10-12-b5dca4b-lab.html) | Add comprehensive tests for office environment and interactions |
 | 2026-10-12 | `f21e408` | [2026-10-12-f21e408.html](2026-10-12-f21e408.html) | [bake-offs](2026-10-12-f21e408-lab.html) | Fix the six failing suites |
 | 2026-10-12 | `69d03d3` | [2026-10-12-69d03d3.html](2026-10-12-69d03d3.html) | [bake-offs](2026-10-12-69d03d3-lab.html) | Office: Jost typeface, signage clear of the HUD, save-import slot fix |
+| 2026-10-12 | `637994a` | [2026-10-12-637994a.html](2026-10-12-637994a.html) | [bake-offs](2026-10-12-637994a-lab.html) | Add WOK THIS WAY menu and CORPORATE KOMBAT armchair bake-off |

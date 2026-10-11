@@ -1,7 +1,7 @@
 // Ordinary architecture repeats; named rooms are finite, stage-relative places.
 import { OFFICE_FLOORS, FACTORS, OFFICE_ZOOM, WALL_BASE, MID_BASE, LANE_TOP } from '../officeClimb.js';
 import { box, line, poly, circ, ell, letters, OFFICE_FONT, PAL, YH, VPX, canvas } from './line.js';
-import { ceoDoor, founderPortrait, trophyCase, bookshelf, lobbyLogo, signNeon, lobbyWallBay, openWallBay, execPanels, lobbyLift, steelLift, liftDoors } from './wall.js';
+import { decoSconce, ceoDoor, founderPortrait, trophyCase, bookshelf, lobbyLogo, signNeon, lobbyWallBay, openWallBay, execPanels, lobbyLift, steelLift, liftDoors } from './wall.js';
 import { reception, midActors, plant, sculpture, boardroomBack, boardroomFront, easel, chairFromBehind, sofa } from './room.js';
 import { glassMeetingRoom, paintExtraOfficeRoom, officeRoomStyle, roomWithDepth } from './rooms.js';
 import { PROFESSOR_PLAN } from './professorArt.js';
@@ -99,14 +99,19 @@ function officeLandmarkRate(floor,kind){
 }
 // The lift block's width: the pair of 1.2x lifts with their surrounds and the call panel.
 const LIFT_BAY=136;
+const START_LIFT_X=640;
 export const OFFICE_ITINERARIES={
   // Ground floor serves visitors; staff facilities belong above reception.
   // In through the revolving door, past reception, to the lifts; then the visitors' lobby.
   lobby:[['entrance',0.03,230],['reception',0.11,340],['lobbyLifts',0.2,LIFT_BAY],
     ['cafe',0.45,280],['lounge',0.78,280]],
-  open:[['lift',0.02,LIFT_BAY],['training',0.23,270],['meeting',0.40,270],
+  // The first lift of floors 23 and 88 is placed by SCREEN position, not by fraction: well ahead
+  // of where the hero starts, so it comes into view standing open and its doors shut in his face
+  // as he runs up (foregroundLift's close, 220 to 70 px ahead). START_LIFT_X is its centre at the
+  // start, before the bay snap.
+  open:[['lift',0.02,LIFT_BAY,{screen:START_LIFT_X}],['training',0.23,270],['meeting',0.40,270],
     ['lift',0.50,LIFT_BAY],['canteen',0.59,210],['interview',0.78,270]],
-  exec:[['lift',0.04,LIFT_BAY],['meeting',0.12,270],['boardroom',0.32,360],['lounge',0.52,320],
+  exec:[['lift',0.04,LIFT_BAY,{screen:START_LIFT_X}],['meeting',0.12,270],['boardroom',0.32,360],['lounge',0.52,320],
     ['lift',0.62,LIFT_BAY],['library',0.72,270],['secretary',0.82,240],['ceo',0.94,400]],
 };
 // A wall section's span: the window bay nearest its itinerary place, in the wall's absolute
@@ -120,9 +125,9 @@ function officePlaces(floor,totalDist){
   const bays=def.bays.map((b,i)=>({...b,i})).filter(b=>b.type==='glass');
   const used=[];
   let lastX=-Infinity;
-  places=OFFICE_ITINERARIES[floor].map(([kind,at,w])=>{
+  places=OFFICE_ITINERARIES[floor].map(([kind,at,w,o])=>{
     const rate=officeLandmarkRate(floor,kind);
-    let worldX=totalDist*at;
+    let worldX=o?.screen!=null?(o.screen-112)/rate:totalDist*at;
     let section=null;
     // Built-ins, rooms and lifts all take their own stretch of the wall: a window bay,
     // cleared to plain wall, so nothing hangs or shows through behind them.
@@ -409,7 +414,7 @@ function ashtray(g,cx,P){
   for(let k=0;k<4;k++)line(g,x+1.5+k*2.6,b-h-1.4,x+2.5+k*2.6,b-h+0.2,'#8b919c',0.3);
   box(g,x-0.4,b-1.8,w+0.8,1.8,'#1f1d26',P.ink,0.3);
 }
-function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open'){
+function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0){
   // A narrow floor-to-ceiling wall bay makes the compact lift read as part of
   // the building. Its furniture cut matches the bay, so corridor props do not
   // show through the foreground structure.
@@ -427,11 +432,11 @@ function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open'){
 
   // A bank of two lifts in the floor's own LIGNE '89 dress (wall.js: the lobby's lacquer
   // ziggurats with Memphis doors, floor 23's steel, floor 88's wood), drawn a fifth larger than
-  // the wall-strip originals. The first stands open and closes as the hero arrives.
+  // the wall-strip originals. One of them (`which`) stands open and closes as the hero arrives.
   const s=1.2,lw=36,lh=82;
   g.save();
   g.translate(c,bottom);g.scale(s,s);g.translate(-c,-WALL_BASE);
-  const lifts=[{x:c-lw-10,open},{x:c+10,open:0}].map(q=>({kind:'lift',x:q.x,y:WALL_BASE-lh,w:lw,h:lh,label:String(floorNumber),open:q.open,buttons:false}));
+  const lifts=[{x:c-lw-10,open:which===0?open:0},{x:c+10,open:which===1?open:0}].map(q=>({kind:'lift',x:q.x,y:WALL_BASE-lh,w:lw,h:lh,label:String(floorNumber),open:q.open,buttons:false}));
   for(const h of lifts){
     if(floor==='lobby')lobbyLift(g,h,P);else steelLift(g,h,P,floor==='exec');
   }
@@ -439,8 +444,12 @@ function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open'){
   // one call panel for the pair, on the wall between them
   const py=WALL_BASE-lh*0.54,plate=floor==='exec'?(P.brass||'#d1bc78'):floor==='lobby'?(P.chrome||'#d7dbe3'):(P.steelLt||'#e8ebf1');
   box(g,c-3.5,py,7,13,plate,P.ink,0.5);
-  circ(g,c,py+3.6,1.3,floor==='lobby'?'#ff6fae':'#f6ecd0',P.ink,0.3);
-  circ(g,c,py+9.2,1.3,floor==='lobby'?'#2fbcb0':'#f6ecd0',P.ink,0.3);
+  // the top floor has only a down button, the ground floor only an up
+  if(floor==='exec')circ(g,c,py+6.5,1.4,'#f6ecd0',P.ink,0.3);
+  else{
+    circ(g,c,py+3.6,1.3,floor==='lobby'?'#ff6fae':'#f6ecd0',P.ink,0.3);
+    circ(g,c,py+9.2,1.3,floor==='lobby'?'#2fbcb0':'#f6ecd0',P.ink,0.3);
+  }
   g.restore();
 }
 
@@ -613,7 +622,9 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       // waiting open, and the doors close as the hero comes up to them
       const ahead=x+w/2-112,open=Math.max(0,Math.min(1,(ahead-70)/150));
       const ease=open*open*(3-2*open);
-      foregroundLift(g,l,P,floorNumber,wt,ease,f.floor);
+      // which of the pair is the one waiting open: drawn per run and per lift bank
+      const r=Math.sin((l.worldX*0.0137+(f.liftSeed||0)*97.3)*127.1)*43758.5453;
+      foregroundLift(g,l,P,floorNumber,wt,ease,f.floor,(r-Math.floor(r))<0.5?0:1);
       g.restore();
       // its shadow along the floor at the foot of the front
       {const [a0,y1]=T(x,bt),[a1]=T(x+w,bt);box(g,a0,y1,a1-a0,1.6,'rgba(20,16,30,0.3)');}
@@ -635,10 +646,18 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       trophyCase(g,{x:x+w-112,y:CEO_SIGN_Y+30,w:76,h:b-CEO_SIGN_Y-30,runnerUp:true},P); // he never wins
       plaque(g,'EXECUTIVE SUITE',c-69,CEO_SIGN_Y,138,P);
       gagNote(g,'BOSS OF THE YEAR: JUDGE - ME',c-90,CEO_SIGN_Y+16,180,P);
-      for(const px of [c-78,c+71]){
-        box(g,px,111,7,38,P.brass,P.ink,0.5);
-        box(g,px-3,116,13,24,'#ffe4b1',P.ink,0.5);
+      // Lighting the way in: a deco sconce either side of the doors, and two recessed spots in
+      // the suite's soffit washing the doors, with their pool on the floor in front of them
+      const dy0=CEO_SIGN_Y+30;
+      for(const sx of [c-30,c+30]){
+        poly(g,[sx-3,dy0,sx+3,dy0,sx+24,b,sx-24,b],'rgba(255,220,170,0.09)');
+        poly(g,[sx-2,dy0,sx+2,dy0,sx+12,b,sx-12,b],'rgba(255,236,200,0.1)');
+        ell(g,sx,dy0-0.6,5,1.4,'#3a2a20',P.ink,0.3);
+        ell(g,sx,dy0-0.4,3.4,0.9,'#fff3cc');
       }
+      ell(g,c,b+1.6,70,4.2,'rgba(255,214,160,0.18)');
+      ell(g,c,b+1.6,40,2.4,'rgba(255,232,200,0.24)');
+      for(const sx of [c-66,c+66])decoSconce(g,sx,CEO_SIGN_Y+70,P);
       plant(g,x+24,MID_BASE,'bonsai',P,22);
       plant(g,x+w-27,MID_BASE,'bonsai',P,24);
     }else if(kind==='reception'){

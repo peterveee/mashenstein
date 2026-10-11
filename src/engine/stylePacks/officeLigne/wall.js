@@ -546,8 +546,12 @@ function steelLift(g, h, P, wood = false) {
   // call buttons (a bank of lifts shares one panel: `buttons: false`)
   if (h.buttons === false) return;
   box(g, x + w + 6, y + hh * 0.46, 3, 7, wood ? P.brass : P.steelLt, P.ink, LWF);
-  circ(g, x + w + 7.5, y + hh * 0.46 + 2, 0.8, '#f6ecd0', P.ink, 0.25);
-  circ(g, x + w + 7.5, y + hh * 0.46 + 5, 0.8, '#f6ecd0', P.ink, 0.25);
+  // floor 88 is the top floor: a down button only
+  if (wood) circ(g, x + w + 7.5, y + hh * 0.46 + 3.5, 0.9, '#f6ecd0', P.ink, 0.25);
+  else {
+    circ(g, x + w + 7.5, y + hh * 0.46 + 2, 0.8, '#f6ecd0', P.ink, 0.25);
+    circ(g, x + w + 7.5, y + hh * 0.46 + 5, 0.8, '#f6ecd0', P.ink, 0.25);
+  }
 }
 
 function whiteboard(g, h, P) {
@@ -1175,15 +1179,44 @@ function professor(g, cx, hy, s, ink, pal = PROF) {
   professorHead(g, cx, hy, s, ink, pal);
 }
 
+// A gallery picture light: a long brass hood on a short arm over the top of the frame, lit along
+// its lip, a soft halo on the wall above it, and the warm light it throws down over the picture in
+// two flat steps that fade before the foot. Drawn AFTER the picture, since the light lies on it.
+const PL_BRASS = '#d7b975', PL_BRASS_DK = '#927041', PL_BRASS_LT = '#ffe9b0';
+function pictureLight(g, x, y, w, h, P) {
+  const cx = x + w / 2, hw = Math.min(w * 0.34, 15);
+  poly(g, [cx - hw, y - 6, cx + hw, y - 6, x + w + 2, y + h * 0.82, x - 2, y + h * 0.82], 'rgba(255,226,170,0.11)');
+  poly(g, [cx - hw * 0.8, y - 6, cx + hw * 0.8, y - 6, x + w * 0.86, y + h * 0.5, x + w * 0.14, y + h * 0.5], 'rgba(255,238,200,0.13)');
+  ell(g, cx, y - 9, hw + 6, 3.6, 'rgba(255,220,170,0.12)');
+  box(g, cx - 1.8, y - 3.4, 3.6, 3, PL_BRASS, P.ink, 0.3);
+  line(g, cx, y - 2.6, cx, y - 7.4, PL_BRASS_DK, 0.9);
+  rbox(g, cx - hw, y - 10.4, hw * 2, 3.4, 1.5, PL_BRASS, P.ink, 0.4);
+  line(g, cx - hw + 1.2, y - 9.6, cx + hw - 1.2, y - 9.6, PL_BRASS_LT, 0.5);
+  box(g, cx - hw + 1.4, y - 7.4, hw * 2 - 2.8, 0.9, '#fff3cc');
+}
+
+// An Art Deco wall sconce for the executive suite: a brass backplate and a stepped fan of frosted
+// glass opening upward, glowing warm, washing a tall flat fan of light up the wall and a short one
+// down it.
+function decoSconce(g, x, y, P) {
+  poly(g, [x - 4, y - 3, x + 4, y - 3, x + 15, y - 46, x - 15, y - 46], 'rgba(255,214,160,0.09)');
+  poly(g, [x - 3, y - 3, x + 3, y - 3, x + 8, y - 38, x - 8, y - 38], 'rgba(255,230,190,0.12)');
+  poly(g, [x - 3, y + 6, x + 3, y + 6, x + 7, y + 22, x - 7, y + 22], 'rgba(255,214,160,0.08)');
+  rbox(g, x - 3, y - 4, 6, 14, 1.2, PL_BRASS, P.ink, 0.4);
+  line(g, x, y - 2, x, y + 8, PL_BRASS_DK, 0.5);
+  for (const [r, col] of [[9.5, '#f6d08a'], [7, '#ffe6b0'], [4.4, '#fff4d8']]) {
+    g.beginPath();
+    g.ellipse(x, y, r, r * 0.92, 0, Math.PI, Math.PI * 2);
+    g.closePath();
+    fs(g, col, P.ink, 0.35);
+  }
+  for (const a of [-0.6, 0, 0.6]) line(g, x, y, x + Math.sin(a) * 9.2, y - Math.cos(a) * 8.6, PL_BRASS_DK, 0.35);
+  box(g, x - 10, y - 0.6, 20, 1.6, PL_BRASS, P.ink, 0.35);
+}
+
 function founderPortrait(g, h, P) {
   const { x, y, w } = h;
   const hh = h.h;
-  // the halogen spot's light on him, in two flat steps
-  poly(g, [x + 8, y - 4, x + w - 8, y - 4, x + w + 9, y + hh * 0.7, x - 9, y + hh * 0.7], 'rgba(255,214,238,0.12)');
-  poly(g, [x + 16, y - 4, x + w - 16, y - 4, x + w - 2, y + hh * 0.45, x + 2, y + hh * 0.45], 'rgba(255,232,246,0.14)');
-  line(g, x + w / 2 - 6, y - 8, x + w / 2 + 6, y - 8, P.chrome, 1.2);
-  poly(g, [x + w / 2 - 2, y - 8, x + w / 2 + 2, y - 8, x + w / 2 + 3, y - 4, x + w / 2 - 3, y - 4], '#1b1a22', P.ink, 0.35);
-  ell(g, x + w / 2, y - 3.6, 2.6, 0.9, '#fff4fa');
   box(g, x + 1.5, y + 2, w, hh, 'rgba(0,0,0,0.25)');
   box(g, x, y, w, hh, P.chrome, P.ink, LW);
   box(g, x + 2, y + 2, w - 4, hh - 4, '#ffffff', P.ink, LWF);
@@ -1206,6 +1239,7 @@ function founderPortrait(g, h, P) {
   box(g, x + w / 2 - 15.6, y + hh + 5.4, 31.2, 10.2, null, P.brassDk, 0.4);
   letters(g, 'FOUNDER', x + w / 2, y + hh + 11.2, 4.2, { ink: '#1b1a22', lw: 0.6, align: 'center', slant: 0.12 });
   letters(g, 'DON K. EGGSHELL PH.D.', x + w / 2, y + hh + 14.6, 1.9, { ink: '#1b1a22', lw: 0.32, align: 'center', track: 0.9 });
+  pictureLight(g, x, y, w, hh, P);
 }
 
 // The CEO's case holds everything he has ever come close to winning: rosettes for second and
@@ -1550,6 +1584,8 @@ function liftDoors(ctx, f, P) {
     const cx = x + w / 2;
     const ly = f.floor === 'lobby' ? y - 6.4 : y - 6.8;
     letters(ctx, h.label, cx - 1, ly, 4.4, { ink: lit ? '#ff3b5a' : '#5a2a3a', lw: 0.75, align: 'center', slant: 0.1 });
+    // the arrow shows the way the car came: up, even on the top floor (its call panel has a down
+    // button only)
     poly(ctx, [cx + 5.6, ly - 3, cx + 3.8, ly - 1, cx + 7.4, ly - 1], lit ? '#ff3b5a' : '#5a2a3a');
   }
 }
@@ -1608,4 +1644,4 @@ function revolvingDoor(ctx, f, P) {
   }
 }
 
-export { glassBlocks, nagelPrint, PROF_NAGEL, rake, crownPath, SIGN, signPaths, buzz, signNeon, floorLights, glints, sunShafts, noonShafts, noonWall, noonSpans, lobbyCornice, lobbyWallBay, lobbyGlass, lobbyColumn, lobbyLift, lobbyLogo, clockFace, cityPainting, openWallBay, openDado, openBulkhead, openGlass, radiator, openColumn, steelLift, whiteboard, poster, meetingDoor, extinguisher, execPanels, execGlass, execColumn, PROF, PROF_MANE, profHeadPath, professor, professorBody, professorHead, founderPortrait, trophyCase, bookshelf, ceoDoor, abstractPainting, paintWall, liftDoors, clockHands, revolvingDoor };
+export { pictureLight, decoSconce, glassBlocks, nagelPrint, PROF_NAGEL, rake, crownPath, SIGN, signPaths, buzz, signNeon, floorLights, glints, sunShafts, noonShafts, noonWall, noonSpans, lobbyCornice, lobbyWallBay, lobbyGlass, lobbyColumn, lobbyLift, lobbyLogo, clockFace, cityPainting, openWallBay, openDado, openBulkhead, openGlass, radiator, openColumn, steelLift, whiteboard, poster, meetingDoor, extinguisher, execPanels, execGlass, execColumn, PROF, PROF_MANE, profHeadPath, professor, professorBody, professorHead, founderPortrait, trophyCase, bookshelf, ceoDoor, abstractPainting, paintWall, liftDoors, clockHands, revolvingDoor };

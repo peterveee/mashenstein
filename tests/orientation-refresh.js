@@ -222,7 +222,7 @@ dom.fire('win:orientationchange');
 for (let i = 0; i < 40; i++) dom.frame();
 renderer.revealPresentationRefresh();
 for (let i = 0; i < 5; i++) { renderer.beginChromeFrame(); dom.frame(); }
-const uprightArrows = (renderer.chrome.hub || []).filter((b) => b.r != null);
+const uprightArrows = (renderer.chrome.hub || []).filter((b) => b.r != null && b.id !== 'hubPause');
 if (uprightArrows.length !== 2) {
   console.error('FAIL: the food court declares two walk arrows upright');
   process.exit(1);
@@ -235,7 +235,7 @@ if (!uprightArrows.every((b) => b.y > window.innerHeight * 0.75)) {
 // ...and the portrait frame itself still puts them on the picture's own corners.
 renderer.setPresentationMode('portrait');
 for (let i = 0; i < 5; i++) { renderer.beginChromeFrame(); dom.frame(); }
-const portraitArrows = (renderer.chrome.hub || []).filter((b) => b.r != null);
+const portraitArrows = (renderer.chrome.hub || []).filter((b) => b.r != null && b.id !== 'hubPause');
 if (!portraitArrows.every((b) => b.y > window.innerHeight * 0.75)) {
   console.error('FAIL: portrait walk arrows sit in the bottom quarter');
   process.exit(1);

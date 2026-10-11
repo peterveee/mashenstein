@@ -51,7 +51,7 @@ const SURE_HOW = 'IF YOU MIGHT WANT THEM BACK, CHOOSE NO AND EXPORT THEM FIRST.'
 const NOTICE_COLOR = { ok: '#48c848', bad: '#d84828', info: '#8a8a98' };
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-/** "NO SHIFTS", "1 SHIFT", "3 SHIFTS". */
+/** "NO SAVE FILES", "1 SAVE FILE", "3 SAVE FILES". */
 export function countOf(n, noun) {
   if (!n) return `NO ${noun}S`;
   return `${n} ${noun}${n === 1 ? '' : 'S'}`;
@@ -387,7 +387,7 @@ export class SaveFileState extends PanelScreen {
     const data = this.save.data || {};
     const shifts = (data.slots || []).filter(Boolean).length;
     const songs = Array.isArray(data.bangers?.kept) ? data.bangers.kept.length : 0;
-    return `${countOf(shifts, 'SHIFT')}, ${countOf(songs, 'LAB SONG')}`;
+    return `${countOf(shifts, 'SAVE FILE')}, ${countOf(songs, 'LAB SONG')}`;
   }
 
   panelLines(portrait) {
@@ -405,7 +405,7 @@ export class SaveFileState extends PanelScreen {
       const f = this.pending;
       push('IMPORT THIS SAVE?', '#f6d33c', S.head);
       push(f.exportedAt ? `EXPORTED ${exportedLabel(f.exportedAt)}` : 'EXPORT DATE UNKNOWN', '#c8c8d8', S.step, S.gap);
-      push(`${countOf(f.shifts, 'SHIFT')}, ${countOf(f.labSongs, 'LAB SONG')}`, '#48e0c8', S.step);
+      push(`${countOf(f.shifts, 'SAVE FILE')}, ${countOf(f.labSongs, 'LAB SONG')}`, '#48e0c8', S.step);
       para(CONFIRM_WARNING, '#d84828', S.why, S.gap);
       para(CONFIRM_HOW, '#8a8a98', S.why, S.gap);
     } else if (this.phase === 'sure') {

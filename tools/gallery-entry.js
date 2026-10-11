@@ -10,6 +10,7 @@
 import { drawFoodStall, STALLS, COUNTER_UNITS, COUNTER_UNIT_W, WOK_MENU_STYLES } from '../src/sprites/stalls.js';
 import { drawOfficeProductionScene, drawOfficeFontSample, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
 import { ARMCHAIRS as OFFICE_ARMCHAIRS } from '../src/dev/office-armchairs.js';
+import { DINERS as OFFICE_DINERS, drawDinerRoom } from '../src/dev/office-diner-candidates.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -9270,6 +9271,27 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
       ctx.beginPath(); ctx.ellipse(48, 54, 30, 3.4, 0, 0, Math.PI * 2); ctx.fill();
       chair.paint(ctx, 28, 54, P);
     });
+  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — canteen + coffee shop diners
+// 12 Oct 2026: "these people in the food court on level 2 (and coffee area level 1) look terrible
+// ... legs look bad, seat back is weird, look like they are standing". Candidates in
+// src/dev/office-diner-candidates.js, swapped in through setOfficeDiners (rooms.js), so each tile
+// is the production room in the production pack at in-run size. NOW is what ships.
+{
+  const grid = section('office-diner-bakeoff', 'CORPORATE KOMBAT — diners in the canteen and coffee shop',
+    'The two at the table in the STAFF CANTEEN (8-2, floor 23) and the COFFEE SHOP (8-1, lobby). NOW stands them behind '
+    + 'the table on long straight legs in front of tall chair backs. A–F keep the LIGNE ’89 hand and sit them down: '
+    + 'A front on with a lap and short shins, B side on face to face, C an 80s booth, D a tablecloth, E perched on stools, '
+    + 'F behind a planter. In-run size, ANIMATED (a spoonful of egg, a sip of coffee). Pick a letter.', '12 Oct 2026');
+  const ROOMS = [['canteen', 'open', 'STAFF CANTEEN · floor 23'], ['cafe', 'lobby', 'COFFEE SHOP · lobby']];
+  for (const cand of [null, ...OFFICE_DINERS]) {
+    const tag = cand ? `${cand.letter} — ${cand.name}` : 'NOW — as shipped';
+    for (const [kind, floor, where] of ROOMS) {
+      tile(grid, `${tag} · ${kind}`, cand ? `${where}. ${cand.note}` : `${where}. What the run draws today.`, 480, 270,
+        (ctx, t) => drawDinerRoom(ctx, t, cand, { floor, kind }), { animated: true });
+    }
   }
 }
 

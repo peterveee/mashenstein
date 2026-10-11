@@ -377,7 +377,7 @@ const emptyTitle = new TitleState({
   onGuide() {}, onSoundTest() {},
 });
 const emptyTitleOptions = emptyTitle.options();
-assert(emptyTitleOptions.slice(0, 3).every((option, i) => option.label === `SHIFT ${i + 1}` && option.status === 'CLOCK IN'),
+assert(emptyTitleOptions.slice(0, 3).every((option, i) => option.label === `FILE ${i + 1}` && option.status === 'NEW GAME'),
   'empty title slots are presented as shifts ready to clock in');
 assert(emptyTitleOptions[3].label === 'STAFF ONLY',
   'the fourth title card opens the staff-only menu');
@@ -499,7 +499,7 @@ title.enter(); title.beginErase();
 const tapTitle = (action) => {
   Input.press(action); title.update(0); Input.release(action); Input.endFrame();
 };
-tapTitle('down'); // select occupied SHIFT 2 if another occupied shift precedes it
+tapTitle('down'); // select occupied FILE 2 if another occupied shift precedes it
 tapTitle('confirm');
 assert(title.erase?.step === 'confirm' && eraseSave.data.slots[1], 'erase flow selects a shift without deleting it');
 tapTitle('down'); tapTitle('confirm');
@@ -560,7 +560,7 @@ assert(Input.chromeButtons.length === 0,
   'food court keeps second-canvas walking controls hidden outside touch mode');
 Input.usingTouch = true;
 returnedHub.setChromeWalkButtons();
-assert(Input.chromeButtons.filter((b) => b.r != null).map((b) => b.action).join(',') === 'left,right',
+assert(Input.chromeButtons.filter((b) => b.r != null && b.id !== 'hubPause').map((b) => b.action).join(',') === 'left,right',
   'food court registers left/right walk arrows on the second canvas in touch mode');
 assert(Input.chromeButtons.filter((b) => b.zone).map((b) => b.action).join(',') === 'left,right',
   'and the pillars beside the picture walk the same way');

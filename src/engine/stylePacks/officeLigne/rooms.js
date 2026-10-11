@@ -150,17 +150,23 @@ function glassFront(g,x0,x1,top,bottom,{tint='rgba(190,225,236,0.14)',edges=true
 // The way in: a frameless glass door at the left end of the front pane, hung on chrome patch
 // fittings at its hinge side, with a long chrome pull handle by its free edge and a hairline gap
 // where it meets the fixed glass.
-const DOOR_W=30;
+// sized to the room: the table top is 28 px of about 75 cm, so a 2.1 m door is about 100 px at the
+// front pane's 1.3 scale, and 0.9 m wide
+const DOOR_W=44,DOOR_H=104;
 function glassDoor(g,x0,top,bottom){
-  const x=x0+3,x1=x+DOOR_W,h=bottom-top;
-  box(g,x,top+0.6,DOOR_W,h-1.2,'rgba(220,242,248,0.12)');
-  line(g,x1,top+0.6,x1,bottom-0.6,'rgba(30,40,60,0.45)',0.9);
-  line(g,x1+0.9,top+0.6,x1+0.9,bottom-0.6,'rgba(240,252,255,0.9)',0.6);
-  line(g,x,top+0.6,x,bottom-0.6,'rgba(240,252,255,0.7)',0.5);
+  // a door's height, not the pane's: the glass carries on above it as a fixed transom
+  const x=x0+3,x1=x+DOOR_W,dt=Math.max(top+6,bottom-DOOR_H),h=bottom-dt;
+  box(g,x,dt,DOOR_W,h-0.6,'rgba(220,242,248,0.12)');
+  // the head: where the door stops and the transom starts
+  line(g,x,dt,x1+0.9,dt,'rgba(30,40,60,0.45)',0.9);
+  line(g,x,dt+0.9,x1+0.9,dt+0.9,'rgba(240,252,255,0.9)',0.6);
+  line(g,x1,dt,x1,bottom-0.6,'rgba(30,40,60,0.45)',0.9);
+  line(g,x1+0.9,dt,x1+0.9,bottom-0.6,'rgba(240,252,255,0.9)',0.6);
+  line(g,x,dt,x,bottom-0.6,'rgba(240,252,255,0.7)',0.5);
   // the patch fittings, top and bottom on the hinge side
-  for(const y of [top+0.6,bottom-3.4])box(g,x,y,6,2.8,'#c9ced8','rgba(40,36,50,0.6)',0.35);
+  for(const y of [dt+1,bottom-3.4])box(g,x,y,6,2.8,'#c9ced8','rgba(40,36,50,0.6)',0.35);
   // the pull: a long chrome bar on two stand-offs
-  const hx=x1-4.4,hy0=top+h*0.36,hy1=top+h*0.66;
+  const hx=x1-5,hy0=dt+h*0.3,hy1=dt+h*0.62;
   for(const y of [hy0+2,hy1-2])line(g,hx-1.6,y,hx,y,'#9aa0ae',0.8);
   line(g,hx,hy0,hx,hy1,'#7d8494',1.8);
   line(g,hx-0.3,hy0+0.4,hx-0.3,hy1-0.4,'#eef0f4',0.6);
@@ -293,6 +299,31 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
   }
 }
 
+// The people at the canteen and coffee-shop tables, with their chairs, the table and the food.
+// d: {room:'canteen'|'cafe', x, w (the table), xs (where each sits), seed, span (free floor)}.
+// The diner bake-off (src/dev/office-diner-candidates.js) swaps the painter with setOfficeDiners.
+function dinersNow(g,d,f,P){
+  const b=MID_BASE;
+  sitters(g,d.xs,f,P,d.seed);
+  table(g,d.x,d.w,P);
+  for(let i=0;i<d.xs.length;i++){
+    const px=d.xs[i];
+    if(d.room==='canteen'){
+      ell(g,px,b-29.5,9,2,'#f0ece0',P.ink,0.4);
+      const lift=(Math.sin(f.t*1.1+i)+1)*4;
+      // lunch is, of course, an egg
+      line(g,px+7,b-35,px+11,b-32-lift,'#edc49e',2.1);
+      ell(g,px+11,b-36.5-lift,2.8,3.6,'#fbf5e6',P.ink,0.45);
+    }else{
+      ell(g,px,b-29,9,2,'#f4ecd2',P.ink,0.4);
+      box(g,px-3,b-36,7,7,'#e8c1d5',P.ink,0.4);
+      circ(g,px+6,b-33,2,null,P.ink,0.6);
+    }
+  }
+}
+let DINERS=dinersNow;
+export function setOfficeDiners(fn){const was=DINERS;DINERS=fn||dinersNow;return was;}
+
 export function paintExtraOfficeRoom(g,l,f,P){
   const {x,w,kind}=l,c=x+w/2,b=MID_BASE;
   if(kind==='canteen'){
@@ -318,16 +349,7 @@ export function paintExtraOfficeRoom(g,l,f,P){
     box(g,tx,92,78,34,'#f4ecd2',P.ink,0.6);
     letters(g,'TODAY: EGG',tx+39,107,4.6,{ink:P.ink,lw:0.6,align:'center'});
     letters(g,'LABEL YOUR LUNCH',tx+39,118,2.8,{ink:P.ink,lw:0.4,align:'center'});
-    sitters(g,people,f,P,30);
-    table(g,tx,76,P);
-    for(let i=0;i<people.length;i++){
-      const px=people[i];
-      ell(g,px,b-29.5,9,2,'#f0ece0',P.ink,0.4);
-      const lift=(Math.sin(f.t*1.1+i)+1)*4;
-      // lunch is, of course, an egg
-      line(g,px+7,b-35,px+11,b-32-lift,'#edc49e',2.1);
-      ell(g,px+11,b-36.5-lift,2.8,3.6,'#fbf5e6',P.ink,0.45);
-    }
+    DINERS(g,{room:'canteen',x:tx,w:76,xs:people,seed:30,span:[x+8,kitchen-5]},f,P);
     return true;
   }
   if(kind==='meeting'||kind==='interview'||kind==='training'){
@@ -387,13 +409,7 @@ export function paintExtraOfficeRoom(g,l,f,P){
     for(let i=0;i<3;i++){
       ell(g,kitchen+66+i*7,155,4,1.4,'#d8ac71',P.ink,0.4);
     }
-    const xs=[x+58,x+124];
-    sitters(g,xs,f,P,70);table(g,x+35,112,P);
-    for(const px of xs){
-      ell(g,px,b-29,9,2,'#f4ecd2',P.ink,0.4);
-      box(g,px-3,b-36,7,7,'#e8c1d5',P.ink,0.4);
-      circ(g,px+6,b-33,2,null,P.ink,0.6);
-    }
+    DINERS(g,{room:'cafe',x:x+35,w:112,xs:[x+58,x+124],seed:70,span:[x+8,kitchen-7]},f,P);
     return true;
   }
   if(kind==='lounge'){

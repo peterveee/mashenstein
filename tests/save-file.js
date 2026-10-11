@@ -61,7 +61,7 @@ assert(read.shifts === 2 && read.labSongs === 3, 'reading a file counts what is 
 assert(read.exportedAt && read.exportedAt.getTime() === NOW.getTime(), 'and knows when it was made');
 assert(exportedLabel(NOW) === '8 OCT 2026, 14:32', 'the date reads as a date');
 assert(exportFileName(NOW) === 'mashenstein-2026-10-08-1432.bak', 'the file name sorts by date and ends .bak');
-assert(countOf(0, 'SHIFT') === 'NO SHIFTS' && countOf(1, 'LAB SONG') === '1 LAB SONG' && countOf(3, 'SHIFT') === '3 SHIFTS',
+assert(countOf(0, 'SAVE FILE') === 'NO SAVE FILES' && countOf(1, 'LAB SONG') === '1 LAB SONG' && countOf(3, 'SAVE FILE') === '3 SAVE FILES',
   'counts read as English');
 
 const refuses = (t, re, msg) => {
@@ -144,7 +144,7 @@ const screen = new SaveFileState({ save, onDone: () => { left++; }, onRestart: (
 screen.enter();
 frame(screen);
 assert(screen.boxes.map((b) => b.label).join() === 'EXPORT,IMPORT,BACK', 'the screen offers EXPORT, IMPORT and BACK');
-assert(screen.deviceSummary() === '1 SHIFT, 1 LAB SONG', 'and says what this device holds now');
+assert(screen.deviceSummary() === '1 SAVE FILE, 1 LAB SONG', 'and says what this device holds now');
 
 key(screen, 'Enter');
 assert(sent.length === 1 && sent[0].inEvent,
@@ -180,7 +180,7 @@ await picks[0].onFile(fileOf(bytes));
 frame(screen);
 assert(screen.phase === 'confirm' && screen.boxes[screen.idx].label === 'CANCEL',
   'a good file asks first, with the cursor on CANCEL');
-assert(screen.panelLines(false).some((l) => /2 SHIFTS, 3 LAB SONGS/.test(l.text))
+assert(screen.panelLines(false).some((l) => /2 SAVE FILES, 3 LAB SONGS/.test(l.text))
   && screen.panelLines(false).some((l) => /EXPORTED 8 OCT 2026/.test(l.text)),
   'and says what is in the file and when it was made');
 key(screen, 'Enter');

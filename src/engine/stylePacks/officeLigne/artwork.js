@@ -3,7 +3,7 @@
 import { box, line, poly, circ, ell, letters, hash, canvas, PAL } from './line.js';
 import { WALL_BASE, FACTORS, OFFICE_ZOOM, officeFrame } from '../officeClimb.js';
 import { OFFICE_CORRIDORS, officeFurnitureCuts, officeLandmarks } from './progression.js';
-import { poster } from './wall.js';
+import { poster, pictureLight } from './wall.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from './professorArt.js';
 
 const COLLECTIONS={
@@ -336,10 +336,10 @@ export function paintOfficeArtwork(g,f,P,k=2){
   if(art.professor){
    const c=bakedProfessor(art.professor,f.floor,k);
    g.drawImage(c,art.x,art.y,c.width/k,c.height/k);
-   continue;
-  }
-  if(art.poster){poster(g,{x:art.x,y:art.y,w:art.w,h:art.h,...art.poster},P);continue;}
-  paintOfficePrint(g,art,f.floor,P);
+  }else if(art.poster){poster(g,{x:art.x,y:art.y,w:art.w,h:art.h,...art.poster},P);continue;}
+  else paintOfficePrint(g,art,f.floor,P);
+  // floor 88 hangs its pictures like a gallery: a brass picture light over each
+  if(f.floor==='exec')pictureLight(g,art.x,art.y,art.w,art.h,P);
  }
 }
 // One of the framed prints that fill the other wall bays.
