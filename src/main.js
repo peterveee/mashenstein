@@ -47,6 +47,7 @@ import { resultsOnTheBeat, installSoundtrack } from './game/results-chip.js';
 import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
 import { CalibrateState } from './game/calibrate.js';
 import { SaveFileState } from './game/save-file.js';
+import { CrashLogState } from './game/crash-log.js';
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
@@ -66,7 +67,7 @@ import { efficiencyProfile } from './engine/render-efficiency.js';
 import { setLCDPanelCacheEnabled } from './engine/stylePacks/index.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
-import { consumeBenchDiag, releaseBenchRenderer, readDiag } from './engine/diag.js';
+import { consumeBenchDiag, releaseBenchRenderer, readDiag, startCrumbSession } from './engine/diag.js';
 import { startTitleProfile, titleProfileActive, titleProfileFrame, titleProfileReportVisible, drawTitleProfile } from './engine/title-profile.js';
 import {
   startGameplayProfile, gameplayProfileActive, gameplayProfileWaiting,
@@ -208,6 +209,7 @@ function routeDevUrl(goto, p) {
         onDone: () => Flow.toTitle(),
         onCalibrate: () => Flow.toCalibrate(() => routeDevUrl('settings', p)),
         onSaveFile: () => Flow.toSaveFile(() => routeDevUrl('settings', p)),
+        onCrashLog: () => Flow.toCrashLog(() => routeDevUrl('settings', p)),
         onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
       break;
     case 'calibrate':
@@ -452,6 +454,7 @@ const Flow = {
       onDone: () => Flow.toExtras('settings'),
       onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()),
       onSaveFile: () => Flow.toSaveFile(() => Flow.toSettings()),
+      onCrashLog: () => Flow.toCrashLog(() => Flow.toSettings()),
       onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
   },
 
@@ -471,6 +474,10 @@ const Flow = {
   // module that has already read the old one.
   toSaveFile(onDone) {
     setState(new SaveFileState({ save, onDone, onRestart: () => window.location.reload() }));
+  },
+
+  toCrashLog(onDone) {
+    setState(new CrashLogState({ onDone }));
   },
 
   startStage(cab, stage, corrupted) {
@@ -767,6 +774,7 @@ function boot() {
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
     if (p.has('lcdPanelCache')) setLCDPanelCacheEnabled(p.get('lcdPanelCache') !== '0');
+    startCrumbSession(typeof window !== 'undefined' ? window.__MASH_BUILT_AT__ : '');
     const diag = consumeBenchDiag();
     if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
     // Silence for THIS BOOT, never the player's setting. This used to write

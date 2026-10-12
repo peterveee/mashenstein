@@ -18029,12 +18029,17 @@ function cardboardPack(settings) {
     lightBg: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
+      // The cutouts bob on their sticks. The bob is a TRANSLATE, never a change to the
+      // ridge's baseline: parallaxHills caches its baked tile by baseline, so a baseline
+      // that moved every frame baked two fresh full-height canvases a frame and kept all
+      // of them — hundreds of MB in seconds, which iOS answers by killing the page the
+      // moment the banner lifts (12 Oct 2026).
       const wob = Math.sin(t * 2) * 1.5;
-      const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', 56, GROUND_Y) + wob;
-      const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', 34, GROUND_Y) - wob;
+      const farBaseY = sceneryRidgeBaseY(backgroundContext, 'farLandmark', 56, GROUND_Y);
+      const nearBaseY = sceneryRidgeBaseY(backgroundContext, 'near', 34, GROUND_Y);
       // cardboard cutout hills with corrugation ticks
       ctx.save();
-      ctx.translate(0, backgroundY(backgroundContext, 'far'));
+      ctx.translate(0, backgroundY(backgroundContext, 'far') + wob);
       parallaxHills(ctx, camX, cab.far, farBaseY, 56, 120, 0.15,
         paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
       ctx.fillStyle = 'rgba(90,64,32,0.3)';
@@ -18044,7 +18049,7 @@ function cardboardPack(settings) {
       }
       ctx.restore();
       ctx.save();
-      ctx.translate(0, backgroundY(backgroundContext, 'near'));
+      ctx.translate(0, backgroundY(backgroundContext, 'near') - wob);
       parallaxHills(ctx, camX, cab.hills, nearBaseY, 34, 60, 0.35,
         paperPreview ? { paper: true, paperMaterial: paperPreset } : null);
       ctx.restore();

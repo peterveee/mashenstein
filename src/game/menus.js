@@ -6548,7 +6548,7 @@ export class SettingsState {
 
   // `onDevMenu` is passed only by a dev build (main.js, when Dev.enabled): it puts a
   // DEV MENU row at the top of the list, the phone's way in without the five-tap corner.
-  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, pause = false, onExitTitle = null }) {
+  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, onCrashLog = null, pause = false, onExitTitle = null }) {
     this.pause = pause;
     this.onExitTitle = onExitTitle;
     this.save = save;
@@ -6556,6 +6556,7 @@ export class SettingsState {
     this.onDevMenu = onDevMenu;
     this.onCalibrate = onCalibrate;
     this.onSaveFile = onSaveFile;
+    this.onCrashLog = onCrashLog;
     this.listStart = 0;
     this.pointerGesture = null;
     this.layout();
@@ -6677,6 +6678,8 @@ export class SettingsState {
       // The whole save to a .mash file and back (save-file.js). Its own screen,
       // because what it writes and what it replaces both need saying first.
       ...(this.onSaveFile ? [{ label: 'IMPORT / EXPORT', act: () => { this.save.persist(); this.onSaveFile(); } }] : []),
+      // What the game was doing when it last quit on its own (crash-log.js).
+      ...(this.onCrashLog ? [{ label: 'CRASH LOG', act: () => { this.save.persist(); this.onCrashLog(); } }] : []),
       { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },
       { label: 'BACK', act: () => { this.save.persist(); this.onDone(); } },
     ];

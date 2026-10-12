@@ -1,6 +1,6 @@
 // One source of truth for browser/app lifecycle. Visibility and orientation
 // events never resume subsystems independently; they all recompute this policy.
-import { readDiag, writeDiag, clearDiag, forceRenderer, forceWebglDensity } from './diag.js';
+import { readDiag, writeDiag, clearDiag, forceRenderer, forceWebglDensity, crumbReport } from './diag.js';
 
 // THE LOCK SCREEN'S STAND-IN, and what it costs. With the silent <audio> (primeAnchor) a
 // tap on the NOW PLAYING card opens another of the phone's Home Screen web apps, never
@@ -382,6 +382,16 @@ export class LifecycleController {
         rendererLock: true,
         density: 3,
       }, 'reloading into WebGL 3X gameplay profile...')],
+      // The breadcrumb trail (diag.js): what the game was doing when it last stopped. Shown
+      // here, newest last, and copied whole where the platform allows it.
+      ['log', () => {
+        const text = crumbReport();
+        try { this.win.navigator.clipboard?.writeText(text); } catch (e) { /* not permitted */ }
+        for (const el of [this.diagStatus, this.landscapeDiagStatus]) {
+          if (el) el.style.whiteSpace = 'pre-wrap';
+        }
+        this.showDiagStatus(text.split('\n').slice(-14).join('\n'));
+      }],
       ['clear', () => { clearDiag(); reloadInto({}, 'cleared - reloading...'); }],
     ];
     this.diagButtons = [];

@@ -423,6 +423,29 @@ function handleRecordUpload(req, res, url) {
   req.pipe(file);
 }
 
+// ---------------------------------------------------------------- crash trail
+// A dev build POSTs its breadcrumb trail (src/engine/diag.js) here on every boot, and
+// live after that, so a phone that was killed mid-run can be read from the Mac without
+// anyone opening the diagnostics panel. Whole trail each time: the file is overwritten.
+const CRUMBS_ROUTE = '/__dev/crumbs';
+const CRUMBS_PATH = join(root, 'work', 'local', 'crash-trail.txt');
+
+function handleCrumbs(req, res) {
+  if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+  let body = '';
+  req.setEncoding('utf8');
+  req.on('data', (chunk) => { if (body.length < 512 * 1024) body += chunk; });
+  req.on('end', () => {
+    try {
+      mkdirSync(dirname(CRUMBS_PATH), { recursive: true });
+      writeFileSync(CRUMBS_PATH, body);
+      res.writeHead(204); res.end();
+    } catch (err) {
+      res.writeHead(500); res.end(String(err.message));
+    }
+  });
+}
+
 // The render frame for the dev menu's LAB WAV RENDER test: a second, unbound copy of
 // the audio engine, loaded by the game in a hidden iframe to bounce a song through an
 // OfflineAudioContext (src/dev/lab-render.js). Built per request, so it is always the
@@ -504,6 +527,7 @@ function startProxy(host, port, upstreamPort, tls = null) {
       // URL is parsed against a fixed base because only the path matters here.
       const url = new URL(req.url, 'http://dev.local');
       if (url.pathname === RECORD_ROUTE) { handleRecordUpload(req, res, url); return; }
+      if (url.pathname === CRUMBS_ROUTE) { handleCrumbs(req, res); return; }
       if (url.pathname === RENDER_FRAME_ROUTE) { handleRenderFrame(res); return; }
       const upstream = httpRequest({
         host: '127.0.0.1',

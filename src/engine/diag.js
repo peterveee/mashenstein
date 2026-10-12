@@ -83,3 +83,117 @@ export function clearDiag() {
     /* nothing to clear */
   }
 }
+
+// ---- BREADCRUMBS ------------------------------------------------------------------------
+// A page the OS kills for memory (iOS reloads it, no error, no sound) leaves nothing behind
+// to read, so the trail is written WHILE the game runs: one short line per milestone, into
+// localStorage, a few sessions deep. A session that ends without a 'pagehide' line did not
+// exit cleanly, and its last line is where it was. Read back from the diagnostics panel
+// (five taps on the build stamp → CRASH LOG). Milestones only — nothing here is per frame.
+const CRUMB_KEY = 'mash_crumbs';
+const CRUMB_SESSIONS = 4;
+const CRUMB_LINES = 60;
+let session = null;
+
+function readCrumbStore() {
+  try {
+    const raw = localStorage.getItem(CRUMB_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && Array.isArray(parsed.sessions) ? parsed : { sessions: [] };
+  } catch (e) {
+    return { sessions: [] };
+  }
+}
+
+function writeCrumbStore(store) {
+  try {
+    localStorage.setItem(CRUMB_KEY, JSON.stringify(store));
+  } catch (e) {
+    /* unstorable: the trail is simply lost, the game plays on */
+  }
+}
+
+function heapMb() {
+  const m = typeof performance !== 'undefined' ? performance.memory : null;
+  return m && m.usedJSHeapSize ? Math.round(m.usedJSHeapSize / 1048576) : null;
+}
+
+/** Open this boot's session and hook the exits. Once per page load. */
+export function startCrumbSession(build = '') {
+  if (session || typeof window === 'undefined') return;
+  const store = readCrumbStore();
+  session = { at: Date.now(), build: String(build).slice(0, 40), lines: [] };
+  store.sessions.push(session);
+  while (store.sessions.length > CRUMB_SESSIONS) store.sessions.shift();
+  writeCrumbStore(store);
+  window.addEventListener('error', (e) => crumb('ERROR', `${e.message || ''} @${(e.filename || '').split('/').pop()}:${e.lineno || 0}`));
+  window.addEventListener('unhandledrejection', (e) => crumb('REJECTION', String(e.reason && (e.reason.message || e.reason)).slice(0, 120)));
+  window.addEventListener('pagehide', () => crumb('pagehide'));
+  document.addEventListener('visibilitychange', () => crumb(document.hidden ? 'hidden' : 'visible'));
+  crumb('boot', navigator.userAgent.replace(/^Mozilla\/5.0 /, '').slice(0, 80));
+  // A DEV BUILD hands the whole trail to the dev server (build/build.js, /__dev/crumbs),
+  // so the session a phone just lost can be read on the Mac. Late, so boot is not slowed.
+  if (window.__MASH_BUILD__) setTimeout(uploadCrumbs, 3000);
+}
+
+// Dev builds only. The first upload goes to /__dev/crumbs; a dev server started before
+// that route existed answers it with the esbuild proxy's 404, and the trail goes through
+// the recorder route instead (it keeps a body it cannot convert, under work/video/).
+// Once /__dev/crumbs has answered, every new line is sent as it is written.
+let liveCrumbs = false;
+function uploadCrumbs() {
+  if (typeof fetch === 'undefined') return;
+  const text = crumbReport();
+  fetch('/__dev/crumbs', { method: 'POST', body: text }).then((r) => {
+    if (r.ok) { liveCrumbs = true; return; }
+    return fetch('/__dev/record?name=crash-trail&ext=webm', { method: 'POST', body: text });
+  }).catch(() => { /* no dev server to tell */ });
+}
+
+/** One line on the trail. Cheap and never throws. */
+export function crumb(tag, detail = '') {
+  if (!session) return;
+  try {
+    const heap = heapMb();
+    session.lines.push([Math.round((Date.now() - session.at) / 100) / 10, tag,
+      String(detail).slice(0, 120) + (heap ? ` heap=${heap}MB` : '')]);
+    if (session.lines.length > CRUMB_LINES) session.lines.splice(1, session.lines.length - CRUMB_LINES);
+    const store = readCrumbStore();
+    const i = store.sessions.findIndex((x) => x.at === session.at);
+    if (i >= 0) store.sessions[i] = session; else store.sessions.push(session);
+    writeCrumbStore(store);
+    if (liveCrumbs && typeof navigator !== 'undefined' && navigator.sendBeacon) navigator.sendBeacon('/__dev/crumbs', crumbReport());
+  } catch (e) {
+    /* a diagnostic must never be the reason the game stops */
+  }
+}
+
+// How a session ended. 'clean' saw a pagehide. 'background' was last seen hidden, which is
+// iOS reclaiming an app in the background (or the player swiping it away) — ordinary, not
+// a crash. 'crash' stopped while it was on screen: the page was killed mid-play. The
+// session still running reads 'live'.
+function sessionEnd(s) {
+  const lines = s.lines || [];
+  if (session && s.at === session.at) return 'live';
+  if (lines.some((l) => l[1] === 'pagehide')) return 'clean';
+  return lines.length && lines[lines.length - 1][1] === 'hidden' ? 'background' : 'crash';
+}
+const END_NOTE = { clean: '', live: '  (THIS SESSION)', background: '  (CLOSED IN BACKGROUND)', crash: '  (NO CLEAN EXIT)' };
+
+/** The trail as text, newest session last. A session killed on screen is marked. */
+export function crumbReport() {
+  const out = [];
+  for (const s of readCrumbStore().sessions) {
+    const lines = s.lines || [];
+    out.push(`== ${new Date(s.at).toISOString()} ${s.build || ''}${END_NOTE[sessionEnd(s)]}`);
+    for (const [t, tag, detail] of lines.slice(-CRUMB_LINES)) out.push(`${t}s ${tag} ${detail}`.trim());
+  }
+  return out.join('\n') || 'no trail yet';
+}
+
+/** The newest earlier session that was killed on screen: { at, lines } or null. */
+export function lastCrash() {
+  const crashes = readCrumbStore().sessions.filter((s) => sessionEnd(s) === 'crash');
+  const s = crashes[crashes.length - 1];
+  return s ? { at: new Date(s.at), lines: (s.lines || []).map(([t, tag, detail]) => ({ t, tag, detail })) } : null;
+}

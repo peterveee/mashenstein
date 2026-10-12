@@ -4,6 +4,7 @@
 // _reversedVoiceBuffer. The rack owns every other use of Tone in the engine.
 import * as Tone from 'tone';
 import { installJunctionGuard } from './webkit-junction-guard.js';
+import { crumb } from './diag.js';
 import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
 import { createMixer, dbToGain, AUX_DEFAULTS } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
@@ -6156,6 +6157,7 @@ class AudioSys {
     // after it played about 4% fast, forever. A cabinet screen plays its song at the
     // song's tempo. Reset before the early return below, because arriving back at the
     // song already up is exactly the case that was wrong.
+    crumb('setBank', String(bank?.id || bank?.name || bank?.title || '').slice(0, 40));
     this.setWarp(1, 1);
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.

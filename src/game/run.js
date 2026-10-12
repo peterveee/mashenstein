@@ -6,6 +6,7 @@ import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
 import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, guardGroundCap, ballisticApex, GUARD_DWELL } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { TICK } from '../engine/loop.js';
+import { crumb } from '../engine/diag.js';
 import { Input } from '../engine/input.js';
 import {
   Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT,
@@ -4285,6 +4286,7 @@ export class RunState {
     // Queue this stage's artwork. Normally the briefing has already started it
     // and most of it is built by now; a dev launch that skips the briefing
     // starts it here and drains it across the banner and the run-in instead.
+    crumb('run enter', `${this.stage?.id || 'overtime'} act=${act || '-'} hero=${this.player?.heroId || ''}`);
     beginStageArtWarmup(this.cabinet, this.stage?.index ?? 1);
     // Off-screen entrance. Armed on the same fresh-entry gate as the card (so a
     // death-restart drops the hero straight onto the anchor), but independent of
@@ -6235,7 +6237,9 @@ export class RunState {
     // ACT banner: hold the world still so the milestone lands before the run.
     // Shake still ticks — the glitch jolt belongs to the banner, not after it.
     if (this.introFreeze > 0) {
+      const bannerWas = this.introFreeze;
       this.introFreeze -= dt; this.introT += dt;
+      if (bannerWas > 0 && this.introFreeze <= 0) crumb('act banner lifted', this.stage?.id || '');
       updateShake(dt, () => this.fxRng.float());
       // A replayer can cut the card short. Every button, not a designated one:
       // the card is not a menu, and a player reaching to skip it should not have
@@ -6409,6 +6413,11 @@ export class RunState {
     const wdt = dt;   // world time (the hit-jolt affects world, not score accrual)
 
     this.tRun += wdt;
+    // A heartbeat on the crash trail (diag.js): where the run was when the page last spoke.
+    if (Math.floor(this.tRun / 3) !== this.crumbBeat) {
+      this.crumbBeat = Math.floor(this.tRun / 3);
+      crumb('run', `${this.stage?.id || ''} t=${this.tRun.toFixed(1)} d=${Math.round(this.distance)}`);
+    }
     // Run time, not wall time: the legend should not burn down behind a pause
     // screen or an ACT banner, both of which return before this line.
     if (this.hintT > 0) this.hintT -= wdt;

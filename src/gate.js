@@ -256,6 +256,7 @@ function createGameDom() {
           <button id="diag-title-profile-gl" data-mash-diag="title-profile-gl" type="button">TITLE GL 3X</button>
           <button id="diag-game-profile-2d" data-mash-diag="game-profile-2d" type="button">GAME 2D 3X</button>
           <button id="diag-game-profile-gl" data-mash-diag="game-profile-gl" type="button">GAME GL 3X</button>
+          <button id="diag-log" data-mash-diag="log" type="button">CRASH LOG</button>
           <button id="diag-clear" data-mash-diag="clear" type="button">CLEAR</button>
         </div>
         <p id="diag-status" class="mash-diag-status" aria-live="polite"></p>
@@ -284,6 +285,7 @@ function createGameDom() {
         <button id="landscape-diag-title-profile-gl" data-mash-diag="title-profile-gl" type="button">TITLE GL 3X</button>
         <button id="landscape-diag-game-profile-2d" data-mash-diag="game-profile-2d" type="button">GAME 2D 3X</button>
         <button id="landscape-diag-game-profile-gl" data-mash-diag="game-profile-gl" type="button">GAME GL 3X</button>
+        <button id="landscape-diag-log" data-mash-diag="log" type="button">CRASH LOG</button>
         <button id="landscape-diag-clear" data-mash-diag="clear" type="button">CLEAR</button>
       </div>
       <p id="landscape-diag-status" class="mash-diag-status" aria-live="polite"></p>

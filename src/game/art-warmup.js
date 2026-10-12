@@ -14,6 +14,7 @@
 // point is to never be the reason a frame is late — including the frames of the
 // screens it runs behind.
 import { OBSTACLES, PICKUPS } from './entities.js';
+import { crumb } from '../engine/diag.js';
 import { cabinetForStage } from '../data/cabinets.js';
 import {
   hasProp, propFrames, propSprite, propRimPair, propTall, propHazardRim,
@@ -122,6 +123,7 @@ export function beginStageArtWarmup(cabinet, stageIndex = 1) {
   // The stage's own bank: Corporate Kombat's floors each deal their own furniture.
   queue = [...backdropJobs(cabinet, stageIndex), ...stageJobs(cabinetForStage(cabinet, stageIndex))];
   cursor = 0;
+  crumb('warmup begin', `${id} ${stageIndex} jobs=${queue.length}`);
   if (changed && propCacheStats().residentBytes > CACHE_BUDGET_BYTES) {
     // Keep what this stage is about to ask for; everything else was the last
     // cabinet's, and rebuilding it later costs a menu frame, not a run.
@@ -167,6 +169,7 @@ export function stepArtWarmup(budgetMs = 2) {
     }
     done++;
   } while (cursor < queue.length && start && performance.now() - start < budgetMs);
+  if (cursor >= queue.length) crumb('warmup done', `${builtFor} ${queue.length} jobs`);
   return done;
 }
 
