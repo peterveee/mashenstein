@@ -121,19 +121,28 @@ function heapMb() {
 /** Open this boot's session and hook the exits. Once per page load. */
 export function startCrumbSession(build = '') {
   if (session || typeof window === 'undefined') return;
-  const store = readCrumbStore();
-  session = { at: Date.now(), build: String(build).slice(0, 40), lines: [] };
-  store.sessions.push(session);
-  while (store.sessions.length > CRUMB_SESSIONS) store.sessions.shift();
-  writeCrumbStore(store);
-  window.addEventListener('error', (e) => crumb('ERROR', `${e.message || ''} @${(e.filename || '').split('/').pop()}:${e.lineno || 0}`));
-  window.addEventListener('unhandledrejection', (e) => crumb('REJECTION', String(e.reason && (e.reason.message || e.reason)).slice(0, 120)));
-  window.addEventListener('pagehide', () => crumb('pagehide'));
-  document.addEventListener('visibilitychange', () => crumb(document.hidden ? 'hidden' : 'visible'));
-  crumb('boot', navigator.userAgent.replace(/^Mozilla\/5.0 /, '').slice(0, 80));
-  // A DEV BUILD hands the whole trail to the dev server (build/build.js, /__dev/crumbs),
-  // so the session a phone just lost can be read on the Mac. Late, so boot is not slowed.
-  if (window.__MASH_BUILD__) setTimeout(uploadCrumbs, 3000);
+  // Booting the game must never depend on the trail: a headless harness with a stub
+  // window (no userAgent, no listeners) once failed six suites here. Any throw leaves
+  // the game with no trail, never without a boot.
+  try {
+    const store = readCrumbStore();
+    session = { at: Date.now(), build: String(build || '').slice(0, 40), lines: [] };
+    store.sessions.push(session);
+    while (store.sessions.length > CRUMB_SESSIONS) store.sessions.shift();
+    writeCrumbStore(store);
+    const listen = (target, type, fn) => { if (typeof target?.addEventListener === 'function') target.addEventListener(type, fn); };
+    listen(window, 'error', (e) => crumb('ERROR', `${e?.message || ''} @${String(e?.filename || '').split('/').pop()}:${e?.lineno || 0}`));
+    listen(window, 'unhandledrejection', (e) => crumb('REJECTION', String(e?.reason && (e.reason.message || e.reason)).slice(0, 120)));
+    listen(window, 'pagehide', () => crumb('pagehide'));
+    if (typeof document !== 'undefined') listen(document, 'visibilitychange', () => crumb(document.hidden ? 'hidden' : 'visible'));
+    const ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : '';
+    crumb('boot', ua.replace(/^Mozilla\/5.0 /, '').slice(0, 80));
+    // A DEV BUILD hands the whole trail to the dev server (build/build.js, /__dev/crumbs),
+    // so the session a phone just lost can be read on the Mac. Late, so boot is not slowed.
+    if (window.__MASH_BUILD__ && typeof setTimeout === 'function') setTimeout(uploadCrumbs, 3000);
+  } catch (e) {
+    /* no trail this boot */
+  }
 }
 
 // Dev builds only. The first upload goes to /__dev/crumbs; a dev server started before
