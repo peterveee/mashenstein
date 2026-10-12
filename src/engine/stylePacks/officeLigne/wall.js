@@ -945,6 +945,43 @@ function execPanels(g, x0, x1, P, F) {
   execHeader(g, x0, x1, top, P);
   execRailAndSkirting(g, x0, x1, sill, P);
 }
+// The solid wall above the native cornice, in the floor's own finish: floor 88's raised panels,
+// the lobby's flecked granite slabs; floor 23 is plain plaster and needs nothing more.
+// It lines up with the windows beside it: `glassTop` is the windows' top edge and `bars` their
+// transom bars (every 90 up from `barBase`), so panel rows and slab joints meet the glazing's lines.
+function upperWall(ctx, floor, P, x0, x1, y0, y1, u0, glassTop = y0, barBase = y1) {
+  if (y1 - y0 < 6) return;
+  const bars = [];
+  for (let y = barBase - 90; y > glassTop + 8; y -= 90) if (y < y1 - 8) bars.push(y);
+  if (floor === 'exec') {
+    // one row of panels per pane of glass: from the window head down to the cornice, split at
+    // each transom bar
+    // (the top row starts at the window head even where the ceiling trim then covers its edge)
+    const edges = [glassTop, ...bars.slice().reverse(), y1];
+    for (let i = 0; i + 1 < edges.length; i++) {
+      const a = edges[i] + (i ? 2.5 : 0), b = edges[i + 1] - (i + 2 < edges.length ? 2.5 : 0);
+      if (b - a > 6) execPanelRow(ctx, x0, x1, a, b, P);
+    }
+  } else if (floor === 'lobby') {
+    // flecks scattered from the cornice up, fixed to the slab, so they don't swim as it grows
+    const w = x1 - x0, H = 600;
+    const seed = Math.round(u0);
+    for (let k = 0; k < Math.round(w * H / 60); k++) {
+      const py = y1 - hash(seed * 0.29 + k * 5.71) * H;
+      if (py < y0) continue;
+      ctx.fillStyle = P.fleck[k % 3];
+      ctx.fillRect(x0 + hash(seed * 0.13 + k * 3.17) * w, py, 0.7 + (k % 2) * 0.4, 0.7);
+    }
+    ctx.beginPath();
+    // slab courses: one at each transom bar, halved between them, and at the window head
+    for (let y = barBase - 45; y > y0; y -= 45) if (y < y1 - 6) { ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
+    if (glassTop > y0 && glassTop < y1) { ctx.moveTo(x0, glassTop); ctx.lineTo(x1, glassTop); }
+    for (let x = x0 + 46; x < x1 - 4; x += 46) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+    pen(ctx, P.wallJoint, 0.55);
+    ctx.stroke();
+  }
+}
+
 function execGlass(g, x0, x1, b, P, F) {
   const G = F.glass;
   const top = F.ceilingY;
@@ -1644,4 +1681,4 @@ function revolvingDoor(ctx, f, P) {
   }
 }
 
-export { pictureLight, decoSconce, glassBlocks, nagelPrint, PROF_NAGEL, rake, crownPath, SIGN, signPaths, buzz, signNeon, floorLights, glints, sunShafts, noonShafts, noonWall, noonSpans, lobbyCornice, lobbyWallBay, lobbyGlass, lobbyColumn, lobbyLift, lobbyLogo, clockFace, cityPainting, openWallBay, openDado, openBulkhead, openGlass, radiator, openColumn, steelLift, whiteboard, poster, meetingDoor, extinguisher, execPanels, execGlass, execColumn, PROF, PROF_MANE, profHeadPath, professor, professorBody, professorHead, founderPortrait, trophyCase, bookshelf, ceoDoor, abstractPainting, paintWall, liftDoors, clockHands, revolvingDoor };
+export { pictureLight, decoSconce, glassBlocks, nagelPrint, PROF_NAGEL, rake, crownPath, SIGN, signPaths, buzz, signNeon, floorLights, glints, sunShafts, noonShafts, noonWall, noonSpans, lobbyCornice, lobbyWallBay, lobbyGlass, lobbyColumn, lobbyLift, lobbyLogo, clockFace, cityPainting, openWallBay, openDado, openBulkhead, openGlass, radiator, openColumn, steelLift, whiteboard, poster, meetingDoor, extinguisher, execPanels, upperWall, execGlass, execColumn, PROF, PROF_MANE, profHeadPath, professor, professorBody, professorHead, founderPortrait, trophyCase, bookshelf, ceoDoor, abstractPainting, paintWall, liftDoors, clockHands, revolvingDoor };

@@ -10,7 +10,8 @@
 import { drawFoodStall, STALLS, COUNTER_UNITS, COUNTER_UNIT_W, WOK_MENU_STYLES } from '../src/sprites/stalls.js';
 import { drawOfficeProductionScene, drawOfficeFontSample, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
 import { ARMCHAIRS as OFFICE_ARMCHAIRS } from '../src/dev/office-armchairs.js';
-import { DINERS as OFFICE_DINERS, drawDinerRoom } from '../src/dev/office-diner-candidates.js';
+import { DINERS as OFFICE_DINERS, BEFORE as OFFICE_DINERS_BEFORE, drawDinerRoom } from '../src/dev/office-diner-candidates.js';
+import { BARISTAS as OFFICE_BARISTAS, EMPTY as OFFICE_BARISTA_EMPTY, drawBaristaRoom } from '../src/dev/office-barista-candidates.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -9278,20 +9279,40 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
 // 12 Oct 2026: "these people in the food court on level 2 (and coffee area level 1) look terrible
 // ... legs look bad, seat back is weird, look like they are standing". Candidates in
 // src/dev/office-diner-candidates.js, swapped in through setOfficeDiners (rooms.js), so each tile
-// is the production room in the production pack at in-run size. NOW is what ships.
+// is the production room in the production pack at in-run size. C, the booth, ships (officeLigne/
+// diners.js); BEFORE is what the run drew until then.
 {
   const grid = section('office-diner-bakeoff', 'CORPORATE KOMBAT — diners in the canteen and coffee shop',
-    'The two at the table in the STAFF CANTEEN (8-2, floor 23) and the COFFEE SHOP (8-1, lobby). NOW stands them behind '
+    'The two at the table in the STAFF CANTEEN (8-2, floor 23) and the COFFEE SHOP (8-1, lobby). BEFORE stood them behind '
     + 'the table on long straight legs in front of tall chair backs. A–F keep the LIGNE ’89 hand and sit them down: '
     + 'A front on with a lap and short shins, B side on face to face, C an 80s booth, D a tablecloth, E perched on stools, '
-    + 'F behind a planter. In-run size, ANIMATED (a spoonful of egg, a sip of coffee). Pick a letter.', '12 Oct 2026');
+    + 'F behind a planter. PICKED C, the booth, 12 Oct 2026. In-run size, ANIMATED (a spoonful of egg, a sip of coffee).', '12 Oct 2026');
   const ROOMS = [['canteen', 'open', 'STAFF CANTEEN · floor 23'], ['cafe', 'lobby', 'COFFEE SHOP · lobby']];
-  for (const cand of [null, ...OFFICE_DINERS]) {
-    const tag = cand ? `${cand.letter} — ${cand.name}` : 'NOW — as shipped';
+  for (const cand of [OFFICE_DINERS_BEFORE, ...OFFICE_DINERS]) {
+    const tag = `${cand.letter} — ${cand.name}`;
     for (const [kind, floor, where] of ROOMS) {
-      tile(grid, `${tag} · ${kind}`, cand ? `${where}. ${cand.note}` : `${where}. What the run draws today.`, 480, 270,
+      tile(grid, `${tag} · ${kind}`, `${where}. ${cand.note}`, 480, 270,
         (ctx, t) => drawDinerRoom(ctx, t, cand, { floor, kind }), { animated: true });
     }
+  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — coffee-shop barista
+// 12 Oct 2026: "should the coffee stand be manned" ... "bake off please". Candidates in
+// src/dev/office-barista-candidates.js, swapped in through setOfficeBarista (rooms.js), so each tile
+// is the lobby's COFFEE SHOP in the production pack at in-run size. C, frothing milk, ships
+// (officeLigne/barista.js), with the counter lowered to the booths' height and a priced menu.
+{
+  const grid = section('office-barista-bakeoff', 'CORPORATE KOMBAT — who works the coffee shop',
+    'The lobby COFFEE SHOP counter (8-1). EMPTY was the counter unmanned. A pulls a shot on a lever machine, B is a bored '
+    + 'teen with a bubble, C froths milk, D is asleep on the counter, E hides behind THE DAILY YOLK. PICKED C, 12 Oct 2026; '
+    + 'the counter came down to the booths’ height (about 1.05 m) and the board became a priced menu. In-run size, ANIMATED.',
+    '12 Oct 2026');
+  tile(grid, 'EMPTY — as it was', `COFFEE SHOP · lobby. ${OFFICE_BARISTA_EMPTY.note}`, 480, 270,
+    (ctx, t) => drawBaristaRoom(ctx, t, OFFICE_BARISTA_EMPTY), { animated: true });
+  for (const cand of OFFICE_BARISTAS) {
+    tile(grid, `${cand.letter} — ${cand.name}`, `COFFEE SHOP · lobby. ${cand.note}`, 480, 270,
+      (ctx, t) => drawBaristaRoom(ctx, t, cand), { animated: true });
   }
 }
 

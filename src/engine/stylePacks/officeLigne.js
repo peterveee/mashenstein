@@ -95,9 +95,16 @@ export function officePack(settings = {}) {
       }
       frame.midBase = OFFICE_FURNITURE_BASE;
       frame.roomTop = camera.top - OFFICE_COVERAGE_MARGIN;
-      if (facts.portrait) {
-        frame.ceilingY = Math.min(frame.ceilingY, camera.top + OFFICE_CEILING_SCREEN_Y / camera.scale);
-        frame.glass.top -= OFFICE_FLOORS[floor].ceilingY - frame.ceilingY;
+      // Pulled out, the room grows taller rather than the ceiling: the ceiling band keeps the
+      // screen height it has at the resting zoom (portrait: a fixed band under the HUD).
+      {
+        const rest = officeCameraFrame({ ...facts, worldZoom: OFFICE_ZOOM, worldPan: 0 });
+        const band = facts.portrait ? OFFICE_CEILING_SCREEN_Y : (OFFICE_FLOORS[floor].ceilingY - rest.top) * rest.scale;
+        frame.ceilingY = Math.min(frame.ceilingY, camera.top + band / camera.scale);
+        // the windows grow with the room, their head shrinking to the trim's depth so the extra
+        // height is sky rather than a blank band
+        const def = OFFICE_CORRIDORS[floor], raised = def.ceilingY - frame.ceilingY;
+        frame.glass.top = frame.ceilingY + Math.max(7, def.glass.top - def.ceilingY - raised);
       }
       frontGaps = (facts.roadGaps || []).map(g => ({ x: g.x, w: g.w }));
       ctx.save();

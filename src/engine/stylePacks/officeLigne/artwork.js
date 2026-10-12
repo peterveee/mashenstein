@@ -58,7 +58,8 @@ function wallSpan(plan,x0,x1){
 function layoutBay(floor,def,bay,j,pick,target=null,posterFor=null,plan=null){
  const P=def.period,x0=bay.u+j*P,x1=bay.u1+j*P,absolute=Math.round(x0),list=COLLECTIONS[floor];
  const seed=absolute*7+bay.i*137,key=j+'|'+bay.i+'|0',hangs=hangBoxes(def,j);
- if(hangs.some(o=>['poster','painting','portrait'].includes(o.kind)&&o.x<x1&&o.x+o.w>x0))return [];
+ // a bay with its own picture, portrait or clock on it takes no other picture
+ if(hangs.some(o=>['poster','painting','portrait','clock'].includes(o.kind)&&o.x<x1&&o.x+o.w>x0))return [];
  const professor=pick?pick(key,seed):null;
  const posters=OFFICE_POSTERS[floor],poster=!professor&&!target&&posters
   ?(posterFor?posterFor(key)

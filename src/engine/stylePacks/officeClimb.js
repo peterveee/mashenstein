@@ -156,7 +156,7 @@ export const OFFICE_FLOORS = Object.freeze({
         { kind: 'lift', u: 18, w: 36, h: 82, label: 'G' },
         { kind: 'lift', u: 62, w: 36, h: 82, label: 'G' },
         { kind: 'logo', u: 454, y: 26, w: 150, h: 56, label: 'EGGCORP' },
-        { kind: 'clock', u: 529, y: 109, r: 10 },
+        { kind: 'clock', u: 529, y: 123, r: 10 }, // a hand's width below the glass-block band
         { kind: 'lift', u: 966, w: 36, h: 82, label: 'G' },
         { kind: 'lift', u: 1012, w: 36, h: 82, label: 'G' },
         { kind: 'lift', u: 1058, w: 36, h: 82, label: 'G' },

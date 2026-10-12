@@ -173,7 +173,7 @@ function dayFacade(g, b, Pn, P, opts) {
   const bottom = base - (shopH || 4);
   const cw = (w - 6) / b.cols;
   const fh = b.floorH + 1;
-  let r = 0;
+  let r = -(b.rowShift || 0);
   for (let y = t + 6; y + fh * 0.7 < bottom; y += fh, r++) {
     if (b.tone === 2) {
       // a ribbon of glass, with its mullions
@@ -210,7 +210,7 @@ function dayFacade(g, b, Pn, P, opts) {
       g.stroke();
       if (b.tone === 0) line(g, wx - 0.6, y + wh + 0.6, wx + ww + 0.6, y + wh + 0.6, dk, 0.7);
     }
-    if (b.tone === 0 && r % 4 === 3) {
+    if (b.tone === 0 && ((r % 4) + 4) % 4 === 3) {
       box(g, x, y + fh - 1.6, w, 1.4, dk);
       line(g, x, y + fh - 1.6, x + w, y + fh - 1.6, ln, lw * 0.6);
     }
@@ -411,7 +411,7 @@ function duskTower(g, b, P) {
   }
   box(g, x, t, w, base - t, face, ln, lw);
   const cw = (w - 4) / b.cols;
-  for (let r = 0, y = t + 4; y < base - 2; r++, y += b.floorH * 0.8) {
+  for (let r = -(b.rowShift || 0), y = t + 4; y < base - 2; r++, y += b.floorH * 0.8) {
     for (let c = 0; c < b.cols; c++) {
       const on = hash(b.i * 71.3 + r * 13.1 + c * 2.9) < b.lit;
       g.fillStyle = on ? Pn.lit : Pn.dark;
@@ -672,11 +672,17 @@ function stars(ctx, f, P) {
   const S = f.outside.stars;
   if (!S.length) return;
   ctx.fillStyle = P.stars;
+  // The field is a band 46 tall; when the camera pulls out and the windows run higher, it repeats
+  // up the sky, each copy slid sideways so it doesn't read as a repeat.
+  const reach = Math.max(0, Math.ceil((34 - (f.glass?.top ?? 34) + 40) / 46));
   for (const s of S) {
     ctx.globalAlpha = 0.35 + 0.65 * s.twinkle;
     const r = 0.4 + s.s * 0.5;
-    ctx.fillRect(s.x - r, s.y - 0.25, r * 2, 0.5);
-    ctx.fillRect(s.x - 0.25, s.y - r, 0.5, r * 2);
+    for (let n = 0; n <= reach; n++) {
+      const x = s.x + n * 173, y = s.y - n * 46;
+      ctx.fillRect(x - r, y - 0.25, r * 2, 0.5);
+      ctx.fillRect(x - 0.25, y - r, 0.5, r * 2);
+    }
   }
   ctx.globalAlpha = 1;
 }

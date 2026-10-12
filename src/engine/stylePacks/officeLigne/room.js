@@ -133,6 +133,8 @@ function ceilingLights(ctx, f) {
 }
 
 function lights(ctx, f, P, part = 'all') {
+  // cords run off the top of the room, which rises above y 0 when the camera pulls out
+  const cordTop = Math.min(0, f.roomTop ?? 0) - 2;
   // the meeting rooms' own downlights light the room, so they go over its glass
   if (part !== 'lamp') downlights(ctx, f, ceilingFixtures(f).filter((d) => d.room));
   for (const l of f.lights) {
@@ -141,7 +143,7 @@ function lights(ctx, f, P, part = 'all') {
     // floor 23's strip lights are lit ceiling tiles, painted with the grid in ceiling()
     if (l.variant === 'tube') continue;
     if (l.variant === 'globe') {
-      line(ctx, l.x, 0, l.x, l.y - 6.5, '#5a4a3a', 0.5);
+      line(ctx, l.x, cordTop, l.x, l.y - 6.5, '#5a4a3a', 0.5);
       circ(ctx, l.x, l.y + 0.6, 12, 'rgba(255,250,232,0.12)');
       circ(ctx, l.x, l.y + 0.6, 8.6, 'rgba(255,250,232,0.18)');
       poly(ctx, [l.x - 2, l.y - 6.6, l.x + 2, l.y - 6.6, l.x + 2.6, l.y - 4.6, l.x - 2.6, l.y - 4.6], P.brass, P.ink, LWF);
@@ -165,7 +167,7 @@ function lights(ctx, f, P, part = 'all') {
     // and a short collar, then the cord to the shade
     // the cord runs all the way up out of the top of the screen, no canopy: these hang in the
     // foreground, nearer than the ceiling plane the downlights are set into
-    line(ctx, l.x, -40, l.x, y - 7, '#2a1a14', 0.5);
+    line(ctx, l.x, Math.min(-40, cordTop), l.x, y - 7, '#2a1a14', 0.5);
     ell(ctx, l.x, y + 1.2, 13, 4.6, 'rgba(255,214,236,0.18)');
     poly(ctx, [l.x - 2.4, y - 7, l.x + 2.4, y - 7, l.x + 8, y + 1, l.x - 8, y + 1], '#ff8fc0', P.ink, LWF);
     poly(ctx, [l.x - 2.4, y - 7, l.x - 1, y - 7, l.x - 4.4, y + 1, l.x - 8, y + 1], '#ffc2dc');
@@ -434,7 +436,10 @@ const SHIRTS = ['#f6c2d6', '#bfe8e2', '#f4ecb0', '#d6c8f0', '#ffffff', '#a9c4f0'
 
 function personFor(seed) {
   const h = (n) => hash(seed * 13.7 + n);
-  const style = STYLES[Math.floor(h(3) * STYLES.length)];
+  let style = STYLES[Math.floor(h(3) * STYLES.length)];
+  // Bald is about one head in twenty-five, not one in seven (Peter, 12 Oct 2026: "less bald men").
+  // Most of those who drew it keep their hair, cut short, so nobody else's look changes.
+  if (style === 'bald' && h(7) > 0.3) style = 'short';
   return {
     skin: SKINS[Math.floor(h(1) * SKINS.length)],
     hair: style === 'quiff' ? '#d9903e' : HAIRS[Math.floor(h(2) * HAIRS.length)],
@@ -676,8 +681,8 @@ function reception(g, it, P, layer) {
   grid(g, x + 2, top + 6, 16, b - top - 10, 3.2, '#f4f2f6', '#b8b4c4', 0.35);
   rbox(g, x + w - 14, top + 4, 12, b - top - 4, 5, '#f2e28a', ink, LWM);
   if (it.label !== false) {
-    box(g, x + w / 2 - 25, top + 10, 50, 9, '#1f1d26', ink, LWM);
-    letters(g, 'RECEPTION', x + w / 2, top + 16.6, 4, { ink: '#ffffff', lw: 0.6, align: 'center', slant: 0.18 });
+    box(g, x + w / 2 - 31, top + 9, 62, 11, '#1f1d26', ink, LWM);
+    letters(g, 'RECEPTION', x + w / 2, top + 17.2, 5.2, { ink: '#ffffff', lw: 0.7, align: 'center', slant: 0.18 });
   }
   squiggle(g, x + 20, x + w - 16, b - 6, 1, 6, '#c96a96', 0.6);
   box(g, x, b - 3, w, 3, '#1f1d26', ink, LWM);
@@ -751,14 +756,13 @@ function sofa(g, it, P, exec) {
     for (const fx of [x - 0.6, x + w - 1.6]) box(g, fx, b - 1.2, 2.2, 1.2, '#1b1a22');
     return;
   }
-  // Memphis seating: a slab back, a seat, drum arms, a grid cushion, in one of three
+  // Memphis seating: a slab back, a seat, drum arms, in one of three
   // colourways; `seat: 'single'` is a club chair with a rounded back.
   const [back, seat, arm] = SOFA_TONES[(it.tone ?? 0) % SOFA_TONES.length];
   if (it.seat === 'single') {
     rbox(g, x + 2, b - 30, w - 4, 17, 6, back, ink, LWM);
     box(g, x + 1, b - 14, w - 2, 7, seat, ink, LWM);
     for (const ax of [x - 3, x + w - 5]) rbox(g, ax, b - 20, 8, 13, 3.6, arm, ink, LWM);
-    if (it.tone % 2) grid(g, x + w / 2 - 5, b - 26, 10, 7, 2.4, '#f4f2f6', '#9f9ab0', 0.3);
     line(g, x + w / 2, b - 7, x + w / 2, b - 1, '#1f1d26', 1.2);
     line(g, x + w / 2 - 6, b - 0.6, x + w / 2 + 6, b - 0.6, '#1f1d26', 1.2);
     return;
@@ -766,7 +770,6 @@ function sofa(g, it, P, exec) {
   box(g, x + 4, b - 26, w - 8, 12, back, ink, LWM);
   box(g, x + 2, b - 14, w - 4, 7, seat, ink, LWM);
   for (const ax of [x - 2, x + w - 6]) rbox(g, ax, b - 20, 8, 13, 3.6, arm, ink, LWM);
-  grid(g, x + w * 0.58, b - 23, 12, 8, 2.4, '#f4f2f6', '#9f9ab0', 0.3);
   poly(g, [x + 6, b - 7, x + 9, b - 7, x + 4, b], '#1f1d26', ink, 0.3);
   poly(g, [x + w - 6, b - 7, x + w - 9, b - 7, x + w - 4, b], '#1f1d26', ink, 0.3);
 }

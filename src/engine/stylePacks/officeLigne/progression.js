@@ -1,7 +1,7 @@
 // Ordinary architecture repeats; named rooms are finite, stage-relative places.
 import { OFFICE_FLOORS, FACTORS, OFFICE_ZOOM, WALL_BASE, MID_BASE, LANE_TOP } from '../officeClimb.js';
 import { box, line, poly, circ, ell, letters, OFFICE_FONT, PAL, YH, VPX, canvas } from './line.js';
-import { decoSconce, ceoDoor, founderPortrait, trophyCase, bookshelf, lobbyLogo, signNeon, lobbyWallBay, openWallBay, execPanels, lobbyLift, steelLift, liftDoors } from './wall.js';
+import { decoSconce, ceoDoor, founderPortrait, trophyCase, bookshelf, lobbyLogo, signNeon, lobbyWallBay, openWallBay, execPanels, upperWall, lobbyLift, steelLift, liftDoors } from './wall.js';
 import { reception, midActors, plant, sculpture, boardroomBack, boardroomFront, easel, chairFromBehind, sofa } from './room.js';
 import { glassMeetingRoom, paintExtraOfficeRoom, officeRoomStyle, roomWithDepth } from './rooms.js';
 import { PROFESSOR_PLAN } from './professorArt.js';
@@ -20,6 +20,36 @@ const OUTSIDE_SLOWER=0.83;
 const OFFICE_SILL={exec:168};
 // Floor 88's glass starts under the cornice tube, which runs on unbroken over wall and window.
 const OFFICE_GLASS_TOP={exec:38};
+// When the camera pulls out the windows run higher, so the towers that already rise out of the top
+// of the glass at rest are carried on up, each by a whole number of storeys (its window rows keep
+// their places, `rowShift` keeping their pattern) to its own height. The lower floors only: floor
+// 88 looks down on its city. High clouds join them, all above what the glass shows at rest.
+const OFFICE_TALL_SKYLINE=new Set(['lobby','open']);
+function tallTowers(list,glassTop,step){
+  return list.map((b,i)=>{
+    if(b.top>=glassTop+2)return b;
+    const h=Math.sin((i+1)*91.7+b.u*0.013)*43758.5453,r=h-Math.floor(h);
+    const n=Math.round((50+r*130)/step(b));
+    return {...b,top:b.top-n*step(b),rowShift:n};
+  });
+}
+const OFFICE_HIGH_CLOUDS={
+  lobby:[{u:250,y:-30,w:120,h:14},{u:860,y:-6,w:90,h:12}],
+  open:[{u:180,y:20,w:130,h:16},{u:520,y:-20,w:100,h:12},{u:790,y:30,w:110,h:14}],
+};
+// Floor 88 is high, but two of its neighbours are higher still: they run up out of the glass.
+const OFFICE_EXEC_TALL={0:150,4:110};
+function tallOutside(id,F,glassTop){
+  if(id==='exec')return {...F.outside,near:F.outside.near.map((b,i)=>{
+    const step=b.floorH*0.8,n=OFFICE_EXEC_TALL[i]==null?0:Math.round((b.top-glassTop+OFFICE_EXEC_TALL[i])/step);
+    return n?{...b,top:b.top-n*step,rowShift:n}:b;
+  })};
+  if(!OFFICE_TALL_SKYLINE.has(id))return F.outside;
+  return {...F.outside,
+    far:tallTowers(F.outside.far,glassTop,(b)=>b.floorH),
+    near:tallTowers(F.outside.near,glassTop,(b)=>b.floorH+1),
+    clouds:[...F.outside.clouds,...(OFFICE_HIGH_CLOUDS[id]||[])]};
+}
 export const OFFICE_CORRIDORS = Object.fromEntries(Object.entries(OFFICE_FLOORS).map(([id,F])=>[id,{
   ...F,
   glass:{...F.glass,top:OFFICE_GLASS_TOP[id]??F.glass.top,bottom:OFFICE_SILL[id]??F.glass.bottom},
@@ -30,12 +60,11 @@ export const OFFICE_CORRIDORS = Object.fromEntries(Object.entries(OFFICE_FLOORS)
     // doorway, company crest, founder portrait or trophy collection does not.
     // Remove the repeated wall lifts too; the compact foreground lifts below
     // replace them so no second set appears behind the doors.
-    // The lobby clock moves to the end of its bay, leaving the middle for a picture.
-    hangs:F.wall.hangs.filter(h=>['clock','poster','whiteboard','extinguisher'].includes(h.kind))
-      .map(h=>id==='lobby'&&h.kind==='clock'?{...h,u:612}:h),
+    // A clock keeps the middle of its bay to itself: no picture shares a bay with it (artwork.js).
+    hangs:F.wall.hangs.filter(h=>['clock','poster','whiteboard','extinguisher'].includes(h.kind)),
     cradle:null,
   },
-  outside:{...F.outside,nearFactor:(F.outside.nearFactor??FACTORS.cityNear)*OUTSIDE_SLOWER},
+  outside:{...tallOutside(id,F,OFFICE_GLASS_TOP[id]??F.glass.top),nearFactor:(F.outside.nearFactor??FACTORS.cityNear)*OUTSIDE_SLOWER},
   mid:{...F.mid,factor:ROOM_FACTOR,items:F.mid.items.filter(it=>['plant','sofa','sidetable','cubicles','cooler','copier','cabinet'].includes(it.kind))},
 }]));
 
@@ -90,8 +119,19 @@ function standOut(g,l,top,bottom,side,drop){
 }
 // Rooms and lifts start under the wall's own ceiling trim, so that trim runs on unbroken above them.
 const OFFICE_BULKHEAD={lobby:8,open:14,exec:8};
+// How far below f.ceilingY the rooms' tops sit. They keep their resting height at every zoom:
+// zoomed out the room grows taller above them, and a glass room becomes a cube standing in it.
+export function officeBulkhead(f){
+  return (OFFICE_FLOORS[f.floor]?.ceilingY??f.ceilingY)-f.ceilingY+(OFFICE_BULKHEAD[f.floor]??8);
+}
+// 0 at the resting zoom, 1 once the ceiling has risen clear of a room's top: how much of a glass
+// box's own top pane shows (at rest the bulkhead trim stands where it would be).
+export function officeRoomLidShows(f){
+  const raised=(OFFICE_FLOORS[f.floor]?.ceilingY??f.ceilingY)-f.ceilingY;
+  return Math.max(0,Math.min(1,raised/(OFFICE_BULKHEAD[f.floor]??8)));
+}
 function officeUnderBulkhead(f){
-  return f.ceilingY+(OFFICE_BULKHEAD[f.floor]??8);
+  return f.ceilingY+officeBulkhead(f);
 }
 function officeLandmarkRate(floor,kind){
   const base=officeLandmarkBase(floor,kind);
@@ -419,7 +459,7 @@ function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0){
   // the building. Its furniture cut matches the bay, so corridor props do not
   // show through the foreground structure.
   const {x,w}=l,c=x+w/2,left=c-33,top=108,bottom=MID_BASE;
-  const wallTop=Math.max(0,ceilingY??34),wallHeight=bottom-wallTop;
+  const wallTop=ceilingY??34,wallHeight=bottom-wallTop;
   const wallSide=P.frame||P.columnDk||P.woodDk||'#55515f';
   const wallFace=P.wall||P.panel||P.partition||P.wood||'#c5c1cb';
   const wallTrim=P.wallShade||P.panelLt||P.partitionDk||P.woodLt||P.column||'#aaa5b5';
@@ -460,7 +500,7 @@ function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0){
 const SECTION_SCALE=4,SECTION_CACHE=new Map();
 function wallSectionCanvas(f,u0,span,top,P){
   const F=OFFICE_CORRIDORS[f.floor],per=F.wall.period,phase=((u0%per)+per)%per;
-  const key=`${f.floor}|${phase}|${span}|${top}`;
+  const key=`${f.floor}|${phase}|${span}|${top}|${Math.round(f.glass.top)}`;
   let c=SECTION_CACHE.get(key);
   if(c)return c;
   if(SECTION_CACHE.size>24)SECTION_CACHE.clear();
@@ -470,7 +510,10 @@ function wallSectionCanvas(f,u0,span,top,P){
   g.scale(SECTION_SCALE,SECTION_SCALE);
   g.translate(2-phase,-top);
   const x0=phase,x1=phase+span;
-  if(f.ceilingY<F.ceilingY)box(g,x0-2,top,span+4,F.ceilingY-top,P.wall||P.wood);
+  if(f.ceilingY<F.ceilingY){
+    box(g,x0-2,top,span+4,F.ceilingY-top,P.wall||P.wood);
+    upperWall(g,f.floor,P,x0,x1,top+7,F.ceilingY,u0,Math.round(f.glass.top),F.glass.top);
+  }
   // Painted wider and clipped a hair past the bay, so it has no outline of its own at the
   // joins and covers the window frame's last edge: one continuous wall. Every repeating trim
   // keeps its phase in the wall's own coordinates, so it meets its neighbours exactly.
@@ -662,11 +705,11 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       plant(g,x+w-27,MID_BASE,'bonsai',P,24);
     }else if(kind==='reception'){
       // The company sign on the wall over a compact counter: no portico, no directories.
-      plaque(g,'RECEPTION',c-60,OFFICE_SIGN_MIN_Y+4,120,P);
+      // no plaque up high: the logo and the counter say reception, and the word is on the counter
       const logo={kind:'logo',x:c-79,y:98,w:158,h:56};
       lobbyLogo(g,logo,P);
       signNeon(g,{t:f.t,wall:{hangs:[logo]}},P);
-      const desk={kind:'reception',x:c-86,w:172,dy:Math.sin(f.t*1.3)*0.6,label:false};
+      const desk={kind:'reception',x:c-86,w:172,dy:Math.sin(f.t*1.3)*0.6};
       midActors(g,{mid:{items:[desk]}},P);
       reception(g,desk,P,'front');
       plant(g,x+12,MID_BASE,'snake',P,9);

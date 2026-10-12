@@ -1,8 +1,10 @@
 // One-off occupied rooms behind the office corridor.
 import { MID_BASE, WALL_BASE } from '../officeClimb.js';
 import { box, line, poly, circ, ell, letters, textW, YH, VPX, OFFICE_FONT } from './line.js';
-import { OFFICE_SIGN_MIN_Y } from './progression.js';
+import { OFFICE_SIGN_MIN_Y, officeBulkhead, officeRoomLidShows } from './progression.js';
 import { boardroomBack, chairFromBehind, midActors, sofa, plant, libGlobe } from './room.js';
+import { boothDiners } from './diners.js';
+import { frothingBarista } from './barista.js';
 
 function caption(g,text,x,y,w,P){
   box(g,x,y,w,17,'#302c40',P.chrome,0.6);
@@ -30,7 +32,7 @@ function table(g,x,w,P){
 
 export function glassMeetingRoom(g,l,f,P){
   // the pane fills the room's opening from the ceiling track to the floor, no frame
-  const {x,w}=l,top=f.ceilingY+(f.floor==='open'?14:8)+(MID_BASE-WALL_BASE)+2.2,bottom=MID_BASE-1;
+  const {x,w}=l,top=f.ceilingY+officeBulkhead(f)+(MID_BASE-WALL_BASE)+2.2,bottom=MID_BASE-1;
   const left=x,right=x+w;
   // Frameless glass: a faint tint, bright edges where the panes end, butt joints between
   // panes, and a few long diagonal reflections.
@@ -136,7 +138,7 @@ const ROOM_TONES={
   exec:{back:'#3d3150',lit:'#342a46',dark:'#271f35',ceil:'#221b2e',floor:'#4b3c5c',floorLine:'#3d304d',sky:'#9a78a6',town:'#75627f'},
   lobby:{back:'#efe4e6',lit:'#e6d8dc',dark:'#d6c5cb',ceil:'#e2d6da',floor:'#c9b8bd',floorLine:'#b9a6ac',sky:'#a7d9ed',town:'#c5dce3'},
 };
-function glassFront(g,x0,x1,top,bottom,{tint='rgba(190,225,236,0.14)',edges=true}={}){
+function glassFront(g,x0,x1,top,bottom,{tint='rgba(190,225,236,0.14)',edges=true,edge='rgba(235,250,252,0.85)',edgeW=1.1}={}){
   box(g,x0,top,x1-x0,bottom-top,tint);
   g.save();
   g.beginPath();g.rect(x0,top,x1-x0,bottom-top);g.clip();
@@ -145,17 +147,18 @@ function glassFront(g,x0,x1,top,bottom,{tint='rgba(190,225,236,0.14)',edges=true
     poly(g,[sx,top,sx+wd,top,sx+wd-60,bottom,sx-60,bottom],'rgba(255,255,255,0.2)');
   }
   g.restore();
-  if(edges)for(const u of [x0+0.6,x1-0.6])line(g,u,top,u,bottom,'rgba(235,250,252,0.85)',1.1);
+  if(edges)for(const u of [x0+0.6,x1-0.6])line(g,u,top,u,bottom,edge,edgeW);
 }
 // The way in: a frameless glass door at the left end of the front pane, hung on chrome patch
 // fittings at its hinge side, with a long chrome pull handle by its free edge and a hairline gap
 // where it meets the fixed glass.
 // sized to the room: the table top is 28 px of about 75 cm, so a 2.1 m door is about 100 px at the
 // front pane's 1.3 scale, and 0.9 m wide
-const DOOR_W=44,DOOR_H=104;
+const DOOR_W=44,DOOR_H=104,DOOR_INSET=20;
 function glassDoor(g,x0,top,bottom){
   // a door's height, not the pane's: the glass carries on above it as a fixed transom
-  const x=x0+3,x1=x+DOOR_W,dt=Math.max(top+6,bottom-DOOR_H),h=bottom-dt;
+  // set in from the corner by a fixed side panel, as a real glazed partition is
+  const x=x0+DOOR_INSET,x1=x+DOOR_W,dt=Math.max(top+6,bottom-DOOR_H),h=bottom-dt;
   box(g,x,dt,DOOR_W,h-0.6,'rgba(220,242,248,0.12)');
   // the head: where the door stops and the transom starts
   line(g,x,dt,x1+0.9,dt,'rgba(30,40,60,0.45)',0.9);
@@ -213,7 +216,7 @@ export function wallWhiteboard(g,x,y,w,h,P,{title,detail}){
   for(const [u,col] of [[0.3,'#2f6fd0'],[0.36,'#e2483e'],[0.42,'#2a8a4a']])box(g,x+w*u,y+h-2.6,7,1.8,col);
 }
 export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
-  const {x,w}=l,top=f.ceilingY+(f.floor==='open'?14:8)+(MID_BASE-WALL_BASE),bottom=MID_BASE;
+  const {x,w}=l,top=f.ceilingY+officeBulkhead(f)+(MID_BASE-WALL_BASE),bottom=MID_BASE;
   const x0=x,x1=x+w;
   if(style==='recess'){
     interior(g,x0,x1,top,bottom,f,P,contents);
@@ -228,7 +231,7 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
     const at=(k)=>(px,py)=>[VPX+(px-VPX)*k,vy+(py-vy)*k];
     const F=at(BOX_DEPTH),M=at((1+BOX_DEPTH)/2);
     const [fx0,ft]=F(x0,top),[fx1,fb]=F(x1,bottom);
-    const glassSide='rgba(200,232,240,0.28)',edge='rgba(235,250,252,0.9)';
+    const glassSide='rgba(200,232,240,0.28)',edge='rgba(235,250,252,0.45)';
     // the floor inside, the back wall glass, then the far side pane
     poly(g,[x0,bottom,x1,bottom,fx1,fb,fx0,fb],'rgba(150,170,190,0.28)');
     box(g,x0,top,w,bottom-top,'rgba(205,220,232,0.22)');
@@ -254,9 +257,15 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
     }
     g.restore();
     side(nearLeft?x0:x1,nearLeft?fx0:fx1);
+    // zoomed out the ceiling rises clear of the box, and we see up into its glass lid from below
+    const lid=officeRoomLidShows(f);
+    if(lid>0){
+      poly(g,[x0,top,x1,top,fx1,ft,fx0,ft],`rgba(200,232,240,${(0.3*lid).toFixed(3)})`);
+      line(g,x0,top,x1,top,`rgba(235,250,252,${(0.35*lid).toFixed(3)})`,0.6);
+    }
     // the edges where the panes meet: along the floor and ceiling, and up each corner
-    for(const [bx,fx] of [[x0,fx0],[x1,fx1]]){line(g,bx,top,fx,ft,edge,0.9);line(g,bx,bottom,fx,fb,edge,0.9);}
-    glassFront(g,fx0,fx1,ft,fb);
+    for(const [bx,fx] of [[x0,fx0],[x1,fx1]]){line(g,bx,top,fx,ft,edge,0.6);line(g,bx,bottom,fx,fb,edge,0.6);}
+    glassFront(g,fx0,fx1,ft,fb,{edge:'rgba(235,250,252,0.45)',edgeW:0.7});
     if(style==='boxfrost'){
       // frosted from the table top down, with a crisp pinstripe at its edge
       const fy=ffy;
@@ -264,7 +273,10 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
       line(g,fx0,fy,fx1,fy,'rgba(255,255,255,0.95)',0.8);
       line(g,fx0,fy+2.2,fx1,fy+2.2,'rgba(160,180,200,0.6)',0.5);
     }
-    box(g,fx0,ft-2.4,fx1-fx0,2.4,P.frame||'#898594',P.ink,0.4);
+    // at rest the front meets the ceiling in a slim track; as a free-standing cube it is frameless,
+    // its top edge just the bright line where the panes meet
+    if(lid<1){g.save();g.globalAlpha*=1-lid;box(g,fx0,ft-2.4,fx1-fx0,2.4,P.frame||'#898594',P.ink,0.4);g.restore();}
+    if(lid>0)line(g,fx0,ft,fx1,ft,`rgba(235,250,252,${(0.45*lid).toFixed(3)})`,0.6);
     box(g,fx0,fb,fx1-fx0,1.4,'rgba(20,16,30,0.3)');
     glassDoor(g,fx0,ft,fb);
   }else if(style==='frosted'){
@@ -299,30 +311,15 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
   }
 }
 
-// The people at the canteen and coffee-shop tables, with their chairs, the table and the food.
-// d: {room:'canteen'|'cafe', x, w (the table), xs (where each sits), seed, span (free floor)}.
-// The diner bake-off (src/dev/office-diner-candidates.js) swaps the painter with setOfficeDiners.
-function dinersNow(g,d,f,P){
-  const b=MID_BASE;
-  sitters(g,d.xs,f,P,d.seed);
-  table(g,d.x,d.w,P);
-  for(let i=0;i<d.xs.length;i++){
-    const px=d.xs[i];
-    if(d.room==='canteen'){
-      ell(g,px,b-29.5,9,2,'#f0ece0',P.ink,0.4);
-      const lift=(Math.sin(f.t*1.1+i)+1)*4;
-      // lunch is, of course, an egg
-      line(g,px+7,b-35,px+11,b-32-lift,'#edc49e',2.1);
-      ell(g,px+11,b-36.5-lift,2.8,3.6,'#fbf5e6',P.ink,0.45);
-    }else{
-      ell(g,px,b-29,9,2,'#f4ecd2',P.ink,0.4);
-      box(g,px-3,b-36,7,7,'#e8c1d5',P.ink,0.4);
-      circ(g,px+6,b-33,2,null,P.ink,0.6);
-    }
-  }
-}
-let DINERS=dinersNow;
-export function setOfficeDiners(fn){const was=DINERS;DINERS=fn||dinersNow;return was;}
+// The people at the canteen and coffee-shop tables, sat in a diner booth (diners.js), with their
+// table and the food. The diner bake-off (src/dev/office-diner-candidates.js) swaps the painter.
+let DINERS=boothDiners;
+export function setOfficeDiners(fn){const was=DINERS;DINERS=fn||boothDiners;return was;}
+// Whoever works the coffee-shop counter (barista.js). Two passes: 'back' stands behind the espresso
+// machine and the counter front, 'front' adds what sits on or over the counter top. The barista
+// bake-off (src/dev/office-barista-candidates.js) swaps the painter.
+let BARISTA=frothingBarista;
+export function setOfficeBarista(fn){const was=BARISTA;BARISTA=fn||frothingBarista;return was;}
 
 export function paintExtraOfficeRoom(g,l,f,P){
   const {x,w,kind}=l,c=x+w/2,b=MID_BASE;
@@ -347,8 +344,8 @@ export function paintExtraOfficeRoom(g,l,f,P){
     // The lunch notice above one table of two.
     const tx=x+10,people=[tx+18,tx+56];
     box(g,tx,92,78,34,'#f4ecd2',P.ink,0.6);
-    letters(g,'TODAY: EGG',tx+39,107,4.6,{ink:P.ink,lw:0.6,align:'center'});
-    letters(g,'LABEL YOUR LUNCH',tx+39,118,2.8,{ink:P.ink,lw:0.4,align:'center'});
+    letters(g,'TODAY:',tx+39,104.5,6,{ink:P.ink,lw:0.7,align:'center'});
+    letters(g,'EGG AGAIN',tx+39,119,8.5,{ink:P.ink,lw:0.9,align:'center'});
     DINERS(g,{room:'canteen',x:tx,w:76,xs:people,seed:30,span:[x+8,kitchen-5]},f,P);
     return true;
   }
@@ -392,23 +389,37 @@ export function paintExtraOfficeRoom(g,l,f,P){
   if(kind==='cafe'){
     caption(g,'COFFEE SHOP',c-111,OFFICE_SIGN_MIN_Y,222,P);
     // Visitor seating beside an espresso counter, rather than staff mail slots.
-    const kitchen=x+w-122;
-    box(g,kitchen,98,91,58,'#cde2d5',P.ink,0.7);
-    box(g,kitchen+5,104,81,23,'#302c40',P.chrome,0.5);
-    letters(g,'COFFEE / TEA / CAKE',kitchen+45,119,3.8,{ink:'#f6e9d3',lw:0.5,align:'center'});
-    box(g,kitchen+9,132,48,28,'#b9c6cc',P.ink,0.7);
-    box(g,kitchen+13,137,40,10,'#49404b',P.ink,0.5);
+    // The counter top stands 39 up, about 1.05 m: level with the booths' backs, so the seated
+    // diners and the barista standing behind it share one scale. (It was 53, about 1.4 m.)
+    const kitchen=x+w-122,ct=b-39;
+    box(g,kitchen,98,91,ct-4-98,'#cde2d5',P.ink,0.7);
+    // the menu board: what the counter sells, prices, and the egg
+    const mx=kitchen+5,mw=81;
+    box(g,mx,101,mw,41,'#302c40',P.chrome,0.5);
+    letters(g,'COFFEE / TEA / CAKE',mx+mw/2,110,3.8,{ink:'#f6e9d3',lw:0.5,align:'center'});
+    line(g,mx+6,113.4,mx+mw-6,113.4,'rgba(246,233,211,0.4)',0.5);
+    [['ESPRESSO','1.25'],['CAPPUCCINO','1.75'],['CAKE','1.95'],['EGG','MARKET PRICE']].forEach(([item,price],i)=>{
+      const y=120+i*6;
+      letters(g,item,mx+7,y,2.9,{ink:'#f6e9d3',lw:0.4});
+      letters(g,price,mx+mw-7,y,2.9,{ink:i===3?'#f3d994':'#f6e9d3',lw:0.4,align:'right'});
+    });
+    const bar={kitchen,top:ct};
+    if(BARISTA)BARISTA(g,bar,f,P,'back');
+    box(g,kitchen+9,ct-28,48,28,'#b9c6cc',P.ink,0.7);
+    box(g,kitchen+13,ct-23,40,10,'#49404b',P.ink,0.5);
     for(const dx of [19,39]){
-      line(g,kitchen+dx,147,kitchen+dx,153,P.chrome,1);
-      box(g,kitchen+dx-3,153,7,7,'#f4ecd2',P.ink,0.4);
+      line(g,kitchen+dx,ct-13,kitchen+dx,ct-7,P.chrome,1);
+      box(g,kitchen+dx-3,ct-7,7,7,'#f4ecd2',P.ink,0.4);
       const steam=Math.sin(f.t*1.3+dx)*1.2;
-      line(g,kitchen+dx,132,kitchen+dx+steam,128,'#f5eee3',0.65);
+      line(g,kitchen+dx,ct-28,kitchen+dx+steam,ct-32,'#f5eee3',0.65);
     }
-    box(g,kitchen-4,164,99,b-164,'#9b7560',P.ink,0.7);
-    box(g,kitchen-7,160,105,5,'#eee1be',P.ink,0.6);
+    box(g,kitchen-4,ct+4,99,b-ct-4,'#9b7560',P.ink,0.7);
+    box(g,kitchen-7,ct,105,5,'#eee1be',P.ink,0.6);
+    // biscuits on the counter top
     for(let i=0;i<3;i++){
-      ell(g,kitchen+66+i*7,155,4,1.4,'#d8ac71',P.ink,0.4);
+      ell(g,kitchen+66+i*7,ct-1,4,1.4,'#d8ac71',P.ink,0.4);
     }
+    if(BARISTA)BARISTA(g,bar,f,P,'front');
     DINERS(g,{room:'cafe',x:x+35,w:112,xs:[x+58,x+124],seed:70,span:[x+8,kitchen-7]},f,P);
     return true;
   }

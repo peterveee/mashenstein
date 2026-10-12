@@ -2,7 +2,7 @@
 import { OFFICE_FLOORS, WALL_BASE, FACTORS, MID_BASE } from '../officeClimb.js';
 import { PAL, bakeStrip, drawStrip, W, box, line } from './line.js';
 import { paintFar, paintNear, cloudShape, sky, stars, sun, clouds, cityLights, towerLights, vehicle, flyer, cradle } from './outside.js';
-import { paintWall, liftDoors, clockHands, revolvingDoor, signNeon, floorLights, noonWall, sunShafts, noonShafts, glints } from './wall.js';
+import { paintWall, upperWall, liftDoors, clockHands, revolvingDoor, signNeon, floorLights, noonWall, sunShafts, noonShafts, glints } from './wall.js';
 import { paintMid, ceiling, ceilingLights, floorPlane, slab, midActors, midDevices, lampSheen, lights } from './room.js';
 import { OFFICE_ZOOM as ZOOM } from '../officeClimb.js';
 import { paintFront } from './front.js';
@@ -40,6 +40,21 @@ function bakeFor(floor, k, cache = CACHE) {
   return B;
 }
 
+// The towers above the glass's resting head, for the taller windows of a pulled-out camera: baked
+// on first use only, and at 1x (they are small and far off), so the resting warm cache is unchanged.
+function upperCity(B, F, P) {
+  if (B.up !== undefined) return B.up;
+  const top = Math.min(...F.outside.far.map((b) => b.top), ...F.outside.near.map((b) => b.top)) - 50;
+  const G = F.glass;
+  if (top >= G.top - 4) return (B.up = null);
+  const y0 = Math.floor(top / 2) * 2, y1 = Math.floor(G.top / 2) * 2 + 2;
+  B.up = {
+    far: bakeStrip(1400, y0, y1, 1, (g, u0, u1) => paintFar(g, F, P, u0, u1)),
+    near: bakeStrip(F.outside.nearPeriod ?? 1200, y0, y1, 1, (g, u0, u1) => paintNear(g, F, P, u0, u1)),
+  };
+  return B.up;
+}
+
 function scaleOf(ctx) {
   const m = ctx.getTransform ? ctx.getTransform() : null;
   const k = m ? Math.hypot(m.a, m.b) : 1;
@@ -70,26 +85,36 @@ export function officeCacheStats() {
   return { entries: PRODUCTION_CACHE.size, residentBytes: bytes + officeArtworkBytes() };
 }
 
-function upperRoom(ctx, f, P) {
-  const original = OFFICE_FLOORS[f.floor];
+function upperRoom(ctx, f, P, part = 'wall') {
+  // the production corridor's own definition: its windows sit lower than the bake-off's
+  const original = OFFICE_CORRIDORS[f.floor];
   if (f.ceilingY >= original.ceilingY) return;
   const top = f.ceilingY;
+  // the trim along the top goes on last, over the named places' wall sections, so it runs unbroken
+  if (part === 'trim') {
+    box(ctx, f.coverage.left - 2, top, f.W - f.coverage.left + 4, 7, P.ceilDk, P.ink, 0.6);
+    line(ctx, f.coverage.left - 2, top + 5, f.W + 2, top + 5, f.floor === 'exec' ? P.neonB : P.chrome, 1);
+    return;
+  }
   const bottom = original.glass.top;
   // A taller room, not taller furniture: the native cornice becomes a transom.
   for (const bay of f.wall.bays) {
     const x = bay.x0;
     const w = bay.x1 - bay.x0;
-    if (bay.type === 'wall') box(ctx, x, top, w, bottom - top, P.wall || P.wallShade || P.ceil);
+    if (bay.type === 'wall') {
+      box(ctx, x, top, w, bottom - top, P.wall || P.wallShade || P.ceil);
+      upperWall(ctx, f.floor, P, x, x + w, top + 7, original.ceilingY, x + f.wall.shift, f.glass.top, bottom);
+    }
     else if (bay.type === 'glass') {
-      line(ctx, x, top, x, bottom, P.ink, 0.6);
-      line(ctx, x + w, top, x + w, bottom, P.ink, 0.6);
-      for (let y = bottom - 90; y > top; y -= 90) line(ctx, x, y, x + w, y, P.chrome || P.ink, 0.5);
-      line(ctx, x + w * 0.5, top, x + w * 0.5, bottom, P.ink, 0.5);
+      // the window's own mullions carried up, at the same pitch as below, a frame along its head
+      // and a transom bar every 90
+      const gt = f.glass.top, n = Math.max(1, Math.round(w / original.glass.mullion)), pitch = w / n;
+      for (let i = 0; i <= n; i++) box(ctx, x + i * pitch - 1, gt, 2, bottom - gt, P.frame, P.ink, 0.3);
+      for (let y = bottom - 90; y > gt + 8; y -= 90) box(ctx, x, y - 0.8, w, 1.6, P.frame, P.ink, 0.3);
+      box(ctx, x, gt, w, 1.6, P.frame, P.ink, 0.3);
     }
   }
   for (const c of f.wall.columns) box(ctx, c.x, top, c.w, bottom - top, P.column || P.ceilDk, P.ink, 0.6);
-  box(ctx, f.coverage.left - 2, top, f.W - f.coverage.left + 4, 7, P.ceilDk, P.ink, 0.6);
-  line(ctx, f.coverage.left - 2, top + 5, f.W + 2, top + 5, f.floor === 'exec' ? P.neonB : P.chrome, 1);
 }
 
 export const STYLE = {
@@ -135,8 +160,11 @@ export const STYLE = {
     stars(ctx, f, P);
     sun(ctx, f, P);
     clouds(ctx, f, P, B.clouds);
+    const up = f.glass.top < F.glass.top - 1 ? upperCity(B, F, P) : null;
+    if (up) drawStrip(ctx, up.far, farShift);
     drawStrip(ctx, B.far, farShift);
     cityLights(ctx, f, P);
+    if (up) drawStrip(ctx, up.near, nearShift);
     drawStrip(ctx, B.near, nearShift);
     if (f.floor === 'exec') {
       ctx.save();
@@ -157,6 +185,7 @@ export const STYLE = {
     ctx.save();
     // windows cleared to plain wall for the named places, then what hangs on the wall
     if (f.landmarks) paintOfficeWallSections(ctx, f);
+    upperRoom(ctx, f, P, 'trim');
     if(options.production)paintOfficeArtwork(ctx,f,P,OFFICE_ART_BAKE_SCALE);
     liftDoors(ctx, f, P);
     clockHands(ctx, f, P);
