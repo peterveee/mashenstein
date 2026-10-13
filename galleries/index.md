@@ -50,3 +50,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-12 | `4e37a1e` | [2026-10-12-4e37a1e.html](2026-10-12-4e37a1e.html) | [bake-offs](2026-10-12-4e37a1e-lab.html) | Refactor titles and save file terminology; introduce diner candidates for corporate combat scenes |
 | 2026-10-12 | `ae27abf` | [2026-10-12-ae27abf.html](2026-10-12-ae27abf.html) | [bake-offs](2026-10-12-ae27abf-lab.html) | Crash log: never let the trail break boot |
 | 2026-10-13 | `d11c0b6` | [2026-10-13-d11c0b6.html](2026-10-13-d11c0b6.html) | [bake-offs](2026-10-13-d11c0b6-lab.html) | Fix the deploy: Gravity Grid cues on the SFX desk, six stale test checks updated |
+| 2026-10-13 | `c7addb6` | [2026-10-13-c7addb6.html](2026-10-13-c7addb6.html) | [bake-offs](2026-10-13-c7addb6-lab.html) | Fix sweep reach calculation in effects editor and add new gallery files for October 2026 |

@@ -23,6 +23,14 @@ import { PLAYER_X } from '../game/player.js';
 const TAU = Math.PI * 2;
 const CEIL = -L.corridor;            // ceiling running surface
 const RAIL = 12;                     // rail depth, both surfaces
+const VISTA_GROUND = -6;
+// The tall-glass room's rails are a slimmer pipe (Peter, 14 Oct: "its a thick
+// pipe... can it be thinner"): half the depth, same chrome, more window.
+// Thinner again, with a strip of wall between the pipe and the window frame
+// ("i want to see a small gap between the bottom of the window frame and the
+// floor").
+export const railDepth = (look) => (look?.tallGlass ? 4 : RAIL);
+const GLASS_GAP = 3;             // where the plateaus' and buttes' feet stand outside
 const PANE = { step: 102, off: 4, w: 94, top: -127, h: 117 };
 // The airbrushed room's taller glass (Peter, 13 Oct: "make windows lower and
 // higher to see more scenery"): top near the ceiling rail, bottom down at the
@@ -436,8 +444,9 @@ const airbrush = {
     for (let i = Math.floor(s.cam / 48) - 1; i * 48 < s.cam + s.view + 48; i++) {
       const x = i * 48 - s.cam;
       c.fillStyle = grad(c, x, 0, x + 48, 0, [[0, `rgba(${P.rib},0)`], [0.12, `rgba(${P.rib},0.09)`], [0.3, `rgba(${P.rib},0)`]]);
-      c.fillRect(x, s.top, 48, -149 - s.top);
-      c.fillRect(x, RAIL, 48, s.bottom - RAIL);
+      const r = railDepth(this);
+      c.fillRect(x, s.top, 48, CEIL - r - s.top);
+      c.fillRect(x, r, 48, s.bottom - r);
       // Deck lamps: warm pools under the floor.
       glow(c, x + 24, 30, 14, P.lamp);
       c.fillStyle = P.lampCore; c.beginPath(); c.ellipse(x + 24, 30, 3, 1, 0, 0, TAU); c.fill();
@@ -529,24 +538,31 @@ const airbrush = {
     c.beginPath(); c.roundRect(x + 3.2, top + 3.2, w - 6.4, h - 6.4, 12.5); c.stroke();
   },
   rails(c, s) {
-    for (const [y0, edge] of [[-149, CEIL], [0, 0]]) {
-      c.fillStyle = grad(c, 0, y0, 0, y0 + RAIL, y0 ? this.pal.chromeV.map(([o, col]) => [1 - o, col]).reverse() : this.pal.chromeV);
-      c.fillRect(0, y0, s.view, RAIL);
+    const R = railDepth(this), q = R / RAIL;
+    // The slim rail is a round pipe, lit from above (Peter, 14 Oct: "reads more
+    // like a pipe"): a rim of shade, the body, one highlight high on the curve,
+    // shading round to a dark underside — not the flat chrome's banded horizon.
+    const V = this.pal.chromeV, at = (o) => V.find(([p]) => p >= o)[1];
+    const pipe = [[0, at(0.55)], [0.14, at(0.78)], [0.3, V[0][1]], [0.44, at(0.78)], [0.76, at(0.55)], [1, V[V.length - 1][1]]];
+    for (const [y0, edge] of [[CEIL - R, CEIL], [0, 0]]) {
+      c.fillStyle = grad(c, 0, y0, 0, y0 + R, this.tallGlass ? pipe : y0 ? V.map(([o, col]) => [1 - o, col]).reverse() : V);
+      c.fillRect(0, y0, s.view, R);
       for (let i = Math.floor(s.cam / 36) - 1; i * 36 < s.cam + s.view + 36; i++) {
         const x = i * 36 - s.cam;
-        c.fillStyle = 'rgba(20,10,30,0.35)'; c.fillRect(x, y0, 0.6, RAIL);
+        c.fillStyle = 'rgba(20,10,30,0.35)'; c.fillRect(x, y0, 0.6, R);
         if (i % 2 === 0) {
-          glow(c, x + 18, y0 + 6, 5, 'rgba(255,140,60,0.45)');
-          c.fillStyle = '#ffd2a0'; c.beginPath(); c.arc(x + 18, y0 + 6, 0.9, 0, TAU); c.fill();
+          glow(c, x + 18, y0 + R / 2, 5 * q, 'rgba(255,140,60,0.45)');
+          c.fillStyle = '#ffd2a0'; c.beginPath(); c.arc(x + 18, y0 + R / 2, 0.9 * Math.sqrt(q), 0, TAU); c.fill();
         }
       }
-      c.fillStyle = grad(c, 0, edge - 2, 0, edge + 2, [[0, 'rgba(160,255,240,0)'], [0.5, 'rgba(200,255,250,0.75)'], [1, 'rgba(160,255,240,0)']]);
-      c.fillRect(0, edge - 2, s.view, 4);
+      if (this.tallGlass) continue;   // a pipe has no glowing edge strip
+      c.fillStyle = grad(c, 0, edge - 2 * q, 0, edge + 2 * q, [[0, 'rgba(160,255,240,0)'], [0.5, 'rgba(200,255,250,0.75)'], [1, 'rgba(160,255,240,0)']]);
+      c.fillRect(0, edge - 2 * q, s.view, 4 * q);
     }
   },
   gate(c, g, s, hint) {
     const x = g.x - s.cam;
-    for (const [a, b] of [[s.top, -149], [RAIL, s.bottom]]) {
+    for (const [a, b] of [[s.top, CEIL - railDepth(this)], [railDepth(this), s.bottom]]) {
       c.fillStyle = grad(c, x - 8, 0, x + 8, 0, this.pal.chromeH); c.fillRect(x - 8, a, 16, b - a);
       for (let y = a + 6; y < b; y += 14) { c.fillStyle = 'rgba(10,5,20,0.4)'; c.fillRect(x - 8, y, 16, 1.2); }
     }
@@ -805,7 +821,10 @@ function planetParade(c, s, w) {
   for (const p of PARADE) {
     const u = (s.progress - p.at) / p.span;           // -0.5 .. 0.5 while it is in view
     if (u < -0.6 || u > 0.6) continue;
-    const x = w / 2 - u * (w + 2 * p.R + 60), y = p.y + u * 6;
+    // Never cut by the top of the glass: tall glass draws the view 1.3× about
+    // the floor, which lifted the high planets past the ceiling (Peter, 14 Oct).
+    const reach = Math.max(p.R * (p.opts.rings === false ? 1.05 : 1.3), p.moon ? p.moon.R - p.moon.dy : 0) + 5;
+    const x = w / 2 - u * (w + 2 * p.R + 60), y = Math.max(p.y + u * 6, (s.glassTop ?? -Infinity) + reach);
     traceAt(`planet:${p.name}`, x, p.R * 2);
     glow(c, x, y, p.R * 1.9, p.glow);
     polyPlanet(c, x, y, p.R, s.t * p.spin, p.opts.nLat, p.opts.nLon, p.opts);
@@ -846,7 +865,7 @@ export const SPACE_JADE_CHEVRONS = ['pink', 'lilac', 'white'].map(jadeChevron);
 function gateStrip(c, g, s, hint) {
   const C = this.chev, P = this.pal;
   const x0 = g.x - s.cam - L.arrowLeftOffset, x1 = g.x - s.cam + 8, cx = (x0 + x1) / 2, w = x1 - x0;
-  for (const [a, b] of [[s.top, -149], [RAIL, s.bottom]]) {
+  for (const [a, b] of [[s.top, CEIL - railDepth(this)], [railDepth(this), s.bottom]]) {
     c.fillStyle = grad(c, cx - 8, 0, cx + 8, 0, P.chromeH); c.fillRect(cx - 8, a, 16, b - a);
     for (let y = a + 6; y < b; y += 14) { c.fillStyle = 'rgba(10,5,20,0.4)'; c.fillRect(cx - 8, y, 16, 1.2); }
   }
@@ -979,7 +998,7 @@ export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = G
   if (look.tallGlass) {
     // Rail to rail, no wall margin — glass stops at the ceiling and the floor
     // (Peter, 13 Oct: no glass below your feet upside down)…
-    s.glassTop = CEIL; s.glassBottom = 0;
+    s.glassTop = CEIL + GLASS_GAP; s.glassBottom = -GLASS_GAP;
     // …and the view outside scaled up to fill it ("so it's not a bunch of empty
     // sky"): planets near the top of the glass, ridges and plateaus bigger.
     s.sceneS = 1.3;
@@ -990,15 +1009,17 @@ export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = G
   s.panes = panes;   // screen [x, w] of each window, for things that must sit inside one
   c.save(); c.beginPath(); for (const [x, w] of panes) look.paneClip(c, x, w); c.clip();
   if (s.sceneS > 1) {
-    // Everything outside drawn S times bigger about the floor's left end; every
-    // screen-space quantity divided through so pane-anchored things still sit in
-    // their windows.
-    const S = s.sceneS, d = (v) => (v == null ? v : v / S);
+    // Everything outside drawn S times bigger about its own ground line (y −6,
+    // where the plateaus and buttes stand), pinned to the bottom of the glass —
+    // scaled about the floor, their feet rose clear of it and they floated
+    // (Peter, 14 Oct). Every screen-space quantity divided through so
+    // pane-anchored things still sit in their windows.
+    const S = s.sceneS, G = VISTA_GROUND, B = s.glassBottom ?? 0, d = (v) => (v == null ? v : v / S), dy = (v) => (v == null ? v : (v - B) / S + G);
     // length too: stage-timed things travel (progress × length) in vista units,
     // and must cross the screen at the room's own speed.
-    const sv = { ...s, length: s.length / S, view: s.view / S, cam: s.cam / S, top: s.top / S, bottom: s.bottom / S, finishLine: d(s.finishLine),
-      loneRestX: d(s.loneRestX), finishPaneX: d(s.finishPaneX), panes: s.panes.map(([x, w]) => [x / S, w / S]), glassBottom: d(s.glassBottom) };
-    c.scale(S, S); look.vista(c, sv);
+    const sv = { ...s, length: s.length / S, view: s.view / S, cam: s.cam / S, top: dy(s.top), bottom: dy(s.bottom), finishLine: d(s.finishLine),
+      loneRestX: d(s.loneRestX), finishPaneX: d(s.finishPaneX), panes: s.panes.map(([x, w]) => [x / S, w / S]), glassTop: dy(s.glassTop), glassBottom: dy(s.glassBottom) };
+    c.translate(0, B); c.scale(S, S); c.translate(0, -G); look.vista(c, sv);
   } else look.vista(c, s);
   c.restore();
   for (const [x, w] of panes) look.pane(c, x, s, w);

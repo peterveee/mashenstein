@@ -253,3 +253,35 @@ assert(withBakes - without === bakes, `a Surge run warms the mcm, gouache and of
 }
 
 if (failed) process.exit(1);
+
+// THE HUD IN THE WRONG PLACE (surgeHud.js, 14 Oct 2026): a few long, rare events a look, clear of
+// the look's changes, more of them each stage; the progress bar and ability plate are never in
+// the moved regions, and only movement is ever asked of the pill and goal.
+{
+  const { surgeHudEvents, surgeHudAt, surgeHudPasses } = await import('../src/engine/stylePacks/surgeHud.js');
+  const per = [1, 2, 3].map((lv) => {
+    let n = 0, ok = true;
+    for (let slot = 0; slot < 300; slot++) {
+      let end = 1.5;
+      for (const e of surgeHudEvents(slot, lv, 5)) {
+        n++;
+        if (e.start < end - 1e-9 || e.start + e.len > 14 + 1e-9 || e.len > 2) ok = false;
+        end = e.start + e.len + 1;
+      }
+    }
+    return { n: n / 300, ok };
+  });
+  assert(per.every((p) => p.ok), 'HUD events stay clear of the look changes, a beat apart, two beats at most');
+  assert(per[0].n < per[1].n && per[1].n < per[2].n, `more HUD events each stage (${per.map((p) => p.n.toFixed(2)).join(', ')} a look)`);
+  assert(surgeHudAt(-1, { level: 1, seed: 5 }) === null, 'no HUD event before the cycle starts');
+  const bands = { W: 480, H: 270, port: false, pill: { x0: 0, y0: 0, x1: 120, y1: 48 }, goal: { x0: 300, y0: 0, x1: 480, y1: 48 } };
+  let inside = true;
+  for (const kind of ['slide', 'melt', 'drop', 'shred', 'corner']) {
+    for (const u of [0, 0.25, 0.5, 0.75, 0.99]) {
+      for (const p of surgeHudPasses({ kind, u, level: 3, seed: 7 }, bands)) {
+        if (p.sy1 > 48.01 || p.dy + p.sy1 > 270 * 0.8 + 0.01 || p.a > 1) inside = false;
+      }
+    }
+  }
+  assert(inside, 'the HUD moves never reach below four fifths of the screen, so the progress bar and ability plate stay clear');
+}

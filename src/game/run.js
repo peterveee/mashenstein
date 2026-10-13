@@ -67,7 +67,8 @@ import { setGlowSprites } from '../sprites/props.js';
 import { paperStrengthOf, paperTextureSource } from '../engine/paper-material.js';
 import { finishCryptGouacheBake, CRYPT_WEATHER_TIMING, cryptNight } from '../engine/stylePacks/cryptGouache.js';
 import { drawArcadeIntroBackdrop, arcadeIntroResolve, ARCADE_INTRO_POWER_DOWN_BEAT, arcadeLandingDrop, ARCADE_LANDING_SECS, ARCADE_LANDING_SHAKE, warmArcadeIntro } from '../engine/arcadeIntro.js';
-import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail } from './hud.js';
+import { paintHudGlitched } from '../engine/stylePacks/surgeHud.js';
+import { RIBBON_BOTTOM, drawHud, hudTopBands, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
@@ -17252,7 +17253,12 @@ export class RunState {
       // other overlay are underneath it: whatever gradient is left on screen
       // over this band is then not ours by construction. Ships off.
       if (!this.captureCleanPlate && !this.recordBackground) {
-        drawHud(d, this);
+        // THE SURGE moves the top of the HUD now and then (stylePacks/surgeHud.js); never under
+        // the pause menu, a death, the finish, the overtime or the flipped screen.
+        const hudEv = this.style?.hudGlitch;
+        if (hudEv && !this.paused && !this.dead && !this.finishing && !this.overtime && !this.flip && !this.style?.screenFlipped) {
+          paintHudGlitched(d, this, hudEv, drawHud, hudTopBands);
+        } else drawHud(d, this);
         this.drawHeroAboveMarker(d, z, pan, floorY);
       }
       if (this.introFreeze > 0 && this.introText) {

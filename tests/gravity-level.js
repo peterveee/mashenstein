@@ -40,8 +40,8 @@ for (const hero of HEROES) {
   assert.ok(run.powerupsCollected > 0, 'normal powerups spawn and can be collected');
   assert.equal(run.draw, RunState.prototype.draw, 'shared HUD and draw path');
   run.updateCamera();
-  const ceilingScreenY = screenYFor(GROUND_Y - L.corridor, run.camZoom, run.camPan, run.camFloorY);
-  assert.ok(ceilingScreenY >= 45, `ceiling rail nearly touches but clears the top HUD rows (${ceilingScreenY.toFixed(1)}px)`);
+  const ceilingScreenY = screenYFor(GROUND_Y - run.corridor, run.camZoom, run.camPan, run.camFloorY);
+  assert.ok(ceilingScreenY - run.railWorld() * run.camZoom >= 21.5, `ceiling rail clears the HUD's first row (${ceilingScreenY.toFixed(1)}px)`);
   const framing = [run.camZoom, run.camPan, run.camFloorY];
   for (const y of [0, 40, 80, 113, 90, 60, 90, 113]) {
     run.player.y = y; run.player.vy = y - 80; run.updateCamera(1/60);
@@ -55,8 +55,8 @@ for (const hero of HEROES) {
   assert.deepEqual(r.playerDustSurface(), { y: GROUND_Y, away: -1 }, 'floor dust lifts off the floor');
   r.introFreeze = 0; r.introRunning = false;
   r.gravityLane = 1;
-  assert.deepEqual(r.playerDustSurface(), { y: GROUND_Y - L.corridor, away: 1 }, 'ceiling dust falls into the corridor');
-  r.player.y = L.corridor - 24; r.player.grounded = true; r.player.vy = 0;
+  assert.deepEqual(r.playerDustSurface(), { y: GROUND_Y - r.corridor, away: 1 }, 'ceiling dust falls into the corridor');
+  r.player.y = r.corridor - 24; r.player.grounded = true; r.player.vy = 0;
   const finishCameraX = r.finishCameraX();
   const speed = r.baseSpeed();
   r.distance = finishCameraX - speed * 2.9;
@@ -77,7 +77,7 @@ for (const [gateIndex, delay, source, target] of [[0, 0, 0, 1], [0, 170, 0, 1], 
   const r = create();
   const offset = r.playerWorldX() - r.camX + 6;
   r.camX = r.gravityGates[gateIndex].x - L.arrowLeftOffset + delay - offset;
-  r.gravityLane = source; r.player.y = source ? L.corridor - 24 : 0;
+  r.gravityLane = source; r.player.y = source ? r.corridor - 24 : 0;
   r.player.grounded = true;
   assert.equal(r.player.jumpPressed(), true);
   assert.equal(r.gravityLane, target, 'latest arrow governs late jumps in either direction');
@@ -98,7 +98,7 @@ for (const source of [0, 1]) {
   const r = create();
   const g = r.gravityGates[source];
   const offset = r.playerWorldX() - r.camX + 6;
-  r.gravityLane = source; r.player.y = source ? L.corridor - 24 : 0;
+  r.gravityLane = source; r.player.y = source ? r.corridor - 24 : 0;
   r.player.grounded = true;
   r.camX = g.x - L.arrowLeftOffset - offset - 20;
   r.player.jumpPressed();
@@ -147,7 +147,7 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
 // Exercise a real held ceiling jump, not just synthetic camera positions.
 {
   const r = create();
-  r.gravityLane = 1; r.player.y = L.corridor - 24; r.player.grounded = true;
+  r.gravityLane = 1; r.player.y = r.corridor - 24; r.player.grounded = true;
   r.updateCamera();
   const framing = [r.camZoom, r.camPan, r.camFloorY];
   assert.equal(r.player.jumpPressed(), true);
@@ -157,7 +157,7 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
     r.updateCamera(1/60); lowest = Math.min(lowest, r.player.y);
     assert.deepEqual([r.camZoom, r.camPan, r.camFloorY], framing);
   }
-  assert.ok(lowest < L.corridor * 0.44, 'jump crosses substantial corridor height');
+  assert.ok(r.corridor - lowest > L.corridor * 0.56, 'jump crosses substantial corridor height');   // jumps keep their height in a taller corridor
   assert.equal(r.player.grounded, true, 'lands back on ceiling with fixed framing');
   r.exit();
 }
@@ -172,13 +172,13 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
       r.player.update(1/120, { held: () => true, pressed: () => false }, { speed: 120, gravityScale: 1 });
       apex = Math.max(apex, r.player.y); frames++;
     } while (!r.player.grounded && frames < 600);
-    arcs.push({ apex, duration: frames / 120 });
+    arcs.push({ apex, duration: frames / 120, corridor: r.corridor });
     r.exit();
   }
   assert.ok(arcs[1].duration > arcs[0].duration * 1.5, 'low gravity has substantially longer hang time');
   // 1.65 at the 137 corridor; at 86 the held arc is capped by the ceiling.
   assert.ok(arcs[1].apex > arcs[0].apex * 1.45, 'held low-gravity jump is much higher');
-  assert.ok(arcs[1].apex <= L.corridor - 24 - 4, 'held jump stays below the ceiling');
+  assert.ok(arcs[1].apex <= arcs[1].corridor - 24 - 4, 'held jump stays below the ceiling');
   assert.ok(arcs[1].duration > 2.4, 'held jump lasts more than 2.4 seconds');
 }
 // Hold duration controls the extended arc for every hero, including heroes
@@ -201,7 +201,7 @@ for (const hero of HEROES) {
   }
   assert.ok(arcs[0].apex < arcs[2].apex * 0.45, `${hero.id}: tap is a short hop`);
   assert.ok(arcs[1].apex > arcs[0].apex && arcs[1].apex < arcs[2].apex, `${hero.id}: intermediate holds shape the arc`);
-  assert.ok(arcs[2].apex >= L.corridor * 0.5 && arcs[2].apex <= L.corridor - 28, `${hero.id}: held jump climbs near ceiling safely`);
+  assert.ok(arcs[2].apex >= L.corridor * 0.5 && arcs[2].apex <= r.corridor - 28, `${hero.id}: held jump climbs near ceiling safely`);
   assert.ok(arcs[0].duration < 1.85 && arcs[2].duration > 2.25, `${hero.id}: wide crossing requires a hold`);
   assert.ok(arcs[2].duration < 4, `${hero.id}: holding cannot hover indefinitely`);
   r.exit();
@@ -277,7 +277,7 @@ for (const lane of [0]) for (const duck of [false, true]) {
   const r = create('lorenzo', 'gravity-2');
   r.introFreeze = 0; r.introRunning = false;
   r.distance = 20.5 * r.baseSpeed(); r.camX = r.distance;
-  r.gravityLane = 1; r.player.y = L.corridor - 24; r.player.grounded = true;
+  r.gravityLane = 1; r.player.y = r.corridor - 24; r.player.grounded = true;
   r.updateGravityMission();
   const checkpoint = r.makeSnapshot();
   r.restoreSnapshot(checkpoint);

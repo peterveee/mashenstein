@@ -3,17 +3,17 @@
 // are inherited, rather than approximated by a separate mini-game.
 import { frameGroundY } from '../../engine/frame.js';
 import { setBlastHook, setShotHook } from '../../dev/space-plateaus.js';
-import { RunState, applyFraming, portraitGameplayEdges } from '../../game/run.js';
+import { RunState, applyFraming } from '../../game/run.js';
 import { makeObstacle, makePickup } from '../../game/entities.js';
 import { GROUND_Y, screenYFor, setRestingZoom } from '../../engine/camera.js';
-import { W, H, isPhonePortraitPresentation, presentationFrame } from '../../engine/renderer.js';
+import { W, H, isPhonePortraitPresentation } from '../../engine/renderer.js';
 import { PHONE_PORTRAIT, LANDSCAPE } from '../../engine/frame.js';
 import { Audio } from '../../engine/audio.js';
 import { GravityPlayer } from './player.js';
 import { floatLaunch, jumpV } from '../player.js';
 import { drawGravityRoom } from '../../dev/gravity/scene.js';
-import { SPACE_LOOKS, drawSpaceRoom } from '../../dev/space-look-candidates.js';
-import { ROOM_SCALE, GEOMETRY_K, JUMP_SCALE, GRAVITY_LEVEL as L, GRAVITY_CABINET } from './model.js';
+import { SPACE_LOOKS, drawSpaceRoom, railDepth } from '../../dev/space-look-candidates.js';
+import { GRAVITY_LEVEL as L, GRAVITY_CABINET } from './model.js';
 import { GRAVITY_STAGE_DATA, isGateField } from '../../data/gravity-stages.js';
 import { STAGE_BY_ID } from '../../data/stages.js';
 import { PLAYER_X } from '../player.js';
@@ -52,6 +52,10 @@ function withWrongRailBeds(hazards, gates, total, speed) {
 }
 
 const ZOOM_PHONE_FRAMING = 2.2, PHONE_TOP = 22, PHONE_BOTTOM = 3;
+// Under the HUD's first row on desktop and tablet; the ceiling rail runs behind
+// the second (BONUS), which play never reaches (Peter, 14 Oct: "i would like
+// more window").
+const HUD_ROWS_BOTTOM = PHONE_TOP;
 export class GravityRunState extends RunState {
   constructor(opts = {}) {
     const stage = opts.stage || STAGE_BY_ID['gravity-1'];
@@ -65,6 +69,48 @@ export class GravityRunState extends RunState {
     this.spaceLook = opts.spaceLook === 'crt' ? null : SPACE_LOOKS[opts.spaceLook] || SPACE_LOOKS['plateau-occasional'];
     this.gravityStageData = GRAVITY_STAGE_DATA[stage.id] || GRAVITY_STAGE_DATA['gravity-1'];
     this.gravityMissionState = null;
+    this.corridor = L.corridor;
+  }
+  // The corridor fills the landscape frame (Peter, 13 Oct: "the ceiling should
+  // be just below the top hud and the floor above the bottom hud and the glass
+  // stretches to fit as well as the background"). At the phone's 2.2 the 86
+  // corridor already fills it; at the desktop/tablet framings it grows until the
+  // ceiling rail's top is under the HUD's first row. Portrait keeps 86 (it has room
+  // to spare). Refitted whenever the framing changes (ZOOM IN, a resize, the
+  // settings arriving after enter): everything on the ceiling moves with it.
+  fitCorridor() {
+    if (this.portraitGameplay && this.portraitConfig() && isPhonePortraitPresentation()) return L.corridor;
+    const zoom = applyFraming(this.renderSettings || this.save?.settings);
+    return Math.max(L.corridor, Math.floor((frameGroundY() - HUD_ROWS_BOTTOM) / zoom / (1 + this.railRoom() / 137)));
+  }
+  // Jumps, the pull and the flips all scale with the corridor (Peter, 14 Oct:
+  // "their jumps should scale (as should position of ring arcs and rewards)"):
+  // heights ∝ corridor, airtimes unchanged, so every authored spacing in
+  // seconds still holds and low gravity still reaches nearly to the ceiling.
+  // Height ∝ jumpScale², airtime ∝ jumpScale / √gravity: k on the pull, √k on
+  // the launch. The stages were authored in a 137 corridor and tuned at 86 (k =
+  // 86/137); what scales is the headroom over the hero (corridor − 24), so a
+  // held low-gravity jump stops just as short of the ceiling in any corridor.
+  geometryK() { return (this.corridor - 24) / (L.corridor - 24) * L.corridor / 137; }
+  jumpScaleK() { return Math.sqrt(this.geometryK()); }
+  // The rails' depth: authored in the room's 137-high units, drawn at its scale.
+  railRoom() { return this.spaceLook ? railDepth(this.spaceLook) : 12; }
+  railWorld() { return this.railRoom() * this.corridor / 137; }
+  refitCorridor() {
+    if (this.gravityTransfer) return;
+    const prev = this.corridor, next = this.fitCorridor(), d = next - prev;
+    if (!d) return;
+    this.corridor = next;
+    for (const e of (this.obstacles || []).concat(this.pickups || [])) {
+      // Coin arcs trace a jump, and jumps scale with the corridor.
+      if (e.gravityArc) {
+        const local = e.gravityCeiling != null ? prev - e.alt - e.h : e.alt;
+        const scaled = Math.max(8, Math.round((local + 3) * next / prev - 3));
+        e.alt = e.gravityCeiling != null ? next - scaled - e.h : scaled;
+      } else if (e.gravityCeiling != null) e.alt += d;
+      if (e.gravityCeiling != null) e.gravityCeiling = next;
+    }
+    if (this.gravityLane === 1 && this.player) this.player.y += d;
   }
   createPlayer(hero, mods) { return new GravityPlayer(hero, mods, this); }
   // Gates need a consistent crossing runway. Assist speed still applies via
@@ -72,7 +118,7 @@ export class GravityRunState extends RunState {
   get speed() { return this.baseSpeed(); }
   speedAt() { return this.baseSpeed(); }
   groundYAt() { return GROUND_Y; }
-  gravityScale() { return (this.gravityStageData?.gravity ?? L.gravity) * GEOMETRY_K; }
+  gravityScale() { return (this.gravityStageData?.gravity ?? L.gravity) * this.geometryK(); }
   rewardAnchors() {
     // Rewards only ever on the rail you should be running (Peter, 13 Oct: "no
     // rewards on the wrong side"): whatever lane a stage authored, a reward
@@ -89,12 +135,13 @@ export class GravityRunState extends RunState {
   }
   playerDustSurface() {
     return this.gravityLane
-      ? { y: GROUND_Y - L.corridor, away: 1 }
+      ? { y: GROUND_Y - this.corridor, away: 1 }
       : { y: GROUND_Y, away: -1 };
   }
   // Both surfaces fit in a single composition. Ceiling jumps and landing
   // velocity must never engage the ordinary hero-follow crane or zoom spring.
   updateCamera() {
+    this.refitCorridor();
     const config = this.portraitConfig();
     const portrait = this.portraitGameplay && config && isPhonePortraitPresentation();
     const mode = portrait ? PHONE_PORTRAIT : LANDSCAPE;
@@ -106,20 +153,15 @@ export class GravityRunState extends RunState {
     // Landscape: the level's own framing (2.2 on a phone, like every level),
     // unless the corridor would not fit; then pan just enough to keep the
     // ceiling rail under the HUD's first row and the floor rail on screen.
-    const fitZ = (H - PHONE_TOP - PHONE_BOTTOM) / (L.corridor + 24);
+    const rail = this.railWorld();
+    const fitZ = (H - PHONE_TOP - PHONE_BOTTOM) / (this.corridor + 2 * rail);
     const zoom = portrait ? config.worldZoom : Math.min(framing, fitZ);
     let pan = 0;
     if (!portrait) {
-      const ground = frameGroundY(), floorBottom = ground + 12 * zoom, ceilTop = ground - (L.corridor + 12) * zoom;
+      const ground = frameGroundY(), floorBottom = ground + rail * zoom, ceilTop = ground - (this.corridor + rail) * zoom;
       if (floorBottom > H - PHONE_BOTTOM) pan = (H - PHONE_BOTTOM) - floorBottom;
       if (ceilTop + pan < PHONE_TOP) pan = PHONE_TOP - ceilTop;
-    } else {
-      // Portrait (Peter, 13 Oct: "ceiling should be up against the hud"): the
-      // ceiling rail's top sits just under the status HUD; the spare height
-      // goes below the floor, where the thumbs are.
-      const ceilTop = frameGroundY() - (L.corridor + 12) * zoom;
-      pan = portraitGameplayEdges(presentationFrame(), this).top - ceilTop;
-    }
+    } else pan = this.portraitFrameFit().pan;
     const changed = this.cameraPresentationMode !== mode || this.camZoom !== zoom || this.camPan !== pan;
     this.cameraPresentationMode = mode;
     setRestingZoom(zoom);
@@ -150,6 +192,7 @@ export class GravityRunState extends RunState {
     this.gravityGates = null;
     this.gravityLane = 0; this.gravityGate = 0;
     this.gravityTransfer = null; this.gravitySpark = 0;
+    this.corridor = this.fitCorridor();
     super.enter();
     this.gravityStageData = gravityStageDataFor(this.stage, GRAVITY_STAGE_DATA, this.layout?.durationSec);
     this.gravityMissionState = gravityMissionStateFor(this.gravityStageData, this.gravityMissionState);
@@ -180,7 +223,7 @@ export class GravityRunState extends RunState {
         // The room art is authored at 137 high: draw it scaled to the corridor,
         // with every horizontal quantity divided through so gates and windows
         // still land on their world x.
-        const k = ROOM_SCALE, scaled = { ...room, cam: cam / k, view: room.view / k, top: room.top / k, bottom: room.bottom / k,
+        const k = this.corridor / 137, scaled = { ...room, cam: cam / k, view: room.view / k, top: room.top / k, bottom: room.bottom / k,
           gates: this.gravityGates.map((g) => ({ ...g, x: g.x / k })), length: this.totalDist / k,
           finishCam: this.finishCameraX() / k, speed: this.baseSpeed() / k, finishLine: room.finishLine / k };
         c.save(); c.scale(k, k);
@@ -188,9 +231,9 @@ export class GravityRunState extends RunState {
         c.restore();
         // On the scenery clock: tRun is held through the intro, which left the
         // bolts frozen until the run started (Peter, 13 Oct).
-        if (this.gravityStageData.floatingBolts) drawFloatingBolts(c, cam, view, this.backgroundT ?? t, L.corridor);
+        if (this.gravityStageData.floatingBolts) drawFloatingBolts(c, cam, view, this.backgroundT ?? t, this.corridor);
         if (this.gravityStageData.sequences) drawMaintenanceRobot(c, {
-          cam, view, time: t, seconds: this.gravityTravelTime(), corridor: L.corridor,
+          cam, view, time: t, seconds: this.gravityTravelTime(), corridor: this.corridor,
           playerX: this.playerWorldX() - cam, hazards: this.obstacles,
           sequences: this.gravityStageData.sequences,
         });
@@ -217,7 +260,7 @@ export class GravityRunState extends RunState {
       // The station's moving equipment is not a shooting puzzle. Keep these
       // physical hazards solid and armored so every hero reads the same route.
       ob.def = { ...ob.def, armored: true, breakable: false };
-      if (h.lane) { ob.alt = L.corridor - ob.alt - ob.h; ob.gravityCeiling = L.corridor; }
+      if (h.lane) { ob.alt = this.corridor - ob.alt - ob.h; ob.gravityCeiling = this.corridor; }
       this.obstacles.push(ob);
     });
     this.gravityGates.forEach((g, index) => {
@@ -228,7 +271,7 @@ export class GravityRunState extends RunState {
         const x = g.x + 105 + n * 17;
         if (x < this.playerWorldX() - 10) continue;
         const coin = makePickup('coin', x, 8);
-        if (this.activeLaneAt(x)) { coin.alt = L.corridor - coin.alt - coin.h; coin.gravityCeiling = L.corridor; }
+        if (this.activeLaneAt(x)) { coin.alt = this.corridor - coin.alt - coin.h; coin.gravityCeiling = this.corridor; }
         this.pickups.push(coin);
       }
     });
@@ -241,7 +284,7 @@ export class GravityRunState extends RunState {
       // collecting the trail follows the feet through the same curve.
       const gravityScale = this.gravityScale() * this.powerups.gravityMultiplier();
       const launch = jumpV(this.player.hero) * floatLaunch(gravityScale)
-        * (this.gravityStageData.jumpHeightScale || 1) * JUMP_SCALE;
+        * (this.gravityStageData.jumpHeightScale || 1) * this.jumpScaleK();
       const gravity = this.player.gravity * gravityScale;
       for (let n = 0; n < arc.count; n++) {
         const t = n * arc.step;
@@ -249,9 +292,10 @@ export class GravityRunState extends RunState {
         if (x + 8 < this.playerWorldX() - 10) continue;
         const feet = Math.max(0, launch * t - 0.5 * gravity * t * t);
         const coin = makePickup('coin', x, Math.max(8, Math.round(feet - 3)));
+        coin.gravityArc = true;
         if (this.activeLaneAt(x)) {
-          coin.alt = L.corridor - coin.alt - coin.h;
-          coin.gravityCeiling = L.corridor;
+          coin.alt = this.corridor - coin.alt - coin.h;
+          coin.gravityCeiling = this.corridor;
         }
         this.pickups.push(coin);
       }
@@ -267,7 +311,7 @@ export class GravityRunState extends RunState {
     // sank through the floor (up to 14 px) before rising to the ceiling. Any
     // speed away from the destination surface is dropped at the flip.
     if (gate.lane ? p.vy < 0 : p.vy > 0) p.vy = 0;
-    const altitude = gate.lane ? L.corridor - 24 - p.y : p.y;
+    const altitude = gate.lane ? this.corridor - 24 - p.y : p.y;
     const vy = gate.lane ? -p.vy : p.vy;
     const acceleration = p.gravity * this.gravityScale() * this.powerups.gravityMultiplier();
     this.gravityTransfer = { from, elapsed: 0,
@@ -332,7 +376,7 @@ export class GravityRunState extends RunState {
       p.x = g.x; p.alt = Number.isFinite(g.alt) ? g.alt : 8;
       if (this.pickups.some(other => other !== p && other.live && Math.abs(other.x - p.x) < 16)) p.x += 18;
       if (p.def.power) this.drip.notePowerMoved(p.x);
-      if (g.lane) { p.alt = L.corridor - p.alt - p.h; p.gravityCeiling = L.corridor; }
+      if (g.lane) { p.alt = this.corridor - p.alt - p.h; p.gravityCeiling = this.corridor; }
     }
   }
   // Relay portals use their normal lifecycle, animation and hero swap. Park
@@ -365,7 +409,7 @@ export class GravityRunState extends RunState {
     this.gravitySpark = s.spark; this.gravitySpawned = new Set(s.spawned);
     if (s.mission) this.gravityMissionState = clone(s.mission);
     const ceilingIds = new Set(s.ceilings);
-    for (const e of this.obstacles.concat(this.pickups)) if (ceilingIds.has(e.id)) e.gravityCeiling = L.corridor;
+    for (const e of this.obstacles.concat(this.pickups)) if (ceilingIds.has(e.id)) e.gravityCeiling = this.corridor;
     if (this.gravityStageData.sequences) this.mission.count = this.gravityMissionState.completed.length;
   }
   makeSnapshot() { return { ...super.makeSnapshot(), gravity: this.gravitySnapshot() }; }

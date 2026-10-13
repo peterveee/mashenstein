@@ -133,6 +133,7 @@ import { SURGE_LOOKS, SURGE_TREATMENTS, drawSurgeTreatment, wrongInkName } from 
 import { BAKEOFF as GRAVITY_OBSTACLES, LANE_W as GRAVITY_LANE_W, LANE_H as GRAVITY_LANE_H, drawGravityCandidateLane, drawGravityControlLineup, drawGravityCandidateLineup, gravityCandidateCaption } from '../src/dev/gravity-obstacle-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
+import { SURGE_HUD_CANDIDATES, NOW_CANDIDATE, HUD_LEVELS, drawHudLive, liveSize, hudWindow, hudEvents } from '../src/dev/surge-hud-candidates.js';
 import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SLOT_BEATS, drawSurgeFx } from '../src/dev/surge-transition-candidates.js';
 import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
@@ -9647,6 +9648,43 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
       tile(grid, `${vname} — ${lname}`, `room zoom ${zoom}`, w, h,
         (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], w, h, 0.18, { scenery: true, stage: 1, zoom }), { animated: true });
     }
+  }
+}
+
+// --------------------------------------------- THE SURGE — the HUD in the wrong place (lab)
+// 13 Oct 2026: Peter: "what if the hud elements were in the wrong place now and then?" — Surge
+// levels only, surge-1 mild, surge-2 more, surge-3 most, a hint before then. src/dev/surge-hud-candidates.js.
+{
+  const s = sectionEl('surge-hud-bakeoff', 'THE SURGE — the HUD in the wrong place now and then (bake-off)',
+    'Eleven ways for the Surge to put the HUD (lives and coins, goal, ability name, progress bar) in the wrong place or state. Every tile is '
+    + 'ANIMATED and loops about 3.6 s of a real look at the Surge\'s 132 BPM, a real Field Service frame with the hero and a crate under the HUD, '
+    + 'at in-run size, landscape and portrait. A small yellow tag shows while a glitch is on. Glitches start on the song\'s quarter beats like '
+    + 'surgeGlitches and surgeBlips, last a quarter or half beat (0.11 or 0.23 s) and return to the clean HUD. Surge-1 has a couple a look, surge-2 '
+    + 'three or four, surge-3 five to seven, with the hint (the stage before) one tiny blink a look. Rules for all: nothing flashes or brightens, '
+    + 'nothing leaves the frame, in portrait nothing climbs above the status-bar line (red), only the canvas HUD moves, and the HUD is clean under '
+    + 'pause, death, the finish and the results. The touch buttons are not in the picture because they never move. Every option plays the same moments. G to K (DRAMATIC, after Peter asked for more drama) run long and rare, 0.45 to 0.9 s an event, and are the only ones that move a lot.',
+    '13 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  const live = (grid, o, cand, li, name) => {
+    const z = liveSize(o);
+    const n = hudEvents(li, 7, 0, !!cand.big).length;
+    tile(grid, name, cand.id === 'now' ? '' : `${n} event${n === 1 ? '' : 's'} a look`, z.w, z.h,
+      (ctx, t) => drawHudLive(ctx, o, cand, li, t), { animated: true, wide: true, hires: o === 'port' ? 1.5 : 2 });
+  };
+  for (const cand of [NOW_CANDIDATE, ...SURGE_HUD_CANDIDATES]) {
+    const grid = sub(`${cand.letter} \u2014 ${cand.name}`, cand.note);
+    if (cand.id === 'now') {
+      live(grid, 'land', cand, 1, 'NOW \u2014 landscape');
+      live(grid, 'port', cand, 1, 'NOW \u2014 portrait');
+      continue;
+    }
+    HUD_LEVELS.forEach((lv, li) => live(grid, 'land', cand, li, `${cand.letter} \u2014 landscape, ${lv.name}`));
+    HUD_LEVELS.slice(1).forEach((lv, i) => live(grid, 'port', cand, i + 1, `${cand.letter} \u2014 portrait, ${lv.name}`));
   }
 }
 

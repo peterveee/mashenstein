@@ -2398,6 +2398,22 @@ function drawPortraitHud(ctx, run) {
   drawPortraitActionShelf(ctx, run, layout);
 }
 
+// WHERE THE TOP OF THE HUD IS, for THE SURGE to move it (stylePacks/surgeHud.js): the status
+// pill with its hero disc, and the goal and bonus panels, as frame rects. Read after drawHud, because
+// the panels' left edge is where they landed. Never the ability plate, the gauges or the progress
+// bar (Peter, 14 Oct 2026). Portrait stacks the pill, goal and bonus in one left column: one rect.
+export function hudTopBands(run) {
+  if (isPhonePortraitPresentation()) {
+    const layout = portraitHudLayout(presentationFrame(), { rhythmStage: portraitRhythmRail(run), oneHit: run?.oneHit === true });
+    const y1 = Math.min(H * 0.4, layout.bonusY + 26 * layout.panelScale);
+    return { W, H, port: true, pill: { x0: 0, y0: 0, x1: W, y1 }, goal: null };
+  }
+  const y1 = OBJ_ROW2_Y + PILL_H + 6;
+  const pillRight = PILL_X + statusCornerW(run) + 4;
+  const goalLeft = Math.max(pillRight + 6, Math.min(objLeft, OBJ_RIGHT) - 6);
+  return { W, H, port: false, pill: { x0: 0, y0: 0, x1: pillRight, y1 }, goal: { x0: goalLeft, y0: 0, x1: W, y1 } };
+}
+
 export function drawHud(ctx, run) {
   // Forget last frame's right shoulder before anything redraws it. A speech
   // card asking mid-frame gets the objective panels as they were an instant

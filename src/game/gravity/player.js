@@ -1,6 +1,6 @@
 import { Player } from '../player.js';
 import { HERO_DRAW_H } from '../draw.js';
-import { GRAVITY_LEVEL as L, JUMP_SCALE } from './model.js';
+import { GRAVITY_LEVEL as L } from './model.js';
 const idle = { held: () => false, pressed: () => false };
 
 // Outside these three controller calls y/vy are WORLD coordinates, exactly
@@ -9,15 +9,15 @@ export class GravityPlayer extends Player {
   constructor(hero, mods, run) { super(hero, mods); this.run = run; }
   local(action) {
     const ceiling = this.run.gravityLane === 1;
-    if (ceiling) { this.y = L.corridor - HERO_DRAW_H - this.y; this.vy = -this.vy; }
+    if (ceiling) { this.y = this.run.corridor - HERO_DRAW_H - this.y; this.vy = -this.vy; }
     try { return action(); }
-    finally { if (ceiling) { this.y = L.corridor - HERO_DRAW_H - this.y; this.vy = -this.vy; } }
+    finally { if (ceiling) { this.y = this.run.corridor - HERO_DRAW_H - this.y; this.vy = -this.vy; } }
   }
   jumpPressed(audio) {
     if (this.run.gravityTransfer) return false;
     this.gravityScale = this.run.gravityScale() * (this.run.powerups?.gravityMultiplier() ?? 1);
     const scale = this.jumpScale;
-    this.jumpScale = (scale || 1) * (this.run.gravityStageData.jumpHeightScale || 1) * JUMP_SCALE;
+    this.jumpScale = (scale || 1) * (this.run.gravityStageData.jumpHeightScale || 1) * this.run.jumpScaleK();
     let jumped;
     try { jumped = this.local(() => super.jumpPressed(audio)); }
     finally { this.jumpScale = scale; }
@@ -48,7 +48,7 @@ export class GravityPlayer extends Player {
     if (r.gravityTransfer) {
       r.gravityTransfer.elapsed += dt;
       // Never past either surface while transferring.
-      const top = L.corridor - HERO_DRAW_H;
+      const top = this.run.corridor - HERO_DRAW_H;
       if (this.y < 0) { this.y = 0; this.vy = Math.max(0, this.vy); }
       if (this.y > top) { this.y = top; this.vy = Math.min(0, this.vy); }
       if (res.landed) {
@@ -56,11 +56,11 @@ export class GravityPlayer extends Player {
         r.onGravityLanded?.(r.gravityLane);
       }
     } else {
-      const altitude = r.gravityLane ? L.corridor - HERO_DRAW_H - this.y : this.y;
-      if (altitude + HERO_DRAW_H >= L.corridor - 4) {
+      const altitude = r.gravityLane ? this.run.corridor - HERO_DRAW_H - this.y : this.y;
+      if (altitude + HERO_DRAW_H >= this.run.corridor - 4) {
         // The opposite wall is solid; its ordinary spike/saw entities own
         // damage. Touching the wall never activates a switch by itself.
-        this.y = r.gravityLane ? 4 : L.corridor - HERO_DRAW_H - 4;
+        this.y = r.gravityLane ? 4 : this.run.corridor - HERO_DRAW_H - 4;
         this.vy = r.gravityLane ? Math.max(0, this.vy) : Math.min(0, this.vy);
       }
     }

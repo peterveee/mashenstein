@@ -167,10 +167,11 @@ export function surgeBlips(slot, level, seed, count) {
 // cabinets' pictures, full-frame and banded, a jolt on the downbeat, and the palette
 // flashing negative, thermal and a wash. Never the lane: the hazards stay readable.
 export const SURGE_BURST_BEATS = 2;
+export const SURGE_BURST_STEP = 0.5; // beats a step; was 0.25, which swapped the picture 9 times a second
 const BURST_KINDS = ['tear', 'blocks', 'ghost', 'pixel', 'roll', 'flicker', 'ghost', 'tear'];
-const BURST_PALETTE = ['negative', null, 'thermal', 'wash', 'negative', 'posterise', null, 'negative'];
+const BURST_PALETTE = ['negative', 'wash', 'thermal', 'negative'];
 export function surgeBurst(since, seed, count, look) {
-  const tick = Math.floor(since * 4);
+  const tick = Math.floor(since / SURGE_BURST_STEP);
   const r = rng(seed * 313 + tick * 41 + 0.125);
   const glitches = [];
   const n = 3 + Math.floor(r() * 2);
@@ -179,7 +180,7 @@ export function surgeBurst(since, seed, count, look) {
     const h = 0.1 + r() * 0.35, y = r() * (1 - h);
     glitches.push({
       kind: BURST_KINDS[Math.floor(r() * BURST_KINDS.length)],
-      start: tick / 4, len: 0.25, b: since - tick / 4, lane: false, full,
+      start: tick * SURGE_BURST_STEP, len: SURGE_BURST_STEP, b: since - tick * SURGE_BURST_STEP, lane: false, full,
       band: { y, h }, lv: 3 + Math.floor(r() * 2),
       other: mod(look + 1 + Math.floor(r() * (count - 1)), count),
       seed: r() * 1000, shake: tick === 0 && i === 0 ? 4 : 0,
@@ -188,6 +189,27 @@ export function surgeBurst(since, seed, count, look) {
   const kind = BURST_PALETTE[tick % BURST_PALETTE.length];
   const palette = kind ? { kind, ink: ['#ff3fb4', '#ff8a2a', '#3fcf5a'][tick % 3], pair: ['#2a1458', '#ffc070'] } : null;
   return { glitches, palette };
+}
+
+// THE FLASH BUDGET (13 Oct 2026, after measuring the Surge against the 3-flashes-a-second
+// photosensitivity limit: surge-3 went over in 2% of seconds, worst 6). Full-screen
+// glitches are what flash, so they are rationed: one may not start within FULL_GAP beats of
+// the end of the last, and none while a loud palette (negative, thermal, posterise) is on.
+// One that does not fit is not dropped but demoted to a band across part of the picture,
+// so the look stays glitchy and the frame stops strobing. Walked in order, so the
+// palette keeps its place, then the main glitches (in the order they were drawn), then
+// the blips; extras added by surge-3's ramp can only demote blips, never earlier glitches.
+const FULL_GAP = 1.25;
+const LOUD_PALETTE = new Set(['negative', 'thermal', 'posterise']);
+export function surgeFullBudget(glitches, palettes = []) {
+  const taken = palettes.filter((p) => LOUD_PALETTE.has(p.kind)).map((p) => [p.start, p.start + p.len]);
+  return glitches.map((g) => {
+    if (!g.full) return g;
+    const a = g.start - FULL_GAP, b = g.start + g.len + FULL_GAP;
+    if (taken.some(([s0, s1]) => s0 < b && s1 > a)) return { ...g, full: false, demoted: true };
+    taken.push([g.start, g.start + g.len]);
+    return g;
+  });
 }
 
 // THE SCREEN UPSIDE DOWN (Peter, 1 Oct 2026: "completely flip the entire screen upside
@@ -270,11 +292,12 @@ export function surgePhase(beat, { level = 1, seed = 1, count = 8, progress = 0,
   if (toNext <= SURGE_MOVES[next].lead) Object.assign(ph, { move: next, u: -toNext, change: n + 1 });
   else if (since < SURGE_MOVES[last].tail) Object.assign(ph, { move: last, u: since, change: n });
   else {
-    ph.glitches = [...surgeBlips(n, lv, seed, count), ...surgeGlitches(n, lv, seed, count, progress)]
+    // The look's colour scheme switching on the beat (surgePalette.js) — never across a move.
+    const segments = surgePalettes(n, lv, seed, names?.[mod(n, count)] ?? null, progress);
+    ph.palette = surgePaletteAt(segments, since);
+    ph.glitches = surgeFullBudget([...surgeGlitches(n, lv, seed, count, progress), ...surgeBlips(n, lv, seed, count)], segments)
       .filter((g) => since >= g.start && since < g.start + g.len)
       .map((g) => ({ ...g, b: since - g.start }));
-    // The look's colour scheme switching on the beat (surgePalette.js) — never across a move.
-    ph.palette = surgePaletteAt(surgePalettes(n, lv, seed, names?.[mod(n, count)] ?? null, progress), since);
   }
   ph.intrusions = surgeIntrusions(n, lv, seed, names?.[ph.look] ?? null, progress)
     .filter((x) => since >= x.start && since < x.start + x.len)
@@ -569,7 +592,7 @@ function surgeBolt(ctx, x) {
   const flash = neonStrikeFlash(s);
   if (flash > 0) {
     ctx.save();
-    ctx.globalAlpha = flash * 0.8;
+    ctx.globalAlpha = flash * 0.4;   // was 0.8: five strikes in 2.4 s measured as a flash source
     ctx.fillStyle = '#eafcff';
     ctx.fillRect(cov.left - 40, -40, cov.width + 80, H + 80);
     ctx.restore();
@@ -584,7 +607,8 @@ function glitchBackdrop(ctx, g, R, k, paint) {
       case 'pixel': pixelate(ctx, R, (1 << g.lv) * k); grille(ctx, R, k); break;
       case 'roll': pixelate(ctx, R, 2 * k, true); roll(ctx, R, (g.b / g.len) * (1 + (Math.floor(g.seed) % 2))); grille(ctx, R, k); break;
       case 'tear': tear(ctx, R, k, g.seed, tick, 34 * k); break;
-      case 'flicker': if (hash(g.seed + tick * 5.3) < 0.55) { ctx.fillStyle = BLACK; ctx.fillRect(R.x, R.y, R.w, R.h); } break;
+      // A whole-screen flicker holds each state half a beat, three or so a second at most.
+      case 'flicker': if (hash(g.seed + (g.full ? Math.floor(g.b * 2) : tick) * 5.3) < 0.55) { ctx.fillStyle = BLACK; ctx.fillRect(R.x, R.y, R.w, R.h); } break;
       case 'blank': ctx.fillStyle = BLACK; ctx.fillRect(R.x, R.y, R.w, R.h); break;
       case 'ghost': case 'blocks': break;
     }

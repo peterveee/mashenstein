@@ -64,6 +64,7 @@ import {
 } from './speedMcmObjects.js';
 import { drawJonesCoyote, WINK_SPARKLE_AFTER, CHORUS_YIP_AFTER, CHORUS_YIP_GAP } from './speedMcmCoyote.js';
 import { paintFrostSky } from './frostCrayon/sky.js';
+import { surgeHudAt } from './surgeHud.js';
 import { SURGE_BPM, surgePhase, paintSurgeBackdrop, surgePost, surgeSnowOn, surgeBurst, SURGE_BURST_BEATS } from './surgeCut.js';
 
 import {
@@ -18272,6 +18273,8 @@ function surgePack(settings) {
   let snowCamX = 0;
   // surge-1's bare opening (surgeIntro.js), until run.js says bar 8 has come.
   let intro = false;
+  // The HUD glitch on this frame (surgeHud.js), or null; read by run.js when it draws the HUD.
+  let hudEv = null;
   const quiet = { ...ph, glitches: [], intrusions: [], palette: null, move: null, flip: false };
   // The look whose lane, light and claims the frame is on: the outgoing one until the
   // downbeat a move lands on, the incoming one from it.
@@ -18302,6 +18305,7 @@ function surgePack(settings) {
     get screenFlipped() { return ph.flip === true; },
     // The act this frame — look, move, glitches, other cabinets' weather — for a probe.
     get phase() { return ph; },
+    get hudGlitch() { return hudEv; },
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       const beat = Number.isFinite(scene?.beat) ? scene.beat : t * SURGE_BPM / 60;
       const level = backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1;
@@ -18314,6 +18318,7 @@ function surgePack(settings) {
       intro = end != null && !si.done && beat < end;
       if (intro) {
         ph = quiet;
+        hudEv = null;
         live = null;
         SURGE_INTRO.bg(ctx);
         return;
@@ -18325,6 +18330,8 @@ function surgePack(settings) {
         Object.assign(ph, { move: null, u: 0, glitches: burst?.glitches || [], intrusions: [],
           palette: burst?.palette || null, flip: false });
       }
+      // The HUD glitches only in the settled cycle: not in the opening, the bar-5 burst or a move.
+      hudEv = ph.move || cycleBeat < SURGE_SETTLE ? null : surgeHudAt(cycleBeat, { level, seed });
       snowCamX = camX;
       live = paintSurgeBackdrop(ctx, ph, (i, dy = 0, scrub = 0) => {
         ctx.save();
