@@ -42,7 +42,10 @@ export class GravityPlayer extends Player {
       { ...world, gravityScale: L.gravity * (world?.gravityScale ?? 1) }));
     if (r.gravityTransfer) {
       r.gravityTransfer.elapsed += dt;
-      if (res.landed) { r.gravityTransfer = null; r.gravitySpark = 0.3; }
+      if (res.landed) {
+        r.gravityTransfer = null; r.gravitySpark = 0.3;
+        r.onGravityLanded?.(r.gravityLane);
+      }
     } else {
       const altitude = r.gravityLane ? L.corridor - HERO_DRAW_H - this.y : this.y;
       if (altitude + HERO_DRAW_H >= L.corridor - 4) {

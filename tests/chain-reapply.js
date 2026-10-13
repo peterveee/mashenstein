@@ -148,6 +148,29 @@ async function structure() {
     await tick();
     r.removedDisposed = !!l0[0].node.disposed;
 
+    // Mid-apply, every level is still the mix's. The audio thread renders the graph as it
+    // is part-way through the task, and applyMix is tens of ms on the desk: a reset to unity
+    // before the mix went back on was heard as a burst of the whole song at 0 dB, mutes
+    // lifted, on every edit (13 Oct 2026). `retune` runs between the reset and the strips.
+    const lvl = JSON.parse(JSON.stringify(bare));
+    lvl.lanes.lead.gain = -24;
+    lvl.lanes.bass = { mute: true };
+    lvl.master = -6;
+    Audio.applyMix(c.bank, lvl);
+    await tick();
+    const seen = {};
+    const retune = m.retune;
+    m.retune = (...a) => {
+      seen.lead = m.lane('lead').state.gain;
+      seen.bass = m.lane('bass').state.mute;
+      return retune.apply(m, a);
+    };
+    Audio.applyMix(c.bank, lvl);
+    m.retune = retune;
+    r.midApplyLevels = seen.lead === -24 && seen.bass === true;
+    r.midApplySeen = seen;
+    await tick();
+
     // The watchdog's repair: a set onto the standing chain, same list, builds it new.
     const m1 = m.masterEffects.slice();
     m.setMasterEffects(moved.masterEffects, c.bank.bpm);
@@ -184,6 +207,8 @@ try {
   assert(s.unchangedLaneKept, 'while an unchanged chain beside it is kept through the same apply');
   assert(s.removedReadsEmpty, 'a chain the mix takes away reads empty at once');
   assert(s.removedDisposed, 'and its nodes are disposed when the task ends — kept nodes are not leaked ones');
+  assert(s.midApplyLevels,
+    `part-way through applyMix every fader and mute is still the mix's, never unity (${JSON.stringify(s.midApplySeen)})`);
   assert(s.standingSetRebuilds,
     'a set onto a standing chain still rebuilds it, even to the same list — the watchdog\'s repair');
 

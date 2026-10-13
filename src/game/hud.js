@@ -911,6 +911,7 @@ const GOAL_LABELS = {
   fuse: 'CARRY FUSE',
   blackout: 'SURVIVE',
   escape: 'ESCAPE',
+  maintenance: 'CYCLES',
 };
 // The goal toast's own edge: gold, because it is the only panel that appears
 // to announce something rather than to report state.

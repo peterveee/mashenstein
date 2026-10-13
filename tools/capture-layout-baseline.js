@@ -1,12 +1,11 @@
 // Capture the layout parity baseline: the golden spawn ledgers that
 // tests/layout-parity.js replays against.
 //
-// The fixture is the pre-change truth. It exists so the stage-layouts system
-// (src/game/layout.js, src/data/stage-layouts.js) can be proven a no-op for
-// un-edited stages: capture on a tree WITHOUT the change, land the change,
-// and the parity suite holds every run to the recorded ledger. Re-capturing
-// is therefore a deliberate act — it means "the new generation behaviour is
-// the intended one now" — and never something a failing test does for you.
+// The fixture is the accepted truth for each stage. It exists so the
+// stage-layouts system (src/game/layout.js, src/data/stage-layouts.js) can be
+// proven a no-op for un-edited stages while deliberate content replacements
+// get a new reference. Re-capturing is an explicit act: it means "the new
+// generation behavior is intended now" — never something a failing test does.
 //
 // The fixture is TRACKED (tests/fixtures/), the one exception to work/ that a
 // golden test is: a baseline nobody commits is a baseline every machine

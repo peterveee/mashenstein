@@ -243,6 +243,61 @@ function mergeRenamedMastery(oldValue, currentValue) {
   };
 }
 
+// Gravity Grid took Cardboard Kingdom's slot under its old ids ('cardboard',
+// 'cardboard-1..3'); on 13 Oct 2026 the ids became 'gravity' / 'gravity-N'.
+// Carry a slot's progress across: stage-keyed plugs, ranks and best scores,
+// cabinet-keyed clears and bosses, and any id named in the story flags or the
+// hub's seen-lists. A key already present under the new id wins.
+const CABINET_RENAMES = { cardboard: 'gravity' };
+function renamedId(id) {
+  if (typeof id !== 'string') return id;
+  if (CABINET_RENAMES[id]) return CABINET_RENAMES[id];
+  const m = /^([a-z]+)-(\d+)$/.exec(id);
+  return m && CABINET_RENAMES[m[1]] ? `${CABINET_RENAMES[m[1]]}-${m[2]}` : id;
+}
+function renameKeys(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  let changed = false;
+  for (const k of Object.keys(obj)) {
+    const nk = renamedId(k);
+    if (nk === k) continue;
+    if (!(nk in obj)) obj[nk] = obj[k];
+    delete obj[k]; changed = true;
+  }
+  return changed;
+}
+function renameValues(value) {
+  if (Array.isArray(value)) {
+    let changed = false;
+    for (let i = 0; i < value.length; i++) {
+      const nv = renamedId(value[i]);
+      if (nv !== value[i]) { value[i] = nv; changed = true; } else if (value[i] && typeof value[i] === 'object') changed = renameValues(value[i]) || changed;
+    }
+    return changed;
+  }
+  if (value && typeof value === 'object') {
+    let changed = false;
+    for (const k of Object.keys(value)) {
+      const v = value[k], nv = renamedId(v);
+      if (nv !== v) { value[k] = nv; changed = true; } else if (v && typeof v === 'object') changed = renameValues(v) || changed;
+    }
+    return changed;
+  }
+  return false;
+}
+function migrateCabinetIds(slot) {
+  let changed = false;
+  const c = slot.campaign || {};
+  for (const k of ['plugs', 'ranks', 'cleared', 'bossesDown', 'bestScore']) changed = renameKeys(c[k]) || changed;
+  if (c.storyFlags) changed = renameKeys(c.storyFlags) || renameValues(c.storyFlags) || changed;
+  if (slot.hub) for (const k of Object.keys(slot.hub)) {
+    const v = slot.hub[k];
+    if (Array.isArray(v)) changed = renameValues(v) || changed;
+    else if (v && typeof v === 'object') changed = renameKeys(v) || changed;
+  }
+  return changed;
+}
+
 function migrateHeroIds(slot) {
   let changed = false;
   const mastery = slot.mastery;
@@ -368,6 +423,7 @@ export class Save {
         if (Array.isArray(s.mods[k])) s.mods[k] = s.mods[k].filter((id) => id !== 'wide');
       }
       heroIdsMigrated = migrateHeroIds(s) || heroIdsMigrated;
+      heroIdsMigrated = migrateCabinetIds(s) || heroIdsMigrated;
     }
     this.data = data;
     if (normalized.densityHistoryMigrated || heroIdsMigrated) this.persist();
@@ -403,7 +459,7 @@ export class Save {
     if (device) for (const k of DEVICE_ONLY_SETTINGS) if (k in device) data.settings[k] = device[k];
     data.settings = normalizeSettings(data.settings).settings;
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
-    for (const s of data.slots) if (s) migrateHeroIds(s);
+    for (const s of data.slots) if (s) { migrateHeroIds(s); migrateCabinetIds(s); }
     this.data = data;
     this.slotIndex = Math.min(this.slotIndex, this.data.slots.length - 1);
     // The imported file may have nothing in the slot that was open (or in this one only):

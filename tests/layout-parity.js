@@ -1,11 +1,11 @@
 // Layout parity: the stage-layouts system is a NO-OP for un-edited stages.
 //
 // tests/fixtures/layout-baseline.json holds spawn ledgers captured from real
-// headless runs BEFORE src/game/layout.js existed (tools/capture-layout-baseline.js).
-// This suite replays the same (stage × seed) matrix through the current build
-// and requires every ledger to match the recording — every checkpoint, every
-// scripted pit, every route, and every single obstacle and pickup, in order,
-// at the position it first appeared.
+// headless runs (tools/capture-layout-baseline.js). Most are pre-layout-system
+// references; an intentionally replaced stage is recaptured only after its new
+// generation behavior is accepted. This suite replays the same (stage × seed)
+// matrix through the current build and requires every ledger to match the
+// recording — every checkpoint, pit, route, obstacle and pickup, in order.
 //
 // What a failure means: the seeded generation of an UN-EDITED stage moved.
 // Either a change disturbed one of the rng streams (an extra draw, a filter

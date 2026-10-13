@@ -279,6 +279,18 @@ export class ChipResults {
  * which have none. A win (`bar`) waits for the next bar line instead. With the option off, or
  * nothing in the song to switch, it is called at once.
  */
+// How long until a win's results would start (the next bar, less the shutter),
+// so a run can keep its finish hold going until then instead of finishing and
+// standing frozen while resultsOnTheBeat waits (Peter, 13 Oct: "a bit of a
+// freeze with all levels going to the results"). 0 when the song is not moving.
+export function secondsToResultsBar() {
+  if (!Audio.ctx || !Number.isFinite(Audio.nextTime)) return 0;
+  const s16 = sixteenth();
+  let t = Audio.nextTime + ((16 - (Audio.step % 16)) % 16) * s16;
+  while (t - TRANSITION_CLOSE_S < heardNow() + 0.02) t += 16 * s16;
+  const wait = t - TRANSITION_CLOSE_S - heardNow() - 0.04;
+  return wait > 0 && wait < 4 ? wait : 0;
+}
 export function resultsOnTheBeat(show, { bar = false } = {}) {
   const chip = new ChipResults();
   chip.start();

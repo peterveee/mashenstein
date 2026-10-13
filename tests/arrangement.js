@@ -896,13 +896,18 @@ if (imported) {
   // Every part the song plays that is not one of the engine's own lanes is an added
   // track, declared in the mix — which is how a .mid with two basses in it arrives. Read
   // off the song rather than written out, so this is the song's real layer set.
+  // The kit's + adds the next free tom — tom2 unless the song already plays one (the
+  // Gravity Grid theme has tom2 and tom3), in which case laying a figure on it would be
+  // an edit to the song's own part, not to an added track.
+  let ADDED = 'tom2';
+  for (let k = 2; parts.includes(ADDED); k++) ADDED = `tom${k}`;
   const kitPlus = {
     layers: [
       ...parts.filter((k) => !LANE_KEYS.includes(k))
         .map((key) => ({ key, from: baseLane(key), independent: true })),
-      { key: 'tom2', from: 'tom', independent: true },       // and one more from the kit's +
+      { key: ADDED, from: 'tom', independent: true },        // and one more from the kit's +
     ],
-    lanes: { tom2: {} },
+    lanes: { [ADDED]: {} },
   };
   const impEdit = deskBank(imported.bank, kitPlus);
   const impView = (e) => deskBank(applyArrangement(imported.bank, imported.id,
@@ -917,7 +922,7 @@ if (imported) {
   let laid = draftOf(impEdit, null);
   const backbeat = Array.from({ length: 16 }, (_, i) => i === 4 || i === 12);
   for (let b = 0; b < barCount(laid); b++) {
-    laid = writeBarNotes(impEdit, laid, b, 'tom2', backbeat.slice(), new Array(16).fill(null));
+    laid = writeBarNotes(impEdit, laid, b, ADDED, backbeat.slice(), new Array(16).fill(null));
   }
   const lost = parts.filter((_, i) => heard(entryOf(impEdit, laid))[i] !== asComposed[i]);
   assert(lost.length === 0,
@@ -1130,7 +1135,7 @@ assert(arrangementIssues(plumber, fromArranged, LANE_KEYS).length > 0,
 // Whichever cabinet is still one: neon was, until SESERAGI (which has sections)
 // became its song on 23 Sep 2026. Named rather than hard-wired so the next song to
 // grow sections does not break a test about songs that have none.
-const bareId = ['crypt', 'cardboard', 'office', 'surge', 'frost', 'rhythm']
+const bareId = ['crypt', 'gravity', 'office', 'surge', 'frost', 'rhythm']
   .find((id) => banks[id] && !banks[id].sections?.length);
 const neon = banks[bareId];
 assert(neon && !neon.sections?.length, `${bareId} is one of the bare two-bar cabinets`);

@@ -73,7 +73,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // The nine cabinets, in play order. Ids are src/data/tracks.js ids, and each one
 // is also the basename of its song file.
-const CABINETS = ['plumber', 'speed', 'neon', 'frost', 'crypt', 'rhythm', 'cardboard', 'office', 'surge'];
+// The space cabinet's id is 'cardboard' but it plays src/data/songs/gravity.js, so it is levelled as 'gravity'.
+const CABINETS = ['plumber', 'speed', 'neon', 'frost', 'crypt', 'rhythm', 'gravity', 'office', 'surge'];
 const EVENTS = ['finale', 'megamix'];
 const MENUS = ['title', 'hub', 'shop'];
 const ALL = [...CABINETS, ...EVENTS, ...MENUS];

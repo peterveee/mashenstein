@@ -56,7 +56,7 @@ export function phoneDressing() {
 // bumps Grumpos from crypt to rhythm, where DAD OF BOY becomes BOY BAND.
 export const CABINET_STAR = {
   plumber: 'lorenzo', speed: 'rusty', neon: 'b33p', frost: 'fernwick',
-  crypt: 'clara', rhythm: 'grumpos', cardboard: 'ramon', office: 'kiko',
+  crypt: 'clara', rhythm: 'grumpos', gravity: 'ramon', office: 'kiko',
   surge: 'gary',
 };
 
@@ -74,7 +74,7 @@ const POSTER_COPY = {
   frost: ['FERNWICK', 'MOSTLY HERB'],
   crypt: ['CLARA', 'MALL RAIDER'],
   rhythm: ['GRUMPOS', 'BOY BAND'],
-  cardboard: ['RAMON', 'NO ELBOWS'],
+  gravity: ['RAMON', 'NO ELBOWS'],
   office: ['KIKO', 'STILL ASKING'],
   surge: ['GARY', 'NOT A COPY'],
   overtime: ['OVERTIME', 'NOT APPROVED'],

@@ -33,12 +33,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
 | 2026-09-27 | `833af42` | [2026-09-27-833af42.html](2026-09-27-833af42.html) | [bake-offs](2026-09-27-833af42-lab.html) | feat: add audio reports functionality and UI updates |
 | 2026-10-04 | `c25625e` | [2026-10-04-c25625e.html](2026-10-04-c25625e.html) | [bake-offs](2026-10-04-c25625e-lab.html) | feat: add new Banger report and section effects functionality |
-| 2026-10-05 | `cac6fcc` | [2026-10-05-cac6fcc.html](2026-10-05-cac6fcc.html) | [bake-offs](2026-10-05-cac6fcc-lab.html) | feat: add 'more' variation to banger options and update related functionality |
-| 2026-10-06 | `9db55ef` | [2026-10-06-9db55ef.html](2026-10-06-9db55ef.html) | [bake-offs](2026-10-06-9db55ef-lab.html) | Add comprehensive tests for Banger Rolls styles and their properties |
-| 2026-10-06 | `1c8865c` | [2026-10-06-1c8865c.html](2026-10-06-1c8865c.html) | [bake-offs](2026-10-06-1c8865c-lab.html) | feat(banger): enhance track effects planning by excluding percussion lanes from treatment budget |
-| 2026-10-06 | `1eaf382` | [2026-10-06-1eaf382.html](2026-10-06-1eaf382.html) | [bake-offs](2026-10-06-1eaf382-lab.html) | fix(audio): finished drum hits leave the render graph — the banger slow-down |
-| 2026-10-06 | `80cf910` | [2026-10-06-80cf910.html](2026-10-06-80cf910.html) | [bake-offs](2026-10-06-80cf910-lab.html) | feat(banger): club pitch fader, Dolores's push broom, BOLT on the bar line, no swipe-back |
-| 2026-10-06 | `3e5d16a` | [2026-10-06-3e5d16a.html](2026-10-06-3e5d16a.html) | [bake-offs](2026-10-06-3e5d16a-lab.html) | Refactor code structure for improved readability and maintainability |
 | 2026-10-07 | `fcd3390` | [2026-10-07-fcd3390.html](2026-10-07-fcd3390.html) | [bake-offs](2026-10-07-fcd3390-lab.html) | Add mermaid sprite implementation with various styles and animations |
 | 2026-10-07 | `5da2928` | [2026-10-07-5da2928.html](2026-10-07-5da2928.html) | [bake-offs](2026-10-07-5da2928-lab.html) | Add Banger Fusion functionality and related tests |
 | 2026-10-07 | `8872f69` | [2026-10-07-8872f69.html](2026-10-07-8872f69.html) | [bake-offs](2026-10-07-8872f69-lab.html) | Add tests for Banger Mood Pairs functionality |
@@ -54,3 +48,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-12 | `69d03d3` | [2026-10-12-69d03d3.html](2026-10-12-69d03d3.html) | [bake-offs](2026-10-12-69d03d3-lab.html) | Office: Jost typeface, signage clear of the HUD, save-import slot fix |
 | 2026-10-12 | `637994a` | [2026-10-12-637994a.html](2026-10-12-637994a.html) | [bake-offs](2026-10-12-637994a-lab.html) | Add WOK THIS WAY menu and CORPORATE KOMBAT armchair bake-off |
 | 2026-10-12 | `4e37a1e` | [2026-10-12-4e37a1e.html](2026-10-12-4e37a1e.html) | [bake-offs](2026-10-12-4e37a1e-lab.html) | Refactor titles and save file terminology; introduce diner candidates for corporate combat scenes |
+| 2026-10-12 | `ae27abf` | [2026-10-12-ae27abf.html](2026-10-12-ae27abf.html) | [bake-offs](2026-10-12-ae27abf-lab.html) | Crash log: never let the trail break boot |

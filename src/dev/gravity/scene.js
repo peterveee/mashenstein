@@ -75,15 +75,35 @@ function vista(c, cam, width, t) {
   planet(c, visibleWidth * (0.82 - 0.5 * progress), -103 + progress * 3);
   asteroids(c, width, t);
   for (const [f, base, amp, ink] of [[0.03,-24,23,'#293441'],[0.065,-21,19,'#3d4651'],[0.12,-9,15,'#626875']]) {
-    c.beginPath(); c.moveTo(-60, 5);
+    const points = [];
     const shift = cam * f;
-    for (let x = -60; x <= width + 60; x += 4) { const wx = x + shift; c.lineTo(x, base - amp * (0.45 + 0.27 * Math.sin(wx / 33) + 0.2 * Math.sin(wx / 17))); }
+    for (let x = -60; x <= width + 60; x += 16) {
+      const wx = x + shift;
+      const jaggedness = (hash(Math.floor(wx / 16)) - 0.5) * 0.2;
+      points.push([x, base - amp * (0.45 + 0.27 * Math.sin(wx / 33)
+        + 0.2 * Math.sin(wx / 17) + jaggedness)]);
+    }
+    c.beginPath(); c.moveTo(-60, 5);
+    for (const [x, y] of points) c.lineTo(x, y);
     c.lineTo(width + 60, 5); c.closePath(); c.fillStyle = ink; c.fill();
+
     c.save(); c.clip();
-    for (let x = -60; x < width + 60; x += 21) line(c, x, -45, x + 19, 1, '#ccd5da0c', 5);
+    for (let i = 0; i + 2 < points.length; i += 3) {
+      const [x0, y0] = points[i], [x1, y1] = points[i + 2];
+      c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1);
+      c.lineTo((x0 + x1) / 2, Math.min(3, (y0 + y1) / 2 + 10)); c.closePath();
+      c.fillStyle = i % 2 ? '#ffffff08' : '#0000000b'; c.fill();
+    }
     c.restore();
+    c.beginPath();
+    points.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
+    c.strokeStyle = '#ccd5da22'; c.lineWidth = 0.55; c.stroke();
   }
-  for (let i = 0; i < 20; i++) { const x = ((i * 27 - cam * 0.16) % 560 + 560) % 560; c.strokeStyle = '#303a4890'; c.lineWidth = 0.6; c.beginPath(); c.ellipse(x, -2 - hash(i + 7) * 7, 2 + hash(i) * 3, 0.8, 0, 0, Math.PI * 2); c.stroke(); }
+  for (let i=0;i<20;i++) {
+    const x=((i*27-cam*0.16)%560+560)%560;
+    c.strokeStyle='#303a4890'; c.lineWidth=0.6; c.beginPath();
+    c.ellipse(x,-2-hash(i+7)*7,2+hash(i)*3,0.8,0,0,Math.PI*2); c.stroke();
+  }
 }
 function gate(c, g, cam, t, top, bottom, hint) {
   const x = g.x - cam;

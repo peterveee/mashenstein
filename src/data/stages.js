@@ -11,7 +11,7 @@
 const CAB_DURATION = {
   plumber: 60, speed: 60, rhythm: 90,
   frost: 90, crypt: 90, neon: 90,
-  cardboard: 95, office: 100, surge: 110,
+  gravity: 84, office: 100, surge: 110,
 };
 
 const S = (cab, idx, mission, challenge, opts = {}) => ({
@@ -54,13 +54,9 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   // WHERE A FATAL HOLE MAY STAND, and it is the one rule every `pits` entry on
   // this page obeys.
   //
-  // A pit kills, and a death goes back to the last checkpoint — which is at a
-  // third and two thirds of the stage and nowhere else. So the real cost of a
-  // hole is not the hole, it is the stretch of level you replay to get back to
-  // it, and that stretch is `at` minus whichever checkpoint is behind it, in
-  // SECONDS of play. Twelve of these were authored on gut feel and the worst of
-  // them (cardboard-3 at 0.55) charged twenty-six seconds a death: you lose to
-  // a hole and then run a third of the level again to reach it.
+  // A pit kills, and a death goes back to the last checkpoint. So the real cost
+  // of a hole is the stretch you replay to reach it: `at` minus whichever
+  // checkpoint is behind it, measured in seconds of play.
   //
   //   at least 1.5s after the checkpoint — the restore drops you running, and a
   //                 hole immediately in front of you is not a hazard you read,
@@ -355,23 +351,22 @@ export const STAGES = [
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
     { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
   // ACT III -------------------------------------------------------------------
-  S('cardboard', 1,
-    { type: 'reach', desc: 'CROSS THE KINGDOM BEFORE IT FINISHES COLLAPSING.' },
-    { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
-    { act: 'ACT III. THE OUTLET AT THE END OF EVERYTHING. THE CASTLE IS FOUR INCHES TALL.' }),
-  // Act III's tierMax is 2 on every stage, so the bags cannot ramp — the pits
-  // are the progression instead: none on cardboard-1, two on -2, three on -3.
-  // On a two-minute stage the replay budget is tight (a tenth of the stage is
-  // twelve seconds), which is why these sit at 0.06 / 0.40 / 0.72 rather than
-  // spread on feel: 0.55 used to cost twenty-six seconds a death.
-  S('cardboard', 2,
-    { type: 'escape', desc: 'ESCAPE THE FOLDING WAVE. DO NOT BECOME A FLAP.' },
-    { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
-    { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
-  S('cardboard', 3,
-    { type: 'chase', n: 3, desc: 'BONK THE COPTER 3 TIMES. IT IS HELD UP BY A VISIBLE HAND.' },
-    { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
-    { pits: [{ at: 0.06, w: 60 }, { at: 0.40, w: 64 }, { at: 0.72, w: 68 }] }),
+  S('gravity', 1,
+    { type: 'reach', desc: 'REACH THE AIRLOCK.' },
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    { durationSec: 84, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'],
+      act: 'ACT III. THE PLACE WHERE DOWN IS UP. FOLLOW THE ARROWS.' }),
+  // Levels 2 and 3 swapped their gameplay on 13 Oct 2026 (Peter): the cleaner
+  // is level 2; low gravity — the station's gravity giving out — is level 3,
+  // where the Martian invasion fills the windows.
+  S('gravity', 2,
+    { type: 'maintenance', n: 3, desc: 'SURVIVE THREE CLEANING CYCLES.' },
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    { intro: 'THE CLEANER HAS MISTAKEN YOU FOR DEBRIS.', durationSec: 100, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'] }),
+  S('gravity', 3,
+    { type: 'reach', desc: 'CROSS THE LOW-GRAVITY DECK.' },
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    { intro: 'LOW GRAVITY. LONG JUMPS. LOOSE HARDWARE.', durationSec: 96, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'] }),
   S('office', 1,
     { type: 'reach', desc: 'GET THROUGH THE OFFICE. AVOID EYE CONTACT WITH MEETINGS.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
@@ -408,5 +403,5 @@ export function stagesForCabinet(cabId) { return STAGES.filter((s) => s.cabinet 
 // Plug thresholds (from the spec).
 export const UNLOCKS = {
   speed: 2, rhythm: 5, frost: 12, crypt: 16, neon: 20,
-  cardboard: 28, office: 34, surge: 40, finale: 45,
+  gravity: 28, office: 34, surge: 40, finale: 45,
 };

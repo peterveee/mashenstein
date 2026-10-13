@@ -113,11 +113,24 @@ import {
   drawControlLineup, drawCandidateLineup, drawCandidateLane, candidateCaption, laneHeight,
 } from '../src/dev/obstacle-bakeoff-kit.js';
 import { BAKEOFF as PLUMBER_OBSTACLES } from '../src/dev/plumber-obstacle-candidates.js';
+import { SPACE_LOOK_LIST, SPACE_SHOTS, SPACE_PARADE, SPACE_LOOKS, SPACE_JADE_CHEVRONS, SPACE_STRIPS, SPACE_LIFE_LOOKS, SPACE_PLATEAU_LOOKS, drawSpaceShot } from '../src/dev/space-look-candidates.js';
+import { SPACE_LIFE, SPACE_LIFE_OBJECTS } from '../src/dev/space-life.js';
+import { MARS_CANDIDATES } from '../src/dev/mars-attacks-candidates.js';
+// The shipped jade room with a Mars Attacks candidate painted into the view
+// (sky behind the land, ground in front).
+function marsLook(cand) {
+  const base = SPACE_LOOKS['plateau-occasional'];
+  return { ...base, id: `mars-${cand.id}`,
+    planet(c, s, w) { base.planet.call(this, c, s, w); cand.scene?.sky?.(c, s, w); },
+    land(c, s) { base.land.call(this, c, s); cand.scene?.ground?.(c, s, s.view); } };
+}
 import { BAKEOFF as SPEED_OBSTACLES } from '../src/dev/speed-obstacle-candidates.js';
 import { BAKEOFF as RHYTHM_OBSTACLES } from '../src/dev/rhythm-obstacle-candidates.js';
 import { BAKEOFF as FROST_OBSTACLES } from '../src/dev/frost-obstacle-candidates.js';
 import { BAKEOFF as CRYPT_OBSTACLES } from '../src/dev/crypt-obstacle-candidates.js';
 import { BAKEOFF as NEON_OBSTACLES } from '../src/dev/neon-obstacle-candidates.js';
+import { SURGE_LOOKS, SURGE_TREATMENTS, drawSurgeTreatment, wrongInkName } from '../src/dev/surge-tint-candidates.js';
+import { BAKEOFF as GRAVITY_OBSTACLES, LANE_W as GRAVITY_LANE_W, LANE_H as GRAVITY_LANE_H, drawGravityCandidateLane, drawGravityControlLineup, drawGravityCandidateLineup, gravityCandidateCaption } from '../src/dev/gravity-obstacle-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
 import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SLOT_BEATS, drawSurgeFx } from '../src/dev/surge-transition-candidates.js';
@@ -186,6 +199,10 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   // OFFICE_FLOORS in data/cabinets.js, and the production sheet 'office-obstacles'.
   // src/dev/office-obstacle-candidates.js stays as the record of the twenty.
   'office-obstacle-bakeoff',
+  // SETTLED 13 Oct 2026: all ten shipped ("replace all existing ones with the new
+  // ones... spread throughout") — sprites/gravityProps.js, data/gravity-stages.js,
+  // and the production sheet 'gravity-obstacles'.
+  'gravity-obstacle-bakeoff',
   // SETTLED 22 Sep 2026: GRID CITY at six layers won and is in the game —
   // neonPack.bg() paints it, and on Neon 1 it ARRIVES rather than opening
   // finished (see the arrival sheet below, and neonCityReveal). The sheet stays
@@ -3180,6 +3197,23 @@ let labClub = null;
     tile(grid, name, types.filter(Boolean).join(' · '), 480, 270,
       (ctx, t) => drawOfficeProductionScene(ctx, t, screen, false, 1200 + (t * 40) % 2400), { animated: true });
   }
+}
+
+// Gravity Grid's obstacles as the run draws them: the real drawWorldEntity path on both
+// rails (the ceiling copy mirrored as draw.js mirrors a gravityCeiling entity), in the
+// production look. Art is sprites/gravityProps.js; data/gravity-stages.js deals them.
+{
+  const grid = section('gravity-obstacles', 'GRAVITY GRID — obstacles, as shipped',
+    'All ten from the 13 Oct 2026 bake-off, two for each thing the playtest dealt, alternating through the three levels. '
+    + 'Each column is the same obstacle on the floor and, mirrored, on the ceiling. ANIMATED.',
+    '2026-10-13');
+  const was = ['popSpikes', 'crate', 'magCargo', 'oxygenRack', 'serviceLaser'];
+  tile(grid, 'BEFORE — until 13 Oct', was.join(' · '), GRAVITY_LANE_W, GRAVITY_LANE_H,
+    (ctx, t) => drawGravityControlLineup(ctx, t, was), { animated: true, wide: true });
+  const now = ['plasmaVents', 'magClamps', 'foilCrate', 'specimenCase', 'fuelCell', 'maintenanceBot',
+    'coolantRadiator', 'valveManifold', 'weldingDrone', 'looseToolkit'];
+  tile(grid, 'NOW — gate fields, crates, cargo, racks, duck-unders', now.join(' · '), GRAVITY_LANE_W, GRAVITY_LANE_H,
+    (ctx, t) => drawGravityControlLineup(ctx, t, now), { animated: true, wide: true });
 }
 
 let officeFounderCandidates = null;
@@ -9314,6 +9348,269 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
     tile(grid, `${cand.letter} — ${cand.name}`, `COFFEE SHOP · lobby. ${cand.note}`, 480, 270,
       (ctx, t) => drawBaristaRoom(ctx, t, cand), { animated: true });
   }
+}
+
+// --------------------------------------------- SPACE CABINET — the look (lab)
+// 12 Oct 2026: the GRAVITY GRID playtest becomes the act-3 space cabinet in Cardboard
+// Kingdom's slot (Space → Corporate → Surge), and needs a look no other cabinet has.
+// Peter's three picks, painted onto the real corridor (src/dev/space-look-candidates.js);
+// the playtest's current room is the control. Playable: ?goto=gravity&spacelook=<id>.
+{
+  const s = sectionEl('space-look-bakeoff', 'SPACE CABINET — the look (bake-off)',
+    'GRAVITY GRID becomes the act-3 space cabinet in Cardboard Kingdom’s slot, so it needs a look of its own. Its '
+    + 'playtest room is vector CRT, which sits too near Terminal Velocity. Three candidates on the same corridor — same '
+    + 'ports, rails, gates, arrow and hazards, so only the paint differs: A flat-shaded polygon, B airbrushed space art, '
+    + 'C mission-patch screenprint. Three moments from the level at in-run size, then the portrait read. Pick a letter. '
+    + 'D and E (added the same day): B’s room with A’s planet and mountains, D at A’s planet size, E at B’s. '
+    + 'F: D with four planets passing over the stage. '
+    + 'G–I: F in other colour schemes (amber & teal, cold dawn, jade), to move it off Terminal Velocity’s magenta. '
+    + 'Play one: ?goto=gravity&spacelook=polygon|airbrush|screenprint|hybrid|hybridgiant|parade|parade-amber|parade-dawn|parade-jade. ANIMATED.',
+    '12 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = title;
+    s.appendChild(h3);
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = note;
+    s.appendChild(p);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+  const rows = [{ letter: 'NOW', name: 'the playtest room (vector CRT)', note: 'src/dev/gravity/scene.js, as it plays today.', look: null },
+    ...SPACE_LOOK_LIST.map((look) => ({ letter: look.letter, name: look.name, note: look.note, look }))];
+  for (const row of rows) {
+    const grid = sub(`${row.letter} — ${row.name}`, row.note);
+    for (const shot of SPACE_SHOTS) {
+      tile(grid, shot.name, shot.note, 480, 270, (ctx, t) => drawSpaceShot(ctx, t, row.look, shot), { animated: true });
+    }
+    tile(grid, 'Portrait', 'The corridor centred in a tall frame: the roof truss and deck the phone shows.', 220, 390,
+      (ctx, t) => drawSpaceShot(ctx, t, row.look, SPACE_SHOTS[0], 220, 390), { animated: true });
+  }
+  {
+    // F's parade: the planets ride stage progress, so the lane shots above
+    // (all early in the run) only show the first. One tile per body at the
+    // moment it is mid-window, then the whole stage swept in twenty seconds.
+    const grid = sub('F — the parade, body by body',
+      'Each planet as it crosses mid-window, then the full run compressed into a 20-second loop (the corridor holds still).');
+    for (const p of SPACE_PARADE) {
+      tile(grid, p.name, `centred at ${Math.round(p.at * 100)}% of the stage, in view for about ${Math.round(p.span * 100)}%`, 480, 270,
+        (ctx, t) => drawSpaceShot(ctx, t, SPACE_LOOKS.parade, SPACE_SHOTS[0], 480, 270, p.at), { animated: true });
+    }
+    tile(grid, 'The whole stage in 20 s', 'Progress swept 0 → 100% on a loop.', 480, 270,
+      (ctx, t) => drawSpaceShot(ctx, t, SPACE_LOOKS.parade, SPACE_SHOTS[0], 480, 270, (t % 20) / 20), { animated: true });
+  }
+  {
+    // Jade swallows the green chevrons, so the gate's signal colour is open:
+    // pink (the complement), lilac (from the jade nebula), white on a pink glow.
+    const grid = sub('I — jade, chevron colours',
+      'The gate on the jade scheme with three chevron colours; UP/DOWN and the JUMP hint follow the chevrons. The orange jump line stays.');
+    for (const look of SPACE_JADE_CHEVRONS) {
+      tile(grid, look.name, `?goto=gravity&spacelook=${look.id}`, 480, 270,
+        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0]), { animated: true });
+    }
+  }
+  {
+    // Asked the same day: lose the orange line ("messy … too similar to the
+    // greens") for one chrome strip whose leading edge is the jump point.
+    for (const look of SPACE_STRIPS) {
+      const grid = sub(`${look.letter} — ${look.name}`, `${look.note} ?goto=gravity&spacelook=${look.id}`);
+      for (const shot of SPACE_SHOTS) {
+        tile(grid, shot.name, shot.note, 480, 270, (ctx, t) => drawSpaceShot(ctx, t, look, shot), { animated: true });
+      }
+    }
+  }
+  {
+    // 13 Oct 2026: "how do we populate the outside areas to make them alive?
+    // … go crazy". src/dev/space-life.js, four depth passes inside the glass.
+    for (const look of SPACE_LIFE_LOOKS) {
+      const grid = sub(`${look.letter} — ${look.name}`, `${look.note} ?goto=gravity&spacelook=${look.id}`);
+      for (const shot of SPACE_SHOTS) {
+        tile(grid, shot.name, shot.note, 480, 270, (ctx, t) => drawSpaceShot(ctx, t, look, shot), { animated: true });
+      }
+      tile(grid, 'Mid-stage: the mothership', 'Stage progress held at 50%.', 480, 270,
+        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, 0.5), { animated: true });
+      tile(grid, 'The whole stage in 20 s', 'Progress swept 0 → 100% on a loop: planets and the mothership pass.', 480, 270,
+        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, (t % 20) / 20), { animated: true });
+    }
+    const grid = sub('Each outside layer alone (on J)',
+      'One layer per tile so each can be kept or cut. Timed events repeat — watch a tile for its period.');
+    const [lj] = SPACE_LIFE_LOOKS;
+    // Layers that only appear for part of the stage are shown at a moment they're up.
+    const LAYER_AT = { mothership: 0.5, aurora: 0.25, auroraFacets: 0.25 };
+    for (const layer of SPACE_LIFE) {
+      const look = { ...lj, life: [layer.id] };
+      tile(grid, layer.name, layer.note, 480, 270,
+        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, LAYER_AT[layer.id] ?? null), { animated: true });
+    }
+  }
+}
+
+// --------------------------------------------- SPACE CABINET — the outside, object by object (lab)
+// 13 Oct 2026: "create a lab/gallery page to show all the objects". Every craft,
+// building and figure from src/dev/space-life.js on its own, at in-run size (the
+// playtest's 1.6 zoom), on the jade sky — the same painters the windows use.
+{
+  const grid = section('space-life-objects', 'SPACE CABINET — the outside, object by object',
+    'Everything that lives outside the windows in looks L and M, one object per tile at in-run size on the jade sky. '
+    + 'Caption says which layer it belongs to, so a layer can be kept or cut in the lane sheet above. '
+    + 'The aurora is the borealis. ANIMATED.',
+    '13 Oct 2026');
+  const Z = 1.6;
+  for (const o of SPACE_LIFE_OBJECTS) {
+    tile(grid, o.name, `layer: ${o.layer}`, o.w * Z, o.h * Z, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, o.h * Z);
+      g.addColorStop(0, '#05140f'); g.addColorStop(0.7, '#0e3328'); g.addColorStop(1, '#2a6a52');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, o.w * Z, o.h * Z);
+      ctx.save(); ctx.scale(Z, Z); o.draw(ctx, t, o.w, o.h); ctx.restore();
+    }, { animated: true });
+  }
+}
+
+// --------------------------------------------- SPACE CABINET — plateaus (lab)
+// 13 Oct 2026: "perhaps we need plateaus and that's where mining stuff might
+// work" … "i like the jade, but can we bake off the plateaus". Four ways to give
+// the jade ridges flat tops (src/dev/space-plateaus.js), the base and mining kit
+// standing on them. NOW is L as it is.
+{
+  const s = sectionEl('space-plateau-bakeoff', 'SPACE CABINET — plateaus (bake-off)',
+    'Jade with everything alive outside, and four ways to give the mountains flat tops for the base and the mining to stand on. '
+    + 'The three ridge rows are unchanged; each candidate adds its plateaus and moves the domes, masts, rigs, silos and pads onto them. '
+    + 'Two moments each at in-run size. Play one: ?goto=gravity&spacelook=plateau-mesas|plateau-shelf|plateau-terraces|plateau-buttes|plateau-occasional. P5 (added the same day): P2’s shelf and P4’s buttes, twice each per stage. ANIMATED.',
+    '13 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  for (const look of [SPACE_LIFE_LOOKS[0], ...SPACE_PLATEAU_LOOKS]) {
+    const grid = sub(look === SPACE_LIFE_LOOKS[0] ? 'NOW — L, outposts on the ground line' : `${look.letter} — ${look.name}`, look.note);
+    if (look.moments) {
+      for (const at of look.moments) {
+        tile(grid, `${Math.round(at * 100)}% of the stage`, 'Held at the moment it is mid-frame.', 480, 270,
+          (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, at), { animated: true });
+      }
+      tile(grid, 'The whole stage in 20 s', 'Progress swept 0 → 100% on a loop.', 480, 270,
+        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, (t % 20) / 20), { animated: true });
+      continue;
+    }
+    for (const shot of [SPACE_SHOTS[0], SPACE_SHOTS[2]]) {
+      tile(grid, shot.name, shot.note, 480, 270, (ctx, t) => drawSpaceShot(ctx, t, look, shot), { animated: true });
+    }
+  }
+}
+
+// --------------------------------------------- GRAVITY GRID — obstacles (lab)
+// 13 Oct 2026: "we did a bunch of fantastic obstacles yesterday for all levels. can we
+// create a bunch of the gravity levels too". Ten candidates in the station's hand,
+// two per thing data/gravity-stages.js deals (src/dev/gravity-obstacle-candidates.js).
+// No style pack here, so each tile is a whole frame of the production look at the
+// run's zoom, with the candidate on the floor ahead of the hero AND on the ceiling.
+{
+  const B = GRAVITY_OBSTACLES;
+  const s = sectionEl('gravity-obstacle-bakeoff', B.title, B.note, '13 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  const sets = sub('1. The two sets, side by side',
+    'Top: what the gravity levels deal today, through the real run painter, on both rails. Bottom: the ten candidates, lettered, '
+    + 'at the same spacing and in-run size — floor row and the same thing mirrored on the ceiling.');
+  tile(sets, 'NOW — what the gravity levels deal today', B.control.join(' · '), GRAVITY_LANE_W, GRAVITY_LANE_H,
+    (ctx, t) => drawGravityControlLineup(ctx, t, B.control), { animated: true, wide: true });
+  tile(sets, 'NEW — the ten candidates', B.candidates.map((c) => `${c.letter} ${c.name}`).join(' · '), GRAVITY_LANE_W, GRAVITY_LANE_H,
+    (ctx, t) => drawGravityCandidateLineup(ctx, t, B.candidates), { animated: true, wide: true });
+  const grid = sub('2. Each in the corridor',
+    'The production look (P5, jade with occasional plateaus) at the run’s zoom, scrolling. Lorenzo and the candidate hold still: '
+    + 'on the floor ahead of him, and on the ceiling further on, as it would sit on the rail a gate leaves behind.');
+  for (const cand of B.candidates) {
+    tile(grid, `${cand.letter} — ${cand.name}`, gravityCandidateCaption(cand), GRAVITY_LANE_W, GRAVITY_LANE_H,
+      (ctx, t) => drawGravityCandidateLane(ctx, t, cand), { animated: true, wide: true });
+  }
+}
+
+// --------------------------------------------- THE SURGE — making the looks not-quite (lab)
+// 13 Oct 2026: "would we be able to shift the pallets of the underlying levels so they
+// look different to the normal levels? or perhaps apply a tint over the entire
+// backgrounds?" … "do it". One pass per treatment over backdrop and ground, under the
+// cast (src/dev/surge-tint-candidates.js); the eight looks through their real packs.
+{
+  const s = sectionEl('surge-treatment-bakeoff', 'THE SURGE — making the borrowed looks not-quite (bake-off)',
+    'The Surge cycles every cabinet\'s real look, so it reads as the levels you already played. Eight treatments to make it '
+    + 'obviously not-quite-the-same, each one pass over the backdrop and the ground, under the cast — Lorenzo and the crate keep '
+    + 'their colours. NOW is untreated. A–F are cheap blend-mode fills; G and H are per-pixel (shown still here; the run would '
+    + 'do them on a low-resolution copy). In-run size. SHIPPED AS A MIX, 13 Oct 2026: the run switches between them on the beat '
+    + '(stylePacks/surgePalette.js) — gentle ones on surge-1, D–H joining from surge-2, busier through surge-3; washes only in inks far from each look\'s own colours.',
+    '13 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  for (const tr of SURGE_TREATMENTS) {
+    const grid = sub(`${tr.letter} — ${tr.name}`, tr.note);
+    const still = tr.id === 'thermal' || tr.id === 'posterise';
+    for (const look of SURGE_LOOKS) {
+      const caption = tr.id === 'wrong' ? `in ${wrongInkName(look.style)}` : '';
+      tile(grid, look.name, caption, 480, 270, (ctx, t) => drawSurgeTreatment(ctx, t, look.style, tr), { animated: !still });
+    }
+  }
+}
+
+// --------------------------------------------- SPACE CABINET — Mars Attacks! (lab)
+// 13 Oct 2026: "can you create some background objects that are in the style of
+// Mars Attacks? perhaps a different alien? just for the lab/gallery to see what
+// might work". src/dev/mars-attacks-candidates.js. Each alone at in-run size on
+// the jade sky, then in the real window (the shipped room, scenery only).
+{
+  const s = sectionEl('space-mars-attacks', 'SPACE CABINET — Mars Attacks! (bake-off)',
+    'Background candidates after Mars Attacks!: the brain-and-skull Martian in a bubble helmet, the film’s silver saucer with '
+    + 'its heat ray, a far-off fleet, a Martian on a plateau with his ray gun, and a zap landing on the ridges. Lab only — '
+    + 'pick any letters to bring into the level. In-run size. ANIMATED.',
+    '13 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  const Z = 1.6;
+  const alone = sub('1. Each on its own', 'At the size it would be in the window, on the jade sky.');
+  for (const cand of MARS_CANDIDATES) {
+    tile(alone, `${cand.letter} — ${cand.name}`, cand.note, cand.w * Z, cand.h * Z, (ctx, t) => {
+      const g = ctx.createLinearGradient(0, 0, 0, cand.h * Z);
+      g.addColorStop(0, '#05140f'); g.addColorStop(0.7, '#0e3328'); g.addColorStop(1, '#2a6a52');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, cand.w * Z, cand.h * Z);
+      ctx.save(); ctx.scale(Z, Z); cand.alone(ctx, t, cand.w, cand.h); ctx.restore();
+    }, { animated: true });
+  }
+  const inWindow = sub('2. In the window', 'The shipped jade room, scenery only, with the candidate added to the view.');
+  for (const cand of MARS_CANDIDATES.filter((c) => c.scene)) {
+    const look = marsLook(cand);
+    tile(inWindow, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
+      (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, 0.62, { scenery: true }), { animated: true });
+  }
+  // Asked the same day: the fleet here and there in every level; level 3 a full
+  // invasion — ships hunted, bases struck by the saucer (B) and the fleet, ruins
+  // from then on, a lone Martian on the last butte, the saucer over the finish.
+  const L3 = SPACE_LOOKS['plateau-occasional'];
+  const inv = sub('3. Level 3: the invasion', 'The shipped level-3 look, scenery only, held at the story’s moments, then the whole stage in 30 s. The fleet (bigger here) strikes the first half, the saucer only appears in the second, every base goes up piece by piece, one butte is left for the lone Martian. '
+    + 'Levels 1 and 2 keep the friendly cyclops saucer and see the fleet pass now and then; level 3 never sees the friendly one.');
+  for (const [name, at, t0] of [['The fleet arrives over a base', 0.1657, 5], ['…and bolts it piece by piece', 0.172, 5.3],
+    ['A ship hunted down', 0.4, 43.2], ['Second half: the saucer’s surprise', 0.5472, 6], ['Its beam sweeps the base', 0.5685, 6.6],
+    ['One Martian left, on the last butte', 0.92, 7], ['The finish: a Martian floating, the saucer over the airlock', 0.968, 9]]) {
+    tile(inv, name, `${Math.round(at * 100)}% of the stage`, 480, 270,
+      (ctx, t) => drawSpaceShot(ctx, t0 + (t % 2), L3, SPACE_SHOTS[0], 480, 270, at, { scenery: true, stage: 3 }), { animated: true });
+  }
+  tile(inv, 'Level 3, the whole stage in 30 s', 'Progress swept 0 → 100% on a loop.', 480, 270,
+    (ctx, t) => drawSpaceShot(ctx, t, L3, SPACE_SHOTS[0], 480, 270, (t % 30) / 30, { scenery: true, stage: 3 }), { animated: true });
 }
 
 // ---------------------------------------------------------------- driver

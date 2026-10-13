@@ -39,13 +39,13 @@ function assert(cond, msg) {
 }
 
 // A spread of the campaign: every cabinet's mechanics, every set piece the
-// sweeps interact with — crossings (plumber-2, speed-3, cardboard-3, surge-2),
+// sweeps interact with — crossings (plumber-2, speed-3, gravity-3, surge-2),
 // the loop (speed-2/3), tunnels and darkness (crypt), routes everywhere.
 // Rhythm is excluded: its lane is beat-locked to an audio clock the node
 // harness does not run, so the spawner never fills and there is nothing to
 // watch. Its resync sweeps are covered by tests/beat-chart.js.
 const PLAY = ['plumber-1', 'plumber-2', 'plumber-3', 'speed-2', 'speed-3',
-  'neon-2', 'frost-2', 'crypt-2', 'cardboard-3', 'office-2', 'surge-2'];
+  'neon-2', 'frost-2', 'crypt-2', 'gravity-3', 'office-2', 'surge-2'];
 const TICK = 1 / 60;
 
 for (const stageId of PLAY) {

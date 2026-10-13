@@ -127,8 +127,12 @@ const CASES = [
   ['office', 'office'],
 ];
 
+// Cardboard Kingdom's cabinet is gone (its slot is Gravity Grid since 13 Oct
+// 2026), but its pack still ships for the Surge and the gallery: test it
+// against the Kingdom's own colours.
+const KINGDOM = { id: 'cardboard', sky: ['#d8c8a8', '#e8dcc0'], ground: '#c8a068', groundDark: '#8a6a3a', far: '#b89058', hills: '#a88448' };
 for (const [style, cabinetId] of CASES) {
-  const cabinet = CABINETS.find((cab) => cab.id === cabinetId);
+  const cabinet = cabinetId === 'cardboard' ? KINGDOM : CABINETS.find((cab) => cab.id === cabinetId);
   const portrait = paintedSpan(style, cabinet, PORTRAIT_COVERAGE);
   assert(portrait.hi >= PORTRAIT_COVERAGE.right,
     `${style} paints past the RIGHT edge of the portrait view (${portrait.hi.toFixed(0)} >= ${PORTRAIT_COVERAGE.right})`);
@@ -143,7 +147,7 @@ for (const [style, cabinetId] of CASES) {
 }
 
 for (const [style, cabinetId] of CASES) {
-  const cabinet = CABINETS.find((cab) => cab.id === cabinetId);
+  const cabinet = cabinetId === 'cardboard' ? KINGDOM : CABINETS.find((cab) => cab.id === cabinetId);
   const scaled = paintedSpan(style, cabinet, PORTRAIT_SCALED_COVERAGE);
   assert(scaled.hi >= PORTRAIT_SCALED_COVERAGE.right
     && scaled.lo <= PORTRAIT_SCALED_COVERAGE.left,

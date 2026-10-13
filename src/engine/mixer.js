@@ -350,7 +350,8 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     && links.length === list.length
     && list.every((e, i) => e && links[i].def?.id === e.id
       && JSON.stringify(links[i].params || {}) === JSON.stringify(e.params || {})
-      && !!links[i].bypassed === !!e.bypass && !!links[i].muted === !!e.mute);
+      && !!links[i].bypassed === !!e.bypass && !!links[i].muted === !!e.mute
+      && JSON.stringify(links[i].sweepRun || null) === JSON.stringify(e.sweepRun || null));
 
   const rewire = () => {
     // Anything that rewires while a chain is pending has unwired it — see `pending`.
@@ -443,6 +444,8 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
           link.params = { ...(e.params || {}) };
           link.bypassed = !!e.bypass;
           link.muted = !!e.mute;
+          // A Spot FX sweep that runs on past this section — see sweepWindow.
+          link.sweepRun = Array.isArray(e.sweepRun) ? e.sweepRun : null;
           link.muteDry = ctx.createGain();
           link.muteWet = ctx.createGain();
           link.muteDry.gain.value = link.muted ? 1 : 0;
@@ -520,6 +523,7 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
           .filter(([k, v]) => JSON.stringify(link.params?.[k]) !== JSON.stringify(v)));
         if (Object.keys(changed).length) link.set(changed, bpm);
         link.params = params;
+        link.sweepRun = Array.isArray(e.sweepRun) ? e.sweepRun : null;
         if (!!e.bypass !== !!link.bypassed) {
           link.bypassed = !!e.bypass;
           if (liveLinks().length) connectOutput();
@@ -618,6 +622,24 @@ function keepAlive(ctx) {
  * after it, live only. So a switch with branches is held awake by a silent source — see
  * keepAlive.
  */
+/**
+ * The stretch one link's SWEEP runs over. A section is cut wherever the set of effects
+ * playing changes, so an effect lit across sixteen bars under a filter that changes every
+ * four is in four sections — and swept over each of them in turn: a pan meant to cross the
+ * whole sixteen crossed it four times (Peter, 13 Oct 2026). The Spot FX editor writes how
+ * far such an effect's own run reaches before and after the section, in sixteenths
+ * (`sweepRun: [before, after]`), and it is swept over that instead.
+ */
+function sweepWindow(link, sixteenth, until, since) {
+  const run = link.sweepRun;
+  if (!run || !(Number(sixteenth) > 0) || !Number.isFinite(until) || !Number.isFinite(since)) return [until, since];
+  return [until + (Number(run[1]) || 0) * sixteenth, since - (Number(run[0]) || 0) * sixteenth];
+}
+const engageLink = (link, at, sixteenth, until, since) => {
+  const [u, s] = sweepWindow(link, sixteenth, until, since);
+  link.engage?.(at, sixteenth, u, s);
+};
+
 function makeSectionSwitch(ctx, from, to) {
   const direct = ctx.createGain();
   direct.gain.value = 1;
@@ -666,7 +688,7 @@ function makeSectionSwitch(ctx, from, to) {
       if (signature === selected) {
         if (fresh && signature) {
           const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
-          for (const link of live(signature)) link.engage?.(at, sixteenth, until, since);
+          for (const link of live(signature)) engageLink(link, at, sixteenth, until, since);
         }
         return;
       }
@@ -691,7 +713,7 @@ function makeSectionSwitch(ctx, from, to) {
         for (const link of live(previous)) link.disengage?.(at);
         branches.get(previous)?.slot.release(at + 0.004);
       }
-      if (signature) for (const link of live(signature)) link.engage?.(at, sixteenth, until, since);
+      if (signature) for (const link of live(signature)) engageLink(link, at, sixteenth, until, since);
     },
     /**
      * A chain's settings moved while it may be playing — the Spot FX editor's knobs. The
@@ -1913,6 +1935,8 @@ export function createMixer(ctx, {
   return {
     lanes: LANES.map((l) => l.key),
     lane: (key) => strips.get(key),
+    /** Every strip built so far — the canonical lanes and any layer a mix has added. */
+    get stripKeys() { return [...strips.keys()]; },
     /**
      * The strip for a lane, built on demand if the engine's own list has never heard
      * of it — which is what a LAYER is. Layers arrive with the mix rather than with
@@ -2414,20 +2438,39 @@ export function createMixer(ctx, {
      * render that sets its bank before this resolves builds its gates on the fallback.
      */
     ready: Promise.all(readyPromises),
-    /** Reset every strip to unity — the state the songs were balanced against. */
-    reset() {
-      soloed.clear();
-      soloedAux.clear();
-      soloedGroups.clear();
+    /**
+     * Reset every strip to unity — the state the songs were balanced against.
+     *
+     * `inPlace` empties what has to be emptied (the chains, so `pending` can hand back the
+     * ones the next mix keeps; the bar effects; scheduled state) and leaves every LEVEL
+     * where it is: faders, pans, mutes, EQ, sends, the returns, the groups, the master
+     * trim and the solos. The caller promises to set every one of them before its task
+     * ends — applyMix does, in `_mixToGraph`. The audio thread renders the graph as it is
+     * mid-task (see makeChainSlot), and applyMix is ~30 ms of main thread: walking every
+     * fader to 0 dB and back in that window was a burst of the whole song at unity, solos
+     * and mutes lifted, on every edit the desk applies (13 Oct 2026).
+     *
+     * `keepSolo` leaves the solos standing, for a caller that owns them and will put
+     * them back (the desk); without it they are cleared, applied by the next
+     * applySoloAll — applyGroups, in applyMix.
+     */
+    reset({ inPlace = false, keepSolo = false } = {}) {
+      if (!keepSolo) {
+        soloed.clear();
+        soloedAux.clear();
+        soloedGroups.clear();
+      }
       // The groups back to their defaults and their sections gone. ROUTES are left as
       // they are: applyMix sets them in the same task, from the mix it is applying, so a
       // grouped song re-applied on the desk never has its routing pulled out and put back.
       pendingGroupSections.clear();
-      for (const id of GROUP_IDS) groupState.set(id, groupSettings(null));
+      // In place, applyGroups sets every group's state and level from the mix.
+      if (!inPlace) for (const id of GROUP_IDS) groupState.set(id, groupSettings(null));
       for (const bus of groupBuses.values()) {
         bus.sections.clear();
         bus.slot.set([]);
         bus.active = false;
+        if (inPlace) continue;
         bus.eq.set(groupSettings(null).eq);
         applyGroupLevel(bus);
         bus.monitor.gain.value = 1;
@@ -2439,16 +2482,22 @@ export function createMixer(ctx, {
         // transition that has just been cancelled still commit its mute or its send a
         // beat later, onto a channel that is no longer in that arrangement at all.
         s._clearScheduledState();
+        s.setEffects([]);
+        if (inPlace) continue;
         s.setGain(0); s.setPan(0); s.setMute(false); s.setWidth(1);
         s.setEQ({ low: 0, mid: 0, high: 0 });
-        s.setEffects([]);
         s.setSend(defaultSends());
       }
       if (masterSlot) masterSlot.set([]);
       masterSections?.clear();
       for (const a of auxes.values()) {
         a.slot.set([]);
+        // The state goes back to the defaults either way — setAux merges into it — but in
+        // place the nodes keep sounding as they are until the caller's setAux moves them.
+        // (A reverb walked to the default decay and back rebuilt its impulse twice, and a
+        // new buffer on a ConvolverNode cuts the tail that was ringing.)
         a.state = JSON.parse(JSON.stringify(AUX_DEFAULTS[a.def.id]));
+        if (inPlace) continue;
         a.eq.set(a.state.eq);
         a.level.gain.value = a.state.level;
         a.panner.pan.value = a.state.pan;
@@ -2463,6 +2512,7 @@ export function createMixer(ctx, {
       treatDry.gain.value = 1;
       treatWet.gain.value = 0;
       if (treatSlot) treatSlot.set([]);
+      if (inPlace) return;
       for (const s of strips.values()) s._monitor(1);
       masterTrim.gain.value = 1;
       masterPan.pan.value = 0;

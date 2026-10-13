@@ -50,6 +50,10 @@ import { frostFortressShape } from './frostFortresses.js';
 import { FROST_COMBINED_SCENERY_FINISH } from './frostSceneryFinish.js';
 import { solidRuns, apronRuns } from './groundRuns.js';
 import { officePack } from './officeLigne.js';
+import { spaceStationPack } from './spaceStation.js';
+import { applySurgePalette } from './surgePalette.js';
+import { SURGE_INTRO } from './surgeIntro.js';
+import { CABINETS } from '../../data/cabinets.js';
 import { drawCryptGouache, cryptNight } from './cryptGouache.js';
 import { CRYPT_LIFE, cryptWitches, paintCryptWitch } from './cryptLife.js';
 import { gateCreak, gateBank } from './cryptGates.js';
@@ -60,7 +64,7 @@ import {
 } from './speedMcmObjects.js';
 import { drawJonesCoyote, WINK_SPARKLE_AFTER, CHORUS_YIP_AFTER, CHORUS_YIP_GAP } from './speedMcmCoyote.js';
 import { paintFrostSky } from './frostCrayon/sky.js';
-import { SURGE_BPM, surgePhase, paintSurgeBackdrop, surgePost, surgeSnowOn } from './surgeCut.js';
+import { SURGE_BPM, surgePhase, paintSurgeBackdrop, surgePost, surgeSnowOn, surgeBurst, SURGE_BURST_BEATS } from './surgeCut.js';
 
 import {
   PAPER_MATERIALS,
@@ -18020,6 +18024,13 @@ function lcdPack(settings) {
   };
 }
 
+// Temporary cabinet/dressing pack for Gravity Grid. The authored two-surface
+// run painter lives in the gravity controller; LCD supplies a coherent
+// presentation shell for cabinet previews and the final style remains open.
+// The station, as a floor-only pack (spaceStation.js). Only the Surge's cycle asks for
+// it: the gravity levels paint their own corridor. It was a copy of the LCD pack.
+function gravityPack() { return spaceStationPack(); }
+
 function cardboardPack(settings) {
   const paperPreview = !!(settings?.paperPreset
     && settings.paperCutout !== false && settings.paperCutout !== 'off');
@@ -18230,23 +18241,41 @@ function doodlePack(settings) {
 // CABINETS (that would pull every song into this module), so it can drift when a
 // cabinet changes style — it did, keeping faux3d and vhs after Speed went mcm and Crypt
 // went gouache. tests/surge-cycle.js holds it to the cabinets' styles.
-const SURGE_CYCLE = Object.freeze(['pixel', 'mcm', 'neon', 'watercolor', 'gouache', 'lcd', 'cardboard', 'office']);
+// The retired Cardboard slot is now Gravity Grid; until its final style pack is
+// integrated, use the existing LCD pack for this floor-only Surge appearance.
+const SURGE_CYCLE = Object.freeze(['pixel', 'mcm', 'neon', 'watercolor', 'gouache', 'lcd', 'gravity', 'office']);
+
+// Beats from bar 5 before surge-1's first look runs its own schedule: the burst, then calm.
+const SURGE_SETTLE = 4;
 
 function surgePack(settings) {
   // THE SURGE cycles every cabinet's look on its song's bar line, changing with a move
   // drawn at random and glitching worse through the act (surgeCut.js). Without the
   // song's beat (the hub's screen, the gallery, a test) it keeps the same clock off
   // game time at the song's tempo.
-  const packs = SURGE_CYCLE.map((name) => FACTORIES[name](settings));
+  // Each look is its own cabinet's (13 Oct 2026: "it doesn't seem to have accurate
+  // versions of the current levels … some look like earlier prototypes"). A pack paints
+  // from the cabinet it is handed, and handed the Surge's it took its grey palette and
+  // its old `cab.id === 'surge'` stand-ins (drawSurgeScenery's generic ridges in place
+  // of Field Service's countryside and Frost's fortresses). So each slot is handed its
+  // home cabinet, and built with its home's paper finish.
+  const homes = SURGE_CYCLE.map((name) => CABINETS.find((c) => c.id !== 'surge' && c.style === name) || null);
+  const packs = SURGE_CYCLE.map((name, i) => FACTORIES[name]({
+    ...settings, ...(homes[i] ? { paperCabinet: homes[i].id } : {}),
+  }));
+  const cabFor = (i, cab) => homes[i] || cab;
   // A fresh draw of moves and glitches every run.
   const seed = 1 + Math.floor(Math.random() * 100000);
   const state = {};
   let ph = surgePhase(0, { seed, count: packs.length, names: SURGE_CYCLE });
   let live = null;
   let snowCamX = 0;
+  // surge-1's bare opening (surgeIntro.js), until run.js says bar 8 has come.
+  let intro = false;
+  const quiet = { ...ph, glitches: [], intrusions: [], palette: null, move: null, flip: false };
   // The look whose lane, light and claims the frame is on: the outgoing one until the
   // downbeat a move lands on, the incoming one from it.
-  const cur = () => packs[ph.look];
+  const cur = () => (intro ? SURGE_INTRO : packs[ph.look]);
   return {
     name: 'surge',
     dark: true,
@@ -18277,25 +18306,53 @@ function surgePack(settings) {
       const beat = Number.isFinite(scene?.beat) ? scene.beat : t * SURGE_BPM / 60;
       const level = backgroundContext?.stageIndex ?? scene?.stageIndex ?? 1;
       const progress = backgroundContext?.progress ?? scene?.progress ?? 0;
-      ph = surgePhase(beat, { level, seed, count: packs.length, progress, names: SURGE_CYCLE });
+      // surge-1 opens black with a line for the ground until bar 5, then the cycle starts
+      // there: its first look under half a bar of every glitch at once (surgeBurst), then
+      // two beats of it plain before its own palette changes begin.
+      const si = scene?.surgeIntro;
+      const end = Number.isFinite(si?.end) ? si.end : (si ? Infinity : null);
+      intro = end != null && !si.done && beat < end;
+      if (intro) {
+        ph = quiet;
+        live = null;
+        SURGE_INTRO.bg(ctx);
+        return;
+      }
+      const cycleBeat = Number.isFinite(end) ? beat - end : beat;
+      ph = surgePhase(cycleBeat, { level, seed, count: packs.length, progress, names: SURGE_CYCLE });
+      if (Number.isFinite(end) && cycleBeat >= 0 && cycleBeat < SURGE_SETTLE) {
+        const burst = cycleBeat < SURGE_BURST_BEATS ? surgeBurst(cycleBeat, seed, packs.length, ph.look) : null;
+        Object.assign(ph, { move: null, u: 0, glitches: burst?.glitches || [], intrusions: [],
+          palette: burst?.palette || null, flip: false });
+      }
       snowCamX = camX;
       live = paintSurgeBackdrop(ctx, ph, (i, dy = 0, scrub = 0) => {
         ctx.save();
         if (dy) ctx.translate(0, dy);
-        packs[i].bg(ctx, t, camX - scrub, cab, totalDist, scene, bgShift, backgroundContext);
+        packs[i].bg(ctx, t, camX - scrub, cabFor(i, cab), totalDist, scene, bgShift, backgroundContext);
         ctx.restore();
       });
     },
-    ground(...args) {
-      cur().ground(...args);
+    ground(ctx, camX, cab, ...rest) {
+      cur().ground(ctx, camX, cabFor(ph.look, cab), ...rest);
     },
+    // Field Service's paper finish on its own ground passes while the cycle is on it.
+    get paperSlab() { return cur().paperSlab; },
     // The light a pack lays on the hero and the routes, which the run asks the wrapper
     // for: gouache's night veil and route-ground motion, mcm's afternoon light.
     routeGround(...args) { cur().routeGround?.(...args); },
     nightVeil() { return cur().nightVeil?.() || 0; },
     heroLight() { return cur().heroLight?.() ?? null; },
+    // The look's palette glitch (surgePalette.js), over backdrop and ground and under
+    // the cast: here for every look but one, which converts its frame in post() and
+    // holds the cast past it, so there it goes after post().
+    afterGround(ctx) {
+      if (!cur().actorsAbovePost) applySurgePalette(ctx, ph.palette);
+    },
     post(ctx, t) {
       cur().post(ctx, t);
+      if (intro) return;
+      if (cur().actorsAbovePost) applySurgePalette(ctx, ph.palette);
       surgePost(ctx, ph, live, state);
     },
     // Frost's blizzard blown onto another cabinet's look (surgeCut.js surgeIntrusions):
@@ -18317,7 +18374,7 @@ function surgePack(settings) {
 
 const FACTORIES = {
   pixel: pixelPack, faux3d: faux3dPack, mcm: mcmPack, neon: neonPack, watercolor: watercolorPack,
-  vhs: vhsPack, gouache: gouachePack, lcd: lcdPack, cardboard: cardboardPack, doodle: doodlePack, office: officePack, surge: surgePack,
+  vhs: vhsPack, gouache: gouachePack, lcd: lcdPack, gravity: gravityPack, cardboard: cardboardPack, doodle: doodlePack, office: officePack, surge: surgePack,
 };
 
 export function getStylePack(name, settings) {

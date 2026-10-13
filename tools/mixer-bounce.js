@@ -19,6 +19,7 @@ import {
 } from '../src/data/arrangements.js';
 import { wavBuffer, SR } from './lib/wav.js';
 import { loudness, gainToTarget, LOUDNESS_TARGET } from './lib/loudness.js';
+import { masterForListening } from './lib/listening-master.js';
 // The seed itself, not a copy of the number: a song bounced here and the same song
 // bounced by `node tools/render-track.js` get the same noise, not merely noise of the
 // same character.
@@ -113,13 +114,16 @@ function renderInFrame(frameUrl, args, { onStage, signal } = {}) {
  * fraction stays at 0 on a browser whose OfflineAudioContext cannot be suspended —
  * the render is unaffected, it just has nothing to say about its own position.
  *
+ * `master` brings the WAV up to a record's loudness for listening to on its own (see
+ * lib/listening-master.js) — the desk's Bounce button. Everything else here stays at unity.
+ *
  * @returns {Promise<{wav: Uint8Array, seconds: number, peak: number, peakDb: number,
  *   lufs: number, toTarget: number, clipping: boolean, loop: object|null, steps: number}>}
  */
 export async function bounceWav(bank, {
   trackId, mix, arrangement = null, repeat = 1, frameUrl,
   seed = DEFAULT_SEED, tail = 2.0, onStage, rawLane = false, returnPcm = false,
-  pcmOnly = false, measureOnly = false, signal, range = null, prerollSeconds = 0,
+  pcmOnly = false, measureOnly = false, signal, range = null, prerollSeconds = 0, master = false,
 }) {
   // Everything below this line is resolved HERE, in the desk, for one reason: the
   // bank reaches the frame as a structured clone, so `trackIdOf` on it would find
@@ -213,6 +217,26 @@ export async function bounceWav(bank, {
       seconds: out.seconds, peak: out.peak, loop, steps, sampleRate: SR,
       range: ranged ? { startStep: rangeStart, endStep: rangeEnd } : null,
       left: out.outL, right: out.outR,
+    };
+  }
+  if (master) {
+    // For listening, not for the game: one gain for the whole file into the desk's L7 —
+    // the balance inside the song is the mix's own, only how loud all of it is changes.
+    const done = await masterForListening([out.outL, out.outR], { sampleRate: SR });
+    const [L, R] = done.channels;
+    return {
+      wav: wavBuffer([L, R], 1),
+      seconds: out.seconds,
+      peak: 10 ** (done.peakDb / 20),
+      peakDb: done.peakDb,
+      lufs: done.lufs,
+      toTarget: 0,
+      clipping: false,
+      mastered: { gainDb: done.gainDb, fromLufs: done.before.lufs },
+      loop,
+      steps,
+      sampleRate: SR,
+      ...(returnPcm ? { left: L, right: R } : {}),
     };
   }
   const m = loudness([out.outL, out.outR]);

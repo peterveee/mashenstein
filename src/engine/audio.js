@@ -762,6 +762,8 @@ export const SLEIGH_CAROL = 'jingle';
 // song's triangle lead and the celeste, where a mallet carries over a full band.
 const SLEIGH_CAROL_LO = 523.25;
 
+// The shipped variant of the Martian ray-gun pew (see case 'martianPew').
+export const MARTIAN_PEW = 'B';   // Peter's pick, 13 Oct
 export const SFX_TRIM = {
   blockBreak: 0.495, coinSpray: 0.822, hit: 0.785,
   // Levelled against 'boom', its opposite number, and deliberately far over it — the
@@ -3396,6 +3398,32 @@ class AudioSys {
     return job;
   }
 
+  smallExplosion(p = 1) {
+    if (!this.ctx || !this.crashBuf) return;
+    const t = this.cueAt(), q = this.cueGain, dur = 0.7;
+    const src = this.ctx.createBufferSource(); src.buffer = this.crashBuf;
+    src.playbackRate.value = p;
+    const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 110;
+    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.6;
+    // Darker since 13 Oct ("a little too bright"): starts at 2.6 kHz, not 5.2.
+    lp.frequency.setValueAtTime(2600 * p, t);
+    lp.frequency.exponentialRampToValueAtTime(300, t + dur * 0.9);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3 * q, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.11 * q, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.03 * q, t + 0.4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.02);
+    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.cueDest || this.sfxGain);
+    const echo = this.ctx.createGain(); echo.gain.value = 0.03;
+    g.connect(echo); echo.connect(this.echoBus);
+    src.start(t); src.stop(t + dur + 0.03);
+    this.noise(0.05, 0.12, 'bandpass', 1500);
+    this.noise(0.35, 0.08, 'lowpass', 300, 0.02);
+    for (const [when, freq, gain] of [[0.09, 1300, 0.05], [0.2, 900, 0.04], [0.33, 650, 0.03]]) this.noise(0.07, gain, 'bandpass', freq * p, when);
+  }
+
   explosion() {
     if (!this.ctx || !this.crashBuf) return;
     const t = this.cueAt();
@@ -5017,6 +5045,37 @@ class AudioSys {
       case 'copterBonk': this.copterBonk(); break;
       case 'girderBoing': this.girderBoing(); break;
       case 'land': this.noise(0.06, 0.15, 'lowpass', 400); break;
+      // A Martian ray gun, kept soft: a sine falling an octave and a half with a
+      // faint triangle a fifth over it — pew. Level 2's one raid only (Peter, 13
+      // Oct); it fires a few times a second, so it sits well under the music.
+      // Brighter and louder after the first take (Peter, 13 Oct: "too quiet and
+      // not bright enough"). Variants A–E for the audition; MARTIAN_PEW picks.
+      case 'martianPew': {
+        const v = opt.shape?.pew || MARTIAN_PEW, f = pitch;
+        // Level-matched by RMS (≈ −30 dB each), so they are judged on character.
+        const k = { A: 2.04, B: 3.47, C: 2.4, D: 1.97, E: 1.76 }[v] ?? 1, cg = this.cueGain;
+        // In the game it plays ~6 dB under the audition level (Peter: "reduce volume").
+        this.cueGain = cg * k;
+        if (v === 'A') {          // arcade: a square dive with a tick on the front
+          this.osc('square', 2400 * f, 560 * f, 0.12, 0.09);
+          this.noise(0.012, 0.05, 'highpass', 5000);
+        } else if (v === 'B') {   // saw ray: long, bright, falling far
+          this.osc('sawtooth', 3200 * f, 380 * f, 0.16, 0.07);
+          this.osc('square', 1600 * f, 190 * f, 0.16, 0.03);
+        } else if (v === 'C') {   // pew-pew: two quick square darts
+          this.osc('square', 2300 * f, 700 * f, 0.07, 0.085);
+          this.osc('square', 2600 * f, 780 * f, 0.07, 0.07, 0.085);
+        } else if (v === 'D') {   // sparkly: a detuned square pair over a sine, fast
+          this.osc('square', 3000 * f, 900 * f, 0.1, 0.06);
+          this.osc('square', 3090 * f, 930 * f, 0.1, 0.05);
+          this.osc('sine', 1500 * f, 450 * f, 0.1, 0.06);
+        } else {                  // E, B-movie ray gun: triangle swoop with a square edge
+          this.osc('triangle', 2000 * f, 300 * f, 0.2, 0.14);
+          this.osc('square', 4000 * f, 600 * f, 0.12, 0.035);
+        }
+        this.cueGain = cg;
+        break;
+      }
       // Two square pings a fourth apart, in the key of whatever is playing —
       // see coinNotes for why the numbers are not written down here.
       case 'coin': {
@@ -5454,6 +5513,11 @@ class AudioSys {
         break;
       }
       case 'boom': this.explosion(); break;
+      // A small, distant explosion for a piece of a base going up in level 2's
+      // raid: the big blast's recipe scaled down — a noise body whose lowpass
+      // sweeps down as the cloud spreads, a bright crack on the front, and a few
+      // crackles trailing off. No pitched thump (that read as a drum).
+      case 'smallBoom': this.smallExplosion(pitch); break;
       // NEON-1's LIGHTNING, on the bar the song turns minor (placed on the song clock
       // with inBeats — see run.js). Three layers, in the order the ear takes them: a
       // bright CRACK, an electric ZAP falling through the band (it is a neon bolt, so
@@ -6546,7 +6610,7 @@ class AudioSys {
   // Voice keys merge UNDER sections (`{...bank, ...voice}` then sections spread over
   // that at schedule time), so a section that sets the same key still wins. Lane
   // trims are relative and live on the strips, so per-section variation survives.
-  applyMix(bank, mix = undefined) {
+  applyMix(bank, mix = undefined, { keepSolo = false } = {}) {
     const entry = this.filterMix(bank, mix !== undefined ? mix : (bank ? MIX[trackIdOf(bank)] : null));
     // An edit to the mix is how Amount, Glide and the lane's own sound change under a
     // playing song; what was planned from the old one is stale, and so is any gate that
@@ -6585,7 +6649,7 @@ class AudioSys {
     // Hands back the same object when the mix says neither, which is every song that
     // has not been through the desk's Duplicate or Delete — see deskBank.
     bank = deskBank(bank, entry);
-    this._mixToGraph(bank, entry);
+    this._mixToGraph(bank, entry, { keepSolo });
 
     // `id` was read from the bank as passed in, above, before applyArrangement and
     // deskBank patched it — which is exactly what the song's preset copies need to be
@@ -6613,11 +6677,11 @@ class AudioSys {
    * — the scheduler, a treatment, the desk — still finds the new song's mix under it, in
    * order. Only a touch inside the fade gets the old click back.
    */
-  _mixToGraph(bank, entry) {
+  _mixToGraph(bank, entry, { keepSolo = false } = {}) {
     if (this._mixHoldUntil != null) {
       this._dropPendingMix();
       const due = this._mixHoldUntil;
-      const p = { bank, entry, due, after: [], timer: null };
+      const p = { bank, entry, keepSolo, due, after: [], timer: null };
       // By the audio clock, not the wall: the fade is scheduled on the one, and a timer
       // runs on the other.
       const wait = () => {
@@ -6634,7 +6698,15 @@ class AudioSys {
       return;
     }
     if (this.mixer) {
-      this.mixer.reset();
+      // IN PLACE: the chains are emptied (so `pending` keeps the ones this mix keeps) but
+      // no level is touched until it is set to where this mix wants it, once. A reset to
+      // unity followed by the mix, ~30 ms of main thread later, was heard — the audio
+      // thread renders the graph mid-task — as a burst of every channel at 0 dB with its
+      // mute and solo lifted, on every edit the desk applied (13 Oct 2026). So every
+      // strip, return and the master trim are written below whether the mix names them or
+      // not: what it leaves out goes to the default reset() used to put there.
+      this.mixer.reset({ inPlace: true, keepSolo });
+      const bpm = bank?.bpm || this.bpm;
       // No family rule any more. A lane used to be on the delay because of what KIND
       // of lane it was — melodic and fx echoed by default, percussion opted in — so a
       // channel's echo answered to nothing you could point at, and turning one down
@@ -6650,56 +6722,61 @@ class AudioSys {
       // on any preset that declares itself dry — a control that silently does nothing.
       // laneList, not LANES: a layer needs a strip of its own, and it arrives with the
       // mix rather than with the engine, so this is the first moment it can be built.
-      for (const { key } of laneList(bank)) {
-        const strip = this.mixer.ensureLane(key);
-        if (!strip) continue;
-        strip.setSend({ delay: 0 });
-      }
-      // The rack is already back at defaults from reset() above; retune the
-      // tempo-synced ones for this song's bpm, then lay the saved settings over.
-      this.setDelay({ division: 0.75, feedback: 0.35, tone: 2800 });
-      this.mixer.retune(bank?.bpm || this.bpm);
+      for (const { key } of laneList(bank)) this.mixer.ensureLane(key);
+      // Delay 1's time, feedback and damping are AudioSys nodes. One call with the
+      // defaults under the mix's own, rather than the defaults and then the mix: each
+      // glides, and a glide to the default time and back is heard as the echo bending.
+      const delayFx = entry?.fx?.delay || {};
+      this.setDelay({ division: delayFx.division ?? 0.75, feedback: delayFx.feedback ?? 0.35, tone: delayFx.tone ?? 2800 });
+      this.mixer.retune(bpm);
       // The Lab's songs have THE CEILING on (mixer.js CEILING), and so does every song on a
       // listening screen (setListening); every other song has it off.
       this.mixer.setCeiling?.(!!entry?.ceiling || this.listening);
+      this.mixer.setMasterTrim(entry?.master || 0);
+      this.mixer.setMasterPan(entry?.masterPan || 0);
       if (entry) {
-        this.mixer.setMasterTrim(entry.master || 0);
-        this.mixer.setMasterPan(entry.masterPan || 0);
         this.mixer.setLimiter(!!entry.limiter);
-        if (entry.masterEffects) this.mixer.setMasterEffects(entry.masterEffects, bank?.bpm || this.bpm);
-        for (const [id, patch] of Object.entries(entry.fx || {})) {
-          // Delay 1 is the engine's own echo; its time, feedback and damping live
-          // on the AudioSys nodes, so those params route there. Its EQ and return
-          // level are the mixer's, like every other aux.
-          if (id === 'delay') {
-            const { eq, level, pan, mute, effects, ...engineParams } = patch;
-            this.setDelay(engineParams);
-            this.mixer.setAux('delay', { eq, level, pan, mute }, bank?.bpm || this.bpm);
-          } else {
-            this.mixer.setAux(id, patch, bank?.bpm || this.bpm);
-          }
-          if (patch.effects) this.mixer.setAuxEffects(id, patch.effects, bank?.bpm || this.bpm);
+        if (entry.masterEffects) this.mixer.setMasterEffects(entry.masterEffects, bpm);
+      }
+      // Every return, named in the mix or not: one it leaves out is at its defaults.
+      for (const def of this.mixer.auxes) {
+        const patch = entry?.fx?.[def.id] || {};
+        const base = AUX_DEFAULTS[def.id] || {};
+        const full = { ...base };
+        for (const [k, v] of Object.entries(patch)) if (v !== undefined) full[k] = v;
+        full.eq = { ...(base.eq || {}), ...(patch.eq || {}) };
+        if (def.id === 'delay') {
+          // Delay 1 is the engine's own echo; its time, feedback and damping went to
+          // setDelay above. Its EQ and return level are the mixer's, like every other aux.
+          const { eq, level, pan, mute } = full;
+          this.mixer.setAux('delay', { eq, level, pan, mute }, bpm);
+        } else {
+          this.mixer.setAux(def.id, full, bpm);
         }
-        for (const [key, raw] of Object.entries(entry.lanes || {})) {
-          const strip = this.mixer.lane(key);
-          if (!strip) continue;
-          const s = laneSettings(raw);
-          strip.setGain(s.gain);
-          strip.setPan(s.pan);
-          strip.setWidth(s.width ?? 1);
-          strip.setMute(s.mute);
-          strip.setEQ(s.eq);
-          // Every aux, not just the two that existed first — naming them here is
-          // how delay2/reverb2 got silently dropped. Nothing falls back to a family
-          // default now: a send that is not in the mix is a send at zero.
-          strip.setSend(s.send);
-          // The channel delay used to be a bespoke insert here; it is an ordinary
-          // entry in the effect chain now, so old mixes carrying `insert` are
-          // migrated rather than silently dropped.
-          const chain = raw?.effects ? [...raw.effects] : [];
-          if (raw?.insert && (raw.insert.mix ?? 0) > 0) chain.unshift({ id: 'chandelay', params: raw.insert });
-          if (chain.length) strip.setEffects(chain, bank?.bpm || this.bpm);
-        }
+        if (patch.effects) this.mixer.setAuxEffects(def.id, patch.effects, bpm);
+      }
+      // Every strip, likewise — the lanes the mix names from it, the rest at unity.
+      const unsent = Object.fromEntries(this.mixer.auxes.map((a) => [a.id, a.defaultSend ?? 0]));
+      for (const key of this.mixer.stripKeys) {
+        const strip = this.mixer.lane(key);
+        if (!strip) continue;
+        const raw = entry?.lanes?.[key];
+        const s = laneSettings(raw);
+        strip.setGain(s.gain);
+        strip.setPan(s.pan);
+        strip.setWidth(s.width ?? 1);
+        strip.setMute(s.mute);
+        strip.setEQ(s.eq);
+        // Every aux, not just the two that existed first — naming them here is
+        // how delay2/reverb2 got silently dropped. Nothing falls back to a family
+        // default now: a send that is not in the mix is a send at zero.
+        strip.setSend({ ...unsent, ...s.send });
+        // The channel delay used to be a bespoke insert here; it is an ordinary
+        // entry in the effect chain now, so old mixes carrying `insert` are
+        // migrated rather than silently dropped.
+        const chain = raw?.effects ? [...raw.effects] : [];
+        if (raw?.insert && (raw.insert.mix ?? 0) > 0) chain.unshift({ id: 'chandelay', params: raw.insert });
+        if (chain.length) strip.setEffects(chain, bpm);
       }
     }
     // GROUP BUSES (src/data/group-buses.js): which lanes are routed into which group,
@@ -6726,7 +6803,7 @@ class AudioSys {
     if (!p) return;
     this._pendingMix = null;
     if (p.timer != null) clearTimeout(p.timer);
-    this._mixToGraph(p.bank, p.entry);
+    this._mixToGraph(p.bank, p.entry, { keepSolo: p.keepSolo });
     for (const fn of p.after) fn();
   }
 

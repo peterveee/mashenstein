@@ -3,10 +3,30 @@
 // Action classes drive fairness: 'jump' | 'slide' | 'none' (avoidable by running).
 
 export const OBSTACLES = {
+  // Gravity encounters share normal collision/damage and never require shots.
+  floatLaser: { w: 180, h: 8, ground: true, armored: true, action: 'jump', gravityArt: true },
+  floatSpikes: { w: 48, h: 8, ground: true, armored: true, action: 'jump', gravityArt: true },
+  maintenanceBrush: { w: 30, h: 30, alt: 13, armored: true, action: 'slide', gravityArt: true },
+  maintenancePulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },
+  maintenanceRollers: { w: 300, h: 22, ground: true, armored: true, action: 'jump', gravityArt: true },
   // Gravity Grid uses the standard crate / standing-hazard / drone footprints.
   magCargo: { w: 12, h: 11, sprite: 'magCargo', ground: true, breakable: true, action: 'jump' },
   oxygenRack: { w: 13, h: 14, sprite: 'oxygenRack', ground: true, armored: true, action: 'jump' },
   serviceLaser: { w: 12, h: 7, sprite: 'serviceLaser', alt: 13, artLift: 6, armored: true, action: 'slide' },
+  // The station's own (13 Oct 2026, sprites/gravityProps.js): two for each of the
+  // playtest's five, each copying the box and flags of the one it stands in for.
+  // GravityRunState makes every one of them armoured and unbreakable anyway.
+  foilCrate:       { w: 12, h: 11, sprite: 'foilCrate', ground: true, breakable: true, action: 'jump' },
+  specimenCase:    { w: 12, h: 11, sprite: 'specimenCase', ground: true, breakable: true, action: 'jump' },
+  fuelCell:        { w: 12, h: 11, sprite: 'fuelCell', ground: true, breakable: true, action: 'jump' },
+  maintenanceBot:  { w: 12, h: 11, sprite: 'maintenanceBot', ground: true, breakable: true, action: 'jump' },
+  coolantRadiator: { w: 13, h: 14, sprite: 'coolantRadiator', ground: true, armored: true, action: 'jump' },
+  valveManifold:   { w: 13, h: 14, sprite: 'valveManifold', ground: true, armored: true, action: 'jump' },
+  weldingDrone:    { w: 12, h: 7, sprite: 'weldingDrone', alt: 13, artLift: 6, armored: true, action: 'slide' },
+  looseToolkit:    { w: 12, h: 7, sprite: 'looseToolkit', alt: 13, artLift: 6, armored: true, action: 'slide' },
+  // The field behind every gate — popSpikes' plate, bed and lurk.
+  plasmaVents:     { w: 15, h: 7, sprite: 'plasmaVents', ground: true, breakable: false, action: 'jump', bedded: true, flush: true, lurks: true },
+  magClamps:       { w: 15, h: 7, sprite: 'magClamps', ground: true, breakable: false, action: 'jump', bedded: true, flush: true, lurks: true },
   // `skins`: three reds to one green, so a green one is an occasional visitor
   // rather than half the desert. Skin is picked off the spawn position (see
   // makeObstacle), so the mix is stable per instance and identical on a replay.

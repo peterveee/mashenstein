@@ -27,6 +27,7 @@ import {
   BAY_W, drawPoster, wallLitFrom, POSTER_W, POSTER_H,
 } from '../../sprites/backwall.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
+import { SPACE_LOOKS, SPACE_SHOTS, drawSpaceShot } from '../../dev/space-look-candidates.js';
 import { mix as HUB_MIX, arrangement as HUB_ARRANGEMENT } from '../../data/songs/hub.js';
 // The Mixer alternate is the editable source of truth for the Arcade Corner when it
 // exists. It is still a game alternate by design, so this direct import keeps the
@@ -1149,6 +1150,11 @@ function cabinetScene(cab) {
     x.scale(0.5, 0.5);
     if (cab.id === 'crypt') {
       drawCryptCabinetScene(x);
+    } else if (cab.style === 'gravity') {
+      // Gravity Grid's style pack is a stand-in (LCD), so its screen showed
+      // Rhythm Bankruptcy. Paint the level's own look instead: the station,
+      // the gates and a shelf outside, early in stage 1.
+      drawSpaceShot(x, 3, SPACE_LOOKS['plateau-occasional'], SPACE_SHOTS[0], W, H, 0.06, { scenery: true });
     } else {
       const pack = getStylePack(cab.style, {});
       // The cabinet's own hazards, pulled from its own pattern bank, so each

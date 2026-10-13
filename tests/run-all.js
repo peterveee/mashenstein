@@ -571,6 +571,7 @@ const suites = [
   // checked globally — this is the suite that catches the next sweep written
   // without the guard.
   'tests/no-visible-popout.js',
+  'tests/space-no-popout.js',
   // A hole is fatal, and invulnerability makes the floor there rather than
   // launching the hero back out of it.
   'tests/unpressed-launches.js',
@@ -673,6 +674,9 @@ const suites = [
   // Re-applying a mix is not a rebuild: the same mix laid back over a playing song keeps
   // every effect chain's nodes and changes no sample — the drum-preset dropout of 2 Oct.
   'tests/chain-reapply.js',
+  // The desk's Bounce, for listening: up to -14 LUFS through L7, under its ceiling, in time,
+  // and where nothing needs limiting the mix times one gain.
+  'tests/listening-master.js',
   // And the mirror image of it: a cabinet's treatment handing over to a level's mix
   // must do the opposite — keep the clock, keep the note ringing, change only the
   // presentation. Same claim, opposite sign. The first is the clock, in counters; the
@@ -747,6 +751,7 @@ const browserSuites = new Set([
   'tests/group-buses.js',
   'tests/sidechain-duck.js',
   'tests/chain-reapply.js',
+  'tests/listening-master.js',
   'tests/music-variant.js',
   'tests/music-variant-render.js',
   'tests/voices.js',

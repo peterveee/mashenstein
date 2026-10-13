@@ -8,7 +8,7 @@
 //   speed-2     the loop set piece + scripted pits + a chase mission's copter
 //   frost-2     ice (iceSlide spacing) + frost's island and fork
 //   crypt-2     a tunnel cabinet in act II (90s duration, higher tier ramp)
-//   cardboard-2 act III: 120s, tier 2 from the start, cardboard's islands
+//   gravity-3 Gravity Grid: 96s, authored checkpoints, no seeded routes/pits
 //
 // Three seeds each: enough that a stream disturbance cannot hide behind one
 // lucky deal, cheap enough (~1s a run) that the suite stays in the fast gate.
@@ -18,7 +18,7 @@ export const MATRIX = [
   { stage: 'speed-2', seeds: [101, 202, 303] },
   { stage: 'frost-2', seeds: [101, 202, 303] },
   { stage: 'crypt-2', seeds: [101, 202, 303] },
-  { stage: 'cardboard-2', seeds: [101, 202, 303] },
+  { stage: 'gravity-3', seeds: [101, 202, 303] },
 ];
 
 export const FIXTURE_PATH = 'tests/fixtures/layout-baseline.json';

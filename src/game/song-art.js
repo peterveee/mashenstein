@@ -6,6 +6,7 @@
 // Tapped, the lock screen blows the cover up to most of its width, so it is painted
 // from the game's own vector painters at full size and supersampled, as the home-screen
 // icon is (tools/render-icon.js).
+import { SPACE_LOOKS, SPACE_SHOTS, drawSpaceShot } from '../dev/space-look-candidates.js';
 import { drawToonFace, setInk, INK, TOON_SPECS } from '../sprites/toons.js';
 import { PROP_PAINTERS } from '../sprites/props.js';
 import { HEROES } from '../data/heroes.js';
@@ -192,8 +193,14 @@ function paintScenery(cab, S, random) {
   const progress = random();
   const total = 3000;
   const bc = { stageIndex, progress };
-  const pack = getStylePack(cab.style, {});
-  pack.bg(g, 4 + random() * 60, progress * total, cab, total, cab.id === 'rhythm' ? { stageIndex, beat: 0 } : bc, 0, bc);
+  if (cab.style === 'gravity') {
+    // Gravity Grid's style pack is an LCD stand-in; its covers showed Rhythm.
+    // Paint the level's own look, at a random point in the stage.
+    drawSpaceShot(g, 4 + random() * 60, SPACE_LOOKS['plateau-occasional'], SPACE_SHOTS[0], W, H, progress, { scenery: true });
+  } else {
+    const pack = getStylePack(cab.style, {});
+    pack.bg(g, 4 + random() * 60, progress * total, cab, total, cab.id === 'rhythm' ? { stageIndex, beat: 0 } : bc, 0, bc);
+  }
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = S;
   canvas.getContext('2d').drawImage(frame, Math.round((frame.width - S) / 2), 0, S, S, 0, 0, S, S);

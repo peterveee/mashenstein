@@ -61,9 +61,12 @@ for (const s of STAGES) {
     `${s.id}: checkpoints resolve to fractions inside the stage`);
 }
 
-for (const [cabinet, durationSec] of Object.entries({ cardboard: 95, office: 100, surge: 110 })) {
+for (const [cabinet, configured] of Object.entries({
+  gravity: [84, 100, 96], office: 100, surge: 110,
+})) {
   for (let index = 1; index <= 3; index++) {
     const id = `${cabinet}-${index}`;
+    const durationSec = Array.isArray(configured) ? configured[index - 1] : configured;
     ok(STAGE_LAYOUTS[id].durationSec === durationSec,
       `${id}: configured duration is ${durationSec}s`);
   }

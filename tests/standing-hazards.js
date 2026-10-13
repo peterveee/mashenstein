@@ -117,8 +117,10 @@ assert(carries('speed', 'campfire'), 'Speed gives the campfire its second home')
 assert(carries('plumber', 'fireBarrel'), 'Plumber gets the drum fire back from Speed');
 assert(carries('neon', 'popSpikes') && carries('neon', 'floorSaw') && carries('neon', 'fireBarrel'),
   'Neon owns ground reads of its own — its bag is not just the air');
-assert(carries('neon', 'dogBruiser') && carries('cardboard', 'dogBruiser'),
-  'the bruiser — the slow closer — appears in a pattern (Neon, Cardboard)');
+// Cardboard Kingdom's slot is Gravity Grid now, whose hazards are all authored
+// (data/gravity-stages.js) and whose pattern bank is empty on purpose.
+assert(carries('neon', 'dogBruiser'),
+  'the bruiser — the slow closer — appears in a pattern (Neon)');
 assert(carries('speed', 'bobcat') && !carries('speed', 'dogBruiser'),
   'Speed deals the streak bobcat in the bruiser\'s slot (28 Sep 2026)');
 // The Act II/III spread: floor hazards stop being an Act I vocabulary. Frost
@@ -128,8 +130,8 @@ assert(carries('speed', 'bobcat') && !carries('speed', 'dogBruiser'),
 assert(carries('frost', 'popSpikes') && carries('frost', 'campfire'),
   'Frost reads the road at ankle height and owns one warm thing');
 // Crypt traded its saw for spikes on 26 Sep 2026 (Peter: "Replace saw with spikes").
-assert(carries('rhythm', 'floorSaw') && carries('cardboard', 'floorSaw'),
-  'the saw spins in the LCD lane and the kingdom');
+assert(carries('rhythm', 'floorSaw'),
+  'the saw spins in the LCD lane');
 assert(!carries('crypt', 'floorSaw') && carries('crypt', 'popSpikes'),
   'Crypt deals spikes, not the saw');
 assert(carries('rhythm', 'barrel'),
@@ -176,8 +178,8 @@ for (const id of HAZARDS) {
   assert(carries('speed', 'boomBarrier') && carries('neon', 'boomBarrier')
     && carries('plumber', 'boomBarrier'),
     'all three Act I cabinets deal the hurdle — the short jump recurs across themes');
-  assert(carries('rhythm', 'boomBarrier') && carries('cardboard', 'boomBarrier'),
-    'and the barrier travels on — crossing gate, toll gate');
+  assert(carries('rhythm', 'boomBarrier'),
+    'and the barrier travels on — the crossing gate');
   // Corporate Kombat keeps the short jump in its own furniture: a velvet rope in
   // the lobby, spilled drawing pins on 23, a gold rope on 88.
   assert(floorCarries(1, 'velvetRope') && floorCarries(2, 'drawingPins') && floorCarries(3, 'velvetRopeGold'),

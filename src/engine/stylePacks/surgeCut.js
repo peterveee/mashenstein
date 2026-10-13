@@ -16,6 +16,7 @@
 // Lane glitches are held to the two kinds that keep a hazard where it is and still a
 // shape: a pixel crunch no coarser than 8 frame px, and a tear of a few px. Nothing that
 // blacks the lane out or moves it up and down.
+import { surgePalettes, surgePaletteAt } from './surgePalette.js';
 import { W, H, shake } from '../renderer.js';
 import { cellTile, grilleSoftTile, arcadeLandingDrop } from '../arcadeIntro.js';
 import { TapeRewindEffect } from '../../game/rewindFx.js';
@@ -126,6 +127,69 @@ export function surgeGlitches(slot, level, seed, count, progress = 0) {
   return out;
 }
 
+// THE BLIPS (Peter, 13 Oct 2026: "a bit more minor glitching in levels 1 & 2... just
+// brief bits of interruption or effects to sell it better so we don't have uninterrupted
+// sections of an existing cabinet"). Under the glitches above, a steady stutter of tiny
+// ones: a sixteenth or an eighth of a beat each, a band blanked, torn, crunched or showing
+// another cabinet. The look's clear stretch is cut into `per` even gaps and one blip lands
+// somewhere in each, so no look ever runs more than a couple of beats untouched. Never the
+// lane, never a shake. Their own stream, so the glitches above draw what they always drew.
+export const SURGE_BLIP_LEVELS = Object.freeze({
+  1: { per: 6, lens: [0.125, 0.125, 0.25], full: 0, h: [0.05, 0.16], kinds: ['blank', 'tear', 'pixel', 'ghost'] },
+  2: { per: 9, lens: [0.125, 0.25, 0.25, 0.5], full: 0.15, h: [0.06, 0.24], kinds: ['blank', 'tear', 'pixel', 'ghost', 'ghost', 'roll'] },
+  3: { per: 12, lens: [0.125, 0.25, 0.5, 0.5], full: 0.3, h: [0.08, 0.3], kinds: ['blank', 'tear', 'pixel', 'ghost', 'blocks', 'roll'] },
+});
+export function surgeBlips(slot, level, seed, count) {
+  const L = SURGE_BLIP_LEVELS[level] || SURGE_BLIP_LEVELS[1];
+  const r = rng(seed * 173 + slot * 19 + level * 11 + 0.375);
+  const from = 1.5, to = 14, gap = (to - from) / L.per;
+  const out = [];
+  for (let i = 0; i < L.per; i++) {
+    const len = L.lens[Math.floor(r() * L.lens.length)];
+    const start = from + i * gap + Math.floor(r() * Math.max(0, gap - len) * 8) / 8;
+    const h = L.h[0] + r() * (L.h[1] - L.h[0]);
+    out.push({
+      kind: L.kinds[Math.floor(r() * L.kinds.length)],
+      start, len, lane: false, full: r() < L.full,
+      band: { y: r() * (1 - h), h },
+      lv: 2 + Math.floor(r() * 2),
+      other: mod(slot + 1 + Math.floor(r() * (count - 1)), count),
+      seed: r() * 1000, shake: 0, blip: true,
+    });
+  }
+  return out;
+}
+
+// THE HINT (surge-1's bar 5, 13 Oct 2026: "on bar 5 go over the top with the glitches
+// for half a bar before settling - just a hint of whats coming up ahead"). Out of the
+// black opening (surgeIntro.js), the first look under everything at once for two beats:
+// a fresh scatter every sixteenth of tears, blocks, rolls, pixelation and other
+// cabinets' pictures, full-frame and banded, a jolt on the downbeat, and the palette
+// flashing negative, thermal and a wash. Never the lane: the hazards stay readable.
+export const SURGE_BURST_BEATS = 2;
+const BURST_KINDS = ['tear', 'blocks', 'ghost', 'pixel', 'roll', 'flicker', 'ghost', 'tear'];
+const BURST_PALETTE = ['negative', null, 'thermal', 'wash', 'negative', 'posterise', null, 'negative'];
+export function surgeBurst(since, seed, count, look) {
+  const tick = Math.floor(since * 4);
+  const r = rng(seed * 313 + tick * 41 + 0.125);
+  const glitches = [];
+  const n = 3 + Math.floor(r() * 2);
+  for (let i = 0; i < n; i++) {
+    const full = i === 0 && r() < 0.5;
+    const h = 0.1 + r() * 0.35, y = r() * (1 - h);
+    glitches.push({
+      kind: BURST_KINDS[Math.floor(r() * BURST_KINDS.length)],
+      start: tick / 4, len: 0.25, b: since - tick / 4, lane: false, full,
+      band: { y, h }, lv: 3 + Math.floor(r() * 2),
+      other: mod(look + 1 + Math.floor(r() * (count - 1)), count),
+      seed: r() * 1000, shake: tick === 0 && i === 0 ? 4 : 0,
+    });
+  }
+  const kind = BURST_PALETTE[tick % BURST_PALETTE.length];
+  const palette = kind ? { kind, ink: ['#ff3fb4', '#ff8a2a', '#3fcf5a'][tick % 3], pair: ['#2a1458', '#ffc070'] } : null;
+  return { glitches, palette };
+}
+
 // THE SCREEN UPSIDE DOWN (Peter, 1 Oct 2026: "completely flip the entire screen upside
 // down periodically to make it a little bit diabolical"). surge-3 only, and not in its
 // opening fifth. From there a look may turn the screen over on its second or third bar
@@ -206,9 +270,11 @@ export function surgePhase(beat, { level = 1, seed = 1, count = 8, progress = 0,
   if (toNext <= SURGE_MOVES[next].lead) Object.assign(ph, { move: next, u: -toNext, change: n + 1 });
   else if (since < SURGE_MOVES[last].tail) Object.assign(ph, { move: last, u: since, change: n });
   else {
-    ph.glitches = surgeGlitches(n, lv, seed, count, progress)
+    ph.glitches = [...surgeBlips(n, lv, seed, count), ...surgeGlitches(n, lv, seed, count, progress)]
       .filter((g) => since >= g.start && since < g.start + g.len)
       .map((g) => ({ ...g, b: since - g.start }));
+    // The look's colour scheme switching on the beat (surgePalette.js) — never across a move.
+    ph.palette = surgePaletteAt(surgePalettes(n, lv, seed, names?.[mod(n, count)] ?? null, progress), since);
   }
   ph.intrusions = surgeIntrusions(n, lv, seed, names?.[ph.look] ?? null, progress)
     .filter((x) => since >= x.start && since < x.start + x.len)
@@ -519,6 +585,7 @@ function glitchBackdrop(ctx, g, R, k, paint) {
       case 'roll': pixelate(ctx, R, 2 * k, true); roll(ctx, R, (g.b / g.len) * (1 + (Math.floor(g.seed) % 2))); grille(ctx, R, k); break;
       case 'tear': tear(ctx, R, k, g.seed, tick, 34 * k); break;
       case 'flicker': if (hash(g.seed + tick * 5.3) < 0.55) { ctx.fillStyle = BLACK; ctx.fillRect(R.x, R.y, R.w, R.h); } break;
+      case 'blank': ctx.fillStyle = BLACK; ctx.fillRect(R.x, R.y, R.w, R.h); break;
       case 'ghost': case 'blocks': break;
     }
   });

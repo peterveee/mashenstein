@@ -795,11 +795,33 @@ function buildBarEffectsEditor(x, y, key, {
       for (let u = last + 1; u < merged.length; u++) {
         if (merged[u].key === k && !picked.includes(merged[u])) { at = u; break; }
       }
-      if (at < 0) { at = last + 1; merged.splice(at, 0, { effect: cloneChain([e])[0], key: k }); }
+      if (at < 0) {
+        at = last + 1;
+        // Its `sweepRun` is where it sat in the sections it came from; `sections` works it
+        // out again from the steps, so a slot never carries an old one.
+        const effect = cloneChain([e])[0];
+        delete effect.sweepRun;
+        merged.splice(at, 0, { effect, key: k });
+      }
       picked.push(merged[at]);
       last = at;
     }
     picks.set(chainSig(c), picked);
+  }
+  // A sweep that ran on past this window — a sixteen-bar pan opened on four of its bars —
+  // keeps reaching as far beyond the window as it did, from whichever end it touches, so
+  // an edit to these bars does not cut it down to them (`cut` adds it back).
+  const reachOf = (pos, m) => {
+    const sec = fxSectionAt(curve, pos);
+    const e = sec?.chain.find((x) => effectKey(x) === m.key);
+    return Array.isArray(e?.sweepRun) ? [sec.from - (Number(e.sweepRun[0]) || 0), sec.to + (Number(e.sweepRun[1]) || 0)] : null;
+  };
+  const end = base + count * CELL;
+  for (const m of merged) {
+    const first = reachOf(base + CELL / 2, m);
+    const last = reachOf(end - CELL / 2, m);
+    const edge = [first ? Math.max(0, base - first[0]) : 0, last ? Math.max(0, last[1] - end) : 0];
+    if (edge[0] || edge[1]) m.effect.sweepEdge = edge;
   }
   const fullMask = () => new Array(count).fill(1);
   let chain = merged.map((m) => m.effect);
@@ -895,11 +917,7 @@ function buildBarEffectsEditor(x, y, key, {
   // they were heard and as they are now, pair by pair.
   const playing = (list) => {
     const seen = new Map();
-    for (let i = 0; i < count; i++) {
-      const lit = masks.map((m) => (m[i] ? 1 : 0)).join('');
-      if (!lit.includes('1') || seen.has(lit)) continue;
-      seen.set(lit, list.filter((_, e) => masks[e]?.[i]));
-    }
+    for (const s of cut(list)) if (!seen.has(s.key)) seen.set(s.key, s.chain);
     return [...seen.values()];
   };
   const commit = (tag = null) => {
@@ -1307,19 +1325,57 @@ function buildBarEffectsEditor(x, y, key, {
    * beat is two — the Crusher alone, then the Crusher into the Stutter — and the second is a
    * section of its own, so the Stutter grabs where its beat starts.
    */
-  const sections = () => {
+  const sections = () => cut(chain).map(({ from: a, to: b, chain: c }) => ({ from: a, to: b, chain: c }));
+
+  /**
+   * The cut itself, with `list` standing in for the slots (see `playing`). An effect that
+   * SWEEPS and is lit past either end of a section carries `sweepRun: [before, after]`, how
+   * many sixteenths its own run of lit steps reaches beyond the section, so its sweep runs
+   * across the whole run rather than restarting in every section the OTHER effects cut it
+   * into: a Gain panning left to right over sixteen bars, under a Filter rising every four,
+   * crossed the room four times (Peter, 13 Oct 2026). Not on a section-only effect: a
+   * Stutter's section end is where its tape stops, and that stays the section's.
+   */
+  function cut(list) {
     const out = [];
     const litAt = (i) => masks.map((m) => (m[i] ? 1 : 0)).join('');
+    const runOf = (e, i) => {
+      let a = i;
+      while (a > 0 && masks[e][a - 1]) a--;
+      let b = i;
+      while (b < count && masks[e][b]) b++;
+      return [a, b];
+    };
+    const sweeps = (effect) => {
+      const def = EFFECT_BY_ID[effect?.id];
+      return !!def?.sweeps && !def.sectionOnly && (Number(effect.params?.sweep) || 0) >= 0.5;
+    };
     for (let i = 0; i < count;) {
       const lit = litAt(i);
       let j = i + 1;
       while (j < count && litAt(j) === lit) j++;
-      const sub = chain.filter((_, e) => masks[e][i]);
-      if (sub.length) out.push({ from: base + i * CELL, to: base + j * CELL, chain: cloneChain(sub) });
+      const sub = [];
+      const runs = [];
+      list.forEach((effect, e) => {
+        if (!masks[e]?.[i]) return;
+        const out1 = cloneChain([effect])[0];
+        delete out1.sweepRun;
+        delete out1.sweepEdge;
+        const [a, b] = runOf(e, i);
+        const edge = effect.sweepEdge || [0, 0];
+        const run = [(i - a) * CELL + (a === 0 ? edge[0] : 0), (b - j) * CELL + (b === count ? edge[1] : 0)];
+        // Keyed on the steps alone, so the chains as heard and as they are now pair up.
+        if (run[0] > 0 || run[1] > 0) {
+          runs.push(`${e}:${run}`);
+          if (sweeps(effect)) out1.sweepRun = run;
+        }
+        sub.push(out1);
+      });
+      if (sub.length) out.push({ from: base + i * CELL, to: base + j * CELL, chain: sub, key: `${lit}|${runs.join(',')}` });
       i = j;
     }
     return out;
-  };
+  }
 
   const foot = document.createElement('div'); foot.className = 'regfoot barfxfoot';
   const snapshot = document.createElement('button'); snapshot.textContent = 'Snapshot Inserts';
@@ -1357,6 +1413,21 @@ function buildBarEffectsEditor(x, y, key, {
   const rect = panel.getBoundingClientRect();
   panel.style.left = `${Math.max(6, Math.min(x, innerWidth - rect.width - 6))}px`;
   panel.style.top = `${Math.max(6, Math.min(y, innerHeight - rect.height - 6))}px`;
+
+  // Sections written before a sweep could run past its section are the same sections with
+  // no `sweepRun`: opening them here is enough to put it on, so a pan saved crossing the
+  // room every four bars crosses it once. Only when nothing else would change.
+  const stored = (curve?.fx || []).filter((sct) => sct.to > base && sct.from < end)
+    .map((sct) => ({ from: sct.from, to: sct.to, chain: sct.chain }));
+  const fresh = sections();
+  const runsOf = (list) => JSON.stringify(list.map((sct) => sct.chain.map((e) => e.sweepRun || null)));
+  // The cards fill in a setting the file left to its default, so the effects are compared
+  // by what they are and where, not by every number.
+  const shapeOf = (list) => JSON.stringify(list.map((sct) => [sct.from, sct.to,
+    sct.chain.map((e) => e.id)]));
+  if (fresh.length && shapeOf(stored) === shapeOf(fresh) && runsOf(stored) !== runsOf(fresh) && commit()) {
+    toast(`${targetLabel(key)}: sweeps now run across their whole stretch, not each section — ⌘Z to undo`);
+  }
 }
 
 export { openNoteFxEditor, openBarEffectsEditor };

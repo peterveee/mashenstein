@@ -52,9 +52,12 @@ assert(JSON.stringify([...cycle].sort()) === JSON.stringify(shipped),
 
 // Each slot, on each stage, with the Surge cabinet and the song's beat — what a Surge run
 // hands it. A look holds four bars; each stage opens three looks on from the last.
-const { surgePhase, surgeMove, SURGE_SLOT_BEATS, SURGE_MOVES, surgeGlitches, SURGE_GLITCH_LEVELS } =
+const { surgePhase, surgeMove, SURGE_SLOT_BEATS, SURGE_MOVES, surgeGlitches, SURGE_GLITCH_LEVELS, surgeBlips } =
   await import('../src/engine/stylePacks/surgeCut.js');
 const LEN = 11340;
+// Frost's slot paints with the real Frost cabinet now, whose crayon sky needs
+// ImageData the stub canvas does not have: the plain sky stands in, as Frost's
+// own headless tests do (backgroundContext.frostSkyPainter).
 const beatOf = (slot, stageIndex) => (((slot - (stageIndex - 1) * 3) % 8 + 8) % 8) * SURGE_SLOT_BEATS + 8;
 const pack = getStylePack('surge', {});
 cycle.forEach((name, slot) => {
@@ -66,7 +69,7 @@ cycle.forEach((name, slot) => {
       const { ctx, counts } = recorder();
       ctx.__mashBackgroundCoverage = { left: 0, right: 480, width: 480 };
       try {
-        pack.bg(ctx, 1, p * LEN, surge, LEN, { stageIndex, beat, progress: p }, 0, { stageIndex, progress: p, heroFrac: 0.3 });
+        pack.bg(ctx, 1, p * LEN, surge, LEN, { stageIndex, beat, progress: p }, 0, { stageIndex, progress: p, heroFrac: 0.3, frostSkyPainter: null });
         pack.ground(ctx, p * LEN, surge, [], [], 1, 480);
         pack.post(ctx, 1);
         pack.nightVeil();
@@ -90,7 +93,7 @@ for (const level of [1, 2, 3]) {
     for (const g of ph.glitches) seen.add(g.kind + (g.lane ? '+lane' : ''));
     const { ctx } = recorder();
     try {
-      pack.bg(ctx, 1, beat * 10, surge, LEN, { stageIndex: level, beat }, 0, { stageIndex: level, progress: 0.5 });
+      pack.bg(ctx, 1, beat * 10, surge, LEN, { stageIndex: level, beat }, 0, { stageIndex: level, progress: 0.5, frostSkyPainter: null });
       pack.post(ctx, 1);
     } catch (e) { threw = e; }
   }
@@ -112,6 +115,19 @@ for (const level of [1, 2, 3]) {
   assert(a.n < b.n && b.n < c.n, `more glitches each stage (${a.n}, ${b.n}, ${c.n} over 400 looks)`);
   assert(a.lane === 0 && b.lane > 0 && c.lane > b.lane, `the lane is left alone on surge-1 and caught more after (${a.lane}, ${b.lane}, ${c.lane})`);
   assert(Object.keys(SURGE_GLITCH_LEVELS).join() === '1,2,3', 'three severities, one a stage');
+  // The blips (13 Oct 2026): no look runs long untouched, even on surge-1, and the gaps
+  // shrink stage by stage. Never the lane.
+  const gaps = [1, 2, 3].map((level) => {
+    let worst = 0, lane = 0;
+    for (let slot = 0; slot < 400; slot++) {
+      let end = 1.5;
+      for (const g of surgeBlips(slot, level, 5, 8)) { worst = Math.max(worst, g.start - end); end = g.start + g.len; if (g.lane) lane++; }
+      worst = Math.max(worst, 14 - end);
+    }
+    return { worst, lane };
+  });
+  assert(gaps.every((g) => g.lane === 0) && gaps[0].worst <= 4 && gaps[0].worst > gaps[1].worst && gaps[1].worst > gaps[2].worst,
+    `the blips leave no long clean stretch, shorter each stage (${gaps.map((g) => g.worst.toFixed(2)).join(', ')} beats at most)`);
   // surge-3 climbs through the stage, to very frequent by the finish; the others hold.
   const at = (level, progress) => {
     let n = 0;
@@ -182,7 +198,7 @@ for (const level of [1, 2, 3]) {
   }
   assert(snowBeat != null, 'a surge-3 run meets the snow');
   const { ctx, counts } = recorder();
-  pack.bg(ctx, 1, 100, surge, LEN, { stageIndex: 3, beat: snowBeat }, 0, { stageIndex: 3, progress: 1 });
+  pack.bg(ctx, 1, 100, surge, LEN, { stageIndex: 3, beat: snowBeat }, 0, { stageIndex: 3, progress: 1, frostSkyPainter: null });
   const before = counts.fill;
   pack.weather(ctx, 1, { groundScreenY: 400 });
   assert(counts.fill > before, 'the Surge paints the blizzard while the snow is on');
@@ -193,7 +209,7 @@ for (const level of [1, 2, 3]) {
 {
   const beat = beatOf(cycle.indexOf('mcm'), 3);
   const { ctx } = recorder();
-  pack.bg(ctx, 1, 0.97 * LEN, surge, LEN, { stageIndex: 3, beat }, 0, { stageIndex: 3, progress: 0.97 });
+  pack.bg(ctx, 1, 0.97 * LEN, surge, LEN, { stageIndex: 3, beat }, 0, { stageIndex: 3, progress: 0.97, frostSkyPainter: null });
   assert(/^rgba\(/.test(pack.heroLight() || ''), 'the mcm look is the shipped desert, dusk on surge-3');
 }
 
@@ -207,5 +223,33 @@ const without = artWarmupPending();
 resetArtWarmup();
 const bakes = speedMcmWarmJobs().length + cryptGouacheWarmJobs().length + cryptLifeWarmJobs().length + officeWarmJobs().length;
 assert(withBakes - without === bakes, `a Surge run warms the mcm, gouache and office bakes (${withBakes - without} of ${bakes})`);
+
+
+// The palette glitches (surgePalette.js, 13 Oct 2026): each look opens on its own
+// colours, stays clear of the moves, keeps the loud ones short, never washes a look in
+// its own colour family, and gets busier from surge-1 to surge-3.
+{
+  const { surgePalettes, SURGE_LOOK_INKS } = await import('../src/engine/stylePacks/surgePalette.js');
+  let ok = true, why = '';
+  const count = { 1: 0, 2: 0, 3: 0 };
+  const nightNeg = { 1: 0, 2: 0, 3: 0 };
+  for (const lv of [1, 2, 3]) for (let seed = 1; seed < 40; seed++) for (let n = 0; n < 8; n++) {
+    const look = cycle[n % cycle.length];
+    for (const sgm of surgePalettes(n, lv, seed, look, lv === 3 ? 1 : 0)) {
+      count[lv]++;
+      if (sgm.start < 2 || sgm.start + sgm.len > 14) { ok = false; why = `${look} ${sgm.kind}@${sgm.start}+${sgm.len}`; }
+      const night = ['neon', 'gouache', 'gravity'].includes(look);
+      if (sgm.kind === 'negative' && sgm.len > (night && lv >= 3 ? 4 : 1)) { ok = false; why = 'long negative'; }
+      if (sgm.kind === 'thermal' && (look === 'neon' || look === 'gouache')) { ok = false; why = 'thermal on a dark look'; }
+      if (sgm.kind === 'wash' && !SURGE_LOOK_INKS[look].includes(sgm.ink)) { ok = false; why = `${look} washed in ${sgm.ink}`; }
+      if (lv === 1 && ['thermal', 'posterise'].includes(sgm.kind)) { ok = false; why = `surge-1 ${sgm.kind}`; }
+      if (lv === 1 && sgm.kind === 'negative' && !night) { ok = false; why = `surge-1 negative on ${look}`; }
+      if (sgm.kind === 'negative' && night) nightNeg[lv]++;
+    }
+  }
+  assert(ok, `palette glitches open normal, clear the moves, and keep to each look's far inks${why ? ` (${why})` : ''}`);
+  assert(nightNeg[1] > 0, `the night looks go negative from surge-1 (${nightNeg[1]} segments)`);
+  assert(count[1] < count[2] && count[2] < count[3], `palette glitches climb surge-1 → surge-3 (${count[1]}, ${count[2]}, ${count[3]})`);
+}
 
 if (failed) process.exit(1);

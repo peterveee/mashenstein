@@ -1035,7 +1035,23 @@ function undo() {
     const m = mixFor(trackId);
     return JSON.stringify(Object.keys(m.lanes || {}).sort().map((k) => [k, laneGroup(m.lanes[k])]));
   };
+  // Everything in the mix but which preset each lane plays: unchanged across the step, the
+  // undo is a preset change and goes to the engine the way choosing one does.
+  const restSig = () => {
+    const { voice, voiceParams, ...rest } = mixFor(trackId);
+    void voice; void voiceParams;
+    return JSON.stringify(rest);
+  };
+  // …and everything but the track order: unchanged, the undo is a drag and the engine
+  // has nothing to hear (see reorderLane).
+  const unorderedSig = () => {
+    const { order, ...rest } = mixFor(trackId);
+    void order;
+    return JSON.stringify(rest);
+  };
   const before = bankSig();
+  const restBefore = restSig();
+  const unorderedBefore = unorderedSig();
   const fxBefore = noteFxSig();
   const routesBefore = routeSig();
   const arrBefore = JSON.stringify(arrFor(step.trackId) || null);
@@ -1066,7 +1082,8 @@ function undo() {
   else if (bankSig() !== before || arrMoved) {
     // The lane list may have changed under it, so the arrangement is rebuilt too —
     // a row for a track that is no longer there is a row that plays nothing.
-    rebuildForShape();
+    rebuildForShape({ voiceOnly: !arrMoved && restSig() === restBefore,
+      orderOnly: !arrMoved && unorderedSig() === unorderedBefore });
     updateStatus();
   } else {
     buildRack(); applyToEngine(mixFor(trackId)); updateStatus();
@@ -2039,11 +2056,11 @@ function applyToEngine(mix) {
   // slider drag on the master writes to the wrong node. The seed is empty now, so
   // this is a no-op in practice — it stays because the two indices have to agree
   // however the seed is filled in, and effectsOf reads the same fallback.
+  // keepSolo: solo belongs to the desk rather than to the mix, and one cleared by the
+  // apply and put back after it was heard lifting for the ~30 ms in between.
   appliedBank = Audio.applyMix(track?.bank || null,
-    m.masterEffects ? m : { ...m, masterEffects: DEFAULT_MASTER_CHAIN() });
-  // The mix arrived by resetting every strip, and the reset took the engine's solo
-  // with it. Solo belongs to the desk rather than to the mix, so it goes straight
-  // back on — see reapplySolo.
+    m.masterEffects ? m : { ...m, masterEffects: DEFAULT_MASTER_CHAIN() }, { keepSolo: true });
+  // Still re-applied: a lane or group this mix no longer has is dropped from it here.
   reapplySolo();
 }
 
@@ -2948,12 +2965,19 @@ function reapplySolo() {
     if (strip) strip.setSolo(true); else gone.push(key);
   }
   for (const key of gone) { soloed.delete(key); syncLaneButtons(key); }
+  // The engine kept its solos through the apply (keepSolo), so a lane it has no strip
+  // for is still in ITS set: start that set again from the desk's.
+  if (gone.length) {
+    Audio.mixer.clearSolo();
+    for (const key of soloed) Audio.mixer.lane(key)?.setSolo(true);
+  }
   for (const id of soloedAux) Audio.mixer.setAuxSolo(id, true);
   // A group with no members left has nothing to solo, and soloing it would silence the
   // desk for a strip that is not there.
   const live = new Set(activeGroups().map((g) => g.id));
   for (const id of [...soloedGroups]) {
-    if (live.has(id)) Audio.mixer.setGroupSolo?.(id, true); else soloedGroups.delete(id);
+    if (live.has(id)) Audio.mixer.setGroupSolo?.(id, true);
+    else { soloedGroups.delete(id); Audio.mixer.setGroupSolo?.(id, false); }
   }
   updateSoloLight();
   syncEffectSoloButton();
@@ -3631,7 +3655,12 @@ function setLaneVoice(laneKey, voiceId, { redraw = true, autoCopy = true } = {})
   // A voice change updates the strip's header and the arrangement identity together.
   // The picker owns the interaction now, so the rack can repaint normally after a choice.
   if (redraw || closed) buildRack();
-  applyToEngine(mixFor(trackId));
+  // Playing, rebank() above has already put the new voice on the engine — and the strips
+  // hold this mix already, since a voice is nothing a strip carries. applyToEngine on top
+  // of it reset every strip and rebuilt the master chain under the sounding song: the
+  // click on every preset change (13 Oct 2026). Stopped, it is still the path that hands
+  // the engine the bank the desk reads (`appliedBank`), and there is nothing to hear.
+  if (!playing) applyToEngine(mixFor(trackId));
   // The strip is only half of what names this preset. The track row names it too — and
   // the row is where the right-click that changes it usually starts — so a choice that
   // repainted only the rack left the row you clicked still reading the sound you had
@@ -3662,7 +3691,11 @@ function setLaneVoice(laneKey, voiceId, { redraw = true, autoCopy = true } = {})
 // the mix entry puts the song back exactly as it was composed.
 
 /** Rebuild everything that shows the lane list. Both edits below change it. */
-function rebuildForShape() {
+function rebuildForShape({ voiceOnly = false, orderOnly = false } = {}) {
+  // The rack and the arrangement are rebuilt whole below — ~150 ms of main thread on a
+  // big song, most of the scheduler's lookahead. Queue a second of song first, the way a
+  // workspace drag does (beginPlaybackVisualHold), so the build cannot run it dry.
+  try { Audio.prefill(1); } catch { /* audio may not have started yet */ }
   // Own the cache invalidation here. A caller should not be able to request a shape
   // rebuild and accidentally repaint the last shaped bank because it forgot to
   // clear one signature first.
@@ -3690,8 +3723,15 @@ function rebuildForShape() {
   // shut; nothing in this function runs per frame.
   syncRearrangeDrumControl();
   fitStrips();
+  // A new track ORDER is the desk's alone: deskBank carries it for `deskLanes` and no
+  // audio path reads it, so there is nothing to hand the engine — and a re-bank resets
+  // note FX and portamento under the playing song for no reason.
+  if (orderOnly) return;
   rebank();
-  applyToEngine(mixFor(trackId));
+  // A change of preset and nothing else (undoing one, say) is heard through rebank alone:
+  // the strips already hold this mix, and applyToEngine under a playing song resets every
+  // strip and rebuilds the master chain — a click. See setLaneVoice.
+  if (!(voiceOnly && playing)) applyToEngine(mixFor(trackId));
 }
 
 /** The next free key for a layer of `from`: bass → bass2, then bass3. */
@@ -3784,7 +3824,7 @@ function reorderLane(key, targetKey) {
   editMix((m) => { m.order = rest; });
   // The strips and the rows both come off `deskLanes`, and the track NUMBERS come off
   // the rack — so this has to be the full shape rebuild, not a repaint of one row.
-  rebuildForShape();
+  rebuildForShape({ orderOnly: true });
   const label = targetLabel(key);
   const n = rest.indexOf(key) + 1;
   toast(`${label} moved to ${n} of ${rest.length}`
@@ -20639,6 +20679,14 @@ const measured = (info) => `${info.lufs.toFixed(1)} LUFS `
   + `(${info.toTarget >= 0 ? '+' : ''}${info.toTarget.toFixed(1)} dB to target) · `
   + `peak ${info.peakDb.toFixed(1)} dBFS${info.clipping ? ' · ** CLIPPING **' : ''}`;
 
+// A bounce for listening says what was done to get it there: from the game's level, and
+// how hard it was driven into L7.
+const mastered = (info) => (info.mastered
+  ? `${info.lufs.toFixed(1)} LUFS for listening (the mix was ${info.mastered.fromLufs.toFixed(1)}; `
+    + `${info.mastered.gainDb >= 0 ? '+' : ''}${info.mastered.gainDb.toFixed(1)} dB into L7) · `
+    + `peak ${info.peakDb.toFixed(1)} dBFS`
+  : measured(info));
+
 /** Hand a blob to the browser as a named download. */
 function saveBlob(name, blob) {
   const a = document.createElement('a');
@@ -21948,8 +21996,12 @@ $('renderwav').onclick = async () => {
       // whose arrangement you have just undone renders as composed.
       mix, arrangement,
       repeat: passes, frameUrl: RENDER_FRAME_URL,
+      // A bounce is for listening to on its own, so it comes out at a record's loudness
+      // rather than the game's -21 (see lib/listening-master.js). Audition and the AAF
+      // stems stay at unity — they are for working on the mix, not for playing.
+      master: true,
       onStage: (stage, fraction) => {
-        if (stage === 'measuring') { btn.textContent = 'Measuring…'; toast(`Measuring ${title}…`, 0); return; }
+        if (stage === 'measuring') { btn.textContent = 'Mastering…'; toast(`Mastering ${title} for listening…`, 0); return; }
         // A browser that cannot suspend an offline context reports 0 for the whole
         // render; showing "0%" for half a minute is worse than showing nothing, so it
         // stays on the plain wording until a checkpoint actually moves.
@@ -21983,7 +22035,7 @@ $('renderwav').onclick = async () => {
     } else {
       saveBlob(name, new Blob([out.wav], { type: 'audio/wav' }));
     }
-    toast(`${where} · ${measured(out)}`, 8000);
+    toast(`${where} · ${mastered(out)}`, 10000);
   } catch (err) {
     toast(`Bounce failed — ${err.message}`, 8000);
   } finally {

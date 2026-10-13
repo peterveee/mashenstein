@@ -11,13 +11,17 @@
 import { CABINET_BY_ID, HUB_THEME, TITLE_THEME, FINALE_THEME } from './cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from './shop-themes.js';
 import { bank as GRAVITY_THEME } from './songs/gravity.js';
+import { bank as CARDBOARD_THEME } from './songs/cardboard.js';
 import { MEGAMIX_THEME } from './megamix.js';
 
 // Friendly aliases for the named themes plus the in-game shop theme. "shop"
 // resolves to COUNTER_DANCE_MIX_THEME — the approved bank both counters actually
 // play. The audition candidates it was chosen from are in archive/shop-auditions/.
 const ALIASES = {
-  gravity: { bank: GRAVITY_THEME, slug: 'gravity-grid', title: 'POLARITY DRIVE', group: 'cabinet' },
+  gravity: { bank: GRAVITY_THEME, slug: 'gravity-grid', title: 'TIME VORTEX', group: 'cabinet' },
+  // Cardboard Kingdom's song outlived its cabinet (the slot is Gravity Grid's since
+  // 13 Oct 2026): kept as a track under its old id so its mix and 8-bit trims hold.
+  cardboard: { bank: CARDBOARD_THEME, slug: 'cardboard-kingdom', title: 'CARDBOARD KINGDOM', group: 'cabinet' },
   hub: { bank: HUB_THEME, slug: 'food-court', title: 'THE FOOD COURT' },
   title: { bank: TITLE_THEME, slug: 'title-theme', title: 'EMPTY ARCADE' },
   finale: { bank: FINALE_THEME, slug: 'finale-theme', title: 'ONE MORE SWITCH' },

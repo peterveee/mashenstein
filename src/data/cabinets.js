@@ -11,7 +11,7 @@ import * as NEON from './songs/neon.js';
 import * as FROST from './songs/frost.js';
 import * as CRYPT from './songs/crypt.js';
 import * as RHYTHM from './songs/rhythm.js';
-import * as CARDBOARD from './songs/cardboard.js';
+import * as GRAVITY from './songs/gravity.js';
 import * as OFFICE from './songs/office.js';
 import * as SURGE from './songs/surge.js';
 import * as HUB from './songs/hub.js';
@@ -79,8 +79,8 @@ const ANIMALS = {
   // The bruiser is the slow closer — the one you can out-think — and at -38 he
   // is milder than the barrel (-40) that already rolls through every cabinet's
   // tier-2 lane, so even Act I speeds read him comfortably. Speed gets him from
-  // stage 2; Neon meets him once, at tier 2; Cardboard's is the kingdom's guard
-  // dog, and the one animal in Act III that is not on Corporate's payroll.
+  // stage 2; Neon meets him once, at tier 2. Gravity Grid uses authored station
+  // machinery instead of an animal closer.
   //
   // NONE OF THEM IS A TARGET. Neon's was described here as a shooting cabinet
   // finally dealing a ground target that shoots back by closing, and it is not
@@ -96,10 +96,6 @@ const ANIMALS = {
   ],
   neon: [
     P(2, [{ t: 'dogBruiser', dx: 0 }, coinArc(120)]),
-  ],
-  cardboard: [
-    P(1, [{ t: 'dogBruiser', dx: 0 }]),
-    P(2, [{ t: 'dogBruiser', dx: 0 }, { t: 'cardboardMonster', dx: 150 }]),
   ],
   // Crypt's Violet Panther takes some turns from the furious cat. The feral
   // dog remains in the mix; the smaller furious cat stays tier 2.
@@ -973,50 +969,19 @@ export const CABINETS = [
     taunt: 'THOSE LASERS COST ME A FORTUNE. DODGE THEM RESPECTFULLY.',
   },
   {
-    id: 'cardboard', name: 'CARDBOARD KINGDOM', act: 3, style: 'cardboard',
-    unlockPlugs: 28, speedBonus: 0.25,
-    mechanic: 'collapse', // scenery collapses behind; fake perspective props
-    sky: ['#d8c8a8', '#e8dcc0'], ground: '#c8a068', groundDark: '#9a7848',
-    far: '#b89058', hills: '#a88448',
-    // Corrugated brown, declared rather than defaulted, so the cut edge of a
-    // raised road reads as the inside of the cardboard it claims to be.
-    soil: '#7a5c34',
-    // OPEN AIR at the bottom of every hole (pitFill.js candidate A — free):
-    // a kingdom whose castle is four inches tall gets pits that are honestly
-    // just holes cut out of the set, with grit still crumbling off the edges.
-    pitFill: 'void',
-    // Stacked boxes to climb — the most box-shaped set piece the routes system
-    // makes, on the most box-shaped cabinet. Both stacks sit clear of every
-    // scripted pit on cardboard-2 (0.30/0.70) and -3 (0.25/0.55/0.80) and of
-    // both checkpoints; the second one tops out at AIR JUMP, which is the
-    // capsule that makes the next stack easier — the climb teaches its own
-    // reward.
-    islands: [
-      { at: 0.10, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: 'capStar' },
-      { at: 0.62, dwell: 3.0, steps: 3, rise: 29, step: 33, topPrize: 'capAirJump' },
-    ],
-    music: CARDBOARD.bank,
-    patterns: [
-      ...BASE_PATTERNS,
-      ...ANIMALS.cardboard,
-      P(0, [{ t: 'cardboardMonster', dx: 0 }]),
-      P(1, [{ t: 'cardboardMonster', dx: 0 }, coinArc(70)]),
-      P(1, [{ t: 'gap', dx: 0, w: 56 }]),
-      P(2, [{ t: 'cardboardMonster', dx: 0 }, { t: 'gap', dx: 90, w: 64 }]),
-      P(2, [{ t: 'cardboardMonster', dx: 0 }, { t: 'buzzbird', dx: 100 }]),
-      // The kingdom's own cast, doubled up: before this, 81% of Cardboard was
-      // shared desert furniture and the cabinet's ONLY unique prop appeared in
-      // four patterns of twenty-one.
-      P(1, [{ t: 'cardboardMonster', dx: 0 }, { t: 'cardboardMonster', dx: 90 }]),
-      P(2, [{ t: 'cardboardMonster', dx: 0 }, { t: 'drone', dx: 100 }]),
-      // Spread from Act I, each one a cardboard joke that is also a real read:
-      // the box cutter in the floor, an open flame in a kingdom made of
-      // kindling, and a toll gate into the castle.
-      P(1, [{ t: 'floorSaw', dx: 0 }]),
-      P(1, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
-      P(2, [{ t: 'boomBarrier', dx: 0 }, coinArc(60)]),
-    ],
-    taunt: 'THAT CASTLE IS FOUR INCHES TALL. LIKE MY PATIENCE.',
+    // Was 'cardboard' (Cardboard Kingdom's slot) until 13 Oct 2026; old saves are
+    // carried over by migrateCabinetIds in engine/save.js.
+    id: 'gravity', name: 'GRAVITY GRID', act: 3, style: 'gravity',
+    unlockPlugs: 28, speedBonus: -0.25,
+    mechanic: 'gravity',
+    sky: ['#07131e', '#162935'], ground: '#1a3546', groundDark: '#0b1723',
+    far: '#293441',
+    music: GRAVITY.bank,
+    // Gravity stages author every mandatory hazard and leave quiet repair
+    // windows. Random pattern hazards would make the two rails unpredictable.
+    patterns: [P(0, [])],
+    bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'],
+    taunt: 'THE FLOOR IS A MATTER OF OPINION.',
   },
   {
     id: 'office', name: 'CORPORATE KOMBAT', act: 3, style: 'office',

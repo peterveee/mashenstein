@@ -9,7 +9,7 @@ export const CHIP_RESULT_TRIMS = {
   crypt: { bass: -5.8, lead: 0.2, twinkle: -2.8, chords: -5.7, organChords: 0.6, kick: -0.5, clap: 8.3, rim: -5, hats: 5.5, bass2: -8.6, lead3: -1, lead2: -3.5, bass3: -8.1, bass4: -7.3, lead5: -6.6, lead6: -3.8, lead7: -3.2, snare2: -1.4, hats2: 1.9 },
   finale: { bass: 12, lead: 1.8, chords: 0.3, kick: -0.3, clap: 2.1, rim: -1.5, crash: 0.4 },
   frost: { bass: -3.4, lead: -4.5, snare: 7.1, clap: 2.1, hats: 0.2, ohats: 2.6, bass2: 4, lead8: 3.7, lead2: -0.8, lead3: -3.3, lead4: -4.3, lead9: 8.4, lead10: -2.4 },
-  gravity: { bass: -2.1, lead: -1.1, chords: -7.2, kick: 1.9, snare: -4.9, hats: -1.9, lead2: -2.2 },
+  gravity: { bass: -2.1, lead: -1.3, chords: 0.5, kick: -0.4, snare: -7.5, hats: 1.4, crash: -1, lead2: -3.4, lead7: -10.5, lead4: -1.2, lead5: -5, chords2: -5.7, bass2: 1.3, tom2: 11.4, tom3: 2.5, lead9: -1.9, lead10: 1, crash3: 2.4 },
   hub: { bass: 3.5, chords: -3.3, kick: 0.2, snare: 3.4, clap: 1.3, hats: 2.5, ohats: -4, crash2: 0.7, crash3: -0.7, bass2: -0.3, chords2: -3.8 },
   megamix: { bass: 7.1, lead: -2, chords: -0.1, kick: -2.3, snare: 2.8, clap: 0.6, hats: 1.1, ohats: 0.6, tom2: 12, bass3: 4.5, bass2: 2, lead2: 7.6 },
   neon: { bass: 3.2, lead: -5.2, twinkle: -0.8, chords: -5.1, kick: -2.6, snare: 5.1, clap: 4.3, hats: 2.6, ohats: -0.9, crash: 3, lead7: -4.2, lead2: -2.1, lead3: -2.7, lead4: -0.2, lead8: -2.3, lead6: -1.1, bass2: -0.7, chords2: -1.1, snare2: 4.5, clap2: 3, hats3: 0.5, hats2: 3.6, lead9: -0.2, lead10: -3, lead11: -1, lead13: -0.9, crash2: 2.7, lead14: -6.2 },

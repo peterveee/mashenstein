@@ -9,6 +9,7 @@ import { defaultSlot, defaultSettings } from '../engine/save.js';
 import { STAGES, STAGE_BY_ID } from '../data/stages.js';
 import { CABINET_BY_ID } from '../data/cabinets.js';
 import { RunState } from './run.js';
+import { GravityRunState } from './gravity/state.js';
 import { BossState, BOSSES } from './boss.js';
 import { DemoBot } from './bot.js';
 import { Rng } from '../engine/rng.js';
@@ -89,8 +90,11 @@ export class AttractState {
       initialHeroId: this.o.hero || undefined,
       onEnd: () => { this.done = true; },
     };
+    // Gravity Grid's stages need their own controller: through a plain RunState
+    // they ran on the cabinet's stand-in LCD pack, i.e. a Rhythm backdrop.
+    const cab = stage ? CABINET_BY_ID[stage.cabinet] : null;
     this.run = stage
-      ? new RunState({ ...base, stage })
+      ? (cab?.mechanic === 'gravity' ? new GravityRunState({ ...base, cabinet: cab, stage }) : new RunState({ ...base, stage }))
       : new BossState({ ...base, bossCab: this.scenario.id });
     this.run.enter();
     // No bot in crash test: the whole point is watching an unpiloted hero take

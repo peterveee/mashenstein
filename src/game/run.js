@@ -1,6 +1,8 @@
+import { secondsToResultsBar } from './results-chip.js';
 import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
+import { SURGE_INTRO_BEATS, SURGE_BPM } from '../engine/stylePacks/surgeIntro.js';
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, setScreenFlip, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome, screen as renderScreen } from '../engine/renderer.js';
 import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
 import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, guardGroundCap, ballisticApex, GUARD_DWELL } from '../engine/camera.js';
@@ -39,7 +41,7 @@ import { Powerups, POWER_DEFS, randomPowerPickup, weightedPowerPickup } from './
 // drives it with — one copy, or the two drift and the editor lies.
 // FINISH_CLEAR is re-exported below: its callers have always found it here.
 import {
-  BASE_SPEED, SPEED_RAMP_K, SPEED_RAMP_CAP, FINISH_CLEAR, resolveLayout,
+  BASE_SPEED, SPEED_RAMP_K, SPEED_RAMP_CAP, FINISH_CLEAR, resolveLayout, totalDistFor,
 } from './layout.js';
 export { FINISH_CLEAR };
 import { entityBox, overlaps, makePickup, makeObstacle, isFloorPad, isOpenGap, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
@@ -2055,12 +2057,15 @@ function paintHeroNightTinted(c, fn, bx, by, bw, bh, veil) {
 // back clean, split into red and cyan, sliced sideways, crunched to blocks or jumped a few
 // px with a ghost left behind — more often the nearer the pad (`heat` 0..1). Never hidden:
 // every state still shows the whole of him, where he is.
+// 13 Oct 2026: surge-1 and surge-2 get a hint of it too, just before the finish line
+// ("returning to normal when they land"): `clean` is the share of sixteenths left alone,
+// so the hint is the same glitches, rarer and smaller.
 let heroGlitchCanvas = null, heroGlitchTint = null;
 function heroGlitchHash(n) {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);
 }
-function paintHeroGlitched(c, fn, bx, by, bw, bh, beat, heat) {
+function paintHeroGlitched(c, fn, bx, by, bw, bh, beat, heat, clean) {
   const m = typeof c.getTransform === 'function' ? c.getTransform() : null;
   if (!m || typeof document === 'undefined' || !Number.isFinite(beat)) { fn(c); return; }
   // The home stretch (heat 2) goes nuts: a new glitch every 32nd, never a clean one, and
@@ -2069,7 +2074,7 @@ function paintHeroGlitched(c, fn, bx, by, bw, bh, beat, heat) {
   const tick = Math.floor(beat * (nuts ? 8 : 4));
   const r = heroGlitchHash(tick * 1.731);
   const kinds = ['split', 'slice', 'pixel', 'jump'];
-  const kind = !nuts && r < 0.55 - heat * 0.4 ? null : kinds[Math.floor(heroGlitchHash(tick * 7.13) * kinds.length)];
+  const kind = !nuts && r < clean ? null : kinds[Math.floor(heroGlitchHash(tick * 7.13) * kinds.length)];
   if (!kind) { fn(c); return; }
   const k = Math.abs(m.a) || 1;
   const pad = Math.ceil(10 * k);
@@ -3040,6 +3045,11 @@ export class RunState {
   /** Where the player's own feet rest right now. */
   playerGroundY() {
     return this.routeGroundY(this.routeSampleX(), this.route);
+  }
+
+  /** Surface and away-from-surface direction for foot-contact dust. */
+  playerDustSurface() {
+    return { y: this.playerGroundY(), away: -1 };
   }
 
   /**
@@ -4175,6 +4185,7 @@ export class RunState {
     this.signShown = false;
     this.finished = false;
     this.finaleT = null;        // finish-line hold timer; null = not crossed yet
+    this.finaleBarWait = false; // the hold has been stretched to the results' bar
     this.flipSlide = null;      // pole ride between the catch and the plunger
     this.finishing = false;
     this.finishT = 0;
@@ -4319,10 +4330,11 @@ export class RunState {
     const duration = this.overtime ? Infinity : (this.layout ? this.layout.durationSec : 330);
     this.duration = duration;
     this.distance = 0;
-    // Beat stages are exactly one fixed-speed duration; ordinary lanes retain
-    // their small finish cushion.
+    // Beat and gravity stages are exactly one fixed-speed duration; ordinary
+    // lanes retain their small finish cushion. Gravity encounters are authored
+    // against travel seconds, so a hidden 5% tail would desync their finish.
     this.totalDist = this.overtime ? Infinity
-      : duration * this.baseSpeed() * (this.beatLock ? 1 : 1.05);
+      : totalDistFor(this.baseSpeed(), duration, this.beatLock ? 'beat' : this.cabinet?.mechanic);
 
     // A parting flourish on the beat lane: sixteen 32nd-note coins running up
     // to the finish, so the last thing a rhythm stage plays is its fastest
@@ -6034,7 +6046,14 @@ export class RunState {
     // onset falls at or after the boundary is built normally, and the skip can come on
     // from here without eating the arrival of the tune.
     if (!this.silentSkipArmed && !MusicDirector.pending) this.armSilentLaneSkip();
-    if (this.finished) { Input.endFrame(); return; }
+    // The run can sit finished for up to a bar while the results wait for the
+    // beat (resultsOnTheBeat). The scenery's clock keeps going through that wait,
+    // or every background froze just before the results (Peter, 13 Oct — most
+    // visible over level 2's arriving Martian fleet).
+    if (this.finished) {
+      if (!this.paused) { this.prevBackgroundT = this.backgroundT; this.backgroundT += dt; }
+      Input.endFrame(); return;
+    }
     this.captureRenderInterpolation();
     // Scenery is presentation, not gameplay. Keep its clock alive through the
     // ACT card, opening run-in, and finish-pad finale even when tRun is held
@@ -6152,7 +6171,14 @@ export class RunState {
       if (this.flypast) this.flypast.t += dt;
       updateParticles(dt);
       this.tickFloaties(dt);
-      if (this.finaleT <= 0) this.endRun(true);
+      if (this.finaleT <= 0) {
+        // Hold on (everything above keeps animating) until the bar the results
+        // will open on, rather than ending now and standing frozen while they
+        // wait for it. Once only; endRun's own wait is then a frame or two.
+        const wait = this.finaleBarWait ? 0 : secondsToResultsBar();
+        this.finaleBarWait = true;
+        if (wait > 0.05) this.finaleT = wait; else this.endRun(true);
+      }
       Input.endFrame(); return;
     }
     // Dying during the finish run falls through to the death handler below, so
@@ -6665,11 +6691,11 @@ export class RunState {
       // both sides with only a little lift, and they swell where they stop.
       {
         const r = () => this.fxRng.float();
-        const ly = this.playerGroundY();
+        const { y: ly, away } = this.playerDustSurface();
         for (let i = 0; i < 4; i++) {
           const side = i % 2 ? 1 : -1;
-          spawnPuff(this.camX + PLAYER_X + 6 + side * (1 + r() * 3), ly - 1 - r() * 2,
-            side * (26 + r() * 30), -10 - r() * 12,
+          spawnPuff(this.camX + PLAYER_X + 6 + side * (1 + r() * 3), ly + away * (1 + r() * 2),
+            side * (26 + r() * 30), away * (10 + r() * 12),
             0.3 + r() * 0.2, '#c8b898', 1.5 + r() * 1.1, 2.6);
         }
       }
@@ -6697,7 +6723,7 @@ export class RunState {
       const afoot = this.player.grounded && this.player.slideAmount <= 0.5 && sp > 1;
       if (footfall && afoot) {
         const r = () => this.footRng.float();
-        const gy = this.playerGroundY();
+        const { y: gy, away } = this.playerDustSurface();
         const cx = this.camX + PLAYER_X + 6;
         // 0 at the opening jog, 1 once the ramp has run out, so a sprint
         // kicks up visibly more than a walk does off the same legs.
@@ -6705,15 +6731,15 @@ export class RunState {
         // The puff itself: kicked back and slightly up off the heel strike,
         // and it stalls within a few frames (that is the drag) so what reads
         // is a cloud hanging where the foot was rather than a thrown particle.
-        spawnPuff(cx + 3 - r() * 2, gy - 1 - r(),
-          -16 - r() * 18 - pace * 26, -6 - r() * 8,
+        spawnPuff(cx + 3 - r() * 2, gy + away * (1 + r()),
+          -16 - r() * 18 - pace * 26, away * (6 + r() * 8),
           0.32 + r() * 0.2 + pace * 0.14, '#c8b898',
           1.4 + r() * 0.8 + pace * 1.2, 2.5 + pace * 1.1);
         // A sprint throws a second, fainter puff off the toe-off behind him,
         // which is what gives the trail its length at speed.
         if (pace > 0.3) {
-          spawnPuff(cx - 4 - r() * 3, gy - 1,
-            -30 - r() * 24 - pace * 30, -4 - r() * 6,
+          spawnPuff(cx - 4 - r() * 3, gy + away,
+            -30 - r() * 24 - pace * 30, away * (4 + r() * 6),
             0.26 + r() * 0.18, '#b8a888', 1.1 + r() * 0.7 + pace * 0.7, 2.8);
         }
         // Grit off the same contact: a speck or two of the ground itself,
@@ -6721,8 +6747,8 @@ export class RunState {
         // instead of hanging. This is the part that reads as traction.
         const grit = pace > 0.55 ? 2 : 1;
         for (let i = 0; i < grit; i++) {
-          spawn(cx + 1 - r() * 4, gy - 1 - r() * 2,
-            -44 - r() * 70 - pace * 70, -34 - r() * 46,
+          spawn(cx + 1 - r() * 4, gy + away * (1 + r() * 2),
+            -44 - r() * 70 - pace * 70, away * (34 + r() * 46),
             0.2 + r() * 0.16, '#9a8a6c', 1, 320);
         }
       }
@@ -6741,8 +6767,9 @@ export class RunState {
           const r = () => this.fxRng.float();
           // off the trailing edge — the heel and the dragging hand — kicked
           // up and back; world-space, so it trails behind on its own
-          spawnPuff(this.camX + PLAYER_X - 8 - r() * 6, this.playerGroundY() - 1 - r() * 2,
-            -26 - r() * 30, -14 - r() * 22, 0.3 + r() * 0.2, '#c8b898', 1.2 + r() * 0.7, 2.4);
+          const { y, away } = this.playerDustSurface();
+          spawnPuff(this.camX + PLAYER_X - 8 - r() * 6, y + away * (1 + r() * 2),
+            -26 - r() * 30, away * (14 + r() * 22), 0.3 + r() * 0.2, '#c8b898', 1.2 + r() * 0.7, 2.4);
         }
       }
     }
@@ -6788,6 +6815,7 @@ export class RunState {
     // After every sweep above, because any of them can be the one that took the
     // hole a switch was standing over.
     this.retireOrphanSwitches();
+    this.retireCoinlessMagnets();
     this.notePatternPrizes();
     this.checkCheckpoints();
     // After the lines are counted, so a crossing is already in the target on the
@@ -6945,6 +6973,9 @@ export class RunState {
 
   finishWorldX() { return this.totalDist + PLAYER_X; }
   finishCameraX() { return this.finishWorldX() - finishLineX(); }
+  // Seconds a cabinet adds to the finish hold for its own moment (Gravity Grid's
+  // level 2 holds on the arriving Martian fleet). None by default.
+  finaleExtraHold() { return 0; }
   /**
    * WHERE A ROAD THAT `endsAtFinish` ENDS — neon-1's last train (Peter, 24 Sep: "position
    * the final train in level 1 so the sign is still visible and scrolling when we jump
@@ -7462,8 +7493,9 @@ export class RunState {
       // down — on the hop path that is after the rise, or the sound describes a
       // fall that has not begun.
       Audio.sfx('slideWhistle', { dur: ride, when: hopT });
+      this.finaleBarWait = false;
       this.finaleT = FINALE_HOLD + this.flip.band.hold + FINALE_TAIL
-        + (this.flipSlide ? this.flipSlide.dur : 0);
+        + (this.flipSlide ? this.flipSlide.dur : 0) + this.finaleExtraHold();
     }
     // Post-contact: the hold is running, the plunger is going down. Nothing else
     // to simulate — update()'s finaleT branch owns the frame from here.
@@ -8267,6 +8299,22 @@ export class RunState {
   // rather than asking whether it is live: a hole the player closed is dead in
   // exactly the same way as a hole a sweep deleted, and the prize on top of it
   // is the entire point of having closed it.
+  // A magnet with no coins after it is a wasted find (Peter, 13 Oct: "a magnet
+  // near the finish line when there are no coins"). Once the lane has been dealt
+  // all the way to its wall nothing more can spawn, so an off-screen magnet with
+  // no live coin further on can never pull anything and is withdrawn before it
+  // is seen. Mid-stage the lane is still being dealt, so the question is not
+  // asked until the wall is inside the fill's reach.
+  retireCoinlessMagnets() {
+    if (this.camX + W + 200 < this.laneWallX()) return;
+    const viewRight = this.viewRightX();
+    for (const m of this.pickups) {
+      if (!m.live || m.def?.power !== 'magnet' || m.x <= viewRight) continue;
+      if (this.pickups.some((c) => c.live && c.def?.coin && c.x > m.x)) continue;
+      m.live = false;
+    }
+  }
+
   retireOrphanSwitches() {
     const viewRight = this.viewRightX();
     const orphaned = (e) => {
@@ -15713,16 +15761,30 @@ export class RunState {
     try { this.drawFrame(ctx, renderAlpha); } finally { setPropDrawPhase(false); }
   }
 
-  // How hard the hero is glitching (0..1, rising to the pad), or null when he is not:
-  // surge-3 only, from its last checkpoint until he lands on the finish pad.
-  // Over 1 is the home stretch: the last two screens, where he goes nuts.
+  // How hard the hero is glitching, or null when he is not: { heat, clean } for
+  // paintHeroGlitched. surge-3 from its last checkpoint until he lands on the finish pad,
+  // heat 0..1 rising to the pad; over 1 is the home stretch, the last two screens, where
+  // he goes nuts. surge-1 and surge-2 only hint at it, over their last screen and a half /
+  // two and a half: small jumps, and most sixteenths left alone — glitched from one in ten
+  // to one in four on surge-1, one in five to nearly half on surge-2.
   heroGlitchHeat() {
-    if (this.cabinet?.id !== 'surge' || this.stage?.index !== 3 || this.flip) return null;
-    if (this.inSurgeHomeStretch()) return 2;
+    if (this.cabinet?.id !== 'surge' || this.flip) return null;
+    const lv = this.stage?.index;
+    if (lv === 1 || lv === 2) {
+      if (this.overtime) return null;
+      const reach = (lv === 1 ? 1.5 : 2.5) * VIEW_W;
+      const left = (this.totalDist || 0) - this.distance;
+      if (!Number.isFinite(left) || left > reach) return null;
+      const t = Math.max(0, Math.min(1, 1 - left / reach));
+      return lv === 1 ? { heat: 0.3 * t, clean: 0.9 - 0.15 * t } : { heat: 0.6 * t, clean: 0.8 - 0.25 * t };
+    }
+    if (lv !== 3) return null;
+    if (this.inSurgeHomeStretch()) return { heat: 2, clean: 0 };
     const last = this.checkpointsAt?.[this.checkpointsAt.length - 1];
     if (!Number.isFinite(last) || !(this.distance >= last)) return null;
     const span = (this.totalDist || 0) - last;
-    return span > 0 ? Math.max(0, Math.min(1, (this.distance - last) / span)) : 1;
+    const heat = span > 0 ? Math.max(0, Math.min(1, (this.distance - last) / span)) : 1;
+    return { heat, clean: 0.55 - heat * 0.4 };
   }
 
   // THE HOME STRETCH: surge-3's last two screens before the finish line (a landscape
@@ -15953,6 +16015,22 @@ export class RunState {
         audio: Audio.musicAnalysis?.() || null,
       }
       : null;
+    // surge-1 opens on a bare black lane until bar 5 of the song (stylePacks/surgeIntro.js).
+    // Bar 5 is fixed once a run, on the first song beat seen: the song's own bar 5 when the
+    // stage starts inside its first four bars, else four bars on from the next bar line
+    // (the cabinet screen may hand the song over mid-way). Until a song beat arrives the
+    // opening holds; with no song after three seconds it falls back to the stage's clock.
+    if (surgeScene && this.stage.index === 1 && !this.recordBackground && !this.overtime) {
+      const songBeat = surgeScene.beat;
+      const b = Number.isFinite(songBeat) ? songBeat
+        : backgroundT > 3 ? backgroundT * SURGE_BPM / 60 : null;
+      if (this.surgeIntroEnd == null && b != null) {
+        this.surgeIntroEnd = b < SURGE_INTRO_BEATS ? SURGE_INTRO_BEATS : Math.ceil(b / 4) * 4 + SURGE_INTRO_BEATS;
+      }
+      if (b != null && this.surgeIntroEnd != null && b >= this.surgeIntroEnd) this.surgeIntroDone = true;
+      surgeScene.surgeIntro = { end: this.surgeIntroEnd ?? null, done: !!this.surgeIntroDone };
+      if (!Number.isFinite(songBeat) && b != null) surgeScene.beat = b;
+    }
     const backgroundScene = surgeScene || (this.beatLock && this.stage
       ? {
         stageIndex: this.stage.index,
@@ -16407,7 +16485,10 @@ export class RunState {
         // the pack's paper finish where it has one (game/pitFillHard.js).
         { beat: Audio.songBeat(), paperSlab: this.style.paperSlab });
     }
-    if (!this.bossCab) {
+    // `noTerrain`: a pack whose world has no ground profile at all. Gravity Grid
+    // borrows Cardboard's cabinet id (and with it Cardboard's hill profile), so
+    // without this its rolling hills were painted across the station windows.
+    if (!this.bossCab && !this.style.noTerrain) {
       drawTerrain(ctx, cam, groundCabinet, this.obstacles, GROUND_Y, visibleWorldW, laneCuts,
         this.style.ownSurface === true, this.style.paperSlab);
     }
@@ -16481,6 +16562,10 @@ export class RunState {
         laneCuts,
       });
     }
+
+    // A pass over the finished backdrop and ground, under the cast: THE SURGE's
+    // palette glitches (stylePacks/surgePalette.js). No other pack has one.
+    this.style.afterGround?.(ctx);
 
     // Entities. On a converting style (lcd) the whole cast is held back past
     // post() with the hero, so enemies and pickups keep their full colour
@@ -16925,7 +17010,8 @@ export class RunState {
             const veil = light || `rgba(6,6,20,${(0.55 * night).toFixed(3)})`;
             lit = (c) => paintHeroNightTinted(c, fn, hx - 32 * z, hy - 58 * z, 64 * z, 68 * z, veil);
           }
-          // THE HERO GLITCHING: surge-3, from the last checkpoint until the finish pad.
+          // THE HERO GLITCHING: surge-3 from the last checkpoint, surge-1/2 just before the
+          // line, until the finish pad.
           const heat = this.heroGlitchHeat();
           if (heat != null) {
             const cx = (heroScreenX + 6) * z + portraitXOffset;
@@ -16935,7 +17021,7 @@ export class RunState {
             // The song's sixteenths; off the wall clock at its tempo if it is not playing.
             const heard = Audio.songBeat();
             const beat = Number.isFinite(heard) ? heard : performance.now() / 1000 * (132 / 60);
-            lit = (c) => paintHeroGlitched(c, inner, hx - 32 * z, hy - 58 * z, 64 * z, 68 * z, beat, heat);
+            lit = (c) => paintHeroGlitched(c, inner, hx - 32 * z, hy - 58 * z, 64 * z, 68 * z, beat, heat.heat, heat.clean);
           }
           const paint = this.insideTrain ? (c) => {
             c.save();

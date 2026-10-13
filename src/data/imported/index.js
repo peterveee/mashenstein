@@ -89,12 +89,17 @@ import * as BARBER_OF_SEVILLE from './barber-of-seville.js';
 import * as BARBER_Q from './barber-q.js';
 import * as BARBER from './barber.js';
 import * as CARDBOARD_8BIT from './cardboard-8bit.js';
+import * as CARDBOARD_KINGDOM_BANGER_COPY from './cardboard-kingdom-banger-copy.js';
 import * as CASTLE from './castle.js';
 import { CHOPIN3 } from './chopin3.js';
+import * as CORP_REMIX_1_COPY_2 from './corp-remix-1-copy-2.js';
+import * as CORP_REMIX_1 from './corp-remix-1.js';
 import * as CRYPT_8BIT from './crypt-8bit.js';
 import * as CRYPT_BLACK_ABBEY from './crypt-black-abbey.js';
 import * as CRYPT_CLOCKWORK_SEANCE from './crypt-clockwork-seance.js';
 import * as CRYPT_MIDNIGHT_PROCESSION from './crypt-midnight-procession.js';
+import * as CRYPT_PLUS_HAUNTED_MANOR from './crypt-plus-haunted-manor.js';
+import * as CRYPT_PLUS_SEANCE_PARLOUR from './crypt-plus-seance-parlour.js';
 import * as CRYPT_REMIX_COVEN from './crypt-remix-coven.js';
 import * as CRYPT_REMIX_GRAVEYARD_SHIFT from './crypt-remix-graveyard-shift.js';
 import * as CRYPT_REMIX_RAISE_THE_DEAD from './crypt-remix-raise-the-dead.js';
@@ -126,6 +131,10 @@ import * as FROST_REMIX_SNOW_GLOBE from './frost-remix-snow-globe.js';
 import * as GARY_NUMAN_CARS_2 from './gary-numan-cars-2.js';
 import * as GARY_NUMAN_CARS from './gary-numan-cars.js';
 import * as GRAVITY_8BIT from './gravity-8bit.js';
+import * as GRAVITY_REMIX_ORBITAL from './gravity-remix-orbital.js';
+import * as GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './gravity-remix-radiophonic-moog-seq.js';
+import * as GRAVITY_REMIX_RADIOPHONIC from './gravity-remix-radiophonic.js';
+import * as GRAVITY_REMIX_STARDUST_DISCO from './gravity-remix-stardust-disco.js';
 import * as HUB_8BIT from './hub-8bit.js';
 import * as MEGAMIX_8BIT from './megamix-8bit.js';
 import * as MIN_NEW from './min-new.js';
@@ -140,6 +149,31 @@ import * as NEON_REMIX_GOLDEN_HOUR from './neon-remix-golden-hour.js';
 import * as NEON_REMIX_LIVE_WIRE from './neon-remix-live-wire.js';
 import * as NEW_THE_FOOD_COURT from './new-the-food-court.js';
 import * as OFFICE_8BIT from './office-8bit.js';
+import * as OFFICE_DARK_1_E_MINOR from './office-dark-1-e-minor.js';
+import * as OFFICE_DARK_2_G_MINOR from './office-dark-2-g-minor.js';
+import * as OFFICE_DARK_3_PR_FACE from './office-dark-3-pr-face.js';
+import * as OFFICE_DARK_4A_MINOR_GROOVE from './office-dark-4a-minor-groove.js';
+import * as OFFICE_DARK_4B_MINOR_PR_FACE from './office-dark-4b-minor-pr-face.js';
+import * as OFFICE_DARK_4C from './office-dark-4c.js';
+import * as OFFICE_DARK_4D from './office-dark-4d.js';
+import * as OFFICE_DARK_4E from './office-dark-4e.js';
+import * as OFFICE_DARK_4F from './office-dark-4f.js';
+import * as OFFICE_PREVIEW_ELEVATOR from './office-preview-elevator.js';
+import * as OFFICE_PREVIEW_HOSTILE_TAKEOVER from './office-preview-hostile-takeover.js';
+import * as OFFICE_PREVIEW_NEW_JACK from './office-preview-new-jack.js';
+import * as OFFICE_PREVIEW_OFFICE_MACHINES from './office-preview-office-machines.js';
+import * as OFFICE_PREVIEW_POWER_SUIT from './office-preview-power-suit.js';
+import * as OFFICE_PREVIEW_TRADING_FLOOR from './office-preview-trading-floor.js';
+import * as OFFICE_THEME_1_THE_CLIMB from './office-theme-1-the-climb.js';
+import * as OFFICE_THEME_2_HOSTILE_BOARDROOM from './office-theme-2-hostile-boardroom.js';
+import * as OFFICE_THEME_3_EXECUTIVE_NOIR from './office-theme-3-executive-noir.js';
+import * as OFFICE_THEME_4_COMBO from './office-theme-4-combo.js';
+import * as OFFICE_THEME_5_PUNCHIER from './office-theme-5-punchier.js';
+import * as OFFICE_THEME_6_ALL_IN from './office-theme-6-all-in.js';
+import * as OFFICE_VARIATION_A from './office-variation-a.js';
+import * as OFFICE_VARIATION_B from './office-variation-b.js';
+import * as OFFICE_VARIATION_C from './office-variation-c.js';
+import * as OFFICE_VARIATION_D from './office-variation-d.js';
 import * as ORIGINAL_CARDBOARD from './original-cardboard.js';
 import * as ORIGINAL_CRYPT from './original-crypt.js';
 import * as ORIGINAL_FROST from './original-frost.js';
@@ -153,6 +187,8 @@ import * as ORIGINAL_SURGE from './original-surge.js';
 import * as ORIGINAL_TITLE from './original-title.js';
 import * as PLUMBER_8BIT from './plumber-8bit.js';
 import * as PLUMBER_PANIC_ALT from './plumber-panic-alt.js';
+import * as POLARITY_DRIVE_8BIT from './polarity-drive-8bit.js';
+import * as POLARITY_DRIVE from './polarity-drive.js';
 import * as RHYTHM_8BIT from './rhythm-8bit.js';
 import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
 import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
@@ -195,6 +231,34 @@ import * as SMW_OVERWORLD_SMWWD1_LU9 from './smw-overworld-smwwd1-lu9.js';
 import * as SMW_OVERWORLD from './smw-overworld.js';
 import * as SMW_TITLE_2 from './smw-title-2.js';
 import * as SMWGOOD from './smwgood.js';
+import * as SPACE_THEME_1_TIME_VORTEX from './space-theme-1-time-vortex.js';
+import * as SPACE_THEME_1A_VORTEX_POLARITY from './space-theme-1a-vortex-polarity.js';
+import * as SPACE_THEME_1B_VORTEX_CRYPT from './space-theme-1b-vortex-crypt.js';
+import * as SPACE_THEME_1C_VORTEX_FIELD_SERVICE from './space-theme-1c-vortex-field-service.js';
+import * as SPACE_THEME_1D_FEWER_VORTEX_CARDBOARD_CLICHE from './space-theme-1d-fewer-vortex-cardboard-cliche.js';
+import * as SPACE_THEME_1D_SLOW_VORTEX_CARDBOARD_CLICHE from './space-theme-1d-slow-vortex-cardboard-cliche.js';
+import * as SPACE_THEME_1D_SPARSE_LONG from './space-theme-1d-sparse-long.js';
+import * as SPACE_THEME_1D_SPARSE_VORTEX_CARDBOARD_CLICHE from './space-theme-1d-sparse-vortex-cardboard-cliche.js';
+import * as SPACE_THEME_1D_VORTEX_CARDBOARD_CLICHE from './space-theme-1d-vortex-cardboard-cliche.js';
+import * as SPACE_THEME_1E_SLOW_VORTEX_CARDBOARD_MEDIANTS from './space-theme-1e-slow-vortex-cardboard-mediants.js';
+import * as SPACE_THEME_1E_VORTEX_CARDBOARD_MEDIANTS from './space-theme-1e-vortex-cardboard-mediants.js';
+import * as SPACE_THEME_1F_FEWER_VORTEX_CARDBOARD_LIFT from './space-theme-1f-fewer-vortex-cardboard-lift.js';
+import * as SPACE_THEME_1F_SLOW_VORTEX_CARDBOARD_LIFT from './space-theme-1f-slow-vortex-cardboard-lift.js';
+import * as SPACE_THEME_1F_SPARSE_VORTEX_CARDBOARD_LIFT from './space-theme-1f-sparse-vortex-cardboard-lift.js';
+import * as SPACE_THEME_1F_VORTEX_CARDBOARD_LIFT from './space-theme-1f-vortex-cardboard-lift.js';
+import * as SPACE_THEME_1G_VORTEX_POLARITY_REHARM from './space-theme-1g-vortex-polarity-reharm.js';
+import * as SPACE_THEME_2_MOONBASE from './space-theme-2-moonbase.js';
+import * as SPACE_THEME_2A_MOONBASE_NEON from './space-theme-2a-moonbase-neon.js';
+import * as SPACE_THEME_2B_MOONBASE_CARDBOARD from './space-theme-2b-moonbase-cardboard.js';
+import * as SPACE_THEME_2C_MOONBASE_RHYTHM from './space-theme-2c-moonbase-rhythm.js';
+import * as SPACE_THEME_3_LIBERATOR from './space-theme-3-liberator.js';
+import * as SPACE_THEME_4_OXYGEN_DRIFT from './space-theme-4-oxygen-drift.js';
+import * as SPACE_THEME_4A_OXYGEN_POLARITY from './space-theme-4a-oxygen-polarity.js';
+import * as SPACE_THEME_4B_OXYGEN_EMPTY_ARCADE from './space-theme-4b-oxygen-empty-arcade.js';
+import * as SPACE_THEME_4C_OXYGEN_FROST from './space-theme-4c-oxygen-frost.js';
+import * as SPACE_THEME_5_STARFLEET_FANFARE from './space-theme-5-starfleet-fanfare.js';
+import * as SPACE_THEME_6_FINAL_FRONTIER from './space-theme-6-final-frontier.js';
+import * as SPACE_THEME_7_GALACTIC_DISCO from './space-theme-7-galactic-disco.js';
 import * as SPECIAL_STAGE_1 from './special-stage-1.js';
 import * as SPEED_8BIT from './speed-8bit.js';
 import * as SPEED_HORIZON_LINES_OVERDRIVE from './speed-horizon-lines-overdrive.js';
@@ -218,6 +282,7 @@ import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
 import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
 import * as THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER from './the-surge-mashterpiece-call-and-answer.js';
 import * as THE_SURGE_MASHTERPIECE_COPY from './the-surge-mashterpiece-copy.js';
+import * as TIME_VORTEX_V1 from './time-vortex-v1.js';
 import * as TITLE_8BIT from './title-8bit.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
 import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
@@ -300,12 +365,17 @@ export const IMPORTED_BY_ID = {
   "barber-q": { bank: BARBER_Q.bank, title: BARBER_Q.title, group: "imported", writable: true },
   "barber": { bank: BARBER.bank, title: BARBER.title, group: "imported", writable: true },
   "cardboard-8bit": { bank: CARDBOARD_8BIT.bank, title: CARDBOARD_8BIT.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "cardboard-kingdom-banger-copy": { bank: CARDBOARD_KINGDOM_BANGER_COPY.bank, title: CARDBOARD_KINGDOM_BANGER_COPY.title, group: "copy", writable: true },
   "castle": { bank: CASTLE.bank, title: CASTLE.title, group: "imported", writable: true },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
+  "corp-remix-1-copy-2": { bank: CORP_REMIX_1_COPY_2.bank, title: CORP_REMIX_1_COPY_2.title, group: "copy", writable: true },
+  "corp-remix-1": { bank: CORP_REMIX_1.bank, title: CORP_REMIX_1.title, group: "copy", writable: true },
   "crypt-8bit": { bank: CRYPT_8BIT.bank, title: CRYPT_8BIT.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-black-abbey": { bank: CRYPT_BLACK_ABBEY.bank, title: CRYPT_BLACK_ABBEY.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-clockwork-seance": { bank: CRYPT_CLOCKWORK_SEANCE.bank, title: CRYPT_CLOCKWORK_SEANCE.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-midnight-procession": { bank: CRYPT_MIDNIGHT_PROCESSION.bank, title: CRYPT_MIDNIGHT_PROCESSION.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-plus-haunted-manor": { bank: CRYPT_PLUS_HAUNTED_MANOR.bank, title: CRYPT_PLUS_HAUNTED_MANOR.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-plus-seance-parlour": { bank: CRYPT_PLUS_SEANCE_PARLOUR.bank, title: CRYPT_PLUS_SEANCE_PARLOUR.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-remix-coven": { bank: CRYPT_REMIX_COVEN.bank, title: CRYPT_REMIX_COVEN.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-remix-graveyard-shift": { bank: CRYPT_REMIX_GRAVEYARD_SHIFT.bank, title: CRYPT_REMIX_GRAVEYARD_SHIFT.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-remix-raise-the-dead": { bank: CRYPT_REMIX_RAISE_THE_DEAD.bank, title: CRYPT_REMIX_RAISE_THE_DEAD.title, group: "alternate", writable: true, alternateOf: "crypt" },
@@ -337,6 +407,10 @@ export const IMPORTED_BY_ID = {
   "gary-numan-cars-2": { bank: GARY_NUMAN_CARS_2.bank, title: GARY_NUMAN_CARS_2.title, group: "imported", writable: true },
   "gary-numan-cars": { bank: GARY_NUMAN_CARS.bank, title: GARY_NUMAN_CARS.title, group: "imported", writable: true },
   "gravity-8bit": { bank: GRAVITY_8BIT.bank, title: GRAVITY_8BIT.title, group: "alternate", writable: true, alternateOf: "gravity" },
+  "gravity-remix-orbital": { bank: GRAVITY_REMIX_ORBITAL.bank, title: GRAVITY_REMIX_ORBITAL.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-remix-radiophonic-moog-seq": { bank: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.bank, title: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-remix-radiophonic": { bank: GRAVITY_REMIX_RADIOPHONIC.bank, title: GRAVITY_REMIX_RADIOPHONIC.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-remix-stardust-disco": { bank: GRAVITY_REMIX_STARDUST_DISCO.bank, title: GRAVITY_REMIX_STARDUST_DISCO.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "hub-8bit": { bank: HUB_8BIT.bank, title: HUB_8BIT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "megamix-8bit": { bank: MEGAMIX_8BIT.bank, title: MEGAMIX_8BIT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },
@@ -351,6 +425,31 @@ export const IMPORTED_BY_ID = {
   "neon-remix-live-wire": { bank: NEON_REMIX_LIVE_WIRE.bank, title: NEON_REMIX_LIVE_WIRE.title, group: "alternate", writable: true, alternateOf: "neon" },
   "new-the-food-court": { bank: NEW_THE_FOOD_COURT.bank, title: NEW_THE_FOOD_COURT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "office-8bit": { bank: OFFICE_8BIT.bank, title: OFFICE_8BIT.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-dark-1-e-minor": { bank: OFFICE_DARK_1_E_MINOR.bank, title: OFFICE_DARK_1_E_MINOR.title, group: "imported", writable: true },
+  "office-dark-2-g-minor": { bank: OFFICE_DARK_2_G_MINOR.bank, title: OFFICE_DARK_2_G_MINOR.title, group: "imported", writable: true },
+  "office-dark-3-pr-face": { bank: OFFICE_DARK_3_PR_FACE.bank, title: OFFICE_DARK_3_PR_FACE.title, group: "imported", writable: true },
+  "office-dark-4a-minor-groove": { bank: OFFICE_DARK_4A_MINOR_GROOVE.bank, title: OFFICE_DARK_4A_MINOR_GROOVE.title, group: "imported", writable: true },
+  "office-dark-4b-minor-pr-face": { bank: OFFICE_DARK_4B_MINOR_PR_FACE.bank, title: OFFICE_DARK_4B_MINOR_PR_FACE.title, group: "imported", writable: true },
+  "office-dark-4c": { bank: OFFICE_DARK_4C.bank, title: OFFICE_DARK_4C.title, group: "imported", writable: true },
+  "office-dark-4d": { bank: OFFICE_DARK_4D.bank, title: OFFICE_DARK_4D.title, group: "imported", writable: true },
+  "office-dark-4e": { bank: OFFICE_DARK_4E.bank, title: OFFICE_DARK_4E.title, group: "imported", writable: true },
+  "office-dark-4f": { bank: OFFICE_DARK_4F.bank, title: OFFICE_DARK_4F.title, group: "imported", writable: true },
+  "office-preview-elevator": { bank: OFFICE_PREVIEW_ELEVATOR.bank, title: OFFICE_PREVIEW_ELEVATOR.title, group: "imported", writable: true },
+  "office-preview-hostile-takeover": { bank: OFFICE_PREVIEW_HOSTILE_TAKEOVER.bank, title: OFFICE_PREVIEW_HOSTILE_TAKEOVER.title, group: "imported", writable: true },
+  "office-preview-new-jack": { bank: OFFICE_PREVIEW_NEW_JACK.bank, title: OFFICE_PREVIEW_NEW_JACK.title, group: "imported", writable: true },
+  "office-preview-office-machines": { bank: OFFICE_PREVIEW_OFFICE_MACHINES.bank, title: OFFICE_PREVIEW_OFFICE_MACHINES.title, group: "imported", writable: true },
+  "office-preview-power-suit": { bank: OFFICE_PREVIEW_POWER_SUIT.bank, title: OFFICE_PREVIEW_POWER_SUIT.title, group: "imported", writable: true },
+  "office-preview-trading-floor": { bank: OFFICE_PREVIEW_TRADING_FLOOR.bank, title: OFFICE_PREVIEW_TRADING_FLOOR.title, group: "imported", writable: true },
+  "office-theme-1-the-climb": { bank: OFFICE_THEME_1_THE_CLIMB.bank, title: OFFICE_THEME_1_THE_CLIMB.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-theme-2-hostile-boardroom": { bank: OFFICE_THEME_2_HOSTILE_BOARDROOM.bank, title: OFFICE_THEME_2_HOSTILE_BOARDROOM.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-theme-3-executive-noir": { bank: OFFICE_THEME_3_EXECUTIVE_NOIR.bank, title: OFFICE_THEME_3_EXECUTIVE_NOIR.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-theme-4-combo": { bank: OFFICE_THEME_4_COMBO.bank, title: OFFICE_THEME_4_COMBO.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-theme-5-punchier": { bank: OFFICE_THEME_5_PUNCHIER.bank, title: OFFICE_THEME_5_PUNCHIER.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-theme-6-all-in": { bank: OFFICE_THEME_6_ALL_IN.bank, title: OFFICE_THEME_6_ALL_IN.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-variation-a": { bank: OFFICE_VARIATION_A.bank, title: OFFICE_VARIATION_A.title, group: "imported", writable: true },
+  "office-variation-b": { bank: OFFICE_VARIATION_B.bank, title: OFFICE_VARIATION_B.title, group: "imported", writable: true },
+  "office-variation-c": { bank: OFFICE_VARIATION_C.bank, title: OFFICE_VARIATION_C.title, group: "imported", writable: true },
+  "office-variation-d": { bank: OFFICE_VARIATION_D.bank, title: OFFICE_VARIATION_D.title, group: "imported", writable: true },
   "original-cardboard": { bank: ORIGINAL_CARDBOARD.bank, title: ORIGINAL_CARDBOARD.title, group: "original", writable: false },
   "original-crypt": { bank: ORIGINAL_CRYPT.bank, title: ORIGINAL_CRYPT.title, group: "original", writable: false },
   "original-frost": { bank: ORIGINAL_FROST.bank, title: ORIGINAL_FROST.title, group: "original", writable: false },
@@ -364,6 +463,8 @@ export const IMPORTED_BY_ID = {
   "original-title": { bank: ORIGINAL_TITLE.bank, title: ORIGINAL_TITLE.title, group: "original", writable: false },
   "plumber-8bit": { bank: PLUMBER_8BIT.bank, title: PLUMBER_8BIT.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "plumber-panic-alt": { bank: PLUMBER_PANIC_ALT.bank, title: PLUMBER_PANIC_ALT.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "polarity-drive-8bit": { bank: POLARITY_DRIVE_8BIT.bank, title: POLARITY_DRIVE_8BIT.title, group: "copy", writable: true },
+  "polarity-drive": { bank: POLARITY_DRIVE.bank, title: POLARITY_DRIVE.title, group: "copy", writable: false },
   "rhythm-8bit": { bank: RHYTHM_8BIT.bank, title: RHYTHM_8BIT.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-bankruptcy-copy-2": { bank: RHYTHM_BANKRUPTCY_COPY_2.bank, title: RHYTHM_BANKRUPTCY_COPY_2.title, group: "copy", writable: true },
   "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },
@@ -406,6 +507,34 @@ export const IMPORTED_BY_ID = {
   "smw-overworld": { bank: SMW_OVERWORLD.bank, title: SMW_OVERWORLD.title, group: "copy", writable: true },
   "smw-title-2": { bank: SMW_TITLE_2.bank, title: SMW_TITLE_2.title, group: "imported", writable: true },
   "smwgood": { bank: SMWGOOD.bank, title: SMWGOOD.title, group: "imported", writable: true },
+  "space-theme-1-time-vortex": { bank: SPACE_THEME_1_TIME_VORTEX.bank, title: SPACE_THEME_1_TIME_VORTEX.title, group: "imported", writable: true },
+  "space-theme-1a-vortex-polarity": { bank: SPACE_THEME_1A_VORTEX_POLARITY.bank, title: SPACE_THEME_1A_VORTEX_POLARITY.title, group: "imported", writable: true },
+  "space-theme-1b-vortex-crypt": { bank: SPACE_THEME_1B_VORTEX_CRYPT.bank, title: SPACE_THEME_1B_VORTEX_CRYPT.title, group: "imported", writable: true },
+  "space-theme-1c-vortex-field-service": { bank: SPACE_THEME_1C_VORTEX_FIELD_SERVICE.bank, title: SPACE_THEME_1C_VORTEX_FIELD_SERVICE.title, group: "imported", writable: true },
+  "space-theme-1d-fewer-vortex-cardboard-cliche": { bank: SPACE_THEME_1D_FEWER_VORTEX_CARDBOARD_CLICHE.bank, title: SPACE_THEME_1D_FEWER_VORTEX_CARDBOARD_CLICHE.title, group: "imported", writable: true },
+  "space-theme-1d-slow-vortex-cardboard-cliche": { bank: SPACE_THEME_1D_SLOW_VORTEX_CARDBOARD_CLICHE.bank, title: SPACE_THEME_1D_SLOW_VORTEX_CARDBOARD_CLICHE.title, group: "imported", writable: true },
+  "space-theme-1d-sparse-long": { bank: SPACE_THEME_1D_SPARSE_LONG.bank, title: SPACE_THEME_1D_SPARSE_LONG.title, group: "imported", writable: true },
+  "space-theme-1d-sparse-vortex-cardboard-cliche": { bank: SPACE_THEME_1D_SPARSE_VORTEX_CARDBOARD_CLICHE.bank, title: SPACE_THEME_1D_SPARSE_VORTEX_CARDBOARD_CLICHE.title, group: "imported", writable: true },
+  "space-theme-1d-vortex-cardboard-cliche": { bank: SPACE_THEME_1D_VORTEX_CARDBOARD_CLICHE.bank, title: SPACE_THEME_1D_VORTEX_CARDBOARD_CLICHE.title, group: "imported", writable: true },
+  "space-theme-1e-slow-vortex-cardboard-mediants": { bank: SPACE_THEME_1E_SLOW_VORTEX_CARDBOARD_MEDIANTS.bank, title: SPACE_THEME_1E_SLOW_VORTEX_CARDBOARD_MEDIANTS.title, group: "imported", writable: true },
+  "space-theme-1e-vortex-cardboard-mediants": { bank: SPACE_THEME_1E_VORTEX_CARDBOARD_MEDIANTS.bank, title: SPACE_THEME_1E_VORTEX_CARDBOARD_MEDIANTS.title, group: "imported", writable: true },
+  "space-theme-1f-fewer-vortex-cardboard-lift": { bank: SPACE_THEME_1F_FEWER_VORTEX_CARDBOARD_LIFT.bank, title: SPACE_THEME_1F_FEWER_VORTEX_CARDBOARD_LIFT.title, group: "imported", writable: true },
+  "space-theme-1f-slow-vortex-cardboard-lift": { bank: SPACE_THEME_1F_SLOW_VORTEX_CARDBOARD_LIFT.bank, title: SPACE_THEME_1F_SLOW_VORTEX_CARDBOARD_LIFT.title, group: "imported", writable: true },
+  "space-theme-1f-sparse-vortex-cardboard-lift": { bank: SPACE_THEME_1F_SPARSE_VORTEX_CARDBOARD_LIFT.bank, title: SPACE_THEME_1F_SPARSE_VORTEX_CARDBOARD_LIFT.title, group: "imported", writable: true },
+  "space-theme-1f-vortex-cardboard-lift": { bank: SPACE_THEME_1F_VORTEX_CARDBOARD_LIFT.bank, title: SPACE_THEME_1F_VORTEX_CARDBOARD_LIFT.title, group: "imported", writable: true },
+  "space-theme-1g-vortex-polarity-reharm": { bank: SPACE_THEME_1G_VORTEX_POLARITY_REHARM.bank, title: SPACE_THEME_1G_VORTEX_POLARITY_REHARM.title, group: "imported", writable: true },
+  "space-theme-2-moonbase": { bank: SPACE_THEME_2_MOONBASE.bank, title: SPACE_THEME_2_MOONBASE.title, group: "imported", writable: true },
+  "space-theme-2a-moonbase-neon": { bank: SPACE_THEME_2A_MOONBASE_NEON.bank, title: SPACE_THEME_2A_MOONBASE_NEON.title, group: "imported", writable: true },
+  "space-theme-2b-moonbase-cardboard": { bank: SPACE_THEME_2B_MOONBASE_CARDBOARD.bank, title: SPACE_THEME_2B_MOONBASE_CARDBOARD.title, group: "imported", writable: true },
+  "space-theme-2c-moonbase-rhythm": { bank: SPACE_THEME_2C_MOONBASE_RHYTHM.bank, title: SPACE_THEME_2C_MOONBASE_RHYTHM.title, group: "imported", writable: true },
+  "space-theme-3-liberator": { bank: SPACE_THEME_3_LIBERATOR.bank, title: SPACE_THEME_3_LIBERATOR.title, group: "imported", writable: true },
+  "space-theme-4-oxygen-drift": { bank: SPACE_THEME_4_OXYGEN_DRIFT.bank, title: SPACE_THEME_4_OXYGEN_DRIFT.title, group: "imported", writable: true },
+  "space-theme-4a-oxygen-polarity": { bank: SPACE_THEME_4A_OXYGEN_POLARITY.bank, title: SPACE_THEME_4A_OXYGEN_POLARITY.title, group: "imported", writable: true },
+  "space-theme-4b-oxygen-empty-arcade": { bank: SPACE_THEME_4B_OXYGEN_EMPTY_ARCADE.bank, title: SPACE_THEME_4B_OXYGEN_EMPTY_ARCADE.title, group: "imported", writable: true },
+  "space-theme-4c-oxygen-frost": { bank: SPACE_THEME_4C_OXYGEN_FROST.bank, title: SPACE_THEME_4C_OXYGEN_FROST.title, group: "imported", writable: true },
+  "space-theme-5-starfleet-fanfare": { bank: SPACE_THEME_5_STARFLEET_FANFARE.bank, title: SPACE_THEME_5_STARFLEET_FANFARE.title, group: "imported", writable: true },
+  "space-theme-6-final-frontier": { bank: SPACE_THEME_6_FINAL_FRONTIER.bank, title: SPACE_THEME_6_FINAL_FRONTIER.title, group: "imported", writable: true },
+  "space-theme-7-galactic-disco": { bank: SPACE_THEME_7_GALACTIC_DISCO.bank, title: SPACE_THEME_7_GALACTIC_DISCO.title, group: "imported", writable: true },
   "special-stage-1": { bank: SPECIAL_STAGE_1.bank, title: SPECIAL_STAGE_1.title, group: "imported", writable: true },
   "speed-8bit": { bank: SPEED_8BIT.bank, title: SPEED_8BIT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-horizon-lines-overdrive": { bank: SPEED_HORIZON_LINES_OVERDRIVE.bank, title: SPEED_HORIZON_LINES_OVERDRIVE.title, group: "alternate", writable: true, alternateOf: "speed" },
@@ -429,6 +558,7 @@ export const IMPORTED_BY_ID = {
   "the-food-court-alt": { bank: THE_FOOD_COURT_ALT.bank, title: THE_FOOD_COURT_ALT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "the-surge-mashterpiece-call-and-answer": { bank: THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER.bank, title: THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER.title, group: "copy", writable: true },
   "the-surge-mashterpiece-copy": { bank: THE_SURGE_MASHTERPIECE_COPY.bank, title: THE_SURGE_MASHTERPIECE_COPY.title, group: "copy", writable: true },
+  "time-vortex-v1": { bank: TIME_VORTEX_V1.bank, title: TIME_VORTEX_V1.title, group: "copy", writable: true },
   "title-8bit": { bank: TITLE_8BIT.bank, title: TITLE_8BIT.title, group: "alternate", writable: true, alternateOf: "title" },
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },
   "wiishoppingchannel": { bank: WIISHOPPINGCHANNEL, title: "WIISHOPPINGCHANNEL", group: "imported", writable: false },

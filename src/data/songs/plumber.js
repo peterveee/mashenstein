@@ -862,7 +862,7 @@ export const arrangement = {
       },
     },
     {
-      s: 66,
+      s: 104,
       bars: 1,
       gain: {
         lead2: -3,
@@ -874,7 +874,7 @@ export const arrangement = {
       },
     },
     {
-      s: 93,
+      s: 108,
       bars: 1,
       from: 1,
       gain: {
@@ -887,7 +887,7 @@ export const arrangement = {
       },
     },
     {
-      s: 94,
+      s: 109,
       bars: 1,
       gain: {
         lead2: -3,
@@ -899,7 +899,7 @@ export const arrangement = {
       },
     },
     {
-      s: 96,
+      s: 111,
       bars: 1,
       from: 1,
       gain: {
@@ -2466,24 +2466,24 @@ export const arrangement = {
     },
     {
       base: 28,
-      lead: seq('. . . . . . . . . . . . . . . . | E5 . C5 A4 . A5 . . G5 F5 E5 . D5 . C5 B4'),
+      lead: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,1,2,null,3,null,null,1,1,2,null,2,null,1,1],
       lead2: seq('. . . . . . . . . . . . . . . . | A5 . E5 C5 . C5 . . G4 C5 E5 . B4 . G4 A4'),
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,2,null,2,null,null,2,2,2,null,2,null,2,2],
-      lead8: seq('. . . . . . . . . . . . . . . . | E6 . C6 A5 . A6 . . G6 F6 E6 . D6 . C6 B5'),
+      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       bass2: seq('. . . . . . . . . . . . . . . . | . . F1 . . . F1 . . . G1 . . . G1 .'),
     },
     {
       base: 29,
-      lead: seq('E5 . C5 A4 . E5 . . G5 E5 C5 . D5 . B4 D5 | . . . . . . . . . . . . . . . .'),
+      lead: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1.886009,null,1,2,null,3,null,null,1,1,2,null,2,null,1,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead4: seq('F5 . C5 A4 . F4 . . E4 A4 C5 . B4 . B4 G4 | . . . . . . . . . . . . . . . .'),
+      lead4: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2: seq('A5 . E5 C5 . A4 . . G4 C5 E5 . D5 . D5 B4 | . . . . . . . . . . . . . . . .'),
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       lead2Len: [2,null,2,2,null,2,null,null,2,2,2,null,2,null,2,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead8: seq('E6 . C6 A5 . E6 . . G6 E6 C6 . D6 . B5 D6 | . . . . . . . . . . . . . . . .'),
-      leadLen: [1.886009,null,1,2,null,3,null,null,1,1,2,null,2,null,1,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 22,
@@ -2500,11 +2500,11 @@ export const arrangement = {
       lead: seq('. . . . . . . . . . . . . . . . | G5 . E5 C5 . A4 . . B4 D5 E5 G#5 B5 D6 E6 .'),
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,2,null,2,null,null,1,1,1,1,1,1,2,null],
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,2,null,2,null,null,1,1,1,1,1,1,2,null],
-      lead4: seq('. . . . . . . . . . . . . . . . | G5 . E5 C5 . A4 . . B4 D5 E5 G#5 B5 D6 A6 .'),
+      lead4: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2: seq('. . . . . . . . . . . . . . . . | G5 . E5 C5 . A4 . . B4 D5 E5 G#5 B5 D6 E6 .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,2,null,2,null,null,1,1,1,1,1,1,2,null],
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
-      lead8: seq('. . . . . . . . . . . . . . . . | G6 . E6 C6 . C6 . . B5 D6 E6 G#6 B5 D6 E6 .'),
+      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3: seq('. . . . . . . . . . . . . . . . | A5 . E5 C5 . C5 . . B4 D5 E5 G#5 B5 D6 E6 .'),
       lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,2,null,2,null,null,2,2,2,2,2,2,2,null],
       chords: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[130.8127826502993,329.6275569128699,440],null,null,null,null,null,null,null,[123.47082531403103,293.6647679174076,329.6275569128699,415.3046975799451],null,null,null,null,null,null,null],
@@ -2555,8 +2555,8 @@ export const arrangement = {
       kick2: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . C1 . . . . . . .').map((v) => !!v),
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       lead: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[130.8127826502993,329.6275569128699,440],null,null,null,null,null,null,null,[130.8127826502993,349.2282314330039,440],null,null,null,null,null,null,null],
-      lead6: seq('. . . . . . . . . . . . . . . . | A4 . C5 E5 . G5 . . . . . . . . . .'),
-      lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,1,1,null,1,null,null,null,null,null,null,null,null,null,null],
+      lead6: seq('. . . . . . . . . . . . . . . . | A4 . C5 E5 . G5 . . F5 E5 D5 . . . . .'),
+      lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,1,1,null,1,null,null,1,1,1,null,null,null,null,null],
       tom2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass: seq('. . . . . . . . . . . . . . . . | C2 . . . G2 . . . G1 . . . . . . .'),
       bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,null,3,null,null,null,3,null,null,null,null,null,null,null],
@@ -2598,6 +2598,42 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | C1 . C1 . C1 . C1 . C1 . C1 . C1 C1 C1 C1').map((v) => !!v),
       clap: seq('. . . . . . . . . . . . . . . . | C1 . C1 . C1 . C1 . C1 . C1 . C1 C1 C1 C1').map((v) => !!v),
       snare: seq('. . . . . . . . . . . . . . . . | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      base: 66,
+      lead4: seq('E5 . C5 A4 . E4 . . E4 G4 C5 . G4 . G4 G4 | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 93,
+      lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 C5 . C5 . . G4 C5 E5 . B4 . G4 A4'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,2,null,2,null,null,2,2,2,null,2,null,2,2],
+      lead4: seq('. . . . . . . . . . . . . . . . | E5 . C5 A4 . A4 . . D4 G4 B4 . G4 . D4 D4'),
+    },
+    {
+      base: 94,
+      lead: seq('A5 . E5 C5 . A4 . . G4 C5 E5 . D5 . D5 B4 | . . . . . . . . . . . . . . . .'),
+      leadLen: [2,null,2,2,null,2,null,null,2,2,2,null,2,null,2,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead4: seq('E5 . C5 A4 . E4 . . E4 G4 C5 . G4 . G4 G4 | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 96,
+      lead4: seq('. . . . . . . . . . . . . . . . | E5 . C5 A4 . E4 . . G#4 B4 B4 E5 G#5 B5 B5 .'),
+    },
+    {
+      base: 105,
+      lead8: seq('. . . . . . . . . . . . . . . . | A6 . E6 C6 . C6 . . G5 C6 E6 . B5 . G5 A5'),
+    },
+    {
+      base: 106,
+      lead8: seq('A6 . E6 C6 . A5 . . G5 C6 E6 . D6 . D6 B5 | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 107,
+      lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 110,
+      lead8: seq('. . . . . . . . . . . . . . . . | G6 . E6 C6 . A5 . . B5 D6 E6 G#6 B5 D6 E6 .'),
     },
   ],
   loop: {

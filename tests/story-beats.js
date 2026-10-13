@@ -174,7 +174,7 @@ function clearIntro(run) {
 // --- Act cards: one per act, and no act text left in the bubble field ------
 {
   const carded = STAGES.filter((s) => s.act);
-  assert(carded.map((s) => s.id).join(',') === 'plumber-1,frost-1,cardboard-1',
+  assert(carded.map((s) => s.id).join(',') === 'plumber-1,frost-1,gravity-1',
     `each act is announced on the stage that opens it (${carded.map((s) => s.id).join(', ')})`);
   assert(carded.every((s) => s.act.startsWith('ACT ')), 'every act card opens with its act number');
   // The two fields used to be one, told apart by this prefix. Nothing should be

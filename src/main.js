@@ -75,7 +75,7 @@ import {
   drawGameplayProfile, drawGameplayProfileWaiting,
 } from './engine/gameplay-profile.js';
 import { Dev } from './dev/index.js';
-import { GravityRunState } from './dev/gravity/state.js';
+import { GravityRunState } from './game/gravity/state.js';
 import { devFinishStartPercent, devStageRoute } from './engine/dev-url.js';
 
 save.load();
@@ -274,10 +274,20 @@ function routeDevUrl(goto, p) {
     case 'finale':
       setState(new FinaleState({ save, onDone: () => Flow.toTitle() }));
       break;
-    case 'gravity':
-      setState(new GravityRunState({ save, initialHeroId: heroFrom(p) || Flow.heroId(), difficulty: save.slot.difficulty,
-        onEnd: () => Flow.toHub() }));
+    case 'gravity': {
+      const requested = p.get('stage') || p.get('level') || '1';
+      const named = STAGE_BY_ID[requested];
+      const index = Number.parseInt(requested, 10);
+      const stage = named?.cabinet === 'gravity' ? named
+        : STAGES.find((candidate) => candidate.cabinet === 'gravity' && candidate.index === index)
+          || STAGE_BY_ID['gravity-1'];
+      const cab = CABINET_BY_ID.gravity;
+      setState(new GravityRunState({ save, cabinet: cab, stage,
+        initialHeroId: heroFrom(p) || Flow.heroId(), difficulty: save.slot.difficulty,
+        seed: seedFrom(p), musicSong: Flow.gameSongFor(cab.id),
+        spaceLook: p.get('spacelook'), onEnd: () => Flow.toHub() }));
       break;
+    }
     case 'stage': {
       // Canonical form remains `cab=plumber&stage=plumber-1`; compact form is
       // `stage=3-3` (or `level=3-3`) and uses the cabinet registry's order.
@@ -519,8 +529,9 @@ const Flow = {
     const flags = save.slot.campaign.storyFlags;
     const startingPowerup = flags.pendingPowerup || null;
     if (startingPowerup) { delete flags.pendingPowerup; save.persist(); }
-    setState(new RunState({
-      stage, save, startingPowerup,
+    const Run = cab.mechanic === 'gravity' ? GravityRunState : RunState;
+    setState(new Run({
+      stage, cabinet: cab, save, startingPowerup,
       seed: seedOverride ?? ((Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0),
       difficulty: save.slot.difficulty,
       corrupted,

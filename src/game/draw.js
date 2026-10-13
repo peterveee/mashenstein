@@ -1,3 +1,4 @@
+import { drawGravityHazard } from '../sprites/gravity-encounters.js';
 import { drawSelectedCryptEnemy, cryptZombieRoleInOrder } from '../sprites/crypt-enemies.js';
 // Entity + hero drawing (logic-free; style packs may decorate).
 import { getSprite, buildSprite, scaled2x, tinted } from '../engine/sprites.js';
@@ -777,6 +778,10 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   // The loop pad's ring stands a radius clear of its box on both sides, so it is
   // still putting ink on screen long after the pad itself has left. Everything
   // else draws inside a few px of its own box.
+  if (e.def?.gravityArt) {
+    drawGravityHazard(ctx, e, x, GROUND_Y - e.alt, t);
+    return;
+  }
   const reach = e.def && e.def.isLoop ? LOOP.r + 8 : 40;
   if (!renderOptions.preculled && (x < -reach || x > 480 + reach)) return;
   const bottom = GROUND_Y - e.alt;

@@ -8,6 +8,8 @@ import * as GAME_ALT_CRYPT_8BIT from './imported/crypt-8bit.js';
 import * as GAME_ALT_CRYPT_BLACK_ABBEY from './imported/crypt-black-abbey.js';
 import * as GAME_ALT_CRYPT_CLOCKWORK_SEANCE from './imported/crypt-clockwork-seance.js';
 import * as GAME_ALT_CRYPT_MIDNIGHT_PROCESSION from './imported/crypt-midnight-procession.js';
+import * as GAME_ALT_CRYPT_PLUS_HAUNTED_MANOR from './imported/crypt-plus-haunted-manor.js';
+import * as GAME_ALT_CRYPT_PLUS_SEANCE_PARLOUR from './imported/crypt-plus-seance-parlour.js';
 import * as GAME_ALT_CRYPT_REMIX_COVEN from './imported/crypt-remix-coven.js';
 import * as GAME_ALT_CRYPT_REMIX_GRAVEYARD_SHIFT from './imported/crypt-remix-graveyard-shift.js';
 import * as GAME_ALT_CRYPT_REMIX_RAISE_THE_DEAD from './imported/crypt-remix-raise-the-dead.js';
@@ -31,6 +33,10 @@ import * as GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO from './imported/frost-remix-abso
 import * as GAME_ALT_FROST_REMIX_BLACK_ICE from './imported/frost-remix-black-ice.js';
 import * as GAME_ALT_FROST_REMIX_SNOW_GLOBE from './imported/frost-remix-snow-globe.js';
 import * as GAME_ALT_GRAVITY_8BIT from './imported/gravity-8bit.js';
+import * as GAME_ALT_GRAVITY_REMIX_ORBITAL from './imported/gravity-remix-orbital.js';
+import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './imported/gravity-remix-radiophonic-moog-seq.js';
+import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC from './imported/gravity-remix-radiophonic.js';
+import * as GAME_ALT_GRAVITY_REMIX_STARDUST_DISCO from './imported/gravity-remix-stardust-disco.js';
 import * as GAME_ALT_HUB_8BIT from './imported/hub-8bit.js';
 import * as GAME_ALT_MEGAMIX_8BIT from './imported/megamix-8bit.js';
 import * as GAME_ALT_MONSTER_MEGAMIX_ALT from './imported/monster-megamix-alt.js';
@@ -41,6 +47,12 @@ import * as GAME_ALT_NEON_REMIX_GOLDEN_HOUR from './imported/neon-remix-golden-h
 import * as GAME_ALT_NEON_REMIX_LIVE_WIRE from './imported/neon-remix-live-wire.js';
 import * as GAME_ALT_NEW_THE_FOOD_COURT from './imported/new-the-food-court.js';
 import * as GAME_ALT_OFFICE_8BIT from './imported/office-8bit.js';
+import * as GAME_ALT_OFFICE_THEME_1_THE_CLIMB from './imported/office-theme-1-the-climb.js';
+import * as GAME_ALT_OFFICE_THEME_2_HOSTILE_BOARDROOM from './imported/office-theme-2-hostile-boardroom.js';
+import * as GAME_ALT_OFFICE_THEME_3_EXECUTIVE_NOIR from './imported/office-theme-3-executive-noir.js';
+import * as GAME_ALT_OFFICE_THEME_4_COMBO from './imported/office-theme-4-combo.js';
+import * as GAME_ALT_OFFICE_THEME_5_PUNCHIER from './imported/office-theme-5-punchier.js';
+import * as GAME_ALT_OFFICE_THEME_6_ALL_IN from './imported/office-theme-6-all-in.js';
 import * as GAME_ALT_PLUMBER_8BIT from './imported/plumber-8bit.js';
 import * as GAME_ALT_PLUMBER_PANIC_ALT from './imported/plumber-panic-alt.js';
 import * as GAME_ALT_RHYTHM_8BIT from './imported/rhythm-8bit.js';
@@ -74,6 +86,8 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_CRYPT_BLACK_ABBEY,
   GAME_ALT_CRYPT_CLOCKWORK_SEANCE,
   GAME_ALT_CRYPT_MIDNIGHT_PROCESSION,
+  GAME_ALT_CRYPT_PLUS_HAUNTED_MANOR,
+  GAME_ALT_CRYPT_PLUS_SEANCE_PARLOUR,
   GAME_ALT_CRYPT_REMIX_COVEN,
   GAME_ALT_CRYPT_REMIX_GRAVEYARD_SHIFT,
   GAME_ALT_CRYPT_REMIX_RAISE_THE_DEAD,
@@ -97,6 +111,10 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_FROST_REMIX_BLACK_ICE,
   GAME_ALT_FROST_REMIX_SNOW_GLOBE,
   GAME_ALT_GRAVITY_8BIT,
+  GAME_ALT_GRAVITY_REMIX_ORBITAL,
+  GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ,
+  GAME_ALT_GRAVITY_REMIX_RADIOPHONIC,
+  GAME_ALT_GRAVITY_REMIX_STARDUST_DISCO,
   GAME_ALT_HUB_8BIT,
   GAME_ALT_MEGAMIX_8BIT,
   GAME_ALT_MONSTER_MEGAMIX_ALT,
@@ -107,6 +125,12 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_NEON_REMIX_LIVE_WIRE,
   GAME_ALT_NEW_THE_FOOD_COURT,
   GAME_ALT_OFFICE_8BIT,
+  GAME_ALT_OFFICE_THEME_1_THE_CLIMB,
+  GAME_ALT_OFFICE_THEME_2_HOSTILE_BOARDROOM,
+  GAME_ALT_OFFICE_THEME_3_EXECUTIVE_NOIR,
+  GAME_ALT_OFFICE_THEME_4_COMBO,
+  GAME_ALT_OFFICE_THEME_5_PUNCHIER,
+  GAME_ALT_OFFICE_THEME_6_ALL_IN,
   GAME_ALT_PLUMBER_8BIT,
   GAME_ALT_PLUMBER_PANIC_ALT,
   GAME_ALT_RHYTHM_8BIT,

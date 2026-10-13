@@ -81,8 +81,9 @@ export function rampAt(t) {
 
 // Total stage distance for a base speed and a duration. The exact expression
 // run.js has always used, in the same order.
-export function totalDistFor(baseSpeed, durationSec) {
-  return durationSec * baseSpeed * DIST_SLACK;
+export function totalDistFor(baseSpeed, durationSec, mechanic = null) {
+  const slack = mechanic === 'beat' || mechanic === 'gravity' ? 1 : DIST_SLACK;
+  return durationSec * baseSpeed * slack;
 }
 
 // The forecast twin of RunState.speedAt: how fast the lane will be moving

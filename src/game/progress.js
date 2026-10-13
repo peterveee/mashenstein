@@ -188,7 +188,7 @@ export function applyResult(save, result) {
 
 export function actForSlot(slot) {
   const plugs = totalPlugs(slot);
-  if (plugs >= UNLOCKS.cardboard) return 3;
+  if (plugs >= UNLOCKS.gravity) return 3;
   if (plugs >= UNLOCKS.frost) return 2;
   return 1;
 }

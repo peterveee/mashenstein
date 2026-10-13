@@ -230,17 +230,14 @@ export const GENRE_MOTIFS = {
       p.closePath();
     });
   },
-  // CARDBOARD KINGDOM: the four-inch castle from the taunt. A taped box was
-  // the first draft and read as a four-pane window — the tape seams quartered
-  // it — where crenellations plus a gate are unmistakable at 24x18.
-  cardboard(c, w, h, ink, back) {
-    plain(c, ink, (p) => p.rect(w * 0.18, h * 0.12, w * 0.64, h * 0.84));
-    plain(c, back, (p) => { p.rect(w * 0.34, h * 0.08, w * 0.1, h * 0.16); p.rect(w * 0.56, h * 0.08, w * 0.1, h * 0.16); });
-    plain(c, back, (p) => {
-      p.moveTo(w * 0.41, h * 0.98); p.lineTo(w * 0.41, h * 0.66);
-      p.arc(w * 0.5, h * 0.66, w * 0.09, Math.PI, 0);
-      p.lineTo(w * 0.59, h * 0.98); p.closePath();
-    });
+  // GRAVITY GRID: a ringed planet — the level's own skyline, and at 24x18 a
+  // circle with a band across it reads at once. (Was Cardboard Kingdom's castle.)
+  gravity(c, w, h, ink, back) {
+    const cx = w * 0.5, cy = h * 0.52, r = Math.min(w, h) * 0.3;
+    stroke(c, ink, Math.max(0.5, h * 0.08), (p) => p.ellipse(cx, cy, r * 1.85, r * 0.55, -0.3, Math.PI * 0.95, Math.PI * 2.05));
+    plain(c, ink, (p) => p.arc(cx, cy, r, 0, Math.PI * 2));
+    stroke(c, back, Math.max(0.45, h * 0.05), (p) => p.ellipse(cx, cy, r * 1.85, r * 0.55, -0.3, 0.1, Math.PI * 0.9));
+    stroke(c, ink, Math.max(0.5, h * 0.08), (p) => p.ellipse(cx, cy, r * 1.85, r * 0.55, -0.3, 0.05, Math.PI * 0.95));
   },
   // CORPORATE KOMBAT: a briefcase. A necktie is the more obvious office glyph
   // and it does not survive the size — knot and blade merge into one dark

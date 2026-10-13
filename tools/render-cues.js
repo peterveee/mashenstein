@@ -52,6 +52,7 @@ const DEFAULTS = ['portal', 'comet', 'star', 'checkpoint', 'fizzUp', 'dash', 'bo
 // spread is how far the bands travel, wet is how much room. 1 is the cue as authored.
 const SHAPES = {
   now:     {},
+  pewA: { pew: 'A' }, pewB: { pew: 'B' }, pewC: { pew: 'C' }, pewD: { pew: 'D' }, pewE: { pew: 'E' },
 
   long:    { stretch: 1.8 },
   longer:  { stretch: 2.6 },

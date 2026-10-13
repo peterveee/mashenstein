@@ -583,7 +583,7 @@ export class Player {
     // The cut is a launch too, so it is floated the same way: a hop is the same
     // height in a light world, not a taller one.
     const cut = VARIABLE_JUMP_CUT * floatLaunch(this.gravityScale);
-    if (!holdJump && !this.launched && this.jumpRiseT <= 0 && this.vy > cut && this.hero.variableJump) this.vy = cut;
+    if (!world?.sustainedJump && !holdJump && !this.launched && this.jumpRiseT <= 0 && this.vy > cut && this.hero.variableJump) this.vy = cut;
     if (this.jumpRiseT > 0) this.jumpRiseT -= dt;
 
     // Float (hero.canFloat): hold jump while falling caps fall speed.
@@ -593,8 +593,14 @@ export class Player {
       : (this.compressT > 0 ? -70 : (this.floating ? floatCap : TERMINAL_VY));
 
     if (!this.grounded) {
+      // The low-gravity deck has a long, steerable-by-hold ascent for every
+      // hero. Releasing brakes upward momentum instead of snapping velocity;
+      // descent then uses the same gentle gravity. No extra latched state is
+      // needed, so checkpoints and rewind preserve the arc normally.
+      const releaseBrake = world?.sustainedJump && !holdJump && !this.launched
+        && this.jumpRiseT <= 0 && this.vy > 0 ? 5 : 1;
       this.vy -= this.gravity * (world?.gravityScale ?? 1) * dt
-        * (this.slideSlamming ? STOMP_GRAVITY_MULT : 1);
+        * (this.slideSlamming ? STOMP_GRAVITY_MULT : releaseBrake);
       if (this.vy < minVy) this.vy = minVy;
       this.y += this.vy * dt;
       // A CEILING, when the world has one. Only Neon has: a hero who does not

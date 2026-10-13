@@ -346,6 +346,10 @@ export function createBangerDesk(desk) {
     const answered = ask(title, bodyHtml(start, { from: settings ? recipe.riff.source.from : from, to: settings ? recipe.riff.source.to : to, settings, modifying, view }),
       modifying ? 'Modify This Take' : settings ? 'Make a New Take' : 'Make It', { wide: true });
     const box = $('askbody');
+    // The ask box outlives this dialog: its listeners go when it is answered, or the next
+    // dialog in the box (Save As…, any of them) would run this one's paint on a change.
+    const listening = new AbortController();
+    answered.then(() => listening.abort(), () => listening.abort());
     // (the ask box is shared with every dialog: the groove rides along on this one only)
     if (legacyFusion) box.dataset.fusion = legacyFusion; else delete box.dataset.fusion;
     const ok = $('askok');
@@ -578,8 +582,8 @@ export function createBangerDesk(desk) {
         formEditor.rescale(bangerBars(options));
       }
       paint();
-    });
-    box.addEventListener('input', (e) => { if (e.target.id === 'bgfrom' || e.target.id === 'bgto' || e.target.type === 'number') { readRiff(); paint(); } });
+    }, { signal: listening.signal });
+    box.addEventListener('input', (e) => { if (e.target.id === 'bgfrom' || e.target.id === 'bgto' || e.target.type === 'number') { readRiff(); paint(); } }, { signal: listening.signal });
     box.querySelectorAll('#bgvariation button').forEach((b) => {
       b.onclick = () => {
         box.querySelectorAll('#bgvariation button').forEach((x) => {

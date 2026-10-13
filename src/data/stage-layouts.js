@@ -109,7 +109,7 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.65, high: false },
     pits: null,
     rewindAt: null,
-    routes: {  },
+    routes: {},
     sections: [
       { to: 1, label: "sparse, animals over props", density: 0.7, exclude: ["gap","crate","dogBruiser"] },
     ],
@@ -157,26 +157,32 @@ export const STAGE_LAYOUTS = {
     pits: [{ at: 0.37, w: 56 }, { at: 0.7, w: 60 }],
     rewindAt: null,
   },
-  "cardboard-1": {
-    durationSec: 95,
+  "gravity-1": {
+    durationSec: 84,
     speedMult: 1,
-    appliance: { at: 0.65, high: false },
+    appliance: { at: 0.928571, high: false },
     pits: null,
     rewindAt: null,
+    checkpoints: [0.142857, 0.333333, 0.52381, 0.714286, 0.904762],
+    routes: {},
   },
-  "cardboard-2": {
-    durationSec: 95,
+  "gravity-3": {
+    durationSec: 96,
     speedMult: 1,
-    appliance: { at: 0.75, high: true },
-    pits: [{ at: 0.37, w: 56 }, { at: 0.7, w: 60 }],
+    appliance: { at: 0.947917, high: false },
+    pits: null,
     rewindAt: null,
+    checkpoints: [0.1875, 0.354167, 0.604167, 0.770833],
+    routes: {},
   },
-  "cardboard-3": {
-    durationSec: 95,
+  "gravity-2": {
+    durationSec: 100,
     speedMult: 1,
-    appliance: { at: 0.55, high: false },
-    pits: [{ at: 0.06, w: 60 }, { at: 0.4, w: 64 }, { at: 0.72, w: 68 }],
+    appliance: { at: 0.95, high: false },
+    pits: null,
     rewindAt: null,
+    checkpoints: [0.15, 0.335, 0.46, 0.665, 0.77],
+    routes: {  },
   },
   "office-1": {
     durationSec: 100,
@@ -205,6 +211,10 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.65, high: false },
     pits: null,
     rewindAt: null,
+    sections: [
+      { to: 0.08, label: "the black opening: plain jumps only", tierCap: 0, exclude: ["gap","rake","bananaPeel","boostPad","buzzbird","rattlesnake","beatBar","bearTrap","zombie","drone","target","qcrate","shredder","mailCart","brazier","campfire"] },
+      { to: 1, label: "the cycle" },
+    ],
   },
   "surge-2": {
     durationSec: 110,

@@ -689,6 +689,24 @@ try {
     assert(panAt.every((p) => Math.abs(p.l - p.wantL) < 0.1 && Math.abs(p.r - p.wantR) < 0.1),
       `BALANCE to BALANCE TO pans across the section (${panAt.map((p) => `L ${p.l.toFixed(1)} R ${p.r.toFixed(1)}`).join('; ')} dB)`);
 
+    // The same pan with the bar CUT in two by another effect coming in half way — what the
+    // Spot FX editor writes when a filter changes every four bars under a sixteen-bar pan.
+    // `sweepRun` says how far the pan's own run reaches past each half, and it crosses the
+    // room once, not twice (Peter, 13 Oct 2026). The second effect is a Gain at unity.
+    const panGain = (run) => ({ id: 'gain', params: { gain: 0, balance: -1, mono: 0, sweep: 1, gainTo: 0, balanceTo: 1 }, ...(run ? { sweepRun: run } : {}) });
+    const split = (runs) => ({ automation: { __master: { fx: [
+      { from: [1, 0], to: [1, 8], chain: [panGain(runs?.[0])] },
+      { from: [1, 8], to: [2, 0], chain: [panGain(runs?.[1]), { id: 'gain', params: { gain: 0 } }] },
+    ] } } });
+    const runL = await render('gainsweep:runL', { bank: droneBank, arrangement: split([[0, 8], [8, 0]]) });
+    const runR = await render('gainsweep:runR', { bank: droneBank, arrangement: split([[0, 8], [8, 0]]), channel: 1 });
+    const runAt = [4, 6, 9, 11].map((i) => ({ l: per(runL, plain, i), r: per(runR, plainR, i) }));
+    assert(runAt.every((p, n) => Math.abs(p.l - panAt[n].wantL) < 0.1 && Math.abs(p.r - panAt[n].wantR) < 0.1),
+      `a pan cut in two by another effect still crosses once, over its whole run (${runAt.map((p) => `L ${p.l.toFixed(1)} R ${p.r.toFixed(1)}`).join('; ')} dB)`);
+    const twiceR = await render('gainsweep:twiceR', { bank: droneBank, arrangement: split(null), channel: 1 });
+    assert(per(twiceR, plainR, 9) < -6,
+      `and without its run each half pans on its own — hard left again just after the cut (${per(twiceR, plainR, 9).toFixed(1)} dB right)`);
+
     // A stop half way through a fade: the level carries on down through the stop's own fade
     // rather than jumping back to where the fade began.
     const page = await freshPage('gainsweep:stop');
