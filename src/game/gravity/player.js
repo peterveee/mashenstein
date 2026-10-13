@@ -1,6 +1,6 @@
 import { Player } from '../player.js';
 import { HERO_DRAW_H } from '../draw.js';
-import { GRAVITY_LEVEL as L } from './model.js';
+import { GRAVITY_LEVEL as L, JUMP_SCALE } from './model.js';
 const idle = { held: () => false, pressed: () => false };
 
 // Outside these three controller calls y/vy are WORLD coordinates, exactly
@@ -17,7 +17,7 @@ export class GravityPlayer extends Player {
     if (this.run.gravityTransfer) return false;
     this.gravityScale = this.run.gravityScale() * (this.run.powerups?.gravityMultiplier() ?? 1);
     const scale = this.jumpScale;
-    this.jumpScale = (scale || 1) * (this.run.gravityStageData.jumpHeightScale || 1);
+    this.jumpScale = (scale || 1) * (this.run.gravityStageData.jumpHeightScale || 1) * JUMP_SCALE;
     let jumped;
     try { jumped = this.local(() => super.jumpPressed(audio)); }
     finally { this.jumpScale = scale; }

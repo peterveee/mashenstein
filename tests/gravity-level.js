@@ -157,7 +157,7 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
     r.updateCamera(1/60); lowest = Math.min(lowest, r.player.y);
     assert.deepEqual([r.camZoom, r.camPan, r.camFloorY], framing);
   }
-  assert.ok(lowest < 60, 'jump crosses substantial corridor height');
+  assert.ok(lowest < L.corridor * 0.44, 'jump crosses substantial corridor height');
   assert.equal(r.player.grounded, true, 'lands back on ceiling with fixed framing');
   r.exit();
 }
@@ -176,7 +176,8 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
     r.exit();
   }
   assert.ok(arcs[1].duration > arcs[0].duration * 1.5, 'low gravity has substantially longer hang time');
-  assert.ok(arcs[1].apex > arcs[0].apex * 1.65, 'held low-gravity jump is much higher');
+  // 1.65 at the 137 corridor; at 86 the held arc is capped by the ceiling.
+  assert.ok(arcs[1].apex > arcs[0].apex * 1.45, 'held low-gravity jump is much higher');
   assert.ok(arcs[1].apex <= L.corridor - 24 - 4, 'held jump stays below the ceiling');
   assert.ok(arcs[1].duration > 2.4, 'held jump lasts more than 2.4 seconds');
 }
@@ -200,7 +201,7 @@ for (const hero of HEROES) {
   }
   assert.ok(arcs[0].apex < arcs[2].apex * 0.45, `${hero.id}: tap is a short hop`);
   assert.ok(arcs[1].apex > arcs[0].apex && arcs[1].apex < arcs[2].apex, `${hero.id}: intermediate holds shape the arc`);
-  assert.ok(arcs[2].apex >= 85 && arcs[2].apex <= L.corridor - 28, `${hero.id}: held jump climbs near ceiling safely`);
+  assert.ok(arcs[2].apex >= L.corridor * 0.5 && arcs[2].apex <= L.corridor - 28, `${hero.id}: held jump climbs near ceiling safely`);
   assert.ok(arcs[0].duration < 1.85 && arcs[2].duration > 2.25, `${hero.id}: wide crossing requires a hold`);
   assert.ok(arcs[2].duration < 4, `${hero.id}: holding cannot hover indefinitely`);
   r.exit();

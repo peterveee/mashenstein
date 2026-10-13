@@ -313,7 +313,7 @@ function easePortraitTunnelPan(current, target, dt) {
 // top and the large touch discs own the bottom.  Derive both boundaries from
 // the same safe-area-aware layout painters use, so an edge correction never
 // pans the hero underneath either layer.
-function portraitGameplayEdges(frame = presentationFrame(), run = null) {
+export function portraitGameplayEdges(frame = presentationFrame(), run = null) {
   const f = frame || {};
   const safe = f.safeRect || {};
   const safeTop = Number.isFinite(Number(safe.top)) ? Number(safe.top) : 0;

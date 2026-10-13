@@ -45,8 +45,8 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
   },
   'gravity-3': {
     name: 'LOW GRAVITY',
-    gravity: 0.14,
-    jumpHeightScale: 1.34,
+    gravity: 0.116,   // 0.14 × (1.22/1.34)²: the lower held arc keeps its old airtime
+    jumpHeightScale: 1.22,   // 1.34 before the corridor shrank to 86 (13 Oct): the held arc tops out just under the ceiling
     floatingBolts: true,
     gates: [],
     // Coins trace the held-jump curve. The first is a complete rise and fall

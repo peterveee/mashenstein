@@ -1,18 +1,19 @@
 // A normal RunState with one cabinet-specific movement controller and an
 // authored corridor. HUD, controls, damage, death, restore and finish
 // are inherited, rather than approximated by a separate mini-game.
+import { frameGroundY } from '../../engine/frame.js';
 import { setBlastHook, setShotHook } from '../../dev/space-plateaus.js';
-import { RunState, applyFraming } from '../../game/run.js';
+import { RunState, applyFraming, portraitGameplayEdges } from '../../game/run.js';
 import { makeObstacle, makePickup } from '../../game/entities.js';
 import { GROUND_Y, screenYFor, setRestingZoom } from '../../engine/camera.js';
-import { W, H, isPhonePortraitPresentation } from '../../engine/renderer.js';
+import { W, H, isPhonePortraitPresentation, presentationFrame } from '../../engine/renderer.js';
 import { PHONE_PORTRAIT, LANDSCAPE } from '../../engine/frame.js';
 import { Audio } from '../../engine/audio.js';
 import { GravityPlayer } from './player.js';
 import { floatLaunch, jumpV } from '../player.js';
 import { drawGravityRoom } from '../../dev/gravity/scene.js';
 import { SPACE_LOOKS, drawSpaceRoom } from '../../dev/space-look-candidates.js';
-import { GRAVITY_LEVEL as L, GRAVITY_CABINET } from './model.js';
+import { ROOM_SCALE, GEOMETRY_K, JUMP_SCALE, GRAVITY_LEVEL as L, GRAVITY_CABINET } from './model.js';
 import { GRAVITY_STAGE_DATA, isGateField } from '../../data/gravity-stages.js';
 import { STAGE_BY_ID } from '../../data/stages.js';
 import { PLAYER_X } from '../player.js';
@@ -50,6 +51,7 @@ function withWrongRailBeds(hazards, gates, total, speed) {
   return hazards.concat(beds);
 }
 
+const ZOOM_PHONE_FRAMING = 2.2, PHONE_TOP = 22, PHONE_BOTTOM = 3;
 export class GravityRunState extends RunState {
   constructor(opts = {}) {
     const stage = opts.stage || STAGE_BY_ID['gravity-1'];
@@ -70,7 +72,7 @@ export class GravityRunState extends RunState {
   get speed() { return this.baseSpeed(); }
   speedAt() { return this.baseSpeed(); }
   groundYAt() { return GROUND_Y; }
-  gravityScale() { return this.gravityStageData?.gravity ?? L.gravity; }
+  gravityScale() { return (this.gravityStageData?.gravity ?? L.gravity) * GEOMETRY_K; }
   rewardAnchors() {
     // Rewards only ever on the rail you should be running (Peter, 13 Oct: "no
     // rewards on the wrong side"): whatever lane a stage authored, a reward
@@ -96,9 +98,28 @@ export class GravityRunState extends RunState {
     const config = this.portraitConfig();
     const portrait = this.portraitGameplay && config && isPhonePortraitPresentation();
     const mode = portrait ? PHONE_PORTRAIT : LANDSCAPE;
-    const zoom = portrait ? config.worldZoom
-      : Math.min(L.landscapeZoomCap, applyFraming(this.renderSettings || this.save?.settings));
-    const pan = portrait ? this.portraitFrameFit().pan : 0;
+    const framing = applyFraming(this.renderSettings || this.save?.settings);
+    // Phone landscape (Peter, 13 Oct: "quite zoomed out on mobile"): instead of
+    // the desktop cap, fit the corridor exactly — ceiling rail's top just under
+    // the HUD's first row, floor rail's bottom on the frame's bottom edge — and
+    // pan to place it. ~1.5 at the 270-high frame, against 1.36.
+    // Landscape: the level's own framing (2.2 on a phone, like every level),
+    // unless the corridor would not fit; then pan just enough to keep the
+    // ceiling rail under the HUD's first row and the floor rail on screen.
+    const fitZ = (H - PHONE_TOP - PHONE_BOTTOM) / (L.corridor + 24);
+    const zoom = portrait ? config.worldZoom : Math.min(framing, fitZ);
+    let pan = 0;
+    if (!portrait) {
+      const ground = frameGroundY(), floorBottom = ground + 12 * zoom, ceilTop = ground - (L.corridor + 12) * zoom;
+      if (floorBottom > H - PHONE_BOTTOM) pan = (H - PHONE_BOTTOM) - floorBottom;
+      if (ceilTop + pan < PHONE_TOP) pan = PHONE_TOP - ceilTop;
+    } else {
+      // Portrait (Peter, 13 Oct: "ceiling should be up against the hud"): the
+      // ceiling rail's top sits just under the status HUD; the spare height
+      // goes below the floor, where the thumbs are.
+      const ceilTop = frameGroundY() - (L.corridor + 12) * zoom;
+      pan = portraitGameplayEdges(presentationFrame(), this).top - ceilTop;
+    }
     const changed = this.cameraPresentationMode !== mode || this.camZoom !== zoom || this.camPan !== pan;
     this.cameraPresentationMode = mode;
     setRestingZoom(zoom);
@@ -156,7 +177,15 @@ export class GravityRunState extends RunState {
           holdT: this.finishing || this.finished ? (this.backgroundT ?? t) - (this._finishBgT ??= this.backgroundT ?? t) : (this._finishBgT = null, 0),
           speed: this.baseSpeed(), finishLine: this.finishWorldX() - this.finishCameraX(),
           portrait: !!(this.portraitGameplay && isPhonePortraitPresentation()) };
-        if (this.spaceLook) drawSpaceRoom(c, this.spaceLook, room); else drawGravityRoom(c, room);
+        // The room art is authored at 137 high: draw it scaled to the corridor,
+        // with every horizontal quantity divided through so gates and windows
+        // still land on their world x.
+        const k = ROOM_SCALE, scaled = { ...room, cam: cam / k, view: room.view / k, top: room.top / k, bottom: room.bottom / k,
+          gates: this.gravityGates.map((g) => ({ ...g, x: g.x / k })), length: this.totalDist / k,
+          finishCam: this.finishCameraX() / k, speed: this.baseSpeed() / k, finishLine: room.finishLine / k };
+        c.save(); c.scale(k, k);
+        if (this.spaceLook) drawSpaceRoom(c, this.spaceLook, scaled); else drawGravityRoom(c, scaled);
+        c.restore();
         // On the scenery clock: tRun is held through the intro, which left the
         // bolts frozen until the run started (Peter, 13 Oct).
         if (this.gravityStageData.floatingBolts) drawFloatingBolts(c, cam, view, this.backgroundT ?? t, L.corridor);
@@ -179,6 +208,9 @@ export class GravityRunState extends RunState {
       this.gravitySpawned.add(key);
       const ob = makeObstacle(h.type, h.x);
       if (h.span) ob.w = h.span * this.baseSpeed();
+      // Tall beds (the 22-high rollers) come down with the corridor: the arcs over
+      // them are 0.63 the height they were, the airtime the same.
+      if (ob.h > 16) ob.h = 16;
       if (h.x + ob.w < this.playerWorldX() - 20) return;
       ob.gravityAuthoredId = h.id;
       ob.gravityAt = h.at;
@@ -209,7 +241,7 @@ export class GravityRunState extends RunState {
       // collecting the trail follows the feet through the same curve.
       const gravityScale = this.gravityScale() * this.powerups.gravityMultiplier();
       const launch = jumpV(this.player.hero) * floatLaunch(gravityScale)
-        * (this.gravityStageData.jumpHeightScale || 1);
+        * (this.gravityStageData.jumpHeightScale || 1) * JUMP_SCALE;
       const gravity = this.player.gravity * gravityScale;
       for (let n = 0; n < arc.count; n++) {
         const t = n * arc.step;

@@ -810,11 +810,16 @@ function buildBarEffectsEditor(x, y, key, {
   }
   // A sweep that ran on past this window — a sixteen-bar pan opened on four of its bars —
   // keeps reaching as far beyond the window as it did, from whichever end it touches, so
-  // an edit to these bars does not cut it down to them (`cut` adds it back).
+  // an edit to these bars does not cut it down to them (`cut` adds it back). That includes
+  // a plain section reaching past the window: a four-bar filter sweep opened on its last
+  // bar to add something there kept sweeping, not restarting over the one bar (Peter,
+  // 13 Oct 2026). The part left outside is stretched to match (`replaceFxRange`).
   const reachOf = (pos, m) => {
     const sec = fxSectionAt(curve, pos);
     const e = sec?.chain.find((x) => effectKey(x) === m.key);
-    return Array.isArray(e?.sweepRun) ? [sec.from - (Number(e.sweepRun[0]) || 0), sec.to + (Number(e.sweepRun[1]) || 0)] : null;
+    if (!e) return null;
+    const run = Array.isArray(e.sweepRun) ? e.sweepRun : [0, 0];
+    return [sec.from - (Number(run[0]) || 0), sec.to + (Number(run[1]) || 0)];
   };
   const end = base + count * CELL;
   for (const m of merged) {

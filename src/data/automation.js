@@ -453,8 +453,38 @@ export function setLane(automation, key, points, cuts) {
 export function replaceFxRange(automation, key, from, to, sections = []) {
   const laid = (sections || [])
     .map((s) => ({ from: Math.max(from, s.from), to: Math.min(to, s.to), chain: s.chain }));
+  const kept = fxWithout(laneFx(automation, key), from, to)
+    .map((s) => sweptOn(s, laid, from, to));
   return withLane(automation, key, lanePoints(automation, key), laneCuts(automation, key),
-    [...fxWithout(laneFx(automation, key), from, to), ...laid]);
+    [...kept, ...laid]);
+}
+
+/**
+ * A section left either side of a replaced stretch, its sweeps stretched over the run they
+ * now share with the stretch. When the new section at the edge still holds the same effect
+ * and its `sweepRun` reaches back across the edge, the sweep carries on through it, so the
+ * part outside sweeps over the whole run too — a four-bar filter sweep with its last bar
+ * rewritten no longer rushes through three bars and restarts on the fourth (Peter, 13 Oct
+ * 2026). Matched by id: the editor fills in defaults a stored effect left out.
+ */
+function sweptOn(s, laid, from, to) {
+  const before = s.to <= from + EPS;
+  const edge = before ? from : to;
+  if (before ? Math.abs(s.to - from) > EPS : Math.abs(s.from - to) > EPS) return s;
+  const next = laid.find((l) => Math.abs((before ? l.from : l.to) - edge) < EPS);
+  if (!next) return s;
+  const used = new Set();
+  let changed = false;
+  const chain = s.chain.map((e) => {
+    const twin = next.chain.find((x, n) => !used.has(n) && x?.id === e?.id
+      && Array.isArray(x.sweepRun) && (Number(x.sweepRun[before ? 0 : 1]) || 0) > EPS && used.add(n));
+    if (!twin) return e;
+    const start = next.from - (Number(twin.sweepRun[0]) || 0);
+    const end = next.to + (Number(twin.sweepRun[1]) || 0);
+    changed = true;
+    return { ...e, sweepRun: [Math.max(0, s.from - start), Math.max(0, end - s.to)] };
+  });
+  return changed ? { ...s, chain } : s;
 }
 
 /** Replace one lane's points outright — the Volume strip's drag writes through this. */

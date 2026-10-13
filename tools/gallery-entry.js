@@ -9613,6 +9613,43 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
     (ctx, t) => drawSpaceShot(ctx, t, L3, SPACE_SHOTS[0], 480, 270, (t % 30) / 30, { scenery: true, stage: 3 }), { animated: true });
 }
 
+// --------------------------------------------- SPACE CABINET — window frame weight (lab)
+// 13 Oct 2026: "having thinner frames around the glass … do a bake-off of a
+// snapshot at different frame widths … more visibility of the background".
+// frameK scales the chrome rim, the wall between windows and the margins above
+// and below the glass. Shown at the room's in-run size on a phone (the art at
+// 0.63 × zoom 2.2).
+{
+  const grid = section('space-frame-bakeoff', 'SPACE CABINET — window frame weight (bake-off)',
+    'The same moment of level 1 at four frame weights: the chrome rim, the strip of wall between windows and the margins '
+    + 'above and below the glass all scale together. A is today. Thinner frames show more of the outside. In-run phone size, scenery only. ANIMATED.',
+    '13 Oct 2026');
+  const base = SPACE_LOOKS['plateau-occasional'];
+  for (const [letter, k, note] of [['A', 1, 'today'], ['B', 0.65, 'two-thirds'], ['C', 0.4, 'slim'], ['D', 0.2, 'hairline']]) {
+    const look = { ...base, frameK: k };
+    tile(grid, `${letter} — frame ×${k} (${note})`, `frameK ${k}`, 480, 270,
+      (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, 0.1, { scenery: true, stage: 1, zoom: 1.38 }), { animated: true });
+  }
+}
+
+// --------------------------------------------- SPACE CABINET — tall glass (lab)
+// 13 Oct 2026: "why can't we have taller windows … scale up the scenery a bit
+// so it's not a bunch of empty sky" → option 1: glass rail to rail (none beyond
+// the floor or ceiling), the outside scaled ×1.3, frame C. Now the shipped look.
+{
+  const grid = section('space-tall-glass', 'SPACE CABINET — tall glass (shipped)',
+    'Before: the windows as they were. After: glass from rail to rail with no wall margin, the scenery outside ×1.3, frame C (×0.4). '
+    + 'Desktop NORMAL, phone landscape and portrait at their in-run room sizes. Scenery only. ANIMATED.',
+    '13 Oct 2026');
+  const after = SPACE_LOOKS['plateau-occasional'], before = { ...after, tallGlass: false, frameK: 1 };
+  for (const [vname, zoom, w, h] of [['desktop', 1.0, 480, 270], ['phone', 1.38, 480, 270], ['portrait', 2.2, 220, 390]]) {
+    for (const [lname, look] of [['before', before], ['after', after]]) {
+      tile(grid, `${vname} — ${lname}`, `room zoom ${zoom}`, w, h,
+        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], w, h, 0.18, { scenery: true, stage: 1, zoom }), { animated: true });
+    }
+  }
+}
+
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
 //

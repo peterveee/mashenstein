@@ -263,6 +263,19 @@ assert(near(dB(shapeLevel('s', 1, 10 ** (-24 / 20), 0.5)), -12, 1e-9)
   assert(sections(replaceFxRange(both, 'pad', posOf(2, 4), posOf(2, 8), []), 'pad') === JSON.stringify([[16, 20], [24, 32]]),
     'emptying the middle of a section leaves the two ends as two sections');
 
+  // A four-bar filter sweep, then its last bar rewritten on its own with something added:
+  // the Spot FX window writes that bar's filter reaching three bars back, and the three bars
+  // left outside are stretched to reach the bar forward, so it is still one sweep.
+  const sweep = { id: 'filter', params: { cutoff: 200, sweep: 1, sweepTo: 8000 } };
+  const four = replaceFxRange(null, 'pad', 0, 64, [fx(0, 64, [sweep])]);
+  const last = replaceFxRange(four, 'pad', 48, 64, [fx(48, 64, [{ ...sweep, sweepRun: [48, 0] }, crush[0]])]);
+  const runs = JSON.stringify(laneFx(last, 'pad').map((s) => [s.from, s.to, s.chain.map((e) => e.sweepRun || null)]));
+  assert(runs === JSON.stringify([[0, 48, [[0, 16]]], [48, 64, [[48, 0], null]]]),
+    `a sweep keeps running across a bar rewritten on its own (${runs})`);
+  const plain = replaceFxRange(four, 'pad', 48, 64, [fx(48, 64, crush)]);
+  assert(!laneFx(plain, 'pad')[0].chain[0].sweepRun,
+    'but a bar rewritten without the sweep leaves the rest of it as it was written');
+
   // Structure.
   const one = { m: { fx: [{ from: [2, 0], to: [4, 0], chain: stutter }] } };
   assert(sections(shiftAutomation(one, posOf(1), { added: 16 }), 'm') === JSON.stringify([[32, 64]]),

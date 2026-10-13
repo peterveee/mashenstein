@@ -28,6 +28,18 @@ const PANE = { step: 102, off: 4, w: 94, top: -127, h: 117 };
 // higher to see more scenery"): top near the ceiling rail, bottom down at the
 // hero's waist. B and everything built on it (D–M).
 const PANE_B = { top: -134, h: 128 };
+// Frame weight (13 Oct bake-off: "thinner frames … more visibility"): `frameK`
+// on a look scales the chrome rim, the wall between windows and the margins
+// above and below the glass. 1 is the shipped weight.
+const frameOf = (look) => look?.frameK ?? 1;
+// Tall glass (Peter, 13 Oct: "why can't we have taller windows"): the panes run
+// the frame's whole height, the rails crossing them as beams; `curRoom` is the
+// room being drawn, whose extents the panes take.
+let curRoom = null;
+const paneB = (look) => {
+  if (look?.tallGlass && curRoom?.glassTop != null) return { top: curRoom.glassTop, h: curRoom.glassBottom - curRoom.glassTop };
+  const k = frameOf(look); return { top: -137 + 3 * k, h: 137 - 3 * k - 6 * k };
+};
 const SECTORS = [1420, 2980];
 const hash = n => ((Math.sin(n * 78.233 + 12.9) * 43758.5453) % 1 + 1) % 1;
 const clamp01 = v => Math.max(0, Math.min(1, v));
@@ -434,11 +446,11 @@ const airbrush = {
     c.fillStyle = grad(c, 0, CEIL, 0, 0, P.cove);
     c.fillRect(0, CEIL, s.view, -CEIL);
   },
-  paneClip(c, x, w = PANE.w) { c.roundRect(x + 2, PANE_B.top + 2, w - 4, PANE_B.h - 4, 14); },
+  paneClip(c, x, w = PANE.w) { const k = frameOf(this), B = paneB(this); c.roundRect(x + 2 * k, B.top + 2 * k, w - 4 * k, B.h - 4 * k, 14); },
   vista(c, s) {
     const P = this.pal;
     c.fillStyle = grad(c, 0, CEIL, 0, 0, P.sky);
-    c.fillRect(0, CEIL, s.view, -CEIL);
+    if (this.tallGlass) c.fillRect(0, s.top, s.view, s.bottom - s.top); else c.fillRect(0, CEIL, s.view, -CEIL);
     // Nebula: big soft clouds drifting at a crawl.
     const nx = -s.cam * 0.01;
     glow(c, wrap(nx + 70, s.view + 120) - 60, -112, 46, P.nebula[0]);
@@ -468,6 +480,17 @@ const airbrush = {
     }
     lifePass(c, s, this, 'sky');
     this.land(c, s);
+    if (this.tallGlass) {
+      // The ground carries on down below the floor rail: the near ridges' shade,
+      // with a few strata of faceted rock.
+      const r = (RIDGE_SCHEMES[this.pal?.name] ?? RIDGE_SCHEMES.DUSK).ridges[2];
+      c.fillStyle = r[1]; c.fillRect(-60, 6, s.view + 120, Math.max(0, s.bottom - 6));
+      const shift = s.cam * 0.14;
+      for (let k = Math.floor((shift - 60) / 23); k * 23 < shift + s.view + 60; k++) {
+        const x = k * 23 - shift, y = 10 + hash(k + 600) * Math.max(4, s.bottom - 16), w = 4 + hash(k + 610) * 8;
+        poly(c, [[x - w, y + 2], [x, y - w * 0.45], [x + w * 0.6, y + 2]], r[0] + '55');
+      }
+    }
     lifePass(c, s, this, 'near');
   },
   planet(c, s, w) { brushPlanet(c, w * (0.86 - 0.5 * s.progress), -70 + s.progress * 4, 44, s.t); },
@@ -477,15 +500,16 @@ const airbrush = {
     dune(c, s, 0.065, -12, 17, d[1][0], d[1][1], 2, r.rim);
   },
   pane(c, x, s, w = PANE.w) {
-    c.strokeStyle = grad(c, 0, PANE_B.top, 0, PANE_B.top + PANE_B.h, this.pal.chromeV); c.lineWidth = 3.8;
-    c.beginPath(); c.roundRect(x, PANE_B.top, w, PANE_B.h, 15); c.stroke();
-    c.strokeStyle = 'rgba(10,6,24,0.8)'; c.lineWidth = 0.9;
-    c.beginPath(); c.roundRect(x + 2.3, PANE_B.top + 2.3, w - 4.6, PANE_B.h - 4.6, 13); c.stroke();
+    const fk = frameOf(this), PB = paneB(this);
+    c.strokeStyle = grad(c, 0, PB.top, 0, PB.top + PB.h, this.pal.chromeV); c.lineWidth = 3.8 * fk;
+    c.beginPath(); c.roundRect(x, PB.top, w, PB.h, 15); c.stroke();
+    c.strokeStyle = 'rgba(10,6,24,0.8)'; c.lineWidth = 0.9 * Math.max(0.45, fk);
+    c.beginPath(); c.roundRect(x + 2.3 * fk, PB.top + 2.3 * fk, w - 4.6 * fk, PB.h - 4.6 * fk, 13); c.stroke();
     // Glass (Peter, 13 Oct: "the windows aren't reading as glass at all"): a
     // faint cool tint, a bright rim of light just inside the top and left
     // edges, a darker bottom where the frame shades it, and two crisp diagonal
     // reflection bands that slide slowly across as the station scrolls.
-    const top = PANE_B.top, h = PANE_B.h;
+    const top = PB.top, h = PB.h;
     c.save(); c.beginPath(); c.roundRect(x + 2, top + 2, w - 4, h - 4, 14); c.clip();
     c.fillStyle = 'rgba(170,225,235,0.06)'; c.fillRect(x, top, w, h);
     c.fillStyle = grad(c, 0, top, 0, top + h, [[0, 'rgba(255,255,255,0.10)'], [0.18, 'rgba(255,255,255,0)'], [0.82, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.22)']]);
@@ -882,7 +906,10 @@ export const SPACE_LIFE_LOOKS = [lifeJade, lifeAmber];
 // moves off the ground line onto the flat tops, so the generic outposts layer
 // is off; everything else outside is as L.
 export const SPACE_PLATEAU_LOOKS = PLATEAU_VARIANTS.map(v => ({
-  ...lifeJade, id: `plateau-${v.id}`, letter: v.letter, name: `JADE, ${v.name}`, note: v.note,
+  ...lifeJade,
+  // The shipped level look (P5) takes full-height glass and the slim frame C
+  // (Peter, 13 Oct); the other plateau candidates keep the old windows.
+  ...(v.id === 'occasional' ? { tallGlass: true, frameK: 0.65 } : {}), id: `plateau-${v.id}`, letter: v.letter, name: `JADE, ${v.name}`, note: v.note,
   life: DIRECTED_LIFE.filter(id => id !== 'sparseOutposts'), director: true,
   land(c, s) {
     v.land(c, s, this, (RIDGE_SCHEMES[this.pal?.name] ?? RIDGE_SCHEMES.DUSK).ridges);
@@ -903,14 +930,14 @@ export const SPACE_PARADE = PARADE;
 // ~102-unit bays, so every strip sits in its own gap with a 4-unit margin
 // of wall either side; before the first gate and after the last the bays
 // are the usual 102. Returns [screen x, width] per visible pane.
-function gatePanes(gates, cam, view) {
+function gatePanes(gates, cam, view, fk = 1) {
   const strips = gates.map(g => [g.x - L.arrowLeftOffset, g.x + 8]).sort((a, b) => a[0] - b[0]);
   const out = [];
   const run = (a, b) => {
     const n = Math.max(1, Math.round((b - a) / PANE.step)), step = (b - a) / n;
     for (let i = 0; i < n; i++) {
-      const x = a + i * step + 4;
-      if (x + step > cam - 10 && x < cam + view + 10) out.push([x - cam, step - 8]);
+      const x = a + i * step + 4 * fk;
+      if (x + step > cam - 10 && x < cam + view + 10) out.push([x - cam, step - 8 * fk]);
     }
   };
   if (!strips.length) { run(Math.floor(cam / PANE.step) * PANE.step - PANE.step, Math.ceil((cam + view) / PANE.step) * PANE.step + PANE.step); return out; }
@@ -938,21 +965,42 @@ export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = G
   const loneCam = fc - view / 0.6;
   s.loneProgress = loneCam / length;
   if (look.gatePanes) {
-    const vis = view - 60, ps = gatePanes(gates, loneCam, view).filter(([x, w]) => x > 6 && x + w < vis - 6);
+    const vis = view - 60, ps = gatePanes(gates, loneCam, view, frameOf(look)).filter(([x, w]) => x > 6 && x + w < vis - 6);
     const best = ps.reduce((b, p) => (!b || Math.abs(p[0] + p[1] / 2 - vis * 0.55) < Math.abs(b[0] + b[1] / 2 - vis * 0.55) ? p : b), null);
     s.loneRestX = best ? best[0] + best[1] / 2 : vis * 0.55;
     // The window just left of the finish line, where the camera parks: level 3's
     // Martian saucer comes to hover in it.
     const line = finishLine ?? vis * 0.73;
-    const atFinish = gatePanes(gates, fc, view).filter(([x, w]) => x + w < line - 4);
+    const atFinish = gatePanes(gates, fc, view, frameOf(look)).filter(([x, w]) => x + w < line - 4);
     const left = atFinish.reduce((b, p) => (!b || p[0] > b[0] ? p : b), null);
     s.finishPaneX = left ? left[0] + left[1] / 2 : line - 60;
   }
+  curRoom = s;
+  if (look.tallGlass) {
+    // Rail to rail, no wall margin — glass stops at the ceiling and the floor
+    // (Peter, 13 Oct: no glass below your feet upside down)…
+    s.glassTop = CEIL; s.glassBottom = 0;
+    // …and the view outside scaled up to fill it ("so it's not a bunch of empty
+    // sky"): planets near the top of the glass, ridges and plateaus bigger.
+    s.sceneS = 1.3;
+  }
   look.hull(c, s);
-  const panes = look.gatePanes ? gatePanes(gates, cam, view) : [];
+  const panes = look.gatePanes ? gatePanes(gates, cam, view, frameOf(look)) : [];
   if (!look.gatePanes) for (let i = Math.floor(cam / PANE.step) - 1; i * PANE.step < cam + view + PANE.step; i++) panes.push([i * PANE.step - cam + PANE.off, PANE.w]);
   s.panes = panes;   // screen [x, w] of each window, for things that must sit inside one
-  c.save(); c.beginPath(); for (const [x, w] of panes) look.paneClip(c, x, w); c.clip(); look.vista(c, s); c.restore();
+  c.save(); c.beginPath(); for (const [x, w] of panes) look.paneClip(c, x, w); c.clip();
+  if (s.sceneS > 1) {
+    // Everything outside drawn S times bigger about the floor's left end; every
+    // screen-space quantity divided through so pane-anchored things still sit in
+    // their windows.
+    const S = s.sceneS, d = (v) => (v == null ? v : v / S);
+    // length too: stage-timed things travel (progress × length) in vista units,
+    // and must cross the screen at the room's own speed.
+    const sv = { ...s, length: s.length / S, view: s.view / S, cam: s.cam / S, top: s.top / S, bottom: s.bottom / S, finishLine: d(s.finishLine),
+      loneRestX: d(s.loneRestX), finishPaneX: d(s.finishPaneX), panes: s.panes.map(([x, w]) => [x / S, w / S]), glassBottom: d(s.glassBottom) };
+    c.scale(S, S); look.vista(c, sv);
+  } else look.vista(c, s);
+  c.restore();
   for (const [x, w] of panes) look.pane(c, x, s, w);
   look.rails(c, s);
   // `noGates`: scenery only (the background video) — no gate strips or labels.
@@ -994,8 +1042,8 @@ const SHOT_ZOOM = 1.6; // the playtest's landscape framing (ZOOM_NORMAL)
 // and below — the roof and deck that landscape barely shows.
 // `scenery` leaves out the hero and the lane's hazards: the hub's CRT screen and
 // the song covers want the place, not a run (Peter, 13 Oct).
-export function drawSpaceShot(ctx, t, look, shot, w = 480, h = 270, progress = null, { scenery = false, stage = 1 } = {}) {
-  const z = SHOT_ZOOM, pan = (h - 270) / 2, view = w / z;
+export function drawSpaceShot(ctx, t, look, shot, w = 480, h = 270, progress = null, { scenery = false, stage = 1, zoom = SHOT_ZOOM } = {}) {
+  const z = zoom, pan = (h - 270) / 2, view = w / z;
   const cam = shot.heroX - PLAYER_X;
   const floor = screenYFor(GROUND_Y, z) + pan;
   ctx.save();

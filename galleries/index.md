@@ -49,3 +49,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-12 | `637994a` | [2026-10-12-637994a.html](2026-10-12-637994a.html) | [bake-offs](2026-10-12-637994a-lab.html) | Add WOK THIS WAY menu and CORPORATE KOMBAT armchair bake-off |
 | 2026-10-12 | `4e37a1e` | [2026-10-12-4e37a1e.html](2026-10-12-4e37a1e.html) | [bake-offs](2026-10-12-4e37a1e-lab.html) | Refactor titles and save file terminology; introduce diner candidates for corporate combat scenes |
 | 2026-10-12 | `ae27abf` | [2026-10-12-ae27abf.html](2026-10-12-ae27abf.html) | [bake-offs](2026-10-12-ae27abf-lab.html) | Crash log: never let the trail break boot |
+| 2026-10-13 | `d11c0b6` | [2026-10-13-d11c0b6.html](2026-10-13-d11c0b6.html) | [bake-offs](2026-10-13-d11c0b6-lab.html) | Fix the deploy: Gravity Grid cues on the SFX desk, six stale test checks updated |
