@@ -153,6 +153,7 @@ export function paintHudGlitched(ctx, run, ev, drawHud, getBands) {
   const g = scratch.getContext('2d');
   if (!g || typeof g.drawImage !== 'function') { drawHud(ctx, run); return; }
   const m = ctx.getTransform();
+  if (!m || !Number.isFinite(m.a)) { drawHud(ctx, run); return; }
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, scratch.width, scratch.height);
   g.setTransform(m);

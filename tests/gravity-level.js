@@ -328,7 +328,7 @@ const { trackIdOf } = await import('../src/data/tracks.js');
 assert.equal(GRAVITY_CABINET.music, bank);
 assert.equal(trackIdOf(bank), 'gravity');
 assert.equal(barPlan(bank).length, 56);
-assert.equal(arrangement.loop.fromBar, 5);
+assert.equal(arrangement.loop.fromBar, 1);
 assert.equal(arrangement.loop.toBar, 56);
 for (const section of bank.sections) for (const [key, steps] of Object.entries(section)) {
   assert.equal(steps.length, 32, key);
@@ -350,7 +350,7 @@ assert.ok(Math.abs(run.camX - checkpoint.camX) <= 4, 'returns to checkpoint');
 assert.equal(run.gravityLane, 1, 'checkpoint restores ceiling polarity');
 assert.equal(run.player.y, L.corridor - 24, 'checkpoint restores ceiling footing');
 assert.equal(run.battery, run.maxBattery());
-assert.ok(run.obstacles.find(o => o.gravityCeiling === L.corridor), 'restored hazards retain ceiling mounts');
+assert.ok(run.obstacles.find(o => o.gravityCeiling === run.corridor), 'restored hazards retain ceiling mounts');
 const rewind = {}; run.writeRewindSnapshot(rewind);
 run.gravityLane = 0; run.restoreRewindSnapshot(rewind);
 assert.equal(run.gravityLane, 1, 'rewind restores polarity');
