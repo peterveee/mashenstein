@@ -3106,7 +3106,7 @@ assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStor
   && /label: 'Delete Track', danger: true,[\s\S]*?run: \(\) => deleteLane\(laneKey\)/.test(entry)
   && /ask\(`Delete \$\{number \? `track \$\{number\}, ` : ''\}\$\{escapeHtml\(label\)\}\?`/.test(entry)
   && /The other tracks and all song bars stay in place/.test(entry)
-  && /function rebuildForShape\(\) \{[\s\S]*?bankCache = \{ bank: null, sig: null, arr: null, out: null \};[\s\S]*?buildRack\(\);[\s\S]*?buildArrangement\(\);[\s\S]*?rebank\(\)/.test(entry)
+  && /function rebuildForShape\([^)]*\) \{[\s\S]*?bankCache = \{ bank: null, sig: null, arr: null, out: null \};[\s\S]*?buildRack\(\);[\s\S]*?buildArrangement\(\);[\s\S]*?rebank\(\)/.test(entry)
   && /const mixRemoved = layer[\s\S]*?\.arrrow\[data-lane=[\s\S]*?\.strip\[data-lane=/.test(entry),
   'deleting a track invalidates its shaped view, clears selection, and lives on the track menu');
 assert(/const layersOf = \(key\) => \{[\s\S]*?if \(l\.independent\) continue;[\s\S]*?if \(!sources\.has\(l\.from\)\) continue;/.test(entry)
@@ -3911,7 +3911,7 @@ assert(/#devices \{[^}]*z-index: 28;/.test(shell)
 // the choke point the note editors already sit in, not the kit menu's own handler. Anything
 // that adds or removes drums clears it: the offer itself, the arrangement's +, a delete, an
 // undo stepping back over any of them.
-assert(/function rebuildForShape\(\)[\s\S]*?kitRoll\.refresh\(\);[\s\S]*?syncRearrangeDrumControl\(\);[\s\S]*?rebank\(\);/.test(entry)
+assert(/function rebuildForShape\([^)]*\)[\s\S]*?kitRoll\.refresh\(\);[\s\S]*?syncRearrangeDrumControl\(\);[\s\S]*?rebank\(\);/.test(entry)
   && !/applyKit\(kit\[0\], kit\[1\]\);\s*\n\s*syncRearrangeDrumControl/.test(entry),
   'the missing-kit offer is cleared where the lane list changes, not at one call site');
 // ONE READER behind the offer and the keyboard's pads. They ask the same question — what
@@ -4656,7 +4656,7 @@ assert(/const mine = masks\[selected\] \|\| null;/.test(noteFxEditors)
   && /popup\.own = own;/.test(noteFxEditors)
   && (entry.match(/own: popup\.own === true/g) || []).length === 2
   && /#regionedit\.barfxmodal :is\(\.barfxmodeseg, \.barfxgridseg\) \.segbtn\.on \{/.test(shell)
-  && /const litAt = \(i\) => masks\.map\(\(m\) => \(m\[i\] \? 1 : 0\)\)\.join\(''\);[\s\S]*?const sub = chain\.filter\(\(_, e\) => masks\[e\]\[i\]\);/.test(noteFxEditors)
+  && /const litAt = \(i\) => masks\.map\(\(m\) => \(m\[i\] \? 1 : 0\)\)\.join\(''\);[\s\S]*?const sub = \[\];[\s\S]*?if \(!masks\[e\]\?\.\[i\]\) return;/.test(noteFxEditors)
   && /picks\.get\(chainSig\(c\)\)\.includes\(m\)/.test(noteFxEditors)
   && /masks: popup\.masks \|\| null/.test(entry)
   && /#regionedit\.barfxmodal \.barfxcell\[data-state="off"\]\[data-also="1"\]/.test(shell)

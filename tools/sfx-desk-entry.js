@@ -81,6 +81,8 @@ const GROUPS = [
       { cue: 'bridgeLay', what: 'the ice deck laying across the break' },
       { cue: 'trapSnap', what: 'a bear trap', gain: 0.72 },
       { cue: 'boom', what: 'an explosion; a card box bursting', gain: 1.5 },
+      { cue: 'smallBoom', what: 'a Martian raider blown up outside the Gravity Grid windows', gain: 0.75 },
+      { cue: 'martianPew', what: 'a Martian ray-gun shot in the Gravity Grid raid', gain: 0.65 },
       { cue: 'thunder', what: 'the lightning strike that turns neon-1 to night' },
       { cue: 'gateSlam', what: 'a crypt gate banging shut just ahead of the runner' },
       { cue: 'coyoteHowl', what: 'the Speed Zone coyote howling on his ledge' },

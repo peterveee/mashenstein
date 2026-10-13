@@ -216,9 +216,11 @@ assert(Input.down.size === 0 && Input.hit.size === 0, 'exit input consumed — c
 
   // The tallest thing in the game a hero clears by jumping OVER it. A pit has
   // no height to clear and an icicle falls on you from 70 — neither is a bar
-  // the jump is measured against.
+  // the jump is measured against. Nor are the Gravity Grid's own set pieces
+  // (`gravityArt`: the 22-high maintenance rollers), which that cabinet's fixed
+  // arc is built around instead.
   const TALL = Math.max(...Object.entries(OBSTACLES)
-    .filter(([id, d]) => d.action === 'jump' && !d.falls && id !== 'gap')
+    .filter(([id, d]) => d.action === 'jump' && !d.falls && id !== 'gap' && !d.gravityArt)
     .map(([, d]) => (d.alt || 0) + d.h));
   const base = jumpHeightFor({ jumpMult: 1 });
   const clearancePct = (h) =>

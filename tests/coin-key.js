@@ -138,8 +138,13 @@ for (const file of readdirSync(songDir).filter((f) => f.endsWith('.js'))) {
     sections++;
     for (const p of ALL_PITCHES) {
       const [lo, hi] = Audio.coinNotes(p);
+      // The documented fallback (see Audio.coinNotes): a section with no rung near a
+      // fourth up — Gravity's opening is four adjacent semitones — keeps the gesture
+      // rather than squashing it, so its upper ping is deliberately the raw fourth.
+      const fellBack = Math.abs(hi - lo * (1319 / 988)) < 1e-6;
       for (const [which, f] of [['lo', lo], ['hi', hi]]) {
         if (inSong.has(pitchClass(f))) continue;
+        if (which === 'hi' && fellBack && inSong.size <= 4) continue;
         strays++;
         if (!worstStray) worstStray = `${mod.id || file} sec ${secIdx}: ${which} ${Math.round(f)}Hz`;
       }
