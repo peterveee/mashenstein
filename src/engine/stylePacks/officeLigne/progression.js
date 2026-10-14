@@ -1,6 +1,7 @@
 // Ordinary architecture repeats; named rooms are finite, stage-relative places.
 import { OFFICE_FLOORS, FACTORS, OFFICE_ZOOM, WALL_BASE, MID_BASE, LANE_TOP } from '../officeClimb.js';
 import { box, line, poly, circ, ell, letters, OFFICE_FONT, PAL, YH, VPX, canvas } from './line.js';
+import { paintLiftCar, LIFT_MARTIAN_CAR } from './liftCar.js';
 import { decoSconce, ceoDoor, founderPortrait, trophyCase, bookshelf, lobbyLogo, signNeon, lobbyWallBay, openWallBay, execPanels, upperWall, lobbyLift, steelLift, liftDoors } from './wall.js';
 import { reception, midActors, plant, sculpture, boardroomBack, boardroomFront, easel, chairFromBehind, sofa } from './room.js';
 import { glassMeetingRoom, paintExtraOfficeRoom, officeRoomStyle, roomWithDepth } from './rooms.js';
@@ -454,7 +455,16 @@ function ashtray(g,cx,P){
   for(let k=0;k<4;k++)line(g,x+1.5+k*2.6,b-h-1.4,x+2.5+k*2.6,b-h+0.2,'#8b919c',0.3);
   box(g,x-0.4,b-1.8,w+0.8,1.8,'#1f1d26',P.ink,0.3);
 }
-function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0){
+// A bake-off seam (tools/gallery-entry.js, the lift-car bake-off): `which` pins the open car of
+// the pair, and `interior` paints the back of an open car, between the car and its doors, with
+// the car's own rect (wall units, before the bank's 1.2) and the frame time. Null in the game.
+let liftBakeoff=null;
+export function setOfficeLiftBakeoff(o){const was=liftBakeoff;liftBakeoff=o;return was;}
+// `bank`: the bank's place on its floor (0, 1), which picks its car's poster; `martian`: the
+// Gravity Grid's Martian rides in this bank (liftCar.js), and his car is the one that is open.
+function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0,t=0,bank=0,martian=false){
+  if(martian)which=LIFT_MARTIAN_CAR;
+  if(liftBakeoff?.which!=null)which=liftBakeoff.which;
   // A narrow floor-to-ceiling wall bay makes the compact lift read as part of
   // the building. Its furniture cut matches the bay, so corridor props do not
   // show through the foreground structure.
@@ -480,6 +490,14 @@ function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0){
   for(const h of lifts){
     if(floor==='lobby')lobbyLift(g,h,P);else steelLift(g,h,P,floor==='exec');
   }
+  // the back of the open car: its EGGCORP poster and call panel, and the Martian if he rides
+  lifts.forEach((h,k)=>{
+    if(h.open<=0.02)return;
+    g.save();g.beginPath();g.rect(h.x,h.y,h.w,h.h);g.clip();
+    if(liftBakeoff?.interior)liftBakeoff.interior(g,h,{floor,P,t,which:k});
+    else paintLiftCar(g,h,{floor,t,bank,martian});
+    g.restore();
+  });
   liftDoors(g,{floor,wall:{hangs:lifts}},P);
   // one call panel for the pair, on the wall between them
   const py=WALL_BASE-lh*0.54,plate=floor==='exec'?(P.brass||'#d1bc78'):floor==='lobby'?(P.chrome||'#d7dbe3'):(P.steelLt||'#e8ebf1');
@@ -615,6 +633,21 @@ export function officeLiftSpans(f){
 }
 
 // The cleared stretches of wall, painted with the wall itself, before anything hangs on it.
+// Prepare finite stage wall replacements together before the camera reaches them.
+// Previously each full-resolution canvas was allocated on its first visible frame.
+const WARM_SECTIONS=new WeakMap();
+export function warmOfficeWallSections(f){
+ const plan=f.founderPlan;if(!plan)return;
+ const top=Math.floor(Math.min(f.ceilingY,OFFICE_CORRIDORS[f.floor].ceilingY));
+ const key=`${top}|${Math.round(f.glass.top)}|${officeRoomStyle()}`;
+ if(WARM_SECTIONS.get(plan)===key)return;
+ for(const l of f.landmarks||[]){
+  if(!l.section||l.section.glass||(OFFICE_FORWARD_LANDMARKS.has(l.kind)&&officeRoomStyle()==='glass'))continue;
+  wallSectionCanvas(f,l.section.u0,l.section.u1-l.section.u0,top,PAL[f.floor]);
+ }
+ if(plan.finish)wallSectionCanvas(f,plan.finish.u0,plan.finish.u1-plan.finish.u0,top,PAL[f.floor]);
+ WARM_SECTIONS.set(plan,key);
+}
 export function paintOfficeWallSections(g,f){
   const fin=f.founderPlan?.finish;
   const extra=fin?[{x:fin.u0-f.wall.shift,w:fin.u1-fin.u0,section:fin}]:[];
@@ -667,7 +700,7 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       const ease=open*open*(3-2*open);
       // which of the pair is the one waiting open: drawn per run and per lift bank
       const r=Math.sin((l.worldX*0.0137+(f.liftSeed||0)*97.3)*127.1)*43758.5453;
-      foregroundLift(g,l,P,floorNumber,wt,ease,f.floor,(r-Math.floor(r))<0.5?0:1);
+      foregroundLift(g,l,P,floorNumber,wt,ease,f.floor,(r-Math.floor(r))<0.5?0:1,f.t,l.at<0.3?0:1,!!f.liftMartian&&kind==='lobbyLifts');
       g.restore();
       // its shadow along the floor at the foot of the front
       {const [a0,y1]=T(x,bt),[a1]=T(x+w,bt);box(g,a0,y1,a1-a0,1.6,'rgba(20,16,30,0.3)');}
@@ -747,7 +780,7 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       for(const ax of [deskX-46,deskX+deskW+12])sofa(g,{x:ax,w:34,seat:'single'},P,true);
       box(g,c-12,b-52,24,20,'#353242',P.ink,0.6);
       box(g,c-8,b-50,16,15,'#554e62',P.ink,0.4);
-      midActors(g,{mid:{items:[{kind:'reception',x:deskX,w:deskW,dy:Math.sin(f.t*1.3)*0.5}]}},P);
+      midActors(g,{mid:{items:[{kind:'reception',hairStyle:'bouffant',hairColor:'#d9b65f',x:deskX,w:deskW,dy:Math.sin(f.t*1.3)*0.5}]}},P);
       // Her terminal and phone sit above the compact counter; the headset keeps
       // the executive assistant legible as staff rather than another waiting guest.
       box(g,c+20,b-47,22,14,'#d5d0c4',P.ink,0.5);

@@ -40,8 +40,23 @@ const SUIT = ['#7ee0c8', '#3fb5a0', '#227866', '#134a40'];
 // and neck").
 export function martianHead(c, x, y, sc, t, { talk = 0, look = 0, helmet = true, collar = SUIT } = {}) {
   c.save(); c.translate(x, y); c.scale(sc, sc);
+  // The plain head (no collar) wears the film's helmet (Peter, 14 Oct, with the
+  // lifesize-bust reference: "more space for the head and it flares up and
+  // out, not quite an oval"): narrow at a fine ring on the neck, the sides
+  // flaring up and out to their widest above the brow, then a tall rounded
+  // dome with room above the brain (a little less tall, 14 Oct).
+  const snug = !collar;
+  const bell = (closed) => {
+    c.beginPath(); c.moveTo(-4.3, -0.6);
+    c.quadraticCurveTo(-5.6, -6, -7.4, -10.8);
+    c.bezierCurveTo(-8, -16, -4.8, -19.6, 0, -19.6);
+    c.bezierCurveTo(4.8, -19.6, 8, -16, 7.4, -10.8);
+    c.quadraticCurveTo(5.6, -6, 4.3, -0.6);
+    if (closed) c.closePath();
+  };
+  const glass = () => { if (snug) bell(true); else { c.beginPath(); c.arc(0, -8, 8.4, 0, TAU); } };
   // Helmet glass, back half: a faint tint behind the head.
-  if (helmet) { c.beginPath(); c.arc(0, -8, 8.4, 0, TAU); c.fillStyle = 'rgba(190,240,255,0.14)'; c.fill(); }
+  if (helmet) { glass(); c.fillStyle = 'rgba(190,240,255,0.14)'; c.fill(); }
   // Skull face: cheekbones, hollow temples, a narrow jaw.
   poly(c, [[-3.6, -6.8], [-3.9, -4.6], [-2.6, -2.2], [-1.4, -1.2], [1.4, -1.2], [2.6, -2.2], [3.9, -4.6], [3.6, -6.8]], SKIN[1]);
   poly(c, [[-3.6, -6.8], [-3.9, -4.6], [-2.6, -2.2], [-1.4, -1.2], [0, -1.2], [0, -6.8]], SKIN[0]);
@@ -83,14 +98,33 @@ export function martianHead(c, x, y, sc, t, { talk = 0, look = 0, helmet = true,
     poly(c, [[-6.4, 0.6], [-5.2, -3.6], [-3.4, -1.4], [-4.4, 0.6]], collar[0]);
     poly(c, [[6.4, 0.6], [5.2, -3.6], [3.4, -1.4], [4.4, 0.6]], collar[2]);
   }
-  c.beginPath(); c.ellipse(0, 0.2, 6.2, 1.3, 0, 0, TAU); c.fillStyle = SILVER[3]; c.fill();
-  c.beginPath(); c.ellipse(0, -0.1, 6.2, 1, 0, Math.PI, 0); c.fillStyle = SILVER[1]; c.fill();
-  // Helmet glass, front: a rim and two highlights.
   if (!helmet) { c.restore(); return; }
-  c.beginPath(); c.arc(0, -8, 8.4, Math.PI * 0.08, Math.PI * 0.92, true);
-  c.strokeStyle = 'rgba(230,250,255,0.75)'; c.lineWidth = 0.35; c.stroke();
-  c.beginPath(); c.ellipse(-4.6, -11.4, 1, 2.6, 0.55, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.55)'; c.fill();
-  c.beginPath(); c.ellipse(5.2, -6, 0.45, 1.2, -0.3, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.35)'; c.fill();
+  // The helmet's collar ring: wide under the round bubble, fine and at the neck
+  // under the snug one.
+  if (snug) {
+    c.beginPath(); c.ellipse(0, -0.5, 4.6, 0.65, 0, 0, TAU); c.fillStyle = SILVER[3]; c.fill();
+    c.beginPath(); c.ellipse(0, -0.65, 4.6, 0.42, 0, Math.PI, 0); c.fillStyle = SILVER[1]; c.fill();
+  } else {
+    c.beginPath(); c.ellipse(0, 0.2, 6.2, 1.3, 0, 0, TAU); c.fillStyle = SILVER[3]; c.fill();
+    c.beginPath(); c.ellipse(0, -0.1, 6.2, 1, 0, Math.PI, 0); c.fillStyle = SILVER[1]; c.fill();
+  }
+  // Helmet glass, front: a rim and two highlights.
+  if (snug) {
+    bell(false); c.strokeStyle = 'rgba(230,250,255,0.75)'; c.lineWidth = 0.35; c.stroke();
+    // Two tall streaks of window light down the upper glass, as on the bust,
+    // and a small glint low on the right.
+    c.fillStyle = 'rgba(255,255,255,0.6)';
+    c.beginPath(); c.ellipse(-2.4, -15.2, 0.35, 2.8, 0.12, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.45)';
+    c.beginPath(); c.ellipse(-0.9, -15.9, 0.25, 2.1, 0.08, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.3)';
+    c.beginPath(); c.ellipse(5.6, -7.4, 0.35, 1.3, -0.35, 0, TAU); c.fill();
+  } else {
+    c.beginPath(); c.arc(0, -8, 8.4, Math.PI * 0.08, Math.PI * 0.92, true);
+    c.strokeStyle = 'rgba(230,250,255,0.75)'; c.lineWidth = 0.35; c.stroke();
+    c.beginPath(); c.ellipse(-4.6, -11.4, 1, 2.6, 0.55, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.55)'; c.fill();
+    c.beginPath(); c.ellipse(5.2, -6, 0.45, 1.2, -0.3, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.35)'; c.fill();
+  }
   c.restore();
 }
 
@@ -141,7 +175,10 @@ export function martianStanding(c, x, y, sc, t, { fire = true, face = 1, aim: ai
 // chasing lights round the rim, a spinning band below, a clear dome with the
 // Martian inside, and a heat-ray emitter underneath. About 50 wide at sc 1.
 // `rayLen` (local units) stretches the heat ray to exactly reach a target.
-export function marsSaucer(c, x, y, sc, t, { pilot = true, ray = 0, rayLen = 70, pilotHelmet = true, pilotSc = 0.58 } = {}) {
+// The pilot sits bare-headed under the dome, in the trooper's crimson (Peter,
+// 14 Oct: "remove the helmet from the saucer pilot").
+const PILOT_COLLAR = ['#ff6a5c', '#d8343a', '#9a1c28'];
+export function marsSaucer(c, x, y, sc, t, { pilot = true, ray = 0, rayLen = 70, pilotHelmet = false, pilotSc = 0.58, tractor = 0, tractorLen = 70 } = {}) {
   c.save(); c.translate(x, y); c.scale(sc, sc);
   const R = 25, wob = Math.sin(t * 1.7) * 0.04;
   c.rotate(wob);
@@ -160,12 +197,31 @@ export function marsSaucer(c, x, y, sc, t, { pilot = true, ray = 0, rayLen = 70,
     glow(c, 0, L, 6, '200,255,170', 0.8 * ray);
     c.beginPath(); c.ellipse(0, L, 4, 1.2, 0, 0, TAU); c.fillStyle = `rgba(235,255,220,${0.7 * ray})`; c.fill();
   }
+  if (tractor > 0) {
+    // The tractor beam: a wide pale cone from the belly to the ground, rings
+    // and motes travelling UP it — pulling, not burning (Peter, 14 Oct: the
+    // finish saucer "start his tractor beam once he arrives").
+    const L = tractorLen, half = 6 + L * 0.32;
+    c.fillStyle = grad(c, 0, 4, 0, L, [[0, `rgba(200,255,230,${0.42 * tractor})`], [0.7, `rgba(170,255,210,${0.2 * tractor})`], [1, `rgba(170,255,210,${0.08 * tractor})`]]);
+    c.beginPath(); c.moveTo(-4, 4.4); c.lineTo(4, 4.4); c.lineTo(half, L); c.lineTo(-half, L); c.closePath(); c.fill();
+    for (let i = 0; i < 5; i++) {
+      const u = 1 - (((t * 0.45 + i / 5) % 1) + 1) % 1, ry = 6 + u * (L - 6), rw = 4 + (half - 4) * (ry - 4.4) / (L - 4.4);
+      c.beginPath(); c.ellipse(0, ry, rw, 1 + rw * 0.12, 0, 0, TAU);
+      c.strokeStyle = `rgba(220,255,235,${0.55 * tractor * Math.min(1, u * 4, (1 - u) * 4)})`; c.lineWidth = 0.5; c.stroke();
+    }
+    for (let i = 0; i < 9; i++) {
+      const u = 1 - (((t * (0.25 + hash(i) * 0.2) + hash(i + 9)) % 1) + 1) % 1, my = 6 + u * (L - 6);
+      const mx = (hash(i + 20) - 0.5) * 1.6 * (4 + (half - 4) * (my - 4.4) / (L - 4.4));
+      c.fillStyle = `rgba(240,255,245,${0.8 * tractor * Math.min(1, u * 3)})`; c.fillRect(mx - 0.4, my - 0.4, 0.8, 0.8);
+    }
+    glow(c, 0, L, half, '200,255,220', 0.35 * tractor);
+  }
   glow(c, 0, 1, 30, '170,255,200', 0.12);
   // Dome with the pilot.
   c.save(); c.beginPath(); c.ellipse(0, -2.6, 8.6, 9.4, 0, Math.PI, 0); c.closePath(); c.clip();
   if (pilot) {
     c.fillStyle = 'rgba(170,230,240,0.32)'; c.fillRect(-9, -12, 18, 10);
-    martianHead(c, 0, -2.6, pilotSc, t, { talk: Math.max(0, Math.sin(t * 6)) * 0.6, look: Math.sin(t * 0.9), helmet: pilotHelmet });
+    martianHead(c, 0, -2.6, pilotSc, t, { talk: Math.max(0, Math.sin(t * 6)) * 0.6, look: Math.sin(t * 0.9), helmet: pilotHelmet, collar: pilotHelmet ? SUIT : PILOT_COLLAR });
   } else {
     // Frosted: no seeing in (Peter, 13 Oct) — the Martian is level 3's reveal,
     // so the small saucers keep their crews hidden. A milky glass, lit from the
@@ -199,7 +255,7 @@ export function marsSaucer(c, x, y, sc, t, { pilot = true, ray = 0, rayLen = 70,
     c.fillStyle = SILVER[4]; c.fillRect(sx, 2.6, 1.6, 1.2);
   }
   c.beginPath(); c.ellipse(0, 4.4, 4, 1.1, 0, 0, TAU); c.fillStyle = SILVER[4]; c.fill();
-  c.beginPath(); c.ellipse(0, 4.6, 2.4, 0.7, 0, 0, TAU); c.fillStyle = ray > 0 ? '#eaffd8' : '#7fe07f'; c.fill();
+  c.beginPath(); c.ellipse(0, 4.6, 2.4, 0.7, 0, 0, TAU); c.fillStyle = ray > 0 || tractor > 0 ? '#eaffd8' : '#7fe07f'; c.fill();
   c.restore();
 }
 

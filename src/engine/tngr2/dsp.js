@@ -37,6 +37,7 @@
  */
 
 import { driveCurveTable, DRIVE_HEADROOM, DRIVE_CURVE_POINTS, TNGR2_DRIVE_STAGE } from '../drive-curve.js';
+import { tngr2Defaults } from './schema.js';
 
 /**
  * The core, as source. Pure: no DOM, no Tone, no VoiceRack, no mixer or game state, and
@@ -422,6 +423,13 @@ var TNGR2_DRIVE_POINTS = ${DRIVE_CURVE_POINTS};
 // KEY FOLLOW's reference note, A2 — the one MRDR-3 and KNDO-5 use (base / 110).
 var TNGR2_KEY_REF = 110;
 
+// The SLOPE a patch that states none is played at — the schema's, pasted in like the
+// drive constants above. Every patch the engine plays comes through migrateTngr2, which
+// fills this in from tngr2Defaults, so the core and the schema must not disagree on
+// it: this said -12 while the schema said -24, which made a bare patch in a test or a
+// tool a gentler filter than the same patch on the desk.
+var TNGR2_DEFAULT_SLOPE = ${tngr2Defaults().filter.slope};
+
 // The most a note's level may be: +24 dB. voiceGain boosts at most +12 dB and a trim,
 // a bar's automation and an accent multiply on top; past this it is a mistake upstream.
 var TNGR2_MAX_LEVEL = 16;
@@ -508,7 +516,7 @@ function tngr2CompilePatch(patch) {
     filterMode: TNGR2_FILTER_MODES[p.filter && p.filter.type] || 0,
     // -12 is one stage, -24 two, -48 four. Same three slopes the rest of the desk offers.
     stages: (function (slope) {
-      var n = Math.abs(Number(slope) || 12);
+      var n = Math.abs(Number(slope) || TNGR2_DEFAULT_SLOPE);
       return n >= 48 ? 4 : (n >= 24 ? 2 : 1);
     }(p.filter && p.filter.slope)),
     seed: (Number(p.seed) || 0) | 0,

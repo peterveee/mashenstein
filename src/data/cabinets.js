@@ -104,12 +104,8 @@ const ANIMALS = {
     P(2, [{ t: 'dogFeral', dx: 0 }, coinArc(120)]),
     P(2, [{ t: 'cryptPanther', dx: 0 }, { t: 'tombstone', dx: 140 }]),
   ],
-  // Corporate security, on four legs and wearing a collar someone expensed.
-  office: [
-    P(1, [{ t: 'dogSnarler', dx: 0 }]),
-    P(2, [{ t: 'dogSnarler', dx: 0 }, { t: 'chair', dx: 145 }]),
-    P(2, [{ t: 'catFury', dx: 0 }, coinArc(110)]),
-  ],
+  // No office entry: no dogs or animals in the Corporate Kombat lane (Peter,
+  // 14 Oct 2026). Its closer is the rolling furniture.
 };
 
 const BASE_PATTERNS = [
@@ -201,7 +197,6 @@ const ICE_PATTERNS = BASE_PATTERNS.map((pattern) => ({
 // rename keeps its identity — which the peel's once-group and the Surge's
 // dedup both rely on.
 const OFFICE_BANK = [
-  ...ANIMALS.office,
   ...BASE_PATTERNS.filter((p) => p.tier > 0),
   P(0, [{ t: 'chair', dx: 0 }]),
   P(0, [{ t: 'printer', dx: 0 }]),
@@ -234,7 +229,7 @@ const OFFICE_FLOORS = {
   1: {
     cactus: 'wetFloorSign', cactusBig: 'waterDolly', crate: 'newsBundle',
     chair: 'mopBucket', barrel: 'mopBucket', fireBarrel: 'ashUrnFire', boomBarrier: 'velvetRope',
-    drone: 'artMobile', paperwork: 'artMobile', buzzbird: 'pigeon',
+    drone: 'artMobile', paperwork: 'artMobile', buzzbird: 'paperPlane',
     // No target on the lobby: its printer berths stand a wet floor sign instead.
     printer: 'wetFloorSign',
   },

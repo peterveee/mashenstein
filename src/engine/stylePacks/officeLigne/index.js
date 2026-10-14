@@ -1,3 +1,4 @@
+import { paintOfficeCleaners } from './cleanerPlacement.js';
 // Corporate Kombat: LIGNE ’89 index painter. Shared with the preserved bake-off.
 import { OFFICE_FLOORS, WALL_BASE, FACTORS, MID_BASE } from '../officeClimb.js';
 import { PAL, bakeStrip, drawStrip, W, box, line } from './line.js';
@@ -6,7 +7,7 @@ import { paintWall, upperWall, liftDoors, clockHands, revolvingDoor, signNeon, f
 import { paintMid, ceiling, ceilingLights, floorPlane, slab, midActors, midDevices, lampSheen, lights } from './room.js';
 import { OFFICE_ZOOM as ZOOM } from '../officeClimb.js';
 import { paintFront } from './front.js';
-import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections, officeLiftSpans } from './progression.js';
+import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections, officeLiftSpans, warmOfficeWallSections } from './progression.js';
 import { paintOfficeArtwork, warmOfficeArtwork, officeArtworkBytes } from './artwork.js';
 
 const CACHE = new Map();
@@ -143,6 +144,7 @@ export const STYLE = {
       for (const key of cache.keys()) if (key !== `${f.floor}@${k}`) cache.delete(key);
     }
     const B = bakeFor(f.floor, k, cache);
+    if(options.production)warmOfficeWallSections(f);
     const farShift = f.camX * FACTORS.cityFar * ZOOM;
     const nearShift = f.camX * (F.outside.nearFactor ?? FACTORS.cityNear) * ZOOM;
     // The furniture row may stand further back up the floor than the card's MID_BASE.
@@ -175,7 +177,9 @@ export const STYLE = {
     flyer(ctx, f, P);
     ctx.restore();
     ctx.save();
-    cradle(ctx, f, P);
+    if (options.windowPreview) options.windowPreview(ctx, f, P);
+    else if (options.production) paintOfficeCleaners(ctx, f);
+    else cradle(ctx, f, P);
     ctx.restore();
     ctx.restore();
 
@@ -186,7 +190,8 @@ export const STYLE = {
     // windows cleared to plain wall for the named places, then what hangs on the wall
     if (f.landmarks) paintOfficeWallSections(ctx, f);
     upperRoom(ctx, f, P, 'trim');
-    if(options.production)paintOfficeArtwork(ctx,f,P,OFFICE_ART_BAKE_SCALE);
+    if (options.artworkPreview) options.artworkPreview(ctx, f, P);
+    else if(options.production)paintOfficeArtwork(ctx,f,P,OFFICE_ART_BAKE_SCALE);
     liftDoors(ctx, f, P);
     clockHands(ctx, f, P);
     revolvingDoor(ctx, f, P);

@@ -3646,26 +3646,70 @@ function makeMultibandCompN(ctx, params = {}) {
     f.Q.value = 0.7071;
     return f;
   };
-  const lowLp = filter('lowpass');
-  const midHp = filter('highpass');
-  const midLp = filter('lowpass');
-  const highHp = filter('highpass');
+  // LINKWITZ-RILEY, 24 dB/oct: each crossover is two Butterworths in a row. 14 Oct 2026 —
+  // the single 12 dB/oct biquads Tone uses sum to (s²+1)/(s²+√2s+1), a NOTCH at every
+  // crossover: measured on CORPORATE KOMBAT with every ratio at 1, −8 dB at 150–250 Hz
+  // and −7 dB at 1.3–2.5 kHz, which is where "dull" came from. LR4 bands sum flat in
+  // level; the low band also goes through the high crossover's all-pass so its phase
+  // matches the mid + high pair it is summed with, and the high band is split off
+  // AFTER the low crossover's high-pass, as the mid is, so the two share its phase.
+  const pair = (type) => { const a = filter(type); const b = filter(type); a.connect(b); return [a, b]; };
+  const [lowLp, lowLp2] = pair('lowpass');
+  const [midHp, midHp2] = pair('highpass');
+  const [midLp, midLp2] = pair('lowpass');
+  const [highHp, highHp2] = pair('highpass');
+  const lowAp = filter('allpass');
   const comp = () => ctx.createDynamicsCompressor();
   const low = comp(); const mid = comp(); const high = comp();
-  input.connect(lowLp); lowLp.connect(low); low.connect(output);
-  input.connect(midHp); midHp.connect(midLp); midLp.connect(mid); mid.connect(output);
-  input.connect(highHp); highHp.connect(high); high.connect(output);
+  // GAIN per band (14 Oct 2026), after its compressor. A DynamicsCompressorNode adds make-up
+  // gain of its own that nobody can see or turn off — compress a band harder and it comes
+  // out LOUDER — so threshold and ratio were secretly setting the band's level too. This is
+  // the band's level on its own knob. 0 dB on every saved card: unity, `x * 1`.
+  const lowGain = ctx.createGain(); const midGain = ctx.createGain(); const highGain = ctx.createGain();
+  low.connect(lowGain); mid.connect(midGain); high.connect(highGain);
+  lowGain.connect(output); midGain.connect(output); highGain.connect(output);
+  // SPLIT (14 Oct 2026). 'flat' is the LR4 above. 'classic' is the old single-biquad
+  // split, notches and all: every mix saved before the fix was balanced by ear WITH those
+  // notches (the one near 180 Hz was doing the job of a low-mid cut), so a saved card with
+  // no SPLIT stays classic and sounds as it did. A card added on the desk starts flat.
+  const crossovers = [lowLp, lowLp2, lowAp, midHp, midHp2, midLp, midLp2, highHp, highHp2];
+  let wired = null;
+  const wire = (mode) => {
+    if (mode === wired) return;
+    for (const n of [input, ...crossovers]) { try { n.disconnect(); } catch { /* fine */ } }
+    // Web Audio reads a lowpass/highpass biquad's Q in DECIBELS, not linear: the 0.7071 above
+    // is really Q 1.085, a resonant bump at the corner. CLASSIC keeps it — it is the old sound.
+    // FLAT needs true Butterworth halves (linear 1/√2 = −3.01 dB) or each LR4 pair sums to a
+    // +7 dB hump at its crossover (measured 14 Oct, work/local/_fx-audit/). The all-pass reads
+    // Q linearly and stays 0.7071.
+    const q = mode === 'flat' ? 20 * Math.log10(Math.SQRT1_2) : 0.7071;
+    for (const f of [lowLp, lowLp2, midHp, midHp2, midLp, midLp2, highHp, highHp2]) f.Q.value = q;
+    if (mode === 'flat') {
+      lowLp.connect(lowLp2); midHp.connect(midHp2); midLp.connect(midLp2); highHp.connect(highHp2);
+      input.connect(lowLp); lowLp2.connect(lowAp); lowAp.connect(low);
+      input.connect(midHp); midHp2.connect(midLp); midLp2.connect(mid);
+      midHp2.connect(highHp); highHp2.connect(high);
+    } else {
+      input.connect(lowLp); lowLp.connect(low);
+      input.connect(midHp); midHp.connect(midLp); midLp.connect(mid);
+      input.connect(highHp); highHp.connect(high);
+    }
+    wired = mode;
+  };
 
   const state = {
     lowFrequency: 250, highFrequency: 2000,
     'low.threshold': -30, 'low.ratio': 6, 'low.attack': 0.03, 'low.release': 0.25, 'low.knee': 10,
     'mid.threshold': -24, 'mid.ratio': 3, 'mid.attack': 0.02, 'mid.release': 0.03, 'mid.knee': 16,
     'high.threshold': -24, 'high.ratio': 3, 'high.attack': 0.02, 'high.release': 0.03, 'high.knee': 16,
+    'low.gain': 0, 'mid.gain': 0, 'high.gain': 0,
+    split: 'classic',
     ...params,
   };
 
   const apply = () => {
     const t = ctx.currentTime;
+    wire(state.split === 'flat' ? 'flat' : 'classic');
     const num = (key, fallback) => {
       const v = Number(state[key]);
       return Number.isFinite(v) ? v : fallback;
@@ -3675,7 +3719,7 @@ function makeMultibandCompN(ctx, params = {}) {
     // a DynamicsCompressor's own parameters are k-rate and its envelope smooths them.
     const fLow = Math.max(20, Math.min(ctx.sampleRate / 2 - 1, num('lowFrequency', 250)));
     const fHigh = Math.max(fLow, Math.min(ctx.sampleRate / 2 - 1, num('highFrequency', 2000)));
-    for (const [f, hz] of [[lowLp, fLow], [midHp, fLow], [midLp, fHigh], [highHp, fHigh]]) {
+    for (const [f, hz] of [[lowLp, fLow], [lowLp2, fLow], [midHp, fLow], [midHp2, fLow], [midLp, fHigh], [midLp2, fHigh], [highHp, fHigh], [highHp2, fHigh], [lowAp, fHigh]]) {
       f.frequency.setTargetAtTime(hz, t, 0.02);
     }
     for (const [band, node] of [['low', low], ['mid', mid], ['high', high]]) {
@@ -3684,6 +3728,11 @@ function makeMultibandCompN(ctx, params = {}) {
       node.attack.value = Math.max(0, Math.min(1, num(`${band}.attack`, 0.02)));
       node.release.value = Math.max(0, Math.min(1, num(`${band}.release`, 0.03)));
       node.knee.value = Math.max(0, Math.min(40, num(`${band}.knee`, 16)));
+    }
+    // Ramped like the crossovers: a step in a band's level is a click.
+    for (const [band, g] of [['low', lowGain], ['mid', midGain], ['high', highGain]]) {
+      const db = Math.max(-12, Math.min(12, num(`${band}.gain`, 0)));
+      g.gain.setTargetAtTime(10 ** (db / 20), t, 0.01);
     }
   };
   apply();
@@ -3695,7 +3744,7 @@ function makeMultibandCompN(ctx, params = {}) {
     connect: (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest)),
     disconnect: () => { try { output.disconnect(); } catch { /* fine */ } },
     dispose: () => {
-      for (const n of [input, lowLp, midHp, midLp, highHp, low, mid, high, output]) {
+      for (const n of [input, lowLp, lowLp2, lowAp, midHp, midHp2, midLp, midLp2, highHp, highHp2, low, mid, high, lowGain, midGain, highGain, output]) {
         try { n.disconnect(); } catch { /* fine */ }
       }
     },
@@ -4259,8 +4308,21 @@ export const EFFECTS = [
     params: ['lowFrequency', 'highFrequency',
       'low.threshold', 'low.ratio', 'low.attack', 'low.release', 'low.knee',
       'mid.threshold', 'mid.ratio', 'mid.attack', 'mid.release', 'mid.knee',
-      'high.threshold', 'high.ratio', 'high.attack', 'high.release', 'high.knee'],
+      'high.threshold', 'high.ratio', 'high.attack', 'high.release', 'high.knee',
+      'low.gain', 'mid.gain', 'high.gain', 'split'],
+    // SPLIT: FLAT bands sum back to the input; CLASSIC is the pre-14-Oct split with a notch
+    // at each crossover. Absent = CLASSIC (every mix saved before); the desk's addEffect
+    // starts a new card FLAT.
+    ranges: {
+      split: { options: ['flat', 'classic'] },
+      'low.gain': { min: -12, max: 12, step: 0.1, unit: 'dB' },
+      'mid.gain': { min: -12, max: 12, step: 0.1, unit: 'dB' },
+      'high.gain': { min: -12, max: 12, step: 0.1, unit: 'dB' },
+    },
+    labels: { split: 'SPLIT' },
     defaults: {
+      split: 'classic',
+      'low.gain': 0, 'mid.gain': 0, 'high.gain': 0,
       lowFrequency: 250, highFrequency: 2000,
       'low.threshold': -30, 'low.ratio': 6, 'low.attack': 0.03, 'low.release': 0.25, 'low.knee': 10,
       'mid.threshold': -24, 'mid.ratio': 3, 'mid.attack': 0.02, 'mid.release': 0.03, 'mid.knee': 16,
@@ -4483,6 +4545,9 @@ export function matchEffectPreset(id, params = {}, scope = 'inserts') {
     // Which TRACK a duck listens to is routing, not sound: a preset is the same preset
     // keyed to the kick or the snare, and choosing one leaves the trigger alone.
     if (paramRange(key, def).lanes) return true;
+    // The multiband's SPLIT is how the bands are cut, not a sound a preset names: the same
+    // preset on FLAT or CLASSIC is still that preset, and choosing one keeps the split.
+    if (def.id === 'mbCompN' && key === 'split') return true;
     if (typeof a?.[key] === 'number' || typeof b?.[key] === 'number') {
       return Math.abs(Number(a?.[key]) - Number(b?.[key]))
         <= Math.max(1e-7, Number(paramRange(key, def).step || 0) * 0.51);

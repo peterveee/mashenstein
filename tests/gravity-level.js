@@ -236,7 +236,11 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
   const ducks = r.obstacles.filter(o => o.gravityCeiling != null && o.def.action === 'slide');
   assert.equal(ducks.length, 0, `${stageId}: no duck hazards on the ceiling`);
   for (const p of r.pickups) assert.equal(p.gravityCeiling != null ? 1 : 0, r.activeLaneAt(p.x), `${stageId}: reward at ${Math.round(p.x)} is on the running rail`);
-  if (r.gravityGates.length) assert.ok(r.gravityHazards.filter(h => h.bed).length > 20, `${stageId}: the wrong rail is lined with spikes`);
+  // One live wire per unbroken run of bed since 14 Oct, so measure the length lined.
+  if (r.gravityGates.length) {
+    const lined = r.gravityHazards.filter(h => h.bed).reduce((n, h) => n + (h.span || 0) * r.baseSpeed(), 0);
+    assert.ok(lined > 1500, `${stageId}: the wrong rail is lined with live wire (${Math.round(lined)} units)`);
+  }
   r.exit();
 }
 // A jump that crosses the arrow while falling must not sink through the floor

@@ -37,7 +37,11 @@ const WHITE = ['#ffffff', '#e4e8f2', '#b8bfd0', '#848ca2'];
 function gunArm(c, sleeve, aim, firing, p, bell = false) {
   c.save(); c.rotate(aim);
   if (bell) poly(c, [[0, -1], [3.2, -1.6], [3.6, 1.6], [0, 1]], sleeve);
-  else { c.fillStyle = sleeve; c.fillRect(0, -0.6, 4.2, 1.3); }
+  else {
+    // a round-ended sleeve, so the shoulder end is a joint rather than a cut
+    c.beginPath(); c.moveTo(0, 0.05); c.lineTo(4.2, 0.05);
+    c.lineCap = 'round'; c.strokeStyle = sleeve; c.lineWidth = 1.3; c.stroke();
+  }
   c.fillStyle = SILVER[1]; c.fillRect(3.8, -1.2, 3.8, 1.6);
   c.fillStyle = SILVER[3]; c.fillRect(3.8, 0.1, 3.8, 0.4);
   for (const rx of [4.6, 5.6, 6.6]) { c.fillStyle = '#d4553e'; c.fillRect(rx, -1.5, 0.35, 2.2); }
@@ -243,7 +247,9 @@ export const SUIT_PALETTES = {
   tangerine: { name: 'Tangerine and white', suit: ['#ffb070', '#ff7a26', '#c4501a', '#7a2c0e'], trim: ['#ffffff', '#e4e8f2', '#9aa2b4'], glove: '#ffffff', boot: ['#ffffff', '#9aa2b4'] },
   black: { name: 'Black and silver', suit: ['#5a5f70', '#33374a', '#1c1f2c', '#0c0e16'], trim: ['#ffffff', '#c8d0dc', '#7c8592'], glove: '#c8d0dc', boot: ['#c8d0dc', '#5e6672'] },
 };
-export function martianSuited(c, x, y, sc, t, { pal = SUIT_PALETTES.crimson, fire = true, face = 1, aim: aimAt = null, shooting = null } = {}) {
+// `wave`: the far arm up and waving (level 3's lone Martian, after he has shot the
+// craft down — Peter, 14 Oct: "wave after shooting with the arm not holding the weapon").
+export function martianSuited(c, x, y, sc, t, { pal = SUIT_PALETTES.crimson, fire = true, face = 1, aim: aimAt = null, shooting = null, wave = false } = {}) {
   const S = pal.suit, T = pal.trim;
   c.save(); c.translate(x, y); c.scale(sc * face, sc);
   const { firing, p } = shotOf(t, fire, shooting);
@@ -264,21 +270,33 @@ export function martianSuited(c, x, y, sc, t, { pal = SUIT_PALETTES.crimson, fir
   poly(c, [[-2.8, -15.4], [2.8, -15.4], [1.6, -12.8], [0, -12.2], [-1.6, -12.8]], T[1]);
   poly(c, [[-2.8, -15.4], [0, -15.4], [0, -12.2], [-1.6, -12.8]], T[0]);
   c.fillStyle = S[3]; c.fillRect(-0.15, -12.2, 0.3, 3.4);
-  // Shoulder pads.
-  for (const sx of [-1, 1]) { c.beginPath(); c.ellipse(sx * 3.5, -15, 1.4, 0.9, sx * 0.3, 0, TAU); c.fillStyle = sx < 0 ? T[0] : T[1]; c.fill(); }
   // Belt with the round buckle.
   c.fillStyle = S[3]; c.fillRect(-2.4, -9.4, 4.8, 1.2);
   c.beginPath(); c.arc(0, -8.8, 0.95, 0, TAU); c.fillStyle = T[1]; c.fill();
   c.beginPath(); c.arc(-0.2, -9, 0.4, 0, TAU); c.fillStyle = T[0]; c.fill();
-  // The far arm, bent, with its glove.
-  poly(c, [[-3.8, -14.8], [-2.8, -15], [-3, -11.6], [-4, -11.4]], S[2]);
-  poly(c, [[-4, -11.6], [-3, -11.6], [-2.6, -9.6], [-3.4, -9.4]], S[2]);
-  c.beginPath(); c.arc(-3, -9.3, 0.6, 0, TAU); c.fillStyle = pal.glove; c.fill();
+  if (wave) {
+    // The far arm up: upper arm out and up from the shoulder, the forearm swinging
+    // side to side over the elbow, the glove open.
+    const ex = -8.2, ey = -16.2, a = -Math.PI / 2 - 0.25 + Math.sin(t * 9) * 0.5;   // clear of the helmet
+    const hx = ex + Math.cos(a) * 3.6, hy = ey + Math.sin(a) * 3.6;
+    c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = S[2]; c.lineWidth = 1.2;
+    c.beginPath(); c.moveTo(-3.4, -14.9); c.lineTo(ex, ey); c.lineTo(hx, hy); c.stroke();
+    c.beginPath(); c.arc(hx, hy, 0.8, 0, TAU); c.fillStyle = pal.glove; c.fill();
+  } else {
+    // The far arm, bent, with its glove: one round-jointed stroke from inside the
+    // shoulder pad, so shoulder, elbow and wrist are joints (Peter, 14 Oct: "they
+    // dont join well on his shoulder").
+    c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = S[2]; c.lineWidth = 1.1;
+    c.beginPath(); c.moveTo(-3.5, -14.8); c.lineTo(-4.5, -11.8); c.lineTo(-3.9, -9.6); c.stroke();
+    c.beginPath(); c.arc(-3.9, -9.3, 0.6, 0, TAU); c.fillStyle = pal.glove; c.fill();
+  }
   // The gun arm, with a glove at the grip.
   const aim = aimAt != null ? aimAt : firing ? -0.15 : -0.05 + Math.sin(t * 1.3) * 0.08;
   c.save(); c.translate(2.9, -14.2); gunArm(c, S[1], aim, firing, p);
   c.save(); c.rotate(aim); c.beginPath(); c.arc(4.1, 0.1, 0.65, 0, TAU); c.fillStyle = pal.glove; c.fill(); c.restore();
   c.restore();
+  // Shoulder pads, over both arms' roots: the cap that joins arm to body.
+  for (const sx of [-1, 1]) { c.beginPath(); c.ellipse(sx * 3.4, -14.9, 1.45, 1.05, sx * 0.3, 0, TAU); c.fillStyle = sx < 0 ? T[0] : T[1]; c.fill(); }
   martianHead(c, 0, -15.4, 0.84, t, { talk: Math.max(0, Math.sin(t * 7)) * (firing ? 1 : 0.4), look: Math.sin(t * 0.8), collar: null });
   c.restore();
 }

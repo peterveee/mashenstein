@@ -69,7 +69,7 @@ const GUIDE_ICON_SIZES = {
   mopBucket: [12, 14], mailCart: [12, 14], drinksTrolley: [12, 14],
   ashUrnFire: [13, 22], binFire: [13, 22], confidentialBin: [13, 22],
   velvetRope: [16, 9], velvetRopeGold: [16, 9], drawingPins: [15, 12],
-  pigeon: [16, 9], partyBalloon: [16, 13], champagneCork: [16, 9], shredder: [12, 15],
+  paperPlane: [16, 9], partyBalloon: [16, 13], champagneCork: [16, 9], shredder: [12, 15],
 };
 // Hanging props in the guide: [width, height of the crop]. Drawn at their true
 // aspect — a 12x7 box under PROP_TALL 8 — and clipped to the bottom of the
@@ -4663,7 +4663,7 @@ const ALL_GUIDE_PAGES = [
     title: 'HAZARDS: ANIMALS', color: '#e04848', hint: 'RED = AVOID. THESE ONES COME TO YOU.',
     rows: [
       { s: 'dogBruiser', name: 'BRUISER', desc: 'LOW AND SLOW. THE ONE YOU CAN OUT-THINK.' },
-      { s: 'dogSnarler', name: 'SNARLER', desc: 'CORPORATE SECURITY. WEARS A COLLAR. FASTER.' },
+      { s: 'dogSnarler', name: 'SNARLER', desc: 'WEARS A COLLAR. FASTER.' },
       { s: 'dogFeral', name: 'FERAL DOG', desc: 'LEAN AND STARVING. FASTER AGAIN.' },
       { s: 'catFury', name: 'FURY CAT', desc: 'SMALLEST AND FASTEST. IT IS NOT FLEEING ANYTHING.' },
       { s: 'cryptPanther', name: 'VIOLET PANTHER', desc: 'LONGER SHADOW, SAME QUICK JUMP.' },
@@ -4696,14 +4696,14 @@ const ALL_GUIDE_PAGES = [
   {
     title: 'THE OFFICE: LOBBY (8-1)', color: '#e04848', hint: 'RED = AVOID. THE CLEANER GOT HERE FIRST.',
     rows: [
-      { s: 'wetFloorSign', name: 'WET FLOOR SIGN', desc: 'THE FLOOR IS NOT WET. THE SIGN IS THE HAZARD. JUMP IT.' },
+      { s: 'wetFloorSign', name: 'WET FLOOR SIGN', desc: 'THE SIGN IS THE HAZARD. JUMP IT, OR SLIDE AND KICK IT.' },
       { s: 'waterDolly', name: 'WATER DELIVERY', desc: 'THREE JUGS ON A HAND TRUCK. JUMP IT OR SMASH IT.' },
       { s: 'newsBundle', name: 'NEWSPAPERS', desc: 'TODAY\'S. SOMETIMES STACKED. JUMP OR SMASH THEM.' },
       { s: 'mopBucket', name: 'MOP BUCKET', desc: 'ROLLS AT YOU. JUMP IT, OR SLIDE AND KICK IT.' },
       { s: 'ashUrnFire', name: 'ASH URN', desc: 'SOMEONE DID NOT PUT IT OUT. SHOOT IT OR JUMP IT.' },
       { s: 'velvetRope', name: 'VELVET ROPE', desc: 'THE LOBBY QUEUE. NOTHING BREAKS IT. JUMP IT.' },
       { s: 'artMobile', name: 'ART INSTALLATION', desc: 'HANGS AT HEAD HEIGHT. SLIDE UNDER IT. IT COST MORE THAN YOU.' },
-      { s: 'pigeon', name: 'PIGEON', desc: 'CAME IN THROUGH THE DOOR. DO NOT JUMP INTO IT.' },
+      { s: 'paperPlane', name: 'PAPER PLANE', desc: 'THROWN OFF THE MEZZANINE. DO NOT JUMP INTO IT.' },
     ],
   },
   {

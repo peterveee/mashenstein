@@ -163,6 +163,12 @@ const animalCabinets = CABINETS.filter((cab) =>
   cab.patterns.some((pat) => pat.cells.some((cell) => ANIMALS.includes(cell.t))));
 assert(animalCabinets.length >= 3,
   `animals are spawned by at least three cabinets (got ${animalCabinets.map((c) => c.id).join(', ')})`);
+// No dogs or animals in the Corporate Kombat lane (Peter, 14 Oct 2026), on any floor.
+const office = CABINETS.find((cab) => cab.id === 'office');
+const officeAnimals = Object.values(office.floorPatterns).flat().concat(office.patterns)
+  .flatMap((pat) => pat.cells).filter((cell) => OBSTACLES[cell.t]?.animal).map((cell) => cell.t);
+assert(officeAnimals.length === 0,
+  `no animal is dealt on any Corporate Kombat floor (got ${[...new Set(officeAnimals)].join(', ') || 'none'})`);
 
 
 console.log(failed ? 'PROPS: FAILED' : 'PROPS: PASSED');

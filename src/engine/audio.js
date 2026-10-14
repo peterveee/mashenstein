@@ -623,6 +623,66 @@ export const CUE_ONSET_LEAD = {
 
 export const MAX_CUE_LEAD = Math.max(CUE_PERCEPTUAL_LEAD, ...Object.values(CUE_ONSET_LEAD));
 
+// THE FAX HANDSHAKE — candidate A of tools/render-fax-auditions.js ("the whole call in
+// about a second"), picked by Peter 14 Oct 2026 for CORPORATE KOMBAT level 2, where it
+// ends on the downbeat that takes the lobby muzak into the song (see run.js
+// updateOfficeFax). The real call, compressed: the caller's CNG beep (1100 Hz), the
+// answerer's CED tone (2100 Hz, phase-flipped), V.21 FSK at 300 baud (1650/1850 Hz — the
+// warble), then training hiss chattering every 30 ms, all down a 300–3400 Hz phone line
+// with a little tanh drive. Computed sample by sample, exactly as the audition was, from
+// the audition's own seed, so the cue in the game IS the file Peter picked: the bits and
+// the hiss are a fixed pattern, not a new roll per firing. Normalised to -20 dBFS RMS here;
+// the level in the game is FAX_HANDSHAKE_GAIN × the cue's SFX_TRIM.
+export const FAX_HANDSHAKE_SEC = 1.25;
+// Where the sound stops inside that: the hiss ends at 0.8 + 0.42 s. What a caller lines up.
+export const FAX_HANDSHAKE_END_SEC = 1.22;
+const FAX_HANDSHAKE_GAIN = 0.4;
+export function faxHandshakeSamples(sr = 44100) {
+  let seed = 0x5eed1234;
+  const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return (((t ^ (t >>> 14)) >>> 0) / 4294967296); };
+  const out = new Float32Array(Math.ceil(FAX_HANDSHAKE_SEC * sr));
+  const fade = (i, n, a = 0.004, r = 0.01) => Math.min(1, i / (a * sr), (n - i) / (r * sr));
+  const tone = (at, dur, freq, gain = 0.5, phaseFlips = 0) => {
+    const s0 = Math.floor(at * sr), n = Math.floor(dur * sr);
+    let ph = 0;
+    for (let i = 0; i < n && s0 + i < out.length; i++) {
+      const t = i / sr;
+      ph += freq(t) / sr;
+      const flip = phaseFlips ? (Math.floor(t / phaseFlips) % 2) * 0.5 : 0;
+      const p = ph + flip - Math.floor(ph + flip);
+      out[s0 + i] += Math.sin(2 * Math.PI * p) * gain * fade(i, n);
+    }
+  };
+  tone(0, 0.14, () => 1100);                               // CNG: the caller's beep
+  tone(0.2, 0.25, () => 2100, 0.5, 0.09);                  // CED: the answer tone, flipping
+  let bit = 0, next = 0;                                   // V.21 FSK, 300 baud
+  tone(0.47, 0.32, (t) => { if (t >= next) { bit = rnd() < 0.5 ? 1 : 0; next += 1 / 300; } return bit ? 1850 : 1650; }, 0.45);
+  {                                                        // training hiss, chopped every 30 ms
+    const s0 = Math.floor(0.8 * sr), n = Math.floor(0.42 * sr);
+    let lvl = 1, nx = 0;
+    for (let i = 0; i < n && s0 + i < out.length; i++) {
+      const t = i / sr;
+      if (t >= nx) { lvl = 0.35 + 0.65 * rnd(); nx += 0.03; }
+      out[s0 + i] += (rnd() * 2 - 1) * 0.35 * lvl * fade(i, n, 0.01, 0.03);
+    }
+  }
+  // The phone line: RBJ high-pass 300 and low-pass 3400 (Q 0.7), then the drive.
+  const biquad = (type, f, q) => {
+    const w = 2 * Math.PI * f / sr, a = Math.sin(w) / (2 * q), c = Math.cos(w);
+    const b0 = type === 'hp' ? (1 + c) / 2 : (1 - c) / 2, b1 = type === 'hp' ? -(1 + c) : 1 - c, b2 = b0;
+    const a0 = 1 + a, a1 = -2 * c, a2 = 1 - a;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < out.length; i++) { const y = (b0 * out[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0; x2 = x1; x1 = out[i]; y2 = y1; y1 = y; out[i] = y; }
+  };
+  biquad('hp', 300, 0.7); biquad('lp', 3400, 0.7);
+  const drive = 0.6, norm = Math.tanh(1 + drive);
+  let ss = 0;
+  for (let i = 0; i < out.length; i++) { out[i] = Math.tanh(out[i] * (1 + drive)) / norm; ss += out[i] * out[i]; }
+  const g = 0.1 / Math.sqrt(ss / out.length || 1);
+  for (let i = 0; i < out.length; i++) out[i] *= g;
+  return out;
+}
+
 // Exported ONLY so tools/sfx-desk.js can move a fader while the game is running:
 // the desk needs to hear a level change against a playing song, and the alternative
 // — rebuilding the bundle per nudge — is not a thing anybody can level against. The
@@ -783,6 +843,11 @@ export const SFX_TRIM = {
   coyoteWink: 0.733,
   // The chorus pup's yips: the howl's own yip, so at the howl's trim.
   coyoteYip: 0.767,
+  // The fax handshake over CORPORATE KOMBAT level 2's lobby muzak. Levelled against the
+  // coyote's howl, the other sustained scenery gag laid over a song: -26.5 RMS against the
+  // howl's -23.7 (tools/render-cues.js, 14 Oct) — a touch under it, because the whole cue
+  // sits in the 1-3 kHz band the ear is keenest in, where the howl is mostly below it.
+  faxHandshake: 1.32,
   // The Frost sleigh's carol. A tune has to be FOLLOWED over the band, not just heard, so
   // it sits with the howl rather than under it: -35.3 RMS untrimmed, here -28.4, against
   // FROST FORTRESS at -23.1 in the bars it plays over (tools/render-carol-auditions.js).
@@ -4485,6 +4550,29 @@ class AudioSys {
   // band sits lower and narrower, the whole thing is quicker, and the accents
   // either end are wooden. Everything else is deliberately shared: these are
   // doors in the same wall and should sound like the same building.
+  // The fax handshake (see faxHandshakeSamples): one buffer, built once per sample
+  // rate, played whole. Callers place it so its END lands where they want it — the
+  // screech is the lead-in, the downbeat after it is the point.
+  faxHandshake() {
+    if (!this.ctx || typeof this.ctx.createBufferSource !== 'function'
+      || typeof this.ctx.createBuffer !== 'function') return;
+    const sr = this.ctx.sampleRate || 44100;
+    if (!this._faxBuf || this._faxBuf.sampleRate !== sr) {
+      const x = faxHandshakeSamples(sr);
+      const b = this.ctx.createBuffer(1, x.length, sr);
+      const d = b.getChannelData(0);
+      d.set(x.length > d.length ? x.subarray(0, d.length) : x);
+      this._faxBuf = b;
+    }
+    const t = this.cueAt();
+    const src = this.ctx.createBufferSource();
+    src.buffer = this._faxBuf;
+    const g = this.ctx.createGain();
+    g.gain.value = FAX_HANDSHAKE_GAIN * this.cueGain;
+    src.connect(g); g.connect(this.cueDest || this.sfxGain);
+    src.start(t);
+  }
+
   doorWhoosh(rising, hinged = false) {
     // A context that cannot make a buffer source is a test stub, not a browser.
     // Same guard explosion() carries for its own buffer, and for the same
@@ -5234,6 +5322,7 @@ class AudioSys {
       case 'doorClose': this.doorWhoosh(false); break;
       case 'doorSwingOpen': this.doorWhoosh(true, true); break;
       case 'doorSwingShut': this.doorWhoosh(false, true); break;
+      case 'faxHandshake': this.faxHandshake(); break;
       case 'gateSlam': this.gateSlam(); break;
       case 'coyoteHowl': this.coyoteHowl(); break;
       case 'coyoteYip': this.coyoteHowl('yip'); break;

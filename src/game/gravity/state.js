@@ -3,10 +3,11 @@
 // are inherited, rather than approximated by a separate mini-game.
 import { frameGroundY } from '../../engine/frame.js';
 import { setAckHook, setBlastHook, setShotHook } from '../../dev/space-plateaus.js';
-import { RunState, applyFraming } from '../../game/run.js';
+import { setPilotHook, setFinishAckHook } from '../../dev/space-life.js';
+import { RunState, applyFraming, portraitGameplayEdges } from '../../game/run.js';
 import { makeObstacle, makePickup } from '../../game/entities.js';
 import { GROUND_Y, screenYFor, setRestingZoom } from '../../engine/camera.js';
-import { W, H, isPhonePortraitPresentation } from '../../engine/renderer.js';
+import { W, H, isPhonePortraitPresentation, presentationFrame } from '../../engine/renderer.js';
 import { PHONE_PORTRAIT, LANDSCAPE } from '../../engine/frame.js';
 import { Audio } from '../../engine/audio.js';
 import { GravityPlayer } from './player.js';
@@ -36,17 +37,51 @@ function ceilingJumpsOnly(hazards) {
 // have left is lined with pop-spikes, so a missed jump is plainly a mistake.
 // Beds stop 38 short of the next gate (that rail becomes yours there) and step
 // around anything already authored on that rail.
-const BED_STEP = 24, BED_W = 15;
+// Since 14 Oct each unbroken run of bed is ONE live wire (railPulse, the
+// maintenance pulse's zigzag strung between two emitters) instead of a row of
+// spike plates: Peter, "i like these things... id like a lot of the spikes to be
+// replaced with this... perhaps it can be one extended laser instead of lots of
+// separate spikes".
+const BED_STEP = 24, BED_W = 15, WIRE_MAX = 150, WIRE_GAP = 24;   // a clear gap: at 10 their glows met (14 Oct)
+// The wires read best alone (Peter, 14 Oct: "dont put obstacles between the different
+// sections of live wires … gaps are fine"): the station's props authored on a wrong
+// rail are lifted off it, and a wire starts after its gate's field rather than either
+// side of it. Mission machinery keeps its place.
+const WIRE_CLEARS = new Set(['foilCrate', 'specimenCase', 'fuelCell', 'maintenanceBot',
+  'coolantRadiator', 'valveManifold', 'weldingDrone', 'looseToolkit']);
 function withWrongRailBeds(hazards, gates, total, speed) {
   if (!gates.length) return hazards;
   const spans = [{ start: 0, end: gates[0].x - 38, lane: 1 },
-    ...gates.map((g, i) => ({ start: g.x + 52, end: (gates[i + 1]?.x ?? total) - 38, lane: 1 - g.lane }))];
+    ...gates.map((g, i) => {
+      const lane = 1 - g.lane, end = (gates[i + 1]?.x ?? total) - 38;
+      const field = hazards.filter(h => h.lane === lane && isGateField(h.type) && h.x > g.x && h.x < g.x + 260).at(-1);
+      return { start: field ? field.x + 30 : g.x + 52, end, lane };
+    })];
+  const inSpan = (h) => spans.some(sp => h.lane === sp.lane && h.x >= sp.start - 20 && h.x < sp.end);
+  hazards = hazards.filter(h => !(WIRE_CLEARS.has(h.type) && inSpan(h)));
   const occupied = (lane, x) => hazards.some(h => h.lane === lane
     && x + BED_W + 14 > h.x && x - 14 < h.x + (h.span ? h.span * speed : 16));
   const beds = [];
-  for (const span of spans) for (let x = span.start; x + BED_W < span.end; x += BED_STEP) {
-    if (occupied(span.lane, x)) continue;
-    beds.push({ id: `bed-${span.lane}-${Math.round(x)}`, lane: span.lane, type: 'popSpikes', x, at: x / speed, bed: true });
+  for (const span of spans) {
+    let run = null;
+    // No wire longer than WIRE_MAX: a longer run is laid as several, end to end with
+    // a WIRE_GAP between (Peter, 14 Oct: "to avoid long uninterrupted sections").
+    const close = () => {
+      if (run) {
+        const len = run.x1 - run.x0, n = Math.ceil(len / WIRE_MAX), piece = (len - WIRE_GAP * (n - 1)) / n;
+        for (let i = 0; i < n; i++) {
+          const x = run.x0 + i * (piece + WIRE_GAP);
+          beds.push({ id: `bed-${span.lane}-${Math.round(x)}`, lane: span.lane, type: 'railPulse',
+            x, at: x / speed, span: piece / speed, bed: true });
+        }
+      }
+      run = null;
+    };
+    for (let x = span.start; x + BED_W < span.end; x += BED_STEP) {
+      if (occupied(span.lane, x)) { close(); continue; }
+      if (run) run.x1 = x + BED_W; else run = { x0: x, x1: x + BED_W };
+    }
+    close();
   }
   return hazards.concat(beds);
 }
@@ -79,7 +114,18 @@ export class GravityRunState extends RunState {
   // to spare). Refitted whenever the framing changes (ZOOM IN, a resize, the
   // settings arriving after enter): everything on the ceiling moves with it.
   fitCorridor() {
-    if (this.portraitGameplay && this.portraitConfig() && isPhonePortraitPresentation()) return L.corridor;
+    const config = this.portraitConfig();
+    if (this.portraitGameplay && config && isPhonePortraitPresentation()) {
+      // Portrait too, now (Peter, 14 Oct: "make our floor and windows a bit
+      // taller in portrait, there is a lot of wasted space"): the floor stays
+      // where the portrait frame puts it, the ceiling rises to just under the
+      // status HUD.
+      const z = config.worldZoom, ground = screenYFor(GROUND_Y, z, this.portraitFrameFit().pan, GROUND_Y);
+      const top = portraitGameplayEdges(presentationFrame(), this).top + 2;
+      const fit = Math.floor((ground - top) / z / (1 + this.railRoom() / 137));
+      // Capped at 2.2× — past that the windows grow wider than the screen.
+      return Number.isFinite(fit) ? Math.max(L.corridor, Math.min(fit, Math.round(L.corridor * 2.2))) : L.corridor;
+    }
     const zoom = applyFraming(this.renderSettings || this.save?.settings);
     return Math.max(L.corridor, Math.floor((frameGroundY() - HUD_ROWS_BOTTOM) / zoom / (1 + this.railRoom() / 137)));
   }
@@ -99,7 +145,7 @@ export class GravityRunState extends RunState {
   refitCorridor() {
     if (this.gravityTransfer) return;
     const prev = this.corridor, next = this.fitCorridor(), d = next - prev;
-    if (!d) return;
+    if (Math.abs(d) < 2) return;
     this.corridor = next;
     for (const e of (this.obstacles || []).concat(this.pickups || [])) {
       // Coin arcs trace a jump, and jumps scale with the corridor.
@@ -190,10 +236,42 @@ export class GravityRunState extends RunState {
     // Level 3: the lone Martian on the last butte cackles as he shoots the
     // shuttle down — once, in the chat (Peter, 14 Oct).
     this.ackSaid = false;
-    setAckHook(this.stage?.index === 3 ? () => {
-      if (this.ackSaid || this.paused || this.dead) return;
-      this.ackSaid = true;
-      this.floatText('ACK! ACK! ACK!', '#9dff8a');
+    // …and one more "ACK!" as he waves, once the first has gone, that stays with him
+    // until he has scrolled out of the picture (Peter, 14 Oct).
+    this.waveAckSaid = false;
+    setAckHook(this.stage?.index === 3 ? (at, firing, waving) => {
+      if (this.paused || this.dead) return;
+      if (firing && !this.ackSaid) { this.ackSaid = true; this.sayAt('ACK! ACK! ACK!', at, 'martian'); return; }
+      const card = this.speakerCards?.martian, up = card && this.floaties.includes(card);
+      if (waving && this.ackSaid && !up && !this.waveAckSaid) {
+        this.waveAckSaid = true;
+        this.sayAt('ACK!', at, 'martian', 30);
+      } else this.trackSpeaker('martian', at);
+    } : null);
+    // …and the saucer pilot, when his beam comes on over the plateau.
+    this.pilotSaid = false; this.pilotOutSaid = false;
+    // His line rides along with him as he sweeps across and away (Peter, 14 Oct:
+    // "shouldn't the ack acks of the space ship stay with them as they move").
+    setPilotHook(this.stage?.index === 3 ? (at, firing, atLeft = at) => {
+      if (this.paused || this.dead) return;
+      if (firing && !this.pilotSaid) { this.pilotSaid = true; this.sayAt('ACK! ACK! ACK! ACK!', at, 'pilot'); return; }
+      // …and once that has gone and he is flying off, an ACK! ACK! that goes with him
+      // until he is out of the picture (Peter, 14 Oct).
+      const card = this.speakerCards?.pilot, up = card && this.floaties.includes(card);
+      // The second line rides on his LEFT as he flies off to the right (Peter, 14 Oct).
+      if (this.pilotSaid && !firing && !up && !this.pilotOutSaid) { this.pilotOutSaid = true; this.sayAt('ACK! ACK!', atLeft, 'pilot', 30); }
+      else this.trackSpeaker('pilot', this.pilotOutSaid ? atLeft : at);
+    } : null);
+    // …and the saucer that settles over the finish, once it is hovering: ACK!, then
+    // ACK! ACK! a moment later, then a breath, round again for as long as it hovers.
+    this.finishAcks = new Set();
+    setFinishAckHook(this.stage?.index === 3 ? (t, at) => {
+      if (this.paused || this.dead) return;
+      const n = Math.floor(t / 2.4), ph = t - n * 2.4;
+      const key = ph < 0.45 ? `${n}a` : `${n}b`;
+      if (this.finishAcks.has(key)) { this.trackSpeaker('finish', at); return; }
+      this.finishAcks.add(key);
+      this.sayAt(ph < 0.45 ? 'ACK!' : 'ACK! ACK!', at, 'finish');
     } : null);
     this.gravityFailures ||= new Map();
     this.gravityMissionState = gravityMissionStateFor(this.gravityStageData, this.gravityMissionState);
@@ -220,11 +298,14 @@ export class GravityRunState extends RunState {
       ground: (c, cam, cab, obs, cuts, t, view) => {
         const z = this.camZoom, floor = screenYFor(GROUND_Y, z, this.camPan, this.camFloorY);
         c.save(); c.translate(0, GROUND_Y);
+        // Where the room is on the canvas, so a speaker outside can be found in the
+        // world (sayAt).
+        this._roomM = typeof c.getTransform === 'function' ? c.getTransform() : null; this._roomCam = cam;
         const room = { cam, view: view + 60,
           top: -floor / z - 20, bottom: (H - floor) / z + 20,
           // The scenery clock, not the gameplay one: tRun stops when the finish
           // hold starts, and everything outside froze mid-gesture (Peter, 13 Oct).
-          time: this.backgroundT ?? t, gates: this.gravityGates, hintGates: this.gravityHints(), length: this.totalDist, stage: this.stage?.index ?? 1, finishCam: this.finishCameraX(),
+          time: this.backgroundT ?? t, gates: this.gravityGates, hintGates: this.gravityHints(), length: this.totalDist, stage: this.stage?.index ?? 1, lane: this.gravityLane ?? 0, gateLane: this.activeLaneAt(cam + view * 0.55), finishCam: this.finishCameraX(),
           holdT: this.finishing || this.finished ? (this.backgroundT ?? t) - (this._finishBgT ??= this.backgroundT ?? t) : (this._finishBgT = null, 0),
           speed: this.baseSpeed(), finishLine: this.finishWorldX() - this.finishCameraX(),
           portrait: !!(this.portraitGameplay && isPhonePortraitPresentation()) };
@@ -239,7 +320,9 @@ export class GravityRunState extends RunState {
         c.restore();
         // On the scenery clock: tRun is held through the intro, which left the
         // bolts frozen until the run started (Peter, 13 Oct).
-        if (this.gravityStageData.floatingBolts) drawFloatingBolts(c, cam, view, this.backgroundT ?? t, this.corridor);
+        if (this.gravityStageData.floatingBolts) {
+          drawFloatingBolts(c, cam, view, this.backgroundT ?? t, this.corridor);
+        }
         if (this.gravityStageData.sequences) drawMaintenanceRobot(c, {
           cam, view, time: t, seconds: this.gravityTravelTime(), corridor: this.corridor,
           playerX: this.playerWorldX() - cam, hazards: this.obstacles,
@@ -364,10 +447,16 @@ export class GravityRunState extends RunState {
     this.crossGravity({ lane: 0, x: this.playerWorldX() });
     return true;
   }
-  exit() { setBlastHook(null); setShotHook(null); setAckHook(null); return super.exit(); }
+  exit() { setBlastHook(null); setShotHook(null); setAckHook(null); setPilotHook(null); setFinishAckHook(null); return super.exit(); }
   update(dt) {
     if (!this.paused && !this.dead) {
       this.gravitySpark = Math.max(0, this.gravitySpark - dt);
+      // A speaker who has gone out of the picture is no longer drawn, so nobody
+      // tracks his line: take it down rather than leave it pinned to the edge.
+      const now = this.backgroundT ?? this.tRun;
+      for (const card of Object.values(this.speakerCards || {})) {
+        if (card.long && now - (card.seen ?? now) > 0.25) this.floaties = this.floaties.filter((f) => f !== card);
+      }
       this.prepareFinishGravityReturn();
     }
     super.update(dt);
@@ -396,9 +485,50 @@ export class GravityRunState extends RunState {
     }
     super.clearPortalLane(this.portal?.x ?? x);
   }
+  // A Martian's line, pinned over him (Peter, 14 Oct: "tied to the martian in the ship
+  // and the martian standing … so it's obviously coming from them"). `at` is his
+  // place in device pixels (space-life.js speakerAt); the room's transform turns it
+  // back into a world x and a screen y. Without one it floats as before.
+  // `hold`: seconds up. A long one is a line that rides with its speaker until he
+  // leaves the picture (trackSpeaker takes it down then).
+  sayAt(text, at, who = null, hold = 1.4) {
+    // A background recording has no chatter (floatText draws nothing), so there is
+    // no card to pin to the speaker.
+    if (this.recordBackground) return;
+    const spot = this.speakerSpot(at);
+    if (!spot) { this.floatText(text, '#9dff8a'); return; }
+    // A new line from the same Martian replaces his last, rather than stacking
+    // under it and down over his ship.
+    this.floaties = this.floaties.filter((f) => !(f.wx != null && f.text.startsWith('ACK')));
+    this.floatText(text, '#9dff8a', { wx: spot.wx, base: spot.y, hold });
+    if (who) {
+      const card = this.floaties.at(-1);
+      card.long = hold > 5; card.free = true; card.seen = this.backgroundT ?? this.tRun;
+      (this.speakerCards ||= {})[who] = card;
+    }
+  }
+  // A speaker's card follows him while it is up (a moving ship's line goes with it).
+  trackSpeaker(who, at) {
+    const card = this.speakerCards?.[who];
+    if (!card || !this.floaties.includes(card)) return;
+    const spot = this.speakerSpot(at);
+    if (!spot) return;
+    // Out of the picture, his line goes with him rather than waiting at the edge.
+    const view = W / (this.camZoom || 1);
+    if (spot.wx < this._roomCam - 30 || spot.wx > this._roomCam + view + 30) { this.floaties = this.floaties.filter((f) => f !== card); return; }
+    card.wx = spot.wx; card.y = spot.y; card.seen = this.backgroundT ?? this.tRun;
+  }
+  // Device pixels (space-life.js speakerAt) to a pinned card's world x and top.
+  speakerSpot(at) {
+    const m = this._roomM;
+    if (!at || !m || typeof m.inverse !== 'function') return null;
+    const p = m.inverse().transformPoint({ x: at.x, y: at.y });
+    const sy = screenYFor(GROUND_Y + p.y, this.camZoom, this.camPan, this.camFloorY);
+    return { wx: this._roomCam + p.x, y: Math.max(30, sy - 18) };
+  }
   gravityHints() { return new Set([...this.gravityFailures].filter(([, n]) => n >= 2).map(([i]) => i)); }
   die(msg, cue = true, src = null) {
-    if (!this.dead && (src === 'popSpikes' || src === 'floorSaw' || isGateField(src) || src === 'maintenanceRollers')) {
+    if (!this.dead && (src === 'popSpikes' || src === 'floorSaw' || isGateField(src) || src === 'maintenanceRollers' || src === 'railPulse')) {
       const g = this.gravityGates?.filter(g => g.x + 40 < this.playerWorldX()).at(-1);
       if (g && g.lane !== this.gravityLane) this.gravityFailures.set(g.index, (this.gravityFailures.get(g.index) || 0) + 1);
     }

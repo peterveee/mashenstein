@@ -13,7 +13,7 @@ import { Input } from '../engine/input.js';
 import {
   Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT,
   PORTAL_RELAY_GAIN, PORTAL_RELAY_IN_GAIN, portalCueFlashAt,
-  SLEIGH_CAROLS, SLEIGH_CAROL,
+  SLEIGH_CAROLS, SLEIGH_CAROL, FAX_HANDSHAKE_END_SEC,
 } from '../engine/audio.js';
 import { MusicDirector } from '../engine/music-director.js';
 import { Rng } from '../engine/rng.js';
@@ -2359,6 +2359,14 @@ const SLEIGH_CAROL_GRID = 8;
 // the resting zoom (terrain.js drawTrainRoute: THE ROOF STAYS IN THE SKY). The
 // desktop's 1.6 framing already clears it by more, so only the close framings move.
 const NEON_TRAIN_SKY_MARGIN = 10;
+
+// Has this save been to Gravity Grid level 3? Any result posted on it counts — a clear, a
+// fail, a quit — since what matters is having seen the Martians land. Dev builds: always.
+export function liftMartianMet(save) {
+  if (typeof window !== 'undefined' && window.__MASH_BUILD__) return true;
+  const c = save?.slot?.campaign;
+  return !!c && (c.bestScore?.['gravity-3'] != null || (c.plugs?.['gravity-3'] || []).some(Boolean));
+}
 
 export class RunState {
   // The lifecycle admits this frame-based screen on a phone in portrait. The
@@ -4774,6 +4782,10 @@ export class RunState {
       paperGroundStrength: queryPaperGroundStrength ?? this.save.settings.paperGroundStrength,
       paperCutout: queryPaperOff ? false : this.save.settings.paperCutout,
       portraitPresentation: isPhonePortraitPresentation(),
+      // Corporate Kombat's lobby lift carries a Martian once the player has been to Gravity
+      // Grid level 3, where the Martians arrive (Peter, 14 Oct 2026: "only if the user has
+      // played the gravity level 3 otherwise it makes no sense"). A dev build always has.
+      liftMartian: liftMartianMet(this.save),
     });
     this.renderSettings = { ...this.save.settings, smoothMotion: true, cryptEnemyArt: this.cabinet?.id === 'crypt' };
     this.mirror = this.corrupted.includes('mirror');
@@ -4799,6 +4811,7 @@ export class RunState {
     if (this.cabinet?.style === 'gouache') finishCryptGouacheBake();
     // And Frost's crayon sky (stylePacks/frostCrayon/sky.js): its tooth and its bake.
     if (this.cabinet?.id === 'frost') warmFrostSky(this.stage?.index ?? 1, isPhonePortraitPresentation());
+    this.stageMusicBank = musicSong?.bank || this.cabinet.music;
     MusicDirector.enterStage(musicSong?.bank || this.cabinet.music, {
       mixOverride: musicSong?.mix,
       arrangementOverride: musicSong?.arrangement,
@@ -5459,6 +5472,39 @@ export class RunState {
     return (target - beat) * spb;
   }
 
+  // CORPORATE KOMBAT level 2: a fax machine's handshake screeching over the end of the
+  // lobby muzak, so the song's first real downbeat (bar 5) lands as the call connects
+  // (Peter, 14 Oct). Placed on the song clock so the sound's END is on that downbeat.
+  //
+  // Only on the song's FIRST pass through bars 1-4. Those bars are the intro: the song's
+  // own loop is 5-48, so once it has gone round songBeat() never reads under 16 again, and
+  // a respawn mid-song does not restart it. Two ways in reach here. From the cabinet
+  // screen the song is already playing its four-bar treatment loop (variants.select), and
+  // the level's handover lets that loop go at a bar line and runs on into bar 5 — so this
+  // waits for the loop to be released (loopEnd past bar 4) before it can know bar 5 is
+  // next. From a retry or a dev URL, enterStage's setBank starts the song at bar 1.
+  // Asked a frame-loop's slack ahead of the latest moment it could be placed; a level
+  // begun with less of the muzak left than that has no fax rather than a late one.
+  updateOfficeFax() {
+    if (this.officeFaxDone || this.cabinet?.id !== 'office' || this.stage?.index !== 2) return;
+    if (this.overtime || this.recordBackground) return;
+    if (!this.stageMusicBank || Audio.sourceBank !== this.stageMusicBank) return;
+    const beat = Audio.songBeat();
+    const bpm = Audio.bpm * (Audio.tempo || 1);
+    if (!Number.isFinite(beat) || !(bpm > 0)) return;
+    const BAR5 = 16;
+    if (beat >= BAR5) { this.officeFaxDone = true; return; }
+    // Still on the cabinet screen's bars 1-4 loop: the bar after 4 is bar 1 again.
+    if (Audio.loopEnd != null && Audio.loopEnd <= BAR5 * 4) return;
+    const spb = 60 / bpm;
+    const startIn = (BAR5 - beat) * spb - FAX_HANDSHAKE_END_SEC;
+    const lead = Audio.cueLeadSec();
+    if (startIn > lead + 0.25) return;            // not yet: ask nearer the time
+    this.officeFaxDone = true;
+    if (startIn < Audio.cueLeadSec(0)) return;    // too late to land it on the downbeat
+    Audio.sfx('faxHandshake', { inBeats: startIn / spb });
+  }
+
   updateNeonSky(dt) {
     if (this.cabinet?.id !== 'neon') return;
     const stageIndex = this.stage?.index ?? 1;
@@ -6061,6 +6107,7 @@ export class RunState {
     // back for gameplay timing. A real pause still freezes it with the scene.
     if (!this.paused) this.backgroundT += dt;
     if (!this.paused) this.updateNeonSky(dt);
+    if (!this.paused) this.updateOfficeFax();
     // The marker's own clock, advanced on EVERY path including the finale hold.
     // The cloth's frame index used to come off tRun, which deliberately stops
     // when the hold starts — so the flag froze mid-wave at the exact moment the

@@ -1,3 +1,4 @@
+import { HAIR_STUDIES, LUNCH_STUDIES, drawHairStudy, drawLunchStudy } from '../src/dev/office-people-bakeoff.js';
 // Dev asset gallery: renders every drawable in the game into its own canvas by
 // calling the REAL draw functions, so the page can never drift from the source.
 // Built by tools/build-gallery.js into two standalone pages: dist/gallery.html
@@ -7,11 +8,10 @@
 // the one accommodation is that entity tiles crop the game's fixed 480x270
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
-import { drawFoodStall, STALLS, COUNTER_UNITS, COUNTER_UNIT_W, WOK_MENU_STYLES } from '../src/sprites/stalls.js';
-import { drawOfficeProductionScene, drawOfficeFontSample, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
-import { ARMCHAIRS as OFFICE_ARMCHAIRS } from '../src/dev/office-armchairs.js';
-import { DINERS as OFFICE_DINERS, BEFORE as OFFICE_DINERS_BEFORE, drawDinerRoom } from '../src/dev/office-diner-candidates.js';
-import { BARISTAS as OFFICE_BARISTAS, EMPTY as OFFICE_BARISTA_EMPTY, drawBaristaRoom } from '../src/dev/office-barista-candidates.js';
+import { drawOfficeProductionScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
+import { officeLandmarks, setOfficeLiftBakeoff } from '../src/engine/stylePacks/officeLigne/progression.js';
+import { LIFT_POSTER_CANDIDATES, LIFT_MARTIAN_CANDIDATES } from '../src/dev/office-lift-candidates.js';
+import { OFFICE_WINDOW_GAGS, drawOfficeWindowGag } from '../src/dev/office-window-gags.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -113,8 +113,8 @@ import {
   drawControlLineup, drawCandidateLineup, drawCandidateLane, candidateCaption, laneHeight,
 } from '../src/dev/obstacle-bakeoff-kit.js';
 import { BAKEOFF as PLUMBER_OBSTACLES } from '../src/dev/plumber-obstacle-candidates.js';
-import { SPACE_LOOK_LIST, SPACE_SHOTS, SPACE_PARADE, SPACE_LOOKS, SPACE_JADE_CHEVRONS, SPACE_STRIPS, SPACE_LIFE_LOOKS, SPACE_PLATEAU_LOOKS, drawSpaceShot } from '../src/dev/space-look-candidates.js';
-import { SPACE_LIFE, SPACE_LIFE_OBJECTS } from '../src/dev/space-life.js';
+import { SPACE_SHOTS, SPACE_PARADE, SPACE_LOOKS, drawSpaceShot } from '../src/dev/space-look-candidates.js';
+import { SPACE_LIFE_OBJECTS } from '../src/dev/space-life.js';
 import { MARS_CANDIDATES } from '../src/dev/mars-attacks-candidates.js';
 import { marsSaucer, martianStanding } from '../src/dev/mars-attacks-candidates.js';
 import { PLANET_CANDIDATES } from '../src/dev/space-planet-candidates.js';
@@ -132,11 +132,11 @@ import { BAKEOFF as RHYTHM_OBSTACLES } from '../src/dev/rhythm-obstacle-candidat
 import { BAKEOFF as FROST_OBSTACLES } from '../src/dev/frost-obstacle-candidates.js';
 import { BAKEOFF as CRYPT_OBSTACLES } from '../src/dev/crypt-obstacle-candidates.js';
 import { BAKEOFF as NEON_OBSTACLES } from '../src/dev/neon-obstacle-candidates.js';
-import { SURGE_LOOKS, SURGE_TREATMENTS, drawSurgeTreatment, wrongInkName } from '../src/dev/surge-tint-candidates.js';
 import { BAKEOFF as GRAVITY_OBSTACLES, LANE_W as GRAVITY_LANE_W, LANE_H as GRAVITY_LANE_H, drawGravityCandidateLane, drawGravityControlLineup, drawGravityCandidateLineup, gravityCandidateCaption } from '../src/dev/gravity-obstacle-candidates.js';
+import { WALKER_CANDIDATES, drawWalkerTile } from '../src/dev/space-walker-candidates.js';
+import { RAIL_WIRE_CANDIDATES, drawRailWireTile } from '../src/dev/rail-wire-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
-import { SURGE_HUD_CANDIDATES, NOW_CANDIDATE, HUD_LEVELS, drawHudLive, liveSize, hudWindow, hudEvents } from '../src/dev/surge-hud-candidates.js';
 import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SLOT_BEATS, drawSurgeFx } from '../src/dev/surge-transition-candidates.js';
 import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
@@ -3180,7 +3180,7 @@ let labClub = null;
     + '(floor 23 only — DESTROY 5 HOSTILE SHREDDERS), slide-under, high flyer. ANIMATED.',
     '2026-10-12');
   const FLOORS = [
-    ['lobby', '8-1 the lobby', ['wetFloorSign', 'waterDolly', 'newsBundle', 'mopBucket', 'ashUrnFire', 'velvetRope', null, 'artMobile', 'pigeon']],
+    ['lobby', '8-1 the lobby', ['wetFloorSign', 'waterDolly', 'newsBundle', 'mopBucket', 'ashUrnFire', 'velvetRope', null, 'artMobile', 'paperPlane']],
     ['open', '8-2 floor 23', ['coatStand', 'snackMachine', 'archiveBox', 'mailCart', 'binFire', 'drawingPins', 'shredder', 'birthdayBunting', 'partyBalloon']],
     ['exec', '8-3 floor 88', ['founderBust', 'officeSafe', 'briefcase', 'drinksTrolley', 'confidentialBin', 'velvetRopeGold', null, 'chandelier', 'champagneCork']],
   ];
@@ -9236,223 +9236,6 @@ obstacleBakeoff(sectionEl('frost-obstacle-bakeoff', FROST_OBSTACLES.title, FROST
 obstacleBakeoff(sectionEl('crypt-obstacle-bakeoff', CRYPT_OBSTACLES.title, CRYPT_OBSTACLES.note, '12 Oct 2026'), CRYPT_OBSTACLES);
 obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OBSTACLES.note, '12 Oct 2026'), NEON_OBSTACLES);
 
-// ------------------------------------------ CORPORATE KOMBAT — office typeface bake-off (lab)
-// Asked 12 Oct 2026: a face for the office that matches the LIGNE '89 art better than Fredoka.
-// The office's own posters, whiteboards, plaques and banners, set in each candidate (the live
-// scene's baked layers keep Fredoka until a pick is wired in).
-{
-  const FACES = [
-    ['CURRENT — Fredoka', "'Fredoka', 'Trebuchet MS', sans-serif", 'Fredoka:wght@400..700'],
-    ['A — Jost (Futura / Avant Garde)', "'Jost', 'Futura', sans-serif", 'Jost:wght@400..800'],
-    ['B — Righteous (80s rounded display)', "'Righteous', sans-serif", 'Righteous'],
-    ['C — Michroma (wide, 80s tech)', "'Michroma', sans-serif", 'Michroma'],
-    ['D — Poppins (geometric, heavy)', "'Poppins', sans-serif", 'Poppins:wght@500;600;700'],
-  ];
-  if (typeof document !== 'undefined') {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?${FACES.map((f) => 'family=' + f[2]).join('&')}&display=swap`;
-    document.head.appendChild(link);
-    for (const f of FACES) document.fonts?.load?.(`600 12px ${f[1]}`);
-  }
-  const grid = section('office-typeface-bakeoff', 'CORPORATE KOMBAT — office typeface bake-off',
-    'Asked 12 Oct 2026: which face suits the LIGNE ’89 office? PICKED: A, Jost. The same posters, whiteboards, plaques and banners '
-    + 'in each candidate. Pick a letter.', '12 Oct 2026');
-  for (const [name, stack] of FACES) {
-    tile(grid, name, 'office signs, posters, boards', 480, 150, (ctx) => drawOfficeFontSample(ctx, stack), { animated: true });
-  }
-}
-
-// ------------------------------------------------ WOK THIS WAY menu bake-off
-// 12 Oct 2026. The wok is shuttered three-quarters; its menu hangs on the wall
-// above the opening, so it stays up when the roller is down. B is what ships
-// until one is picked (WOK_MENU_STYLE in sprites/stalls.js). Dolores's unit is
-// beside them to show the NOW SERVING sign back on her counter.
-{
-  const grid = section('wok-menu-bakeoff', 'WOK THIS WAY — menu',
-    'A: faded photo board, five tiles sold out. B: handwritten sheet taped up, BACK IN 5 MIN amended again and again. '
-    + 'C: neon, one dish, ask the wok. In-run size, shown in the unit as it hangs. Last tile: Dolores with her NOW SERVING sign.',
-    '12 Oct 2026');
-  const STALL = STALLS.find((x) => x.name === 'WOK THIS WAY');
-  const TW = 128, TH = 176, FLOOR = 172;
-  const NOTES = { A: 'photo board, sold out', B: 'handwritten sheet (ships)', C: 'neon, ask the wok' };
-  for (const style of WOK_MENU_STYLES) {
-    tile(grid, `Wok menu ${style}`, NOTES[style], TW, TH, (ctx, t) => {
-      ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, TW, TH);
-      drawFoodStall(ctx, TW / 2, FLOOR, { ...STALL, menuStyle: style }, { t, lit: 1 });
-    });
-  }
-  tile(grid, 'Dolores — NOW SERVING', "DOLORES' REPAIRS unit with the readout", COUNTER_UNIT_W + 16, TH, (ctx, t) => {
-    ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, COUNTER_UNIT_W + 16, TH);
-    drawFoodStall(ctx, (COUNTER_UNIT_W + 16) / 2, FLOOR, COUNTER_UNITS.bench, { t, lit: 1, width: COUNTER_UNIT_W });
-  }, { animated: true });
-}
-
-// --------------------------------------------- CORPORATE KOMBAT — floor 88 armchair bake-off
-// 12 Oct 2026. Floor 88's seating went from candy Memphis to an oxblood Grand Confort suite; this
-// is the single seater beside the assistant's desk and in the corridor. Candidates in
-// src/dev/office-armchairs.js, at the size the corridor draws them, in front of floor 88's wall.
-{
-  const grid = section('office-armchair-bakeoff', 'CORPORATE KOMBAT — floor 88 armchairs',
-    'The single seater for floor 88 (beside the assistant and in the corridor). A is what ships; the rest are '
-    + 'other 80s corporate classics. In-run size, front on, on floor 88. Pick a letter.', '12 Oct 2026');
-  const P = OFFICE_LIGNE_PAL.exec;
-  for (const chair of OFFICE_ARMCHAIRS) {
-    tile(grid, chair.name, chair.note, 96, 60, (ctx) => {
-      // floor 88's panelled wall, its skirting and the carpet, in the room's own colours
-      ctx.fillStyle = '#2b2440'; ctx.fillRect(0, 0, 96, 60);
-      ctx.strokeStyle = '#3d3356'; ctx.lineWidth = 0.6;
-      for (const px of [4, 36, 68]) ctx.strokeRect(px, 6, 26, 34);
-      ctx.fillStyle = '#ff6fb0'; ctx.fillRect(0, 42.5, 96, 0.6);
-      ctx.fillStyle = '#1d1828'; ctx.fillRect(0, 43, 96, 3);
-      ctx.fillStyle = '#4b3d63'; ctx.fillRect(0, 46, 96, 14);
-      ctx.fillStyle = 'rgba(255,200,232,0.14)';
-      ctx.beginPath(); ctx.ellipse(48, 54, 30, 3.4, 0, 0, Math.PI * 2); ctx.fill();
-      chair.paint(ctx, 28, 54, P);
-    });
-  }
-}
-
-// --------------------------------------------- CORPORATE KOMBAT — canteen + coffee shop diners
-// 12 Oct 2026: "these people in the food court on level 2 (and coffee area level 1) look terrible
-// ... legs look bad, seat back is weird, look like they are standing". Candidates in
-// src/dev/office-diner-candidates.js, swapped in through setOfficeDiners (rooms.js), so each tile
-// is the production room in the production pack at in-run size. C, the booth, ships (officeLigne/
-// diners.js); BEFORE is what the run drew until then.
-{
-  const grid = section('office-diner-bakeoff', 'CORPORATE KOMBAT — diners in the canteen and coffee shop',
-    'The two at the table in the STAFF CANTEEN (8-2, floor 23) and the COFFEE SHOP (8-1, lobby). BEFORE stood them behind '
-    + 'the table on long straight legs in front of tall chair backs. A–F keep the LIGNE ’89 hand and sit them down: '
-    + 'A front on with a lap and short shins, B side on face to face, C an 80s booth, D a tablecloth, E perched on stools, '
-    + 'F behind a planter. PICKED C, the booth, 12 Oct 2026. In-run size, ANIMATED (a spoonful of egg, a sip of coffee).', '12 Oct 2026');
-  const ROOMS = [['canteen', 'open', 'STAFF CANTEEN · floor 23'], ['cafe', 'lobby', 'COFFEE SHOP · lobby']];
-  for (const cand of [OFFICE_DINERS_BEFORE, ...OFFICE_DINERS]) {
-    const tag = `${cand.letter} — ${cand.name}`;
-    for (const [kind, floor, where] of ROOMS) {
-      tile(grid, `${tag} · ${kind}`, `${where}. ${cand.note}`, 480, 270,
-        (ctx, t) => drawDinerRoom(ctx, t, cand, { floor, kind }), { animated: true });
-    }
-  }
-}
-
-// --------------------------------------------- CORPORATE KOMBAT — coffee-shop barista
-// 12 Oct 2026: "should the coffee stand be manned" ... "bake off please". Candidates in
-// src/dev/office-barista-candidates.js, swapped in through setOfficeBarista (rooms.js), so each tile
-// is the lobby's COFFEE SHOP in the production pack at in-run size. C, frothing milk, ships
-// (officeLigne/barista.js), with the counter lowered to the booths' height and a priced menu.
-{
-  const grid = section('office-barista-bakeoff', 'CORPORATE KOMBAT — who works the coffee shop',
-    'The lobby COFFEE SHOP counter (8-1). EMPTY was the counter unmanned. A pulls a shot on a lever machine, B is a bored '
-    + 'teen with a bubble, C froths milk, D is asleep on the counter, E hides behind THE DAILY YOLK. PICKED C, 12 Oct 2026; '
-    + 'the counter came down to the booths’ height (about 1.05 m) and the board became a priced menu. In-run size, ANIMATED.',
-    '12 Oct 2026');
-  tile(grid, 'EMPTY — as it was', `COFFEE SHOP · lobby. ${OFFICE_BARISTA_EMPTY.note}`, 480, 270,
-    (ctx, t) => drawBaristaRoom(ctx, t, OFFICE_BARISTA_EMPTY), { animated: true });
-  for (const cand of OFFICE_BARISTAS) {
-    tile(grid, `${cand.letter} — ${cand.name}`, `COFFEE SHOP · lobby. ${cand.note}`, 480, 270,
-      (ctx, t) => drawBaristaRoom(ctx, t, cand), { animated: true });
-  }
-}
-
-// --------------------------------------------- SPACE CABINET — the look (lab)
-// 12 Oct 2026: the GRAVITY GRID playtest becomes the act-3 space cabinet in Cardboard
-// Kingdom's slot (Space → Corporate → Surge), and needs a look no other cabinet has.
-// Peter's three picks, painted onto the real corridor (src/dev/space-look-candidates.js);
-// the playtest's current room is the control. Playable: ?goto=gravity&spacelook=<id>.
-{
-  const s = sectionEl('space-look-bakeoff', 'SPACE CABINET — the look (bake-off)',
-    'GRAVITY GRID becomes the act-3 space cabinet in Cardboard Kingdom’s slot, so it needs a look of its own. Its '
-    + 'playtest room is vector CRT, which sits too near Terminal Velocity. Three candidates on the same corridor — same '
-    + 'ports, rails, gates, arrow and hazards, so only the paint differs: A flat-shaded polygon, B airbrushed space art, '
-    + 'C mission-patch screenprint. Three moments from the level at in-run size, then the portrait read. Pick a letter. '
-    + 'D and E (added the same day): B’s room with A’s planet and mountains, D at A’s planet size, E at B’s. '
-    + 'F: D with four planets passing over the stage. '
-    + 'G–I: F in other colour schemes (amber & teal, cold dawn, jade), to move it off Terminal Velocity’s magenta. '
-    + 'Play one: ?goto=gravity&spacelook=polygon|airbrush|screenprint|hybrid|hybridgiant|parade|parade-amber|parade-dawn|parade-jade. ANIMATED.',
-    '12 Oct 2026');
-  const sub = (title, note) => {
-    const h3 = document.createElement('h3');
-    h3.className = 'subhead';
-    h3.textContent = title;
-    s.appendChild(h3);
-    const p = document.createElement('p');
-    p.className = 'note';
-    p.textContent = note;
-    s.appendChild(p);
-    const grid = document.createElement('div');
-    grid.className = 'grid';
-    s.appendChild(grid);
-    return grid;
-  };
-  const rows = [{ letter: 'NOW', name: 'the playtest room (vector CRT)', note: 'src/dev/gravity/scene.js, as it plays today.', look: null },
-    ...SPACE_LOOK_LIST.map((look) => ({ letter: look.letter, name: look.name, note: look.note, look }))];
-  for (const row of rows) {
-    const grid = sub(`${row.letter} — ${row.name}`, row.note);
-    for (const shot of SPACE_SHOTS) {
-      tile(grid, shot.name, shot.note, 480, 270, (ctx, t) => drawSpaceShot(ctx, t, row.look, shot), { animated: true });
-    }
-    tile(grid, 'Portrait', 'The corridor centred in a tall frame: the roof truss and deck the phone shows.', 220, 390,
-      (ctx, t) => drawSpaceShot(ctx, t, row.look, SPACE_SHOTS[0], 220, 390), { animated: true });
-  }
-  {
-    // F's parade: the planets ride stage progress, so the lane shots above
-    // (all early in the run) only show the first. One tile per body at the
-    // moment it is mid-window, then the whole stage swept in twenty seconds.
-    const grid = sub('F — the parade, body by body',
-      'Each planet as it crosses mid-window, then the full run compressed into a 20-second loop (the corridor holds still).');
-    for (const p of SPACE_PARADE) {
-      tile(grid, p.name, `centred at ${Math.round(p.at * 100)}% of the stage, in view for about ${Math.round(p.span * 100)}%`, 480, 270,
-        (ctx, t) => drawSpaceShot(ctx, t, SPACE_LOOKS.parade, SPACE_SHOTS[0], 480, 270, p.at), { animated: true });
-    }
-    tile(grid, 'The whole stage in 20 s', 'Progress swept 0 → 100% on a loop.', 480, 270,
-      (ctx, t) => drawSpaceShot(ctx, t, SPACE_LOOKS.parade, SPACE_SHOTS[0], 480, 270, (t % 20) / 20), { animated: true });
-  }
-  {
-    // Jade swallows the green chevrons, so the gate's signal colour is open:
-    // pink (the complement), lilac (from the jade nebula), white on a pink glow.
-    const grid = sub('I — jade, chevron colours',
-      'The gate on the jade scheme with three chevron colours; UP/DOWN and the JUMP hint follow the chevrons. The orange jump line stays.');
-    for (const look of SPACE_JADE_CHEVRONS) {
-      tile(grid, look.name, `?goto=gravity&spacelook=${look.id}`, 480, 270,
-        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0]), { animated: true });
-    }
-  }
-  {
-    // Asked the same day: lose the orange line ("messy … too similar to the
-    // greens") for one chrome strip whose leading edge is the jump point.
-    for (const look of SPACE_STRIPS) {
-      const grid = sub(`${look.letter} — ${look.name}`, `${look.note} ?goto=gravity&spacelook=${look.id}`);
-      for (const shot of SPACE_SHOTS) {
-        tile(grid, shot.name, shot.note, 480, 270, (ctx, t) => drawSpaceShot(ctx, t, look, shot), { animated: true });
-      }
-    }
-  }
-  {
-    // 13 Oct 2026: "how do we populate the outside areas to make them alive?
-    // … go crazy". src/dev/space-life.js, four depth passes inside the glass.
-    for (const look of SPACE_LIFE_LOOKS) {
-      const grid = sub(`${look.letter} — ${look.name}`, `${look.note} ?goto=gravity&spacelook=${look.id}`);
-      for (const shot of SPACE_SHOTS) {
-        tile(grid, shot.name, shot.note, 480, 270, (ctx, t) => drawSpaceShot(ctx, t, look, shot), { animated: true });
-      }
-      tile(grid, 'Mid-stage: the mothership', 'Stage progress held at 50%.', 480, 270,
-        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, 0.5), { animated: true });
-      tile(grid, 'The whole stage in 20 s', 'Progress swept 0 → 100% on a loop: planets and the mothership pass.', 480, 270,
-        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, (t % 20) / 20), { animated: true });
-    }
-    const grid = sub('Each outside layer alone (on J)',
-      'One layer per tile so each can be kept or cut. Timed events repeat — watch a tile for its period.');
-    const [lj] = SPACE_LIFE_LOOKS;
-    // Layers that only appear for part of the stage are shown at a moment they're up.
-    const LAYER_AT = { mothership: 0.5, aurora: 0.25, auroraFacets: 0.25 };
-    for (const layer of SPACE_LIFE) {
-      const look = { ...lj, life: [layer.id] };
-      tile(grid, layer.name, layer.note, 480, 270,
-        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, LAYER_AT[layer.id] ?? null), { animated: true });
-    }
-  }
-}
-
 // --------------------------------------------- SPACE CABINET — the outside, object by object (lab)
 // 13 Oct 2026: "create a lab/gallery page to show all the objects". Every craft,
 // building and figure from src/dev/space-life.js on its own, at in-run size (the
@@ -9471,40 +9254,6 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
       ctx.fillStyle = g; ctx.fillRect(0, 0, o.w * Z, o.h * Z);
       ctx.save(); ctx.scale(Z, Z); o.draw(ctx, t, o.w, o.h); ctx.restore();
     }, { animated: true });
-  }
-}
-
-// --------------------------------------------- SPACE CABINET — plateaus (lab)
-// 13 Oct 2026: "perhaps we need plateaus and that's where mining stuff might
-// work" … "i like the jade, but can we bake off the plateaus". Four ways to give
-// the jade ridges flat tops (src/dev/space-plateaus.js), the base and mining kit
-// standing on them. NOW is L as it is.
-{
-  const s = sectionEl('space-plateau-bakeoff', 'SPACE CABINET — plateaus (bake-off)',
-    'Jade with everything alive outside, and four ways to give the mountains flat tops for the base and the mining to stand on. '
-    + 'The three ridge rows are unchanged; each candidate adds its plateaus and moves the domes, masts, rigs, silos and pads onto them. '
-    + 'Two moments each at in-run size. Play one: ?goto=gravity&spacelook=plateau-mesas|plateau-shelf|plateau-terraces|plateau-buttes|plateau-occasional. P5 (added the same day): P2’s shelf and P4’s buttes, twice each per stage. ANIMATED.',
-    '13 Oct 2026');
-  const sub = (title, note) => {
-    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
-    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
-    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
-    return grid;
-  };
-  for (const look of [SPACE_LIFE_LOOKS[0], ...SPACE_PLATEAU_LOOKS]) {
-    const grid = sub(look === SPACE_LIFE_LOOKS[0] ? 'NOW — L, outposts on the ground line' : `${look.letter} — ${look.name}`, look.note);
-    if (look.moments) {
-      for (const at of look.moments) {
-        tile(grid, `${Math.round(at * 100)}% of the stage`, 'Held at the moment it is mid-frame.', 480, 270,
-          (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, at), { animated: true });
-      }
-      tile(grid, 'The whole stage in 20 s', 'Progress swept 0 → 100% on a loop.', 480, 270,
-        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, (t % 20) / 20), { animated: true });
-      continue;
-    }
-    for (const shot of [SPACE_SHOTS[0], SPACE_SHOTS[2]]) {
-      tile(grid, shot.name, shot.note, 480, 270, (ctx, t) => drawSpaceShot(ctx, t, look, shot), { animated: true });
-    }
   }
 }
 
@@ -9536,35 +9285,6 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
   for (const cand of B.candidates) {
     tile(grid, `${cand.letter} — ${cand.name}`, gravityCandidateCaption(cand), GRAVITY_LANE_W, GRAVITY_LANE_H,
       (ctx, t) => drawGravityCandidateLane(ctx, t, cand), { animated: true, wide: true });
-  }
-}
-
-// --------------------------------------------- THE SURGE — making the looks not-quite (lab)
-// 13 Oct 2026: "would we be able to shift the pallets of the underlying levels so they
-// look different to the normal levels? or perhaps apply a tint over the entire
-// backgrounds?" … "do it". One pass per treatment over backdrop and ground, under the
-// cast (src/dev/surge-tint-candidates.js); the eight looks through their real packs.
-{
-  const s = sectionEl('surge-treatment-bakeoff', 'THE SURGE — making the borrowed looks not-quite (bake-off)',
-    'The Surge cycles every cabinet\'s real look, so it reads as the levels you already played. Eight treatments to make it '
-    + 'obviously not-quite-the-same, each one pass over the backdrop and the ground, under the cast — Lorenzo and the crate keep '
-    + 'their colours. NOW is untreated. A–F are cheap blend-mode fills; G and H are per-pixel (shown still here; the run would '
-    + 'do them on a low-resolution copy). In-run size. SHIPPED AS A MIX, 13 Oct 2026: the run switches between them on the beat '
-    + '(stylePacks/surgePalette.js) — gentle ones on surge-1, D–H joining from surge-2, busier through surge-3; washes only in inks far from each look\'s own colours.',
-    '13 Oct 2026');
-  const sub = (title, note) => {
-    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
-    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
-    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
-    return grid;
-  };
-  for (const tr of SURGE_TREATMENTS) {
-    const grid = sub(`${tr.letter} — ${tr.name}`, tr.note);
-    const still = tr.id === 'thermal' || tr.id === 'posterise';
-    for (const look of SURGE_LOOKS) {
-      const caption = tr.id === 'wrong' ? `in ${wrongInkName(look.style)}` : '';
-      tile(grid, look.name, caption, 480, 270, (ctx, t) => drawSurgeTreatment(ctx, t, look.style, tr), { animated: !still });
-    }
   }
 }
 
@@ -9615,80 +9335,6 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
   }
   tile(inv, 'Level 3, the whole stage in 30 s', 'Progress swept 0 → 100% on a loop.', 480, 270,
     (ctx, t) => drawSpaceShot(ctx, t, L3, SPACE_SHOTS[0], 480, 270, (t % 30) / 30, { scenery: true, stage: 3 }), { animated: true });
-}
-
-// --------------------------------------------- SPACE CABINET — window frame weight (lab)
-// 13 Oct 2026: "having thinner frames around the glass … do a bake-off of a
-// snapshot at different frame widths … more visibility of the background".
-// frameK scales the chrome rim, the wall between windows and the margins above
-// and below the glass. Shown at the room's in-run size on a phone (the art at
-// 0.63 × zoom 2.2).
-{
-  const grid = section('space-frame-bakeoff', 'SPACE CABINET — window frame weight (bake-off)',
-    'The same moment of level 1 at four frame weights: the chrome rim, the strip of wall between windows and the margins '
-    + 'above and below the glass all scale together. A is today. Thinner frames show more of the outside. In-run phone size, scenery only. ANIMATED.',
-    '13 Oct 2026');
-  const base = SPACE_LOOKS['plateau-occasional'];
-  for (const [letter, k, note] of [['A', 1, 'today'], ['B', 0.65, 'two-thirds'], ['C', 0.4, 'slim'], ['D', 0.2, 'hairline']]) {
-    const look = { ...base, frameK: k };
-    tile(grid, `${letter} — frame ×${k} (${note})`, `frameK ${k}`, 480, 270,
-      (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], 480, 270, 0.1, { scenery: true, stage: 1, zoom: 1.38 }), { animated: true });
-  }
-}
-
-// --------------------------------------------- SPACE CABINET — tall glass (lab)
-// 13 Oct 2026: "why can't we have taller windows … scale up the scenery a bit
-// so it's not a bunch of empty sky" → option 1: glass rail to rail (none beyond
-// the floor or ceiling), the outside scaled ×1.3, frame C. Now the shipped look.
-{
-  const grid = section('space-tall-glass', 'SPACE CABINET — tall glass (shipped)',
-    'Before: the windows as they were. After: glass from rail to rail with no wall margin, the scenery outside ×1.3, frame C (×0.4). '
-    + 'Desktop NORMAL, phone landscape and portrait at their in-run room sizes. Scenery only. ANIMATED.',
-    '13 Oct 2026');
-  const after = SPACE_LOOKS['plateau-occasional'], before = { ...after, tallGlass: false, frameK: 1 };
-  for (const [vname, zoom, w, h] of [['desktop', 1.0, 480, 270], ['phone', 1.38, 480, 270], ['portrait', 2.2, 220, 390]]) {
-    for (const [lname, look] of [['before', before], ['after', after]]) {
-      tile(grid, `${vname} — ${lname}`, `room zoom ${zoom}`, w, h,
-        (ctx, t) => drawSpaceShot(ctx, t, look, SPACE_SHOTS[0], w, h, 0.18, { scenery: true, stage: 1, zoom }), { animated: true });
-    }
-  }
-}
-
-// --------------------------------------------- THE SURGE — the HUD in the wrong place (lab)
-// 13 Oct 2026: Peter: "what if the hud elements were in the wrong place now and then?" — Surge
-// levels only, surge-1 mild, surge-2 more, surge-3 most, a hint before then. src/dev/surge-hud-candidates.js.
-{
-  const s = sectionEl('surge-hud-bakeoff', 'THE SURGE — the HUD in the wrong place now and then (bake-off)',
-    'Eleven ways for the Surge to put the HUD (lives and coins, goal, ability name, progress bar) in the wrong place or state. Every tile is '
-    + 'ANIMATED and loops about 3.6 s of a real look at the Surge\'s 132 BPM, a real Field Service frame with the hero and a crate under the HUD, '
-    + 'at in-run size, landscape and portrait. A small yellow tag shows while a glitch is on. Glitches start on the song\'s quarter beats like '
-    + 'surgeGlitches and surgeBlips, last a quarter or half beat (0.11 or 0.23 s) and return to the clean HUD. Surge-1 has a couple a look, surge-2 '
-    + 'three or four, surge-3 five to seven, with the hint (the stage before) one tiny blink a look. Rules for all: nothing flashes or brightens, '
-    + 'nothing leaves the frame, in portrait nothing climbs above the status-bar line (red), only the canvas HUD moves, and the HUD is clean under '
-    + 'pause, death, the finish and the results. The touch buttons are not in the picture because they never move. Every option plays the same moments. G to K (DRAMATIC, after Peter asked for more drama) run long and rare, 0.45 to 0.9 s an event, and are the only ones that move a lot.',
-    '13 Oct 2026');
-  const sub = (title, note) => {
-    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
-    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
-    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
-    return grid;
-  };
-  const live = (grid, o, cand, li, name) => {
-    const z = liveSize(o);
-    const n = hudEvents(li, 7, 0, !!cand.big).length;
-    tile(grid, name, cand.id === 'now' ? '' : `${n} event${n === 1 ? '' : 's'} a look`, z.w, z.h,
-      (ctx, t) => drawHudLive(ctx, o, cand, li, t), { animated: true, wide: true, hires: o === 'port' ? 1.5 : 2 });
-  };
-  for (const cand of [NOW_CANDIDATE, ...SURGE_HUD_CANDIDATES]) {
-    const grid = sub(`${cand.letter} \u2014 ${cand.name}`, cand.note);
-    if (cand.id === 'now') {
-      live(grid, 'land', cand, 1, 'NOW \u2014 landscape');
-      live(grid, 'port', cand, 1, 'NOW \u2014 portrait');
-      continue;
-    }
-    HUD_LEVELS.forEach((lv, li) => live(grid, 'land', cand, li, `${cand.letter} \u2014 landscape, ${lv.name}`));
-    HUD_LEVELS.slice(1).forEach((lv, i) => live(grid, 'port', cand, i + 1, `${cand.letter} \u2014 portrait, ${lv.name}`));
-  }
 }
 
 // --------------------------------------------- SPACE CABINET — ten new planets (lab)
@@ -9766,8 +9412,8 @@ function jadeSky(ctx, w, h, seed = 1) {
   onButte(standing, 'C — the caped commander', 'The trooper’s suit, slimmer, under a scarlet cape that lifts and settles in the wind, with a scarlet collar fan and silver shoulder discs.', (c, x, y, t) => martianCaped(c, x, y, 0.8, t));
   onButte(standing, 'D — the high priest', 'An ivory robe with gold bands, a taller silver collar and a bigger brain on a narrower body — the film’s proportions, mostly head.', (c, x, y, t) => martianPriest(c, x, y, 0.8, t));
   const pilots = sub('2. The saucer pilot', 'The level-3 saucer as it hovers at the finish. A is today: the pilot wears his bubble helmet under the dome, two layers of glass. B and C take the helmet off.');
-  for (const [name, note, opts] of [['A — today: helmet under the dome', 'Two glass outlines and two sets of highlights over the face.', {}],
-    ['B — no helmet', 'Just the dome’s glass: the skull face and brain read clearly.', { pilotHelmet: false }],
+  for (const [name, note, opts] of [['A — before: helmet under the dome', 'Two glass outlines and two sets of highlights over the face.', { pilotHelmet: true }],
+    ['B — no helmet (shipped 14 Oct, in the crimson collar)', 'Just the dome’s glass: the skull face and brain read clearly.', { pilotHelmet: false }],
     ['C — no helmet, a bigger head', 'As B with the head grown to fill the dome (0.58 → 0.7), so he’s the first thing you see.', { pilotHelmet: false, pilotSc: 0.7 }]]) {
     const vw = 70, vh = 40;
     tile(pilots, name, note, vw * Z, vh * Z, (ctx, t) => {
@@ -9803,6 +9449,104 @@ function jadeSky(ctx, w, h, seed = 1) {
   }, { animated: true });
   one('A — today: teal', 'The reference: the teal suit against the jade.', (c, x, y, t) => martianStanding(c, x, y, 0.8, t));
   Object.values(SUIT_PALETTES).forEach((pal, i) => one(`${'BCDEF'[i]} — ${pal.name}`, 'The new cut.', (c, x, y, t) => martianSuited(c, x, y, 0.8, t, { pal })));
+}
+
+// --------------------------------------------- GRAVITY GRID — the astronaut at the finish (lab)
+// 14 Oct 2026: "do a bakeoff for the spaceman outside.. would prefer to see both arms? he
+// may also need to move left 1 window so he's not crowding the hero at the finish line".
+// The move is in (space-life.js finishWalker); the poses are src/dev/space-walker-candidates.js.
+{
+  const grid = section('space-walker-bakeoff', 'GRAVITY GRID — the astronaut at the finish (bake-off)',
+    'Level 1 ends with the astronaut on the hull outside. He now hangs one window further left, clear of the hero at the '
+    + 'finish line. Five poses, in the parked finish frame at in-run size: NOW shows one arm, A–D show both. PICKED D, 14 Oct 2026 — '
+    + 'and he comes into view at four o\'clock so he turns through upside down. ANIMATED.',
+    '14 Oct 2026');
+  for (const cand of WALKER_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270, (ctx, t) => drawWalkerTile(ctx, t, cand.pose), { animated: true });
+  }
+}
+
+// --------------------------------------------- GRAVITY GRID — the live wire (lab)
+// 14 Oct 2026: "can we try a few different styles of these in a bake off btw, with the
+// thing holding them in place different and possibly alternate version of the live
+// wire". Candidates: src/dev/rail-wire-candidates.js; painters in gravity-encounters.js.
+{
+  const grid = section('rail-wire-bakeoff', 'GRAVITY GRID — the live wire (bake-off)',
+    'The wrong rail behind every gate is lined with live wire. Five alternatives to the purple zigzag: different anchors '
+    + 'and a different current. Each tile is the corridor at in-run size, three wires laid end to end as the run lays them '
+    + '(at most 150 long, a 24 gap between), with the two kinks running from each end. PICKED C, tesla studs, 14 Oct 2026. ANIMATED.',
+    '14 Oct 2026');
+  for (const cand of RAIL_WIRE_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270, (ctx, t) => drawRailWireTile(ctx, t, cand.id), { animated: true });
+  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — inside the open lift (lab)
+// 14 Oct 2026: "i would like posters in the back of open lifts (bakeoff)", and "one of the
+// martians from the space level and/or the martian lady standing in one of the open lifts as
+// we pass on level 1 ... not sure if it should be the first or 2nd lift". Candidates:
+// src/dev/office-lift-candidates.js, through progression.js setOfficeLiftBakeoff. Each tile is
+// the production office scene held with a lift bank standing fully open, at in-run size.
+{
+  const s = sectionEl('office-lift-bakeoff', 'CORPORATE KOMBAT — inside the open lift (SHIPPED)',
+    'The open lift car on each floor: the lobby bank, and the second bank on floors 23 and 88. SHIPPED 14 Oct: every open car has an '
+    + 'EGGCORP poster (round three, mixed one per bank) and a call panel; the lobby bank carries the Martian, his car pinned open, once '
+    + 'the player has been to Gravity Grid level 3 (always in dev). The handrail is gone. ANIMATED.',
+    '14 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  const FLOOR_NAME = { lobby: 'lobby (8-1)', open: 'floor 23 (8-2)', exec: 'floor 88 (8-3)' };
+  const liftScene = (ctx, t, floor, which, paint) => {
+    const l = officeLandmarks(floor, 0, 26208).filter((p) => p.kind === 'lobbyLifts' || p.kind === 'lift')[floor === 'lobby' ? 0 : 1];
+    // the bank's centre 330 px across: 218 ahead of the hero, where its open car is all the way open
+    const camX = l.worldX - (330 - 112) / l.rate;
+    const was = setOfficeLiftBakeoff({ which, interior: paint });
+    try { drawOfficeProductionScene(ctx, t, { floor, hazards: [] }, false, camX); } finally { setOfficeLiftBakeoff(was); }
+  };
+  const posters = sub('1. EGGCORP posters — round three, shipped', 'Each design drawn three ways — the lobby at 9am, 23 at noon, 88 at dusk — with the call panel. '
+    + 'Rounds one (motivational, SYNERGY, the Founder…) and two (egg puns) were dropped.');
+  for (const cand of LIFT_POSTER_CANDIDATES) {
+    for (const floor of ['lobby', 'open', 'exec']) {
+      tile(posters, `${cand.letter} — ${cand.name} · ${FLOOR_NAME[floor]}`, cand.note, 480, 270,
+        (ctx, t) => liftScene(ctx, t, floor, 0, cand.paint), { animated: true });
+    }
+  }
+  const martians = sub('2. The Martian in the lobby lift', 'The Gravity Grid’s suited Martian in the office’s LIGNE ’89 hand, pressing the panel with the ACK-ACK jaw. '
+    + 'Sized to the office’s people, not the lift (the lifts are drawn huge).');
+  for (const cand of LIFT_MARTIAN_CANDIDATES) {
+    tile(martians, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
+      (ctx, t) => liftScene(ctx, t, 'lobby', cand.which, cand.paint), { animated: true });
+  }
+}
+
+// Corporate 2 window-gag stills: native production painters, not image concepts.
+{
+  const grid = section('office-window-gags', 'CORPORATE KOMBAT — floor 23 window humour',
+    'Still candidates in the real LIGNE ’89 office artwork. Each gag appears at level scale, then in a 2× detail view. '
+    + 'The manager and the upper floor stay out of sight. Click any picture to save the PNG. Gallery only.', '14 Oct 2026');
+  for (const gag of OFFICE_WINDOW_GAGS) {
+    tile(grid,gag.name+' · level scale',gag.note,480,270,ctx=>drawOfficeWindowGag(ctx,gag.id));
+    tile(grid,gag.name+' · detail','The same native drawing at 2×; the existing HANG IN THERE poster painter.',480,210,
+      ctx=>drawOfficeWindowGag(ctx,gag.id,true));
+  }
+}
+
+// Native people studies: candidates only, no change to campaign characters.
+{
+ const grid=section('office-hair-studies','CORPORATE KOMBAT — hairstyle bake-off',
+  'Six back-of-head hair silhouettes for the level 2 desk workers. Enlarged rear views above, monitor-and-chair context at actual NPC scale below. Gallery candidates only.','14 Oct 2026');
+ for(const c of HAIR_STUDIES)tile(grid,c.name,c.note,480,210,g=>drawHairStudy(g,c.id));
+ const lunch=section('office-lunch-studies','CORPORATE KOMBAT — lunch people, second pass',
+  'Animated alternatives in the real canteen and at 3× detail. Watch a complete bite before comparing the poses.','14 Oct 2026');
+ tile(lunch,'IN GAME — New people, original booth','The selected production canteen.',480,270,(g,t)=>drawLunchStudy(g,t,null),{animated:true});
+ for(const c of LUNCH_STUDIES){
+  tile(lunch,c.name+' · in the canteen',c.note,480,270,(g,t)=>drawLunchStudy(g,t,c),{animated:true});
+  tile(lunch,c.name+' · detail',c.note,480,240,(g,t)=>drawLunchStudy(g,t,c,true),{animated:true});
+ }
 }
 
 // ---------------------------------------------------------------- driver

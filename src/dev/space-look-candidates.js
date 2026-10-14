@@ -15,6 +15,23 @@ import { drawGravityRoom } from './gravity/scene.js';
 import { lifePass, ALL_LIFE, DIRECTED_LIFE, titleStarfield, traceAt } from './space-life.js';
 import { PLATEAU_VARIANTS, invasionSky } from './space-plateaus.js';
 import { PLANET_CANDIDATES } from './space-planet-candidates.js';
+import { drawLowGravityPost, gravityReading } from '../sprites/gravity-encounters.js';
+import { TITLE_FONT } from '../engine/sprites.js';
+// Level 3 opens on a sign outside, planted in the ground at the right of the
+// first frame, saying how low the gravity is (Peter, 14 Oct); levels 1 and 2 got
+// their own reading the same day (gravityReading). It rides the
+// ground's slower drift (0.35 of the run), so it stays in view about three
+// times as long as the corridor would carry it.
+// Level 1's stands a little further along (30 units), so it is still mid-frame when the
+// first UP arrow is close and its reading turns (Peter, 14 Oct: "dont change it to
+// up until the up chevrons are visible and we are close").
+function lowGravityPost(c, s) {
+  if (s.progress == null) return;
+  const x = s.view * 0.82 + (s.stage === 1 ? 30 : 0) - s.progress * (s.length ?? 4680) * 0.35;
+  if (x < -40 || x > s.view + 40) return;
+  traceAt('lowGSign', x, 30);
+  drawLowGravityPost(c, x, VISTA_GROUND, s.t, TITLE_FONT, gravityReading(s.stage, s.gateLane, s.lane, s.t, s.progress));
+}
 import { GROUND_Y, applyWorld, screenYFor } from '../engine/camera.js';
 import { makeObstacle } from '../game/entities.js';
 import { drawWorldEntity, HERO_DRAW_H } from '../game/draw.js';
@@ -154,7 +171,10 @@ const PLANET_RAMPS = [['#2a1d24', '#5a3a34', '#93623f', '#c99a5c', '#f0d08e'],
 const RING_RAMP = ['#3b3a40', '#6a6870', '#a19d98', '#d7d0bf'];
 const L3 = (() => { const v = [-0.55, -0.5, 0.67], l = Math.hypot(...v); return v.map(x => x / l); })();
 function polyPlanet(c, cx, cy, R, spin, nLat = 7, nLon = 14,
-  { ramps = PLANET_RAMPS, rings = true, ringRamp = RING_RAMP, tilt = 0.38, roll = -0.3, craters = 0, seed = 0 } = {}) {
+  { ramps = PLANET_RAMPS, rings = true, ringRamp = RING_RAMP, tilt = 0.38, roll = -0.3, craters = 0, seed = 0, ringSpin = null } = {}) {
+  // The rings' stripes travel round slowly (Peter, 14 Oct: "can the saturn rings slowly
+  // revolve … so they don't appear totally static").
+  const rs = ringSpin ?? spin * 1.6;
   const ct = Math.cos(tilt), st = Math.sin(tilt), cr = Math.cos(roll), sr = Math.sin(roll);
   const tf = ([x, y, z]) => { const y1 = y * ct - z * st, z1 = y * st + z * ct; return [x * cr - y1 * sr, x * sr + y1 * cr, z1]; };
   const sph = (lat, lon) => tf([Math.cos(lat) * Math.sin(lon + spin), Math.sin(lat), Math.cos(lat) * Math.cos(lon + spin)]);
@@ -163,7 +183,7 @@ function polyPlanet(c, cx, cy, R, spin, nLat = 7, nLon = 14,
   const ring = (front) => {
     for (const [r0, r1, off] of [[1.4, 1.62, 0], [1.68, 1.95, 1]]) {
       for (let k = 0; k < nRing; k++) {
-        const a0 = k / nRing * TAU, a1 = (k + 1) / nRing * TAU, am = (a0 + a1) / 2;
+        const a0 = k / nRing * TAU + rs, a1 = (k + 1) / nRing * TAU + rs, am = (a0 + a1) / 2;
         const mid = tf([Math.cos(am), 0, Math.sin(am)]);
         if ((mid[2] > 0) !== front) continue;
         const p = [[r0, a0], [r1, a0], [r1, a1], [r0, a1]].map(([r, a]) => tf([Math.cos(a) * r, 0, Math.sin(a) * r]));
@@ -805,11 +825,12 @@ const hybridGiant = {
 // of it to pass; sizes sit between D's and E's. All flat facets, so a parade
 // costs about what one planet did — the room is what costs.
 //
-// Fourteen bodies now, split across the three levels so no planet repeats
+// Fifteen bodies now, split across the three levels so no planet repeats
 // (Peter, 14 Oct: "add all 10 planets into the mix"): `stage` says whose sky it
 // crosses. Five each: level 1 the calm ones (one ringed planet, and the twin
-// moons made to even it up), level 2 five, level 3's invasion five — the red planet first, then the magma world, the sideways
-// rings, the machine world and the moon that isn't one. The new ten paint themselves (space-planet-candidates.js);
+// moons made to even it up); level 2 ending on the moon that isn't one; level
+// 3's invasion opening on the red planet, the ice world last, after the
+// saucer's beam. The new ones paint themselves (space-planet-candidates.js);
 // `reach` is how far above its centre a body draws, in radii (the tipped-over
 // rings stand up nearly two radii).
 const NEW_PLANET = Object.fromEntries(PLANET_CANDIDATES.map(p => [p.id, p]));
@@ -818,17 +839,21 @@ const fresh = (id, stage, at, y, extra = {}) => ({ name: NEW_PLANET[id].name.toL
 const PARADE = [
   { name: 'ringed giant', stage: 1, at: 0.1, span: 0.26, R: 24, y: -88, glow: 'rgba(120,200,235,0.24)', spin: 0.08,
     opts: { nLat: 8, nLon: 16 } },
-  fresh('ocean', 1, 0.3, -92),
+  fresh('ocean', 1, 0.3, -92, { halfK: 2.4 }),   // room for its moon's orbit
   fresh('pluto', 1, 0.5, -96),
   fresh('twins', 1, 0.7, -94, { reach: 1.4, halfK: 3.2 }),
   fresh('dune', 1, 0.9, -90),
   { name: 'cratered moon', stage: 2, at: 0.1, span: 0.26, R: 13, y: -100, glow: 'rgba(220,220,240,0.16)', spin: 0.03,
     opts: { nLat: 6, nLon: 12, rings: false, craters: 0.3, seed: 40, tilt: 0.2,
       ramps: [['#2a2a34', '#4c4c58', '#7a7a86', '#a9a9b2', '#d8d8dc']] } },
-  fresh('storm', 2, 0.3, -84),
+  fresh('storm', 2, 0.3, -84, { halfK: 2.7 }),   // room for its outer moon
   fresh('geode', 2, 0.5, -98),
   fresh('eyeball', 2, 0.7, -92),
-  { name: 'ice world', stage: 2, at: 0.9, span: 0.26, R: 20, y: -92, glow: 'rgba(150,220,255,0.3)', spin: 0.06,
+  // The moon that isn't one ends level 2 (Peter, 14 Oct: it crossed level 3's
+  // saucer beam), and the ice world takes its place in level 3 — after the
+  // beam, off to the right while the saucer works.
+  fresh('battlemoon', 2, 0.9, -98),
+  { name: 'ice world', stage: 3, at: 0.92, span: 0.26, R: 20, y: -92, glow: 'rgba(150,220,255,0.3)', spin: 0.06,
     opts: { nLat: 8, nLon: 16, rings: false, craters: 0.12, seed: 70,
       ramps: [['#14263e', '#2c5478', '#5c95c0', '#a6d4ef', '#eefaff'], ['#1a2e46', '#386588', '#78acd0', '#c4e6f6', '#ffffff']] } },
   { name: 'red planet and its moon', stage: 3, at: 0.1, span: 0.28, R: 17, y: -94, glow: 'rgba(255,140,90,0.24)', spin: 0.07,
@@ -840,7 +865,6 @@ const PARADE = [
   // Moved from level 1 so it has only the one ringed planet (Peter, 14 Oct).
   fresh('sideways', 3, 0.47, -80, { R: 13, reach: 1.95 }),
   fresh('machine', 3, 0.66, -90),
-  fresh('battlemoon', 3, 0.84, -98),
 ];
 function planetParade(c, s, w) {
   const stage = s.stage ?? 1;
@@ -962,6 +986,7 @@ export const SPACE_PLATEAU_LOOKS = PLATEAU_VARIANTS.map(v => ({
   life: DIRECTED_LIFE.filter(id => id !== 'sparseOutposts'), director: true,
   land(c, s) {
     v.land(c, s, this, (RIDGE_SCHEMES[this.pal?.name] ?? RIDGE_SCHEMES.DUSK).ridges);
+    if (v.id === 'occasional' && gravityReading(s.stage)) lowGravityPost(c, s);
     invasionSky(c, s);   // the Martians fly in front of the mountains (Peter, 13 Oct)
     lifePass(c, s, this, 'ground');
     lifePass(c, s, this, 'front');
@@ -998,12 +1023,12 @@ function gatePanes(gates, cam, view, fk = 1) {
 }
 
 // Same call shape as drawGravityRoom, so the run swaps one for the other.
-export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = GATES, hintGates = new Set(), progress = null, length = L.length, stage = 1, finishCam = null, noGates = false, holdT = 0, speed = 120, finishLine = null, portrait = false }) {
+export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = GATES, hintGates = new Set(), progress = null, length = L.length, stage = 1, finishCam = null, noGates = false, holdT = 0, speed = 120, finishLine = null, portrait = false, lane = 0, gateLane = 0 }) {
   // `length` is the stage's world length, so stage-timed things (the borealis,
   // shelves and buttes, the finish astronaut) land where the stage really is.
   // holdT: seconds since the finish began (the camera is parked), for things
   // that keep arriving after it has stopped.
-  const s = { cam, view, top, bottom, t: time, length, stage, holdT, speed, portrait, finishLine, progress: progress ?? clamp01(cam / length) };
+  const s = { cam, view, top, bottom, t: time, length, stage, holdT, speed, portrait, finishLine, lane, gateLane, progress: progress ?? clamp01(cam / length) };
   // Where the camera stops at the finish, and the window centre nearest the
   // middle of the frame there: level 3's lone Martian comes to rest in it,
   // whole, for the finish hold (Peter, 13 Oct).

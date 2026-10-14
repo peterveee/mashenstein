@@ -10169,8 +10169,10 @@ function addEffect(id, at = null) {
     return;
   }
   const next = [...cur];
-  if (at == null) next.push({ id, params: {} });
-  else next.splice(clamp(at, 0, next.length), 0, { id, params: {} });
+  // A NEW multiband starts on the flat split; a saved one with no SPLIT is classic (effects.js).
+  const params = id === 'mbCompN' ? { split: 'flat' } : {};
+  if (at == null) next.push({ id, params });
+  else next.splice(clamp(at, 0, next.length), 0, { id, params });
   setEffects(selectedLane, next);
   toast(`${EFFECT_BY_ID[id].name} added to ${targetLabel(selectedLane)}`);
 }

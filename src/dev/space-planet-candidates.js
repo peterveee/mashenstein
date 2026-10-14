@@ -49,12 +49,13 @@ function sphere(c, cx, cy, R, spin, { nLat = 8, nLon = 16, tilt = 0.3, roll = -0
   return out;
 }
 // Flat faceted rings (back half or front half), like the parade's.
-function rings(c, cx, cy, R, front, { tilt = 0.3, roll = -0.25, bands = [[1.4, 1.62], [1.68, 1.95]], ramp, n = 36 }) {
+// `spin` turns the ring's segments round the planet, so the stripes travel.
+function rings(c, cx, cy, R, front, { tilt = 0.3, roll = -0.25, bands = [[1.4, 1.62], [1.68, 1.95]], ramp, n = 36, spin = 0 }) {
   const ct = Math.cos(tilt), st = Math.sin(tilt), cr = Math.cos(roll), sr = Math.sin(roll);
   const tf = ([x, y, z]) => { const y1 = y * ct - z * st, z1 = y * st + z * ct; return [x * cr - y1 * sr, x * sr + y1 * cr, z1]; };
   bands.forEach(([r0, r1], b) => {
     for (let k = 0; k < n; k++) {
-      const a0 = k / n * TAU, a1 = (k + 1) / n * TAU, am = (a0 + a1) / 2;
+      const a0 = k / n * TAU + spin, a1 = (k + 1) / n * TAU + spin, am = (a0 + a1) / 2;
       if ((tf([Math.cos(am), 0, Math.sin(am)])[2] > 0) !== front) continue;
       const p = [[r0, a0], [r1, a0], [r1, a1], [r0, a1]].map(([r, a]) => tf([Math.cos(a) * r, 0, Math.sin(a) * r]));
       poly(c, p.map(q => [cx + q[0] * R, cy + q[1] * R]), ramp[(k + b) % 2 + (front ? 2 : 0)]);
@@ -100,11 +101,29 @@ export const PLANET_CANDIDATES = [
       const B = [['#3a2016', '#7a4426', '#b8743e', '#e0a66a', '#f6d2a0'], ['#3c2a22', '#806454', '#bea088', '#e8d2b8', '#fff2e0'],
         ['#341a14', '#6e3220', '#a8502e', '#d27a48', '#eea66e']];
       const EYE = ['#3a0e0c', '#6e1a14', '#a82e20', '#d24a32', '#f07a56'];
+      // Its moons (Peter, 14 Oct: "can the jupiter planet have several small
+      // moons"): four, Galilean-ish, on flat orbits in the band plane at their own
+      // speeds, each passing behind the giant and then in front.
+      const MOONS = [
+        { d: 1.4, r: 0.1, v: 0.5, a: 0.4, ramp: ['#4a3a10', '#8a7020', '#d0b040', '#f4e080'] },   // sulphur yellow
+        { d: 1.75, r: 0.09, v: 0.36, a: 2.6, ramp: ['#4a4038', '#8a7e70', '#cbbfae', '#f2ece0'] },  // ice white
+        { d: 2.1, r: 0.13, v: 0.26, a: 4.4, ramp: ['#2e2a26', '#5e564c', '#948878', '#c2b6a4'] },    // grey-brown
+        { d: 2.45, r: 0.12, v: 0.18, a: 1.3, ramp: ['#1c1a18', '#3e3934', '#6a625a', '#968c80'] },  // dark
+      ];
+      const moon = (m, front) => {
+        const a = t * m.v + m.a;
+        if ((Math.sin(a) > 0) !== front) return;
+        const ox = Math.cos(a) * m.d * R, oy = Math.sin(a) * m.d * R * 0.18, rl = -0.12;
+        sphere(c, x + ox * Math.cos(rl) - oy * Math.sin(rl), y + ox * Math.sin(rl) + oy * Math.cos(rl), Math.max(1.2, m.r * R), a,
+          { nLat: 4, nLon: 8, paint: (la, lo, lit) => step(m.ramp, lit) });
+      };
+      for (const m of MOONS) moon(m, false);
       sphere(c, x, y, R, t * 0.04 - 1, { nLat: 14, nLon: 24, tilt: 0.22, roll: -0.12, paint: (la, lo, lit, i) => {
         const e = dLon(lo, 1.2) / 0.5, f = (la - 0.42) / 0.16;
         if (e * e + f * f < 1) return step(EYE, lit + (e * e + f * f < 0.3 ? 0.15 : 0));
         return step(B[[0, 1, 2, 1, 0, 1, 2, 2, 1, 0, 1, 2, 1, 0][i % 14]], lit);
       } });
+      for (const m of MOONS) moon(m, true);
     },
   },
   {
@@ -123,9 +142,19 @@ export const PLANET_CANDIDATES = [
   },
   {
     id: 'ocean', name: 'BLUE MARBLE', R: 18,
-    note: 'An Earth-like world: deep ocean, green and ochre continents, white polar caps and a few cloud facets drifting across faster than the ground turns.',
+    note: 'An Earth-like world: deep ocean, green and ochre continents, white polar caps and a few cloud facets drifting across faster than the ground turns — and its grey moon on a tilted orbit, passing behind and in front.',
     draw(c, x, y, R, t) {
       glow(c, x, y, R * 1.6, 'rgba(120,190,255,0.22)');
+      // Its moon (Peter, 14 Oct: "should the earth like planet have the moon
+      // orbiting around it?"): one, on a slow tilted orbit, behind then in front.
+      const MOON = ['#2a2a30', '#55555e', '#86868e', '#b8b8c0', '#dcdce2'];
+      const ma = t * 0.3 + 1, md = R * 1.9;
+      const moon = (front) => {
+        if ((Math.sin(ma) > 0) !== front) return;
+        sphere(c, x + Math.cos(ma) * md, y + Math.sin(ma) * md * 0.3 - Math.cos(ma) * R * 0.25, R * 0.27, ma,
+          { nLat: 5, nLon: 10, paint: (la, lo, lit) => step(MOON, lit) });
+      };
+      moon(false);
       const SEA = ['#06142e', '#0c2e5e', '#18548e', '#2e7cba', '#5aa6dc'];
       const LAND = ['#14240e', '#2c4a1a', '#4e7a2a', '#7ea444', '#b2c870'];
       const DRY = ['#2a1e10', '#5a4224', '#8e6c3c', '#bc9a5c', '#dcc48a'];
@@ -138,6 +167,7 @@ export const PLANET_CANDIDATES = [
         if (land > 0.35) return step(Math.abs(la) < 0.45 && land > 0.6 ? DRY : LAND, lit);
         return step(SEA, lit);
       } });
+      moon(true);
     },
   },
   {
@@ -184,10 +214,11 @@ export const PLANET_CANDIDATES = [
       glow(c, x, y, R * 1.6, 'rgba(140,240,230,0.18)');
       const ICE = [['#0c2a2c', '#1e5a5c', '#3a8e8c', '#72c2bc', '#b4eae2'], ['#0e2e30', '#22605e', '#40948e', '#7ac8c0', '#bcefe6']];
       const GOLD = ['#5a4420', '#8a6c34', '#d8b466', '#f4dc98'];
-      const o = { tilt: 0.2, roll: 1.32 };
-      rings(c, x, y, R, false, { ...o, ramp: GOLD, bands: [[1.35, 1.5], [1.56, 1.9]] });
+      // The rings turn slowly (Peter, 14 Oct: "so they don't appear totally static").
+      const o = { tilt: 0.2, roll: 1.32 }, ringSpin = t * 0.12;
+      rings(c, x, y, R, false, { ...o, ramp: GOLD, bands: [[1.35, 1.5], [1.56, 1.9]], spin: ringSpin });
       sphere(c, x, y, R, t * 0.05, { nLat: 10, nLon: 20, ...o, paint: (la, lo, lit, i) => step(ICE[i % 2], lit) });
-      rings(c, x, y, R, true, { ...o, ramp: GOLD, bands: [[1.35, 1.5], [1.56, 1.9]] });
+      rings(c, x, y, R, true, { ...o, ramp: GOLD, bands: [[1.35, 1.5], [1.56, 1.9]], spin: ringSpin });
     },
   },
   {

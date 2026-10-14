@@ -96,6 +96,7 @@ import * as CORP_REMIX_1_COPY_2 from './corp-remix-1-copy-2.js';
 import * as CORP_REMIX_1 from './corp-remix-1.js';
 import * as CORPORATE_KOMBAT_V1_8BIT from './corporate-kombat-v1-8bit.js';
 import * as CORPORATE_KOMBAT_V1 from './corporate-kombat-v1.js';
+import * as CORPORATE_KOMBAT_VICE from './corporate-kombat-vice.js';
 import * as CRYPT_8BIT from './crypt-8bit.js';
 import * as CRYPT_BLACK_ABBEY from './crypt-black-abbey.js';
 import * as CRYPT_CLOCKWORK_SEANCE from './crypt-clockwork-seance.js';
@@ -133,6 +134,42 @@ import * as FROST_REMIX_SNOW_GLOBE from './frost-remix-snow-globe.js';
 import * as GARY_NUMAN_CARS_2 from './gary-numan-cars-2.js';
 import * as GARY_NUMAN_CARS from './gary-numan-cars.js';
 import * as GRAVITY_8BIT from './gravity-8bit.js';
+import * as GRAVITY_C7_TRANSITION_A from './gravity-c7-transition-a.js';
+import * as GRAVITY_C7_TRANSITION_B from './gravity-c7-transition-b.js';
+import * as GRAVITY_C7_TRANSITION_C_X from './gravity-c7-transition-c-x.js';
+import * as GRAVITY_C7_TRANSITION_C_Y from './gravity-c7-transition-c-y.js';
+import * as GRAVITY_C7_TRANSITION_D1 from './gravity-c7-transition-d1.js';
+import * as GRAVITY_C7_TRANSITION_D2 from './gravity-c7-transition-d2.js';
+import * as GRAVITY_C7_TRANSITION_D3 from './gravity-c7-transition-d3.js';
+import * as GRAVITY_C7_TRANSITION_D4 from './gravity-c7-transition-d4.js';
+import * as GRAVITY_C7_TRANSITION_D5 from './gravity-c7-transition-d5.js';
+import * as GRAVITY_INTRO_4BAR from './gravity-intro-4bar.js';
+import * as GRAVITY_INTRO_A from './gravity-intro-a.js';
+import * as GRAVITY_INTRO_B from './gravity-intro-b.js';
+import * as GRAVITY_INTRO_C from './gravity-intro-c.js';
+import * as GRAVITY_INTRO_C2 from './gravity-intro-c2.js';
+import * as GRAVITY_INTRO_C3 from './gravity-intro-c3.js';
+import * as GRAVITY_INTRO_C4 from './gravity-intro-c4.js';
+import * as GRAVITY_INTRO_C5_X from './gravity-intro-c5-x.js';
+import * as GRAVITY_INTRO_C5 from './gravity-intro-c5.js';
+import * as GRAVITY_INTRO_C6 from './gravity-intro-c6.js';
+import * as GRAVITY_INTRO_C7 from './gravity-intro-c7.js';
+import * as GRAVITY_INTRO_C8_A from './gravity-intro-c8-a.js';
+import * as GRAVITY_INTRO_C8_B from './gravity-intro-c8-b.js';
+import * as GRAVITY_INTRO_C9 from './gravity-intro-c9.js';
+import * as GRAVITY_INTRO_CE1 from './gravity-intro-ce1.js';
+import * as GRAVITY_INTRO_CE2 from './gravity-intro-ce2.js';
+import * as GRAVITY_INTRO_CE3_X from './gravity-intro-ce3-x.js';
+import * as GRAVITY_INTRO_CE3 from './gravity-intro-ce3.js';
+import * as GRAVITY_INTRO_CE4_X from './gravity-intro-ce4-x.js';
+import * as GRAVITY_INTRO_CE4 from './gravity-intro-ce4.js';
+import * as GRAVITY_INTRO_CE5 from './gravity-intro-ce5.js';
+import * as GRAVITY_INTRO_CE6 from './gravity-intro-ce6.js';
+import * as GRAVITY_INTRO_CE7 from './gravity-intro-ce7.js';
+import * as GRAVITY_INTRO_CE8 from './gravity-intro-ce8.js';
+import * as GRAVITY_INTRO_D from './gravity-intro-d.js';
+import * as GRAVITY_INTRO_E from './gravity-intro-e.js';
+import * as GRAVITY_INTRO_F from './gravity-intro-f.js';
 import * as GRAVITY_REMIX_ORBITAL from './gravity-remix-orbital.js';
 import * as GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './gravity-remix-radiophonic-moog-seq.js';
 import * as GRAVITY_REMIX_RADIOPHONIC from './gravity-remix-radiophonic.js';
@@ -285,6 +322,7 @@ import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
 import * as THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER from './the-surge-mashterpiece-call-and-answer.js';
 import * as THE_SURGE_MASHTERPIECE_COPY from './the-surge-mashterpiece-copy.js';
 import * as TIME_VORTEX_V1 from './time-vortex-v1.js';
+import * as TIME_VORTEX_V2 from './time-vortex-v2.js';
 import * as TITLE_8BIT from './title-8bit.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
 import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
@@ -374,6 +412,7 @@ export const IMPORTED_BY_ID = {
   "corp-remix-1": { bank: CORP_REMIX_1.bank, title: CORP_REMIX_1.title, group: "copy", writable: true },
   "corporate-kombat-v1-8bit": { bank: CORPORATE_KOMBAT_V1_8BIT.bank, title: CORPORATE_KOMBAT_V1_8BIT.title, group: "copy", writable: true },
   "corporate-kombat-v1": { bank: CORPORATE_KOMBAT_V1.bank, title: CORPORATE_KOMBAT_V1.title, group: "copy", writable: true },
+  "corporate-kombat-vice": { bank: CORPORATE_KOMBAT_VICE.bank, title: CORPORATE_KOMBAT_VICE.title, group: "alternate", writable: true, alternateOf: "office" },
   "crypt-8bit": { bank: CRYPT_8BIT.bank, title: CRYPT_8BIT.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-black-abbey": { bank: CRYPT_BLACK_ABBEY.bank, title: CRYPT_BLACK_ABBEY.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-clockwork-seance": { bank: CRYPT_CLOCKWORK_SEANCE.bank, title: CRYPT_CLOCKWORK_SEANCE.title, group: "alternate", writable: true, alternateOf: "crypt" },
@@ -411,6 +450,42 @@ export const IMPORTED_BY_ID = {
   "gary-numan-cars-2": { bank: GARY_NUMAN_CARS_2.bank, title: GARY_NUMAN_CARS_2.title, group: "imported", writable: true },
   "gary-numan-cars": { bank: GARY_NUMAN_CARS.bank, title: GARY_NUMAN_CARS.title, group: "imported", writable: true },
   "gravity-8bit": { bank: GRAVITY_8BIT.bank, title: GRAVITY_8BIT.title, group: "alternate", writable: true, alternateOf: "gravity" },
+  "gravity-c7-transition-a": { bank: GRAVITY_C7_TRANSITION_A.bank, title: GRAVITY_C7_TRANSITION_A.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-c7-transition-b": { bank: GRAVITY_C7_TRANSITION_B.bank, title: GRAVITY_C7_TRANSITION_B.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-c7-transition-c-x": { bank: GRAVITY_C7_TRANSITION_C_X.bank, title: GRAVITY_C7_TRANSITION_C_X.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-c7-transition-c-y": { bank: GRAVITY_C7_TRANSITION_C_Y.bank, title: GRAVITY_C7_TRANSITION_C_Y.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-c7-transition-d1": { bank: GRAVITY_C7_TRANSITION_D1.bank, title: GRAVITY_C7_TRANSITION_D1.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-c7-transition-d2": { bank: GRAVITY_C7_TRANSITION_D2.bank, title: GRAVITY_C7_TRANSITION_D2.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-c7-transition-d3": { bank: GRAVITY_C7_TRANSITION_D3.bank, title: GRAVITY_C7_TRANSITION_D3.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-c7-transition-d4": { bank: GRAVITY_C7_TRANSITION_D4.bank, title: GRAVITY_C7_TRANSITION_D4.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-c7-transition-d5": { bank: GRAVITY_C7_TRANSITION_D5.bank, title: GRAVITY_C7_TRANSITION_D5.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-4bar": { bank: GRAVITY_INTRO_4BAR.bank, title: GRAVITY_INTRO_4BAR.title, group: "copy", writable: true },
+  "gravity-intro-a": { bank: GRAVITY_INTRO_A.bank, title: GRAVITY_INTRO_A.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-b": { bank: GRAVITY_INTRO_B.bank, title: GRAVITY_INTRO_B.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c": { bank: GRAVITY_INTRO_C.bank, title: GRAVITY_INTRO_C.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c2": { bank: GRAVITY_INTRO_C2.bank, title: GRAVITY_INTRO_C2.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c3": { bank: GRAVITY_INTRO_C3.bank, title: GRAVITY_INTRO_C3.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c4": { bank: GRAVITY_INTRO_C4.bank, title: GRAVITY_INTRO_C4.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c5-x": { bank: GRAVITY_INTRO_C5_X.bank, title: GRAVITY_INTRO_C5_X.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c5": { bank: GRAVITY_INTRO_C5.bank, title: GRAVITY_INTRO_C5.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c6": { bank: GRAVITY_INTRO_C6.bank, title: GRAVITY_INTRO_C6.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c7": { bank: GRAVITY_INTRO_C7.bank, title: GRAVITY_INTRO_C7.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c8-a": { bank: GRAVITY_INTRO_C8_A.bank, title: GRAVITY_INTRO_C8_A.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c8-b": { bank: GRAVITY_INTRO_C8_B.bank, title: GRAVITY_INTRO_C8_B.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-c9": { bank: GRAVITY_INTRO_C9.bank, title: GRAVITY_INTRO_C9.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce1": { bank: GRAVITY_INTRO_CE1.bank, title: GRAVITY_INTRO_CE1.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce2": { bank: GRAVITY_INTRO_CE2.bank, title: GRAVITY_INTRO_CE2.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce3-x": { bank: GRAVITY_INTRO_CE3_X.bank, title: GRAVITY_INTRO_CE3_X.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce3": { bank: GRAVITY_INTRO_CE3.bank, title: GRAVITY_INTRO_CE3.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce4-x": { bank: GRAVITY_INTRO_CE4_X.bank, title: GRAVITY_INTRO_CE4_X.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce4": { bank: GRAVITY_INTRO_CE4.bank, title: GRAVITY_INTRO_CE4.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce5": { bank: GRAVITY_INTRO_CE5.bank, title: GRAVITY_INTRO_CE5.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce6": { bank: GRAVITY_INTRO_CE6.bank, title: GRAVITY_INTRO_CE6.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce7": { bank: GRAVITY_INTRO_CE7.bank, title: GRAVITY_INTRO_CE7.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-ce8": { bank: GRAVITY_INTRO_CE8.bank, title: GRAVITY_INTRO_CE8.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-d": { bank: GRAVITY_INTRO_D.bank, title: GRAVITY_INTRO_D.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-e": { bank: GRAVITY_INTRO_E.bank, title: GRAVITY_INTRO_E.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-intro-f": { bank: GRAVITY_INTRO_F.bank, title: GRAVITY_INTRO_F.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-orbital": { bank: GRAVITY_REMIX_ORBITAL.bank, title: GRAVITY_REMIX_ORBITAL.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-radiophonic-moog-seq": { bank: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.bank, title: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-radiophonic": { bank: GRAVITY_REMIX_RADIOPHONIC.bank, title: GRAVITY_REMIX_RADIOPHONIC.title, group: "alternate", writable: true, alternateOf: "cardboard" },
@@ -563,6 +638,7 @@ export const IMPORTED_BY_ID = {
   "the-surge-mashterpiece-call-and-answer": { bank: THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER.bank, title: THE_SURGE_MASHTERPIECE_CALL_AND_ANSWER.title, group: "copy", writable: true },
   "the-surge-mashterpiece-copy": { bank: THE_SURGE_MASHTERPIECE_COPY.bank, title: THE_SURGE_MASHTERPIECE_COPY.title, group: "copy", writable: true },
   "time-vortex-v1": { bank: TIME_VORTEX_V1.bank, title: TIME_VORTEX_V1.title, group: "copy", writable: true },
+  "time-vortex-v2": { bank: TIME_VORTEX_V2.bank, title: TIME_VORTEX_V2.title, group: "copy", writable: true },
   "title-8bit": { bank: TITLE_8BIT.bank, title: TITLE_8BIT.title, group: "alternate", writable: true, alternateOf: "title" },
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },
   "wiishoppingchannel": { bank: WIISHOPPINGCHANNEL, title: "WIISHOPPINGCHANNEL", group: "imported", writable: false },

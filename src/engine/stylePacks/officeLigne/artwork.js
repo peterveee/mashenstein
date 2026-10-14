@@ -323,13 +323,28 @@ function bakedProfessor(id,floor,k){
  }
  return c;
 }
+const POSTER_BAKED=new Map();
+function bakedOfficePoster(design,floor,k){
+ const {w,h}=officePosterSize(design);
+ const key=JSON.stringify([floor,k,design.label,design.bg,design.sub]);
+ let c=POSTER_BAKED.get(key);
+ if(!c){
+  // Include the frame's drop shadow, matching the original painter's footprint.
+  c=canvas((w+3)*k,(h+4)*k);
+  const g=c.getContext('2d');g.scale(k,k);
+  poster(g,{x:0,y:0,w,h,...design},PAL[floor]);POSTER_BAKED.set(key,c);
+ }
+ return c;
+}
 export function warmOfficeArtwork(floor,k){
  for(const key of BAKED.keys())if(!key.startsWith(`${floor}@${k}|`))BAKED.delete(key);
  for(const id of PROFESSOR_BY_FLOOR[floor])bakedProfessor(id,floor,k);
+ for(const key of POSTER_BAKED.keys())if(!key.startsWith(JSON.stringify([floor,k]).slice(0,-1)+','))POSTER_BAKED.delete(key);
+ for(const design of OFFICE_POSTERS[floor]||[])bakedOfficePoster(design,floor,k);
 }
 export function officeArtworkBytes(){
  let bytes=0;
- for(const c of BAKED.values())bytes+=c.width*c.height*4;
+ for(const c of [...BAKED.values(),...POSTER_BAKED.values()])bytes+=c.width*c.height*4;
  return bytes;
 }
 export function paintOfficeArtwork(g,f,P,k=2){
@@ -337,7 +352,10 @@ export function paintOfficeArtwork(g,f,P,k=2){
   if(art.professor){
    const c=bakedProfessor(art.professor,f.floor,k);
    g.drawImage(c,art.x,art.y,c.width/k,c.height/k);
-  }else if(art.poster){poster(g,{x:art.x,y:art.y,w:art.w,h:art.h,...art.poster},P);continue;}
+  }else if(art.poster){
+   const c=bakedOfficePoster(art.poster,f.floor,k);
+   g.drawImage(c,art.x,art.y,c.width/k,c.height/k);continue;
+  }
   else paintOfficePrint(g,art,f.floor,P);
   // floor 88 hangs its pictures like a gallery: a brass picture light over each
   if(f.floor==='exec')pictureLight(g,art.x,art.y,art.w,art.h,P);

@@ -4,6 +4,7 @@
 // songs and MIDI auditions remain desk-only and never enter the game bundle.
 import * as GAME_ALT_ARCADE_THEME from './imported/arcade-theme.js';
 import * as GAME_ALT_CARDBOARD_8BIT from './imported/cardboard-8bit.js';
+import * as GAME_ALT_CORPORATE_KOMBAT_VICE from './imported/corporate-kombat-vice.js';
 import * as GAME_ALT_CRYPT_8BIT from './imported/crypt-8bit.js';
 import * as GAME_ALT_CRYPT_BLACK_ABBEY from './imported/crypt-black-abbey.js';
 import * as GAME_ALT_CRYPT_CLOCKWORK_SEANCE from './imported/crypt-clockwork-seance.js';
@@ -33,6 +34,41 @@ import * as GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO from './imported/frost-remix-abso
 import * as GAME_ALT_FROST_REMIX_BLACK_ICE from './imported/frost-remix-black-ice.js';
 import * as GAME_ALT_FROST_REMIX_SNOW_GLOBE from './imported/frost-remix-snow-globe.js';
 import * as GAME_ALT_GRAVITY_8BIT from './imported/gravity-8bit.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_A from './imported/gravity-c7-transition-a.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_B from './imported/gravity-c7-transition-b.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_C_X from './imported/gravity-c7-transition-c-x.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_C_Y from './imported/gravity-c7-transition-c-y.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_D1 from './imported/gravity-c7-transition-d1.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_D2 from './imported/gravity-c7-transition-d2.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_D3 from './imported/gravity-c7-transition-d3.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_D4 from './imported/gravity-c7-transition-d4.js';
+import * as GAME_ALT_GRAVITY_C7_TRANSITION_D5 from './imported/gravity-c7-transition-d5.js';
+import * as GAME_ALT_GRAVITY_INTRO_A from './imported/gravity-intro-a.js';
+import * as GAME_ALT_GRAVITY_INTRO_B from './imported/gravity-intro-b.js';
+import * as GAME_ALT_GRAVITY_INTRO_C from './imported/gravity-intro-c.js';
+import * as GAME_ALT_GRAVITY_INTRO_C2 from './imported/gravity-intro-c2.js';
+import * as GAME_ALT_GRAVITY_INTRO_C3 from './imported/gravity-intro-c3.js';
+import * as GAME_ALT_GRAVITY_INTRO_C4 from './imported/gravity-intro-c4.js';
+import * as GAME_ALT_GRAVITY_INTRO_C5_X from './imported/gravity-intro-c5-x.js';
+import * as GAME_ALT_GRAVITY_INTRO_C5 from './imported/gravity-intro-c5.js';
+import * as GAME_ALT_GRAVITY_INTRO_C6 from './imported/gravity-intro-c6.js';
+import * as GAME_ALT_GRAVITY_INTRO_C7 from './imported/gravity-intro-c7.js';
+import * as GAME_ALT_GRAVITY_INTRO_C8_A from './imported/gravity-intro-c8-a.js';
+import * as GAME_ALT_GRAVITY_INTRO_C8_B from './imported/gravity-intro-c8-b.js';
+import * as GAME_ALT_GRAVITY_INTRO_C9 from './imported/gravity-intro-c9.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE1 from './imported/gravity-intro-ce1.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE2 from './imported/gravity-intro-ce2.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE3_X from './imported/gravity-intro-ce3-x.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE3 from './imported/gravity-intro-ce3.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE4_X from './imported/gravity-intro-ce4-x.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE4 from './imported/gravity-intro-ce4.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE5 from './imported/gravity-intro-ce5.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE6 from './imported/gravity-intro-ce6.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE7 from './imported/gravity-intro-ce7.js';
+import * as GAME_ALT_GRAVITY_INTRO_CE8 from './imported/gravity-intro-ce8.js';
+import * as GAME_ALT_GRAVITY_INTRO_D from './imported/gravity-intro-d.js';
+import * as GAME_ALT_GRAVITY_INTRO_E from './imported/gravity-intro-e.js';
+import * as GAME_ALT_GRAVITY_INTRO_F from './imported/gravity-intro-f.js';
 import * as GAME_ALT_GRAVITY_REMIX_ORBITAL from './imported/gravity-remix-orbital.js';
 import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './imported/gravity-remix-radiophonic-moog-seq.js';
 import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC from './imported/gravity-remix-radiophonic.js';
@@ -82,6 +118,7 @@ import * as GAME_ALT_TITLE_8BIT from './imported/title-8bit.js';
 export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_ARCADE_THEME,
   GAME_ALT_CARDBOARD_8BIT,
+  GAME_ALT_CORPORATE_KOMBAT_VICE,
   GAME_ALT_CRYPT_8BIT,
   GAME_ALT_CRYPT_BLACK_ABBEY,
   GAME_ALT_CRYPT_CLOCKWORK_SEANCE,
@@ -111,6 +148,41 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_FROST_REMIX_BLACK_ICE,
   GAME_ALT_FROST_REMIX_SNOW_GLOBE,
   GAME_ALT_GRAVITY_8BIT,
+  GAME_ALT_GRAVITY_C7_TRANSITION_A,
+  GAME_ALT_GRAVITY_C7_TRANSITION_B,
+  GAME_ALT_GRAVITY_C7_TRANSITION_C_X,
+  GAME_ALT_GRAVITY_C7_TRANSITION_C_Y,
+  GAME_ALT_GRAVITY_C7_TRANSITION_D1,
+  GAME_ALT_GRAVITY_C7_TRANSITION_D2,
+  GAME_ALT_GRAVITY_C7_TRANSITION_D3,
+  GAME_ALT_GRAVITY_C7_TRANSITION_D4,
+  GAME_ALT_GRAVITY_C7_TRANSITION_D5,
+  GAME_ALT_GRAVITY_INTRO_A,
+  GAME_ALT_GRAVITY_INTRO_B,
+  GAME_ALT_GRAVITY_INTRO_C,
+  GAME_ALT_GRAVITY_INTRO_C2,
+  GAME_ALT_GRAVITY_INTRO_C3,
+  GAME_ALT_GRAVITY_INTRO_C4,
+  GAME_ALT_GRAVITY_INTRO_C5_X,
+  GAME_ALT_GRAVITY_INTRO_C5,
+  GAME_ALT_GRAVITY_INTRO_C6,
+  GAME_ALT_GRAVITY_INTRO_C7,
+  GAME_ALT_GRAVITY_INTRO_C8_A,
+  GAME_ALT_GRAVITY_INTRO_C8_B,
+  GAME_ALT_GRAVITY_INTRO_C9,
+  GAME_ALT_GRAVITY_INTRO_CE1,
+  GAME_ALT_GRAVITY_INTRO_CE2,
+  GAME_ALT_GRAVITY_INTRO_CE3_X,
+  GAME_ALT_GRAVITY_INTRO_CE3,
+  GAME_ALT_GRAVITY_INTRO_CE4_X,
+  GAME_ALT_GRAVITY_INTRO_CE4,
+  GAME_ALT_GRAVITY_INTRO_CE5,
+  GAME_ALT_GRAVITY_INTRO_CE6,
+  GAME_ALT_GRAVITY_INTRO_CE7,
+  GAME_ALT_GRAVITY_INTRO_CE8,
+  GAME_ALT_GRAVITY_INTRO_D,
+  GAME_ALT_GRAVITY_INTRO_E,
+  GAME_ALT_GRAVITY_INTRO_F,
   GAME_ALT_GRAVITY_REMIX_ORBITAL,
   GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ,
   GAME_ALT_GRAVITY_REMIX_RADIOPHONIC,

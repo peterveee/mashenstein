@@ -16,7 +16,7 @@
 //   fire       (fireBarrel)        ashUrnFire       binFire           confidentialBin
 //   hurdle     (boomBarrier)       velvetRope       drawingPins       velvetRopeGold
 //   slide      (drone, paperwork)  artMobile        birthdayBunting   chandelier
-//   high       (buzzbird)          pigeon           partyBalloon      champagneCork
+//   high       (buzzbird)          paperPlane       partyBalloon      champagneCork
 //   target     (printer)           —                shredder          —
 //
 // The swap itself is data (OFFICE_FLOORS in data/cabinets.js); boxes and flags
@@ -348,33 +348,31 @@ function artMobile(c, W, H, f) {
   body(c, rect(qx - 1.4, H - 9.0, 2.8, 2.8), COBALT, null, INK, LWI);
 }
 
-// A city pigeon that got in through the revolving door (high 22x13).
-function pigeon(c, W, H, f) {
-  // Phased off zero so the six wingbeat poses are six different drawings.
-  const up = Math.cos((f / 6) * TAU + 0.4);
-  // Far wing, behind the body.
-  poly(c, [10.4, 5.4, 15.2, 5.0 - up * 4.0, 18.6, 3.4 - up * 4.4, 13.6, 6.8], '#8c93a8', INK, LWI);
-  // Body, tail, head — nose to the left, into the scroll.
-  body(c, (p) => {
-    p.moveTo(4.4, 6.0);
-    p.quadraticCurveTo(7.0, 3.6, 12.4, 5.0);
-    p.lineTo(19.8, 6.4);
-    p.lineTo(20.4, 8.6);
-    p.lineTo(14.4, 8.8);
-    p.quadraticCurveTo(8.4, 10.4, 5.0, 8.2);
-    p.closePath();
-  }, '#a9b0c4', (p) => {
-    box(p, 0, 8.0, 22, 3, '#8c93a8');
-    poly(p, [6.6, 4.4, 10.2, 4.2, 10.4, 7.6, 7.0, 8.4], '#5fb8a6');
-    poly(p, [8.4, 4.2, 10.2, 4.2, 10.4, 7.6, 9.0, 8.0], '#9a72c4');
-    box(p, 17.4, 5.6, 4, 4, '#4a4f62');
+// A paper aeroplane thrown off the mezzanine, gliding down the lobby at head
+// height (high 22x13). No animals in the office (Peter, 14 Oct 2026): this took
+// the pigeon's slot, box and pace.
+function paperPlane(c, W, H, f) {
+  // A slow pitch and a little lift, phased off zero so the six frames differ.
+  const a = (f / 6) * TAU + 0.4;
+  const pitch = Math.sin(a) * 0.07;
+  const lift = Math.cos(a) * 0.5;
+  c.save();
+  c.translate(11, 7 + lift);
+  c.rotate(pitch);
+  c.translate(-11, -7);
+  // Far wing, behind the keel, in the paper's shade.
+  body(c, shape([2.0, 7.0, 21.2, 4.2, 17.6, 6.6]), PAPER_DK, null, INK, LWI);
+  // The keel: the folded spine hanging under the wings.
+  body(c, shape([2.0, 7.0, 17.6, 6.6, 18.6, 10.6]), PAPER_DK, (p) => {
+    poly(p, [2.0, 7.0, 18.6, 10.6, 18.8, 12, 2, 12], '#c9c3d1');
+  }, INK, LWI);
+  // Near wing, the big flat face, with a ruled line or two — it was a memo.
+  body(c, shape([2.0, 7.0, 19.2, 1.4, 17.6, 6.6]), PAPER, (p) => {
+    lines(p, [9, 5.0, 18.0, 2.4, 11, 5.4, 18.2, 3.8], COBALT_LT, 0.25);
   });
-  circ(c, 5.0, 5.4, 1.9, '#8c93a8', INK, LWI);
-  circ(c, 4.4, 5.0, 0.5, ORANGE, INK, 0.15);
-  poly(c, [3.2, 5.4, 1.6, 5.9, 3.2, 6.2], '#e8b8a0', INK, LWF);
-  // Near wing, the one that beats.
-  poly(c, [9.6, 6.4, 14.4, 6.6 - up * 5.0, 18.2, 5.6 - up * 5.6, 13.4, 8.2], '#bfc5d6', INK, LWI);
-  line(c, 12.2, 7.2 - up * 1.6, 16.2, 6.6 - up * 4.4, '#4a4f62', 0.35);
+  // The centre fold.
+  line(c, 2.0, 7.0, 17.6, 6.6, INK, LWF);
+  c.restore();
 }
 
 // ========================================================== 8-2 FLOOR 23
@@ -904,7 +902,7 @@ const SPECS = {
   ashUrnFire: { box: [13, 13], tall: 1.7, frames: 8, fps: 14, paint: ashUrnFire },
   velvetRope: { box: [16, 9], frames: 8, fps: 8, paint: velvetRope },
   artMobile: { box: [12, 7], tall: 8, visual: 1.35, frames: 8, fps: 6, paint: artMobile },
-  pigeon: { box: [12, 7], visual: 1.35, frames: 6, fps: 16, paint: pigeon },
+  paperPlane: { box: [12, 7], visual: 1.35, frames: 6, fps: 8, paint: paperPlane },
   coatStand: { box: [13, 12], tall: 1.55, frames: 6, fps: 6, paint: coatStand },
   snackMachine: { box: [17, 14], tall: 1.4, frames: 8, fps: 6, paint: snackMachine },
   archiveBox: { box: [12, 11], paint: archiveBox },

@@ -430,7 +430,7 @@ const DRUM = {
     osc: { type: 'sine', from: 150, to: 50, sweep: 0.018, pitchCurve: 'snap', attack: 0.001, decay: 0.32, curve: 'exp', gain: 1 },
     osc2: { type: 'triangle', from: 1400, to: 260, sweep: 0.003, attack: 0.0005, decay: 0.012, curve: 'exp', gain: 0.18 },
     drive: 0.317245, shape: 'soft' },
-  kit_glasshouse_snare: { label: 'Glasshouse · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_glasshouse_snare: { label: 'OLD · Glasshouse · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'House: a punchy 909-style kick, bright layered clap and sizzling offbeat hats. '
       + 'Crisp and open, with restrained fills.',
     osc: { type: 'triangle', from: 192, to: 185, sweep: 0.012, decay: 0.12, gain: 0.65, curve: 'exp' },
@@ -481,7 +481,7 @@ const DRUM = {
     osc: { type: 'sine', from: 135, to: 49, sweep: 0.018, pitchCurve: 'snap', attack: 0.001, decay: 0.3, curve: 'exp', gain: 1 },
     osc2: { type: 'triangle', from: 1400, to: 260, sweep: 0.003, attack: 0.0005, decay: 0.012, curve: 'exp', gain: 0.18 },
     drive: 0.231216, shape: 'soft' },
-  kit_havana_patio_snare: { label: 'Havana Patio · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_havana_patio_snare: { label: 'OLD · Havana Patio · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Latin house: a solid club kick and handclaps, with open conga, woody clave and '
       + 'sandy shaker accents over a four-on-the-floor groove.',
     osc: { type: 'triangle', from: 197, to: 190, sweep: 0.012, decay: 0.12, gain: 0.65, curve: 'exp' },
@@ -533,7 +533,7 @@ const DRUM = {
     osc: { type: 'sine', from: 125, to: 43, sweep: 0.022, pitchCurve: 'snap', attack: 0.001, decay: 0.48, curve: 'exp', gain: 1 },
     osc2: { type: 'triangle', from: 1400, to: 260, sweep: 0.003, attack: 0.0005, decay: 0.012, curve: 'exp', gain: 0.18 },
     drive: 0.261795, shape: 'soft' },
-  kit_moon_dust_snare: { label: 'Moon Dust · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_moon_dust_snare: { label: 'OLD · Moon Dust · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Progressive house: a deep, sustained kick, broad clap, dark metallic hats and low '
       + 'tom fills. Weight and space, with no sci-fi pings.',
     osc: { type: 'triangle', from: 177, to: 170, sweep: 0.012, decay: 0.12, gain: 0.65, curve: 'exp' },
@@ -584,7 +584,7 @@ const DRUM = {
     osc: { type: 'sine', from: 170, to: 50, sweep: 0.012, pitchCurve: 'snap', attack: 0.001, decay: 0.27, curve: 'exp', gain: 1 },
     osc2: { type: 'triangle', from: 1400, to: 260, sweep: 0.003, attack: 0.0005, decay: 0.012, curve: 'exp', gain: 0.18 },
     drive: 0.45, shape: 'soft' },
-  kit_neon_origami_snare: { label: 'Neon Origami · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_neon_origami_snare: { label: 'OLD · Neon Origami · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Peak-time trance: a fast, hard-fronted kick, cracking snare, dense clap and bright '
       + 'driving cymbals. Tight enough for a busy bassline.',
     osc: { type: 'triangle', from: 202, to: 195, sweep: 0.012, decay: 0.12, gain: 0.65, curve: 'exp' },
@@ -634,7 +634,7 @@ const DRUM = {
       + 'tails; no drive, crusher or saturation.',
     osc: { type: 'triangle', from: 220, to: 92, sweep: 0.018333, attack: 0.0015, decay: 0.11, curve: 'exp', gain: 1 },
     trim: 1.5 },
-  kit_pocket_pixel_snare: { label: 'Pocket Pixel · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_pocket_pixel_snare: { label: 'OLD · Pocket Pixel · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Tiny, clean Game Boy-inspired percussion. Rounded triangle bodies and longer noise '
       + 'tails; no drive, crusher or saturation.',
     osc: { type: 'triangle', from: 410, to: 260, sweep: 0.008333, attack: 0.0015, decay: 0.06, curve: 'exp', gain: 0.5 },
@@ -678,7 +678,7 @@ const DRUM = {
     osc: { type: 'sine', from: 140, to: 46, sweep: 0.016, pitchCurve: 'snap', attack: 0.001, decay: 0.35, curve: 'exp', gain: 1 },
     osc2: { type: 'triangle', from: 1400, to: 260, sweep: 0.003, attack: 0.0005, decay: 0.012, curve: 'exp', gain: 0.18 },
     drive: 0.271553, shape: 'soft' },
-  kit_rio_lanterns_snare: { label: 'Rio Lanterns · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_rio_lanterns_snare: { label: 'OLD · Rio Lanterns · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Brazilian-inspired house: a weighty dance kick, dry backbeat and bright hats, with '
       + 'tambora-style skin percussion and a short metallic agogo accent.',
     osc: { type: 'triangle', from: 207, to: 200, sweep: 0.012, decay: 0.12, gain: 0.65, curve: 'exp' },
@@ -728,7 +728,7 @@ const DRUM = {
     osc: { type: 'sine', from: 145, to: 47, sweep: 0.012, pitchCurve: 'snap', attack: 0.001, decay: 0.25, curve: 'exp', gain: 1 },
     osc2: { type: 'triangle', from: 1400, to: 260, sweep: 0.003, attack: 0.0005, decay: 0.012, curve: 'exp', gain: 0.18 },
     drive: 0.36848, shape: 'soft' },
-  kit_rubber_factory_snare: { label: 'Rubber Factory · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_rubber_factory_snare: { label: 'OLD · Rubber Factory · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Tech house: a compact heavy kick, dry clap, tight metallic hats and low percussion. '
       + 'A rolling club groove without cartoon pitch sweeps.',
     osc: { type: 'triangle', from: 182, to: 175, sweep: 0.012, decay: 0.12, gain: 0.65, curve: 'exp' },
@@ -778,7 +778,7 @@ const DRUM = {
     osc: { type: 'sine', from: 125, to: 48, sweep: 0.02, pitchCurve: 'snap', attack: 0.001, decay: 0.36, curve: 'exp', gain: 1 },
     osc2: { type: 'triangle', from: 1400, to: 260, sweep: 0.003, attack: 0.0005, decay: 0.012, curve: 'exp', gain: 0.18 },
     drive: 0.193036, shape: 'soft' },
-  kit_velvet_basement_snare: { label: 'Velvet Basement · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_velvet_basement_snare: { label: 'OLD · Velvet Basement · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Deep/disco house: a warm rounded kick, full snare, loose handclaps and brushed '
       + 'metallic hats. A relaxed dance-floor pulse.',
     osc: { type: 'triangle', from: 187, to: 180, sweep: 0.012, decay: 0.12, gain: 0.65, curve: 'exp' },
@@ -841,7 +841,7 @@ const DRUM = {
     noise: { type: 'lowpass', freq: 2200, Q: 0.7, decay: 0.025, sag: 0.3, sagAt: 0.004, gain: 0.25 },
     drive: 0.22, shape: 'soft',
     tone: { type: 'lowpass', freq: 11000 } },
-  kit_80s_pop_snare: { label: 'Eighties · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_80s_pop_snare: { label: 'OLD · Eighties · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The big 80s snare: a stick crack and a head snapping down from 330 Hz, then a gated '
       + 'room of wires that drops to under a third of the hit and is cut off about a '
       + 'quarter-second later.',
@@ -903,7 +903,7 @@ const DRUM = {
     noise: { type: 'lowpass', freq: 1100, Q: 0.8, decay: 0.05, sag: 0.35, sagAt: 0.006, gain: 0.35 },
     drive: 0.38, shape: 'soft',
     tone: { type: 'lowpass', freq: 9000 } },
-  kit_breakbeat_snare: { label: 'Breakbeat · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_breakbeat_snare: { label: 'OLD · Breakbeat · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The break\'s snare, tuned up: a tight head ringing at 245 Hz and a bright crack of '
       + 'wires, every hit a little different.',
     osc: { type: 'triangle', from: 260, to: 238, sweep: 0.015, decay: 0.13, curve: 'exp', gain: 0.7 },
@@ -913,7 +913,7 @@ const DRUM = {
     drive: 0.42,
     tone: { type: 'lowpass', freq: 9500 },
     humanize: { gain: 0.05, filter: 0.03 } },
-  kit_breakbeat_clap: { label: 'Breakbeat · Ghost Snare', category: 'Snare', homeLane: 'clap', dur: 1,
+  kit_breakbeat_clap: { label: 'OLD · Breakbeat · Ghost Snare', category: 'Snare', homeLane: 'clap', dur: 1,
     note: 'A second, lighter snare — more rim, less body — for the ghost notes between the '
       + 'backbeats. In the clap slot because the jungle style plays its chopped snare there.',
     osc: { type: 'triangle', from: 300, to: 280, sweep: 0.01, decay: 0.08, curve: 'exp', gain: 0.55 },
@@ -966,7 +966,7 @@ const DRUM = {
     note: 'A triangle dropping 180 to 45 Hz, held and then cut, over a click of noise.',
     osc: { type: 'triangle', from: 180, to: 45, sweep: 0.04, pitchCurve: 'snap', attack: 0.0005, hold: 0.05, decay: 0.03, curve: 'lin', gain: 1 },
     noise: { type: 'lowpass', freq: 5000, Q: 0.7, attack: 0.0005, decay: 0.03, curve: 'lin', gain: 0.5 } },
-  kit_nes_snare: { label: 'NES · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_nes_snare: { label: 'OLD · NES · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A burst of raw noise falling in a straight line, a triangle blip under it.',
     osc: { type: 'triangle', from: 260, to: 160, sweep: 0.02, attack: 0.0005, hold: 0.02, decay: 0.01, curve: 'lin', gain: 0.6 },
     noise: { type: 'lowpass', freq: 9000, Q: 0.5, attack: 0.0005, decay: 0.12, curve: 'lin', gain: 1 } },
@@ -998,7 +998,7 @@ const DRUM = {
 
   // Simmons: the kick, snare, mid tom and cymbal are the sds* presets. These four fill
   // the slots the hexagons never had, built the same way — triangle and filtered noise.
-  kit_simmons_clap: { label: 'Simmons · Noise Snare', category: 'Snare', homeLane: 'clap', dur: 1,
+  kit_simmons_clap: { label: 'OLD · Simmons · Noise Snare', category: 'Snare', homeLane: 'clap', dur: 1,
     note: 'The Simmons snare with the noise pot right up and the tone almost gone.',
     osc: { type: 'triangle', from: 360, to: 230, sweep: 0.04, pitchCurve: 'snap', attack: 0.0008, decay: 0.07, curve: 'exp', gain: 0.3 },
     noise: { type: 'bandpass', freq: 2600, Q: 1, slope: -24, decay: 0.32, sag: 0.35, sagAt: 0.008, gain: 1.1 },
@@ -1026,7 +1026,7 @@ const DRUM = {
     osc2: { type: 'triangle', from: 3000, to: 900, sweep: 0.002, attack: 0.0005, decay: 0.006, curve: 'exp', gain: 0.35 },
     noise: { type: 'highpass', freq: 4000, Q: 0.7, decay: 0.006, gain: 0.3 },
     drive: 0.45, shape: 'soft' },
-  kit_neuro_snare: { label: 'Neuro · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_neuro_snare: { label: 'OLD · Neuro · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The big one: a body ringing at 200 Hz under a wide, held crack, driven hard.',
     osc: { type: 'triangle', from: 240, to: 196, sweep: 0.012, pitchCurve: 'snap', decay: 0.18, curve: 'exp', gain: 1.1 },
     osc2: { type: 'sine', from: 400, to: 380, sweep: 0.01, decay: 0.06, curve: 'exp', gain: 0.35 },
@@ -1079,14 +1079,14 @@ const DRUM = {
     noise: { type: 'lowpass', freq: 900, Q: 0.7, attack: 0.002, decay: 0.025, gain: 0.3 },
     drive: 0.08,
     tone: { type: 'lowpass', freq: 6000 } },
-  kit_brushes_snare: { label: 'Brushes · Tap', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_brushes_snare: { label: 'OLD · Brushes · Tap', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A brush tapped on the snare: ten bristles in thirty milliseconds over a quiet '
       + 'stroke of wires. Bake-off L, picked by Peter 10 Oct 2026.',
     noise: { type: 'bandpass', freq: 2700, Q: 0.7, slope: -24, color: 'pink', attack: 0.002, decay: 0.15, sag: 0.5, sagAt: 0.02, gain: 1 },
     ring: { freq: 190, Q: 6, hit: 0.001, decay: 0.07, gain: 0.1 },
     humanize: { gain: 0.2, filter: 0.1 },
     taps: [0, 0.0027, 0.0068, 0.0098, 0.0133, 0.0169, 0.0195, 0.0231, 0.0267, 0.0307], tapFalloff: 1, tapGains: [0.15, 0.906, 0.811, 0.717, 0.622, 0.528, 0.433, 0.339, 0.244, 0.15], tapDecays: [0.15, 0.015, 0.015, 0.015, 0.015, 0.015, 0.015, 0.015, 0.015, 0.06], tapScatter: 0.0371 },
-  kit_brushes_clap: { label: 'Brushes · Swish', category: 'Snare', homeLane: 'clap', dur: 1,
+  kit_brushes_clap: { label: 'OLD · Brushes · Swish', category: 'Snare', homeLane: 'clap', dur: 1,
     note: 'A brush swept across the head: fourteen bristles in 140 ms over a quiet stroke, '
       + 'trimmed 8 dB under the lane. Bake-off O, picked by Peter 10 Oct 2026 ("perhaps it\'s '
       + 'just too loud" — 4 dB, then "bring down more").',
@@ -1131,7 +1131,7 @@ const DRUM = {
     osc2: { type: 'sine', from: 70, to: 40, sweep: 0.06, attack: 0.002, decay: 0.5, curve: 'exp', gain: 0.55 },
     noise: { type: 'lowpass', freq: 2000, Q: 0.7, decay: 0.01, gain: 0.2 },
     drive: 0.25, shape: 'soft' },
-  kit_syndrum_disco_snare: { label: 'Disco · Pew Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  kit_syndrum_disco_snare: { label: 'OLD · Disco · Pew Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A snare that pews, with weight: a triangle falling 900 to 190 Hz on a sine head at '
       + '200, over a longer swept burst of noise, 2 dB up on the lane.',
     osc: { type: 'triangle', from: 900, to: 190, sweep: 0.07, pitchCurve: 'snap', attack: 0.0008, decay: 0.24, curve: 'exp', gain: 1 },
@@ -1184,7 +1184,7 @@ const DRUM = {
     osc: { type: 'sine', from: 220, to: 51, sweep: 0.024, pitchCurve: 'snap', attack: 0, decay: 1.12, curve: 'exp', gain: 1 },
     osc2: { type: 'square', from: 25, to: 25, attack: 0, hold: 0.001, decay: 0.0015, gain: 0.4 },
     drive: 0.1 },
-  tr808Snare: { label: 'TR-808 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  tr808Snare: { label: 'OLD · TR-808 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Two fixed sines, 175 and 345 Hz — the later 808\'s values, measured — with no pitch '
       + 'fall, the lower ringing three times as long, under white noise banded around 4 kHz '
       + '(SNAPPY).',
@@ -1242,7 +1242,7 @@ const DRUM = {
     osc2: { type: 'square', from: 30, to: 30, attack: 0, hold: 0.0005, decay: 0.003, gain: 0.3 },
     noise: { type: 'lowpass', freq: 5000, attack: 0, decay: 0.012, gain: 0.25 },
     drive: 0.2 },
-  tr909Snare: { label: 'TR-909 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  tr909Snare: { label: 'OLD · TR-909 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Two sines falling fast to 181 and 290 Hz, the upper well down, building over 5 ms, '
       + 'under flat 1.4–11 kHz noise that holds 30 ms and is gated off by about 95.',
     osc: { type: 'sine', from: 420, to: 181, sweep: 0.024, pitchCurve: 'snap', attack: 0.005, decay: 0.24, gain: 1 },
@@ -1286,7 +1286,7 @@ const DRUM = {
       + 'sweep — about 100 ms to fall away.',
     osc: { type: 'sine', from: 66, to: 62.5, sweep: 0.015, attack: 0, decay: 0.4, gain: 1 },
     osc2: { type: 'square', from: 20, to: 20, attack: 0, hold: 0.0005, decay: 0.0015, gain: 0.5 } },
-  cr78Snare: { label: 'CR-78 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  cr78Snare: { label: 'OLD · CR-78 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A 340 Hz ring under bright noise banded around 8 kHz, both short: the service '
       + 'notes\' 60 ms.',
     osc: { type: 'sine', from: 350, to: 340, sweep: 0.01, attack: 0, decay: 0.2, gain: 1 },
@@ -1329,13 +1329,13 @@ const DRUM = {
     },
     tune: 21,
     trim: 3.998346 },
-  dsSnare: { label: 'Synth Snare', category: 'Snare', dur: 1,
+  dsSnare: { label: 'OLD · Synth Snare', category: 'Snare', dur: 1,
     note: 'The two-source snare: a triangle knock falling a fourth under a wide band '
       + 'of noise that rings a little longer than the body does.',
     osc: { type: 'triangle', from: 210, to: 165, sweep: 0.04, decay: 0.11, curve: 'exp', gain: 0.7 },
     noise: { type: 'bandpass', freq: 2100, Q: 0.8, decay: 0.17, gain: 1 },
     drive: 0.176114 },
-  dsSnareCrack: { label: 'Synth Crack Snare', category: 'Snare', dur: 1,
+  dsSnareCrack: { label: 'OLD · Synth Crack Snare', category: 'Snare', dur: 1,
     note: 'Tight and driven: a short square knock, highpassed air, everything over '
       + 'in a tenth of a second. The backbeat for fast songs.',
     osc: { type: 'square', from: 255, to: 200, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
@@ -1457,7 +1457,7 @@ const DRUM = {
       + 'lower so the body of the cluster comes through as it rings.',
     metal: { freq: 540, spread: 1, count: 6, hp: 6800, Q: 0.9, slope: -24, decay: 0.46 },
     humanize: { gain: 0.06 } },
-  snarePink: { label: '= Pink Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  snarePink: { label: 'OLD · = Pink Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Pink noise instead of white, so the body is in the noise rather than borrowed '
       + 'from the oscillator under it. Varies a little per hit, which is what a snare '
       + 'played by hands does.',
@@ -1486,7 +1486,7 @@ const DRUM = {
   // approximate each of these and state none of them — the three classic drums below
   // are all a PAIR of tuned bodies, and what makes each of them the sound it is is the
   // relationship between the two, which a welded-in punch layer cannot have.
-  snareTwoBody: { label: '= Two-Body Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  snareTwoBody: { label: 'OLD · = Two-Body Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The 808 snare as it is actually built: two tuned bodies a fifth and a bit '
       + 'apart, each barely falling, with the noise outlasting both. The upper one is '
       + 'the whole difference between a snare and a tom with a hiss on it.',
@@ -1572,7 +1572,7 @@ const DRUM = {
     knock: 0.227,
     noise: { type: 'highpass', freq: 1900, Q: 1, decay: 0.0198, gain: 0.31 },
     trim: -1.15 },
-  snareEngine: { label: '= Arcade Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  snareEngine: { label: 'OLD · = Arcade Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The game’s own snare: a 2.6 kHz band of noise with a triangle body falling '
       + '210 to 140 Hz under it. The backbeat every song was balanced against.',
     osc: { type: 'triangle', from: 210, to: 140, sweep: 0.05, decay: 0.1031, curve: 'exp', gain: 0.375 },
@@ -1620,7 +1620,7 @@ const DRUM = {
     noise: { type: 'lowpass', freq: 9000, to: 1100, sweep: 0.8333, Q: 0.7, attack: 0.005, decay: 1.0495, gain: 1 },
     tone: { type: 'highpass', freq: 1200, Q: 1 } },
 
-  dsCrackSnare2: { label: 'Crack Snare', category: 'Snare', dur: 1,
+  dsCrackSnare2: { label: 'OLD · Crack Snare', category: 'Snare', dur: 1,
     note: 'Tight and driven: a short square knock, highpassed air, everything over in a tenth '
       + 'of a second. The backbeat for fast songs.',
     osc: { type: 'square', from: 255, to: 440, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
@@ -1659,7 +1659,7 @@ const DRUM = {
     osc: { type: 'sine', from: 225, to: 52, sweep: 0.025, attack: 0.001, decay: 0.24, curve: 'exp', gain: 1 },
     noise: { type: 'bandpass', freq: 1450, Q: 1.1, decay: 0.018, gain: 0.52 },
     drive: 0.447312 },
-  ds909Snare: { label: '=909 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  ds909Snare: { label: 'OLD · =909 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A bright 909-style snare: a pitched shell under a wide, slightly metallic noise '
       + 'burst with enough decay to carry a backbeat.',
     osc: { type: 'triangle', from: 135, to: 285, sweep: 0.03, decay: 0.165, curve: 'exp', gain: 0.72, hold: 0 },
@@ -1667,7 +1667,7 @@ const DRUM = {
     noise: { type: 'bandpass', freq: 1950, Q: 0.8, decay: 0.88, gain: 1.62, hold: 0.019, attack: 0.001, color: 'white', slope: -24, sweep: 0.155 },
     drive: 0.277373, shape: 'fold',
     trim: 1.6 },
-  ds909SnareCrack: { label: '=909 Snare Crack', category: 'Snare', homeLane: 'snare', dur: 1,
+  ds909SnareCrack: { label: 'OLD · =909 Snare Crack', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A sharper 909-style snare variant with a square shell and high-passed '
       + 'wire noise for a more aggressive dance-floor backbeat.',
     osc: { type: 'square', from: 260, to: 190, sweep: 0.022, decay: 0.06, curve: 'exp', gain: 0.5 },
@@ -1708,7 +1708,7 @@ const DRUM = {
       + 'front edge rather than a long club sub.',
     osc: { type: 'sine', from: 135, to: 55, sweep: 0.02, attack: 0.001, decay: 0.22, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 1100, Q: 0.8, decay: 0.02, gain: 0.26 } },
-  dsCr78Snare: { label: '=CR78 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  dsCr78Snare: { label: 'OLD · =CR78 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A polite CR78-style snare with a low paper-like body and a muted noise '
       + 'burst that sits behind a melody instead of dominating it.',
     osc: { type: 'triangle', from: 175, to: 125, sweep: 0.025, decay: 0.09, curve: 'exp', gain: 0.62 },
@@ -1739,7 +1739,7 @@ const DRUM = {
     osc: { type: 'sine', from: 170, to: 36, sweep: 0.06, attack: 0.001, decay: 0.78, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 2200, Q: 0.7, decay: 0.02, gain: 0.25 },
     drive: 0.121058 },
-  ds808Snare: { label: '=808 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  ds808Snare: { label: 'OLD · =808 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A round 808-style snare with a low electronic shell under a broad, slightly '
       + 'darker noise body than the sharper 909 family.',
     osc: { type: 'triangle', from: 190, to: 145, sweep: 0.035, decay: 0.13, curve: 'exp', gain: 0.62 },
@@ -2325,7 +2325,7 @@ const DRUM = {
     osc: { type: 'triangle', from: 880, to: 150, sweep: 0.09, pitchCurve: 'snap',
       attack: 0.0006, decay: 0.18, curve: 'exp', gain: 0.95 },
     drive: 0.19155 },
-  sdCrack: { label: 'Syndrum · Crack', category: 'Snare', homeLane: 'snare', dur: 1,
+  sdCrack: { label: 'OLD · Syndrum · Crack', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The noise mix brought up until the drum is more crack than tone — the Syndrum '
       + 'used as a backbeat instead of a fill. The body still falls underneath it, which '
       + 'is what keeps it from being an ordinary electronic snare.',
@@ -2349,7 +2349,7 @@ const DRUM = {
     knock: 0.35,
     noise: { type: 'lowpass', freq: 1400, Q: 0.7, decay: 0.02, sag: 0.2, sagAt: 0.004, gain: 0.3 },
     drive: 0.183729 },
-  sdsSnare: { label: 'Simmons · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+  sdsSnare: { label: 'OLD · Simmons · Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The one everybody means by "Simmons": the noise-tone balance right over toward '
       + 'noise, a four-pole band at 2.2 kHz running nearly three hundred milliseconds, and '
       + 'just enough bent triangle underneath to give it a pitch.',
@@ -2458,7 +2458,7 @@ const DRUM = {
   // path honoured them. A clap and a flam are percussion whatever generates them, so
   // they are built here now, where the repeat lives — the metal bank for the struck
   // ones, an FM operator on the oscillator for the dry one.
-  snareFlam: { label: 'Flam Snare', category: 'Snare', dur: 1,
+  snareFlam: { label: 'OLD · Flam Snare', category: 'Snare', dur: 1,
     note: 'Two strikes 22ms apart — the drummer’s flam, which reads as one hit with '
       + 'a thicker front.',
     noise: { type: 'bandpass', freq: 1600, to: 1150, sweep: 0.1, Q: 1.3, decay: 0.14, gain: 1 },
@@ -2492,17 +2492,17 @@ const DRUM = {
   // which is the same thump stated in the drum path's words, so they are ordinary
   // KLNG8 presets and belong in the one table with the rest.
 
-  snareCrisp: { label: 'Crisp Snare', category: 'Snare', dur: 1,
+  snareCrisp: { label: 'OLD · Crisp Snare', category: 'Snare', dur: 1,
     note: 'The engine’s own snare as a preset: a bright noise band, a short decay and '
       + 'a hint of body. The one every song already uses.',
     osc: { type: 'triangle', from: 210, to: 140, sweep: 0.06, decay: 0.06, gain: 0.375 },
     noise: { type: 'bandpass', freq: 2600, Q: 0.7, decay: 0.09 } },
-  snareFat: { label: 'Fat Snare', category: 'Snare', dur: 1,
+  snareFat: { label: 'OLD · Fat Snare', category: 'Snare', dur: 1,
     note: 'Lower band, longer tail and much more body — a snare that carries a '
       + 'backbeat on its own rather than sitting on top of one.',
     osc: { type: 'triangle', from: 180, to: 110, sweep: 0.11, decay: 0.11, gain: 0.6 },
     noise: { type: 'bandpass', freq: 1700, Q: 0.5, decay: 0.16 } },
-  snareTight: { label: 'Tight Snare', category: 'Snare', dur: 1,
+  snareTight: { label: 'OLD · Tight Snare', category: 'Snare', dur: 1,
     note: 'Gated: cut off almost before it starts. Sits under a busy hat pattern '
       + 'without smearing it.',
     osc: { type: 'triangle', from: 240, to: 170, sweep: 0.03, decay: 0.03, gain: 0.3 },
@@ -2625,6 +2625,115 @@ const DRUM = {
     noise: { type: 'lowpass', freq: 9000, to: 3000, sweep: 0.35, Q: 0.7, attack: 0.002,
       hold: 0.28, decay: 0.06, curve: 'lin', gain: 1 },
     drive: 0.3, tone: { type: 'lowpass', freq: 10000, Q: 0.7 } },
+  // ---- the bright snares (14 Oct 2026) -------------------------------------
+  //
+  // Peter: "they seem really dull … zero top end". The library's snares bandpassed their noise
+  // around 1.5–2.6 kHz and let it go in 25–40 ms; the real machines (Zero-G samples, measured)
+  // carry their wires at 4–12 kHz for 55–200 ms. These are each machine rebuilt with that top end —
+  // noise HIGHPASSED, a drive tone as the ceiling where the machine has one, and the ring section
+  // as a stick crack. Highpass/lowpass Q is read in dB by Web Audio: the noise and ring sit at 0.1,
+  // the RESONANCE pot's floor (a flat corner with a hair of lift), and the tone at -3.01, Butterworth.
+  // The bake-off: work/local/_snare-audit/, work/auditions/snares/.
+  snare808Bright: { label: '808 Snare · Bright', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'The 808 as built — fixed 180 and 330 Hz tones under SNAPPY pink noise from 1.5 kHz '
+      + 'to a 10 kHz ceiling, matched to the real 808\'s 2–8 kHz rather than a 2 kHz honk.',
+    osc: { type: 'sine', from: 184, to: 180, sweep: 0.01, attack: 0, decay: 0.2, curve: 'exp', gain: 1 },
+    osc2: { type: 'sine', from: 335, to: 330, sweep: 0.01, attack: 0, decay: 0.08, curve: 'exp', gain: 0.7 },
+    noise: { type: 'highpass', freq: 1500, Q: 0.1, color: 'pink', attack: 0, decay: 0.25, gain: 2.4 },
+    drive: 0.05,
+    tone: { type: 'lowpass', freq: 10000, Q: -3.01 } },
+  snare808Snappy: { label: '808 Snare · Snappy', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'The 808 with TONE and SNAPPY up: a higher 238/400 Hz head and white noise from 1.3 '
+      + 'to 11 kHz rattling on for a quarter second.',
+    osc: { type: 'sine', from: 250, to: 238, sweep: 0.012, attack: 0, decay: 0.15, curve: 'exp', gain: 1 },
+    osc2: { type: 'sine', from: 410, to: 400, sweep: 0.012, attack: 0, decay: 0.06, curve: 'exp', gain: 0.6 },
+    noise: { type: 'highpass', freq: 1300, Q: 0.1, attack: 0, decay: 0.26, sag: 0.55, sagAt: 0.02, gain: 1.5 },
+    drive: 0.08,
+    tone: { type: 'lowpass', freq: 11000, Q: -3.01 } },
+  snare909Bright: { label: '909 Snare · Bright', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'Two shells snapping down to 170 and 320 Hz under 909-style noise that lives at 4–10 '
+      + 'kHz, held 30 ms and let go over a quarter second.',
+    osc: { type: 'sine', from: 400, to: 170, sweep: 0.02, pitchCurve: 'snap', attack: 0.002, decay: 0.22, curve: 'exp', gain: 1.5 },
+    osc2: { type: 'sine', from: 660, to: 320, sweep: 0.02, pitchCurve: 'snap', attack: 0.002, decay: 0.12, curve: 'exp', gain: 0.5 },
+    noise: { type: 'highpass', freq: 3000, Q: 0.1, attack: 0.0005, hold: 0.03, decay: 0.24, sag: 0.6, sagAt: 0.03, gain: 1.9 },
+    drive: 0.12,
+    tone: { type: 'lowpass', freq: 9500, Q: -3.01 } },
+  snare909Punch: { label: '909 Snare · Punch', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'The 909 pushed for the dance floor: a harder shell drop, a highpassed stick crack '
+      + 'and bright, driven wires up to 10.5 kHz.',
+    osc: { type: 'triangle', from: 520, to: 190, sweep: 0.015, pitchCurve: 'snap', attack: 0.001, decay: 0.16, curve: 'exp', gain: 1.3 },
+    osc2: { type: 'sine', from: 760, to: 340, sweep: 0.015, pitchCurve: 'snap', attack: 0.001, decay: 0.09, curve: 'exp', gain: 0.4 },
+    noise: { type: 'highpass', freq: 2000, Q: 0.1, attack: 0.0005, hold: 0.02, decay: 0.22, sag: 0.6, sagAt: 0.03, gain: 1.8 },
+    ring: { type: 'highpass', freq: 3500, Q: 0.1, hit: 0.005, decay: 0.03, gain: 0.9 },
+    drive: 0.25,
+    tone: { type: 'lowpass', freq: 10500, Q: -3.01 } },
+  snareSimmonsPew: { label: 'Simmons Snare · Pew', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'The SDS-V snare: a triangle bent from 700 Hz down to 210 — the pew — over pink '
+      + 'noise open to 10 kHz, ringing a fifth of a second.',
+    osc: { type: 'triangle', from: 700, to: 210, sweep: 0.03, pitchCurve: 'snap', attack: 0.0008, decay: 0.26, curve: 'exp', gain: 1 },
+    noise: { type: 'highpass', freq: 1600, Q: 0.1, color: 'pink', attack: 0.0008, decay: 0.24, sag: 0.45, sagAt: 0.012, gain: 1.9 },
+    drive: 0.15,
+    tone: { type: 'lowpass', freq: 10000, Q: -3.01 } },
+  snareSimmonsCrack: { label: 'Simmons Snare · Crack', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'The SDS-V with CLICK and NOISE up: a stick crack, a quick 900-to-240 Hz pew and '
+      + 'white noise from 2.2 kHz.',
+    osc: { type: 'triangle', from: 900, to: 240, sweep: 0.022, pitchCurve: 'snap', attack: 0.0006, decay: 0.2, curve: 'exp', gain: 0.85 },
+    noise: { type: 'highpass', freq: 2200, Q: 0.1, attack: 0.0006, decay: 0.22, sag: 0.4, sagAt: 0.01, gain: 1.6 },
+    ring: { type: 'highpass', freq: 4000, Q: 0.1, hit: 0.004, decay: 0.025, gain: 0.8 },
+    drive: 0.2,
+    tone: { type: 'lowpass', freq: 12000, Q: -3.01 } },
+  snare80sGated: { label: '80s Gated Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'The gated-reverb pop snare: crack and fat head, then a bright room that drops after '
+      + 'the crack, hangs, and is gated off at about 0.3 s.',
+    osc: { type: 'triangle', from: 330, to: 190, sweep: 0.02, pitchCurve: 'snap', attack: 0.001, decay: 0.14, curve: 'exp', gain: 1 },
+    knock: 0.4,
+    noise: { type: 'bandpass', freq: 4000, Q: 0.4, color: 'pink', attack: 0.001, decay: 0.3, sag: 0.45, sagAt: 0.012, curve: 'lin', gain: 2.6 },
+    ring: { type: 'highpass', freq: 3500, Q: 0.1, hit: 0.006, decay: 0.03, gain: 1 },
+    drive: 0.18,
+    tone: { type: 'lowpass', freq: 13000, Q: -3.01 } },
+  snare80sLinn: { label: '80s Linn Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'LinnDrum-style and dry: a round 190 Hz head with a 330 Hz partner, a hard stick '
+      + 'crack and tight pink wires from 2 kHz.',
+    osc: { type: 'sine', from: 260, to: 190, sweep: 0.015, pitchCurve: 'snap', attack: 0.001, decay: 0.16, curve: 'exp', gain: 1 },
+    osc2: { type: 'triangle', from: 360, to: 330, sweep: 0.01, attack: 0.001, decay: 0.06, curve: 'exp', gain: 0.45 },
+    noise: { type: 'highpass', freq: 2000, Q: 0.1, color: 'pink', attack: 0.0005, decay: 0.17, sag: 0.5, sagAt: 0.015, gain: 1.9 },
+    ring: { type: 'highpass', freq: 3000, Q: 0.1, hit: 0.004, decay: 0.02, gain: 1 },
+    drive: 0.15,
+    tone: { type: 'lowpass', freq: 12000, Q: -3.01 } },
+  snareCR78Bright: { label: 'CR-78 Snare · Bright', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'The CR-78 as its sample measures — a 340 Hz ring under pink noise from 2.5 to 14 '
+      + 'kHz, both gone in about 60 ms.',
+    osc: { type: 'sine', from: 340, to: 340, attack: 0, decay: 0.16, curve: 'exp', gain: 1 },
+    noise: { type: 'highpass', freq: 2500, Q: 0.1, color: 'pink', attack: 0, decay: 0.18, gain: 2.8 },
+    drive: 0.03,
+    tone: { type: 'lowpass', freq: 14000, Q: -3.01 } },
+  snareCR78Accent: { label: 'CR-78 Snare · Accent', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'The accented CR-78 hit: a 352 Hz ring, wider and louder noise from 2 kHz and the 6 '
+      + 'kHz click the accent line adds.',
+    osc: { type: 'sine', from: 352, to: 352, attack: 0, decay: 0.2, curve: 'exp', gain: 1 },
+    noise: { type: 'highpass', freq: 2000, Q: 0.1, color: 'pink', attack: 0, decay: 0.22, sag: 0.6, sagAt: 0.01, gain: 3 },
+    ring: { type: 'highpass', freq: 6000, Q: 0.1, hit: 0.002, decay: 0.015, gain: 0.7 },
+    drive: 0.05,
+    tone: { type: 'lowpass', freq: 15000, Q: -3.01 } },
+  snareBrightCrack: { label: 'Bright Crack Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'A modern backbeat built to cut: a tuned 200 Hz head with knock, a stick crack and '
+      + 'wires from 2.2 to 12 kHz.',
+    osc: { type: 'triangle', from: 300, to: 200, sweep: 0.02, pitchCurve: 'snap', attack: 0.001, decay: 0.13, curve: 'exp', gain: 1 },
+    knock: 0.35,
+    noise: { type: 'highpass', freq: 2200, Q: 0.1, attack: 0.0005, hold: 0.015, decay: 0.18, sag: 0.5, sagAt: 0.02, gain: 1.7 },
+    ring: { type: 'highpass', freq: 4500, Q: 0.1, hit: 0.005, decay: 0.025, gain: 1 },
+    drive: 0.22,
+    tone: { type: 'lowpass', freq: 12000, Q: -3.01 } },
+  snareWiresTight: { label: 'Tight Wires Snare', category: 'Snare', homeLane: 'snare', dur: 1,
+    note: 'A close-miked acoustic feel: a 200 Hz head and its 330 Hz partner, a crack, and '
+      + 'pink wires from 1.8 kHz rattling a fifth of a second.',
+    osc: { type: 'triangle', from: 230, to: 200, sweep: 0.015, attack: 0.001, decay: 0.12, curve: 'exp', gain: 0.9 },
+    osc2: { type: 'sine', from: 345, to: 330, sweep: 0.012, attack: 0.001, decay: 0.07, curve: 'exp', gain: 0.5 },
+    noise: { type: 'highpass', freq: 1800, Q: 0.1, color: 'pink', attack: 0.0005, decay: 0.22, sag: 0.4, sagAt: 0.025, gain: 1.6 },
+    ring: { type: 'highpass', freq: 3000, Q: 0.1, hit: 0.003, decay: 0.018, gain: 0.9 },
+    drive: 0.12,
+    tone: { type: 'lowpass', freq: 15000, Q: -3.01 },
+    humanize: { gain: 0.06, filter: 0.05 } },
 };
 
 // Measured, by tools/measure-voices.js — do not hand-edit any of the three blocks.
@@ -2957,7 +3066,7 @@ const ENGINE = {
     note: 'The engine’s own 808, stacked the way an 808 stacks: a sine body dropping '
       + '165Hz to 48Hz in 50ms and ringing for a fifth of a second, a 2ms high-passed '
       + 'click on the front, and a 300Hz triangle knock that cuts through the bass.' },
-  engSnare: { label: 'Arcade Snare', category: 'Snare', lanes: ['snare'], nameOnly: true,
+  engSnare: { label: 'OLD · Arcade Snare', category: 'Snare', lanes: ['snare'], nameOnly: true,
     note: 'The engine’s own crack — a 2.6kHz noise band gone in 90ms with a triangle '
       + 'body falling 210Hz to 140Hz under it. Crisp rather than acoustic; there is '
       + 'no bank key that changes it.' },
@@ -4871,115 +4980,115 @@ const TONE = {
       oscA: { table: 'warmHarmonics', position: 0.08, envAmount: 0.18, level: 0.82, unison: 1 },
       oscB: { table: 'hollowPulse', position: 0.18, envAmount: 0.12, level: 0.25, unison: 1, interval: -12 },
       amp: { attack: 0.004, decay: 0.32, sustain: 0.72, release: 0.12 },
-      filter: { type: 'lowpass', cutoff: 1900, resonance: 1.92 }, filterEnv: { amount: 1.4, attack: 0.002, decay: 0.22, sustain: 0.25 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 1900, resonance: 1.92 }, filterEnv: { amount: 1.4, attack: 0.002, decay: 0.22, sustain: 0.25 },
       positionEnv: { attack: 0.01, decay: 0.28, sustain: 0.28 }, master: { gain: 0.68 } } },
   tngrGlassMotor: { label: 'Glassy Bass', category: 'Bass', synth: 'TNGR-2', dur: 1.2,
     note: 'A glass transient settling into a firm dark fundamental.', tngr2: {
       oscA: { table: 'crystal', position: 0.5, envAmount: -0.4, level: 0.78 },
       oscB: { table: 'darkToAir', position: 0.2, envAmount: 0.16, level: 0.22, interval: -12 },
       amp: { attack: 0.002, decay: 0.24, sustain: 0.62, release: 0.1 },
-      filter: { type: 'lowpass', cutoff: 2300, resonance: 2.4 }, filterEnv: { amount: 2, attack: 0.001, decay: 0.12, sustain: 0.08 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 2300, resonance: 2.4 }, filterEnv: { amount: 2, attack: 0.001, decay: 0.12, sustain: 0.08 },
       positionEnv: { attack: 0, decay: 0.18, sustain: 0 }, master: { gain: 0.67 } } },
   tngrNightSequence: { label: 'Sequencer Bass', category: 'Bass', synth: 'TNGR-2', dur: 1,
     note: 'A tempo-synced spectral pulse for repeated sixteenth notes.', tngr2: {
       oscA: { table: 'spectralPWM', position: 0.22, envAmount: 0.08, lfoAmount: 0.8, level: 0.82 },
       oscB: { table: 'organShift', position: 0.1, envAmount: 0.12, level: 0.18, interval: -12 },
-      amp: { attack: 0.002, decay: 0.18, sustain: 0.55, release: 0.08 }, filter: { type: 'lowpass', cutoff: 1600, resonance: 2.88 },
+      amp: { attack: 0.002, decay: 0.18, sustain: 0.55, release: 0.08 }, filter: { type: 'lowpass', slope: -24, cutoff: 1600, resonance: 2.88 },
       positionEnv: { attack: 0.002, decay: 0.16, sustain: 0.15 }, lfo1: { shape: 'triangle', sync: true, division: '1/16', amount: 0.55 }, master: { gain: 0.66 } } },
   tngrHollowVector: { label: 'Hollow Glide Bass', category: 'Bass', synth: 'TNGR-2', dur: 1.4,
     note: 'A hollow formant travel with mono glide and restrained resonance.', mode: 'mono', portamento: 0.05, tngr2: {
       oscA: { table: 'hollowPulse', position: 0.18, envAmount: 0.42, level: 0.84 },
       oscB: { table: 'vowelAEIOU', position: 0.06, envAmount: 0.18, level: 0.2, interval: -12 },
-      amp: { attack: 0.003, decay: 0.25, sustain: 0.62, release: 0.12 }, filter: { type: 'lowpass', cutoff: 2100, resonance: 3.84 },
+      amp: { attack: 0.003, decay: 0.25, sustain: 0.62, release: 0.12 }, filter: { type: 'lowpass', slope: -24, cutoff: 2100, resonance: 3.84 },
       filterEnv: { amount: 2.2, attack: 0.001, decay: 0.2, sustain: 0.12 }, positionEnv: { attack: 0, decay: 0.18, sustain: 0.1 }, master: { gain: 0.64 } } },
   tngrDigitalGrowl: { label: 'Growl Bass', category: 'Bass', synth: 'TNGR-2', dur: 1.6,
     note: 'Opposing A/B table motion for an aggressive but pitch-readable bass.', tngr2: {
       oscA: { table: 'alloy', position: 0.15, envAmount: 0.7, level: 0.74, unison: 2, spread: 8 },
       oscB: { table: 'reedWire', position: 0.82, envAmount: -0.52, level: 0.28, unison: 2, spread: 11, interval: -12 },
-      amp: { attack: 0.005, decay: 0.45, sustain: 0.68, release: 0.16 }, filter: { type: 'lowpass', cutoff: 2600, resonance: 3.36 },
+      amp: { attack: 0.005, decay: 0.45, sustain: 0.68, release: 0.16 }, filter: { type: 'lowpass', slope: -24, cutoff: 2600, resonance: 3.36 },
       positionEnv: { attack: 0.01, decay: 0.38, sustain: 0.3 }, master: { gain: 0.58 } } },
 
   tngrBerlinSignal: { label: 'Bright Glide Lead', category: 'Lead', synth: 'TNGR-2', dur: 1.5,
     note: 'A clear bright mono lead with slow spectral animation and useful glide.', mode: 'mono', portamento: 0.08, tngr2: {
       oscA: { table: 'sawForm', position: 0.35, envAmount: 0.25, level: 0.78, unison: 2, spread: 7 }, oscB: { table: 'warmHarmonics', position: 0.2, level: 0.18, interval: 12 },
-      amp: { attack: 0.012, decay: 0.2, sustain: 0.82, release: 0.18 }, filter: { type: 'lowpass', cutoff: 5200, resonance: 2.16 }, filterEnv: { amount: 1.1, attack: 0.01, decay: 0.18, sustain: 0.42 },
+      amp: { attack: 0.012, decay: 0.2, sustain: 0.82, release: 0.18 }, filter: { type: 'lowpass', slope: -24, cutoff: 5200, resonance: 2.16 }, filterEnv: { amount: 1.1, attack: 0.01, decay: 0.18, sustain: 0.42 },
       positionEnv: { attack: 0.04, decay: 0.6, sustain: 0.4 }, master: { gain: 0.62 } } },
   tngrNeonReed: { label: 'Reedy Lead', category: 'Lead', synth: 'TNGR-2', dur: 1.3,
     note: 'A reed-to-wire scan with a focused bandpass edge.', tngr2: {
       oscA: { table: 'reedWire', position: 0.12, envAmount: 0.62, level: 0.75 }, oscB: { table: 'vowelGlass', position: 0.42, envAmount: 0.24, level: 0.2, interval: 12 },
-      amp: { attack: 0.008, decay: 0.22, sustain: 0.76, release: 0.2 }, filter: { type: 'bandpass', cutoff: 3400, resonance: 2.16 }, filterEnv: { amount: 1.5, attack: 0.004, decay: 0.3, sustain: 0.35 },
+      amp: { attack: 0.008, decay: 0.22, sustain: 0.76, release: 0.2 }, filter: { type: 'bandpass', slope: -24, cutoff: 3400, resonance: 2.16 }, filterEnv: { amount: 1.5, attack: 0.004, decay: 0.3, sustain: 0.35 },
       positionEnv: { attack: 0.01, decay: 0.4, sustain: 0.25 }, master: { gain: 0.6 } } },
   tngrRubyScanner: { label: 'Pulsing Lead', category: 'Lead', synth: 'TNGR-2', dur: 1.1,
     note: 'A rhythmic position LFO lead with crisp articulation and moderate spread.', tngr2: {
       oscA: { table: 'crystal', position: 0.2, lfoAmount: 0.75, level: 0.76, unison: 2, spread: 10 }, oscB: { table: 'digitalSteps', position: 0.55, lfoAmount: -0.35, level: 0.2 },
-      amp: { attack: 0.003, decay: 0.14, sustain: 0.7, release: 0.13 }, filter: { type: 'lowpass', cutoff: 5700, resonance: 2.64 }, positionEnv: { attack: 0, decay: 0.1, sustain: 0.1 },
+      amp: { attack: 0.003, decay: 0.14, sustain: 0.7, release: 0.13 }, filter: { type: 'lowpass', slope: -24, cutoff: 5700, resonance: 2.64 }, positionEnv: { attack: 0, decay: 0.1, sustain: 0.1 },
       lfo1: { shape: 'triangle', sync: true, division: '1/16', amount: 0.72 }, master: { gain: 0.58 } } },
   tngrHorizonSolo: { label: 'Legato Solo Lead', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'An expressive legato lead with position movement during held notes.', mode: 'legato', portamento: 0.12, tngr2: {
       oscA: { table: 'vowelGlass', position: 0.18, envAmount: 0.52, level: 0.78, unison: 2, spread: 8 }, oscB: { table: 'darkToAir', position: 0.35, envAmount: 0.35, level: 0.16, interval: 12 },
-      amp: { attack: 0.06, decay: 0.32, sustain: 0.82, release: 0.28 }, filter: { type: 'lowpass', cutoff: 4300, resonance: 2.28 }, filterEnv: { amount: 1.2, attack: 0.06, decay: 0.45, sustain: 0.4 },
+      amp: { attack: 0.06, decay: 0.32, sustain: 0.82, release: 0.28 }, filter: { type: 'lowpass', slope: -24, cutoff: 4300, resonance: 2.28 }, filterEnv: { amount: 1.2, attack: 0.06, decay: 0.45, sustain: 0.4 },
       positionEnv: { attack: 0.3, decay: 1.1, sustain: 0.72 }, master: { gain: 0.6 } } },
   tngrSatelliteWire: { label: 'Satellite Wire', category: 'Lead', synth: 'TNGR-2', dur: 1.2,
     note: 'A thin upper-register digital lead controlled at C6.', tngr2: {
       oscA: { table: 'alloy', position: 0.64, envAmount: 0.25, level: 0.74, unison: 2, spread: 6 }, oscB: { table: 'crystal', position: 0.75, level: 0.15, interval: 12 },
-      amp: { attack: 0.01, decay: 0.18, sustain: 0.68, release: 0.16 }, filter: { type: 'lowpass', cutoff: 6900, resonance: 1.92 }, positionEnv: { attack: 0.02, decay: 0.4, sustain: 0.24 }, master: { gain: 0.54 } } },
+      amp: { attack: 0.01, decay: 0.18, sustain: 0.68, release: 0.16 }, filter: { type: 'lowpass', slope: -24, cutoff: 6900, resonance: 1.92 }, positionEnv: { attack: 0.02, decay: 0.4, sustain: 0.24 }, master: { gain: 0.54 } } },
 
   tngrBurntHorizon: { label: 'Vowel Swell Pad', category: 'Pad', synth: 'TNGR-2', dur: 8,
     note: 'A slow glass-and-vowel pad that opens across held chords.',
-    tngr2: { oscA: { table: 'vowelGlass', position: 0.12, envAmount: 0.55, lfoAmount: 0.08, lfo2Amount: 0.05, level: 0.76, unison: 2, spread: 9, stereo: 0.6 }, oscB: { table: 'darkToAir', position: 0.3, envAmount: 0.25, lfoAmount: -0.1, lfo2Amount: -0.06, level: 0.38, unison: 2, spread: 7, stereo: 0.6, interval: -12 }, amp: { attack: 0.014, decay: 1.8, sustain: 0.78, release: 3.2 }, positionEnv: { attack: 2.4, decay: 3.4, sustain: 0.5 }, filter: { type: 'lowpass', cutoff: 5200, resonance: 2.64 }, filterEnv: { amount: 1.4, attack: 1.1, decay: 2.2, sustain: 0.55 }, lfo1: { shape: 'sine', sync: true, division: '1/2', amount: 0.3 }, lfo2: { shape: 'triangle', rate: 0.11, amount: 0.2 }, master: { gain: 0.56 } } },
+    tngr2: { oscA: { table: 'vowelGlass', position: 0.12, envAmount: 0.55, lfoAmount: 0.08, lfo2Amount: 0.05, level: 0.76, unison: 2, spread: 9, stereo: 0.6 }, oscB: { table: 'darkToAir', position: 0.3, envAmount: 0.25, lfoAmount: -0.1, lfo2Amount: -0.06, level: 0.38, unison: 2, spread: 7, stereo: 0.6, interval: -12 }, amp: { attack: 0.014, decay: 1.8, sustain: 0.78, release: 3.2 }, positionEnv: { attack: 2.4, decay: 3.4, sustain: 0.5 }, filter: { type: 'lowpass', slope: -24, cutoff: 5200, resonance: 2.64 }, filterEnv: { amount: 1.4, attack: 1.1, decay: 2.2, sustain: 0.55 }, lfo1: { shape: 'sine', sync: true, division: '1/2', amount: 0.3 }, lfo2: { shape: 'triangle', rate: 0.11, amount: 0.2 }, master: { gain: 0.56 } } },
   tngrCloudMemory: { label: 'Soft Ambient Pad', category: 'Pad', synth: 'TNGR-2', dur: 6,
     note: 'A soft low-motion warm pad for ambience and dialogue beds.',
-    tngr2: { oscA: { table: 'warmHarmonics', position: 0.15, envAmount: 0.22, level: 0.78, unison: 2, spread: 12 }, oscB: { table: 'choirBreath', position: 0.32, envAmount: 0.3, level: 0.22, unison: 2, spread: 9, interval: 12 }, amp: { attack: 0.011, decay: 1.5, sustain: 0.82, release: 2.4 }, positionEnv: { attack: 1.4, decay: 2.6, sustain: 0.5 }, filter: { type: 'lowpass', cutoff: 3600, resonance: 1.44 }, filterEnv: { amount: 0.8, attack: 1.2, decay: 2, sustain: 0.4 }, master: { gain: 0.6 } } },
+    tngr2: { oscA: { table: 'warmHarmonics', position: 0.15, envAmount: 0.22, level: 0.78, unison: 2, spread: 12 }, oscB: { table: 'choirBreath', position: 0.32, envAmount: 0.3, level: 0.22, unison: 2, spread: 9, interval: 12 }, amp: { attack: 0.011, decay: 1.5, sustain: 0.82, release: 2.4 }, positionEnv: { attack: 1.4, decay: 2.6, sustain: 0.5 }, filter: { type: 'lowpass', slope: -24, cutoff: 3600, resonance: 1.44 }, filterEnv: { amount: 0.8, attack: 1.2, decay: 2, sustain: 0.4 }, master: { gain: 0.6 } } },
   tngrGlassChoir: { label: 'Glass Choir', category: 'Pad', synth: 'TNGR-2', dur: 7,
     note: 'Vocal and glass motion without using the Vowel insert.',
-    tngr2: { oscA: { table: 'choirBreath', position: 0.08, envAmount: 0.75, level: 0.7, unison: 2, spread: 10, stereo: 0.7 }, oscB: { table: 'vowelGlass', position: 0.62, envAmount: -0.35, level: 0.3, unison: 2, spread: 13, stereo: 0.7, interval: 12 }, amp: { attack: 0.031, decay: 2.2, sustain: 0.76, release: 1.948 }, positionEnv: { attack: 2, decay: 3, sustain: 0.6 }, filter: { type: 'lowpass', cutoff: 4700, resonance: 2.4 }, lfo1: { shape: 'sine', rate: 0.08, amount: 0.18 }, master: { gain: 0.5 } } },
+    tngr2: { oscA: { table: 'choirBreath', position: 0.08, envAmount: 0.75, level: 0.7, unison: 2, spread: 10, stereo: 0.7 }, oscB: { table: 'vowelGlass', position: 0.62, envAmount: -0.35, level: 0.3, unison: 2, spread: 13, stereo: 0.7, interval: 12 }, amp: { attack: 0.031, decay: 2.2, sustain: 0.76, release: 1.948 }, positionEnv: { attack: 2, decay: 3, sustain: 0.6 }, filter: { type: 'lowpass', slope: -24, cutoff: 4700, resonance: 2.4 }, lfo1: { shape: 'sine', rate: 0.08, amount: 0.18 }, master: { gain: 0.5 } } },
   tngrPolarDrift: { label: 'Cold Wide Pad', category: 'Pad', synth: 'TNGR-2', dur: 8,
     note: 'Wide cold sparse partials with independent slow movement.',
-    tngr2: { oscA: { table: 'crystal', position: 0.35, envAmount: 0.42, lfoAmount: 0.12, level: 0.68, unison: 3, spread: 18, stereo: 0.9 }, oscB: { table: 'alloy', position: 0.7, envAmount: -0.3, lfoAmount: -0.1, level: 0.25, unison: 2, spread: 15, stereo: 0.9, interval: -12 }, amp: { attack: 0.03, decay: 2.5, sustain: 0.7, release: 1.387 }, positionEnv: { attack: 2.8, decay: 3.5, sustain: 0.45 }, filter: { type: 'lowpass', cutoff: 5600, resonance: 1.92 }, lfo1: { shape: 'triangle', rate: 0.07, amount: 0.22 }, master: { gain: 0.46 } } },
+    tngr2: { oscA: { table: 'crystal', position: 0.35, envAmount: 0.42, lfoAmount: 0.12, level: 0.68, unison: 3, spread: 18, stereo: 0.9 }, oscB: { table: 'alloy', position: 0.7, envAmount: -0.3, lfoAmount: -0.1, level: 0.25, unison: 2, spread: 15, stereo: 0.9, interval: -12 }, amp: { attack: 0.03, decay: 2.5, sustain: 0.7, release: 1.387 }, positionEnv: { attack: 2.8, decay: 3.5, sustain: 0.45 }, filter: { type: 'lowpass', slope: -24, cutoff: 5600, resonance: 1.92 }, lfo1: { shape: 'triangle', rate: 0.07, amount: 0.22 }, master: { gain: 0.46 } } },
   tngrDreamCircuit: { label: 'Evolving Digital Pad', category: 'Pad', synth: 'TNGR-2', dur: 8,
     note: 'An unmistakable evolving digital pad with musical rather than noisy motion.',
-    tngr2: { oscA: { table: 'digitalSteps', position: 0.08, envAmount: 0.92, level: 0.7, unison: 2, spread: 12 }, oscB: { table: 'spectralPWM', position: 0.7, envAmount: -0.65, level: 0.28, unison: 2, spread: 10, interval: -12 }, amp: { attack: 0.015, decay: 2, sustain: 0.78, release: 0.707 }, positionEnv: { attack: 1.6, decay: 3.8, sustain: 0.52 }, filter: { type: 'lowpass', cutoff: 4800, resonance: 2.88 }, lfo1: { shape: 'triangle', sync: true, division: '1/2', amount: 0.24 }, master: { gain: 0.5 } } },
+    tngr2: { oscA: { table: 'digitalSteps', position: 0.08, envAmount: 0.92, level: 0.7, unison: 2, spread: 12 }, oscB: { table: 'spectralPWM', position: 0.7, envAmount: -0.65, level: 0.28, unison: 2, spread: 10, interval: -12 }, amp: { attack: 0.015, decay: 2, sustain: 0.78, release: 0.707 }, positionEnv: { attack: 1.6, decay: 3.8, sustain: 0.52 }, filter: { type: 'lowpass', slope: -24, cutoff: 4800, resonance: 2.88 }, lfo1: { shape: 'triangle', sync: true, division: '1/2', amount: 0.24 }, master: { gain: 0.5 } } },
   tngrBlueCathedral: { label: 'Blue Cathedral', category: 'Pad', synth: 'TNGR-2', dur: 8,
     note: 'A long organ-shift and octave-cascade pad with a dignified release.', tngr2: {
       oscA: { table: 'organShift', position: 0.12, envAmount: 0.5, level: 0.74, unison: 2, spread: 8 }, oscB: { table: 'octaveCascade', position: 0.18, envAmount: 0.62, level: 0.22, unison: 2, spread: 11, interval: -12 },
-      amp: { attack: 1.2, decay: 2.8, sustain: 0.82, release: 4 }, positionEnv: { attack: 1.8, decay: 3.8, sustain: 0.5 }, filter: { type: 'lowpass', cutoff: 4100, resonance: 1.68 }, filterEnv: { amount: 0.7, attack: 1, decay: 3, sustain: 0.35 }, master: { gain: 0.52 } } },
+      amp: { attack: 1.2, decay: 2.8, sustain: 0.82, release: 4 }, positionEnv: { attack: 1.8, decay: 3.8, sustain: 0.5 }, filter: { type: 'lowpass', slope: -24, cutoff: 4100, resonance: 1.68 }, filterEnv: { amount: 0.7, attack: 1, decay: 3, sustain: 0.35 }, master: { gain: 0.52 } } },
 
   tngrDigitalEp84: { label: 'Digital E-Piano', category: 'Keys', synth: 'TNGR-2', dur: 2.4,
     note: 'A bright struck transient moving quickly to a warmer sustained frame.', tngr2: {
       oscA: { table: 'bellFold', position: 0.72, envAmount: -0.42, level: 0.75 }, oscB: { table: 'warmHarmonics', position: 0.48, envAmount: -0.18, level: 0.2, interval: -12 },
-      amp: { attack: 0.004, decay: 1.3, sustain: 0.25, release: 0.45 }, positionEnv: { attack: 0, decay: 0.8, sustain: 0.1 }, filter: { type: 'lowpass', cutoff: 6200, resonance: 2.16 }, filterEnv: { amount: 1.6, attack: 0.001, decay: 0.7, sustain: 0.1 }, master: { gain: 0.58 } } },
+      amp: { attack: 0.004, decay: 1.3, sustain: 0.25, release: 0.45 }, positionEnv: { attack: 0, decay: 0.8, sustain: 0.1 }, filter: { type: 'lowpass', slope: -24, cutoff: 6200, resonance: 2.16 }, filterEnv: { amount: 1.6, attack: 0.001, decay: 0.7, sustain: 0.1 }, master: { gain: 0.58 } } },
   tngrHollowKeys: { label: 'Hollow Keys', category: 'Keys', synth: 'TNGR-2', dur: 1.8,
     note: 'A playable poly key with odd and even harmonic contrast.', tngr2: {
       oscA: { table: 'hollowPulse', position: 0.26, envAmount: 0.18, level: 0.78 }, oscB: { table: 'reedWire', position: 0.2, level: 0.16, interval: 12 },
-      amp: { attack: 0.006, decay: 0.6, sustain: 0.52, release: 0.3 }, positionEnv: { attack: 0, decay: 0.35, sustain: 0.15 }, filter: { type: 'lowpass', cutoff: 3900, resonance: 1.92 }, filterEnv: { amount: 1.1, attack: 0.002, decay: 0.35, sustain: 0.18 }, master: { gain: 0.6 } } },
+      amp: { attack: 0.006, decay: 0.6, sustain: 0.52, release: 0.3 }, positionEnv: { attack: 0, decay: 0.35, sustain: 0.15 }, filter: { type: 'lowpass', slope: -24, cutoff: 3900, resonance: 1.92 }, filterEnv: { amount: 1.1, attack: 0.002, decay: 0.35, sustain: 0.18 }, master: { gain: 0.6 } } },
   tngrPhaseClav: { label: 'Phase Clav', category: 'Keys', synth: 'TNGR-2', dur: 0.8,
     note: 'A short nasal spectral scan for rhythmic comping.', tngr2: {
       oscA: { table: 'reedWire', position: 0.6, envAmount: -0.35, level: 0.82 }, oscB: { table: 'digitalSteps', position: 0.8, level: 0.16, interval: 12 },
-      amp: { attack: 0.001, decay: 0.18, sustain: 0.08, release: 0.06 }, positionEnv: { attack: 0, decay: 0.12, sustain: 0 }, filter: { type: 'bandpass', cutoff: 2300, resonance: 3.36 }, master: { gain: 0.54 } } },
+      amp: { attack: 0.001, decay: 0.18, sustain: 0.08, release: 0.06 }, positionEnv: { attack: 0, decay: 0.12, sustain: 0 }, filter: { type: 'bandpass', slope: -24, cutoff: 2300, resonance: 3.36 }, master: { gain: 0.54 } } },
   tngrMemoryOrgan: { label: 'Shifting Organ', category: 'Keys', synth: 'TNGR-2', dur: 4,
     note: 'A slowly shifting drawbar-like spectrum with stable chord level.',
-    tngr2: { oscA: { table: 'organShift', position: 0.2, envAmount: 0.28, level: 0.8, unison: 2, spread: 6 }, oscB: { table: 'octaveCascade', position: 0.35, envAmount: 0.2, level: 0.16, interval: -12 }, amp: { attack: 0.027, decay: 0.4, sustain: 0.84, release: 0.65 }, positionEnv: { attack: 0.25, decay: 1.1, sustain: 0.3 }, filter: { type: 'lowpass', cutoff: 5200, resonance: 1.2 }, master: { gain: 0.56 } } },
+    tngr2: { oscA: { table: 'organShift', position: 0.2, envAmount: 0.28, level: 0.8, unison: 2, spread: 6 }, oscB: { table: 'octaveCascade', position: 0.35, envAmount: 0.2, level: 0.16, interval: -12 }, amp: { attack: 0.027, decay: 0.4, sustain: 0.84, release: 0.65 }, positionEnv: { attack: 0.25, decay: 1.1, sustain: 0.3 }, filter: { type: 'lowpass', slope: -24, cutoff: 5200, resonance: 1.2 }, master: { gain: 0.56 } } },
 
   tngrCrystalTrigger: { label: 'Sparkle Pluck', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
     drive: 0,
-    tngr2: { oscA: { table: 'crystal', position: 0.58, envAmount: -0.71, level: 0.83, detune: -4 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12, detune: 6 }, amp: { attack: 0.001, decay: 0.726, sustain: 0.26, release: 0.16 }, positionEnv: { attack: 0.003, decay: 0.715, sustain: 0.79 }, filter: { type: 'lowpass', cutoff: 1946.16, resonance: 2.4, keyTrack: 0.38 }, master: { gain: 0.52 }, filterEnv: { sustain: 0.21, release: 0.029, decay: 0.093 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.58, envAmount: -0.71, level: 0.83, detune: -4 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12, detune: 6 }, amp: { attack: 0.001, decay: 0.726, sustain: 0.26, release: 0.16 }, positionEnv: { attack: 0.003, decay: 0.715, sustain: 0.79 }, filter: { type: 'lowpass', slope: -24, cutoff: 1946.16, resonance: 2.4, keyTrack: 0.38 }, master: { gain: 0.52 }, filterEnv: { sustain: 0.21, release: 0.029, decay: 0.093 } },
     chorus: { mix: 0.2 } },
   tngrWireHarp: { label: 'Metal Harp', category: 'Pluck', synth: 'TNGR-2', dur: 1.4,
     note: 'A metallic reed onset decaying toward a simpler waveform.', tngr2: {
       oscA: { table: 'alloy', position: 0.72, envAmount: -0.55, level: 0.76 }, oscB: { table: 'reedWire', position: 0.6, level: 0.18, interval: 12 },
-      amp: { attack: 0.001, decay: 0.75, sustain: 0.08, release: 0.22 }, positionEnv: { attack: 0, decay: 0.62, sustain: 0.04 }, filter: { type: 'lowpass', cutoff: 7300, resonance: 1.92 }, master: { gain: 0.55 } } },
+      amp: { attack: 0.001, decay: 0.75, sustain: 0.08, release: 0.22 }, positionEnv: { attack: 0, decay: 0.62, sustain: 0.04 }, filter: { type: 'lowpass', slope: -24, cutoff: 7300, resonance: 1.92 }, master: { gain: 0.55 } } },
   tngrDataMarimba: { label: 'Digital Marimba', category: 'Pluck', synth: 'TNGR-2', dur: 1.3,
     note: 'A woody-digital table journey distinct from KLNG8 percussion.', tngr2: {
       oscA: { table: 'organShift', position: 0.35, envAmount: -0.3, level: 0.8 }, oscB: { table: 'crystal', position: 0.2, level: 0.13, interval: 12 },
-      amp: { attack: 0.002, decay: 0.48, sustain: 0.06, release: 0.18 }, positionEnv: { attack: 0, decay: 0.38, sustain: 0.05 }, filter: { type: 'lowpass', cutoff: 5400, resonance: 1.68 }, master: { gain: 0.55 } } },
+      amp: { attack: 0.002, decay: 0.48, sustain: 0.06, release: 0.18 }, positionEnv: { attack: 0, decay: 0.38, sustain: 0.05 }, filter: { type: 'lowpass', slope: -24, cutoff: 5400, resonance: 1.68 }, master: { gain: 0.55 } } },
 
   tngrIceBell: { label: 'Ice Bell', category: 'Bells', synth: 'TNGR-2', dur: 3,
     note: 'Sparse crystal partials with a long decay and controlled high notes.',
-    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12, envAmount: 0 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.278, sustain: 0.17 }, filter: { type: 'lowpass', cutoff: 13180, resonance: 1.2 }, master: { gain: 0.5 }, filterEnv: { decay: 0.356, attack: 0.007 } } },
+    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12, envAmount: 0 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.278, sustain: 0.17 }, filter: { type: 'lowpass', slope: -24, cutoff: 13180, resonance: 1.2 }, master: { gain: 0.5 }, filterEnv: { decay: 0.356, attack: 0.007 } } },
   tngrAlloyChime: { label: 'Dark Metal Chime', category: 'Bells', synth: 'TNGR-2', dur: 2.6,
     note: 'A darker metallic evolution with controlled beating between oscillators.',
-    tngr2: { oscA: { table: 'alloy', position: 0.55, envAmount: -0.3, level: 0.72, unison: 2, spread: 5 }, oscB: { table: 'bellFold', position: 0.38, level: 0.2, interval: 12, detune: 7 }, amp: { attack: 0.001, decay: 0.373, sustain: 0.18, release: 0.684 }, positionEnv: { attack: 0, decay: 0.9, sustain: 0.55 }, filter: { type: 'lowpass', cutoff: 7600, resonance: 2.16 }, master: { gain: 0.5 } },
+    tngr2: { oscA: { table: 'alloy', position: 0.55, envAmount: -0.3, level: 0.72, unison: 2, spread: 5 }, oscB: { table: 'bellFold', position: 0.38, level: 0.2, interval: 12, detune: 7 }, amp: { attack: 0.001, decay: 0.373, sustain: 0.18, release: 0.684 }, positionEnv: { attack: 0, decay: 0.9, sustain: 0.55 }, filter: { type: 'lowpass', slope: -24, cutoff: 7600, resonance: 2.16 }, master: { gain: 0.5 } },
     chorus: { mix: 0.03 },
     trim: -0.9 },
 
@@ -4989,13 +5098,13 @@ const TONE = {
     note: 'A plain, warm single-oscillator bass with a stable fundamental.', tngr2: {
       oscA: { table: 'basic', position: 0.18, level: 0.86, unison: 1 },
       amp: { attack: 0.006, decay: 0.38, sustain: 0.72, release: 0.16 },
-      filter: { type: 'lowpass', cutoff: 1250, resonance: 0.96 }, filterEnv: { amount: 0.7, attack: 0.002, decay: 0.3, sustain: 0.25 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 1250, resonance: 0.96 }, filterEnv: { amount: 0.7, attack: 0.002, decay: 0.3, sustain: 0.25 },
       positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.7 } } },
   tngrPickedBass: { label: 'Picked Bass', category: 'Bass', synth: 'TNGR-2', dur: 1.3,
     note: 'A clean bass-guitar-like pluck with a short warm body.', tngr2: {
       oscA: { table: 'warmHarmonics', position: 0.34, envAmount: -0.12, level: 0.84, unison: 1 },
       amp: { attack: 0.002, decay: 0.48, sustain: 0.34, release: 0.13 },
-      filter: { type: 'lowpass', cutoff: 2100, resonance: 1.2 }, filterEnv: { amount: 1.1, attack: 0.001, decay: 0.24, sustain: 0.08 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 2100, resonance: 1.2 }, filterEnv: { amount: 1.1, attack: 0.001, decay: 0.24, sustain: 0.08 },
       positionEnv: { attack: 0, decay: 0.3, sustain: 0.08 }, master: { gain: 0.66 } } },
 
   tngrSoftPiano: { label: 'Soft Piano', category: 'Keys', synth: 'TNGR-2', dur: 3.2,
@@ -5003,26 +5112,26 @@ const TONE = {
       oscA: { table: 'warmHarmonics', position: 0.3, envAmount: -0.18, level: 0.78, unison: 1 },
       oscB: { table: 'bellFold', position: 0.2, level: 0.1, unison: 1, interval: 12 },
       amp: { attack: 0.003, decay: 1.35, sustain: 0.18, release: 0.55 },
-      filter: { type: 'lowpass', cutoff: 4800, resonance: 0.72 }, filterEnv: { amount: 0.8, attack: 0.001, decay: 0.7, sustain: 0.05 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 4800, resonance: 0.72 }, filterEnv: { amount: 0.8, attack: 0.001, decay: 0.7, sustain: 0.05 },
       positionEnv: { attack: 0, decay: 0.75, sustain: 0.04 }, master: { gain: 0.62 } } },
   tngrBrightPiano: { label: 'Bright Piano', category: 'Keys', synth: 'TNGR-2', dur: 2.8,
     note: 'A clear pop-piano style attack that settles into a simple harmonic body.', tngr2: {
       oscA: { table: 'warmHarmonics', position: 0.52, envAmount: -0.32, level: 0.8, unison: 1 },
       oscB: { table: 'crystal', position: 0.16, level: 0.09, unison: 1, interval: 12 },
       amp: { attack: 0.002, decay: 1.05, sustain: 0.2, release: 0.42 },
-      filter: { type: 'lowpass', cutoff: 6700, resonance: 0.6 }, filterEnv: { amount: 1.1, attack: 0.001, decay: 0.55, sustain: 0.04 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 6700, resonance: 0.6 }, filterEnv: { amount: 1.1, attack: 0.001, decay: 0.55, sustain: 0.04 },
       positionEnv: { attack: 0, decay: 0.6, sustain: 0.05 }, master: { gain: 0.58 } } },
   tngrElectricKeys: { label: 'Electric Keys', category: 'Keys', synth: 'TNGR-2', dur: 3,
     note: 'A conventional soft electric keyboard with a gentle tine at the front.', tngr2: {
       oscA: { table: 'basic', position: 0.08, envAmount: 0.08, level: 0.82, unison: 1 },
       oscB: { table: 'bellFold', position: 0.28, level: 0.08, unison: 1, interval: 12 },
       amp: { attack: 0.005, decay: 1.15, sustain: 0.32, release: 0.65 },
-      filter: { type: 'lowpass', cutoff: 5100, resonance: 0.96 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 5100, resonance: 0.96 },
       positionEnv: { attack: 0, decay: 0.85, sustain: 0.08 }, master: { gain: 0.62 } } },
 
   tngrMusicBell: { label: 'Music Bell', category: 'Bells', synth: 'TNGR-2', dur: 3.6,
     note: 'A rounded, familiar music-box bell without a wide unison stack.',
-    tngr2: { oscA: { table: 'bellFold', position: 0.42, envAmount: -0.16, level: 0.8, unison: 1 }, amp: { attack: 0.021, decay: 2.1, sustain: 0.02, release: 0.8 }, filter: { type: 'lowpass', cutoff: 8200, resonance: 0.72 }, positionEnv: { attack: 0.007, decay: 1.25, sustain: 0.03 }, master: { gain: 0.52 }, filterEnv: { attack: 0.019 } },
+    tngr2: { oscA: { table: 'bellFold', position: 0.42, envAmount: -0.16, level: 0.8, unison: 1 }, amp: { attack: 0.021, decay: 2.1, sustain: 0.02, release: 0.8 }, filter: { type: 'lowpass', slope: -24, cutoff: 8200, resonance: 0.72 }, positionEnv: { attack: 0.007, decay: 1.25, sustain: 0.03 }, master: { gain: 0.52 }, filterEnv: { attack: 0.019 } },
     chorus: { mix: 0 },
     vibrato: { depth: 0.02 } },
   tngrChurchBell: { label: 'Church Bell', category: 'Bells', synth: 'TNGR-2', dur: 5,
@@ -5030,66 +5139,66 @@ const TONE = {
       oscA: { table: 'alloy', position: 0.3, envAmount: -0.14, level: 0.76, unison: 1 },
       oscB: { table: 'bellFold', position: 0.5, level: 0.12, unison: 1, interval: 12, detune: -9 },
       amp: { attack: 0.002, decay: 2.8, sustain: 0.03, release: 1.4 },
-      filter: { type: 'lowpass', cutoff: 6100, resonance: 1.2 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 6100, resonance: 1.2 },
       positionEnv: { attack: 0, decay: 1.8, sustain: 0.06 }, master: { gain: 0.5 } } },
   tngrCelesta: { label: 'Celesta', category: 'Bells', synth: 'TNGR-2', dur: 3.2,
     note: 'A light, playable celesta tone using one oscillator and a soft top end.', tngr2: {
       oscA: { table: 'crystal', position: 0.22, envAmount: -0.1, level: 0.78, unison: 1 },
       amp: { attack: 0.002, decay: 1.65, sustain: 0.025, release: 0.7 },
-      filter: { type: 'lowpass', cutoff: 7500, resonance: 0.6 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 7500, resonance: 0.6 },
       positionEnv: { attack: 0, decay: 1, sustain: 0.03 }, master: { gain: 0.5 } } },
 
   tngrWarmStrings: { label: 'Warm Strings', category: 'Orch', synth: 'TNGR-2', dur: 6,
     note: 'A restrained ensemble-style string bed with slow natural articulation.', tngr2: {
       oscA: { table: 'sawForm', position: 0.18, envAmount: 0.06, level: 0.76, unison: 1 },
       amp: { attack: 0.42, decay: 1.2, sustain: 0.82, release: 1.5 },
-      filter: { type: 'lowpass', cutoff: 3300, resonance: 0.96 }, filterEnv: { amount: 0.35, attack: 0.5, decay: 1.4, sustain: 0.55 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 3300, resonance: 0.96 }, filterEnv: { amount: 0.35, attack: 0.5, decay: 1.4, sustain: 0.55 },
       positionEnv: { attack: 0.8, decay: 2.2, sustain: 0.35 }, master: { gain: 0.57 } } },
   tngrSoftStrings: { label: 'Soft Strings', category: 'Orch', synth: 'TNGR-2', dur: 6,
     note: 'A softer single-oscillator string pad for chords behind a busy mix.', tngr2: {
       oscA: { table: 'warmHarmonics', position: 0.42, envAmount: 0.08, level: 0.78, unison: 1 },
       amp: { attack: 0.7, decay: 1.4, sustain: 0.86, release: 1.8 },
-      filter: { type: 'lowpass', cutoff: 2600, resonance: 0.72 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 2600, resonance: 0.72 },
       positionEnv: { attack: 1.1, decay: 2.4, sustain: 0.38 }, master: { gain: 0.6 } } },
 
   tngrBrassSection: { label: 'Brass Section', category: 'Orch', synth: 'TNGR-2', dur: 3,
     note: 'A direct ensemble brass patch with a modest opening bite.',
-    tngr2: { oscA: { table: 'sawForm', position: 0.34, envAmount: 0.24, level: 0.85, unison: 1 }, amp: { attack: 0.055, decay: 0.5, sustain: 0.78, release: 0.38 }, filter: { type: 'lowpass', cutoff: 1550, resonance: 0.8 }, filterEnv: { amount: 2.1, attack: 0.06, decay: 0.42, sustain: 0.3 }, positionEnv: { attack: 0.08, decay: 0.45, sustain: 0.23, release: 0.477 }, master: { gain: 0.58 }, oscB: { table: 'reedWire', position: 0.12, level: 0.09, unison: 1, detune: 3 } },
+    tngr2: { oscA: { table: 'sawForm', position: 0.34, envAmount: 0.24, level: 0.85, unison: 1 }, amp: { attack: 0.055, decay: 0.5, sustain: 0.78, release: 0.38 }, filter: { type: 'lowpass', slope: -24, cutoff: 1550, resonance: 0.8 }, filterEnv: { amount: 2.1, attack: 0.06, decay: 0.42, sustain: 0.3 }, positionEnv: { attack: 0.08, decay: 0.45, sustain: 0.23, release: 0.477 }, master: { gain: 0.58 }, oscB: { table: 'reedWire', position: 0.12, level: 0.09, unison: 1, detune: 3 } },
     chorus: { mix: 0.15, rate: 2, depth: 0.19 } },
   tngrSoftHorn: { label: 'Soft Horn', category: 'Orch', synth: 'TNGR-2', dur: 3.5,
     note: 'A mellow single-oscillator horn for sustained melody and chords.', tngr2: {
       oscA: { table: 'reedWire', position: 0.08, envAmount: 0.08, level: 0.8, unison: 1 },
       amp: { attack: 0.09, decay: 0.55, sustain: 0.84, release: 0.5 },
-      filter: { type: 'lowpass', cutoff: 2300, resonance: 1.44 }, filterEnv: { amount: 0.65, attack: 0.07, decay: 0.5, sustain: 0.38 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 2300, resonance: 1.44 }, filterEnv: { amount: 0.65, attack: 0.07, decay: 0.5, sustain: 0.38 },
       positionEnv: { attack: 0.08, decay: 0.55, sustain: 0.2 }, master: { gain: 0.62 } } },
 
   tngrPlainSaw: { label: 'Plain Saw', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'A simple filtered sawtooth synth with no unison or second oscillator.', tngr2: {
       oscA: { table: 'basic', position: 0.5, level: 0.82, unison: 1 },
       amp: { attack: 0.01, decay: 0.32, sustain: 0.76, release: 0.2 },
-      filter: { type: 'lowpass', cutoff: 3400, resonance: 1.68 }, filterEnv: { amount: 0.9, attack: 0.005, decay: 0.28, sustain: 0.36 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 3400, resonance: 1.68 }, filterEnv: { amount: 0.9, attack: 0.005, decay: 0.28, sustain: 0.36 },
       positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.61 } } },
   tngrPlainPulse: { label: 'Plain Pulse', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'A straightforward hollow pulse lead with a small amount of spectral movement.', tngr2: {
       oscA: { table: 'hollowPulse', position: 0.16, envAmount: 0.08, level: 0.82, unison: 1 },
       amp: { attack: 0.008, decay: 0.28, sustain: 0.74, release: 0.18 },
-      filter: { type: 'lowpass', cutoff: 3000, resonance: 1.44 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 3000, resonance: 1.44 },
       positionEnv: { attack: 0.02, decay: 0.4, sustain: 0.18 }, master: { gain: 0.62 } } },
   tngrClassicSquare: { label: 'Classic Square', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'A lean single-oscillator square tone for simple melodies and arpeggios.', tngr2: {
       oscA: { table: 'basic', position: 1, level: 0.8, unison: 1 },
       amp: { attack: 0.006, decay: 0.26, sustain: 0.7, release: 0.16 },
-      filter: { type: 'lowpass', cutoff: 2800, resonance: 1.2 }, filterEnv: { amount: 0.65, attack: 0.004, decay: 0.24, sustain: 0.32 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 2800, resonance: 1.2 }, filterEnv: { amount: 0.65, attack: 0.004, decay: 0.24, sustain: 0.32 },
       positionEnv: { attack: 0, decay: 0.2, sustain: 0 }, master: { gain: 0.6 } } },
 
   tngrScannerSweep: { label: 'Scanner Sweep', category: 'FX', synth: 'TNGR-2', dur: 4,
     note: 'A tempo-synced full-table travel for transitions.', tngr2: {
       oscA: { table: 'digitalSteps', position: 0, envAmount: 1, level: 0.7, unison: 2, spread: 14 }, oscB: { table: 'vowelGlass', position: 1, envAmount: -1, level: 0.25, unison: 2, spread: 11, interval: -12 },
-      amp: { attack: 0.25, decay: 1.6, sustain: 0.7, release: 1.1 }, positionEnv: { attack: 1.2, decay: 2.1, sustain: 0.45 }, filter: { type: 'lowpass', cutoff: 6400, resonance: 2.88 }, lfo1: { shape: 'triangle', sync: true, division: '1/4', amount: 0.22 }, master: { gain: 0.42 } } },
+      amp: { attack: 0.25, decay: 1.6, sustain: 0.7, release: 1.1 }, positionEnv: { attack: 1.2, decay: 2.1, sustain: 0.45 }, filter: { type: 'lowpass', slope: -24, cutoff: 6400, resonance: 2.88 }, lfo1: { shape: 'triangle', sync: true, division: '1/4', amount: 0.22 }, master: { gain: 0.42 } } },
   tngrTransmission: { label: 'Transmission', category: 'FX', synth: 'TNGR-2', dur: 3,
     note: 'A tonal vowel and digital talking movement for signal-like transitions.', tngr2: {
       oscA: { table: 'vowelAEIOU', position: 0.1, envAmount: 0.86, lfoAmount: 0.3, level: 0.72 }, oscB: { table: 'digitalSteps', position: 0.5, envAmount: -0.55, level: 0.18, interval: 12 },
-      amp: { attack: 0.04, decay: 0.7, sustain: 0.62, release: 0.8 }, positionEnv: { attack: 0.1, decay: 1.5, sustain: 0.3 }, filter: { type: 'bandpass', cutoff: 1800, resonance: 4.08 }, lfo1: { shape: 'square', sync: true, division: '1/16', amount: 0.32 }, master: { gain: 0.44 } } },
+      amp: { attack: 0.04, decay: 0.7, sustain: 0.62, release: 0.8 }, positionEnv: { attack: 0.1, decay: 1.5, sustain: 0.3 }, filter: { type: 'bandpass', slope: -24, cutoff: 1800, resonance: 4.08 }, lfo1: { shape: 'square', sync: true, division: '1/16', amount: 0.32 }, master: { gain: 0.44 } } },
   squareVSMono: { label: 'Square VS Mono', category: 'Bells', synth: 'CRLS-1', dur: 2,
     note: 'Odd partials only, struck and left to ring. Woodier than the FM marimba beside it.',
     origin: 'Tonejs/Presets Synth/Marimba',
@@ -6076,7 +6185,7 @@ const TONE = {
     mode: 'mono' },
   darkMetalChime: { label: 'Dark Metal Chime', category: 'Bells', synth: 'TNGR-2', dur: 2.6,
     note: 'A darker metallic evolution with controlled beating between oscillators.',
-    tngr2: { oscA: { table: 'alloy', position: 0.55, envAmount: -0.3, level: 0.93, unison: 2, spread: 5 }, oscB: { table: 'bellFold', position: 0.38, level: 0.25, interval: -12, detune: 7 }, amp: { attack: 0.001, decay: 0.373, sustain: 0.18, release: 0.684 }, positionEnv: { attack: 0, decay: 0.9, sustain: 0.55 }, filter: { type: 'lowpass', cutoff: 2970, resonance: 2.75 }, master: { gain: 0.5 }, filterEnv: { amount: 0.2 } },
+    tngr2: { oscA: { table: 'alloy', position: 0.55, envAmount: -0.3, level: 0.93, unison: 2, spread: 5 }, oscB: { table: 'bellFold', position: 0.38, level: 0.25, interval: -12, detune: 7 }, amp: { attack: 0.001, decay: 0.373, sustain: 0.18, release: 0.684 }, positionEnv: { attack: 0, decay: 0.9, sustain: 0.55 }, filter: { type: 'lowpass', slope: -24, cutoff: 2970, resonance: 2.75 }, master: { gain: 0.5 }, filterEnv: { amount: 0.2 } },
     chorus: { mix: 0.03 },
     trim: 0 },
 };
@@ -6169,7 +6278,7 @@ const USER_TONE = {
     portamento: 0.038 },
   memoryOrgan2: { label: 'Memory Organ 2', category: 'Keys', synth: 'TNGR-2', dur: 4,
     note: 'A slowly shifting drawbar-like spectrum with stable chord level.',
-    tngr2: { oscA: { table: 'organShift', position: 0.2, envAmount: 0.28, level: 0.8, unison: 2, spread: 6 }, oscB: { table: 'choirBreath', position: 0.35, envAmount: 0.2, level: 0.16, detune: 14 }, amp: { attack: 0.027, decay: 0.4, sustain: 0.84, release: 0.65 }, positionEnv: { attack: 0.25, decay: 1.1, sustain: 0.3 }, filter: { type: 'lowpass', cutoff: 5200, resonance: 1.2 }, master: { gain: 0.56 } },
+    tngr2: { oscA: { table: 'organShift', position: 0.2, envAmount: 0.28, level: 0.8, unison: 2, spread: 6 }, oscB: { table: 'choirBreath', position: 0.35, envAmount: 0.2, level: 0.16, detune: 14 }, amp: { attack: 0.027, decay: 0.4, sustain: 0.84, release: 0.65 }, positionEnv: { attack: 0.25, decay: 1.1, sustain: 0.3 }, filter: { type: 'lowpass', slope: -24, cutoff: 5200, resonance: 1.2 }, master: { gain: 0.56 } },
     starter: false },
   testSIMPLESQR: { label: 'TEST SIMPLE SQR', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'SIMPLE TEST SQUARE - 1 osc',
@@ -6307,7 +6416,7 @@ const USER_TONE = {
       oscA: { table: 'vowelAEIOU', position: 0.2, lfoAmount: 0.9, level: 0.85, unison: 2, spread: 9 },
       oscB: { table: 'sawForm', position: 0.3, level: 0.4, interval: -12 },
       amp: { attack: 0.004, decay: 0.3, sustain: 0.9, release: 0.12 },
-      filter: { type: 'lowpass', cutoff: 3200, resonance: 4 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 3200, resonance: 4 },
       lfo1: { shape: 'sine', rate: 4.667 } },
     starter: false },
   wubGlassYoi: { label: 'WUB Glass Yowl', category: 'Bass', synth: 'TNGR-2', dur: 2.4,
@@ -6318,7 +6427,7 @@ const USER_TONE = {
       oscA: { table: 'vowelGlass', position: 0.1, lfoAmount: 0.85, level: 0.8, unison: 2, spread: 12, stereo: 0.4 },
       oscB: { table: 'spectralPWM', position: 0.3, lfoAmount: -0.4, level: 0.45, interval: -12 },
       amp: { attack: 0.006, decay: 0.4, sustain: 0.9, release: 0.15 },
-      filter: { type: 'lowpass', cutoff: 2800, resonance: 5 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 2800, resonance: 5 },
       lfo1: { shape: 'triangle', rate: 2.333 } },
     starter: false },
   wubDarkAir: { label: 'WUB Dark To Air', category: 'Bass', synth: 'TNGR-2', dur: 1.8,
@@ -6329,7 +6438,7 @@ const USER_TONE = {
       oscA: { table: 'darkToAir', position: 0.05, lfoAmount: 0.95, level: 0.85, unison: 2, spread: 8 },
       oscB: { table: 'basic', position: 0, level: 0.5, interval: -12 },
       amp: { attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1 },
-      filter: { type: 'lowpass', cutoff: 2400, resonance: 6 },
+      filter: { type: 'lowpass', slope: -24, cutoff: 2400, resonance: 6 },
       lfo1: { shape: 'saw', rate: 4.667 } },
     starter: false },
   siren: { label: 'Siren', category: 'FX', synth: 'MRDR-3', dur: 3,
@@ -6366,7 +6475,7 @@ const USER_TONE = {
   seedFutureBassBass: { label: 'Digital Round Bass · Future Bass', category: 'Bass', synth: 'TNGR-2', dur: 1.8,
     note: 'A plain, warm single-oscillator bass with a stable fundamental.',
     drive: 0.107517,
-    tngr2: { oscA: { table: 'basic', position: 0.18, level: 0.86, unison: 1 }, amp: { attack: 0.006, decay: 0.38, sustain: 0.72, release: 0.16 }, filter: { type: 'lowpass', cutoff: 1250, resonance: 0.96 }, filterEnv: { amount: 0.7, attack: 0.002, decay: 0.3, sustain: 0.25 }, positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.7 } },
+    tngr2: { oscA: { table: 'basic', position: 0.18, level: 0.86, unison: 1 }, amp: { attack: 0.006, decay: 0.38, sustain: 0.72, release: 0.16 }, filter: { type: 'lowpass', slope: -24, cutoff: 1250, resonance: 0.96 }, filterEnv: { amount: 0.7, attack: 0.002, decay: 0.3, sustain: 0.25 }, positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.7 } },
     starter: false },
   seedFutureBassSub: { label: 'WUB Glass Yowl · Future Bass', category: 'Bass', synth: 'TNGR-2', dur: 2.4,
     note: 'A slower, glassier vowel yowl on the quarter note, triangle LFO, with a '
@@ -6374,7 +6483,7 @@ const USER_TONE = {
     drive: 0.145465,
     mode: 'mono',
     portamento: 0.05,
-    tngr2: { oscA: { table: 'vowelGlass', position: 0.1, lfoAmount: 0.85, level: 0.8, unison: 2, spread: 12, stereo: 0.4 }, oscB: { table: 'spectralPWM', position: 0.3, lfoAmount: -0.4, level: 0.45, interval: -12 }, amp: { attack: 0.006, decay: 0.4, sustain: 0.9, release: 0.15 }, filter: { type: 'lowpass', cutoff: 2800, resonance: 5 }, lfo1: { shape: 'triangle', rate: 2.95 }, positionEnv: { attack: 0.095 } },
+    tngr2: { oscA: { table: 'vowelGlass', position: 0.1, lfoAmount: 0.85, level: 0.8, unison: 2, spread: 12, stereo: 0.4 }, oscB: { table: 'spectralPWM', position: 0.3, lfoAmount: -0.4, level: 0.45, interval: -12 }, amp: { attack: 0.006, decay: 0.4, sustain: 0.9, release: 0.15 }, filter: { type: 'lowpass', slope: -24, cutoff: 2800, resonance: 5 }, lfo1: { shape: 'triangle', rate: 2.95 }, positionEnv: { attack: 0.095 } },
     starter: false },
   seedFutureBassSaws: { label: 'Super Saw · Future Bass', category: 'Lead', synth: 'CRLS-1', dur: 1.4,
     note: 'Three sawtooths thirty cents apart — the trance lead, and the widest single sound '
@@ -6401,7 +6510,7 @@ const USER_TONE = {
     starter: false },
   seedFutureBassPad: { label: 'Glass Choir · Future Bass', category: 'Pad', synth: 'TNGR-2', dur: 7,
     note: 'Vocal and glass motion without using the Vowel insert.',
-    tngr2: { oscA: { table: 'choirBreath', position: 0.08, envAmount: 0.75, level: 0.7, unison: 2, spread: 10, stereo: 0.7 }, oscB: { table: 'vowelGlass', position: 0.62, envAmount: -0.35, level: 0.3, unison: 2, spread: 13, stereo: 0.7, interval: 12 }, amp: { attack: 0.031, decay: 2.2, sustain: 0.76, release: 1.948 }, positionEnv: { attack: 2, decay: 3, sustain: 0.6 }, filter: { type: 'lowpass', cutoff: 4700, resonance: 2.4 }, lfo1: { shape: 'sine', rate: 0.08, amount: 0.18 }, master: { gain: 0.5 } },
+    tngr2: { oscA: { table: 'choirBreath', position: 0.08, envAmount: 0.75, level: 0.7, unison: 2, spread: 10, stereo: 0.7 }, oscB: { table: 'vowelGlass', position: 0.62, envAmount: -0.35, level: 0.3, unison: 2, spread: 13, stereo: 0.7, interval: 12 }, amp: { attack: 0.031, decay: 2.2, sustain: 0.76, release: 1.948 }, positionEnv: { attack: 2, decay: 3, sustain: 0.6 }, filter: { type: 'lowpass', slope: -24, cutoff: 4700, resonance: 2.4 }, lfo1: { shape: 'sine', rate: 0.08, amount: 0.18 }, master: { gain: 0.5 } },
     starter: false },
   seedFutureBassSquare: { label: 'Aiueo · Future Bass', category: 'Lead', synth: 'JMJR-4', dur: 1.5,
     note: 'The five Japanese vowels in their own order, one per step: a walk through the vowel '
@@ -6441,7 +6550,7 @@ const USER_TONE = {
     trim: -0.408862 },
   seedFutureBassArp: { label: 'Plain Saw · Future Bass', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'A simple filtered sawtooth synth with no unison or second oscillator.',
-    tngr2: { oscA: { table: 'basic', position: 0.5, level: 0.82, unison: 1 }, amp: { attack: 0.01, decay: 0.32, sustain: 0.76, release: 0.2 }, filter: { type: 'lowpass', cutoff: 3400, resonance: 1.68 }, filterEnv: { amount: 0.9, attack: 0.005, decay: 0.28, sustain: 0.36 }, positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.61 } },
+    tngr2: { oscA: { table: 'basic', position: 0.5, level: 0.82, unison: 1 }, amp: { attack: 0.01, decay: 0.32, sustain: 0.76, release: 0.2 }, filter: { type: 'lowpass', slope: -24, cutoff: 3400, resonance: 1.68 }, filterEnv: { amount: 0.9, attack: 0.005, decay: 0.28, sustain: 0.36 }, positionEnv: { attack: 0, decay: 0.25, sustain: 0 }, master: { gain: 0.61 } },
     starter: false },
   seedFutureBassChoir: { label: 'Synth Choir Aah · Future Bass', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the '
@@ -6527,7 +6636,7 @@ const USER_TONE = {
     starter: false },
   seedReggaetonPad: { label: 'Evolving Digital Pad · Reggaeton', category: 'Pad', synth: 'TNGR-2', dur: 8,
     note: 'An unmistakable evolving digital pad with musical rather than noisy motion.',
-    tngr2: { oscA: { table: 'digitalSteps', position: 0.08, envAmount: 0.92, level: 0.7, unison: 2, spread: 12 }, oscB: { table: 'spectralPWM', position: 0.7, envAmount: -0.65, level: 0.28, unison: 2, spread: 10, interval: -12 }, amp: { attack: 0.015, decay: 2, sustain: 0.78, release: 0.707 }, positionEnv: { attack: 1.6, decay: 3.8, sustain: 0.52 }, filter: { type: 'lowpass', cutoff: 4800, resonance: 2.88 }, lfo1: { shape: 'triangle', sync: true, division: '1/2', amount: 0.24 }, master: { gain: 0.5 } },
+    tngr2: { oscA: { table: 'digitalSteps', position: 0.08, envAmount: 0.92, level: 0.7, unison: 2, spread: 12 }, oscB: { table: 'spectralPWM', position: 0.7, envAmount: -0.65, level: 0.28, unison: 2, spread: 10, interval: -12 }, amp: { attack: 0.015, decay: 2, sustain: 0.78, release: 0.707 }, positionEnv: { attack: 1.6, decay: 3.8, sustain: 0.52 }, filter: { type: 'lowpass', slope: -24, cutoff: 4800, resonance: 2.88 }, lfo1: { shape: 'triangle', sync: true, division: '1/2', amount: 0.24 }, master: { gain: 0.5 } },
     starter: false },
   seedReggaetonSquare: { label: 'Marimba · Reggaeton', category: 'Bells', synth: 'RMND-2', dur: 1.4,
     note: 'Wooden and short. The mallet is the whole sound; there is no sustain to speak of.',
@@ -6556,11 +6665,11 @@ const USER_TONE = {
     note: 'An expressive legato lead with position movement during held notes.',
     mode: 'legato',
     portamento: 0.12,
-    tngr2: { oscA: { table: 'vowelGlass', position: 0.18, envAmount: 0.52, level: 0.78, unison: 2, spread: 8 }, oscB: { table: 'darkToAir', position: 0.35, envAmount: 0.35, level: 0.16, interval: 12 }, amp: { attack: 0.06, decay: 0.32, sustain: 0.82, release: 0.28 }, filter: { type: 'lowpass', cutoff: 4300, resonance: 2.28 }, filterEnv: { amount: 1.2, attack: 0.06, decay: 0.45, sustain: 0.4 }, positionEnv: { attack: 0.3, decay: 1.1, sustain: 0.72 }, master: { gain: 0.6 } },
+    tngr2: { oscA: { table: 'vowelGlass', position: 0.18, envAmount: 0.52, level: 0.78, unison: 2, spread: 8 }, oscB: { table: 'darkToAir', position: 0.35, envAmount: 0.35, level: 0.16, interval: 12 }, amp: { attack: 0.06, decay: 0.32, sustain: 0.82, release: 0.28 }, filter: { type: 'lowpass', slope: -24, cutoff: 4300, resonance: 2.28 }, filterEnv: { amount: 1.2, attack: 0.06, decay: 0.45, sustain: 0.4 }, positionEnv: { attack: 0.3, decay: 1.1, sustain: 0.72 }, master: { gain: 0.6 } },
     starter: false },
   seedReggaetonArp: { label: 'Digital Marimba · Reggaeton', category: 'Pluck', synth: 'TNGR-2', dur: 1.3,
     note: 'A woody-digital table journey distinct from KLNG8 percussion.',
-    tngr2: { oscA: { table: 'organShift', position: 0.35, envAmount: -0.3, level: 0.8 }, oscB: { table: 'crystal', position: 0.2, level: 0.13, interval: 12 }, amp: { attack: 0.002, decay: 0.48, sustain: 0.06, release: 0.18 }, positionEnv: { attack: 0, decay: 0.38, sustain: 0.05 }, filter: { type: 'lowpass', cutoff: 5400, resonance: 1.68 }, master: { gain: 0.55 } },
+    tngr2: { oscA: { table: 'organShift', position: 0.35, envAmount: -0.3, level: 0.8 }, oscB: { table: 'crystal', position: 0.2, level: 0.13, interval: 12 }, amp: { attack: 0.002, decay: 0.48, sustain: 0.06, release: 0.18 }, positionEnv: { attack: 0, decay: 0.38, sustain: 0.05 }, filter: { type: 'lowpass', slope: -24, cutoff: 5400, resonance: 1.68 }, master: { gain: 0.55 } },
     starter: false },
   seedReggaetonChoir: { label: 'Sung Choir Ooh · Reggaeton', category: 'Pad', synth: 'JMJR-4', dur: 8,
     note: 'Two singers on ooh, rounder and darker than the aah beside it.',
@@ -6569,7 +6678,7 @@ const USER_TONE = {
     starter: false },
   seedReggaetonThird: { label: 'Digital Marimba · Reggaeton', category: 'Pluck', synth: 'TNGR-2', dur: 1.3,
     note: 'A woody-digital table journey distinct from KLNG8 percussion.',
-    tngr2: { oscA: { table: 'organShift', position: 0.35, envAmount: -0.3, level: 0.8 }, oscB: { table: 'crystal', position: 0.2, level: 0.13, interval: 12 }, amp: { attack: 0.002, decay: 0.48, sustain: 0.06, release: 0.18 }, positionEnv: { attack: 0, decay: 0.38, sustain: 0.05 }, filter: { type: 'lowpass', cutoff: 5400, resonance: 1.68 }, master: { gain: 0.55 } },
+    tngr2: { oscA: { table: 'organShift', position: 0.35, envAmount: -0.3, level: 0.8 }, oscB: { table: 'crystal', position: 0.2, level: 0.13, interval: 12 }, amp: { attack: 0.002, decay: 0.48, sustain: 0.06, release: 0.18 }, positionEnv: { attack: 0, decay: 0.38, sustain: 0.05 }, filter: { type: 'lowpass', slope: -24, cutoff: 5400, resonance: 1.68 }, master: { gain: 0.55 } },
     starter: false },
   seedReggaetonCounter: { label: 'Sung Choir Aah · Reggaeton', category: 'Pad', synth: 'JMJR-4', dur: 8,
     note: 'Three singers on a warm throat, wide formants, a slow swell and a delayed vibrato. '
@@ -6580,7 +6689,7 @@ const USER_TONE = {
     starter: false },
   seedChipstepBass: { label: 'Classic Square · Chipstep', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'A lean single-oscillator square tone for simple melodies and arpeggios.',
-    tngr2: { oscA: { table: 'basic', position: 1, level: 0.8, unison: 1 }, amp: { attack: 0.006, decay: 0.26, sustain: 0.7, release: 0.16 }, filter: { type: 'lowpass', cutoff: 2800, resonance: 1.2 }, filterEnv: { amount: 0.65, attack: 0.004, decay: 0.24, sustain: 0.32 }, positionEnv: { attack: 0, decay: 0.2, sustain: 0 }, master: { gain: 0.6 } },
+    tngr2: { oscA: { table: 'basic', position: 1, level: 0.8, unison: 1 }, amp: { attack: 0.006, decay: 0.26, sustain: 0.7, release: 0.16 }, filter: { type: 'lowpass', slope: -24, cutoff: 2800, resonance: 1.2 }, filterEnv: { amount: 0.65, attack: 0.004, decay: 0.24, sustain: 0.32 }, positionEnv: { attack: 0, decay: 0.2, sustain: 0 }, master: { gain: 0.6 } },
     starter: false },
   seedChipstepSub: { label: 'WUB Classic 1/8 · Chipstep', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'The textbook wub: saw plus a square an octave down through a resonant 24 dB lowpass '
@@ -6630,7 +6739,7 @@ const USER_TONE = {
     starter: false },
   seedChipstepSquare: { label: 'Plain Pulse · Chipstep', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'A straightforward hollow pulse lead with a small amount of spectral movement.',
-    tngr2: { oscA: { table: 'hollowPulse', position: 0.16, envAmount: 0.08, level: 0.82, unison: 1 }, amp: { attack: 0.008, decay: 0.28, sustain: 0.74, release: 0.18 }, filter: { type: 'lowpass', cutoff: 3000, resonance: 1.44 }, positionEnv: { attack: 0.02, decay: 0.4, sustain: 0.18 }, master: { gain: 0.62 } },
+    tngr2: { oscA: { table: 'hollowPulse', position: 0.16, envAmount: 0.08, level: 0.82, unison: 1 }, amp: { attack: 0.008, decay: 0.28, sustain: 0.74, release: 0.18 }, filter: { type: 'lowpass', slope: -24, cutoff: 3000, resonance: 1.44 }, positionEnv: { attack: 0.02, decay: 0.4, sustain: 0.18 }, master: { gain: 0.62 } },
     starter: false },
   seedChipstepBell: { label: 'Square Tone · Chipstep', category: 'Lead', synth: 'KNDO-5', dur: 1,
     note: 'A direct single-oscillator square-wave replacement for the engine voice.',
@@ -6706,11 +6815,11 @@ const USER_TONE = {
     starter: false },
   seedChipstepCounter: { label: 'Classic Square · Chipstep', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'A lean single-oscillator square tone for simple melodies and arpeggios.',
-    tngr2: { oscA: { table: 'basic', position: 1, level: 0.8, unison: 1 }, amp: { attack: 0.006, decay: 0.26, sustain: 0.7, release: 0.16 }, filter: { type: 'lowpass', cutoff: 2800, resonance: 1.2 }, filterEnv: { amount: 0.65, attack: 0.004, decay: 0.24, sustain: 0.32 }, positionEnv: { attack: 0, decay: 0.2, sustain: 0 }, master: { gain: 0.6 } },
+    tngr2: { oscA: { table: 'basic', position: 1, level: 0.8, unison: 1 }, amp: { attack: 0.006, decay: 0.26, sustain: 0.7, release: 0.16 }, filter: { type: 'lowpass', slope: -24, cutoff: 2800, resonance: 1.2 }, filterEnv: { amount: 0.65, attack: 0.004, decay: 0.24, sustain: 0.32 }, positionEnv: { attack: 0, decay: 0.2, sustain: 0 }, master: { gain: 0.6 } },
     starter: false },
   seedTranceBass: { label: 'Sequencer Bass · Trance', category: 'Bass', synth: 'TNGR-2', dur: 1,
     note: 'A tempo-synced spectral pulse for repeated sixteenth notes.',
-    tngr2: { oscA: { table: 'spectralPWM', position: 0.22, envAmount: 0.08, lfoAmount: 0.8, level: 0.82 }, oscB: { table: 'organShift', position: 0.1, envAmount: 0.12, level: 0.18, interval: -12 }, amp: { attack: 0.002, decay: 0.18, sustain: 0.55, release: 0.08 }, filter: { type: 'lowpass', cutoff: 1600, resonance: 2.88 }, positionEnv: { attack: 0.002, decay: 0.16, sustain: 0.15 }, lfo1: { shape: 'triangle', sync: true, division: '1/16', amount: 0.55 }, master: { gain: 0.66 } },
+    tngr2: { oscA: { table: 'spectralPWM', position: 0.22, envAmount: 0.08, lfoAmount: 0.8, level: 0.82 }, oscB: { table: 'organShift', position: 0.1, envAmount: 0.12, level: 0.18, interval: -12 }, amp: { attack: 0.002, decay: 0.18, sustain: 0.55, release: 0.08 }, filter: { type: 'lowpass', slope: -24, cutoff: 1600, resonance: 2.88 }, positionEnv: { attack: 0.002, decay: 0.16, sustain: 0.15 }, lfo1: { shape: 'triangle', sync: true, division: '1/16', amount: 0.55 }, master: { gain: 0.66 } },
     starter: false },
   seedTranceSub: { label: 'Sub Sine · Trance', category: 'Bass', synth: 'CRLS-1', dur: 2.2,
     note: 'Pure weight, no harmonics. Wants room underneath it and a lead up top.',
@@ -6744,7 +6853,7 @@ const USER_TONE = {
     starter: false },
   seedTrancePad: { label: 'Glass Choir · Trance', category: 'Pad', synth: 'TNGR-2', dur: 7,
     note: 'Vocal and glass motion without using the Vowel insert.',
-    tngr2: { oscA: { table: 'choirBreath', position: 0.08, envAmount: 0.75, level: 0.7, unison: 2, spread: 10, stereo: 0.7 }, oscB: { table: 'vowelGlass', position: 0.62, envAmount: -0.35, level: 0.3, unison: 2, spread: 13, stereo: 0.7, interval: 12 }, amp: { attack: 0.031, decay: 2.2, sustain: 0.76, release: 1.948 }, positionEnv: { attack: 2, decay: 3, sustain: 0.6 }, filter: { type: 'lowpass', cutoff: 4700, resonance: 2.4 }, lfo1: { shape: 'sine', rate: 0.08, amount: 0.18 }, master: { gain: 0.5 } },
+    tngr2: { oscA: { table: 'choirBreath', position: 0.08, envAmount: 0.75, level: 0.7, unison: 2, spread: 10, stereo: 0.7 }, oscB: { table: 'vowelGlass', position: 0.62, envAmount: -0.35, level: 0.3, unison: 2, spread: 13, stereo: 0.7, interval: 12 }, amp: { attack: 0.031, decay: 2.2, sustain: 0.76, release: 1.948 }, positionEnv: { attack: 2, decay: 3, sustain: 0.6 }, filter: { type: 'lowpass', slope: -24, cutoff: 4700, resonance: 2.4 }, lfo1: { shape: 'sine', rate: 0.08, amount: 0.18 }, master: { gain: 0.5 } },
     starter: false },
   seedTranceSquare: { label: 'Super Saw · Trance', category: 'Lead', synth: 'CRLS-1', dur: 1.4,
     note: 'Three sawtooths thirty cents apart — the trance lead, and the widest single sound '
@@ -6757,7 +6866,7 @@ const USER_TONE = {
     starter: false },
   seedTranceBell: { label: 'Soft Ice Bell · Trance', category: 'Bells', synth: 'TNGR-2', dur: 3,
     note: 'Sparse crystal partials with a long decay and controlled high notes.',
-    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.1, sustain: 0.12 }, filter: { type: 'lowpass', cutoff: 9800, resonance: 1.2 }, master: { gain: 0.5 } },
+    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.1, sustain: 0.12 }, filter: { type: 'lowpass', slope: -24, cutoff: 9800, resonance: 1.2 }, master: { gain: 0.5 } },
     starter: false },
   seedTranceMegaSaw: { label: 'Mega Saw Lead · Trance', category: 'Lead', synth: 'MRDR-3', dur: 1.6,
     note: 'Nine oscillators. Two unison saws a fifth apart, a sub under them, all through one '
@@ -6780,7 +6889,7 @@ const USER_TONE = {
     trim: -0.408862 },
   seedTranceArp: { label: 'Bright Sparkle Pluck · Trance', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
-    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', slope: -24, cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
   seedTranceChoir: { label: 'Synth Choir Aah · Trance', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the '
@@ -6816,7 +6925,7 @@ const USER_TONE = {
     starter: false },
   seedTranceCounter: { label: 'Bright Sparkle Pluck · Trance', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
-    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', slope: -24, cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
   seedItaloDiscoBass: { label: '=80s FM Bass · Italo Disco', category: 'Bass', synth: 'RMND-2', dur: 1.8,
     note: 'A bright digital 80s bass: a sine body with a square modulator, tuned for the '
@@ -6839,27 +6948,27 @@ const USER_TONE = {
     starter: false },
   seedItaloDiscoPad: { label: 'Cold Wide Pad · Italo Disco', category: 'Pad', synth: 'TNGR-2', dur: 8,
     note: 'Wide cold sparse partials with independent slow movement.',
-    tngr2: { oscA: { table: 'crystal', position: 0.35, envAmount: 0.42, lfoAmount: 0.12, level: 0.68, unison: 3, spread: 18, stereo: 0.9 }, oscB: { table: 'alloy', position: 0.7, envAmount: -0.3, lfoAmount: -0.1, level: 0.25, unison: 2, spread: 15, stereo: 0.9, interval: -12 }, amp: { attack: 0.03, decay: 2.5, sustain: 0.7, release: 1.387 }, positionEnv: { attack: 2.8, decay: 3.5, sustain: 0.45 }, filter: { type: 'lowpass', cutoff: 5600, resonance: 1.92 }, lfo1: { shape: 'triangle', rate: 0.07, amount: 0.22 }, master: { gain: 0.46 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.35, envAmount: 0.42, lfoAmount: 0.12, level: 0.68, unison: 3, spread: 18, stereo: 0.9 }, oscB: { table: 'alloy', position: 0.7, envAmount: -0.3, lfoAmount: -0.1, level: 0.25, unison: 2, spread: 15, stereo: 0.9, interval: -12 }, amp: { attack: 0.03, decay: 2.5, sustain: 0.7, release: 1.387 }, positionEnv: { attack: 2.8, decay: 3.5, sustain: 0.45 }, filter: { type: 'lowpass', slope: -24, cutoff: 5600, resonance: 1.92 }, lfo1: { shape: 'triangle', rate: 0.07, amount: 0.22 }, master: { gain: 0.46 } },
     starter: false },
   seedItaloDiscoSquare: { label: 'Bright Glide Lead · Italo Disco', category: 'Lead', synth: 'TNGR-2', dur: 1.5,
     note: 'A clear bright mono lead with slow spectral animation and useful glide.',
     mode: 'mono',
     portamento: 0.08,
-    tngr2: { oscA: { table: 'sawForm', position: 0.35, envAmount: 0.25, level: 0.78, unison: 2, spread: 7 }, oscB: { table: 'warmHarmonics', position: 0.2, level: 0.18, interval: 12 }, amp: { attack: 0.012, decay: 0.2, sustain: 0.82, release: 0.18 }, filter: { type: 'lowpass', cutoff: 5200, resonance: 2.16 }, filterEnv: { amount: 1.1, attack: 0.01, decay: 0.18, sustain: 0.42 }, positionEnv: { attack: 0.04, decay: 0.6, sustain: 0.4 }, master: { gain: 0.62 } },
+    tngr2: { oscA: { table: 'sawForm', position: 0.35, envAmount: 0.25, level: 0.78, unison: 2, spread: 7 }, oscB: { table: 'warmHarmonics', position: 0.2, level: 0.18, interval: 12 }, amp: { attack: 0.012, decay: 0.2, sustain: 0.82, release: 0.18 }, filter: { type: 'lowpass', slope: -24, cutoff: 5200, resonance: 2.16 }, filterEnv: { amount: 1.1, attack: 0.01, decay: 0.18, sustain: 0.42 }, positionEnv: { attack: 0.04, decay: 0.6, sustain: 0.4 }, master: { gain: 0.62 } },
     starter: false },
   seedItaloDiscoBell: { label: 'Ice Bell · Italo Disco', category: 'Bells', synth: 'TNGR-2', dur: 3,
     note: 'Sparse crystal partials with a long decay and controlled high notes.',
-    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.1, sustain: 0.12 }, filter: { type: 'lowpass', cutoff: 9800, resonance: 1.2 }, master: { gain: 0.5 } },
+    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.1, sustain: 0.12 }, filter: { type: 'lowpass', slope: -24, cutoff: 9800, resonance: 1.2 }, master: { gain: 0.5 } },
     starter: false },
   seedItaloDiscoMegaSaw: { label: 'Legato Solo Lead · Italo Disco', category: 'Lead', synth: 'TNGR-2', dur: 2,
     note: 'An expressive legato lead with position movement during held notes.',
     mode: 'legato',
     portamento: 0.12,
-    tngr2: { oscA: { table: 'vowelGlass', position: 0.18, envAmount: 0.52, level: 0.78, unison: 2, spread: 8 }, oscB: { table: 'darkToAir', position: 0.35, envAmount: 0.35, level: 0.16, interval: 12 }, amp: { attack: 0.06, decay: 0.32, sustain: 0.82, release: 0.28 }, filter: { type: 'lowpass', cutoff: 4300, resonance: 2.28 }, filterEnv: { amount: 1.2, attack: 0.06, decay: 0.45, sustain: 0.4 }, positionEnv: { attack: 0.3, decay: 1.1, sustain: 0.72 }, master: { gain: 0.6 } },
+    tngr2: { oscA: { table: 'vowelGlass', position: 0.18, envAmount: 0.52, level: 0.78, unison: 2, spread: 8 }, oscB: { table: 'darkToAir', position: 0.35, envAmount: 0.35, level: 0.16, interval: 12 }, amp: { attack: 0.06, decay: 0.32, sustain: 0.82, release: 0.28 }, filter: { type: 'lowpass', slope: -24, cutoff: 4300, resonance: 2.28 }, filterEnv: { amount: 1.2, attack: 0.06, decay: 0.45, sustain: 0.4 }, positionEnv: { attack: 0.3, decay: 1.1, sustain: 0.72 }, master: { gain: 0.6 } },
     starter: false },
   seedItaloDiscoArp: { label: 'Sparkle Pluck · Italo Disco', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
-    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', slope: -24, cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
   seedItaloDiscoChoir: { label: 'Synth Choir Aah · Italo Disco', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the '
@@ -6881,11 +6990,11 @@ const USER_TONE = {
     starter: false },
   seedItaloDiscoThird: { label: 'Digital E-Piano · Italo Disco', category: 'Keys', synth: 'TNGR-2', dur: 2.4,
     note: 'A bright struck transient moving quickly to a warmer sustained frame.',
-    tngr2: { oscA: { table: 'bellFold', position: 0.72, envAmount: -0.42, level: 0.75 }, oscB: { table: 'warmHarmonics', position: 0.48, envAmount: -0.18, level: 0.2, interval: -12 }, amp: { attack: 0.004, decay: 1.3, sustain: 0.25, release: 0.45 }, positionEnv: { attack: 0, decay: 0.8, sustain: 0.1 }, filter: { type: 'lowpass', cutoff: 6200, resonance: 2.16 }, filterEnv: { amount: 1.6, attack: 0.001, decay: 0.7, sustain: 0.1 }, master: { gain: 0.58 } },
+    tngr2: { oscA: { table: 'bellFold', position: 0.72, envAmount: -0.42, level: 0.75 }, oscB: { table: 'warmHarmonics', position: 0.48, envAmount: -0.18, level: 0.2, interval: -12 }, amp: { attack: 0.004, decay: 1.3, sustain: 0.25, release: 0.45 }, positionEnv: { attack: 0, decay: 0.8, sustain: 0.1 }, filter: { type: 'lowpass', slope: -24, cutoff: 6200, resonance: 2.16 }, filterEnv: { amount: 1.6, attack: 0.001, decay: 0.7, sustain: 0.1 }, master: { gain: 0.58 } },
     starter: false },
   seedItaloDiscoCounter: { label: 'Sparkle Pluck · Italo Disco', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
-    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', slope: -24, cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
   seedBigRoomBass: { label: 'Wide Detune Bass · Big-Room House', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'Two layers a few cents apart, saw against square. Big, and wide without a chorus.',
@@ -6916,7 +7025,7 @@ const USER_TONE = {
     starter: false },
   seedBigRoomPad: { label: 'Cold Wide Pad · Big-Room House', category: 'Pad', synth: 'TNGR-2', dur: 8,
     note: 'Wide cold sparse partials with independent slow movement.',
-    tngr2: { oscA: { table: 'crystal', position: 0.35, envAmount: 0.42, lfoAmount: 0.12, level: 0.68, unison: 3, spread: 18, stereo: 0.9 }, oscB: { table: 'alloy', position: 0.7, envAmount: -0.3, lfoAmount: -0.1, level: 0.25, unison: 2, spread: 15, stereo: 0.9, interval: -12 }, amp: { attack: 0.03, decay: 2.5, sustain: 0.7, release: 1.387 }, positionEnv: { attack: 2.8, decay: 3.5, sustain: 0.45 }, filter: { type: 'lowpass', cutoff: 5600, resonance: 1.92 }, lfo1: { shape: 'triangle', rate: 0.07, amount: 0.22 }, master: { gain: 0.46 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.35, envAmount: 0.42, lfoAmount: 0.12, level: 0.68, unison: 3, spread: 18, stereo: 0.9 }, oscB: { table: 'alloy', position: 0.7, envAmount: -0.3, lfoAmount: -0.1, level: 0.25, unison: 2, spread: 15, stereo: 0.9, interval: -12 }, amp: { attack: 0.03, decay: 2.5, sustain: 0.7, release: 1.387 }, positionEnv: { attack: 2.8, decay: 3.5, sustain: 0.45 }, filter: { type: 'lowpass', slope: -24, cutoff: 5600, resonance: 1.92 }, lfo1: { shape: 'triangle', rate: 0.07, amount: 0.22 }, master: { gain: 0.46 } },
     starter: false },
   seedBigRoomSquare: { label: 'Plain Square · Big-Room House', category: 'Lead', synth: 'CRLS-1', dur: 7.7,
     note: 'Simple Square Tone 2',
@@ -6929,7 +7038,7 @@ const USER_TONE = {
     starter: false },
   seedBigRoomBell: { label: 'Soft Ice Bell · Big-Room House', category: 'Bells', synth: 'TNGR-2', dur: 3,
     note: 'Sparse crystal partials with a long decay and controlled high notes.',
-    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.1, sustain: 0.12 }, filter: { type: 'lowpass', cutoff: 9800, resonance: 1.2 }, master: { gain: 0.5 } },
+    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.1, sustain: 0.12 }, filter: { type: 'lowpass', slope: -24, cutoff: 9800, resonance: 1.2 }, master: { gain: 0.5 } },
     starter: false },
   seedBigRoomMegaSaw: { label: 'Mega Saw Lead · Big-Room House', category: 'Lead', synth: 'MRDR-3', dur: 1.6,
     note: 'Nine oscillators. Two unison saws a fifth apart, a sub under them, all through one '
@@ -6952,7 +7061,7 @@ const USER_TONE = {
     trim: -0.408862 },
   seedBigRoomArp: { label: 'Bright Sparkle Pluck · Big-Room House', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
-    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', slope: -24, cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
   seedBigRoomChoir: { label: 'Synth Choir Aah · Big-Room House', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the '
@@ -6985,7 +7094,7 @@ const USER_TONE = {
     starter: false },
   seedBigRoomCounter: { label: 'Bright Sparkle Pluck · Big-Room House', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
-    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', slope: -24, cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
   seedMegadriveBass: { label: 'FM Slap Bass · 16-Bit', category: 'Bass', synth: 'RMND-2', dur: 1,
     note: 'The DX7 bass: a 1:1 modulator at index 12, gone in an eighth of a second, so the '
@@ -7148,7 +7257,7 @@ const USER_TONE = {
     starter: false },
   seedUkGaragePad: { label: 'Soft Ambient Pad · UK Garage', category: 'Pad', synth: 'TNGR-2', dur: 6,
     note: 'A soft low-motion warm pad for ambience and dialogue beds.',
-    tngr2: { oscA: { table: 'warmHarmonics', position: 0.15, envAmount: 0.22, level: 0.78, unison: 2, spread: 12 }, oscB: { table: 'choirBreath', position: 0.32, envAmount: 0.3, level: 0.22, unison: 2, spread: 9, interval: 12 }, amp: { attack: 0.011, decay: 1.5, sustain: 0.82, release: 2.4 }, positionEnv: { attack: 1.4, decay: 2.6, sustain: 0.5 }, filter: { type: 'lowpass', cutoff: 3600, resonance: 1.44 }, filterEnv: { amount: 0.8, attack: 1.2, decay: 2, sustain: 0.4 }, master: { gain: 0.6 } },
+    tngr2: { oscA: { table: 'warmHarmonics', position: 0.15, envAmount: 0.22, level: 0.78, unison: 2, spread: 12 }, oscB: { table: 'choirBreath', position: 0.32, envAmount: 0.3, level: 0.22, unison: 2, spread: 9, interval: 12 }, amp: { attack: 0.011, decay: 1.5, sustain: 0.82, release: 2.4 }, positionEnv: { attack: 1.4, decay: 2.6, sustain: 0.5 }, filter: { type: 'lowpass', slope: -24, cutoff: 3600, resonance: 1.44 }, filterEnv: { amount: 0.8, attack: 1.2, decay: 2, sustain: 0.4 }, master: { gain: 0.6 } },
     starter: false },
   seedUkGarageSquare: { label: 'Vocal Oh · UK Garage', category: 'Pad', synth: 'MRDR-3', dur: 3,
     note: 'One voice singing "oh": a saw through the two formants of that vowel, 450 Hz and '
@@ -7168,7 +7277,7 @@ const USER_TONE = {
     starter: false },
   seedUkGarageBell: { label: 'Ice Bell · UK Garage', category: 'Bells', synth: 'TNGR-2', dur: 3,
     note: 'Sparse crystal partials with a long decay and controlled high notes.',
-    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12, envAmount: 0 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.278, sustain: 0.17 }, filter: { type: 'lowpass', cutoff: 13180, resonance: 1.2 }, master: { gain: 0.5 }, filterEnv: { decay: 0.356, attack: 0.007 } },
+    tngr2: { oscA: { table: 'bellFold', position: 0.84, envAmount: -0.2, level: 0.76 }, oscB: { table: 'crystal', position: 0.65, level: 0.16, interval: 12, envAmount: 0 }, amp: { attack: 0.001, decay: 1.7, sustain: 0.03, release: 0.9 }, positionEnv: { attack: 0, decay: 1.278, sustain: 0.17 }, filter: { type: 'lowpass', slope: -24, cutoff: 13180, resonance: 1.2 }, master: { gain: 0.5 }, filterEnv: { decay: 0.356, attack: 0.007 } },
     starter: false },
   seedUkGarageMegaSaw: { label: 'House Organ Stab · UK Garage', category: 'Organ', homeLane: 'chords', synth: 'MRDR-3', dur: 0.6,
     note: 'The house-music organ chord: two square drawbars an octave apart and a sine pip a '
@@ -7188,7 +7297,7 @@ const USER_TONE = {
   seedUkGarageArp: { label: 'Sparkle Pluck · UK Garage', category: 'Pluck', synth: 'TNGR-2', dur: 1.2,
     note: 'A sparkling high-partial attack with a clean short body.',
     drive: 0,
-    tngr2: { oscA: { table: 'crystal', position: 0.58, envAmount: -0.71, level: 0.83, detune: -4 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12, detune: 6 }, amp: { attack: 0.001, decay: 0.726, sustain: 0.26, release: 0.048 }, positionEnv: { attack: 0.003, decay: 0.715, sustain: 0.79 }, filter: { type: 'lowpass', cutoff: 1946.16, resonance: 2.4, keyTrack: 0.38 }, master: { gain: 0.52 }, filterEnv: { sustain: 0.21, release: 0.029, decay: 0.093 } },
+    tngr2: { oscA: { table: 'crystal', position: 0.58, envAmount: -0.71, level: 0.83, detune: -4 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12, detune: 6 }, amp: { attack: 0.001, decay: 0.726, sustain: 0.26, release: 0.048 }, positionEnv: { attack: 0.003, decay: 0.715, sustain: 0.79 }, filter: { type: 'lowpass', slope: -24, cutoff: 1946.16, resonance: 2.4, keyTrack: 0.38 }, master: { gain: 0.52 }, filterEnv: { sustain: 0.21, release: 0.029, decay: 0.093 } },
     chorus: { mix: 0.2 },
     starter: false },
   seedUkGarageChoir: { label: 'Sung Choir Ooh · UK Garage', category: 'Pad', synth: 'JMJR-4', dur: 8,
@@ -7246,7 +7355,7 @@ const USER_DRUM = {
     drive: 0.073901,
     taps: [0, 0.0184, 0.0404, 0.0692, 0.098], tapFalloff: 0.82, tapDetune: 0.96, tapTone: 0.96,
     starter: false },
-  snareTap: { label: 'Snare Tap', category: 'Snare', dur: 1,
+  snareTap: { label: 'OLD · Snare Tap', category: 'Snare', dur: 1,
     note: 'Tight and driven.. quick little tap',
     osc: { type: 'square', from: 255, to: 200, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
     noise: { type: 'highpass', freq: 4300, Q: 0.8, decay: 0.112, gain: 1, to: 3710 },
@@ -7272,7 +7381,7 @@ const USER_DRUM = {
     metal: { freq: 435, spread: 1, count: 6, hp: 6100, Q: 0.9, slope: -24, decay: 0.316, sag: 0.32, gain: 0.94, wave: 'square' },
     humanize: { gain: 0.04 },
     starter: false },
-  gbSnare: { label: 'GB Snare', category: 'Snare', dur: 1,
+  gbSnare: { label: 'OLD · GB Snare', category: 'Snare', dur: 1,
     note: 'Cheap simple game snare',
     osc: { type: 'square', from: 2310, to: 20.85, sweep: 0.392, decay: 0.27, curve: 'exp', gain: 0.55 },
     noise: { type: 'bandpass', freq: 6590, Q: 2.9, decay: 0.768, gain: 1.84, to: 475, color: 'pink', sweep: 0.395, sag: 0.3, slope: -12 },
@@ -7289,7 +7398,7 @@ const USER_DRUM = {
     taps: [0, 0.014, 0.028, 0.048], tapFalloff: 0.82, tapDetune: 0.94, tapTone: 0.97,
     starter: false,
     trim: 3 },
-  gameBoySnare: { label: 'Game Boy Snare', category: 'Snare', dur: 0.5,
+  gameBoySnare: { label: 'OLD · Game Boy Snare', category: 'Snare', dur: 0.5,
     note: 'Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.',
     osc: { type: 'square', from: 2345, to: 80, sweep: 0.37, decay: 0.37, gain: 1.02 },
     noise: { type: 'bandpass', freq: 3710, Q: 2.85, decay: 0.905, gain: 1.98, color: 'pink' },
@@ -7329,7 +7438,7 @@ const USER_DRUM = {
     osc2: { type: 'triangle', from: 1600, to: 320, sweep: 0.004, decay: 0.014, curve: 'exp', gain: 0.5 },
     drive: 0.278115,
     starter: false },
-  seedFutureBassSnare: { label: 'Synth Snare · Future Bass', category: 'Snare', dur: 1,
+  seedFutureBassSnare: { label: 'OLD · Synth Snare · Future Bass', category: 'Snare', dur: 1,
     note: 'The two-source snare: a triangle knock falling a fourth under a wide band of noise '
       + 'that rings a little longer than the body does.',
     osc: { type: 'triangle', from: 210, to: 165, sweep: 0.04, decay: 0.11, curve: 'exp', gain: 0.7 },
@@ -7414,13 +7523,13 @@ const USER_DRUM = {
     noise: { type: 'lowpass', freq: 2200, Q: 0.7, decay: 0.02, gain: 0.25 },
     drive: 0.121058,
     starter: false },
-  seedReggaetonSnare: { label: 'Tight Snare · Reggaeton', category: 'Snare', dur: 1,
+  seedReggaetonSnare: { label: 'OLD · Tight Snare · Reggaeton', category: 'Snare', dur: 1,
     note: 'Gated: cut off almost before it starts. Sits under a busy hat pattern without '
       + 'smearing it.',
     osc: { type: 'triangle', from: 240, to: 170, sweep: 0.03, decay: 0.03, gain: 0.3 },
     noise: { type: 'bandpass', freq: 3200, Q: 1.1, decay: 0.045 },
     starter: false },
-  seedReggaetonClap: { label: 'Tight Snare · Reggaeton', category: 'Snare', dur: 1,
+  seedReggaetonClap: { label: 'OLD · Tight Snare · Reggaeton', category: 'Snare', dur: 1,
     note: 'Gated: cut off almost before it starts. Sits under a busy hat pattern without '
       + 'smearing it.',
     osc: { type: 'triangle', from: 240, to: 170, sweep: 0.03, decay: 0.03, gain: 0.3 },
@@ -7510,7 +7619,7 @@ const USER_DRUM = {
     noise: { type: 'bandpass', freq: 1450, Q: 1.1, decay: 0.018, gain: 0.52 },
     drive: 0.447312,
     starter: false },
-  seedChipstepSnare: { label: 'Crack Snare · Chipstep', category: 'Snare', dur: 1,
+  seedChipstepSnare: { label: 'OLD · Crack Snare · Chipstep', category: 'Snare', dur: 1,
     note: 'Tight and driven: a short square knock, highpassed air, everything over in a tenth '
       + 'of a second. The backbeat for fast songs.',
     osc: { type: 'square', from: 255, to: 440, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
@@ -7518,7 +7627,7 @@ const USER_DRUM = {
     drive: 0.63,
     starter: false,
     trim: 1.9 },
-  seedChipstepClap: { label: '=909 Snare Crack · Chipstep', category: 'Snare', homeLane: 'snare', dur: 1,
+  seedChipstepClap: { label: 'OLD · =909 Snare Crack · Chipstep', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A sharper 909-style snare variant with a square shell and high-passed wire noise '
       + 'for a more aggressive dance-floor backbeat.',
     osc: { type: 'square', from: 260, to: 190, sweep: 0.022, decay: 0.06, curve: 'exp', gain: 0.5 },
@@ -7602,7 +7711,7 @@ const USER_DRUM = {
     noise: { type: 'bandpass', freq: 1450, Q: 1.1, decay: 0.03, gain: 0.52 },
     drive: 0.447312,
     starter: false },
-  seedTranceSnare: { label: 'Synth Snare · Trance', category: 'Snare', dur: 1,
+  seedTranceSnare: { label: 'OLD · Synth Snare · Trance', category: 'Snare', dur: 1,
     note: 'The two-source snare: a triangle knock falling a fourth under a wide band of noise '
       + 'that rings a little longer than the body does.',
     osc: { type: 'triangle', from: 210, to: 165, sweep: 0.04, decay: 0.11, curve: 'exp', gain: 0.7 },
@@ -7628,7 +7737,7 @@ const USER_DRUM = {
     noise: { type: 'highpass', freq: 7600, to: 5200, sweep: 0.35, Q: 1.2, decay: 0.38, gain: 1 },
     drive: 0.217597,
     starter: false },
-  seedTranceCrash: { label: '= Arcade Snare · Trance', category: 'Snare', homeLane: 'snare', dur: 1,
+  seedTranceCrash: { label: 'OLD · = Arcade Snare · Trance', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The game’s own snare: a 2.6 kHz band of noise with a triangle body falling 210 to '
       + '140 Hz under it. The backbeat every song was balanced against.',
     osc: { type: 'triangle', from: 210, to: 140, sweep: 0.05, decay: 0.1031, curve: 'exp', gain: 0.375 },
@@ -7688,7 +7797,7 @@ const USER_DRUM = {
     noise: { type: 'highpass', freq: 2600, Q: 1.2, decay: 0.012, gain: 0.34 },
     drive: 0.312548,
     starter: false },
-  seedItaloDiscoSnare: { label: '=808 Snare · Italo Disco', category: 'Snare', homeLane: 'snare', dur: 1,
+  seedItaloDiscoSnare: { label: 'OLD · =808 Snare · Italo Disco', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A round 808-style snare with a low electronic shell under a broad, slightly darker '
       + 'noise body than the sharper 909 family.',
     osc: { type: 'triangle', from: 190, to: 145, sweep: 0.035, decay: 0.13, curve: 'exp', gain: 0.62 },
@@ -7770,7 +7879,7 @@ const USER_DRUM = {
     noise: { type: 'bandpass', freq: 1450, Q: 1.1, decay: 0.018, gain: 0.52 },
     drive: 0.447312,
     starter: false },
-  seedBigRoomSnare: { label: 'Synth Snare · Big-Room House', category: 'Snare', dur: 1,
+  seedBigRoomSnare: { label: 'OLD · Synth Snare · Big-Room House', category: 'Snare', dur: 1,
     note: 'The two-source snare: a triangle knock falling a fourth under a wide band of noise '
       + 'that rings a little longer than the body does.',
     osc: { type: 'triangle', from: 210, to: 165, sweep: 0.04, decay: 0.11, curve: 'exp', gain: 0.7 },
@@ -7859,7 +7968,7 @@ const USER_DRUM = {
     drive: 0.45, shape: 'crush',
     tone: { freq: 5200 },
     starter: false },
-  seedMegadriveSnare: { label: 'Crack Snare · 16-Bit', category: 'Snare', dur: 1,
+  seedMegadriveSnare: { label: 'OLD · Crack Snare · 16-Bit', category: 'Snare', dur: 1,
     note: 'Tight and driven: a short square knock, highpassed air, everything over in a tenth '
       + 'of a second. The backbeat for fast songs.',
     osc: { type: 'square', from: 255, to: 440, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
@@ -7948,7 +8057,7 @@ const USER_DRUM = {
     noise: { type: 'highpass', freq: 2600, Q: 1.2, decay: 0.012, gain: 0.34 },
     drive: 0.312548,
     starter: false },
-  seedUkGarageSnare: { label: '=909 Snare · UK Garage', category: 'Snare', homeLane: 'snare', dur: 1,
+  seedUkGarageSnare: { label: 'OLD · =909 Snare · UK Garage', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A bright 909-style snare: a pitched shell under a wide, slightly metallic noise '
       + 'burst with enough decay to carry a backbeat.',
     osc: { type: 'triangle', from: 135, to: 285, sweep: 0.03, decay: 0.165, curve: 'exp', gain: 0.72, hold: 0 },
@@ -8372,7 +8481,12 @@ const LEVELS = {
   tr909Rim: 0.07615, tr909Tom: 0.056427, tr909ClosedHat: 0.01269,
   tr909OpenHat: 0.043193, cr78Kick: 0.029987, cr78Snare: 0.032161,
   cr78Hat: 0.020304, cr78Conga: 0.049766, cr78Rim: 0.000573,
-  cr78Cymbal: 0.026283, cr78Tambourine: 0.059192
+  cr78Cymbal: 0.026283, cr78Tambourine: 0.059192, snare808Bright: 0.055008,
+  snare808Snappy: 0.053902, snare909Bright: 0.111912, snare909Punch: 0.132544,
+  snareSimmonsPew: 0.043719, snareSimmonsCrack: 0.050285,
+  snare80sGated: 0.080274, snare80sLinn: 0.047594, snareCR78Bright: 0.052835,
+  snareCR78Accent: 0.062008, snareBrightCrack: 0.100052,
+  snareWiresTight: 0.042769
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -8685,7 +8799,11 @@ const PEAKS = {
   tr909ClosedHat: 0.3914, tr909OpenHat: 0.5924, tr808Snare: 1.958,
   tr808Clap: 0.1655, tr808Tom: 0.6823, tr909Clap: 0.2174, tr909Tom: 1.0447,
   cr78Kick: 0.6422, cr78Snare: 0.8832, cr78Hat: 0.4395, cr78Conga: 0.6874,
-  cr78Rim: 0.0376, cr78Cymbal: 0.4508, cr78Tambourine: 1.3396
+  cr78Rim: 0.0376, cr78Cymbal: 0.4508, cr78Tambourine: 1.3396,
+  snare808Bright: 1.7541, snare808Snappy: 1.7509, snare909Bright: 2.2094,
+  snare909Punch: 1.9711, snareSimmonsPew: 1.1919, snareSimmonsCrack: 1.6922,
+  snare80sGated: 1.7098, snare80sLinn: 1.7452, snareCR78Bright: 1.6188,
+  snareCR78Accent: 1.8041, snareBrightCrack: 1.9311, snareWiresTight: 1.7364
 };
 
 /**
@@ -8714,7 +8832,7 @@ const PEAKS = {
  * the one way a starter sound is ever meant to change.
  */
 const STARTER = {
-  stSnareCrisp: { label: 'Crisp Snare (starter)', category: 'Snare', kind: 'drum', dur: 1,
+  stSnareCrisp: { label: 'OLD · Crisp Snare (starter)', category: 'Snare', kind: 'drum', dur: 1,
     note: 'The engine’s own snare as a preset: a bright noise band, a short decay and a hint '
       + 'of body. The one every song already uses.',
     osc: { type: 'triangle', from: 210, to: 140, sweep: 0.06, decay: 0.06, gain: 0.375 },
@@ -8745,7 +8863,7 @@ const STARTER = {
       filter: { type: 'lowpass', Q: 2, rolloff: -12 },
       filterEnvelope: { attack: 0.002, decay: 0.0975, sustain: 0.3775, release: 0.1063, baseFrequency: 600, octaves: 3.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' },
     } },
-  stSnareBrush: { label: 'Brush (starter)', category: 'Snare', kind: 'drum', dur: 1,
+  stSnareBrush: { label: 'OLD · Brush (starter)', category: 'Snare', kind: 'drum', dur: 1,
     note: 'All air and no crack — a highpassed sweep with no body at all. The quiet backbeat '
       + 'for the lounge themes.',
     noise: { type: 'highpass', freq: 4200, Q: 0.4, decay: 0.13 } },
@@ -8776,7 +8894,7 @@ const STARTER = {
         env: { octaves: 3, attack: 0.01, decay: 0.001, sustain: 1, release: 0.5 } },
     },
     vibrato: { depth: 0.175, rate: 5.5 } },
-  stSnareRim: { label: 'Rimshot (starter)', category: 'Snare', kind: 'drum', dur: 1,
+  stSnareRim: { label: 'OLD · Rimshot (starter)', category: 'Snare', kind: 'drum', dur: 1,
     note: 'Narrow, high and instant, with a hard pitched knock. The stick rather than the skin.',
     osc: { type: 'square', from: 420, to: 320, sweep: 0.02, decay: 0.02, gain: 0.5 },
     noise: { type: 'bandpass', freq: 5000, Q: 3, decay: 0.03 } },
@@ -8815,7 +8933,7 @@ const STARTER = {
       filter: { type: 'lowpass', Q: 4, rolloff: -24 },
       filterEnvelope: { attack: 0.002, decay: 0.0675, sustain: 0, release: 0.04, baseFrequency: 300, octaves: 4, attackCurve: 'exponential', decayCurve: 'exponential', releaseCurve: 'linear' },
     } },
-  stSnareFat: { label: 'Fat Snare (starter)', category: 'Snare', kind: 'drum', dur: 1,
+  stSnareFat: { label: 'OLD · Fat Snare (starter)', category: 'Snare', kind: 'drum', dur: 1,
     note: 'Lower band, longer tail and much more body — a snare that carries a backbeat on its '
       + 'own rather than sitting on top of one.',
     osc: { type: 'triangle', from: 180, to: 110, sweep: 0.11, decay: 0.11, gain: 0.6 },
@@ -8925,7 +9043,7 @@ const STARTER = {
       envelope: { attack: 0.001, decay: 1, sustain: 0.01, release: 1 },
       modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.1 },
     } },
-  stSnareFlam: { label: 'Flam Snare (starter)', category: 'Snare', kind: 'drum', dur: 1,
+  stSnareFlam: { label: 'OLD · Flam Snare (starter)', category: 'Snare', kind: 'drum', dur: 1,
     note: 'Two strikes 22ms apart — the drummer’s flam, which reads as one hit with a thicker '
       + 'front.',
     noise: { type: 'bandpass', freq: 1600, to: 1150, sweep: 0.1, Q: 1.3, decay: 0.14, gain: 1 },

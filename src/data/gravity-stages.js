@@ -64,11 +64,13 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
     // Long crossings are authored as groups; each is one held jump. Smaller
     // duck obstacles sit after the landing runway, never inside an ascent.
     hazards: [
+      // Three of the spike beds are live wire since 14 Oct (Peter: "replace some spikes
+      // with livewires in level 3"): the same span, jumped the same way.
       attack('float-01', 4, 0, 'floatSpikes', 1.15),
       hazard('float-duck-01', 8, 0, 'looseToolkit'),
       attack('laser-01', 12, 0, 'floatLaser', 1.5),
       hazard('float-duck-02', 16, 0, 'weldingDrone'),
-      attack('mixed-01-a', 20, 0, 'floatSpikes', 0.55),
+      attack('mixed-01-a', 20, 0, 'railPulse', 0.55),
       hazard('mixed-01-b', 20.65, 0, 'fuelCell'),
       attack('mixed-01-c', 20.85, 0, 'maintenanceRollers', 0.8),
       hazard('float-duck-03', 24, 0, 'looseToolkit'),
@@ -76,7 +78,7 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
       hazard('float-duck-04', 32, 0, 'weldingDrone'),
       attack('mixed-02-a', 36, 0, 'maintenanceRollers', 0.65),
       hazard('mixed-02-b', 36.75, 0, 'coolantRadiator'),
-      attack('mixed-02-c', 36.95, 0, 'floatSpikes', 0.85),
+      attack('mixed-02-c', 36.95, 0, 'railPulse', 0.85),
       hazard('float-duck-05', 40, 0, 'looseToolkit'),
       attack('float-02', 44, 0, 'floatSpikes', 1.8),
       hazard('float-duck-06', 48, 0, 'weldingDrone'),
@@ -91,7 +93,7 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
       attack('mixed-04-c', 68.9, 0, 'floatLaser', 0.95),
       hazard('float-duck-09', 72, 0, 'looseToolkit'),
       attack('mixed-05-a', 76, 0, 'maintenanceRollers', 0.7),
-      attack('mixed-05-b', 76.8, 0, 'floatSpikes', 1),
+      attack('mixed-05-b', 76.8, 0, 'railPulse', 1),
       hazard('float-duck-10', 80, 0, 'weldingDrone'),
       attack('laser-04', 84, 0, 'floatLaser', 1.85),
       hazard('float-duck-11', 88, 0, 'looseToolkit'),

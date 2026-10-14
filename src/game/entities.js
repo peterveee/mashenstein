@@ -8,6 +8,9 @@ export const OBSTACLES = {
   floatSpikes: { w: 48, h: 8, ground: true, armored: true, action: 'jump', gravityArt: true },
   maintenanceBrush: { w: 30, h: 30, alt: 13, armored: true, action: 'slide', gravityArt: true },
   maintenancePulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },
+  // The wrong rail's live wire (gravity/state.js withWrongRailBeds): the pulse's zigzag,
+  // held still and stretched the length of the bed.
+  railPulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },
   maintenanceRollers: { w: 300, h: 22, ground: true, armored: true, action: 'jump', gravityArt: true },
   // Gravity Grid uses the standard crate / standing-hazard / drone footprints.
   magCargo: { w: 12, h: 11, sprite: 'magCargo', ground: true, breakable: true, action: 'jump' },
@@ -252,7 +255,9 @@ export const OBSTACLES = {
   // kicked one tumbles.
   //
   // In place of the cactus (13x12):
-  wetFloorSign: { w: 13, h: 12, sprite: 'wetFloorSign', ground: true, breakable: true, action: 'jump' },
+  // The wet floor sign kicks like the cone (Peter, 14 Oct 2026: "let the wet floor signs be
+  // kickable"): a light A-frame of plastic, the lobby's one punt besides the mop bucket.
+  wetFloorSign: { w: 13, h: 12, sprite: 'wetFloorSign', ground: true, breakable: true, action: 'jump', punt: true, puntLabel: 'WET FLOOR' },
   coatStand:    { w: 13, h: 12, sprite: 'coatStand', ground: true, breakable: true, action: 'jump' },
   founderBust:  { w: 13, h: 12, sprite: 'founderBust', ground: true, breakable: true, action: 'jump' },
   // In place of the big cactus (17x14):
@@ -282,9 +287,9 @@ export const OBSTACLES = {
   artMobile:    { w: 12, h: 7, sprite: 'artMobile', alt: 13, artLift: 6, armored: true, action: 'slide' },
   birthdayBunting: { w: 12, h: 7, sprite: 'birthdayBunting', alt: 13, artLift: 6, armored: true, action: 'slide' },
   chandelier:   { w: 12, h: 7, sprite: 'chandelier', alt: 13, artLift: 6, armored: true, action: 'slide' },
-  // In place of the songbird (12x7 at alt 34, closing at -28). The pigeon is
-  // the one animal of the three; the balloon and the cork are just things.
-  pigeon:       { w: 12, h: 7, sprite: 'pigeon', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28, animal: true },
+  // In place of the songbird (12x7 at alt 34, closing at -28). None of the
+  // three is an animal: no animals in the office (Peter, 14 Oct 2026).
+  paperPlane:   { w: 12, h: 7, sprite: 'paperPlane', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },
   partyBalloon: { w: 12, h: 7, sprite: 'partyBalloon', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },
   champagneCork: { w: 12, h: 7, sprite: 'champagneCork', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },
   // In place of the printer, on floor 23 only: office-2's mission is DESTROY 5

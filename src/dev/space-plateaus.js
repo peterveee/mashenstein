@@ -11,7 +11,7 @@
 // Spaced well apart (13 Oct: "much more minimal").
 // The ridge rows themselves are the bake-off's (same bases, colours and
 // parallax); each variant only adds its flat ground and what stands on it.
-import { domes, tower, launchPad, pumpjack, rover, HULL, WARM, RED, traceAt, invasionStrike, boom, gagCraft } from './space-life.js';
+import { domes, tower, launchPad, pumpjack, rover, HULL, WARM, RED, traceAt, invasionStrike, boom, gagCraft, speakerAt, setStrikeBusy } from './space-life.js';
 import { martianSuited, SUIT_PALETTES } from './martian-candidates.js';
 
 const TAU = Math.PI * 2;
@@ -304,11 +304,16 @@ function shelf(c, s, look, r) {
   // two-tone strata, slanted ends lit and shaded.
   for (const [k, x] of along(s, 0.14, 480)) shelfAt(c, s, r, x + hash(k + 900) * 30, k);
 }
+// A shelf's height. The hash alone put every shelf of a stage within a few units
+// of the next (Peter, 14 Oct: "can we make sure the plateaus vary a little in
+// height?"), so each takes one of four steps 6 apart, neighbours never alike,
+// with a touch of hash on top.
+function shelfTop(k) { return [-17, -29, -23, -35][((k % 4) + 4) % 4] - hash(k + 920) * 2; }
 function shelfAt(c, s, r, a, k) {
   traceAt(`shelf${k}`, a + 100, 108);
   // Four shapes: plain table, stepped (a higher block on part of it), a long
   // ramp face, and notched (a cut through the middle). Heights and lengths vary.
-  const style = Math.floor(hash(k + 930) * 4), b = a + 110 + hash(k + 910) * 90, top = -19 - hash(k + 920) * 10;
+  const style = Math.floor(hash(k + 930) * 4), b = a + 110 + hash(k + 910) * 90, top = shelfTop(k);
   const face = r[2][1], lit = r[2][0], lip = mix(lit, '#ffffff', 0.25);
   const strata = (x0, x1, y0) => { for (let i = 0; i < 5; i++) rect(c, x0, y0 + 3 + i * 3.2, x1 - x0, 1.2 + hash(k + i) * 0.8, i % 2 ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.05)'); };
   // Style 3 is a split table: two blocks with a real gap between them, the
@@ -459,8 +464,13 @@ function loneMartian(c, s, f) {
   traceAt('loneMartian', mx, 10);
   // The crimson-and-gold suit, plain head and helmet (Peter, 14 Oct: B) — off
   // the jade, where the teal one sank.
-  martianSuited(c, mx, y, sc, s.t, { pal: SUIT_PALETTES.crimson, face: 1, aim, shooting });
-  if (shooting != null) ackHook?.();
+  // After the shot he waves with his free hand (Peter, 14 Oct), and keeps on
+  // waving until he is off screen ("after the martian waves his arm snaps back").
+  const wave = g.dd > 40;
+  martianSuited(c, mx, y, sc, s.t, { pal: SUIT_PALETTES.crimson, face: 1, aim, shooting, wave });
+  // Every frame he is drawn, so his line rides along to his left as his butte
+  // scrolls (Peter, 14 Oct: "the floatie should be to his left as he scrolls across").
+  ackHook?.(speakerAt(c, mx - 30, y - 16 * sc), shooting != null, wave);
   if (shooting != null) {
     const gx = shoulderX + Math.cos(aim) * 8.4 * sc, gy = shoulderY + Math.sin(aim) * 8.4 * sc, k = Math.min(1, shooting * 1.6);
     c.strokeStyle = 'rgba(180,255,150,0.95)'; c.lineWidth = 1; c.lineCap = 'round';
@@ -480,7 +490,7 @@ function formationAt(s, o, i) {
     return { x: xl, d: dl, x0: xl - half, x1: xl + half, top };
   }
   if (kindOf(s, o, i) === 'shelf') {
-    const k = i + 3, a = x - 60, b = a + 110 + hash(k + 910) * 90, top = -19 - hash(k + 920) * 10;
+    const k = i + 3, a = x - 60, b = a + 110 + hash(k + 910) * 90, top = shelfTop(k);
     return { x, d, x0: a, x1: b, top };
   }
   const k = i + 7, style = Math.floor(hash(k + 1130) * 4);
@@ -499,6 +509,20 @@ export function stage2RaidFiring(s) {
   const sweepX = -130 + (f.d + 560) / 1120 * (s.view + 300) + 14;
   return { firing: sweepX > f.x0 - 6 && sweepX < f.x1 + 6, sweep: (sweepX - f.x0) / Math.max(1, f.x1 - f.x0), width: f.x1 - f.x0 };
 }
+// Whether a strike on a formation is under way at stage progress p, with a margin
+// either side for the craft flying in and away — for space-life.js's "one set piece
+// at a time" (setStrikeBusy).
+function strikeBusyAt(s, p) {
+  if (s.stage !== 2 && s.stage !== 3) return false;
+  const sp = { ...s, progress: p };
+  return OCCASIONAL.some((o, i) => {
+    const striker = s.stage === 2 ? (i === OCCASIONAL.length - 1) : true;
+    if (!striker) return false;
+    const d = formationAt(sp, o, i).d;
+    return d > -620 && d < 620;
+  });
+}
+setStrikeBusy(strikeBusyAt);
 // The sky half of level 3's strikes (the saucer and the fleet come in behind
 // the land), painted from the vista's sky pass.
 export function invasionSky(c, s) {

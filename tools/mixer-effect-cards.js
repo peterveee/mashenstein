@@ -488,6 +488,9 @@ function filterGraphPanel({ def, params, apply }) {
     rows,
     read: (row) => params[row.path] ?? row.def,
     writeMany: writeGraph,
+    // A Tone.Filter: its biquad reads RESONANCE in dB on low-pass and high-pass, so a Q of
+    // 8 is drawn as the 8 dB peak it renders rather than the 18 dB a linear 8 would be.
+    model: 'tone',
   });
   graph.box.classList.add('fxfiltergraph');
   return graph;
@@ -537,7 +540,12 @@ function multibandControls({ def, entryParams, applyPatch }) {
   crossovers.className = 'mbsection mbcrossovers';
   const crossoverTitle = document.createElement('h5');
   crossoverTitle.textContent = 'CROSSOVERS';
+  // SPLIT: FLAT bands sum back to the input; CLASSIC is the old split with a notch at
+  // each crossover. A saved card with no SPLIT is CLASSIC (effects.js), so that is what
+  // an unset value shows.
   crossovers.append(crossoverTitle,
+    radioRow('SPLIT', paramRange('split', def).options, entryParams.split ?? 'classic',
+      (next) => applyPatch({ split: next }, 'split')),
     numberRow('lowFrequency', 'LOW / MID'),
     numberRow('highFrequency', 'MID / HIGH'));
   panel.append(crossovers);
@@ -554,7 +562,8 @@ function multibandControls({ def, entryParams, applyPatch }) {
       numberRow(`${id}.ratio`, 'RATIO'),
       numberRow(`${id}.attack`, 'ATTACK'),
       numberRow(`${id}.release`, 'RELEASE'),
-      numberRow(`${id}.knee`, 'KNEE'));
+      numberRow(`${id}.knee`, 'KNEE'),
+      numberRow(`${id}.gain`, 'GAIN'));
     bands.append(band);
   }
   panel.append(bands);
@@ -625,6 +634,8 @@ function fillEffectControls({
       for (const p of def.params || []) {
         if (resolved && paramRange(p, def).lanes && entryParams[p] != null) resolved[p] = entryParams[p];
       }
+      // Nor is the multiband's SPLIT: a preset keeps whichever split the card is on.
+      if (resolved && def.id === 'mbCompN') resolved.split = entryParams.split ?? 'classic';
       if (!resolved || !applySnapshot(resolved, 'preset')) return;
       rebuild();
     }, def.defaultPresetName ? { Default: def.defaultPresetName } : null);

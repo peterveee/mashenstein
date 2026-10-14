@@ -887,7 +887,39 @@ function astronaut(c, s) {
     spacewalker(c, x0 + 300, -70 + Math.sin(s.t * 0.8 + k) * 5, s.t, k, -127);
   }
 }
-function spacewalker(c, x, y, t, k, tetherTop) {
+// THE ASTRONAUT'S POSE (Peter, 14 Oct: "do a bakeoff for the spaceman outside..
+// would prefer to see both arms"). 'now' is one arm (the welder, or a wave);
+// the others show the far arm too. The lab picks one with setWalkerPose.
+export const WALKER_POSES = ['now', 'grip', 'wave2', 'thumbs', 'drift'];
+let walkerPose = 'drift';
+// How fast he turns while drifting, radians a second: from four o'clock he is
+// upside down about four seconds in.
+const DRIFT_TURN = 0.25;
+export function setWalkerPose(p) { walkerPose = p; }
+// The far arm, behind the torso: shoulder at (-1.4, -3.4), `a` the angle down the arm.
+// Its upper arm is a unit longer than the near one's: the shoulder sits inside the
+// torso, so that much of it is hidden, and drawn the same length it read as the
+// short arm (Peter, 14 Oct: "arms aren't same length... one is a little short").
+function farArm(c, suit, a, bend = 0) {
+  c.save(); c.translate(-1.2, -3.4); c.rotate(a);
+  rect(c, 0, -0.85, 3.5, 1.7, suit[2]); rect(c, 3.3, -0.85, 0.6, 1.7, suit[3]);
+  c.translate(3.8, 0); c.rotate(bend);
+  rect(c, 0, -0.75, 2.1, 1.5, suit[2]); rect(c, 2.1, -0.85, 1.1, 1.7, '#c88a34');
+  c.restore();
+}
+// The near arm in the same terms, from the near shoulder (2.6, -3.2).
+function nearArm(c, suit, a, bend = 0, glove = '#e0a040', thumb = false) {
+  c.save(); c.translate(2.6, -3.2); c.rotate(a);
+  rect(c, 0, -0.9, 2.6, 1.8, suit[1]); rect(c, 2.4, -0.9, 0.6, 1.8, suit[3]);
+  c.translate(3, 0); c.rotate(bend);
+  rect(c, 0, -0.8, 2, 1.6, suit[2]); rect(c, 2, -0.9, 1.1, 1.8, glove);
+  if (thumb) rect(c, 2.3, -2.1, 0.6, 1.4, glove);
+  c.restore();
+}
+// The other astronauts (the welder layer, the catalogue) keep 'now'; finishWalker
+// hands in the picked pose.
+function spacewalker(c, x, y, t, k, tetherTop, pose = 'now', turn = null) {
+  if (pose !== 'now') { spacewalkerPosed(c, x, y, t, k, tetherTop, pose, turn); return; }
   traceAt('astronaut', x, 20);
   const s = { t };
   {
@@ -940,6 +972,88 @@ function spacewalker(c, x, y, t, k, tetherTop) {
     rect(c, dx + 0.6, dy - 0.4, 0.8, 0.7, '#7fd8ff');
     if (s.t % 0.8 < 0.3) glow(c, dx, dy - 1.6, 2, '120,255,140', 0.95);
   }
+}
+// The both-arms poses for the bake-off: the same suit, pack, helmet and drone as
+// 'now', with the far arm drawn behind the torso.
+function spacewalkerPosed(c, x, y, t, k, tetherTop, pose, turn = null) {
+  traceAt('astronaut', x, 20);
+  const suit = ['#ffffff', '#eceeee', '#cdd0d2', '#9ea2a6'];
+  const drift = pose === 'drift';
+  // The tether: in 'grip' it drapes down and up to his waist at the back, not his
+  // hand (Peter, 14 Oct: "the cable should be attached to his waist or back not
+  // arm"); slack to the back otherwise.
+  const gripHand = pose === 'grip' ? [x - 2.2, y + 1.2] : null;
+  c.beginPath(); c.moveTo(x - 12, tetherTop);
+  // Held in his hand, the cord drapes: slack, it loops down below his hand before it
+  // reaches him (Peter, 14 Oct: "with a draping cord"), swaying a little.
+  if (gripHand) {
+    const sw = Math.sin(t * 0.6) * 3;
+    c.bezierCurveTo(x - 24 + sw, tetherTop + (gripHand[1] - tetherTop) * 0.55, gripHand[0] - 12 + sw, gripHand[1] + 22,
+      gripHand[0], gripHand[1]);
+  }
+  else c.quadraticCurveTo(x - 16 + Math.sin(t * 0.6) * 4, (y + tetherTop) / 2 + (drift ? 14 : 6), x - 2, y - 3);
+  c.strokeStyle = 'rgba(230,230,220,0.8)'; c.lineWidth = 0.5; c.stroke();
+  c.save(); c.translate(x, y);
+  c.rotate(drift ? (turn ?? t * DRIFT_TURN) : Math.sin(t * 0.7 + k) * 0.15);
+  // The far arm first, so the torso covers its shoulder.
+  const w = Math.sin(t * 6);
+  if (pose === 'grip') farArm(c, suit, 1.7, -0.5);                  // far arm at rest, the tether is on his belt
+  else if (pose === 'wave2') farArm(c, suit, -2.3 + Math.sin(t * 6 + 1.6) * 0.45, -0.3);
+  else if (pose === 'thumbs') farArm(c, suit, 1.9, -1.6);            // hand on hip
+  // drift: out wide, arms flailing quick and out of step, as if he has lost
+  // control (Peter, 14 Oct: "can his arms and legs move while he's floating" …
+  // "maybe he moves his arms quicker as if out of control"); legs kick slower.
+  else farArm(c, suit, -2.8 + Math.sin(t * 2.7) * 0.45 + Math.sin(t * 4.3 + 1) * 0.2, 0.2 + Math.sin(t * 3.6 + 1) * 0.45);
+  // Torso, chest unit, belt — no life-support pack on these (Peter, 14 Oct: "a
+  // little bulky - probably don't need the back pack").
+  poly(c, [[-2, -4.4], [1, -4.6], [1.4, 3], [-2.4, 3]], suit[0]);
+  poly(c, [[1, -4.6], [3, -4], [3.2, 3], [1.4, 3]], suit[2]);
+  rect(c, -1.2, -2.2, 3.2, 2.2, suit[3]); rect(c, -0.8, -1.8, 0.7, 0.6, '#ff6a50'); rect(c, 0.2, -1.8, 0.7, 0.6, '#7fe07f'); rect(c, -0.8, -0.9, 2.4, 0.4, '#7fd8ff');
+  rect(c, -2.2, 2.4, 5.4, 0.8, suit[3]);
+  // Legs: apart and bent a little in 'drift'.
+  const spread = drift ? 0.35 : 0;
+  const kick = drift ? Math.sin(t * 1.6) * 0.3 : 0;
+  c.save(); c.translate(-1.2, 3.2); c.rotate(spread + kick);
+  poly(c, [[-1, 0], [1, 0], [0.8, 2.8], [-1, 2.8]], suit[1]); rect(c, -1, 2.4, 1.9, 0.5, suit[3]); poly(c, [[-1.2, 2.9], [1, 2.9], [1.6, 4.6], [-1.4, 4.6]], suit[2]);
+  c.restore();
+  c.save(); c.translate(1.5, 3.2); c.rotate(-spread + (drift ? Math.sin(t * 1.9 + 2.2) * 0.3 : 0));
+  poly(c, [[-1.1, 0], [1.1, 0], [1.3, 2.6], [-0.9, 2.6]], suit[2]); rect(c, -0.9, 2.2, 2.1, 0.5, suit[3]); poly(c, [[-1, 2.7], [1.4, 2.7], [1.9, 4.2], [-1.1, 4.2]], suit[3]);
+  c.restore();
+  // Helmet.
+  c.beginPath(); c.arc(0.4, -6.8, 3, 0, TAU); c.fillStyle = suit[0]; c.fill();
+  c.beginPath(); c.arc(0.4, -6.8, 3, -0.2, Math.PI * 0.6); c.fillStyle = suit[2]; c.fill();
+  c.beginPath(); c.ellipse(1.3, -6.7, 2, 1.7, 0, 0, TAU);
+  c.fillStyle = grad(c, 0, -8.4, 2.8, -5, [[0, '#ffe7a0'], [0.45, '#e0a040'], [1, '#2a6a70']]); c.fill();
+  c.beginPath(); c.ellipse(0.7, -7.6, 0.7, 0.35, -0.5, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.8)'; c.fill();
+  rect(c, -1.6, -9.6, 1.2, 0.8, suit[3]); glow(c, -1, -9.2, 1.6, '255,250,220', 0.7);
+  // The near arm.
+  let welding = false;
+  if (pose === 'grip') {
+    const waving = Math.sin(t * 0.5 + k) > 0.55;
+    if (waving) nearArm(c, suit, -2.2 + w * 0.5, -0.3);
+    else { nearArm(c, suit, 0.5, -0.2); rect(c, 5.6, 0.6, 2, 0.6, HULL.dark); welding = true; }
+  } else if (pose === 'wave2') nearArm(c, suit, -2.3 + w * 0.45, -0.3);
+  else if (pose === 'thumbs') {
+    const waving = Math.sin(t * 0.6 + k) > 0.6;
+    if (waving) nearArm(c, suit, -2.2 + w * 0.5, -0.3);
+    else nearArm(c, suit, -0.4, -1.5, '#e0a040', true);              // thumbs up
+  } else nearArm(c, suit, -0.4 + Math.sin(t * 3.1 + 2) * 0.45 + Math.sin(t * 5.2) * 0.2, -0.2 + Math.sin(t * 3.9 + 3) * 0.45);    // drift
+  c.restore();
+  if (welding && (t * 7) % 1 < 0.6) {
+    const hx = x + 9, hy = y - 0.4;
+    glow(c, hx, hy, 5, '180,230,255', 0.9);
+    for (let i = 0; i < 6; i++) {
+      const a = hash(Math.floor(t * 14) + i) * TAU, r = 2 + hash(i + Math.floor(t * 14) * 3) * 4;
+      rect(c, hx + Math.cos(a) * r, hy + Math.sin(a) * r, 0.6, 0.6, 'rgba(255,230,140,0.95)');
+    }
+  }
+  // His drone.
+  const dx = x + Math.cos(t * 1.3 + k) * 13, dy = y - 4 + Math.sin(t * 1.3 + k) * 5;
+  poly(c, [[dx - 2, dy], [dx - 1.2, dy - 1.3], [dx + 1.2, dy - 1.3], [dx + 2, dy]], HULL.hi);
+  poly(c, [[dx - 2, dy], [dx + 2, dy], [dx + 1.2, dy + 1.1], [dx - 1.2, dy + 1.1]], HULL.dull);
+  for (const sx of [-1, 1]) { c.beginPath(); c.ellipse(dx + sx * 3, dy - 0.6, 1.4, 0.4, 0, 0, TAU); c.strokeStyle = HULL.mid; c.lineWidth = 0.3; c.stroke(); }
+  rect(c, dx + 0.6, dy - 0.4, 0.8, 0.7, '#7fd8ff');
+  if (t % 0.8 < 0.3) glow(c, dx, dy - 1.6, 2, '120,255,140', 0.95);
 }
 function cargo(c, s) {
   for (const [k, x0] of along(s, 0.35, 400)) {
@@ -1072,6 +1186,50 @@ function bigMoment(s, secondsAgo = 0) {
   if (s.stage === 3 && p > 0.86) return true;
   return p > AURORA_SPAN[0] - 0.02 && p < AURORA_SPAN[1] + 0.02;
 }
+// ONE SET PIECE AT A TIME in the invasion levels (Peter, 14 Oct: "make sure we don't
+// have multiple set pieces occur at the same time? eg. martians shooting ships while
+// others shoot a plateau or butte … or a single martian ship shooting other
+// fighters"). In order of precedence: a strike on a shelf or butte (space-plateaus.js
+// tells us, setStrikeBusy), then the director's hunt, then each sortie lane. Each is a
+// pure function of the scene clock, so the same thing is decided every frame, and a
+// later one only starts if its whole run is clear of the earlier ones.
+let strikeBusy = null;
+export function setStrikeBusy(fn) { strikeBusy = fn; }
+const war = (s) => s.stage === 2 || s.stage === 3;
+// Progress at scene time t, extrapolated at the run's steady rate.
+const progressAt = (s, t) => s.progress + (s.t > 0.5 ? s.progress / s.t : 0) * (t - s.t);
+function strikeDuring(s, t0, t1) {
+  if (!strikeBusy) return false;
+  for (let t = t0; t <= t1 + 1e-6; t += 0.4) if (strikeBusy(s, progressAt(s, t))) return true;
+  return false;
+}
+// The director's event running over [t0, t1], if any slot's event overlaps it.
+function huntDuring(s, t0, t1) {
+  for (let slot = Math.floor(t0 / SLOT) - 1; slot <= Math.floor(t1 / SLOT); slot++) {
+    if (((slot % 3) + 3) % 3 === 2) continue;
+    const e = (s.stage === 3 ? pick3 : pick)(slot), a = slot * SLOT + 1, b = a + e.dur;
+    if (b < t0 || a > t1) continue;
+    if (bigMoment(s, s.t - a) || strikeDuring(s, a, b)) continue;
+    return true;
+  }
+  return false;
+}
+const SORTIES = [[5, 1.3], [7.5, 4.1]];
+// (Only a CHASED sortie — level 3's, a saucer on its tail — is a set piece; plain
+// fighters may pass over anything.)
+function sortieDuring(s, lane, t0, t1) {
+  if (s.stage !== 3) return false;
+  const [period, offset] = SORTIES[lane], dur = 2.5;
+  for (let ev = Math.floor((t0 + offset) / period) - 1; ev <= Math.floor((t1 + offset) / period); ev++) {
+    const a = ev * period - offset, b = a + dur;
+    if (b >= t0 && a <= t1 && !sortieBlocked(s, lane, a, b)) return true;
+  }
+  return false;
+}
+function sortieBlocked(s, lane, a, b) {
+  if (!war(s)) return false;
+  return strikeDuring(s, a, b) || huntDuring(s, a, b) || (lane === 1 && sortieDuring(s, 0, a, b));
+}
 function pick(slot) {
   const n = EVENTS.length, i = Math.floor(hash(slot * 7 + 3) * n), prev = Math.floor(hash((slot - 1) * 7 + 3) * n);
   return EVENTS[i === prev ? (i + 1) % n : i];
@@ -1081,6 +1239,7 @@ function directed(c, s, pass) {
   if (((slot % 3) + 3) % 3 === 2) return;               // an empty slot
   const e = (s.stage === 3 ? pick3 : pick)(slot), age = s.t - slot * SLOT - 1;     // a beat of quiet first
   if (age < 0 || age > e.dur || bigMoment(s, age)) return;
+  if (war(s) && strikeDuring(s, s.t - age, s.t - age + e.dur)) return;
   if (e.pass === pass) e.draw(c, s, age, slot);
 }
 // The ground buildings, sparse: one every ~420 units of ground, no launch pads
@@ -1103,8 +1262,13 @@ function sortie(c, s, period, offset, lane) {
   // the lead ship down about half the time and misses the rest (Peter, 13 Oct:
   // "they should be trying to destroy everything"). The chaser lags, so the
   // run lasts a little longer for it to clear the frame too.
-  const war = s.stage === 3, base = 1.9, dur = war ? 2.5 : base;
+  // Sorties may fly over another set piece (Peter, 14 Oct: "perhaps there can be some
+  // overlap for the sorties") — but then as plain fighters passing, with no saucer on
+  // their tail, so there is still only one fight on screen.
+  const base = 1.9;
   const { ev, age } = event(s.t, period, offset);
+  const chased = s.stage === 3 && !sortieBlocked(s, lane, s.t - age, s.t - age + 2.5);
+  const war = chased, dur = war ? 2.5 : base;
   if (age > dur || bigMoment(s, age)) return;
   const seed = ev * 13 + lane * 101, u = age / base;
   const fromLeft = hash(seed) > 0.5, dir = fromLeft ? 1 : -1;
@@ -1188,25 +1352,58 @@ function finishWalker(c, s) {
   // are fixed to the station, so the choice holds as both scroll together.
   // Only his own pane (the one nearest his anchor) — if that pane is off the
   // list, so is he; never re-picked to a neighbour, which would be a jump.
+  // One window left of that (Peter, 14 Oct: "move left 1 window so he's not
+  // crowding the hero at the finish line"): the pane just before his own, so the
+  // choice is still fixed to the station as it scrolls.
+  // (The anchor itself moves one pane pitch left, so his pane is the nearest to it
+  // and he comes in from the right edge with it, rather than popping in when the
+  // pane to his right reaches the list.)
   let x = anchor, top = -134;
   if (s.panes?.length) {
-    const [px, pw] = s.panes.reduce((best, p) => Math.abs(p[0] + p[1] / 2 - anchor) < Math.abs(best[0] + best[1] / 2 - anchor) ? p : best);
-    if (Math.abs(px + pw / 2 - anchor) > pw / 2 + 6) return;
+    const panes = [...s.panes].sort((a, b) => a[0] - b[0]);
+    const pitch = panes.length > 1 ? panes[1][0] - panes[0][0] : 0;
+    const at = anchor - pitch;
+    const [px, pw] = panes.reduce((best, p) => Math.abs(p[0] + p[1] / 2 - at) < Math.abs(best[0] + best[1] / 2 - at) ? p : best);
+    if (Math.abs(px + pw / 2 - at) > pw / 2 + 6) return;
     x = px + pw / 2 - 2;
   }
   // The astronaut ends level 1 (the friendly saucer is gone — too like the
   // dangerous ones, Peter, 13 Oct); level 2 ends on a hovering flight of
   // small saucers, level 3 on the big Martian saucer.
   if (s.stage !== 1) return;
-  spacewalker(c, x, -72 + Math.sin(s.t * 0.8) * 4, s.t, 3, top);
+  // Drifting (picked from the pose bake-off, 14 Oct: "astronaut drifting is
+  // perfect"), and turned to about four o'clock as he comes into view so he goes
+  // through upside down while you watch ("perhaps he's at like 4 o'clock when he
+  // appears on screen so we see him upside down for a bit"): his turn is counted
+  // from the moment he crosses the right edge, then on through the finish hold.
+  const since = Math.max(0, s.view + 25 - x) / ((s.speed || 120) / (s.sceneS || 1)) + (s.holdT || 0);
+  spacewalker(c, x, -72 + Math.sin(s.t * 0.8) * 4, s.t, 3, top, walkerPose, Math.PI * 2 / 3 + since * DRIFT_TURN);
+}
+// A calmer astronaut half way through level 1 (Peter, 14 Oct: "can we have a not out
+// of control spaceman around half way in level 1 in a section that is perhaps a
+// little quiet right now?"): fixed to the station at MID_AT of the stage, one hand
+// on his tether, welding the hull and now and then waving, centred in a window.
+const MID_AT = 0.52;
+function midWalker(c, s) {
+  if (s.progress == null || s.stage !== 1) return;
+  const len = s.length ?? 4680;
+  const anchor = s.view * 0.5 + (MID_AT - s.progress) * len;
+  if (anchor < -140 || anchor > s.view + 140) return;
+  let x = anchor;
+  if (s.panes?.length) {
+    const [px, pw] = s.panes.reduce((best, p) => Math.abs(p[0] + p[1] / 2 - anchor) < Math.abs(best[0] + best[1] / 2 - anchor) ? p : best);
+    if (Math.abs(px + pw / 2 - anchor) > pw / 2 + 6) return;
+    x = px + pw / 2 - 2;
+  }
+  spacewalker(c, x, -66 + Math.sin(s.t * 0.7) * 3, s.t, 5, -134, 'grip');   // lower in the glass (14 Oct)
 }
 function flights(c, s) {
-  sortie(c, s, 5, 1.3, 0);
-  sortie(c, s, 7.5, 4.1, 1);
+  sortie(c, s, ...SORTIES[0], 0);
+  sortie(c, s, ...SORTIES[1], 1);
 }
 // The friendly cyclops saucer is out of the levels (Peter, 13 Oct: "too
 // confusing with the dangerous ones"); it stays on the lab sheet.
-export const DIRECTED_LIFE = ['auroraFacets', 'flights', 'finishSaucer', 'finishWalker', 'sparseOutposts'];
+export const DIRECTED_LIFE = ['auroraFacets', 'flights', 'finishSaucer', 'finishWalker', 'midWalker', 'sparseOutposts'];
 
 // ------------------------------------------------------------- catalogue
 // Every object on its own, for the lab page (Peter, 13 Oct: "a lab/gallery
@@ -1255,6 +1452,7 @@ export const SPACE_LIFE = [
   { id: 'lateSaucer', name: 'The saucer, near the end', pass: 'front', draw: lateSaucer, note: 'one visit at 94% of the stage, over the finish jump: drifts in, beams, the pilot grins, zips off' },
   { id: 'finishSaucer', name: 'Saucer over the finish (level 3)', pass: 'front', draw: finishSaucer, note: 'the invasion won: the Martian saucer hovers by the airlock' },
   { id: 'finishWalker', name: 'Astronaut at the finish', pass: 'near', draw: finishWalker, note: 'on the hull by the airlock: through the finish jump and in the final frame' },
+  { id: 'midWalker', name: 'Astronaut half way', pass: 'near', draw: midWalker, note: 'level 1, about half way: a calm one, gripping his tether and welding' },
   { id: 'flights', name: 'Fighters, here and there', pass: 'sky', draw: flights, note: 'one to three little ships in from an edge on a bank, every few seconds on two staggered lanes' },
   { id: 'satellites', name: 'Satellites', pass: 'sky', draw: satellites, note: 'tumbling, panels catching the light, red blink' },
   { id: 'mothership', name: 'Mothership', pass: 'sky', draw: mothership, note: 'the mid-stage moment: a capital ship slides across every window (stage 30–70%)' },
@@ -1371,9 +1569,10 @@ function bolts(c, fx, fy, tx, ty, t, a = 1) {
   }
 }
 const FLEET3 = 0.34;   // the invasion's fleet: nearer and bigger
-const hunted = (id, dur, paint) => ({ id: `hunt-${id}`, pass: 'front', dur, draw: (c, s, a, ev) => {
+// `band`: [highest, lowest] y it may fly at.
+const hunted = (id, dur, paint, band = [-100, -70]) => ({ id: `hunt-${id}`, pass: 'front', dur, draw: (c, s, a, ev) => {
   const u = a / dur, kill = 0.55;
-  const y = -70 - hash(ev + 300) * 30;
+  const y = band[1] - hash(ev + 300) * (band[1] - band[0]);
   const x = across(s, Math.min(u, kill), 1, 100);
   if (u < kill) { traceAt(id, x, 30); paint(c, x, y, s.t, ev); }
   else {
@@ -1394,7 +1593,8 @@ const hunted = (id, dur, paint) => ({ id: `hunt-${id}`, pass: 'front', dur, draw
 const EVENTS3 = [
   hunted('shuttle', 4.5, (c, x, y, t, ev) => shuttle(c, x, y, 0.6, 1, engine(ev))),
   hunted('hauler', 6, (c, x, y) => hauler(c, x, y, 0.55, 1)),
-  hunted('tug', 6, (c, x, y, t) => tug(c, x, y, 1, t)),
+  // The tug flies lower than the others (Peter, 14 Oct: "too near the top").
+  hunted('tug', 6, (c, x, y, t) => tug(c, x, y, 1, t), [-66, -52]),
   { id: 'fleet', pass: 'front', dur: 4, draw: (c, s, a, ev) => { const x = across(s, a / 4, 1, 120), fl = flight(ev * 3 + 17); traceAt('fleet', x - 40, 46); saucerFleet(c, x, -124 + Math.sin(Math.PI * a / 4) * (58 + hash(ev + 210) * 20), s.t, fl.n, FLEET3, fl.shape); } },
 ];
 function pick3(slot) { const n = EVENTS3.length, i = Math.floor(hash(slot * 7 + 3) * n), prev = Math.floor(hash((slot - 1) * 7 + 3) * n); return EVENTS3[i === prev ? (i + 1) % n : i]; }
@@ -1443,7 +1643,8 @@ export function invasionStrike(c, s, i, f, d, pass) {
     return;
   }
   // The saucer: in from the upper left to hover over the kit's left end, then
-  // track across it with the beam on, then away up and right.
+  // track across it with the beam on, then away up and right. The pilot cackles
+  // as the beam comes on (pilotHook, once per run — the listener dedupes).
   const hoverY = f.top - 46;
   let x, y, beam = 0;
   if (d < -440) return;
@@ -1452,6 +1653,8 @@ export function invasionStrike(c, s, i, f, d, pass) {
   else if (d < 560) { const v = (d - 120) / 440; x = f.x1 + v * v * (s.view + 170 - f.x1); y = hoverY - v * v * 90; }
   else return;
   traceAt('saucerB', x, 32);
+  // Every frame he is up, so his line can ride along with him (pilotHook decides).
+  pilotHook?.(speakerAt(c, x, y - 12), beam > 0.5, speakerAt(c, x - 40, y - 4));
   marsSaucer(c, x, y, 0.9, s.t, { ray: Math.max(0, beam), rayLen: (f.top - 1 - y) / 0.9 });   // reaches the plateau top
 }
 // The lone Martian's gag: a craft flies low over his butte, he swings his ray
@@ -1541,11 +1744,15 @@ function finishSaucer(c, s) {
     // Portrait has no room for the arc: he drops straight down from above the
     // finish line and settles to hover over it (Peter, 13 Oct).
     const D = 1.8, u = Math.min(1, clock / D), e = 1 - Math.pow(1 - u, 3);
-    // Whole dome inside the glass (top -134), belly clear of the pole top (~-97).
-    const px = (s.finishLine ?? s.view * 0.6) - 4, py = -114, fy0 = -230;
+    // Whole dome inside the glass: tall glass draws the view 1.3× (14 Oct), and
+    // at the old -114 he hovered above the window, out of sight but for his
+    // tractor beam. Now just under the glass top, right of the finish line
+    // (the screen's open side in portrait), clear of the flag pole.
+    const px = (s.finishLine ?? s.view * 0.6) + 34, py = (s.glassTop ?? -134) + 16, fy0 = -230;
     const fy = fy0 + (py - fy0) * e, settle = Math.min(1, Math.max(0, clock - D) / 1.2);
     traceAt('saucerB-finish', px, 50, false, fy);
-    marsSaucer(c, px + Math.sin(s.t * 0.5) * 4 * settle, fy + Math.sin(s.t * 0.8) * 3 * settle, 1, s.t, { ray: 0 });
+    marsSaucer(c, px + Math.sin(s.t * 0.5) * 4 * settle, fy + Math.sin(s.t * 0.8) * 3 * settle, 1, s.t, { ray: 0 });   // no tractor beam in portrait: too close to the hero (14 Oct)
+    if (settle > 0.25) finishAckHook?.(s.t, speakerAt(c, px, fy - 14));
     return;
   }
   const DUR = 2.6, u = Math.min(1, clock / DUR), e = u * u * (3 - 2 * u);
@@ -1558,10 +1765,36 @@ function finishSaucer(c, s) {
   traceAt('saucerB-finish', fx, 50, false, fy);
   c.save();
   c.translate(fx, fy); c.rotate((1 - e) * 0.35 * Math.sin(e * Math.PI) + Math.sin(s.t * 0.9) * 0.03 * settle); c.translate(-fx, -fy);
-  marsSaucer(c, fx + Math.sin(s.t * 0.5) * 6 * settle * drift, fy + Math.sin(s.t * 0.8) * 3 * settle, 1, s.t, { ray: 0 });
+  marsSaucer(c, fx + Math.sin(s.t * 0.5) * 6 * settle * drift, fy + Math.sin(s.t * 0.8) * 3 * settle, 1, s.t, { ray: 0, ...tractorOn(clock - DUR, fy) });
   c.restore();
+  if (settle > 0.25) finishAckHook?.(s.t, speakerAt(c, fx, fy - 14));
+}
+// What the finish saucer says once it has settled (Peter, 14 Oct: "the spaceship
+// at the end can say ACK! ACK!" — then "just have the acks appear in our standard
+// float, not an actual bubble", and "the repeated ACKs like the bubble had"): the run
+// hears it here, with the scene clock, and floats the words on the bubble's cycle.
+let finishAckHook = null;
+// Where a speaker is, in device pixels, for the run to pin his words over him
+// (Peter, 14 Oct: "can the acks be tied to the martian in the ship and the martian
+// standing … so it's obviously coming from them").
+export function speakerAt(c, x, y) {
+  if (typeof c.getTransform !== 'function') return null;
+  const m = c.getTransform();
+  return m ? { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f } : null;
+}
+export function setFinishAckHook(fn) { finishAckHook = fn; }
+// Once the finish saucer has arrived he switches on his tractor beam, down to
+// the ground (Peter, 14 Oct), fading up over half a second. `y` is his hover
+// height; the ground outside is at −6.
+function tractorOn(since, y) {
+  if (since < 0.3) return {};
+  return { tractor: Math.min(1, (since - 0.3) / 0.5), tractorLen: -6 - y - 4 };
 }
 export { martianStanding };
+// Level 3's saucer pilot: told when his beam comes on, for his ACK! ACK! ACK!
+// ACK! (Peter, 14 Oct).
+let pilotHook = null;
+export function setPilotHook(fn) { pilotHook = fn; }
 
 // The base kit, for the plateau bake-off (space-plateaus.js) to stand on mesas.
 export { domes, tower, launchPad, pumpjack, rover, HULL, WARM, RED, CYAN };

@@ -11,7 +11,6 @@ import { OFFICE_CORRIDORS, OFFICE_FURNITURE_BASE, officeLandmarks, officeFounder
 
 export const OFFICE_FRONT_CLEARANCE = 8;
 export const OFFICE_HELI_PASS = [0.4, 0.5];
-export const OFFICE_BLIMP_SPANS = [[0.05, 0.3], [0.55, 0.8]];
 export const OFFICE_OUTSIDE_FOLLOW = 0.3;
 export const OFFICE_CEILING_SCREEN_Y = 100;
 export const OFFICE_COVERAGE_MARGIN = 64;
@@ -76,12 +75,11 @@ export function officePack(settings = {}) {
       frame.landmarks = officeLandmarks(floor, camX, totalDist);
       frame.founderPlan = officeFounderPlan(floor, totalDist);
       frame.liftSeed = liftSeed;
+      // The Gravity Grid's Martian rides the lobby lift once the player has met the Martians
+      // (run.js sets it: Gravity Grid level 3 played, or any dev build); the gallery always shows him.
+      frame.liftMartian = settings.gallery === true || settings.liftMartian === true;
       // Floor 88's helicopter is a single fly-past part-way along the stage, not a fixture.
-      // Floor 23's blimp keeps its own drift, but only over about half the stage.
-      if (floor === 'open' && frame.outside.flyer) {
-        const at = Number.isFinite(totalDist) && totalDist > 0 ? camX / totalDist : 0;
-        if (!OFFICE_BLIMP_SPANS.some(([a, b]) => at >= a && at <= b)) frame.outside.flyer = null;
-      }
+      // Floor 23's blimp drifts through complete passes, with no progress cutoff.
       const heli = OFFICE_CORRIDORS.exec.outside.flyer;
       if (floor === 'exec' && heli) {
         const pass = Number.isFinite(totalDist) && totalDist > 0

@@ -1,3 +1,4 @@
+import { selectedLunchPeople } from './lunchPeople.js';
 // One-off occupied rooms behind the office corridor.
 import { MID_BASE, WALL_BASE } from '../officeClimb.js';
 import { box, line, poly, circ, ell, letters, textW, YH, VPX, OFFICE_FONT } from './line.js';
@@ -313,8 +314,9 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
 
 // The people at the canteen and coffee-shop tables, sat in a diner booth (diners.js), with their
 // table and the food. The diner bake-off (src/dev/office-diner-candidates.js) swaps the painter.
-let DINERS=boothDiners;
-export function setOfficeDiners(fn){const was=DINERS;DINERS=fn||boothDiners;return was;}
+const defaultDiners=selectedLunchPeople;
+let DINERS=defaultDiners;
+export function setOfficeDiners(fn){const was=DINERS;DINERS=fn||defaultDiners;return was;}
 // Whoever works the coffee-shop counter (barista.js). Two passes: 'back' stands behind the espresso
 // machine and the counter front, 'front' adds what sits on or over the counter top. The barista
 // bake-off (src/dev/office-barista-candidates.js) swaps the painter.

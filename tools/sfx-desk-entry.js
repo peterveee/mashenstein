@@ -88,6 +88,7 @@ const GROUPS = [
       { cue: 'coyoteHowl', what: 'the Speed Zone coyote howling on his ledge' },
       { cue: 'coyoteWink', what: "the ding on the finish coyote's wink, speed-3" },
       { cue: 'coyoteYip', what: "one of the pup's two yips in the coyote chorus" },
+      { cue: 'faxHandshake', what: "a fax machine's handshake, ending on the downbeat that starts office-2's song" },
       { cue: 'sleighCarol', what: "the minor-key carol on vibes as Santa's sleigh flies over frost-3's tape" },
       { cue: 'cameraClick', what: 'the speed camera taking your picture on speed-2' },
       { cue: 'blockBreak', what: 'a crate or ?-crate breaking' },

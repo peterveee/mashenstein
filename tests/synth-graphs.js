@@ -3,7 +3,9 @@
 // graph gestures write rows and report the same pairs to the sibling-pot setter, while a
 // graph redraw always reads the current row values.
 import { readFileSync } from 'node:fs';
-import { envelopeGraph, envShape, responseGraph } from '../tools/mixer-synth-graphs.js';
+import {
+  envelopeGraph, envShape, responseGraph, magnitudeDb, filterModelOf,
+} from '../tools/mixer-synth-graphs.js';
 
 let failed = 0;
 const fail = (msg) => { failed++; console.log(`FAIL: ${msg}`); };
@@ -110,6 +112,30 @@ assert(filterLive === filterWrites,
 filter.draw();
 assert(filterLine.getAttribute('d') !== filterBefore,
   'a filter pot change is visible after the graph redraws');
+
+// ---- the curve is the filter the engine BUILDS ---------------------------------
+//
+// The same four numbers are three different filters. A BiquadFilterNode reads a low-pass
+// RESONANCE in dB (4 is a 4 dB peak, not 12), Tone's Filter repeats it on every stage of a
+// -24, `_filterChain` puts a 0.7071 (dB-read) stage behind a resonant one, and TNGR-2's SVF
+// reads Q linearly with a true Butterworth follower. The numbers below are what each
+// engine renders at the cutoff, to within 0.1 dB, measured (work/local/_synth-audit, and a
+// BiquadFilterNode's own getFrequencyResponse); the drawing used to put 12 dB or more on
+// the first three.
+{
+  const at = (model, slope, Q, f) => magnitudeDb(f, { cutoff: 1000, Q, type: 'lowpass', slope, model });
+  const near = (x, want, tol = 0.1) => Math.abs(x - want) <= tol;
+  assert(near(at('biquad', -12, 4, 1000), 4), `a biquad low-pass at Q 4 draws 4 dB at its cutoff, not 12 (${at('biquad', -12, 4, 1000).toFixed(2)})`);
+  assert(near(at('tone', -24, 4, 1000), 8), `CRLS-1 at -24 draws both stages' peaks (${at('tone', -24, 4, 1000).toFixed(2)})`);
+  assert(near(at('biquad', -24, 4, 1000), 4.7), `MRDR-3/KNDO-5 at -24 draw one peak and a 0.7071 dB follower (${at('biquad', -24, 4, 1000).toFixed(2)})`);
+  assert(near(at('svf', -12, 4, 1000), 12.04), `TNGR-2 reads RESONANCE linearly (${at('svf', -12, 4, 1000).toFixed(2)})`);
+  assert(near(at('svf', -24, 0.7071, 1000), -6.02), `TNGR-2's -24 follower is Butterworth (${at('svf', -24, 0.7071, 1000).toFixed(2)})`);
+  const bp = magnitudeDb(3400, { cutoff: 3400, Q: 2.16, type: 'bandpass', slope: -24, model: 'svf' });
+  assert(near(bp, 3.68), `TNGR-2's band-pass peaks at Q, not 0 dB (${bp.toFixed(2)})`);
+  assert(filterModelOf('TNGR-2') === 'svf' && filterModelOf('CRLS-1') === 'tone'
+    && filterModelOf('MonoSynth') === 'tone' && filterModelOf('MRDR-3') === 'biquad'
+    && filterModelOf('KNDO-5') === 'biquad', 'each engine draws with its own filter model');
+}
 
 // ---- the cards that have less to draw ---------------------------------------
 //

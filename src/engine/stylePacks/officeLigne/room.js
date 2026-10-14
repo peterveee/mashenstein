@@ -1,3 +1,4 @@
+import { studyHead, workerHead } from './peopleHeads.js';
 // Corporate Kombat: LIGNE ’89 room painter. Shared with the preserved bake-off.
 import { box, W, line, LW, YH, VPX, xOf, pen, rbox, LWF, circ, poly, ell, DWALL, fOfD, yOfF, hash, M89, neon, fs, TAU, LWM, lines, grid, letters, squiggle, topRound, eggPath, confetti, copies } from './line.js';
 import { MID_BASE, WALL_BASE, LANE_TOP, FACTORS } from '../officeClimb.js';
@@ -830,13 +831,29 @@ function cubiclesBack(g, it, P, desks) {
     // the terminal: a beige box, its green screen toward us, glowing with text
     const mx = x + 14 + h(1) * 10;
     box(g, mx - 7, b - 46, 14, 13, '#d9d1bc', ink, LWM);
-    box(g, mx - 5.4, b - 44.4, 10.8, 9, '#1d3a2a', ink, 0.35);
-    box(g, mx - 4.4, b - 43.4, 8.8, 7, null, 'rgba(120,255,170,0.3)', 1.4);
-    g.beginPath();
-    for (let k = 0; k < 3; k++) { g.moveTo(mx - 4.2, b - 42.6 + k * 1.8); g.lineTo(mx - 4.2 + 3 + h(k + 3) * 5, b - 42.6 + k * 1.8); }
-    pen(g, d.occupied ? '#5fd88a' : '#8affaa', 0.5);
-    g.stroke();
-    letters(g, d.occupied ? 'ASAP' : 'UNREAD', mx, b - 36, 1.5, { ink: '#8affaa', lw: 0.25, align: 'center', track: 0.2 });
+    // About one terminal in six has crashed to the blue screen (Peter, 14 Oct 2026: "can some of
+    // the monitors be blue in level 2, like the blue screen of death"): the early-90s one, a grey
+    // tab with the name in blue, then white text and a blinking prompt. Cubicles are floor 23's.
+    // Only at an empty desk ("make sure blue screens are on monitors with no one in front of
+    // them"): 0.45 of the empty ones, which is 3 of the floor's 19 desks.
+    if (!d.occupied && h(11) < 0.45) {
+      box(g, mx - 5.4, b - 44.4, 10.8, 9, '#0000aa', ink, 0.35);
+      box(g, mx - 2.6, b - 43.6, 5.2, 1.6, '#aaaaaa');
+      letters(g, 'WINDOWS', mx, b - 42.25, 0.95, { ink: '#0000aa', lw: 0.22, align: 'center', track: 0.08 });
+      g.beginPath();
+      for (let k = 0; k < 3; k++) { g.moveTo(mx - 4.4, b - 40.6 + k * 1.3); g.lineTo(mx - 4.4 + 5 + h(k + 12) * 3.8, b - 40.6 + k * 1.3); }
+      pen(g, '#ffffff', 0.4);
+      g.stroke();
+      box(g, mx - 0.6, b - 36.6, 1.2, 0.5, '#ffffff');
+    } else {
+      box(g, mx - 5.4, b - 44.4, 10.8, 9, '#1d3a2a', ink, 0.35);
+      box(g, mx - 4.4, b - 43.4, 8.8, 7, null, 'rgba(120,255,170,0.3)', 1.4);
+      g.beginPath();
+      for (let k = 0; k < 3; k++) { g.moveTo(mx - 4.2, b - 42.6 + k * 1.8); g.lineTo(mx - 4.2 + 3 + h(k + 3) * 5, b - 42.6 + k * 1.8); }
+      pen(g, d.occupied ? '#5fd88a' : '#8affaa', 0.5);
+      g.stroke();
+      letters(g, d.occupied ? 'ASAP' : 'UNREAD', mx, b - 36, 1.5, { ink: '#8affaa', lw: 0.25, align: 'center', track: 0.2 });
+    }
     const kind = Math.floor(h(9) * 4);
     const ox = mx > x + 20 ? x + 6 : x + 30;
     if (kind === 0) {
@@ -1199,7 +1216,7 @@ function midActors(ctx, f, P) {
           circ(ctx, cx - 9.5, b - 35.6, 1.7, p.skin, ink, 0.35);
           circ(ctx, cx + 9.5, b - 35.6, 1.7, p.skin, ink, 0.35);
         }
-        head(ctx, cx, y, 5, p, d.pop > 0.15 ? (d.look > 0 ? 'right' : 'left') : 'back', ink, LWM);
+        workerHead(ctx, cx, y, 5, p, d.seed, d.pop > 0.15 ? (d.look > 0 ? 'right' : 'left') : 'back');
       }
     } else if (m.kind === 'boardroom') {
       for (const c of m.chairs) {
@@ -1223,7 +1240,7 @@ function midActors(ctx, f, P) {
           ctx.save();
           ctx.translate(c.x, y + 4);
           ctx.rotate(c.nod * 0.18 * (c.seed % 2 ? 1 : -1));
-          head(ctx, 0, -4, 5, pp, 'back', ink, LWM);
+          workerHead(ctx, 0, -4, 5, pp, c.seed + 400, 'back');
           ctx.restore();
           continue;
         }
@@ -1249,13 +1266,13 @@ function midActors(ctx, f, P) {
         }
       }
     } else if (m.kind === 'reception') {
-      // big hair, bigger shoulders, a magenta power suit, lemon hoops, the headset
-      const p = { skin: '#f2cfae', hair: '#c9703a', style: 'perm', glasses: false };
+      // Compact styled hair keeps the face, earrings and headset readable.
+      const p = { skin: '#f2cfae', hair: m.hairColor || '#c9703a', style: 'perm', glasses: false };
       const cx = m.x + m.w * 0.42;
       const y = b - 44 + m.dy;
       padded(ctx, cx, y + 4.6, 20, 12, '#d8408a', ink, LWM);
       poly(ctx, [cx - 2.4, y + 4.6, cx + 2.4, y + 4.6, cx, y + 9], '#ffffff', ink, 0.3);
-      head(ctx, cx, y, 5, p, 'front', ink, LWM);
+      studyHead(ctx, cx, y, 5, m.hairStyle || 'eighties', false, p.skin, p.hair);
       circ(ctx, cx - 5, y + 2.6, 1.2, null, '#e8c840', 0.6);
       circ(ctx, cx + 5, y + 2.6, 1.2, null, '#e8c840', 0.6);
       headset(ctx, cx, y);

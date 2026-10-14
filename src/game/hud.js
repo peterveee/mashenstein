@@ -3591,7 +3591,9 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   // And a pinned card stays in the picture. It is anchored to a place in the
   // world rather than to the hero, and the world scrolls: without this the card
   // would walk off the left edge mid-sentence.
-  if (pinned) {
+  // (Not a `free` card: a speaker's line that rides with him goes off the edge with
+  // him — gravity/state.js sayAt.)
+  if (pinned && !f.free) {
     const dx = Math.max(4, Math.min(W - 4 - (tw + PADX * 2), bx)) - bx;
     bx += dx; floatX += dx; edgeX += dx;
   }

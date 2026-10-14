@@ -381,8 +381,8 @@ function lobbyLift(g, h, P) {
   poly(g, [x, y, x + 5, y + 5, x + 5, y + hh - 6, x, y + hh], P.carSide, P.ink, LWF);
   poly(g, [x + w, y, x + w - 5, y + 5, x + w - 5, y + hh - 6, x + w, y + hh], P.carSide, P.ink, LWF);
   poly(g, [x, y + hh, x + 5, y + hh - 6, x + w - 5, y + hh - 6, x + w, y + hh], P.carFloor, P.ink, LWF);
-  line(g, x + 5, y + hh * 0.55, x + w - 5, y + hh * 0.55, P.chrome, 0.9);
-  box(g, x + 9, y + 10, w - 18, hh * 0.32, '#fff6fb', P.ink, LWF);
+  // (the car's back wall — its poster and call panel — is liftCar.js; no handrail across it,
+  // Peter 14 Oct: "would it be cleaner without now we will have art?")
   // the LED panel over the doors (its digits are lit per frame)
   box(g, x + w / 2 - 8, y - 13, 16, 8, '#18161e', P.ink, LWF);
   box(g, x + w / 2 - 8, y - 13, 16, 8, null, P.chrome, 0.5);
@@ -540,7 +540,6 @@ function steelLift(g, h, P, wood = false) {
   poly(g, [x, y, x + 5, y + 5, x + 5, y + hh - 6, x, y + hh], P.carSide, P.ink, LWF);
   poly(g, [x + w, y, x + w - 5, y + 5, x + w - 5, y + hh - 6, x + w, y + hh], P.carSide, P.ink, LWF);
   poly(g, [x, y + hh, x + 5, y + hh - 6, x + w - 5, y + hh - 6, x + w, y + hh], P.carFloor, P.ink, LWF);
-  line(g, x + 5, y + hh * 0.55, x + w - 5, y + hh * 0.55, P.brassDk, 0.9);
   // the indicator panel
   box(g, x + w / 2 - 8, y - 13, 16, 8, wood ? P.brass : '#2e3036', P.ink, LWF);
   // call buttons (a bank of lifts shares one panel: `buttons: false`)

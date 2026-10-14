@@ -25,7 +25,7 @@
 // tests/synth-full-layout.js makes the same assertion in CI, because pot-coverage.js
 // works at root-key granularity and cannot see a missing leaf.
 
-import { envelopeGraph, responseGraph } from './mixer-synth-graphs.js';
+import { envelopeGraph, responseGraph, filterModelOf } from './mixer-synth-graphs.js';
 import { isMrdrSynth } from '../src/engine/mrdr3/identity.js';
 import { createSynthKeyboard } from './mixer-synth-keyboard.js';
 import { WAVE_GLYPHS } from './lib/wave-glyphs.js';
@@ -1073,8 +1073,11 @@ export function createSynthFull({
       onStart: kit.beginUndo, onEnd: kit.endUndo,
       ...(height ? { h: height } : {}),
     };
+    // The curve is drawn the way THIS engine builds its filter — Q in dB on the biquads,
+    // linear on TNGR-2's SVF, and each stage of a cascade at its own Q. Asked at draw time,
+    // because the window can change preset under the graph.
     const g = kind === 'filter'
-      ? responseGraph(graphOptions)
+      ? responseGraph({ ...graphOptions, model: () => filterModelOf(kit.voice()?.synth) })
       : envelopeGraph(graphOptions);
     // Before the grid, after the header. The grid then takes `margin-top: auto`, so the
     // knob rows across a band land on one baseline whatever height the graph came out.

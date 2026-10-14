@@ -1456,7 +1456,11 @@ export const EFFECT_PRESETS = {
         "high.ratio": 3,
         "high.attack": 0.02,
         "high.release": 0.03,
-        "high.knee": 16
+        "high.knee": 16,
+        "low.gain": 0,
+        "mid.gain": 0,
+        "high.gain": 0,
+        "split": "classic"
       },
       "presets": {
         "Gentle Glue": {

@@ -20,6 +20,8 @@
 // and arithmetic that can be read on its own is arithmetic that can be checked — see
 // tests/synth-graphs.js.
 
+import { synthFamily, CRLS1, TNGR2 } from '../src/engine/synth-families.js';
+
 const SVG = 'http://www.w3.org/2000/svg';
 const el = (name, attrs) => {
   const n = document.createElementNS(SVG, name);
@@ -181,22 +183,74 @@ export const fx = (f, w) => (Math.log(clamp(f, 20, 20000) / 20) / Math.log(1000)
 export const fxInv = (x, w) => 20 * (1000 ** clamp(x / w, 0, 1));
 
 /**
- * A biquad's magnitude at frequency `f`, as the four types the desk offers.
+ * How each engine BUILDS the filter its card describes — because the same four numbers
+ * do not make the same filter everywhere, and a curve drawn from the numbers alone was a
+ * picture of a filter nobody plays. Measured, not assumed: work/local/_synth-audit
+ * renders every engine's filter and compares it with this drawing.
  *
- * The textbook analogue prototype rather than the exact digital response — this is a
- * picture of what the filter is doing, drawn beside the controls doing it, and the
- * bilinear warping near Nyquist would cost accuracy where nobody is looking.
- * `slope` scales it: -24 is two of these in series, which in decibels is twice as far.
+ *   qDb       LOWPASS and HIGHPASS read RESONANCE in DECIBELS. That is Web Audio's
+ *             BiquadFilterNode, by specification, and MRDR-3's worklet port of it
+ *             (src/engine/mrdr3/primitives.js): a RESONANCE of 4 is a 4 dB peak, a linear
+ *             Q of 10^(4/20) = 1.58 — not the 12 dB a linear 4 would be. Bandpass and notch
+ *             read it linearly on every engine.
+ *   follower  the Q of every stage after the first in a -24 cascade. `null` repeats the
+ *             first stage's: Tone's Filter fans Q into every stage, so CRLS-1's resonant
+ *             -24 peaks twice over. A number is a fixed stage behind a resonant first one:
+ *             `_filterChain` (MRDR-3, KNDO-5) and MRDR-3's worklet set 0.7071, which a
+ *             lowpass then reads as 0.7071 dB — linear 1.085, a little above Butterworth;
+ *             TNGR-2's SVF sets it linearly, a true Butterworth stage.
+ *   skirt     the bandpass peaks at Q rather than at 0 dB — TNGR-2's state-variable band
+ *             tap (src/engine/tngr2/dsp.js), where the biquad's bandpass is normalised.
  */
-export function magnitudeDb(f, { cutoff, Q, type, slope }) {
+export const FILTER_MODELS = {
+  // MRDR-3 (native and worklet) and KNDO-5.
+  biquad: { qDb: true, follower: 0.7071, skirt: false },
+  // CRLS-1, and the Filter effect: a Tone.Filter.
+  tone: { qDb: true, follower: null, skirt: false },
+  // TNGR-2.
+  svf: { qDb: false, follower: Math.SQRT1_2, skirt: true },
+};
+
+/** Which of those an engine's filter card is drawn with. */
+export const filterModelOf = (synth) => {
+  const family = synthFamily(synth);
+  if (family === TNGR2) return 'svf';
+  if (family === CRLS1) return 'tone';
+  return 'biquad';
+};
+
+/** -12 is one stage, -24 two in series, -48 four — the engines' own count. */
+const stagesOf = (slope) => {
+  const n = Math.abs(Number(slope) || 12);
+  return n >= 48 ? 4 : (n >= 24 ? 2 : 1);
+};
+
+/**
+ * A filter's magnitude at frequency `f`, as the four types the desk offers, in dB.
+ *
+ * Each stage is the textbook analogue prototype rather than the exact digital response —
+ * this is a picture of what the filter is doing, drawn beside the controls doing it. The
+ * bilinear warping is the one thing it leaves out, and it only bends the top of the range:
+ * within a dB below 5 kHz, more above a high cutoff (measured, ~8 dB at 11 kHz on a 4 kHz
+ * resonant -24). A cascade is drawn stage by stage, each with the Q its engine really
+ * gives it (see FILTER_MODELS), and the stages' decibels add.
+ */
+export function magnitudeDb(f, { cutoff, Q, type, slope, model = 'biquad' }) {
+  const m = FILTER_MODELS[model] || FILTER_MODELS.biquad;
   const w = f / cutoff;
   const w2 = w * w;
-  const den = Math.sqrt((1 - w2) ** 2 + (w / Q) ** 2) || 1e-6;
-  const m = type === 'highpass' ? w2 / den
-    : type === 'bandpass' ? (w / Q) / den
-      : type === 'notch' ? Math.abs(1 - w2) / den
-        : 1 / den;
-  const db = 20 * Math.log10(Math.max(m, 1e-4)) * (Math.abs(slope) / 12);
+  const dbQ = m.qDb && (type === 'lowpass' || type === 'highpass' || !type);
+  let db = 0;
+  for (let s = 0, n = stagesOf(slope); s < n; s++) {
+    const set = s === 0 || m.follower == null ? Q : m.follower;
+    const q = Math.max(1e-4, dbQ ? 10 ** (set / 20) : set);
+    const den = Math.sqrt((1 - w2) ** 2 + (w / q) ** 2) || 1e-6;
+    const mag = type === 'highpass' ? w2 / den
+      : type === 'bandpass' ? (m.skirt ? w : w / q) / den
+        : type === 'notch' ? Math.abs(1 - w2) / den
+          : 1 / den;
+    db += 20 * Math.log10(Math.max(mag, 1e-4));
+  }
   return clamp(db, -45, 24);
 }
 
@@ -206,8 +260,13 @@ export function magnitudeDb(f, { cutoff, Q, type, slope }) {
  * One handle moves both: x is the cutoff, y is the resonance. That is the gesture a
  * filter actually wants — you are aiming at a corner, not setting two numbers — and it is
  * why `writeMany` exists.
+ *
+ * `model` names how the engine builds the filter (FILTER_MODELS), or is a function that
+ * says so at draw time — a window that can switch preset under its graph asks each time.
  */
-export function responseGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 94 }) {
+export function responseGraph({
+  rows, read, writeMany, onLive, onStart, onEnd, h = 94, model = 'biquad',
+}) {
   const box = document.createElement('div');
   box.className = 'sfgraph';
   box.style.height = `${h}px`;
@@ -240,6 +299,7 @@ export function responseGraph({ rows, read, writeMany, onLive, onStart, onEnd, h
       // No SLOPE row means the card has no slope to choose: one native biquad stage,
       // which is -12 dB per octave.
       slope: rows.slope ? Number(read(rows.slope) ?? rows.slope.def) : -12,
+      model: typeof model === 'function' ? model() : model,
     };
     let d = '';
     for (let i = 0; i <= 60; i++) {

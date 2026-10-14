@@ -33,11 +33,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
 | 2026-09-27 | `833af42` | [2026-09-27-833af42.html](2026-09-27-833af42.html) | [bake-offs](2026-09-27-833af42-lab.html) | feat: add audio reports functionality and UI updates |
 | 2026-10-04 | `c25625e` | [2026-10-04-c25625e.html](2026-10-04-c25625e.html) | [bake-offs](2026-10-04-c25625e-lab.html) | feat: add new Banger report and section effects functionality |
-| 2026-10-07 | `fcd3390` | [2026-10-07-fcd3390.html](2026-10-07-fcd3390.html) | [bake-offs](2026-10-07-fcd3390-lab.html) | Add mermaid sprite implementation with various styles and animations |
-| 2026-10-07 | `5da2928` | [2026-10-07-5da2928.html](2026-10-07-5da2928.html) | [bake-offs](2026-10-07-5da2928-lab.html) | Add Banger Fusion functionality and related tests |
-| 2026-10-07 | `8872f69` | [2026-10-07-8872f69.html](2026-10-07-8872f69.html) | [bake-offs](2026-10-07-8872f69-lab.html) | Add tests for Banger Mood Pairs functionality |
-| 2026-10-07 | `8519c68` | [2026-10-07-8519c68.html](2026-10-07-8519c68.html) | [bake-offs](2026-10-07-8519c68-lab.html) | Enhance pre-push hook to log test results and notify on failure; update gallery entries and descriptions |
-| 2026-10-07 | `824c335` | [2026-10-07-824c335.html](2026-10-07-824c335.html) | [bake-offs](2026-10-07-824c335-lab.html) | Implement strike completion messages in BangerClubState and add related tests |
 | 2026-10-08 | `1bac968` | [2026-10-08-1bac968.html](2026-10-08-1bac968.html) | [bake-offs](2026-10-08-1bac968-lab.html) | Enhance app manifest and lifecycle handling for lock screen integration; update tests for consistency |
 | 2026-10-08 | `3d80115` | [2026-10-08-3d80115.html](2026-10-08-3d80115.html) | [bake-offs](2026-10-08-3d80115-lab.html) | Jukebox REPEAT switch; lock-screen stand-in back on |
 | 2026-10-09 | `3093b8d` | [2026-10-09-3093b8d.html](2026-10-09-3093b8d.html) | [bake-offs](2026-10-09-3093b8d-lab.html) | Update chip result trims for improved audio balance across various tracks |

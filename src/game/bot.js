@@ -421,6 +421,10 @@ export class DemoBot {
         act = 'air';
       } else if (act !== 'jump' && act !== 'slide') continue;
       if (ob.route && ob.route !== run.route) continue;
+      // Gravity Grid: only the rail he is running on (or flipping to) is his. The
+      // other rail's hazards are overhead or underfoot of nobody, and jumping at
+      // them made the bot hop the whole level (Peter, 14 Oct).
+      if (run.gravityLane != null && (ob.gravityCeiling != null) !== (run.gravityLane === 1)) continue;
       const drift = ob.def.airDrift ? ob.def.airDrift.amp : 0;
       // Only the half of its motion that closes on him counts. A prop drifting
       // AWAY does not buy the bot time it can spend, because the drift is a
