@@ -11,7 +11,8 @@
 // Spaced well apart (13 Oct: "much more minimal").
 // The ridge rows themselves are the bake-off's (same bases, colours and
 // parallax); each variant only adds its flat ground and what stands on it.
-import { domes, tower, launchPad, pumpjack, rover, HULL, WARM, RED, traceAt, invasionStrike, martianStanding, boom, gagCraft } from './space-life.js';
+import { domes, tower, launchPad, pumpjack, rover, HULL, WARM, RED, traceAt, invasionStrike, boom, gagCraft } from './space-life.js';
+import { martianSuited, SUIT_PALETTES } from './martian-candidates.js';
 
 const TAU = Math.PI * 2;
 const hash = n => ((Math.sin(n * 78.233 + 12.9) * 43758.5453) % 1 + 1) % 1;
@@ -242,6 +243,11 @@ export function setBlastHook(fn) { blastHook = fn; }
 // occasional()); `shotHook` hears each shot once, for its pew.
 let raidGun = null, shotHook = null;
 export function setShotHook(fn) { shotHook = fn; }
+// Level 3's lone Martian: `ackHook` hears him open fire on the low craft, for
+// his ACK! ACK! ACK! (Peter, 14 Oct). Called every frame he is shooting; the
+// listener says it once.
+let ackHook = null;
+export function setAckHook(fn) { ackHook = fn; }
 const BOLT_LEAD = 20;      // sweep units of flight: ~0.28 s
 function aimedBolt(c, cx, cy, key) {
   if (!raidGun) return;
@@ -451,7 +457,10 @@ function loneMartian(c, s, f) {
   const aim = g.dd > -420 && g.dd < 30 ? Math.max(-1.45, Math.min(0, Math.atan2(ty - shoulderY, tx - shoulderX))) : null;
   const shooting = g.dd > -50 && g.dd < 10 ? (g.dd + 50) / 60 : null;
   traceAt('loneMartian', mx, 10);
-  martianStanding(c, mx, y, sc, s.t, { face: 1, aim, shooting });
+  // The crimson-and-gold suit, plain head and helmet (Peter, 14 Oct: B) — off
+  // the jade, where the teal one sank.
+  martianSuited(c, mx, y, sc, s.t, { pal: SUIT_PALETTES.crimson, face: 1, aim, shooting });
+  if (shooting != null) ackHook?.();
   if (shooting != null) {
     const gx = shoulderX + Math.cos(aim) * 8.4 * sc, gy = shoulderY + Math.sin(aim) * 8.4 * sc, k = Math.min(1, shooting * 1.6);
     c.strokeStyle = 'rgba(180,255,150,0.95)'; c.lineWidth = 1; c.lineCap = 'round';

@@ -33,10 +33,15 @@ const SUIT = ['#7ee0c8', '#3fb5a0', '#227866', '#134a40'];
 // ---------------------------------------------------------------- the Martian
 // Head and helmet in local units: origin at the collar, the head about 14 tall.
 // `talk` 0..1 opens the jaw (ACK! ACK!); `look` -1..1 shifts the pupils.
-export function martianHead(c, x, y, sc, t, { talk = 0, look = 0 } = {}) {
+// `helmet: false` leaves off the bubble — for a pilot already under the
+// saucer's dome, where two layers of glass only fog the face (Peter, 14 Oct).
+// `collar: null` leaves off the suit's pointed collar round the neck — a plain
+// head in a plain helmet (Peter, 14 Oct: "remove embellishments around the face
+// and neck").
+export function martianHead(c, x, y, sc, t, { talk = 0, look = 0, helmet = true, collar = SUIT } = {}) {
   c.save(); c.translate(x, y); c.scale(sc, sc);
   // Helmet glass, back half: a faint tint behind the head.
-  c.beginPath(); c.arc(0, -8, 8.4, 0, TAU); c.fillStyle = 'rgba(190,240,255,0.14)'; c.fill();
+  if (helmet) { c.beginPath(); c.arc(0, -8, 8.4, 0, TAU); c.fillStyle = 'rgba(190,240,255,0.14)'; c.fill(); }
   // Skull face: cheekbones, hollow temples, a narrow jaw.
   poly(c, [[-3.6, -6.8], [-3.9, -4.6], [-2.6, -2.2], [-1.4, -1.2], [1.4, -1.2], [2.6, -2.2], [3.9, -4.6], [3.6, -6.8]], SKIN[1]);
   poly(c, [[-3.6, -6.8], [-3.9, -4.6], [-2.6, -2.2], [-1.4, -1.2], [0, -1.2], [0, -6.8]], SKIN[0]);
@@ -73,12 +78,15 @@ export function martianHead(c, x, y, sc, t, { talk = 0, look = 0 } = {}) {
   // Brow ridge where brain meets skull.
   poly(c, [[-3.8, -6.9], [3.8, -6.9], [3.4, -6.3], [-3.4, -6.3]], SKIN[2]);
   // High suit collar with its points, and the helmet's collar ring.
-  poly(c, [[-6.4, 0.6], [-5.2, -3.6], [-3.4, -1.4], [-1.6, -0.6], [1.6, -0.6], [3.4, -1.4], [5.2, -3.6], [6.4, 0.6]], SUIT[1]);
-  poly(c, [[-6.4, 0.6], [-5.2, -3.6], [-3.4, -1.4], [-4.4, 0.6]], SUIT[0]);
-  poly(c, [[6.4, 0.6], [5.2, -3.6], [3.4, -1.4], [4.4, 0.6]], SUIT[2]);
+  if (collar) {
+    poly(c, [[-6.4, 0.6], [-5.2, -3.6], [-3.4, -1.4], [-1.6, -0.6], [1.6, -0.6], [3.4, -1.4], [5.2, -3.6], [6.4, 0.6]], collar[1]);
+    poly(c, [[-6.4, 0.6], [-5.2, -3.6], [-3.4, -1.4], [-4.4, 0.6]], collar[0]);
+    poly(c, [[6.4, 0.6], [5.2, -3.6], [3.4, -1.4], [4.4, 0.6]], collar[2]);
+  }
   c.beginPath(); c.ellipse(0, 0.2, 6.2, 1.3, 0, 0, TAU); c.fillStyle = SILVER[3]; c.fill();
   c.beginPath(); c.ellipse(0, -0.1, 6.2, 1, 0, Math.PI, 0); c.fillStyle = SILVER[1]; c.fill();
   // Helmet glass, front: a rim and two highlights.
+  if (!helmet) { c.restore(); return; }
   c.beginPath(); c.arc(0, -8, 8.4, Math.PI * 0.08, Math.PI * 0.92, true);
   c.strokeStyle = 'rgba(230,250,255,0.75)'; c.lineWidth = 0.35; c.stroke();
   c.beginPath(); c.ellipse(-4.6, -11.4, 1, 2.6, 0.55, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.55)'; c.fill();
@@ -133,7 +141,7 @@ export function martianStanding(c, x, y, sc, t, { fire = true, face = 1, aim: ai
 // chasing lights round the rim, a spinning band below, a clear dome with the
 // Martian inside, and a heat-ray emitter underneath. About 50 wide at sc 1.
 // `rayLen` (local units) stretches the heat ray to exactly reach a target.
-export function marsSaucer(c, x, y, sc, t, { pilot = true, ray = 0, rayLen = 70 } = {}) {
+export function marsSaucer(c, x, y, sc, t, { pilot = true, ray = 0, rayLen = 70, pilotHelmet = true, pilotSc = 0.58 } = {}) {
   c.save(); c.translate(x, y); c.scale(sc, sc);
   const R = 25, wob = Math.sin(t * 1.7) * 0.04;
   c.rotate(wob);
@@ -157,7 +165,7 @@ export function marsSaucer(c, x, y, sc, t, { pilot = true, ray = 0, rayLen = 70 
   c.save(); c.beginPath(); c.ellipse(0, -2.6, 8.6, 9.4, 0, Math.PI, 0); c.closePath(); c.clip();
   if (pilot) {
     c.fillStyle = 'rgba(170,230,240,0.32)'; c.fillRect(-9, -12, 18, 10);
-    martianHead(c, 0, -2.6, 0.58, t, { talk: Math.max(0, Math.sin(t * 6)) * 0.6, look: Math.sin(t * 0.9) });
+    martianHead(c, 0, -2.6, pilotSc, t, { talk: Math.max(0, Math.sin(t * 6)) * 0.6, look: Math.sin(t * 0.9), helmet: pilotHelmet });
   } else {
     // Frosted: no seeing in (Peter, 13 Oct) — the Martian is level 3's reveal,
     // so the small saucers keep their crews hidden. A milky glass, lit from the

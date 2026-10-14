@@ -2406,7 +2406,9 @@ export function hudTopBands(run) {
   if (isPhonePortraitPresentation()) {
     const layout = portraitHudLayout(presentationFrame(), { rhythmStage: portraitRhythmRail(run), oneHit: run?.oneHit === true });
     const y1 = Math.min(H * 0.4, layout.bonusY + 26 * layout.panelScale);
-    return { W, H, port: true, pill: { x0: 0, y0: 0, x1: W, y1 }, goal: null };
+    // `cx1` is where the stack's ink ends (the pill's right edge), for the corner swap to hop it across.
+    const cx1 = layout.left + statusCornerW(run) * layout.panelScale;
+    return { W, H, port: true, pill: { x0: 0, y0: 0, x1: W, y1, cx1 }, goal: null };
   }
   const y1 = OBJ_ROW2_Y + PILL_H + 6;
   const pillRight = PILL_X + statusCornerW(run) + 4;

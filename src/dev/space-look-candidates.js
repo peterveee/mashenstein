@@ -14,6 +14,7 @@ import { GRAVITY_LEVEL as L, GATES, HAZARDS } from './gravity/model.js';
 import { drawGravityRoom } from './gravity/scene.js';
 import { lifePass, ALL_LIFE, DIRECTED_LIFE, titleStarfield, traceAt } from './space-life.js';
 import { PLATEAU_VARIANTS, invasionSky } from './space-plateaus.js';
+import { PLANET_CANDIDATES } from './space-planet-candidates.js';
 import { GROUND_Y, applyWorld, screenYFor } from '../engine/camera.js';
 import { makeObstacle } from '../game/entities.js';
 import { drawWorldEntity, HERO_DRAW_H } from '../game/draw.js';
@@ -803,29 +804,58 @@ const hybridGiant = {
 // own stretch of the run, centred on `at` (stage progress) and taking `span`
 // of it to pass; sizes sit between D's and E's. All flat facets, so a parade
 // costs about what one planet did — the room is what costs.
+//
+// Fourteen bodies now, split across the three levels so no planet repeats
+// (Peter, 14 Oct: "add all 10 planets into the mix"): `stage` says whose sky it
+// crosses. Five each: level 1 the calm ones (one ringed planet, and the twin
+// moons made to even it up), level 2 five, level 3's invasion five — the red planet first, then the magma world, the sideways
+// rings, the machine world and the moon that isn't one. The new ten paint themselves (space-planet-candidates.js);
+// `reach` is how far above its centre a body draws, in radii (the tipped-over
+// rings stand up nearly two radii).
+const NEW_PLANET = Object.fromEntries(PLANET_CANDIDATES.map(p => [p.id, p]));
+const fresh = (id, stage, at, y, extra = {}) => ({ name: NEW_PLANET[id].name.toLowerCase(), stage, at, span: 0.26, y,
+  R: NEW_PLANET[id].R, draw: NEW_PLANET[id].draw, reach: 1.05, ...extra });
 const PARADE = [
-  { name: 'ringed giant', at: 0.12, span: 0.3, R: 24, y: -88, glow: 'rgba(120,200,235,0.24)', spin: 0.08,
+  { name: 'ringed giant', stage: 1, at: 0.1, span: 0.26, R: 24, y: -88, glow: 'rgba(120,200,235,0.24)', spin: 0.08,
     opts: { nLat: 8, nLon: 16 } },
-  { name: 'cratered moon', at: 0.36, span: 0.26, R: 13, y: -100, glow: 'rgba(220,220,240,0.16)', spin: 0.03,
+  fresh('ocean', 1, 0.3, -92),
+  fresh('pluto', 1, 0.5, -96),
+  fresh('twins', 1, 0.7, -94, { reach: 1.4, halfK: 3.2 }),
+  fresh('dune', 1, 0.9, -90),
+  { name: 'cratered moon', stage: 2, at: 0.1, span: 0.26, R: 13, y: -100, glow: 'rgba(220,220,240,0.16)', spin: 0.03,
     opts: { nLat: 6, nLon: 12, rings: false, craters: 0.3, seed: 40, tilt: 0.2,
       ramps: [['#2a2a34', '#4c4c58', '#7a7a86', '#a9a9b2', '#d8d8dc']] } },
-  { name: 'ice world', at: 0.6, span: 0.3, R: 20, y: -92, glow: 'rgba(150,220,255,0.3)', spin: 0.06,
+  fresh('storm', 2, 0.3, -84),
+  fresh('geode', 2, 0.5, -98),
+  fresh('eyeball', 2, 0.7, -92),
+  { name: 'ice world', stage: 2, at: 0.9, span: 0.26, R: 20, y: -92, glow: 'rgba(150,220,255,0.3)', spin: 0.06,
     opts: { nLat: 8, nLon: 16, rings: false, craters: 0.12, seed: 70,
       ramps: [['#14263e', '#2c5478', '#5c95c0', '#a6d4ef', '#eefaff'], ['#1a2e46', '#386588', '#78acd0', '#c4e6f6', '#ffffff']] } },
-  { name: 'red planet and its moon', at: 0.85, span: 0.3, R: 17, y: -94, glow: 'rgba(255,140,90,0.24)', spin: 0.07,
+  { name: 'red planet and its moon', stage: 3, at: 0.1, span: 0.28, R: 17, y: -94, glow: 'rgba(255,140,90,0.24)', spin: 0.07,
     opts: { nLat: 7, nLon: 14, rings: false, craters: 0.2, seed: 90, tilt: 0.25,
       ramps: [['#2e1416', '#5e2420', '#9a3e2a', '#d06a3e', '#f4a66a'], ['#2a1214', '#54201e', '#8a3626', '#c25e38', '#ea9660']] },
     moon: { dx: 30, dy: -16, R: 6, ramps: [['#2a2626', '#4e4644', '#7e726a', '#b2a496']] } },
+  // Mars first: level 3 is the invasion (Peter, 14 Oct: "red planet first").
+  fresh('magma', 3, 0.28, -96),
+  // Moved from level 1 so it has only the one ringed planet (Peter, 14 Oct).
+  fresh('sideways', 3, 0.47, -80, { R: 13, reach: 1.95 }),
+  fresh('machine', 3, 0.66, -90),
+  fresh('battlemoon', 3, 0.84, -98),
 ];
 function planetParade(c, s, w) {
+  const stage = s.stage ?? 1;
   for (const p of PARADE) {
+    if (p.stage !== stage) continue;
     const u = (s.progress - p.at) / p.span;           // -0.5 .. 0.5 while it is in view
     if (u < -0.6 || u > 0.6) continue;
     // Never cut by the top of the glass: tall glass draws the view 1.3× about
     // the floor, which lifted the high planets past the ceiling (Peter, 14 Oct).
-    const reach = Math.max(p.R * (p.opts.rings === false ? 1.05 : 1.3), p.moon ? p.moon.R - p.moon.dy : 0) + 5;
-    const x = w / 2 - u * (w + 2 * p.R + 60), y = Math.max(p.y + u * 6, (s.glassTop ?? -Infinity) + reach);
-    traceAt(`planet:${p.name}`, x, p.R * 2);
+    const reach = (p.draw ? p.R * p.reach : Math.max(p.R * (p.opts.rings === false ? 1.05 : 1.3), p.moon ? p.moon.R - p.moon.dy : 0)) + 5;
+    // Wide enough for the dune world's moons and the glows to clear the edge.
+    const half = p.R * (p.halfK ?? (p.draw ? 2.4 : 2));
+    const x = w / 2 - u * (w + 2 * half + 60), y = Math.max(p.y + u * 6, (s.glassTop ?? -Infinity) + reach);
+    traceAt(`planet:${p.name}`, x, half);
+    if (p.draw) { p.draw(c, x, y, p.R, s.t); continue; }
     glow(c, x, y, p.R * 1.9, p.glow);
     polyPlanet(c, x, y, p.R, s.t * p.spin, p.opts.nLat, p.opts.nLon, p.opts);
     if (p.moon) polyPlanet(c, x + p.moon.dx, y + p.moon.dy, p.moon.R, s.t * 0.1, 5, 10,

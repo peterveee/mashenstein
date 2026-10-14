@@ -51,3 +51,5 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-12 | `ae27abf` | [2026-10-12-ae27abf.html](2026-10-12-ae27abf.html) | [bake-offs](2026-10-12-ae27abf-lab.html) | Crash log: never let the trail break boot |
 | 2026-10-13 | `d11c0b6` | [2026-10-13-d11c0b6.html](2026-10-13-d11c0b6.html) | [bake-offs](2026-10-13-d11c0b6-lab.html) | Fix the deploy: Gravity Grid cues on the SFX desk, six stale test checks updated |
 | 2026-10-13 | `c7addb6` | [2026-10-13-c7addb6.html](2026-10-13-c7addb6.html) | [bake-offs](2026-10-13-c7addb6-lab.html) | Fix sweep reach calculation in effects editor and add new gallery files for October 2026 |
+| 2026-10-14 | `f31338c` | [2026-10-14-f31338c.html](2026-10-14-f31338c.html) | [bake-offs](2026-10-14-f31338c-lab.html) | feat: add surge HUD effects with dynamic movement and visual glitches |
+| 2026-10-14 | `c573fc8` | [2026-10-14-c573fc8.html](2026-10-14-c573fc8.html) | [bake-offs](2026-10-14-c573fc8-lab.html) | Fix the deploy: surge HUD on a stub canvas, two stale gravity test checks |

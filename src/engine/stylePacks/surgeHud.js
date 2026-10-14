@@ -136,7 +136,7 @@ export function surgeHudPasses(ev, bands) {
     if (g) {
       out.push(whole('pill', { dx: bands.W - EDGE - p.x1 }));
       out.push(whole('goal', { dx: EDGE - g.x0 }));
-    } else out.push(whole('pill', { dx: bands.W - EDGE - p.x1 }));
+    } else out.push(whole('pill', { dx: bands.W - EDGE - (p.cx1 ?? p.x1) }));
   }
   return out;
 }

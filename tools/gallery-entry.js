@@ -116,6 +116,9 @@ import { BAKEOFF as PLUMBER_OBSTACLES } from '../src/dev/plumber-obstacle-candid
 import { SPACE_LOOK_LIST, SPACE_SHOTS, SPACE_PARADE, SPACE_LOOKS, SPACE_JADE_CHEVRONS, SPACE_STRIPS, SPACE_LIFE_LOOKS, SPACE_PLATEAU_LOOKS, drawSpaceShot } from '../src/dev/space-look-candidates.js';
 import { SPACE_LIFE, SPACE_LIFE_OBJECTS } from '../src/dev/space-life.js';
 import { MARS_CANDIDATES } from '../src/dev/mars-attacks-candidates.js';
+import { marsSaucer, martianStanding } from '../src/dev/mars-attacks-candidates.js';
+import { PLANET_CANDIDATES } from '../src/dev/space-planet-candidates.js';
+import { martianRobed, martianCaped, martianPriest, martianLady, martianSuited, SUIT_PALETTES } from '../src/dev/martian-candidates.js';
 // The shipped jade room with a Mars Attacks candidate painted into the view
 // (sky behind the land, ground in front).
 function marsLook(cand) {
@@ -9686,6 +9689,120 @@ obstacleBakeoff(sectionEl('neon-obstacle-bakeoff', NEON_OBSTACLES.title, NEON_OB
     HUD_LEVELS.forEach((lv, li) => live(grid, 'land', cand, li, `${cand.letter} \u2014 landscape, ${lv.name}`));
     HUD_LEVELS.slice(1).forEach((lv, i) => live(grid, 'port', cand, i + 1, `${cand.letter} \u2014 portrait, ${lv.name}`));
   }
+}
+
+// --------------------------------------------- SPACE CABINET — ten new planets (lab)
+// 14 Oct 2026: "give me 10 new planets … one to be the famous image of pluto
+// with the love heart … go wild … can be from science fiction".
+// src/dev/space-planet-candidates.js. In-run size: the vista's units at the
+// desktop's 1.93 (room 0.93 × view 1.3 × zoom 1.6), on the jade sky.
+const VISTA_Z = 1.93;
+function jadeSky(ctx, w, h, seed = 1) {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#05140f'); g.addColorStop(0.7, '#0e3328'); g.addColorStop(1, '#2a6a52');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 26; i++) {
+    const r = ((Math.sin((i + seed * 31) * 78.233) * 43758.5453) % 1 + 1) % 1, q = ((Math.sin((i + seed * 17) * 12.9898) * 43758.5453) % 1 + 1) % 1;
+    ctx.fillStyle = `rgba(230,255,245,${0.25 + 0.4 * q})`; ctx.fillRect(r * w, q * h * 0.8, 1, 1);
+  }
+}
+{
+  const grid = section('space-planet-bakeoff', 'SPACE CABINET — ten new planets (shipped)',
+    'Ten more bodies for the parade, so the windows repeat less: Pluto with its heart, and nine from anywhere — giants, a lava world, '
+    + 'an Earth, a desert with two moons, a crystal, a tipped-over ringed giant, a machine planet, a tidally locked eyeball world and a moon '
+    + 'that isn’t one. Same flat facets as the parade, the surface painted from latitude and longitude so it turns with the planet. '
+    + 'At desktop in-run size on the jade sky. Pick any. ANIMATED.',
+    '14 Oct 2026');
+  PLANET_CANDIDATES.forEach((p, i) => {
+    const vw = 96, vh = 76;
+    tile(grid, `${i + 1} — ${p.name}`, p.note, vw * VISTA_Z, vh * VISTA_Z, (ctx, t) => {
+      jadeSky(ctx, vw * VISTA_Z, vh * VISTA_Z, i + 1);
+      ctx.save(); ctx.scale(VISTA_Z, VISTA_Z); p.draw(ctx, vw / 2, vh / 2, p.R, t + i * 3); ctx.restore();
+    }, { animated: true });
+  });
+  // In the level (14 Oct, all ten went in): each new body at its moment, in the
+  // shipped room, scenery only. Level 1 gets five, level 2 five, level 3 four.
+  const PL = SPACE_LOOKS['plateau-occasional'];
+  for (const p of SPACE_PARADE.filter(p => p.draw)) {
+    tile(grid, `In level ${p.stage} — ${p.name}`, `mid-window at ${Math.round(p.at * 100)}% of level ${p.stage}`, 480, 270,
+      (ctx, t) => drawSpaceShot(ctx, t, PL, SPACE_SHOTS[0], 480, 270, p.at, { scenery: true, stage: p.stage }), { animated: true });
+  }
+}
+
+// --------------------------------------------- SPACE CABINET — refined Martians (lab)
+// 14 Oct 2026: "refined martians - in particular the standing one? don't they
+// wear robes? … does the one in the spaceship wear a helmet inside … perhaps
+// remove for a clearer view … the martian lady from the movie too".
+// src/dev/martian-candidates.js. In-run size: the lone Martian's sc 0.8 and
+// the finish saucer's sc 1 in the vista, at the desktop's 1.93.
+{
+  const s = sectionEl('space-martian-bakeoff', 'SPACE CABINET — refined Martians (bake-off)',
+    'The standing Martian redressed — in the film the troopers wear fitted suits and the ones in charge flowing robes and capes — the saucer '
+    + 'pilot without the bubble helmet he was wearing under the dome, and the Martian Girl. Each on a butte top or in the sky as the level '
+    + 'draws it, at desktop in-run size. ANIMATED.',
+    '14 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  const Z = VISTA_Z;
+  const butte = (ctx, x, top, w, h) => {
+    ctx.fillStyle = '#3a4a2c'; ctx.beginPath(); ctx.moveTo(x - w / 2 - 6, h); ctx.lineTo(x - w / 2, top); ctx.lineTo(x + w / 2, top); ctx.lineTo(x + w / 2 + 6, h); ctx.fill();
+    ctx.fillStyle = '#b8c27a'; ctx.beginPath(); ctx.moveTo(x - w / 2 - 6, h); ctx.lineTo(x - w / 2, top); ctx.lineTo(x - w / 4, top); ctx.lineTo(x - w / 3, h); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(x - w / 2, top - 0.6, w, 0.8);
+  };
+  const onButte = (grid, name, note, draw) => {
+    const vw = 70, vh = 54;
+    tile(grid, name, note, vw * Z, vh * Z, (ctx, t) => {
+      jadeSky(ctx, vw * Z, vh * Z, 7);
+      ctx.save(); ctx.scale(Z, Z); butte(ctx, vw / 2, vh - 12, 28, vh); draw(ctx, vw / 2 - 3, vh - 12, t); ctx.restore();
+    }, { animated: true });
+  };
+  const standing = sub('1. The standing Martian', 'A is today’s. B–D are robed or caped, as the ones in charge dress in the film; all keep the helmet (they need it out here) and the ray gun, and fire the odd zap.');
+  onButte(standing, 'A — today: the trooper’s suit', 'Fitted teal suit, belt, ray gun. The reference.', (c, x, y, t) => martianStanding(c, x, y, 0.8, t));
+  onButte(standing, 'B — the robed Martian', 'A floor-length magenta robe with a gold hem and front stripe, a gold sash, a bell sleeve on the gun arm, and a tall silver collar fanning up behind the helmet.', (c, x, y, t) => martianRobed(c, x, y, 0.8, t));
+  onButte(standing, 'C — the caped commander', 'The trooper’s suit, slimmer, under a scarlet cape that lifts and settles in the wind, with a scarlet collar fan and silver shoulder discs.', (c, x, y, t) => martianCaped(c, x, y, 0.8, t));
+  onButte(standing, 'D — the high priest', 'An ivory robe with gold bands, a taller silver collar and a bigger brain on a narrower body — the film’s proportions, mostly head.', (c, x, y, t) => martianPriest(c, x, y, 0.8, t));
+  const pilots = sub('2. The saucer pilot', 'The level-3 saucer as it hovers at the finish. A is today: the pilot wears his bubble helmet under the dome, two layers of glass. B and C take the helmet off.');
+  for (const [name, note, opts] of [['A — today: helmet under the dome', 'Two glass outlines and two sets of highlights over the face.', {}],
+    ['B — no helmet', 'Just the dome’s glass: the skull face and brain read clearly.', { pilotHelmet: false }],
+    ['C — no helmet, a bigger head', 'As B with the head grown to fill the dome (0.58 → 0.7), so he’s the first thing you see.', { pilotHelmet: false, pilotSc: 0.7 }]]) {
+    const vw = 70, vh = 40;
+    tile(pilots, name, note, vw * Z, vh * Z, (ctx, t) => {
+      jadeSky(ctx, vw * Z, vh * Z, 3);
+      ctx.save(); ctx.scale(Z, Z); marsSaucer(ctx, vw / 2, vh / 2 + 4, 1, t, opts); ctx.restore();
+    }, { animated: true });
+  }
+  const lady = sub('3. The Martian Girl', 'The film’s disguise: towering black beehive with a white swirl, pale face, big lined eyes, red lips, a skin-tight red dress printed with black-and-white spirals, a stiff gliding walk — and a gum bubble every few seconds.');
+  onButte(lady, 'A — walking', 'The hip-sway glide, head held steady.', (c, x, y, t) => martianLady(c, x, y, 0.8, t));
+  onButte(lady, 'B — standing still', 'Posed, no walk; the gum still pops.', (c, x, y, t) => martianLady(c, x, y, 0.8, t, { walk: 0 }));
+  onButte(lady, 'C — beside a robed Martian', 'For scale against B of the standing Martians.', (c, x, y, t) => { martianLady(c, x - 8, y, 0.8, t, { walk: 0 }); martianRobed(c, x + 10, y, 0.8, t, { face: -1, fire: false }); });
+}
+
+// --------------------------------------------- SPACE CABINET — the suited Martian (lab)
+// 14 Oct 2026: "improve the regular suited Martian. The suit is not great.
+// Also is the colour ideal since our background is already green? Give some
+// variants." src/dev/martian-candidates.js martianSuited. Each on a butte at
+// the lone Martian's in-run size (sc 0.8 at the desktop's 1.93), on the jade sky.
+{
+  const grid = section('space-suited-martian', 'SPACE CABINET — the suited Martian (B shipped)',
+    'A is today’s teal suit, which sinks into the jade. B–F are a better-cut suit (tapered torso with shoulder pads and a lit chest plate, '
+    + 'chunky belt and round buckle, gloves, knee pads, flared boots, a plain head and helmet) in colours that sit off the green. B shipped 14 Oct. '
+    + 'Each on a butte at the lone Martian’s in-run size. ANIMATED.',
+    '14 Oct 2026');
+  const Z = VISTA_Z, vw = 70, vh = 54;
+  const butte = (ctx, x, top, w, h) => {
+    ctx.fillStyle = '#3a4a2c'; ctx.beginPath(); ctx.moveTo(x - w / 2 - 6, h); ctx.lineTo(x - w / 2, top); ctx.lineTo(x + w / 2, top); ctx.lineTo(x + w / 2 + 6, h); ctx.fill();
+    ctx.fillStyle = '#b8c27a'; ctx.beginPath(); ctx.moveTo(x - w / 2 - 6, h); ctx.lineTo(x - w / 2, top); ctx.lineTo(x - w / 4, top); ctx.lineTo(x - w / 3, h); ctx.fill();
+  };
+  const one = (name, note, draw) => tile(grid, name, note, vw * Z, vh * Z, (ctx, t) => {
+    jadeSky(ctx, vw * Z, vh * Z, 7);
+    ctx.save(); ctx.scale(Z, Z); butte(ctx, vw / 2, vh - 12, 28, vh); draw(ctx, vw / 2 - 3, vh - 12, t); ctx.restore();
+  }, { animated: true });
+  one('A — today: teal', 'The reference: the teal suit against the jade.', (c, x, y, t) => martianStanding(c, x, y, 0.8, t));
+  Object.values(SUIT_PALETTES).forEach((pal, i) => one(`${'BCDEF'[i]} — ${pal.name}`, 'The new cut.', (c, x, y, t) => martianSuited(c, x, y, 0.8, t, { pal })));
 }
 
 // ---------------------------------------------------------------- driver

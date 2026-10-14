@@ -374,440 +374,51 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  masterEffects: [{ id: "mbCompN", params: { lowFrequency: 150, highFrequency: 2200, "low.threshold": -26, "low.ratio": 3.5, "low.attack": 0.05, "low.release": 0.2, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3, "mid.attack": 0.02, "mid.release": 0.09, "mid.knee": 12, "high.threshold": -24, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }, { id: "l7", params: { threshold: -3.8 } }, { id: "gain", params: { gain: -1.3 } }],
+  masterEffects: [{ id: "mbCompN", params: { lowFrequency: 180, highFrequency: 1800, "low.threshold": -26, "low.ratio": 4, "low.attack": 0.06, "low.release": 0.22, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3.5, "mid.attack": 0.018, "mid.release": 0.08, "mid.knee": 12, "high.threshold": -26, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }, { id: "l7", params: { threshold: -2.7 } }, { id: "gain", params: { gain: -8.1 } }],
   layers: [{ key: "lead6", from: "lead", independent: true }, { key: "lead13", from: "lead6", independent: true }, { key: "lead12", from: "lead6", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead7", from: "lead5", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "chords3", from: "chords", independent: true }, { key: "chords4", from: "chords", independent: true }, { key: "chords5", from: "chords", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "hats2", from: "hats", independent: true }, { key: "crash2", from: "crash", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "clap2", from: "clap", independent: true }, { key: "lead8", from: "lead", independent: true }, { key: "lead9", from: "lead", independent: true }, { key: "lead10", from: "lead", independent: true }, { key: "lead11", from: "lead", independent: true }, { key: "lead14", from: "lead", independent: true }],
   order: ["kick","snare","clap","clap2","hats","hats2","ohats","rim","rim2","crash","crash2","bass","bass2","lead3","lead","lead6","lead12","lead2","lead4","lead5","lead7","lead8","lead9","lead10","lead11","chords","chords2","chords3","chords4","chords5"],
   labels: {"lead":"LEAD (MOOG / PWM) — ORIGINAL","lead2":"VIBES","lead3":"MINIMOOG 8VB — ORIGINAL","lead4":"16TH ARP","lead5":"Hi Middle Vibes","chords":"PUMPING SAW CHORDS","chords5":"SOFT PAD","chords2":"E.PIANO (LOBBY)","chords3":"RHODES","chords4":"BRASS STABS","bass":"SEQUENCER BASS","bass2":"BOSSA BASS","clap":"ORCH HIT","ohats":"OPEN HAT / RIDE","hats2":"SHAKER","crash2":"RISER","lead8":"LEAD (MOOG / PWM) — FILLS A (PASSING NOTES)","lead9":"MINIMOOG 8VB — FILLS A (PASSING NOTES)","lead10":"LEAD (MOOG / PWM) — FILLS B (TURNS & RUNS)","lead11":"MINIMOOG 8VB — FILLS B (TURNS & RUNS)","lead12":"Short Square NEW","lead6":"Short Square ORIGINAL","lead14":"LEAD VARIATION (E.GRAND)"},
-  voice: {"leadVoice":"toneSquare","lead2Voice":"squareTone2","lead3Voice":"sawtoothTone2","lead4Voice":"squareOrgan","lead5Voice":"squareTone2","chordsVoice":"squareOrgan","chords5Voice":"toneTriangle","chords2Voice":"squareOrgan","chords3Voice":"squareOrgan","chords4Voice":"toneTriangle","bassVoice":"toneTriangle","bass2Voice":"toneSine","kickVoice":"sdsKick","snareVoice":"gameBoySnare","hatsVoice":"hatEngine","hats2Voice":"hatEngine","ohatsVoice":"ohatEngine","rimVoice":"vl1Sha","clapVoice":"snareEngine","crashVoice":"crashEngine","rim2Voice":"vl1Sha","clap2Voice":"snareEngine","lead6Voice":"sawtoothTone2","lead7Voice":"jmjrHumsClosed","lead8Voice":"sawtoothTone2","lead9Voice":"sawtoothTone2","lead10Voice":"sawtoothTone2","lead11Voice":"sawtoothTone2","lead12Voice":"sawtoothTone2","lead13Voice":"sawtoothTone2","lead14Voice":"squareOrgan","tomVoice":"tomEngine"},
+  voice: {"leadVoice":"toneSquare","lead2Voice":"squareTone2","lead3Voice":"sawtoothTone2","lead4Voice":"squareOrgan","lead5Voice":"squareTone2","chordsVoice":"squareTone2","chords5Voice":"toneTriangle","chords2Voice":"squareOrgan","chords3Voice":"squareOrgan","chords4Voice":"toneTriangle","bassVoice":"toneTriangle","bass2Voice":"toneSine","kickVoice":"sdsKick","snareVoice":"gameBoySnare","hatsVoice":"hatEngine","hats2Voice":"hatEngine","ohatsVoice":"ohatEngine","rimVoice":"vl1Sha","clapVoice":"snareEngine","crashVoice":"crashEngine","rim2Voice":"vl1Sha","clap2Voice":"snareEngine","lead6Voice":"sawtoothTone2","lead7Voice":"jmjrHumsClosed","lead8Voice":"sawtoothTone2","lead9Voice":"sawtoothTone2","lead10Voice":"sawtoothTone2","lead11Voice":"sawtoothTone2","lead12Voice":"sawtoothTone2","lead13Voice":"sawtoothTone2","lead14Voice":"squareTone2","tomVoice":"tomEngine"},
   voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":4.285714285714286,"note":"White noise through a band climbing 250 Hz to 8 kHz over 4.29s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":4.285714285714286,"Q":1.6,"slope":-24,"color":"white","attack":3.942857142857143,"hold":0,"decay":0.34285714285714286,"curve":"exp","gain":1},"drive":0.08,"peak":0.034},"lead7Voice":{"label":"Hums Closed","category":"Pad","synth":"JMJR-4","dur":8,"note":"The other way: an aah that closes into a hum over two seconds, the nose coming in with it.","jmjr4":{"voice":"chorister","line":"aah","morphTo":"M","morph":100,"morphTime":2.2,"unison":3,"spread":18,"amp":{"attack":0.2,"decay":0.2,"sustain":1,"release":1.2}},"vibrato":{"depth":0.14,"rate":5,"delay":0.15},"starter":false,"transpose":-12,"kind":"tone","level":0.02701203836863605,"peak":0.1632933575749214,"songOrigin":"library","songSourceId":"lead7Voice"}},
   fx: { delay: { tone: 2600 }, reverb: { decay: 2.6, preDelay: 0.02 } },
   lanes: {
-    lead: { gain: -10, pan: -0.186, send: { delay: 0.18 }, eq: { mid: 2.7 } },
-    lead2: { gain: -8, pan: 0.3, send: { delay: 0.3 } },
+    lead: { gain: -6.8, pan: -0.186, send: { delay: 0.18 }, eq: { mid: 2.7 } },
+    lead2: { gain: -10.5, pan: 0.3, send: { delay: 0.3 } },
     lead3: { gain: -8, pan: -0.15, mute: true },
-    lead4: { gain: -1.04, pan: 0.348, send: { delay: 0.245 }, eq: { low: -8.5 }, effects: [{ id: "autopanner", params: { rateDivision: 8 } }] },
-    lead5: { gain: -5.92, pan: -0.1 },
-    chords: { gain: -12.3, effects: [{ id: "rhythmgate", params: { division: 0.25, gateLength: 0.83, attack: 0.003, decay: 0.052, depth: 1 } }, { id: "exciter" }, { id: "doubler" }] },
-    chords5: { gain: -10 },
-    chords2: { gain: -14, pan: 0.15 },
-    chords3: { gain: -0.96, pan: 0.2, effects: [{ id: "chorus", bypass: true, params: { wet: 0.3 } }, { id: "tremolo", params: { spread: 90, depth: 0.44 } }] },
-    chords4: { gain: -11, pan: -0.2 },
-    bass: { gain: -2.1, effects: [{ id: "duck", params: { trigger: "kick", depth: 0.6, attack: 0.01, hold: 0.02, release: 0.2 } }] },
-    bass2: { gain: -12 },
-    kick: { gain: 0.12, eq: { low: 2.6 }, effects: [{ id: "bell", params: { frequency: 300, gain: -5, q: 1.2 } }] },
-    snare: { gain: 0.096, effects: [{ id: "distortion", params: { wet: 0.4, distortion: 0.19 } }, { id: "reverb", bypass: true, mute: true, params: { decay: 1.6, preDelay: 0.005, wet: 0.27 } }, { id: "noisegate", bypass: true, params: { threshold: -34, attack: 0.002, release: 0.05 } }, { id: "bell", params: { frequency: 8000, gain: 2.5, q: 0.7 } }] },
-    hats: { gain: 3.36, pan: -0.24 },
-    hats2: { gain: -16, pan: 0.3 },
-    ohats: { gain: -6.56, pan: -0.2 },
-    rim: { gain: -4, pan: -0.3 },
-    clap: { gain: -4.9 },
-    crash: { gain: -0.48, send: { delay: 0.065 }, eq: { low: -6.3 }, effects: [{ id: "distortion" }] },
+    lead4: { gain: -0.34, pan: 0.348, send: { delay: 0.245 }, eq: { low: -8.5 }, effects: [{ id: "autopanner", params: { rateDivision: 8 } }] },
+    lead5: { gain: -8.12, pan: -0.1 },
+    chords: { gain: -11.5, effects: [{ id: "rhythmgate", params: { division: 0.25, gateLength: 0.83, attack: 0.003, decay: 0.052, depth: 1 } }, { id: "exciter" }, { id: "doubler" }] },
+    chords5: { gain: -17.4 },
+    chords2: { gain: -12.2, pan: 0.15 },
+    chords3: { gain: 1.04, pan: 0.2, effects: [{ id: "chorus", bypass: true, params: { wet: 0.3 } }, { id: "tremolo", params: { spread: 90, depth: 0.44 } }] },
+    chords4: { gain: -13.1, pan: -0.2 },
+    bass: { gain: -3.2, effects: [{ id: "peq", params: { f1: 110, g1: 4, f2: 500, g2: 0, q2: 1, f5: 1000, g5: 0, q5: 1, f3: 3200, g3: -3, q3: 0.9, f4: 8000, g4: -5 } }, { id: "duck", params: { trigger: "kick", depth: 0.79, attack: 0.01, hold: 0.02, release: 0.2 } }] },
+    bass2: { gain: -14.4 },
+    kick: { gain: 1.62, eq: { low: 2.6 }, effects: [{ id: "bell", params: { frequency: 300, gain: -5, q: 1.2 } }] },
+    snare: { gain: 1.2, effects: [{ id: "distortion", params: { wet: 0.4, distortion: 0.19 } }, { id: "reverb", bypass: true, mute: true, params: { decay: 1.6, preDelay: 0.005, wet: 0.27 } }, { id: "noisegate", bypass: true, params: { threshold: -34, attack: 0.002, release: 0.05 } }, { id: "bell", params: { frequency: 3200, gain: -6, q: 3.5 } }] },
+    hats: { gain: 5.64, pan: -0.24, effects: [{ id: "exciter", params: { tune: 6000, drive: 0.35, timbre: 0.7, mix: 0.25 } }] },
+    hats2: { gain: -15, pan: 0.3 },
+    ohats: { gain: -3.2, pan: -0.2 },
+    rim: { gain: -19, pan: -0.3 },
+    clap: { gain: -8, mute: true },
+    crash: { gain: -1.38, send: { delay: 0.065 }, eq: { low: -6.3 }, effects: [{ id: "distortion" }] },
     crash2: { gain: -12.1 },
-    rim2: { gain: -9.04, pan: 0.341 },
+    rim2: { gain: -9.64, pan: 0.341 },
     lead6: { gain: -6.88, pan: 0.212, mute: true, send: { delay: 0.18 }, eq: { mid: 2.7 } },
     lead7: { gain: -3.28, pan: -0.1, eq: { mid: 1.8, high: 0.3 } },
     lead8: { gain: -7.2, pan: -0.186, mute: true, send: { delay: 0.18 }, eq: { mid: 2.7 } },
     lead9: { gain: -8, pan: -0.15, mute: true },
     lead10: { gain: -7.2, pan: -0.186, mute: true, send: { delay: 0.18 }, eq: { mid: 2.7 } },
     lead11: { gain: -8, pan: -0.15, mute: true },
-    lead12: { gain: -9.04, pan: 0.212, send: { delay: 0.18 }, eq: { mid: 2.7 } },
-    lead13: { gain: -6.88, pan: 0.212, send: { delay: 0.18 }, eq: { mid: 2.7 }, effects: [{ id: "chandelay", params: { division: 1.5, tone: 6740.876, feedback: 0.39 } }] },
-    lead14: { gain: -9, pan: 0.2, send: { delay: 0.2 } },
+    lead12: { gain: -8.54, pan: 0.212, send: { delay: 0.18 }, eq: { mid: 2.7 } },
+    lead13: { gain: -7.28, pan: 0.212, send: { delay: 0.18 }, eq: { mid: 2.7 }, effects: [{ id: "chandelay", params: { division: 1.5, tone: 6740.876, feedback: 0.39 } }] },
+    lead14: { gain: -1.76, pan: 0.2, mute: true },
+    clap2: { gain: 2.84, eq: { high: 1.4 } },
   },
 };
 
 export const arrangement = {
-  order: [
-    {
-      s: 48,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 51,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 50,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 52,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 85,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 86,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 113,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 87,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 88,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 89,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 114,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 90,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 91,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 92,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 110,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 93,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 94,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 95,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 96,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 97,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 115,
-      bars: 1,
-      off: ["lead7"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 116,
-      bars: 1,
-      from: 1,
-      off: ["lead7"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 117,
-      bars: 1,
-      off: ["lead7"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 118,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 132,
-      bars: 1,
-      off: ["lead","lead12","lead3"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 133,
-      bars: 1,
-      from: 1,
-      off: ["lead","lead12","lead3"],
-      offset: {
-        rim2: -0.5,
-      },
-      gain: {
-        lead2: 4,
-      },
-    },
-    {
-      s: 134,
-      bars: 1,
-      off: ["lead","lead12","lead3"],
-      offset: {
-        rim2: -0.5,
-      },
-      gain: {
-        lead2: 5,
-      },
-    },
-    {
-      s: 135,
-      bars: 1,
-      from: 1,
-      off: ["lead","lead12","lead3"],
-      offset: {
-        rim2: -0.5,
-      },
-      gain: {
-        lead2: 5,
-      },
-    },
-    {
-      s: 136,
-      bars: 1,
-      off: ["lead","lead12","lead3"],
-      offset: {
-        rim2: -0.5,
-      },
-      gain: {
-        lead2: 5,
-      },
-    },
-    {
-      s: 137,
-      bars: 1,
-      from: 1,
-      off: ["lead","lead12","lead3"],
-      offset: {
-        rim2: -0.5,
-      },
-      gain: {
-        lead2: 5,
-      },
-    },
-    {
-      s: 138,
-      bars: 1,
-      off: ["lead","lead12","lead3"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 139,
-      bars: 1,
-      from: 1,
-      off: ["lead","lead12","lead3"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 128,
-      bars: 1,
-      off: ["lead7"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 129,
-      bars: 1,
-      from: 1,
-      off: ["lead7"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 130,
-      bars: 1,
-      off: ["lead7"],
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 131,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 119,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 120,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 111,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 121,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 122,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 123,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 112,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 124,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 125,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 108,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 126,
-      bars: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-    {
-      s: 109,
-      bars: 1,
-      from: 1,
-      offset: {
-        rim2: -0.5,
-      },
-    },
-  ],
+  order: [{"s":48,"bars":1,"offset":{"rim2":-0.5}},{"s":51,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":50,"bars":1,"offset":{"rim2":-0.5}},{"s":52,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":85,"bars":1,"off":["lead","lead12","lead6"],"offset":{"rim2":-0.5}},{"s":86,"bars":1,"from":1,"off":["lead","lead12","lead6"],"offset":{"rim2":-0.5}},{"s":113,"bars":1,"off":["lead","lead12","lead6"],"offset":{"rim2":-0.5}},{"s":87,"bars":1,"from":1,"off":["lead","lead12","lead6"],"offset":{"rim2":-0.5}},{"s":85,"bars":1,"off":["lead"],"offset":{"rim2":-0.5}},{"s":86,"bars":1,"from":1,"off":["lead"],"offset":{"rim2":-0.5}},{"s":113,"bars":1,"off":["lead"],"offset":{"rim2":-0.5}},{"s":87,"bars":1,"from":1,"off":["lead"],"offset":{"rim2":-0.5}},{"s":88,"bars":1,"offset":{"rim2":-0.5}},{"s":89,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":114,"bars":1,"offset":{"rim2":-0.5}},{"s":90,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":91,"bars":1,"offset":{"rim2":-0.5}},{"s":92,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":110,"bars":1,"offset":{"rim2":-0.5}},{"s":93,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":94,"bars":1,"offset":{"rim2":-0.5}},{"s":95,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":96,"bars":1,"offset":{"rim2":-0.5}},{"s":97,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":115,"bars":1,"off":["lead7"],"offset":{"rim2":-0.5}},{"s":116,"bars":1,"from":1,"off":["lead7"],"offset":{"rim2":-0.5}},{"s":117,"bars":1,"off":["lead7"],"offset":{"rim2":-0.5}},{"s":118,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":102,"bars":1,"off":["lead","lead12","lead3"],"offset":{"rim2":-0.5}},{"s":103,"bars":1,"from":1,"off":["lead","lead12","lead3"],"offset":{"rim2":-0.5},"gain":{"lead2":4}},{"s":132,"bars":1,"off":["lead","lead12","lead3"],"offset":{"rim2":-0.5},"gain":{"lead2":5}},{"s":104,"bars":1,"from":1,"off":["lead","lead12","lead3"],"offset":{"rim2":-0.5},"gain":{"lead2":5}},{"s":105,"bars":1,"off":["lead","lead12","lead3"],"offset":{"rim2":-0.5},"gain":{"lead2":5}},{"s":106,"bars":1,"from":1,"off":["lead","lead12","lead3"],"offset":{"rim2":-0.5},"gain":{"lead2":5}},{"s":127,"bars":1,"off":["lead","lead12","lead3"],"offset":{"rim2":-0.5}},{"s":107,"bars":1,"from":1,"off":["lead","lead12","lead3"],"offset":{"rim2":-0.5}},{"s":128,"bars":1,"off":["lead7"],"offset":{"rim2":-0.5}},{"s":129,"bars":1,"from":1,"off":["lead7"],"offset":{"rim2":-0.5}},{"s":130,"bars":1,"off":["lead7"],"offset":{"rim2":-0.5}},{"s":131,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":119,"bars":1,"offset":{"rim2":-0.5}},{"s":120,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":111,"bars":1,"offset":{"rim2":-0.5}},{"s":121,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":122,"bars":1,"offset":{"rim2":-0.5}},{"s":123,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":112,"bars":1,"offset":{"rim2":-0.5}},{"s":124,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":125,"bars":1,"offset":{"rim2":-0.5}},{"s":108,"bars":1,"from":1,"offset":{"rim2":-0.5}},{"s":126,"bars":1,"offset":{"rim2":-0.5}},{"s":109,"bars":1,"from":1,"offset":{"rim2":-0.5}},133,134],
   sections: [
     {
       base: 1,
@@ -1215,7 +826,6 @@ export const arrangement = {
       lead10Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3.6,null,null,null,3.6,null,null,null,7.2,null,null,null,null,null,null,null],
       lead12: seq('. . . . . . . . . . . . . . . . | G4 . . . D#4 . . . D4 . . . . . . .'),
       lead12Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3.6,null,null,null,3.6,null,null,null,7.2,null,null,null,null,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
@@ -1244,7 +854,6 @@ export const arrangement = {
       lead10Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3.6,null,null,null,3.6,null,null,null,7.2,null,null,null,null,null,null,null],
       lead12: seq('. . . . . . . . . . . . . . . . | G4 . . . D#4 . . . D4 . . . . . . .'),
       lead12Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3.6,null,null,null,3.6,null,null,null,7.2,null,null,null,null,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
@@ -1360,6 +969,7 @@ export const arrangement = {
       lead12Len: [1.8,null,0.9,1,0.8,null,1.8,null,1,0.8,1,0.8,1,0.8,1,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead13: seq('G4 . A#4 . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [1.8,null,1.9524149999999998,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      clap2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 74,
@@ -1375,6 +985,7 @@ export const arrangement = {
       lead12Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.8,null,0.9,1,0.8,null,1.8,null,1,0.8,1,0.8,1,0.8,1,0.8],
       lead13: seq('. . . . . . . . . . . . . . . . | G4 . A#4 D5 . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.8,null,0.9,2.7,null,null,null,null,null,null,null,null,null,null,null,null],
+      clap2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
     },
     {
       base: 81,
@@ -1390,6 +1001,7 @@ export const arrangement = {
       lead12Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,0.8,0.8,null,2,null,0.8,0.8,1,0.8,0.8,null,0.8,null,0.8,null],
       lead13: seq('. . . . . . . . . . . . . . . . | . . C5 . D#5 . F5 . D5 . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.03054,null,2.019886,null,1.944336,null,2.016868,null,null,null,null,null,null,null],
+      clap2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
     },
     {
       base: 75,
@@ -1403,8 +1015,11 @@ export const arrangement = {
       lead11Len: [1.8,null,0.9,1,0.8,0.8,1.8,null,1.8,null,1.8,null,1,0.8,1,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead12: seq('G4 . A#4 D5 C5 . A#4 . C5 D5 D#5 F5 D5 C5 A#4 A4 | . . . . . . . . . . . . . . . .'),
       lead12Len: [1.8,null,0.9,1,0.8,null,1.8,null,1,0.8,1,0.8,1,0.8,1,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead13: seq('G4 . A#4 . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      lead13Len: [1.8,null,1.9524149999999998,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead13: seq('D5 . A#4 . G4 . A#4 . C5 . D#5 . G5 . . . | . . . . . . . . . . . . . . . .'),
+      lead13Len: [2.418857,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead14: seq('D5 . A#4 . G4 . A#4 . C5 . D#5 . G5 . . . | . . . . . . . . . . . . . . . .'),
+      lead14Len: [2.418857,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      clap2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 76,
@@ -1418,8 +1033,11 @@ export const arrangement = {
       lead11Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.8,null,0.9,1,0.8,0.8,1.8,null,1.8,null,1.8,null,1,0.8,1,0.8],
       lead12: seq('. . . . . . . . . . . . . . . . | G4 . A#4 D5 C5 . A#4 . C5 D5 D#5 F5 D5 C5 A#4 A4'),
       lead12Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.8,null,0.9,1,0.8,null,1.8,null,1,0.8,1,0.8,1,0.8,1,0.8],
-      lead13: seq('. . . . . . . . . . . . . . . . | G4 . A#4 D5 . . . . . . . . . . . .'),
-      lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.8,null,2.00293,2.052912,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead13: seq('. . . . . . . . . . . . . . . . | D5 . A#4 . G4 . D5 . D#5 . . . . . . .'),
+      lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,null,null,null,null,null,null],
+      lead14: seq('. . . . . . . . . . . . . . . . | D5 . A#4 . G4 . D5 . D#5 . . . . . . .'),
+      lead14Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,2.418857,null,null,null,null,null,null,null],
+      clap2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
     },
     {
       base: 82,
@@ -1433,8 +1051,11 @@ export const arrangement = {
       lead11Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,0.8,0.8,null,2,null,0.8,0.8,2,null,0.8,0.8,0.8,null,0.8,null],
       lead12: seq('. . . . . . . . . . . . . . . . | G5 F5 D#5 . G5 . D#5 D5 D5 C5 A4 . F#4 . A4 .'),
       lead12Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,0.8,0.8,null,2,null,0.8,0.8,1,0.8,0.8,null,0.8,null,0.8,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | G5 . . . D#5 . . . D5 . . . . . . .'),
-      lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.038619,null,null,null,2.118253,null,null,null,2.0293859999999997,null,null,null,null,null,null,null],
+      lead13: seq('. . . . . . . . . . . . . . . . | D#5 . . . G5 . . . A5 . . . . . . .'),
+      lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.418857,null,null,null,4.3188569999999995,null,null,null,4.159446,null,null,null,null,null,null,null],
+      lead14: seq('. . . . . . . . . . . . . . . . | D#5 . . . G5 . . . A5 . . . . . . .'),
+      lead14Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.418857,null,null,null,4.3188569999999995,null,null,null,4.159446,null,null,null,null,null,null,null],
+      clap2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
     },
     {
       base: 83,
@@ -1444,7 +1065,6 @@ export const arrangement = {
       lead10Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       lead12: seq('. . . . . . . . . . . . . . . . | D#4 . . . . . . . C4 . . . . . . .'),
       lead12Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
@@ -1455,7 +1075,6 @@ export const arrangement = {
       lead10Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,4,null,null,null,4,null,null,null],
       lead12: seq('. . . . . . . . . . . . . . . . | F#3 . . . . . . . A3 . . . D4 . . .'),
       lead12Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,4,null,null,null,4,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
@@ -1509,7 +1128,6 @@ export const arrangement = {
       lead10Len: [1.8,null,3.6,null,null,null,1.8,null,3.6,null,null,null,3.6,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead12: seq('D4 . F4 . . . A#3 . D4 . . . F4 . . . | . . . . . . . . . . . . . . . .'),
       lead12Len: [1.8,null,3.6,null,null,null,1.8,null,3.6,null,null,null,3.6,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
@@ -1522,7 +1140,6 @@ export const arrangement = {
       lead10Len: [1.8,null,3.6,null,null,null,1.8,null,3.6,null,null,null,3.6,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead12: seq('D4 . F4 . . . A#3 . D4 . . . F4 . . . | . . . . . . . . . . . . . . . .'),
       lead12Len: [1.8,null,3.6,null,null,null,1.8,null,3.6,null,null,null,3.6,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
@@ -1713,7 +1330,6 @@ export const arrangement = {
       lead10Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead12: seq('G4 . . . . . . . D#4 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead12Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
@@ -1726,7 +1342,6 @@ export const arrangement = {
       lead10Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead12: seq('C4 . . . . . . . A3 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead12Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
@@ -1743,8 +1358,11 @@ export const arrangement = {
       lead11Len: [1.8,null,1,0.8,0.8,0.8,1.8,null,3,null,null,0.8,1,0.8,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead12: seq('D5 D#5 F5 . D5 C5 A#4 . D5 . A#4 C5 F5 . G5 F5 | . . . . . . . . . . . . . . . .'),
       lead12Len: [1,0.8,2,null,0.8,0.8,1.8,null,2,null,0.8,0.8,2,null,0.8,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead13: seq('. . . . . . . . . . . . . . F5 F#5 | . . . . . . . . . . . . . . . .'),
-      lead13Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.890891,1.713335,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead13: seq('A#4 . D5 . F5 . . . . . . . F5 . D5 . | . . . . . . . . . . . . . . . .'),
+      lead13Len: [2.418857,null,2.418857,null,4.3188569999999995,null,null,null,null,null,null,null,2.418857,null,2.418857,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead14: seq('A#4 . D5 . F5 . . . . . . . F5 . D5 . | . . . . . . . . . . . . . . . .'),
+      lead14Len: [2.418857,null,2.418857,null,4.3188569999999995,null,null,null,null,null,null,null,2.418857,null,2.418857,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      clap2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       base: 98,
@@ -1767,46 +1385,62 @@ export const arrangement = {
       lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,0.9,null,2,null,0.9,null,2,null,0.9,null,2,null,0.9,0.9],
     },
     {
-      base: 102,
-      lead14: seq('D5 . A#4 . G4 . A#4 . C5 . D#5 . G5 . F5 D5 | . . . . . . . . . . . . . . . .'),
-      lead14Len: [1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,0.95,0.95,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      base: 15,
+      lead6: seq('D5 . F5 . . . A#4 . D5 . . . F5 . . . | . . . . . . . . . . . . . . . .'),
+      lead6Len: [1.8,null,3.6,null,null,null,1.8,null,3.6,null,null,null,3.6,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead8: seq('D5 D#5 F5 . D5 C5 A#4 . D5 . A#4 C5 F5 . G5 F5 | . . . . . . . . . . . . . . . .'),
+      lead8Len: [1,0.8,2,null,0.8,0.8,1.8,null,2,null,0.8,0.8,2,null,0.8,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead9: seq('D4 D#4 F4 . D4 C4 A#3 . D4 . A#3 C4 F4 . G4 F4 | . . . . . . . . . . . . . . . .'),
+      lead9Len: [1,0.8,2,null,0.8,0.8,1.8,null,2,null,0.8,0.8,2,null,0.8,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead10: seq('D5 . F5 G5 F5 D#5 D5 . D5 . . A#4 C5 D5 F5 . | . . . . . . . . . . . . . . . .'),
+      lead10Len: [1.8,null,1,0.8,0.8,0.8,1.8,null,3,null,null,0.8,1,0.8,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead11: seq('D4 . F4 G4 F4 D#4 D4 . D4 . . A#3 C4 D4 F4 . | . . . . . . . . . . . . . . . .'),
+      lead11Len: [1.8,null,1,0.8,0.8,0.8,1.8,null,3,null,null,0.8,1,0.8,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead12: seq('D5 D#5 F5 . D5 C5 A#4 . D5 . A#4 C5 F5 . G5 F5 | . . . . . . . . . . . . . . . .'),
+      lead12Len: [1,0.8,2,null,0.8,0.8,1.8,null,2,null,0.8,0.8,2,null,0.8,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      clap2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
-      base: 103,
-      lead14: seq('. . . . . . . . . . . . . . . . | D5 . A#4 . G4 . D5 . D#5 . C5 . A#4 . C5 .'),
-      lead14Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null],
+      lead: seq('G4 . A#4 D5 . . A#4 . C5 . D#5 . D5 . A#4 . | D5 . F5 . . . A#4 . D5 . . . F5 . . .'),
+      leadLen: [1.9,null,0.95,2.8499999999999996,null,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,3.8,null,null,null,1.9,null,3.8,null,null,null,3.8,null,null,null],
+      lead12: seq('G4 . A#4 D5 C5 . A#4 . C5 D5 D#5 F5 D5 C5 A#4 A4 | D5 D#5 F5 . D5 C5 A#4 . D5 . A#4 C5 F5 . G5 F5'),
+      lead12Len: [1.9,null,0.95,0.95,1.9,null,1.9,null,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,1.9,null,0.95,0.95,1.9,null,1.9,null,0.95,0.95,1.9,null,0.95,0.95],
+      chords: [[233.08188075904496,293.6647679174076,391.99543598174927],null,[233.08188075904496,293.6647679174076,391.99543598174927],null,[233.08188075904496,293.6647679174076,391.99543598174927],null,[233.08188075904496,293.6647679174076,391.99543598174927],null,[261.6255653005986,311.1269837220809,391.99543598174927],null,[261.6255653005986,311.1269837220809,391.99543598174927],null,[233.08188075904496,293.6647679174076,391.99543598174927],null,[233.08188075904496,293.6647679174076,391.99543598174927],null,[233.08188075904496,293.6647679174076,349.2282314330039],null,[233.08188075904496,293.6647679174076,349.2282314330039],null,[233.08188075904496,293.6647679174076,349.2282314330039],null,[233.08188075904496,293.6647679174076,349.2282314330039],null,[233.08188075904496,293.6647679174076,349.2282314330039],null,[233.08188075904496,293.6647679174076,349.2282314330039],null,[233.08188075904496,293.6647679174076,349.2282314330039],null,[233.08188075904496,293.6647679174076,349.2282314330039],null],
+      chordsLen: [1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null],
+      chords5: [[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,391.99543598174927],null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[233.08188075904496,293.6647679174076,349.2282314330039],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords5Len: [8,null,null,null,null,null,null,null,4,null,null,null,4,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass: seq('G1 G1 G2 G1 A#1 A#1 A#2 A#1 C2 C2 C3 C2 D2 D2 D3 D2 | A#1 A#1 A#2 A#1 A#1 A#1 A#2 A#1 A#1 A#1 A#2 A#1 A#1 A#1 A#2 A#1'),
+      bassLen: [0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95],
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
+      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+      ohats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
+      crash: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('C1 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
-      base: 111,
-      lead14: seq('A#4 . D5 . F5 . . . A#5 . . . F5 . D5 . | . . . . . . . . . . . . . . . .'),
-      lead14Len: [1.9,null,1.9,null,3.8,null,null,null,3.8,null,null,null,1.9,null,1.9,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-    },
-    {
-      base: 104,
-      lead14: seq('. . . . . . . . . . . . . . . . | D#5 . G5 . C6 . . . A5 . F#5 . D5 . . .'),
-      lead14Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.9,null,1.9,null,3.8,null,null,null,1.9,null,1.9,null,3.8,null,null,null],
-    },
-    {
-      base: 105,
-      lead14: seq('D5 . A#4 . G4 . A#4 . C5 . D#5 . G5 . F5 D5 | . . . . . . . . . . . . . . . .'),
-      lead14Len: [1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,0.95,0.95,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-    },
-    {
-      base: 106,
-      lead14: seq('. . . . . . . . . . . . . . . . | D5 . A#4 . G4 . D5 . D#5 . C5 . A#4 . C5 .'),
-      lead14Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null,1.9,null],
-    },
-    {
-      base: 127,
-      lead14: seq('A#4 . D5 . F5 . A#5 . D6 . . . A#5 . . . | . . . . . . . . . . . . . . . .'),
-      lead14Len: [1.9,null,1.9,null,1.9,null,1.9,null,3.8,null,null,null,3.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-    },
-    {
-      base: 107,
-      lead14: seq('. . . . . . . . . . . . . . . . | G5 . D#5 . C5 . . . D5 . F#5 . A5 . . .'),
-      lead14Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.9,null,1.9,null,3.8,null,null,null,1.9,null,1.9,null,3.8,null,null,null],
+      lead: seq('G5 . . . D#5 . . . D5 . . . F#5 . A5 . | G5 . . . . . . . . . . . . . . .'),
+      leadLen: [3.8,null,null,null,3.8,null,null,null,3.8,null,null,null,1.9,null,1.9,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead12: seq('G5 F5 D#5 . G5 . D#5 D5 D5 . F#5 . A5 . C6 . | B5 . . . . . . . . . . . . . . .'),
+      lead12Len: [0.95,0.95,1.9,null,1.9,null,0.95,0.95,1.9,null,1.9,null,1.9,null,1.9,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead2: seq('. . . . . . . . . . . . . . . . | G4 . B4 . D5 . G5 . B5 . . . . . . .'),
+      lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,3,null,3,null,3,null,8,null,null,null,null,null,null,null],
+      chords: [[261.6255653005986,311.1269837220809,391.99543598174927],null,[261.6255653005986,311.1269837220809,391.99543598174927],null,[261.6255653005986,311.1269837220809,391.99543598174927],null,[261.6255653005986,311.1269837220809,391.99543598174927],null,[261.6255653005986,369.9944227116344,440],null,[261.6255653005986,369.9944227116344,440],null,[261.6255653005986,369.9944227116344,440],null,[261.6255653005986,369.9944227116344,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chordsLen: [1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,1.5,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords5: [[261.6255653005986,311.1269837220809,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986,369.9944227116344,440],null,null,null,null,null,null,null,[246.94165062806206,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords5Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords4: [null,null,null,null,null,null,null,null,[261.6255653005986,369.9944227116344,440],null,[261.6255653005986,369.9944227116344,440],null,[261.6255653005986,369.9944227116344,440],[261.6255653005986,369.9944227116344,440],[261.6255653005986,369.9944227116344,440],[261.6255653005986,369.9944227116344,440],[246.94165062806206,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords4Len: [null,null,null,null,null,null,null,null,1,null,1,null,1,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass: seq('C2 C2 C3 C2 C2 C2 C3 C2 D2 D2 D3 D2 D2 D2 D3 D2 | G1 . . . . . . . . . . . . . . .'),
+      bassLen: [0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,0.95,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . C1 . . . C1 . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . C1 . . . C1 C1 C1 C1 C1 C1 C1 C1 | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      crash: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
     },
   ],
+  bpm: 114,
   loop: {
     fromBar: 5,
     toBar: 48,

@@ -2,7 +2,7 @@
 // authored corridor. HUD, controls, damage, death, restore and finish
 // are inherited, rather than approximated by a separate mini-game.
 import { frameGroundY } from '../../engine/frame.js';
-import { setBlastHook, setShotHook } from '../../dev/space-plateaus.js';
+import { setAckHook, setBlastHook, setShotHook } from '../../dev/space-plateaus.js';
 import { RunState, applyFraming } from '../../game/run.js';
 import { makeObstacle, makePickup } from '../../game/entities.js';
 import { GROUND_Y, screenYFor, setRestingZoom } from '../../engine/camera.js';
@@ -187,6 +187,14 @@ export class GravityRunState extends RunState {
       this.raidShots.add(key);
       Audio.sfx('martianPew', { pitch: [1, 1.12, 0.94, 1.06][this.raidShots.size % 4], gain: 0.65 });
     } : null);
+    // Level 3: the lone Martian on the last butte cackles as he shoots the
+    // shuttle down — once, in the chat (Peter, 14 Oct).
+    this.ackSaid = false;
+    setAckHook(this.stage?.index === 3 ? () => {
+      if (this.ackSaid || this.paused || this.dead) return;
+      this.ackSaid = true;
+      this.floatText('ACK! ACK! ACK!', '#9dff8a');
+    } : null);
     this.gravityFailures ||= new Map();
     this.gravityMissionState = gravityMissionStateFor(this.gravityStageData, this.gravityMissionState);
     this.gravityGates = null;
@@ -356,7 +364,7 @@ export class GravityRunState extends RunState {
     this.crossGravity({ lane: 0, x: this.playerWorldX() });
     return true;
   }
-  exit() { setBlastHook(null); setShotHook(null); return super.exit(); }
+  exit() { setBlastHook(null); setShotHook(null); setAckHook(null); return super.exit(); }
   update(dt) {
     if (!this.paused && !this.dead) {
       this.gravitySpark = Math.max(0, this.gravitySpark - dt);
