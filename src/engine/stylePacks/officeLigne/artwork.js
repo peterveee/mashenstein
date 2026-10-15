@@ -2,7 +2,8 @@
 // absolute position, so a repeated architectural bay need not repeat its art.
 import { box, line, poly, circ, ell, letters, hash, canvas, PAL } from './line.js';
 import { WALL_BASE, FACTORS, OFFICE_ZOOM, officeFrame } from '../officeClimb.js';
-import { OFFICE_CORRIDORS, officeFurnitureCuts, officeLandmarks } from './progression.js';
+import { OFFICE_CORRIDORS, officeFurnitureCuts, officeLandmarks, officeAlarmSignBay } from './progression.js';
+import { officeMonthBoard } from './zombies.js';
 import { poster, pictureLight } from './wall.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from './professorArt.js';
 
@@ -91,7 +92,9 @@ function assignFounder(plan,floor,def){
  const free=[];
  for(let j=Math.floor(lo/P)-1;j<=Math.floor(hi/P)+1;j++)for(const bay of bays){
   const x0=bay.u+j*P,x1=bay.u1+j*P;
-  if((x0+x1)/2<lo-200||(x0+x1)/2>hi+200)continue; // within the stage, not behind the start
+  // within the stage, not behind the start (floor 23 looks a little further on for a bay with
+  // desks in shot for the overtime poster)
+  if((x0+x1)/2<lo-200||(x0+x1)/2>hi+(floor==='open'?P*0.75:200))continue;
   if(plan.avoid.some(([a,b])=>x1>a&&x0<b))continue;
   free.push({j,bay,mid:(x0+x1)/2});
  }
@@ -111,6 +114,8 @@ function assignFounder(plan,floor,def){
    const {j,bay}=free[k];
    const sl=layoutBay(floor,def,bay,j,null,d,null,plan)[0];
    if(!sl||sl.avail<d.w)continue;
+   // the overtime poster hangs where cube farms are in shot with it (Peter, 15 Oct)
+   if(floor==='open'&&e.id==='wants'&&!amongDesks(plan,floor,sl))continue;
    assigned.set(sl.key,e.id);used.add(k);
    break;
   }
@@ -144,11 +149,16 @@ function assignPosters(plan,floor,def){
  plan.posters=out;
  if(!list)return out;
  const P=def.period,bays=wallBays(def),end=plan.totalDist*FACTORS.wall*OFFICE_ZOOM+P;
+ const board=floor==='open'?officeMonthBoard({floor,totalDist:plan.totalDist}):null,sign=officeAlarmSignBay(floor,plan.totalDist);
+ const kept=[board,sign].filter(Boolean).map(q=>[q.u0,q.u1]);
  let i=0;
  for(let j=0;j*P<end;j++)for(const bay of bays){
   if(plan.assigned.has(j+'|'+bay.i+'|0'))continue;
   const [sl]=layoutBay(floor,def,bay,j,null,KITTEN_SIZE,null,plan);
   if(!sl||plan.avoid.some(([a,b])=>sl.x+sl.w>a&&sl.x<b)||!amongDesks(plan,floor,sl))continue;
+  // nor the bays floor 23 keeps for itself: EMPLOYEE OF THE MONTH and the fire alarm sign, so
+  // no poster is dealt to a bay it will never be seen in
+  if(floor==='open'&&kept.some(([a,b])=>sl.x+sl.w>a&&sl.x<b))continue;
   out.set(sl.key,list[i++%list.length]);
  }
  return out;
@@ -180,8 +190,8 @@ export function officeArtworks(f){
   }
  }
  if(plan?.finish){
-  const fin=plan.finish,d=PROFESSOR_PIECES[fin.id],x=fin.abs-d.w/2-shift;
-  if(x+d.w>cov.left-20&&x<cov.right+20)out.push({x,y:64,w:d.w,h:d.h,seed:7,kind:'professor',professor:fin.id});
+  const fin=plan.finish,d=fin.id&&PROFESSOR_PIECES[fin.id],x=d&&fin.abs-d.w/2-shift;
+  if(d&&x+d.w>cov.left-20&&x<cov.right+20)out.push({x,y:64,w:d.w,h:d.h,seed:7,kind:'professor',professor:fin.id});
  }
  return out.sort((a,b)=>a.x-b.x);
 }

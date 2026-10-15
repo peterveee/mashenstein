@@ -140,10 +140,11 @@ for (const [cabinet, configured] of Object.entries({
     'a section that curates nothing deals exactly what no section deals');
 
   // An exclusion actually empties that obstacle out of the lane.
-  const excluded = new Set(['cactus']);
+  // The thistle, not the cactus: Field Service deals no cactus since 15 Oct 2026.
+  const excluded = new Set(['thistle']);
   const withoutCactus = deal([{ from: 0, to: 1, density: 1, tierCap: null, exclude: excluded, excludePatterns: null, drip: {} }]);
-  ok(plain.some((o) => o.type === 'cactus'), 'the control lane does contain the excluded type');
-  ok(!withoutCactus.some((o) => o.type === 'cactus'), 'a section excluding cactus deals no cactus');
+  ok(plain.some((o) => o.type === 'thistle'), 'the control lane does contain the excluded type');
+  ok(!withoutCactus.some((o) => o.type === 'thistle'), 'a section excluding the thistle deals no thistle');
   ok(withoutCactus.length > 0, 'and still deals a lane');
 
   // A tier cap holds, and it is the MINIMUM of the two ramps rather than a

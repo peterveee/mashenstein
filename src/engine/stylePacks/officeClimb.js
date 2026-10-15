@@ -481,6 +481,9 @@ function resolveMid(F, camX, t, coverage) {
             pop: isPop ? popAt(t, i * 7 + d) : 0,
             look: isPop ? popLook(t, i * 7 + d, d % 2 ? 1 : -1) : 1,
             seed: i * 31 + d,
+            // this copy of the desk in particular (the run repeats every period): office-2's
+            // evacuation remembers each worker by it (officeLigne room.js)
+            evacKey: (i * 31 + d) + 1000 * Math.round((x0 + shift - it.u) / P),
           });
         }
         items.push({ kind: 'cubicles', i, x0, x1, base: MID_BASE, desks });

@@ -38,7 +38,7 @@ const GUIDE_ICON_SIZES = {
   tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], cardBox: [12, 11], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRewind: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
+  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRewind: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7], letterM: [10, 12],
   eggshell: [24, 20], eggshellCopter: [28, 28], target: [9, 9], beatBar: [8, 14],
   // Standing hazards. Each is its def box times PROP_TALL, rounded — the guide
   // has to show the art the lane shows, and for these the art is mostly the
@@ -64,12 +64,12 @@ const GUIDE_ICON_SIZES = {
   // part that hits you (GUIDE_ICON_HANGING) — their cables are the rest of a
   // 56px-tall raster.
   wetFloorSign: [13, 19], coatStand: [13, 19], founderBust: [13, 19],
-  waterDolly: [17, 20], snackMachine: [17, 20], officeSafe: [17, 20],
+  waterDolly: [17, 20], snackMachine: [12, 22], officeSafe: [17, 20], vaultSafe: [16, 24],
   newsBundle: [12, 11], archiveBox: [12, 11], briefcase: [12, 11],
   mopBucket: [12, 14], mailCart: [12, 14], drinksTrolley: [12, 14],
   ashUrnFire: [13, 22], binFire: [13, 22], confidentialBin: [13, 22],
   velvetRope: [16, 9], velvetRopeGold: [16, 9], drawingPins: [15, 12],
-  paperPlane: [16, 9], partyBalloon: [16, 13], champagneCork: [16, 9], shredder: [12, 15],
+  paperPlane: [16, 9], partyBalloon: [16, 13], champagneCork: [16, 9], shredder: [12, 15], fireAlarm: [10, 11],
 };
 // Hanging props in the guide: [width, height of the crop]. Drawn at their true
 // aspect — a 12x7 box under PROP_TALL 8 — and clipped to the bottom of the
@@ -4709,20 +4709,20 @@ const ALL_GUIDE_PAGES = [
     title: 'THE OFFICE: FLOOR 23 (8-2)', color: '#e04848', hint: 'RED = AVOID. IT IS SOMEBODY\'S BIRTHDAY.',
     rows: [
       { s: 'coatStand', name: 'COAT STAND', desc: 'SOMEONE\'S COAT IS STILL ON IT. JUMP IT.' },
-      { s: 'snackMachine', name: 'SNACK MACHINE', desc: 'ONE BAG STUCK. JUMP IT OR SMASH IT.' },
+      { s: 'snackMachine', name: 'SNACK MACHINE', desc: 'ONE BAG STUCK. SHOOT IT AND THE COINS COME OUT.' },
       { s: 'archiveBox', name: 'ARCHIVE BOXES', desc: 'Q3 1987. SOMETIMES STACKED. JUMP OR SMASH.' },
       { s: 'mailCart', name: 'MAIL CART', desc: 'INTERNAL MAIL. ROLLS AT YOU. JUMP OR KICK IT.' },
       { s: 'binFire', name: 'BIN FIRE', desc: 'THE MEMOS. SHOOT IT OR JUMP IT. NO KICKING.' },
       { s: 'drawingPins', name: 'DRAWING PINS', desc: 'POINTS UP. NOTHING BREAKS THEM. JUMP THEM.' },
       { s: 'partyBalloon', name: 'BALLOON', desc: 'GOT AWAY. DO NOT JUMP INTO IT.' },
-      { s: 'shredder', name: 'SHREDDER', desc: 'SPITS CONFETTI. SHOOT IT OR RAM IT TO BREAK IT.' },
+      { s: 'fireAlarm', name: 'FIRE ALARM', desc: 'ON THE WALL. JUMP INTO IT OR SHOOT IT. MEETING OVER.' },
     ],
   },
   {
     title: 'THE OFFICE: FLOOR 88 (8-3)', color: '#e04848', hint: 'RED = AVOID. ALL OF THIS WAS EXPENSED.',
     rows: [
       { s: 'founderBust', name: 'FOUNDER BUST', desc: 'MARBLE. HE INSISTED. JUMP IT OR BREAK IT.' },
-      { s: 'officeSafe', name: 'THE SAFE', desc: 'FULL. JUMP IT OR CRACK IT.' },
+      { s: 'vaultSafe', name: 'THE SAFE', desc: 'TWICE YOUR HEIGHT. ONE SHOT OPENS IT. THE MONEY IS YOURS.' },
       { s: 'briefcase', name: 'BRIEFCASES', desc: 'STACKED. EMPTY. JUMP OR SMASH THEM.' },
       { s: 'drinksTrolley', name: 'DRINKS TROLLEY', desc: 'ROLLS AT YOU. JUMP IT, OR KICK IT.' },
       { s: 'confidentialBin', name: 'CONFIDENTIAL', desc: 'THE EVIDENCE. SHOOT IT OR JUMP IT. NO KICKING.' },
@@ -4766,6 +4766,7 @@ const ALL_GUIDE_PAGES = [
       { s: 'battery', name: 'BATTERY', desc: '+1 BATTERY CELL. HEALTH, BASICALLY.' },
       { s: 'appliance', name: 'GOLDEN TOASTER', desc: 'THE THIRD PLUG. GRAB IT MID-STAGE.' },
       { s: 'cord', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
+      { s: 'letterM', name: 'M-A-S-H LETTER', desc: 'MISSION PICKUP. ONCE TAKEN, KEPT. EVEN ON A BAD RUN.' },
       { s: 'resident', name: 'RESIDENT', desc: 'ALIVE. WAVES. FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },
     ],
   },
@@ -6545,7 +6546,7 @@ export class SettingsState {
 
   // `onDevMenu` is passed only by a dev build (main.js, when Dev.enabled): it puts a
   // DEV MENU row at the top of the list, the phone's way in without the five-tap corner.
-  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, onCrashLog = null, pause = false, onExitTitle = null }) {
+  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, onCrashLog = null, onPerformanceTest = null, pause = false, onExitTitle = null }) {
     this.pause = pause;
     this.onExitTitle = onExitTitle;
     this.save = save;
@@ -6554,6 +6555,7 @@ export class SettingsState {
     this.onCalibrate = onCalibrate;
     this.onSaveFile = onSaveFile;
     this.onCrashLog = onCrashLog;
+    this.onPerformanceTest = onPerformanceTest;
     this.listStart = 0;
     this.pointerGesture = null;
     this.layout();
@@ -6676,6 +6678,7 @@ export class SettingsState {
       // because what it writes and what it replaces both need saying first.
       ...(this.onSaveFile ? [{ label: 'IMPORT / EXPORT', act: () => { this.save.persist(); this.onSaveFile(); } }] : []),
       // What the game was doing when it last quit on its own (crash-log.js).
+      ...(this.onPerformanceTest ? [{ label: 'PERFORMANCE TEST', act: () => { this.save.persist(); this.onPerformanceTest(); } }] : []),
       ...(this.onCrashLog ? [{ label: 'CRASH LOG', act: () => { this.save.persist(); this.onCrashLog(); } }] : []),
       { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },
       { label: 'BACK', act: () => { this.save.persist(); this.onDone(); } },

@@ -7,7 +7,7 @@ import { STYLE, officeWarmJobs as warm, officeCacheStats } from './officeLigne/i
 import { PAL } from './officeLigne/line.js';
 import { slab } from './officeLigne/room.js';
 import { apronRuns } from './groundRuns.js';
-import { OFFICE_CORRIDORS, OFFICE_FURNITURE_BASE, officeLandmarks, officeFounderPlan } from './officeLigne/progression.js';
+import { OFFICE_CORRIDORS, OFFICE_FURNITURE_BASE, officeLandmarks, officeFounderPlan, officeFireExitBay } from './officeLigne/progression.js';
 
 export const OFFICE_FRONT_CLEARANCE = 8;
 export const OFFICE_HELI_PASS = [0.4, 0.5];
@@ -74,12 +74,15 @@ export function officePack(settings = {}) {
       const frame = officeFrame(floor, camX, t, camera.coverage, OFFICE_CORRIDORS[floor]);
       frame.landmarks = officeLandmarks(floor, camX, totalDist);
       frame.founderPlan = officeFounderPlan(floor, totalDist);
+      frame.fireExit = officeFireExitBay(floor, totalDist);
       frame.liftSeed = liftSeed;
       // The Gravity Grid's Martian rides the lobby lift once the player has met the Martians
       // (run.js sets it: Gravity Grid level 3 played, or any dev build); the gallery always shows him.
       frame.liftMartian = settings.gallery === true || settings.liftMartian === true;
       // (where along the stage floor 23's zombies are met: officeLigne/zombies.js)
       frame.totalDist = totalDist;
+      // office-2's fire alarm: seconds since the floor began to evacuate, or null (run.js)
+      frame.evacT = Number.isFinite(facts.evacuate) ? facts.evacuate : null;
       // Floor 88's helicopter is a single fly-past part-way along the stage, not a fixture.
       // Floor 23's blimp drifts through complete passes, with no progress cutoff.
       const heli = OFFICE_CORRIDORS.exec.outside.flyer;

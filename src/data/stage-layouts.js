@@ -59,6 +59,7 @@ export const STAGE_LAYOUTS = {
     pits: [{ at: 0.38, w: 60 }, { at: 0.665, jumps: 5 }],
     rewindAt: null,
     checkpoints: [0.333333, 0.63],
+    routes: { islands: [{ at: 0.84, dwell: 0.8, steps: 1, rise: 29, step: 33, topPrize: "coins" }, { at: 0.15, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: "coins" }] },
   },
   "rhythm-1": {
     durationSec: 90,
@@ -93,14 +94,14 @@ export const STAGE_LAYOUTS = {
     durationSec: 90,
     speedMult: 1,
     appliance: { at: 0.75, high: true },
-    pits: [{ at: 0.4, w: 56 }],
+    pits: [{ at: 0.04, w: 56, switch: true }, { at: 0.36, w: 56, switch: true }, { at: 0.42, w: 60, switch: true }, { at: 0.70, w: 60, switch: true }, { at: 0.76, w: 64, switch: true }],
     rewindAt: null,
   },
   "frost-3": {
     durationSec: 90,
     speedMult: 1,
     appliance: { at: 0.55, high: false },
-    pits: [{ at: 0.37, w: 60 }, { at: 0.74, w: 64 }],
+    pits: [{ at: 0.105, w: 60, switch: true }, { at: 0.37, w: 60, switch: true }, { at: 0.43, w: 64, switch: true }, { at: 0.74, w: 64, switch: true }],
     rewindAt: null,
   },
   "crypt-1": {
@@ -148,7 +149,7 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.75, high: true },
     pits: [{ at: 0.36, w: 52 }, { at: 0.7, w: 56 }],
     rewindAt: null,
-    routes: { islands: [{ at: 0.46, dwell: 2.769, stack: "neon2-train", rise: 33, coinGap: 46, boardArc: true, bonus: "capLowGrav", bonusHigh: true, battery: true }, { at: 0.94, dwell: 2.769, stack: "neon2-finish", rise: 33, coinGap: 46, boardArc: true, bonus: "capShield", bonusHigh: true }] },
+    routes: { islands: [{ at: 0.46, dwell: 2.769, stack: "neon2-train", rise: 33, coinGap: 46, boardArc: true, bonus: "capLowGrav", bonusHigh: true, battery: true }, { at: 0.58, dwell: 2.769, stack: "neon2-train2", rise: 33, coinGap: 46, boardArc: true, bonus: "capShield", bonusHigh: true }, { at: 0.94, dwell: 2.769, stack: "neon2-finish", rise: 33, coinGap: 46, boardArc: true, bonus: "capShield", bonusHigh: true }] },
   },
   "neon-3": {
     durationSec: 90,
@@ -212,7 +213,7 @@ export const STAGE_LAYOUTS = {
     pits: null,
     rewindAt: null,
     sections: [
-      { to: 0.08, label: "the black opening: plain jumps only", tierCap: 0, exclude: ["gap","rake","bananaPeel","boostPad","buzzbird","rattlesnake","beatBar","bearTrap","zombie","drone","target","qcrate","shredder","mailCart","brazier","campfire"] },
+      { to: 0.08, label: "the black opening: plain jumps only", tierCap: 0, exclude: ["gap","rake","bananaPeel","boostPad","buzzbird","rattlesnake","beatBar","bearTrap","zombie","drone","target","qcrate","shredder","mailCart","brazier","eternalFlame","campfire"] },
       { to: 1, label: "the cycle" },
     ],
   },

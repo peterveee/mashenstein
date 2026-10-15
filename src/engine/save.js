@@ -210,6 +210,7 @@ export function defaultSlot() {
       storyFlags: {}, // sawIntro, sawEnding, unplugged, minigamesSeen:[...]
       ngPlus: false,
       bestScore: {},  // stageId -> highest score ever posted on that stage
+      mash: {},       // stageId -> M-A-S-H letters banked there, in letter order, e.g. ['M', 'S']
     },
     coins: 0,
     bench: { shield: 1, magnet: 1, star: 1, tuneup: 0 },
@@ -288,7 +289,7 @@ function renameValues(value) {
 function migrateCabinetIds(slot) {
   let changed = false;
   const c = slot.campaign || {};
-  for (const k of ['plugs', 'ranks', 'cleared', 'bossesDown', 'bestScore']) changed = renameKeys(c[k]) || changed;
+  for (const k of ['plugs', 'ranks', 'cleared', 'bossesDown', 'bestScore', 'mash']) changed = renameKeys(c[k]) || changed;
   if (c.storyFlags) changed = renameKeys(c.storyFlags) || renameValues(c.storyFlags) || changed;
   if (slot.hub) for (const k of Object.keys(slot.hub)) {
     const v = slot.hub[k];

@@ -1,3 +1,5 @@
+import { performanceMark, performanceAdd, performanceFrame } from './engine/performance-capture.js';
+import { PerformanceTestState } from './game/performance-test.js';
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
   initRenderer, beginRenderFrame, bctx, blit, pushOverlayDraw,
@@ -209,6 +211,7 @@ function routeDevUrl(goto, p) {
         onDone: () => Flow.toTitle(),
         onCalibrate: () => Flow.toCalibrate(() => routeDevUrl('settings', p)),
         onSaveFile: () => Flow.toSaveFile(() => routeDevUrl('settings', p)),
+        onPerformanceTest: () => Flow.toPerformanceTest(),
         onCrashLog: () => Flow.toCrashLog(() => routeDevUrl('settings', p)),
         onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
       break;
@@ -464,6 +467,7 @@ const Flow = {
       onDone: () => Flow.toExtras('settings'),
       onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()),
       onSaveFile: () => Flow.toSaveFile(() => Flow.toSettings()),
+      onPerformanceTest: () => Flow.toPerformanceTest(),
       onCrashLog: () => Flow.toCrashLog(() => Flow.toSettings()),
       onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
   },
@@ -484,6 +488,10 @@ const Flow = {
   // module that has already read the old one.
   toSaveFile(onDone) {
     setState(new SaveFileState({ save, onDone, onRestart: () => window.location.reload() }));
+  },
+
+  toPerformanceTest() {
+    setState(new PerformanceTestState({ realSettings: save.settings, onExit: () => Flow.toSettings() }));
   },
 
   toCrashLog(onDone) {
@@ -826,6 +834,8 @@ function boot() {
   initRenderer(platform, {
     savedDensities: save.settings.renderDensityByBackend,
     onSettle: (v, backend) => {
+      // A benchmark observes adaptation without saving device settings or sending telemetry.
+      if (currentState()?.performanceTesting) return;
       if (save.settings.renderDensityByBackend[backend] !== v) {
         save.settings.renderDensityByBackend[backend] = v;
         save.persist();
@@ -889,7 +899,8 @@ function boot() {
   // Is a run being played? By the state's class name, which a cabinet's own run state extends:
   // Gravity Grid's is GravityRunState, and an exact 'RunState' test let both warms below carry
   // on through every gravity level — the paper sheets alone ~400 strokes a frame (15 Oct 2026).
-  const inARun = () => typeof window !== 'undefined' && /RunState$/.test(window.__mash_state || '');
+  const inARun = () => /RunState$/.test(currentState()?.constructor?.name || '')
+    || !!currentState()?.run?.player; // bot/demo shells own a real run too
   {
     const offThread = tngr2WorkerAvailable();
     const pending = Object.values(CABINET_BY_ID).filter((cab) => cab?.music);
@@ -1049,7 +1060,10 @@ function boot() {
         wasTransitioning = transitioning;
       }
       window.__mash_lifecycle?.syncMusicSession();
-      if (Dev.update(dt)) return;
+      const devAt = performanceMark();
+      const devConsumed = Dev.update(dt);
+      performanceAdd('dev', devAt);
+      if (devConsumed) return;
       updateState(dt * Dev.timeScale);
     },
     draw: (renderAlpha) => {
@@ -1254,16 +1268,22 @@ function boot() {
         .includes(currentState()?.constructor?.name);
       const profileOn = titleProfileActive() || gameplayProfileActive();
       const drawStartedAt = profileOn && typeof performance !== 'undefined' ? performance.now() : 0;
+      const testDrawAt = performanceMark();
       drawState(bctx, renderAlpha);
+      performanceAdd('draw', testDrawAt);
       const drawMs = profileOn ? performance.now() - drawStartedAt : 0;
+      const devDrawAt = performanceMark();
       Dev.draw(bctx);
+      performanceAdd('dev', devDrawAt);
       if (drawFpsReadout) pushOverlayDraw(drawFpsReadout);
       if (benchRequested) pushOverlayDraw(drawBench);
       if (titleProfileReportVisible()) pushOverlayDraw(drawTitleProfile);
       if (gameplayProfileWaiting()) pushOverlayDraw(drawGameplayProfileWaiting);
       if (gameplayProfileReportVisible()) pushOverlayDraw(drawGameplayProfile);
       const blitStartedAt = profileOn && typeof performance !== 'undefined' ? performance.now() : 0;
+      const testBlitAt = performanceMark();
       blit();
+      performanceAdd('blit', testBlitAt);
       if (profileOn) {
         const now = performance.now();
         const timings = {
@@ -1285,6 +1305,7 @@ function boot() {
       revealPresentationRefresh();
       noteRendererFrame(now);
       benchFrame(now);
+      performanceFrame(now);
     },
   });
   if (Dev.enabled) window.__mash_render_loop = loop;

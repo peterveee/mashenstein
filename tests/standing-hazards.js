@@ -101,7 +101,8 @@ const carries = (cabId, type) => {
 assert(carries('plumber', 'popSpikes') && carries('plumber', 'floorSaw'),
   'Plumber gets the two floor traps — its ground game was two things that stand UP');
 assert(carries('crypt', 'brazier'), 'Crypt gets the brazier: the dark cabinet gets the lit hazard');
-assert(carries('speed', 'fireBarrel'), 'Speed gets the drum fire, beside its puntable cones');
+// Speed's drum fire is the smudge pot since 15 Oct 2026 (the bake-off's F, data/cabinets.js BAKEOFF_PICKS).
+assert(carries('speed', 'smudgePot'), 'Speed gets the drum fire — the smudge pot — beside its puntable cones');
 // Corporate Kombat dresses each slot per floor (data/cabinets.js OFFICE_FLOORS):
 // its fire is an ash urn in the lobby, the bin fire on 23, the confidential bin on 88.
 const floorCarries = (floor, type) => cabinetForStage(CABINET_BY_ID.office, floor).patterns
@@ -114,7 +115,10 @@ assert(floorCarries(1, 'ashUrnFire') && floorCarries(2, 'binFire') && floorCarri
 assert(carries('speed', 'popSpikes') && carries('speed', 'floorSaw'),
   'Speed carries both floor traps too — the road lies at ankle height on every Act I cabinet');
 assert(carries('speed', 'campfire'), 'Speed gives the campfire its second home');
-assert(carries('plumber', 'fireBarrel'), 'Plumber gets the drum fire back from Speed');
+// Plumber's fires went on 15 Oct 2026 (Peter: "A B & C instead of fires and boom barrier"):
+// the beehive and the scarecrow stand where the drum fire and the campfire stood.
+assert(!carries('plumber', 'fireBarrel') && carries('plumber', 'beehive') && carries('plumber', 'scarecrow'),
+  'Plumber deals the beehive and the scarecrow where its fires were');
 assert(carries('neon', 'popSpikes') && carries('neon', 'floorSaw') && carries('neon', 'fireBarrel'),
   'Neon owns ground reads of its own — its bag is not just the air');
 // Cardboard Kingdom's slot is Gravity Grid now, whose hazards are all authored
@@ -175,9 +179,9 @@ for (const id of HAZARDS) {
   let diff = 0;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
   assert(diff === 0, `the barrier's ring closes: frame 0 and frame ${n} are identical`);
-  assert(carries('speed', 'boomBarrier') && carries('neon', 'boomBarrier')
-    && carries('plumber', 'boomBarrier'),
-    'all three Act I cabinets deal the hurdle — the short jump recurs across themes');
+  // Speed's hurdle is the sawhorse and Plumber's slot went to the hay bales (15 Oct 2026).
+  assert(carries('speed', 'sawhorse') && carries('neon', 'boomBarrier') && carries('rhythm', 'boomBarrier'),
+    'the short jump recurs across themes — the sawhorse on Speed, the razor hurdle on Neon and Rhythm');
   assert(carries('rhythm', 'boomBarrier'),
     'and the barrier travels on — the crossing gate');
   // Corporate Kombat keeps the short jump in its own furniture: a velvet rope in

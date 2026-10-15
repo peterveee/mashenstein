@@ -364,7 +364,36 @@ export class Spawner {
       && !(p.once && this.usedOnce.has(p.onceGroup || p))
       && !(boostFree && p.cells.some((c) => OBSTACLES[c.t]?.isBoost)));
     if (!pats.length) return null;
-    let idx = this.rng.int(0, pats.length - 1);
+    // WEIGHTED, for a cabinet that asks (Peter, 15 Oct 2026: "i am seeing a lot of some
+    // and hardly any of others"). The bag is one pattern per entry, so a hazard used to
+    // come up as often as the patterns that carry it — the crate is in six of the
+    // sixteen shared ones, the scarecrow in one. `balance` deals by HAZARD instead: each
+    // hazard in the bag gets an equal share, split between the patterns that carry it
+    // (a pattern's weight is the sum of its hazards' shares; one with only coins is a
+    // "breather" hazard of its own). Targets and !-crates take a double share, since
+    // missions count them. `weights` then multiplies a pattern by each of its hazards'
+    // factors, for the cabinet's own tilt. Still one draw; a cabinet with neither keeps
+    // its uniform pick exactly.
+    const weights = this.cabinet.weights;
+    let idx;
+    if (weights || this.cabinet.balance) {
+      const kinds = pats.map((p) => {
+        const ts = [...new Set(p.cells.map((c) => c.t).filter((t) => t !== 'coins'))];
+        return ts.length ? ts : ['(breather)'];
+      });
+      const carriers = new Map();
+      if (this.cabinet.balance) for (const ts of kinds) for (const t of ts) carriers.set(t, (carriers.get(t) || 0) + 1);
+      const w = kinds.map((ts) => {
+        const base = this.cabinet.balance
+          ? ts.reduce((a, t) => a + (OBSTACLES[t]?.isTarget ? 2 : 1) / carriers.get(t), 0) : 1;
+        return weights ? ts.reduce((m, t) => m * (weights[t] ?? 1), base) : base;
+      });
+      let r = this.rng.float() * w.reduce((a, b) => a + b, 0);
+      idx = 0;
+      while (idx < pats.length - 1 && r >= w[idx]) r -= w[idx++];
+    } else {
+      idx = this.rng.int(0, pats.length - 1);
+    }
     if (idx === this.lastPatternIdx && pats.length > 1) idx = (idx + 1) % pats.length;
     // NEVER THE SAME ANIMAL TWICE RUNNING, for a cabinet that asks (Crypt: Peter, 26 Sep
     // 2026, "dont repeat dogs so much and have a lot more variety in the animals"). The

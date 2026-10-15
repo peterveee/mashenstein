@@ -143,6 +143,11 @@ let mergeOverlays = false;
 export function setOverlayMerge(on) { mergeOverlays = !!on; }
 let selectiveGlow = false;
 export function setSelectiveGlow(on) { selectiveGlow = !!on; }
+// Whether the scene bloom can actually run this frame — WebGL up, effects on and
+// the density tier not suppressing it — leaving aside the per-frame gate
+// setSceneGlow sets. A pack that already glows its objects asks this so it does
+// not glow them twice.
+export function sceneBloomAvailable() { return !!(glfx.active && glfx.fx > 0 && glfx.tierFx > 0); }
 
 // Procedural GPU sky (title screen). Returns true when it is actually live,
 // so the caller can leave the sky transparent instead of painting its own —

@@ -10,7 +10,10 @@ import { HAIR_STUDIES, LUNCH_STUDIES, drawHairStudy, drawLunchStudy } from '../s
 // translating the context, rather than by changing how entities draw.
 import { drawOfficeProductionScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
 import { OFFICE_CHAIR_CANDIDATES, OFFICE_CHAIR_ROOMS, drawOfficeChairScene } from '../src/dev/office-chair-candidates.js';
+import { OFFICE_SAFE_CANDIDATES, OFFICE_SAFE_LANE_H, drawOfficeSafeLane } from '../src/dev/office-safe-candidates.js';
 import { OFFICE_ZOMBIE_CANDIDATES, drawOfficeZombieScene } from '../src/dev/office-zombie-candidates.js';
+import { PROFILE_CANDIDATES, drawProfileQueueScene, drawProfileFrames } from '../src/dev/office-zombie-profile-candidates.js';
+import { GIRL_CANDIDATES, drawGirlQueueScene, drawGirlLineupScene, drawGirlFrames } from '../src/dev/office-zombie-girl-candidates.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -103,8 +106,20 @@ import {
   slotEnvelope, drawOfficeObstacleLane, drawOfficeObstacleControl,
 } from '../src/dev/office-obstacle-candidates.js';
 import {
-  drawControlLineup, drawCandidateLineup, drawCandidateLane, candidateCaption, laneHeight,
+  drawControlLineup, drawCandidateLineup, drawCandidateLane, candidateCaption, laneHeight, drawCabinetLane,
+  placeCandidate as placeBakeoffCandidate, slotEnvelope as bakeoffEnvelope,
 } from '../src/dev/obstacle-bakeoff-kit.js';
+import { levelObstacleTypes, levelPlacedTypes } from '../src/dev/level-obstacles.js';
+import { GENERIC_CRATE_BARREL } from '../src/dev/generic-crate-barrel-candidates.js';
+import { REDRAW } from '../src/sprites/redrawProps.js';
+import { scaledContext, OUTLINE_WEIGHT, OUTLINE_SCALE } from '../src/sprites/outline.js';
+import { crateX, barrelArcade } from '../src/sprites/crateBarrel.js';
+import { scarecrow as scarecrowPaint } from '../src/sprites/plumberProps.js';
+import { CRATE_BARREL as PLUMBER_CRATE_BARREL } from '../src/dev/plumber-crate-barrel-candidates.js';
+import { CRATE_BARREL as SPEED_CRATE_BARREL } from '../src/dev/speed-crate-barrel-candidates.js';
+import { CRATE_BARREL as FROST_CRATE_BARREL } from '../src/dev/frost-crate-barrel-candidates.js';
+import { CRATE_BARREL as CRYPT_CRATE_BARREL } from '../src/dev/crypt-crate-barrel-candidates.js';
+import { CRATE_BARREL as NEON_CRATE_BARREL } from '../src/dev/neon-crate-barrel-candidates.js';
 import { BAKEOFF as PLUMBER_OBSTACLES } from '../src/dev/plumber-obstacle-candidates.js';
 import { SPACE_SHOTS, SPACE_PARADE, SPACE_LOOKS, drawSpaceShot } from '../src/dev/space-look-candidates.js';
 import { SPACE_LIFE_OBJECTS } from '../src/dev/space-life.js';
@@ -129,6 +144,8 @@ import { BAKEOFF as GRAVITY_OBSTACLES, LANE_W as GRAVITY_LANE_W, LANE_H as GRAVI
 import { WALKER_CANDIDATES, drawWalkerTile } from '../src/dev/space-walker-candidates.js';
 import { RAIL_WIRE_CANDIDATES, drawRailWireTile } from '../src/dev/rail-wire-candidates.js';
 import { ZAP_CANDIDATES, drawZapTile } from '../src/dev/zap-candidates.js';
+import { FIRE_STAND_CANDIDATES, drawFireStandRun, drawFireStandStill } from '../src/dev/office-fire-alarm-stand-candidates.js';
+import { MASH_LETTER_CANDIDATES, MASH_LETTER_PALETTES, drawMashLetterCandidate, SNES_VARIANTS, drawSnesVariant } from '../src/dev/mash-letter-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
 import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SLOT_BEATS, drawSurgeFx } from '../src/dev/surge-transition-candidates.js';
@@ -199,6 +216,20 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   // ones... spread throughout") — sprites/gravityProps.js, data/gravity-stages.js,
   // and the production sheet 'gravity-obstacles'.
   'gravity-obstacle-bakeoff',
+  // FOLDED 15 Oct 2026 into 'level-obstacles' ("just have one row with all obstacles as
+  // shipped or pending per level, don't need to see each one running"): each cabinet's
+  // ten candidates are now its PENDING row there. Still open — no letters picked.
+  'plumber-obstacle-bakeoff', 'speed-obstacle-bakeoff', 'rhythm-obstacle-bakeoff',
+  'frost-obstacle-bakeoff', 'crypt-obstacle-bakeoff', 'neon-obstacle-bakeoff',
+  // SUPERSEDED 15 Oct 2026 by 'generic-crate-barrel-bakeoff': Peter liked the per-cabinet
+  // boxes and barrels but wants ONE box and ONE barrel everywhere — "esp the barrel which
+  // needs to be kicked deliberately (and we want it to match kong is throwing)".
+  'crate-barrel-bakeoff',
+  // SHIPPED 15 Oct 2026: all ten redraws ("happy to ship all these", the drone given an
+  // eye first) — sprites/redrawProps.js, painted by props.js. The sheet stays as the record.
+  'redraw-bakeoff',
+  // SHIPPED 15 Oct 2026: A and E ("i think i like A & E") — sprites/crateBarrel.js.
+  'generic-crate-barrel-bakeoff',
   // SETTLED 22 Sep 2026: GRID CITY at six layers won and is in the game —
   // neonPack.bg() paints it, and on Neon 1 it ARRIVES rather than opening
   // finished (see the arrival sheet below, and neonCityReveal). The sheet stays
@@ -1866,6 +1897,12 @@ function propNominalSize(name) {
     const e = makePickup(type, 100);
     const frames = propFrames(type);
     entityTile(grid, type, `${def.w}x${def.h}${frames > 1 ? ` · ${frames}f` : ''}${def.power ? ' · ' + def.power : ''}`, e, style);
+  }
+  // The M-A-S-H letters' second look: the outline a letter wears when an earlier
+  // attempt already banked it (Field Service 3).
+  for (const L of ['M', 'A', 'S', 'H']) {
+    const e = Object.assign(makePickup(`letter${L}`, 100), { skin: `letter${L}Banked` });
+    entityTile(grid, `letter${L}Banked`, 'banked on an earlier attempt', e, style);
   }
 }
 
@@ -9216,6 +9253,415 @@ function jadeSky(ctx, w, h, seed = 1) {
     '15 Oct 2026');
   for (const cand of ZAP_CANDIDATES) {
     tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270, (ctx, t) => drawZapTile(ctx, t, cand.id), { animated: true });
+  }
+}
+
+// --------------------------------------------- M-A-S-H letters — look bake-off (lab)
+// 15 Oct 2026: "id like to build the letters better... can we do a few options?" —
+// "bakeoff". Candidates: src/dev/mash-letter-candidates.js, each in the shipped
+// letter's painter seam. Nothing is wired into the run.
+{
+  const grid = section('mash-letter-bakeoff', 'M-A-S-H letters — look + colour bake-off (F SHIPPED)',
+    'SHIPPED 15 Oct: F, the SNES cart, with its labels in the Super Famicom\'s four button colours — M red, A yellow, '
+    + 'S green, H blue (see the Pickups section). The rest stay as the record. Each shape in four colours: RED, TEAL, VIOLET and GOLD (what shipped first; the coins\' and toaster\'s '
+    + 'colour). Top row over Field Service, bottom row over Speed Zone, Lorenzo for scale, letters at in-run size '
+    + 'and the height they float in the run. The last letter in each row is the BANKED look — neutral grey in every '
+    + 'colour, so it never reads as one you still need. ANIMATED.',
+    '15 Oct 2026');
+  const TW = 360, ROW = 60, TH = ROW * 2, LW = 16, LH = 19;
+  for (const cand of MASH_LETTER_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, TW, TH, (ctx, t) => {
+      const frame = Math.floor(t * 6) % 8;
+      const rows = [
+        { y: 0, sky: ['#78c8f0', '#78c8f0'], ground: ['#3a9c48', '#2a7038'], hero: 'lorenzo', L: 'M' },
+        { y: ROW, sky: ['#e9a27c', '#d98a66'], ground: ['#c99a6a', '#5e5260'], hero: 'fernwick', L: 'S' },
+      ];
+      for (const r of rows) {
+        const gy = r.y + ROW - 12;
+        ctx.fillStyle = r.sky[0]; ctx.fillRect(0, r.y, TW, (gy - r.y) * 0.55);
+        ctx.fillStyle = r.sky[1]; ctx.fillRect(0, r.y + (gy - r.y) * 0.55, TW, (gy - r.y) * 0.45);
+        ctx.fillStyle = r.ground[0]; ctx.fillRect(0, gy, TW, 3);
+        ctx.fillStyle = r.ground[1]; ctx.fillRect(0, gy + 3, TW, r.y + ROW - gy - 3);
+        drawToon(ctx, r.hero, pose('run', t * 0.9 + r.y), 10, gy, 24);
+        MASH_LETTER_PALETTES.forEach((pal, i) => {
+          ctx.save(); ctx.translate(52 + i * 64, gy - 22 - LH);
+          drawMashLetterCandidate(ctx, cand.id, LW, LH, frame, r.L, false, pal.id);
+          ctx.restore();
+          if (r.y === 0) {
+            ctx.fillStyle = 'rgba(16,16,24,.6)'; ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+            ctx.fillText(pal.name, 50 + i * 64, gy + 9);
+          }
+        });
+        ctx.save(); ctx.translate(52 + 4 * 64, gy - 22 - LH);
+        drawMashLetterCandidate(ctx, cand.id, LW, LH, frame, r.L, true);
+        ctx.restore();
+        ctx.fillStyle = 'rgba(16,16,24,.6)'; ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText('BANKED', 50 + 4 * 64, gy + 9);
+      }
+    }, { animated: true, hires: 4, wide: true, world: true });
+  }
+}
+
+// --------------------------------------------- M-A-S-H carts — SNES variations (lab)
+// 15 Oct 2026: after picking the SNES cart in Super Famicom colours, "can we bake off
+// a few variations on the SNES cartridge...". src/dev/mash-letter-candidates.js.
+{
+  const grid = section('mash-cart-bakeoff', 'M-A-S-H carts — SNES variations (E1 SHIPPED)',
+    'SHIPPED 15 Oct: E1, the glow with a Super Famicom-proportioned label, widened a touch. Six takes on the SNES cart, all four letters in their Super Famicom colours (M red, A yellow, S green, '
+    + 'H blue) over Field Service (top) and Speed Zone (bottom) at in-run size, Lorenzo for scale; the grey one at '
+    + 'the end of each row is the BANKED look. NOW is what ships. ANIMATED.',
+    '15 Oct 2026');
+  const TW = 380, ROW = 60, TH = ROW * 2, LW = 16, LH = 19;
+  for (const v of SNES_VARIANTS) {
+    tile(grid, `${v.letter} — ${v.name}`, v.note, TW, TH, (ctx, t) => {
+      const frame = Math.floor(t * 6) % 8;
+      const rows = [
+        { y: 0, sky: ['#78c8f0', '#78c8f0'], ground: ['#3a9c48', '#2a7038'], hero: 'lorenzo' },
+        { y: ROW, sky: ['#e9a27c', '#d98a66'], ground: ['#c99a6a', '#5e5260'], hero: 'fernwick' },
+      ];
+      for (const r of rows) {
+        const gy = r.y + ROW - 12;
+        ctx.fillStyle = r.sky[0]; ctx.fillRect(0, r.y, TW, (gy - r.y) * 0.55);
+        ctx.fillStyle = r.sky[1]; ctx.fillRect(0, r.y + (gy - r.y) * 0.55, TW, (gy - r.y) * 0.45);
+        ctx.fillStyle = r.ground[0]; ctx.fillRect(0, gy, TW, 3);
+        ctx.fillStyle = r.ground[1]; ctx.fillRect(0, gy + 3, TW, r.y + ROW - gy - 3);
+        drawToon(ctx, r.hero, pose('run', t * 0.9 + r.y), 10, gy, 24);
+        ['M', 'A', 'S', 'H'].forEach((L, i) => {
+          ctx.save(); ctx.translate(56 + i * 58, gy - 22 - LH);
+          drawSnesVariant(ctx, v.id, LW, LH, frame, L);
+          ctx.restore();
+        });
+        ctx.save(); ctx.translate(56 + 4 * 58 + 20, gy - 22 - LH);
+        drawSnesVariant(ctx, v.id, LW, LH, frame, 'M', true);
+        ctx.restore();
+        ctx.fillStyle = 'rgba(16,16,24,.6)'; ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText('BANKED', 54 + 4 * 58 + 20, gy + 9);
+      }
+    }, { animated: true, hires: 4, wide: true, world: true });
+  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — the safe, CRACK 3 SAFES (lab)
+// 15 Oct 2026: office-3's new mission replaces the escort with CRACK 3 SAFES. The safe must read
+// instantly as a safe and as a prize, stand twice a normal obstacle's height, be SHOT to crack
+// (contact doesn't), and burst open with collectable notes + coins. src/dev/office-safe-candidates.js;
+// nothing wired into the run.
+{
+  const grid = section('office-safe-bakeoff', 'CORPORATE KOMBAT — the safe, for CRACK 3 SAFES (bake-off)',
+    'Floor 88’s new target. Every candidate stands in a 16x24 box — twice a crate’s height — on the real 8-3 floor at '
+    + 'in-run size, Lorenzo for scale. Top strip: intact, a real crate beside it. Middle: three shots land, the lock '
+    + 'flashes, the door blows open and the money flies — coins are the game’s own coin pickup, the green note is a '
+    + 'new banknote pickup, both resting at pickup height to be run through. Bottom: the burst frozen at two moments. '
+    + 'NOW is the shipped officeSafe hazard. Pick a letter (the note design is shared by all). ANIMATED.',
+    '15 Oct 2026');
+  for (const cand of OFFICE_SAFE_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, OFFICE_SAFE_LANE_H,
+      (ctx, t) => drawOfficeSafeLane(ctx, t, cand), { animated: true, wide: true });
+  }
+}
+
+// --------------------------------------------- OBSTACLES — level by level (lab)
+// 15 Oct 2026: "in the lab just have one row with all obstacles as shipped. or pending
+// per level, don't need to see each one running. include corporate kombat". One tile
+// per level: every obstacle that level can deal (src/dev/level-obstacles.js reads the
+// run's own banks, tiers, sections, charts and gravity data), lined up still on that
+// level's scenery, two lanes high when there are too many for one. A cabinet with an
+// open bake-off ends on its PENDING row: the ten candidates, lettered.
+// DÉJÀ VIEW is left out: it deals the union of every bank above.
+{
+  const s = sectionEl('level-obstacles', 'OBSTACLES — level by level, as shipped (and pending)',
+    'Every obstacle each level can deal, read from the same banks, tiers, section rules, beat charts and gravity data '
+    + 'the run uses, lined up on that level’s own scenery at in-run size. Gold-captioned extras are placed by the '
+    + 'level’s mission rather than dealt. A cabinet with an open bake-off ends with a PENDING row of its ten '
+    + 'candidates — pick letters. Holes and boost pads are left out. DÉJÀ VIEW deals the union of all of these.',
+    '15 Oct 2026');
+  const sub = (title, note) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    if (note) { const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p); }
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  const PENDING = {
+    plumber: PLUMBER_OBSTACLES, speed: SPEED_OBSTACLES, rhythm: RHYTHM_OBSTACLES,
+    frost: FROST_OBSTACLES, crypt: CRYPT_OBSTACLES, neon: NEON_OBSTACLES,
+  };
+  const PER_LANE = 9;
+  // Columns across the 240-unit lane, the same spread the bake-off line-ups use.
+  const lineup = (types, left = 4, right = 236) => {
+    const w = (right - left) / Math.max(types.length, PER_LANE);
+    const x0 = (left + right) / 2 - (w * types.length) / 2;
+    return types.map((type, i) => {
+      const cx = x0 + w * (i + 0.5);
+      return makeObstacle(type, cx - makeObstacle(type, 0).w / 2);
+    });
+  };
+  const chunk = (types) => {
+    const lanes = Math.ceil(types.length / PER_LANE) || 1;
+    const per = Math.ceil(types.length / lanes);
+    return Array.from({ length: lanes }, (_, i) => types.slice(i * per, (i + 1) * per));
+  };
+  const caption = (dealt, placed) => dealt.join(' · ')
+    + (placed.length ? ` · <span style="color:#f6d33c">+ placed by the mission: ${placed.join(' · ')}</span>` : '');
+  const FLOOR = { 1: 'lobby', 2: 'open', 3: 'exec' };
+  // Picks to try in the lane before they ship: `swap` deals letters in place of a shipped
+  // type, `add` deals them alongside everything already there — e.g.
+  // { plumber: { swap: { fireBarrel: ['A'] } }, frost: { add: ['A', 'B'] } }.
+  // Empty since 15 Oct 2026: Field Service A B C, Speed Zone A B C F G, Frost Fortress
+  // A–E and Crypt Shift A B G went into the game (data/cabinets.js BAKEOFF_PICKS).
+  const POTENTIAL = {};
+  // One tile of a style-pack cabinet's level: `items` are obstacle types or bake-off
+  // candidates, in columns, two lanes high when there are too many for one.
+  const laneLineupTile = (grid, cab, stage, name, note, items) => {
+    const pending = PENDING[cab.id];
+    // The bake-off's own strip for this level where it has one (its time of day, its
+    // neon mood); otherwise the level's scenery a little further down the road.
+    const base = pending?.strips.find((st) => (st.stageIndex ?? 1) === stage.index)
+      || { stageIndex: stage.index, camX: 600 + 800 * (stage.index - 1) };
+    const lanes = chunk(items).map((row) => {
+      const w = 232 / Math.max(row.length, PER_LANE);
+      const x0 = 120 - (w * row.length) / 2;
+      return row.map((item, i) => {
+        const cx = x0 + w * (i + 0.5);
+        return typeof item === 'string'
+          ? { e: makeObstacle(item, cx - makeObstacle(item, 0).w / 2) }
+          : { cand: item, x: cx - bakeoffEnvelope(item).bw / 2 };
+      });
+    });
+    const strips = lanes.map((_, i) => ({ ...base, label: i ? null : `${cab.name} ${stage.index}` }));
+    const settings = { cryptEnemyArt: cab.id === 'crypt' };
+    tile(grid, name, note, 480, laneHeight(strips), (ctx, t) => {
+      let lane = 0;
+      drawCabinetLane(ctx, t, cab.id, strips, (c, tt) => {
+        for (const it of lanes[lane++] || []) {
+          if (it.e) drawWorldEntity(c, it.e, 0, tt, null, settings);
+          else placeBakeoffCandidate(c, it.cand, it.x, tt, 1);
+        }
+      }, { hero: null });
+    }, { animated: true, wide: true });
+  };
+  for (const cab of CABINETS) {
+    if (cab.id === 'surge') continue;
+    const stages = STAGES.filter((st) => st.cabinet === cab.id);
+    if (!stages.length) continue;
+    const grid = sub(cab.name, null);
+    const pending = PENDING[cab.id];
+    for (const stage of stages) {
+      const dealt = levelObstacleTypes(stage);
+      const placed = levelPlacedTypes(stage).filter((type) => !dealt.includes(type));
+      const types = [...dealt, ...placed];
+      const name = `${cab.name} ${stage.index} — as shipped`;
+      if (cab.id === 'office') {
+        const list = lineup(types);
+        const screen = { floor: FLOOR[stage.index], hazards: [], world: (ctx, t) => { for (const e of list) drawWorldEntity(ctx, e, 0, t, null, {}); } };
+        tile(grid, name, caption(dealt, placed), 480, 270,
+          (ctx, t) => drawOfficeProductionScene(ctx, t, screen, false, 1200 + (t * 40) % 2400), { animated: true });
+      } else if (cab.id === 'gravity') {
+        tile(grid, name, caption(dealt, placed), GRAVITY_LANE_W, GRAVITY_LANE_H,
+          (ctx, t) => drawGravityControlLineup(ctx, t, types), { animated: true, wide: true });
+      } else {
+        laneLineupTile(grid, cab, stage, name, caption(dealt, placed), types);
+        // POTENTIAL: the same level with Peter's picks dealt as well or instead.
+        const pick = POTENTIAL[cab.id];
+        const swaps = pick?.swap || {};
+        const adds = pick?.add || [];
+        if (pick && (adds.length || types.some((type) => swaps[type]))) {
+          const byLetter = Object.fromEntries(pending.candidates.map((c) => [c.letter, c]));
+          const mixed = [...new Set([...types.flatMap((type) => swaps[type] || [type]), ...adds])];
+          const named = (ls) => ls.map((l) => `${l} ${byLetter[l].name}`).join(' + ');
+          const notes = [
+            ...types.filter((type) => swaps[type]).map((type) => `${type} → ${named(swaps[type])}`),
+            ...(adds.length ? [`+ ${named(adds)}`] : []),
+          ];
+          laneLineupTile(grid, cab, stage, `${cab.name} ${stage.index} — POTENTIAL`,
+            `<span style="color:#f6d33c">${notes.join(' · ')}</span>`, mixed.map((x) => byLetter[x] || x));
+        }
+      }
+    }
+    if (pending) {
+      tile(grid, `${cab.name} — PENDING: the ten candidates (bake-off open, 12 Oct)`,
+        pending.candidates.map((c) => `${c.letter} ${c.name}`).join(' · '), 480, laneHeight(pending.strips.slice(0, 1)),
+        (ctx, t) => drawCandidateLineup(ctx, t, cab.id, pending.strips.slice(0, 1), pending.candidates), { animated: true, wide: true });
+    }
+  }
+}
+
+// --------------------------------------------- the box and the barrel, per cabinet (lab)
+// 15 Oct 2026: "bake a new box and barrel in the new style" — the platformer crate and
+// barrel were the last generic props left beside each cabinet's new picks. One per
+// cabinet that deals them, in that cabinet's hand (src/dev/<cabinet>-crate-barrel-
+// candidates.js); Crypt deals no crate, so a barrel only. NOW over NEW, same scenery.
+{
+  const s = sectionEl('crate-barrel-bakeoff', 'THE BOX AND THE BARREL — one per cabinet (bake-off)',
+    'The shared crate and barrel, redrawn in each cabinet’s own hand to sit with the obstacles picked on 15 Oct. '
+    + 'For each cabinet: what it deals now, then the new box (A) and barrel (B) at in-run size on its own scenery. '
+    + 'The barrel rolls — the run spins the whole drawing — so each is drawn nearly round. Pick per cabinet. ANIMATED.',
+    '15 Oct 2026');
+  const sub = (title) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  const SETS = [
+    ['plumber', PLUMBER_CRATE_BARREL, PLUMBER_OBSTACLES], ['speed', SPEED_CRATE_BARREL, SPEED_OBSTACLES],
+    ['frost', FROST_CRATE_BARREL, FROST_OBSTACLES], ['crypt', CRYPT_CRATE_BARREL, CRYPT_OBSTACLES],
+    ['neon', NEON_CRATE_BARREL, NEON_OBSTACLES],
+  ];
+  for (const [cabId, set, bake] of SETS) {
+    const cab = CABINETS.find((c) => c.id === cabId);
+    const grid = sub(cab.name);
+    const strips = bake.strips.slice(0, 1);
+    const now = cabId === 'crypt' ? [['barrel', 0]] : [['crate', 0], ['barrel', 0]];
+    tile(grid, `${cab.name} — NOW`, now.map(([t]) => t).join(' · '), 480, laneHeight(strips),
+      (ctx, t) => drawControlLineup(ctx, t, cabId, strips, now), { animated: true, wide: true });
+    tile(grid, `${cab.name} — NEW`, set.candidates.map((c) => `${c.letter} ${c.name}`).join(' · '), 480, laneHeight(strips),
+      (ctx, t) => drawCandidateLineup(ctx, t, cabId, strips, set.candidates), { animated: true, wide: true });
+  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — the zombie clerk side on (lab)
+// 15 Oct 2026: the fire-exit queue on floor 23 walks right, everyone side on (room.js walkerSide);
+// the crypt clerk dropped in as drawn shuffled sideways, and recoloured workers were the wrong
+// thing ("i meant the new style zombie not zombies in the style of the workers"). The same clerk,
+// turned to profile: src/dev/office-zombie-profile-candidates.js. Nothing wired into the run.
+{
+  const grid = section('office-zombie-profile-bakeoff', 'CORPORATE KOMBAT — the zombie clerk side on, for the fire-exit queue (bake-off)',
+    'The crypt’s clerk as the office draws him (drawOfficeZombie: its face, glasses, suit, tie, badge, briefcase, its ink, rims '
+    + 'and SOFT colours, ZOMBIE_SHAPE’s proportions) turned to profile and walking right, so it can join the fire-exit queue. '
+    + 'For each letter: the queue walking to the fire exit on floor 23 at in-run size, the blue clerk and the pink temp among '
+    + 'the office’s own walkers; then the walk cycle in six stills beside the moving one, blue over pink. Pick a letter. ANIMATED.',
+    '15 Oct 2026');
+  for (const cand of PROFILE_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name} · in the queue`, cand.note, 480, 270,
+      (ctx, t) => drawProfileQueueScene(ctx, t, cand.id), { animated: true });
+    tile(grid, `${cand.letter} — the walk, blue and pink`, 'Left, walking on the spot; then one cycle in six stills.', 480, 270,
+      (ctx, t) => drawProfileFrames(ctx, t, cand.id), { animated: true });
+  }
+}
+
+// --------------------------------------------- ONE box and ONE barrel, everywhere (lab)
+// 15 Oct 2026, after the per-cabinet set: "id rather keep them generic throughout as a
+// constant.. esp the barrel which needs to be kicked deliberately (and we want it to
+// match kong is throwing in the background)". Four boxes (A–D) and four barrels (E–H)
+// in the bold flat hand, no cabinet in them (src/dev/generic-crate-barrel-candidates.js),
+// each line-up on every cabinet that deals them so one pick can be judged everywhere.
+{
+  const s = sectionEl('generic-crate-barrel-bakeoff', 'THE BOX AND THE BARREL — one for every cabinet (bake-off)',
+    'One box and one barrel for the whole game, flat and front-on with the bold outline of the new obstacles. The barrels '
+    + 'take Kong’s wood (#a9743a) and the LCD tower barrel’s silhouette, since that is the barrel he throws; H is that '
+    + 'barrel exactly. Each cabinet that deals them shows what it has now, then A–D boxes and E–H barrels at in-run size. '
+    + 'Pick one box and one barrel. ANIMATED.',
+    '15 Oct 2026');
+  const sub = (title) => {
+    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
+    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+    return grid;
+  };
+  const cands = GENERIC_CRATE_BARREL.candidates;
+  for (const [cabId, bake] of [['plumber', PLUMBER_OBSTACLES], ['speed', SPEED_OBSTACLES], ['rhythm', RHYTHM_OBSTACLES],
+    ['frost', FROST_OBSTACLES], ['crypt', CRYPT_OBSTACLES], ['neon', NEON_OBSTACLES]]) {
+    const cab = CABINETS.find((c) => c.id === cabId);
+    const grid = sub(cab.name);
+    const strips = bake.strips.slice(0, 1);
+    const now = [['crate', 0], ['barrel', 0]];
+    tile(grid, `${cab.name} — NOW`, 'crate · barrel', 480, laneHeight(strips),
+      (ctx, t) => drawControlLineup(ctx, t, cabId, strips, now), { animated: true, wide: true });
+    tile(grid, `${cab.name} — A–H`, cands.map((c) => `${c.letter} ${c.name}`).join(' · '), 480, laneHeight(strips),
+      (ctx, t) => drawCandidateLineup(ctx, t, cabId, strips, cands), { animated: true, wide: true });
+  }
+}
+
+// --------------------------------------------- the older obstacles, redrawn (lab)
+// 15 Oct 2026: the shared obstacles still in the old faint hand, redrawn in the bold flat
+// one of the new picks ("do the redraws first except the spike plate", then the rake,
+// the target and the thistles). src/dev/redraw-candidates.js. Each: NOW (the shipped
+// painter through the real run path) over NEW, on the scenery of a cabinet that deals it.
+{
+  const s = sectionEl('redraw-bakeoff', 'THE OLDER OBSTACLES, REDRAWN (bake-off)',
+    'The shared obstacles that were still drawn in the old faint hand, redrawn flat and front-on with the solid outline of '
+    + 'the new ones. Same objects, same boxes, same animation rings. Each pair: what ships now, then the redraw, at in-run '
+    + 'size on a cabinet that deals it. Approve per letter. ANIMATED.',
+    '15 Oct 2026');
+  const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
+  const BAKES = { plumber: PLUMBER_OBSTACLES, speed: SPEED_OBSTACLES, frost: FROST_OBSTACLES, crypt: CRYPT_OBSTACLES, neon: NEON_OBSTACLES };
+  for (const cand of REDRAW.candidates) {
+    const strips = BAKES[cand.cabinet].strips.slice(0, 1);
+    // A skin (the eye drone) is drawn on the type that wears it.
+    const type = OBSTACLES[cand.replaces] ? cand.replaces : 'drone';
+    const now = makeObstacle(type, 120 - makeObstacle(type, 0).w / 2);
+    if (type !== cand.replaces) now.skin = cand.replaces;
+    tile(grid, `${cand.letter} — ${cand.name} · NOW`, cand.replaces, 480, laneHeight(strips),
+      (ctx, t) => drawCabinetLane(ctx, t, cand.cabinet, strips, (c, tt) => drawWorldEntity(c, now, 0, tt, null, {}), { hero: null }),
+      { animated: true, wide: true });
+    tile(grid, `${cand.letter} — ${cand.name} · NEW`, cand.note, 480, laneHeight(strips),
+      (ctx, t) => drawCandidateLineup(ctx, t, cand.cabinet, strips, [cand]), { animated: true, wide: true });
+  }
+}
+
+// --------------------------------------------- the outline weight, side by side (lab)
+// 15 Oct 2026: "can i see something in the gallery that compares different weights? just
+// with 3 or 4 obstacles … from 1 down to .7 or so". The same four bold-hand obstacles
+// at in-run size on Field Service, one lane per weight. Painted direct through the dial's
+// own scaling (sprites/outline.js), so each lane shows its weight whatever the page's.
+{
+  const grid = section('outline-weights', 'OUTLINE WEIGHT — 1 down to 0.7',
+    `The dial in src/sprites/outline.js (desktop ${OUTLINE_WEIGHT.desktop}, phone ${OUTLINE_WEIGHT.phone}; this page is drawing `
+    + `the rest of the game at ${OUTLINE_SCALE}). The crate, barrel, scarecrow and thistle, in-run size on Field Service, `
+    + 'one lane per weight; 1 is the weight they were drawn at (0.55 world units). ANIMATED.',
+    '15 Oct 2026');
+  const thistle = REDRAW.candidates.find((c) => c.id === 'thistle');
+  const SET = [
+    { letter: 'A', slot: 'stack', paint: (c, w, h) => crateX(c, w, h) },
+    { letter: 'B', slot: 'barrel', paint: (c, w, h) => barrelArcade(c, w, h) },
+    { letter: 'C', slot: 'big', paint: scarecrowPaint },
+    { letter: 'D', slot: 'stand', paint: thistle.paint },
+  ];
+  const strips = PLUMBER_OBSTACLES.strips.slice(0, 1);
+  for (const k of [1, 0.9, 0.8, 0.7]) {
+    const cands = SET.map((c) => ({ ...c, paint: (ctx, w, h, t) => c.paint(scaledContext(ctx, k), w, h, t) }));
+    tile(grid, `weight ${k}`, `outline ${(0.55 * k).toFixed(2)} world units · ~${(1.1 * k).toFixed(1)} px at desktop zoom`
+      + (k === OUTLINE_WEIGHT.desktop ? ' · DESKTOP NOW' : '') + (k === OUTLINE_WEIGHT.phone ? ' · PHONE NOW' : ''),
+      480, laneHeight(strips), (ctx, t) => drawCandidateLineup(ctx, t, 'plumber', strips, cands), { animated: true, wide: true });
+  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — fire alarms on stands (lab)
+// 15 Oct 2026: "the fire alarms are suspended in mid air, what can we do about that?" —
+// stand each one on a freestanding fire point, the call point at the same height, so the
+// run is unchanged. src/dev/office-fire-alarm-stand-candidates.js; nothing wired into the run.
+{
+  const grid = section('office-fire-alarm-stand-bakeoff', 'CORPORATE KOMBAT — fire alarms on freestanding stands (bake-off)',
+    'Floor 23 (office-2, PULL 3 FIRE ALARMS) at in-run size. Every candidate keeps the call point exactly where it is (alt 36, '
+    + 'box 10x11): hop into it or shoot it, as now. The stand is drawn behind the hero and kept thin at his height so it reads as '
+    + 'scenery, not a hurdle. Per candidate: IN THE LANE (scrolling at run speed, Lorenzo hops into each one and runs past the '
+    + 'pulled one) and STILL (a waiting one beside him, a pulled one further on). ANIMATED.',
+    '15 Oct 2026');
+  for (const cand of FIRE_STAND_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name} · in the lane`, cand.note, 480, 270,
+      (ctx, t) => drawFireStandRun(ctx, t, cand.id), { animated: true });
+    tile(grid, `${cand.letter} — ${cand.name} · still: waiting / pulled`, cand.note, 480, 270,
+      (ctx, t) => drawFireStandStill(ctx, t, cand.id), { animated: true });
+  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — a woman zombie for the queue (lab)
+// 15 Oct 2026: "can we do a girl zombie while we're at it?" — the shipped queue clerk
+// (profileZombie.js) dressed as a late-80s office woman: src/dev/office-zombie-girl-candidates.js.
+{
+  const grid = section('office-zombie-girl-bakeoff', 'CORPORATE KOMBAT — a woman zombie clerk for the fire-exit queue (bake-off)',
+    'The queue clerk’s own drawing (green skin, heavy-lidded red eye, slack jaw, stitched scalp, soft outline, the office’s '
+    + 'ink, rims and SOFT colours, ZOMBIE_SHAPE’s skeleton, the step-and-drag with the far arm out) as a late-80s office '
+    + 'woman: pencil skirt, court shoes, shoulder pads, earrings, lipstick; hair and what she carries vary by letter. First, '
+    + 'every letter in one stretch of the queue among the shipped men; then per letter both colourways in the queue on floor '
+    + '23 at in-run size, and the walk (beside a man for height) with one cycle in six stills. Pick a letter. ANIMATED.',
+    '15 Oct 2026');
+  tile(grid, 'ALL — A to G in the queue', GIRL_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · '), 480, 270,
+    (ctx, t) => drawGirlLineupScene(ctx, t), { animated: true });
+  for (const cand of GIRL_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name} · in the queue`, cand.note, 480, 270,
+      (ctx, t) => drawGirlQueueScene(ctx, t, cand.id), { animated: true });
+    tile(grid, `${cand.letter} — the walk, ${cand.outfits.map(([n]) => n.toLowerCase()).join(' and ')}`,
+      'Left: a man of the queue for height, then her walking on the spot; then one cycle in six stills.', 480, 270,
+      (ctx, t) => drawGirlFrames(ctx, t, cand.id), { animated: true });
   }
 }
 

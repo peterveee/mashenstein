@@ -41,7 +41,9 @@ for(const floor of ['lobby','open','exec']){
  }
  assert.deepEqual(officeLandmarks(floor,0,Infinity),[],'endless mode has no invented repeating finish');
 }
-assert.ok(officeLandmarks('open',0,26208).some(l=>l.kind==='canteen'&&l.at>0.4&&l.at<0.6),'floor 23 has a central eating area');
+// later than central since 15 Oct: the middle of the floor is EMPLOYEE OF THE MONTH's, and the canteen
+// fills the stretch after it, before office-2's last alarms
+assert.ok(officeLandmarks('open',0,26208).some(l=>l.kind==='canteen'&&l.at>0.6&&l.at<0.8),'floor 23 has an eating area in its back half');
 assert.ok(officeLandmarks('open',0,26208).find(l=>l.kind==='canteen').w<=220,'the canteen is a small kitchen');
 for(const floor of ['lobby','open','exec']){
  const before=officeLandmarks(floor,12000,26208),after=officeLandmarks(floor,12291.2,26208);

@@ -151,7 +151,7 @@ export const OFFICE_ITINERARIES={
   // as he runs up (foregroundLift's close, 220 to 70 px ahead). START_LIFT_X is its centre at the
   // start, before the bay snap.
   open:[['lift',0.02,LIFT_BAY,{screen:START_LIFT_X}],['training',0.23,270],['meeting',0.40,270],
-    ['lift',0.50,LIFT_BAY],['canteen',0.59,210],['interview',0.78,270]],
+    ['lift',0.50,LIFT_BAY],['canteen',0.74,210],['interview',0.9,270]],
   exec:[['lift',0.04,LIFT_BAY,{screen:START_LIFT_X}],['meeting',0.12,270],['boardroom',0.32,360],['lounge',0.52,320],
     ['lift',0.62,LIFT_BAY],['library',0.72,270],['secretary',0.82,240],['ceo',0.94,400]],
 };
@@ -223,15 +223,21 @@ const PLAN_CACHE=new Map();
 // how far the lift block stands out of the wall, as a perspective scale (rooms' glass box: 1.3)
 const LIFT_DEPTH=1.18;
 const OFFICE_FINISH_FOUNDER=new Set(['lobby','open']),OFFICE_FINISH_SCREEN_X=40,OFFICE_FINISH_CLEAR=420;
+// where the finish flag stands on screen as the hero reaches it (finishMarker), in the wall's frame
+const OFFICE_FINISH_FLAG_X=360;
 export function officeFinishWall(floor,totalDist){
   if(!OFFICE_FINISH_FOUNDER.has(floor)||!Number.isFinite(totalDist)||totalDist<=0)return null;
   const def=OFFICE_CORRIDORS[floor].wall,per=def.period;
-  const target=totalDist*FACTORS.wall*OFFICE_ZOOM+OFFICE_FINISH_SCREEN_X;
+  // floor 23's finish wall carries the fire exit as well as the poster, and the door belongs by
+  // the finish flag (Peter, 15 Oct: "fire exit is still not near the finish line"): the section
+  // centres on the flag's screen x at the finish, the poster to its left, the door at the flag
+  const target=totalDist*FACTORS.wall*OFFICE_ZOOM+(floor==='open'?OFFICE_FINISH_FLAG_X-FIRE_EXIT_DX:OFFICE_FINISH_SCREEN_X);
   const used=officePlaces(floor,totalDist).filter(p=>p.section).map(p=>[p.section.u0,p.section.u1]);
   let best=null;
   for(let j=Math.floor(target/per)-1;j<=Math.floor(target/per)+1;j++)for(const b of def.bays){
-    // any stretch at least as wide as a piece and its margins: a window run is cleared to wall
-    if(b.u1-b.u<110)continue;
+    // any stretch at least as wide as a piece and its margins: a window run is cleared to wall.
+    // Floor 23's takes a whole window run: its fire exit stands beside the poster (officeFireExitBay)
+    if(b.u1-b.u<(floor==='open'?280:110))continue;
     const u0=b.u+j*per,u1=b.u1+j*per;
     if(used.some(([a,c])=>u1>a&&u0<c))continue;
     const d=Math.abs((u0+u1)/2-target);
@@ -239,6 +245,32 @@ export function officeFinishWall(floor,totalDist){
   }
   return best&&{u0:best.u0,u1:best.u1,abs:(best.u0+best.u1)/2};
 }
+// FLOOR 23'S FIRE EXIT (office-2's alarm, Peter, 15 Oct), in the wall's own coordinates.
+export function officeFireExitBay(floor,totalDist){
+  if(floor!=='open')return null;
+  const fin=officeFinishWall(floor,totalDist);
+  // the finish section itself, by the finish flag, so the door is passed at the line
+  return fin&&{u0:fin.abs+FIRE_EXIT_DX-40,u1:fin.abs+FIRE_EXIT_DX+40};
+}
+export const FIRE_EXIT_DX=0;
+// FLOOR 23'S DO NOT HIT THE FIRE ALARMS sign (office-2): once, early — the first plain stretch
+// of wall ahead of the start that nothing else takes — rather than on every wall run
+// (Peter, 15 Oct: "we don't need so many of these"). artwork.js keeps prints off it.
+export function officeAlarmSignBay(floor,totalDist){
+  if(floor!=='open'||!Number.isFinite(totalDist)||totalDist<=0)return null;
+  const plan=officeFounderPlan(floor,totalDist),def=OFFICE_CORRIDORS[floor].wall,per=def.period;
+  for(let j=0;j<6;j++)for(const b of def.bays){
+    if(b.type!=='wall')continue;
+    const u0=b.u+j*per,u1=b.u1+j*per;
+    // ahead of the hero's start, not behind it
+    if((u0+u1)/2<250||plan.avoid.some(([a,c])=>u1>a&&u0<c))continue;
+    // nor where one of the founder's pieces is meant to hang
+    if(plan.entries.some(e=>Math.abs(e.abs-(u0+u1)/2)<200))continue;
+    return {u0,u1};
+  }
+  return null;
+}
+const FARM_POSTER_AT=0.88;
 export function officeFounderPlan(floor,totalDist){
   if(!Number.isFinite(totalDist)||totalDist<=0)return null;
   const key=`${floor}|${Math.round(totalDist)}`;
@@ -247,10 +279,13 @@ export function officeFounderPlan(floor,totalDist){
     const wallRate=FACTORS.wall*OFFICE_ZOOM,finish=officeFinishWall(floor,totalDist);
     plan={
       totalDist,
-      entries:PROFESSOR_PLAN[floor].slice(0,finish?-1:undefined).map(([id,at])=>({id,abs:totalDist*at*wallRate})),
-      // on the lobby and floor 23 the last piece hangs alone on a stretch of wall in full view
-      // of the finish line
-      finish:finish&&{...finish,id:PROFESSOR_PLAN[floor].at(-1)[0]},
+      // Floor 23's finish wall is the fire exit's (office-2), so its last piece, EGGCORP WANTS YOU
+      // FOR OVERTIME, comes off it and hangs late on the floor in shot with a cube farm instead
+      // (Peter, 15 Oct: "id like the overtime poster around a cube farm"; artwork.js amongDesks).
+      entries:(floor==='open'?PROFESSOR_PLAN[floor].map(([id,at],i,all)=>[id,i===all.length-1?FARM_POSTER_AT:at])
+        :PROFESSOR_PLAN[floor].slice(0,finish?-1:undefined)).map(([id,at])=>({id,abs:totalDist*at*wallRate})),
+      // on the lobby the last piece hangs alone on a stretch of wall in full view of the finish line
+      finish:finish&&{...finish,id:floor==='open'?null:PROFESSOR_PLAN[floor].at(-1)[0]},
       // and nothing else hangs anywhere near it
       // the wall that sections, rooms and lifts cover (at camera 0 screen x is wall x)
       avoid:officeLandmarks(floor,0,totalDist).filter(l=>l.section||officeStandsOut(l.kind))
@@ -258,7 +293,10 @@ export function officeFounderPlan(floor,totalDist){
         // (a room or lift covers only its own front, and a lift its pot plants)
         .map(l=>OFFICE_NEAR_LIFT_LANDMARKS.has(l.kind)?[l.x-42,l.x+l.w+58]:officeStandsOut(l.kind)?[l.x-14,l.x+l.w+14]
           :[l.section.u0-(l.kind==='ceo'?130:0),l.section.u1+(l.kind==='ceo'?130:0)])
-        .concat(finish?[[finish.u0-OFFICE_FINISH_CLEAR,finish.u1+OFFICE_FINISH_CLEAR]]:[]),
+        // (floor 23's finish wall is just the fire exit now, not a piece to keep the view clear
+        // for, so only its own window run is kept: Peter, 15 Oct, "quite an expanse before the
+        // fire escape with very little")
+        .concat(finish?[[finish.u0-(floor==='open'?0:OFFICE_FINISH_CLEAR),finish.u1+(floor==='open'?0:OFFICE_FINISH_CLEAR)]]:[]),
       // each cleared window run and the part of it its place actually covers (a lift with its
       // pot plants, a room's front, or all of a built-in)
       walls:officeLandmarks(floor,0,totalDist).filter(l=>l.section).map(l=>({u0:l.section.u0,u1:l.section.u1,

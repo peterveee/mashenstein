@@ -875,6 +875,17 @@ export function neonTrainInterior(r) {
 // The doorway's width, read off the aperture itself rather than restated.
 const DOOR_W_OF = (a) => a.openW + a.leafW;
 
+/** The middle of a doorway in world x: 'rear' is the one he steps in at, 'front' the one he leaves by. */
+export function neonTrainDoorX(r, which) {
+  const consist = trainConsistFor(r);
+  const k = r.w / tronConsistLength(consist, TRON_BOARD_GAP);
+  const a = which === 'front'
+    ? tronCarApertures(consist[consist.length - 1],
+      tronConsistLength(consist.slice(0, -1), TRON_BOARD_GAP) + TRON_BOARD_GAP, TRAIN_H, TRAIN_H)
+    : tronCarApertures(consist[0], 0, TRAIN_H, TRAIN_H);
+  return r.x + (a.doorX + DOOR_W_OF(a) / 2) * k;
+}
+
 /**
  * WHETHER HE HAS REACHED THE FRONT CAR, the one whose door he leaves by. The run
  * holds his shocked face from the rear door to here, and lets it go to normal
@@ -946,6 +957,22 @@ export function drawNeonTrainShell(ctx, camX, r, topAt, t = 0) {
   ctx.restore();
 }
 
+/**
+ * WHERE A FLYING TRAIN IS DRAWN, relative to its berth: the x offset, the rise
+ * (scaled under `ceilingY`, see drawTrainRoute) and the ghost alpha. Anything
+ * riding the train in flight reads this so it stays on the hull.
+ */
+export function trainFlightPose(air, roofY, ceilingY = null) {
+  const flown = air.lift;
+  const peak = air.peak ?? TRAIN_FLIGHT_AIR;
+  const room = ceilingY == null ? Infinity : roofY - ceilingY;
+  return {
+    dx: air.dx,
+    lift: peak > room ? flown * Math.max(0, room) / peak : flown,
+    alpha: air.alpha ?? (1 - (flown / TRAIN_FLIGHT_AIR) * (1 - TRAIN_GHOST_ALPHA)),
+  };
+}
+
 function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palette = TRON_PALETTE.neon, ceilingY = null) {
   const roofY = topAt(r.x + r.w / 2, r);
   const consist = trainConsistFor(r);
@@ -964,10 +991,8 @@ function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palett
   // scaled down until its highest point fits under it. Scaled, not clamped: a clamp
   // flattens the fly-past's bow into a level line. The ghost fade still reads the
   // UNSCALED height, so a train is exactly as faint at cruise on every framing.
-  const flown = air ? air.lift : 0;
-  const peak = air ? (air.peak ?? TRAIN_FLIGHT_AIR) : 0;
-  const room = ceilingY == null ? Infinity : roofY - ceilingY;
-  const lift = peak > room ? flown * Math.max(0, room) / peak : flown;
+  const pose = air ? trainFlightPose(air, roofY, ceilingY) : null;
+  const lift = pose ? pose.lift : 0;
   // SPEED LINES, from the train's own painter (Peter, 23 Sep: "where are the
   // speed lines for the train as it rushes past?"). The old ones were nine
   // hand-placed 1px dashes at the skirt, where the road covers them, and they
@@ -1008,7 +1033,7 @@ function drawTrainRoute(ctx, camX, r, topAt, from, to, air = null, t = 0, palett
   ctx.clip();
   // Solidifies as it comes down: full ghost at cruising height, opaque the
   // moment it is on the rail. `lift` is already smoothstepped, so this is too.
-  if (air) ctx.globalAlpha *= air.alpha ?? (1 - (flown / TRAIN_FLIGHT_AIR) * (1 - TRAIN_GHOST_ALPHA));
+  if (pose) ctx.globalAlpha *= pose.alpha;
   ctx.translate(r.x - camX + dx, roofY - lift);
   ctx.scale(k, 1);
   drawTronTrain(ctx, 0, TRAIN_H, {

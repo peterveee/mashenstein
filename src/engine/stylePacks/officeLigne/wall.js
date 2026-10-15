@@ -899,6 +899,64 @@ function extinguisher(g, h, P) {
   box(g, x + 1, y - 16, 4, 4, '#f2e6d2', P.ink, 0.3);
 }
 
+// THE FIRE ALARM SIGN on floor 23 (Peter, 15 Oct): a call point on the wall with
+// a plate beside it telling you not to hit it — on the wall rather than in the
+// lane so it moves slowly enough to read, and so office-2's alarms are known.
+function alarmSign(g, h, P) {
+  const { x, y, w } = h;
+  const hh = h.h;
+  // The call point, drawn as the lane's own alarm is: red box, white band, white T handle.
+  const cw = 13, ch = 16, cy = y + (hh - ch) / 2;
+  box(g, x, cy, cw, ch, '#e0203a', P.ink, LW);
+  box(g, x + cw - 3, cy + 0.4, 2.6, ch - 0.8, '#a3162c');
+  box(g, x + 1.8, cy + 2, cw - 3.6, 2.6, '#ffffff', P.ink, LWF);
+  box(g, x + cw / 2 - 0.8, cy + 5.4, 1.6, 4, '#2a2833');
+  box(g, x + 3, cy + 9.4, cw - 6, 2.4, '#ffffff', P.ink, 0.35);
+  const px = x + cw + 4, pw = w - cw - 4;
+  box(g, px + 0.8, y + 1, pw, hh, P.wallShade || 'rgba(0,0,0,0.1)');
+  box(g, px, y, pw, hh, '#fbfbf4', P.ink, LW);
+  box(g, px + 1.4, y + 1.4, pw - 2.8, hh - 2.8, null, '#d23c30', 0.8);
+  letters(g, 'DO NOT HIT', px + pw / 2, y + hh * 0.43, 5, { ink: '#b52e2a', lw: 0.5, align: 'center' });
+  letters(g, 'THE FIRE ALARMS', px + pw / 2, y + hh * 0.8, 5, { ink: '#b52e2a', lw: 0.5, align: 'center' });
+}
+
+// THE FIRE EXIT on floor 23's back wall by the finish (Peter, 15 Oct): a steel
+// door standing open on the stairwell, the green FIRE EXIT sign over it. The
+// evacuating floor walks off towards it (room.js setOfficeEvacuation).
+function fireExitDoor(g, x, P, base = WALL_BASE, leafOnly = false) {
+  const w = 40, h = 74, y = base - h;
+  if (leafOnly) {
+    // the open door again, over whoever has just walked in behind it
+    box(g, x + w - 2, y, 10, h, '#e0203a', P.ink, LW);
+    box(g, x + w + 6, y, 2, h, '#a3162c');
+    box(g, x + w + 3, y + h * 0.5, 4, 2, '#c9ced8', P.ink, LWF);
+    return;
+  }
+  box(g, x - 3, y - 3, w + 6, h + 3, '#c9ced8', P.ink, LW);
+  box(g, x, y, w, h, '#2a2440', P.ink, LWF);
+  for (let i = 0; i < 5; i++) {
+    const sy = y + h * (0.3 + i * 0.13);
+    line(g, x + 2 + i * 4, sy, x + w * 0.62 + i * 4, sy, '#3e3658', 1.4);
+  }
+  box(g, x + w - 2, y, 10, h, '#e0203a', P.ink, LW);
+  box(g, x + w + 6, y, 2, h, '#a3162c');
+  box(g, x + w + 3, y + h * 0.5, 4, 2, '#c9ced8', P.ink, LWF);
+  const sy = y - 22, sw = 64;
+  // the sign is lit, as an emergency exit sign is: a soft green halo on the wall round it
+  const gx = x + w / 2, gy = sy + 7;
+  const glow = g.createRadialGradient(gx, gy, 4, gx, gy, 52);
+  glow.addColorStop(0, 'rgba(120,255,160,0.32)');
+  glow.addColorStop(1, 'rgba(120,255,160,0)');
+  g.fillStyle = glow;
+  g.fillRect(gx - 54, gy - 30, 108, 60);
+  box(g, x + w / 2 - sw / 2, sy, sw, 14, '#2f8a4e', P.ink, LW);
+  letters(g, 'FIRE EXIT', x + w / 2 + 6, sy + 10.2, 6, { ink: '#f2f8ee', lw: 0.7, align: 'center' });
+  const mx = x + w / 2 - sw / 2 + 6, my = sy + 3;
+  circ(g, mx + 3.6, my + 1, 1.2, '#f2f8ee');
+  lines(g, [mx + 3.2, my + 2.4, mx + 2.2, my + 5.6, mx + 2.2, my + 5.6, mx + 4.4, my + 8.4, mx + 2.2, my + 5.6, mx, my + 8.4,
+    mx + 3, my + 3.6, mx + 5.6, my + 4.6, mx + 3, my + 3.6, mx + 0.4, my + 4.4], '#f2f8ee', 0.9);
+}
+
 const EXEC_PANEL = 60;
 // the height of the panelling's rail: the window sill where the glass stops short of the floor
 function execSill(F) {
@@ -1680,4 +1738,4 @@ function revolvingDoor(ctx, f, P) {
   }
 }
 
-export { pictureLight, decoSconce, glassBlocks, nagelPrint, PROF_NAGEL, rake, crownPath, SIGN, signPaths, buzz, signNeon, floorLights, glints, sunShafts, noonShafts, noonWall, noonSpans, lobbyCornice, lobbyWallBay, lobbyGlass, lobbyColumn, lobbyLift, lobbyLogo, clockFace, cityPainting, openWallBay, openDado, openBulkhead, openGlass, radiator, openColumn, steelLift, whiteboard, poster, meetingDoor, extinguisher, execPanels, upperWall, execGlass, execColumn, PROF, PROF_MANE, profHeadPath, professor, professorBody, professorHead, founderPortrait, trophyCase, bookshelf, ceoDoor, abstractPainting, paintWall, liftDoors, clockHands, revolvingDoor };
+export { alarmSign, fireExitDoor, pictureLight, decoSconce, glassBlocks, nagelPrint, PROF_NAGEL, rake, crownPath, SIGN, signPaths, buzz, signNeon, floorLights, glints, sunShafts, noonShafts, noonWall, noonSpans, lobbyCornice, lobbyWallBay, lobbyGlass, lobbyColumn, lobbyLift, lobbyLogo, clockFace, cityPainting, openWallBay, openDado, openBulkhead, openGlass, radiator, openColumn, steelLift, whiteboard, poster, meetingDoor, extinguisher, execPanels, upperWall, execGlass, execColumn, PROF, PROF_MANE, profHeadPath, professor, professorBody, professorHead, founderPortrait, trophyCase, bookshelf, ceoDoor, abstractPainting, paintWall, liftDoors, clockHands, revolvingDoor };

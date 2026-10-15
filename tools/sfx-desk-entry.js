@@ -79,6 +79,7 @@ const GROUPS = [
       { cue: 'stripThrow', what: 'the master strip being thrown off, in the opening film' },
       { cue: 'socketDrop', what: 'one plug leaving the MCGFN-1 bank, in the opening film' },
       { cue: 'bridgeLay', what: 'the ice deck laying across the break' },
+      { cue: 'fireBell', what: 'the office fire bell when the third alarm is pulled, office-2' },
       { cue: 'trapSnap', what: 'a bear trap', gain: 0.72 },
       { cue: 'boom', what: 'an explosion; a card box bursting', gain: 1.5 },
       { cue: 'smallBoom', what: 'a Martian raider blown up outside the Gravity Grid windows', gain: 0.75 },

@@ -232,7 +232,9 @@ Collected during runs; timers drain in real-time. Stackable levels (1–4):
 
 ### 4.6 Missions & Challenges
 
-**Mission types:** reach, targets, fragile fuse, chase, relay combo, cord recovery, blackout, rescue, escape.
+**Mission types:** reach, targets, fragile fuse, chase, relay combo, cord recovery, blackout, rescue, escape, M-A-S-H letters.
+
+**M-A-S-H letters** (Field Service 3, Speed Zone 3): four letters at fixed spots. On Field Service 3 each is on a road you have to choose — the opening island, the tunnel floor, the staircase top, the sky road. Speed Zone 3 has no roads, so each asks for a different jump — a hop on clear lane, over the tar pit, on a crossing stone, and one high enough to want the jump held; the lane around a bare letter is kept clear. A letter banks the moment it is taken and is kept on a failed run; the stage clears on the run that finishes with all four banked. All four in one run is the gold MASH (+1000). A letter the camera cannot show in time — overhead or underfoot — gets a marker on the frame's edge from the moment its road comes into view; letters in the picture's band get none.
 
 Each stage has one mission (required to clear) and one challenge (optional bonus). Completing both awards plugs.
 

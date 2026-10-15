@@ -71,7 +71,10 @@ const selfOutlinedHazards = [
   'cactus', 'cactusBig', 'snowman', 'snowmanBig', 'crate', 'pipe', 'zombieWalk', 'icicle', 'bearTrap',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair',
 ];
-assert(selfOutlinedHazards.every((name) => !propHazardRim(name)) && propHazardRim('barrel'),
+// The barrel (sprites/crateBarrel.js) and the tombstone (sprites/redrawProps.js) carry
+// their own bold ink since 15 Oct 2026; the zombie still takes the shared halo.
+assert(selfOutlinedHazards.every((name) => !propHazardRim(name)) && !propHazardRim('barrel')
+  && !propHazardRim('tombstone') && propHazardRim('zombie'),
   'refined hazards skip the blurry shared halo while other hazards retain it');
 const frost = CABINETS.find((cabinet) => cabinet.id === 'frost');
 const frostTypes = frost.patterns.flatMap((pattern) => pattern.cells.map((cell) => cell.t));
@@ -91,7 +94,12 @@ assert(propSprite('crate', 12, 11) === c0, 'frames are cached, not repainted');
 function trace(name, frame) {
   const log = [];
   const rec = new Proxy({}, {
-    get: (_, k) => (...args) => { log.push(`${String(k)}(${args.map((a) => (typeof a === 'number' ? a.toFixed(3) : a)).join(',')})`); },
+    // A gradient comes back as a stub so painters that build one (the crypt's gouache
+    // `mass`, 15 Oct 2026) can add their stops; the stops are traced like any call.
+    get: (_, k) => (...args) => {
+      log.push(`${String(k)}(${args.map((a) => (typeof a === 'number' ? a.toFixed(3) : a)).join(',')})`);
+      if (String(k).endsWith('Gradient')) return { addColorStop: (...s) => log.push(`stop(${s.join(',')})`) };
+    },
     set: () => true,
   });
   PROP_PAINTERS[name](rec, 13, 12, frame);
@@ -112,7 +120,12 @@ for (const name of Object.keys(PROP_FRAMES)) {
   // struck block's hop runs as a transform in drawWorldEntity
   // (switchBonkLift), not as art inside the raster. Both poses must still be
   // reached, which is what a floor of 2 pins.
-  const MIN_POSES = { qcrate: Math.ceil(n / 2), switch: 2 };
+  // The 15 Oct 2026 bake-off picks (sprites/<cabinet>Props.js) were drawn on rings with
+  // HOLDS in them — the sawhorse's lamp flashes then stays lit, a glint runs along the
+  // crampons' and caltrops' points between rests, the parcel's ribbon and the roses'
+  // falling petal return to a pose mid-cycle — so their floor is the poses they draw.
+  const MIN_POSES = { qcrate: Math.ceil(n / 2), switch: 2,
+    sawhorse: 4, parcels: 5, crampons: 6, caltrops: 4, graveRoses: 7, saucer: 7 };
   const distinct = MIN_POSES[name] ?? n;
   assert(seen.size >= distinct, `${name}: draws enough distinct poses across its ${n} frames`);
 }

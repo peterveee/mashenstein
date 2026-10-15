@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {beginPerformanceCapture, endPerformanceCapture, performanceFrame, performanceMark, performanceAdd, performanceCaptureActive,performanceLocation} from '../src/engine/performance-capture.js';
+assert.equal(performanceMark(),0);
+assert.equal(endPerformanceCapture(),null);
+beginPerformanceCapture();assert.equal(performanceCaptureActive(),true);
+performanceFrame(100);performanceFrame(116);performanceFrame(132);performanceLocation(12,1400,.5);performanceFrame(192);
+const a=endPerformanceCapture();assert.equal(a.frames,3);assert.equal(a.over25,1);assert.equal(a.over50,1);assert.equal(a.timings.gap.max,60);assert.equal(a.worst[0].gap,60);assert.equal(a.worst[0].distance,1400);
+assert.equal(performanceCaptureActive(),false);performanceAdd('bot',1);
+beginPerformanceCapture();performanceFrame(0);for(let i=1;i<=13000;i++)performanceFrame(i*17);
+const b=endPerformanceCapture();assert.equal(b.frames,12000);assert.equal(b.truncated,true);
+console.log('ok: dormant timing, gap attribution, bounded capture and cleanup');

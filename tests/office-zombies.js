@@ -9,7 +9,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 const Z = await import('../src/engine/stylePacks/officeLigne/zombies.js');
 const { officeFrame, OFFICE_ZOOM } = await import('../src/engine/stylePacks/officeClimb.js');
-const { OFFICE_CORRIDORS, officeLandmarks, officeFounderPlan, officeFurnitureCuts } = await import('../src/engine/stylePacks/officeLigne/progression.js');
+const { OFFICE_CORRIDORS, officeLandmarks, officeFounderPlan, officeFurnitureCuts, officeIsWallSection } = await import('../src/engine/stylePacks/officeLigne/progression.js');
 const { officeArtworks } = await import('../src/engine/stylePacks/officeLigne/artwork.js');
 const { officeCleanerPlaces } = await import('../src/engine/stylePacks/officeLigne/cleanerPlacement.js');
 const { totalDistFor, BASE_SPEED } = await import('../src/game/layout.js');
@@ -37,7 +37,7 @@ for (const T of lengths) {
   // stage too short for that (ASSIST SPEED 80%), a farm is given up for it: the board in a plain wall
   // bay, the furniture under it cleared, and a cooler of the clerk's own there.
   assert.ok(zp, `${T}: the board and the clerk are on the floor`);
-  assert.ok(M.board / T > 0.4 && M.board / T < 0.97, `${T}: met two thirds along or later (${(M.board / T).toFixed(3)})`);
+  assert.ok(M.board / T > 0.05 && M.board / T < 0.66, `${T}: met before office-2's third alarm (${(M.board / T).toFixed(3)})`);
   const f = frameAt(M.board), bay = Z.officeMonthBoard(f), x0 = bay.u0 - f.wall.shift, x1 = bay.u1 - f.wall.shift;
   assert.ok(f.wall.bays.some((q) => q.type === 'wall' && Math.abs(q.x0 - x0) < 0.01), `${T}: the board hangs in a plain wall bay`);
   assert.ok((x0 + x1) / 2 > 40 && (x0 + x1) / 2 < 440, `${T}: in view when met`);
@@ -47,7 +47,8 @@ for (const T of lengths) {
   // a window, a picture wall and a window at least between it and the canteen (any wall section);
   // no room or lift in front of it
   assert.ok(!f.landmarks.some((l) => {
-    const [a, b] = l.section ? [l.section.u0 - f.wall.shift, l.section.u1 - f.wall.shift] : [l.x, l.x + l.w], clear = l.section ? 470 : 10;
+    // the picture wall only from a built-in (the canteen); a room or a lift only keeps off its bay
+    const [a, b] = l.section ? [l.section.u0 - f.wall.shift, l.section.u1 - f.wall.shift] : [l.x, l.x + l.w], clear = officeIsWallSection('open', l.kind) ? 470 : 300;
     return a < x1 + clear && b > x0 - clear;
   }), `${T}: not hard by the canteen, nor behind a room`);
   const cx = zp.cooler - f.mid.shift;

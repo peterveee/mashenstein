@@ -8,7 +8,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { officeWarmJobs } = await import('../src/engine/stylePacks/officeLigne.js');
-const { getStylePack, __testing } = await import('../src/engine/stylePacks/index.js');
+const { getStylePack, __testing, neonWarmJobs } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS, CABINET_BY_ID } = await import('../src/data/cabinets.js');
 const { speedMcmWarmJobs } = await import('../src/engine/stylePacks/speedMcm.js');
 const { cryptGouacheWarmJobs } = await import('../src/engine/stylePacks/cryptGouache.js');
@@ -222,8 +222,8 @@ resetArtWarmup();
 beginStageArtWarmup({ id: 'plain-probe', style: 'pixel' });
 const without = artWarmupPending();
 resetArtWarmup();
-const bakes = speedMcmWarmJobs().length + cryptGouacheWarmJobs().length + cryptLifeWarmJobs().length + officeWarmJobs().length + gravityStarWarmJobs().length;
-assert(withBakes - without === bakes, `a Surge run warms the mcm, gouache, office and gravity-star bakes (${withBakes - without} of ${bakes})`);
+const bakes = speedMcmWarmJobs().length + cryptGouacheWarmJobs().length + cryptLifeWarmJobs().length + officeWarmJobs().length + gravityStarWarmJobs().length + neonWarmJobs().length;
+assert(withBakes - without === bakes, `a Surge run warms the mcm, gouache, office, gravity-star and neon bakes (${withBakes - without} of ${bakes})`);
 
 
 // The palette glitches (surgePalette.js, 13 Oct 2026): each look opens on its own

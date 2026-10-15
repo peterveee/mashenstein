@@ -912,7 +912,28 @@ const GOAL_LABELS = {
   blackout: 'SURVIVE',
   escape: 'ESCAPE',
   maintenance: 'CYCLES',
+  // The letters themselves are the count — see mashTail.
+  mash: 'COLLECT',
 };
+// A mission may name its own count (`label` in data/stages.js: office-2's ALARMS,
+// office-3's SAFES), which wins over the type's word here.
+// THE M-A-S-H READOUT. The four letters stand in the count's slot, each in the
+// ink of where it is: gold once taken this run, silver if banked on an earlier
+// attempt (it counts; it is just not this run's), red once it has gone past
+// untaken, and faint while it is still ahead. A missed letter has to read as
+// missed at a glance, which is why it is red and not a darker faint.
+const MASH_INK = {
+  got: '#f6c945', banked: '#cfd8e6', missed: 'rgba(232,104,104,0.9)', ahead: 'rgba(255,255,255,0.35)',
+};
+function mashTail(letters) {
+  const text = letters.map((l) => l.letter).join(' ');
+  const inks = [];
+  for (const l of letters) {
+    if (inks.length) inks.push(null);
+    inks.push(MASH_INK[l.got ? 'got' : l.banked ? 'banked' : l.missed ? 'missed' : 'ahead']);
+  }
+  return { text, inks };
+}
 // The goal toast's own edge: gold, because it is the only panel that appears
 // to announce something rather than to report state.
 const PANEL_GOLD = { border: 'rgba(246,201,69,0.3)', shadow: true };
@@ -980,7 +1001,7 @@ function objectivePanelMetrics(tag, text, scale, fold = 0) {
   return { width: w, height: h, lead, headW, slotW, head, tail };
 }
 
-export function drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold = 0, OBJ_R = OBJ_RIGHT) {
+export function drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold = 0, OBJ_R = OBJ_RIGHT, tailInks = null) {
   const TP = 5, GAP = 5;
   const { width: w, height: h, lead, headW, slotW, head, tail } = objectivePanelMetrics(tag, text, scale, fold);
   const cy = y + h / 2;
@@ -1002,7 +1023,15 @@ export function drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold
     rawDrawText(ctx, head, headX, textY(cy, scale), ink, scale);
     if (fold > 0) ctx.restore();
   }
-  if (tail) rawDrawText(ctx, tail, tailX, textY(cy, scale), ink, scale);
+  if (tail && tailInks) {
+    // One ink per character, each placed where it stands in the whole string —
+    // measured the way the head is, as a difference, so the tracking matches.
+    for (let i = 0; i < tail.length; i++) {
+      if (tail[i] === ' ') continue;
+      const cx = tailX + textWidth(tail.slice(0, i + 1), scale) - textWidth(tail[i], scale);
+      rawDrawText(ctx, tail[i], cx, textY(cy, scale), tailInks[i] || ink, scale);
+    }
+  } else if (tail) rawDrawText(ctx, tail, tailX, textY(cy, scale), ink, scale);
   // THE RIGHT SHOULDER, remembered by the thing that owns it. A speech card
   // talking up on this row has to clear whichever objective panel reaches
   // furthest in, and both of them are as wide as their own words — so the edge
@@ -2083,7 +2112,10 @@ function portraitGoalText(run) {
   if (!run?.stage) return 'READY';
   if (run.overtime) return 'OVERTIME';
   const m = run.mission || {};
-  const label = GOAL_LABELS[m.type] ?? String(m.type || 'GOAL').toUpperCase();
+  if (m.type === 'mash' && m.letters) {
+    return `MASH ${m.letters.map((l) => (l.got || l.banked ? l.letter : '_')).join('')}`;
+  }
+  const label = m.label ?? GOAL_LABELS[m.type] ?? String(m.type || 'GOAL').toUpperCase();
   const count = m.n
     ? (m.type === 'chase' && typeof run.missionCount === 'function'
       ? run.missionCount() : (m.count ?? 0))
@@ -2662,15 +2694,15 @@ export function drawHud(ctx, run) {
   // edge they landed on: a second chip on the same row (BONUS_SLOT 'chip') has
   // to start where the first one ended, and measuring the mission string twice
   // in two places is how the two would drift apart.
-  const objective = (tag, tagColor, text, ink, y, scale, fold = 0, alpha = 1, right = objRight) => {
+  const objective = (tag, tagColor, text, ink, y, scale, fold = 0, alpha = 1, right = objRight, tailInks = null) => {
     if (alpha <= 0) return right;
     if (alpha < 1) { ctx.save(); ctx.globalAlpha *= alpha; }
-    const x = drawObjective(tag, tagColor, text, ink, y, scale, fold, right);
+    const x = drawObjective(tag, tagColor, text, ink, y, scale, fold, right, tailInks);
     if (alpha < 1) ctx.restore();
     return x;
   };
-  const drawObjective = (tag, tagColor, text, ink, y, scale, fold = 0, right = objRight) =>
-    drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold, right);
+  const drawObjective = (tag, tagColor, text, ink, y, scale, fold = 0, right = objRight, tailInks = null) =>
+    drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold, right, tailInks);
   const OBJ_Y = OBJ_ROW_Y, OBJ_Y2 = OBJ_ROW2_Y;
   // The widest string a `count/n` readout can print, for reserving its slot.
   // The count never exceeds n, so it has at most n's digits, and the face is
@@ -2715,7 +2747,7 @@ export function drawHud(ctx, run) {
   const bonusAlpha = run.finishing ? 0 : 1 - smoothstep(Math.min(1, Math.max(0, (560 - remain) / 200)));
   if (!run.overtime && run.stage) {
     const m = run.mission;
-    const label = GOAL_LABELS[m.type] ?? m.type.toUpperCase();
+    const label = m.label ?? GOAL_LABELS[m.type] ?? m.type.toUpperCase();
     let prog = '', slot = '';
     if (m.n) { prog = `${m.count ?? 0}/${m.n}`; slot = countSlot(m.n); }
     // Through the run's own counter, not a field beside it: the win check
@@ -2727,8 +2759,13 @@ export function drawHud(ctx, run) {
     // The count rides in a reserved slot (see drawObjective) so the panel holds
     // its width from 0/n to n/n; the label is truncated against that reserve,
     // not against whatever the count happens to measure this frame.
+    let goalInks = null;
+    if (m.type === 'mash' && m.letters) {
+      const t = mashTail(m.letters);
+      prog = t.text; slot = t.text; goalInks = t.inks;
+    }
     const goalText = prog ? [`${fitRight(label, textWidth(` ${slot}`))} `, prog, slot] : fitRight(label);
-    const goalLeft = objective('GOAL', '#74c947', goalText, '#ffffff', OBJ_Y, 1);
+    const goalLeft = objective('GOAL', '#74c947', goalText, '#ffffff', OBJ_Y, 1, 0, 1, objRight, goalInks);
     run.hudGoalLeft = goalLeft;
 
     // WHAT THE BONUS SAYS, settled before WHERE it goes. The two used to be one

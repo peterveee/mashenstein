@@ -17,8 +17,9 @@
 //
 // THE CARD DOES NOT QUOTE THIS NUMBER, and that is deliberate rather than a
 // drift. `skillDesc` advertises CLEARANCE — the air left over the tallest thing
-// in the game you actually jump, an 18px bollard — so Clara's x1.10 reads
-// "JUMPS 15% HIGHER" and Lorenzo's x1.08 reads 12%. The first 18px of every
+// in the game you actually jump, floor 23's 22px vending machine since 15 Oct
+// 2026 (an 18px bollard before) — so Clara's x1.10 reads "JUMPS 16% HIGHER"
+// and Lorenzo's x1.08 reads 13%. The first 22px of every
 // jump is spent getting level with the obstacle and buys nothing; only what is
 // above it is the stat the player feels, so a 5.7px gain is a bigger share of a
 // smaller and more honest number. tests/cast.js recomputes both strings from
@@ -40,7 +41,7 @@ export const HEROES = [
     ability: { type: 'wrench', cooldown: 2.4, label: 'PIPE WRENCH', callout: 'THROW' },
     joke: 'PRODUCES INCREASINGLY INAPPROPRIATE PLUMBING TOOLS.',
     skillLabel: 'HIGH JUMP',
-    skillDesc: 'JUMPS 12% HIGHER',
+    skillDesc: 'JUMPS 13% HIGHER',
     powerDesc: 'THROWN WRENCH BREAKS GROUND HAZARDS',
     abilityDesc: 'THROWS THE PIPE WRENCH; IT BREAKS HAZARDS AND COMES BACK.',
     sidegrades: [
@@ -133,7 +134,7 @@ export const HEROES = [
     shotSpeed: 340, shotSize: 0.85, shotBurst: 2,
     joke: 'NARRATES HER OWN LUNCH. IN THE PAST TENSE.',
     skillLabel: 'CLIFFHANGER',
-    skillDesc: 'JUMPS 15% HIGHER',
+    skillDesc: 'JUMPS 16% HIGHER',
     powerDesc: 'FIRES BOTH PISTOLS',
     abilityDesc: 'FIRES A QUICK PAIR OF SLUGS THAT DESTROY GROUND OBSTACLES.',
     sidegrades: [
@@ -157,7 +158,7 @@ export const HEROES = [
     // which is the shape "JUMPS TWICE" was always describing.
     //
     // The floor was checked, not guessed. The tallest thing anyone jumps OVER
-    // is the 18px bollard (tests/cast.js), and the spawner's declared worst
+    // is the 22px vending machine (tests/cast.js), and the spawner's declared worst
     // case is a deliberately pessimistic 37u apex nobody in the cast is; 48u
     // clears both with room. Her airtime lands at 0.656s, still above Grumpos'
     // 0.636s, so the shortest jumper is not also the worst hang time.

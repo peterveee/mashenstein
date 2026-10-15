@@ -1,6 +1,6 @@
 // Campaign progress: plugs, ranks, coins, mastery XP, unlocks.
 import { REWARDS, MASTERY_LEVELS } from '../data/progression.js';
-import { UNLOCKS, STAGES } from '../data/stages.js';
+import { UNLOCKS, STAGES, MASH_LETTERS } from '../data/stages.js';
 import { CABINETS } from '../data/cabinets.js';
 import { sendRunResult } from '../engine/telemetry.js';
 
@@ -165,6 +165,15 @@ export function applyResult(save, result) {
     const prevBestScore = slot.campaign.bestScore[id] || 0;
     result.newBestScore = (result.score || 0) > prevBestScore;
     slot.campaign.bestScore[id] = Math.max(prevBestScore, result.score || 0);
+    // M-A-S-H letters bank on ANY ending, a failed run or a quit included — the
+    // whole promise of the mission is that a letter you took stays taken. The
+    // run already counted these toward its own mission, so this only has to
+    // remember them for the next attempt.
+    if (result.mashGot && result.mashGot.length) {
+      const mash = slot.campaign.mash || (slot.campaign.mash = {});
+      const have = new Set([...(mash[id] || []), ...result.mashGot]);
+      mash[id] = MASH_LETTERS.filter((L) => have.has(L));
+    }
     const prev = slot.campaign.plugs[id] || [false, false, false];
     const now = [
       prev[0] || result.success,

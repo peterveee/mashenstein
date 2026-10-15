@@ -83,8 +83,8 @@ export class AttractState {
       seed: this.o.seed ?? clipSeed(this.scenario.id),
       difficulty: 1,
       demo: true,
-      devInvuln: this.crash || this.background,
-      devForceMission: this.crash || this.background,
+      devInvuln: this.o.invulnerable || this.crash || this.background,
+      devForceMission: this.o.invulnerable || this.crash || this.background,
       recordBackground: this.background,
       // Dev watch modes may name the hero; the idle demo takes the slot's own.
       initialHeroId: this.o.hero || undefined,

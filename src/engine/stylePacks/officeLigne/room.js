@@ -1389,14 +1389,120 @@ function paintMid(g, F, P, u0, u1, layer, selection = 'all') {
   });
 }
 
+// THE FLOOR EVACUATING (office-2's fire alarm, Peter, 15 Oct): seconds since the
+// third alarm went, or null. Set once per frame by STYLE.paint. Each seated worker
+// gets up at their own moment, walks off to the right towards the fire exit, and
+// their seat stays empty after.
+// THE ROOM CLEARS IN VIEW: a worker gets up when they are on screen with the alarm
+// going (or at the alarm, if already in view), so the room you are running past is
+// the one you see empty — not one that emptied while it was a screen away.
+let EVAC = null, EVAC_NOW = 0, EVAC_EXIT = null;
+const EVAC_START = new Map();
+export function setOfficeEvacuation(t, now = 0) {
+  EVAC = Number.isFinite(t) ? t : null;
+  EVAC_NOW = now;
+  if (EVAC == null) EVAC_START.clear();
+}
+// A room's way out, in screen x (rooms.js sets it around the interview room's people): a
+// worker who reaches it has gone through the door. Elsewhere they walk on until off screen.
+export function setOfficeEvacExit(x) { EVAC_EXIT = Number.isFinite(x) ? x : null; }
+const EVAC_SPEED = 26, EVAC_IN_VIEW = 400, EVAC_ROOM_AT = 300;
+// How long a worker has been walking out, or null while still seated, or 'gone'.
+function evacuee(key, x) {
+  if (EVAC == null) return null;
+  let start = EVAC_START.get(key);
+  if (start == null) {
+    // In view as the alarm goes: they get up one by one. Met later on: they are already
+    // up and walking — the floor has been leaving for a while (Peter, 15 Oct: "id like to
+    // see the cubicle workers moving out not empty desks").
+    if (EVAC_EXIT != null) {
+      // A meeting room's people get up as the hero runs past them, one after another, and are
+      // still shuffling to the door when the room leaves the picture (Peter, 15 Oct: "they stand
+      // up as we move across them")
+      if (x > EVAC_ROOM_AT) return null;
+      start = EVAC_NOW + hash(key * 3.17 + 9) * 0.5;
+    } else if (EVAC < 2.5) {
+      if (x > EVAC_IN_VIEW) return null;
+      start = EVAC_NOW + 0.3 + hash(key * 3.17 + 9) * 2.2;
+    } else start = EVAC_NOW - hash(key * 3.17 + 9) * 1.6;
+    EVAC_START.set(key, start);
+  }
+  const s = EVAC_NOW - start;
+  if (s < 0) return null;
+  return x + s * evacSpeed() < -80 ? 'gone' : s;
+}
+// In a room with its door, people shuffle towards it slowly — the room has scrolled away
+// before they reach it — and anyone who does get there waits at it rather than vanishing
+// (Peter, 15 Oct).
+const evacSpeed = () => (EVAC_EXIT != null ? 7 : EVAC_SPEED);
+// A cubicle worker standing up at their desk when the alarm goes and looking about — up
+// over the partition, hands on the rail, head turning (the pop's own pose): 0..1 how far up,
+// or null while the alarm is not going. Nobody walks off; the floor just stands and stares
+// (Peter, 15 Oct: "perhaps they all stand up from their cubes and look around").
+function standUp(key, x) {
+  if (EVAC == null) return null;
+  let start = EVAC_START.get(key);
+  if (start == null) {
+    start = EVAC < 2.5 && x <= EVAC_IN_VIEW ? EVAC_NOW + 0.15 + hash(key * 3.17 + 9) * 1.2 : EVAC_NOW - 2;
+    EVAC_START.set(key, start);
+  }
+  const u = Math.max(0, Math.min(1, (EVAC_NOW - start) / 0.45));
+  return u * u * (3 - 2 * u);
+}
+
+// A worker on their feet and walking, side on, feet at (x, b): the office's own
+// person (personFor), trousers and shoes, the shirt torso, one arm swinging.
+export function walkerSide(ctx, x, b, p, seed, s, ink) {
+  const ph = s * 9 + seed, stride = Math.sin(ph) * 4.2;
+  const trousers = ['#2b2936', '#3a3548', '#262a36', '#4a4458'][seed % 4];
+  const hipY = b - 25, top = b - 44;
+  for (const leg of [-1, 1]) {
+    const fx = x + stride * leg;
+    poly(ctx, [x - 2.4, hipY, x + 2.4, hipY, fx + 1.8, b - 2, fx - 1.8, b - 2], trousers, ink, 0.4);
+    rbox(ctx, fx - 1.6, b - 2.6, 5, 2.6, 1, '#1b1922', ink, 0.35);
+  }
+  ctx.beginPath();
+  ctx.moveTo(x - 4.6, top + 2);
+  ctx.quadraticCurveTo(x - 5.4, top + 10, x - 3.8, hipY + 1);
+  ctx.lineTo(x + 4.2, hipY + 1);
+  ctx.quadraticCurveTo(x + 5.6, top + 10, x + 4.4, top + 2);
+  ctx.quadraticCurveTo(x, top - 0.6, x - 4.6, top + 2);
+  ctx.closePath();
+  fs(ctx, p.shirt, ink, 0.45);
+  if (p.zombie) {
+    // a zombie in the queue, side on like everyone else (Peter, 15 Oct): the tie, and the
+    // arm held straight out in front at shoulder height, hand drooping, bobbing a little
+    line(ctx, x + 3.4, top + 2.4, x + 3.8, top + 11, p.tie || '#c8433a', 1.3);
+    const bob = Math.sin(ph * 0.5) * 0.8;
+    poly(ctx, [x - 1, top + 2.4, x + 1.6, top + 2.2, x + 13, top + 5 + bob, x + 13, top + 7.6 + bob], p.shirt, ink, 0.4);
+    circ(ctx, x + 14, top + 7 + bob, 1.6, p.skin, ink, 0.3);
+    if (p.carry) rbox(ctx, x - 6.5, top + 12, 5, 4, 0.6, '#9a5a32', ink, 0.3);
+  } else {
+    const sw = -Math.sin(ph) * 4.4;
+    poly(ctx, [x - 1.2, top + 3, x + 1.4, top + 3, x + sw + 1.2, top + 15, x + sw - 1.2, top + 15], p.shirt, ink, 0.4);
+    circ(ctx, x + sw, top + 15.6, 1.5, p.skin, ink, 0.3);
+  }
+  workerHead(ctx, x + 0.6, top - 5.6, 5, p, seed, 'right');
+}
+function walkOut(ctx, x0, b, p, seed, s, ink) {
+  let x = x0 + s * evacSpeed(), step = s * evacSpeed() / EVAC_SPEED;
+  if (EVAC_EXIT != null && x > EVAC_EXIT - (seed % 3) * 12) { x = EVAC_EXIT - (seed % 3) * 12; step = 0.35 + (seed % 2); }
+  walkerSide(ctx, x, b, p, seed, step, ink);
+}
+
 function midActors(ctx, f, P) {
   const b = MID_BASE;
   const ink = P.inkM;
   for (const m of f.mid.items) {
     if (m.kind === 'cubicles') {
-      for (const d of m.desks) {
+      for (let d of m.desks) {
         if (!d.occupied) continue;
         const p = personFor(d.seed);
+        const up = standUp(d.evacKey ?? d.seed, d.x + 18);
+        if (up != null) {
+          const key = d.evacKey ?? d.seed;
+          d = { ...d, pop: Math.max(d.pop, up), look: Math.sin(EVAC_NOW * 1.7 + key * 1.3) > 0 ? 1 : -1 };
+        }
         const cx = d.x + 20 + (hash(d.seed * 7.31 + 1) - 0.5) * 4 - 3;
         const y = b - 42 + d.dy - d.pop * 12;
         // shoulder pads, whoever you are
@@ -1414,6 +1520,9 @@ function midActors(ctx, f, P) {
       for (const c of m.chairs) {
         if (!c.sitter) continue;
         const p = personFor(c.seed + 400);
+        const out = evacuee(c.seed + 400, c.x);
+        if (out === 'gone') continue;
+        if (out != null) { walkOut(ctx, c.x, b, p, c.seed + 400, out, ink); continue; }
         const suit = ['#3d3a4e', '#5a5470', '#2f3346', '#6a6480'][c.seed % 4];
         const y = b - 40 + c.nod * 3.4;
         if (c.away) {
@@ -1514,4 +1623,4 @@ function midDevices(ctx, f, P) {
   }
 }
 
-export { chairFromBehind, ceiling, ceilingLights, lights, globeGlint, floorPlane, sunPatches, slab, CHIP_P, CHIPS, chips, memphisRug, padded, BAKING, lampSheen, SKINS, HAIRS, STYLES, SHIRTS, personFor, head, shadowFoot, pot, leaf, plant, reception, turnstiles, sofa, sculpture, cubiclesBack, cubiclesFront, deskList, cooler, copier, cabinet, boardroomBack, boardroomFront, easel, execDesk, libGlobe, tallClock, paintMid, midActors, headset, midDevices };
+export { HAIRS as OFFICE_HAIRS, SHIRTS as OFFICE_SHIRTS, SKINS as OFFICE_SKINS, chairFromBehind, ceiling, ceilingLights, lights, globeGlint, floorPlane, sunPatches, slab, CHIP_P, CHIPS, chips, memphisRug, padded, BAKING, lampSheen, SKINS, HAIRS, STYLES, SHIRTS, personFor, head, shadowFoot, pot, leaf, plant, reception, turnstiles, sofa, sculpture, cubiclesBack, cubiclesFront, deskList, cooler, copier, cabinet, boardroomBack, boardroomFront, easel, execDesk, libGlobe, tallClock, paintMid, midActors, headset, midDevices };

@@ -20,7 +20,7 @@
 import { canvas, box, rbox, letters, PAL } from './line.js';
 import { FACTORS, OFFICE_ZOOM, MID_BASE } from '../officeClimb.js';
 // (progression.js reaches this module through liftCar.js; its corridors are only read at draw time)
-import { OFFICE_CORRIDORS, officeLandmarks, officeFurnitureCuts, officeFounderPlan } from './progression.js';
+import { OFFICE_CORRIDORS, officeLandmarks, officeFurnitureCuts, officeFounderPlan, officeIsWallSection } from './progression.js';
 import { cooler } from './room.js';
 import { drawCryptZombie, CRYPT_ART_STYLES } from '../../../sprites/crypt-enemies.js';
 
@@ -146,7 +146,11 @@ function rim(src, W, H, key, dx, color) {
 // nearest that whose desks and cooler no room clears (officeFurnitureCuts) with a plain wall bay —
 // no window, no room — passing over its middle while it is in view. The board hangs in that bay,
 // and the bay's own print comes down (artwork.js).
-const BOARD_AT = 0.69;
+// Met before office-2's third alarm (0.70) can be pulled, so the clerk's gag plays out on a
+// floor still at its desks (Peter, 15 Oct: "i want the employee of the month vignette to play
+// out before alarm 3"): between the training room and the first lift, about the first
+// checkpoint, since the lift and the canteen keep the middle of the floor clear (BOARD_CLEAR).
+const BOARD_AT = 0.57, BOARD_EARLIEST = 0.08, BOARD_LATEST = 0.64;
 // The board keeps a picture wall between it and a wall section such as the canteen (Peter, 15 Oct
 // 2026: "space it out so the employee of the month is not immediately to the right of the
 // canteen"): a window, a wall bay with its print, a window, in the wall's own units. A room or a
@@ -155,7 +159,8 @@ const BOARD_CLEAR = 470;
 // a place's stretch of wall, absolute, at camera camX
 const spanOf = (l, camX, wallRate) => (l.section ? [l.section.u0, l.section.u1] : [l.x + camX * wallRate, l.x + l.w + camX * wallRate]);
 const crowded = (lms, bay, camX, wallRate) => lms.some((l) => {
-  const [a, b] = spanOf(l, camX, wallRate), clear = l.section ? BOARD_CLEAR : 10;
+  // the picture wall is kept from a built-in (the canteen); a room or a lift only keeps off its bay
+  const [a, b] = spanOf(l, camX, wallRate), clear = officeIsWallSection('open', l.kind) ? BOARD_CLEAR : 300;
   return a < bay.u1 + clear && b > bay.u0 - clear;
 });
 const FARM_PICKS = new Map();
@@ -186,14 +191,15 @@ function farmPlan(floor, T) {
       const fc = farm.u + n * mid.period;
       for (const q of wall.bays.filter((b) => b.type === 'wall')) {
         const bc0 = (q.u + q.u1) / 2;
-        for (let j = Math.floor((fc - 0.99 * T * rel - bc0) / wall.period) - 1; j <= Math.ceil((fc - 0.38 * T * rel - bc0) / wall.period) + 1; j++) {
+        for (let j = Math.floor((fc - 0.99 * T * rel - bc0) / wall.period) - 1; j <= Math.ceil((fc - (BOARD_EARLIEST - 0.02) * T * rel - bc0) / wall.period) + 1; j++) {
           // the board within 70 of the farm's start while that is well in view: the camera that does
           // both and puts the board nearest the start
-          const bc = bc0 + j * wall.period, lo = Math.max((fc - bc - 70) / rel, (fc - 360) / midRate);
-          const hi = Math.min((fc - bc + 70) / rel, (fc - 60) / midRate);
+          // ...and the board itself well inside the picture then
+          const bc = bc0 + j * wall.period, lo = Math.max((fc - bc - 70) / rel, (fc - 360) / midRate, (bc - 420) / wallRate);
+          const hi = Math.min((fc - bc + 70) / rel, (fc - 60) / midRate, (bc - 60) / wallRate);
           if (lo > hi) continue;
           const camX = Math.max(lo, Math.min(hi, (fc - bc) / rel));
-          if (camX < 0.4 * T || camX > 0.97 * T) continue;
+          if (camX < BOARD_EARLIEST * T || camX > BOARD_LATEST * T) continue;
           options.push({ farm, cooler, n, camX, bay: { u0: q.u + j * wall.period, u1: q.u1 + j * wall.period } });
         }
       }
@@ -228,7 +234,7 @@ function farmPlan(floor, T) {
       bays.sort((p, q) => Math.abs(camOf(p) - BOARD_AT * T) - Math.abs(camOf(q) - BOARD_AT * T));
       for (const bay of bays) {
         const camX = camOf(bay);
-        if (camX < 0.4 * T || camX > 0.97 * T) continue;
+        if (camX < BOARD_EARLIEST * T || camX > BOARD_LATEST * T) continue;
         if (fin && bay.u0 < fin.u1 + 20 && bay.u1 > fin.u0 - 20) continue;
         if (crowded(officeLandmarks(floor, camX, T), bay, camX, wallRate)) continue;
         // clear the row under the board (a room going by may have cleared it already), whole
@@ -339,7 +345,7 @@ export function paintCoolerZombie(g, f, P) {
 // of their booth, in the canteen's own units; `u` runs 0 to 1 as the canteen comes in at the right
 // and leaves at the left, so it is always mid-creep while the canteen is in view. Facing right, the
 // crypt's step-and-drag, its feet keeping pace with the floor; it never turns round.
-const CREEP = [0.12, 0.78], CREEP_STRIDE = 7;
+export const CREEP = [0.12, 0.78], CREEP_STRIDE = 7;
 export function paintCanteenZombie(g, x0, x1, u, t, ink) {
   const k = Math.max(0, Math.min(1, (u - CREEP[0]) / (CREEP[1] - CREEP[0]))), x = x0 + (x1 - x0) * k;
   g.save();

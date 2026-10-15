@@ -1,3 +1,4 @@
+import { performanceMark, performanceAdd } from './performance-capture.js';
 // Web Audio: procedural SFX + a lookahead step-sequencer with per-cabinet
 // pattern banks. Lazy init on first user gesture; ctx.resume() on every gesture (iOS).
 // Needed only to swap the context around an offline render — see
@@ -991,6 +992,7 @@ export const SFX_TRIM = {
   loopRun: 1.259, boostFall: 1.035, shoot: 1.622, checkpoint: 1.38, coin: 1,
   abilityReady: 0.603, starEnd: 1.698, dash: 1.259, jump: 0.891, land: 1.778,
   bridgeLay: 2.265,
+  fireBell: 1,
   axe: 1.202,
 };
 
@@ -5573,6 +5575,22 @@ class AudioSys {
         this.osc('sine', 2400, 5200, 0.55, 0.05, w + 0.09);      // flash recharging
         break;
       }
+      // THE FIRE BELL (office-2: the third alarm pulled) — bake-off pick I (Peter, 15 Oct;
+      // tools/render-fire-alarm-auditions.js i-bell-and-whoop): a clapper bell struck eighteen
+      // times a second, its inharmonic partials each dying fast, over a square siren whooping
+      // up seven times. About 5.5 s (Peter: "could be longer still", then "even longer"), then the strobes carry it.
+      case 'fireBell': {
+        const w = Math.max(0, opt.when || 0);
+        const strikes = 100;
+        for (let i = 0; i < strikes; i++) {
+          const at = w + i * 0.055, fade = i < strikes - 6 ? 1 : (strikes - i) / 6;
+          this.osc('sine', 960 * pitch, 960 * pitch, 0.08, 0.19 * fade, at);
+          this.osc('sine', 2650 * pitch, 2650 * pitch, 0.05, 0.11 * fade, at);
+          this.osc('sine', 5180 * pitch, 5180 * pitch, 0.03, 0.07 * fade, at);
+        }
+        for (let k = 0; k < 7; k++) this.osc('square', 420 * pitch, 680 * pitch, 0.72, 0.05, w + 0.1 + k * 0.75, null, 0.85);
+        break;
+      }
       case 'switchFlick': {
         const w = Math.max(0, opt.when || 0);
         // Measured, not guessed: -3.4 peak / -23.5 RMS through the real graph
@@ -7665,6 +7683,12 @@ class AudioSys {
   }
 
   schedule() {
+    const at = performanceMark();
+    try { return this._scheduleMeasured(); }
+    finally { performanceAdd('audio', at); }
+  }
+
+  _scheduleMeasured() {
     // A song change's held mix goes on at the first pass after its fade (_mixToGraph). The
     // frame calls this too, so that is usually the frame after the change, still under the
     // shutter, rather than whenever a timer gets a turn on a busy main thread.

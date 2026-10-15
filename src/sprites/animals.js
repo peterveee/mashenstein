@@ -920,10 +920,15 @@ function snakeStroke(ctx, color, width, path, cap = 'round') {
   ctx.stroke();
 }
 function snakeFill(ctx, color, path) { ctx.beginPath(); path(ctx); ctx.fillStyle = color; ctx.fill(); }
+// BOLD INK (Peter, 15 Oct 2026, keeping the snake over the bake-off's picks: "is their
+// problem their outlines aren't bold enough?"). The coil was ringed in a 42% wash and
+// the head in the shared 34% OUTLINE: sand on sand, it went soft at lane size. One solid
+// ink now, the weight of the bake-off candidates' contour.
+const SNAKE_INK = '#2a1d1e';
 function snakeInk(ctx, color, path, lw) {
   ctx.beginPath(); path(ctx);
   ctx.fillStyle = color; ctx.fill();
-  ctx.strokeStyle = OUTLINE; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = SNAKE_INK; ctx.lineWidth = lw * 1.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.stroke();
 }
 const snakeOval = (x, y, rx, ry) => (c) => c.ellipse(x, y, Math.max(0.01, rx), Math.max(0.01, ry), 0, 0, TAU);
@@ -965,7 +970,7 @@ function rattlesnake(ctx, w, h, frame = 0) {
   ];
   for (let i = 0; i < rings.length; i++) {
     const { cx, cy, rx, ry, th } = rings[i];
-    snakeStroke(ctx, 'rgba(26,16,40,0.42)', th + 0.62, snakeOval(cx, cy, rx, ry));
+    snakeStroke(ctx, SNAKE_INK, th + 0.9, snakeOval(cx, cy, rx, ry));
     snakeStroke(ctx, P.body, th, snakeOval(cx, cy, rx, ry));
     snakeStroke(ctx, P.dark, th * 0.34, (c) => c.ellipse(cx, cy + th * 0.3, rx, ry, 0, 0.08 * Math.PI, 0.92 * Math.PI), 'butt');
     snakeStroke(ctx, P.bodyLit, th * 0.3, (c) => c.ellipse(cx, cy - th * 0.26, rx, ry, 0, 0.1 * Math.PI, 0.9 * Math.PI), 'butt');
@@ -1015,7 +1020,7 @@ function rattlesnake(ctx, w, h, frame = 0) {
     c.moveTo(pts[0][0], pts[0][1]);
     c.bezierCurveTo(pts[1][0], pts[1][1], pts[2][0], pts[2][1], pts[3][0], pts[3][1]);
   };
-  snakeStroke(ctx, 'rgba(26,16,40,0.4)', 3.3, neck);
+  snakeStroke(ctx, SNAKE_INK, 3.5, neck);
   snakeStroke(ctx, P.body, 2.6, neck);
   snakeStroke(ctx, P.belly, 0.9, (c) => {
     c.moveTo(pts[0][0] - 0.4, pts[0][1] + 0.6);
@@ -1093,7 +1098,7 @@ function rattlesnake(ctx, w, h, frame = 0) {
 // the only line left is the outside of the whole bird — no seam where the neck meets
 // the breast. The neck's root is wide and sunk into the chest, and it tapers to the head.
 const GOOSE = {
-  body: '#f4f1ea', bodyShade: '#d6d0c4', wingShade: '#c9c1b2', ink: 'rgba(52,44,40,0.62)', beak: '#f08a2c',
+  body: '#f4f1ea', bodyShade: '#d6d0c4', wingShade: '#c9c1b2', ink: '#2a1a16', beak: '#f08a2c',
   beakDark: '#c4611a', leg: '#f08a2c', legDark: '#c4611a',
 };
 const GOOSE_FRAMES = 10;
@@ -1101,7 +1106,9 @@ const GOOSE_FRAMES = 10;
 // every contour on the bird — silhouette, wings, beak, feet — is this width in the
 // one ink. About 0.4 of a pixel in the lane, the weight of the other animals' contour.
 // The silhouette is stroked at twice it and filled over, so its visible outer half matches.
-const GOOSE_LINE = 0.42;
+// 15 Oct 2026: still one line, now SOLID and 0.55 — the 62% grey at 0.42 went soft on
+// the pale hills (Peter: "is their problem their outlines aren't bold enough?").
+const GOOSE_LINE = 0.55;
 // Beak tip to tail, and wing tip to feet, in the drawing's own units.
 const GOOSE_SPAN = { left: 16.4, right: 9.8, top: 17.2 };
 // Room in front of the bird inside its box for the HONK lines past the beak (Peter, 24

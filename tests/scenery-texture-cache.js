@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {installDom} from './dom-stub.js';
+installDom();
+const {neonWarmJobs}=await import('../src/engine/stylePacks/index.js');
+let allocations=0;const create=document.createElement.bind(document);
+document.createElement=(tag,...args)=>{if(tag==='canvas')allocations++;return create(tag,...args);};
+for(const job of neonWarmJobs())job();const neonAlloc=allocations;
+for(const job of neonWarmJobs())job();
+assert.equal(allocations,neonAlloc,'Neon retry reuses warmed stars and mountain variants');
+console.log('ok: Neon warmup reuse');

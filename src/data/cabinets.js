@@ -208,7 +208,7 @@ const OFFICE_BANK = [
   // CONFIDENTIAL papers going up on 88 — the warm read in a pastel room.
   P(1, [{ t: 'fireBarrel', dx: 0 }]),
   P(2, [{ t: 'fireBarrel', dx: 0 }, { t: 'paperwork', dx: 90 }]),
-  // Target supply: office-2's mission is DESTROY 5 HOSTILE SHREDDERS (the
+  // Target supply: office-2's mission was DESTROY 5 HOSTILE SHREDDERS (the
   // printer berths, on floor 23), and it was running off a three-pattern
   // stock. Two more berths keep the mission's clock honest without the
   // spawner needing to know about it.
@@ -233,17 +233,20 @@ const OFFICE_FLOORS = {
     // No target on the lobby: its printer berths stand a wet floor sign instead.
     printer: 'wetFloorSign',
   },
-  // 8-2, floor 23 at noon: admin, filing, and somebody's birthday. The printer
-  // berths are the shredders office-2's mission counts.
+  // 8-2, floor 23 at noon: admin, filing, meetings and somebody's birthday.
   2: {
     cactus: 'coatStand', cactusBig: 'snackMachine', crate: 'archiveBox',
     chair: 'mailCart', barrel: 'mailCart', fireBarrel: 'binFire', boomBarrier: 'drawingPins',
     drone: 'birthdayBunting', paperwork: 'birthdayBunting', buzzbird: 'partyBalloon',
-    printer: 'shredder',
+    // The alarms are placed by office-2's mission now, not dealt (Peter, 15 Oct:
+    // "there are TONS of fire alarms"), so the berth deals the archive boxes.
+    printer: 'archiveBox',
   },
   // 8-3, floor 88 at dusk: money.
   3: {
-    cactus: 'founderBust', cactusBig: 'officeSafe', crate: 'briefcase',
+    // No small safe on 88: office-3's own double-height safes are the ones to
+    // shoot, and a second, smaller safe in the lane muddied that (Peter, 15 Oct).
+    cactus: 'founderBust', cactusBig: null, crate: 'briefcase',
     chair: 'drinksTrolley', barrel: 'drinksTrolley', fireBarrel: 'confidentialBin', boomBarrier: 'velvetRopeGold',
     drone: 'chandelier', paperwork: 'chandelier', buzzbird: 'champagneCork',
     printer: 'founderBust',
@@ -261,10 +264,15 @@ const OFFICE_GROUNDED = OFFICE_BANK.flatMap((pattern) => {
   return cells.some((c) => c.t !== 'coins') ? [{ ...pattern, cells }] : [];
 });
 
+// A slot swapped to `null` deals nothing on that floor: the cell goes, and a
+// pattern left with no hazard goes with it, as the hanging ones do above.
 const OFFICE_BY_FLOOR = Object.fromEntries(Object.entries(OFFICE_FLOORS).map(([floor, swap]) => [floor,
-  OFFICE_GROUNDED.map((pattern) => (pattern.cells.some((c) => swap[c.t])
-    ? { ...pattern, cells: pattern.cells.map((c) => (swap[c.t] ? { ...c, t: swap[c.t] } : c)) }
-    : pattern)),
+  OFFICE_GROUNDED.flatMap((pattern) => {
+    if (!pattern.cells.some((c) => c.t in swap)) return [pattern];
+    const cells = pattern.cells.filter((c) => swap[c.t] !== null)
+      .map((c) => (swap[c.t] ? { ...c, t: swap[c.t] } : c));
+    return cells.some((c) => c.t !== 'coins') ? [{ ...pattern, cells }] : [];
+  }),
 ]));
 
 export const CABINETS = [
@@ -1104,6 +1112,102 @@ const FT_DROP_BASE = {
 export const FINALE_THEME = FINALE.bank;
 
 export const CABINET_BY_ID = Object.fromEntries(CABINETS.map((c) => [c.id, c]));
+
+// THE PICKS FROM THE 12 OCT CABINET BAKE-OFFS (Peter, 15 Oct 2026; art in
+// sprites/<cabinet>Props.js, boxes in game/entities.js). `swap` renames a type
+// wherever the cabinet's bank deals it — a list takes turns PATTERN by pattern,
+// in list order, the way the thistle shares the cactus, so a clump stays one
+// plant. `add` deals new patterns alongside everything already there.
+//   Field Service: "A B & C instead of fires and boom barrier" — the goose stays.
+//   Speed Zone: "ABCFG", each in its own slot — the rattlesnake stays.
+//   Frost Fortress: "ABCDE to be added while keeping the existing" — then E, the caltrops, out.
+//   Crypt Shift: "get rid of a dog or 2 … replace them with A B or G".
+// `weights` tilts the lane's pick toward or away from a hazard (Spawner.pickPattern),
+// after Peter saw the counts per run the same day: Field Service "no cactus … reduce
+// crates and thistles and spikes and work in more of the rare ones"; Speed 1 "way less
+// bird … add barrel cactus and campfire and dynamite occasionally"; Frost "less bear
+// traps more rare stuff".
+// Applied here, before THE SURGE takes its union below, so the Surge deals them too.
+const BAKEOFF_PICKS = {
+  plumber: {
+    // The cactus goes altogether: the half the thistle did not take turns between the
+    // beehive and the hay bales, and the big cactus is the scarecrow.
+    swap: { fireBarrel: ['beehive'], campfire: ['scarecrow'], boomBarrier: ['hayBale'],
+      cactus: ['beehive', 'hayBale'], cactusBig: ['scarecrow'] },
+    weights: { crate: 0.4, thistle: 0.5, thistleBig: 0.5, popSpikes: 0.5,
+      goose: 2.5, barrel: 2.5, hayBale: 2, scarecrow: 2, rake: 1.5, floorSaw: 1.5 },
+  },
+  speed: {
+    // The saucer (the bake-off's I) flies in the songbird's place ("replace the bird with
+    // the flying saucer in speed"), and more often than the bird did ("increase it's frequency").
+    swap: { cactus: ['pricklyPear', 'dynamite'], cactusBig: ['barrelCactus'], fireBarrel: ['smudgePot'], boomBarrier: ['sawhorse'], buzzbird: ['saucer'] },
+    weights: { saucer: 3, barrelCactus: 2, sawhorse: 2, smudgePot: 1.5 },
+    // Tier 0, so Speed 1 deals them too: it opens on tier 0 alone.
+    add: [
+      P(0, [{ t: 'barrelCactus', dx: 0 }]),
+      P(0, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
+      P(0, [{ t: 'trafficCone', dx: 0 }, { t: 'dynamite', dx: 90 }]),
+    ],
+  },
+  frost: {
+    weights: { bearTrap: 0.4, snowman: 0.7, crate: 0.7,
+      giantSnowball: 2, crampons: 2, snowmanBig: 2, campfire: 2, iceBlocks: 1.5, parcels: 1.5 },
+    add: [
+    P(0, [{ t: 'iceBlocks', dx: 0 }]),
+    P(1, [{ t: 'iceBlocks', dx: 0, n: 2 }, coinArc(70)]),
+    P(0, [{ t: 'parcels', dx: 0 }, coinArc(60)]),
+    P(1, [{ t: 'parcels', dx: 0, n: 2 }]),
+    P(1, [{ t: 'giantSnowball', dx: 0 }, coinArc(90)]),
+    P(2, [{ t: 'giantSnowball', dx: 0 }, { t: 'iceBlocks', dx: 140 }]),
+    P(1, [{ t: 'crampons', dx: 0 }]),
+    P(2, [{ t: 'crampons', dx: 0 }, { t: 'snowman', dx: 80 }]),
+    // The caltrops came out the same day: "the caltrops dont read well in frost so get rid of them".
+    P(2, [{ t: 'crampons', dx: 0 }, { t: 'parcels', dx: 70 }]),
+  ] },
+  crypt: {
+    swap: { dogSnarler: ['graveHands'], dogFeral: ['graveRoses', 'eternalFlame'] },
+    // "yes reduce them in crypt" (15 Oct): the tombstones and braziers still led every run.
+    weights: { tombstone: 0.4, brazier: 0.4 },
+  },
+};
+// EVERY RANDOM LANE DEALS BY HAZARD, not by pattern (Peter, 15 Oct 2026: "do the per
+// level weighting thing" — every obstacle a fair share of each level, the crate no
+// longer six times the scarecrow). See Spawner.pickPattern. Per level because the bag
+// a level draws from is its own (tier, sections, floor). Rhythm's beat lane and
+// Gravity Grid's authored runs do not draw from a bag.
+for (const cab of CABINETS) if (!['rhythm', 'gravity'].includes(cab.id)) cab.balance = true;
+for (const cab of CABINETS) {
+  const pick = BAKEOFF_PICKS[cab.id];
+  if (!pick) continue;
+  const turn = {};
+  if (pick.swap) cab.patterns = cab.patterns.map((pattern) => {
+    const hits = [...new Set(pattern.cells.map((c) => c.t).filter((t) => pick.swap[t]))];
+    if (!hits.length) return pattern;   // untouched patterns keep their identity
+    const to = Object.fromEntries(hits.map((t) => {
+      const list = pick.swap[t];
+      const k = turn[t] = (turn[t] ?? -1) + 1;
+      return [t, list[k % list.length]];
+    }));
+    return { ...pattern, cells: pattern.cells.map((c) => (to[c.t] ? { ...c, t: to[c.t] } : c)) };
+  });
+  if (pick.add) cab.patterns = [...cab.patterns, ...pick.add];
+  if (pick.weights) cab.weights = pick.weights;
+}
+
+// TARGETS ON TERMINAL VELOCITY 1 ONLY (Peter, 15 Oct 2026: "remove targets from the other
+// levels in neon though, just leave them in first") — neon-1's mission is DESTROY 5
+// TARGETS; 2 and 3 deal the same bank with the targets taken out (cabinetForStage), a
+// pattern left with nothing else in it dropped, as the office's hanging cells are.
+{
+  const neon = CABINET_BY_ID.neon;
+  // The bird's slot deals a drone or a target off `swaps`; here it is always the drone.
+  const noTargets = neon.patterns.flatMap((pattern) => {
+    if (!pattern.cells.some((c) => c.t === 'target' || c.t === 'buzzbird')) return [pattern];
+    const cells = pattern.cells.filter((c) => c.t !== 'target').map((c) => (c.t === 'buzzbird' ? { ...c, t: 'drone' } : c));
+    return cells.some((c) => c.t !== 'coins') ? [{ ...pattern, cells }] : [];
+  });
+  neon.floorPatterns = { 2: noTargets, 3: noTargets };
+}
 
 // The cabinet as a stage deals it: a cabinet whose stages are different places
 // (Corporate Kombat's floors) carries `floorPatterns`, and the stage's own bank

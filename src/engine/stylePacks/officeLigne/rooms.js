@@ -3,10 +3,10 @@ import { selectedLunchPeople } from './lunchPeople.js';
 import { MID_BASE, WALL_BASE } from '../officeClimb.js';
 import { box, line, poly, circ, ell, letters, textW, YH, VPX, OFFICE_FONT } from './line.js';
 import { OFFICE_SIGN_MIN_Y, officeBulkhead, officeRoomLidShows } from './progression.js';
-import { boardroomBack, chairFromBehind, midActors, sofa, plant, libGlobe } from './room.js';
+import { boardroomBack, chairFromBehind, midActors, sofa, plant, libGlobe, setOfficeEvacExit } from './room.js';
 import { boothDiners } from './diners.js';
 import { frothingBarista } from './barista.js';
-import { paintCanteenZombie } from './zombies.js';
+import { paintCanteenZombieSide } from './profileZombie.js';
 
 function caption(g,text,x,y,w,P){
   box(g,x,y,w,17,'#302c40',P.chrome,0.6);
@@ -97,13 +97,19 @@ function standingWhiteboard(g,x,y,P,{title='AGENDA',detail=['1. PLAN THE NEXT','
 function meetingPeople(g,l,f,P,{training,interview,c,b}){
   const {x,w}=l,away=OFFICE_ROOM_STYLE!=='glass';
   const xs=interview?[c-47,c+47]:[c-73,c-24,c+24,c+73];
+  // each room's people their own seeds (office-2's evacuation remembers them by it), and the
+  // interview room's way out on its right, where its door is (glassDoor, Peter 15 Oct)
+  const seed=training?60:interview?80:40;
+  setOfficeEvacExit(interview&&f.floor==='open'?x+w-30:null);
   if(away){
     table(g,x+42,w-84,P);
     xs.forEach((px,i)=>{box(g,px-9,b-30,17,1.5,'#fffef1',P.ink,0.3);mug(g,px+12,b-28.6,i,P);});
-    sitters(g,xs,f,P,training?60:40,true);
+    sitters(g,xs,f,P,seed,true);
+    setOfficeEvacExit(null);
     return;
   }
-  sitters(g,xs,f,P,training?60:40);
+  sitters(g,xs,f,P,seed);
+  setOfficeEvacExit(null);
   table(g,x+42,w-84,P);
   xs.forEach((px,i)=>{box(g,px-9,b-30,17,1.5,'#fffef1',P.ink,0.3);mug(g,px+12,b-28.6,i,P);});
 }
@@ -314,7 +320,10 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
     if(lid<1){g.save();g.globalAlpha*=1-lid;box(g,fx0,ft-2.4,fx1-fx0,2.4,P.frame||'#898594',P.ink,0.4);g.restore();}
     if(lid>0)line(g,fx0,ft,fx1,ft,`rgba(235,250,252,${(0.45*lid).toFixed(3)})`,0.6);
     box(g,fx0,fb,fx1-fx0,1.4,'rgba(20,16,30,0.3)');
-    glassDoor(g,fx0,ft,fb);
+    // floor 23's interview room opens on its right, the side its people leave by when
+    // office-2's alarm goes (Peter, 15 Oct); every other room keeps its door on the left
+    if(l.kind==='interview'&&f.floor==='open'){g.save();g.translate(fx0+fx1,0);g.scale(-1,1);glassDoor(g,fx0,ft,fb);g.restore();}
+    else glassDoor(g,fx0,ft,fb);
   }else if(style==='frosted'){
     interior(g,x0,x1,top,bottom,f,P,contents,{cool:0.1});
     glassFront(g,x0,x1,top,bottom,{tint:'rgba(200,230,240,0.1)'});
@@ -397,7 +406,7 @@ export function paintExtraOfficeRoom(g,l,f,P){
     // them as the canteen goes by, and stopping well short of their booth (zombies.js)
     if(f.floor==='open'){
       const right=f.coverage?.right??480,left=f.coverage?.left??0;
-      paintCanteenZombie(g,x-44,tx-26,(right-x)/(right-left+w),f.t,P.inkM);
+      paintCanteenZombieSide(g,x-44,tx-26,(right-x)/(right-left+w),f.t,P.inkM);
     }
     return true;
   }

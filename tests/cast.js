@@ -218,15 +218,18 @@ assert(Input.down.size === 0 && Input.hit.size === 0, 'exit input consumed — c
   // no height to clear and an icicle falls on you from 70 — neither is a bar
   // the jump is measured against. Nor are the Gravity Grid's own set pieces
   // (`gravityArt`: the 22-high maintenance rollers), which that cabinet's fixed
-  // arc is built around instead.
+  // arc is built around instead. Nor office-3's double-height safes (`setPiece`):
+  // four placed on one stage and meant to be shot open, not a bar the lane deals.
   const TALL = Math.max(...Object.entries(OBSTACLES)
-    .filter(([id, d]) => d.action === 'jump' && !d.falls && id !== 'gap' && !d.gravityArt)
+    .filter(([id, d]) => d.action === 'jump' && !d.falls && id !== 'gap' && !d.gravityArt && !d.setPiece)
     .map(([, d]) => (d.alt || 0) + d.h));
   const base = jumpHeightFor({ jumpMult: 1 });
   const clearancePct = (h) =>
     Math.round(((jumpHeightFor(h) - TALL) / (base - TALL) - 1) * 100);
 
-  assert(TALL === 18, `the bar the card is measured against is the 18px bollard (got ${TALL})`);
+  // 22 since 15 Oct 2026: floor 23's vending machine, two crates high (Peter: "two units
+  // height to clear"). It was the 18px bollard.
+  assert(TALL === 22, `the bar the card is measured against is the 22px vending machine (got ${TALL})`);
   for (const id of ['clara', 'lorenzo']) {
     const hero = HERO_BY_ID[id];
     const want = `JUMPS ${clearancePct(hero)}% HIGHER`;

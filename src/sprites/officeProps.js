@@ -10,14 +10,19 @@
 //
 //   slot (what it stands in for)   8-1 LOBBY        8-2 FLOOR 23      8-3 FLOOR 88
 //   standing   (cactus)            wetFloorSign     coatStand         founderBust
-//   big        (cactusBig)         waterDolly       snackMachine      officeSafe
+//   big        (cactusBig)         waterDolly       snackMachine*     officeSafe
 //   stacks     (crate)             newsBundle       archiveBox        briefcase
 //   rolls      (chair, barrel)     mopBucket        mailCart          drinksTrolley
 //   fire       (fireBarrel)        ashUrnFire       binFire           confidentialBin
 //   hurdle     (boomBarrier)       velvetRope       drawingPins       velvetRopeGold
 //   slide      (drone, paperwork)  artMobile        birthdayBunting   chandelier
 //   high       (buzzbird)          paperPlane       partyBalloon      champagneCork
-//   target     (printer)           —                shredder          —
+//   target     (printer)           —                fireAlarm         —
+//
+// * twice a crate's height and a crate's width since 15 Oct 2026: two units to clear.
+//
+// Floor 23's target was the shredder until 15 Oct; it is the fire alarm now
+// (PULL 3 FIRE ALARMS), and the shredder painter is kept but dealt nowhere.
 //
 // The swap itself is data (OFFICE_FLOORS in data/cabinets.js); boxes and flags
 // are in game/entities.js and copy the hazard each one stands in for, so the
@@ -28,7 +33,8 @@
 // with the ground line at y = H. The registry wrapper scales that onto the
 // raster props.js hands it. Like animals.js, nothing here imports props.js:
 // it registers through the spreads at the top of that file.
-import { box, poly, line, lines, circ, ell, rbox, rrPath, pen, fs } from '../engine/stylePacks/officeLigne/line.js';
+import { outlined } from './outline.js';
+import { box, poly, line, lines, circ, ell, rbox, rrPath, pen, fs, letters } from '../engine/stylePacks/officeLigne/line.js';
 
 const TAU = Math.PI * 2;
 
@@ -418,59 +424,66 @@ function coatStand(c, W, H, f) {
   body(c, rr(6.4, -0.2, 4.2, 2.2, 0.8), CHAR, (p) => box(p, 6.4, 1.0, 4.2, 0.6, RED), INK, LWI);
 }
 
-// The snack machine, with a bag stuck on its coil, swinging (big 23x26).
+// The snack machine, with a bag stuck on its coil, swinging (16x29). Tall and
+// thin since 15 Oct 2026 (Peter: "taller and thinner — should be two units
+// height to clear"): a 12x22 box, two crates high.
 function snackMachine(c, W, H, f) {
   const g = H - 0.3;
   const a = (f / 8) * TAU;
-  body(c, rr(2.0, 0.6, 19.0, g - 0.6, 0.8), RED, (p) => {
-    box(p, 18.2, 0, 4, H, RED_DK);
-    box(p, 2.8, 1.6, 0.8, g - 3, '#ff5a6c');
+  body(c, rr(1.0, 0.6, 14.0, g - 0.6, 0.8), RED, (p) => {
+    box(p, 13.2, 0, 4, H, RED_DK);
+    box(p, 1.8, 1.6, 0.7, g - 3, '#ff5a6c');
   });
   // The glass and the rows of snacks behind it.
-  body(c, rr(3.6, 2.2, 11.0, 15.6, 0.6), '#2a2833', (p) => {
+  body(c, rr(2.2, 2.0, 8.4, 18.6, 0.6), '#2a2833', (p) => {
     const PACKS = [PINK, LEMON, TEAL, ORANGE, LILAC, PAPER];
-    for (let r = 0; r < 4; r++) {
-      const y = 3.0 + r * 3.8;
-      for (let k = 0; k < 4; k++) {
-        if (r === 1 && k === 2) continue; // the one that didn't drop
-        rbox(p, 4.4 + k * 2.6, y, 2.0, 2.6, 0.4, PACKS[(r * 2 + k) % PACKS.length], INK, 0.15);
+    for (let r = 0; r < 5; r++) {
+      const y = 2.7 + r * 3.6;
+      for (let k = 0; k < 3; k++) {
+        if (r === 1 && k === 1) continue; // the one that didn't drop
+        rbox(p, 2.9 + k * 2.6, y, 1.9, 2.5, 0.4, PACKS[(r * 2 + k) % PACKS.length], INK, 0.15);
       }
-      line(p, 3.6, y + 3.0, 14.6, y + 3.0, STEEL_DK, 0.3);
+      line(p, 2.2, y + 2.9, 10.6, y + 2.9, STEEL_DK, 0.3);
     }
     // The stuck bag, hanging off the end of its coil.
     p.save();
-    p.translate(10.6, 6.9);
+    p.translate(6.45, 6.4);
     p.rotate(Math.sin(a) * 0.18 + Math.cos(a) * 0.05);
-    rbox(p, -1.0, 0, 2.0, 3.0, 0.4, LEMON, INK, 0.2);
+    rbox(p, -0.95, 0, 1.9, 2.9, 0.4, LEMON, INK, 0.2);
     p.restore();
-    poly(p, [4.2, 2.6, 7.0, 2.6, 4.2, 9.0], 'rgba(255,255,255,0.16)');
+    poly(p, [2.8, 2.4, 5.4, 2.4, 2.8, 9.0], 'rgba(255,255,255,0.16)');
   }, INK, LWI);
   // Keypad, coin slot, the price display blinking, and the flap.
-  rbox(c, 15.4, 2.2, 4.4, 15.6, 0.5, CHAR, INK, LWI);
-  box(c, 16.0, 3.0, 3.2, 1.6, f % 2 ? '#5dff8f' : '#2f9a55', INK, LWF);
-  for (let r = 0; r < 3; r++) for (let k = 0; k < 2; k++) box(c, 16.2 + k * 1.6, 5.6 + r * 1.6, 1.1, 1.0, STEEL, INK, 0.12);
-  box(c, 17.0, 11.4, 1.6, 2.4, INK);
-  rbox(c, 4.4, 19.4, 9.4, 3.4, 0.4, '#16141c', INK, LWI);
-  box(c, 5.0, 19.8, 8.2, 1.0, '#2a2833');
-  box(c, 2.0, g - 1.2, 19.0, 1.2, INK);
+  rbox(c, 11.2, 2.0, 3.2, 18.6, 0.5, CHAR, INK, LWI);
+  box(c, 11.6, 2.8, 2.4, 1.4, f % 2 ? '#5dff8f' : '#2f9a55', INK, LWF);
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 2; k++) box(c, 11.75 + k * 1.2, 5.2 + r * 1.4, 0.8, 0.9, STEEL, INK, 0.12);
+  box(c, 12.2, 10.0, 1.2, 2.2, INK);
+  rbox(c, 2.6, 22.0, 7.6, 3.2, 0.4, '#16141c', INK, LWI);
+  box(c, 3.1, 22.4, 6.6, 1.0, '#2a2833');
+  box(c, 1.0, g - 1.2, 14.0, 1.2, INK);
 }
 
-// The archive box, a bankers box with a red-year label (stack 16x15).
+// The archive box, a bankers box with a red-year label (stack 16x15). FLAT and
+// front-on (Peter, 15 Oct 2026: "fix perspective on archive boxes too"): the box and
+// its lid square-on, no top or side going back.
 function archiveBox(c, W, H) {
   const g = H - 0.2;
-  body(c, rect(0.8, 3.6, 12.8, g - 3.6), CARD, (p) => {
-    box(p, 0.8, g - 1.2, 12.8, 1.2, CARD_DK);
+  body(c, rect(0.8, 3.6, 14.4, g - 3.6), CARD, (p) => {
+    box(p, 0.8, g - 1.2, 14.4, 1.2, CARD_DK);
     box(p, 1.4, 4.6, 0.7, 8, CARD_LT);
+    box(p, 13.4, 3.6, 1.8, g - 3.6, CARD_DK);
   });
-  poly(c, [13.6, 3.6, 15.4, 2.6, 15.4, g - 1.0, 13.6, g], CARD_DK, INK, LWI);
-  poly(c, [1.8, 2.8, 4.4, 1.4, 5.6, 2.8], PAPER, INK, LWF);
-  poly(c, [0.3, 1.6, 2.1, 0.6, 15.8, 0.6, 14.0, 1.6], '#f6cc98', INK, LWI);
-  body(c, rect(0.3, 1.6, 13.7, 2.8), CARD_LT, (p) => box(p, 0.3, 3.6, 13.7, 0.8, CARD), INK, LWI);
-  poly(c, [14.0, 1.6, 15.8, 0.6, 15.8, 3.4, 14.0, 4.4], CARD, INK, LWI);
-  rbox(c, 5.3, 5.2, 4.4, 1.3, 0.6, '#3b2414', INK, LWF);
-  rbox(c, 3.2, 7.6, 8.0, 4.8, 0.3, PAPER, INK, LWF);
-  box(c, 3.6, 8.1, 4.2, 1.4, RED);
-  lines(c, [3.6, 10.4, 10.8, 10.4, 3.6, 11.5, 9.0, 11.5], INK, 0.22);
+  // The lid, proud of the box both sides.
+  body(c, rect(0.3, 1.0, 15.4, 3.2), CARD_LT, (p) => {
+    box(p, 0.3, 1.0, 15.4, 0.6, '#f6cc98');
+    box(p, 0.3, 3.4, 15.4, 0.8, CARD);
+    box(p, 13.9, 1.0, 1.8, 3.2, CARD);
+  }, INK, LWI);
+  // The hand hole in the lid's front, the white label with the red year.
+  rbox(c, 5.8, 1.9, 4.4, 1.3, 0.6, '#3b2414', INK, LWF);
+  rbox(c, 3.8, 7.0, 8.4, 5.0, 0.3, PAPER, INK, LWF);
+  box(c, 4.2, 7.5, 4.4, 1.4, RED);
+  lines(c, [4.2, 9.8, 11.6, 9.8, 4.2, 10.9, 9.6, 10.9], INK, 0.22);
 }
 
 // The internal mail cart, envelopes nudging on the bumps (roll 16x18).
@@ -670,6 +683,35 @@ function shredder(c, W, H, f) {
     const y = 8.4 - u * 6.0 + i * 0.4;
     box(c, x, y, 0.9, 0.5, BITS[i], INK, 0.1);
   }
+}
+
+// The fire alarm pull station, on the wall at a hop's height (box 10x11) — the
+// mission's target on floor 23: PULL 3 FIRE ALARMS. `pulled` drops the handle
+// and sets the strobe over it going, white on alternate frames.
+function fireAlarm(c, W, H, f = 0, pulled = false) {
+  // The strobe on its own little plinth above the box.
+  const lit = pulled && f % 2 === 0;
+  if (lit) {
+    for (let i = 0; i < 6; i++) {
+      const a = -Math.PI / 2 + (i - 2.5) * 0.45;
+      line(c, W / 2 + Math.cos(a) * 2.4, 2.4 + Math.sin(a) * 2.4,
+        W / 2 + Math.cos(a) * 4.4, 2.4 + Math.sin(a) * 4.4, LEMON_LT, 0.45);
+    }
+  }
+  box(c, W / 2 - 2.6, 3.0, 5.2, 1.4, STEEL, INK, LWF);
+  body(c, rr(W / 2 - 1.9, 0.9, 3.8, 2.4, 0.9), lit ? PAPER : pulled ? RED_DK : '#f6c0c6',
+    (p) => box(p, W / 2 - 1.9, 0.9, 1.2, 2.4, lit ? LEMON_LT : '#ffffff'), INK, LWF);
+  // The box: red, the white FIRE band, the lit sliver down its left.
+  body(c, rr(1.2, 4.6, W - 2.4, H - 5.0, 0.8), RED, (p) => {
+    box(p, W - 3.4, 0, 3, H, RED_DK);
+    box(p, 1.6, 5.0, 0.9, H - 6, '#ff6a7c');
+  });
+  box(c, 2.4, 5.8, W - 4.8, 1.8, PAPER, INK, LWF);
+  lines(c, [3.4, 6.7, 4.6, 6.7, 5.4, 6.7, 6.2, 6.7, 7.0, 6.7, 8.6, 6.7], RED_DK, 0.35);
+  // The handle: a white T, up and waiting, or down and spent.
+  const hy = pulled ? H - 3.4 : 9.6;
+  box(c, W / 2 - 0.7, pulled ? 9.0 : 8.6, 1.4, hy - (pulled ? 9.0 : 8.6), CHAR_DK);
+  body(c, rr(2.8, hy, W - 5.6, 1.8, 0.6), PAPER, (p) => box(p, 2.8, hy + 1.0, W - 5.6, 1, PAPER_DK), INK, LWI);
 }
 
 // ========================================================== 8-3 FLOOR 88
@@ -890,6 +932,179 @@ function champagneCork(c, W, H, f) {
   c.restore();
 }
 
+// THE VAULT SAFE: office-3's target, CRACK 3 SAFES (Peter, 15 Oct: candidate E of
+// the safe bake-off, src/dev/office-safe-candidates.js). Twice a crate's height
+// (box 16x24), gold body, black door, white dial; one shot blows the door open and
+// the money comes out (Run.crackSafe). `open` is the door swung back on its hinge
+// with the cash shelf and gold bars showing.
+const CASH = '#8fcf8a', CASH_DK = '#5fa45e', VAULT = '#16131d';
+function glint4(c, x, y, s, col = '#ffffff') {
+  if (s <= 0) return;
+  poly(c, [x, y - s, x + s * 0.28, y - s * 0.28, x + s, y, x + s * 0.28, y + s * 0.28,
+    x, y + s, x - s * 0.28, y + s * 0.28, x - s, y, x - s * 0.28, y - s * 0.28], col);
+}
+function vaultSafe(c, W, H, f, open = false) {
+  const g = H - 0.3;
+  const bx = 1.2, bw = W - 2.4, top = 1.4, bh = g - 1.6 - top;
+  const dx = bx + 1.6, dy = top + 1.6, dw = bw - 3.8, dh = bh - 3.2;
+  box(c, bx + 0.8, g - 1.8, 3.0, 1.8, INK);
+  box(c, bx + bw - 3.8, g - 1.8, 3.0, 1.8, INK);
+  body(c, rr(bx, top, bw, bh, 1.0), BRASS, (p) => {
+    box(p, bx + bw - bw * 0.16, top, bw, bh, BRASS_DK);
+    box(p, bx + 0.7, top + 0.8, 0.9, bh - 1.6, BRASS_LT);
+  });
+  if (open) {
+    // The strongbox: banded cash on the shelf, gold bars on the floor of it.
+    rbox(c, dx, dy, dw, dh, 0.5, VAULT, INK, LWI);
+    const shelf = dy + dh * 0.5;
+    line(c, dx + 0.3, shelf, dx + dw - 0.3, shelf, STEEL_DK, 0.5);
+    const nw = Math.min(4.2, (dw - 1.2) / 2);
+    for (let k = 0; k < 2; k++) {
+      for (let j = 0; j < 2; j++) {
+        const nx = dx + 0.6 + k * (nw + 0.2), ny = shelf - 1.5 - j * 1.5;
+        box(c, nx, ny, nw, 1.4, CASH, INK, LWF);
+        box(c, nx + nw / 2 - 0.4, ny, 0.8, 1.4, PAPER);
+      }
+    }
+    const n = Math.max(2, Math.floor((dw - 1) / 3)), by = dy + dh - 0.4;
+    for (let k = 0; k < n; k++) {
+      const gx = dx + 0.6 + k * ((dw - 1.2) / n);
+      poly(c, [gx, by, gx + 2.6, by, gx + 2.1, by - 1.5, gx + 0.5, by - 1.5], BRASS, INK, LWF);
+    }
+    for (let k = 0; k < n - 1; k++) {
+      const gx = dx + 1.9 + k * ((dw - 1.2) / n);
+      poly(c, [gx, by - 1.5, gx + 2.6, by - 1.5, gx + 2.1, by - 3.0, gx + 0.5, by - 3.0], BRASS_LT, INK, LWF);
+    }
+    glint4(c, dx + dw * 0.6, by - 2.8, 1.0, '#fffbe0');
+    // The door, swung back past its hinge: the plain inside face and its bolts.
+    const hx = dx + dw, ak = 0.37;
+    c.save();
+    c.translate(hx, dy);
+    c.scale(ak, 1);
+    body(c, rr(0, 0, dw, dh, 0.6), STEEL, (p) => box(p, 0, 0, dw * 0.22, dh, STEEL_DK));
+    rbox(c, dw * 0.25, dh * 0.15, dw * 0.6, dh * 0.7, 0.4, null, INK, LWF);
+    c.restore();
+    const ex = hx + dw * ak;
+    box(c, ex, dy + 0.4, 1.3, dh - 0.8, STEEL_DK, INK, LWI);
+    for (const fy of [0.2, 0.5, 0.8]) box(c, ex + 1.3, dy + dh * fy - 0.5, 1.6, 1.0, STEEL, INK, LWF);
+  } else {
+    // The door: black, a gold pinstripe, the white dial turning and the brass wheel.
+    body(c, rr(dx, dy, dw, dh, 0.7), CHAR, (q) => box(q, dx + dw - dw * 0.12, dy, dw, dh, CHAR_DK));
+    rbox(c, dx + 0.8, dy + 0.8, dw - 1.6, dh - 1.6, 0.5, null, BRASS, 0.3);
+    const lx = dx + dw * 0.42, ly = dy + dh * 0.36, r = 2.9, a = (f / 8) * TAU;
+    circ(c, lx, ly, r, BRASS_LT, INK, LWI);
+    circ(c, lx, ly, r * 0.7, PAPER, INK, LWF);
+    for (let k = 0; k < 12; k++) {
+      const q = a + (k / 12) * TAU;
+      line(c, lx + Math.cos(q) * r * 0.74, ly + Math.sin(q) * r * 0.74, lx + Math.cos(q) * r * 0.94, ly + Math.sin(q) * r * 0.94, INK, 0.16);
+    }
+    line(c, lx, ly, lx + Math.cos(a) * r * 0.55, ly + Math.sin(a) * r * 0.55, RED, 0.38);
+    circ(c, lx, ly, r * 0.16, INK);
+    const wx = dx + dw * 0.5, wy = dy + dh * 0.7, wr = 2.6;
+    for (let k = 0; k < 4; k++) {
+      const q = 0.4 + (k / 4) * TAU;
+      line(c, wx, wy, wx + Math.cos(q) * wr, wy + Math.sin(q) * wr, INK, 0.9);
+      line(c, wx, wy, wx + Math.cos(q) * wr, wy + Math.sin(q) * wr, BRASS_LT, 0.45);
+      circ(c, wx + Math.cos(q) * wr, wy + Math.sin(q) * wr, 0.6, BRASS_LT, INK, LWF);
+    }
+    circ(c, wx, wy, wr * 0.32, BRASS_LT, INK, LWF);
+  }
+  box(c, dx + dw + 0.1, dy + 2, 1.0, 2.6, STEEL_DK, INK, LWF);
+  box(c, dx + dw + 0.1, dy + dh - 4.6, 1.0, 2.6, STEEL_DK, INK, LWF);
+  glint4(c, bx + 2.2, top + 2.4, 1.3 + 0.4 * Math.sin((f / 8) * TAU));
+}
+
+// The banknote a cracked safe throws out (pickup 10x6): green, inked, a pale
+// border and a white oval with the $, flipping on its ring as it hangs.
+function banknote(c, W, H, f) {
+  const flip = Math.cos((f / 8) * TAU);
+  const w = (W - 1) * (0.35 + 0.65 * Math.abs(flip)), hh = H - 1;
+  c.save();
+  c.translate(W / 2, H / 2);
+  c.rotate(Math.sin((f / 8) * TAU) * 0.12);
+  rbox(c, -w / 2, -hh / 2, w, hh, 0.5, CASH, INK, 0.45);
+  if (w > 4) {
+    rbox(c, -w / 2 + 0.8, -hh / 2 + 0.8, w - 1.6, hh - 1.6, 0.3, null, CASH_DK, 0.3);
+    ell(c, 0, 0, Math.min(2.4, w * 0.24), hh * 0.3, flip > 0 ? PAPER : '#e8f6e6', INK, 0.2);
+    if (flip > 0 && w > 7) line(c, 0, -hh * 0.2, 0, hh * 0.2, CASH_DK, 0.45);
+  }
+  c.restore();
+}
+
+// THE PAYOFF ON FLOOR 88 (Peter, 15 Oct): crack the safes and a giant pile of
+// money is waiting by the exit (box 48x26) — banded notes, gold bars, coins and a
+// few loose notes on top. Scenery: Run.drawMissionPayoff stands it there once the
+// mission is met; nothing collides with it.
+function moneyPile(c, W, H, f) {
+  const g = H - 0.3, cx = W / 2;
+  const h01 = (n) => { const v = Math.sin(n * 91.7 + 13.1) * 43758.5453; return v - Math.floor(v); };
+  // The mound's silhouette, filled dark green so the gaps between bundles read as depth.
+  poly(c, [1, g, cx - W * 0.22, g - H * 0.62, cx, g - H * 0.86, cx + W * 0.24, g - H * 0.6, W - 1, g], CASH_DK, INK, LW);
+  // Rows of banded bundles, narrowing toward the top.
+  const rows = 6, bw = 6.4, bh = 2.6;
+  for (let r = 0; r < rows; r++) {
+    const y = g - 1.2 - r * (bh + 0.4) - bh;
+    const half = (W / 2 - 3) * (1 - r / (rows + 0.6));
+    for (let x = cx - half; x + bw <= cx + half + 0.5; x += bw + 0.3) {
+      const k = h01(r * 31 + Math.round(x));
+      const jx = x + (k - 0.5) * 1.2;
+      if (k < 0.16) {
+        // A gold bar in place of the bundle.
+        poly(c, [jx, y + bh, jx + bw, y + bh, jx + bw - 1.2, y, jx + 1.2, y], BRASS, INK, LWF);
+        line(c, jx + 1.6, y + 0.6, jx + bw - 1.6, y + 0.6, BRASS_LT, 0.4);
+      } else {
+        box(c, jx, y, bw, bh, k < 0.6 ? CASH : '#a5dba0', INK, LWF);
+        box(c, jx + bw / 2 - 0.6, y, 1.2, bh, PAPER);
+      }
+    }
+  }
+  // Coins spilled down both flanks.
+  for (let i = 0; i < 14; i++) {
+    const side = i % 2 ? 1 : -1, t = h01(i + 7);
+    const x = cx + side * (W * 0.3 + t * W * 0.16), y = g - 1.2 - (1 - t) * H * 0.25;
+    circ(c, x, y, 1.4, LEMON, INK, LWF);
+    line(c, x - 0.5, y - 0.5, x + 0.2, y - 0.9, LEMON_LT, 0.35);
+  }
+  // Loose notes on the summit, and a glint that wanders across it.
+  for (let i = 0; i < 3; i++) {
+    const x = cx - 7 + i * 6, y = g - H * 0.86 + 1 + (i % 2) * 1.4;
+    c.save();
+    c.translate(x, y);
+    c.rotate((i - 1) * 0.4);
+    rbox(c, -3.2, -1.6, 6.4, 3.2, 0.4, CASH, INK, LWF);
+    ell(c, 0, 0, 1.1, 0.9, PAPER, INK, 0.15);
+    c.restore();
+  }
+  const gx = cx + ((f / 8) * 2 - 1) * W * 0.25;
+  poly(c, [gx, g - H * 0.7 - 2.2, gx + 0.6, g - H * 0.7 - 0.6, gx + 2.2, g - H * 0.7, gx + 0.6, g - H * 0.7 + 0.6,
+    gx, g - H * 0.7 + 2.2, gx - 0.6, g - H * 0.7 + 0.6, gx - 2.2, g - H * 0.7, gx - 0.6, g - H * 0.7 - 0.6], '#fffbe0');
+}
+
+// THE FIRE ALARM'S PILLAR (office-2; Peter, 15 Oct: "i kinda love the pillar, it makes total sense
+// and works since we have a ceiling" — fire alarm stand bake-off F): a column standing on the floor
+// line, behind the lane, running up out of the picture, with a backing plate and a FIRE ALARM sign
+// behind the call point. Drawn by draw.js behind each fireAlarm, in world units, the alarm box's
+// centre at cx and the floor at g. Scenery: nothing collides with it.
+const COLUMN = '#cfc6de', COLUMN_DK = '#bdb2cf', COLUMN_LT = '#e4ddef', ALARM_ALT = 36, CHAR_LT = '#55536a';
+export function paintAlarmPillar(c, cx, g, top = 420) {
+  const pw = 15, Y = (alt) => g - alt;
+  body(c, rect(cx - pw / 2, Y(top), pw, top), COLUMN, (p) => {
+    box(p, cx - pw / 2, Y(top), 1.6, top, COLUMN_LT);
+    box(p, cx + pw / 2 - 3.2, Y(top), 3.2, top, COLUMN_DK);
+  }, INK, LWI);
+  // STANDING IN THE LANE, not on the wall's floor line (Peter, 15 Oct: "does this read as just a
+  // little back from the game lane?"): a plinth wider than the column on the lane's own floor, its
+  // top lit and its side in shade, and a contact shadow spreading onto the floor in front of it
+  ell(c, cx + 1, g + 0.2, pw * 0.85, 2.2, 'rgba(31,29,38,0.22)');
+  body(c, rect(cx - pw / 2 - 2.2, g - 5, pw + 4.4, 5), CHAR, (p) => {
+    box(p, cx - pw / 2 - 2.2, g - 5, pw + 4.4, 1.2, CHAR_LT);
+    box(p, cx + pw / 2 - 1.2, g - 5, 3.4, 5, CHAR_DK);
+  }, INK, LWI);
+  rbox(c, cx - 5.6, Y(ALARM_ALT + 13.5), 11.2, 14.2, 0.6, PAPER_DK, INK, LWF);
+  box(c, cx - 6.4, Y(ALARM_ALT + 18.4), 12.8, 3.6, RED, INK, LWF);
+  letters(c, 'FIRE ALARM', cx, Y(ALARM_ALT + 15.7), 1.45, { ink: PAPER, weight: 700, align: 'center', track: 0.1 });
+}
+
 // =================================================================== registry
 // box [w, h] is the def's (game/entities.js); tall is PROP_TALL; visual is
 // PROP_VISUAL_SCALE for the fliers, as drone and buzzbird carry. frames/fps
@@ -904,7 +1119,7 @@ const SPECS = {
   artMobile: { box: [12, 7], tall: 8, visual: 1.35, frames: 8, fps: 6, paint: artMobile },
   paperPlane: { box: [12, 7], visual: 1.35, frames: 6, fps: 8, paint: paperPlane },
   coatStand: { box: [13, 12], tall: 1.55, frames: 6, fps: 6, paint: coatStand },
-  snackMachine: { box: [17, 14], tall: 1.4, frames: 8, fps: 6, paint: snackMachine },
+  snackMachine: { box: [12, 22], frames: 8, fps: 6, paint: snackMachine },
   archiveBox: { box: [12, 11], paint: archiveBox },
   mailCart: { box: [12, 10], tall: 1.35, frames: 8, fps: 12, paint: mailCart },
   binFire: { box: [13, 13], tall: 1.7, frames: 8, fps: 14, paint: binFire },
@@ -912,8 +1127,14 @@ const SPECS = {
   birthdayBunting: { box: [12, 7], tall: 8, visual: 1.35, frames: 8, fps: 8, paint: birthdayBunting },
   partyBalloon: { box: [12, 7], tall: 1.4, visual: 1.35, frames: 8, fps: 8, paint: partyBalloon },
   shredder: { box: [12, 7], tall: 2.2, frames: 8, fps: 12, paint: shredder },
+  fireAlarm: { box: [10, 11], paint: fireAlarm },
+  fireAlarmPulled: { box: [10, 11], frames: 2, fps: 6, paint: (c, W, H, f) => fireAlarm(c, W, H, f, true) },
   founderBust: { box: [13, 12], tall: 1.55, paint: founderBust },
   officeSafe: { box: [17, 14], tall: 1.4, frames: 8, fps: 6, paint: officeSafe },
+  vaultSafe: { box: [16, 24], frames: 8, fps: 6, paint: vaultSafe },
+  vaultSafeOpen: { box: [16, 24], paint: (c, W, H) => vaultSafe(c, W, H, 0, true) },
+  banknote: { box: [10, 6], frames: 8, fps: 8, paint: banknote },
+  moneyPile: { box: [48, 26], frames: 8, fps: 4, paint: moneyPile },
   briefcase: { box: [12, 11], paint: briefcase },
   drinksTrolley: { box: [12, 10], tall: 1.4, frames: 8, fps: 12, paint: drinksTrolley },
   confidentialBin: { box: [13, 13], tall: 1.7, frames: 8, fps: 14, paint: (c, W, H, f) => binFire(c, W, H, f, true) },
@@ -941,12 +1162,12 @@ export const OFFICE_PROP_DETAIL = {};
 for (const [name, s] of Object.entries(SPECS)) {
   const env = officePropEnvelope(name);
   const n = s.frames || 1;
-  OFFICE_PROP_PAINTERS[name] = (ctx, w, h, frame = 0) => {
+  OFFICE_PROP_PAINTERS[name] = outlined((ctx, w, h, frame = 0) => {
     ctx.save();
     ctx.scale(w / env.w, h / env.h);
     s.paint(ctx, env.w, env.h, ((Math.floor(frame) % n) + n) % n);
     ctx.restore();
-  };
+  });
   if (n > 1) {
     OFFICE_PROP_FRAMES[name] = n;
     OFFICE_PROP_FPS[name] = s.fps;

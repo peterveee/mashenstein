@@ -24,6 +24,12 @@ import {
   GRAVITY_PROP_NAMES, GRAVITY_PROP_PAINTERS, GRAVITY_PROP_FRAMES, GRAVITY_PROP_FPS, GRAVITY_PROP_TALL,
   GRAVITY_PROP_DETAIL, GRAVITY_PROP_VISUAL,
 } from './gravityProps.js';
+import {
+  CABINET_PROP_NAMES, CABINET_PROP_PAINTERS, CABINET_PROP_FRAMES, CABINET_PROP_FPS, CABINET_PROP_TALL,
+  CABINET_PROP_DETAIL, CABINET_PROP_VISUAL,
+} from './cabinetProps.js';
+import { paintCrate, paintBarrel } from './crateBarrel.js';
+import { REDRAW_PAINTERS, DRONE_FRAMES } from './redrawProps.js';
 
 export const OUTLINE = 'rgba(26,16,40,0.34)';
 
@@ -1652,11 +1658,115 @@ export const SILVER_TOASTER_FINISH = {
     [0.62, '#b4c0ce'], [1, '#d8e0ea']],
 };
 
+// THE M-A-S-H LETTERS: four tiny SNES cartridges, one letter on each label, in the
+// Super Famicom's four button colours — M red, A yellow, S green, H blue (Peter,
+// 15 Oct 2026, from the letters bake-off: "the snes work best overall and ... the
+// colours on the label should be the japan snes colours"). Grey shell wider than
+// tall, big rounded top corners, grip grooves down both sides, the dark connector
+// lip along the bottom, and a glint travelling across the label.
+//
+// Then the SNES variations bake-off picked E1: a soft halo in the label's own
+// colour (drawn by draw.js, like a capsule's), so the cart lifts off snow and dusk, and a Super Famicom-proportioned
+// label — a square-cornered landscape rectangle set high on the shell, widened
+// a touch to three fifths of it ("could we make the label a touch wider?").
+//
+// The BANKED skin is the same cart gone grey, its label blank but for a faint
+// letter: one you already have — still worth taking for the one-run bonus, never
+// to be mistaken for one you still need.
+//
+// Letter paths are drawn in a unit box and scaled onto the label by `letterPath`.
+export const MASH_LETTER_PATHS = {
+  M: (p) => { p.m(0, 1); p.l(0, 0); p.l(0.5, 0.58); p.l(1, 0); p.l(1, 1); },
+  A: (p) => { p.m(0, 1); p.l(0.5, 0); p.l(1, 1); p.m(0.24, 0.64); p.l(0.76, 0.64); },
+  S: (p) => {
+    p.m(0.96, 0.17);
+    p.c(0.8, -0.03, 0.1, -0.04, 0.08, 0.26);
+    p.c(0.06, 0.52, 0.94, 0.46, 0.94, 0.72);
+    p.c(0.94, 1.02, 0.2, 1.05, 0.04, 0.83);
+  },
+  H: (p) => { p.m(0, 0); p.l(0, 1); p.m(1, 0); p.l(1, 1); p.m(0, 0.5); p.l(1, 0.5); },
+};
+// Frames: the glint crosses the label, swelling in the middle. Every frame is its
+// own drawing — a still frame held by repeating it would be a bake per repeat.
+const MASH_LETTER_FRAMES = 8;
+const MASH_LABEL = { M: '#e0342c', A: '#f6c21c', S: '#1fa34a', H: '#2a6fd0' };
+// The carts' halo, one per letter in its label's colour. Drawn outside the
+// cart's raster (whose edge would cut it square) by every path that draws a
+// cart: draw.js for one standing in the world, run.js for one riding a train in.
+// Quiet on purpose: at 0.5 it washed the yellow A's label and letter out under
+// neon's bloom (Peter, 15 Oct: "this glow makes the letter borderline
+// unreadable"). It is there to lift the cart off the scene, not to light it.
+export const MASH_GLOW = {
+  letterM: 'rgba(224,52,44,0.26)', letterA: 'rgba(246,194,28,0.2)',
+  letterS: 'rgba(31,163,74,0.28)', letterH: 'rgba(42,111,208,0.3)',
+};
+function paintMashLetter(ctx, w, h, frame, letter, banked) {
+  const u = Math.min(w, h);
+  const bw = w * 0.96, bh = h * 0.7, x = (w - bw) / 2, y = h * 0.16;
+  const R = bh * 0.32, r = bh * 0.08;
+  ctx.save();
+  // The halo is drawWorldEntity's (draw.js MASH_GLOW), outside this raster.
+  ctx.beginPath();
+  ctx.moveTo(x, y + bh - r); ctx.lineTo(x, y + R); ctx.quadraticCurveTo(x, y, x + R, y);
+  ctx.lineTo(x + bw - R, y); ctx.quadraticCurveTo(x + bw, y, x + bw, y + R);
+  ctx.lineTo(x + bw, y + bh - r); ctx.quadraticCurveTo(x + bw, y + bh, x + bw - r, y + bh);
+  ctx.lineTo(x + r, y + bh); ctx.quadraticCurveTo(x, y + bh, x, y + bh - r); ctx.closePath();
+  ctx.fillStyle = banked ? '#b4b8c2' : '#a3a5b2'; ctx.fill();
+  ctx.strokeStyle = '#3c3e4a'; ctx.lineWidth = u * 0.06; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(x + R * 0.7, y + u * 0.04, bw - R * 1.4, u * 0.05);
+  ctx.fillStyle = '#5a5c68'; ctx.fillRect(x + bw * 0.12, y + bh - u * 0.1, bw * 0.76, u * 0.07);
+  ctx.fillStyle = 'rgba(40,42,52,0.45)';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(x + bw * 0.045, y + bh * (0.3 + i * 0.16), bw * 0.07, u * 0.035);
+    ctx.fillRect(x + bw * 0.885, y + bh * (0.3 + i * 0.16), bw * 0.07, u * 0.035);
+  }
+  const lw = bw * 0.62, lh = bh * 0.42, lx = x + (bw - lw) / 2, ly = y + bh * 0.24;
+  ctx.beginPath(); rr(ctx, lx, ly, lw, lh, u * 0.01);
+  ctx.fillStyle = banked ? '#d2d6de' : MASH_LABEL[letter]; ctx.fill();
+  ctx.strokeStyle = 'rgba(30,30,40,0.5)'; ctx.lineWidth = u * 0.03; ctx.stroke();
+  // The letter takes the label's height and a width to suit it, so a short
+  // landscape label carries a smaller letter rather than a squashed one.
+  const lbh = lh * 0.72, lbw = Math.min(lw * 0.6, lbh * 0.85);
+  const box = [lx + (lw - lbw) / 2, ly + lh * 0.14, lbw, lbh];
+  const ks = Math.max(0.7, Math.min(1, lbh / (u * 0.5)));
+  const letterPath = (c) => {
+    const X = (v) => box[0] + v * box[2], Y = (v) => box[1] + v * box[3];
+    MASH_LETTER_PATHS[letter]({
+      m: (a, b) => c.moveTo(X(a), Y(b)),
+      l: (a, b) => c.lineTo(X(a), Y(b)),
+      c: (ax, ay, bx, by, a, b) => c.bezierCurveTo(X(ax), Y(ay), X(bx), Y(by), X(a), Y(b)),
+    });
+  };
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (banked) {
+    stroke(ctx, 'rgba(120,128,144,0.55)', u * 0.08, letterPath);
+  } else {
+    stroke(ctx, '#2a1a20', u * 0.16 * ks, letterPath);
+    stroke(ctx, '#ffffff', u * 0.09 * ks, letterPath);
+    const f = frame % MASH_LETTER_FRAMES;
+    const k = 0.35 + 0.65 * Math.sin((f + 0.5) / MASH_LETTER_FRAMES * Math.PI);
+    ctx.globalAlpha = k;
+    plain(ctx, '#ffffff', (c) => star(c, lx + lw * (f + 0.5) / MASH_LETTER_FRAMES, ly + lh * 0.12,
+      u * (0.06 + 0.12 * k), u * 0.025, 4));
+  }
+  ctx.restore();
+}
+const MASH_LETTER_PAINTERS = Object.fromEntries(Object.keys(MASH_LETTER_PATHS).flatMap((L) => [
+  [`letter${L}`, (ctx, w, h, frame = 0) => paintMashLetter(ctx, w, h, frame, L, false)],
+  [`letter${L}Banked`, (ctx, w, h, frame = 0) => paintMashLetter(ctx, w, h, frame, L, true)],
+]));
+// A table row per letter painter; `banked` left out leaves the outlines out,
+// which is how the frame tables keep them static.
+const mashLetterTable = (gold, banked) => Object.fromEntries(Object.keys(MASH_LETTER_PATHS)
+  .flatMap((L) => (banked == null ? [[`letter${L}`, gold]] : [[`letter${L}`, gold], [`letter${L}Banked`, banked]])));
+
 export const PROP_PAINTERS = {
+  ...MASH_LETTER_PAINTERS,
   ...GRAVITY_PAINTERS,
   ...ANIMAL_PAINTERS,
   ...OFFICE_PROP_PAINTERS,
   ...GRAVITY_PROP_PAINTERS,
+  ...CABINET_PROP_PAINTERS,
   ...FINISH_DOG_PAINTERS,
   // --- ground hazards ---------------------------------------------------
   // A thorn cactus: saguaro silhouette — fat trunk, two arms elbowing upward —
@@ -2364,32 +2474,11 @@ export const PROP_PAINTERS = {
       ctx.lineTo(cx - k, cy); ctx.lineTo(cx - k * 0.25, cy - k * 0.25); ctx.closePath(); ctx.fill();
     }
   },
+  // THE CRATE, one for the whole game since 15 Oct 2026: the generic bake-off's A,
+  // flat and front-on in the bold hand of the cabinets' new obstacles
+  // (sprites/crateBarrel.js). The old fine-ink platformer crate is in git history.
   crate(ctx, w, h) {
-    const u = Math.max(w, h);
-    const fineShape = (fill, pathFn) => {
-      ctx.beginPath(); pathFn(ctx);
-      ctx.fillStyle = fill; ctx.fill();
-      ctx.strokeStyle = 'rgba(50,30,12,0.24)';
-      ctx.lineWidth = Math.max(0.12, u * 0.01);
-      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
-    };
-    // Flat, rounded construction: one fine frame and one inset wooden face.
-    // Depth belongs to the flying toaster; this stays in the prop language.
-    fineShape('#8a6432', (c) => rr(c, w * 0.04, h * 0.05, w * 0.92, h * 0.9, w * 0.17));
-    plain(ctx, '#c89858', (c) => rr(c, w * 0.09, h * 0.1, w * 0.82, h * 0.8, w * 0.14));
-    plain(ctx, 'rgba(255,230,176,0.3)', (c) => rr(c, w * 0.13, h * 0.14, w * 0.74, h * 0.08, h * 0.035));
-    stroke(ctx, 'rgba(106,70,30,0.48)', Math.max(0.32, w * 0.028), (c) => {
-      c.moveTo(w * 0.14, h * 0.39); c.lineTo(w * 0.86, h * 0.39);
-      c.moveTo(w * 0.14, h * 0.63); c.lineTo(w * 0.86, h * 0.63);
-    });
-    stroke(ctx, '#8a5a2a', Math.max(0.5, w * 0.055), (c) => {
-      c.moveTo(w * 0.19, h * 0.22); c.lineTo(w * 0.81, h * 0.79);
-      c.moveTo(w * 0.81, h * 0.22); c.lineTo(w * 0.19, h * 0.79);
-    });
-    plain(ctx, '#5a4020', (c) => {
-      for (const [x, y] of [[0.14, 0.15], [0.86, 0.15], [0.14, 0.85], [0.86, 0.85]])
-        c.arc(w * x, h * y, w * 0.025, 0, Math.PI * 2);
-    });
+    paintCrate(ctx, w, h);
   },
   // THE CARD BOX. A crate's box and a crate's silhouette on purpose — it stands
   // where a crate stands and it is the same 12x11 — so everything that says
@@ -2698,50 +2787,11 @@ export const PROP_PAINTERS = {
     // other instead of three outlines crossing.
     for (let i = n - 1; i >= 0; i--) chev(i, i === 0 ? '#f890c8' : '#e04898');
   },
+  // THE BARREL, one for the whole game since 15 Oct 2026: the generic bake-off's E
+  // (sprites/crateBarrel.js) — Kong's wood and the LCD tower barrel's bellied
+  // silhouette at full ink, so the one he throws and the one you kick are one object.
   barrel(ctx, w, h) {
-    const u = Math.max(w, h);
-    const fineShape = (fill, pathFn) => {
-      ctx.beginPath(); pathFn(ctx);
-      ctx.fillStyle = fill; ctx.fill();
-      ctx.strokeStyle = 'rgba(42,24,10,0.32)';
-      ctx.lineWidth = Math.max(0.32, u * 0.024);
-      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
-    };
-    // A flat, front-on barrel: BELLIED silhouette, stave rhythm and hoops.
-    // No top plane or receding side—the toaster owns the 3D exception.
-    //
-    // The body was a rounded rectangle and read as one: a barrel is not a box
-    // with soft corners, it is widest across its belly and pulled in at both
-    // ends, and that taper is the shape's whole job. Same overall width as the
-    // rounded rect had — the belly still reaches 0.9w — so the hoops, staves
-    // and highlight all sit where they always did, and nothing that measures
-    // this prop moved. The LCD panel's tower barrel is the same silhouette at
-    // sixteen pixels (stylePacks, LCD_BARREL_SHAPE 'ingame'); they are one
-    // object in the world and may not be two drawings.
-    fineShape('#b87838', (c) => {
-      const y0 = h * 0.04, y1 = h * 0.96;
-      const end = w * 0.16, mid = w * 0.04;
-      c.moveTo(end, y0);
-      c.lineTo(w - end, y0);
-      c.quadraticCurveTo(w - mid, h * 0.5, w - end, y1);
-      c.lineTo(end, y1);
-      c.quadraticCurveTo(mid, h * 0.5, end, y0);
-      c.closePath();
-    });
-    plain(ctx, 'rgba(216,160,88,0.42)', (c) => rr(c, w * 0.18, h * 0.1, w * 0.13, h * 0.8, w * 0.065));
-    plain(ctx, 'rgba(112,60,26,0.22)', (c) => rr(c, w * 0.69, h * 0.1, w * 0.13, h * 0.8, w * 0.065));
-    stroke(ctx, '#5e4e46', Math.max(0.65, h * 0.065), (c) => {
-      c.moveTo(w * 0.13, h * 0.25); c.lineTo(w * 0.87, h * 0.25);
-      c.moveTo(w * 0.13, h * 0.72); c.lineTo(w * 0.87, h * 0.72);
-    });
-    stroke(ctx, 'rgba(106,58,24,0.62)', Math.max(0.28, w * 0.025), (c) => {
-      c.moveTo(w * 0.36, h * 0.1); c.lineTo(w * 0.36, h * 0.9);
-      c.moveTo(w * 0.52, h * 0.08); c.lineTo(w * 0.52, h * 0.92);
-      c.moveTo(w * 0.68, h * 0.1); c.lineTo(w * 0.68, h * 0.9);
-    });
-    stroke(ctx, 'rgba(255,220,160,0.5)', Math.max(0.3, w * 0.025), (c) => {
-      c.moveTo(w * 0.2, h * 0.34); c.lineTo(w * 0.2, h * 0.62);
-    });
+    paintBarrel(ctx, w, h);
   },
   // THE JUMP SIGN. Not scenery and not a hazard: a hint the run puts in the
   // lane after the player has gone into the same kind of hole twice, and the
@@ -5203,6 +5253,11 @@ export const PROP_PAINTERS = {
     plain(ctx, p < 0.5 ? '#f6d33c' : 'rgba(246,211,60,0.3)',
       (c) => c.arc(w * 0.5, h * 0.92, w * 0.055, 0, Math.PI * 2));
   },
+  // THE REDRAWS, last so they win over the older painters of the same name above
+  // (15 Oct 2026, sprites/redrawProps.js): buzzbird, both drone bodies, the cone, the
+  // tombstone, the ice crystals, the rake, the target and both thistles, in the bold
+  // flat hand. The older painters above are kept for now as the record of what they were.
+  ...REDRAW_PAINTERS,
 };
 
 // ------------------------------------------------- relay portal states
@@ -5554,6 +5609,7 @@ export function switchBonkLift(t) {
 }
 
 export const PROP_FRAMES = {
+  ...mashLetterTable(MASH_LETTER_FRAMES),
   // Half a rotor turn — the blade pair repeats every half turn — in twelve
   // 15-degree steps. Four 45-degree steps strobed: the disc is a third of the
   // hero's height and every frame was a different drawing.
@@ -5562,6 +5618,7 @@ export const PROP_FRAMES = {
   ...ANIMAL_FRAMES,
   ...OFFICE_PROP_FRAMES,
   ...GRAVITY_PROP_FRAMES,
+  ...CABINET_PROP_FRAMES,
   ...finishDogTable(ANIMAL_FRAMES),
   // Live and dead. Not an animation — the film cuts between them on one frame.
   powerStrip: 2,
@@ -5586,7 +5643,8 @@ export const PROP_FRAMES = {
   bearTrap: TRAP_FRAMES,
   boomBarrier: 8, pipe: 8,
   cactusGreen: 6,
-  drone: 6, shooterDrone: 6, droneEye: DRONE_EYE_FRAMES,
+  // 48 since the 15 Oct redraw (sprites/redrawProps.js DRONE_FRAMES): the eye's slow look.
+  drone: DRONE_FRAMES, shooterDrone: DRONE_FRAMES, droneEye: DRONE_EYE_FRAMES,
   // Bake-off candidates. Eight frames for the ramps and flags — one chevron
   // cell and one cloth cycle respectively, so the loop point is the art's own
   // period rather than an arbitrary count. The portals get twelve: they are
@@ -5610,6 +5668,7 @@ export const PROP_FRAMES = {
 // so sixteen frames at 12fps is one unhurried 1.3s scan with the rotor's five
 // turns folded inside it.
 const PROP_FPS = {
+  ...mashLetterTable(6),
   // The copter's rotor is normally driven off the song's beat (draw.js
   // copterFrame); this is the rate the strip runs at when no song is playing.
   eggshellCopter: 24,
@@ -5617,6 +5676,7 @@ const PROP_FPS = {
   ...ANIMAL_FPS,
   ...OFFICE_PROP_FPS,
   ...GRAVITY_PROP_FPS,
+  ...CABINET_PROP_FPS,
   ...finishDogTable(ANIMAL_FPS),
   qcrate: 12, appliance: 24, applianceSilver: 24, buzzbird: 16,
   // Fire is fast or it looks like jelly; the spike plate is slow because it is
@@ -5646,6 +5706,7 @@ export const PROP_TALL = {
   ...ANIMAL_TALL,
   ...OFFICE_PROP_TALL,
   ...GRAVITY_PROP_TALL,
+  ...CABINET_PROP_TALL,
   ...finishDogTable(ANIMAL_TALL),
   cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4, iceCrystals: 1.5,
   // IDENTICAL to the cactus by design. A pattern swap that also changed the
@@ -5698,6 +5759,7 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 // Their painters receive at least a 2x box before supersampling; the world draw
 // size and gameplay hitbox do not change.
 const PROP_DETAIL_SCALE = {
+  ...mashLetterTable(2, 2),
   magCargo: 2, oxygenRack: 2, serviceLaser: 2,
   // The villain's goggles are 1u lenses on a 24u portrait; the copter's blades
   // are 1u lines. Neither survives single detail.
@@ -5705,6 +5767,7 @@ const PROP_DETAIL_SCALE = {
   ...ANIMAL_DETAIL,
   ...OFFICE_PROP_DETAIL,
   ...GRAVITY_PROP_DETAIL,
+  ...CABINET_PROP_DETAIL,
   ...finishDogTable(null, 3), // the one detail-3 exception — see FINISH_DOG_ALIASES
   // The sign's head is the finest drawing in the lane per pixel: a silhouette
   // with fangs and a nostril inside a board about 17px wide. At detail 2 the
@@ -5789,6 +5852,7 @@ const PROP_VISUAL_SCALE = {
   ...ANIMAL_VISUAL,
   ...OFFICE_PROP_VISUAL,
   ...GRAVITY_PROP_VISUAL,
+  ...CABINET_PROP_VISUAL,
   ...finishDogTable(ANIMAL_VISUAL),
   // The dog sign draws over its box, where its two siblings do not. They
   // carry a word, which is legible or not at any size; this one carries a
@@ -5836,6 +5900,7 @@ const SELF_OUTLINED_PROPS = new Set([
   ...OFFICE_PROP_NAMES,
   // The station's, in its own slate ink.
   ...GRAVITY_PROP_NAMES,
+  ...CABINET_PROP_NAMES,
   ...Object.keys(FINISH_DOG_ALIASES),
   'cactus', 'cactusBig', 'snowman', 'snowmanBig', 'iceCrystals',
   // Standing hazards author heavy INK contours of their own. The
@@ -5857,7 +5922,10 @@ const SELF_OUTLINED_PROPS = new Set([
   // shadow he saw. The longer handle made it longer. Its own brown and steel inks
   // already part it from the grass.
   'rake',
-  'crate', 'pipe', 'zombieWalk', 'icicle',
+  // The crate and the barrel since 15 Oct 2026 carry the bold ink of their own.
+  'crate', 'barrel', 'pipe', 'zombieWalk', 'icicle',
+  // The 15 Oct redraws carry solid ink of their own too (sprites/redrawProps.js).
+  'tombstone', 'iceCrystals', 'thistle', 'thistleBig', 'target',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'trafficCone',
   // The peel is drawn flat, with a whisper of warm contour and no dark one at
   // all — the absence of a hard border is most of what makes it read clean. The

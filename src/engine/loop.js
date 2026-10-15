@@ -1,3 +1,4 @@
+import { performanceMark, performanceAdd } from './performance-capture.js';
 // Fixed-timestep loop: update always ticks at 60 Hz regardless of display rate,
 // and presentation is capped to that same rate (see the skip in frame()).
 import { updateProfileMark, noteUpdateFrame } from './update-profile.js';
@@ -163,6 +164,7 @@ export function startLoop({ update, draw, present }) {
       }
       acc += dt;
       let steps = 0;
+      const captureAt = performanceMark();
       const updateAt = updateProfileMark();
       restartAt = null;
       while (acc >= TICK && steps < 8) {
@@ -176,6 +178,7 @@ export function startLoop({ update, draw, present }) {
           break;
         }
       }
+      performanceAdd('update', captureAt);
       if (steps === 8) acc = 0; // running hopelessly behind: drop time, stay interactive
       // Only callbacks that actually stepped the simulation are sampled. On a
       // 120Hz panel half of them run zero steps, and folding those zeroes in

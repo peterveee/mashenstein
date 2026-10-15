@@ -3,7 +3,7 @@ import { efficiencyProfile } from '../engine/render-efficiency.js';
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
 import { SURGE_INTRO_BEATS, SURGE_BPM } from '../engine/stylePacks/surgeIntro.js';
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, setScreenFlip, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome, screen as renderScreen } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, sceneBloomAvailable, setScreenFlip, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome, screen as renderScreen } from '../engine/renderer.js';
 import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
 import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, guardGroundCap, ballisticApex, GUARD_DWELL } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
@@ -51,7 +51,7 @@ import { HERO_BY_ID, heroShoots } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS, cabinetForStage } from '../data/cabinets.js';
-import { STAGES } from '../data/stages.js';
+import { STAGES, MASH_LETTERS } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, SNAKE_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { plumberBarnAtCamFor, plumberBarnFracAt, getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
   frostBlizzardRung, frostBlizzardRamp, frostFlypastArc, frostStageLight, NEON_GOLDEN_MOOD, neonNightMood, setNeonGlow, takeDesertTrapShutter, desertSpeedTrapStage,
@@ -75,7 +75,7 @@ import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFaceSprite, BOW_AIM_T, BOW_REACH_T, BOW_RELEASE_AT, AXE_THROW_AT, ARROW_ARC, ARROW_BOX_SPEED, RANGED_RELEASE_AT, caneScale } from '../sprites/toons.js';
 import { laneEntryBeats } from '../engine/lanes.js';
-import { propFps } from '../sprites/props.js';
+import { propFps, propSprite, MASH_GLOW, glowSprite } from '../sprites/props.js';
 import {
   drawFrostFlypast, FROST_FLYPAST_SPEED, FROST_FLYPAST_SPAN, FROST_FLYPAST_DEPTH,
   FROST_FLYPAST_CLEAR, FROST_FLYPAST_LEAD, flypastAt, flypastPathY, flypastScaleFor,
@@ -83,7 +83,7 @@ import {
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX, POLE_STANDOFF, POLE_H } from './finishMarker.js';
 import { drawPlayerMarker } from './player-marker.js';
 import { drawHeroSprite, drawWorldEntity, lurkDrop, LURK_AT, drawPortal, drawCopter, drawSkyEdgeGradient, drawGroundEdgeGradient, drawPortraitSkyCap, darkenHex, FRAME_EDGE_GRADIENT, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF, COPTER_BOX, COPTER_HULL, COPTER_HIT_T, COPTER_SHIELD_T } from './draw.js';
-import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave, neonTrainAround, neonTrainHeadroom, neonTrainInterior, neonTrainInFrontCar, drawNeonTrainShell, TRAIN_FLOOR_LIFT, trainArrival, drawNeonFlypast, TRAIN_FLIGHT_LEAD_PX, shapeNeonTrainNoses, neonNoseDrop, neonStationSignSpan, NEON_SIGN_REACH } from './terrain.js';
+import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave, neonTrainAround, neonTrainHeadroom, neonTrainInterior, neonTrainDoorX, neonTrainInFrontCar, drawNeonTrainShell, TRAIN_FLOOR_LIFT, trainArrival, trainFlightPose, drawNeonFlypast, TRAIN_FLIGHT_LEAD_PX, shapeNeonTrainNoses, neonNoseDrop, neonStationSignSpan, NEON_SIGN_REACH } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, tunnelSweepOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
@@ -549,6 +549,27 @@ function rollJumpFace(rng, avoid) {
 // What the silver toaster pays. It stands in for a gold one whose plug and
 // bank bonus are already spent, so this is the whole of its reward.
 const SILVER_TOASTER_COINS = 50;
+// The M-A-S-H letters (see setupMashLetters): what one is worth, what taking all
+// four in a single run is worth on top, and the height a letter floats at when
+// its spot is on the plain lane rather than on a road — a jump, not a stride.
+const MASH_LETTER_SCORE = 250;
+const MASH_GOLD_SCORE = 1000;
+const MASH_LANE_ALT = 30;
+// Over a scripted pit, at the toaster's low height (44): the jump that clears
+// the hole passes through it, whoever is jumping — a tap at the lip on the way
+// up, a full one near its top. Only a jump taken far too early, already falling
+// by the middle of the hole, goes under it.
+const MASH_PIT_ALT = 44;
+// Over a gap in a spike crossing: a clean hop between stones passes 60-71 above
+// the lane mid-gap (measured across the cast), so 58 takes it and a short or late
+// hop goes under it — over the spikes.
+const MASH_HOP_ALT = 58;
+// How far before a scripted switched pit its switch stands — the lane patterns' 120.
+const SCRIPTED_SWITCH_LEAD = 120;
+// The edge marker's plate, and the top of the band it may stand in: clear of
+// the HUD's two top rows. (The bottom is read off H at draw time, which moves.)
+const MASH_MARK_W = 15, MASH_MARK_H = 17;
+const MASH_MARK_TOP = 46;
 
 // How many beats ahead of a storm strike its tower is planned (updateNeonStruck): six
 // seconds at 150 bpm, long enough for it to scroll in from out of the picture.
@@ -2337,7 +2358,8 @@ const GIRDER_RING_NORM = (() => {
 
 // What the power slide breaks by kicking through it: boxes, soft snowmen, and brittle ice
 // crystals (Peter, 24 Sep). Not tombstones.
-const SLIDE_PLOWABLE = new Set(['crate', 'qcrate', 'snowman', 'snowmanBig', 'iceCrystals']);
+// Archive boxes too (Peter, 15 Oct): they are paper, and a kick sends the files flying.
+const SLIDE_PLOWABLE = new Set(['crate', 'qcrate', 'snowman', 'snowmanBig', 'iceCrystals', 'archiveBox']);
 
 // World px the neon fly-past trains cruise higher in portrait.
 const NEON_FLYPAST_PORTRAIT_LIFT = 7;
@@ -4332,7 +4354,7 @@ export class RunState {
     this.introRunX = runIn ? INTRO_RUN_START_X : PLAYER_X;
     // Authored intros can be spoken by a named cast member — including one who
     // is not on this run's team. Ringside commentary still gets a face.
-    const bubble = intro ? { text: intro, t: 4.0, who: this.stage.introBy || 'intro' } : null;
+    const bubble = intro ? { text: intro, t: this.stage.introSec || 4.0, who: this.stage.introBy || 'intro' } : null;
     // The opening bubble waits for the hero to reach the anchor — behind a card
     // or not — so its four seconds are four seconds of live running rather than
     // half-spent under a banner's scrim or over an empty entrance. On a run-in it
@@ -4509,7 +4531,9 @@ export class RunState {
       for (const p of this.layout.pits) {
         const x = p.at * this.totalDist;
         if (!p.jumps) {
-          this.pitPlan.push({ x, w: p.w || OBSTACLES.gap.w, crossing: null,
+          // `switch` stands a frozen switch a hop before the lip, tied to this
+          // hole the way the lane's own switch patterns tie theirs (Frost 3).
+          this.pitPlan.push({ x, w: p.w || OBSTACLES.gap.w, crossing: null, switch: !!p.switch,
             done: false, spawned: false, passed: false });
           continue;
         }
@@ -4626,6 +4650,7 @@ export class RunState {
       && !this.overtime && Number.isFinite(this.totalDist)
       && (dogChance >= 1 || this.rng.stream('finishDog').float() < dogChance);
     this.fuseHeld = this.mission.type === 'fuse';
+    if (this.mission.type === 'mash') this.setupMashLetters();
     this.missionTimers = { cord: 8, resident: 10, chaseNear: 0 };
     this.escapeWall = this.mission.type === 'escape' ? -140 : null;
     if (this.mission.type === 'chase') {
@@ -6304,7 +6329,23 @@ export class RunState {
     const neonDay = this.cabinet?.id === 'neon' && this.neonSky && !this.neonSky.turned;
     setSceneGlow(!this.paused && !this.dead && !this.style.lightBg && !neonDay);
     // ...and every object's own halo, and the city's tube bloom, with it.
-    setGlowSprites(!neonDay);
+    //
+    // AND AT NIGHT, ONE GLOW, NOT TWO. The scene bloom works on the whole frame, so
+    // a capsule or a cart that also draws its own halo was glowed twice — halo,
+    // then bloom over halo and art — and washed out (Peter, 15 Oct: "the power ups
+    // are getting a 2nd glow ... it's making them hard to read"). While the bloom
+    // can run, the neon night leaves the glowing to it; where it cannot (low
+    // density, no WebGL) the halos stay, so nothing loses its glow entirely.
+    const neonNightBloom = this.cabinet?.id === 'neon' && !neonDay && sceneBloomAvailable();
+    setGlowSprites(!neonDay && !neonNightBloom);
+    this.glowSpritesWanted = !neonDay && !neonNightBloom;
+    // And the M-A-S-H carts come out of the neon night's glow altogether — on
+    // EVERY neon night, not only when sceneBloomAvailable says the bloom can run:
+    // that test reads no while the city is visibly glowing, and the carts stayed
+    // in it, grey shell washed white (Peter: "i want the gray cartridge to be
+    // gray. they can have a halo behind them"). Lifted, they are drawn on the
+    // overlay layer, which no bloom or pack post touches — drawLiftedMashCarts.
+    this.mashLifted = this.cabinet?.id === 'neon' && !neonDay;
     setNeonGlow(neonDay ? 0 : 1);
     if (this.paused) {
       // No tap-anywhere-to-resume. It existed because touch had no resume
@@ -6857,16 +6898,19 @@ export class RunState {
       this.dripUpdate(wdt, this.overtime ? Infinity : this.laneWallX());
       this.pinFinishCoins();
       this.spawnScriptedPits();
+      this.spawnMissionTargets();
       this.signPits();
       updateProfileAdd('spawnMs', spawnAt);
     }
     this.spawnApplianceMaybe();
     this.spawnScriptedRewindMaybe();
+    this.updateEvacuation(wdt);
     this.spawnDogSign();
     this.spawnFinishDog();
     this.spawnLoopSetPiece();
     this.clearLoopLane();
     if (this.routes.length) { this.spawnRoutePrizes(); this.clearRouteHazards(); this.spawnRouteEntries(); }
+    this.spawnMashLettersMaybe();
     // LAST, after every spawner and every hand-placed prop above it.
     this.plantOnStagedExits();
     // Swept every frame, not just on the frame the portal appears: the drip
@@ -7031,6 +7075,13 @@ export class RunState {
   // table to keep in step with hud.js.
   missionShortfall() {
     const m = this.mission;
+    // Which letters, not how many — and which are already kept, because the
+    // card has to say that a failed run did not cost them.
+    if (m.type === 'mash' && m.letters) {
+      const missing = m.letters.filter((l) => !l.got && !l.banked).map((l) => l.letter).join(' ');
+      const kept = m.letters.filter((l) => l.got || l.banked).map((l) => l.letter).join(' ');
+      return kept ? `MISSING ${missing}. ${kept} KEPT.` : `MISSING ${missing}.`;
+    }
     return m.n ? `${m.type.toUpperCase()} ${this.missionCount()}/${m.n}` : '';
   }
 
@@ -7869,7 +7920,7 @@ export class RunState {
   // where the block was (which the runner has already passed). Speeds are
   // tuned so every coin settles ~30-140px AHEAD of the player, then gets run
   // through about half a second later.
-  tossCoins(x, n, alt = 14, quiet) {
+  tossCoins(x, n, alt = 14, quiet, type = 'coin') {
     const sp = this.speed;
     // One spray per moment, not per box: a screen-clear can empty several
     // boxes on the same frame and the blips would pile into mush.
@@ -7878,7 +7929,7 @@ export class RunState {
       Audio.sfx('coinSpray', { count: n });
     }
     for (let i = 0; i < n; i++) {
-      const p = makePickup('coin', x + this.fxRng.range(0, 6), alt);
+      const p = makePickup(type, x + this.fxRng.range(0, 6), alt);
       p.toss = true;
       p.vx = sp * (1.55 + 0.16 * i) + this.fxRng.range(0, 40); // fans out ahead
       p.vy = this.fxRng.range(110, 165);
@@ -8219,6 +8270,7 @@ export class RunState {
   // front edge of the sound the player is meant to notice. Not `silent`: the
   // scatter, the shake and the payout all still belong.
   breakObstacle(ob, silent, quiet, force = false) {
+    if (ob.def.alarm) { this.pullAlarm(ob); return; }
     // A zombie in flight is not there to be hit (shamblerVx: 'bolt'): nothing breaks it.
     // A player-kicked barrel on the same Crypt road is the one exception: its
     // impact destroys a fleeing zombie just like any other zombie on that road.
@@ -8309,6 +8361,99 @@ export class RunState {
   // the back of the screen behind the player still saying ON. `thrown` is what
   // spends it: the collision loop skips a thrown switch, so one post can never
   // pay out twice, and the draw reads the same flag for the swing.
+  // PLACED TARGETS (`at` on a targets mission or a shoot challenge: office-2's
+  // fire alarms and vending machines, office-3's safes): laid the way a scripted pit is —
+  // off screen, the lane cleared a reaction runway either side, the spawner
+  // pushed past it — so a double-height safe never stands in a pattern that was
+  // spaced for a crate, and an alarm never hangs over a hazard.
+  spawnMissionTargets() {
+    if (this.mission.type === 'targets') this.layPlaced(this.mission);
+    if (this.challenge?.type === 'shoot') this.layPlaced(this.challenge);
+  }
+
+  layPlaced(spec) {
+    if (!spec.at || !spec.targetType) return;
+    const def = OBSTACLES[spec.targetType];
+    if (!spec.laid) spec.laid = [];
+    spec.at.forEach((frac, i) => {
+      if (spec.laid.includes(i)) return;
+      const x = frac * this.totalDist;
+      if (this.camX + 760 < x) return;
+      spec.laid.push(i);
+      const clear = pitClearance(this.spawner.react, this.speed);
+      for (const ob of this.obstacles) {
+        if (!ob.live || ob.route || ob.tunnel) continue;
+        if (ob.x + ob.w > x - clear && ob.x < x + def.w + clear) ob.live = false;
+      }
+      this.obstacles.push(makeObstacle(spec.targetType, x, {}));
+      this.spawner.nextX = Math.max(this.spawner.nextX, x + def.w + clear);
+    });
+  }
+
+  // ONE SHOT OPENS A SAFE: the door blows back, it stays standing open, and the
+  // money comes out of it — coins and banknotes, thrown ahead to be run through.
+  crackSafe(ob) {
+    if (ob.cracked) return;
+    ob.cracked = true;
+    ob.skin = 'vaultSafeOpen';
+    const cx = ob.x + ob.w / 2, cy = this.entityGroundY(ob) - ob.alt - ob.h * 0.55;
+    const r = () => this.fxRng.float();
+    Audio.sfx('blockBreak');
+    shake(1.5, 0.13);
+    burst(cx, cy, 14, 88, 0.55, '#f6d33c', 1.4, 190, r);
+    burst(cx, cy, 8, 135, 0.3, '#fff8d0', 1, 40, r);
+    this.tossCoins(cx, 5, ob.h * 0.5);
+    this.tossCoins(cx, 3, ob.h * 0.6, true, 'banknote');
+    if (this.mission.type === 'targets' && this.mission.targetType === ob.type) {
+      this.mission.count++;
+      this.floatText(`${this.mission.count}/${this.mission.n}`, '#48e0c8');
+    }
+  }
+
+  // A FIRE ALARM IS PULLED, NOT BROKEN: it stays on the wall with its handle down
+  // and the strobe going, and a pulled one counts nothing a second time.
+  pullAlarm(ob) {
+    if (ob.pulled) return;
+    ob.pulled = true;
+    ob.skin = 'fireAlarmPulled';
+    Audio.sfx('switchFlick');
+    shake(0.5, 0.06);
+    if (this.mission.type === 'targets' && this.mission.targetType === ob.type) {
+      this.mission.count++;
+      this.floatText(`${this.mission.count}/${this.mission.n}`, '#48e0c8');
+      if (this.mission.count === this.mission.n) this.raiseFireAlarm();
+    }
+  }
+
+  // THE PAYOFF ON FLOOR 23 (Peter, 15 Oct): the third alarm sets the bell off, the
+  // room strobes red, and the workers in the backdrop get up and walk out towards
+  // the fire exit on the back wall (officeLigne room.js / wall.js, fed `evacuate`).
+  raiseFireAlarm() {
+    if (this.fireAlarmT != null) return;
+    this.fireAlarmT = 0;
+    // the evacuation runs on scenery time, which carries on through the finish (backgroundT):
+    // nothing animated stops at the line (Peter, 15 Oct)
+    this.fireAlarmBgT = this.backgroundT;
+    Audio.sfx('fireBell');
+    this.floatText('FIRE ALARM. EVERYBODY OUT.', '#ff6a78');
+  }
+
+  updateEvacuation(dt) {
+    if (this.fireAlarmT == null || !(dt > 0)) return;
+    // A rewind or a checkpoint back to before the third pull un-rings it.
+    if ((this.mission.count || 0) < this.mission.n) { this.fireAlarmT = null; return; }
+    this.fireAlarmT += dt;
+  }
+
+  drawEvacuation(ctx, cam) {
+    if (this.fireAlarmT == null) return;
+    // The strobes: a soft red breath over the room, slow enough to stay inside
+    // the flash budget, behind every actor so the lane still reads.
+    const a = 0.05 + 0.05 * Math.sin((this.backgroundT - this.fireAlarmBgT) * Math.PI * 2 * 1.1);
+    ctx.fillStyle = `rgba(255,40,64,${a.toFixed(3)})`;
+    ctx.fillRect(-40, GROUND_Y - 420, W * 2 + 80, 420);
+  }
+
   throwSwitch(ob) {
     if (ob.thrown) return;
     ob.thrown = true;
@@ -8482,6 +8627,16 @@ export class RunState {
       if (p.dripped && p.x > viewRight) {
         p.live = false;
         this.drip.capsuleTimer = Math.min(this.drip.capsuleTimer, 0.5);
+        // The gated prize was rolled not to repeat THIS capsule, which has just
+        // gone — so it can now repeat the one behind it (two magnets with
+        // nothing between, frost-2). It takes the withdrawn capsule's kind
+        // instead, which was itself rolled not to repeat that one.
+        if (PICKUPS[p.type]?.power) {
+          prize.type = p.type;
+          prize.def = PICKUPS[p.type];
+          prize.w = prize.def.w;
+          prize.h = prize.def.h;
+        }
         continue;
       }
       blocked = true;
@@ -8544,7 +8699,10 @@ export class RunState {
     // arriving are two events, and the player is about to run over the second
     // one. It stands off the flick's transient by 20ms of its own accord.
     Audio.sfx('bridgeLay');
-    this.floatText('BRIDGE. YOU EARNED IT.', '#b8e0f8');
+    if (this.mission.type === 'bridges') {
+      this.mission.count = (this.mission.count || 0) + 1;
+      this.floatText(`BRIDGE ${Math.min(this.mission.count, this.mission.n)}/${this.mission.n}`, '#b8e0f8');
+    } else this.floatText('BRIDGE. YOU EARNED IT.', '#b8e0f8');
   }
 
   // ------------------------------------------------------------------ relay
@@ -8621,6 +8779,25 @@ export class RunState {
   }
 
   /** `px`, or the first x past any neon train whose span it falls in. */
+  /**
+   * `px`, or the first x past any scripted SWITCHED pit whose set piece it would
+   * stand in. The portal clears its own run-up of anything that asks for a jump,
+   * off screen, so one parked just past a hole deleted it — and on Frost 3 that
+   * left an M-A-S-H letter floating over flat ground, free (15 Oct 2026). The
+   * window runs from the switch to a landing past the far lip.
+   */
+  portalClearOfSwitchedPits(px) {
+    for (let moved = true, guard = 0; moved && guard < 8; guard++) {
+      moved = false;
+      for (const pp of this.pitPlan || []) {
+        if (!pp.switch) continue;
+        const from = pp.x - SCRIPTED_SWITCH_LEAD - 40, to = pp.x + pp.w + 80;
+        if (px > from && px < to) { px = to; moved = true; }
+      }
+    }
+    return px;
+  }
+
   portalClearOfTrains(px) {
     if (this.cabinet?.id !== 'neon') return px;
     const MARGIN = 48;
@@ -8691,6 +8868,9 @@ export class RunState {
       // A coin arc diving into a tunnel mouth and a coin row up on a sky road
       // both fail it, and both used to be swept by a portal they pass under.
       if (p.alt + p.h < -4 || p.alt > PORTAL_H + 4) continue;
+      // A letter stands on the spot the stage named, usually on a road the
+      // portal is not even on. Moving it would take it off that road.
+      if (p.def.mashLetter) continue;
       if (p.def.appliance) {
         p.x = colEnd;
         if (p._baseX != null) p._baseX = p.x;
@@ -8745,7 +8925,7 @@ export class RunState {
       // train, i don't like that at all"). A neon train is a standing car across the
       // lane — or one about to land there — so a portal whose column falls on one steps
       // on past its nose instead, with clear road either side.
-      px = this.portalClearOfTrains(px);
+      px = this.portalClearOfSwitchedPits(this.portalClearOfTrains(px));
       this.portal = { x: px, hero };
       this.clearPortalLane(this.portal.x);
       this.relay.portalSpawned();
@@ -10861,6 +11041,8 @@ export class RunState {
               // mechanism it drives has gone off. It is the only way a hero who
               // cannot reach the head still gets the bridge.
               if (ob.def.throwable) this.throwSwitch(ob);
+              // AND A SAFE IS CRACKED BY ONE — the only thing that opens it.
+              if (ob.def.crackable) this.crackSafe(ob);
               // AND AN ANIMAL IS NOT BROKEN BY A SHOT EITHER — it is
               // unimpressed by one. NOTHING ALIVE IN THIS GAME CAN BE SHOT:
               // every animal is breakable: false (see the note on the flag in
@@ -10889,6 +11071,12 @@ export class RunState {
               continue;
             }
             this.breakObstacle(ob);
+            // A SHOOT challenge counts what a round broke, of its one type
+            // (office-2: SHOOT 4 VENDING MACHINES) — a boot or a ram does not.
+            if (this.challenge?.type === 'shoot' && ob.type === this.challenge.targetType) {
+              this.challenge.count = (this.challenge.count || 0) + 1;
+              this.floatText(`${Math.min(this.challenge.count, this.challenge.n)}/${this.challenge.n}`, '#f6c945');
+            }
             if (pr.art === 'bamboo') { pr.live = false; break; }
             if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0 && !pr.returning) { pr.hover = true; pr.hoverX = pr.x; } }
             else if (pr.type === 'fist' && !pr.pierce) { pr.hover = true; pr.hoverX = pr.x; }
@@ -12679,6 +12867,10 @@ export class RunState {
           if (!roadAt(x, is)) continue;
           if (underSign(x)) continue;
           if (cellX != null && Math.abs(x - cellX) < coinGap * 0.6) continue;
+          // A train's roof letter is not laid until the train stands, so its coin
+          // is left out here rather than taken away in view.
+          if (this.mission.letters?.some((l) => l.train != null && !l.inside && this.mashTrain(l) === is
+            && Math.abs(x + PICKUPS.coin.w / 2 - l.x) < PICKUPS[`letter${l.letter}`].w)) continue;
           const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
           this.pickups.push(Object.assign(makePickup('coin', x, alt), { road: is }));
         }
@@ -12844,7 +13036,7 @@ export class RunState {
           retireExit(ob);
         }
         for (const pk of this.pickups) {
-          if (!pk.live || pk.road || pk.route || !inLane(pk.x)) continue;
+          if (!pk.live || pk.road || pk.route || pk.def.mashLetter || !inLane(pk.x)) continue;
           if (pk.x > viewRight) pk.live = false;
         }
       }
@@ -13067,6 +13259,311 @@ export class RunState {
         else if (underSlab || inExit || inEntry) retireExit(ob);
       }
     }
+  }
+
+  // THE M-A-S-H LETTERS. Four letters at fixed spots, in order, each usually on
+  // a road the player has to choose (data/stages.js plumber-3 says where and
+  // why). The run cannot go back, so a letter is BANKED the moment it is taken
+  // and the stage clears on the run that ends with all four banked — progress.js
+  // keeps them across attempts.
+  //
+  // The state lives ON the mission object so the checkpoint snapshot and the
+  // rewind tape, which both round-trip the mission, carry it with the count.
+  //
+  // A spot is one of:
+  //   0.5                  a fraction of the stage. On a road if one stands
+  //                        there; otherwise on the lane at a tap-jump height.
+  //   { at, alt }          the lane, at that height (52 wants a held jump).
+  //   { after: i, dx, alt } `dx` past the far end of the stage's i-th island, at
+  //                        `alt` above the lane: too high to reach from the lane,
+  //                        in reach of a jump taken OFF the island.
+  //   { at, lift }         on the road at `at`, `lift` above its surface rather
+  //                        than resting on it — 52 over an island is out of
+  //                        every hero's reach from the lane, so it takes a jump
+  //                        onto the island and a second jump off it.
+  //   { pit: i }           over the stage's i-th scripted pit, at the height a
+  //                        jump taken at the lip passes through — or, if that
+  //                        pit has a switch, in it at deck height, so only the
+  //                        bridge the switch lays takes you through it.
+  //   { pit: i, gap: k }   over gap k of the crossing that pit i is, in the arc
+  //                        of a clean hop between the stones (MASH_HOP_ALT).
+  //   { pit: i, stone: k } on stone k of the crossing that pit i is — a road,
+  //                        so it is placed like any other road letter.
+  //   { train: i, along }  on the roof of the stage's i-th island (a neon train),
+  //                        `along` a fraction of its body.
+  //   { train: i, door }   INSIDE that train in its 'rear' or 'front' doorway, at
+  //                        floor height: only a hero who did not board gets it.
+  // A train's letters ride it in as it flies over (drawTrainMashLetters) and only
+  // become pickups once it is standing.
+  // A letter on the bare lane keeps the lane clear around itself (see
+  // clearMashLane); one over a pit leaves that to the pit, which already does.
+  setupMashLetters() {
+    // A DEV BUILD ALWAYS STARTS WITH NONE (Peter, 15 Oct 2026: "in dev mode always
+    // start with no letters collected"), so every run on the dev server shows all
+    // four as needed. The save still banks them; this only declines to read it.
+    const dev = typeof window !== 'undefined' && window.__MASH_DEV__ === true;
+    const banked = new Set(dev ? [] : this.save.slot.campaign.mash?.[this.stage.id] || []);
+    const at = this.mission.at || [];
+    this.mission.letters = MASH_LETTERS.map((letter, i) => {
+      const spot = at[i] ?? (i + 1) / (MASH_LETTERS.length + 1);
+      const plan = spot.pit != null ? this.pitPlan[spot.pit] : null;
+      const stone = plan && spot.stone != null ? plan.crossing?.stones[spot.stone] : null;
+      // A gap of a crossing: 0 is lip-to-first-stone, k is stone k-1 to stone k.
+      const cr = plan && spot.gap != null ? plan.crossing : null;
+      const gapAt = cr ? [spot.gap === 0 ? cr.x : cr.stones[spot.gap - 1].x + cr.stones[spot.gap - 1].w,
+        cr.stones[spot.gap] ? cr.stones[spot.gap].x : cr.x + cr.w] : null;
+      const islands = this.routes.filter((rt) => rt.kind === 'island' && !rt.crossing);
+      // `after` below 1 names the island by roughly where it starts, as a fraction
+      // of the stage; the routes come back sorted, so an index moves the moment
+      // another island is authored ahead of it. A whole number is still an index.
+      const island = spot.after == null ? null : spot.after % 1 === 0 ? islands[spot.after]
+        : [...islands].sort((a, b) => Math.abs(a.x / this.totalDist - spot.after)
+          - Math.abs(b.x / this.totalDist - spot.after))[0];
+      const train = spot.train != null ? islands[spot.train] : null;
+      let x, alt = null, clear = false, lift = null, inside = false;
+      if (train && spot.door) { x = neonTrainDoorX(train, spot.door); alt = TRAIN_FLOOR_LIFT + COIN_FLOOR; inside = true; }
+      else if (train) x = train.x + (train.bodyW ?? train.w) * (spot.along ?? 0.5);
+      else if (island) { x = island.x + island.w + (spot.dx ?? 50); alt = spot.alt ?? MASH_LANE_ALT; clear = true; }
+      else if (gapAt) { x = (gapAt[0] + gapAt[1]) / 2; alt = spot.alt ?? MASH_HOP_ALT; }
+      else if (stone) x = stone.x + stone.w / 2;
+      // A switched pit's letter sits IN the hole at deck height, like the lane's
+      // gated capsules: the bridge carries you through it, a jump goes over it.
+      else if (plan) { x = plan.x + plan.w / 2; alt = plan.switch ? COIN_FLOOR : MASH_PIT_ALT; }
+      else {
+        x = (typeof spot === 'number' ? spot : spot.at) * this.totalDist;
+        alt = spot.alt ?? MASH_LANE_ALT;
+        lift = spot.lift ?? null;
+        clear = true;
+      }
+      return { letter, x, alt, lift, clear, inside, train: train ? spot.train : null, banked: banked.has(letter), spawned: false, got: false, missed: false };
+    });
+    this.mission.count = this.mashHeld();
+    this.mashGold = false;
+  }
+
+  /** Letters that count toward the mission: taken this run or banked before it. */
+  mashHeld() { return this.mission.letters.filter((l) => l.got || l.banked).length; }
+
+  /** The road a letter's spot falls on, if any — never across one of its breaks. */
+  mashRoadAt(x) {
+    return (this.routes || []).find((r) => x >= r.x && x <= r.x + (r.bodyW ?? r.w) && roadAt(x, r)) || null;
+  }
+
+  /** The train a letter was placed on — by index, so the mission stays plain data for the snapshots. */
+  mashTrain(l) { return this.routes.filter((rt) => rt.kind === 'island' && !rt.crossing)[l.train]; }
+
+  /** A letter's road; none for one inside a train, which is on the floor under it. */
+  mashLetterRoad(l) { return l.inside ? null : this.mashRoadAt(l.x); }
+
+  spawnMashLettersMaybe() {
+    const letters = this.mission.letters;
+    if (!letters || this.overtime) return;
+    const pbox = this.playerBox();
+    for (const l of letters) {
+      if (!l.spawned && this.camX + W > l.x) {
+        if (l.train != null && trainArrival(this.camX, this.mashTrain(l))) continue;
+        const road = this.mashLetterRoad(l);
+        // A road lays its own coin run when it comes into view. Wait for it, so
+        // the letter can take the place of the coin it lands on rather than
+        // sharing the spot with one.
+        if (road && !road.spawned) continue;
+        const type = `letter${l.letter}`;
+        const def = PICKUPS[type];
+        const alt = road ? this.groundYAt(l.x) - this.routeGroundY(l.x, road) + (l.lift ?? COIN_FLOOR) : l.alt;
+        for (const c of this.pickups) {
+          if (c.live && c.def.coin && (c.road || null) === road && Math.abs(c.x + c.w / 2 - l.x) < def.w) c.live = false;
+        }
+        const p = makePickup(type, l.x - def.w / 2, alt);
+        if (road) p.road = road;
+        if (l.train != null) p.smooth = true;
+        if (l.banked) p.skin = `${type}Banked`;
+        this.pickups.push(p);
+        l.spawned = true;
+      }
+      if (l.spawned && !l.got && l.clear && !this.mashLetterRoad(l)) this.clearMashLane(l);
+      // GONE PAST HIM UNTAKEN. Nothing can be run back for, so a letter is
+      // missed the moment it is behind the box that collects — said then, with
+      // a dull note, rather than discovered on the results card. Only for a
+      // letter he still needed: one banked last time is not a loss.
+      if (l.spawned && !l.got && !l.missed) {
+        const p = this.pickups.find((q) => q.live && q.def.mashLetter === l.letter);
+        if (!p || (!p.magnetized && p.x + p.w < pbox.x)) {
+          l.missed = true;
+          if (!l.banked) {
+            Audio.sfx('uiBad');
+            this.floatText(`MISSED THE ${l.letter}. COME AGAIN.`, '#e08a8a');
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * WHERE A LETTER IS, WHILE YOU CAN STILL DO SOMETHING ABOUT IT.
+   *
+   * Every letter sits deep inside its road, and every road is chosen at its
+   * entrance — the foot of the stairs, the spring pad, the tunnel mouth. By the
+   * time the letter itself scrolls in, that choice is behind you, and from the
+   * lane the camera never shows the top of a staircase or a sky road at all. So
+   * from the moment a needed letter's road comes into view, a marker on the
+   * frame's edge points at the letter: on the right edge while it is ahead, on
+   * the top or bottom edge once it is overhead or underfoot, gone once it is in
+   * the picture. Banked letters get none — the mission does not need them, and
+   * a frame full of markers says nothing.
+   */
+  //
+  // A letter that is in the vertical band of the picture needs none of this — a
+  // lane letter, one on a crossing stone, one on a low island scrolls in where
+  // you can see it a full screen ahead. The marker is for the ones the camera
+  // will not show you in time: overhead or underfoot.
+  mashMarker(l, z, pan, floorY, cam, xOff) {
+    if (l.got || l.missed || l.banked) return null;
+    const road = this.mashLetterRoad(l);
+    if (!road || road.x > this.viewRightX()) return null;
+    const def = PICKUPS[`letter${l.letter}`];
+    const surface = this.routeGroundY(l.x, road);
+    const top = screenYFor(surface - (l.lift ?? COIN_FLOOR) - def.h, z, pan, floorY);
+    const bottom = screenYFor(surface - (l.lift ?? COIN_FLOOR), z, pan, floorY);
+    const above = bottom < MASH_MARK_TOP, below = top > H - 28;
+    if (!above && !below) return null;
+    // Clear of the ability plate at the bottom.
+    const floorBand = H - 32 - MASH_MARK_H;
+    const sx = (l.x - cam + xOff) * z;
+    const ahead = sx > W - 2;
+    const bob = Math.round(Math.sin(this.tRun * 6) * 1.5);
+    let x, y, dir;
+    if (ahead) {
+      x = W - 6 - MASH_MARK_W + bob;
+      y = above ? MASH_MARK_TOP : floorBand;
+      dir = 'right';
+    } else {
+      x = Math.max(4, Math.min(W - 4 - MASH_MARK_W, sx - MASH_MARK_W / 2));
+      y = above ? MASH_MARK_TOP - bob : floorBand + bob;
+      dir = above ? 'up' : 'down';
+    }
+    if (this.mirror) { x = W - x - MASH_MARK_W; if (dir === 'right') dir = 'left'; }
+    return { x, y, dir, above, below, ahead };
+  }
+
+  /**
+   * A TRAIN'S LETTERS RIDE IT IN (Peter, 15 Oct): the train flies over the hero
+   * before it lands, and the letters on its roof and in its doorway come with it,
+   * so the choice between them is seen before the boarding that makes it.
+   */
+  drawTrainMashLetters(ctx, cam, ceilingY) {
+    for (const l of this.mission.letters || []) {
+      if (l.train == null || l.spawned || l.got) continue;
+      const train = this.mashTrain(l);
+      const air = trainArrival(cam, train);
+      if (!air || air.hidden || air.leaving) continue;
+      const def = PICKUPS[`letter${l.letter}`];
+      const roofY = this.renderGroundY(train.x + train.w / 2, train);
+      const pose = trainFlightPose(air, roofY, ceilingY);
+      const floor = l.inside ? this.groundYAt(l.x) - l.alt : this.renderGroundY(l.x, train) - COIN_FLOOR;
+      // At the size and anchor drawWorldEntity gives the landed pickup — its art
+      // is drawn 4/3 the box, bottom-anchored and centred — so nothing jumps at
+      // the moment the train lands and the cart becomes a pickup ("the cartridge
+      // lights up when landing, it looks odd").
+      const aw = def.w * 4 / 3, ah = def.h * 4 / 3;
+      // Unrounded, as the hull it rides is drawn: rounded to whole pixels it stepped against a
+      // train moving smoothly under it and jittered all the way in (Peter, 15 Oct)
+      const lx = l.x - aw / 2 - cam + pose.dx, ly = floor - ah - pose.lift;
+      ctx.save();
+      // NOT the train's ghost alpha. The hull flies in translucent and settles
+      // solid; the carts it carries are at full strength the whole way, halo and
+      // all, roof or doorway (Peter, 15 Oct: "glowing ... even when travelling on
+      // the trains"). They are the reason to look up at it.
+      // The same halo it wears standing in the world (draw.js), so it glows the
+      // whole way in rather than lighting up when the train lands.
+      if (!l.banked) {
+        const gr = 15 + Math.sin(this.tRun * 4) * 1.5;
+        ctx.drawImage(glowSprite(MASH_GLOW[`letter${l.letter}`], 10), lx + aw / 2 - gr, ly + ah / 2 - gr, gr * 2, gr * 2);
+      }
+      ctx.drawImage(propSprite(l.banked ? `letter${l.letter}Banked` : `letter${l.letter}`, def.w, def.h, 0),
+        lx, ly, aw, ah);
+      ctx.restore();
+    }
+  }
+
+  // THE PAYOFF (`mission.payoff`): scenery stood by the exit once the mission is
+  // met — office-3's pile of money from the safes. Drawn behind the actors.
+  drawMissionPayoff(ctx, cam) {
+    const po = this.mission.payoff;
+    if (!po || !Number.isFinite(this.totalDist) || !this.missionSatisfied()) return;
+    const x = this.finishWorldX() + po.dx - cam;
+    if (x > W || x + po.w < -8) return;
+    ctx.drawImage(propSprite(po.prop, po.w, po.h, Math.floor(this.backgroundT * 4)), Math.round(x), GROUND_Y - po.h, po.w, po.h);
+  }
+
+  drawMashMarkers(d, z, pan, floorY, cam, xOff) {
+    const letters = this.mission.letters;
+    if (!letters || this.mission.markers === false || this.finishing || this.paused || this.dead) return;
+    const PW = MASH_MARK_W, PH = MASH_MARK_H;
+    for (const l of letters) {
+      const m = this.mashMarker(l, z, pan, floorY, cam, xOff);
+      if (!m) continue;
+      const { x, y, dir, above, below, ahead } = m;
+      const def = PICKUPS[`letter${l.letter}`];
+      drawPanel(d, x, y, PW, PH, 3);
+      d.drawImage(propSprite(`letter${l.letter}`, def.w, def.h, 0), x + 1.5, y + 1.5, def.w, def.h);
+      // The chevron, outside the plate on the side it points to.
+      const cx = x + PW / 2, cy = y + PH / 2;
+      d.beginPath();
+      if (dir === 'right') { d.moveTo(x + PW + 2, cy - 3); d.lineTo(x + PW + 5, cy); d.lineTo(x + PW + 2, cy + 3); }
+      else if (dir === 'left') { d.moveTo(x - 2, cy - 3); d.lineTo(x - 5, cy); d.lineTo(x - 2, cy + 3); }
+      else if (dir === 'up') { d.moveTo(cx - 3, y - 2); d.lineTo(cx, y - 5); d.lineTo(cx + 3, y - 2); }
+      else { d.moveTo(cx - 3, y + PH + 2); d.lineTo(cx, y + PH + 5); d.lineTo(cx + 3, y + PH + 2); }
+      d.closePath();
+      d.fillStyle = '#f6c945';
+      d.fill();
+      // Overhead or underfoot while still ahead: a second chevron says which.
+      if (ahead && (above || below)) {
+        d.beginPath();
+        if (above) { d.moveTo(cx - 3, y - 2); d.lineTo(cx, y - 5); d.lineTo(cx + 3, y - 2); }
+        else { d.moveTo(cx - 3, y + PH + 2); d.lineTo(cx, y + PH + 5); d.lineTo(cx + 3, y + PH + 2); }
+        d.closePath();
+        d.fill();
+      }
+    }
+  }
+
+  /**
+   * A LETTER ON THE BARE LANE ASKS FOR A JUMP, so nothing near it may ask for
+   * anything else. The random lane knows nothing about letters, and left alone
+   * it would stand a drone under one — slide and jump at once — or a crate on
+   * the landing. So the lane is cleared a reaction runway either side of it, the
+   * window a pit keeps around its own lips, every frame until the letter is in
+   * the picture. Only what is still off screen goes: nothing vanishes in view.
+   * Floor pads stay; a boost pad into a letter is a gift.
+   */
+  clearMashLane(l) {
+    const viewRight = this.viewRightX();
+    if (l.x < viewRight) return;
+    const clear = pitClearance(this.spawner.react, this.speed);
+    for (const ob of this.obstacles) {
+      if (!ob.live || ob.route || ob.tunnel || isFloorPad(ob.def) || ob.x < viewRight) continue;
+      if (ob.x < l.x + clear && ob.x + ob.w > l.x - clear) ob.live = false;
+    }
+  }
+
+  takeMashLetter(p) {
+    const l = this.mission.letters?.find((q) => q.letter === p.def.mashLetter);
+    if (!l || l.got) return;
+    l.got = true;
+    this.mission.count = this.mashHeld();
+    this.score += MASH_LETTER_SCORE;
+    const inBeats = this.pickupLineInBeats(p);
+    // ALL FOUR IN ONE RUN — the gold MASH. Letters banked on an earlier attempt
+    // count toward the mission but not toward this: it is the one-run chase.
+    if (!this.mashGold && this.mission.letters.every((q) => q.got)) {
+      this.mashGold = true;
+      this.score += MASH_GOLD_SCORE;
+      Audio.sfx('win', { inBeats });
+      this.floatText('M-A-S-H! ALL FOUR IN ONE RUN.', '#f6d33c');
+      return;
+    }
+    Audio.sfx('perfect', { inBeats });
+    this.floatText(this.mission.letters.map((q) => (q.got || q.banked ? q.letter : '_')).join(' '), '#f6d33c');
   }
 
   spawnApplianceMaybe() {
@@ -13426,7 +13923,7 @@ export class RunState {
       // capsule near a lip is a gift rather than a lure, and the appliance is
       // one per stage — sweeping it for landing beside a scripted pit costs the
       // player the objective rather than a few coins.
-      this.pickups = this.pickups.filter((pk) => !pk.live || pk.following
+      this.pickups = this.pickups.filter((pk) => !pk.live || pk.following || pk.def.mashLetter
         || pk.x + 6 < plan.x - 4 || pk.x > plan.x + plan.w + 4);
       const hole = makeObstacle('gap', plan.x, {});
       hole.w = plan.w;
@@ -13465,6 +13962,15 @@ export class RunState {
         const sign = makeObstacle('jumpSign', sx, {});
         sign.crossing = plan.crossing;
         this.obstacles.push(sign);
+      }
+      // A SWITCHED PIT gets its frozen switch, at the spacing the lane's own
+      // switch patterns use (cabinets.js: 120, the widest that still fits
+      // portrait) and linked by id the same way, so hitting it bridges THIS hole.
+      // Laid after the clearance sweep above, which would otherwise take it.
+      if (plan.switch) {
+        const sw = makeObstacle('switch', plan.x - SCRIPTED_SWITCH_LEAD, {});
+        sw.gateId = hole.id;
+        this.obstacles.push(sw);
       }
       // The spawner lays from its own frontier; push it past the landing so the
       // next pattern starts on the far side rather than inside the clearance.
@@ -13509,7 +14015,7 @@ export class RunState {
       // see. Off screen, the complete run is removed rather than amputated.
       const view = { x: this.camX, w: W / this.camZoom };
       sweepCoinsAroundHole(this.pickups, plan.x, plan.w, clear, view);
-      this.pickups = this.pickups.filter((pk) => !pk.live || pk.following
+      this.pickups = this.pickups.filter((pk) => !pk.live || pk.following || pk.def.mashLetter
         || pk.def.coin || pk.x + 6 < plan.x - clear || pk.x > plan.x + plan.w + clear);
       plan.spawned = true;
       plan.done = true;
@@ -14007,6 +14513,13 @@ export class RunState {
     // of prizes not yet laid, and the roads that owed them are about to offer
     // them again. Keeping it would lay each one twice.
     this.lanePrizeQueue = null;
+    // And the M-A-S-H letters the restore emptied out of the world: any still
+    // ahead of him that he had not taken come round again. The mission object
+    // (and with it what he HAD taken) is the snapshot's, so a letter grabbed
+    // after the flag is offered again rather than kept.
+    for (const l of this.mission.letters || []) {
+      if (!l.got && l.x > this.camX) { l.spawned = false; l.missed = false; }
+    }
     // The ring is the same kind of one-shot and takes the same guard. It has
     // never been caught by this in practice — the loop sits at 0.55 and the
     // checkpoints at a third and two thirds, so the pad is never planted before
@@ -14703,7 +15216,7 @@ export class RunState {
       // A THROWN SWITCH IS SCENERY TOO, for the same reason: it has paid out,
       // the post is still standing because a lever does not vanish, and running
       // back through it must not open a second gate.
-      if (ob.thrown) continue;
+      if (ob.thrown || ob.cracked) continue;
       if (!overlaps(pbox, box)) continue;
       if (this.player.rolling && ob.def.ground) {
         this.player.rollContactIds ||= new Set();
@@ -14836,6 +15349,14 @@ export class RunState {
         const power = puntPower(this.player.slideHoldT);
         if (power > 0) {
           this.player.slideKickT = SLIDE_KICK_T;
+          // KICKED APART, not sent flying (Peter, 15 Oct 2026: Frost's presents "kickable/
+          // breakable and shower coins", the snowball "breakable by kicking also"): the
+          // boot breaks it where it stands, coins and all, with the kick's own cue.
+          if (ob.def.puntBreaks) {
+            Audio.sfx('punt', { heavy: ob.def.punt === 'heavy', pitch: 1 });
+            this.breakObstacle(ob);
+            continue;
+          }
           const heavy = ob.def.punt === 'heavy';
           startPunt(ob, this.speed, puntTuneFor(ob));
           // No breakObstacle — the whole point is that it does not come apart,
@@ -14941,9 +15462,10 @@ export class RunState {
       this.coinCombo++;
       this.nudgeCopter(COPTER_PRESSURE_COIN);
       this.coinComboT = 1;
-      const val = Math.round(50 * pickMult * this.powerups.scoreMult());
+      const worth = p.def.coinValue || 1;
+      const val = Math.round(50 * worth * pickMult * this.powerups.scoreMult());
       this.score += val;
-      this.coins += 1;
+      this.coins += worth;
       // A CHART COIN PINGS ON ITS LINE. Its box meets the hero's ten px before
       // his lead edge reaches it — 43ms early at this cabinet's speed — and the
       // ping then leaves the graph an output latency late, so fired here it is
@@ -14992,6 +15514,8 @@ export class RunState {
       // carries the joke, the toast carries the fact that you banked something.
       this.goalToast('BONUS: THE GOLDEN APPLIANCE', true);
       this.showPortraitObjectiveNotice('BONUS', 'COMPLETE', true);
+    } else if (p.def.mashLetter) {
+      this.takeMashLetter(p);
     } else if (p.def.cord) {
       this.mission.count++;
       Audio.sfx('checkpoint');
@@ -15610,6 +16134,9 @@ export class RunState {
       challengeDone: this.challenge ? (!this.challenge.failed && (this.challenge.type === 'noDamage' ? this.damageTaken === 0 : this.challenge.count >= this.challenge.n)) : false,
       applianceGot: this.applianceGot,
       silverGot: this.silverGot,
+      // The letters taken THIS run; progress.js banks them whatever the ending.
+      mashGot: this.mission.letters ? this.mission.letters.filter((l) => l.got).map((l) => l.letter) : null,
+      mashGold: !!this.mashGold,
       team: [...this.usedHeroes],
       // Who was actually holding the baton at the end. `team` is a Set in
       // insertion order, so team[0] is who STARTED — the food court wants the
@@ -16250,6 +16777,7 @@ export class RunState {
       // otherwise remain visible and read as floating. Pass only the compact
       // live-gap geometry needed for that visual cull, not the run's obstacle
       // objects themselves.
+      evacuate: this.fireAlarmT == null ? null : this.backgroundT - this.fireAlarmBgT,
       roadGaps: this.obstacles
         .filter((ob) => ob?.live && ob.def?.isGap)
         .map((ob) => ({ x: ob.x, w: ob.w })),
@@ -16575,6 +17103,8 @@ export class RunState {
       drawTerrain(ctx, cam, groundCabinet, this.obstacles, GROUND_Y, visibleWorldW, laneCuts,
         this.style.ownSurface === true, this.style.paperSlab);
     }
+    this.drawMissionPayoff(ctx, cam);
+    this.drawEvacuation(ctx, cam);
     if (this.routes.length) {
       // The ground under the lane, which the packs only paint 38px of. Below
       // that they paint nothing, so the moment the camera drops to follow a hero
@@ -16602,6 +17132,7 @@ export class RunState {
           // at it (Peter, 24 Sep).
           bottomY: bottomWorldY, hillDepth, t: this.backgroundT,
           paperSlab: this.style.paperSlab, ceilingY: trainCeilingY });
+      if (!this.mashLifted) this.drawTrainMashLetters(ctx, cam, trainCeilingY);
       // Detail that belongs to a lower road is painted after its earth and floor,
       // but before the actors standing on it. Surface packs can use this to keep
       // their ground treatment continuous when a route drops underground.
@@ -16696,9 +17227,31 @@ export class RunState {
     }
     for (const p of this.pickups) {
       if (!p.live || p.x >= finishX || !onScreen(p)) continue;
+      if (this.mashLifted && p.def.mashLetter) continue;   // drawn above the bloom instead
       this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, renderT, this.style, renderSettings, PRECULLED_ENTITY),
         p.w, 0, null, p.route);
     }
+    // THE CARTS, OUT OF THE BLOOM. The same draw the world pass would have made,
+    // in the same world transform, onto the overlay — which glfx composites after
+    // its bloom — so a cart stays crisp while the neon city glows around it.
+    // Under the floaties and the hero (drawChatter calls it first).
+    this.drawLiftedMashCarts = (d) => {
+      if (!this.mashLifted) return;
+      // And NO HALO here, in train flight or standing: a plain grey cart, crisp,
+      // the city's glow behind it (Peter, 15 Oct: "i hate these ... glowing").
+      setGlowSprites(false);
+      d.save();
+      if (this.mirror) { d.translate(W, 0); d.scale(-1, 1); }
+      applyWorld(d, z, pan, floorY, portraitXOffset);
+      for (const p of this.pickups) {
+        if (!p.live || !p.def.mashLetter || p.x >= finishX || !onScreen(p)) continue;
+        this.drawAtGround(d, p.x, () => drawWorldEntity(d, p, cam, renderT, this.style, renderSettings, PRECULLED_ENTITY),
+          p.w, 0, null, p.route);
+      }
+      this.drawTrainMashLetters(d, cam, this.portraitFrame() ? null : camYFor(ZOOM) + NEON_TRAIN_SKY_MARGIN / ZOOM);
+      d.restore();
+      setGlowSprites(this.glowSpritesWanted ?? true);
+    };
     // How far the world slid since the previous simulation step, which for a
     // thing standing still in world space IS its screen motion — obstacles do
     // not move, the camera does. Taken from the camera rather than from
@@ -16796,7 +17349,19 @@ export class RunState {
         ctx.fillRect(x, y, 4, 4);
         ctx.fillStyle = '#fff';
         ctx.fillRect(x + 1, y + 1, 2, 2);
-        if (pr.telegraph > 0) { ctx.strokeStyle = '#f6d33c'; ctx.strokeRect(x - 3, y - 3, 10, 10); }
+        // THE TELEGRAPH, as a pulse (Peter, 15 Oct: "box can be pulse please"): a
+        // ring that swells out of the shot and fades over the 0.4s it is harmless.
+        // It was a strokeRect with no lineWidth of its own, so it inherited
+        // whatever the last stroke used and came out as a thick yellow box.
+        if (pr.telegraph > 0) {
+          const k = 1 - pr.telegraph / 0.4;
+          ctx.save();
+          ctx.globalAlpha = 0.8 * (1 - k);
+          ctx.strokeStyle = '#f6d33c';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(x + 2, y + 2, 3 + k * 6, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
       } else if (pr.type === 'arrow') {
         // On the string it is the drawn hero's to paint; in flight it flies
         // along its own arc's tangent, nock at pr.x.
@@ -17278,6 +17843,9 @@ export class RunState {
       // into it. One shift for the whole stack keeps their 19px slotting, and it
       // is the EASED one — see updateRun.
       const floatShift = Math.round(this.floatClear);
+      // Under the floaties: a line of banter may cover a marker, never the reverse.
+      this.drawLiftedMashCarts?.(d);
+      this.drawMashMarkers(d, z, pan, floorY, cam, portraitWorldXOffset);
       for (const f of this.floaties) {
         // Pinned cards are placed in the WORLD and left there; everything else
         // rides the hero. The stack's shift is his too — it exists to get the

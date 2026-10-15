@@ -15,7 +15,7 @@ import {
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
   SWITCH_THROW_FRAMES, SWITCH_THROW_T, switchBonkLift,
   TRAP_IDLE_FRAMES, TRAP_SNAP, TRAP_SNAP_T, RAKE_FRAMES, RAKE_SWING_T,
-  propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
+  propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp, MASH_GLOW,
   BATTERY_FOCUS, applianceSheenSprite,
   PORTAL_SPRITE, PORTAL_ART_W, PORTAL_ART_H,
   PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE,
@@ -34,7 +34,9 @@ const POWER_GLOW = {
 // than the panel's #74c947 so it separates from the HUD cells it refills instead
 // of reading as a stray one loose on the field.
 const HEAL_GLOW = 'rgba(96,232,104,0.45)';
+// The M-A-S-H carts' halo is props.js MASH_GLOW; a banked cart (skinned) has none.
 import { drawBoostFx } from './boostFx.js';
+import { paintAlarmPillar } from '../sprites/officeProps.js';
 import { ZAP_T, drawZapHero } from '../sprites/zap.js';
 import { GROUND_Y } from '../engine/camera.js';
 import { PLAYER_X, SLIP_T } from './player.js';
@@ -774,7 +776,9 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     ctx.restore();
     return;
   }
-  const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion);
+  // `smooth` on the entity: one riding something drawn unrounded (a cart on a neon train's roof),
+  // which stepping a whole unit at a time would jitter against
+  const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion) || !!e.smooth;
   // THE LOOP PAD SITS IN THE MIDDLE OF ITS RING. The ride's circle is the one
   // the hero's sprite LEFT EDGE travels (game/loop.js), and the pad's box is
   // centred on that — so the art, drawn on the box, sat half a sprite behind the
@@ -792,6 +796,8 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   }
   const reach = e.def && e.def.isLoop ? LOOP.r + 8 : 40;
   if (!renderOptions.preculled && (x < -reach || x > 480 + reach)) return;
+  // a fire alarm is mounted on a pillar, drawn behind it (officeProps.js paintAlarmPillar)
+  if (e.def && e.def.alarm) paintAlarmPillar(ctx, x + e.w / 2, GROUND_Y);
   const bottom = GROUND_Y - e.alt;
   // `artLift` raises the DRAWING without touching the box, for the case where a
   // hazard's legal altitude and its readable altitude are not the same number.
@@ -1053,6 +1059,15 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   // animation frames, that decoration becomes an orphaned ground shape. The
   // obstacle's own box is what collide() judges; a shadow must never be the
   // thing the player appears to hit.
+  if (e.kind === 'pickup' && e.def.mashLetter && !e.skin && MASH_GLOW[e.type]) {
+    const glow = glowSprite(MASH_GLOW[e.type], 10);
+    // About the capsules' proportion: their halo is ~1.4x a capsule's width,
+    // and a cart draws 16 wide, so a 13 halo hid almost wholly behind it.
+    const gr = 15 + Math.sin(t * 4 + e.bobPhase) * 1.5;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(glow, x + e.w / 2 - gr, y + e.h / 2 - gr, gr * 2, gr * 2);
+    ctx.imageSmoothingEnabled = false;
+  }
   if (e.kind === 'pickup' && e.def.power && POWER_GLOW[e.type]) {
     // pulsing halo so power capsules read as prizes from across the screen
     const glow = glowSprite(POWER_GLOW[e.type], 10);

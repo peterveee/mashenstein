@@ -116,14 +116,12 @@ for (const [label, zoom] of FRAMINGS) {
 // ------------------------------------------------------------------ shooters
 //
 // Read off a live RunState so this follows the shipped expression rather than
-// restating it. Corporate Kombat's shredders are floor 23's tier-0 ground read,
-// so a short run is enough to see several open fire.
+// restating it. Terminal Velocity's shooter drones are the campaign's shooters
+// since floor 23's shredders became fire alarms (15 Oct 2026).
 const { STAGES } = await import('../src/data/stages.js');
 const { DemoBot } = await import('../src/game/bot.js');
 
-// Floor 23 (office-2): the shredders are the only office shooters since the
-// floors got their own furniture (data/cabinets.js OFFICE_FLOORS).
-const shooterStage = STAGES.find((s) => s.cabinet === 'office' && s.index === 2);
+const shooterStage = STAGES.find((s) => s.id === 'neon-3');
 
 function firingGaps(stage, zoomIn, seed) {
   save.settings.zoomIn = zoomIn;

@@ -1,15 +1,17 @@
 import { paintOfficeCleaners } from './cleanerPlacement.js';
 // Corporate Kombat: LIGNE ’89 index painter. Shared with the preserved bake-off.
-import { OFFICE_FLOORS, WALL_BASE, FACTORS, MID_BASE } from '../officeClimb.js';
+import { OFFICE_FLOORS, WALL_BASE, FACTORS, MID_BASE, officeFrame } from '../officeClimb.js';
 import { PAL, bakeStrip, drawStrip, W, box, line } from './line.js';
 import { paintFar, paintNear, cloudShape, sky, stars, sun, clouds, cityLights, towerLights, vehicle, flyer, cradle } from './outside.js';
-import { paintWall, upperWall, liftDoors, clockHands, revolvingDoor, signNeon, floorLights, noonWall, sunShafts, noonShafts, glints } from './wall.js';
-import { paintMid, ceiling, ceilingLights, floorPlane, slab, midActors, midDevices, lampSheen, lights } from './room.js';
+import { paintWall, upperWall, liftDoors, clockHands, revolvingDoor, signNeon, floorLights, noonWall, sunShafts, noonShafts, glints, fireExitDoor, alarmSign } from './wall.js';
+import { paintMid, ceiling, ceilingLights, floorPlane, slab, midActors, midDevices, lampSheen, lights, setOfficeEvacuation } from './room.js';
 import { OFFICE_ZOOM as ZOOM } from '../officeClimb.js';
 import { paintFront } from './front.js';
-import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections, officeLiftSpans, warmOfficeWallSections } from './progression.js';
-import { paintOfficeArtwork, warmOfficeArtwork, officeArtworkBytes } from './artwork.js';
+import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections, officeLiftSpans, warmOfficeWallSections, officeAlarmSignBay } from './progression.js';
+import { paintOfficeArtwork, warmOfficeArtwork, officeArtworkBytes, officeArtworks } from './artwork.js';
 import { officeMonthBoard, paintMonthBoardOnWall, paintCoolerZombie, zombieFurnitureCuts, zombieWallClear } from './zombies.js';
+import { drawProfileZombie, profileStride } from './profileZombie.js';
+import { drawGirlZombie, girlStride, GIRL_CANDIDATES } from './profileWoman.js';
 
 const CACHE = new Map();
 const PRODUCTION_CACHE = new Map();
@@ -126,6 +128,106 @@ function upperRoom(ctx, f, P, part = 'wall') {
   for (const c of f.wall.columns) box(ctx, c.x, top, c.w, bottom - top, P.column || P.ceilDk, P.ink, 0.6);
 }
 
+// THE WAY OUT (office-2, Peter, 15 Oct): the floor's workers walking along the wall to the open
+// fire exit, spaced out, one going in every few seconds, behind the open door. The line is 800
+// long, back past the cube farms, so its far end is always off the left of the picture while the
+// door is in it: nobody ever appears on screen and it never runs out (Peter, 15 Oct). Drawn at
+// the wall's depth, behind the furniture, sized against the door (74 tall).
+const EXIT_GAP = 60, EXIT_SPEED = 8, EXIT_COUNT = 9;
+// the line as dealt: from EXIT_NEAR to EXIT_REACH back from the door (those nearer are through it
+// before the hero comes; the far ones are still queuing through the finish)
+const EXIT_NEAR = -10, EXIT_REACH = 930;
+// THE QUEUE IS ALL ZOMBIE CLERKS (Peter, 15 Oct: "these look so good I am inclined to have just
+// these in the queue in different colourways"): profileZombie.js, side on, in suits dealt round so
+// no two neighbours share a cloth, a tie or a hair colour; the first is the crypt's own blue clerk,
+// the temp's raspberry among them. A briefcase or, now and then, a mug.
+const EXIT_SUITS = [
+  ['#4797c3', '#326594'], ['#c4577c', '#8e3a5a'], ['#3fa58f', '#2b7366'], ['#c99a3c', '#93702a'],
+  ['#8a72c4', '#5f4c8f'], ['#7d8590', '#585e68'], ['#7a9a4a', '#56703a'], ['#a8564a', '#7a3c33'],
+];
+const EXIT_TIES = ['#f18765', '#35c2b6', '#f6df4a', '#e0203a', '#ff6fae', '#7d95f2'];
+const EXIT_ZHAIR = ['#596e7c', '#b8502a', '#3a2a20', '#c9c4ba', '#6b4529', '#2a2a30', '#e2b45a'];
+function exitZombie(n) {
+  const [cloth, dark] = EXIT_SUITS[n % EXIT_SUITS.length];
+  return { cloth, dark, tie: EXIT_TIES[(n * 5 + 1) % EXIT_TIES.length], hair: EXIT_ZHAIR[(n * 3) % EXIT_ZHAIR.length],
+    glasses: n % 3 !== 1, carry: n % 4 === 3 ? 'mug' : null };
+}
+const EXIT_ZOMBIE_H = 58, EXIT_WOMAN_H = 56;
+const EXIT_WOMEN = GIRL_CANDIDATES;
+
+// THE LINE NEVER SPAWNS IN VIEW (Peter, 15 Oct: "i still see some just appearing ... i don't want
+// any to fade in"). Nobody is ever added or recycled: the line is dealt once, the moment the alarm
+// goes, every one of them right of the picture's edge, and walks on to the door, where each goes in
+// and is gone. The camera catches them up, so they are first seen already in line.
+let EXIT_FROM = null;   // the door's screen x the frame the alarm went, or null
+// WHERE THE LINE MAY START: after the interview room and the overtime poster, so nobody in it is
+// seen inside the room or under the poster (Peter, 15 Oct: "the first one looks like he's in the
+// meeting room ... could wait until after the poster"). In wall units back from the door; worked
+// out once per stage length from where the room and the poster actually are.
+const EXIT_CLEAR = new Map();
+function exitLineReach(f, doorU) {
+  const T = f.totalDist;
+  if (EXIT_CLEAR.has(T)) return EXIT_CLEAR.get(T);
+  let after = -Infinity;
+  for (const l of f.landmarks || []) if (l.kind === 'interview' && l.section) after = Math.max(after, l.section.u1);
+  for (let cam = T * 0.75; cam < T; cam += 120) {
+    const g = officeFrame('open', cam, 0, undefined, OFFICE_CORRIDORS.open);
+    g.founderPlan = f.founderPlan; g.totalDist = T;
+    for (const a of officeArtworks(g)) if (a.professor === 'wants') after = Math.max(after, a.x + g.wall.shift + a.w);
+  }
+  const reach = Math.max(EXIT_NEAR + EXIT_GAP, Math.min(EXIT_REACH, doorU - after - 30));
+  if (EXIT_CLEAR.size > 8) EXIT_CLEAR.clear();
+  EXIT_CLEAR.set(T, reach);
+  return reach;
+}
+function fireExitQueue(ctx, doorX, f, P) {
+  const run = f.evacT * EXIT_SPEED;
+  const far = Math.min(exitLineReach(f, doorX + f.wall.shift), EXIT_FROM - (f.W + 60));
+  ctx.save();
+  // in through the doorway and on behind the open door (drawn again over them), the stairwell
+  // dark on them as they go: nothing is drawn past the door's far side
+  ctx.beginPath();
+  ctx.rect(doorX - EXIT_REACH - 60, WALL_BASE - 120, EXIT_REACH + 60 + 46, 130);
+  ctx.clip();
+  // about nine of them (Peter, 15 Oct), spread over whatever stretch the line has: never closer
+  // than EXIT_GAP, so a short stretch takes fewer
+  const gap = Math.max(EXIT_GAP, (far - EXIT_NEAR) / EXIT_COUNT);
+  for (let i = 0; far - i * gap > EXIT_NEAR; i++) {
+    const d = far - i * gap;                 // how far from the door they stood at the alarm
+    const x = doorX - d + run;
+    if (x > doorX + 46 || x < f.coverage.left - 60) continue;
+    ctx.save();
+    ctx.translate(x, WALL_BASE);
+    // the gait phase from the ground covered, so a planted foot holds still on the floor
+    // every third a woman (A the perm, B the bun, C the bob in turn, each colourway in turn), the
+    // rest the men
+    if (i % 3 === 1) {
+      const n = (i - 1) / 3, cand = EXIT_WOMEN[n % EXIT_WOMEN.length];
+      const outfit = cand.outfits[Math.floor(n / EXIT_WOMEN.length) % cand.outfits.length][1];
+      drawGirlZombie(ctx, f.t + i * 0.7, cand.id, { outfit, h: EXIT_WOMAN_H,
+        phase: (run - d) / girlStride(EXIT_WOMAN_H) + i * 0.37, ink: P.inkM });
+    } else {
+      drawProfileZombie(ctx, f.t + i * 0.7, { outfit: exitZombie(i), h: EXIT_ZOMBIE_H,
+        phase: (run - d) / profileStride(EXIT_ZOMBIE_H) + i * 0.37, ink: P.inkM });
+    }
+    ctx.restore();
+    // into the dark of the stairwell
+    const inDoor = Math.max(0, Math.min(1, (x - doorX) / 30));
+    if (inDoor > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(doorX, WALL_BASE - 74, 40, 74);
+      ctx.clip();
+      ctx.globalAlpha *= 0.75 * inDoor;
+      ctx.fillStyle = '#2a2440';
+      ctx.fillRect(x - 12, WALL_BASE - 70, 24, 70);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+
 export const STYLE = {
   id: 'ligne89lit',
   name: 'LIGNE ’89 — lit',
@@ -136,6 +238,7 @@ export const STYLE = {
     + 'bars, rim-lit towers whose windows and neon come on and go off, and a deep violet room lit by pink lamp wedges '
     + 'and pools, a glowing trophy case and a teal cornice tube.',
   paint(ctx, f, options = {}) {
+    setOfficeEvacuation(f.evacT, f.t);
     ctx.save();
     // The office is detailed line art. Filter its cached layers at fractional
     // camera positions instead of inheriting the game's pixel-art sampling.
@@ -155,7 +258,8 @@ export const STYLE = {
     // floor 23's zombies (zombies.js): the clerk's EMPLOYEE OF THE MONTH bay, and the wall they keep
     // clear of prints
     f.monthBoard = options.production ? officeMonthBoard(f) : null;
-    f.wallClear = options.production ? zombieWallClear(f) : null;
+    f.alarmSign = options.production ? officeAlarmSignBay(f.floor, f.totalDist) : null;
+    f.wallClear = options.production ? [...zombieWallClear(f), ...(f.alarmSign ? [[f.alarmSign.u0, f.alarmSign.u1]] : [])] : null;
     if(options.production)warmOfficeWallSections(f);
     const farShift = f.camX * FACTORS.cityFar * ZOOM;
     const nearShift = f.camX * (F.outside.nearFactor ?? FACTORS.cityNear) * ZOOM;
@@ -209,10 +313,33 @@ export const STYLE = {
     clockHands(ctx, f, P);
     revolvingDoor(ctx, f, P);
     signNeon(ctx, f, P);
+    if (f.alarmSign) {
+      const sx = (f.alarmSign.u0 + f.alarmSign.u1) / 2 - 40 - f.wall.shift;
+      if (sx > f.coverage.left - 100 && sx < f.W + 20) alarmSign(ctx, { x: sx, y: 112, w: 80, h: 24 }, P);
+    }
+    if (f.fireExit) {
+      const dx = (f.fireExit.u0 + f.fireExit.u1) / 2 - 20 - f.wall.shift;
+      // the line reaches back 800 from the door, so it is drawn whenever any of it is in view,
+      // door or not: it scrolls in with the wall rather than arriving with the door
+      if (f.evacT == null) EXIT_FROM = null;
+      else if (EXIT_FROM == null) EXIT_FROM = dx;   // where the door stood as the alarm went
+      const lineIn = f.evacT != null && dx - EXIT_REACH - 60 < f.W + 40 && dx > f.coverage.left - 60;
+      // the doorway, then the line, then the open leaf again over whoever is going in
+      const doorIn = dx > f.coverage.left - 260 && dx < f.W + 40;
+      if (doorIn) fireExitDoor(ctx, dx, P);
+      if (lineIn) fireExitQueue(ctx, dx, f, P);
+      if (doorIn && lineIn) fireExitDoor(ctx, dx, P, WALL_BASE, true);
+    }
     ctx.restore();
 
     // Corridor furniture is left out wherever it would cross a named place (step 5).
-    const cuts = [...(f.landmarks?.length ? officeFurnitureCuts(f, f.landmarks) : []),
+    // the fire exit keeps the floor in front of it clear, for the queue to stand in
+    const exitClear = f.fireExit ? (() => {
+      const rate = (OFFICE_CORRIDORS[f.floor].wall.factor ?? FACTORS.wall) * ZOOM, w = 250;
+      const uc = (f.fireExit.u0 + f.fireExit.u1) / 2 - 70;
+      return [{ kind: 'fireExit', w, rate, worldX: (uc - 112) / rate, x: uc - f.wall.shift - w / 2 }];
+    })() : [];
+    const cuts = [...(f.landmarks?.length || exitClear.length ? officeFurnitureCuts(f, [...(f.landmarks || []), ...exitClear]) : []),
       ...(options.production ? zombieFurnitureCuts(f) : [])].sort((a, b) => a[0] - b[0]);
     // Daylight only comes in through windows that are still windows: a wall section has
     // replaced the glass it stands on.

@@ -24,6 +24,7 @@
 // same art mirrored by draw.js, so steam that rises on the floor falls toward
 // the floor on the ceiling. Like officeProps.js, nothing here imports props.js.
 
+import { outlined } from './outline.js';
 import { martianHead } from '../dev/mars-attacks-candidates.js';
 
 const frameOf = (t, n, fps) => ((Math.floor(t * fps + 1e-6) % n) + n) % n;
@@ -32,7 +33,9 @@ const TAU = Math.PI * 2;
 
 // ------------------------------------------------------------------ palette
 const INK = '#14222b';
-const LW = 0.5, LWI = 0.3;
+// 0.55 / 0.32 since 15 Oct 2026, in line with the other bold sets (Peter: "bring gravity to
+// be inline with the rest since it's already close"); the dial is sprites/outline.js.
+const LW = 0.55, LWI = 0.32;
 const HOT = '#ff5a3c', HOT_LT = '#ffb27a', HOT_WH = '#fff2e0', HOT_DK = '#b8261a';
 const AMBER = '#f2a33a', AMBER_LT = '#ffd98a';
 const CHROME = '#e4eeec', CHROME_MD = '#b4c6c6', CHROME_DK = '#7c9196';
@@ -432,12 +435,12 @@ export const GRAVITY_PROP_DETAIL = {};
 for (const [name, s] of Object.entries(SPECS)) {
   const env = gravityPropEnvelope(name);
   const n = s.frames || 1;
-  GRAVITY_PROP_PAINTERS[name] = (ctx, w, h, frame = 0) => {
+  GRAVITY_PROP_PAINTERS[name] = outlined((ctx, w, h, frame = 0) => {
     ctx.save();
     ctx.scale(w / env.w, h / env.h);
     s.paint(ctx, env.w, env.h, (((Math.floor(frame) % n) + n) % n) / s.fps);
     ctx.restore();
-  };
+  });
   if (n > 1) { GRAVITY_PROP_FRAMES[name] = n; GRAVITY_PROP_FPS[name] = s.fps; }
   if (s.tall && s.tall !== 1) GRAVITY_PROP_TALL[name] = s.tall;
   if (s.visual) GRAVITY_PROP_VISUAL[name] = s.visual;

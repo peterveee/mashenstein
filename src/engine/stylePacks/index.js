@@ -2207,6 +2207,7 @@ function outsideView(ctx, x, margin) {
 // claims: identical to the old inline arithmetic in landscape, and tied to the
 // view in portrait.
 export const __testing = {
+  drawHillStrip,
   wrapIntoView, outsideView, backgroundCoverage, backgroundPaintCoverage, viewCenterX,
   // The solid spans of a frame, so a ground bake-off in src/dev can lay its
   // candidate texture over exactly the runs the shipping painter does — a card
@@ -10174,9 +10175,25 @@ function neonFujiArt(k, paper = false) {
     g.restore();
     art = { canvas: c, w: cw, h: ch, pad };
   }
+  // A renderer-density change replaces this variant, rather than retaining
+  // a full mountain image for every rung visited during the session.
+  const variant = `${k}|`, suffix = `|${paper ? 'paper' : 'flat'}`;
+  for (const old of fujiCache.keys())
+    if (old.startsWith(variant) && old.endsWith(suffix)) fujiCache.delete(old);
   fujiCache.set(key, art);
   return art;
 }
+// Prepare expensive first-use art through the briefing's cooperative queue.
+// Use exactly the same dimensions and density as the production draw paths.
+export function neonWarmJobs() {
+  return [
+    ...Array.from({ length: NEON_STAR_LAYERS }, (_, layer) =>
+      () => neonStarSheet(layer, W, NEON_STAR_SHEET_H, 2)),
+    () => neonFujiArt(NEON_FUJI.scale, false),
+    () => neonFujiArt(NEON_FUJI.scale, true),
+  ];
+}
+
 function neonFuji(ctx, cov, progress, paper = false) {
   const fade = neonFujiAlpha(progress);
   if (fade <= 0) return;

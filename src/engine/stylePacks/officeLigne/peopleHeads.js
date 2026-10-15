@@ -59,7 +59,7 @@ export function workerHairStyle(seed) {
  return OFFICE_WORKER_HAIR[Math.floor((n-Math.floor(n))*OFFICE_WORKER_HAIR.length)];
 }
 export function workerHead(g,x,y,r,p,seed,face='back') {
- const style=workerHairStyle(seed);
+ const style=p.hairStyle||workerHairStyle(seed);
  if(face==='back'){studyBackHead(g,x,y,r,style,p.skin,p.hair);return;}
  g.save();g.translate(x,y);if(face==='left')g.scale(-1,1);
  studyHead(g,0,0,r,style,true,p.skin,p.hair);

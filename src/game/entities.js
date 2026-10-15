@@ -262,8 +262,16 @@ export const OBSTACLES = {
   founderBust:  { w: 13, h: 12, sprite: 'founderBust', ground: true, breakable: true, action: 'jump' },
   // In place of the big cactus (17x14):
   waterDolly:   { w: 17, h: 14, sprite: 'waterDolly', ground: true, breakable: true, action: 'jump' },
-  snackMachine: { w: 17, h: 14, sprite: 'snackMachine', ground: true, breakable: true, action: 'jump' },
+  // Shot (or rammed) open, it pays out its coin box (Peter, 15 Oct).
+  // Two crates high and a crate wide (Peter, 15 Oct 2026: "taller and thinner — should be
+  // two units height to clear"), not the 17x14 of the cactusBig it stands in for.
+  snackMachine: { w: 12, h: 22, sprite: 'snackMachine', ground: true, breakable: true, action: 'jump', bonusCoins: 5 },
   officeSafe:   { w: 17, h: 14, sprite: 'officeSafe', ground: true, breakable: true, action: 'jump' },
+  // Office-3's target, CRACK 3 SAFES (Peter, 15 Oct): twice a crate's height,
+  // placed by the mission rather than dealt. Only a SHOT cracks it — nothing
+  // breaks it, and running into a shut one is a hit — and cracked it stays,
+  // open, with the money thrown out of it (Run.crackSafe).
+  vaultSafe:    { w: 16, h: 24, sprite: 'vaultSafe', ground: true, breakable: false, action: 'jump', crackable: true, setPiece: true },
   // In place of the crate (12x11, stacks):
   newsBundle:   { w: 12, h: 11, sprite: 'newsBundle', ground: true, breakable: true, action: 'jump', stack: true },
   archiveBox:   { w: 12, h: 11, sprite: 'archiveBox', ground: true, breakable: true, action: 'jump', stack: true },
@@ -295,6 +303,10 @@ export const OBSTACLES = {
   // In place of the printer, on floor 23 only: office-2's mission is DESTROY 5
   // HOSTILE SHREDDERS (Peter, 12 Oct). The printer's box, its shot and its punt.
   shredder:     { w: 12, h: 7, sprite: 'shredder', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true, punt: true, puntLabel: 'SHREDDER' },
+  // In its place on floor 23 since 15 Oct: office-2 is PULL 3 FIRE ALARMS. On the
+  // wall at the frozen switch's height, so it takes a hop or a shot, and PULLED
+  // rather than broken — it stays up, strobing (Run.pullAlarm).
+  fireAlarm:    { w: 10, h: 11, sprite: 'fireAlarm', alt: 36, breakable: true, action: 'none', isTarget: true, alarm: true },
   // `punt`: light enough that a boot sends it somewhere rather than through a
   // debris cloud. It stays `action: 'jump'` — jumping is still the answer the
   // spawner and the fairness sim budget for, and the punt is an ALTERNATIVE a
@@ -488,6 +500,39 @@ export const OBSTACLES = {
   // of the run's own scroll, so the charge reads equally fast on every stage
   // and the two-jump finish geometry (see that method) holds at every speed.
   finishDog:  { w: 22, h: 15, sprite: 'dogSnarler', ground: true, breakable: false, action: 'jump', vx: -70, animal: true, skins: ['finishSnarler', 'finishBruiser', 'finishFeral'] },
+
+  // THE PICKS FROM THE 12 OCT CABINET BAKE-OFFS (Peter, 15 Oct 2026), art in
+  // sprites/<cabinet>Props.js. Each copies the box, flags and answer of the hazard
+  // whose slot it was drawn for — cactus, cactusBig, crate, barrel, fireBarrel,
+  // brazier, boomBarrier, popSpikes — and data/cabinets.js deals it. The floor
+  // ones drop the spike plate's `lurks`: hands, roses, crampons and caltrops lie in
+  // plain view rather than springing.
+  // FIELD SERVICE, in place of the fires and the razor hurdle.
+  beehive:      { w: 13, h: 12, sprite: 'beehive', ground: true, breakable: true, action: 'jump' },
+  scarecrow:    { w: 17, h: 14, sprite: 'scarecrow', ground: true, breakable: true, action: 'jump' },
+  hayBale:      { w: 12, h: 11, sprite: 'hayBale', ground: true, breakable: true, action: 'jump', stack: true },
+  // SPEED ZONE: the cactus split between prickly pear and dynamite, the rest one for one.
+  pricklyPear:  { w: 13, h: 12, sprite: 'pricklyPear', ground: true, breakable: true, action: 'jump' },
+  dynamite:     { w: 13, h: 12, sprite: 'dynamite', ground: true, breakable: true, action: 'jump' },
+  barrelCactus: { w: 17, h: 14, sprite: 'barrelCactus', ground: true, breakable: true, action: 'jump' },
+  smudgePot:    { w: 13, h: 13, sprite: 'smudgePot', ground: true, breakable: true, action: 'jump' },
+  sawhorse:     { w: 16, h: 9, sprite: 'sawhorse', ground: true, armored: true, breakable: false, action: 'jump', splitFeet: true },
+  // Speed Zone's flier in the songbird's place: its box, height and answer; not an animal.
+  saucer:       { w: 12, h: 7, sprite: 'saucer', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },
+  // FROST FORTRESS, added alongside everything it already dealt. The presents
+  // KICK APART and shower coins, and the snowball comes apart on a kick too
+  // (`puntBreaks`, run.js): a slide-kick breaks them rather than launching them.
+  iceBlocks:    { w: 12, h: 11, sprite: 'iceBlocks', ground: true, breakable: true, action: 'jump', stack: true },
+  parcels:      { w: 12, h: 11, sprite: 'parcels', ground: true, breakable: true, action: 'jump', stack: true,
+    punt: true, puntBreaks: true, puntLabel: 'PRESENTS', bonusCoins: 3 },
+  giantSnowball: { w: 13, h: 13, sprite: 'giantSnowball', ground: true, breakable: true, action: 'jump', vx: -40, roll: true,
+    punt: 'heavy', puntBreaks: true, puntLabel: 'SNOWBALL' },
+  crampons:     { w: 15, h: 7, sprite: 'crampons', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
+  caltrops:     { w: 15, h: 7, sprite: 'caltrops', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
+  // CRYPT SHIFT, in place of the snarler and the feral dog.
+  graveHands:   { w: 15, h: 7, sprite: 'graveHands', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
+  graveRoses:   { w: 15, h: 7, sprite: 'graveRoses', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
+  eternalFlame: { w: 12, h: 14, sprite: 'eternalFlame', ground: true, breakable: true, action: 'jump' },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
@@ -565,8 +610,10 @@ export const DEBRIS = {
   waterDolly:   { colors: ['#74c4ec', '#c6ecfb', '#c9ced8'], size: 3.2, count: 14, mat: 'soft' },
   snackMachine: { colors: ['#e0203a', '#f6df4a', '#ff6fae'], size: 3.2, count: 14, mat: 'metal' },
   officeSafe:   { colors: ['#34323f', '#d9ae45', '#8fcf8a'], size: 3.2, count: 14, mat: 'metal' },
+  vaultSafe:    { colors: ['#d9ae45', '#3a3846', '#8fcf8a'], size: 3.2, count: 14, mat: 'metal' },
   newsBundle:   { colors: ['#f6bfae', '#ffffff', '#1f1d26'], size: 3, mat: 'soft' },
-  archiveBox:   { colors: ['#d99a5c', '#b07440', '#ffffff'], size: 3, mat: 'soft' },
+  // Mostly the files: white sheets on a slow fall, then a little of the box.
+  archiveBox:   { colors: ['#ffffff', '#ffffff', '#f2eee6', '#e2dee8', '#d99a5c'], size: 3.4, count: 20, grav: 110, mat: 'soft' },
   briefcase:    { colors: ['#7a1f2b', '#1f1d26', '#d9ae45'], size: 3, mat: 'soft' },
   mopBucket:    { colors: ['#f6df4a', '#d1ae1c', '#8fb9ca'], size: 2.8, mat: 'soft' },
   mailCart:     { colors: ['#2fbcb0', '#ffffff', '#c9ced8'], size: 2.8, mat: 'soft' },
@@ -575,6 +622,7 @@ export const DEBRIS = {
   binFire:      { colors: ['#3f5fd8', '#ffffff', '#ff8a3d'], size: 3, mat: 'metal' },
   confidentialBin: { colors: ['#d9ae45', '#ffffff', '#e0203a'], size: 3, mat: 'metal' },
   shredder:     { colors: ['#3a3846', '#ffffff', '#ff6fae'], size: 2.6, mat: 'metal' },
+  fireAlarm:    { colors: ['#e0203a', '#ffffff'], size: 2.2, mat: 'metal' },
   zombie:      { colors: ['#9ec89e', '#5a6a8a', '#4a6a4a'], size: 2.4, count: 12, mat: 'soft' },
   drone:       { colors: ['#8858c8', '#5a3890', '#c8b8e8'], size: 2.4, spark: '#f6d33c', mat: 'metal' },
   shooterDrone:{ colors: ['#8858c8', '#5a3890', '#e04848'], size: 2.4, spark: '#f6d33c', mat: 'metal' },
@@ -599,12 +647,27 @@ export const DEBRIS = {
   catFury:    { colors: ['#332f3f', '#201d2a', '#8a86a0'], size: 2.2, count: 10, mat: 'soft' },
   cryptPanther:    { colors: ['#765486', '#493657', '#a77caf'], size: 2.4, count: 13, mat: 'soft' },
   bobcat:     { colors: ['#c29a68', '#a07c52', '#ddd1bb'], size: 2.6, count: 13, mat: 'soft' },
+  // The 15 Oct bake-off picks, in their painters' own colours.
+  beehive:      { colors: ['#f6f0e0', '#d8352a', '#ffd23a'], size: 2.8, mat: 'wood' },
+  scarecrow:    { colors: ['#d8352a', '#3f63a8', '#dcae48'], size: 3, count: 14, mat: 'soft' },
+  hayBale:      { colors: ['#dcae48', '#b0822a', '#f4d784'], size: 2.8, mat: 'soft' },
+  pricklyPear:  { colors: ['#3f9a5a', '#286c43', '#dc2f55'], size: 2.6, mat: 'soft' },
+  dynamite:     { colors: ['#e2412c', '#2c2627', '#f0b12a'], size: 2.6, spark: '#fff6d6', mat: 'soft' },
+  barrelCactus: { colors: ['#3f9a5a', '#286c43', '#e2412c'], size: 3.2, count: 14, mat: 'soft' },
+  saucer:       { colors: ['#dfe7e2', '#e2412c', '#23928e'], size: 2.4, spark: '#fff6d6', mat: 'metal' },
+  smudgePot:    { colors: ['#2c2627', '#5a5662', '#f6962c'], size: 2.8, spark: '#fff6d6', mat: 'metal' },
+  iceBlocks:    { colors: ['#d3f0fd', '#a9d8f1', '#f4fcff'], size: 3, mat: 'stone' },
+  parcels:      { colors: ['#d8383c', '#f6c23c', '#f7fbff'], size: 2.8, mat: 'soft' },
+  giantSnowball: { colors: ['#f7fbff', '#c9def0', '#d8383c'], size: 3.2, count: 14, mat: 'soft' },
+  eternalFlame: { colors: ['#8a8496', '#5c566a', '#ffc470'], size: 2.8, spark: '#ffef9e', mat: 'stone' },
 };
 
 export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8, mat: 'wood' };
 
 export const PICKUPS = {
   coin:      { w: 8, h: 8, sprite: 'coin', score: 50, coin: true },
+  // Thrown out of a cracked safe with the coins; worth five of them.
+  banknote:  { w: 10, h: 6, sprite: 'banknote', score: 50, coin: true, coinValue: 5 },
   battery:   { w: 8, h: 8, sprite: 'battery', heal: 1 },
   capShield: { w: 8, h: 8, sprite: 'capShield', power: 'shield' },
   capMagnet: { w: 8, h: 8, sprite: 'capMagnet', power: 'magnet' },
@@ -623,6 +686,14 @@ export const PICKUPS = {
   applianceSilver: { w: 22, h: 18, sprite: 'applianceSilver', appliance: true, silver: true, bob: true },
   cord:      { w: 14, h: 9, sprite: 'cord', cord: true },
   resident:  { w: 10, h: 12, sprite: 'resident', resident: true, shamble: true },
+  // THE M-A-S-H LETTERS, one type per letter so the mission can tell which one
+  // was taken. A letter banked on an earlier attempt still spawns, wearing the
+  // `letter?Banked` skin — the outline — because taking all four in one run is
+  // its own bonus. See RunState.spawnMashLettersMaybe.
+  letterM: { w: 12, h: 14, sprite: 'letterM', mashLetter: 'M', bob: true },
+  letterA: { w: 12, h: 14, sprite: 'letterA', mashLetter: 'A', bob: true },
+  letterS: { w: 12, h: 14, sprite: 'letterS', mashLetter: 'S', bob: true },
+  letterH: { w: 12, h: 14, sprite: 'letterH', mashLetter: 'H', bob: true },
 };
 
 let idCounter = 1;

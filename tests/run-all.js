@@ -51,6 +51,9 @@ const suites = [
   'tests/lane-calls.js',
   'tests/pixel-background.js',
   'tests/speed-mcm.js',
+  'tests/scenery-texture-cache.js',
+  'tests/performance-capture.js',
+  'tests/performance-test.js',
   // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.
   'tests/surge-cycle.js',
   'tests/office-climb.js',
@@ -603,6 +606,8 @@ const suites = [
   'tests/plug-tally.js',
   'tests/cabinet-unlocks.js',
   'tests/silver-toaster.js',
+  // The M-A-S-H letters (Field Service 3, Speed Zone 3, Frost 3): placed, banked on a fail, gold once.
+  'tests/mash-letters.js',
   'tests/boss.js',
   // The boss's drops and the lane's shooters used to be placed off VIEW_W,
   // which made the same fight a different fight at each zoom — the bug

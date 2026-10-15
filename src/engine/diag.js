@@ -1,3 +1,6 @@
+import { performanceMark, performanceAdd } from './performance-capture.js';
+let persistenceSuspended = false;
+export function suspendCrumbPersistence(value) { persistenceSuspended = !!value; }
 // Diagnostic overrides that survive a reload.
 //
 // The switches used to measure a device — ?fps, ?bench, ?renderer= — are query
@@ -94,8 +97,12 @@ const CRUMB_KEY = 'mash_crumbs';
 const CRUMB_SESSIONS = 4;
 const CRUMB_LINES = 60;
 let session = null;
+// The trail, held in memory once read: a crumb only has to append and write it back,
+// never read and parse the stored copy first.
+let crumbStore = null;
 
 function readCrumbStore() {
+  if (crumbStore) return crumbStore;
   try {
     const raw = localStorage.getItem(CRUMB_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
@@ -106,11 +113,13 @@ function readCrumbStore() {
 }
 
 function writeCrumbStore(store) {
+  if (persistenceSuspended) return;
+  const at = performanceMark();
   try {
     localStorage.setItem(CRUMB_KEY, JSON.stringify(store));
   } catch (e) {
     /* unstorable: the trail is simply lost, the game plays on */
-  }
+  } finally { performanceAdd('diagnostics', at); }
 }
 
 function heapMb() {
@@ -126,6 +135,7 @@ export function startCrumbSession(build = '') {
   // the game with no trail, never without a boot.
   try {
     const store = readCrumbStore();
+    crumbStore = store;
     session = { at: Date.now(), build: String(build || '').slice(0, 40), lines: [] };
     store.sessions.push(session);
     while (store.sessions.length > CRUMB_SESSIONS) store.sessions.shift();
@@ -145,16 +155,17 @@ export function startCrumbSession(build = '') {
   }
 }
 
-// Dev builds only. The first upload goes to /__dev/crumbs; a dev server started before
+// Dev builds only, and ONCE, at boot: that is when the trail holds the session a phone
+// just lost. The first upload goes to /__dev/crumbs; a dev server started before
 // that route existed answers it with the esbuild proxy's 404, and the trail goes through
 // the recorder route instead (it keeps a body it cannot convert, under work/video/).
-// Once /__dev/crumbs has answered, every new line is sent as it is written.
-let liveCrumbs = false;
+// It used to go on sending the whole trail with every new line, which on the phone was
+// a hitch every 3 s of play — the run heartbeat (Peter, 15 Oct 2026). No longer.
 function uploadCrumbs() {
-  if (typeof fetch === 'undefined') return;
+  if (persistenceSuspended || typeof fetch === 'undefined') return;
   const text = crumbReport();
   fetch('/__dev/crumbs', { method: 'POST', body: text }).then((r) => {
-    if (r.ok) { liveCrumbs = true; return; }
+    if (r.ok) return;
     return fetch('/__dev/record?name=crash-trail&ext=webm', { method: 'POST', body: text });
   }).catch(() => { /* no dev server to tell */ });
 }
@@ -171,7 +182,6 @@ export function crumb(tag, detail = '') {
     const i = store.sessions.findIndex((x) => x.at === session.at);
     if (i >= 0) store.sessions[i] = session; else store.sessions.push(session);
     writeCrumbStore(store);
-    if (liveCrumbs && typeof navigator !== 'undefined' && navigator.sendBeacon) navigator.sendBeacon('/__dev/crumbs', crumbReport());
   } catch (e) {
     /* a diagnostic must never be the reason the game stops */
   }
