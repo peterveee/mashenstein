@@ -174,10 +174,6 @@ import * as GRAVITY_REMIX_ORBITAL from './gravity-remix-orbital.js';
 import * as GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './gravity-remix-radiophonic-moog-seq.js';
 import * as GRAVITY_REMIX_RADIOPHONIC from './gravity-remix-radiophonic.js';
 import * as GRAVITY_REMIX_STARDUST_DISCO from './gravity-remix-stardust-disco.js';
-import * as GRAVITY_SNARE_BUILD_A from './gravity-snare-build-a.js';
-import * as GRAVITY_SNARE_BUILD_B from './gravity-snare-build-b.js';
-import * as GRAVITY_SNARE_BUILD_C from './gravity-snare-build-c.js';
-import * as GRAVITY_SNARE_BUILD_D from './gravity-snare-build-d.js';
 import * as HUB_8BIT from './hub-8bit.js';
 import * as MEGAMIX_8BIT from './megamix-8bit.js';
 import * as MIN_NEW from './min-new.js';
@@ -494,10 +490,6 @@ export const IMPORTED_BY_ID = {
   "gravity-remix-radiophonic-moog-seq": { bank: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.bank, title: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-radiophonic": { bank: GRAVITY_REMIX_RADIOPHONIC.bank, title: GRAVITY_REMIX_RADIOPHONIC.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-stardust-disco": { bank: GRAVITY_REMIX_STARDUST_DISCO.bank, title: GRAVITY_REMIX_STARDUST_DISCO.title, group: "alternate", writable: true, alternateOf: "cardboard" },
-  "gravity-snare-build-a": { bank: GRAVITY_SNARE_BUILD_A.bank, title: GRAVITY_SNARE_BUILD_A.title, group: "alternate", writable: true, alternateOf: "cardboard" },
-  "gravity-snare-build-b": { bank: GRAVITY_SNARE_BUILD_B.bank, title: GRAVITY_SNARE_BUILD_B.title, group: "alternate", writable: true, alternateOf: "cardboard" },
-  "gravity-snare-build-c": { bank: GRAVITY_SNARE_BUILD_C.bank, title: GRAVITY_SNARE_BUILD_C.title, group: "alternate", writable: true, alternateOf: "cardboard" },
-  "gravity-snare-build-d": { bank: GRAVITY_SNARE_BUILD_D.bank, title: GRAVITY_SNARE_BUILD_D.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "hub-8bit": { bank: HUB_8BIT.bank, title: HUB_8BIT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "megamix-8bit": { bank: MEGAMIX_8BIT.bank, title: MEGAMIX_8BIT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },

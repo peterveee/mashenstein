@@ -53,6 +53,8 @@ const DEFAULTS = ['portal', 'comet', 'star', 'checkpoint', 'fizzUp', 'dash', 'bo
 const SHAPES = {
   now:     {},
   pewA: { pew: 'A' }, pewB: { pew: 'B' }, pewC: { pew: 'C' }, pewD: { pew: 'D' }, pewE: { pew: 'E' },
+  // The live wire's zap candidates (audio.js zap()).
+  zapA: { zap: 'A' }, zapB: { zap: 'B' }, zapC: { zap: 'C' }, zapD: { zap: 'D' }, zapE: { zap: 'E' },
 
   long:    { stretch: 1.8 },
   longer:  { stretch: 2.6 },

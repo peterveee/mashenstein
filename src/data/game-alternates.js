@@ -73,10 +73,6 @@ import * as GAME_ALT_GRAVITY_REMIX_ORBITAL from './imported/gravity-remix-orbita
 import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './imported/gravity-remix-radiophonic-moog-seq.js';
 import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC from './imported/gravity-remix-radiophonic.js';
 import * as GAME_ALT_GRAVITY_REMIX_STARDUST_DISCO from './imported/gravity-remix-stardust-disco.js';
-import * as GAME_ALT_GRAVITY_SNARE_BUILD_A from './imported/gravity-snare-build-a.js';
-import * as GAME_ALT_GRAVITY_SNARE_BUILD_B from './imported/gravity-snare-build-b.js';
-import * as GAME_ALT_GRAVITY_SNARE_BUILD_C from './imported/gravity-snare-build-c.js';
-import * as GAME_ALT_GRAVITY_SNARE_BUILD_D from './imported/gravity-snare-build-d.js';
 import * as GAME_ALT_HUB_8BIT from './imported/hub-8bit.js';
 import * as GAME_ALT_MEGAMIX_8BIT from './imported/megamix-8bit.js';
 import * as GAME_ALT_MONSTER_MEGAMIX_ALT from './imported/monster-megamix-alt.js';
@@ -191,10 +187,6 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ,
   GAME_ALT_GRAVITY_REMIX_RADIOPHONIC,
   GAME_ALT_GRAVITY_REMIX_STARDUST_DISCO,
-  GAME_ALT_GRAVITY_SNARE_BUILD_A,
-  GAME_ALT_GRAVITY_SNARE_BUILD_B,
-  GAME_ALT_GRAVITY_SNARE_BUILD_C,
-  GAME_ALT_GRAVITY_SNARE_BUILD_D,
   GAME_ALT_HUB_8BIT,
   GAME_ALT_MEGAMIX_8BIT,
   GAME_ALT_MONSTER_MEGAMIX_ALT,

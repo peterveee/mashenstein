@@ -452,6 +452,96 @@ function sparkle(c, x, y, r, a) {
   c.beginPath(); c.moveTo(x - r, y); c.lineTo(x + r, y); c.moveTo(x, y - r); c.lineTo(x, y + r); c.stroke();
   glow(c, x, y, r * 0.45, `rgba(255,248,235,${a})`);
 }
+// THE HULL AS A BAKED TILE. Everything airbrush.hull paints repeats every 48 along the wall —
+// the wall's vertical gradient, a rib's highlight, its deck lamp, the cove — so one 48-wide slice
+// of it is painted once, at the size it is drawn, and laid along the wall: a handful of images a
+// frame where the loop made a full-height gradient, two gradient columns the room's height, a
+// radial glow and a lamp for every rib in view (Gravity Grid ran at twice Speed Zone's frame in
+// portrait; 15 Oct 2026). The slice is 49 wide and laid every 48, so each overlaps the next by
+// a unit of the same (opaque) wall and no seam is ever part-covered. Keyed by the room's height
+// and draw scale, which hold still through a run; re-baked if they change.
+// THE SKY OUTSIDE, likewise: its gradient and the three nebulae are all soft, and the nebulae sit
+// at fixed places in a loop as wide as the view plus 120 that slides at a crawl — so the loop is
+// painted once, small (SKY_RES px a unit: there is no edge in it to soften), and laid twice a
+// frame, in place of a gradient across every window and three big radial glows.
+const SKY_RES = 1.5, SKY_TILE = new Map();
+// The window glass: rgba(255,255,255,.10) → 0 → 0 → rgba(0,0,0,.22) over a tint of
+// rgba(170,225,235,.06), composited at each stop.
+const over = ([r1, g1, b1, a1], [r0, g0, b0, a0]) => {
+  const a = a1 + a0 * (1 - a1), mix = (v1, v0) => Math.round((v1 * a1 + v0 * a0 * (1 - a1)) / a);
+  return `rgba(${mix(r1, r0)},${mix(g1, g0)},${mix(b1, b0)},${+a.toFixed(4)})`;
+};
+const TINT = [170, 225, 235, 0.06];
+// Composited at many stops along each ramp, not just the four: a gradient between two composited
+// colours is not the composite of the gradient, and with four stops the shade at the foot of each
+// window came out lighter.
+const GLASS_STOPS = [[0, [255, 255, 255, 0.10]], [0.18, [255, 255, 255, 0]], [0.82, [0, 0, 0, 0]], [1, [0, 0, 0, 0.22]]];
+const glassAt = (t) => {
+  const i = Math.max(0, GLASS_STOPS.findIndex(([o]) => o >= t) - 1), [o0, c0] = GLASS_STOPS[i], [o1, c1] = GLASS_STOPS[Math.min(i + 1, 3)];
+  const k = o1 > o0 ? (t - o0) / (o1 - o0) : 0;
+  return c0.map((v, j) => v + (c1[j] - v) * k);
+};
+const GLASS = [0, 0.03, 0.06, 0.09, 0.12, 0.15, 0.18, 0.82, 0.85, 0.88, 0.91, 0.94, 0.97, 1].map((t) => [t, over(glassAt(t), TINT)]);
+function skyNebula(c, s, P, nx, tall) {
+  if (typeof document === 'undefined' || typeof c.getTransform !== 'function') return false;
+  const per = s.view + 120, y0 = tall ? s.top : CEIL, y1 = tall ? s.bottom : 0, h = y1 - y0;
+  if (!(per > 0) || !(h > 0) || per * SKY_RES > 4096 || h * SKY_RES > 4096) return false;
+  const key = `${per.toFixed(1)}|${y0.toFixed(1)}|${h.toFixed(1)}|${P.sky.join()}|${P.nebula.join()}`;
+  let tile = SKY_TILE.get(key);
+  if (!tile) {
+    if (SKY_TILE.size > 3) SKY_TILE.clear();
+    tile = document.createElement('canvas');
+    tile.width = Math.ceil(per * SKY_RES) + 2; tile.height = Math.ceil(h * SKY_RES);
+    const g = tile.getContext('2d');
+    g.setTransform(SKY_RES, 0, 0, SKY_RES, SKY_RES, -y0 * SKY_RES);
+    g.fillStyle = grad(g, 0, CEIL, 0, 0, P.sky);
+    g.fillRect(-1, y0, per + 2, h);
+    // each glow where it sits in the loop, and again a loop over, so it wraps whole
+    for (const [u, y, r, col] of [[70, -112, 46, P.nebula[0]], [210, -95, 52, P.nebula[1]], [330, -118, 38, P.nebula[2]]]) {
+      const at = wrap(u, per);
+      for (const k of [-1, 0, 1]) glow(g, at + k * per, y, r, col);
+    }
+    SKY_TILE.set(key, tile);
+  }
+  // the loop starts at x = wrap(nx, per) - 60 on screen, and once more a loop to the left
+  const x0 = wrap(nx, per) - 60;
+  // (the tile's first pixel column is a unit left of the loop's start: see its transform)
+  for (const x of [x0 - per, x0]) c.drawImage(tile, 0, 0, tile.width, tile.height, x - 1, y0, tile.width / SKY_RES, h);
+  return true;
+}
+const HULL_TILE = new Map();
+function hullTiles(c, s, P, r) {
+  if (typeof document === 'undefined' || typeof c.getTransform !== 'function') return false;
+  const m = c.getTransform();
+  if (!m || !Number.isFinite(m.a)) return false;
+  const S = Math.round(Math.hypot(m.a, m.b) * 4) / 4;
+  const h = s.bottom - s.top;
+  if (!(S > 0) || !(h > 0) || h * S > 8192) return false;
+  const key = `${S}|${s.top.toFixed(2)}|${h.toFixed(2)}|${r}|${P.rib}|${P.lamp}|${P.hull.join()}`;
+  let tile = HULL_TILE.get(key);
+  if (!tile) {
+    if (HULL_TILE.size > 3) HULL_TILE.clear();
+    tile = document.createElement('canvas');
+    tile.width = Math.ceil(49 * S); tile.height = Math.ceil(h * S);
+    const g = tile.getContext('2d');
+    g.setTransform(S, 0, 0, S, 0, -s.top * S);
+    g.fillStyle = grad(g, 0, s.top, 0, s.bottom, P.hull);
+    g.fillRect(0, s.top, 49, h);
+    for (const x of [-48, 0, 48]) {
+      g.fillStyle = grad(g, x, 0, x + 48, 0, [[0, `rgba(${P.rib},0)`], [0.12, `rgba(${P.rib},0.09)`], [0.3, `rgba(${P.rib},0)`]]);
+      g.fillRect(x, s.top, 48, CEIL - r - s.top);
+      g.fillRect(x, r, 48, s.bottom - r);
+      glow(g, x + 24, 30, 14, P.lamp);
+      g.fillStyle = P.lampCore; g.beginPath(); g.ellipse(x + 24, 30, 3, 1, 0, 0, TAU); g.fill();
+    }
+    g.fillStyle = grad(g, 0, CEIL, 0, 0, P.cove);
+    g.fillRect(0, CEIL, 49, -CEIL);
+    HULL_TILE.set(key, tile);
+  }
+  const x0 = -(((s.cam % 48) + 48) % 48);
+  for (let x = x0 - 48; x < s.view + 48; x += 48) c.drawImage(tile, x, s.top, 49, h);
+  return true;
+}
 const airbrush = {
   id: 'airbrush', letter: 'B', name: 'AIRBRUSHED SPACE ART',
   note: 'The 70s–80s paperback cover and NASA concept painting. Chrome that reflects a horizon on every rail and mast, '
@@ -459,6 +549,7 @@ const airbrush = {
   bg: SPACE_SCHEMES.dusk.bg, pal: SPACE_SCHEMES.dusk, chev: SPACE_CHEVRONS.green, lightBg: false, label: '#bfffe0', hint: '#7dffc0',
   hull(c, s) {
     const P = this.pal;
+    if (hullTiles(c, s, P, railDepth(this))) return;
     c.fillStyle = grad(c, 0, s.top, 0, s.bottom, P.hull);
     c.fillRect(0, s.top, s.view, s.bottom - s.top);
     // Moulded ribs: a soft highlight down each, no line work.
@@ -479,13 +570,15 @@ const airbrush = {
   paneClip(c, x, w = PANE.w) { const k = frameOf(this), B = paneB(this); c.roundRect(x + 2 * k, B.top + 2 * k, w - 4 * k, B.h - 4 * k, 14); },
   vista(c, s) {
     const P = this.pal;
-    c.fillStyle = grad(c, 0, CEIL, 0, 0, P.sky);
-    if (this.tallGlass) c.fillRect(0, s.top, s.view, s.bottom - s.top); else c.fillRect(0, CEIL, s.view, -CEIL);
     // Nebula: big soft clouds drifting at a crawl.
     const nx = -s.cam * 0.01;
-    glow(c, wrap(nx + 70, s.view + 120) - 60, -112, 46, P.nebula[0]);
-    glow(c, wrap(nx + 210, s.view + 120) - 60, -95, 52, P.nebula[1]);
-    glow(c, wrap(nx + 330, s.view + 120) - 60, -118, 38, P.nebula[2]);
+    if (!skyNebula(c, s, P, nx, this.tallGlass)) {
+      c.fillStyle = grad(c, 0, CEIL, 0, 0, P.sky);
+      if (this.tallGlass) c.fillRect(0, s.top, s.view, s.bottom - s.top); else c.fillRect(0, CEIL, s.view, -CEIL);
+      glow(c, wrap(nx + 70, s.view + 120) - 60, -112, 46, P.nebula[0]);
+      glow(c, wrap(nx + 210, s.view + 120) - 60, -95, 52, P.nebula[1]);
+      glow(c, wrap(nx + 330, s.view + 120) - 60, -118, 38, P.nebula[2]);
+    }
     if (this.titleStars) titleStarfield(c, s);
     else {
       for (let i = 0; i < 80; i++) {
@@ -541,8 +634,9 @@ const airbrush = {
     // reflection bands that slide slowly across as the station scrolls.
     const top = PB.top, h = PB.h;
     c.save(); c.beginPath(); c.roundRect(x + 2, top + 2, w - 4, h - 4, 14); c.clip();
-    c.fillStyle = 'rgba(170,225,235,0.06)'; c.fillRect(x, top, w, h);
-    c.fillStyle = grad(c, 0, top, 0, top + h, [[0, 'rgba(255,255,255,0.10)'], [0.18, 'rgba(255,255,255,0)'], [0.82, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.22)']]);
+    // the cool tint and the light-to-shade gradient laid over it, as one fill (GLASS: the two
+    // composited stop by stop — source-over is associative, so it is the same glass)
+    c.fillStyle = grad(c, 0, top, 0, top + h, GLASS);
     c.fillRect(x, top, w, h);
     const slide = ((s?.cam ?? 0) * 0.08 + x * 0.35) % (w + 80) - 40;
     for (const [off, bw, a] of [[0, 16, 0.22], [24, 6, 0.17]]) {

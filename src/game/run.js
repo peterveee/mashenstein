@@ -28,6 +28,7 @@ import {
 } from '../engine/sprites.js';
 import { SNAKE_STRIKE_LEAD } from '../sprites/animals.js';
 import { RAKE_SWING_LEAD } from '../sprites/props.js';
+import { ZAP_T, ZAP_XRAY_CHANCE, zapCanXray } from '../sprites/zap.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
@@ -14203,6 +14204,7 @@ export class RunState {
     ps.compressT = p.compressT; ps.stumbleT = p.stumbleT; ps.slipT = p.slipT;
     ps.rollBashed = p.rollBashed; ps.rollDeflectUsed = p.rollDeflectUsed;
     ps.deflectFlashT = p.deflectFlashT;
+    ps.zapT = p.zapT; ps.zapXray = p.zapXray;
     ps.powerPoseT = p.powerPoseT; ps.powerType = p.powerType;
     ps.fistThrown = p.fistThrown; ps.axeThrown = p.axeThrown; ps.wrenchThrown = p.wrenchThrown;
     ps.headless = p.headless; ps.assemblyGraceUsed = p.assemblyGraceUsed;
@@ -14333,6 +14335,7 @@ export class RunState {
     p.compressT = ps.compressT; p.stumbleT = ps.stumbleT; p.slipT = ps.slipT;
     p.rollBashed = ps.rollBashed; p.rollDeflectUsed = ps.rollDeflectUsed;
     p.deflectFlashT = ps.deflectFlashT;
+    p.zapT = ps.zapT || 0; p.zapXray = !!ps.zapXray;
     p.powerPoseT = ps.powerPoseT; p.powerType = ps.powerType;
     p.fistThrown = ps.fistThrown; p.axeThrown = ps.axeThrown; p.wrenchThrown = ps.wrenchThrown;
     p.headless = ps.headless; p.assemblyGraceUsed = ps.assemblyGraceUsed;
@@ -15226,13 +15229,27 @@ export class RunState {
       this.bonusT = BONUS_HOLD;   // losing it is news too — say so before folding back
     }
     if (this.mission.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848', { solid: true });
-    if (!trapContact) Audio.sfx('hit');
+    // THE LIVE WIRE bites instead of hitting: its own sound, and the hero jolts rigid
+    // for ZAP_T (sprites/zap.js) — now and then as his own X-ray, never twice running,
+    // and only for a hero whose skeleton has been drawn. Everything else about the hit
+    // (shake, hitstop, burst, i-frames) is the ordinary one.
+    const zapContact = src === 'railPulse';
+    if (zapContact) {
+      Audio.sfx('zap');
+      if (this.battery > 0) {
+        const xray = !this.player.zapXray && zapCanXray(this.relay.current)
+          && this.fxRng.float() < ZAP_XRAY_CHANCE;
+        this.player.zapT = ZAP_T;
+        this.player.zapXray = xray;
+      }
+    } else if (!trapContact) Audio.sfx('hit');
     shake(5, 0.3);
     this.hitstop = this.beatLock ? 0 : 0.08;
     // playerWorldX, not camX + PLAYER_X: on the finish run the hero is the thing
     // moving and the camera is the thing standing still, so the anchor has to be
     // the one that follows them across the screen.
-    burst(this.playerWorldX() + 6, GROUND_Y - this.player.y - 8, 16, 90, 0.6, '#e04848', 2, 140, () => this.fxRng.float());
+    // The wire's burst is its own: cyan sparks, not the red of a knock.
+    burst(this.playerWorldX() + 6, GROUND_Y - this.player.y - 8, 16, 90, 0.6, zapContact ? '#9fe6ff' : '#e04848', 2, 140, () => this.fxRng.float());
     if (this.battery <= 0) {
       this.die(msg, true, src);
     } else {
@@ -15992,8 +16009,11 @@ export class RunState {
     // then "I want it to match what it is WITHOUT paper". This is why it did
     // not: the material switch was also moving the picture.
     const paperActive = !!this.style.paperSkyStatic;
+    // `coversFrame`: the pack paints every pixel itself (Gravity Grid's room, top to bottom),
+    // so the sky under it is never seen — it was a full-screen gradient fill a frame for nothing.
+    const skyHidden = paperActive || !!this.style.coversFrame;
     if (frameShift > 0) {
-      if (!paperActive) {
+      if (!skyHidden) {
         const sky = ctx.createLinearGradient(0, frameShift + bgShift, 0, frameShift + bgShift + H);
         sky.addColorStop(0, this.cabinet.sky ? this.cabinet.sky[0] : '#78c8f0');
         sky.addColorStop(1, this.cabinet.sky ? this.cabinet.sky[1] : '#a8e0f8');
@@ -16002,7 +16022,7 @@ export class RunState {
       }
       ctx.translate(0, frameShift);
     }
-    if (Math.abs(climb) > 0.5 && !paperActive) {
+    if (Math.abs(climb) > 0.5 && !skyHidden) {
       // The sky is not scenery and cannot be allowed to run out. A pack's own
       // gradient is drawn 0..H in the SHIFTED space, so once the shift is more
       // than a few pixels the top of the frame is raw canvas. This lays the

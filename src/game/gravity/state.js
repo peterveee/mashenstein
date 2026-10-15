@@ -45,20 +45,19 @@ function ceilingJumpsOnly(hazards) {
 const BED_STEP = 24, BED_W = 15, WIRE_MAX = 150, WIRE_GAP = 24;   // a clear gap: at 10 their glows met (14 Oct)
 // The wires read best alone (Peter, 14 Oct: "dont put obstacles between the different
 // sections of live wires … gaps are fine"): the station's props authored on a wrong
-// rail are lifted off it, and a wire starts after its gate's field rather than either
-// side of it. Mission machinery keeps its place.
+// rail are lifted off it. Mission machinery keeps its place.
+// Since 15 Oct the gate's field comes off the wrong rail too and the wire starts right
+// behind the gate (Peter: "dont put obstacles in front of live wires - give more
+// opportunity for players to walk into the wires"): a missed arrow walks straight onto
+// the wire and gets the zap (sprites/zap.js), not a field that spends the hit first.
 const WIRE_CLEARS = new Set(['foilCrate', 'specimenCase', 'fuelCell', 'maintenanceBot',
   'coolantRadiator', 'valveManifold', 'weldingDrone', 'looseToolkit']);
 function withWrongRailBeds(hazards, gates, total, speed) {
   if (!gates.length) return hazards;
   const spans = [{ start: 0, end: gates[0].x - 38, lane: 1 },
-    ...gates.map((g, i) => {
-      const lane = 1 - g.lane, end = (gates[i + 1]?.x ?? total) - 38;
-      const field = hazards.filter(h => h.lane === lane && isGateField(h.type) && h.x > g.x && h.x < g.x + 260).at(-1);
-      return { start: field ? field.x + 30 : g.x + 52, end, lane };
-    })];
+    ...gates.map((g, i) => ({ start: g.x + 52, end: (gates[i + 1]?.x ?? total) - 38, lane: 1 - g.lane }))];
   const inSpan = (h) => spans.some(sp => h.lane === sp.lane && h.x >= sp.start - 20 && h.x < sp.end);
-  hazards = hazards.filter(h => !(WIRE_CLEARS.has(h.type) && inSpan(h)));
+  hazards = hazards.filter(h => !((WIRE_CLEARS.has(h.type) || isGateField(h.type)) && inSpan(h)));
   const occupied = (lane, x) => hazards.some(h => h.lane === lane
     && x + BED_W + 14 > h.x && x - 14 < h.x + (h.span ? h.span * speed : 16));
   const beds = [];
@@ -293,7 +292,7 @@ export class GravityRunState extends RunState {
     this.fillGravityEntities();
     this.style = {
       ...this.style, name: 'gravity', lightBg: this.spaceLook?.lightBg ?? false, smoothMotion: true,
-      heroShadow: false, bgPan: 0, ownSurface: true, noTerrain: true,
+      heroShadow: false, bgPan: 0, ownSurface: true, noTerrain: true, coversFrame: true,
       bg: c => { c.fillStyle = this.spaceLook?.bg ?? '#0b1723'; c.fillRect(0, 0, W, H); },
       ground: (c, cam, cab, obs, cuts, t, view) => {
         const z = this.camZoom, floor = screenYFor(GROUND_Y, z, this.camPan, this.camFloorY);

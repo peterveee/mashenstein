@@ -35,6 +35,7 @@ const POWER_GLOW = {
 // of reading as a stray one loose on the field.
 const HEAL_GLOW = 'rgba(96,232,104,0.45)';
 import { drawBoostFx } from './boostFx.js';
+import { ZAP_T, drawZapHero } from '../sprites/zap.js';
 import { GROUND_Y } from '../engine/camera.js';
 import { PLAYER_X, SLIP_T } from './player.js';
 
@@ -496,7 +497,10 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // shadow is cast by a body that is still there; only its drawing is being
   // withheld. So the frame is still queued and still paints the shadow, and the
   // figure alone drops out.
-  const blink = !starLeft && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
+  // The live wire's jolt (sprites/zap.js) is the hit's picture while it lasts, so the
+  // blink waits for it to finish.
+  const zapW = player.zapT > 0 ? ZAP_T - player.zapT : -1;
+  const blink = !starLeft && zapW < 0 && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
   if (blink && !(opts.contactShadow > 0)) return;
   // opts.pose patches the derived pose. The controller only ever reports run /
   // jump / slide, because those are the only things a hero does while a stage is
@@ -569,7 +573,8 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
         drawToon(c, heroId, pose, cx - i * 5, feetY, HERO_DRAW_H, { alpha: 0.2 * starFade / i });
       }
     }
-    if (!boostPainted) drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
+    if (zapW >= 0 && !boostPainted) drawZapHero(c, heroId, cx, feetY, zapW, t, { xray: player.zapXray });
+    else if (!boostPainted) drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
     // opts.specialOrb false hides the readiness orb. A run always wants it —
     // every hero there has a power and the orb is how you know it is back — but
     // a scene that has not handed the player a power yet is showing a meter for

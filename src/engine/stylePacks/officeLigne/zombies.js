@@ -109,12 +109,17 @@ export function drawOfficeZombie(g, t, role, { shape = ZOMBIE_SHAPE, h = shape.h
   paint(c);
   c.setTransform(1, 0, 0, 1, 0, 0);
   // the rims are the figure less itself shifted: lit down the left (the window side, as the office
-  // lights its people), a wider shade band down the right
-  const fill = (col) => (tweak.soft ? softColour(col) : col);
-  const lit = rim(cv, W, H, 'lit', 1.3 * k, fill('rgba(255,251,242,0.5)'));
+  // lights its people), a wider shade band down the right. Their widths go with the figure's size,
+  // in its own units, so a zombie drawn bigger (the usher in the lift) is not edged heavier; and
+  // they are fine lines, not bands (Peter, 15 Oct 2026: "the zombies have quite thick lines on the
+  // top left? do these need to be reduced to match the reduced proportions?").
+  const fill = (col) => (tweak.soft ? softColour(col) : col), per = h / 51;
+  // As faint as the office's own people's light (room.js cubicleBack, seatedBack: a white sliver at
+  // about a fifth, a shade band at about a sixth): "could they be a little softer still".
+  const lit = rim(cv, W, H, 'lit', 0.75 * per * k, fill('rgba(255,251,242,0.2)'));
   c.globalCompositeOperation = 'source-atop';
   c.drawImage(lit, 0, 0);
-  const dark = rim(cv, W, H, 'dark', -3.2 * k, fill('rgba(24,18,36,0.2)'));
+  const dark = rim(cv, W, H, 'dark', -2.4 * per * k, fill('rgba(24,18,36,0.14)'));
   c.drawImage(dark, 0, 0);
   c.globalCompositeOperation = 'source-over';
   g.drawImage(cv, BOX.x0 * sc, BOX.y0 * sc, W / k, H / k);

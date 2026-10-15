@@ -1093,6 +1093,35 @@ function cargoLine(c, x, y, t, k) {
 // once (as menus.js bakes the title's) and only scrolled each frame.
 const STAR_TILE = 560, STAR_TOP = -140, STAR_H = 132, STAR_SS = 2;
 const starLayers = [];
+// Where each layer's stars are on its canvas: rects (in tile units, snapped to the bake's pixel
+// grid) round every star's glow, overlapping ones merged. A layer is ~108 small soft dots on a
+// 560 x 132 sheet that is otherwise empty, and drawing the whole sheet magnified three times a
+// frame was the costliest thing in Gravity Grid's room (15 Oct 2026); drawing just these rects
+// from the same canvas, mapped the same way, puts down the same pixels.
+const starRects = [];
+function starRectsFor(layer, spec) {
+  const snap = (v, up) => (up ? Math.ceil(v * STAR_SS) : Math.floor(v * STAR_SS)) / STAR_SS;
+  const rs = [];
+  for (let i = 0; i < spec.n; i++) {
+    const sx = hash(i * 3 + layer * 101) * STAR_TILE, sy = 2 + hash(i * 5 + layer * 211) * (STAR_H - 4);
+    const mag = hash(i * 7 + layer * 307), rad = spec.r[0] + mag * (spec.r[1] - spec.r[0]), spread = rad * spec.spread;
+    const half = Math.max(spread, layer === 2 && mag > 0.86 ? rad * 3 : 0) + 1 / STAR_SS;
+    rs.push([snap(Math.max(0, sx - half)), snap(Math.max(0, sy - half)), snap(Math.min(STAR_TILE, sx + half), true), snap(Math.min(STAR_H, sy + half), true)]);
+  }
+  // merge any that touch, so no pixel is drawn twice
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let a = 0; a < rs.length && !merged; a++) for (let b = a + 1; b < rs.length; b++) {
+      const A = rs[a], B = rs[b];
+      if (A[0] <= B[2] && B[0] <= A[2] && A[1] <= B[3] && B[1] <= A[3]) {
+        rs[a] = [Math.min(A[0], B[0]), Math.min(A[1], B[1]), Math.max(A[2], B[2]), Math.max(A[3], B[3])];
+        rs.splice(b, 1); merged = true; break;
+      }
+    }
+  }
+  return rs.map(([x0, y0, x1, y1]) => ({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }));
+}
 function bakeStars(limit = 3) {
   if (starLayers.length >= limit || typeof document === 'undefined') return starLayers.length > 0;
   // Subtler since 13 Oct ("more subtle stars"): smaller, dimmer, tighter halos.
@@ -1116,6 +1145,7 @@ function bakeStars(limit = 3) {
         x.fillRect(sx - rad * 3, sy - 0.15, rad * 6, 0.3); x.fillRect(sx - 0.15, sy - rad * 3, 0.3, rad * 6);
       }
     }
+    starRects[layer] = starRectsFor(layer, spec);
     starLayers.push(cv);
   }
   return true;
@@ -1128,7 +1158,15 @@ export function titleStarfield(c, s) {
     const off = -(((s.cam * f + s.t * (0.4 + layer * 0.5)) % STAR_TILE) + STAR_TILE) % STAR_TILE;
     c.save();
     c.globalAlpha *= 0.72 + Math.sin(s.t * (0.55 + layer * 0.17) + layer * 2.1) * 0.1;
-    for (let x = off; x < s.view + 10; x += STAR_TILE) c.drawImage(starLayers[layer], x, STAR_TOP, STAR_TILE, STAR_H);
+    const cv = starLayers[layer], rects = starRects[layer];
+    for (let x = off; x < s.view + 10; x += STAR_TILE) {
+      if (!rects) { c.drawImage(cv, x, STAR_TOP, STAR_TILE, STAR_H); continue; }
+      for (const r of rects) {
+        const dx = x + r.x;
+        if (dx > s.view + 10 || dx + r.w < -70) continue;
+        c.drawImage(cv, r.x * STAR_SS, r.y * STAR_SS, r.w * STAR_SS, r.h * STAR_SS, dx, STAR_TOP + r.y, r.w, r.h);
+      }
+    }
     c.restore();
   });
   // Shooting star: one in half of the 6.5 s windows, upper sky, down-right.

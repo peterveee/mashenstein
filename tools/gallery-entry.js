@@ -11,9 +11,6 @@ import { HAIR_STUDIES, LUNCH_STUDIES, drawHairStudy, drawLunchStudy } from '../s
 import { drawOfficeProductionScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
 import { OFFICE_CHAIR_CANDIDATES, OFFICE_CHAIR_ROOMS, drawOfficeChairScene } from '../src/dev/office-chair-candidates.js';
 import { OFFICE_ZOMBIE_CANDIDATES, drawOfficeZombieScene } from '../src/dev/office-zombie-candidates.js';
-import { officeLandmarks, setOfficeLiftBakeoff } from '../src/engine/stylePacks/officeLigne/progression.js';
-import { LIFT_POSTER_CANDIDATES, LIFT_MARTIAN_CANDIDATES } from '../src/dev/office-lift-candidates.js';
-import { OFFICE_WINDOW_GAGS, drawOfficeWindowGag } from '../src/dev/office-window-gags.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -75,7 +72,6 @@ import {
 } from '../src/game/terrain.js';
 import { BANANA_CANDIDATES, drawBananaCandidate } from '../src/dev/banana-candidates.js';
 import { PIT_CANDIDATES, drawPitCandidate } from '../src/dev/pit-candidates.js';
-import { FROST_SCENERY_CANDIDATES } from '../src/dev/frost-scenery-candidates.js';
 import {
   COUNTRYSIDE_HAZARD_CANDIDATES, drawCountrysideHazard,
 } from '../src/dev/countryside-hazard-candidates.js';
@@ -99,13 +95,8 @@ import {
 import { ensureKanaFonts, NEON_PLATFORM_CALLS } from '../src/engine/kana.js';
 import { drawIdeaScene, drawIdeaCloseUp } from '../src/dev/idea-scene.js';
 import { SPEED_SIGN_GAGS } from '../src/dev/speed-sign-gags.js';
-import { FROST_IDEAS } from '../src/dev/frost-ideas.js';
-import { FROST_BG_V2, drawFrostV2Scene, drawFrostV2CloseUp } from '../src/dev/frost-background-v2.js';
-import { FROST_SLEIGH_V2, drawSleighFinishScene, drawSleighCloseUp } from '../src/dev/frost-sleigh-v2.js';
 import { WOLVES_FIRE_CANDIDATES, drawWolvesFireScene, drawWolvesFireCloseUp } from '../src/dev/wolves-fire-candidates.js';
-import { FUJI_EXIT_CANDIDATES, fujiExitGoldenMood, fujiExitNightMood } from '../src/dev/neon-fuji-exit-candidates.js';
-import { CRYPT_STYLE_SHIPPED, CRYPT_STYLE_A_LEVEL, CRYPT_STYLE_B_LEVEL, CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
-import { SPEED_MCM_CANDIDATES, SPEED_MCM_SCREENS, drawSpeedMcmScene, COYOTE_CANDIDATES, drawCoyoteCloseUp } from '../src/dev/speed-mcm-candidates.js';
+import { CRYPT_SCREENS, drawCryptStyleScene } from '../src/dev/crypt-style-candidates.js';
 import { OFFICE_STYLE_SHIPPED, OFFICE_STYLE_CANDIDATES, OFFICE_STYLE_INFUSIONS, OFFICE_STYLE_ROUND_THREE, OFFICE_SCREENS, drawOfficeStyleScene } from '../src/dev/office-style-candidates.js';
 import {
   OFFICE_OBSTACLE_CANDIDATES, OFFICE_OBSTACLE_SLOTS, OFFICE_OBSTACLE_LANE_H,
@@ -137,12 +128,11 @@ import { BAKEOFF as NEON_OBSTACLES } from '../src/dev/neon-obstacle-candidates.j
 import { BAKEOFF as GRAVITY_OBSTACLES, LANE_W as GRAVITY_LANE_W, LANE_H as GRAVITY_LANE_H, drawGravityCandidateLane, drawGravityControlLineup, drawGravityCandidateLineup, gravityCandidateCaption } from '../src/dev/gravity-obstacle-candidates.js';
 import { WALKER_CANDIDATES, drawWalkerTile } from '../src/dev/space-walker-candidates.js';
 import { RAIL_WIRE_CANDIDATES, drawRailWireTile } from '../src/dev/rail-wire-candidates.js';
+import { ZAP_CANDIDATES, drawZapTile } from '../src/dev/zap-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
 import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SLOT_BEATS, drawSurgeFx } from '../src/dev/surge-transition-candidates.js';
-import { CRYPT_IDEA_GROUPS, drawCryptIdeaScene, drawCryptIdeaCloseUp } from '../src/dev/crypt-ideas-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
-import { drawCryptDistantZombieScene } from '../src/dev/crypt-distant-zombie-procession.js';
 import { CRYPT_MOVIE_LANE, CRYPT_MOVIE_BACKDROPS, CRYPT_MOVIE_MOMENTS, drawCryptMovieLane, drawCryptMovieBackdrop } from '../src/dev/crypt-movie-bakeoff.js';
 import { FROST_FORTRESS_CANDIDATES, FROST_ROCK_CANDIDATES, drawFrostRockFortressScene } from '../src/dev/frost-rock-fortress-candidates.js';
 
@@ -8001,81 +7991,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     'speed', SPEED_SIGN_GAGS, 'trafficCone', { totalDist: Infinity });
 }
 
-// ------------------------------------------ FROST — more of the fortress (lab, ideas)
-// IDEAS BAKE-OFF, 24 Sep 2026, the frost companion to the Tokyo sheet above. Painters
-// in src/dev/frost-ideas.js, drawn into the shipped watercolor frost-2 scene.
-{
-  const frost = CABINETS.find((cab) => cab.id === 'frost');
-  const pack = getStylePack('watercolor', {});
-  const grid = section('frost-ideas', 'FROST FORTRESS — more of the fortress (ideas bake-off)',
-    'IDEAS, 24 Sep 2026. Background items, lane obstacles and flyers for the frost levels. Quick sketches at '
-    + 'the game\'s real size in the frost-2 scene with the hero — judge the idea, not the finish. For scale, the '
-    + 'first card is today\'s snowman. Obstacles and flyers also get a close-up.',
-    '24 Sep 2026');
-  const scene = { stageIndex: 1 };
-  const REF = { id: 'snowman', place: 'lane', name: 'now · the snowman',
-    note: 'What frost\'s lane has today, for scale (13x12, breakable).',
-    paint: (ctx, t, x, g) => drawProp(ctx, 'snowman', x - 7, g - 14, 14, 14) };
-  for (const idea of [REF, ...FROST_IDEAS]) {
-    const where = { bg: 'scenery', lane: 'in the lane', air: 'in the air' }[idea.place];
-    tile(grid, `${idea.name} — ${where}`, idea.note, W, H, (ctx, t) => {
-      const camX = t * 60;
-      pack.bg(ctx, t, camX, frost, 1000, scene, 0, scene);
-      if (idea.place === 'bg') idea.paint(ctx, t, camX);
-      ctx.save();
-      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
-      pack.ground(ctx, camX, frost, [], [], t * 60, VIEW_W);
-      drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
-      if (idea.place === 'lane') idea.paint(ctx, t, PLAYER_X + 70, GROUND_Y);
-      if (idea.place === 'air') idea.paint(ctx, t, PLAYER_X + 80, GROUND_Y - 20);
-      ctx.restore();
-      if (pack.post) pack.post(ctx, t);
-      if (pack.weather) pack.weather(ctx, t);
-    }, { animated: true });
-    if (idea.place === 'bg' || idea === REF) continue;
-    tile(grid, `${idea.name} — close up`, `${idea.zoom ?? 5} times over, on snow.`, 200, 160, (ctx, t) => {
-      ctx.fillStyle = '#dcecf8';
-      ctx.fillRect(0, 0, 200, 160);
-      ctx.fillStyle = '#f4faff';
-      ctx.fillRect(0, 150, 200, 10);
-      ctx.save();
-      ctx.translate(100, 150);
-      ctx.scale(idea.zoom ?? 5, idea.zoom ?? 5);
-      idea.paint(ctx, t, idea.cx ?? 0, idea.place === 'air' ? -16 : 0);
-      ctx.restore();
-    }, { animated: true });
-  }
-}
-
-// ------------------------------------------ FROST — background V2 (lab, ideas)
-// Round two of the frost background animations (Peter, 25 Sep 2026: polar bear, an
-// igloo, the three wolves redone like the Speed Zone coyote, the log cabin in paper and
-// embedded in a hilltop — "call it FROST Backgound V2"). Painters and the scene are in
-// src/dev/frost-background-v2.js; each reaches the REAL frost backdrop through the
-// pack's frostLandmarkStudy seam, so it stands on a real ridge crest in the landmark
-// slot. Per idea: the scene with the camera running at lane speed (looping over the
-// idea's crossing), then a held close-up.
-{
-  const grid = section('frost-background-v2', 'FROST Background V2 (all ship)',
-    'SHIPPED 25 Sep 2026 ("those are all great fantastic - please incorporate into the levels"): every one is in '
-    + 'the frost levels now (stylePacks/frostWildlife.js) — the fox, polar bears, wolves and igloo in frost-1, the '
-    + 'cabin, wolves again and the sled in frost-2, the wolves at dusk in frost-3; see the new-level-scenery cards. '
-    + 'IDEAS, 25 Sep 2026 — round two of the frost background animations. The wolves (redone the way the Speed Zone '
-    + 'coyote is built), the log cabin and an igloo in Frost\'s cut paper, set into the tops of the near hills, and a '
-    + 'polar bear with her cub; then two suggestions, an arctic fox\'s mousing dive and a husky sled team. Each stands '
-    + 'on the real ridge in the chair lift\'s and reindeer herd\'s slot. First tile: the camera at lane speed, looping '
-    + 'over the time it is actually on screen (a near-hill item crosses in about five seconds), blizzard held light. '
-    + 'Second: the camera held, close up. Nothing here is in the game yet. ANIMATED.',
-    '25 Sep 2026');
-  for (const idea of FROST_BG_V2) {
-    const stage = ['', 'frost-1 (day)', 'frost-2 (low sun)', 'frost-3 (dusk)'][idea.stage ?? 1];
-    tile(grid, `${idea.name} — ${stage}`, idea.note, W, H,
-      (ctx, t) => drawFrostV2Scene(ctx, t, idea), { animated: true });
-    tile(grid, `${idea.name} · close-up`, `The camera held, ${idea.zoom ?? 3}x, without the blizzard or the hero.`, W, H,
-      (ctx, t) => drawFrostV2CloseUp(ctx, t, idea, W, H), { animated: true });
-  }
-}
-
 // ------------------------------------------ FROST — the rocks and fortresses, bake-off (lab)
 // Peter, 25 Sep 2026: "i don't love the rocks/fortresses we have... they look super basic
 // compared to a lot of our new background stuff... can you do a bakeoff with new better
@@ -8113,72 +8028,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
-// ---------------------------------------------------------------- Frost scenery bake-off
-// Every candidate is drawn through watercolorPack.bg with the same camera,
-// seeded placement, stage light and real lane. The optional callbacks only add
-// detail inside its own clipped rocks/trees/landmarks and on its existing ridges.
-{
-  const frost = CABINETS.find((cab) => cab.id === 'frost');
-  const pack = getStylePack(frost.style, {});
-  const grid = section('frost-scenery-bakeoff', 'FROST FORTRESS — hills, rocks & scenery (E ships)',
-    'SETTLED, 25 Sep 2026: E ships, combining B\'s paper hill seams with D\'s deep snow on rocks and trees. '
-    + 'A is the earlier Frost scene; B, C and D remain comparison studies. '
-    + 'All are painted through the real Frost backdrop at the same camera positions. Compare the ridge contours, '
-    + 'glacier, ice rocks, pines and snowbanks under day, low sun and dusk light. '
-    + 'The lane and hero are shown for honest gameplay scale. Click a tile to save its PNG.',
-    '25 Sep 2026');
-  const scene = (ctx, t, cand, stageIndex, camX) => {
-    const bc = { stageIndex, progress: 0.35, frostSceneryStudy: cand.study || null };
-    pack.bg(ctx, t, camX, frost, 10000, bc, 0, bc);
-    ctx.save();
-    applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
-    pack.ground(ctx, camX, frost, [], [], t * 60, VIEW_W);
-    drawToon(ctx, 'grumpos', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
-    ctx.restore();
-  };
-  for (const cand of FROST_SCENERY_CANDIDATES) {
-    const name = `${cand.letter} — ${cand.name}`;
-    for (const [stage, light, camX] of [
-      [1, 'day', 780], [2, 'low sun', 1410], [3, 'dusk', 2250],
-    ]) {
-      tile(grid, `${name} · frost-${stage}`, `${light}. ${cand.note}`, W, H,
-        (ctx) => scene(ctx, 1.25, cand, stage, camX));
-    }
-    tile(grid, `${name} · ridge close-up`,
-      '2.4× crop of the real frost-2 frame; inspect the rock, snow edge and background objects.',
-      480, 260, (ctx) => {
-        const z = 2.4;
-        ctx.save();
-        ctx.scale(z, z);
-        ctx.translate(-125, -67);
-        scene(ctx, 1.25, cand, 2, 1410);
-        ctx.restore();
-      }, { wide: true });
-  }
-}
-
-// ------------------------------------------ FROST — Santa and his reindeer, round two (lab)
-// Peter, 25 Sep 2026: "can we do a bake off with new and improved santa and reindeer flying
-// across the sky?" The candidates are in src/sprites/sleigh.js with round one (I, J, K are
-// new; H is what flies at the frost-3 tape today); the scene is src/dev/frost-sleigh-v2.js.
-{
-  const grid = section('frost-sleigh-v2-bakeoff', 'FROST 3 — Santa and his reindeer, round two (M ships)',
-    'SETTLED 25 Sep 2026: "lets do the full team WITH stardust... can we possily get them all to fly on an arc path?" — L is K\'s team with J\'s stardust, every member on the arc. Asked 25 Sep 2026: "can we do a bake off with new and improved santa and reindeer flying across the sky?" H is what '
-    + 'flies over the frost-3 finish today — a small slate team, drawn for the days it flew BEHIND the blizzard. It flies '
-    + 'in front of the snow now, so the new ones are in colour and in Frost\'s cut paper: the herd\'s own paper reindeer '
-    + 'in pairs with red harness and gold bells, Rudolph\'s nose blinking on the lead, a red lacquered sleigh on gold '
-    + 'runners with a sack of presents, and Santa in red and white — beard, one hand on the reins, the other waving. '
-    + 'First card: the frost-3 finish in its real blizzard, the sleigh at the shipped scale and glow on the real arc. '
-    + 'Second: held in the dusk sky, 3.4x. ANIMATED.',
-    '25 Sep 2026');
-  for (const c of FROST_SLEIGH_V2) {
-    tile(grid, `${c.label} · at the frost-3 tape`, 'The finish in its real blizzard, the sleigh in front of the snow, looped.', W, H,
-      (ctx, t) => drawSleighFinishScene(ctx, t, c.id), { animated: true });
-    tile(grid, `${c.label} · close-up`, 'Held in the frost-3 sky, 3.4x.', W, H,
-      (ctx, t) => drawSleighCloseUp(ctx, t, c.id), { animated: true });
-  }
-}
-
 // ------------------------------------------ FROST — the wolves round a fire (lab)
 // Peter, 25 Sep 2026: "For the wolves around the fire looks like one is on fire.. can you
 // redraw so perhaps the fire isn't infront of any of them. alternatialy what if they were
@@ -8204,72 +8053,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
-// ------------------------------------------ NEON 1 — how Fuji leaves (lab)
-// Peter, 25 Sep 2026: rather than fading Mt Fuji out before the night, "a fog that covers
-// it gradually which then disappears when we [turn] to night … Open to suggestions or a
-// bake off". The candidates are in src/dev/neon-fuji-exit-candidates.js; each card is the
-// shipped neon pack through its golden and night moods, with the strike at 10%.
-{
-  ensureKanaFonts();
-  const neon = CABINETS.find((cab) => cab.id === 'neon');
-  const pack = getStylePack('neon', {});
-  const grid = section('neon-fuji-exit-bakeoff', 'TERMINAL VELOCITY — how Fuji leaves neon-1 (bake-off)',
-    'Asked 25 Sep 2026: "a fog that covers it gradually which then disappears when we [turn] to night … the fog '
-    + 'would rise up to cover it rather than a simple fade … It could move off screen I suppose. Technically Fuji is '
-    + 'visible from Tokyo." 0 is what ships. A–F finish just before the strike (2%–9.5% of the stage) and live in '
-    + 'the golden sky, so the spreading night takes whatever is left with the sun; G keeps the mountain into the night. '
-    + 'Each card runs neon-1 from 0% to 16% on a ten-second loop, the city arriving as it does in the game and the '
-    + 'strike at 10%; the stage % is in the corner. ANIMATED.',
-    '25 Sep 2026');
-  const LOOP = 10, RUN = 8, END = 0.16, TURN = 0.1;
-  for (const cand of FUJI_EXIT_CANDIDATES) {
-    const golden = fujiExitGoldenMood(cand);
-    const night = fujiExitNightMood(cand);
-    tile(grid, cand.label, cand.blurb, W, H, (ctx, t) => {
-      const tt = t % LOOP;
-      const progress = Math.min(END, (tt / RUN) * END);
-      const camX = tt * 60;
-      const paint = (mood) => {
-        const c = { stageIndex: 1, progress, neonMood: mood };
-        pack.bg(ctx, t, camX, neon, 1000, c, 0, c);
-      };
-      paint(golden);
-      const u = progress >= TURN ? (tt - (TURN / END) * RUN) : -1;
-      const hitX = W * 0.5, hitY = GROUND_Y - 70;
-      if (u >= 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(hitX, hitY, neonStrikeRadius(u, W * 1.4), 0, Math.PI * 2);
-        ctx.clip();
-        paint(night);
-        ctx.restore();
-        drawNeonBolt(ctx, u, hitX, hitY, 7, { left: -20, right: W + 20, top: GROUND_Y * 0.24 });
-        const flash = neonStrikeFlash(u);
-        if (flash > 0) {
-          ctx.save();
-          ctx.globalAlpha = flash * 0.8;
-          ctx.fillStyle = '#eafcff';
-          ctx.fillRect(0, 0, W, H);
-          ctx.restore();
-        }
-      }
-      ctx.save();
-      applyWorld(ctx, WORLD_Z, 0, GROUND_Y);
-      pack.ground(ctx, camX, neon, [], [], t * 60, VIEW_W);
-      drawToon(ctx, 'b33p', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
-      ctx.restore();
-      if (pack.post) pack.post(ctx, t);
-      ctx.save();
-      ctx.font = 'bold 10px monospace';
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(4, 4, 44, 14);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(`${(progress * 100).toFixed(1)}%`, 8, 15);
-      ctx.restore();
-    }, { animated: true });
-  }
-}
-
 // ------------------------------------------ CRYPT SHIFT — backdrop styles (lab)
 // Peter, 25 Sep 2026: "i want to do a bakeoff in different styles … So the crypt instead
 // of the plumber … World only … only the background will change our game lane remains as
@@ -8286,117 +8069,6 @@ function cryptStyleTiles(grid, tag, cand) {
       (ctx, t) => drawCryptStyleScene(ctx, t, cand.paint, screen), { animated: true });
   }
 }
-{
-  const grid = section('crypt-style-bakeoff', 'CRYPT SHIFT — backdrop styles, A level (bake-off)',
-    'Asked 25 Sep 2026: a bake-off of whole backdrop styles on Crypt Shift, the world only — the lane stays '
-    + 'exactly as it ships. A LEVEL is Peter\'s favourites, in his order; 0 is the shipped VHS backdrop for '
-    + 'comparison, and the other nine are kept below as B LEVEL. Every card paints the same scene: a ruined abbey '
-    + 'against the moon on the far ridge, a graveyard hill with mausoleums, headstones and crosses, a near bank with '
-    + 'a gnarled tree, iron railings, a gate and a gas lamp, two fog bands, stars, clouds and bats. Two screens each: '
-    + 'the abbey, then four screens on at the second tomb; the camera runs from each on an eight-second loop so the '
-    + 'parallax shows, and the hero hops the hazards. The VHS scanlines are left off the candidates (a whole-frame '
-    + 'pass would be judging the tape, not the painting). Write-up: docs/BACKDROP_STYLES.md. ANIMATED.',
-    '25 Sep 2026');
-  cryptStyleTiles(grid, '0', CRYPT_STYLE_SHIPPED);
-  CRYPT_STYLE_A_LEVEL.forEach((cand, n) => cryptStyleTiles(grid, `A${n + 1}`, cand));
-}
-{
-  const grid = section('crypt-style-bakeoff-b', 'CRYPT SHIFT — backdrop styles, B level (reference)',
-    'The rest of the 25 Sep 2026 Crypt Shift style bake-off, kept for reference: the same scene, lane and loop as '
-    + 'the A level above. B4–B8 are the ingredients of Peter\'s Hybrid Vector brief on their own (voxel, blueprint, '
-    + 'constructivism, pop art, riso; mid-century modern and shadow puppetry are A level), and B9 is the brief\'s '
-    + 'blend. Voxel was A level until Peter moved it down the same day. ANIMATED.',
-    '25 Sep 2026');
-  CRYPT_STYLE_B_LEVEL.forEach((cand, n) => cryptStyleTiles(grid, `B${n + 1}`, cand));
-}
-
-// ------------------------------------------ SPEED ZONE — mid-century modern (lab)
-// Peter, 25 Sep 2026: "As for Speed, can we convert a small section into the lab gallery
-// to see how it might look as MCM" — after the crypt style bake-off, where he was "very
-// taken with MCM … a great fit for the speed level with it's desert theme". Two screens of
-// speed-1 re-composed from the shipped pack's own numbers (src/dev/speed-mcm/plan.js),
-// painted in one mid-century hand with two palettes; the lane is the shipped one.
-{
-  const grid = section('speed-mcm-bakeoff', 'SPEED ZONE — mid-century modern (bake-off)',
-    'Asked 25 Sep 2026: a small section of Speed Zone converted to the mid-century modern backdrop, the Road '
-    + 'Runner desert of the 1950s layout painters. 0 is the shipped paper backdrop. A is speed-1\'s own warm late '
-    + 'sun in period colours; B is the classic midday palette (turquoise sky, bleached sand, terracotta mesas). Two '
-    + 'screens: the opening, with the wind pump in front of the sun, and the stretch about 61% in where the first '
-    + 'coyote howls on its ledge. The world only — the road, hazards and hero are the shipped ones — on the same '
-    + 'eight-second loop as the crypt cards. ANIMATED.',
-    '25 Sep 2026');
-  SPEED_MCM_CANDIDATES.forEach((cand, n) => {
-    const tag = n === 0 ? '0' : String.fromCharCode(64 + n);
-    for (const screen of SPEED_MCM_SCREENS) {
-      tile(grid, `${tag} ${cand.name} — ${screen.name}`, cand.note, W, H,
-        (ctx, t) => drawSpeedMcmScene(ctx, t, cand.paint, screen), { animated: true });
-    }
-  });
-}
-
-// ------------------------------------------ SPEED ZONE — the mid-century coyote (lab)
-// Peter, 26 Sep 2026, of the MCM coyote re-cut from the paper one: "can we do a few more
-// styles for the cyote in a bakeoff? he looks a bit like an aardvark!" Candidates in
-// src/dev/speed-mcm/coyote-candidates.js; each is swapped into the real screen-2 card
-// through drawSpeedMcmScene's { coyote } seam.
-{
-  const grid = section('speed-mcm-coyote-bakeoff', 'SPEED ZONE — the mid-century coyote (bake-off)',
-    'Asked 26 Sep 2026: "he looks a bit like an aardvark!" — the long drooping snout, no brow, ears set back on a '
-    + 'long neck. 0 is that coyote; A–F are six takes on it in the mid-century hand, all on the same ledge at the same '
-    + 'scale, sitting and then howling on the shipped five-second clock (A and E also do the doze, the chorus with the '
-    + 'pup and the wink). First card: the coyote held close, SUNSET on the left and MIDDAY on the right. Second: the real '
-    + 'screen-2 SUNSET card with it swapped in. ANIMATED.',
-    '26 Sep 2026');
-  const sunset = SPEED_MCM_CANDIDATES.find((c) => c.id === 'mcm-sunset');
-  const coyoteScreen = SPEED_MCM_SCREENS.find((sc) => sc.id === 's2') || SPEED_MCM_SCREENS[1];
-  COYOTE_CANDIDATES.forEach((cand, n) => {
-    const tag = n === 0 ? '0' : String.fromCharCode(64 + n);
-    tile(grid, `${tag} ${cand.name} — close`, cand.note, W, H,
-      (ctx, t) => drawCoyoteCloseUp(ctx, t, cand, W, H), { animated: true });
-    tile(grid, `${tag} ${cand.name} — in the card`, 'The screen-2 SUNSET card, 61% into speed-1.', W, H,
-      (ctx, t) => drawSpeedMcmScene(ctx, t, sunset.paint, coyoteScreen, { coyote: cand.draw }), { animated: true });
-  });
-}
-
-// ------------------------------------------ CRYPT SHIFT — more life in the graveyard (lab)
-// Peter, 26 Sep 2026: "can we add more objects (maybe animals) for the crypt levels?
-// animated ideally … do we hav layers that move at different rates … lets do a bakeoff".
-// Ideas in src/dev/crypt-ideas/, one file per depth layer; each is painted INSIDE the
-// shipped gouache backdrop on its layer (cryptGouache.js's study seam), so it parallaxes at
-// that layer's rate and is covered by what stands in front of it.
-{
-  const grid = section('crypt-ideas-bakeoff', 'CRYPT SHIFT — more life in the graveyard (bake-off)',
-    'Asked 26 Sep 2026: more objects and animals for the crypt levels, animated where possible. Every idea lives on '
-    + 'one of the backdrop\'s depth layers — the parallax — and moves at that layer\'s rate: N is the near bank '
-    + 'behind the lane (fastest), H the graveyard hill, F the far ridge and the sky (barely moves). First card: the '
-    + 'camera running at lane speed over the idea, with the lane and hero on top. Second: the camera held, zoomed on '
-    + 'it. Nothing here is in the game yet. ANIMATED.',
-    '26 Sep 2026');
-  for (const group of CRYPT_IDEA_GROUPS) {
-    group.ideas.forEach((idea, n) => {
-      const tag = `${group.tag}${n + 1}`;
-      tile(grid, `${tag} ${idea.name} — running`, `${group.title}: ${idea.note}`, W, H,
-        (ctx, t) => drawCryptIdeaScene(ctx, t, idea), { animated: true });
-      tile(grid, `${tag} ${idea.name} — close`, `The camera held, ${idea.zoom ?? 3}x.`, W, H,
-        (ctx, t) => drawCryptIdeaCloseUp(ctx, t, idea, W, H), { animated: true });
-    });
-  }
-}
-
-// Crypt lane inhabitants: animated design proposals, deliberately outside production.
-{
-  const grid = section('crypt-distant-zombie-procession', 'CRYPT SHIFT — the far-hill zombie procession',
-    'Now in level 3 scenery. The unselected, gouache-influenced Z1 Last Usher, Z2 Graveyard Gardener and Z3 Overtime Clerk '
-    + 'lurch slowly across the far ridge in a close procession, entering one after another with staggered, uneven strides. '
-    + 'They use the original first-round art, softened for distance, '
-    + 'on the real Crypt background layer behind the nearer hills. The lane spawns and hitboxes are unchanged. ANIMATED.',
-    '26 Sep 2026');
-  tile(grid, 'Far hill — gameplay scale', 'Hold on the level-3 scene to watch Z1, then Z2, then Z3 lurch across the ridge.', W, H,
-    (ctx, t) => drawCryptDistantZombieScene(ctx, t + 11), { animated: true });
-  tile(grid, 'Far hill — scenery close-up', 'Same walking painters at 2.25× so the three old designs can be compared.', W, H,
-    (ctx, t) => drawCryptDistantZombieScene(ctx, t + 11, true), { animated: true });
-}
-
 // Crypt lane inhabitants: animated design proposals, deliberately outside production.
 {
   const grid = section('crypt-enemy-bakeoff', 'CRYPT SHIFT — zombies & lane hazards (bake-off)',
@@ -9483,60 +9155,6 @@ function jadeSky(ctx, w, h, seed = 1) {
   }
 }
 
-// --------------------------------------------- CORPORATE KOMBAT — inside the open lift (lab)
-// 14 Oct 2026: "i would like posters in the back of open lifts (bakeoff)", and "one of the
-// martians from the space level and/or the martian lady standing in one of the open lifts as
-// we pass on level 1 ... not sure if it should be the first or 2nd lift". Candidates:
-// src/dev/office-lift-candidates.js, through progression.js setOfficeLiftBakeoff. Each tile is
-// the production office scene held with a lift bank standing fully open, at in-run size.
-{
-  const s = sectionEl('office-lift-bakeoff', 'CORPORATE KOMBAT — inside the open lift (SHIPPED)',
-    'The open lift car on each floor: the lobby bank, and the second bank on floors 23 and 88. SHIPPED 14 Oct: every open car has an '
-    + 'EGGCORP poster (round three, mixed one per bank) and a call panel; the lobby bank carries the Martian, his car pinned open, once '
-    + 'the player has been to Gravity Grid level 3 (always in dev). The handrail is gone. ANIMATED.',
-    '14 Oct 2026');
-  const sub = (title, note) => {
-    const h3 = document.createElement('h3'); h3.className = 'subhead'; h3.textContent = title; s.appendChild(h3);
-    const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p);
-    const grid = document.createElement('div'); grid.className = 'grid'; s.appendChild(grid);
-    return grid;
-  };
-  const FLOOR_NAME = { lobby: 'lobby (8-1)', open: 'floor 23 (8-2)', exec: 'floor 88 (8-3)' };
-  const liftScene = (ctx, t, floor, which, paint) => {
-    const l = officeLandmarks(floor, 0, 26208).filter((p) => p.kind === 'lobbyLifts' || p.kind === 'lift')[floor === 'lobby' ? 0 : 1];
-    // the bank's centre 330 px across: 218 ahead of the hero, where its open car is all the way open
-    const camX = l.worldX - (330 - 112) / l.rate;
-    const was = setOfficeLiftBakeoff({ which, interior: paint });
-    try { drawOfficeProductionScene(ctx, t, { floor, hazards: [] }, false, camX); } finally { setOfficeLiftBakeoff(was); }
-  };
-  const posters = sub('1. EGGCORP posters — round three, shipped', 'Each design drawn three ways — the lobby at 9am, 23 at noon, 88 at dusk — with the call panel. '
-    + 'Rounds one (motivational, SYNERGY, the Founder…) and two (egg puns) were dropped.');
-  for (const cand of LIFT_POSTER_CANDIDATES) {
-    for (const floor of ['lobby', 'open', 'exec']) {
-      tile(posters, `${cand.letter} — ${cand.name} · ${FLOOR_NAME[floor]}`, cand.note, 480, 270,
-        (ctx, t) => liftScene(ctx, t, floor, 0, cand.paint), { animated: true });
-    }
-  }
-  const martians = sub('2. The Martian in the lobby lift', 'The Gravity Grid’s suited Martian in the office’s LIGNE ’89 hand, pressing the panel with the ACK-ACK jaw. '
-    + 'Sized to the office’s people, not the lift (the lifts are drawn huge).');
-  for (const cand of LIFT_MARTIAN_CANDIDATES) {
-    tile(martians, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
-      (ctx, t) => liftScene(ctx, t, 'lobby', cand.which, cand.paint), { animated: true });
-  }
-}
-
-// Corporate 2 window-gag stills: native production painters, not image concepts.
-{
-  const grid = section('office-window-gags', 'CORPORATE KOMBAT — floor 23 window humour',
-    'Still candidates in the real LIGNE ’89 office artwork. Each gag appears at level scale, then in a 2× detail view. '
-    + 'The manager and the upper floor stay out of sight. Click any picture to save the PNG. Gallery only.', '14 Oct 2026');
-  for (const gag of OFFICE_WINDOW_GAGS) {
-    tile(grid,gag.name+' · level scale',gag.note,480,270,ctx=>drawOfficeWindowGag(ctx,gag.id));
-    tile(grid,gag.name+' · detail','The same native drawing at 2×; the existing HANG IN THERE poster painter.',480,210,
-      ctx=>drawOfficeWindowGag(ctx,gag.id,true));
-  }
-}
-
 // Native people studies: candidates only, no change to campaign characters.
 {
  const grid=section('office-hair-studies','CORPORATE KOMBAT — hairstyle bake-off',
@@ -9582,6 +9200,22 @@ function jadeSky(ctx, w, h, seed = 1) {
   for (const cand of OFFICE_ZOMBIE_CANDIDATES) {
     tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
       (ctx, t) => drawOfficeZombieScene(ctx, t, cand), { animated: true });
+  }
+}
+
+// --------------------------------------------- GRAVITY GRID — zapped by the live wire (lab)
+// 15 Oct 2026: "it would be nice if we had a shocked animation if the hero makes contact
+// rather than our generic ... mock up 1 character being zapped in the gallery, perhaps give
+// me a few options". Candidates: src/dev/zap-candidates.js. Nothing is wired into the run.
+{
+  const grid = section('gravity-zap-bakeoff', 'GRAVITY GRID — zapped by the live wire (B + sometimes C SHIPPED)',
+    'SHIPPED 15 Oct: B, with C one hit in three (never twice running, only for heroes with an X-ray drawn), and the A BUZZ sound (sprites/zap.js, audio.js zap). Lorenzo runs along the floor rail into the live wire, on a 3.2s loop. NOW is the hit every hazard gets today; '
+    + 'A–F keep its shake and its 1.4s mercy window and change only what he does inside them. A, D and E work on '
+    + 'any hero as drawn; B, C and F pose him, and C’s skeleton is laid out for Lorenzo. Turn on SLOW to read the '
+    + 'strobes frame by frame. ANIMATED.',
+    '15 Oct 2026');
+  for (const cand of ZAP_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270, (ctx, t) => drawZapTile(ctx, t, cand.id), { animated: true });
   }
 }
 

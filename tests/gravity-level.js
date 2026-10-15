@@ -144,6 +144,29 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
   }
   r.exit();
 }
+// THE LIVE WIRE (15 Oct 2026). Nothing stands between a gate and the wire on the rail
+// it leaves — the field is lifted off, so a missed arrow walks onto the wire — and the
+// wire biting jolts the hero (sprites/zap.js) where any other hazard just hits him.
+{
+  const r = create('lorenzo', 'gravity-1');
+  const speed = r.baseSpeed();
+  for (const g of r.gravityGates) {
+    const lane = 1 - g.lane;
+    const ahead = r.gravityHazards.filter((h) => h.lane === lane && h.x > g.x && h.x < g.x + 300);
+    assert.ok(!ahead.some((h) => isGateField(h.type)), `gate ${g.x}: no field in front of the wire`);
+    const first = ahead.sort((a, b) => a.x - b.x)[0];
+    if (first) assert.equal(first.type, 'railPulse', `gate ${g.x}: the wire is the first thing on the rail left`);
+  }
+  assert.ok(r.gravityHazards.filter((h) => h.type === 'railPulse' && !h.bed && h.lane === 0
+    && Math.abs(h.span * speed - 0.3 * speed) < 0.01).length >= 4, 'short floor wires to jump');
+  r.player.iframes = 0;
+  r.takeHit(null, false, 'railPulse');
+  assert.ok(r.player.zapT > 0, 'the wire jolts the hero');
+  r.player.iframes = 0; r.player.zapT = 0;
+  r.takeHit(null, false, 'foilCrate');
+  assert.equal(r.player.zapT, 0, 'a crate does not');
+  r.exit();
+}
 // Exercise a real held ceiling jump, not just synthetic camera positions.
 {
   const r = create();

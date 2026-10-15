@@ -824,6 +824,9 @@ const SLEIGH_CAROL_LO = 523.25;
 
 // The shipped variant of the Martian ray-gun pew (see case 'martianPew').
 export const MARTIAN_PEW = 'B';   // Peter's pick, 13 Oct
+// The live wire's zap (see zap()): Peter's pick, 15 Oct — A, after C was "too short and
+// high pitched".
+export const ZAP_SOUND = 'A';
 export const SFX_TRIM = {
   blockBreak: 0.495, coinSpray: 0.822, hit: 0.785,
   // Levelled against 'boom', its opposite number, and deliberately far over it — the
@@ -3719,6 +3722,101 @@ class AudioSys {
     src.start(t); src.stop(t + DUR);
   }
 
+  // THE LIVE WIRE BITING (15 Oct 2026). Peter, of the gravity grid's live wires: "a zap
+  // sound effect would be nifty too", alongside the zapped bake-off in the lab gallery
+  // (src/dev/zap-candidates.js). A ships (ZAP_SOUND); the others stay playable by shape
+  // for the audition: `node tools/render-cues.js zap:zapA` … zapE.
+  //   A BUZZ     a low mains buzz chattering on a contact that keeps arcing
+  //   B CARTOON  the Saturday-morning bzzzzt: a wobbling saw strobed fast, a pop to end
+  //   C SNAP     a crack, a saw zap falling through the band, a sizzle trailing off
+  //   D 8-BIT    a square stepping through random pitches, NES-style
+  //   E TESLA    a thin high whine on a 120 Hz rasp, spitting crackles
+  zap(v = ZAP_SOUND) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = this.cueAt(), out = this.cueDest || this.sfxGain;
+    // Level-matched by RMS (≈ −31 dB each, ~2 dB over 'hit', the cue it would replace),
+    // so the five are judged on character rather than loudness.
+    const q = this.cueGain * ({ A: 0.431, B: 0.462, C: 1.122, D: 0.484, E: 0.966 }[v] ?? 1);
+    const env = (g, peak, dur, hold = 0, atk = 0.005, at = t) => {
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(peak * q, at + atk);
+      if (hold > atk) g.gain.setValueAtTime(peak * q, at + hold);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      g.gain.linearRampToValueAtTime(0, at + dur + 0.015);
+    };
+    // A gate the whole cue runs through: the contact chattering on and off.
+    const chatter = (f0, f1, dur, depth) => {
+      const gate = ctx.createGain(); gate.gain.value = 1 - depth;
+      const lfo = ctx.createOscillator(); lfo.type = 'square';
+      lfo.frequency.setValueAtTime(f0, t); lfo.frequency.linearRampToValueAtTime(f1, t + dur);
+      const d = ctx.createGain(); d.gain.value = depth;
+      lfo.connect(d); d.connect(gate.gain);
+      lfo.start(t); lfo.stop(t + dur + 0.03);
+      gate.connect(out);
+      return gate;
+    };
+    const tone = (dest, type, f0, f1, dur, peak, { hold = 0, at = t, hp = 0, lp = 0 } = {}) => {
+      const o = ctx.createOscillator(); o.type = type;
+      o.frequency.setValueAtTime(f0, at);
+      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, at + dur);
+      let node = o;
+      if (hp) { const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp; node.connect(f); node = f; }
+      if (lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; node.connect(f); node = f; }
+      const g = ctx.createGain(); env(g, peak, dur, hold, 0.005, at);
+      node.connect(g); g.connect(dest);
+      o.start(at); o.stop(at + dur + 0.03);
+      return o;
+    };
+    const hiss = (dest, type, freq, dur, peak, { hold = 0, at = t, Q = 0.8 } = {}) => {
+      const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = Q;
+      const g = ctx.createGain(); env(g, peak, dur, hold, 0.003, at);
+      src.connect(f); f.connect(g); g.connect(dest);
+      src.start(at); src.stop(at + dur + 0.03);
+    };
+    if (v === 'A') {
+      const DUR = 0.45, gate = chatter(38, 22, DUR, 0.5);
+      tone(gate, 'sawtooth', 112, 100, DUR, 0.2, { hold: 0.28, hp: 160, lp: 3600 });
+      tone(gate, 'square', 227, 200, DUR, 0.07, { hold: 0.28, hp: 160, lp: 3600 });
+      hiss(gate, 'highpass', 2600, DUR, 0.13, { hold: 0.25 });
+      hiss(out, 'highpass', 3000, 0.035, 0.3);                       // the contact
+    } else if (v === 'B') {
+      const DUR = 0.55, gate = chatter(26, 18, DUR, 0.85);
+      const o = tone(gate, 'sawtooth', 150, 95, DUR, 0.2, { hold: 0.4, lp: 4200 });
+      const fm = ctx.createOscillator(); fm.frequency.value = 57;
+      const fmd = ctx.createGain(); fmd.gain.value = 45;
+      fm.connect(fmd); fmd.connect(o.frequency); fm.start(t); fm.stop(t + DUR + 0.03);
+      tone(gate, 'square', 300, 190, DUR, 0.06, { hold: 0.4, lp: 4200 });
+      hiss(gate, 'bandpass', 3200, DUR, 0.12, { hold: 0.4, Q: 1.1 });
+      hiss(out, 'highpass', 2800, 0.04, 0.28);                       // bzz…
+      tone(out, 'sine', 320, 70, 0.08, 0.22, { at: t + DUR - 0.02 });  // …pop
+    } else if (v === 'C') {
+      hiss(out, 'highpass', 2600, 0.04, 0.42);                       // the crack
+      tone(out, 'sawtooth', 2600, 240, 0.16, 0.13);                  // the zap
+      tone(out, 'square', 1300, 120, 0.16, 0.05, { at: t + 0.005 });
+      const gate = chatter(62, 40, 0.42, 0.6);
+      hiss(gate, 'highpass', 5200, 0.42, 0.14, { hold: 0.05, at: t + 0.02 });  // the sizzle
+      hiss(gate, 'bandpass', 1800, 0.25, 0.06, { at: t + 0.02, Q: 1.4 });
+    } else if (v === 'D') {
+      const DUR = 0.36, o = ctx.createOscillator(); o.type = 'square';
+      let seed = 7;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      for (let s = 0; s < DUR; s += 0.022) o.frequency.setValueAtTime(220 + rnd() * 1300, t + s);
+      const g = ctx.createGain(); env(g, 0.08, DUR, 0.26);
+      o.connect(g); g.connect(out); o.start(t); o.stop(t + DUR + 0.03);
+      const gate = chatter(45, 45, DUR, 0.7);
+      hiss(gate, 'highpass', 4000, DUR, 0.12, { hold: 0.26 });
+    } else {
+      const DUR = 0.42, gate = chatter(120, 120, DUR, 0.75);
+      tone(gate, 'sawtooth', 860, 980, DUR, 0.07, { hold: 0.3, hp: 500 });
+      tone(gate, 'sawtooth', 1733, 1990, DUR, 0.035, { hold: 0.3, hp: 500 });
+      hiss(gate, 'bandpass', 6000, DUR, 0.1, { hold: 0.3, Q: 0.9 });
+      let seed = 11;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      for (let i = 0; i < 9; i++) hiss(out, 'highpass', 3500, 0.012 + rnd() * 0.012, 0.26 * (0.6 + 0.4 * rnd()), { at: t + rnd() * DUR });
+    }
+  }
+
   // A breathy shooting-star gesture routed through the music bus, so it sits
   // inside the title theme's echo and volume rather than behaving like an SFX.
   cometSwoop() {
@@ -5746,6 +5844,8 @@ class AudioSys {
       case 'type': this.osc('square', 800, 800, 0.02, 0.05); break;
       case 'comet': this.cometSwoop(); break;
       case 'neonBuzz': this.neonBuzz(); break;
+      // The live wire biting the hero (see zap() above) — fired by takeHit in its place.
+      case 'zap': this.zap(opt.shape?.zap); break;
     }
   }
 

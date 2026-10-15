@@ -328,6 +328,10 @@ export class Player {
     // Visual only, and deliberately NOT cleared by setHero: setHero is the
     // thing that starts it. See drawHeroSprite.
     this.tagFlashT = 0;
+    // THE LIVE WIRE'S JOLT (sprites/zap.js): seconds left of it, and whether this one
+    // is the X-ray. Visual only — the damage, the i-frames and the hitstop are takeHit's.
+    this.zapT = 0;
+    this.zapXray = false;
   }
 
   setHero(heroId) {
@@ -559,6 +563,7 @@ export class Player {
     if (this.slipT > 0) this.slipT -= dt;
     if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
     if (this.tagFlashT > 0) this.tagFlashT -= dt;
+    if (this.zapT > 0) this.zapT -= dt;
     if (this.powerPoseT > 0) this.powerPoseT -= dt;
     if (this.headless > 0) {
       this.headless -= dt;

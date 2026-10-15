@@ -13,6 +13,9 @@ const forcedTransferSpikes = (prefix, gates, first = 0, delay = 1.25) => gates.m
 const runGates = [gate(5, 1), gate(13, 0), gate(18.5, 1), gate(29, 0), gate(37, 1), gate(45, 0), gate(54, 1), gate(63, 0), gate(72, 1), gate(78, 0)];
 const maintenanceGates = [gate(18, 1), gate(28, 0), gate(49, 1), gate(61, 0), gate(80, 1), gate(90, 0)];
 const attack = (id, at, lane, type, span) => ({ id, at, lane, type, ...(span ? { span } : {}) });
+// A short live wire on your own floor, jumped like any crate (Peter, 15 Oct: "i would
+// like to use short wires as obstacles to jump over ordinarily"). Seconds of travel.
+const SHORT_WIRE = 0.3;
 const deepFreeze = (value) => {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   for (const child of Object.values(value)) deepFreeze(child);
@@ -28,16 +31,16 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
       hazard('airlock-rack', 18, 0, 'coolantRadiator'), hazard('hull-cargo', 26, 1, 'fuelCell'),
       hazard('service-laser', 34, 0, 'looseToolkit'), hazard('dish-rack', 42, 1, 'valveManifold'),
       hazard('dish-crate', 50, 0, 'specimenCase'), hazard('return-laser', 59, 1, 'weldingDrone'),
-      hazard('last-rack', 68, 0, 'coolantRadiator'), hazard('airlock-cargo', 81, 1, 'maintenanceBot'),
+      attack('last-rack', 68, 0, 'railPulse', SHORT_WIRE), hazard('airlock-cargo', 81, 1, 'maintenanceBot'),
       // BUSIER (13 Oct 2026, Peter: "more obstacles" → busier levels). Spread through
       // the running stretches, at least 2 s apart on a rail, kept clear of the
       // 2.2 s before a gate, the landing after it, checkpoints, the appliance and
       // the finish; one more on the wrong rail mid-span, so a missed
       // arrow costs more than the gate field.
-      hazard('deck-1', 7.75, 1, 'foilCrate'), hazard('deck-2', 9, 0, 'specimenCase'), hazard('deck-3', 15.75, 0, 'fuelCell'),
+      hazard('deck-1', 7.75, 1, 'foilCrate'), hazard('deck-2', 9, 0, 'specimenCase'), attack('deck-3', 15.75, 0, 'railPulse', SHORT_WIRE),
       hazard('deck-4', 21.25, 1, 'weldingDrone'), hazard('deck-5', 23.25, 1, 'coolantRadiator'), hazard('deck-6', 23.75, 0, 'valveManifold'),
-      hazard('deck-7', 31.75, 0, 'specimenCase'), hazard('deck-8', 33, 1, 'foilCrate'), hazard('deck-9', 39.75, 1, 'looseToolkit'),
-      hazard('deck-10', 41, 0, 'fuelCell'), hazard('deck-11', 47.75, 0, 'maintenanceBot'), hazard('deck-12', 49.5, 1, 'coolantRadiator'),
+      attack('deck-7', 31.75, 0, 'railPulse', SHORT_WIRE), hazard('deck-8', 33, 1, 'foilCrate'), hazard('deck-9', 39.75, 1, 'looseToolkit'),
+      hazard('deck-10', 41, 0, 'fuelCell'), attack('deck-11', 47.75, 0, 'railPulse', SHORT_WIRE), hazard('deck-12', 49.5, 1, 'coolantRadiator'),
       hazard('deck-13', 56.75, 1, 'valveManifold'), hazard('deck-14', 58.5, 0, 'specimenCase'), hazard('deck-15', 65.75, 0, 'weldingDrone'),
       hazard('deck-16', 67.5, 1, 'maintenanceBot'), hazard('deck-17', 74.75, 1, 'foilCrate'),
     ],
