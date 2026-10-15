@@ -4252,16 +4252,16 @@ class AudioSys {
 
     // The voice: the pitch contour, and the growl's flutter on its level.
     const f0 = S.f0 * pitch;
-    const voice = ctx.createGain();
+    const throat = ctx.createGain();
     if (S.rough > 0.001) {
-      voice.gain.value = 1 - S.rough * 0.5;
+      throat.gain.value = 1 - S.rough * 0.5;
       const lfo = ctx.createOscillator();
       lfo.type = 'triangle'; lfo.frequency.value = S.roughHz;
       const depth = ctx.createGain(); depth.gain.value = S.rough * 0.5;
-      lfo.connect(depth); depth.connect(voice.gain);
+      lfo.connect(depth); depth.connect(throat.gain);
       lfo.start(t); lfo.stop(end + 0.05);
     }
-    voice.connect(sum);
+    throat.connect(sum);
     const sources = [['sawtooth', 1, -7, 0.5], ['sawtooth', 1, 7, 0.5]];
     if (S.sub > 0.001) sources.push(['square', 0.5, 0, S.sub * 0.6]);
     for (const [type, mul, cents, g] of sources) {
@@ -4271,7 +4271,7 @@ class AudioSys {
       o.frequency.exponentialRampToValueAtTime(f0 * S.p1 * mul, pk);
       o.frequency.exponentialRampToValueAtTime(f0 * S.p2 * mul, end);
       const og = ctx.createGain(); og.gain.value = g;
-      o.connect(og); og.connect(voice);
+      o.connect(og); og.connect(throat);
       o.start(t); o.stop(end + 0.05);
     }
 

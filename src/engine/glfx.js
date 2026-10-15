@@ -356,15 +356,19 @@ export const glfx = {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   },
 
-  upload(tex, canvas) {
+  upload(tex, canvas, source) {
+    const at=this.profileEnabled ? performance.now() : 0;
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+    if(this.profileEnabled)this.profile[source+'UploadMs'] += performance.now()-at;
     this.profile.uploads++;
     this.profile.uploadPixels += (canvas.width || 0) * (canvas.height || 0);
   },
 
+  profileEnabled: false,
   resetProfile() {
+    this.profile.backUploadMs=0;this.profile.overlayUploadMs=0;this.profile.glowUploadMs=0;
     this.profile.uploads = 0;
     this.profile.uploadPixels = 0;
     this.profile.renderCalls = 0;
@@ -384,14 +388,14 @@ export const glfx = {
     // inherit chromatic aberration or vignette: both are especially visible as
     // a moving coloured fringe on small, high-contrast glyphs.
     const postFx = this.glow > 0 && this.tierFx > 0 ? 1 : 0;
-    this.upload(this.texBack, backCanvas);
+    this.upload(this.texBack, backCanvas, 'back');
     // A null overlay means the frame queued no overlay draws (menus, most
     // frames): skip the full-size upload and bind the 1x1 transparent stand-in.
     const ovTex = overlayCanvas ? this.texOv : this.texOvBlank;
-    if (overlayCanvas) this.upload(this.texOv, overlayCanvas);
+    if (overlayCanvas) this.upload(this.texOv, overlayCanvas, 'overlay');
     const bloomEnabled = this.glow > 0 && this.tierFx > 0;
     const bloomTex = glowCanvas && bloomEnabled ? this.texGlow : this.texBack;
-    if (glowCanvas && bloomEnabled) this.upload(this.texGlow, glowCanvas);
+    if (glowCanvas && bloomEnabled) this.upload(this.texGlow, glowCanvas, 'glow');
     const bind = (unit, tex) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); };
 
     // The title sky is deliberately softer than the foreground. Render it to

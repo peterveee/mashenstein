@@ -5,11 +5,11 @@ const {performancePlan, PerformanceTestState, PERFORMANCE_STAGES}=await import('
 const {STAGE_BY_ID}=await import('../src/data/stages.js');
 const {Dev}=await import('../src/dev/index.js');
 const {beginPerformanceCapture,performanceCaptureActive}=await import('../src/engine/performance-capture.js');
-for(const full of [false,true]){
- const p=performancePlan(full),n=p.length/2;
- assert.equal(n,full?PERFORMANCE_STAGES.length:4);
- for(let i=0;i<n;i++){assert.ok(STAGE_BY_ID[p[i].id]);assert.equal(p[i].seed,p[i+n].seed);assert.equal(p[i].id,p[i+n].id);}
+for(const id of PERFORMANCE_STAGES){
+ const [p]=performancePlan(id);
+ assert.ok(STAGE_BY_ID[p.id]);assert.equal(p.seconds,30);assert.deepEqual(p,performancePlan(id)[0]);
 }
+assert.throws(()=>performancePlan('unknown'));
 const s=new PerformanceTestState({onExit(){}});
 s.running=true;s.report={results:[]};s.previousDev={enabled:true,timeScale:1};s.showReport=()=>{};
 Dev.enabled=false;beginPerformanceCapture();s.finish('stopped');

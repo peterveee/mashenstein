@@ -644,6 +644,7 @@ export function renderProfileStats() {
   };
 }
 export function setRenderProfile(on) {
+  glfx.profileEnabled=!!on;
   if (on) resetRenderProfileStats();
   else renderProfile = null;
 }

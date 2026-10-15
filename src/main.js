@@ -1,5 +1,5 @@
 import { performanceMark, performanceAdd, performanceFrame } from './engine/performance-capture.js';
-import { PerformanceTestState } from './game/performance-test.js';
+import { PerformanceTestState, PERFORMANCE_STAGES } from './game/performance-test.js';
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
   initRenderer, beginRenderFrame, bctx, blit, pushOverlayDraw,
@@ -900,12 +900,12 @@ function boot() {
   // Gravity Grid's is GravityRunState, and an exact 'RunState' test let both warms below carry
   // on through every gravity level — the paper sheets alone ~400 strokes a frame (15 Oct 2026).
   const inARun = () => /RunState$/.test(currentState()?.constructor?.name || '')
-    || !!currentState()?.run?.player; // bot/demo shells own a real run too
+    || !!currentState()?.run?.player || !!currentState()?.performanceTesting; // bot shells and benchmark setup
   {
     const offThread = tngr2WorkerAvailable();
     const pending = Object.values(CABINET_BY_ID).filter((cab) => cab?.music);
     const next = () => {
-      if (!pending.length) return;
+      if (!pending.length || currentState()?.performanceTesting) return;
       if (!offThread && inARun()) {
         setTimeout(next, 2000);
         return;
@@ -1043,6 +1043,12 @@ function boot() {
     setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') }));
   }
 
+  // Explicit user-requested benchmark: a fresh page isolates level resources.
+  const performanceStage = new URLSearchParams(window.location.search).get('performanceStage');
+  if (PERFORMANCE_STAGES.includes(performanceStage)) {
+    window.__mash_routed = true;
+    setState(new PerformanceTestState({freshStage:performanceStage, realSettings:save.settings, onExit:()=>Flow.toSettings()}));
+  }
   if (!window.__mash_routed) Flow.toTitle();
   // Keep an installed copy current silently. Browser-only iPhones never reach
   // this boot path: gate.js owns the sole Home Screen installation flow.
