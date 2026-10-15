@@ -144,9 +144,9 @@ try {
 } finally {STYLE.paint=paint;STYLE.paintFront=front;setActiveFrame(defaultFrame());}
 for(const floor of [1,2,3,1]){
  officeWarmJobs(floor).forEach(job=>job());
- // 48 MB: the lobby's glass runs to the floor again (the street, 12 Oct) and the founder's
- // pictures bake at 4x; the lobby measures ~45 MB, the upper floors ~37.
- const stats=officeCacheStats();assert.equal(stats.entries,1);assert.ok(stats.residentBytes<48*1024*1024,`office warm cache ${(stats.residentBytes/1048576).toFixed(1)} MB`);
+ // Includes the upper-city textures previously created on first camera pull-back
+ // and omitted from these stats. They are now warmed too: lobby ~51 MB, others <44.
+ const stats=officeCacheStats();assert.equal(stats.entries,1);assert.ok(stats.residentBytes<54*1024*1024,`office warm cache ${(stats.residentBytes/1048576).toFixed(1)} MB`);
 }
 const ground=recorder(), rectangles=[];
 let clipped;

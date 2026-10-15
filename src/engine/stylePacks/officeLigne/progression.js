@@ -462,7 +462,8 @@ let liftBakeoff=null;
 export function setOfficeLiftBakeoff(o){const was=liftBakeoff;liftBakeoff=o;return was;}
 // `bank`: the bank's place on its floor (0, 1), which picks its car's poster; `martian`: the
 // Gravity Grid's Martian rides in this bank (liftCar.js), and his car is the one that is open.
-function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0,t=0,bank=0,martian=false){
+// `usher`: the crypt's usher is this bank's lift attendant (zombies.js), in whichever car is open.
+function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0,t=0,bank=0,martian=false,usher=false){
   if(martian)which=LIFT_MARTIAN_CAR;
   if(liftBakeoff?.which!=null)which=liftBakeoff.which;
   // A narrow floor-to-ceiling wall bay makes the compact lift read as part of
@@ -495,7 +496,7 @@ function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0,t
     if(h.open<=0.02)return;
     g.save();g.beginPath();g.rect(h.x,h.y,h.w,h.h);g.clip();
     if(liftBakeoff?.interior)liftBakeoff.interior(g,h,{floor,P,t,which:k});
-    else paintLiftCar(g,h,{floor,t,bank,martian});
+    else paintLiftCar(g,h,{floor,t,bank,martian,usher});
     g.restore();
   });
   liftDoors(g,{floor,wall:{hangs:lifts}},P);
@@ -516,9 +517,12 @@ function foregroundLift(g,l,P,floorNumber,ceilingY,open=0,floor='open',which=0,t
 // Painted once per floor, width and place on the wall's period, at the wall strip's own 4x
 // detail, and drawn as an image: it moves and samples exactly like the strip around it.
 const SECTION_SCALE=4,SECTION_CACHE=new Map();
-function wallSectionCanvas(f,u0,span,top,P){
+function wallSectionCanvas(f,u0,span,P){
   const F=OFFICE_CORRIDORS[f.floor],per=F.wall.period,phase=((u0%per)+per)%per;
-  const key=`${f.floor}|${phase}|${span}|${top}|${Math.round(f.glass.top)}`;
+  // Only the fixed lower wall is rasterised. Camera dolly must not allocate a
+  // new 4x canvas for every integer ceiling/window height.
+  const top=F.ceilingY;
+  const key=`${f.floor}|${phase}|${span}`;
   let c=SECTION_CACHE.get(key);
   if(c)return c;
   if(SECTION_CACHE.size>24)SECTION_CACHE.clear();
@@ -528,10 +532,6 @@ function wallSectionCanvas(f,u0,span,top,P){
   g.scale(SECTION_SCALE,SECTION_SCALE);
   g.translate(2-phase,-top);
   const x0=phase,x1=phase+span;
-  if(f.ceilingY<F.ceilingY){
-    box(g,x0-2,top,span+4,F.ceilingY-top,P.wall||P.wood);
-    upperWall(g,f.floor,P,x0,x1,top+7,F.ceilingY,u0,Math.round(f.glass.top),F.glass.top);
-  }
   // Painted wider and clipped a hair past the bay, so it has no outline of its own at the
   // joins and covers the window frame's last edge: one continuous wall. Every repeating trim
   // keeps its phase in the wall's own coordinates, so it meets its neighbours exactly.
@@ -546,9 +546,14 @@ function wallSectionCanvas(f,u0,span,top,P){
 }
 function wallSection(g,l,f,P){
   const F=OFFICE_CORRIDORS[f.floor],span=l.section.u1-l.section.u0,x0=l.x+l.w/2-span/2;
-  const top=Math.floor(Math.min(f.ceilingY,F.ceilingY));
-  const c=wallSectionCanvas(f,l.section.u0,span,top,P);
-  g.drawImage(c,x0-2,top,span+4,WALL_BASE-top+2);
+  // The small changing extension stays vector art, like upperRoom's neighbouring
+  // bays. Keep fractional coordinates so it follows the camera continuously.
+  if(f.ceilingY<F.ceilingY){
+    box(g,x0-2,f.ceilingY,span+4,F.ceilingY-f.ceilingY,P.wall||P.wood);
+    upperWall(g,f.floor,P,x0,x0+span,f.ceilingY+7,F.ceilingY,l.section.u0,f.glass.top,F.glass.top);
+  }
+  const c=wallSectionCanvas(f,l.section.u0,span,P);
+  g.drawImage(c,x0-2,F.ceilingY,span+4,WALL_BASE-F.ceilingY+2);
 }
 
 // The executive suite stands out of the wall as a solid block, as far as the meeting-room boxes:
@@ -638,14 +643,13 @@ export function officeLiftSpans(f){
 const WARM_SECTIONS=new WeakMap();
 export function warmOfficeWallSections(f){
  const plan=f.founderPlan;if(!plan)return;
- const top=Math.floor(Math.min(f.ceilingY,OFFICE_CORRIDORS[f.floor].ceilingY));
- const key=`${top}|${Math.round(f.glass.top)}|${officeRoomStyle()}`;
+ const key=officeRoomStyle();
  if(WARM_SECTIONS.get(plan)===key)return;
  for(const l of f.landmarks||[]){
   if(!l.section||l.section.glass||(OFFICE_FORWARD_LANDMARKS.has(l.kind)&&officeRoomStyle()==='glass'))continue;
-  wallSectionCanvas(f,l.section.u0,l.section.u1-l.section.u0,top,PAL[f.floor]);
+  wallSectionCanvas(f,l.section.u0,l.section.u1-l.section.u0,PAL[f.floor]);
  }
- if(plan.finish)wallSectionCanvas(f,plan.finish.u0,plan.finish.u1-plan.finish.u0,top,PAL[f.floor]);
+ if(plan.finish)wallSectionCanvas(f,plan.finish.u0,plan.finish.u1-plan.finish.u0,PAL[f.floor]);
  WARM_SECTIONS.set(plan,key);
 }
 export function paintOfficeWallSections(g,f){
@@ -700,7 +704,8 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       const ease=open*open*(3-2*open);
       // which of the pair is the one waiting open: drawn per run and per lift bank
       const r=Math.sin((l.worldX*0.0137+(f.liftSeed||0)*97.3)*127.1)*43758.5453;
-      foregroundLift(g,l,P,floorNumber,wt,ease,f.floor,(r-Math.floor(r))<0.5?0:1,f.t,l.at<0.3?0:1,!!f.liftMartian&&kind==='lobbyLifts');
+      foregroundLift(g,l,P,floorNumber,wt,ease,f.floor,(r-Math.floor(r))<0.5?0:1,f.t,l.at<0.3?0:1,!!f.liftMartian&&kind==='lobbyLifts',
+        f.floor==='open'&&kind==='lift'&&l.at<0.3);
       g.restore();
       // its shadow along the floor at the foot of the front
       {const [a0,y1]=T(x,bt),[a1]=T(x+w,bt);box(g,a0,y1,a1-a0,1.6,'rgba(20,16,30,0.3)');}
@@ -752,7 +757,7 @@ export function paintOfficeLandmarks(g,f,landmarks,layer='front'){
       plant(g,x+24,MID_BASE,'snake',P,5);
       plant(g,x+w-46,MID_BASE,'snake',P,7);
     }else if(kind==='boardroom'){
-      const room={kind:'boardroom',x0:x+40,x1:x+w-62};
+      const room={kind:'boardroom',x0:x+40,x1:x+w-62,legsAt:[2/7,5/7]};
       const chairs=Array.from({length:7},(_,i)=>({x:room.x0+(i+0.5)*(room.x1-room.x0)/7,sitter:i!==2,seed:i+400,nod:(Math.sin(f.t*0.5+i)+1)*0.35}));
       const away=officeRoomStyle()!=='glass';
       const contents=away?()=>{

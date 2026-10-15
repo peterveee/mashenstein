@@ -9,9 +9,12 @@ const { officeArtworks } = await import('../src/engine/stylePacks/officeLigne/ar
 
 const strip = bakeStrip(1200, 20, 204, 2, () => {});
 for (const tile of strip.tiles) assert.equal(tile.c.width, tile.w * 2 + 2, 'filtered tiles retain neighbour pixels');
+// The 4x wall was one image 8 k px wide until 15 Oct 2026 — past a phone's texture size, and the
+// office's frame doubled for it. It tiles now, every tile about 1 k px, and each tile overlaps
+// its neighbours by the source pixel it carries, so no seam pixel is ever part-covered.
 const wallStrip = bakeStrip(1200, 20, 204, 4, () => {}, true);
-assert.equal(wallStrip.tiles.length, 0, 'fine wall scrolls as one continuous image');
-assert.ok(wallStrip.image.width > 1200 * 4);
+assert.ok(wallStrip.overlap && !wallStrip.image && wallStrip.tiles.length > 4, 'the fine wall is tiled');
+for (const tile of wallStrip.tiles) assert.ok(tile.c.width <= 1026, `a wall tile stays inside the texture budget (${tile.c.width} px)`);
 function positions(shift, coverage) {
   const draws = [];
   const ctx = {
@@ -43,9 +46,15 @@ const wallDraws = (shift) => {
 const wallA = wallDraws(10.1), wallB = wallDraws(10.2);
 assert.equal(wallA.length, wallB.length);
 for (let i = 0; i < wallA.length; i++) {
-  assert.equal(wallA[i][0], wallStrip.image);
-  assert.ok(Math.abs(wallA[i][1] - wallB[i][1] - 0.1) < 1e-9,
-    'each seamless wall copy retains fractional camera movement');
+  assert.equal(wallA[i][0], wallB[i][0]);
+  assert.ok(Math.abs(wallA[i][5] - wallB[i][5] - 0.1) < 1e-9,
+    'each wall tile retains fractional camera movement');
+}
+// within a copy of the period, each tile's drawn span runs into the next one's
+const spans = wallA.map((d) => [d[5], d[5] + d[7]]).sort((p, q) => p[0] - q[0]);
+for (let i = 1; i < spans.length; i++) {
+  if (spans[i][0] > spans[i - 1][1] + 1) continue; // the next copy of the period
+  assert.ok(spans[i][0] < spans[i - 1][1] - 0.2, 'neighbouring wall tiles overlap, so no seam pixel is part-covered');
 }
 assert.deepEqual(wallDraws(10.1 + wallStrip.P), wallA);
 for (const floor of ['lobby', 'open', 'exec']) {

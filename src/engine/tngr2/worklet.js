@@ -49,11 +49,20 @@ class Tngr2Processor extends AudioWorkletProcessor {
     // port cannot be relied on to arrive before an offline render has already finished.
     if (opts.events && opts.events.length) this.core.scheduleAll(opts.events);
     this.done = false;
+    // The frame the NEXT block starts at, as this processor counts it — see process().
+    this.next = 0;
     this.port.onmessage = (event) => {
       var msg = event.data;
       if (!msg || typeof msg !== 'object') return;
       if (msg.type === 'stop') { this.done = true; return; }
       if (msg.type === 'report') { this.port.postMessage(this.core.health(currentFrame)); return; }
+      // A stretch of an offline schedule, and the receipt the render waits for before it
+      // moves on: by the time the reply goes out, every event in it is in the queue.
+      if (msg.type === 'events') {
+        if (msg.events && msg.events.length) this.core.scheduleAll(msg.events);
+        if (msg.ack !== undefined) this.port.postMessage({ type: 'ack', ack: msg.ack });
+        return;
+      }
       if (msg.type === 'installTables') { this.core.installTables(msg.tables); return; }
       if (msg.type === 'installCompiledPatch') {
         this.core.installCompiledPatch(msg.patch); return;
@@ -67,7 +76,25 @@ class Tngr2Processor extends AudioWorkletProcessor {
     if (this.done) return false;
     var out = outputs[0];
     if (!out || !out.length) return true;
-    this.core.process(out, currentFrame + this.offset, out[0].length, 0);
+    // 'currentFrame' CAN BE ONE BLOCK BEHIND, so it is a floor and not the answer.
+    //
+    // Chromium refreshes the worklet's 'currentFrame' after each render quantum only if it
+    // can take the graph lock without waiting (UpdateWorkletGlobalScopeOnRenderingThread,
+    // a TryLock). Whenever the main thread holds that lock at that instant — building or
+    // connecting nodes, a collected node being disposed, a busy machine stretching all of
+    // it — the update is skipped and the next process() reads the previous block's frame
+    // again: measured as [F, F] then [F, F + 256] at random places in every render, more
+    // of them the busier the machine. The core then played that block as the one before
+    // it: events in it slid to the next block, and every frame-locked phase and envelope
+    // stepped back 128 samples and forward 256. That is what made two bounces of the same
+    // song differ by up to -20 dB in the bars a TNGR-2 lane plays, at random.
+    //
+    // A stale read is only ever BEHIND, never ahead, so the true frame is the later of
+    // what the global says and one block on from the last one this processor played.
+    var at = currentFrame + this.offset;
+    if (this.next > at) at = this.next;
+    this.next = at + out[0].length;
+    this.core.process(out, at, out[0].length, 0);
     return true;
   }
 }

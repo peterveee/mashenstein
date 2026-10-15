@@ -36,7 +36,7 @@
  * allocator, the queue, or the parity this file's tests establish.
  */
 
-import { driveCurveTable, DRIVE_HEADROOM, DRIVE_CURVE_POINTS, TNGR2_DRIVE_STAGE } from '../drive-curve.js';
+import { driveCurveTable, DRIVE_HEADROOM, DRIVE_CURVE_POINTS } from '../drive-curve.js';
 import { tngr2Defaults } from './schema.js';
 
 /**
@@ -411,13 +411,23 @@ var TNGR2_FILTER_MODES = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3 };
 // drive of its own (a Padé tanh with a reflecting fold and a 16-step crush) while its
 // native fallback used the shared one, so the same DRIVE read two ways on one synth.
 //
-// A voice reaches it TNGR2_DRIVE_STAGE times too quiet (see src/engine/drive-curve.js), so
-// it is read that much louder — folded into the scale the read already makes — and the
-// table hands back values that much smaller, divided out once when the table is built.
+// THE KNEE SITS AT THE PRESET'S OWN PEAK, as it does on MRDR-3 and the drum kit: the patch
+// carries 'driveRef' (src/engine/drive-curve.js — the stored peak over the music level it was
+// measured through), the shaper is read at 1/ref of the signal — folded into the scale the
+// read already makes — and the table hands back values ref times larger, multiplied in once
+// when the table is built. So a voice's own peak meets the knee and DRIVE changes the
+// character, not the level.
+//
+// It used to be one stage for every TNGR-2 voice, +8 dB, from the median voice level, so
+// how hard a given DRIVE bit depended on how far that voice sat from the median: a hot
+// voice went past the knee, a quiet one never reached it. Staged at its own peak, the same
+// DRIVE bites every voice the same way. (What it does NOT change: the tables' phases are
+// walked, which piles a cycle into a few tall spikes that carry the top end, and a soft
+// knee at the peak still rounds those first — high DRIVE on TNGR-2 thickens and darkens
+// rather than fizzes. Measured 15 Oct 2026: on the shipped driven voices the knee moved
+// 0 to 2.7 dB and their brightness by 0.1 dB.)
 var tngr2DriveTable = (${driveCurveTable.toString()});
 var TNGR2_DRIVE_HEADROOM = ${DRIVE_HEADROOM};
-var TNGR2_DRIVE_STAGE = ${TNGR2_DRIVE_STAGE};
-var TNGR2_DRIVE_IN = ${TNGR2_DRIVE_STAGE / DRIVE_HEADROOM};
 var TNGR2_DRIVE_POINTS = ${DRIVE_CURVE_POINTS};
 
 // KEY FOLLOW's reference note, A2 — the one MRDR-3 and KNDO-5 use (base / 110).
@@ -436,12 +446,12 @@ var TNGR2_MAX_LEVEL = 16;
 
 /**
  * The drive's table, read exactly as a WaveShaperNode reads one at oversample 'none':
- * linear interpolation, ends held. The signal is lifted and scaled into the table's
- * ±headroom first.
+ * linear interpolation, ends held. The signal is scaled into the table's ±headroom first
+ * — scaleIn is 1 / (ref · headroom), the patch's own.
  */
-function tngr2Shape(curve, x) {
+function tngr2Shape(curve, x, scaleIn) {
   var n = curve.length;
-  var v = (n - 1) * 0.5 * (x * TNGR2_DRIVE_IN + 1);
+  var v = (n - 1) * 0.5 * (x * scaleIn + 1);
   if (v <= 0) return curve[0];
   if (v >= n - 1) return curve[n - 1];
   var k = v | 0;
@@ -527,6 +537,10 @@ function tngr2CompilePatch(patch) {
     drive: {
       amount: Math.min(1, Math.max(0, Number(p.drive) || 0)),
       curve: null,
+      // The knee: this preset's own peak (see the DRIVE note above). A patch that carries
+      // none — a test, a tool — puts it at full scale, which is driveRef's own default.
+      ref: Number(p.driveRef) > 0 ? Number(p.driveRef) : 1,
+      scaleIn: 0,
       pre: p.drivePlace === 'pre',
       // TONE is a one-pole lowpass after the shaper, taming the harmonics it just made.
       tone: Math.min(20000, Math.max(20, Number(p.tone && p.tone.freq) || 18000))
@@ -548,7 +562,8 @@ function tngr2CompilePatch(patch) {
   // per note.
   if (out.drive.amount > 0) {
     out.drive.curve = tngr2DriveTable(out.drive.amount, p.shape, TNGR2_DRIVE_HEADROOM, TNGR2_DRIVE_POINTS);
-    for (var di = 0; di < out.drive.curve.length; di++) out.drive.curve[di] /= TNGR2_DRIVE_STAGE;
+    for (var di = 0; di < out.drive.curve.length; di++) out.drive.curve[di] *= out.drive.ref;
+    out.drive.scaleIn = 1 / (out.drive.ref * TNGR2_DRIVE_HEADROOM);
   }
   var lfoSpecs = [p.lfo1];
   for (var li = 0; li < 1; li++) {
@@ -1175,8 +1190,8 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
   // drives the filtered signal, which is the brighter, more obvious one of the two.
   var drive = patch.drive;
   if (patch.usesDrive && drive.pre) {
-    l = tngr2Shape(drive.curve, l);
-    r = tngr2Shape(drive.curve, r);
+    l = tngr2Shape(drive.curve, l, drive.scaleIn);
+    r = tngr2Shape(drive.curve, r, drive.scaleIn);
     this.toneL += this.toneCoeff * (l - this.toneL); l = this.toneL;
     this.toneR += this.toneCoeff * (r - this.toneR); r = this.toneR;
   }
@@ -1185,8 +1200,8 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
     r = this.svfR[s].tick(r);
   }
   if (patch.usesDrive && !drive.pre) {
-    l = tngr2Shape(drive.curve, l);
-    r = tngr2Shape(drive.curve, r);
+    l = tngr2Shape(drive.curve, l, drive.scaleIn);
+    r = tngr2Shape(drive.curve, r, drive.scaleIn);
     this.toneL += this.toneCoeff * (l - this.toneL); l = this.toneL;
     this.toneR += this.toneCoeff * (r - this.toneR); r = this.toneR;
   }

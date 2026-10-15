@@ -35,6 +35,12 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   act: opts.act || null,
   intro: opts.intro || null,
   introBy: opts.introBy || null,   // speaker id for the intro bubble; null = narrator
+  // QUIET: no ambient chat on a stage busy enough already — no Eggshell taunts or narration, no
+  // parting shots on a tag swap (Peter, 15 Oct 2026: "less random chat bubbles in level 2,
+  // there's a lot happening, extra gags from eggshell just clutter things up ... perhaps no chat
+  // bubbles in this one"). The intro, the one-time teaching prompts and lines tied to something
+  // on screen (the Martians' ACKs, the neon platform calls) still speak.
+  quiet: !!opts.quiet,
   speedMult: opts.speedMult ?? 1,  // per-stage speed override (1 = 100% of cabinet speed)
   // Optional renderer-only material selection. Most non-Plumber cabinets leave
   // this unset; a cabinet can opt its authored stages into the shared paper
@@ -362,18 +368,19 @@ export const STAGES = [
   S('gravity', 2,
     { type: 'maintenance', n: 3, desc: 'SURVIVE THREE CLEANING CYCLES.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { intro: 'THE CLEANER HAS MISTAKEN YOU FOR DEBRIS.', durationSec: 100, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'] }),
+    { intro: 'THE CLEANER HAS MISTAKEN YOU FOR DEBRIS.', durationSec: 100, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'], quiet: true }),
   S('gravity', 3,
     { type: 'reach', desc: 'CROSS THE LOW-GRAVITY DECK.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { intro: 'LOW GRAVITY. LONG JUMPS. LOOSE HARDWARE.', durationSec: 96, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'] }),
+    { intro: 'LOW GRAVITY. LONG JUMPS. LOOSE HARDWARE.', durationSec: 96, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'], quiet: true }),
   S('office', 1,
     { type: 'reach', desc: 'GET THROUGH THE OFFICE. AVOID EYE CONTACT WITH MEETINGS.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
     { intro: 'THE PRINTERS SMELL FEAR. AND TONER. MOSTLY TONER.' }),
   S('office', 2,
     { type: 'targets', n: 5, targetType: 'shredder', desc: 'DESTROY 5 HOSTILE SHREDDERS. HR HAS APPROVED THIS.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    { quiet: true }),
   S('office', 3,
     { type: 'rescue', n: 4, desc: 'ESCORT 4 CABINET RESIDENTS OUT OF A MANDATORY MEETING.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' }),

@@ -369,13 +369,22 @@ function bakeStrip(P, y0, y1, k, paint, seamless = false) {
   const g = big.getContext('2d');
   g.setTransform(k, 0, 0, k, -u0 * k, -y0 * k);
   paint(g, u0, u1);
-  // Fine wall rules must be sampled as one image. Drawing adjacent cropped
-  // tiles independently gives their filtered edges different alpha coverage
-  // at fractional camera positions, making the seams shimmer as they scroll.
-  if (seamless) return { image: big, u0, P, y0, H, k, tiles: [] };
+  // Fine wall rules once had to be sampled as one image: adjacent tiles drawn edge to edge each
+  // antialias their own edge at a fractional camera position, the two part-covered pixels never
+  // add up to opaque, and the seam shimmers as it scrolls. But the wall's single image was
+  // 8064 px wide at its 4x bake — past what a phone's GPU takes as one texture — and drawing it
+  // cost ~15 of a ~20 ms frame (15 Oct 2026, Peter: "a lot of jitter in the corporate level").
+  // `seamless` now tiles like the rest and has drawStrip OVERLAP each tile onto its neighbours
+  // by the one source pixel it carries from each side, so every seam pixel is wholly inside a
+  // tile and nothing shows; the wall is opaque where tiles meet, so the overlap is invisible.
   const tiles = [];
-  for (let u = u0; u < u1; u += TILE) {
-    const w = Math.min(TILE, u1 - u);
+  // Tiles of about 1 k device px whatever the bake scale (TILE units at 2x; the 4x wall's are
+  // half as wide). A frame draws only the tiles in view, so what it must hold on the GPU is a
+  // couple of tiles a layer, not whole strips: with the wall's 2 k px tiles the office still
+  // tipped over the texture budget in places and doubled its frame time (15 Oct 2026).
+  const T = Math.max(64, Math.floor(TILE * 2 / k));
+  for (let u = u0; u < u1; u += T) {
+    const w = Math.min(T, u1 - u);
     // Neighbour pixels let filtered, fractional scrolling sample across tile
     // boundaries without introducing a transparent seam.
     const c = canvas(w * k + 2, H * k);
@@ -384,9 +393,9 @@ function bakeStrip(P, y0, y1, k, paint, seamless = false) {
     const right = Math.min(1, big.width - sourceX - w * k);
     c.getContext('2d').drawImage(big, sourceX - left, 0, w * k + left + right, H * k,
       1 - left, 0, w * k + left + right, H * k);
-    tiles.push({ c, u, w });
+    tiles.push({ c, u, w, left, right });
   }
-  return { tiles, P, y0, H, k };
+  return { tiles, P, y0, H, k, overlap: !!seamless };
 }
 
 function drawStrip(ctx, S, shift) {
@@ -394,6 +403,12 @@ function drawStrip(ctx, S, shift) {
   // Use the same continuous coordinates as artwork, clock hands and furniture.
   const base = -s;
   const coverage = ctx.__officeCoverage;
+  // an overlapping strip draws each tile's whole canvas, its carried neighbour columns included,
+  // one source pixel past each edge
+  const tile = (t, x) => {
+    if (S.overlap) ctx.drawImage(t.c, 1 - t.left, 0, t.w * S.k + t.left + t.right, S.H * S.k, x - t.left / S.k, S.y0, t.w + (t.left + t.right) / S.k, S.H);
+    else ctx.drawImage(t.c, 1, 0, t.w * S.k, S.H * S.k, x, S.y0, t.w, S.H);
+  };
   if (S.image) {
     const left = coverage?.left ?? 0;
     const right = coverage?.right ?? W;
@@ -418,7 +433,7 @@ function drawStrip(ctx, S, shift) {
       for (const t of S.tiles) {
         const x = t.u + start;
         if (t.u >= S.P || t.u + t.w <= 0 || x > coverage.right + 2 || x + t.w < coverage.left - 2) continue;
-        ctx.drawImage(t.c, 1, 0, t.w * S.k, S.H * S.k, x, S.y0, t.w, S.H);
+        tile(t, x);
       }
       ctx.restore();
     }
@@ -427,7 +442,7 @@ function drawStrip(ctx, S, shift) {
   for (const t of S.tiles) {
     const x = t.u + base;
     if (x > W + 2 || x + t.w < -2) continue;
-    ctx.drawImage(t.c, 1, 0, t.w * S.k, S.H * S.k, x, S.y0, t.w, S.H);
+    tile(t, x);
   }
 }
 

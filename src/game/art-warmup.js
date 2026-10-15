@@ -22,6 +22,7 @@ import {
 } from '../sprites/props.js';
 import { cryptGouacheWarmJobs } from '../engine/stylePacks/cryptGouache.js';
 import { cryptLifeWarmJobs } from '../engine/stylePacks/cryptLife.js';
+import { gravityStarWarmJobs } from '../dev/space-life.js';
 import { officeWarmJobs } from '../engine/stylePacks/officeLigne.js';
 import { speedMcmWarmJobs } from '../engine/stylePacks/speedMcm.js';
 
@@ -109,8 +110,9 @@ function backdropJobs(cabinet, stageIndex) {
   if (cabinet?.style === 'gouache') return gouache().map((run) => ({ run }));
   if (cabinet?.style === 'mcm') return speedMcmWarmJobs().map((run) => ({ run }));
   // THE SURGE cycles through both, and its first cut to either must not stall on a bake.
+  if (cabinet?.style === 'gravity') return gravityStarWarmJobs().map(run => ({ run }));
   if (cabinet?.style === 'office') return officeWarmJobs(stageIndex).map((run) => ({ run }));
-  if (cabinet?.style === 'surge') return [...speedMcmWarmJobs(), ...gouache(), ...officeWarmJobs(stageIndex)].map((run) => ({ run }));
+  if (cabinet?.style === 'surge') return [...speedMcmWarmJobs(), ...gouache(), ...officeWarmJobs(stageIndex), ...gravityStarWarmJobs()].map((run) => ({ run }));
   return [];
 }
 

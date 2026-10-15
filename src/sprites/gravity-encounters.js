@@ -54,7 +54,7 @@ export function drawFloatingBolts(c, cam, view, t, corridor) {
       + 5 * Math.sin(t * 0.29 + i * 2.7);
     const y = -corridor * (0.3 + f * 0.42) + Math.sin(t * 0.75 + i * 2.1) * 12
       + Math.cos(t * 0.34 + i) * 5;
-    looseHardware(c, i, f, x, y, t);
+    if (x >= -5 && x <= view + 5) looseHardware(c, i, f, x, y, t);
   }
   // A cloud of it at the start of the level (Peter, 14 Oct: "a lot more
   // floating bolts and screws at the beginning … they can lessen as we start
@@ -69,7 +69,7 @@ export function drawFloatingBolts(c, cam, view, t, corridor) {
     if (frac(f * 91.7) >= keep) continue;
     const x = p - travel + 14 * Math.sin(t * (0.4 + f * 0.25) + i * 1.3) + 4 * Math.sin(t * 0.31 + i * 2.2);
     const y = -corridor * (0.12 + frac(f * 7.3) * 0.78) + Math.sin(t * 0.6 + i * 1.7) * 9 + Math.cos(t * 0.27 + i) * 4;
-    looseHardware(c, i + 7, f, x, y, t, 0.8 + frac(f * 13.1) * 0.5);
+    if (x >= -5 && x <= view + 5) looseHardware(c, i + 7, f, x, y, t, 0.8 + frac(f * 13.1) * 0.5);
   }
   c.restore();
 }

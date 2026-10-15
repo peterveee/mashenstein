@@ -250,8 +250,19 @@ const OFFICE_FLOORS = {
   },
 };
 
+// NO HANGING OBSTACLES in the office (Peter, 15 Oct 2026: "remove all hanging obstacles from the
+// cabinet levels" — Corporate Kombat's): the drone and paperwork slots were the art mobile, the
+// birthday bunting and the chandelier, hung from the ceiling to slide under. They come out of
+// every pattern; a pattern left with no hazard at all is dropped, the rest keep their other cells.
+const OFFICE_HANGING = new Set(['drone', 'paperwork']);
+const OFFICE_GROUNDED = OFFICE_BANK.flatMap((pattern) => {
+  if (!pattern.cells.some((c) => OFFICE_HANGING.has(c.t))) return [pattern];
+  const cells = pattern.cells.filter((c) => !OFFICE_HANGING.has(c.t));
+  return cells.some((c) => c.t !== 'coins') ? [{ ...pattern, cells }] : [];
+});
+
 const OFFICE_BY_FLOOR = Object.fromEntries(Object.entries(OFFICE_FLOORS).map(([floor, swap]) => [floor,
-  OFFICE_BANK.map((pattern) => (pattern.cells.some((c) => swap[c.t])
+  OFFICE_GROUNDED.map((pattern) => (pattern.cells.some((c) => swap[c.t])
     ? { ...pattern, cells: pattern.cells.map((c) => (swap[c.t] ? { ...c, t: swap[c.t] } : c)) }
     : pattern)),
 ]));

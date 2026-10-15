@@ -16,7 +16,7 @@ let clock = 0;
 globalThis.requestAnimationFrame = (cb) => { pending = cb; return 1; };
 globalThis.performance = { now: () => clock };
 
-const { startLoop, frameHealth, discardNextGap } = await import('../src/engine/loop.js');
+const { startLoop, frameHealth, discardNextGap, restartClockHere } = await import('../src/engine/loop.js');
 
 // Advance the clock by dtMs and deliver the frame the loop is waiting on.
 function step(dtMs) {
@@ -122,5 +122,40 @@ assert(ticks === 1, 'and only the one frame: the next is ordinary');
 run(70, 16.7);
 assert(frameHealth().hitchEvents === loadBefore.hitchEvents + 1, 'the load gap is still counted as a hitch');
 loaded.stop();
+
+// A tick that puts a cue on the audio clock restarts the count from that instant
+// (restartClockHere): what ran earlier in the frame is dropped, what ran after it —
+// the draw — is replayed as usual. Here the update stalls 80ms before starting
+// something and the draw takes 30ms after it.
+let restartTicks = 0;
+let stallNext = false;
+const restarted = startLoop({
+  update() {
+    restartTicks++;
+    if (stallNext) { stallNext = false; clock += 80; restartClockHere(); }
+  },
+  draw() {},
+});
+step(16.7);
+run(70, 16.7);
+stallNext = true;
+restartTicks = 0;
+step(16.7);          // the starting tick: stalls 80ms, then restarts the clock
+assert(restartTicks === 1, 'the restarting tick runs once');
+restartTicks = 0;
+step(30);            // next frame lands 30ms after the restart point (80ms stall excluded)
+assert(restartTicks === 1, 'the stall before the restart is not replayed (30ms after it is one tick)');
+restartTicks = 0;
+step(16.7);
+assert(restartTicks === 1, 'and the frame after is ordinary');
+// The same stall without the restart is replayed as catch-up.
+stallNext = false;
+restartTicks = 0;
+run(70, 16.7);
+restartTicks = 0;
+clock += 80;
+step(16.7);
+assert(restartTicks >= 5, `without it the same stall replays as catch-up (${restartTicks} ticks)`);
+restarted.stop();
 console.log(failed ? 'FRAME HEALTH: FAILED' : 'FRAME HEALTH: PASSED');
 process.exit(failed ? 1 : 0);

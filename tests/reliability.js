@@ -812,6 +812,11 @@ queueCabinetDiveOut('overtime', false);
 const overtimeReturnHub = new HubState({ save: { slot: overtimeSlot }, flow: { hubPosition: null } });
 overtimeReturnHub.enter();
 overtimeReturnHub.update(1 / 60);
+// The dive out waits for the room's first (load) draw, so its audio-clock cue and its
+// animation start together on the first frame anyone sees.
+assert(!overtimeReturnHub.dive, 'the dive out holds until the room has drawn once');
+overtimeReturnHub.draw(document.createElement('canvas').getContext('2d'));
+overtimeReturnHub.update(1 / 60);
 assert(overtimeReturnHub.dive?.dir === 'out' && overtimeReturnHub.dive?.cab.id === 'overtime',
   'an OVERTIME result starts the dive out at the OVERTIME cabinet');
 overtimeReturnHub.exit();

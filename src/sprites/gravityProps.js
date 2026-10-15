@@ -24,6 +24,8 @@
 // same art mirrored by draw.js, so steam that rises on the floor falls toward
 // the floor on the ceiling. Like officeProps.js, nothing here imports props.js.
 
+import { martianHead } from '../dev/mars-attacks-candidates.js';
+
 const frameOf = (t, n, fps) => ((Math.floor(t * fps + 1e-6) % n) + n) % n;
 
 const TAU = Math.PI * 2;
@@ -39,7 +41,6 @@ const FOIL = '#e6b748', FOIL_LT = '#fbe39a', FOIL_MD = '#cf9530', FOIL_DK = '#94
 const ICE = '#cfe6f4', ICE_MD = '#93bcd6', ICE_DK = '#5d86a3', ICE_GLOW = '#9fe2ff';
 const TAPE_Y = '#f2c94c', TAPE_K = '#1c1c1c';
 const RED = '#e5413a', RED_LT = '#ff8a7a', RED_DK = '#8f1d1a';
-const GOO = '#a6f05a', GOO_DK = '#4f9a2a';
 
 // ------------------------------------------------------------------ helpers
 function pen(c, col, lw) { c.strokeStyle = col; c.lineWidth = lw; c.lineJoin = 'round'; c.lineCap = 'round'; }
@@ -119,7 +120,10 @@ function foilCrate(c, w, h, t) {
 }
 
 // B — SPECIMEN CASE. A chamfered chrome cube with a round porthole; inside, in green
-// gel, something small with two eyes bobs and blinks. Amber lamp on the corner.
+// gel, a Martian's head — the Mars Attacks skull and brain the level's own Martians
+// wear (mars-attacks-candidates.js martianHead), no helmet — bobs and looks about
+// (Peter, 15 Oct 2026: "can the specimen case in the gravity levels have the mars
+// attack martian skull inside instead of the generic one"). Amber lamp on the corner.
 function specimenCase(c, w, h, t) {
   const x0 = 0.8, x1 = w - 0.8, y0 = 1.2, y1 = h, ch = 2.2;
   poly(c, [x0 + ch, y0, x1 - ch, y0, x1, y0 + ch, x1, y1, x0, y1, x0, y0 + ch], CHROME_MD, INK);
@@ -133,14 +137,10 @@ function specimenCase(c, w, h, t) {
   circ(c, cx, cy, r, '#2f6b3a');
   c.save(); c.beginPath(); c.arc(cx, cy, r, 0, TAU); c.clip();
   box(c, cx - r, cy - r, 2 * r, 2 * r * 0.35, '#3f8a46');
-  const f = frameOf(t, 16, 8), bob = Math.sin(f / 16 * TAU) * 0.9;
-  const by = cy + 0.8 + bob;
-  c.beginPath(); c.ellipse(cx, by, 2.6, 2.1, 0, 0, TAU); fs(c, GOO, GOO_DK, LWI);
-  const blink = f === 11;
-  for (const ex of [cx - 1, cx + 1]) {
-    if (blink) line(c, ex - 0.45, by - 0.5, ex + 0.45, by - 0.5, INK, 0.35);
-    else { circ(c, ex, by - 0.5, 0.62, '#ffffff'); circ(c, ex + 0.15, by - 0.45, 0.3, INK); }
-  }
+  const f = frameOf(t, 16, 8), bob = Math.sin(f / 16 * TAU) * 0.6;
+  // the head is about 14.4 tall from the top of the brain to the jaw, its origin at the neck
+  const sc = 0.5, look = [0, 0, 0.6, 1, 1, 1, 0.6, 0, 0, 0, -0.6, -1, -1, -1, -0.6, 0][f];
+  martianHead(c, cx, cy + 7.6 * sc + 0.3 + bob, sc, f / 8, { helmet: false, collar: null, look, flat: true });
   // Bubbles climbing.
   for (let k = 0; k < 3; k++) {
     const u = ((f / 16) + k / 3) % 1;

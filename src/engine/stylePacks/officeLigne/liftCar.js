@@ -13,7 +13,8 @@
 // the frame: {floor, t}. The car's back wall is the panel 5 in from each side, above the floor
 // line 6 up. A metre is about 25 wall units here: the bank is drawn 1.2 x 1.18 over the room,
 // which is why the lifts look huge and why nothing in them is sized off the lift.
-import { box, poly, line, lines, circ, ell, letters, pen, fs, eggPath, M89 } from './line.js';
+import { box, poly, line, lines, circ, ell, letters, pen, fs, eggPath, M89, PAL } from './line.js';
+import { paintLiftUsher } from './zombies.js';
 
 const INK = '#1f1d26';
 const FOOT = 3.4;               // the car's floor line, up from its bottom edge
@@ -423,8 +424,10 @@ export function paintLiftMartian(g, car, floor, t, sc = LIFT_MARTIAN_SC) {
 }
 
 // Everything inside one open car. With the Martian in it there is no poster — he is the
-// picture (Peter, 14 Oct: "no poster when hes in the lift").
-export function paintLiftCar(g, car, { floor, t, bank = 0, martian = false }) {
+// picture (Peter, 14 Oct: "no poster when hes in the lift"). Nor with the crypt's usher, floor
+// 23's lift attendant (zombies.js), at its panel.
+export function paintLiftCar(g, car, { floor, t, bank = 0, martian = false, usher = false }) {
+  if (usher && !martian) { paintLiftPanel(g, car, floor); paintLiftUsher(g, car, t, (PAL[floor] || PAL.open).inkM); return; }
   if (martian) paintLiftMartian(g, car, floor, t);
   else paintLiftPoster(g, car, liftPosterFor(floor, bank), floor, t);
   if (martian) return;

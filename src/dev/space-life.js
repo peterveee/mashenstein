@@ -1093,11 +1093,12 @@ function cargoLine(c, x, y, t, k) {
 // once (as menus.js bakes the title's) and only scrolled each frame.
 const STAR_TILE = 560, STAR_TOP = -140, STAR_H = 132, STAR_SS = 2;
 const starLayers = [];
-function bakeStars() {
-  if (starLayers.length || typeof document === 'undefined') return starLayers.length > 0;
+function bakeStars(limit = 3) {
+  if (starLayers.length >= limit || typeof document === 'undefined') return starLayers.length > 0;
   // Subtler since 13 Oct ("more subtle stars"): smaller, dimmer, tighter halos.
   const specs = [{ n: 60, r: [0.18, 0.3], spread: 2.0, a: 0.35 }, { n: 34, r: [0.22, 0.42], spread: 2.2, a: 0.5 }, { n: 14, r: [0.32, 0.6], spread: 2.5, a: 0.7 }];
-  for (const [layer, spec] of specs.entries()) {
+  for (let layer = starLayers.length; layer < limit; layer++) {
+    const spec = specs[layer];
     const cv = document.createElement('canvas');
     cv.width = STAR_TILE * STAR_SS; cv.height = STAR_H * STAR_SS;
     const x = cv.getContext && cv.getContext('2d');
@@ -1119,6 +1120,8 @@ function bakeStars() {
   }
   return true;
 }
+// Separate jobs fit the briefing's cooperative warmup budget.
+export const gravityStarWarmJobs = () => [1, 2, 3].map(limit => () => bakeStars(limit));
 export function titleStarfield(c, s) {
   if (!bakeStars()) return;
   [0.008, 0.016, 0.028].forEach((f, layer) => {

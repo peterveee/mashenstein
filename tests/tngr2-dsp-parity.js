@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderTngr2, frameAt, TNGR2_DEFAULT_ENV } from '../src/engine/tngr2/dsp.js';
 import { packTngr2Tables } from '../src/engine/tngr2/tables.js';
+import { tngr2WorkletSource } from '../src/engine/tngr2/worklet.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -188,6 +189,52 @@ try {
   await page.close();
 } finally {
   await browser.close();
+}
+
+// ---- the processor's clock, when the browser's is a block behind -------------------
+//
+// Chromium refreshes the worklet's `currentFrame` after a render quantum only if it can
+// take the graph lock without waiting, so under load a process() call can read the
+// PREVIOUS block's frame — measured in real bounces as [F, F] then [F, F + 256]. The
+// processor has to play every block at its true frame anyway, or two bounces of one song
+// differ wherever a TNGR-2 lane plays. Hosted here in Node with the worklet's own source
+// and a `currentFrame` that goes stale on purpose, the render must still equal the
+// reference EXACTLY.
+{
+  const rate = 44100;
+  const events = scoreFor(rate);
+  const seconds = 1.2;
+  const frames = Math.ceil(seconds * rate);
+  let clock = 0;
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'currentFrame');
+  Object.defineProperty(globalThis, 'currentFrame', { get: () => clock, configurable: true });
+  globalThis.sampleRate = rate;
+  try {
+    class HostProcessor { constructor() { this.port = { postMessage() {}, onmessage: null }; } }
+    let Processor = null;
+    new Function('AudioWorkletProcessor', 'registerProcessor', tngr2WorkletSource())(
+      HostProcessor, (name, cls) => { Processor = cls; });
+    const proc = new Processor({ processorOptions: { maxVoices: 16, tables: TABLES, patch: PATCH, events } });
+    const out = [new Float32Array(frames), new Float32Array(frames)];
+    let stale = 0;
+    for (let start = 0, k = 0; start < frames; start += 128, k++) {
+      const n = Math.min(128, frames - start);
+      // Every seventh block reads the frame of the block before it.
+      clock = k % 7 === 3 ? start - 128 : start;
+      if (clock !== start) stale++;
+      const block = [new Float32Array(n), new Float32Array(n)];
+      proc.process([], [block]);
+      out[0].set(block[0], start); out[1].set(block[1], start);
+    }
+    const reference = renderTngr2({ events, seconds, sampleRate: rate, maxVoices: 16, tables: TABLES,
+      patch: PATCH }).channels;
+    const d = diff(out, reference);
+    assert(stale > 10 && d === 0,
+      `a block read with a stale currentFrame still plays at its true frame (${stale} stale blocks, diff ${d})`);
+  } finally {
+    if (had) Object.defineProperty(globalThis, 'currentFrame', had); else delete globalThis.currentFrame;
+    delete globalThis.sampleRate;
+  }
 }
 
 console.log(failed ? `\nTNGR-2 DSP PARITY: ${failed} FAILED` : '\nTNGR-2 DSP PARITY: PASSED');

@@ -1754,7 +1754,7 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
               if (lfq !== lay.lastLfq) {
                 lay.lastLfq = lfq;
                 for (var lc = 0; lc < lay.stages; lc++) {
-                  lay.filters[lc].setCoeffs(lfq, lc === 0 ? spec.filterQ : 0.7071);
+                  lay.filters[lc].setCoeffs(lfq, lc === 0 ? spec.filterQ : mrdr3FollowerQ(lay.filters[lc].kind));
                 }
               }
             } else if (spec.filterOct !== 0) {
@@ -1785,7 +1785,7 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
             if (gfq !== tone.lastGfq) {
               tone.lastGfq = gfq;
               for (var gc = 0; gc < tone.stages; gc++) {
-                tone.filters[gc].setCoeffs(gfq, gc === 0 ? tone.q : 0.7071);
+                tone.filters[gc].setCoeffs(gfq, gc === 0 ? tone.q : mrdr3FollowerQ(tone.filters[gc].kind));
               }
             }
           } else if (tone.oct !== 0) {

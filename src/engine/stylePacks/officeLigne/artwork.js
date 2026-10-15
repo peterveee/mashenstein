@@ -173,6 +173,8 @@ export function officeArtworks(f){
     if(plan&&!sl.professor&&plan.avoid.some(([a,b])=>sl.x+sl.w>a&&sl.x<b))continue; // no print behind a room or lift
     const x=sl.x-shift;
     if(x+sl.w<cov.left-20||x>cov.right+20)continue;
+    // wall the zombies keep clear: their EMPLOYEE OF THE MONTH bay, the wall behind the purple one (zombies.js)
+    if(f.wallClear?.some(([a,b])=>sl.x<b&&sl.x+sl.w>a))continue;
     out.push({x,y:sl.y,w:sl.w,h:sl.h,seed:sl.seed,kind:sl.professor?'professor':sl.poster?'poster':sl.kind,professor:sl.professor,poster:sl.poster});
    }
   }

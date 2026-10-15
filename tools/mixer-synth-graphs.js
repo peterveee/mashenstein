@@ -193,18 +193,21 @@ export const fxInv = (x, w) => 20 * (1000 ** clamp(x / w, 0, 1));
  *             (src/engine/mrdr3/primitives.js): a RESONANCE of 4 is a 4 dB peak, a linear
  *             Q of 10^(4/20) = 1.58 — not the 12 dB a linear 4 would be. Bandpass and notch
  *             read it linearly on every engine.
- *   follower  the Q of every stage after the first in a -24 cascade. `null` repeats the
- *             first stage's: Tone's Filter fans Q into every stage, so CRLS-1's resonant
- *             -24 peaks twice over. A number is a fixed stage behind a resonant first one:
- *             `_filterChain` (MRDR-3, KNDO-5) and MRDR-3's worklet set 0.7071, which a
- *             lowpass then reads as 0.7071 dB — linear 1.085, a little above Butterworth;
- *             TNGR-2's SVF sets it linearly, a true Butterworth stage.
+ *   follower  the LINEAR Q of every stage after the first in a cascade. `null` repeats
+ *             the first stage's: Tone's Filter fans Q into every stage, so CRLS-1's
+ *             resonant -24 peaks twice over. A number is a fixed stage behind a resonant
+ *             first one, and on all three of the others it is a true Butterworth stage:
+ *             `_filterChain` (MRDR-3, KNDO-5) and MRDR-3's worklet set −3.0103 dB on a
+ *             lowpass or highpass (which those read in dB) and 0.7071 on a bandpass or
+ *             notch (read linearly) — 1/√2 either way; TNGR-2's SVF sets 1/√2 directly.
+ *             Until 15 Oct 2026 the biquad followers were 0.7071 read as dB, linear
+ *             1.085, and this drew them that way.
  *   skirt     the bandpass peaks at Q rather than at 0 dB — TNGR-2's state-variable band
  *             tap (src/engine/tngr2/dsp.js), where the biquad's bandpass is normalised.
  */
 export const FILTER_MODELS = {
   // MRDR-3 (native and worklet) and KNDO-5.
-  biquad: { qDb: true, follower: 0.7071, skirt: false },
+  biquad: { qDb: true, follower: Math.SQRT1_2, skirt: false },
   // CRLS-1, and the Filter effect: a Tone.Filter.
   tone: { qDb: true, follower: null, skirt: false },
   // TNGR-2.
@@ -242,8 +245,10 @@ export function magnitudeDb(f, { cutoff, Q, type, slope, model = 'biquad' }) {
   const dbQ = m.qDb && (type === 'lowpass' || type === 'highpass' || !type);
   let db = 0;
   for (let s = 0, n = stagesOf(slope); s < n; s++) {
-    const set = s === 0 || m.follower == null ? Q : m.follower;
-    const q = Math.max(1e-4, dbQ ? 10 ** (set / 20) : set);
+    // The first stage's RESONANCE is in the card's units; a follower is stated linear.
+    const q = s === 0 || m.follower == null
+      ? Math.max(1e-4, dbQ ? 10 ** (Q / 20) : Q)
+      : m.follower;
     const den = Math.sqrt((1 - w2) ** 2 + (w / q) ** 2) || 1e-6;
     const mag = type === 'highpass' ? w2 / den
       : type === 'bandpass' ? (m.skirt ? w : w / q) / den

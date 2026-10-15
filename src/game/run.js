@@ -4020,6 +4020,8 @@ export class RunState {
     this.prevCamFloorY = this.camFloorY;
     this.prevBackgroundT = this.backgroundT;
     this.prevTRun = this.tRun;
+    this.prevAnimationPlayer = this.player;
+    this.prevPlayerAnim = this.player?.anim;
     this.prevFinishPlayerX = this.finishPlayerX;
     this.prevIntroRunX = this.introRunX;
     this.prevPitDx = this.pitDeath ? this.pitDeath.dx : 0;
@@ -4038,9 +4040,21 @@ export class RunState {
     this.prevCamFloorY = this.camFloorY;
     this.prevBackgroundT = this.backgroundT;
     this.prevTRun = this.tRun;
+    this.prevAnimationPlayer = this.player;
+    this.prevPlayerAnim = this.player?.anim;
     this.prevFinishPlayerX = this.finishPlayerX;
     this.prevIntroRunX = this.introRunX;
     this.prevPitDx = this.pitDeath ? this.pitDeath.dx : 0;
+  }
+
+  heroRenderPhase(alpha) {
+    const current = this.player.anim;
+    const previous = this.prevPlayerAnim;
+    // A relay, restart or reset owns its new pose immediately. Interpolate the
+    // unwrapped clock, then wrap, so the end of a stride never runs backwards.
+    if (this.paused || this.prevAnimationPlayer !== this.player
+      || !Number.isFinite(previous) || previous > current) return current % 1;
+    return (previous + (current - previous) * Math.max(0, Math.min(1, alpha))) % 1;
   }
 
   createPlayer(heroId, mods) { return new Player(heroId, mods); }
@@ -8889,7 +8903,7 @@ export class RunState {
     // tags out in a run: everyone gets their moment without a swap-heavy run
     // turning into a conversation you read instead of playing. (Only one voice
     // per swap — see EXIT_LINES.)
-    const exit = !this.demo && !this.exitSpoken.has(result.from) && EXIT_LINES[result.from];
+    const exit = !this.demo && !this.stage?.quiet && !this.exitSpoken.has(result.from) && EXIT_LINES[result.from];
     this.speech = null;
     this.speechQueue = [];
     this.speechWaitT = 0;
@@ -11157,7 +11171,8 @@ export class RunState {
   }
 
   updateTaunts(dt) {
-    if (this.overtime) return;
+    // A quiet stage has no ambient chat (data/stages.js `quiet`).
+    if (this.overtime || this.stage?.quiet) return;
     this.tauntT -= dt;
     if (this.tauntT <= 0) {
       this.tauntT = 55 + this.fxRng.range(0, 20);
@@ -17020,7 +17035,7 @@ export class RunState {
       || (typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideFuse));
     const carryFuse = !hideFuse && this.mission.type === 'fuse';
     const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, carryFuse,
-      { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, floorY, xOffset: portraitXOffset, specialOrbAlpha: orbAlpha,
+      { mirror: this.mirror, screenX: heroScreenX, animationPhase: this.heroRenderPhase(alpha), zoom: z, pan, floorY, xOffset: portraitXOffset, specialOrbAlpha: orbAlpha,
         // THE CONTACT SHADOW (see CONTACT_SHADOW in draw.js). Every platform,
         // not just the phone it was asked for: separating the hero from the
         // strip he is standing on is worth having on a monitor too, and the

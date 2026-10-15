@@ -38,6 +38,15 @@ var MRDR3_FILTER_KINDS = {
   bandpass: MRDR3_BANDPASS, notch: MRDR3_NOTCH,
 };
 
+// A Butterworth section's Q for the stages behind a cascade's resonant one. Lowpass and
+// highpass read Q in dB (below), so that is 20 log10(1/sqrt 2) = -3.0103, not the linear
+// 0.7071 — which this reads as +0.71 dB, a bump on every follower. Bandpass and notch read
+// Q linearly and keep 0.7071. The native path's _filterChain uses the same number.
+var MRDR3_BUTTERWORTH_Q_DB = 20 * Math.log10(Math.SQRT1_2);
+function mrdr3FollowerQ(kind) {
+  return kind === MRDR3_LOWPASS || kind === MRDR3_HIGHPASS ? MRDR3_BUTTERWORTH_Q_DB : 0.7071;
+}
+
 function Mrdr3Biquad(rate) {
   this.rate = rate;
   this.kind = MRDR3_LOWPASS;

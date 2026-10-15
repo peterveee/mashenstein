@@ -45,6 +45,20 @@ let sessionWorstMs = 0;
 let discardGap = false;
 export function discardNextGap() { discardGap = true; }
 
+// A tick that has just put a cue on the AUDIO clock — scheduled to land at a moment
+// the picture is meant to reach in step with it — needs the simulation counted from
+// THAT INSTANT, not from the top of the frame. Whatever ran earlier in the frame (a
+// collector pause, a slow build) happened before the audio clock was read; replayed
+// as catch-up it puts the picture that far ahead of the sound it was placed against.
+// Unlike discardNextGap this keeps the rest of the frame: the draw and the present
+// after the call are real time, and the next callback replays them as usual. It ends
+// this frame's catch-up at the calling tick, so call it from a tick that starts
+// something, not from one in the middle of a burst.
+let restartAt = null;
+export function restartClockHere() {
+  restartAt = typeof performance !== 'undefined' ? performance.now() : null;
+}
+
 export function frameRate() { return measuredFps; }
 
 // Per-frame smoothness, for the FPS readout and for anyone diagnosing judder.
@@ -92,6 +106,7 @@ export function startLoop({ update, draw, present }) {
   let fpsWindow = last;
   let fpsFrames = 0;
   let rafAvgMs = 0;      // EWMA of the display's own callback interval
+  let skipMs = 0;        // the head of the next gap a restartClockHere() has disowned
   let hitchWindow = last;
   let winHitches = 0;
   let winWorstMs = 0;
@@ -113,6 +128,9 @@ export function startLoop({ update, draw, present }) {
     try {
       const gapMs = now - last;
       let dt = gapMs / 1000;
+      // Floored at zero: a late-delivered frame can carry a timestamp from before the
+      // instant the clock was restarted at.
+      if (skipMs) { dt = Math.max(0, gapMs - skipMs) / 1000; skipMs = 0; }
       if (dt > 0.25) dt = 0.25; // tab-switch spike clamp
       if (discardGap) {
         discardGap = false;
@@ -146,7 +164,18 @@ export function startLoop({ update, draw, present }) {
       acc += dt;
       let steps = 0;
       const updateAt = updateProfileMark();
-      while (acc >= TICK && steps < 8) { update(TICK); acc -= TICK; steps++; }
+      restartAt = null;
+      while (acc >= TICK && steps < 8) {
+        update(TICK); acc -= TICK; steps++;
+        if (restartAt != null) {
+          // The next callback replays only what came after the call (see
+          // restartClockHere): this much of its gap happened before it.
+          skipMs = Math.max(0, restartAt - now);
+          acc = 0;
+          restartAt = null;
+          break;
+        }
+      }
       if (steps === 8) acc = 0; // running hopelessly behind: drop time, stay interactive
       // Only callbacks that actually stepped the simulation are sampled. On a
       // 120Hz panel half of them run zero steps, and folding those zeroes in
@@ -221,6 +250,7 @@ export function startLoop({ update, draw, present }) {
       worstMs = 0;
       primed = false;
       acc = 0;
+      skipMs = 0;
       running = true;
       schedule();
     },

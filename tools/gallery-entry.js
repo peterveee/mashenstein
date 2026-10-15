@@ -9,6 +9,8 @@ import { HAIR_STUDIES, LUNCH_STUDIES, drawHairStudy, drawLunchStudy } from '../s
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
 import { drawOfficeProductionScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
+import { OFFICE_CHAIR_CANDIDATES, OFFICE_CHAIR_ROOMS, drawOfficeChairScene } from '../src/dev/office-chair-candidates.js';
+import { OFFICE_ZOMBIE_CANDIDATES, drawOfficeZombieScene } from '../src/dev/office-zombie-candidates.js';
 import { officeLandmarks, setOfficeLiftBakeoff } from '../src/engine/stylePacks/officeLigne/progression.js';
 import { LIFT_POSTER_CANDIDATES, LIFT_MARTIAN_CANDIDATES } from '../src/dev/office-lift-candidates.js';
 import { OFFICE_WINDOW_GAGS, drawOfficeWindowGag } from '../src/dev/office-window-gags.js';
@@ -3177,12 +3179,12 @@ let labClub = null;
   const grid = section('office-obstacles', 'CORPORATE KOMBAT — obstacles, floor by floor, as shipped',
     'Picked 12 Oct 2026 from the obstacle bake-off. Each floor deals its own furniture and none of it stands in that '
     + 'floor\'s backdrop. Left to right: standing, big, stacked (two high), rolling, fire, short hurdle, the target '
-    + '(floor 23 only — DESTROY 5 HOSTILE SHREDDERS), slide-under, high flyer. ANIMATED.',
+    + '(floor 23 only — DESTROY 5 HOSTILE SHREDDERS), slide-under (gone since 15 Oct: nothing hangs from the ceiling), high flyer. ANIMATED.',
     '2026-10-12');
   const FLOORS = [
-    ['lobby', '8-1 the lobby', ['wetFloorSign', 'waterDolly', 'newsBundle', 'mopBucket', 'ashUrnFire', 'velvetRope', null, 'artMobile', 'paperPlane']],
-    ['open', '8-2 floor 23', ['coatStand', 'snackMachine', 'archiveBox', 'mailCart', 'binFire', 'drawingPins', 'shredder', 'birthdayBunting', 'partyBalloon']],
-    ['exec', '8-3 floor 88', ['founderBust', 'officeSafe', 'briefcase', 'drinksTrolley', 'confidentialBin', 'velvetRopeGold', null, 'chandelier', 'champagneCork']],
+    ['lobby', '8-1 the lobby', ['wetFloorSign', 'waterDolly', 'newsBundle', 'mopBucket', 'ashUrnFire', 'velvetRope', null, null, 'paperPlane']],
+    ['open', '8-2 floor 23', ['coatStand', 'snackMachine', 'archiveBox', 'mailCart', 'binFire', 'drawingPins', 'shredder', null, 'partyBalloon']],
+    ['exec', '8-3 floor 88', ['founderBust', 'officeSafe', 'briefcase', 'drinksTrolley', 'confidentialBin', 'velvetRopeGold', null, null, 'champagneCork']],
   ];
   // World x of each slot, screen-relative; the hero runs at 59.
   const AT = [2, 22, 80, 100, 120, 142, 168, 192, 218];
@@ -9547,6 +9549,40 @@ function jadeSky(ctx, w, h, seed = 1) {
   tile(lunch,c.name+' · in the canteen',c.note,480,270,(g,t)=>drawLunchStudy(g,t,c),{animated:true});
   tile(lunch,c.name+' · detail',c.note,480,240,(g,t)=>drawLunchStudy(g,t,c,true),{animated:true});
  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — meeting-room chairs (lab)
+// 14 Oct 2026: "dont love these chairs - they look like they are part of the peoples bodies".
+// src/dev/office-chair-candidates.js, through room.js setOfficeChairStyle; the real rooms at
+// in-run size, frosted below the table as shipped.
+{
+  const grid = section('office-chair-bakeoff', 'CORPORATE KOMBAT — meeting-room chairs (D shipped)',
+    'The sitters in the glass rooms are seen from behind. NOW’s chair back is as wide as their shoulders and the colour of their suits, so '
+    + 'it reads as their bodies. A–E change the chair; each is shown in floor 23’s training room and floor 88’s boardroom. D SHIPPED 15 Oct (B briefly before it). ANIMATED.',
+    '14 Oct 2026');
+  for (const cand of OFFICE_CHAIR_CANDIDATES) {
+    for (const room of OFFICE_CHAIR_ROOMS) {
+      tile(grid, `${cand.letter} — ${cand.name} · ${room.name}`, cand.note, 480, 270,
+        (ctx, t) => drawOfficeChairScene(ctx, t, cand.style, room), { animated: true });
+    }
+  }
+}
+
+// --------------------------------------------- CORPORATE KOMBAT — the crypt's zombies at work (lab)
+// 15 Oct 2026: a callback from Crypt Shift (cabinet 5) in Corporate Kombat (8). "How to incorporate
+// our zombie character/s from the crypt in the art style of the corporate level? Bake-off".
+// src/dev/office-zombie-candidates.js, painted into the real floors through officeLigne/index.js
+// setOfficeMidExtra, at in-run size.
+{
+  const grid = section('office-zombie-bakeoff', 'CORPORATE KOMBAT — the crypt’s zombies at work (bake-off · SHIPPED)',
+    'The crypt’s own zombie drawings, tweaked to fit floor 23 rather than redrawn. SHIPPED 15 Oct (officeLigne/zombies.js), on every '
+    + 'run: the usher in the lift near the start, the purple clerk in the staff canteen, the clerk as EMPLOYEE OF THE MONTH over a '
+    + 'cube farm with the clerk himself at the cooler at its end. Below: the rounds that got there. ANIMATED.',
+    '15 Oct 2026');
+  for (const cand of OFFICE_ZOMBIE_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
+      (ctx, t) => drawOfficeZombieScene(ctx, t, cand), { animated: true });
+  }
 }
 
 // ---------------------------------------------------------------- driver

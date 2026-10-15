@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import { installDom } from './dom-stub.js';
+installDom();
+const { RunState } = await import('../src/game/run.js');
+const { drawHeroSprite, HERO_CENTER_OFF } = await import('../src/game/draw.js');
+const { Player } = await import('../src/game/player.js');
+const { HEROES } = await import('../src/data/heroes.js');
+const run = Object.create(RunState.prototype);
+run.player = new Player(HEROES[0].id, {});
+run.player.anim = .96;
+run.captureRenderInterpolation();
+run.player.anim = 1.04;
+assert.ok(Math.abs(run.heroRenderPhase(.25) - .98) < 1e-9);
+assert.ok(Math.abs(run.heroRenderPhase(.75) - .02) < 1e-9, 'stride wraps forwards');
+assert.equal(run.player.anim, 1.04, 'rendering does not change simulation animation');
+run.paused = true;
+assert.equal(run.heroRenderPhase(0), run.player.anim % 1);
+run.paused = false;
+run.player = new Player(HEROES[1].id, {});
+run.player.anim = .3;
+assert.equal(run.heroRenderPhase(.5), .3, 'relay does not blend from the previous hero');
+run.resetRenderInterpolation();
+assert.equal(run.heroRenderPhase(0), .3);
+run.player.anim = 0;
+assert.equal(run.heroRenderPhase(.5), 0, 'animation reset does not rewind through an old stride');
+const player = new Player(HEROES[0].id, {});
+player.grounded = true;
+const g = document.createElement('canvas').getContext('2d');
+let translations = [];
+g.translate = (x,y) => translations.push([x,y]);
+function paint(x, phase) {
+  translations = [];
+  drawHeroSprite(g, player, HEROES[0].id, 0, 0, false,
+    { flat:true, screenX:x, groundY:232.25, specialOrb:false, animationPhase:phase });
+  return translations.map(p=>[...p]);
+}
+const a = paint(56.1,.2), b = paint(56.2,.2);
+assert.ok(a.some(([x])=>Math.abs(x-(56.1+HERO_CENTER_OFF))<1e-8), 'hero retains fractional screen position');
+assert.ok(b.some(([x])=>Math.abs(x-(56.2+HERO_CENTER_OFF))<1e-8), 'subpixel motion reaches the vector painter');
+console.log('ok: hero stride interpolation, wrap, pause, relay, reset and subpixel drawing');

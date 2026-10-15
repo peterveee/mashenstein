@@ -886,12 +886,16 @@ function boot() {
   // Without a worker (a page that cannot start one) it falls back to idle slices, and
   // those are 40-70 ms tasks — nothing on a menu, a dropped frame in a run — so that
   // path goes one cabinet at a time and waits out any stage it finds itself in.
+  // Is a run being played? By the state's class name, which a cabinet's own run state extends:
+  // Gravity Grid's is GravityRunState, and an exact 'RunState' test let both warms below carry
+  // on through every gravity level — the paper sheets alone ~400 strokes a frame (15 Oct 2026).
+  const inARun = () => typeof window !== 'undefined' && /RunState$/.test(window.__mash_state || '');
   {
     const offThread = tngr2WorkerAvailable();
     const pending = Object.values(CABINET_BY_ID).filter((cab) => cab?.music);
     const next = () => {
       if (!pending.length) return;
-      if (!offThread && typeof window !== 'undefined' && window.__mash_state === 'RunState') {
+      if (!offThread && inARun()) {
         setTimeout(next, 2000);
         return;
       }
@@ -920,7 +924,7 @@ function boot() {
     const materials = ['cardstockClear', 'cardstockSoft', 'skySmooth'];
     const next = () => {
       if (!materials.length) return;
-      if (typeof window !== 'undefined' && window.__mash_state === 'RunState') return;
+      if (inARun()) return;
       if (warmPaperTexture(materials[0], 3)) materials.shift();
       setTimeout(next, 16);
     };

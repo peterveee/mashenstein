@@ -3,7 +3,7 @@
 import { drawPlayerMarker, MARKER_R, MARKER_GAP } from '../player-marker.js';
 import { H, W, chrome as chromeGeo, clientToLogical, isPhonePortraitPresentation, onPresentationChanged, presentationFrame, shake } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
-import { discardNextGap } from '../../engine/loop.js';
+import { discardNextGap, restartClockHere } from '../../engine/loop.js';
 import { Audio, PORTAL_BREATH } from '../../engine/audio.js';
 import { ChipResults } from '../results-chip.js';
 import { drawText, drawTextCentered, drawTextVector, drawTextVectorCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawPanel, drawKeyLegend, textYForMid, TEXT_INK_TOP, TEXT_INK_H, BACK_BUTTON_PLATE } from '../../engine/sprites.js';
@@ -12,7 +12,7 @@ import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../spri
 import { makeDoorWalk, makeDoorEntry, openingEdge, WALK_DIR } from './door-walk.js';
 import {
   makeCabinetDive, DIVE_VARIANT_BY_ID, DEFAULT_DIVE_VARIANT, DEFAULT_DIVE_ZOOM, aimForZoom, EXIT_CUE,
-  DIVE_OUT_SMILE, DIVE_LEAP_AT,
+  DIVE_OUT_SMILE, DIVE_LEAP_AT, diveCueFirings,
 } from './cabinet-dive.js';
 import { drawProp } from '../../sprites/props.js';
 import { drawFoodCourtMural, MURAL_W, MURAL_H } from '../../sprites/mural.js';
@@ -38,7 +38,7 @@ import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
-import { totalPlugs, MAX_PLUGS, cabinetUnlocked, cabinetStarted, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
+import { totalPlugs, MAX_PLUGS, cabinetLock, cabinetStarted, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
 import { MusicDirector } from '../../engine/music-director.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
@@ -1850,8 +1850,8 @@ export class HubState {
     // camera — makes room for it.
     const stalls = [];
     for (const [ci, cab] of CABINETS.entries()) {
-      const unlocked = cabinetUnlocked(slot, cab.id);
-      st.push({ type: 'cabinet', cab, x, unlocked, started: cabinetStarted(slot, cab.id), label: cab.name });
+      const lock = cabinetLock(slot, cab.id);
+      st.push({ type: 'cabinet', cab, x, unlocked: !lock, lock, started: cabinetStarted(slot, cab.id), label: cab.name });
       // 88 apart rather than the original 64. The viewport is 369 units wide,
       // so this frames about four machines at a time instead of six crowding
       // each other — room to look at each one, without the stretch of bare wall
@@ -2322,6 +2322,10 @@ export class HubState {
     // reversed, which means an offline render, which means it cannot be made on the
     // frame it is wanted. Entering the concourse is minutes before any level ends.
     Audio.warmVoiceReverse?.(EXIT_CUE.id, EXIT_CUE.seconds);
+    // And the rooms and echo lines the dive's cues are put in, for the same reason:
+    // built on first use, they were built mid-leap — the boom's hall on the very frame
+    // he hits the glass. Kept once built, so every later entry is a lookup.
+    for (const [route, name, o] of diveCueFirings()) Audio.warmCueSpace?.(route, name, o);
   }
   exit() {
     this.flow.hubPosition = { px: this.px, facing: this.facing || 1 };
@@ -2466,6 +2470,24 @@ export class HubState {
         this.poster = null;
         Audio.sfx('ui');
       }
+      Input.endFrame();
+      return;
+    }
+    // A QUEUED DIVE WAITS FOR THE ROOM TO HAVE DRAWN ONCE.
+    //
+    // It used to start on the very first update, in the same tick as enter() — and
+    // ahead of the first draw, which is the expensive frame (the song switch's mix,
+    // every cabinet screen re-baked after a level). The way out's first cue is the
+    // reversed swell, scheduled on the AUDIO clock to land with his feet; the dive
+    // itself runs on the loop's clock, which then replayed enter() as catch-up ticks
+    // and dropped whatever of the draw went past the cap. So the two left in step
+    // and arrived apart: measured (Chrome, 4x CPU, phone portrait) the hero landed
+    // 110-130 ms ahead of the swell on every exit, with the first visible frames
+    // lurching forward eight ticks at once. Waiting one tick costs nothing anyone
+    // sees — this whole frame is under a closed shutter — and draw() throws the
+    // load away (discardNextGap), so the dive starts on the first frame of the
+    // reveal with both clocks at zero together.
+    if ((this.pendingOut || this.pendingDive) && !this.drawnOnce) {
       Input.endFrame();
       return;
     }
@@ -3055,7 +3077,12 @@ export class HubState {
     Audio.sfx('uiConfirm');
     if (st.type === 'cabinet') {
       if (!st.unlocked) {
-        this.talk = { text: `NEEDS ${UNLOCKS[st.cab.id]} PLUGS. YOU HAVE ${totalPlugs(slot)}. THE MATH IS SINCERE.`, t: 3, who: null };
+        // the plugs first, as ever; the cabinet before it, when that has never been played, as
+        // the extra line (progress.js cabinetLock)
+        const { plugs, first } = st.lock || {};
+        this.talk = { text: plugs
+          ? `NEEDS ${plugs} PLUGS. YOU HAVE ${totalPlugs(slot)}. THE MATH IS SINCERE.${first ? ` AND PLAY ${first.name} FIRST.` : ''}`
+          : `YOU HAVE THE PLUGS. PLAY ${first.name} FIRST.`, t: 3, who: null };
         return;
       }
       // The hero goes in through the front of the machine; the dive calls
@@ -3120,7 +3147,17 @@ export class HubState {
         ? { ...o, shapeRef: undefined, shape: DIVE_SHAPES[o.shapeRef] }
         : o),
       voiceSfx: (id, o) => Audio.voiceSfx(id, o),
-      voiceReverse: (id, o) => Audio.voiceSfxReverse(id, o),
+      // The reversed swell is the one cue placed on the AUDIO clock (scheduled back from
+      // his landing), so the dive's clock restarts at the instant it goes in rather than
+      // at the top of the frame. On the first exit after a level WebKit stalled 90-280 ms
+      // in that first tick, in code that does next to nothing (most likely the collector
+      // clearing the run away); replayed as catch-up, the stall put his feet down that far
+      // ahead of the swell. The draw after it is still counted — see restartClockHere.
+      voiceReverse: (id, o) => {
+        const placed = Audio.voiceSfxReverse(id, o);
+        restartClockHere();
+        return placed;
+      },
       shake,
     });
     // Park the simulated hero under the machine he dove into. The dive owns his
@@ -3469,7 +3506,11 @@ export class HubState {
       for (const s of this.stations()) {
         if (s.type === 'cabinet' && palFor(s.cab, s.unlocked).lit) cabinetScene(s.cab);
       }
-      if (this.doorWalk && this.doorWalk.mode === 'out') discardNextGap();
+      // An arrival out of a cabinet is the same load frame with a dive waiting on
+      // it — see the hold at the top of update().
+      if ((this.doorWalk && this.doorWalk.mode === 'out') || this.pendingOut || this.pendingDive) {
+        discardNextGap();
+      }
     }
     const slot = this.save.slot;
     const act = actForSlot(slot);
@@ -4188,7 +4229,8 @@ export class HubState {
       const lockedCabinet = this.near.type === 'cabinet' && !this.near.unlocked;
       const lockedTrophy = this.near.type === 'shelf' && !this.near.unlocked;
       if (lockedCabinet) {
-        promptText = `${this.near.label} - LOCKED: ${UNLOCKS[this.near.cab.id]} PLUGS`;
+        const { plugs, first } = this.near.lock || {};
+        promptText = `${this.near.label} - LOCKED: ${[plugs && `${plugs} PLUGS`, first && `PLAY ${first.name} FIRST`].filter(Boolean).join(', ')}`;
       } else if (lockedTrophy) {
         promptText = 'TROPHY ROOM - LOCKED: CLEAR 1 LEVEL';
       } else {
@@ -5438,6 +5480,12 @@ export class StageSelectState {
     opts.forEach((o, i) => { if (o.kind === 'stage' && stageUnlocked(this.save.slot, o.stage)) frontier = i; });
     this.idx = frontier;
     Input.setMenuButtons();
+    // The block above is load, not time the reveal lived through: left alone the loop
+    // replays it as catch-up ticks and the shutter jumps half open in one frame, right
+    // after the dive (433 ms the first time at 4x CPU, 80-120 ms after). Thrown away,
+    // the cover holds a beat longer and then opens smoothly. Nothing on this screen
+    // keeps time with the song, so there is nothing to fall out of step with.
+    discardNextGap();
   }
   options() {
     const slot = this.save.slot;

@@ -76,13 +76,15 @@ const COPIES = process.argv.includes('--copies');
 
 /**
  * A preset whose DRIVE is staged off its stored peak (`driveRef`, src/engine/drive-curve.js):
- * a driven MRDR-3 or drum voice — and, for a song's copy, a stored DuoSynth or noise patch,
- * which registerSongVoice turns into those. Its peak is a setting as much as a measurement:
- * a new one re-stages the drive and changes the sound. So a re-measure writes its level —
- * measured WITH the stored peak, so the two still describe one sound — and keeps the peak.
+ * a driven MRDR-3, TNGR-2 or drum voice — and, for a song's copy, a stored DuoSynth or noise
+ * patch, which registerSongVoice turns into those. Its peak is a setting as much as a
+ * measurement: a new one re-stages the drive and changes the sound. So a re-measure writes
+ * its level — measured WITH the stored peak, so the two still describe one sound — and
+ * keeps the peak.
  */
 const peakStaged = (v, copy = false) => v?.drive > 0 && v.shape !== 'crush'
-  && (v.kind === 'drum' || v.synth === 'MRDR-3' || (copy && (v.kind === 'noise' || v.synth === 'DuoSynth')));
+  && (v.kind === 'drum' || v.synth === 'MRDR-3' || v.synth === 'TNGR-2'
+    || (copy && (v.kind === 'noise' || v.synth === 'DuoSynth')));
 
 // Noise and KLNG8 presets are measured too: they are built from native nodes
 // rather than a Tone class, but their level is derived exactly the same way.

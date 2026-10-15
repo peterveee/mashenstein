@@ -1421,7 +1421,11 @@ function makeLimiter(ctx, params) {
   const comp = ctx.createWaveShaper(); comp.oversample = 'none';
   env.out.connect(comp);
   const smooth = ctx.createBiquadFilter();
-  smooth.type = 'lowpass'; smooth.Q.value = 0.5;
+  smooth.type = 'lowpass';
+  // A lowpass biquad reads Q in dB, so this is 0.5 LINEAR (−6.02 dB): critically damped.
+  // It was `0.5` until 15 Oct 2026 — 1.06 linear, underdamped, so the gain swung ~17% past
+  // where it was going: an extra dip on each attack (1.5 dB deeper at 6 dB of reduction).
+  smooth.Q.value = 20 * Math.log10(0.5);
   comp.connect(smooth); smooth.connect(vca.gain);
 
   // ARC. The L2's automatic release, and the reason it can be pushed hard without
@@ -4879,7 +4883,11 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   }
   if (def.custom) {
     if (!ctx) return null;
-    const node = def.custom(ctx, params);
+    // The card's own defaults under the saved params — what the desk draws is what plays.
+    // Until 15 Oct 2026 a key the save left out fell to the maker's code fallback instead,
+    // so a Doubler saved with no params played 18 ms with dry centred under a card showing
+    // 11 ms, dry hard left (work/local/_fx-audit/).
+    const node = def.custom(ctx, { ...def.defaults, ...params });
     node.applyState(bpm);
     return {
       def,
@@ -4930,6 +4938,7 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   // LFO-driven effects sit silent until started.
   if (def.start && typeof node.start === 'function') { try { node.start(); } catch { /* already running */ } }
   if (def.tone === 'PingPongDelay') cutReturns(node);
+  if (def.tone === 'AutoPanner') stereoAutoPan(node);
   const merged = { ...opts, ...own };
   if (def.tone === 'StereoWidener') { midAtUnity(node); madeSide(node, widestOf(merged)); }
   // The desk's vocabulary is note divisions and sync flags; Tone's is seconds and hertz.
@@ -5182,6 +5191,73 @@ function cutReturns(node) {
     // then leaves its repeats ringing, which is the old behaviour, not a broken delay.
     delete node._cutL;
     delete node._cutR;
+  }
+}
+
+/**
+ * The Auto Panner on a stereo input (15 Oct 2026; before, every stereo part was folded to mono).
+ *
+ * Tone builds its Panner with channelCount 1, so a stereo input is folded to mono,
+ * (L + R) / 2, before it is panned: whatever a chorus or a ping-pong put in the sides
+ * ahead of it is gone, and a stereo part comes out narrower and quieter than it went in.
+ * Feeding the StereoPanner both channels instead would keep them, but its stereo law is
+ * unity on both sides at centre where its mono law is 0.707 — every mono part on an
+ * Auto Panner would come up 3dB.
+ *
+ * So each side goes through a mono panner of its own, driven by the same LFO, and keeps
+ * only its own half of the result: L × cos θ on the left, R × sin θ on the right — the
+ * same equal-power gains the mono panner puts on (L + R) / 2 today. A mono input, or a
+ * stereo one whose two sides are the same, comes out sample for sample as it did; a
+ * stereo one keeps its image and is balanced across, rather than collapsed.
+ */
+function stereoAutoPan(node) {
+  const send = node.effectSend;
+  const ret = node.effectReturn;
+  const left = node._panner;
+  const lfo = node._lfo;
+  if (!send || !ret || !left?.pan || !lfo) return;
+  const ctx = node.context;
+  let right = null;
+  let wired = false;
+  try {
+    right = new Tone.Panner({ context: ctx, channelCount: 1 });
+    // A mono feed is copied to both sides first ('speakers' up-mix), where a splitter on
+    // its own would hand the right panner silence.
+    const up = ctx.createGain();
+    up.channelCount = 2; up.channelCountMode = 'explicit'; up.channelInterpretation = 'speakers';
+    const split = ctx.createChannelSplitter(2);
+    const keepL = ctx.createChannelSplitter(2);
+    const keepR = ctx.createChannelSplitter(2);
+    const merge = ctx.createChannelMerger(2);
+    lfo.connect(right.pan);
+    send.disconnect(left);
+    left.disconnect(ret);
+    wired = true;
+    Tone.connect(send, up);
+    up.connect(split);
+    Tone.connect(split, left, 0, 0);
+    Tone.connect(split, right, 1, 0);
+    Tone.connect(left, keepL);
+    Tone.connect(right, keepR);
+    keepL.connect(merge, 0, 0);
+    keepR.connect(merge, 1, 1);
+    Tone.connect(merge, ret);
+    const natives = [up, split, keepL, keepR, merge];
+    const dispose = node.dispose.bind(node);
+    node.dispose = () => {
+      for (const n of natives) { try { n.disconnect(); } catch { /* already */ } }
+      right.dispose();
+      return dispose();
+    };
+  } catch {
+    // Tone's internals moved under us: put Tone's own wiring back — a mono-folding
+    // panner, which is today's sound, rather than a silent one.
+    try { right?.dispose(); } catch { /* fine */ }
+    if (wired) {
+      try { send.disconnect(); } catch { /* fine */ }
+      try { left.disconnect(); } catch { /* fine */ }
+      try { send.connect(left); left.connect(ret); } catch { /* nothing more to do */ }
+    }
   }
 }
 

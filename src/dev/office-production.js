@@ -26,8 +26,9 @@ export function drawOfficeProductionScene(ctx, t, screen, portrait = false, at =
     if (!packs.has(key)) packs.set(key, officePack({ stageIndex, gallery: true }));
     if (!hazards.has(screen)) hazards.set(screen, screen.hazards.map(h => makeObstacle(h.type, PLAYER_X + h.dx)));
     const pack = packs.get(key), cab = CABINET_BY_ID.office;
-    // Tour the entire finite floor, including its one destination near the end.
-    const tourDistance = 26208;
+    // Tour the entire finite floor, including its one destination near the end (`screen.tour`: a
+    // floor of another length, as at another ASSIST SPEED).
+    const tourDistance = screen.tour ?? 26208;
     const camX = at ?? ((t % 90) + 90) % 90 / 90 * tourDistance;
     const zoom = portrait ? 2.2 : 2, xOffset = portrait ? -74 : 0;
     const frameShift = frame.groundScreenY - GROUND_Y;

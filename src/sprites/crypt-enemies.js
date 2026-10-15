@@ -5,16 +5,28 @@ export const CRYPT_ART_STYLES = [
  {id:'B',name:'Chunky cel',note:'Broad angular heads, large costume blocks and decisive two-tone shading. A more sculpted arcade enemy.',ink:'#3a354e',edge:2.1,skin:'#b5de75',shade:'#79b94e',stone:'#b3c4d9',stoneShade:'#748da9'},
  {id:'C',name:'Bold comic',note:'Bean-shaped faces, heavy clean ink, oversized eyes and elastic limbs. The most exaggerated option.',ink:'#352b48',edge:3.2,skin:'#c9e875',shade:'#9fc956',stone:'#d4c3e6',stoneShade:'#a08abb'},
 ];
+// `s.map`, when a style has one, recolours every fill and line on its way to the canvas (the
+// office cameo eases the crypt's colours toward its pastels this way: officeLigne/zombies.js).
 function painter(c,s){
- const path=(fill,fn,w=s.edge)=>{c.beginPath();fn(c);c.fillStyle=fill;c.fill();if(w){c.strokeStyle=s.ink;c.lineWidth=w;c.lineJoin='round';c.stroke();}};
+ const M=s.map||((x)=>x);
+ const path=(fill,fn,w=s.edge)=>{c.beginPath();fn(c);c.fillStyle=M(fill);c.fill();if(w){c.strokeStyle=M(s.ink);c.lineWidth=w;c.lineJoin='round';c.stroke();}};
  const poly=(fill,points,w)=>path(fill,p=>{points.forEach(([x,y],i)=>i?p.lineTo(x,y):p.moveTo(x,y));p.closePath();},w);
  const oval=(fill,x,y,rx,ry,w)=>path(fill,p=>p.ellipse(x,y,rx,ry,0,0,Math.PI*2),w);
  const box=(fill,x,y,w,h,r=4,ow)=>path(fill,p=>p.roundRect(x,y,w,h,r),ow);
- const line=(fill,w,points)=>{c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.strokeStyle=fill;c.lineWidth=w;c.lineCap='round';c.lineJoin='round';c.stroke();};
+ const line=(fill,w,points)=>{c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.strokeStyle=M(fill);c.lineWidth=w;c.lineCap='round';c.lineJoin='round';c.stroke();};
  const limb=(fill,w,points)=>{line(s.ink,w+s.edge*1.4,points);line(fill,w,points);};
  return {path,poly,oval,box,line,limb};
 }
-export function drawCryptZombie(c,t,role,s,{vacant=false,idle=false,pace=1,phase=null}={}){
+export function drawCryptZombie(c,t,role,s,{vacant=false,idle=false,pace=1,phase=null,legs=1,head=1,torso=1,arm=1,outfit=null}={}){
+ // PROPORTIONS, for a zombie seen outside the crypt (the office cameo, src/dev/office-zombie-
+ // candidates.js): `legs` lengthens the legs from the ankle up and lifts everything above them
+ // to match; `torso` stretches the body from the hem (y -30) to the neck (-68) and lifts the
+ // head to match, unstretched; `head` scales the head about the neck; `arm` thins the reaching
+ // sleeve (and undoes what the torso stretch adds to it). All 1 in the crypt. `outfit` dresses a
+ // clerk differently: {cloth, dark, tie, hair, glasses: false, carry: 'mug'}.
+ const O=outfit||{};
+ const LY=(y)=>legs===1?y:-6+(y+6)*legs, lift=30*(legs-1);
+ const TY=(y)=>torso===1?y:-30+(y+30)/torso;      // a point the torso stretch must leave in place
  const {path,poly,oval,box,line,limb}=painter(c,s), angular=s.id==='B', comic=s.id==='C';
  // THE SHAMBLE (Peter, 26 Sep 2026: "improve the movement of the zombies a little… they
  // seem a bit repetitive like flapping legs"). Not two legs swinging on one sine: the lead
@@ -43,17 +55,18 @@ export function drawCryptZombie(c,t,role,s,{vacant=false,idle=false,pace=1,phase
  const step=Math.sin(u*Math.PI*2);
  const armBob=idle?2.6*Math.sin(t*1.7+0.8):1.6*land+1.2*Math.sin(u*Math.PI*2+1);
  const loll=idle?0.15*Math.sin(t*0.85+0.35):0.07*Math.sin((u-0.2)*Math.PI*2);
- const cloth=role==='usher'?'#8964af':role==='gardener'?'#e0a343':'#4797c3';
- const dark=role==='usher'?'#5d3d87':role==='gardener'?'#aa7333':'#326594';
+ const cloth=O.cloth||(role==='usher'?'#8964af':role==='gardener'?'#e0a343':'#4797c3');
+ const dark=O.dark||(role==='usher'?'#5d3d87':role==='gardener'?'#aa7333':'#326594');
  const shoes=role==='gardener'?'#765033':'#554061';
  // Drag leg behind, lead leg in front; the soles meet the ground unless lifted.
- limb(dark,angular?12:10,[[35,-36],[39+fB*0.55,-19-lB],[39+fB,-6-lB]]);
+ limb(dark,angular?12:10,[[35,LY(-36)],[39+fB*0.55,LY(-19)-lB],[39+fB,-6-lB]]);
  c.save();c.translate(30+fB+12,-9-lB+9);c.rotate(-0.12*lB);box(shoes,-12,-9,24,9,comic?6:4);c.restore();
- limb(cloth,angular?13:11,[[17,-36],[13+fF*0.35,-18-lF*0.6],[13+fF,-6-lF]]);
+ limb(cloth,angular?13:11,[[17,LY(-36)],[13+fF*0.35,LY(-18)-lF*0.6],[13+fF,-6-lF]]);
  box(shoes,-1+fF,-9-lF,26,9,comic?6:4);
  line('#c5b5d0',1.5,[[3+fF,-3-lF],[19+fF,-3-lF]]);
- c.save();c.translate(sway*1.2-land*1.2,dip);
+ c.save();c.translate(sway*1.2-land*1.2,dip-lift);
  if(idle)c.rotate(0.045*idleRock);
+ if(torso!==1){c.translate(0,-30);c.scale(1,torso);c.translate(0,30);}
  limb(dark,11,[[42,-61],[52,-49],[51,-34]]);
  oval(s.shade,51,-32,6,7);
  if(angular) poly(cloth,[[11,-71],[37,-73],[48,-61],[47,-33],[36,-28],[28,-33],[18,-29],[7,-34],[8,-57]]);
@@ -62,10 +75,10 @@ export function drawCryptZombie(c,t,role,s,{vacant=false,idle=false,pace=1,phase
  poly('#fff0cb',[[20,-71],[33,-71],[28,-47]],0);
  poly(dark,[[13,-69],[20,-72],[25,-51],[15,-58],[18,-63]],.8);
  poly(dark,[[33,-71],[40,-64],[34,-58],[37,-54],[28,-48]],.8);
- poly(role==='usher'?'#e8c464':'#f18765',[[25,-69],[30,-69],[29,-62],[34,-50],[29,-44],[25,-52]],1);
+ poly(O.tie||(role==='usher'?'#e8c464':'#f18765'),[[25,-69],[30,-69],[29,-62],[34,-50],[29,-44],[25,-52]],1);
  for(let i=0;i<2;i++)oval('#f5dda0',29,-43+i*7,1.4,1.4,0);
- limb(cloth,comic?9:12,[[13,-62],[2,-50+armBob*0.6],[-12,-54+armBob]]);
- oval(s.skin,-15,-54+armBob,comic?8:7,6);
+ limb(cloth,(comic?9:12)*arm/torso,[[13,-62],[2,-50+armBob*0.6],[-12,-54+armBob]]);
+ oval(s.skin,-15,-54+armBob,comic?8:7,6/torso);
  for(let i=0;i<2;i++)line(s.shade,1.2,[[-19+i*4,-56+armBob],[-19+i*4,-51+armBob]]);
  if(role==='usher'){
   c.save();c.translate(52,-30);c.rotate(sway*.14);
@@ -76,17 +89,28 @@ export function drawCryptZombie(c,t,role,s,{vacant=false,idle=false,pace=1,phase
  if(role==='gardener'){
   box('#6aa77a',10,-54,30,23,3,1);box('#44805e',17,-49,16,11,2,0);
   line('#bddb99',1.3,[[18,-48],[30,-48]]);
-  line('#a16d3e',4,[[52,-31],[54,-5]]);
-  poly('#d2d8e0',[[49,-14],[59,-14],[59,-5],[54,0],[49,-5]],1.3);
+  // the spade stays on the ground however long the legs
+  line('#a16d3e',4,[[52,-31],[54,TY(-5+lift)]]);
+  poly('#d2d8e0',[[49,TY(-14+lift)],[59,TY(-14+lift)],[59,TY(-5+lift)],[54,TY(lift)],[49,TY(-5+lift)]],1.3);
  }
  if(role==='clerk'){
   box('#fff2d5',35,-59,9,10,1,1);box('#e49a60',37,-57,5,3,0,0);
+  if(O.carry==='mug'){
+   // a coffee mug in the far hand instead of the briefcase
+   path('rgba(0,0,0,0)',p=>{p.ellipse(60,-36,4,4.5,0,0,Math.PI*2);}); // the handle, outline only
+   box('#f6efe2',47,-43,12,13,2);box('#e8708f',47,-38,12,3,0,0);
+   oval('#6b4529',53,-43,5.6,1.6,0.8);
+   oval(s.shade,48,-35,4.5,4.5);
+  }else{
   box('#a86a42',45,-26,20,19,3);line('#e3ad70',1.5,[[49,-22],[61,-22]]);
   line('#715044',2,[[50,-26],[50,-30],[58,-30],[58,-26]]);
+  }
  }
  // Deliberately round / broad / bean-shaped faces, not palette swaps of round one.
  const headBob=idle?1.1*Math.sin(t*1.7+1.3):0;
  c.save();c.translate(-1,-1+sway*0.6+land*0.8+headBob);c.rotate(sway*.02+loll);
+ if(torso!==1){c.translate(0,-30);c.scale(1,1/torso);c.translate(0,30-38*(torso-1));}
+ if(head!==1){c.translate(29,-68);c.scale(head,head);c.translate(-29,68);}
  oval(s.shade,11,-87,6,8);
  if(angular) poly(s.skin,[[10,-103],[22,-111],[45,-109],[51,-99],[49,-77],[40,-67],[18,-70],[8,-82]]);
  else if(comic)path(s.skin,p=>{p.moveTo(12,-104);p.bezierCurveTo(34,-124,58,-106,49,-84);p.bezierCurveTo(55,-65,28,-61,15,-71);p.bezierCurveTo(-1,-81,0,-96,12,-104);p.closePath();});
@@ -125,9 +149,11 @@ export function drawCryptZombie(c,t,role,s,{vacant=false,idle=false,pace=1,phase
   box('#699765',10,-111,38,6,2,0);oval('#eab862',29,-105,27,5);
   poly('#78ac71',[[43,-118],[49,-126],[48,-116],[54,-121],[49,-111]],.7);
  } else {
-  path('#596e7c',p=>{p.moveTo(10,-103);p.quadraticCurveTo(7,-115,26,-113);p.lineTo(41,-108);p.lineTo(33,-101);p.lineTo(30,-106);p.lineTo(18,-101);p.closePath();});
+  path(O.hair||'#596e7c',p=>{p.moveTo(10,-103);p.quadraticCurveTo(7,-115,26,-113);p.lineTo(41,-108);p.lineTo(33,-101);p.lineTo(30,-106);p.lineTo(18,-101);p.closePath();});
+  if(O.glasses!==false){
   box('rgba(255,255,255,.08)',10,-98,17,13,3,1.4);box('rgba(255,255,255,.08)',31,-97,17,12,3,1.4);
   line('#80555b',1.6,[[27,-91],[31,-91]]);
+  }
  }
  c.restore();c.restore();
 }

@@ -8347,6 +8347,36 @@ class AudioSys {
     this._liveVoiceCues.clear();
   }
 
+  /**
+   * Build the space a cue will be put in — its room or its echo line — without playing it.
+   *
+   * Every one of these is built on its first use and kept, and building a room is real
+   * main-thread work: an impulse response generated and handed to a convolver on the spot.
+   * The cabinet dive's boom is in a 3.5 s hall, and on the first dive of a session that hall
+   * was built on the frame he hit the glass — 66 ms of a 4x-throttled Chrome frame, the
+   * portal breath's room another 33 at the exit — so the loudest moment in the shot arrived
+   * late and the picture lurched to catch up. Paid here instead, wherever the caller has a
+   * frame nobody is watching.
+   *
+   * `route` is how the cue is fired — 'sfx', 'voice' or 'reverse' — because they choose
+   * their space differently: voice cues take the delay over the reverb when given both
+   * (see voiceSfx), sfx() only ever reverb, and the portal cue always its own room. The
+   * defaults are the cue functions' own, so the same option bag finds the same cache entry.
+   */
+  warmCueSpace(route, name, opt = {}) {
+    if (!this.ctx || !this.sfxGain || this.offline) return;
+    try {
+      if (route === 'sfx') {
+        if (opt.reverb > 0) this._voiceVerbTap(opt.reverb, opt.reverbDecay ?? 1.5);
+        if (name === 'portal') this.portalVerbSend();
+      } else if (opt.delay > 0) {
+        this._voiceDelayTap(opt.delay, opt.delayTime ?? 0.135, opt.delayFeedback ?? 0.42);
+      } else if (opt.reverb > 0) {
+        this._voiceVerbTap(opt.reverb, opt.reverbDecay ?? 1.5);
+      }
+    } catch { /* never fatal: the cue builds it on first use, as it always did */ }
+  }
+
   /** Render and cache a reversed cue ahead of needing it. Fire and forget. */
   warmVoiceReverse(voiceId, seconds = 1) {
     try { this._reversedVoiceBuffer(voiceId, seconds); } catch { /* never fatal */ }

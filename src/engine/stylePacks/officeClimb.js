@@ -234,14 +234,14 @@ export const OFFICE_FLOORS = Object.freeze({
     mid: {
       period: 1200,
       items: [
-        { kind: 'cubicles', u: 20, u1: 260, heads: [1, 3, 4], pop: 2 },
+        { kind: 'cubicles', u: 20, u1: 260, heads: [1, 3, 4], pop: 2, peek: [4] },
         { kind: 'cooler', u: 296 },
         { kind: 'copier', u: 344, w: 40 },
-        { kind: 'cubicles', u: 420, u1: 660, heads: [0, 2, 5], pop: -1 },
+        { kind: 'cubicles', u: 420, u1: 660, heads: [0, 2, 5], pop: -1, peek: [2, 5] },
         { kind: 'plant', u: 696, variant: 'ficus' },
         { kind: 'cabinet', u: 736 },
         { kind: 'cabinet', u: 758 },
-        { kind: 'cubicles', u: 806, u1: 1086, heads: [1, 2, 4, 6], pop: 5 },
+        { kind: 'cubicles', u: 806, u1: 1086, heads: [1, 2, 4, 6], pop: 5, peek: [2] },
         { kind: 'plant', u: 1120, variant: 'snake' },
         { kind: 'cooler', u: 1160 },
       ],
@@ -393,13 +393,21 @@ function liftOpen(t, i) {
 }
 
 // The prairie dog: up, look about, down, every 6 s.
+// A pop-up, every 7 s: up over the partition in 0.3 s, a 2.4 s look round, down again. The look
+// goes one way, the other, and back (Peter, 15 Oct 2026: "more cubicle workers to stick their
+// heads up and look around"); `side` is which way it starts.
+const POP_PERIOD = 7, POP_UP = 3.6, POP_HOLD = 2.4;
 function popAt(t, i) {
-  const c = ((t + i * 1.7) % 6 + 6) % 6;
-  if (c < 3.6) return 0;
-  if (c < 3.9) return (c - 3.6) / 0.3;
-  if (c < 5.1) return 1;
-  if (c < 5.4) return 1 - (c - 5.1) / 0.3;
+  const c = ((t + i * 1.7) % POP_PERIOD + POP_PERIOD) % POP_PERIOD;
+  if (c < POP_UP) return 0;
+  if (c < POP_UP + 0.3) return (c - POP_UP) / 0.3;
+  if (c < POP_UP + 0.3 + POP_HOLD) return 1;
+  if (c < POP_UP + 0.6 + POP_HOLD) return 1 - (c - POP_UP - 0.3 - POP_HOLD) / 0.3;
   return 0;
+}
+function popLook(t, i, side) {
+  const c = ((t + i * 1.7) % POP_PERIOD + POP_PERIOD) % POP_PERIOD - POP_UP - 0.3;
+  return Math.floor(Math.max(0, Math.min(2, c / (POP_HOLD / 3)))) === 1 ? -side : side;
 }
 
 function flickerAt(t) {
@@ -463,14 +471,15 @@ function resolveMid(F, camX, t, coverage) {
         const desks = [];
         for (let d = 0; d < n; d++) {
           const seated = it.heads.includes(d);
-          const isPop = d === it.pop;
+          // `pop` is the empty desk whose worker stands up; `peek`, seated heads that do it too
+          const isPop = d === it.pop || (it.peek || []).includes(d);
           desks.push({
             x: x0 + d * 40, w: 40,
             occupied: seated || isPop,
             // the bob is a pixel or so; the pop raises head and shoulders up to 12 px
             dy: seated ? Math.sin(t * (1.1 + d * 0.13) + d * 2.1) * 0.8 : 0,
             pop: isPop ? popAt(t, i * 7 + d) : 0,
-            look: Math.sin(t * 2.3 + d) > 0 ? 1 : -1,
+            look: isPop ? popLook(t, i * 7 + d, d % 2 ? 1 : -1) : 1,
             seed: i * 31 + d,
           });
         }

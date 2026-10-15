@@ -4691,8 +4691,8 @@ const ALL_GUIDE_PAGES = [
   // CORPORATE KOMBAT deals its own furniture on each floor (data/cabinets.js
   // OFFICE_FLOORS), so it gets a page per floor rather than a row per slot on
   // the shared pages. Each floor's objects stand in for the shared hazards in
-  // the same order: standing, big, stacked, rolling, burning, low, hanging,
-  // flying.
+  // the same order: standing, big, stacked, rolling, burning, low, flying.
+  // Nothing hangs from the ceiling any more (15 Oct 2026).
   {
     title: 'THE OFFICE: LOBBY (8-1)', color: '#e04848', hint: 'RED = AVOID. THE CLEANER GOT HERE FIRST.',
     rows: [
@@ -4702,7 +4702,6 @@ const ALL_GUIDE_PAGES = [
       { s: 'mopBucket', name: 'MOP BUCKET', desc: 'ROLLS AT YOU. JUMP IT, OR SLIDE AND KICK IT.' },
       { s: 'ashUrnFire', name: 'ASH URN', desc: 'SOMEONE DID NOT PUT IT OUT. SHOOT IT OR JUMP IT.' },
       { s: 'velvetRope', name: 'VELVET ROPE', desc: 'THE LOBBY QUEUE. NOTHING BREAKS IT. JUMP IT.' },
-      { s: 'artMobile', name: 'ART INSTALLATION', desc: 'HANGS AT HEAD HEIGHT. SLIDE UNDER IT. IT COST MORE THAN YOU.' },
       { s: 'paperPlane', name: 'PAPER PLANE', desc: 'THROWN OFF THE MEZZANINE. DO NOT JUMP INTO IT.' },
     ],
   },
@@ -4715,7 +4714,6 @@ const ALL_GUIDE_PAGES = [
       { s: 'mailCart', name: 'MAIL CART', desc: 'INTERNAL MAIL. ROLLS AT YOU. JUMP OR KICK IT.' },
       { s: 'binFire', name: 'BIN FIRE', desc: 'THE MEMOS. SHOOT IT OR JUMP IT. NO KICKING.' },
       { s: 'drawingPins', name: 'DRAWING PINS', desc: 'POINTS UP. NOTHING BREAKS THEM. JUMP THEM.' },
-      { s: 'birthdayBunting', name: 'BUNTING', desc: 'STRUNG LOW ACROSS THE AISLE. SLIDE UNDER IT.' },
       { s: 'partyBalloon', name: 'BALLOON', desc: 'GOT AWAY. DO NOT JUMP INTO IT.' },
       { s: 'shredder', name: 'SHREDDER', desc: 'SPITS CONFETTI. SHOOT IT OR RAM IT TO BREAK IT.' },
     ],
@@ -4729,7 +4727,6 @@ const ALL_GUIDE_PAGES = [
       { s: 'drinksTrolley', name: 'DRINKS TROLLEY', desc: 'ROLLS AT YOU. JUMP IT, OR KICK IT.' },
       { s: 'confidentialBin', name: 'CONFIDENTIAL', desc: 'THE EVIDENCE. SHOOT IT OR JUMP IT. NO KICKING.' },
       { s: 'velvetRopeGold', name: 'GOLD ROPE', desc: 'THE EXECUTIVE SUITE. NOTHING BREAKS IT. JUMP IT.' },
-      { s: 'chandelier', name: 'CHANDELIER', desc: 'HANGS AT HEAD HEIGHT. SLIDE UNDER IT.' },
       { s: 'champagneCork', name: 'CHAMPAGNE CORK', desc: 'SOMEONE GOT A BONUS. DO NOT JUMP INTO IT.' },
     ],
   },

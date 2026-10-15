@@ -47,7 +47,9 @@ import {
   mrdr3PanicAll, releaseIdleMrdr3Lanes, warmMrdr3Tables,
 } from './mrdr3/controller.js';
 import { mrdr3GateAdsrEvents, mrdr3SyncBendKnots, mrdr3SyncBendSteps } from './mrdr3/env.js';
-import { mrdr3SyncKind, mrdr3SyncKey, hardSyncPartials } from './mrdr3/tables.js';
+import {
+  mrdr3SyncKind, mrdr3SyncKey, hardSyncPartials, MRDR3_MAX_PARTIALS,
+} from './mrdr3/tables.js';
 import { compileJmjr4 } from './jmjr4/compile.js';
 import { renderIr } from './jmjr4/dsp.js';
 import { makeBitCrusher } from './effects.js';
@@ -58,7 +60,7 @@ import { advanceLine, newLineState } from './jmjr4/line.js';
 import {
   tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, tngr2Choke, releaseTngr2Context,
   tngr2ControllerHealth, canHostTngr2, renderTngr2Lane, tngr2PatchForVoice, tngr2VibratoOf,
-  syncTngr2Patch, tngr2EffectsOf,
+  syncTngr2Patch, tngr2EffectsOf, postTngr2Events,
 } from './tngr2/controller.js';
 
 /**
@@ -287,9 +289,27 @@ const LFO_TEMPO_STEPS = Object.freeze({
  *
  * Cached PER CONTEXT, not per sample rate: a PeriodicWave belongs to the context that made
  * it, and an offline render sharing a live context's table is not a cache hit but a bug.
+ *
+ * FULL BAND BY DEFAULT: as many partials as the worklet's own pulse pyramid carries at its
+ * fullest level (MRDR3_MAX_PARTIALS, 1024 — a 20 Hz note to 20 kHz). This used to stop at
+ * 64, which put a hidden lowpass on every static pulse at 64 × its pitch — 7 kHz on a 110 Hz
+ * note — that no control showed and the worklet did not have; on PHONE quality, where every
+ * moving pulse plays this table at its centre width, a 62 Hz pad lost everything above
+ * 4 kHz. Nothing is spent on it: the browser builds the same band-limited tables per octave
+ * from however many coefficients it is handed and culls them per pitch, so the extra
+ * partials cost one longer loop here, once per duty per context. The arcade cue keeps the
+ * 24 it was built on, by asking for them.
  */
 const pulseTables = new WeakMap();
-export function pulseTable(ctx, duty = 0.5, { harmonics = 64, sine = false } = {}) {
+export const PULSE_HARMONICS = MRDR3_MAX_PARTIALS;
+
+/**
+ * A Butterworth section's Q as a lowpass or highpass BiquadFilterNode reads it: in dB, so
+ * 20·log10(1/√2) = −3.0103 rather than the linear 0.7071 (see `_filterChain`). MRDR-3's
+ * worklet biquad reads Q the same way and uses the same number.
+ */
+export const BUTTERWORTH_Q_DB = 20 * Math.log10(Math.SQRT1_2);
+export function pulseTable(ctx, duty = 0.5, { harmonics = PULSE_HARMONICS, sine = false } = {}) {
   const d = Math.min(0.95, Math.max(0.05, duty));
   let perCtx = pulseTables.get(ctx);
   if (!perCtx) { perCtx = new Map(); pulseTables.set(ctx, perCtx); }
@@ -3149,8 +3169,12 @@ export class VoiceRack {
    */
   async flushTngr2Offline() {
     const booked = this._tngr2Offline;
-    if (!booked || !booked.size) return 0;
+    // Lanes told something straight down the port since the last flush (a cut — see
+    // `chokeLane`), which want a receipt like everything else.
+    const told = this._tngr2OfflineTold;
+    if ((!booked || !booked.size) && !told?.size) return 0;
     this._tngr2Offline = new Map();
+    this._tngr2OfflineTold = new Set();
     this._tngr2OfflineLanes ||= new Map();
     // Lanes belong to the CONTEXT that built them. A page that bounces twice reuses the
     // rack, and a node from the last render is not a node this one can post to.
@@ -3158,14 +3182,20 @@ export class VoiceRack {
       if (entry.context !== this.ctx) this._tngr2OfflineLanes.delete(key);
     }
     let built = 0;
-    for (const booking of booked.values()) {
+    // Every lane this flush touched, waited on before it returns — see `postTngr2Events`.
+    // The bounce resumes its render when this resolves, so a stretch is in its processor's
+    // queue before the render can reach it, however busy the machine is.
+    const receipts = [];
+    const receipted = new Set();
+    for (const booking of booked?.values() || []) {
       try {
         const already = this._tngr2OfflineLanes.get(booking.laneKey);
         if (already) {
           // Posted as collected: these events already carry absolute FRAMES, which is what
           // the processor reads. Routing them through `tngr2NoteOn` would convert a frame
           // number as though it were seconds and land every note hours into the render.
-          for (const event of booking.events) already.node.port.postMessage(event);
+          receipts.push(postTngr2Events(already.node, booking.events));
+          receipted.add(booking.laneKey);
           continue;
         }
         const node = await renderTngr2Lane(this.ctx, {
@@ -3178,12 +3208,23 @@ export class VoiceRack {
         });
         if (booking.wet) node.connect(booking.wet);
         this._tngr2OfflineLanes.set(booking.laneKey, { node, context: this.ctx });
+        // Its schedule came with it; the receipt says the processor holding it exists.
+        receipts.push(postTngr2Events(node, null));
         built++;
       } catch (err) {
         // A lane that cannot be built is a lane that renders silence. Say so rather than
         // leaving a gap in the mix that looks like an arrangement decision.
         console.warn(`TNGR-2: offline lane ${booking.laneKey} failed — ${err?.message || err}`);
       }
+    }
+    // A port delivers in order, so a receipt posted after a cut says the cut is in too.
+    for (const laneKey of told || []) {
+      const lane = this._tngr2OfflineLanes.get(laneKey);
+      if (lane && !receipted.has(laneKey)) receipts.push(postTngr2Events(lane.node, null));
+    }
+    const confirmed = await Promise.all(receipts);
+    if (confirmed.includes(false)) {
+      console.warn('TNGR-2: an offline lane did not confirm its schedule before the render moved on');
     }
     return built;
   }
@@ -3892,7 +3933,9 @@ export class VoiceRack {
       const fspec = v.filter;
       const track = fspec && fspec.track > 0
         ? ((f * shift) / 110) ** Math.min(1, fspec.track) : 1;
-      const chain = fspec ? this._filterChain({ ...fspec, to: null }, t, track, 'lowpass', 4000) : null;
+      const chain = fspec
+        ? this._filterChain({ ...fspec, to: null }, t, track, 'lowpass', 4000, 4, { butterworth: true })
+        : null;
       if (chain) {
         chain.tail.connect(g);
         // ENV AMOUNT octaves across the cascade, over its own ADSR — the same `filterEnv`
@@ -4973,10 +5016,20 @@ export class VoiceRack {
    * four stages at Q 8 is a howl, not a slope — so the chain gets one resonant peak and
    * Butterworth stages behind it, which is the shape a filter knob is expected to have.
    *
+   * WHAT "BUTTERWORTH" IS on a lowpass or highpass biquad: Q −3.01, because Web Audio reads
+   * those two types' Q in DECIBELS (BUTTERWORTH_Q_DB). The 0.7071 the followers carried is
+   * the linear figure, which a lowpass reads as +0.71 dB — linear 1.085: each follower
+   * peaked +1.7 dB just under the corner and passed the corner itself at +0.7 dB where a
+   * Butterworth section is −3.0, so a -24 cascade sat 3.7 dB hot at its cutoff and a -48
+   * (three followers) 11 dB. The melodic synths' callers (MRDR-3, KNDO-5) ask for the true
+   * one with `butterworth`; the drum kit's still get 0.7071 until its filters are reworked,
+   * which is a sound change of its own. Bandpass and notch read Q linearly, so their
+   * followers keep 0.7071 either way.
+   *
    * `mul` is the per-hit cutoff ratio: per-tap tone and humanise, applied here so a
    * sweep's destination moves with its origin rather than snapping back.
    */
-  _filterChain(spec, t, mul = 1, dfltType = 'bandpass', dfltFreq = 2600, maxStages = 4) {
+  _filterChain(spec, t, mul = 1, dfltType = 'bandpass', dfltFreq = 2600, maxStages = 4, { butterworth = false } = {}) {
     const ctx = this.ctx;
     // `maxStages` is how MRDR-3's Performance mode buys back a filter: only its two
     // callers pass it, so a drum's -48 dB highpass keeps all four biquads whatever the
@@ -5012,12 +5065,14 @@ export class VoiceRack {
     // stage's `.detune` of a -48 chain would wobble a quarter of the slope. The existing
     // callers read `head`/`tail` and ignore it.
     const built = [];
+    const followerQ = butterworth && (type === 'lowpass' || type === 'highpass')
+      ? BUTTERWORTH_Q_DB : 0.7071;
     for (let k = 0; k < stages; k++) {
       const f = ctx.createBiquadFilter();
       f.type = type;
       f.frequency.setValueAtTime(freq, at);
       if (swept) f.frequency.exponentialRampToValueAtTime(to, at + sweep);
-      f.Q.value = k === 0 ? Q : 0.7071;
+      f.Q.value = k === 0 ? Q : followerQ;
       if (tail) tail.connect(f); else head = f;
       tail = f;
       built.push(f);
@@ -6930,7 +6985,7 @@ export class VoiceRack {
             const track = gf.track > 0 ? (base / 110) ** Math.min(1, gf.track) : 1;
             const chain = this._filterChain(
               { type: gf.type, slope: gf.slope, freq: gf.freq, Q: gf.Q },
-              t, track * toneMul, 'lowpass', 1150, this._filterStageCap(),
+              t, track * toneMul, 'lowpass', 1150, this._filterStageCap(), { butterworth: true },
             );
             chain.tail.connect(head);
             // One target, every filter in the patch — the layers' and this one. A third
@@ -7093,7 +7148,7 @@ export class VoiceRack {
             // the same exponential trajectory _filterChain used to schedule).
             const chain = this._filterChain(
               { type: fl.type, slope: fl.slope, freq: fl.freq, Q: fl.Q },
-              lt, track * toneMul, 'lowpass', 1150, this._filterStageCap(),
+              lt, track * toneMul, 'lowpass', 1150, this._filterStageCap(), { butterworth: true },
             );
             chain.tail.connect(g);
             if (lfoSpec && lfoSpec.target === 'filter') {
@@ -8327,6 +8382,7 @@ export class VoiceRack {
     const built = this._tngr2OfflineLanes?.get(laneKey);
     if (!booked && built && built.context === this.ctx) {
       try { built.node.port.postMessage({ type: 'choke', frame }); } catch { /* gone */ }
+      (this._tngr2OfflineTold ||= new Set()).add(laneKey);
     }
   }
 

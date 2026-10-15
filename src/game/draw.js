@@ -504,6 +504,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // able to say "stand there and wave", or the hero holds whatever stride frame
   // the treadmill died on.
   const pose = opts.pose ? { ...poseFromPlayer(player, t), ...opts.pose } : poseFromPlayer(player, t);
+  if (Number.isFinite(opts.animationPhase) && opts.pose?.phase == null) pose.phase = opts.animationPhase;
   // THE GROUND UNDER EACH FOOT. `groundDelta` already existed for the boost
   // effect's chevrons, which shear to lie along a hill; the rig never got it,
   // so the hero's feet planted on a level line however the terrain ran. Handing
@@ -511,8 +512,10 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // A caller with no terrain (menus, the gallery) passes none and the rig falls
   // back to flat, which is what those contexts actually are.
   if (opts.groundDelta) pose.groundDelta = opts.groundDelta;
-  const cx = Math.round(opts.screenX ?? PLAYER_X) + HERO_CENTER_OFF; // center of the 12px slot
-  const feetY = Math.round((opts.groundY ?? GROUND_Y) - player.y); // feet follow rolling terrain
+  // Vector art is rendered at device density: rounding here magnifies a one-
+  // logical-pixel step into several phone pixels during run-in and terrain motion.
+  const cx = (opts.screenX ?? PLAYER_X) + HERO_CENTER_OFF;
+  const feetY = (opts.groundY ?? GROUND_Y) - player.y;
   const ghosts = player.dashT > 0;
   const shield = opts.shield || 0;
   // THE PRATFALL, and why it lives here rather than in a pose.

@@ -1389,6 +1389,23 @@ export function leapVoiceFor(cabId) {
   return LEAP_VOICE[cabId] || DEFAULT_LEAP_VOICE;
 }
 
+// EVERY CUE THE DIVE CAN FIRE, both ways, as [route, name, options] — route is 'sfx',
+// 'voice' or 'reverse', the three callbacks above. Read off the cue tables rather than
+// listed beside them, so a caller warming what the dive needs (Audio.warmCueSpace, from
+// the hub's enter) can never drift from what it actually fires.
+export function diveCueFirings() {
+  const out = [];
+  for (const c of [...CUES, ...OUT_CUES]) {
+    for (const [name, o] of c.sfx || []) out.push(['sfx', name, o]);
+    for (const [id, o] of c.voice || []) out.push(['voice', id, o]);
+    for (const [id, o] of c.voiceReverse || []) out.push(['reverse', id, o]);
+    if (c.leapVoice) {
+      for (const v of [DEFAULT_LEAP_VOICE, ...Object.values(LEAP_VOICE)]) out.push(['voice', v.id, v]);
+    }
+  }
+  return out;
+}
+
 // ---- THE WAY OUT'S OWN SOUND ------------------------------------------------
 //
 // Not the entry's cues reversed, because a cue played backwards is not its own

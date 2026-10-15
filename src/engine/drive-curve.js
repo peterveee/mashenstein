@@ -51,9 +51,10 @@ export const DRIVE_HEADROOM = 32;
 export const DRIVE_CURVE_POINTS = 512 * 2 * DRIVE_HEADROOM + 1;
 
 /**
- * Where a synth's signal is lifted to meet the knee, for the two whose voices do not
- * arrive anywhere near it — and dropped by the same factor after the shaper, so DRIVE at
- * the bottom of the pot is the undriven voice.
+ * Where JMJR-4's signal is lifted to meet the knee, its voices not arriving anywhere near
+ * it — and dropped by the same factor after the shaper, so DRIVE at the bottom of the pot
+ * is the undriven voice. (TNGR-2 had a stage of its own here, +8 dB, until 15 Oct 2026; it
+ * now stages each preset at its own peak like MRDR-3 and the drum kit — see `driveRef`.)
  *
  * The knee sits at full scale, and that is right for a synth whose voice arrives there:
  * KNDO-5's oscillator does (median −0.1 dB, measured across its library presets), and so
@@ -70,10 +71,9 @@ export const DRIVE_CURVE_POINTS = 512 * 2 * DRIVE_HEADROOM + 1;
  * tanh(k)/(STAGE·tanh(k/STAGE)), so `voiceGain` plays them where they were.
  */
 export const JMJR4_DRIVE_STAGE = 4;     // +12 dB
-export const TNGR2_DRIVE_STAGE = 2.5;   // +8 dB
 
 /**
- * Where MRDR-3's and the drum kit's DRIVE puts its knee: at the sound's OWN peak — the
+ * Where MRDR-3's, TNGR-2's and the drum kit's DRIVE puts its knee: at the sound's OWN peak — the
  * `peak` every preset carries, measured by the level system (tools/lib/measure-voice.js)
  * as one note's peak at unity. The shaper is fed `x / ref` and its output is scaled back
  * up by `ref`, so DRIVE 0.3 bites the same on a shaker as on a kick, on a stacked
@@ -100,6 +100,11 @@ export const TNGR2_DRIVE_STAGE = 2.5;   // +8 dB
  * tanh(k·r) = (p/0.7)·tanh(k) (k = 24a²), DRIVE a·√r, PEAK 0.7·r and LEVEL scaled by
  * 0.7·r/p: the same waveform, scaled by that, which `voiceGain` then plays back where it
  * was. FOLD solves the same with its sine. CRUSH is not staged at all — see `driveRef`.
+ *
+ * TNGR-2 joined on 15 Oct 2026 (src/engine/tngr2/dsp.js) and was NOT converted: the point
+ * was to change where its knee sits, from one +8 dB stage for every voice to each voice's
+ * own peak. Its four driven presets came out within 0.3 dB of their old energy (voiceGain
+ * moves of 0.14 dB or less), so none was re-measured.
  */
 export const DRIVE_REF_MIN = 1 / 256;
 export const DRIVE_REF_MAX = 16;

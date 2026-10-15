@@ -6,6 +6,7 @@ import { OFFICE_SIGN_MIN_Y, officeBulkhead, officeRoomLidShows } from './progres
 import { boardroomBack, chairFromBehind, midActors, sofa, plant, libGlobe } from './room.js';
 import { boothDiners } from './diners.js';
 import { frothingBarista } from './barista.js';
+import { paintCanteenZombie } from './zombies.js';
 
 function caption(g,text,x,y,w,P){
   box(g,x,y,w,17,'#302c40',P.chrome,0.6);
@@ -21,6 +22,17 @@ function sitters(g,xs,f,P,seed=20,away=false){
   if(!away)boardroomBack(g,{},P,chairs);
   midActors(g,{mid:{items:[{kind:'boardroom',chairs}]}},P);
   if(away)for(const ch of chairs)chairFromBehind(g,ch,P);
+}
+// A coffee mug on the table by each place, standing on it at (cx, base): the handle, the body
+// in one of four office colours, the coffee showing at the rim. It was a plain tan disc, which
+// beside a sitter's shoulder read as a hand (Peter, 15 Oct 2026: "wouldn't it be better if it
+// was coffee cups?").
+const MUGS=['#ffffff','#ff6fae','#2fbcb0','#f6df4a'];
+function mug(g,cx,base,i,P){
+  circ(g,cx+1.9,base-2.3,1.15,null,P.ink,0.9);
+  circ(g,cx+1.9,base-2.3,1.15,null,MUGS[i%4],0.45);
+  box(g,cx-1.7,base-4.4,3.4,4.4,MUGS[i%4],P.ink,0.3);
+  ell(g,cx,base-4.4,1.7,0.5,'#5a3a24',P.ink,0.25);
 }
 function table(g,x,w,P){
   const b=MID_BASE;
@@ -87,21 +99,35 @@ function meetingPeople(g,l,f,P,{training,interview,c,b}){
   const xs=interview?[c-47,c+47]:[c-73,c-24,c+24,c+73];
   if(away){
     table(g,x+42,w-84,P);
-    for(const px of xs){box(g,px-9,b-30,17,1.5,'#fffef1',P.ink,0.3);circ(g,px+12,b-31,2.5,'#d7b580',P.ink,0.3);}
+    xs.forEach((px,i)=>{box(g,px-9,b-30,17,1.5,'#fffef1',P.ink,0.3);mug(g,px+12,b-28.6,i,P);});
     sitters(g,xs,f,P,training?60:40,true);
     return;
   }
   sitters(g,xs,f,P,training?60:40);
   table(g,x+42,w-84,P);
-  for(const px of xs){box(g,px-9,b-30,17,1.5,'#fffef1',P.ink,0.3);circ(g,px+12,b-31,2.5,'#d7b580',P.ink,0.3);}
+  xs.forEach((px,i)=>{box(g,px-9,b-30,17,1.5,'#fffef1',P.ink,0.3);mug(g,px+12,b-28.6,i,P);});
+}
+// What each room's whiteboard says. Floor 23's three are Peter's (15 Oct 2026: "I think these
+// might be better options for our whiteboards in level 2"); its HR room carries one of two
+// morale notices, drawn per run. Floor 88's meeting room plans the decade the same day.
+function boardText(f,{training,interview,executive}){
+  if(f.floor==='open'){
+    if(training)return {title:'HOW TO LOOK BUSY',detail:['FAKING IT WHILE','DEAD INSIDE']};
+    if(interview)return {title:'MANDATORY MORALE IMPROVEMENT',detail:(f.liftSeed||0)<0.5
+      ?['ENTHUSIASM IS NOW A','TRACKED METRIC']:['BEATINGS WILL CONTINUE','UNTIL METRICS INCREASE']};
+    return {title:'SURVIVING TUESDAY',detail:['1. ARRIVE','2. STARE INTO THE VOID','3. CLOCK OUT']};
+  }
+  if(executive)return {title:'STRATEGIC VISION 1989',detail:['1. BUY EGGS','2. SELL EGGS','3. ???']};
+  return {
+    title:training?'HOW TO LOOK BUSY':interview?'HR REVIEW':'AGENDA',
+    detail:training?['ATTENDANCE IS','THE GOAL']:interview?['WHERE DO YOU SEE','YOURSELF IN 5 YEARS?']
+      :['1. PLAN THE NEXT','MEETING'],
+  };
 }
 function meetingContents(g,l,f,P,o){
   const {x,w}=l,{c}=o;
   if(!o.training){
-    const title=o.interview?'HR REVIEW':o.executive?'EXECUTIVE ALIGNMENT':'AGENDA';
-    const detail=o.interview?['WHERE DO YOU SEE','YOURSELF IN 5 YEARS?']
-      :o.executive?['DECISION DEFERRED','FOLLOW UP NEXT QUARTER']:['1. PLAN THE NEXT','MEETING'];
-    standingWhiteboard(g,c+w/2-158,95,P,{title,detail});
+    standingWhiteboard(g,c+w/2-158,95,P,boardText(f,o));
   }else{
     letters(g,'HOW TO LOOK BUSY',c,107,7,{ink:'#514f63',lw:0.9,align:'center'});
     letters(g,'ATTENDANCE IS THE GOAL',c,122,4.5,{ink:'#71627d',lw:0.45,align:'center'});
@@ -118,7 +144,7 @@ function meetingContents(g,l,f,P,o){
 //   frosted  — the recess behind a frosted manifestation band, the room lit cooler than
 //              the corridor
 //   partition — a solid partition wall with a door and a deep internal window into the recess
-//   boxfrost  — B with its lower glass frosted from the table top down: the legs go away
+//   boxfrost  — B with a frosted band at the table's height (until 15 Oct 2026 frosted to the floor)
 //   boxdesk   — B with a modesty panel down the front of the table: only the feet show
 export const OFFICE_ROOM_STYLES=['glass','recess','box','frosted','partition','boxfrost','boxdesk'];
 // Picked 12 Oct 2026: B2, the glass box frosted below the table (lightly). `?roomStyle=recess`
@@ -210,9 +236,11 @@ export function wallWhiteboard(g,x,y,w,h,P,{title,detail}){
   box(g,x+1.4,y+1.8,w,h,'rgba(40,36,50,0.18)');
   box(g,x,y,w,h,'#51505b',P.ink,0.8);
   box(g,x+3,y+3,w-6,h-6,'#fffef9',P.ink,0.3);
-  const ts=Math.min(16,h*0.26);
+  const ts=Math.min(16,h*0.26),n=detail.length;
   whiteboardText(g,title,x+w/2,y+h*0.3,ts,w-24,'#202733',700);
-  for(let i=0;i<detail.length;i++)whiteboardText(g,detail[i],x+w/2,y+h*0.58+i*ts*0.85,ts*0.72,w-28,'#4a5360',600);
+  // two lines sit under the title at their full size; more close up to fit above the tray
+  const step=n>2?Math.min(ts*0.85,h*0.42/n):ts*0.85,size=Math.min(ts*0.72,step*0.95),y0=n>2?y+h*0.5+step*0.55:y+h*0.58;
+  for(let i=0;i<n;i++)whiteboardText(g,detail[i],x+w/2,y0+i*step,size,w-28,'#4a5360',600);
   box(g,x+w*0.2,y+h-1,w*0.6,3,'#7d8490',P.ink,0.4);
   for(const [u,col] of [[0.3,'#2f6fd0'],[0.36,'#e2483e'],[0.42,'#2a8a4a']])box(g,x+w*u,y+h-2.6,7,1.8,col);
 }
@@ -238,14 +266,19 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
     box(g,x0,top,w,bottom-top,'rgba(205,220,232,0.22)');
     if(backWall)backWall(top,bottom);
     const nearLeft=(x0+x1)/2>VPX; // the side facing the vanishing point is the one we look into
-    // a side pane, and with B2 its frosting from the table top down, running round from the front
-    const frostY=bottom-24,[,ffy]=F(x0,frostY);
+    // a side pane, and with B2 its frosting running round from the front. It was frosted from
+    // the table top to the floor, which greyed out everyone's chair, legs and feet; since 15 Oct
+    // 2026 it is a band at the table's height, clear glass below it (Peter: "want the bottom half
+    // to read better, fix frosting").
+    const frostY=bottom-24,FROST_BAND=4.5,[,ffy]=F(x0,frostY),[,ffy1]=F(x0,frostY+FROST_BAND);
+    const FROST='rgba(244,247,251,0.6)';
     const side=(bx,fx)=>{
       poly(g,[bx,top,fx,ft,fx,fb,bx,bottom],glassSide);
       if(style==='boxfrost'){
-        poly(g,[bx,frostY,fx,ffy,fx,fb,bx,bottom],'rgba(244,247,251,0.6)');
+        poly(g,[bx,frostY,fx,ffy,fx,ffy1,bx,frostY+FROST_BAND],FROST);
         line(g,bx,frostY,fx,ffy,'rgba(255,255,255,0.95)',0.8);
         line(g,bx,frostY+2.2,fx,ffy+2.2,'rgba(160,180,200,0.6)',0.5);
+        line(g,bx,frostY+FROST_BAND,fx,ffy1,'rgba(160,180,200,0.6)',0.5);
       }
     };
     side(nearLeft?x1:x0,nearLeft?fx1:fx0);
@@ -268,11 +301,13 @@ export function roomWithDepth(g,l,f,P,style,contents,backWall=null){
     for(const [bx,fx] of [[x0,fx0],[x1,fx1]]){line(g,bx,top,fx,ft,edge,0.6);line(g,bx,bottom,fx,fb,edge,0.6);}
     glassFront(g,fx0,fx1,ft,fb,{edge:'rgba(235,250,252,0.45)',edgeW:0.7});
     if(style==='boxfrost'){
-      // frosted from the table top down, with a crisp pinstripe at its edge
+      // the frosted band at the table's height, a crisp pinstripe along its top and a fine one
+      // along its foot; clear glass below
       const fy=ffy;
-      box(g,fx0,fy,fx1-fx0,fb-fy-0.6,'rgba(244,247,251,0.6)');
+      box(g,fx0,fy,fx1-fx0,ffy1-fy,FROST);
       line(g,fx0,fy,fx1,fy,'rgba(255,255,255,0.95)',0.8);
       line(g,fx0,fy+2.2,fx1,fy+2.2,'rgba(160,180,200,0.6)',0.5);
+      line(g,fx0,ffy1,fx1,ffy1,'rgba(160,180,200,0.6)',0.5);
     }
     // at rest the front meets the ceiling in a slim track; as a free-standing cube it is frameless,
     // its top edge just the bright line where the panes meet
@@ -329,26 +364,41 @@ export function paintExtraOfficeRoom(g,l,f,P){
     // A small staff kitchen let into the wall: a tiled serving hatch and one table.
     caption(g,'STAFF CANTEEN',x+8,OFFICE_SIGN_MIN_Y,w-16,P);
     const kitchen=x+w-106;
-    box(g,kitchen,100,94,60,'#cde2d5',P.ink,0.7);
-    for(let yy=110;yy<160;yy+=11)line(g,kitchen,yy,kitchen+94,yy,'#90b4aa',0.45);
-    for(let xx=kitchen+11;xx<kitchen+94;xx+=11)line(g,xx,100,xx,160,'#90b4aa',0.45);
-    box(g,kitchen-3,160,100,b-160,'#7eb5ab',P.ink,0.7);
-    line(g,kitchen+47,165,kitchen+47,b-3,P.ink,0.5);
-    box(g,kitchen-5,157,104,5,'#eee1be',P.ink,0.6);
+    // The counter top stands at a kitchen counter's height, a little over the tables' (it was 56
+    // up, over the diners' heads: Peter, 15 Oct 2026, "the counter for the microwave etc is super
+    // high"); the tiles and everything on it sit D lower than they were drawn.
+    const top=b-33,D=top-157;
+    // the tiled splashback, a few rows over the machines (lowered with the sign over it: Peter,
+    // "maybe lower the splash back so the sign can sit lower")
+    const splash=top-40;
+    box(g,kitchen,splash,94,top+3-splash,'#cde2d5',P.ink,0.7);
+    for(let yy=splash+10;yy<top;yy+=11)line(g,kitchen,yy,kitchen+94,yy,'#90b4aa',0.45);
+    for(let xx=kitchen+11;xx<kitchen+94;xx+=11)line(g,xx,splash,xx,top+3,'#90b4aa',0.45);
+    box(g,kitchen-3,top+3,100,b-top-3,'#7eb5ab',P.ink,0.7);
+    line(g,kitchen+47,top+8,kitchen+47,b-3,P.ink,0.5);
+    box(g,kitchen-5,top,104,5,'#eee1be',P.ink,0.6);
     // Microwave, coffee machine and a quietly steaming mug.
-    box(g,kitchen+45,130,44,26,'#ebe8d6',P.ink,0.7);
-    box(g,kitchen+49,134,29,18,'#393745',P.ink,0.5);
-    circ(g,kitchen+84,139,2,'#e6acbd',P.ink,0.4);
-    box(g,kitchen+8,126,25,31,'#49404b',P.ink,0.6);
-    box(g,kitchen+12,130,17,8,'#b7dccc',P.ink,0.4);
-    box(g,kitchen+18,149,8,7,'#f3d994',P.ink,0.4);
-    for(let i=0;i<2;i++)line(g,kitchen+20+i*3,146,kitchen+20+i*3+Math.sin(f.t*1.3+i),142,'#f5eee3',0.65);
-    // The lunch notice above one table of two.
-    const tx=x+10,people=[tx+18,tx+56];
-    box(g,tx,92,78,34,'#f4ecd2',P.ink,0.6);
-    letters(g,'TODAY:',tx+39,104.5,6,{ink:P.ink,lw:0.7,align:'center'});
-    letters(g,'EGG AGAIN',tx+39,119,8.5,{ink:P.ink,lw:0.9,align:'center'});
+    box(g,kitchen+45,130+D,44,26,'#ebe8d6',P.ink,0.7);
+    box(g,kitchen+49,134+D,29,18,'#393745',P.ink,0.5);
+    circ(g,kitchen+84,139+D,2,'#e6acbd',P.ink,0.4);
+    box(g,kitchen+8,126+D,25,31,'#49404b',P.ink,0.6);
+    box(g,kitchen+12,130+D,17,8,'#b7dccc',P.ink,0.4);
+    box(g,kitchen+18,149+D,8,7,'#f3d994',P.ink,0.4);
+    for(let i=0;i<2;i++)line(g,kitchen+20+i*3,146+D,kitchen+20+i*3+Math.sin(f.t*1.3+i),142+D,'#f5eee3',0.65);
+    // The lunch notice hangs over the serving hatch, the wall over the one table of two kept bare
+    // for the zombie creeping up on it (Peter, 15 Oct 2026: "Don't have a sign near the purple
+    // clerk, it is distracting from him").
+    const tx=x+10,people=[tx+18,tx+56],nx=kitchen+8,ny=splash-40;
+    box(g,nx,ny,78,34,'#f4ecd2',P.ink,0.6);
+    letters(g,'TODAY:',nx+39,ny+12.5,6,{ink:P.ink,lw:0.7,align:'center'});
+    letters(g,'EGG AGAIN',nx+39,ny+27,8.5,{ink:P.ink,lw:0.9,align:'center'});
     DINERS(g,{room:'canteen',x:tx,w:76,xs:people,seed:30,span:[x+8,kitchen-5]},f,P);
+    // and one of the crypt's zombies in a purple suit, left of the two at lunch, creeping toward
+    // them as the canteen goes by, and stopping well short of their booth (zombies.js)
+    if(f.floor==='open'){
+      const right=f.coverage?.right??480,left=f.coverage?.left??0;
+      paintCanteenZombie(g,x-44,tx-26,(right-x)/(right-left+w),f.t,P.inkM);
+    }
     return true;
   }
   if(kind==='meeting'||kind==='interview'||kind==='training'){
@@ -358,22 +408,16 @@ export function paintExtraOfficeRoom(g,l,f,P){
       const o={training,interview,executive,upperMeeting,c,b};
       roomWithDepth(g,l,f,P,OFFICE_ROOM_STYLE,()=>meetingPeople(g,l,f,P,o),(top,bottom)=>{
         // the whiteboard is fixed to the back wall and fills it, above the heads
-        const title=training?'HOW TO LOOK BUSY':interview?'HR REVIEW':executive?'EXECUTIVE ALIGNMENT':'AGENDA';
-        const detail=training?['ATTENDANCE IS','THE GOAL']:interview?['WHERE DO YOU SEE','YOURSELF IN 5 YEARS?']
-          :executive?['DECISION DEFERRED','FOLLOW UP NEXT QUARTER']:['1. PLAN THE NEXT','MEETING'];
         const by=Math.max(top+8,OFFICE_SIGN_MIN_Y+2);
-        wallWhiteboard(g,x+14,by,w-28,Math.min(bottom-by-50,92),P,{title,detail});
+        wallWhiteboard(g,x+14,by,w-28,Math.min(bottom-by-50,92),P,boardText(f,o));
       });
       return true;
     }
 
     if(training)caption(g,'MANDATORY TRAINING',c-111,OFFICE_SIGN_MIN_Y,222,P);
     if(!training){
-      const title=interview?'HR REVIEW':executive?'EXECUTIVE ALIGNMENT':'AGENDA';
-      const detail=interview?['WHERE DO YOU SEE','YOURSELF IN 5 YEARS?']
-        :executive?['DECISION DEFERRED','FOLLOW UP NEXT QUARTER']:['1. PLAN THE NEXT','MEETING'];
       const boardW=144;
-      standingWhiteboard(g,c+w/2-boardW-14,95,P,{title,detail});
+      standingWhiteboard(g,c+w/2-boardW-14,95,P,boardText(f,{training,interview,executive}));
     }
     if(training&&!upperMeeting){
       box(g,c-43,39,86,9,'#dedee3',P.ink,0.5);

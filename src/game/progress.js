@@ -49,9 +49,30 @@ export function totalPlugs(slot) {
   return n;
 }
 
-export function cabinetUnlocked(slot, cabId) {
+// The cabinet before this one in the bank, or null for the first.
+export function priorCabinet(cabId) {
+  const i = CABINETS.findIndex((c) => c.id === cabId);
+  return i > 0 ? CABINETS[i - 1] : null;
+}
+
+// What still keeps a cabinet shut, or null when it is open: `plugs`, the campaign total it needs
+// (0 when that is met), and `first`, the cabinet before it when that one has never been played.
+// The second gate (Peter, 15 Oct 2026) makes sure every cabinet is met in order, which the later
+// ones count on — the Martian in Corporate Kombat's lift is Gravity Grid's, Déjà View is all of
+// them — without asking for a clear: one plug anywhere in it, and the toaster banks even on a
+// failed run, so one go at its first stage is enough. A cabinet already started never shuts
+// again, so no save made before the rule loses a cabinet it had.
+export function cabinetLock(slot, cabId) {
+  if (cabinetStarted(slot, cabId)) return null;
   const need = UNLOCKS[cabId] ?? 0;
-  return totalPlugs(slot) >= need;
+  const plugs = totalPlugs(slot) < need ? need : 0;
+  const prior = priorCabinet(cabId);
+  const first = prior && !cabinetStarted(slot, prior.id) ? prior : null;
+  return plugs || first ? { plugs, first } : null;
+}
+
+export function cabinetUnlocked(slot, cabId) {
+  return !cabinetLock(slot, cabId);
 }
 
 // The stage before this one in the same cabinet, or null for a cabinet opener.

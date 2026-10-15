@@ -48,3 +48,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-13 | `c7addb6` | [2026-10-13-c7addb6.html](2026-10-13-c7addb6.html) | [bake-offs](2026-10-13-c7addb6-lab.html) | Fix sweep reach calculation in effects editor and add new gallery files for October 2026 |
 | 2026-10-14 | `f31338c` | [2026-10-14-f31338c.html](2026-10-14-f31338c.html) | [bake-offs](2026-10-14-f31338c-lab.html) | feat: add surge HUD effects with dynamic movement and visual glitches |
 | 2026-10-14 | `c573fc8` | [2026-10-14-c573fc8.html](2026-10-14-c573fc8.html) | [bake-offs](2026-10-14-c573fc8-lab.html) | Fix the deploy: surge HUD on a stub canvas, two stale gravity test checks |
+| 2026-10-14 | `b7e2f29` | [2026-10-14-b7e2f29.html](2026-10-14-b7e2f29.html) | [bake-offs](2026-10-14-b7e2f29-lab.html) | Add office worker and window cleaner character rendering |

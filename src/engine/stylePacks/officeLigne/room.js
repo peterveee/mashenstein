@@ -1,6 +1,6 @@
 import { studyHead, workerHead } from './peopleHeads.js';
 // Corporate Kombat: LIGNE ’89 room painter. Shared with the preserved bake-off.
-import { box, W, line, LW, YH, VPX, xOf, pen, rbox, LWF, circ, poly, ell, DWALL, fOfD, yOfF, hash, M89, neon, fs, TAU, LWM, lines, grid, letters, squiggle, topRound, eggPath, confetti, copies } from './line.js';
+import { box, W, line, LW, YH, VPX, xOf, pen, rbox, LWF, circ, poly, ell, DWALL, fOfD, yOfF, hash, M89, neon, fs, TAU, LWM, lines, grid, letters, squiggle, topRound, eggPath, confetti, copies, PAL } from './line.js';
 import { MID_BASE, WALL_BASE, LANE_TOP, FACTORS } from '../officeClimb.js';
 
 function ceiling(ctx, f, P) {
@@ -405,6 +405,132 @@ function padded(g, cx, y, w, h, fill, ink, lw) {
   g.lineTo(cx + w / 2, y + h);
   g.closePath();
   fs(g, fill, ink, lw);
+}
+
+// A seated person from behind, from the collar to the seat (Peter, 14 Oct 2026: "are their
+// bodies meant to be that blocky?" — they were the shoulder-pad box stretched to the seat).
+// Rounded shoulders tapering to the waist with a little flare over the seat, a shade band down
+// the far side, the centre seam and its vent; then the arms as their own shapes either side,
+// hanging to an elbow with a gap at the waist, or (`elbows`) out to the table top. The white
+// of the shirt collar shows above the jacket's.
+// Both backs are drawn a tenth narrower than they were made (Peter, 15 Oct 2026: "perhaps make them
+// all a little slimmer too overall - just a bit"), squeezed toward their middle.
+const BACK_SLIM = 0.9;
+const slimmed = (ctx, cx, draw) => {
+  ctx.save(); ctx.translate(cx, 0); ctx.scale(BACK_SLIM, 1); ctx.translate(-cx, 0);
+  draw();
+  ctx.restore();
+};
+function seatedBack(ctx, cx, suit, ink, elbows = false) {
+  slimmed(ctx, cx, () => seatedBackFull(ctx, cx, suit, ink, elbows));
+}
+function seatedBackFull(ctx, cx, suit, ink, elbows = false) {
+  const b = MID_BASE, top = b - 34.4, seat = b - 15.8;
+  const torso = (p) => {
+    p.moveTo(cx - 3, top);
+    p.quadraticCurveTo(cx - 8.6, top + 0.2, cx - 9.4, top + 3.4);
+    p.quadraticCurveTo(cx - 8.4, b - 25.5, cx - 6.4, b - 22);
+    p.quadraticCurveTo(cx - 7.4, b - 18.6, cx - 7.2, seat);
+    p.lineTo(cx + 7.2, seat);
+    p.quadraticCurveTo(cx + 7.4, b - 18.6, cx + 6.4, b - 22);
+    p.quadraticCurveTo(cx + 8.4, b - 25.5, cx + 9.4, top + 3.4);
+    p.quadraticCurveTo(cx + 8.6, top + 0.2, cx + 3, top);
+    p.closePath();
+  };
+  const arm = (side) => {
+    ctx.beginPath();
+    if (elbows) {
+      // upper arm out and forward, the elbow on the table top
+      ctx.moveTo(cx + side * 7.6, top + 1.8);
+      ctx.quadraticCurveTo(cx + side * 10.6, top + 2.4, cx + side * 11.6, b - 29.4);
+      ctx.quadraticCurveTo(cx + side * 12.4, b - 27.2, cx + side * 10.6, b - 27.3);
+      ctx.quadraticCurveTo(cx + side * 9.2, b - 27.8, cx + side * 7.8, b - 28.8);
+    } else {
+      // hanging, bent forward at the elbow out of sight: shoulder to a rounded elbow
+      ctx.moveTo(cx + side * 7.4, top + 1.6);
+      ctx.quadraticCurveTo(cx + side * 10.8, top + 2, cx + side * 10.6, b - 27);
+      ctx.lineTo(cx + side * 10.4, b - 23.6);
+      ctx.quadraticCurveTo(cx + side * 9.2, b - 22.2, cx + side * 7.8, b - 23.6);
+      ctx.lineTo(cx + side * 7.6, b - 28);
+    }
+    ctx.closePath();
+    fs(ctx, suit, ink, 0.4);
+    if (side > 0) {
+      ctx.save(); ctx.clip();
+      box(ctx, cx + side * 9.6 - 1, top, 4, 20, 'rgba(20,16,30,0.26)');
+      ctx.restore();
+    }
+  };
+  ctx.beginPath(); torso(ctx); fs(ctx, suit, ink, LWM);
+  ctx.save(); ctx.beginPath(); torso(ctx); ctx.clip();
+  box(ctx, cx + 2.6, top, 8, 20, 'rgba(20,16,30,0.24)');
+  box(ctx, cx - 8.4, top + 1.4, 1.6, 8, 'rgba(255,255,255,0.12)');
+  ctx.restore();
+  line(ctx, cx, top + 1, cx, seat, 'rgba(20,16,30,0.55)', 0.35);
+  line(ctx, cx - 0.5, b - 19.4, cx, seat, 'rgba(20,16,30,0.55)', 0.35);
+  // the jacket collar, and the shirt's white collar above it
+  poly(ctx, [cx - 3.2, top, cx + 3.2, top, cx + 2.4, top + 1.6, cx - 2.4, top + 1.6], 'rgba(20,16,30,0.3)');
+  poly(ctx, [cx - 2.4, top - 0.9, cx + 2.4, top - 0.9, cx + 2.6, top + 0.2, cx - 2.6, top + 0.2], '#f4f2f6', ink, 0.3);
+  arm(-1);
+  arm(1);
+}
+
+// A cubicle worker from behind, from the collar (`top`) down: seatedBack's tapered torso at any
+// height, in shirt-sleeves, so a worker who stands up to look over the partition is not a box
+// (Peter, 15 Oct 2026: "should the workers popping up have the same tapered waist as the meeting
+// room workers? they're very blocky"). The partition hides it below its top rail. With `hands`
+// the sleeves reach down to the hands on the rail; otherwise they hang.
+function cubicleBack(ctx, cx, top, shirt, ink, hands = false) {
+  slimmed(ctx, cx, () => cubicleBackFull(ctx, cx, top, shirt, ink, hands));
+}
+function cubicleBackFull(ctx, cx, top, shirt, ink, hands = false) {
+  const b = MID_BASE, waist = top + 12.4, seat = top + 18.6;
+  const torso = (p) => {
+    p.moveTo(cx - 3, top);
+    p.quadraticCurveTo(cx - 8.6, top + 0.2, cx - 9.4, top + 3.4);
+    p.quadraticCurveTo(cx - 8.4, top + 8.9, cx - 6.4, waist);
+    p.quadraticCurveTo(cx - 7.4, top + 15.8, cx - 7.2, seat);
+    p.lineTo(cx + 7.2, seat);
+    p.quadraticCurveTo(cx + 7.4, top + 15.8, cx + 6.4, waist);
+    p.quadraticCurveTo(cx + 8.4, top + 8.9, cx + 9.4, top + 3.4);
+    p.quadraticCurveTo(cx + 8.6, top + 0.2, cx + 3, top);
+    p.closePath();
+  };
+  const arm = (side) => {
+    ctx.beginPath();
+    if (hands) {
+      // from the shoulder down and out to the hand on the partition rail
+      const hx = cx + side * 9.5, hy = b - 35.6;
+      ctx.moveTo(cx + side * 7.4, top + 1.6);
+      ctx.quadraticCurveTo(cx + side * 10.8, top + 2.2, hx + side * 1.4, hy - 1);
+      ctx.lineTo(hx - side * 1.4, hy - 1);
+      ctx.quadraticCurveTo(cx + side * 8.6, top + 6, cx + side * 7.6, top + 7);
+    } else {
+      // hanging, bent forward at the elbow out of sight
+      ctx.moveTo(cx + side * 7.4, top + 1.6);
+      ctx.quadraticCurveTo(cx + side * 10.8, top + 2, cx + side * 10.6, top + 7.4);
+      ctx.lineTo(cx + side * 10.4, top + 10.8);
+      ctx.quadraticCurveTo(cx + side * 9.2, top + 12.2, cx + side * 7.8, top + 10.8);
+      ctx.lineTo(cx + side * 7.6, top + 6.4);
+    }
+    ctx.closePath();
+    fs(ctx, shirt, ink, 0.4);
+    if (side > 0) {
+      ctx.save(); ctx.clip();
+      box(ctx, cx + side * 9.6 - 1, top, 4, 20, 'rgba(20,16,30,0.18)');
+      ctx.restore();
+    }
+  };
+  ctx.beginPath(); torso(ctx); fs(ctx, shirt, ink, LWM);
+  ctx.save(); ctx.beginPath(); torso(ctx); ctx.clip();
+  box(ctx, cx + 2.6, top, 8, 20, 'rgba(20,16,30,0.16)');
+  box(ctx, cx - 8.4, top + 1.4, 1.6, 8, 'rgba(255,255,255,0.18)');
+  ctx.restore();
+  // the shirt's yoke across the shoulders and its collar
+  line(ctx, cx - 7.6, top + 3.6, cx + 7.6, top + 3.6, 'rgba(20,16,30,0.3)', 0.35);
+  poly(ctx, [cx - 2.6, top - 0.9, cx + 2.6, top - 0.9, cx + 2.8, top + 0.4, cx - 2.8, top + 0.4], shirt, ink, 0.3);
+  arm(-1);
+  arm(1);
 }
 
 const BAKING = { floor: null };
@@ -995,10 +1121,72 @@ function cabinet(g, it, P) {
   }
 }
 
-// A swivel chair seen from behind: its padded back hides the sitter's lower back.
+// The meeting-room chair seen from behind, and how much of its sitter shows round it (Peter,
+// 14 Oct 2026: "dont love these chairs - they look like they are part of the peoples bodies").
+// The old one was a dark back as wide as the shoulders, in the suits' own slate, covering the
+// jacket from the shoulders down: it read as the body. The lab's office-chair bake-off
+// (src/dev/office-chair-candidates.js) tries the others through this seam.
+//   now        the old high back, charcoal
+//   low        a low typist's back at the waist, charcoal, the jacket whole above it
+//   lowFabric  the same in the floor's upholstery — teal on 23, oxblood leather on 88
+//   elbows     lowFabric with the sitter's elbows out on the table either side
+//   high       a high back kept, but narrower than the shoulders and in the upholstery
+//   mix        lowFabric for everyone, about half of them leaning in on their elbows (B and C
+//              mixed, Peter 15 Oct 2026); who leans is fixed per seat (`leansIn`)
+export const OFFICE_CHAIR_STYLES = ['now', 'low', 'lowFabric', 'elbows', 'high', 'mix'];
+// Who leans in on the table under `mix`: a fixed, uneven pattern by seat, so a room is never a
+// strict lean / sit / lean / sit (training CBCC, meetings BCCB, interview BC, boardroom BCBCCB).
+const leansIn = (seed) => (seed + Math.floor(seed / 3)) % 2 === 0;
+// SHIPPED 15 Oct 2026: D, the upholstered high back, narrower than the shoulders, seat in the
+// back's fabric and a chrome base (Peter: B first — "i don't like the elbows" — then "the high
+// back chairs are better for both levels... different to a typist chair"). The others stay for
+// the lab sheet.
+let CHAIR_STYLE = 'high';
+export function setOfficeChairStyle(style) {
+  const was = CHAIR_STYLE;
+  CHAIR_STYLE = OFFICE_CHAIR_STYLES.includes(style) ? style : 'high';
+  return was;
+}
+const chairFabric = (P) => (CHAIR_STYLE === 'low' || CHAIR_STYLE === 'now'
+  ? ['#2a2832', '#3a3844']
+  : P === PAL.exec ? ['#5e1c28', '#7c2c38'] : ['#2a8079', '#3c9c94']);
+// A swivel chair seen from behind: its back in front of the sitter's back.
 function chairFromBehind(g, c, P) {
   const b = MID_BASE;
   const ink = P.inkM;
+  if (CHAIR_STYLE !== 'now') {
+    const [fab, fabLt] = chairFabric(P);
+    const high = CHAIR_STYLE === 'high';
+    const seatY = high ? b - 14.6 : b - 16.4, seatB = seatY + 2.4;
+    // Chrome only below the seat (Peter, 15 Oct 2026: "can the chrome only extend to the bottom of
+    // the seat not to the seat back. can the wheels be chrome too?"): the gas stem from under the
+    // seat to the hub, drawn first so the seat sits on it; the five-star base outlined, with a
+    // hub; the castors chrome as well.
+    line(g, c.x, seatB, c.x, b - 3, ink, 2.2);
+    line(g, c.x, seatB, c.x, b - 3, P.chrome, 1.4);
+    for (const wx of [c.x - 7, c.x, c.x + 7]) {
+      circ(g, wx, wx === c.x ? b - 1.1 : b - 1.3, wx === c.x ? 1.1 : 1.4, P.chrome, ink, 0.3);
+      circ(g, wx, wx === c.x ? b - 1.1 : b - 1.3, 0.4, '#5a5866');
+    }
+    line(g, c.x - 7, b - 2.6, c.x + 7, b - 2.6, ink, 2.1);
+    line(g, c.x - 7, b - 2.6, c.x + 7, b - 2.6, P.chrome, 1.3);
+    line(g, c.x - 6, b - 2.9, c.x + 6, b - 2.9, '#f2f4f8', 0.4);
+    box(g, c.x - 1.4, b - 3.8, 2.8, 2.2, P.chrome, ink, 0.3);
+    // the seat, in the back's fabric so seat and back are one chair
+    box(g, c.x - 8.5, seatY, 17, 2.4, fab, ink, 0.35);
+    line(g, c.x - 7.6, seatY + 0.6, c.x + 7.6, seatY + 0.6, fabLt, 0.5);
+    if (high) {
+      // the high back, its foot down on the seat: attached, not floating above it
+      topRound(g, c.x - 6.5, b - 31, 13, 18.4, 5, fab, ink, LWM);
+      topRound(g, c.x - 4.8, b - 29.4, 9.6, 13.4, 3.6, fabLt, null, 0);
+    } else {
+      // the low back on a dark upright that runs down into the seat
+      box(g, c.x - 1.1, b - 18.4, 2.2, 2.6, '#24222c', ink, 0.3);
+      topRound(g, c.x - 6, b - 26.5, 12, 8.5, 3.4, fab, ink, LWM);
+      topRound(g, c.x - 4.4, b - 25.2, 8.8, 5.6, 2.4, fabLt, null, 0);
+    }
+    return;
+  }
   topRound(g, c.x - 8.5, b - 32, 17, 20, 5, '#2a2832', ink, LWM);
   topRound(g, c.x - 6.5, b - 30, 13, 15, 4, '#3a3844', null, 0);
   line(g, c.x, b - 12, c.x, b - 3, P.chrome, 1.5);
@@ -1035,7 +1223,11 @@ function boardroomFront(g, it, P) {
   box(g, x0, b - 27, x1 - x0, 4, '#25232e', ink, LWM);
   line(g, x0, b - 25.6, x1, b - 25.6, P.chrome, 0.6);
   box(g, x0 + 4, b - 23, x1 - x0 - 8, 3.2, '#1b1a22', ink, LWM);
-  for (const px of [x0 + 18, (x0 + x1) / 2, x1 - 18]) {
+  // `legsAt`: the pedestals' places as fractions along the table, where a room seats people at
+  // it — floor 88's boardroom puts them between the chairs, since with the glass clear below the
+  // table a chrome drum straight behind a sitter's legs read as a white bag hanging off the seat
+  const legs = it.legsAt ? it.legsAt.map((u) => x0 + (x1 - x0) * u) : [x0 + 18, (x0 + x1) / 2, x1 - 18];
+  for (const px of legs) {
     box(g, px - 3.4, b - 20, 6.8, 17, P.chrome, ink, LWM);
     line(g, px - 1.4, b - 19, px - 1.4, b - 4, '#f2f4f8', 0.6);
     box(g, px - 7, b - 3, 14, 3, '#1b1a22', ink, LWM);
@@ -1211,10 +1403,10 @@ function midActors(ctx, f, P) {
         // A peeking worker straightens behind the partition. Keep the shirt
         // connected below its top even at the highest point of the animation.
         const shouldersY = y + 4.4;
-        padded(ctx, cx, shouldersY, 17, Math.max(15, b - 30 - shouldersY), p.shirt, ink, LWM);
+        cubicleBack(ctx, cx, shouldersY, p.shirt, ink, d.pop > 0.5);
         if (d.pop > 0.5) {
-          circ(ctx, cx - 9.5, b - 35.6, 1.7, p.skin, ink, 0.35);
-          circ(ctx, cx + 9.5, b - 35.6, 1.7, p.skin, ink, 0.35);
+          circ(ctx, cx - 9.5 * BACK_SLIM, b - 35.6, 1.7, p.skin, ink, 0.35);
+          circ(ctx, cx + 9.5 * BACK_SLIM, b - 35.6, 1.7, p.skin, ink, 0.35);
         }
         workerHead(ctx, cx, y, 5, p, d.seed, d.pop > 0.15 ? (d.look > 0 ? 'right' : 'left') : 'back');
       }
@@ -1226,16 +1418,27 @@ function midActors(ctx, f, P) {
         const y = b - 40 + c.nod * 3.4;
         if (c.away) {
           // Facing the far wall and its whiteboard: the back of the jacket and the head, with
-          // the chair back drawn over them by the caller. Below the seat the legs dangle either
-          // side of the chair's stem, shoes clear of the floor, swinging a little.
+          // the chair back drawn over them by the caller.
           const trousers = ['#2b2936', '#3a3548', '#262a36', '#4a4458'][c.seed % 4];
-          for (const side of [-1, 1]) {
+          if (CHAIR_STYLE !== 'now') {
+            // Below the seat the lower legs go down to the floor, a little apart, the shoes'
+            // heels flat on it just beyond the chair's base (which the caller draws in front):
+            // feet on the floor, not dangling (Peter, 14 Oct 2026: "is that chair legs or the
+            // humans legs?"). Every other sitter taps one heel.
+            for (const side of [-1, 1]) {
+              const tap = side > 0 && c.seed % 2 ? Math.max(0, Math.sin(c.nod * 40 + c.seed)) * 1.2 : 0;
+              const kx = c.x + side * 4.2, fx = c.x + side * 5.2, fy = b - 4.4 - tap;
+              poly(ctx, [kx - 2, b - 15, kx + 2, b - 15, fx + 1.7, fy, fx - 1.7, fy], trousers, ink, 0.4);
+              rbox(ctx, fx - 2.2, fy - 0.4, 4.4, 2.6, 1, '#1b1922', ink, 0.35);
+            }
+          } else for (const side of [-1, 1]) {
             const kx = c.x + side * 4, sw = Math.sin(c.nod * 9 + side * 1.7 + c.seed) * 0.9;
             const fx = kx + side * 0.6 + sw, fy = b - 8;
             poly(ctx, [kx - 2.1, b - 15, kx + 2.1, b - 15, fx + 1.8, fy, fx - 1.8, fy], trousers, ink, 0.4);
             rbox(ctx, fx - 2.6, fy - 0.8, 5.2, 3.6, 1.2, '#1b1922', ink, 0.35);
           }
-          padded(ctx, c.x, b - 33.5, 18, 10.5, suit, ink, LWM);
+          if (CHAIR_STYLE === 'now') padded(ctx, c.x, b - 33.5, 18, 10.5, suit, ink, LWM);
+          else seatedBack(ctx, c.x, suit, ink, CHAIR_STYLE === 'elbows' || (CHAIR_STYLE === 'mix' && leansIn(c.seed)));
           const pp = { ...p, style: p.style === 'bun' || p.style === 'quiff' ? 'short' : p.style, hair: c.seed % 3 === 0 ? '#c9c4ba' : p.hair };
           ctx.save();
           ctx.translate(c.x, y + 4);

@@ -390,7 +390,9 @@ runs mono end to end and is duplicated at the lane output, which is what native 
 does.
 
 **Filter cascade quirk to port exactly:** `_filterChain` gives stage 0 the authored Q and
-every later stage 0.7071; `slope: -48` → 4 sections, `-24` → 2, anything else → 1. MRDR
+every later stage a Butterworth Q — −3.0103 on lowpass/highpass, which read Q in dB, and
+0.7071 on bandpass/notch (until 15 Oct 2026 it was 0.7071 on all four, which a lowpass reads
+as +0.71 dB); `slope: -48` → 4 sections, `-24` → 2, anything else → 1. MRDR
 never passes `to`, so the `swept` branch is dead on this path and is not ported.
 
 ### 5.2 Allocation and stealing

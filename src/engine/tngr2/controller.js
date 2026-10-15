@@ -29,6 +29,7 @@ import { ensureTngr2Dsp, createTngr2Node, canHostTngr2 } from './worklet.js';
 import { packTngr2Tables } from './tables.js';
 import { migrateTngr2, tngr2CoreParams } from './schema.js';
 import { compileTngr2Patch } from './dsp.js';
+import { driveRef } from '../drive-curve.js';
 
 export { canHostTngr2 };
 
@@ -147,6 +148,8 @@ export const tngr2EffectsOf = (voice) => {
     shape: voice.shape,
     drivePlace: voice.drivePlace,
     tone: voice.tone,
+    // Where the knee sits: this preset's own stored peak, as on MRDR-3 and the drum kit.
+    driveRef: driveRef(voice),
   };
 };
 
@@ -415,4 +418,43 @@ export async function renderTngr2Lane(ctx, {
   });
   node.connect(destination || ctx.destination);
   return node;
+}
+
+// Receipts outstanding per offline node, keyed by the number each post carries.
+const ackWaits = new WeakMap();
+let ackCounter = 0;
+
+/**
+ * Hand an offline lane the next stretch of its schedule, and resolve once the processor
+ * has QUEUED it — `true` when it confirmed, `false` when no receipt came in `timeoutMs`.
+ *
+ * The bounce walks just in time and posts each stretch at a checkpoint where the render is
+ * suspended. A port message and the render's own resume are separate tasks on the worklet
+ * thread with nothing ordering one before the other, so a post is only reliably in the
+ * queue before the render moves on if the render waits to be told. The events are seconds
+ * ahead of the head, which covers every checkpoint but the last: its stretch has no later
+ * pause to be picked up in, and a post that lost that race would be the end of the song
+ * missing from the file. This is what closes it. An empty `events` is a plain receipt —
+ * for a lane built at this checkpoint, it says the processor exists.
+ */
+export function postTngr2Events(node, events, { timeoutMs = 10000 } = {}) {
+  const port = node.port;
+  const waits = ackWaits.get(node) || (() => {
+    const map = new Map();
+    ackWaits.set(node, map);
+    port.addEventListener('message', (e) => {
+      const msg = e.data;
+      if (!msg || msg.type !== 'ack') return;
+      const done = map.get(msg.ack);
+      if (done) { map.delete(msg.ack); done(true); }
+    });
+    port.start();
+    return map;
+  })();
+  const ack = ++ackCounter;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { waits.delete(ack); resolve(false); }, timeoutMs);
+    waits.set(ack, (ok) => { clearTimeout(timer); resolve(ok); });
+    port.postMessage({ type: 'events', events: events || [], ack });
+  });
 }

@@ -63,6 +63,17 @@ function clearIntro(run) {
     'the cabinet\'s authored line does not play in-run');
 }
 
+// --- A quiet stage has no ambient chat (Peter, 15 Oct 2026) -----------------
+for (const id of ['gravity-2', 'gravity-3', 'office-2']) {
+  assert(STAGE_BY_ID[id].quiet, `${id} is a quiet stage`);
+  const run = makeRun(STAGE_BY_ID[id]);
+  clearIntro(run);
+  run.speech = null; run.speechQueue = [];
+  run.tauntT = 0.001;
+  run.update(TICK);
+  assert(!run.speech || !EGGSHELL_TAUNTS.includes(run.speech.text), `${id}: no Eggshell taunt on a quiet stage`);
+}
+
 // --- A stage can carry both openers: card first, then the bubble -----------
 {
   const run = makeRun(STAGE_BY_ID['plumber-1']);

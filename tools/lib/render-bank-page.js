@@ -266,7 +266,13 @@ export async function renderBankPage({
   // What makes posting safe here and not before `startRendering` is the CUSHION. A
   // checkpoint hands over notes that are at least a horizon in the future — the same
   // lookahead the live path runs on — where the pre-render post had none, which is
-  // finding (b) in docs/TNGR-2-completion-spec.md §3.
+  // finding (b) in docs/TNGR-2-completion-spec.md §3. And the flush does not return until
+  // every lane it posted to has confirmed the stretch is queued, so the render is only
+  // resumed behind it: nothing about how busy the machine is can reorder the two.
+  //
+  // (The bars that used to come out different from one bounce to the next were not the
+  // port at all: they were TNGR-2's processor reading a stale `currentFrame` — see the note
+  // in its process(), src/engine/tngr2/worklet.js.)
   const canSuspend = !upfront && typeof ctx.suspend === 'function';
   // A walk that throws inside a suspension must fail the RENDER, not vanish into a
   // swallowed rejection — without this, a bad bank would come back as a "successful"

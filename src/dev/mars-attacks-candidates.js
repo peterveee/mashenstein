@@ -38,7 +38,9 @@ const SUIT = ['#7ee0c8', '#3fb5a0', '#227866', '#134a40'];
 // `collar: null` leaves off the suit's pointed collar round the neck — a plain
 // head in a plain helmet (Peter, 14 Oct: "remove embellishments around the face
 // and neck").
-export function martianHead(c, x, y, sc, t, { talk = 0, look = 0, helmet = true, collar = SUIT } = {}) {
+// `flat: true` lights the eyes with a flat disc rather than a glow, for the obstacles' flat hand
+// (gravityProps.js: the head in the specimen case).
+export function martianHead(c, x, y, sc, t, { talk = 0, look = 0, helmet = true, collar = SUIT, flat = false } = {}) {
   c.save(); c.translate(x, y); c.scale(sc, sc);
   // The plain head (no collar) wears the film's helmet (Peter, 14 Oct, with the
   // lifesize-bust reference: "more space for the head and it flares up and
@@ -64,7 +66,8 @@ export function martianHead(c, x, y, sc, t, { talk = 0, look = 0, helmet = true,
   // Eye sockets: huge, black, with a small green pupil that glances about.
   for (const sx of [-1, 1]) {
     c.beginPath(); c.ellipse(sx * 1.75, -5.4, 1.35, 1.55, sx * -0.2, 0, TAU); c.fillStyle = '#0b0f0b'; c.fill();
-    glow(c, sx * 1.75 + look * 0.45, -5.3, 0.9, '160,255,140', 0.9);
+    if (flat) { c.beginPath(); c.arc(sx * 1.75 + look * 0.45, -5.3, 0.55, 0, TAU); c.fillStyle = '#a0ff8c'; c.fill(); }
+    else glow(c, sx * 1.75 + look * 0.45, -5.3, 0.9, '160,255,140', 0.9);
     c.beginPath(); c.arc(sx * 1.75 + look * 0.45 - 0.3, -5.8, 0.22, 0, TAU); c.fillStyle = '#ffffff'; c.fill();
   }
   // Nose holes.

@@ -78,6 +78,8 @@ export function officePack(settings = {}) {
       // The Gravity Grid's Martian rides the lobby lift once the player has met the Martians
       // (run.js sets it: Gravity Grid level 3 played, or any dev build); the gallery always shows him.
       frame.liftMartian = settings.gallery === true || settings.liftMartian === true;
+      // (where along the stage floor 23's zombies are met: officeLigne/zombies.js)
+      frame.totalDist = totalDist;
       // Floor 88's helicopter is a single fly-past part-way along the stage, not a fixture.
       // Floor 23's blimp drifts through complete passes, with no progress cutoff.
       const heli = OFFICE_CORRIDORS.exec.outside.flyer;

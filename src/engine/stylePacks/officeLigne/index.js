@@ -9,9 +9,16 @@ import { OFFICE_ZOOM as ZOOM } from '../officeClimb.js';
 import { paintFront } from './front.js';
 import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections, officeLiftSpans, warmOfficeWallSections } from './progression.js';
 import { paintOfficeArtwork, warmOfficeArtwork, officeArtworkBytes } from './artwork.js';
+import { officeMonthBoard, paintMonthBoardOnWall, paintCoolerZombie, zombieFurnitureCuts, zombieWallClear } from './zombies.js';
 
 const CACHE = new Map();
 const PRODUCTION_CACHE = new Map();
+
+// A bake-off's extra people (src/dev), painted live into the room: (ctx, f, P, pass), where pass
+// is 'wall' (on the back wall, behind the furniture), 'desk' (in the cubicles, behind their
+// partitions) or 'front' (standing in front of the furniture row). Null in the game.
+let MID_EXTRA = null;
+export function setOfficeMidExtra(fn) { const was = MID_EXTRA; MID_EXTRA = fn || null; return was; }
 
 function bakeFor(floor, k, cache = CACHE) {
   const key = `${floor}@${k}`;
@@ -41,8 +48,8 @@ function bakeFor(floor, k, cache = CACHE) {
   return B;
 }
 
-// The towers above the glass's resting head, for the taller windows of a pulled-out camera: baked
-// on first use only, and at 1x (they are small and far off), so the resting warm cache is unchanged.
+// The towers above the resting windows, prepared during warmup so the first
+// camera pull-back does not allocate and paint city textures during play.
 function upperCity(B, F, P) {
   if (B.up !== undefined) return B.up;
   const top = Math.min(...F.outside.far.map((b) => b.top), ...F.outside.near.map((b) => b.top)) - 50;
@@ -73,13 +80,14 @@ export function officeWarmJobs(floor) {
   return [() => {
     const keep = `${floor}@${OFFICE_BAKE_SCALE}`;
     for (const key of PRODUCTION_CACHE.keys()) if (key !== keep) PRODUCTION_CACHE.delete(key);
-    bakeFor(floor, OFFICE_BAKE_SCALE, PRODUCTION_CACHE);
+    const B = bakeFor(floor, OFFICE_BAKE_SCALE, PRODUCTION_CACHE);
+    upperCity(B, OFFICE_CORRIDORS[floor], PAL[floor]);
     warmOfficeArtwork(floor, OFFICE_ART_BAKE_SCALE);
   }];
 }
 export function officeCacheStats() {
   let bytes = 0;
-  for (const b of PRODUCTION_CACHE.values()) for (const strip of [b.far, b.near, b.wall, b.midBack, b.midFront, b.midCubiclesBack, b.midCubiclesFront]) {
+  for (const b of PRODUCTION_CACHE.values()) for (const strip of [b.far, b.near, b.wall, b.midBack, b.midFront, b.midCubiclesBack, b.midCubiclesFront, b.up?.far, b.up?.near]) {
     if (strip?.image) bytes += strip.image.width * strip.image.height * 4;
     for (const tile of strip?.tiles || []) bytes += tile.c.width * tile.c.height * 4;
   }
@@ -144,6 +152,10 @@ export const STYLE = {
       for (const key of cache.keys()) if (key !== `${f.floor}@${k}`) cache.delete(key);
     }
     const B = bakeFor(f.floor, k, cache);
+    // floor 23's zombies (zombies.js): the clerk's EMPLOYEE OF THE MONTH bay, and the wall they keep
+    // clear of prints
+    f.monthBoard = options.production ? officeMonthBoard(f) : null;
+    f.wallClear = options.production ? zombieWallClear(f) : null;
     if(options.production)warmOfficeWallSections(f);
     const farShift = f.camX * FACTORS.cityFar * ZOOM;
     const nearShift = f.camX * (F.outside.nearFactor ?? FACTORS.cityNear) * ZOOM;
@@ -192,6 +204,7 @@ export const STYLE = {
     upperRoom(ctx, f, P, 'trim');
     if (options.artworkPreview) options.artworkPreview(ctx, f, P);
     else if(options.production)paintOfficeArtwork(ctx,f,P,OFFICE_ART_BAKE_SCALE);
+    if (f.monthBoard) paintMonthBoardOnWall(ctx, f, P);
     liftDoors(ctx, f, P);
     clockHands(ctx, f, P);
     revolvingDoor(ctx, f, P);
@@ -199,7 +212,8 @@ export const STYLE = {
     ctx.restore();
 
     // Corridor furniture is left out wherever it would cross a named place (step 5).
-    const cuts = f.landmarks?.length ? officeFurnitureCuts(f, f.landmarks) : [];
+    const cuts = [...(f.landmarks?.length ? officeFurnitureCuts(f, f.landmarks) : []),
+      ...(options.production ? zombieFurnitureCuts(f) : [])].sort((a, b) => a[0] - b[0]);
     // Daylight only comes in through windows that are still windows: a wall section has
     // replaced the glass it stands on.
     const walled = (f.landmarks || []).filter((l) => l.section && !l.section.glass).map((l) => {
@@ -275,6 +289,7 @@ export const STYLE = {
       paintOfficeLandmarks(ctx, f, f.landmarks);
       ctx.restore();
     }
+    if (MID_EXTRA) { ctx.save(); MID_EXTRA(ctx, f, P, 'wall'); ctx.restore(); }
 
     // Shafts of daylight fall across the room behind the furniture and the workers, which
     // stand in them rather than under a glaze.
@@ -300,11 +315,15 @@ export const STYLE = {
     if (B.midBack) drawStrip(ctx, B.midBack, f.mid.shift);
     if (B.midCubiclesBack) drawStrip(ctx, B.midCubiclesBack, f.mid.shift);
     layer(() => midActors(ctx, cubicleFrame, P));
+    if (MID_EXTRA) layer(() => MID_EXTRA(ctx, f, P, 'desk'));
     drawStrip(ctx, B.midFront, f.mid.shift);
     if (B.midCubiclesFront) drawStrip(ctx, B.midCubiclesFront, f.mid.shift);
     layer(() => midDevices(ctx, f, P));
+    if (MID_EXTRA) layer(() => MID_EXTRA(ctx, f, P, 'front'));
     if (f.floor === 'exec') layer(() => lampSheen(ctx, f));
     ctx.restore();
+    // the zombie clerk at his cooler stands where furniture was cut away for him, so outside the cut
+    if (options.production) { ctx.save(); ctx.translate(0, -drop); paintCoolerZombie(ctx, f, P); ctx.restore(); }
     if (f.floor !== 'exec') {
       ctx.save();
       lights(ctx, f, P);

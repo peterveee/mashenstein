@@ -327,9 +327,11 @@ async function main() {
       // scheduled for the note's own start time, so `.value` still reads the node's
       // default here and asserting on it would be asserting on Web Audio's clock.
       // Resonance lands on the first stage only — the ones behind it are there for the
-      // slope and would multiply the peak if they resonated too.
+      // slope and would multiply the peak if they resonated too. Flat is Butterworth, which
+      // a low-pass biquad reads in dB: −3.01, not the linear 0.7071.
       say(made.every((f) => f.type === 'lowpass'), '...and every stage is the shape asked for');
-      say(Math.abs(made[0].Q.value - 12) < 1e-3 && Math.abs(made[1].Q.value - 0.7071) < 1e-3,
+      say(Math.abs(made[0].Q.value - 12) < 1e-3
+        && Math.abs(made[1].Q.value - 20 * Math.log10(Math.SQRT1_2)) < 1e-3,
         '...with the resonance on the first stage and the rest flat');
 
       // Noise carries its own pitch bandpass, so the tone filter is a SECOND node — the

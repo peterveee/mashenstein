@@ -117,8 +117,8 @@ assert(filterLine.getAttribute('d') !== filterBefore,
 //
 // The same four numbers are three different filters. A BiquadFilterNode reads a low-pass
 // RESONANCE in dB (4 is a 4 dB peak, not 12), Tone's Filter repeats it on every stage of a
-// -24, `_filterChain` puts a 0.7071 (dB-read) stage behind a resonant one, and TNGR-2's SVF
-// reads Q linearly with a true Butterworth follower. The numbers below are what each
+// -24, `_filterChain` puts a Butterworth stage (Q −3.01 dB on a low-pass) behind a resonant
+// one, and TNGR-2's SVF reads Q linearly with a true Butterworth follower. The numbers below are what each
 // engine renders at the cutoff, to within 0.1 dB, measured (work/local/_synth-audit, and a
 // BiquadFilterNode's own getFrequencyResponse); the drawing used to put 12 dB or more on
 // the first three.
@@ -127,7 +127,10 @@ assert(filterLine.getAttribute('d') !== filterBefore,
   const near = (x, want, tol = 0.1) => Math.abs(x - want) <= tol;
   assert(near(at('biquad', -12, 4, 1000), 4), `a biquad low-pass at Q 4 draws 4 dB at its cutoff, not 12 (${at('biquad', -12, 4, 1000).toFixed(2)})`);
   assert(near(at('tone', -24, 4, 1000), 8), `CRLS-1 at -24 draws both stages' peaks (${at('tone', -24, 4, 1000).toFixed(2)})`);
-  assert(near(at('biquad', -24, 4, 1000), 4.7), `MRDR-3/KNDO-5 at -24 draw one peak and a 0.7071 dB follower (${at('biquad', -24, 4, 1000).toFixed(2)})`);
+  assert(near(at('biquad', -24, 4, 1000), 0.99), `MRDR-3/KNDO-5 at -24 draw one peak and a Butterworth follower (${at('biquad', -24, 4, 1000).toFixed(2)})`);
+  assert(near(at('biquad', -48, 4, 1000), 4 - 3 * 3.0103), `...and -48 three of them (${at('biquad', -48, 4, 1000).toFixed(2)})`);
+  const bq = magnitudeDb(1000, { cutoff: 1000, Q: 4, type: 'bandpass', slope: -24, model: 'biquad' });
+  assert(near(bq, 0), `a biquad band-pass follower is 0.7071 linear: 0 dB at the centre (${bq.toFixed(2)})`);
   assert(near(at('svf', -12, 4, 1000), 12.04), `TNGR-2 reads RESONANCE linearly (${at('svf', -12, 4, 1000).toFixed(2)})`);
   assert(near(at('svf', -24, 0.7071, 1000), -6.02), `TNGR-2's -24 follower is Butterworth (${at('svf', -24, 0.7071, 1000).toFixed(2)})`);
   const bp = magnitudeDb(3400, { cutoff: 3400, Q: 2.16, type: 'bandpass', slope: -24, model: 'svf' });

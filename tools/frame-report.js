@@ -47,7 +47,7 @@ const BASE = `http://localhost:${PORT}`;
 // Cabinets 1-6 in the registry's order; the rest have nothing of note on them yet.
 const CABINETS = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon'];
 // Asked for by name only (not in the default run).
-const NAMED_ONLY = ['office'];
+const NAMED_ONLY = ['office', 'gravity'];
 const PHONE = { w: 393, h: 852, dpr: 3 };
 const DENSITY = { portrait: 2, landscape: 3 };
 const BUDGET = 16.7;
@@ -146,8 +146,12 @@ async function look(browser, run) {
       density: String(DENSITY[run.orient]), startAt: String(run.at),
     });
     await page.goto(`${BASE}/?${q}&invuln&mute`, { waitUntil: 'load' });
-    // Past the boot, the stage's intro and the first bakes.
-    await page.waitForTimeout(3500);
+    // Past the boot, the stage's intro and the first bakes. Wait for the run itself to be
+    // moving first: a slow boot (the office's, 15 Oct 2026) used to be measured instead — idle
+    // frames at the display's rate, reading as a cabinet with nothing to draw.
+    await page.waitForFunction(() => /RunState$/.test(window.__mash_cur?.constructor?.name || '') && window.__mash_cur.camX > 0,
+      null, { timeout: 60000 });
+    await page.waitForTimeout(2500);
     await page.evaluate(() => {
       window.__frameGaps = [];
       let last = performance.now();
