@@ -99,6 +99,7 @@ const GROUPS = [
       { cue: 'hit', what: 'taking damage' },
       { cue: 'dogBark', what: 'the finish dog' },
       { cue: 'catMeow', what: 'a swiping cat winds up' },
+      { cue: 'catSwipe', what: 'a swiping cat\'s paw' },
       { cue: 'die', what: 'losing a life' },
       { cue: 'crunch', what: 'scenery breaking; the pit landing' },
       { cue: 'barrelBurst', what: 'a barrel bursting' },

@@ -29,6 +29,7 @@
     "desk": "node tools/desk.js",
     "mixer": "node tools/mixer.js",
     "sfx": "node tools/sfx-desk.js",
+    "catbench": "node tools/cat-sfx-bench.js",
     "banger-sounds": "node tools/banger-sounds.js",
     "banger-calibrate": "node tools/banger-calibrate.js",
     "browsers": "node tools/browsers.js",

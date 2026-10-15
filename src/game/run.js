@@ -14,6 +14,7 @@ import {
   Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT,
   PORTAL_RELAY_GAIN, PORTAL_RELAY_IN_GAIN, portalCueFlashAt,
   SLEIGH_CAROLS, SLEIGH_CAROL, FAX_HANDSHAKE_END_SEC,
+  SWIPE_SHAPES, CAT_SWIPE, CAT_SWIPE_DEFAULT, CAT_SWIPE_RECOIL,
 } from '../engine/audio.js';
 import { MusicDirector } from '../engine/music-director.js';
 import { Rng } from '../engine/rng.js';
@@ -27,8 +28,16 @@ import {
   drawKeyLegend, keyLegendWidth, drawPellet, TEXT_INK_H,
 } from '../engine/sprites.js';
 import { STRIKERS } from '../sprites/animals.js';
-// The swiping cats' voices, relative to the meow's own pitch (engine/audio.js MEOW_SHAPES).
-const CAT_MEOW_PITCH = { catPythagoras: 1, catMechaNeon: 1.06, catNekoGhost: 0.88, catNeonBright: 1.12 };
+// The swiping cats' paws, relative to the swipe's own pitch, and each one's swipe
+// (engine/audio.js SWIPE_SHAPES; CAT_SWIPE names a cat's own, else CAT_SWIPE_DEFAULT).
+// Seconds after a cat's strike clock starts that its swipe sound is fired.
+const CAT_SWIPE_AT = 0.05;
+// ...and its pull-back fwip: the paw starts home at 0.48s and moves fastest around 0.66s;
+// the fwip peaks 0.06s after it fires, so 0.54 puts it at 0.6, as the paw comes back.
+const CAT_RECOIL_AT = 0.54;
+const CAT_PAW_PITCH = { catPythagoras: 1, catMechaNeon: 1.06, catNekoGhost: 0.9, catNeonBright: 1.1 };
+const CAT_SWIPE_SHAPES = Object.fromEntries(Object.keys(CAT_PAW_PITCH)
+  .map((t) => [t, SWIPE_SHAPES[CAT_SWIPE[t] || CAT_SWIPE_DEFAULT]]));
 import { RAKE_SWING_LEAD } from '../sprites/props.js';
 import { ZAP_T, ZAP_XRAY_CHANCE, zapCanXray } from '../sprites/zap.js';
 import { BLAST_T } from '../sprites/blast.js';
@@ -9799,10 +9808,19 @@ export class RunState {
           const gap = ob.x - (this.playerWorldX() + PLAYER_W / 2);
           if (gap > -ob.w && gap <= Math.max(1, sp) * lead) {
             ob[clock] = 0;
-            // A swiping cat says so as it winds up (Peter, 16 Oct 2026: "a meow sound
-            // effect would be awesome … like rowr"); each a shade apart in pitch.
-            const meow = CAT_MEOW_PITCH[ob.type];
-            if (meow) Audio.sfx('catMeow', { pitch: meow });
+            // A swiping cat's paw goes through the air with a cartoon swipe (Peter, 16
+            // Oct 2026: "i meant more a swipe effect … like the cartoon effect"). The paw
+            // goes out between 0.2s and 0.3s into the strike (the snake's curve); thwip5
+            // is audible from ~0.14s after it fires and loudest at 0.2s, so it fires 0.05s
+            // in — heard as the paw starts, loudest mid-swing, claws as it lands. (At 0.12
+            // it was heard only once the paw was already out: "it seems off".) Each cat a
+            // shade apart in pitch; the shape per cat is CAT_SWIPE in engine/audio.js.
+            const pitch = CAT_PAW_PITCH[ob.type];
+            if (pitch) {
+              Audio.sfx('catSwipe', { pitch, inSeconds: CAT_SWIPE_AT, shape: CAT_SWIPE_SHAPES[ob.type] });
+              // And a small fwip the other way as the paw comes home ("can we do both?").
+              Audio.sfx('catSwipe', { pitch, inSeconds: CAT_RECOIL_AT, shape: SWIPE_SHAPES[CAT_SWIPE_RECOIL] });
+            }
           }
         }
       }

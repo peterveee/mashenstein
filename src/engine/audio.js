@@ -549,12 +549,97 @@ export const MEOW_SHAPES = {
     f1a: 420, f1b: 820, f1c: 460, f2a: 1050, f2b: 1400, f2c: 800,
     rough: 0.75, roughHz: 24, sub: 0.6, dist: 0.5, breath: 0.16, hiss: 0 },
   // A hiss, then the rowr: the warning and the swipe in one.
-  hissRowr: { level: 1.175, f0: 300, p0: 0.82, p1: 1.25, p2: 0.72, peakAt: 0.3, dur: 0.62,
+  hissRowr: { level: 0.8, f0: 300, p0: 0.82, p1: 1.25, p2: 0.72, peakAt: 0.3, dur: 0.62,
     f1a: 480, f1b: 980, f1c: 520, f2a: 1250, f2b: 1650, f2c: 880,
     rough: 0.5, roughHz: 34, sub: 0.3, dist: 0.35, breath: 0.12, hiss: 0.32 },
 };
-// The shape the game fires.
-export const CAT_MEOW = 'rowr';
+// HISSES, no voice (Peter, 16 Oct 2026, hearing the meows: "maybe just hiss when they
+// strike?"). `hissHz` is where the hiss peaks, `hissRise`/`hissHold` its swell and
+// hold, `spit` a burst and pop at `spitAt` (0..1 of the hiss).
+Object.assign(MEOW_SHAPES, {
+  // A long, even hiss: the warning, held.
+  hiss:     { level: 0.58, voice: false, hiss: 0.55, hissHz: 5200, hissRise: 0.06, hissHold: 0.6, spit: 0, dur: 0 },
+  // Short and sharp, a spit on the front: the strike itself.
+  spit:     { level: 0.95, voice: false, hiss: 0.26, hissHz: 4400, hissRise: 0.012, hissHold: 0.3, spit: 0.9, spitAt: 0, dur: 0 },
+  // The hiss rising, then breaking into a spit as the paw goes.
+  hissSpit: { level: 0.59, voice: false, hiss: 0.5, hissHz: 5600, hissRise: 0.12, hissHold: 0.75, spit: 0.8, spitAt: 0.62, dur: 0 },
+  // Lower and rougher, from a bigger cat.
+  hissLow:  { level: 0.65, voice: false, hiss: 0.5, hissHz: 3300, hissRise: 0.05, hissHold: 0.6, spit: 0.35, spitAt: 0, dur: 0 },
+});
+export const CAT_MEOW = 'hissSpit';
+
+// THE SWIPE ITSELF (Peter, 16 Oct 2026: "i meant more a swipe effect maybe rather than a
+// hiss"). See catSwipe(): air torn through a moving band (the paw), claws raking
+// through it, and for the robot a blade's ring.
+//   dur      seconds of whoosh             f0/f1/f2  the band: start / peak / end, Hz
+//   peakAt   where it peaks, 0..1          q         the band's width (up = whistly)
+//   air      a wide highpassed layer       pan       how far it sweeps right->left
+//   claws    how many scratches            clawAt    when the first lands, 0..1
+//   clawGap  seconds between them          clawHz    their colour   clawLevel
+//   ring     a blade's metallic ring       ringHz
+//   tone     a sine riding the band — the cartoon whistle in a "fweeep"
+export const SWIPE_SHAPES = {
+  // THE CARTOON SWIPES (Peter, 16 Oct: "like the cartoon effect"): a narrow band, so
+  // the air WHISTLES as it sweeps, and a sine riding it. The Looney Tunes "fwip".
+  // Up and away fast: the classic zip past.
+  zip:    { level: 2.75, dur: 0.16, f0: 600, f1: 3400, f2: 2600, peakAt: 0.7, q: 7,
+    air: 0.2, pan: 0.8, claws: 0, clawAt: 0.5, clawGap: 0.02, clawHz: 4000, clawLevel: 0, ring: 0, ringHz: 3400, tone: 0.35 },
+  // Up and back down — "fwoo-ip", the swing of a big paw.
+  fwip:   { level: 2.45, dur: 0.26, f0: 500, f1: 2600, f2: 700, peakAt: 0.45, q: 6,
+    air: 0.25, pan: 0.7, claws: 0, clawAt: 0.5, clawGap: 0.02, clawHz: 4000, clawLevel: 0, ring: 0, ringHz: 3400, tone: 0.3 },
+  // A falling whistle, the whoosh of something big going by.
+  whoosh: { level: 2.21, dur: 0.32, f0: 2400, f1: 1800, f2: 350, peakAt: 0.3, q: 5,
+    air: 0.35, pan: 0.6, claws: 0, clawAt: 0.5, clawGap: 0.02, clawHz: 4000, clawLevel: 0, ring: 0, ringHz: 3400, tone: 0.2 },
+  // The cartoon fwip with a scratch on its peak — the cat's claws in it.
+  fwipClaws: { level: 2.19, dur: 0.26, f0: 500, f1: 2600, f2: 700, peakAt: 0.45, q: 6,
+    air: 0.25, pan: 0.7, claws: 3, clawAt: 0.42, clawGap: 0.022, clawHz: 4600, clawLevel: 0.7, ring: 0, ringHz: 3400, tone: 0.3 },
+  // The cartoon fwip with the blade's "shing" on the end — the robot.
+  fwipShing: { level: 2.14, dur: 0.22, f0: 600, f1: 3200, f2: 1400, peakAt: 0.45, q: 6,
+    air: 0.3, pan: 0.8, claws: 1, clawAt: 0.45, clawGap: 0.02, clawHz: 5200, clawLevel: 0.6, ring: 0.7, ringHz: 3600, tone: 0.3 },
+  // A quick whoosh with three claws raking through the middle of it.
+  rake:  { level: 1.35, dur: 0.22, f0: 700, f1: 3200, f2: 1100, peakAt: 0.45, q: 1.4,
+    air: 0.35, pan: 0.7, claws: 3, clawAt: 0.35, clawGap: 0.022, clawHz: 4200, clawLevel: 0.9, ring: 0, ringHz: 3400 },
+  // Just the air: a clean, fast swish.
+  swish: { level: 0.955, dur: 0.18, f0: 900, f1: 4200, f2: 1600, peakAt: 0.4, q: 1.0,
+    air: 0.6, pan: 0.8, claws: 0, clawAt: 0.4, clawGap: 0.02, clawHz: 4000, clawLevel: 0, ring: 0, ringHz: 3400 },
+  // Heavier and lower — a big paw.
+  thwip: { level: 2.16, dur: 0.28, f0: 380, f1: 1700, f2: 500, peakAt: 0.4, q: 1.8,
+    air: 0.25, pan: 0.6, claws: 2, clawAt: 0.45, clawGap: 0.03, clawHz: 2800, clawLevel: 0.7, ring: 0, ringHz: 3400 },
+  // THWIP, BRIGHTER AND LONGER (Peter, 16 Oct: "thwip is not bad, just needs to be
+  // brighter and a bit longer"). Three steps of it: 2 a little of each, 3 more air and
+  // a higher band, 4 the same with the cartoon whistle under it.
+  thwip2: { level: 1.62, dur: 0.36, f0: 420, f1: 2400, f2: 700, peakAt: 0.4, q: 1.7,
+    air: 0.4, pan: 0.65, claws: 2, clawAt: 0.43, clawGap: 0.03, clawHz: 3600, clawLevel: 0.75, ring: 0, ringHz: 3400 },
+  thwip3: { level: 1.15, dur: 0.42, f0: 480, f1: 3200, f2: 900, peakAt: 0.38, q: 1.5,
+    air: 0.55, pan: 0.7, claws: 2, clawAt: 0.4, clawGap: 0.032, clawHz: 4400, clawLevel: 0.8, ring: 0, ringHz: 3400 },
+  thwip4: { level: 1.22, dur: 0.42, f0: 480, f1: 3200, f2: 900, peakAt: 0.38, q: 1.9,
+    air: 0.5, pan: 0.7, claws: 2, clawAt: 0.4, clawGap: 0.032, clawHz: 4400, clawLevel: 0.8, ring: 0, ringHz: 3400, tone: 0.18 },
+  // THWIP 5: 4, LOUDER AND BIGGER (Peter, 16 Oct: "thwip4 louder and bigger"). Longer,
+  // a wider sweep from lower down, more air and claw, the whistle up, and a `body` of
+  // low rush under it for weight. Levelled 4 dB over the rest of the sheet on purpose.
+  thwip5: { level: 1.62, dur: 0.52, f0: 360, f1: 3400, f2: 700, peakAt: 0.38, q: 1.8,
+    air: 0.6, pan: 0.85, claws: 3, clawAt: 0.38, clawGap: 0.03, clawHz: 4200, clawLevel: 1,
+    ring: 0, ringHz: 3400, tone: 0.26, body: 0.9 },
+  // THWIP 6: 5 STRETCHED (Peter, 16 Oct: "can we do both?" — a longer thwip AND a sound
+  // on the pull-back). The same peak at the same moment, 0.2s after it fires, so it still
+  // lands mid-swing; the decay is drawn out to fade through the hold into the pull-back.
+  thwip6: { level: 1.27, dur: 0.82, f0: 360, f1: 3400, f2: 600, peakAt: 0.245, q: 1.8,
+    air: 0.6, pan: 0.85, claws: 3, clawAt: 0.24, clawGap: 0.03, clawHz: 4200, clawLevel: 1,
+    ring: 0, ringHz: 3400, tone: 0.26, body: 0.9 },
+  // THE PULL-BACK: a small, soft fwip the other way — panned back left to right, a
+  // falling band, no claws — as the paw comes home.
+  recoil: { level: 1.41, dur: 0.2, f0: 1700, f1: 2300, f2: 650, peakAt: 0.3, q: 2.2,
+    air: 0.3, pan: -0.5, claws: 0, clawAt: 0.5, clawGap: 0.02, clawHz: 4000, clawLevel: 0,
+    ring: 0, ringHz: 3400, tone: 0.16, body: 0.25 },
+  // The anime slash: a whoosh, a sharp scratch and a ringing "shing" — the robot's blades.
+  slash: { level: 1.22, dur: 0.2, f0: 1200, f1: 5200, f2: 2200, peakAt: 0.35, q: 1.2,
+    air: 0.5, pan: 0.8, claws: 1, clawAt: 0.3, clawGap: 0.02, clawHz: 5200, clawLevel: 0.8, ring: 0.7, ringHz: 3600 },
+};
+// Which swipe each cat makes: the robot's blades ring, the rest rake.
+export const CAT_SWIPE = {};
+export const CAT_SWIPE_DEFAULT = 'thwip6';
+// The pull-back's sound, fired as the paw starts home (run.js CAT_RECOIL_AT).
+export const CAT_SWIPE_RECOIL = 'recoil';
 
 export const BARK_SHAPES = {
   // THE ONE THE GAME FIRES — Peter's bench dial-in, kept to the digit.
@@ -924,6 +1009,8 @@ export const SFX_TRIM = {
   // The swiping cats' meow — provisional, set by ear against the bark; level it on the
   // SFX desk once a shape is picked.
   catMeow: 0.2,
+  // The swipe: provisional, by measurement; level it on the SFX desk.
+  catSwipe: 0.35,
   // 0.25, not the 1.08 this carried, which was a trap rather than a bug: nothing calls
   // `sfx('impact')`, so the number never ran. impactCrash is reached in play only as
   // playContact's fallback — gnash has no baked contact cue — and that path
@@ -4079,18 +4166,58 @@ class AudioSys {
     level.connect(this.sfxGain);
 
     if (hiss > 0) {
+      // The hiss: air forced through bared teeth — white noise (pink is a throat;
+      // this is teeth), a highpass under it and a broad peak where the hiss sits.
+      // It swells in, holds, and dies, with a little shake on it from the breath.
       const n = ctx.createBufferSource();
-      n.buffer = this.barkNoise();
+      n.buffer = this.noiseBuf || this.barkNoise();   // white once the engine has built it
+      n.loop = true;                                  // the buffer is shorter than a long hiss
       const hp = ctx.createBiquadFilter();
-      hp.type = 'bandpass'; hp.frequency.value = 5200; hp.Q.value = 0.6;
+      hp.type = 'highpass'; hp.frequency.value = 2200; hp.Q.value = 0.7;
+      const pk = ctx.createBiquadFilter();
+      pk.type = 'peaking'; pk.frequency.value = S.hissHz || 5200; pk.Q.value = 0.9; pk.gain.value = 9;
       const g = ctx.createGain();
-      g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(0.9, t0 + 0.05);
-      g.gain.setValueAtTime(0.9, t0 + hiss * 0.6);
+      const hold = S.hissHold ?? 0.6;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.9, t0 + (S.hissRise ?? 0.05));
+      g.gain.setValueAtTime(0.9, t0 + hiss * hold);
       g.gain.exponentialRampToValueAtTime(0.001, t0 + hiss + 0.06);
-      n.connect(hp); hp.connect(g); g.connect(level);
+      const shake = ctx.createGain();
+      shake.gain.value = 1;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 11;
+      const lg = ctx.createGain(); lg.gain.value = 0.18;
+      lfo.connect(lg); lg.connect(shake.gain);
+      lfo.start(t0); lfo.stop(t0 + hiss + 0.1);
+      n.connect(hp); hp.connect(pk); pk.connect(g); g.connect(shake); shake.connect(level);
       n.start(t0); n.stop(t0 + hiss + 0.1);
+      // The spit: a sharp burst of the same air with a low pop under it, where the
+      // hiss breaks into the strike.
+      if (S.spit > 0) {
+        const at = t0 + (S.spitAt ?? 0) * hiss;
+        const sn = ctx.createBufferSource();
+        sn.buffer = n.buffer;
+        const sbp = ctx.createBiquadFilter();
+        sbp.type = 'bandpass'; sbp.frequency.value = 3200; sbp.Q.value = 0.5;
+        const sg = ctx.createGain();
+        sg.gain.setValueAtTime(0.0001, at);
+        sg.gain.exponentialRampToValueAtTime(S.spit * 1.6, at + 0.006);
+        sg.gain.exponentialRampToValueAtTime(0.001, at + 0.09);
+        sn.connect(sbp); sbp.connect(sg); sg.connect(level);
+        sn.start(at, 0.3); sn.stop(at + 0.12);
+        const pop = ctx.createOscillator();
+        pop.frequency.setValueAtTime(220, at);
+        pop.frequency.exponentialRampToValueAtTime(70, at + 0.06);
+        const pg = ctx.createGain();
+        pg.gain.setValueAtTime(0.0001, at);
+        pg.gain.exponentialRampToValueAtTime(S.spit * 0.8, at + 0.005);
+        pg.gain.exponentialRampToValueAtTime(0.001, at + 0.07);
+        pop.connect(pg); pg.connect(level);
+        pop.start(at); pop.stop(at + 0.08);
+      }
     }
+    // A hiss alone has no voice behind it.
+    if (S.voice === false) return;
 
     // The mouth's level: quick to open, held, then closing away.
     const env = ctx.createGain();
@@ -4160,6 +4287,110 @@ class AudioSys {
       const ng = ctx.createGain(); ng.gain.value = S.breath * 2.5;
       n.connect(bp); bp.connect(ng); ng.connect(env);
       n.start(t); n.stop(end + 0.05);
+    }
+  }
+
+  // A SWIPE is air moved fast: noise through a band that sweeps up as the paw comes
+  // through and falls away behind it, panned across from the cat's side, with a wide
+  // highpassed layer for the rush. Claws are short, bright bursts of the same noise,
+  // a few milliseconds apart, landing mid-sweep — the rake. The robot adds a ring: a
+  // pair of high sines a little apart, beating as they decay, which is a blade.
+  catSwipe(when, pitch, gain, S) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = this.cueAt() + when;
+    const dur = S.dur;
+    const pk = t + dur * S.peakAt;
+    const end = t + dur;
+    const level = ctx.createGain();
+    level.gain.value = gain * this.cueGain;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) {
+      pan.pan.setValueAtTime(S.pan, t);
+      pan.pan.linearRampToValueAtTime(-S.pan, end);
+      level.connect(pan); pan.connect(this.sfxGain);
+    } else level.connect(this.sfxGain);
+    const noise = this.noiseBuf || this.barkNoise();
+
+    // The whoosh.
+    const n = ctx.createBufferSource();
+    n.buffer = noise; n.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.Q.value = S.q;
+    bp.frequency.setValueAtTime(S.f0 * pitch, t);
+    bp.frequency.exponentialRampToValueAtTime(S.f1 * pitch, pk);
+    bp.frequency.exponentialRampToValueAtTime(S.f2 * pitch, end);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1.6, pk);
+    g.gain.exponentialRampToValueAtTime(0.001, end + 0.04);
+    n.connect(bp); bp.connect(g); g.connect(level);
+    if (S.air > 0.001) {
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 2500 * pitch;
+      const ag = ctx.createGain();
+      ag.gain.setValueAtTime(0.0001, t);
+      ag.gain.exponentialRampToValueAtTime(S.air, pk);
+      ag.gain.exponentialRampToValueAtTime(0.001, end);
+      n.connect(hp); hp.connect(ag); ag.connect(level);
+    }
+    n.start(t, Math.random() * 0.2); n.stop(end + 0.06);
+
+    // The body: the low end of the same air, for weight.
+    if (S.body > 0.001) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 650 * pitch; lp.Q.value = 0.8;
+      const bg = ctx.createGain();
+      bg.gain.setValueAtTime(0.0001, t);
+      bg.gain.exponentialRampToValueAtTime(S.body * 2.2, pk);
+      bg.gain.exponentialRampToValueAtTime(0.001, end);
+      n.connect(lp); lp.connect(bg); bg.connect(level);
+    }
+
+    // The whistle: a sine on the band's own path, under the same swell.
+    if (S.tone > 0.001) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(S.f0 * pitch, t);
+      o.frequency.exponentialRampToValueAtTime(S.f1 * pitch, pk);
+      o.frequency.exponentialRampToValueAtTime(S.f2 * pitch, end);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, t);
+      og.gain.exponentialRampToValueAtTime(S.tone * 0.5, pk);
+      og.gain.exponentialRampToValueAtTime(0.0005, end + 0.03);
+      o.connect(og); og.connect(level);
+      o.start(t); o.stop(end + 0.05);
+    }
+
+    // The claws.
+    for (let i = 0; i < (S.claws | 0); i++) {
+      const at = t + dur * S.clawAt + i * S.clawGap;
+      const c = ctx.createBufferSource();
+      c.buffer = noise;
+      const cb = ctx.createBiquadFilter();
+      cb.type = 'bandpass'; cb.Q.value = 2.5;
+      cb.frequency.value = S.clawHz * pitch * (1 - i * 0.08);
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.0001, at);
+      cg.gain.exponentialRampToValueAtTime(S.clawLevel * 2.2 * (1 - i * 0.12), at + 0.002);
+      cg.gain.exponentialRampToValueAtTime(0.001, at + 0.028);
+      c.connect(cb); cb.connect(cg); cg.connect(level);
+      c.start(at, 0.05 + i * 0.07); c.stop(at + 0.04);
+    }
+
+    // The blade's ring.
+    if (S.ring > 0.001) {
+      const at = t + dur * S.clawAt;
+      for (const [mul, g0] of [[1, 1], [1.012, 0.7], [2.41, 0.25]]) {
+        const o = ctx.createOscillator();
+        o.type = 'sine'; o.frequency.value = S.ringHz * pitch * mul;
+        const og = ctx.createGain();
+        og.gain.setValueAtTime(0.0001, at);
+        og.gain.exponentialRampToValueAtTime(S.ring * 0.22 * g0, at + 0.004);
+        og.gain.exponentialRampToValueAtTime(0.0005, at + 0.45);
+        o.connect(og); og.connect(level);
+        o.start(at); o.stop(at + 0.5);
+      }
     }
   }
 
@@ -5517,6 +5748,12 @@ class AudioSys {
       case 'catMeow': {
         const S = opt.shape || MEOW_SHAPES[CAT_MEOW];
         this.catMeow(0.01, pitch, 0.9 * (S.level ?? 1), S);
+        break;
+      }
+      // The swiping cats' paw going through the air (see catSwipe).
+      case 'catSwipe': {
+        const S = opt.shape || SWIPE_SHAPES[CAT_SWIPE_DEFAULT];
+        this.catSwipe(0, pitch, 0.9 * (S.level ?? 1), S);
         break;
       }
       case 'dogBark': {

@@ -26,6 +26,11 @@ const smooth = (e0, e1, v) => { const k = Math.max(0, Math.min(1, (v - e0) / (e1
 // restated rather than imported because animals.js imports this module.
 export const SWIPE_T = 0.85;
 export const SWIPE_LEAD = 0.5;
+// The cats strike CLOSER than the snake (Peter, 16 Oct 2026: "i feel the cat should
+// strike when the hero is closer", then "make it .1 second before so it reads a little
+// better"): fired 0.4s out, the paw is fully out 0.1s before he reaches the box and held
+// as he goes over it. The snake keeps its 0.5.
+export const CAT_STRIKE_LEAD = 0.4;
 
 export const CAT_SLOT = Object.freeze({
   box: [18, 11], tall: 1.45, name: 'SWIPES AS YOU ARRIVE',

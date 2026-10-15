@@ -93,7 +93,8 @@ export const SFX_BIRTHDAYS = {
   faxHandshake: '2026-10-14',   // b7e2f292
   fireBell: '2026-10-15',   // 48be4f69
   zap: '2026-10-15',   // ed74725b
-  catMeow: null,
+  catMeow: '2026-10-16',   // f9aac8da
+  catSwipe: null,
 };
 
 export function sfxBorn(cue) { return SFX_BIRTHDAYS[cue] || null; }

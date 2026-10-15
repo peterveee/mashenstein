@@ -146,6 +146,7 @@ import { RAIL_WIRE_CANDIDATES, drawRailWireTile } from '../src/dev/rail-wire-can
 import { ZAP_CANDIDATES, drawZapTile } from '../src/dev/zap-candidates.js';
 import { BLAST_CANDIDATES, BLAST_NOW, BLAST_T, drawBlastTile } from '../src/dev/blast-candidates.js';
 import { HIT_EFFECTS, HIT_FAMILIES, HIT_NOW, HIT_T, drawHitTile, drawIceCastTile } from '../src/dev/hit-effect-candidates.js';
+import { PIT_FALL, PIT_FALL_NOW, PIT_FALL_ROWS, PIT_FALL_HOLD, drawPitFallTile, pitLaneHeight } from '../src/dev/pit-fall-candidates.js';
 import { NEON_CAT_CANDIDATES, NEON_CAT_NOW, drawNeonCatApproach, drawNeonCatLineup } from '../src/dev/neon-cat-candidates.js';
 import { COBRA_CANDIDATES, COBRA_NOW, drawCobraApproach, drawCobraLineup } from '../src/dev/cobra-candidates.js';
 import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/dev/hero-polish-candidates.js';
@@ -9863,6 +9864,26 @@ function jadeSky(ctx, w, h, seed = 1) {
       });
     }, { animated: true });
   }
+}
+
+// ------------------------------------------------ FALLING INTO A PIT (lab)
+// 16 Oct 2026: "i feel like we need better effects when we fall into a pit.. the shocked
+// face is a bit boring with the 'dead' eyes..." — and "remember the pits aren't super deep
+// often". Candidates: src/dev/pit-fall-candidates.js, each the whole fall inside the run's
+// own 2.25s pit-death hold. Nothing is wired into the run.
+{
+  const grid = section('pit-fall-bakeoff', 'FALLING INTO A PIT (bake-off)',
+    'At in-run size, on real gaps carved by each cabinet’s own ground and filled by the run’s own pit fills: two heroes to a strip run into their own hole at the same moment, '
+    + 'the world freezes as they go in (as the run’s does), and each candidate plays the whole fall inside today’s '
+    + `${PIT_FALL_HOLD}s hold before the checkpoint. The drop is SHORT — the material lies 12px under the lip, a spike bed’s tips 5 — so every payoff happens where he actually stops, in view. `
+    + 'NOW, A–D: Field Service (tar, the default) over Rhythm Bankruptcy (spikes). E on each fill: Speed (lava), Rhythm (spikes), Frost (slush), Field Service (tar). '
+    + 'The fail banner the run puts up on arrival is left off. Turn on SLOW to read them frame by frame. ANIMATED.',
+    '16 Oct 2026');
+  const tileFor = (cand, rows, suffix = '') => tile(grid, `${cand.letter} — ${cand.name}${suffix}`, cand.note, 480, pitLaneHeight(rows),
+    (ctx, t) => drawPitFallTile(ctx, t, cand, rows), { animated: true, wide: true });
+  for (const cand of [PIT_FALL_NOW, ...PIT_FALL.filter((c) => c.id !== 'payoff')]) tileFor(cand, PIT_FALL_ROWS.mixed);
+  const E = PIT_FALL.find((c) => c.id === 'payoff');
+  for (const [key, name] of [['speed', 'lava'], ['rhythm', 'spikes'], ['frost', 'slush'], ['plumber', 'tar']]) tileFor(E, PIT_FALL_ROWS[key], ` · ${name}`);
 }
 
 // ---------------------------------------------------------------- driver

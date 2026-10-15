@@ -23,7 +23,7 @@
 
 import { OUTLINE_SCALE } from './outline.js';
 import {
-  CAT_PAINTERS, CAT_TYPES, CAT_FRAMES, CAT_FPS, CAT_IDLE_FRAMES, CAT_STRIKE_FRAMES, SWIPE_T, SWIPE_LEAD,
+  CAT_PAINTERS, CAT_TYPES, CAT_FRAMES, CAT_FPS, CAT_IDLE_FRAMES, CAT_STRIKE_FRAMES, SWIPE_T, CAT_STRIKE_LEAD,
 } from './neonCats.js';
 import { DOG_PAINTERS, FINISH_DOG_PAINTERS as DOG_FINISH_PAINTERS } from './dogs.js';
 import { paintCryptAnimal } from './crypt-animals.js';
@@ -1262,7 +1262,7 @@ export const ANIMAL_NAMES = Object.keys(ANIMAL_PAINTERS);
 export const STRIKERS = {
   rattlesnake: { idle: SNAKE_IDLE_FRAMES, strike: SNAKE_STRIKE_FRAMES, t: SNAKE_STRIKE_T, lead: SNAKE_STRIKE_LEAD },
   ...Object.fromEntries(CAT_TYPES.map((type) => [type,
-    { idle: CAT_IDLE_FRAMES, strike: CAT_STRIKE_FRAMES, t: SWIPE_T, lead: SWIPE_LEAD }])),
+    { idle: CAT_IDLE_FRAMES, strike: CAT_STRIKE_FRAMES, t: SWIPE_T, lead: CAT_STRIKE_LEAD }])),
 };
 
 export const ANIMAL_FRAMES = {

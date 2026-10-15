@@ -33,7 +33,7 @@ import { PLAYER_X, PLAYER_W } from '../game/player.js';
 import { GROUND_Y } from '../engine/camera.js';
 // The painters live in sprites/neonCats.js since four of them shipped (16 Oct 2026).
 import {
-  SWIPE_T, SWIPE_LEAD, CAT_SLOT, swipeOf,
+  SWIPE_T, SWIPE_LEAD, CAT_STRIKE_LEAD, CAT_SLOT, swipeOf,
   nora, maneki, chibi, neonCat, mecha, nekomata, chonk, pythagoras,
   neonMecha, mechaTrim, mechaGun, neonBright, nekoNeon, nekoGhost, pythNeon,
 } from '../sprites/neonCats.js';
@@ -109,7 +109,9 @@ const HERO_C = PLAYER_X + PLAYER_W / 2;
 export function drawNeonCatApproach(ctx, t, strips, cand) {
   const ph = ((t % LOOP) + LOOP) % LOOP;
   const x = START - SPEED * ph;
-  const trig = (START - HERO_C - SPEED * SWIPE_LEAD) / SPEED;
+  // The snake (NOW) keeps its own lead; the cats strike closer, as the game has them.
+  const lead = cand.id === 'rattlesnake' ? SWIPE_LEAD : CAT_STRIKE_LEAD;
+  const trig = (START - HERO_C - SPEED * lead) / SPEED;
   const u = ph - trig;
   const hop = ph - (START - HERO_C - 18) / SPEED;
   const air = hop > 0 && hop < (2 * HOP_V) / HOP_G;
