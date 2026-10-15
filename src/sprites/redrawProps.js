@@ -358,6 +358,11 @@ function rakeSwingAngle(u) {
 }
 const WOOD = '#c98f4e', WOOD_DK = '#8e5f2c', WOOD_LT = '#ecbd7c';
 const STEEL = '#9aa4ae', STEEL_DK = '#5e666e', STEEL_LT = '#d6dce2';
+const TINE = '#e6ebf0';   // the bright steel of the teeth and the head bar
+// ONE INK for the whole steel head, teeth and bar alike, halfway between the steel's own
+// dark and the black (Peter, 16 Oct: the teeth read as "a separate part than the rake
+// head" — "split the difference").
+const TOOTH_INK = '#33373f';
 const STAR = '#fff09a', STAR_DK = '#f2b33c';
 function rake(c, w, h, t) {
   const f = frameOf(t, RAKE_FRAMES, 1);
@@ -391,14 +396,24 @@ function rake(c, w, h, t) {
     circ(c, ex, ey, r * 0.95, WOOD_DK, INK, lwi);
   }
   // The tines, then the head bar over their roots, then the ferrule.
+  // SILVER, NOT INK (Peter, 16 Oct 2026: "the teeth dont read as silver anymore"): at
+  // in-run size a tine is barely wider than the black line round it, so the line WAS
+  // the tine. They are pale bright steel now with a white edge catching the light, and
+  // the teeth and the bar they hang from share one steel ink (TOOTH_INK).
   for (let i = 0; i < 7; i++) {
     const tx = -4.5 + i * 1.5;
-    body(c, shape([tx - 0.6, -2.2, tx, -6.0, tx + 0.6, -2.2]), STEEL, null, INK, lwi);
+    // Lit half and shaded half, like the spike plate's teeth beside it on the same road.
+    body(c, shape([tx - 0.7, -2.2, tx, -6.4, tx + 0.7, -2.2]), TINE, (p) => {
+      box(p, tx, -7, 1, 5, STEEL);
+      p.beginPath(); p.moveTo(tx - 0.35, -2.2); p.lineTo(tx - 0.05, -5.6);
+      pen(p, '#ffffff', LWF);
+      p.stroke();
+    }, TOOTH_INK, LWI);
   }
-  body(c, rrect(-5.2, -2.6, 10.4, 2.0, 0.6), STEEL, (p) => {
-    box(p, -5.2, -2.6, 10.4, 0.6, STEEL_LT);
-    box(p, -5.2, -1.3, 10.4, 0.8, STEEL_DK);
-  }, INK, lw);
+  body(c, rrect(-5.2, -2.6, 10.4, 2.0, 0.6), TINE, (p) => {
+    box(p, -5.2, -2.6, 10.4, 0.6, '#ffffff');
+    box(p, -5.2, -1.3, 10.4, 0.8, STEEL);
+  }, TOOTH_INK, (lw + lwi) / 2);
   box(c, -1.1, -3.1, 2.2, 1.4, STEEL_DK, INK, lwi);
   // THWACK at the top of the swing, on the hero's side of the handle's end.
   if (u > 0.08 && u < 0.34) {

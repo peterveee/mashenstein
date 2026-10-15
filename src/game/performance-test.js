@@ -4,7 +4,7 @@ import { AttractState } from './attract.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Dev } from '../dev/index.js';
-import { rendererDiagnostics, setRenderProfile, renderProfileStats } from '../engine/renderer.js';
+import { rendererDiagnostics, setDensityPin, setRenderProfile, renderProfileStats } from '../engine/renderer.js';
 import { setPropCacheProfile, propCacheStats } from '../sprites/props.js';
 import { beginPerformanceCapture, endPerformanceCapture, performanceMark, performanceAdd, performanceLocation } from '../engine/performance-capture.js';
 import { suspendCrumbPersistence } from '../engine/diag.js';
@@ -46,7 +46,7 @@ export class PerformanceTestState extends AttractState {
     b.onclick=action;this.panelEl.append(b);return b;
   }
   showPanel() {
-    this.panel('PERFORMANCE TEST', 'The bot plays the same seeded levels twice. Quick takes about 5 minutes; full takes about 12. Leave the app visible and keep the same orientation. Keep the screen awake if your browser cannot do so automatically. Your current music and graphics settings are used. Progress is not saved. Results stay on this device until you share them.');
+    this.panel('PERFORMANCE TEST', 'The bot plays the same seeded levels twice. Quick takes about 5 minutes; full takes about 12. Leave the app visible and keep the same orientation. Keep the screen awake if your browser cannot do so automatically. Your current music settings are used. Resolution stays fixed at its starting quality. Progress is not saved. Results stay on this device until you share them.');
     this.button('Run quick test',()=>this.start(false));
     this.button('Run full test',()=>this.start(true));
     this.button('Back',()=>this.o.onExit());
@@ -55,7 +55,7 @@ export class PerformanceTestState extends AttractState {
   start(full) {
     if (Dev.recording) { this.button('Stop video recording before testing',()=>{}); return; }
     this.plan=performancePlan(full);this.caseIndex=-1;
-    this.report={schema:1,protocol:'bot-30s-v1',started:new Date().toISOString(),build:window.__MASH_BUILT_AT__ || null,
+    this.report={schema:1,protocol:'bot-30s-fixed-density-v2',started:new Date().toISOString(),build:window.__MASH_BUILT_AT__ || null,
       userAgent:navigator.userAgent,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},
       settings:JSON.parse(JSON.stringify(this.o.realSettings || {})),renderer:rendererDiagnostics(),
       devBuild:!!window.__MASH_BUILD__,devToolsEnabledBefore:Dev.enabled,
@@ -63,10 +63,12 @@ export class PerformanceTestState extends AttractState {
         'Entry cost is reported separately; run-in and the first two simulation seconds are excluded. 30 simulation seconds per measured case after run-in; same seeds and reactive bot, not recorded inputs.',
         'Update includes bot; blit includes overlay painting. Audio includes timer and frame scheduler calls.',
         'Frame gaps are presentation intervals, not proof of cause. GPU and garbage collection are not directly timed.',
-        'Dev toolkit disabled and breadcrumb persistence/uploads suspended during this test; normal renderer adaptation retained.',
+        'Dev toolkit disabled and breadcrumb persistence/uploads suspended during this test; resolution pinned to its starting density for comparable samples.',
         'Prop cache bytes exclude other scenery caches. JS heap is unavailable on some browsers.'],results:[]};
     this.previousDev={enabled:Dev.enabled,timeScale:Dev.timeScale};Dev.enabled=false;Dev.timeScale=1;
     suspendCrumbPersistence(true);this.running=true;
+    this.previousDensity=rendererDiagnostics();
+    setDensityPin(this.previousDensity.density);
     this.report.wakeLock=navigator.wakeLock ? 'requested' : 'unavailable';
     navigator.wakeLock?.request('screen').then(lock=>{
       if(!this.running){lock.release();return;}this.wakeLock=lock;this.report.wakeLock='acquired';
@@ -132,7 +134,14 @@ export class PerformanceTestState extends AttractState {
     if(!this.running)return;
     if(this.measuring)this.recordCase(status);
     this.running=false;this.advance=false;endPerformanceCapture();setRenderProfile(false);setPropCacheProfile(false);
-    this.closeRun();suspendCrumbPersistence(false);
+    this.closeRun();
+    if(this.previousDensity) {
+      setDensityPin(this.previousDensity.density);
+      setDensityPin(this.previousDensity.pinned);
+      this.report.rendererRestored=rendererDiagnostics();
+      this.previousDensity=null;
+    }
+    suspendCrumbPersistence(false);
     this.wakeLock?.release().catch(()=>{});this.wakeLock=null;
     Dev.enabled=this.previousDev.enabled;Dev.timeScale=this.previousDev.timeScale;
     this.report.status=status;this.report.finished=new Date().toISOString();

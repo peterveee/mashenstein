@@ -43,6 +43,7 @@ const suites = [
   'tests/hero-kits.js',
   'tests/gravity-level.js',
   'tests/mid-air-slide-kick.js',
+  'tests/snowball-kick.js',
   'tests/barrel-arrival.js',
   'tests/portal-clear-of-trains.js',
   'tests/beat-chart.js',

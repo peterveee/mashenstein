@@ -30,6 +30,7 @@ import {
 } from './cabinetProps.js';
 import { paintCrate, paintBarrel } from './crateBarrel.js';
 import { REDRAW_PAINTERS, DRONE_FRAMES } from './redrawProps.js';
+import { inkOutlined } from './outline.js';
 
 export const OUTLINE = 'rgba(26,16,40,0.34)';
 
@@ -5558,6 +5559,18 @@ export const PORTAL_WILT_SPRITE = 'portalRingsWilt';
 // fattened every curve into a slab.
 export const PORTAL_ART_W = 14, PORTAL_ART_H = 44;
 export const portalArtWidth = (h) => Math.round(h * (PORTAL_ART_W / PORTAL_ART_H));
+
+// THE OLDER BOLD-ISH PAINTERS ON THE OUTLINE DIAL (16 Oct 2026, sprites/outline.js
+// inkOutlined): their dark strokes only, each first brought to the bold hand's 0.55 —
+// the factor is that painter's own outline weight against it. The big cactus and the
+// big snowman draw through these two, so they follow.
+// (The rattlesnake does it natively, in animals.js: its ink is a halo under a coil drawn
+// as fat strokes, and only the halo's margin may move.)
+const INK_BASE = {
+  goose: 1, snowman: 1.05, bearTrap: 1.3, switch: 1.15,
+  boomBarrier: 0.92, fireBarrel: 1, cactus: 0.71, cactusGreen: 0.65,
+};
+for (const [name, base] of Object.entries(INK_BASE)) PROP_PAINTERS[name] = inkOutlined(PROP_PAINTERS[name], base);
 
 export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 

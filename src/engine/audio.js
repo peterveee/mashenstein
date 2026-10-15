@@ -515,6 +515,47 @@ const PORTAL_VERB_SEND = 0.9;
 // SEMITONES, across the bark — that drop is the identifying gesture, not the
 // formants. `drop` and `gap` are the volley's business: the pitch of the
 // alternate bark and the spacing between them.
+// THE SWIPING CATS' MEOW (Peter, 16 Oct 2026: "a meow sound effect would be awesome,
+// can we synthesise one ...like rowr"). See catMeow() for what one is made of. Every
+// shape renders through tools/render-cues.js (`catMeow:rowr`), so what is auditioned is
+// what the game fires. `level` is measured (RMS), so the sheet is picked on character.
+//   f0       the voice's pitch, Hz          p0/p1/p2  pitch at start / peak / end, x f0
+//   peakAt   where the peak falls, 0..1     dur       seconds of voice
+//   f1*/f2*  first and second formants at start / peak / end — the mouth: closed
+//            "m", open "aa", rounding to "ow"
+//   rough    growl: amplitude flutter depth, at roughHz
+//   sub      an octave-down voice under it (the chest in a "rowr")
+//   dist     vocal strain (soft clip)       breath    air through the mouth
+//   hiss     seconds of hiss BEFORE the voice (0 = none)
+export const MEOW_SHAPES = {
+  // The one asked for: low, growled, the mouth opening wide and closing slow.
+  rowr:  { level: 1, f0: 290, p0: 0.82, p1: 1.22, p2: 0.72, peakAt: 0.32, dur: 0.72,
+    f1a: 480, f1b: 980, f1c: 520, f2a: 1250, f2b: 1650, f2c: 880,
+    rough: 0.55, roughHz: 34, sub: 0.35, dist: 0.35, breath: 0.12, hiss: 0 },
+  // The household meow: higher, clean, a clear rise and fall.
+  meow:  { level: 1.135, f0: 610, p0: 0.88, p1: 1.16, p2: 0.8, peakAt: 0.36, dur: 0.6,
+    f1a: 620, f1b: 1100, f1c: 640, f2a: 2000, f2b: 1750, f2c: 1050,
+    rough: 0.08, roughHz: 60, sub: 0, dist: 0.1, breath: 0.1, hiss: 0 },
+  // Short and rolled, rising at the end — the chirp a cat makes going for something.
+  mrrp:  { level: 1.135, f0: 470, p0: 0.88, p1: 1.32, p2: 1.24, peakAt: 0.72, dur: 0.3,
+    f1a: 420, f1b: 820, f1c: 760, f2a: 1200, f2b: 1800, f2c: 1750,
+    rough: 0.65, roughHz: 27, sub: 0.1, dist: 0.15, breath: 0.08, hiss: 0 },
+  // The long alley yowl: a big slow swell up and a long fall away.
+  yowl:  { level: 0.82, f0: 420, p0: 0.78, p1: 1.38, p2: 0.62, peakAt: 0.45, dur: 1.0,
+    f1a: 560, f1b: 1100, f1c: 480, f2a: 1500, f2b: 1950, f2c: 820,
+    rough: 0.3, roughHz: 40, sub: 0.15, dist: 0.28, breath: 0.12, hiss: 0 },
+  // Deep and mostly growl: a big cat's grrr-OWR.
+  growl: { level: 1.11, f0: 190, p0: 0.85, p1: 1.25, p2: 0.75, peakAt: 0.4, dur: 0.75,
+    f1a: 420, f1b: 820, f1c: 460, f2a: 1050, f2b: 1400, f2c: 800,
+    rough: 0.75, roughHz: 24, sub: 0.6, dist: 0.5, breath: 0.16, hiss: 0 },
+  // A hiss, then the rowr: the warning and the swipe in one.
+  hissRowr: { level: 1.175, f0: 300, p0: 0.82, p1: 1.25, p2: 0.72, peakAt: 0.3, dur: 0.62,
+    f1a: 480, f1b: 980, f1c: 520, f2a: 1250, f2b: 1650, f2c: 880,
+    rough: 0.5, roughHz: 34, sub: 0.3, dist: 0.35, breath: 0.12, hiss: 0.32 },
+};
+// The shape the game fires.
+export const CAT_MEOW = 'rowr';
+
 export const BARK_SHAPES = {
   // THE ONE THE GAME FIRES — Peter's bench dial-in, kept to the digit.
   //
@@ -880,6 +921,9 @@ export const SFX_TRIM = {
   // is what a bark heard across a yard is, and it leaves 9dB more headroom for
   // the song underneath.
   dogBark: 0.275,
+  // The swiping cats' meow — provisional, set by ear against the bark; level it on the
+  // SFX desk once a shape is picked.
+  catMeow: 0.2,
   // 0.25, not the 1.08 this carried, which was a trap rather than a bug: nothing calls
   // `sfx('impact')`, so the number never ran. impactCrash is reached in play only as
   // playContact's fallback — gnash has no baked contact cue — and that path
@@ -4014,6 +4058,111 @@ class AudioSys {
   // tools/render-cues.js — `dogBark:finish` — rather than through a second
   // synth that only approximates it. The shape's vocabulary is the bench's, so
   // a dial-in is pasted in without translation.
+  // A MEOW is the bark's construction turned toward a cat: a voiced source through a
+  // moving mouth. Two slightly detuned saws (and, for a growl, an octave-down square)
+  // carry the pitch contour — up into the call, then falling away. A flutter on their
+  // level is the growl's roll. Three bandpasses are the mouth: they start nearly shut
+  // ("m"), open wide on the peak ("aa") and round as it closes ("ow") — that sweep is
+  // what makes it a meow and not a siren. Soft clip for strain, pink air through the
+  // second formant, and an optional hiss before the voice.
+  catMeow(when, pitch, gain, S) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const hiss = S.hiss || 0;
+    const t0 = this.cueAt() + when;
+    const t = t0 + hiss * 0.85;           // the voice comes in under the hiss's tail
+    const dur = S.dur;
+    const pk = t + dur * S.peakAt;
+    const end = t + dur;
+    const level = ctx.createGain();
+    level.gain.value = gain * this.cueGain;
+    level.connect(this.sfxGain);
+
+    if (hiss > 0) {
+      const n = ctx.createBufferSource();
+      n.buffer = this.barkNoise();
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'bandpass'; hp.frequency.value = 5200; hp.Q.value = 0.6;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.9, t0 + 0.05);
+      g.gain.setValueAtTime(0.9, t0 + hiss * 0.6);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + hiss + 0.06);
+      n.connect(hp); hp.connect(g); g.connect(level);
+      n.start(t0); n.stop(t0 + hiss + 0.1);
+    }
+
+    // The mouth's level: quick to open, held, then closing away.
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(1, t + 0.04);
+    env.gain.setValueAtTime(1, t + dur * 0.62);
+    env.gain.exponentialRampToValueAtTime(0.001, end);
+
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = this.softClipCurve(S.dist);
+    shaper.oversample = '4x';
+    const post = ctx.createGain();
+    post.gain.value = 1 / (1 + S.dist * 1.6);
+    shaper.connect(post); post.connect(env); env.connect(level);
+
+    // The mouth: three formants, moving.
+    const sum = ctx.createGain();
+    const formants = [
+      [S.f1a, S.f1b, S.f1c, 7, 1],
+      [S.f2a, S.f2b, S.f2c, 9, 0.55],
+      [2900, 3100, 2700, 10, 0.18],
+    ];
+    for (const [a, b, c, q, g] of formants) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.Q.value = q;
+      bp.frequency.setValueAtTime(a, t);
+      bp.frequency.linearRampToValueAtTime(b, pk);
+      bp.frequency.linearRampToValueAtTime(c, end);
+      const fg = ctx.createGain(); fg.gain.value = g * 3;
+      sum.connect(bp); bp.connect(fg); fg.connect(shaper);
+    }
+
+    // The voice: the pitch contour, and the growl's flutter on its level.
+    const f0 = S.f0 * pitch;
+    const voice = ctx.createGain();
+    if (S.rough > 0.001) {
+      voice.gain.value = 1 - S.rough * 0.5;
+      const lfo = ctx.createOscillator();
+      lfo.type = 'triangle'; lfo.frequency.value = S.roughHz;
+      const depth = ctx.createGain(); depth.gain.value = S.rough * 0.5;
+      lfo.connect(depth); depth.connect(voice.gain);
+      lfo.start(t); lfo.stop(end + 0.05);
+    }
+    voice.connect(sum);
+    const sources = [['sawtooth', 1, -7, 0.5], ['sawtooth', 1, 7, 0.5]];
+    if (S.sub > 0.001) sources.push(['square', 0.5, 0, S.sub * 0.6]);
+    for (const [type, mul, cents, g] of sources) {
+      const o = ctx.createOscillator();
+      o.type = type; o.detune.value = cents;
+      o.frequency.setValueAtTime(f0 * S.p0 * mul, t);
+      o.frequency.exponentialRampToValueAtTime(f0 * S.p1 * mul, pk);
+      o.frequency.exponentialRampToValueAtTime(f0 * S.p2 * mul, end);
+      const og = ctx.createGain(); og.gain.value = g;
+      o.connect(og); og.connect(voice);
+      o.start(t); o.stop(end + 0.05);
+    }
+
+    // Air through the open mouth.
+    if (S.breath > 0.001) {
+      const n = ctx.createBufferSource();
+      n.buffer = this.barkNoise();
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.Q.value = 1.2;
+      bp.frequency.setValueAtTime(S.f2a, t);
+      bp.frequency.linearRampToValueAtTime(S.f2b, pk);
+      bp.frequency.linearRampToValueAtTime(S.f2c, end);
+      const ng = ctx.createGain(); ng.gain.value = S.breath * 2.5;
+      n.connect(bp); bp.connect(ng); ng.connect(env);
+      n.start(t); n.stop(end + 0.05);
+    }
+  }
+
   dogWoof(when, pitch, f0, gain, S) {
     if (!this.ctx) return;
     const ctx = this.ctx;
@@ -5363,6 +5512,13 @@ class AudioSys {
       // BARK_SHAPES.finish, dialled in on the bench in src/dev and kept to the
       // digit. It sits high enough that the cue carries over a full plumber
       // stage without the song having to duck under it.
+      // The swiping cats (sprites/neonCats.js): one meow as the swipe winds up. The
+      // shape is MEOW_SHAPES[CAT_MEOW] unless the firing names one.
+      case 'catMeow': {
+        const S = opt.shape || MEOW_SHAPES[CAT_MEOW];
+        this.catMeow(0.01, pitch, 0.9 * (S.level ?? 1), S);
+        break;
+      }
       case 'dogBark': {
         // `level` per shape, because these differ in how much of their source
         // survives the tract — an airy shape keeps far more than a tightly

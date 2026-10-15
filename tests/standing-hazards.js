@@ -123,8 +123,12 @@ assert(carries('neon', 'popSpikes') && carries('neon', 'floorSaw') && carries('n
   'Neon owns ground reads of its own — its bag is not just the air');
 // Cardboard Kingdom's slot is Gravity Grid now, whose hazards are all authored
 // (data/gravity-stages.js) and whose pattern bank is empty on purpose.
-assert(carries('neon', 'dogBruiser'),
-  'the bruiser — the slow closer — appears in a pattern (Neon)');
+// Neon's bruiser went on 16 Oct 2026 (Peter: the swiping cats "should replace the dog in
+// the dark levels"): Pythagoras on Terminal Velocity 1, the cat rotation on 2 and 3.
+assert(!carries('neon', 'dogBruiser') && carries('neon', 'catPythagoras'),
+  'Neon deals Pythagoras, not the bruiser');
+assert([2, 3].every((k) => CABINET_BY_ID.neon.floorPatterns[k].some((p) => p.cells.some((c) => c.t === 'neonCat'))),
+  'Neon 2 and 3 deal the swiping-cat rotation in the bruiser\'s place');
 assert(carries('speed', 'bobcat') && !carries('speed', 'dogBruiser'),
   'Speed deals the streak bobcat in the bruiser\'s slot (28 Sep 2026)');
 // The Act II/III spread: floor hazards stop being an Act I vocabulary. Frost

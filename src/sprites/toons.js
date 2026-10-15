@@ -889,6 +889,136 @@ function paintShoeCuff(ctx, S, fill, ow, ax, ay, knee, legW) {
   ctx.lineCap = 'butt';
 }
 
+// THE STANDING SHOE. 16 Oct 2026, Peter, holding the polished-cast bake-off's feet
+// (src/dev/hero-polish-candidates.js) up against ours: "these shoes read a lot
+// better — can we improve ours to be drawn better in idle/front on?". Ours stood
+// front on as the PROFILE shoe squeezed to 0.62 of its length (the splay): a
+// flat wedge a few pixels deep. The bake-off's are what a cartoon shoe pointing
+// out at you is — a toe-heavy bean, the toe box domed taller than the heel, on a
+// separate sole strip a touch wider than the upper, with a glint on the toe.
+//
+// So the idle stance (and the menus, which wear it) draws that, and nothing else
+// does: the run, the jump and the slide keep the shaped shoes untouched, and so
+// does the boot, whose squared front view is its whole argument. Everything is
+// sized off the LEG standing in it (`legW`), as the bake-off's were, and it sits
+// on the same ground line the clamp planted the old shape on, so no hero moves.
+//   len   half-length, in leg widths     tall  height of the upper, in leg widths
+//   toe   how much higher the toe box stands than the heel
+//   sole  the sole band's depth, in leg widths — matched to the profile shoe's,
+//         so the same shoe shows the same band from both sides ("they still
+//         match the side on ones right?"): the sneaker's deep cream wedge, the
+//         runner's mid band, the plimsoll's thin one. Tone is the profile's own.
+//   mark  the one mark each shoe keeps of the old one: 'strap' / 'flash' / 'seam'
+//   profile  side-on overrides ("could we add some of the styling back in for
+//         rusty and grumpos?" — "yes customise them", 16 Oct): lenMul, tall, toe,
+//         and `point`, how far a pointed toe rises (the racing flat's tip)
+// SIDE_BEAN: the profile view's length as a multiple of the standing one.
+const SIDE_BEAN = 1.3;
+const STANCE_SHOE = {
+  sneaker: { len: 0.86, tall: 0.84, toe: 0.12, sole: 0.3, mark: 'strap' },
+  // Rusty's racing flat: side on it is long, low and pointed, the sole wrapping
+  // up round the tip, the flash down its side and the nick at the heel
+  runner: { len: 0.9, tall: 0.72, toe: 0.08, sole: 0.22, mark: 'flash',
+    profile: { lenMul: 1.5, tall: 0.74, toe: -0.04, sole: 0.3, point: 0.36 } },
+  // Grumpos's (and Kiko's, Fernwick's) slipper: long and flat side on, a
+  // stitched moccasin seam round the toe box both ways
+  slipper: { len: 0.88, tall: 0.76, toe: 0.1, sole: 0.14, mark: 'seam',
+    profile: { lenMul: 1.35, tall: 0.74, toe: 0.04 } },
+};
+function paintStanceShoe(ctx, spec, ow, lod, fill, ax, ay, rot, ink, opts, drop) {
+  const S = SHOE_PIECES[shoeShapeOf(spec)];
+  const D0 = STANCE_SHOE[shoeShapeOf(spec)];
+  // The profile view takes the shape's `profile` overrides — its own length,
+  // height, dome and toe — which is what keeps Rusty's racing flat long, low and
+  // pointed and Grumpos's slipper long and flat when seen side on.
+  const D = opts.side && D0.profile ? { ...D0, ...D0.profile } : D0;
+  const w = opts.legW, d = opts.toe || 1;
+  // side on, the length is SIDE_BEAN (or the spec's sideBean) times the
+  // standing one, unless the shape's profile names its own
+  const lenMul = opts.side ? (D0.profile?.lenMul ?? opts.lenMul ?? 1) : 1;
+  const L = w * D.len * lenMul * (Number(spec.footLong) > 0 ? Math.sqrt(spec.footLong) : 1);
+  const T = w * D.tall, sole = w * D.sole;
+  ctx.save();
+  ctx.translate(ax, ay);
+  if (rot) ctx.rotate(rot);
+  // the frame: x along the toe (d), y down; the sole's underside at `drop`
+  const gy = drop, cx = d * L * 0.34;          // the shoe sits toe-ward of the ankle: the toe points OUT
+  const X = (k) => cx + d * k * L;
+  paintShoeCuff(ctx, S, fill, ow, 0, 0, opts.knee && [opts.knee[0] - ax, opts.knee[1] - ay], w);
+  // the sole: a rounded strip under everything, a little longer than the upper;
+  // a pointed toe sweeps its sole up round the tip, the racing flat's wrap
+  const soleCol = soleTone(opts.base ?? fill, S.soleTone ?? 0.6);
+  const point = D.point || 0;
+  if (point) {
+    outlined(ctx, soleCol, ink, (c) => {
+      c.moveTo(X(-1.02), gy - sole);
+      c.lineTo(X(0.7), gy - sole);
+      c.quadraticCurveTo(X(1.1), gy - sole - T * point * 0.5, X(1.2), gy - sole - T * point);
+      c.quadraticCurveTo(X(1.22), gy, X(0.8), gy);
+      c.lineTo(X(-0.92), gy);
+      c.quadraticCurveTo(X(-1.06), gy, X(-1.04), gy - sole * 0.5);
+      c.closePath();
+    });
+  } else {
+    outlined(ctx, soleCol, ink,
+      (c) => roundRectPath(c, Math.min(X(-1.04), X(1.04)), gy - sole, L * 2.08, sole, sole * 0.5));
+  }
+  // the upper: heel low and round, toe box domed up and forward (or run out to a point)
+  const top = gy - sole * 0.9;
+  const upper = (c) => {
+    c.moveTo(X(-0.94), top);
+    c.bezierCurveTo(X(-1.02), top - T * 0.8, X(-0.2), top - T * (1 + D.toe), X(0.36), top - T * 0.84);
+    if (point) c.bezierCurveTo(X(0.8), top - T * 0.6, X(1.12), top - T * (point + 0.1), X(1.16), top - T * point * 0.9);
+    else c.bezierCurveTo(X(0.86), top - T * 0.72, X(1.04), top - T * 0.3, X(0.98), top);
+    c.closePath();
+  };
+  outlined(ctx, fill, ink, upper);
+  if (!lod && D.mark) {
+    // each shoe keeps the one mark that was its own: the trainer's instep strap
+    // and heel tab, the runner's flash, the slipper's stitched moccasin seam
+    ctx.save();
+    ctx.beginPath(); upper(ctx); ctx.clip();
+    ctx.lineCap = 'round';
+    if (D.mark === 'strap') {
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = hair(0.4, ink * 0.6);
+      ctx.beginPath(); ctx.moveTo(X(-0.36), top - T * 0.98); ctx.lineTo(X(0.1), top - T * 0.42);
+      ctx.moveTo(X(-0.92), top - T * 0.66); ctx.lineTo(X(-0.66), top - T * 0.8); ctx.stroke();
+    } else if (D.mark === 'flash') {
+      ctx.strokeStyle = soleCol; ctx.lineWidth = T * 0.18;
+      ctx.beginPath(); ctx.moveTo(X(-0.9), top - T * 0.28); ctx.quadraticCurveTo(X(-0.1), top - T * 0.34, X(0.62), top - T * 0.74); ctx.stroke();
+      // the heel notch the racing flat had: a dark nick at the back
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = hair(0.4, ink * 0.6);
+      ctx.beginPath(); ctx.moveTo(X(-0.97), top - T * 0.5); ctx.lineTo(X(-0.8), top - T * 0.36); ctx.stroke();
+    } else if (D.mark === 'seam') {
+      ctx.strokeStyle = soleTone(opts.base ?? fill, -0.5); ctx.lineWidth = hair(0.4, ink * 0.55);
+      ctx.setLineDash([T * 0.12, T * 0.1]);
+      ctx.beginPath();
+      if (opts.side) { ctx.moveTo(X(-0.1), top - T * 0.9); ctx.quadraticCurveTo(X(0.5), top - T * 0.1, X(0.98), top - T * 0.22); }
+      else { ctx.moveTo(X(0.0), top - T * 0.9); ctx.quadraticCurveTo(X(0.7), top - T * 0.75, X(0.8), top - T * 0.15); }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+  if (!lod) {
+    // a toe-cap seam, and the glint on the dome
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = hair(0.4, ink * 0.55);
+    ctx.lineCap = 'round';
+    if (!point && D.mark !== 'seam') {
+      ctx.beginPath();
+      ctx.moveTo(X(0.44), top - T * 0.78);
+      ctx.quadraticCurveTo(X(0.34), top - T * 0.36, X(0.5), top - 0.4);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath();
+    ctx.ellipse(X(0.05), top - T * 0.8, L * 0.13, T * 0.09, -0.25 * d, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // `opts.base` is the leather BEFORE any depth shading — the sole is mixed off
 // it so both feet name the same rubber. `opts.knee` and `opts.legW` place the
 // cuff on the shin. `opts.ink` overrides the contour weight, `opts.centred` is
@@ -897,6 +1027,24 @@ export function paintShoe(ctx, spec, ow, lod, fill, ax, ay, dx, dy, rx, ry, rot,
   const { ink: inkW, centred, base, knee, legW } = opts;
   const shape = shoeShapeOf(spec);
   const ink = inkW ?? hair(0.6, ow * 0.8);
+  if (opts.stance && front && shape && STANCE_SHOE[shape] && legW && !centred) {
+    paintStanceShoe(ctx, spec, ow, lod, fill, ax, ay, rot, ink, opts,
+      shoeDrop(spec, dx, dy, rx, ry, 0, true, false));
+    return;
+  }
+  // THE PROFILE SHOE IN THE SAME HAND. 16 Oct 2026: "should we try to match the
+  // side on to the front view? just do a mockup first", then "ok, do it". The run,
+  // the jump, the hub walk — every side-on foot that has a leg to hang from — wear
+  // the standing shoe seen from the side: the same bean, SIDE_BEAN times as long,
+  // planted on the profile shape's own ground line so no gait moves. The slide's
+  // front-on feet and the boot keep their shaped shoes. `spec.sideBean` overrides
+  // the length; 0 puts a hero back in the old profile shape.
+  const sideBean = typeof spec.sideBean === 'number' ? spec.sideBean : SIDE_BEAN;
+  if (sideBean > 0 && !front && shape && STANCE_SHOE[shape] && legW && !centred) {
+    paintStanceShoe(ctx, spec, ow, lod, fill, ax, ay, rot, ink, { ...opts, toe: 1, lenMul: sideBean, side: true },
+      shoeDrop(spec, dx, dy, rx, ry, 0, false, false));
+    return;
+  }
   if (!shape) {
     // The shipped placement, unchanged: a rigid foot whose centre orbits the
     // ankle by the rolled offset, then an ellipse about that centre.
@@ -1266,7 +1414,7 @@ export const TOON_SPECS = {
   // The broad front footprint keeps his neutral robot pads from collapsing
   // into round caps when viewed head-on. No front-on roll: tilting the pads
   // stood him on tiptoe in every idle and dance.
-  b33p: { rig: 'humanoid', footScale: 1.08, footSplay: 0.9, head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' ,
+  b33p: { rig: 'humanoid', kneeBolt: true, footScale: 1.08, footSplay: 0.9, head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' ,
     // proportions — written by the character editor (tools/character-editor.js)
     hipTuck: 1.2,
     legShiftRoot: -0.025,
@@ -11165,6 +11313,26 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.stroke();
     }
   };
+  // `kneeBolt`: a round joint plate on the knee, in the body's silver (p.b). 16 Oct 2026,
+  // Peter, off the polished-cast bake-off: "give b33p knee joints like the newer
+  // versions". Sat on the same two-bone solution the leg was drawn with, so it
+  // rides the knee through every bend. The slide and the dive draw their own legs
+  // and have none.
+  const kneeBolt = (hipX, rootY, foot, kneeDir, w, fill) => {
+    if (!spec.kneeBolt) return;
+    const [kx, ky] = kneeAt(hipX, rootY, foot, kneeDir);
+    // SUBTLE: "less outline and a bit more subtle", then "same fine lines for
+    // knees as hands and a darker silver" (16 Oct): the hands' own ink weight
+    // (handInk), in the body's darker silver, a touch smaller, a fainter rim.
+    const r = w * 0.5;
+    outlined(ctx, fill, handInk(ow, false), (c) => c.arc(kx, ky, r, 0, Math.PI * 2));
+    if (!lod) {
+      // the lit rim on its upper-left, as the bake-off drew it
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = hair(0.4, r * 0.22);
+      ctx.beginPath(); ctx.arc(kx, ky, r * 0.68, Math.PI * 0.95, Math.PI * 1.6); ctx.stroke();
+    }
+  };
   // Thigh holster. The geometry lives at module scope (thighHolsterAt) because
   // the reclined poses need it too and have no access to this closure — the
   // slide and the dive draw their own legs, and a holster that only exists in
@@ -11264,6 +11432,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     }
     shortsLeg(hipX, legRootYF, footF, kneeF, legWF, p.p);
     bootShaft(hipX, legRootYF, footF, kneeF, legWF, footFill);
+    kneeBolt(hipX, legRootYF, footF, kneeF, legWF, p.b);
     if (turned && id !== 'grumpos') {
       const rx = legWF * 0.72, ry = legWF * 0.58;
       ctx.fillStyle = p.p;
@@ -11294,7 +11463,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // cannot drift off the shin the knee actually folded on. `toe` turns a
       // splayed foot outboard — the near foot to the right, the far one left,
       // so the stance opens instead of both feet pointing the same way.
-      { knee: kneeAt(hipX, legRootYF, footF, kneeF), legW: legWF, toe: 1 });
+      { knee: kneeAt(hipX, legRootYF, footF, kneeF), legW: legWF, toe: 1, stance: frontLegs && !slide && !pose.dance });
     // Near-leg holster last: it sits ON the thigh, so it has to land after the
     // limb it is strapped to. This is also the side the gun is drawn from.
     if (spec.holster === 'thigh') thighHolster(hipX, legRootYF, footF, kneeF, legWF, 0, holsterDrawn);
@@ -12352,9 +12521,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   limb2(ctx, hipAt(-1), legRootYB, footB[0], footB[1] - ankleLift, thighSeg, kneeB, legWB, recede(legFill, farShade), ow, legWB, false, shinSeg);
   shortsLeg(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.p, farShade));
   bootShaft(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(footFill, farShade));
+  kneeBolt(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.b, farShade));
   paintShoe(ctx, spec, ow, lod, recede(footFill, farShade),
     footB[0], footB[1] - ankleLift, footDx, 0.01 * u, footRx, footRy, ankleB + tiltB - frontFootFlare, frontLegs,
-    { base: footFill, knee: kneeAt(hipAt(-1), legRootYB, footB, kneeB), legW: legWB, toe: -1 });
+    { base: footFill, knee: kneeAt(hipAt(-1), legRootYB, footB, kneeB), legW: legWB, toe: -1, stance: frontLegs && !slide && !pose.dance });
   // The far holster recedes with the leg it is on, like every other far-side
   // piece — an un-pushed one reads as a bright tag floating off the back thigh.
   if (spec.holster === 'thigh') thighHolster(hipAt(-1), legRootYB, footB, kneeB, legWB, farShade, false);
@@ -17887,6 +18057,46 @@ const CANE_SHORT = 0.78;
 // run.js can size the projectile to match.
 export function caneScale(parity) { return (parity | 0) ? CANE_SHORT : 1; }
 
+// A CANE STOWED IN THE POUCH. 16 Oct 2026, Peter, off the storybook bake-off
+// (src/dev/hero-polish-candidates.js): "style rusty's bamboo and his pouch to be
+// more like this … longer bamboo and less bright pouch". So the stowed canes stop
+// borrowing the projectile's flat bar and get the bake-off's drawing: a rounded
+// green cane, lined in a darker green rather than ink, a shade down its far side,
+// and node rings that stand proud of the edges. Longer, too — the exposed length
+// is about three-quarters of the pouch (shifted down off his neck, 16 Oct), where it was under half. The THROWN cane
+// (drawBambooShoot) is unchanged.
+//   origin  the cane slot, 0.34h above the tube's centre line — so the tube's
+//           mouth is at -0.06h here, NOT at -0.4h (the first cut measured from
+//           -0.4h and the canes hovered above the pouch: "needs to reach his pouch")
+//   k       the cane's scale (1 at the shipped u/52)
+//   len     1 for the long cane, CANE_SHORT for the short
+const POUCH_CANE = { fill: '#8cbf4a', shade: '#6f9e38', line: '#4f7a26', node: '#5a8a2a', hi: '#c4e08a' };
+function pouchCane(ctx, u, k, len, h) {
+  const w = 0.019 * u * k;                       // half-width
+  const mouth = -h * 0.06;
+  const top = mouth - 0.12 * u * k * len;        // the tip, measured off the tube's mouth
+  const base = h * 0.3;                          // well inside the tube, which crops it
+  const body = (c) => roundRectPath(c, -w, top, w * 2, base - top, w * 0.9);
+  ctx.save();
+  ctx.beginPath(); body(ctx);
+  ctx.fillStyle = POUCH_CANE.fill; ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.fillStyle = POUCH_CANE.shade; ctx.fillRect(w * 0.25, top, w, base - top);
+  ctx.fillStyle = POUCH_CANE.hi; ctx.fillRect(-w * 0.6, top + w, w * 0.4, base - top - w);
+  ctx.restore();
+  ctx.strokeStyle = POUCH_CANE.line; ctx.lineWidth = hair(0.5, 0.008 * u * k); ctx.lineJoin = 'round';
+  ctx.stroke();
+  // two nodes on each, so the showing length reads as THREE segments ("have 3
+  // segments"), each a ring a touch wider than the cane
+  ctx.strokeStyle = POUCH_CANE.node; ctx.lineWidth = hair(0.6, 0.009 * u * k); ctx.lineCap = 'round';
+  const showing = mouth - top;
+  for (const f of [1 / 3, 2 / 3]) {
+    const y = top + showing * f;
+    ctx.beginPath(); ctx.moveTo(-w * 1.3, y); ctx.lineTo(w * 1.3, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function paintBambooBundle(ctx, spec, p, u, ow, lod,
   { bx, by, beltCx = 0, thrown = false, belt = false, lean = 0, pack = false, half = 0, clip = null, sling = 0, canes = null, parts = 'both' }) {
   // CANES STAND UP. The first cut rotated the whole bundle and let the canes
@@ -18041,18 +18251,23 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
   const splay = cl.splay ?? 0;
   const size = u / (cl.size ?? 52);
   // THE CANES ALTERNATE. Two slots, one LONG cane and one SHORT, and which is
-  // which swaps every throw: [short, long] -> he pulls the long -> the pouch
-  // refills [long, short] -> he pulls the short -> [short, long] again. The
+  // which swaps every throw: [long, short] -> he pulls the long -> the pouch
+  // refills [short, long] -> he pulls the short -> [long, short] again. The
   // rule underneath is simpler than it sounds — he always draws from the
-  // RIGHT-hand slot, the one nearest his hand, and that slot's length is what
-  // alternates. `parity` is the throw count's low bit, kept by the run.
+  // LEFT-hand slot, and that slot's length is what alternates. `parity` is the
+  // throw count's low bit, kept by the run.
+  //
+  // LONG ON THE LEFT at rest (16 Oct 2026, Peter: "make the longer one on the
+  // left and the shorter on the right to steer clear of neck"): the right-hand
+  // cane stands under his chin, so the short one goes there whenever he has not
+  // just thrown the long. It was [short, long] with the right slot pulled.
   //
   // The point is that the pouch becomes STATEFUL: it visibly changes after
   // every throw, so the supply reads as a real thing being used rather than a
   // decoration that never runs down.
   const parity = cl.parity | 0;
-  const longIdx = parity ? 0 : n - 1;         // long cane: right slot on even throws
-  const drawIdx = n - 1;                      // he always pulls the right-hand slot
+  const longIdx = parity ? n - 1 : 0;         // long cane: left slot on even throws
+  const drawIdx = 0;                          // he always pulls the left-hand slot
   if (!lod) {
     for (let i = 0; i < n; i++) {
       // The slot he drew from is EMPTY while the cane is out — that is the
@@ -18069,9 +18284,8 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
       // stagger; the short one is shorter and sits low. Length, not just
       // height — the ask was that the piece he throws is visibly the piece he
       // pulled, and that only holds if the two are actually different sizes.
-      ctx.translate(0, -h * 0.16 - (isLong ? stagger : 0));
-      ctx.rotate(Math.PI / 2);                 // along the tube, not across it
-      drawBambooShoot(ctx, 0.05 * u, 0, { size: size * (isLong ? 1 : CANE_SHORT) });
+      ctx.translate(0, -(isLong ? stagger : 0));
+      pouchCane(ctx, u, size * 52 / u, isLong ? 1 : CANE_SHORT, h);
       ctx.restore();
     }
   }

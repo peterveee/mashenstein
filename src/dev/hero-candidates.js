@@ -286,7 +286,7 @@ export const ANIMAL_HERO_CANDIDATES = [
 // the wrist before the hand, and the band reads as a bandage rather than as
 // something he wears. His own kit brown instead: the same leather as the belt,
 // so the cuff belongs to the outfit and the hand stays the lightest thing there.
-export const PANDA_PAL = { ...ANIMAL_HERO_CANDIDATES[0].pal, hand: '#c65a2c', pouchLine: '#f0c07a', f: '#c2342e', kit: '#7a3a2a', cuff: '#7a3a2a' };
+export const PANDA_PAL = { ...ANIMAL_HERO_CANDIDATES[0].pal, hand: '#c65a2c', pouchLine: '#f0c07a', f: '#c2342e', kit: '#7a3a2a', cuff: '#7a3a2a', pouch: '#84482f' };
 
 export const PANDA_BUILD_CANDIDATES = [
   {

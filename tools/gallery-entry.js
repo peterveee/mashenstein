@@ -144,6 +144,11 @@ import { BAKEOFF as GRAVITY_OBSTACLES, LANE_W as GRAVITY_LANE_W, LANE_H as GRAVI
 import { WALKER_CANDIDATES, drawWalkerTile } from '../src/dev/space-walker-candidates.js';
 import { RAIL_WIRE_CANDIDATES, drawRailWireTile } from '../src/dev/rail-wire-candidates.js';
 import { ZAP_CANDIDATES, drawZapTile } from '../src/dev/zap-candidates.js';
+import { BLAST_CANDIDATES, BLAST_NOW, BLAST_T, drawBlastTile } from '../src/dev/blast-candidates.js';
+import { HIT_EFFECTS, HIT_FAMILIES, HIT_NOW, HIT_T, drawHitTile, drawIceCastTile } from '../src/dev/hit-effect-candidates.js';
+import { NEON_CAT_CANDIDATES, NEON_CAT_NOW, drawNeonCatApproach, drawNeonCatLineup } from '../src/dev/neon-cat-candidates.js';
+import { COBRA_CANDIDATES, COBRA_NOW, drawCobraApproach, drawCobraLineup } from '../src/dev/cobra-candidates.js';
+import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/dev/hero-polish-candidates.js';
 import { FIRE_STAND_CANDIDATES, drawFireStandRun, drawFireStandStill } from '../src/dev/office-fire-alarm-stand-candidates.js';
 import { MASH_LETTER_CANDIDATES, MASH_LETTER_PALETTES, drawMashLetterCandidate, SNES_VARIANTS, drawSnesVariant } from '../src/dev/mash-letter-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
@@ -9662,6 +9667,201 @@ function jadeSky(ctx, w, h, seed = 1) {
     tile(grid, `${cand.letter} — the walk, ${cand.outfits.map(([n]) => n.toLowerCase()).join(' and ')}`,
       'Left: a man of the queue for height, then her walking on the spot; then one cycle in six stills.', 480, 270,
       (ctx, t) => drawGirlFrames(ctx, t, cand.id), { animated: true });
+  }
+}
+
+// --------------------------------------------- SPEED ZONE — dynamite in the face (lab)
+// 16 Oct 2026: "can we draw heroes differently when they get exploded in their face? like
+// we do for the livewires?" Candidates: src/dev/blast-candidates.js, each a painter in the
+// zap's seam (drawn instead of the running toon for BLAST_T, the blink waiting for it).
+// Nothing is wired into the run.
+{
+  const grid = section('blast-hero-bakeoff', 'SPEED ZONE — dynamite in the face (bake-off)',
+    'Speed Zone at in-run size: Lorenzo, Clara, Kiko and B-33P each run into a stick of the dynamite at the same moment, on a 2.6s loop. '
+    + 'NOW is the hit it gets today (plus a flat flash on the stick, drawn on every tile here — the run itself only throws dynamiteBlast’s sparks and smoke). '
+    + 'A–F keep all of that — the stick’s own blast, the shake, the 0.08s hitstop, the 1.4s blink — '
+    + `and change only how the hero is drawn for the first ${BLAST_T}s, as the live wire’s jolt does. Every one works on the hero’s `
+    + 'own drawing (his own eye whites in the soot), so it carries to the whole cast. Turn on SLOW to read them frame by frame. ANIMATED.',
+    '16 Oct 2026');
+  const strips = SPEED_OBSTACLES.strips.slice(0, 2);
+  const heroes = ['lorenzo', 'clara', 'kiko', 'b33p'];
+  for (const cand of [BLAST_NOW, ...BLAST_CANDIDATES]) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
+      (ctx, t) => drawBlastTile(ctx, t, cand.id, strips, heroes), { animated: true, wide: true });
+  }
+}
+
+// ------------------------------------------- TERMINAL VELOCITY — the swiping cat (lab)
+// 16 Oct 2026: "bake off a new obstacle, a stationary cat that would swipe at us in the neon
+// level... in a similar way that the cobra strikes at us in the desert levels... not sure if we
+// should go for realism or cutesy". Candidates: src/dev/neon-cat-candidates.js — one rig, the
+// rattlesnake's strike clock, eight looks. Nothing is wired into the run.
+{
+  const grid = section('neon-cat-bakeoff', 'TERMINAL VELOCITY — the swiping cat (bake-off)',
+    'A cat sits in the neon road and swipes as you arrive — the rattlesnake’s mechanic exactly: the swipe fires half a second ahead of the hero, '
+    + 'winds up, lashes out low across the lane, holds, and draws back; its box takes in the reach, so the answer is the jump. '
+    + 'Round 2 (16 Oct, after “torn between D and E” and “F won’t read in the dark”): I–N, variants of D, E and F, line-up first. Round 1: eight looks on the one rig, from realistic (A, and H — Pythagoras, the chocolate Burmese) through Tokyo-specific (B, D, E, F) to cutesy (C, G), each on neon-1’s golden hour, its night and neon-3’s tower. '
+    + 'First the line-up with the shipped snake for size and timing, then each one riding in at the hero, who hops it. Turn on SLOW to read the swipe. ANIMATED.',
+    '16 Oct 2026');
+  const strips = NEON_OBSTACLES.strips;
+  const round1 = NEON_CAT_CANDIDATES.filter((c) => c.look !== 'round 2');
+  const round2 = NEON_CAT_CANDIDATES.filter((c) => c.look === 'round 2');
+  tile(grid, 'ROUND 2 LINE-UP — D, E, F, H and their variants I–O', `D · E · F · H, then ` + round2.map((c) => `${c.letter} ${c.name}`).join(' · '),
+    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, NEON_CAT_CANDIDATES.filter((c) => 'DEFH'.includes(c.letter) || c.look === 'round 2'), false), { animated: true, wide: true });
+  tile(grid, 'LINE-UP — the snake, then A–H', `· ${NEON_CAT_NOW.name} · ` + round1.map((c) => `${c.letter} ${c.name}`).join(' · '),
+    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, round1), { animated: true, wide: true });
+  for (const cand of [NEON_CAT_NOW, ...NEON_CAT_CANDIDATES]) {
+    tile(grid, `${cand.letter} — ${cand.name}${cand.look ? ` · ${cand.look}` : ''}`, cand.note, 480, laneHeight(strips),
+      (ctx, t) => drawNeonCatApproach(ctx, t, strips, cand), { animated: true, wide: true });
+  }
+}
+
+// ------------------------------------------------- HIT PICTURES — by what hit you (lab)
+// 16 Oct 2026: after the live wire's jolt and the dynamite's flip, a picture per family of
+// obstacle — fire, spikes, rollers, ice, and Peter's "little ring of stars with a flash"
+// for everything else. Candidates: src/dev/hit-effect-candidates.js, each a painter in
+// the zap's seam (drawn instead of the running toon for HIT_T, the blink waiting for it).
+// Nothing is wired into the run.
+{
+  const s = sectionEl('hit-effects-bakeoff', 'HIT PICTURES — by what hit you (bake-off)',
+    'One family of obstacle to a row, each on a cabinet it belongs to, at in-run size: Lorenzo, Clara, Kiko and B-33P run into the real obstacle at the same moment, on a 2.6s loop. '
+    + 'NOW is the hit every one of them gets today (the red knock burst, the shake, the 0.08s hitstop, the 1.4s blink). '
+    + `A and B keep all of that and change only how the hero is drawn for the first ${HIT_T}s, as the live wire’s jolt does — `
+    + 'same length, same sound, same spot, same hitbox. Each works on the hero’s own drawing, so it carries to the whole cast. Turn on SLOW to read them frame by frame. ANIMATED.',
+    '16 Oct 2026');
+  const subhead = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    if (note) {
+      const p = document.createElement('p');
+      p.className = 'note';
+      p.textContent = note;
+      s.appendChild(p);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+  const BAKE = { plumber: PLUMBER_OBSTACLES, speed: SPEED_OBSTACLES, frost: FROST_OBSTACLES };
+  const heroes = ['lorenzo', 'clara', 'kiko', 'b33p'];
+  for (const fam of HIT_FAMILIES) {
+    const grid = subhead(fam.title, `${fam.members}. Shown on ${fam.shown}.`);
+    const strips = BAKE[fam.cabinet].strips.slice(0, 2);
+    for (const cand of [HIT_NOW, ...HIT_EFFECTS.filter((c) => c.family === fam.family)]) {
+      tile(grid, `${fam.title} ${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
+        (ctx, t) => drawHitTile(ctx, t, fam.family, cand.id, strips, heroes), { animated: true, wide: true });
+    }
+    if (fam.family === 'ice') {
+      const cast = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
+      tile(grid, 'ICE A — the whole cast, frozen', 'Bigger ice for bigger heroes: the chunk is sized to each hero’s own frozen silhouette (head, hair, hat, helmet, arms, weapon), measured once per hero, with its base sunk below his feet.',
+        480, laneHeight(strips), (ctx, t) => drawIceCastTile(ctx, t, strips, cast), { animated: true, wide: true });
+    }
+  }
+}
+
+// ------------------------------------------------- SPEED ZONE — a better cobra (lab)
+// 16 Oct 2026, mid-way through the neon cat: "can you draw a better cobra while you're at
+// it?" — his name for the shipped rattlesnake. Candidates: src/dev/cobra-candidates.js —
+// three real cobras and the rattler redrawn, on the snake's own strike clock.
+{
+  const grid = section('cobra-bakeoff', 'SPEED ZONE — a better cobra (bake-off)',
+    'The coiled striker, redrawn. A–C are real cobras reared up with the hood spread (standing taller than the coil, on the same 18x10 box, so the jump is unchanged); '
+    + 'D is the rattlesnake itself rebuilt, in case “the cobra” means the one already in the road. All strike on the shipped clock — half a second ahead of the hero. '
+    + 'Line-up with the shipped snake first, then each riding in at Lorenzo, who hops it. Turn on SLOW to read the strike. ANIMATED.',
+    '16 Oct 2026');
+  const strips = SPEED_OBSTACLES.strips;
+  tile(grid, 'LINE-UP — the shipped snake, then A–D', `· ${COBRA_NOW.name} · ` + COBRA_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · '),
+    480, laneHeight(strips), (ctx, t) => drawCobraLineup(ctx, t, SPEED_OBSTACLES.cabinet, strips), { animated: true, wide: true });
+  for (const cand of [COBRA_NOW, ...COBRA_CANDIDATES]) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
+      (ctx, t) => drawCobraApproach(ctx, t, SPEED_OBSTACLES.cabinet, strips, cand), { animated: true, wide: true });
+  }
+}
+
+// --------------------------------------------- LORENZO + RAMON, POLISHED — idle (lab)
+// 16 Oct 2026: "a bake off for a different more polished version of ramon and lorenzo …
+// just do the idle poses for now". Candidates: src/dev/hero-polish-candidates.js — the
+// same costumes and palettes drawn again from scratch; NOW is the shipped drawToon idle.
+{
+  const grid = section('hero-polish-bakeoff', 'THE CAST, POLISHED — idle (bake-off)',
+    'The same characters in the same costumes and colours, redrawn with more finish — idle only. NOW is the shipped idle. '
+    + 'Lorenzo and Ramon first; then (16 Oct, “another 2 or 3 heroes”, “also do eggshell”) Rusty, B-33P, Grumpos and Don K. Eggshell hovering in his copter. '
+    + HERO_POLISH_CANDIDATES.map((c) => `${c.letter} ${c.name}: ${c.note}`).join(' ')
+    + ' First at roster size, then at the hub’s size (46 × HUB_ZOOM). All breathe and blink; turn on SLOW to read them. ANIMATED.',
+    '16 Oct 2026');
+  const W_ = 480, BIG = 128, HUB = 46 * 1.3;
+  const cols = [{ letter: 'NOW', name: 'shipped' }, ...HERO_POLISH_CANDIDATES];
+  const backdrop = (ctx, h, floor) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#2c3b58'); g.addColorStop(1, '#1d2740');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W_, h);
+    ctx.fillStyle = '#16203a'; ctx.fillRect(0, floor, W_, h - floor);
+  };
+  const label = (ctx, text, x, y) => {
+    ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#c8d0e8'; ctx.fillText(text, x, y);
+  };
+  const figure = (ctx, id, cand, x, feet, h, t) => {
+    if (cand.letter === 'NOW' && id === 'eggshell') {
+      // the shipped copter, its 28u box scaled so the ape's tub sits where the new one does
+      const box = h * 0.92;
+      ctx.save(); ctx.translate(x - box / 2, feet - box - h * 0.1);
+      eggshellCopterArt(ctx, box, box, Math.floor(t * 24) % 12);
+      ctx.restore();
+    } else if (cand.letter === 'NOW') drawToon(ctx, id, { kind: 'idle', time: t, grounded: true, facing: 1 }, x, feet, h * 0.9);
+    else drawPolishedHero(ctx, id, cand, x, feet, h, t);
+  };
+  for (const id of POLISH_HEROES) {
+    const name = id.toUpperCase();
+    tile(grid, `${name} — NOW, then ${HERO_POLISH_CANDIDATES.map((c) => c.letter).join(', ')}`, 'roster size · idle · the same clock in every column',
+      W_, 190, (ctx, t) => {
+        backdrop(ctx, 190, 168);
+        cols.forEach((c, i) => {
+          const x = W_ * (i + 0.5) / cols.length;
+          figure(ctx, id, c, x, 168, BIG, t);
+          label(ctx, c.letter === 'NOW' ? 'NOW' : `${c.letter} ${c.name}`, x, 183);
+        });
+      }, { animated: true, wide: true });
+  }
+  // three heroes to a row, NOW then A–C each
+  const rows = [];
+  for (let i = 0; i < POLISH_HEROES.length; i += 3) rows.push(POLISH_HEROES.slice(i, i + 3));
+  tile(grid, 'HUB SIZE — everyone, NOW then A–C', 'the hub draws heroes at 46 × HUB_ZOOM — where fine lines drop out',
+    W_, 96 * rows.length, (ctx, t) => {
+      backdrop(ctx, 96 * rows.length, 96 * rows.length);
+      rows.forEach((row, r) => row.forEach((id, g) => cols.forEach((c, i) => {
+        const x = 26 + (g * cols.length + i) * 36 + g * 16, feet = 80 + r * 96;
+        figure(ctx, id, c, x, feet, HUB, t);
+        label(ctx, c.letter, x, feet + 12);
+      })));
+    }, { animated: true, wide: true });
+}
+
+// ------------------------------------------- SIDE-ON SHOES IN THE STANDING HAND (lab)
+// 16 Oct 2026: after the standing shoe shipped (toons.js paintStanceShoe), "should we
+// try to match the side on to the front view? just do a mockup first". The mockup is
+// a candidate spec key, `sideBean` (the shoe's length in the side view, as a multiple
+// of the standing one), passed through drawToon's spec seam — nothing in the game sets it.
+{
+  const grid = section('side-shoe-mockup', 'SIDE-ON SHOES — matched to the standing shoe (SHIPPED)',
+    'SHIPPED 16 Oct (“ok, do it”). Top of each tile: the run as it was, profile shoes (wedge, strap, heel tab) — `sideBean: 0`. Middle: the run as it ships now, the profile shoe in the standing shoe’s hand — '
+    + 'the domed toe, the sole strip, the glint, 1.3 of its length, keeping the trainer’s strap and the runner’s flash. Bottom: the standing shoe. Clara (boot) and the oval feet are not in it. ANIMATED.',
+    '16 Oct 2026');
+  const IDS = ['lorenzo', 'rusty', 'fernwick', 'kiko', 'grumpos', 'gary'];
+  const H = 110;
+  const runPose = (t) => ({ kind: 'run', phase: (t * 1.7) % 1, time: t, grounded: true, facing: 1 });
+  for (const id of IDS) {
+    tile(grid, id.toUpperCase(), 'was · ships · standing', 300, 3 * (H + 14), (ctx, t) => {
+      ctx.fillStyle = '#26344d'; ctx.fillRect(0, 0, 300, 3 * (H + 14));
+      [0, null, 'stand'].forEach((m, r) => {
+        const feet = (r + 1) * (H + 14) - 8;
+        ctx.fillStyle = '#16203a'; ctx.fillRect(0, feet, 300, 6);
+        const opts = typeof m === 'number' ? { spec: { ...TOON_SPECS[id], sideBean: m } } : {};
+        drawToon(ctx, id, m === 'stand' ? { kind: 'idle', time: t, grounded: true, facing: 1 } : runPose(t), 150, feet, H, opts);
+      });
+    }, { animated: true });
   }
 }
 

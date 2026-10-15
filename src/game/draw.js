@@ -9,7 +9,7 @@ import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
 import { LOOP } from './loop.js';
 import { drawSoftContactShadow } from '../engine/shadows.js';
-import { SNAKE_IDLE_FRAMES, SNAKE_STRIKE_FRAMES, SNAKE_STRIKE_T } from '../sprites/animals.js';
+import { STRIKERS } from '../sprites/animals.js';
 import {
   eggshellCopterArt,
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
@@ -38,6 +38,8 @@ const HEAL_GLOW = 'rgba(96,232,104,0.45)';
 import { drawBoostFx } from './boostFx.js';
 import { paintAlarmPillar } from '../sprites/officeProps.js';
 import { ZAP_T, drawZapHero } from '../sprites/zap.js';
+import { BLAST_T, drawBlastHero } from '../sprites/blast.js';
+import { hitPicLife, hitPicShowing, drawHitPicture, drawHitAfter } from '../sprites/hitPictures.js';
 import { GROUND_Y } from '../engine/camera.js';
 import { PLAYER_X, SLIP_T } from './player.js';
 
@@ -502,8 +504,15 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // The live wire's jolt (sprites/zap.js) is the hit's picture while it lasts, so the
   // blink waits for it to finish.
   const zapW = player.zapT > 0 ? ZAP_T - player.zapT : -1;
-  const blink = !starLeft && zapW < 0 && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
-  if (blink && !(opts.contactShadow > 0)) return;
+  // The dynamite's flip (sprites/blast.js) likewise.
+  const blastW = zapW < 0 && player.blastT > 0 ? BLAST_T - player.blastT : -1;
+  // And the ordinary hit's picture (sprites/hitPictures.js): `hitW` is seconds since the
+  // hit while it or its after (stars, smoke, shards) is still running; the blink waits
+  // only for the picture itself.
+  const hitW = zapW < 0 && blastW < 0 && player.hitPic && player.hitPicT > 0 ? hitPicLife(player.hitPic) - player.hitPicT : -1;
+  const hitPicUp = hitW >= 0 && hitPicShowing(player.hitPic, hitW);
+  const blink = !starLeft && zapW < 0 && blastW < 0 && !hitPicUp && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
+  if (blink && !(opts.contactShadow > 0) && hitW < 0) return;
   // opts.pose patches the derived pose. The controller only ever reports run /
   // jump / slide, because those are the only things a hero does while a stage is
   // moving — a scene that has STOPPED the world (training's epilogue) has to be
@@ -576,6 +585,8 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       }
     }
     if (zapW >= 0 && !boostPainted) drawZapHero(c, heroId, cx, feetY, zapW, t, { xray: player.zapXray });
+    else if (blastW >= 0 && !boostPainted) drawBlastHero(c, heroId, cx, feetY, blastW, t);
+    else if (hitPicUp && !boostPainted) drawHitPicture(c, player.hitPic, heroId, cx, feetY, hitW, t, pose);
     else if (!boostPainted) drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
     // opts.specialOrb false hides the readiness orb. A run always wants it —
     // every hero there has a power and the orb is how you know it is back — but
@@ -674,6 +685,9 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
         }
       } else paintBody(c);
     }
+    // The hit picture's after — the stars and birdies, the smoke, the shards — over the
+    // blink, which hides the hero but not what is going round his head.
+    if (hitW >= 0 && !hitPicUp) drawHitAfter(c, player.hitPic, heroId, cx, feetY, hitW, t);
   };
   if (opts.flat) paint(ctx);
   else {
@@ -977,18 +991,19 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
   // the trap's snap is, so the lamp comes up on the frame the hop landed rather
   // than on the next 8fps tick.
   const switchThrown = propName === 'switch' && e.thrown;
-  // THE RATTLESNAKE'S STRIKE AND THE RAKE'S SWING are the same kind of event: fired by
-  // the run as the hero arrives (strikeT / swingT) and stepped from that clock, so the
-  // head is out — or the handle up — on the frame it happened. Otherwise the snake
-  // idles on its ring and the rake lies still.
-  const snakeStriking = propName === 'rattlesnake' && e.strikeT != null && e.strikeT < SNAKE_STRIKE_T;
+  // THE STRIKERS' LUNGE AND THE RAKE'S SWING are the same kind of event: fired by the
+  // run as the hero arrives (strikeT / swingT) and stepped from that clock, so the head
+  // — or the paw, or the handle — is out on the frame it happened. Otherwise a striker
+  // (the rattlesnake, the swiping cats: sprites/animals.js STRIKERS) idles on its ring
+  // and the rake lies still.
+  const striker = propName ? STRIKERS[propName] : null;
+  const striking = striker && e.strikeT != null && e.strikeT < striker.t;
   const rakeSwinging = propName === 'rake' && e.swingT != null && e.swingT < RAKE_SWING_T;
   const ringFrames = propName === 'bearTrap' ? TRAP_IDLE_FRAMES
-    : propName === 'rattlesnake' ? SNAKE_IDLE_FRAMES
+    : striker ? striker.idle
     : propName === 'switch' || propName === 'rake' ? 1 : frameCount;
-  const frame = snakeStriking
-    ? SNAKE_IDLE_FRAMES + Math.min(SNAKE_STRIKE_FRAMES - 1,
-      Math.floor((e.strikeT / SNAKE_STRIKE_T) * SNAKE_STRIKE_FRAMES))
+  const frame = striking
+    ? striker.idle + Math.min(striker.strike - 1, Math.floor((e.strikeT / striker.t) * striker.strike))
     : rakeSwinging
       ? 1 + Math.min(RAKE_FRAMES - 2, Math.floor((e.swingT / RAKE_SWING_T) * (RAKE_FRAMES - 1)))
       : trapSprung

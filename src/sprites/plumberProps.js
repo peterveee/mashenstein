@@ -348,9 +348,41 @@ function hayBale(c, w, h, t) {
   line(c, 0.8 - k * 0.6, 5.0 - k * 3.4, 1.8 - k * 0.6, 4.6 - k * 3.4, STRAW_INK, 0.42);
 }
 
+// In place of the rotor drone AND the songbird since 16 Oct 2026 (Peter: "replace birds and
+// drones in field service with bees"): one swarm at both heights.
+// J — BEE SWARM, a cloud of them at head height (low 22x13)
+function beeSwarm(c, w, h, t) {
+  const f = frameOf(t, 8, 12);
+  const p8 = (f / 8) * TAU;
+  // The swarm's body: a flat haze, darker where they are thickest.
+  ell(c, 11.0, 6.8, 9.6, 5.2, 'rgba(42,26,22,0.12)');
+  ell(c, 10.6, 6.6, 6.2, 3.6, 'rgba(42,26,22,0.12)');
+  // Eleven bees, each on its own little loop inside the cloud, mostly facing
+  // the hero; the loops share the ring so the cloud breathes rather than drifts.
+  const SWARM = [
+    [4.2, 6.6, 1.4, 1.0, 0.0], [7.0, 3.6, 1.6, 0.8, 1.1], [7.6, 9.2, 1.2, 1.0, 2.3],
+    [10.2, 6.2, 1.8, 1.2, 3.0], [11.8, 2.8, 1.4, 0.8, 4.2], [12.6, 9.6, 1.6, 0.9, 5.1],
+    [14.6, 5.6, 1.4, 1.1, 0.7], [16.8, 8.4, 1.2, 0.8, 1.9], [17.6, 3.8, 1.2, 0.9, 2.8],
+    [9.0, 11.0, 1.0, 0.6, 3.7], [19.6, 6.4, 1.0, 0.8, 4.6],
+  ];
+  SWARM.forEach(([x, y, rx, ry, ph], i) => {
+    const a = p8 + ph;
+    const bx = x + Math.cos(a) * rx, by = y + Math.sin(a * (i % 2 ? 1 : -1)) * ry;
+    const dir = Math.sin(a) > 0.55 ? 1 : -1;
+    // A buzz trail behind the four at the front of the cloud.
+    if (i % 3 === 0) {
+      c.beginPath();
+      c.arc(x, y, Math.max(rx, 0.6), a + 0.4, a + 1.4);
+      pen(c, 'rgba(42,26,22,0.45)', 0.22);
+      c.stroke();
+    }
+    bee(c, bx, by, dir, 1.15, (f + i) % 2 === 0);
+  });
+}
+
 // The candidate sheet (src/dev) paints the rest of its line-up with these.
 export {
-  TAU, INK, LW, LWI, LWF, RED, RED_DK, RED_LT, STRAW, STRAW_DK, STRAW_LT, STRAW_INK, HONEY, HONEY_DK, CREAM, CREAM_DK, TIMBER, TIMBER_DK, TIMBER_LT, STEEL, STEEL_DK, STEEL_LT, DENIM, DENIM_DK, DENIM_LT, SACK, SACK_DK, FELT, FELT_DK, CHAR, CHAR_DK, SOIL, SKYBLUE, ORANGE, LEMON, SMOKE, SMOKE_LT, LEAF_RUST, WHITE, pen, fs, box, poly, line, lines, circ, ell, rrPath, rbox, body, rect, shape, bee, flames, puff, beehive, scarecrow, hayBale,
+  beeSwarm, TAU, INK, LW, LWI, LWF, RED, RED_DK, RED_LT, STRAW, STRAW_DK, STRAW_LT, STRAW_INK, HONEY, HONEY_DK, CREAM, CREAM_DK, TIMBER, TIMBER_DK, TIMBER_LT, STEEL, STEEL_DK, STEEL_LT, DENIM, DENIM_DK, DENIM_LT, SACK, SACK_DK, FELT, FELT_DK, CHAR, CHAR_DK, SOIL, SKYBLUE, ORANGE, LEMON, SMOKE, SMOKE_LT, LEAF_RUST, WHITE, pen, fs, box, poly, line, lines, circ, ell, rrPath, rbox, body, rect, shape, bee, flames, puff, beehive, scarecrow, hayBale,
 };
 
 // ------------------------------------------------------------------ registry
@@ -359,4 +391,6 @@ export const PLUMBER_PROP_SPECS = {
   beehive: { box: [13, 12], tall: 1.55, frames: 8, fps: 10, paint: beehive },
   scarecrow: { box: [17, 14], tall: 1.4, frames: 8, fps: 8, paint: scarecrow },
   hayBale: { box: [12, 11], frames: 8, fps: 8, paint: hayBale },
+  beeSwarm: { box: [12, 7], visual: 1.35, frames: 8, fps: 12, paint: beeSwarm },
+  beeSwarmHigh: { box: [12, 7], visual: 1.35, frames: 8, fps: 12, paint: beeSwarm },
 };

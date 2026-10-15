@@ -94,9 +94,8 @@ const ANIMALS = {
     P(1, [{ t: 'bobcat', dx: 0 }]),
     P(2, [{ t: 'bobcat', dx: 0 }, coinArc(130)]),
   ],
-  neon: [
-    P(2, [{ t: 'dogBruiser', dx: 0 }, coinArc(120)]),
-  ],
+  // No neon entry since 16 Oct 2026: the bruiser's turn went to the SWIPING CATS —
+  // dealt per level, see THE SWIPING CATS below the Surge's union.
   // Crypt's Violet Panther takes some turns from the furious cat. The feral
   // dog remains in the mix; the smaller furious cat stays tier 2.
   crypt: [
@@ -425,7 +424,8 @@ export const CABINETS = [
         // thing in the set that cannot be underground. No pipe either: the
         // cabinet has none any more (Peter, 30 Sep 2026), and the box it
         // shared this list with is what stands in its place.
-        hazards: ['crate', 'barrel', 'drone'],
+        // The bees, not the drone, since 16 Oct 2026 (BAKEOFF_PICKS: no drones in Field Service).
+        hazards: ['crate', 'barrel', 'beeSwarm'],
         prize: 'coins', bonus: 'capShield', lowPrize: 'capSpeed',
       },
     ],
@@ -942,7 +942,7 @@ export const CABINETS = [
       // drone/target alternation. The tier-0 rows below are the fix —
       // flyer-majority, one ground read, seven ways to open.
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
-      ...ANIMALS.neon,
+      // No animal row: the bruiser's slot is the swiping cats (THE SWIPING CATS, below).
       P(0, [{ t: 'drone', dx: 0 }]),
       P(0, [{ t: 'target', dx: 0 }, coinArc(40)]),
       P(0, [{ t: 'buzzbird', dx: 0 }]),
@@ -1133,7 +1133,9 @@ const BAKEOFF_PICKS = {
     // The cactus goes altogether: the half the thistle did not take turns between the
     // beehive and the hay bales, and the big cactus is the scarecrow.
     swap: { fireBarrel: ['beehive'], campfire: ['scarecrow'], boomBarrier: ['hayBale'],
-      cactus: ['beehive', 'hayBale'], cactusBig: ['scarecrow'] },
+      cactus: ['beehive', 'hayBale'], cactusBig: ['scarecrow'],
+      // "replace birds and drones in field service with bees" (16 Oct).
+      drone: ['beeSwarm'], buzzbird: ['beeSwarmHigh'] },
     weights: { crate: 0.4, thistle: 0.5, thistleBig: 0.5, popSpikes: 0.5,
       goose: 2.5, barrel: 2.5, hayBale: 2, scarecrow: 2, rake: 1.5, floorSaw: 1.5 },
   },
@@ -1238,3 +1240,27 @@ CABINET_BY_ID.surge.patterns = [...new Set([
   ...CABINETS.filter((c) => c.id !== 'surge')
     .flatMap((c) => c.patterns.filter((p) => !BASE_PATTERNS.includes(p))),
 ])];
+
+// THE SWIPING CATS (Peter, 16 Oct 2026, from the neon cat bake-off; art in
+// sprites/neonCats.js): "i like regular pythagorus in daylight (so make sure we have one
+// on level 1). But Mecha Neon (J) should replace the dog in the dark levels mixed in
+// with N (Nekomata ghost). Vary them but don't have too many and never 2 of the same in
+// one area. If we are meant to show more than 2, then include neon brighter L as a 3rd".
+//   * Terminal Velocity 1: PYTHAGORAS, once, DUE in the golden hour — laid the moment
+//     the lane reaches 8% of the level, so every run meets him before the strike turns
+//     the day (the minor turn, bar 15 of the song, is about a quarter in).
+//   * Terminal Velocity 2 and 3 (the night): the bruiser's slot, now a ROTATION — the
+//     mecha cat, then the nekomata, then the bright neon cat, each once, never within
+//     five screens of the last (Spawner.rotate). So never two alike, three at most.
+// Added after the Surge's union on purpose: these are the neon levels' own deal, not
+// hazards for the Surge's remix.
+{
+  const neon = CABINET_BY_ID.neon;
+  const pythagoras = P(0, [{ t: 'catPythagoras', dx: 0 }, coinArc(120)],
+    { once: true, onceGroup: 'pythagoras', due: [0.08, 0.2] });
+  neon.patterns = [...neon.patterns, pythagoras];
+  const darkCat = P(1, [{ t: 'neonCat', dx: 0 }, coinArc(120)]);
+  neon.floorPatterns = Object.fromEntries(Object.entries(neon.floorPatterns)
+    .map(([k, patterns]) => [k, [...patterns, darkCat]]));
+  neon.rotations = { neonCat: { list: ['catMechaNeon', 'catNekoGhost', 'catNeonBright'], gap: 1500 } };
+}

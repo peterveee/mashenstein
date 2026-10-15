@@ -49,3 +49,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-14 | `b7e2f29` | [2026-10-14-b7e2f29.html](2026-10-14-b7e2f29.html) | [bake-offs](2026-10-14-b7e2f29-lab.html) | Add office worker and window cleaner character rendering |
 | 2026-10-15 | `f2ba693` | [2026-10-15-f2ba693.html](2026-10-15-f2ba693.html) | [bake-offs](2026-10-15-f2ba693-lab.html) | Add tests for cabinet unlocks, gravity star warmup, hero rendering, office wall caching, and office zombies |
 | 2026-10-15 | `ed74725` | [2026-10-15-ed74725.html](2026-10-15-ed74725.html) | [bake-offs](2026-10-15-ed74725-lab.html) | Add zap sound effect and visual candidates for hero contact with live wire |
+| 2026-10-15 | `48be4f6` | [2026-10-15-48be4f6.html](2026-10-15-48be4f6.html) | [bake-offs](2026-10-15-48be4f6-lab.html) | Add tests for M-A-S-H letters, performance capture, and scenery texture caching |

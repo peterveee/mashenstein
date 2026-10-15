@@ -45,7 +45,8 @@ export function levelObstacleTypes(stage) {
     for (const p of patterns) {
       if (p.tier > cap) continue;
       if (section.exclude && p.cells.some((c) => section.exclude.has(c.t))) continue;
-      for (const c of p.cells) add(c.t);
+      // A rotation slot (Terminal Velocity's dark-level cat) deals each of its list.
+      for (const c of p.cells) for (const t of cabinet.rotations?.[c.t]?.list || [c.t]) add(t);
     }
   }
   return [...out];

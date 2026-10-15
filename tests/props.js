@@ -124,8 +124,11 @@ for (const name of Object.keys(PROP_FRAMES)) {
   // HOLDS in them — the sawhorse's lamp flashes then stays lit, a glint runs along the
   // crampons' and caltrops' points between rests, the parcel's ribbon and the roses'
   // falling petal return to a pose mid-cycle — so their floor is the poses they draw.
+  // The swiping cats (sprites/neonCats.js, 16 Oct 2026) HOLD at full reach mid-swipe,
+  // so 34 of their 36 frames are distinct drawings.
   const MIN_POSES = { qcrate: Math.ceil(n / 2), switch: 2,
-    sawhorse: 4, parcels: 5, crampons: 6, caltrops: 4, graveRoses: 7, saucer: 7 };
+    sawhorse: 4, parcels: 5, crampons: 6, caltrops: 4, graveRoses: 7, saucer: 7,
+    catPythagoras: 34, catNeonBright: 34, catMechaNeon: 34, catNekoGhost: 34 };
   const distinct = MIN_POSES[name] ?? n;
   assert(seen.size >= distinct, `${name}: draws enough distinct poses across its ${n} frames`);
 }
@@ -172,8 +175,12 @@ assert(OBSTACLES.catFury.vx < OBSTACLES.dogBruiser.vx,
 // obstacle key and the painter name must not drift apart.
 assert(ANIMALS.every((n) => OBSTACLES[n].sprite === n),
   'animal obstacle keys match their painter names, which is what wires the animation up');
+// Any animal counts, the neon swiping cats included (16 Oct 2026: they took the bruiser's
+// place there, dealt on the neon levels' own banks and through its `rotations` slot).
+const isAnimal = (cab, t) => OBSTACLES[t]?.animal || (cab.rotations?.[t]?.list || []).some((r) => OBSTACLES[r]?.animal);
 const animalCabinets = CABINETS.filter((cab) =>
-  cab.patterns.some((pat) => pat.cells.some((cell) => ANIMALS.includes(cell.t))));
+  [cab.patterns, ...Object.values(cab.floorPatterns || {})]
+    .some((pats) => pats.some((pat) => pat.cells.some((cell) => isAnimal(cab, cell.t)))));
 assert(animalCabinets.length >= 3,
   `animals are spawned by at least three cabinets (got ${animalCabinets.map((c) => c.id).join(', ')})`);
 // No dogs or animals in the Corporate Kombat lane (Peter, 14 Oct 2026), on any floor.

@@ -20,7 +20,7 @@ export const STAGE_LAYOUTS = {
     pits: null,
     rewindAt: null,
     checkpoints: [0.348, 0.678],
-    routes: { islands: [{ at: 0.114, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: "capShield" }, { at: 0.706, dwell: 4, steps: 4, rise: 29, step: 33, topPrize: "capMagnet" }], forks: [{ at: 0.521, dwell: 7.5, spring: true, sky: true, entry: 96, peak: 168, lip: 0.2, climb: 0.34, hold: 0.7, end: 48, gaps: [0.42, 0.6, 0.75], gapSec: 0.3, prize: "coins", lowPrize: "capAirJump" }], tunnels: [{ at: 0.176, dwell: 6, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88, hazards: ["crate", "barrel", "drone"], prize: "coins", bonus: "capShield", lowPrize: "capAirJump" }] },
+    routes: { islands: [{ at: 0.114, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: "capShield" }, { at: 0.706, dwell: 4, steps: 4, rise: 29, step: 33, topPrize: "capMagnet" }], forks: [{ at: 0.521, dwell: 7.5, spring: true, sky: true, entry: 96, peak: 168, lip: 0.2, climb: 0.34, hold: 0.7, end: 48, gaps: [0.42, 0.6, 0.75], gapSec: 0.3, prize: "coins", lowPrize: "capAirJump" }], tunnels: [{ at: 0.176, dwell: 6, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88, hazards: ["crate", "barrel", "beeSwarm"], prize: "coins", bonus: "capShield", lowPrize: "capAirJump" }] },
   },
   "plumber-2": {
     durationSec: 60,

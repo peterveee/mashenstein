@@ -89,6 +89,14 @@ const SHAPES = {
   guard:   'BARK_SHAPES.guard',
   yip:     'BARK_SHAPES.yip',
 
+  // The swiping cats' meow (`catMeow:rowr`), from MEOW_SHAPES in engine/audio.js.
+  rowr:    'MEOW_SHAPES.rowr',
+  meow:    'MEOW_SHAPES.meow',
+  mrrp:    'MEOW_SHAPES.mrrp',
+  yowl:    'MEOW_SHAPES.yowl',
+  growl:   'MEOW_SHAPES.growl',
+  hissRowr:'MEOW_SHAPES.hissRowr',
+
   wiredIn: 'PORTAL_RELAY_IN',
   wiredOut:'PORTAL_RELAY_OUT',
   wiredCred:'PORTAL_RELAY_CREDITS',

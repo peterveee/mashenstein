@@ -3,6 +3,7 @@
 // `jumpMult` is a HEIGHT multiplier, not a speed one — see jumpV().
 import { HERO_BY_ID } from '../data/heroes.js';
 import { BASE_SPEED } from './layout.js';
+import { hitPicOnJump } from '../sprites/hitPictures.js';
 
 export const GRAVITY = 900;
 export const BASE_JUMP_V = 320;
@@ -331,6 +332,13 @@ export class Player {
     // THE LIVE WIRE'S JOLT (sprites/zap.js): seconds left of it, and whether this one
     // is the X-ray. Visual only — the damage, the i-frames and the hitstop are takeHit's.
     this.zapT = 0;
+    this.blastT = 0;   // dynamite in the face: sprites/blast.js, BLAST_T
+    // HIT PICTURES (sprites/hitPictures.js): which picture the last ordinary hit is
+    // showing ({ family, variant }), seconds left of it (picture plus its after), and
+    // the last variant each family showed, so a family with two never repeats one.
+    this.hitPic = null;
+    this.hitPicT = 0;
+    this.hitPicPrev = {};
     this.zapXray = false;
   }
 
@@ -527,6 +535,8 @@ export class Player {
       this.sliding = false;
       this.slideDirection = -1;
       audio && audio.sfx(this.jumps > 1 ? 'jump2' : 'jump');
+      // Jumping out of the ice block shatters it there and then (sprites/hitPictures.js).
+      if (this.hitPic && this.hitPicT > 0) this.hitPicT = hitPicOnJump(this.hitPic, this.hitPicT);
       return true;
     }
     return false;
@@ -564,6 +574,8 @@ export class Player {
     if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
     if (this.tagFlashT > 0) this.tagFlashT -= dt;
     if (this.zapT > 0) this.zapT -= dt;
+    if (this.blastT > 0) this.blastT -= dt;
+    if (this.hitPicT > 0) { this.hitPicT -= dt; if (this.hitPicT <= 0) this.hitPic = null; }
     if (this.powerPoseT > 0) this.powerPoseT -= dt;
     if (this.headless > 0) {
       this.headless -= dt;

@@ -26,9 +26,13 @@ import {
   textWidth, wrapText, drawPanel, drawMenuRow, textYForMid,
   drawKeyLegend, keyLegendWidth, drawPellet, TEXT_INK_H,
 } from '../engine/sprites.js';
-import { SNAKE_STRIKE_LEAD } from '../sprites/animals.js';
+import { STRIKERS } from '../sprites/animals.js';
+// The swiping cats' voices, relative to the meow's own pitch (engine/audio.js MEOW_SHAPES).
+const CAT_MEOW_PITCH = { catPythagoras: 1, catMechaNeon: 1.06, catNekoGhost: 0.88, catNeonBright: 1.12 };
 import { RAKE_SWING_LEAD } from '../sprites/props.js';
 import { ZAP_T, ZAP_XRAY_CHANCE, zapCanXray } from '../sprites/zap.js';
+import { BLAST_T } from '../sprites/blast.js';
+import { pickHitPicture, hitPicLife } from '../sprites/hitPictures.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
@@ -1858,7 +1862,7 @@ const SHOOTER_MIN_AHEAD = 60;
 // declines to participate, the bird has no opinion. The finish dog reads the
 // dog pool like the rest of them — he is a dog.
 function animalShotLines(type) {
-  if (type === 'catFury' || type === 'cryptPanther' || type === 'bobcat') return CAT_SHOT_SHORT;
+  if (type === 'catFury' || type === 'cryptPanther' || type === 'bobcat' || (STRIKERS[type] && type !== 'rattlesnake')) return CAT_SHOT_SHORT;
   if (type === 'buzzbird') return BIRD_SHOT_SHORT;
   if (type === 'rattlesnake') return SNAKE_SHOT_SHORT;
   return DOG_SHOT_SHORT;
@@ -8240,6 +8244,21 @@ export class RunState {
     Audio.sfx('boxKick', { ...when, gain: CARD_BOX_CRACK_GAIN });
   }
 
+  /**
+   * THE DYNAMITE GOES OFF (Peter, 16 Oct 2026: when it is broken, and when you run into
+   * it — "both: broken + touch"). The card box's boom, a heavier shake, and fire and
+   * smoke thrown wider than any break: whatever set it off, the stick is gone.
+   */
+  dynamiteBlast(cx, cy) {
+    Audio.sfx('boom', { gain: CARD_BOX_BOOM_GAIN });
+    shake(2.2, 0.18);
+    const r = () => this.fxRng.float();
+    burst(cx, cy, 16, 120, 0.5, '#fff6d6', 2, 90, r);
+    burst(cx, cy, 18, 95, 0.6, '#f6962c', 2, 110, r);
+    burst(cx, cy, 12, 70, 0.75, '#e8452c', 1, 130, r);
+    burst(cx, cy - 4, 10, 40, 1.0, '#5a5662', 2, -30, r);
+  }
+
   /** The card box opens, on the beat it was promised to. */
   burstCardBox(ob) {
     if (!ob.live) return;
@@ -8284,11 +8303,12 @@ export class RunState {
     const cx = ob.x + ob.w / 2;
     if (!silent) {
       const cy = this.entityGroundY(ob) - ob.alt - ob.h / 2;
-      if (ob.def.qbox) { if (!quiet) Audio.sfx('blockBreak'); this.qboxPop(cx, cy); }
+      if (ob.def.explodes) this.dynamiteBlast(cx, cy);
+      else if (ob.def.qbox) { if (!quiet) Audio.sfx('blockBreak'); this.qboxPop(cx, cy); }
       else {
         if (!quiet) Audio.sfx('crunch');
         shake(0.8, 0.08);
-        burst(cx, cy, 10, 60, 0.5, '#c8a068', 1, 160, () => this.fxRng.float());
+        burst(cx, cy, 10, 60, 0.5, ob.def.burstColor || '#c8a068', 1, 160, () => this.fxRng.float());
       }
       this.debris(ob, cx, cy);
     }
@@ -9765,17 +9785,25 @@ export class RunState {
       // choice in draw.js. It keeps counting past TRAP_SNAP_T harmlessly; the
       // draw clamps to the last frame and holds it.
       if (ob.disarmed) ob.disarmT += dt;
-      // The rattlesnake strikes and the rake swings AS THE HERO ARRIVES (Peter, 24 Sep:
-      // "should attack just before we get to him, not after"), each once. Fired when the
-      // hero is that event's lead time away, so the head is out — or the handle up — as
-      // he gets there. The rake only for a hero on the ground: jump it and it never goes.
-      if (ob.type === 'rattlesnake' || ob.type === 'rake') {
-        const clock = ob.type === 'rattlesnake' ? 'strikeT' : 'swingT';
+      // The strikers (the rattlesnake, the swiping cats) lunge and the rake swings AS
+      // THE HERO ARRIVES (Peter, 24 Sep: "should attack just before we get to him, not
+      // after"), each once. Fired when the hero is that event's lead time away, so the
+      // head — or paw — is out, or the handle up, as he gets there. The rake only for a
+      // hero on the ground: jump it and it never goes.
+      const strikes = !!ob.def?.strikes;
+      if (strikes || ob.type === 'rake') {
+        const clock = strikes ? 'strikeT' : 'swingT';
         if (ob[clock] != null) ob[clock] += dt;
-        else if (ob.type === 'rattlesnake' || this.player.grounded) {
-          const lead = ob.type === 'rattlesnake' ? SNAKE_STRIKE_LEAD : RAKE_SWING_LEAD;
+        else if (strikes || this.player.grounded) {
+          const lead = strikes ? STRIKERS[ob.type].lead : RAKE_SWING_LEAD;
           const gap = ob.x - (this.playerWorldX() + PLAYER_W / 2);
-          if (gap > -ob.w && gap <= Math.max(1, sp) * lead) ob[clock] = 0;
+          if (gap > -ob.w && gap <= Math.max(1, sp) * lead) {
+            ob[clock] = 0;
+            // A swiping cat says so as it winds up (Peter, 16 Oct 2026: "a meow sound
+            // effect would be awesome … like rowr"); each a shade apart in pitch.
+            const meow = CAT_MEOW_PITCH[ob.type];
+            if (meow) Audio.sfx('catMeow', { pitch: meow });
+          }
         }
       }
       if (ob.thrown) ob.thrownT += dt;
@@ -9866,7 +9894,14 @@ export class RunState {
       // branch because that one owns `alt` for icicles and the two must never
       // both be steering it.
       if (ob.punted) {
+        const fallingVy = ob.vy;
         stepPunt(ob, dt, puntTuneFor(ob));
+        // `puntBursts`: launched like a barrel, but the first touchdown is the
+        // end of it — it comes apart where it lands instead of rolling away.
+        if (ob.def.puntBursts && fallingVy < 0 && ob.alt <= puntTuneFor(ob).restAlt) {
+          this.breakObstacle(ob);
+          continue;
+        }
         // A prop rolling out of the frame is the one thing in the world that
         // leaves to the RIGHT, and the lane's cull only ever looks behind — so
         // without this it rides along in the obstacle list, and in every rewind
@@ -14717,7 +14752,8 @@ export class RunState {
     ps.compressT = p.compressT; ps.stumbleT = p.stumbleT; ps.slipT = p.slipT;
     ps.rollBashed = p.rollBashed; ps.rollDeflectUsed = p.rollDeflectUsed;
     ps.deflectFlashT = p.deflectFlashT;
-    ps.zapT = p.zapT; ps.zapXray = p.zapXray;
+    ps.zapT = p.zapT; ps.zapXray = p.zapXray; ps.blastT = p.blastT;
+    ps.hitPic = p.hitPic; ps.hitPicT = p.hitPicT; ps.hitPicPrev = p.hitPicPrev;   // never mutated, only replaced
     ps.powerPoseT = p.powerPoseT; ps.powerType = p.powerType;
     ps.fistThrown = p.fistThrown; ps.axeThrown = p.axeThrown; ps.wrenchThrown = p.wrenchThrown;
     ps.headless = p.headless; ps.assemblyGraceUsed = p.assemblyGraceUsed;
@@ -14848,7 +14884,8 @@ export class RunState {
     p.compressT = ps.compressT; p.stumbleT = ps.stumbleT; p.slipT = ps.slipT;
     p.rollBashed = ps.rollBashed; p.rollDeflectUsed = ps.rollDeflectUsed;
     p.deflectFlashT = ps.deflectFlashT;
-    p.zapT = ps.zapT || 0; p.zapXray = !!ps.zapXray;
+    p.zapT = ps.zapT || 0; p.zapXray = !!ps.zapXray; p.blastT = ps.blastT || 0;
+    p.hitPic = ps.hitPic || null; p.hitPicT = ps.hitPicT || 0; p.hitPicPrev = ps.hitPicPrev || {};
     p.powerPoseT = ps.powerPoseT; p.powerType = ps.powerType;
     p.fistThrown = ps.fistThrown; p.axeThrown = ps.axeThrown; p.wrenchThrown = ps.wrenchThrown;
     p.headless = ps.headless; p.assemblyGraceUsed = ps.assemblyGraceUsed;
@@ -15415,7 +15452,11 @@ export class RunState {
       // slide plow, an ability's roll — so the peel is the LAST word rather than
       // an exception carved out ahead of the rest of the rules.
       if (ob.def.slip) this.slip(ob);
-      else this.takeHit(null, false, ob.type);
+      else {
+        // Dynamite goes off in his face rather than being merely walked into.
+        if (ob.def.explodes) this.breakObstacle(ob, false, false, true);
+        this.takeHit(null, false, ob.type);
+      }
       break;
     }
     // Pickups.
@@ -15766,7 +15807,25 @@ export class RunState {
         this.player.zapT = ZAP_T;
         this.player.zapXray = xray;
       }
+    // DYNAMITE IN THE FACE (16 Oct 2026, sprites/blast.js): blown over backwards in a flip
+    // for BLAST_T, a picture only — the hit is the ordinary one, sound included.
+    } else if (OBSTACLES[src]?.explodes) {
+      Audio.sfx('hit');
+      if (this.battery > 0) this.player.blastT = BLAST_T;
     } else if (!trapContact) Audio.sfx('hit');
+    // HIT PICTURES (16 Oct 2026, sprites/hitPictures.js): every other obstacle hit is
+    // drawn by what it was — fire, spikes, blades, rollers, ice, or the flash and the
+    // stars-and-birdies for everything else. A picture only: everything about the hit
+    // is the ordinary one. Not the wire, the dynamite, the peel's pratfall or a pit.
+    if (!zapContact && !isPit && OBSTACLES[src] && !OBSTACLES[src].explodes && !OBSTACLES[src].slip
+      && this.battery > 0) {
+      const pic = pickHitPicture(src, this.player.hitPicPrev, () => this.fxRng.float());
+      if (pic) {
+        this.player.hitPic = pic;
+        this.player.hitPicT = hitPicLife(pic);
+        this.player.hitPicPrev = { ...this.player.hitPicPrev, [pic.family]: pic.variant };
+      }
+    }
     shake(5, 0.3);
     this.hitstop = this.beatLock ? 0 : 0.08;
     // playerWorldX, not camX + PLAYER_X: on the finish run the hero is the thing
@@ -17237,17 +17296,27 @@ export class RunState {
     // Under the floaties and the hero (drawChatter calls it first).
     this.drawLiftedMashCarts = (d) => {
       if (!this.mashLifted) return;
-      // And NO HALO here, in train flight or standing: a plain grey cart, crisp,
-      // the city's glow behind it (Peter, 15 Oct: "i hate these ... glowing").
-      setGlowSprites(false);
+      // THE GLOW, NOT THE BLOOM (Peter, 16 Oct: "can they have the same glow, but
+      // not the bloom"): the same coloured halo every other stage gives a cart,
+      // laid HERE, first, so it is certainly behind the art; the cart itself is
+      // then drawn with halos off, above the bloom, grey as it is.
       d.save();
       if (this.mirror) { d.translate(W, 0); d.scale(-1, 1); }
       applyWorld(d, z, pan, floorY, portraitXOffset);
       for (const p of this.pickups) {
         if (!p.live || !p.def.mashLetter || p.x >= finishX || !onScreen(p)) continue;
-        this.drawAtGround(d, p.x, () => drawWorldEntity(d, p, cam, renderT, this.style, renderSettings, PRECULLED_ENTITY),
-          p.w, 0, null, p.route);
+        this.drawAtGround(d, p.x, () => {
+          if (!p.skin) {
+            setGlowSprites(true);
+            const gr = 15 + Math.sin(renderT * 4 + (p.bobPhase || 0)) * 1.5;
+            const cx = p.x - cam + p.w / 2, cy = GROUND_Y - p.alt - p.h / 2;
+            d.drawImage(glowSprite(MASH_GLOW[p.type], 10), cx - gr, cy - gr, gr * 2, gr * 2);
+          }
+          setGlowSprites(false);
+          drawWorldEntity(d, p, cam, renderT, this.style, renderSettings, PRECULLED_ENTITY);
+        }, p.w, 0, null, p.route);
       }
+      setGlowSprites(true);   // drawTrainMashLetters lays its own halo before its cart
       this.drawTrainMashLetters(d, cam, this.portraitFrame() ? null : camYFor(ZOOM) + NEON_TRAIN_SKY_MARGIN / ZOOM);
       d.restore();
       setGlowSprites(this.glowSpritesWanted ?? true);

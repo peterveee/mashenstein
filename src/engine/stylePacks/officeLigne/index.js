@@ -136,7 +136,7 @@ function upperRoom(ctx, f, P, part = 'wall') {
 const EXIT_GAP = 60, EXIT_SPEED = 8, EXIT_COUNT = 9;
 // the line as dealt: from EXIT_NEAR to EXIT_REACH back from the door (those nearer are through it
 // before the hero comes; the far ones are still queuing through the finish)
-const EXIT_NEAR = -10, EXIT_REACH = 930;
+const EXIT_NEAR = -10, EXIT_REACH = 930, EXIT_SHIFT = 80;
 // THE QUEUE IS ALL ZOMBIE CLERKS (Peter, 15 Oct: "these look so good I am inclined to have just
 // these in the queue in different colourways"): profileZombie.js, side on, in suits dealt round so
 // no two neighbours share a cloth, a tie or a hair colour; the first is the crypt's own blue clerk,
@@ -193,7 +193,8 @@ function fireExitQueue(ctx, doorX, f, P) {
   // than EXIT_GAP, so a short stretch takes fewer
   const gap = Math.max(EXIT_GAP, (far - EXIT_NEAR) / EXIT_COUNT);
   for (let i = 0; far - i * gap > EXIT_NEAR; i++) {
-    const d = far - i * gap;                 // how far from the door they stood at the alarm
+    // the whole line a little further on, so a couple go in while the hero is at the line
+    const d = far - i * gap - EXIT_SHIFT;                 // how far from the door they stood at the alarm
     const x = doorX - d + run;
     if (x > doorX + 46 || x < f.coverage.left - 60) continue;
     ctx.save();

@@ -217,6 +217,10 @@ export class Spawner {
     this.lastActionX = -9999;
     // Where each spaced swap type last went down (see the cabinet's `swapSpacing`).
     this.lastSwapX = new Map();
+    // How far through each of the cabinet's `rotations` this run has got, and where the
+    // last one went down.
+    this.rotationCount = new Map();
+    this.rotationLastX = new Map();
     this.lastActionKind = 'none';
     // Whether the last action cell was something a slide can punt. Kept apart
     // from `lastActionKind` because it is not an action CLASS — a cone is
@@ -354,14 +358,53 @@ export class Spawner {
     return bank;
   }
 
+  // A ROTATION is a slot that deals a cabinet's list IN ORDER, each entry once, never
+  // closer than `gap` world px to the last (`rotations: { slot: { list, gap } }`).
+  // Terminal Velocity's dark-level cat (Peter, 16 Oct 2026): "vary them but don't have
+  // too many and never 2 of the same in one area" — so the first is one, the second the
+  // other, a third the third, and that is all a level gets. A pattern carrying a spent
+  // or too-recent slot is out of the bag; curation before the roll, as ever.
+  rotationBlocked(p) {
+    const rotations = this.cabinet.rotations;
+    if (!rotations) return false;
+    return p.cells.some((c) => {
+      const rot = rotations[c.t];
+      if (!rot) return false;
+      const last = this.rotationLastX.get(c.t);
+      return (this.rotationCount.get(c.t) || 0) >= rot.list.length
+        || (last != null && this.nextX - last < rot.gap);
+    });
+  }
+
+  rotate(cell, baseX) {
+    const rot = this.cabinet.rotations[cell.t];
+    const n = this.rotationCount.get(cell.t) || 0;
+    this.rotationCount.set(cell.t, n + 1);
+    this.rotationLastX.set(cell.t, baseX + cell.dx);
+    return { ...cell, t: rot.list[Math.min(n, rot.list.length - 1)] };
+  }
+
   pickPattern() {
     const section = this.sectionFor(this.nextX);
     const bank = section ? this.sectionBank(section) : this.cabinet.patterns;
     const tierMax = section && section.tierCap != null
       ? Math.min(this.tierMax, section.tierCap) : this.tierMax;
+    // A DUE pattern (`due: [from, by]`, progress fractions; always `once`) is not rolled
+    // for at all: it is laid the first time the lane reaches `from`, so a level is sure
+    // to deal it, and never after `by`. Terminal Velocity 1's Pythagoras (Peter, 16 Oct
+    // 2026: "make sure we have one on level 1"), in the golden hour before the strike.
+    // No draw is spent on it, so the rest of the lane's rolls are left in order.
+    const progress = this.totalDist ? this.nextX / this.totalDist : null;
+    for (const p of bank) {
+      if (!p.due || progress == null || p.tier > tierMax) continue;
+      if (this.usedOnce.has(p.onceGroup || p)) continue;
+      if (progress >= p.due[0] && progress <= p.due[1]) return p;
+    }
     const boostFree = this.nextX < this.boostFreeUntil;
     const pats = bank.filter((p) => p.tier <= tierMax
+      && !p.due
       && !(p.once && this.usedOnce.has(p.onceGroup || p))
+      && !this.rotationBlocked(p)
       && !(boostFree && p.cells.some((c) => OBSTACLES[c.t]?.isBoost)));
     if (!pats.length) return null;
     // WEIGHTED, for a cabinet that asks (Peter, 15 Oct 2026: "i am seeing a lot of some
@@ -440,8 +483,9 @@ export class Spawner {
       // run placed on the way past would be measured against a hole that is not
       // there yet.
       const coinCells = [];
-      for (const rawCell of pat.cells) {
+      for (let rawCell of pat.cells) {
         if (rawCell.t === 'coins') { coinCells.push(rawCell); continue; }
+        if (this.cabinet?.rotations?.[rawCell.t]) rawCell = this.rotate(rawCell, baseX);
         // A cabinet may SWAP a shared obstacle for one of its own, some of the time —
         // `swaps: { cactus: ['cactus', 'trafficCone', ...] }`, picked off the spawn x
         // so a replay is identical. A real swap, not a costume: the cone is kicked,

@@ -21,6 +21,10 @@ const LWF = 0.2; // fine line
 const OAK = '#a9743a', OAK_DK = '#74491f', OAK_LT = '#d9a35e';
 // Crate pine: the same warm family a step lighter, so box and barrel are kin.
 const PINE = '#c58c48', PINE_DK = '#8c5a26', PINE_LT = '#ecbb76', PINE_GAP = '#4e2f14';
+// The frame's shaded boards: half a step down, NOT the recessed panel's PINE_DK — in
+// that tone the right-hand board merged into the panel beside it and the crate lost its
+// right edge (Peter, 16 Oct 2026: "we sort of lose the wood on the right edge").
+const PINE_SH = '#a9733a';
 // The heavy crate's stained timber.
 const STAIN = '#8e5630', STAIN_DK = '#5e341a', STAIN_LT = '#bb7c48';
 // Hoops and brackets: the LCD panel's print grey (LCD_PRINT 60,63,69).
@@ -107,10 +111,16 @@ function crateX(c, w, h) {
       }, INK, LWI);
       p.restore();
     }
-    // Lit sliver on the top board, shade band on the right board.
+    // Lit sliver on the top board, shade on the right board. The shade is the board
+    // itself, cut to its mitres like the left one — as a full-height band it ran up
+    // through the end of the top board and read as a separate plank nailed on
+    // (Peter, 16 Oct 2026: "still not totally happy with the plank on the right side").
     box(p, BX0, BY0, BX1 - BX0, 0.7, PINE_LT);
-    box(p, iX1, BY0, F + 1, Y1 - BY0, PINE_DK);
-    box(p, BX0, Y1 - 0.8, BX1 - BX0, 0.8, PINE_DK);
+    p.beginPath();
+    shape([iX1, iY0, BX1 + 1, BY0 - 1, BX1 + 1, Y1 + 1, iX1, iY1])(p);
+    p.fillStyle = PINE_SH;
+    p.fill();
+    box(p, BX0, Y1 - 0.8, BX1 - BX0, 0.8, PINE_SH);
   });
   // The frame's inner edge.
   box(c, iX0, iY0, iX1 - iX0, iY1 - iY0, null, INK, LWI);

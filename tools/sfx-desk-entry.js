@@ -98,6 +98,7 @@ const GROUPS = [
       { cue: 'boxKick', what: "the card box's crack; the plow", gain: 0.65 },
       { cue: 'hit', what: 'taking damage' },
       { cue: 'dogBark', what: 'the finish dog' },
+      { cue: 'catMeow', what: 'a swiping cat winds up' },
       { cue: 'die', what: 'losing a life' },
       { cue: 'crunch', what: 'scenery breaking; the pit landing' },
       { cue: 'barrelBurst', what: 'a barrel bursting' },

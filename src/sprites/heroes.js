@@ -432,7 +432,8 @@ const rusty = {
     p: '#8e3c1c', furDark: '#8e3c1c',                // the dark legs and the tail rings
     f: '#c2342e',                                    // runner flats, a shade off the coat
     a: '#f0c07a', pouchLine: '#f0c07a',              // costume gold: belt, pouch band
-    kit: '#7a3a2a', cuff: '#7a3a2a',                 // the leather pouch and glove cuffs
+    kit: '#7a3a2a', cuff: '#7a3a2a',                 // the belt leather and glove cuffs
+    pouch: '#84482f',                                // the cane pouch: leather a shade off the belt (was the shoe red)
   },
 };
 

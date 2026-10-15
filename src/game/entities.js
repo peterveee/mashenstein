@@ -466,7 +466,14 @@ export const OBSTACLES = {
   // strikes once as the hero arrives (the run's strikeT; SNAKE_STRIKE_LEAD). The box is
   // the coil AND the strike's reach, so it is one jump; alive, so like every animal it
   // shrugs off a shot.
-  rattlesnake: { w: 18, h: 10, sprite: 'rattlesnake', ground: true, breakable: false, action: 'jump', animal: true },
+  rattlesnake: { w: 18, h: 10, sprite: 'rattlesnake', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
+  // TERMINAL VELOCITY's swiping cats (Peter, 16 Oct 2026, from the neon cat bake-off,
+  // sprites/neonCats.js): the rattlesnake's mechanic — sat in the road, a swipe AS YOU
+  // ARRIVE (`strikes`), a box that takes in the reach — on a sitting cat's 18x11.
+  catPythagoras: { w: 18, h: 11, sprite: 'catPythagoras', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
+  catMechaNeon:  { w: 18, h: 11, sprite: 'catMechaNeon', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
+  catNekoGhost:  { w: 18, h: 11, sprite: 'catNekoGhost', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
+  catNeonBright: { w: 18, h: 11, sprite: 'catNeonBright', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
   dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: false, action: 'jump', vx: -68, animal: true },
   catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
   cryptPanther:    { w: 11, h: 9, sprite: 'cryptPanther', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
@@ -511,22 +518,29 @@ export const OBSTACLES = {
   beehive:      { w: 13, h: 12, sprite: 'beehive', ground: true, breakable: true, action: 'jump' },
   scarecrow:    { w: 17, h: 14, sprite: 'scarecrow', ground: true, breakable: true, action: 'jump' },
   hayBale:      { w: 12, h: 11, sprite: 'hayBale', ground: true, breakable: true, action: 'jump', stack: true },
+  // The bee swarm, in the drone's place (slide under it) and the songbird's (don't jump
+  // into it) — 16 Oct 2026, "replace birds and drones in field service with bees".
+  beeSwarm:     { w: 12, h: 7, sprite: 'beeSwarm', alt: 13, artLift: 6, armored: true, action: 'slide', bob: true, airDrift: { amp: 4, speed: 0.72 } },
+  beeSwarmHigh: { w: 12, h: 7, sprite: 'beeSwarmHigh', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },
   // SPEED ZONE: the cactus split between prickly pear and dynamite, the rest one for one.
   pricklyPear:  { w: 13, h: 12, sprite: 'pricklyPear', ground: true, breakable: true, action: 'jump' },
-  dynamite:     { w: 13, h: 12, sprite: 'dynamite', ground: true, breakable: true, action: 'jump' },
+  // `explodes` (16 Oct 2026): broken or run into, it goes off (run.js dynamiteBlast).
+  dynamite:     { w: 13, h: 12, sprite: 'dynamite', ground: true, breakable: true, action: 'jump', explodes: true },
   barrelCactus: { w: 17, h: 14, sprite: 'barrelCactus', ground: true, breakable: true, action: 'jump' },
   smudgePot:    { w: 13, h: 13, sprite: 'smudgePot', ground: true, breakable: true, action: 'jump' },
   sawhorse:     { w: 16, h: 9, sprite: 'sawhorse', ground: true, armored: true, breakable: false, action: 'jump', splitFeet: true },
   // Speed Zone's flier in the songbird's place: its box, height and answer; not an animal.
   saucer:       { w: 12, h: 7, sprite: 'saucer', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },
   // FROST FORTRESS, added alongside everything it already dealt. The presents
-  // KICK APART and shower coins, and the snowball comes apart on a kick too
-  // (`puntBreaks`, run.js): a slide-kick breaks them rather than launching them.
+  // KICK APART and shower coins (`puntBreaks`, run.js): a slide-kick breaks
+  // them rather than launching them. The snowball is kicked like the barrel it
+  // stands in for and bursts into powder where it lands (`puntBursts`, run.js —
+  // Peter, 16 Oct 2026: "launch then burst into powder").
   iceBlocks:    { w: 12, h: 11, sprite: 'iceBlocks', ground: true, breakable: true, action: 'jump', stack: true },
   parcels:      { w: 12, h: 11, sprite: 'parcels', ground: true, breakable: true, action: 'jump', stack: true,
     punt: true, puntBreaks: true, puntLabel: 'PRESENTS', bonusCoins: 3 },
   giantSnowball: { w: 13, h: 13, sprite: 'giantSnowball', ground: true, breakable: true, action: 'jump', vx: -40, roll: true,
-    punt: 'heavy', puntBreaks: true, puntLabel: 'SNOWBALL' },
+    punt: 'heavy', puntBursts: true, puntLabel: 'SNOWBALL', burstColor: '#e6eef2' },
   crampons:     { w: 15, h: 7, sprite: 'crampons', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
   caltrops:     { w: 15, h: 7, sprite: 'caltrops', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
   // CRYPT SHIFT, in place of the snarler and the feral dog.
@@ -643,6 +657,10 @@ export const DEBRIS = {
   dogSnarler: { colors: ['#3a3446', '#26212f', '#b07840'], size: 2.4, count: 12, mat: 'soft' },
   dogBruiser: { colors: ['#c08a4a', '#95622f', '#ecd6b2'], size: 2.8, count: 12, mat: 'soft' },
   rattlesnake: { colors: ['#c9a56b', '#6b4a2e', '#efe0b4'], size: 2.6, count: 10, mat: 'soft' },
+  catPythagoras: { colors: ['#5a321d', '#341a0e', '#f2a52a'], size: 2.4, count: 10, mat: 'soft' },
+  catMechaNeon:  { colors: ['#e8eaf4', '#6b7299', '#ff2e4d'], size: 2.2, count: 10, mat: 'metal' },
+  catNekoGhost:  { colors: ['#33264a', '#1d152c', '#a99bff'], size: 2.4, count: 10, mat: 'soft' },
+  catNeonBright: { colors: ['#1e1640', '#3d3470', '#ff2e4d'], size: 2.4, count: 10, mat: 'soft' },
   dogFeral:   { colors: ['#6a6a74', '#45454f', '#a09a94'], size: 2.4, count: 13, mat: 'soft' },
   catFury:    { colors: ['#332f3f', '#201d2a', '#8a86a0'], size: 2.2, count: 10, mat: 'soft' },
   cryptPanther:    { colors: ['#765486', '#493657', '#a77caf'], size: 2.4, count: 13, mat: 'soft' },
@@ -650,6 +668,8 @@ export const DEBRIS = {
   // The 15 Oct bake-off picks, in their painters' own colours.
   beehive:      { colors: ['#f6f0e0', '#d8352a', '#ffd23a'], size: 2.8, mat: 'wood' },
   scarecrow:    { colors: ['#d8352a', '#3f63a8', '#dcae48'], size: 3, count: 14, mat: 'soft' },
+  beeSwarm:     { colors: ['#ffd23a', '#2a1a16', '#f6f0e0'], size: 1.8, count: 12, mat: 'soft' },
+  beeSwarmHigh: { colors: ['#ffd23a', '#2a1a16', '#f6f0e0'], size: 1.8, count: 12, mat: 'soft' },
   hayBale:      { colors: ['#dcae48', '#b0822a', '#f4d784'], size: 2.8, mat: 'soft' },
   pricklyPear:  { colors: ['#3f9a5a', '#286c43', '#dc2f55'], size: 2.6, mat: 'soft' },
   dynamite:     { colors: ['#e2412c', '#2c2627', '#f0b12a'], size: 2.6, spark: '#fff6d6', mat: 'soft' },
