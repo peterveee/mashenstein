@@ -40,6 +40,7 @@ import { paintAlarmPillar } from '../sprites/officeProps.js';
 import { ZAP_T, drawZapHero } from '../sprites/zap.js';
 import { BLAST_T, drawBlastHero } from '../sprites/blast.js';
 import { hitPicLife, hitPicShowing, drawHitPicture, drawHitAfter } from '../sprites/hitPictures.js';
+import { drawPitFall } from '../sprites/pitFall.js';
 import { GROUND_Y } from '../engine/camera.js';
 import { PLAYER_X, SLIP_T } from './player.js';
 
@@ -511,7 +512,10 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // only for the picture itself.
   const hitW = zapW < 0 && blastW < 0 && player.hitPic && player.hitPicT > 0 ? hitPicLife(player.hitPic) - player.hitPicT : -1;
   const hitPicUp = hitW >= 0 && hitPicShowing(player.hitPic, hitW);
-  const blink = !starLeft && zapW < 0 && blastW < 0 && !hitPicUp && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
+  // A pit (sprites/pitFall.js: the hang, the fingertips, the drop, the bottom's answer,
+  // a ledge save's mantle) is its own picture, set by the run on player.pitFall.
+  const pitFall = player.pitFall || null;
+  const blink = !starLeft && !pitFall && zapW < 0 && blastW < 0 && !hitPicUp && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
   if (blink && !(opts.contactShadow > 0) && hitW < 0) return;
   // opts.pose patches the derived pose. The controller only ever reports run /
   // jump / slide, because those are the only things a hero does while a stage is
@@ -584,7 +588,15 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
         drawToon(c, heroId, pose, cx - i * 5, feetY, HERO_DRAW_H, { alpha: 0.2 * starFade / i });
       }
     }
-    if (zapW >= 0 && !boostPainted) drawZapHero(c, heroId, cx, feetY, zapW, t, { xray: player.zapXray });
+    if (pitFall && !boostPainted && typeof document !== 'undefined' && c.getTransform?.()) {
+      // The surface and the lip in the world frame he is drawn in (run.js syncPitFall),
+      // not off the floor under his column, which a hill or a raised lip moves.
+      const floorY = feetY + player.y;
+      drawPitFall(c, heroId, cx, feetY, {
+        ...pitFall, t, lipY: pitFall.lipY ?? floorY, surfY: pitFall.surfY ?? floorY - pitFall.surfAlt,
+        wall: cx + pitFall.wallDx, phase0: pose.phase || 0,
+      });
+    } else if (zapW >= 0 && !boostPainted) drawZapHero(c, heroId, cx, feetY, zapW, t, { xray: player.zapXray });
     else if (blastW >= 0 && !boostPainted) drawBlastHero(c, heroId, cx, feetY, blastW, t);
     else if (hitPicUp && !boostPainted) drawHitPicture(c, player.hitPic, heroId, cx, feetY, hitW, t, pose);
     else if (!boostPainted) drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
@@ -687,7 +699,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     }
     // The hit picture's after — the stars and birdies, the smoke, the shards — over the
     // blink, which hides the hero but not what is going round his head.
-    if (hitW >= 0 && !hitPicUp) drawHitAfter(c, player.hitPic, heroId, cx, feetY, hitW, t);
+    if (hitW >= 0 && !hitPicUp && !pitFall) drawHitAfter(c, player.hitPic, heroId, cx, feetY, hitW, t);
   };
   if (opts.flat) paint(ctx);
   else {
@@ -1012,6 +1024,9 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     : switchThrown
       ? 1 + Math.min(SWITCH_THROW_FRAMES - 1,
         Math.floor(((e.thrownT || 0) / SWITCH_THROW_T) * SWITCH_THROW_FRAMES))
+      : ringFrames > 1 && e.gaitPh != null
+        // A galloper stepped by the road it has run (animals.js stepGait).
+        ? ((Math.floor(e.gaitPh * ringFrames) % ringFrames) + ringFrames) % ringFrames
       : ringFrames > 1
         ? Math.floor(t * fps + e.bobPhase * 4) % ringFrames : 0;
   const rimDark = danger ? (propName ? null : tinted(sprName, '#101018')) : null;

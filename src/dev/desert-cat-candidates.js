@@ -35,7 +35,7 @@ import { makeObstacle } from '../game/entities.js';
 import { PLAYER_X } from '../game/player.js';
 import { drawToon } from '../sprites/toons.js';
 import { DOG_PAINTERS } from '../sprites/dogs.js';
-import { BOBCAT_RIG, paintBobcat } from '../sprites/bobcat.js';
+import { BOBCAT_RIG, BOBCAT_FRAMES, paintBobcat } from '../sprites/bobcat.js';
 import { drawSoftContactShadow } from '../engine/shadows.js';
 
 const TAU = Math.PI * 2;
@@ -610,8 +610,9 @@ const fmtMs = (s) => `${Math.round(s * 1000)} ms`;
 function bigCandidate(id, scale) {
   const cand = { id, name: `STREAK × ${scale}`, label: `${id} ×${scale}`, fps: S3.fps, big: scale };
   // L2 SHIPPED (28 Sep 2026, "L2 please"): its card draws the game's own painter,
-  // sprites/bobcat.js paintBobcat, whose baked fit is this one's.
-  cand.paint = scale === 1.35 ? paintBobcat : bigPainter(cand);
+  // sprites/bobcat.js paintBobcat, whose baked fit is this one's. That runs the planted
+  // gallop's sixteen frames since 16 Oct 2026, so the card's eight step every other one.
+  cand.paint = scale === 1.35 ? (ctx, w, h, f) => paintBobcat(ctx, w, h, f * (BOBCAT_FRAMES / FRAMES)) : bigPainter(cand);
   Object.defineProperty(cand, 'note', {
     enumerable: true,
     get() {

@@ -2902,6 +2902,7 @@ export function floatieShift(floaties, hero) {
   if (!floaties.length || !hero) return 0;
   let top = Infinity, bottom = -Infinity;
   for (const f of floaties) {
+    if (f.head) continue;   // a word by his head is not in the column (run.floatText `head`)
     top = Math.min(top, f.y);
     const scale = f.scale || 1;
     const cardH = isPhonePortraitPresentation()

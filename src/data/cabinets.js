@@ -1196,6 +1196,17 @@ for (const cab of CABINETS) {
   if (pick.weights) cab.weights = pick.weights;
 }
 
+// THE WOLF COMES BACK TO CRYPT (16 Oct 2026). The crypt pick above swaps every dogFeral
+// pattern for the graveyard props, so since 15 Oct the lane dealt no dog at all — then the
+// feral was redrawn as the wolf (sprites/dogs.js, bake-off B3: "replace feral with him").
+// Two patterns of his own, after the swap so they stay his. stage-layouts.js deals two
+// animals a level ("2 animals per crypt is a better idea"): panther + wolf on crypt-1,
+// fury cat + panther on crypt-2, wolf + fury cat on crypt-3.
+CABINET_BY_ID.crypt.patterns = [...CABINET_BY_ID.crypt.patterns,
+  P(1, [{ t: 'dogFeral', dx: 0 }, coinArc(90)]),
+  P(2, [{ t: 'dogFeral', dx: 0 }, { t: 'tombstone', dx: 150 }]),
+];
+
 // TARGETS ON TERMINAL VELOCITY 1 ONLY (Peter, 15 Oct 2026: "remove targets from the other
 // levels in neon though, just leave them in first") — neon-1's mission is DESTROY 5
 // TARGETS; 2 and 3 deal the same bank with the targets taken out (cabinetForStage), a
@@ -1256,11 +1267,45 @@ CABINET_BY_ID.surge.patterns = [...new Set([
 // hazards for the Surge's remix.
 {
   const neon = CABINET_BY_ID.neon;
+  // THE LUCKY CAT FIRST (Peter, 16 Oct 2026: "maneki neko into the opening as the first
+  // cat... subverts the expectation of a lucky cat and preps user to avoid cats"): the
+  // beckoning statue a few seconds in, then Pythagoras a few seconds after it.
+  // THE OPENING (Peter, 16 Oct: "once the level starts there is a little running then a
+  // string of coins appears that leads right up to the lucky cat, so user needs to jump
+  // early to avoid a hit... then proceed with the rest"). The level's FIRST pattern
+  // (due from 0): a run of ten coins along the ground ending a coin's gap short of the
+  // cat's box. Follow the coins to the end and the paw is already out; the jump has to
+  // come off the coins, early.
+  // dx -70: the lane opens at x 300 and the hero starts at x -30 (and builds up speed), so he reaches the
+  // first coin about 1.5 seconds in (Peter, 16 Oct: "start coins earlier about 1.5
+  // seconds"; measured, work/local/cat-ship/firstcoin.mjs).
+  const maneki = P(0, [coinLine(-70, 10), { t: 'catManeki', dx: 70 }],
+    { once: true, onceGroup: 'maneki', due: [0, 0.07] });
   const pythagoras = P(0, [{ t: 'catPythagoras', dx: 0 }, coinArc(120)],
-    { once: true, onceGroup: 'pythagoras', due: [0.08, 0.2] });
-  neon.patterns = [...neon.patterns, pythagoras];
+    { once: true, onceGroup: 'pythagoras', due: [0.11, 0.2] });
+  // ...and ONE target in that golden hour (Peter, 16 Oct: "leave one target in"), due
+  // after Pythagoras, though the opening's section keeps targets out of the random bag.
+  const openingTarget = P(0, [{ t: 'target', dx: 0 }, coinArc(40)],
+    { once: true, onceGroup: 'openingTarget', due: [0.15, 0.22] });
+  // More to collect on the way (Peter, 16 Oct: "ok to have more coins and/or jump
+  // items.. it is a little sparse right now"): the golden hour's jumps with coins over
+  // them, and a run of coins to breathe on. Neon-1 only, and they share their hazards'
+  // turns (the lane deals by hazard), so they add coins rather than more crates.
+  const coinedJumps = [
+    P(0, [{ t: 'crate', dx: 0 }, coinArc(60)]),
+    P(0, [{ t: 'popSpikes', dx: 0 }, coinArc(50)]),
+    P(0, [coinLine(0, 7)]),
+    P(1, [{ t: 'floorSaw', dx: 0 }, coinArc(60)]),
+  ];
+  neon.patterns = [...neon.patterns, maneki, pythagoras, openingTarget, ...coinedJumps];
   const darkCat = P(1, [{ t: 'neonCat', dx: 0 }, coinArc(120)]);
   neon.floorPatterns = Object.fromEntries(Object.entries(neon.floorPatterns)
     .map(([k, patterns]) => [k, [...patterns, darkCat]]));
   neon.rotations = { neonCat: { list: ['catMechaNeon', 'catNekoGhost', 'catNeonBright'], gap: 1500 } };
+  // Terminal Velocity 1's golden hour deals only spaced jumps and coins now (its first
+  // layout section, stage-layouts.js: "dont show anything that needs to be ducked"), so
+  // no targets come before the first train lands — and DESTROY 5 TARGETS has the rest
+  // of the level to find them in. Targets only ever appear on neon-1, so this tilts
+  // only that level; 1.8 brings the thinnest seeded run back to the seven it had.
+  neon.weights = { ...(neon.weights || {}), target: 1.8 };
 }

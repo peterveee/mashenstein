@@ -112,6 +112,9 @@ import {
 import { levelObstacleTypes, levelPlacedTypes } from '../src/dev/level-obstacles.js';
 import { GENERIC_CRATE_BARREL } from '../src/dev/generic-crate-barrel-candidates.js';
 import { REDRAW } from '../src/sprites/redrawProps.js';
+import { LEDGE_REACH } from '../src/sprites/pitFall.js';
+import { drawPitFills } from '../src/engine/stylePacks/index.js';
+import { HERO_CENTER_OFF } from '../src/game/draw.js';
 import { scaledContext, OUTLINE_WEIGHT, OUTLINE_SCALE } from '../src/sprites/outline.js';
 import { crateX, barrelArcade } from '../src/sprites/crateBarrel.js';
 import { scarecrow as scarecrowPaint } from '../src/sprites/plumberProps.js';
@@ -146,9 +149,16 @@ import { RAIL_WIRE_CANDIDATES, drawRailWireTile } from '../src/dev/rail-wire-can
 import { ZAP_CANDIDATES, drawZapTile } from '../src/dev/zap-candidates.js';
 import { BLAST_CANDIDATES, BLAST_NOW, BLAST_T, drawBlastTile } from '../src/dev/blast-candidates.js';
 import { HIT_EFFECTS, HIT_FAMILIES, HIT_NOW, HIT_T, drawHitTile, drawIceCastTile } from '../src/dev/hit-effect-candidates.js';
+import { BEE_NOW, BEE_CANDIDATES, drawBeeTile } from '../src/dev/bee-follow-candidates.js';
 import { PIT_FALL, PIT_FALL_NOW, PIT_FALL_ROWS, PIT_FALL_HOLD, drawPitFallTile, pitLaneHeight } from '../src/dev/pit-fall-candidates.js';
 import { NEON_CAT_CANDIDATES, NEON_CAT_NOW, drawNeonCatApproach, drawNeonCatLineup } from '../src/dev/neon-cat-candidates.js';
 import { COBRA_CANDIDATES, COBRA_NOW, drawCobraApproach, drawCobraLineup } from '../src/dev/cobra-candidates.js';
+import { drawDetailAB, DETAIL_AB_RS } from '../src/dev/animal-detail-ab.js';
+import { GOOSE_CANDIDATES, GOOSE_NOW, drawGooseApproach, drawGooseLineup, drawGooseSideBySide, GOOSE_SIDE_H } from '../src/dev/goose-waddle-candidates.js';
+import { FERAL_CANDIDATES, FERAL_NOW, drawFeralApproach, drawFeralLineup, drawFeralSideBySide, SIDE_H as FERAL_SIDE_H } from '../src/dev/feral-dog-candidates.js';
+import { MANEKI_CANDIDATES, BECKON_CANDIDATES } from '../src/dev/maneki-candidates.js';
+import { SNARL_CANDIDATES } from '../src/dev/snarl-candidates.js';
+import { NEON_GOLDEN_MOOD as MANEKI_GOLDEN } from '../src/engine/stylePacks/index.js';
 import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/dev/hero-polish-candidates.js';
 import { FIRE_STAND_CANDIDATES, drawFireStandRun, drawFireStandStill } from '../src/dev/office-fire-alarm-stand-candidates.js';
 import { MASH_LETTER_CANDIDATES, MASH_LETTER_PALETTES, drawMashLetterCandidate, SNES_VARIANTS, drawSnesVariant } from '../src/dev/mash-letter-candidates.js';
@@ -479,7 +489,7 @@ function beginLab() {
 // already in frame pixels and must NOT set this.
 function tile(grid, name, sub, w, h, draw,
   { animated = false, wide = false, hires = true, pixel = false, world = false,
-    displayScale = null } = {}) {
+    displayScale = null, choice = null } = {}) {
   // A RETIRED SECTION COSTS NOTHING. section() returns a DETACHED grid for
   // anything in HIDDEN_GALLERY_SECTIONS, but everything below still ran: the
   // canvas was created, its backing store allocated (a hires:6 tile is millions
@@ -506,6 +516,23 @@ function tile(grid, name, sub, w, h, draw,
   label.className = 'name';
   label.innerHTML = `<b>${name}</b>` + (sub ? `<br>${sub}` : '');
   card.append(canvas, label);
+  // THE CHOICE, BIG (Peter, 16 Oct 2026: "a nice big label with the choices … A, B, C3 …
+  // large and prominent next to each pic"). A tile whose name opens with its letter —
+  // "A — …", "C3 · …", "NOW — …" — or that passes `choice` wears it as a badge.
+  // Read off the name's opening: "A — …", "C3 · …", "FIRE A — …", "0 NOW — …", "Z1 The …",
+  // "1 — PLUTO", "A COUGAR", "2 GOUACHE — …".
+  const nm = String(name);
+  const pick = choice ?? (
+    nm.match(/^\s*(?:\d+\s+|[A-Z]{2,}\s+)?([A-Z]\d{0,2}|NOW|\d{1,2})\s*(?:—|–|-|·|:|$)/)
+    || nm.match(/^\s*([A-Z]\d{1,2}|\d{1,2})\s+[A-Za-z]/)
+    || nm.match(/^\s*([A-H])\s+[A-Z]{2}/) || [])[1];
+  if (pick) {
+    const badge = document.createElement('div');
+    badge.className = 'choice';
+    badge.textContent = pick;
+    card.classList.add('has-choice');
+    card.appendChild(badge);
+  }
   grid.appendChild(card);
 
   const ctx = canvas.getContext('2d');
@@ -9876,14 +9903,190 @@ function jadeSky(ctx, w, h, seed = 1) {
     'At in-run size, on real gaps carved by each cabinet’s own ground and filled by the run’s own pit fills: two heroes to a strip run into their own hole at the same moment, '
     + 'the world freezes as they go in (as the run’s does), and each candidate plays the whole fall inside today’s '
     + `${PIT_FALL_HOLD}s hold before the checkpoint. The drop is SHORT — the material lies 12px under the lip, a spike bed’s tips 5 — so every payoff happens where he actually stops, in view. `
-    + 'NOW, A–D: Field Service (tar, the default) over Rhythm Bankruptcy (spikes). E on each fill: Speed (lava), Rhythm (spikes), Frost (slush), Field Service (tar). '
+    + 'WHICH WAY IN: running off the lip → B/C/D/E (the hang); jumping in → G (or G2, which hangs where the death is decided, or G3 at the apex, which needs a prediction); a near miss at the far lip → H. A is the face alone, on today’s fall. '
+    + 'NOW, A–D, G, G2, G3, H: Field Service (tar, the default) over Rhythm Bankruptcy (spikes). E on each fill: Speed (lava), Rhythm (spikes), Frost (slush), Field Service (tar); H on Frost (slush) too. '
     + 'The fail banner the run puts up on arrival is left off. Turn on SLOW to read them frame by frame. ANIMATED.',
     '16 Oct 2026');
   const tileFor = (cand, rows, suffix = '') => tile(grid, `${cand.letter} — ${cand.name}${suffix}`, cand.note, 480, pitLaneHeight(rows),
     (ctx, t) => drawPitFallTile(ctx, t, cand, rows), { animated: true, wide: true });
-  for (const cand of [PIT_FALL_NOW, ...PIT_FALL.filter((c) => c.id !== 'payoff')]) tileFor(cand, PIT_FALL_ROWS.mixed);
-  const E = PIT_FALL.find((c) => c.id === 'payoff');
-  for (const [key, name] of [['speed', 'lava'], ['rhythm', 'spikes'], ['frost', 'slush'], ['plumber', 'tar']]) tileFor(E, PIT_FALL_ROWS[key], ` · ${name}`);
+  const byId = (id) => PIT_FALL.find((c) => c.id === id);
+  for (const cand of [PIT_FALL_NOW, ...['face', 'coyote', 'whistle', 'sign'].map(byId)]) tileFor(cand, PIT_FALL_ROWS.mixed);
+  for (const [key, name] of [['speed', 'lava'], ['rhythm', 'spikes'], ['frost', 'slush'], ['plumber', 'tar']]) tileFor(byId('payoff'), PIT_FALL_ROWS[key], ` · ${name}`);
+  tileFor(byId('jumped'), PIT_FALL_ROWS.mixed);
+  tileFor(byId('jumped-hang'), PIT_FALL_ROWS.mixed);
+  tileFor(byId('jumped-apex'), PIT_FALL_ROWS.mixed);
+  tileFor(byId('fingertips'), PIT_FALL_ROWS.mixed);
+  tileFor(byId('fingertips'), PIT_FALL_ROWS.frost, ' · slush');
+}
+
+// ------------------------------------------- TERMINAL VELOCITY — the maneki-neko (lab)
+// 16 Oct 2026: the lucky cat goes in as neon-1's first cat ("subverts the expectation of a
+// lucky cat and preps user to avoid cats"); six designs, five beckons. src/dev/maneki-candidates.js.
+{
+  const grid = section('maneki-bakeoff', 'TERMINAL VELOCITY — the maneki-neko (bake-off)',
+    'The lucky cat that opens Terminal Velocity 1, a few seconds in, before Pythagoras. Six designs, mostly white and one all gold, '
+    + 'all drawn flatter to sit with the neon hand: smiling while it beckons, snarling — red slits, fangs — when it swipes. '
+    + 'Then five ways for the beckoning paw to move (on the classic). The game deals A with beckon 1 until a pick. '
+    + 'On neon-1\u2019s golden hour, where it appears. Turn on SLOW to read the beckon. ANIMATED.',
+    '16 Oct 2026');
+  const strips = [{ label: 'TERMINAL VELOCITY 1 · GOLDEN HOUR', stageIndex: 1, camX: 300, bc: { neonMood: MANEKI_GOLDEN, progress: 0.06 } }];
+  tile(grid, 'DESIGNS — A–F', MANEKI_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · '),
+    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, MANEKI_CANDIDATES, false), { animated: true, wide: true });
+  tile(grid, 'BECKONS — 1–5', BECKON_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · ') + ' — pivot: quick flap from the elbow, slow lift; curl: the paw folds at the wrist; rock: the whole forearm rocks evenly; double: two flaps then a pause; slide: the old straight up-and-down',
+    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, BECKON_CANDIDATES, false), { animated: true, wide: true });
+  for (const cand of MANEKI_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, 'Riding in at Lorenzo, who hops it.', 480, laneHeight(strips),
+      (ctx, t) => drawNeonCatApproach(ctx, t, strips, cand), { animated: true, wide: true });
+  }
+}
+
+// ------------------------------------------------ CRYPT — the feral dog, redone (lab)
+// 16 Oct 2026: "redoing the dogs to look better and have a smoother run cycle? just do the
+// most vicious looking one" — "bakeoff". src/dev/feral-dog-candidates.js; every take is
+// drawn by the shipped painter (sprites/dogs.js paintDog, its gallery hooks seam).
+{
+  const grid = section('feral-dog-bakeoff', 'CRYPT — the feral dog, redone (bake-off)',
+    'B3 SHIPPED 16 Oct as the feral (“B3 is great - bigger hit box is fine”), and the planted gallop went to all three dogs and the finish guard — NOW below is the shipped B3, so the original feral now appears only inside A and E. The most vicious of the three lane dogs, redrawn and re-gaited. The shipped run is 8 frames at 15 fps and its planted feet slide along the road (they move back at about two-thirds of the dog’s speed), which is most of why it steps. '
+    + 'A–D run a new gallop: 16 frames, every stance foot nailed to the road, two flights a stride, the head held level, the frame rate set from the stride so the feet match the ground exactly. '
+    + 'A is the shipped drawing on the new gait alone; B–D are redrawn. Same 17x12 box, same art size, same speed. '
+    + 'First the pack running together over Crypt 1 and the eclipse, then each one riding in at Lorenzo, who hops it. Turn on SLOW to read the legs. ANIMATED.',
+    '16 Oct 2026');
+  const strips = [CRYPT_OBSTACLES.strips[0], CRYPT_OBSTACLES.strips[2]];
+  const r1 = FERAL_CANDIDATES.filter((c) => !c.round);
+  const r2 = [FERAL_NOW, r1.find((c) => c.letter === 'B'), ...FERAL_CANDIDATES.filter((c) => c.round === 2)];
+  tile(grid, 'ROUND 2 — NOW, B, then B2, B3, E, on a light ground', '“keep the wolf … a little larger … skinny in the belly … hard to read in the crypt esp when dark”; “perhaps the original dog just needs a restyle to be sleeker and less hunch backy”',
+    480, FERAL_SIDE_H, (ctx, t) => drawFeralSideBySide(ctx, t, r2), { animated: true, wide: true });
+  tile(grid, 'ROUND 2 — on the dark', 'the same five on the eclipse’s darkest colours',
+    480, FERAL_SIDE_H, (ctx, t) => drawFeralSideBySide(ctx, t, r2, true), { animated: true, wide: true });
+  tile(grid, 'ROUND 2 — the pack in Crypt', r2.map((c) => `${c.letter === 'NOW' ? '·' : c.letter} ${c.name}`).join(' · '),
+    480, laneHeight(strips), (ctx, t) => drawFeralLineup(ctx, t, strips, r2), { animated: true, wide: true });
+  tile(grid, 'SIDE BY SIDE — NOW, then A–D, on a light ground', 'running in place at in-run size, each at its own frame rate',
+    480, FERAL_SIDE_H, (ctx, t) => drawFeralSideBySide(ctx, t, [FERAL_NOW, ...r1]), { animated: true, wide: true });
+  tile(grid, 'THE PACK — NOW, then A–D', `· ${FERAL_NOW.name} · ` + r1.map((c) => `${c.letter} ${c.name}`).join(' · '),
+    480, laneHeight(strips), (ctx, t) => drawFeralLineup(ctx, t, strips, [FERAL_NOW, ...r1]), { animated: true, wide: true });
+  for (const cand of [FERAL_NOW, ...FERAL_CANDIDATES]) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
+      (ctx, t) => drawFeralApproach(ctx, t, strips, cand), { animated: true, wide: true });
+  }
+}
+
+// ------------------------------------------- TERMINAL VELOCITY — Pythagoras's snarl (lab)
+// 16 Oct 2026: "more prominent teeth baring on pythagoras? it is a little subtle right now".
+// src/dev/snarl-candidates.js.
+{
+  const grid = section('snarl-bakeoff', 'TERMINAL VELOCITY — Pythagoras bares his teeth (bake-off)',
+    'How Pythagoras snarls as he swipes. A is as shipped (a small gape and one fang). B GAPE drops the jaw wide with long fangs top and bottom; '
+    + 'C HISS curls the lips right back to a white bar of teeth with fangs at each end and a wrinkled nose; D VAMPIRE hangs two long fangs over the lip; '
+    + 'E ROAR throws the whole jaw open, red inside, every tooth. B–E also lift his head on the strike so the teeth clear his own arm. ANIMATED.',
+    '16 Oct 2026');
+  const strips = [{ label: 'TERMINAL VELOCITY 1 · GOLDEN HOUR', stageIndex: 1, camX: 300, bc: { neonMood: MANEKI_GOLDEN, progress: 0.06 } }];
+  tile(grid, 'SNARLS — A–E', SNARL_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · '),
+    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, SNARL_CANDIDATES, false), { animated: true, wide: true });
+  for (const cand of SNARL_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, 'Riding in at Lorenzo, who hops it.', 480, laneHeight(strips),
+      (ctx, t) => drawNeonCatApproach(ctx, t, strips, cand), { animated: true, wide: true });
+  }
+}
+
+// ------------------------------------------------ FIELD SERVICE — the goose, waddling (lab)
+// 16 Oct 2026: after the planted gallop went onto the dogs and cats, "maybe a waddle would
+// be better for the goose". src/dev/goose-waddle-candidates.js — the shipped drawing, new
+// legs and a planted step; three ways for a short-legged bird to keep up at vx −50.
+{
+  const grid = section('goose-waddle-bakeoff', 'FIELD SERVICE — the goose, waddling (bake-off)',
+    'C SHIPPED 16 Oct, reworked (“i like waddle and hop … body animation around the same as before with faster legs … fix his wings”): one hop a cycle at the old 2.2 a second, four quick planted steps before it, and wings rooted in the shoulder — so NOW below is that shipped goose; C here is the take as first drawn. Before that, NOW was stick legs paddling round an ellipse, its feet sliding at under half its speed. A–C keep the drawing line for line and give it a bird’s legs (the ankle breaking backward, a webbed foot landing flat) '
+    + 'and planted feet — every foot on the road moves back at exactly the ground speed, the frame rate set from the stride. A waddles (rocking onto each foot, head pumping) and has to scurry to keep up; '
+    + 'B charges, head down and wings beating, on longer strides; C waddles two steps then flaps into a hop, which carries ground and lets the steps slow down. Same box, same speed. '
+    + 'Side by side, then the flock on Field Service 1 and 3, then each riding in at Lorenzo. Turn on SLOW to read the feet. ANIMATED.',
+    '16 Oct 2026');
+  const strips = PLUMBER_OBSTACLES.strips;
+  tile(grid, 'SIDE BY SIDE — NOW, then A–C, on a light ground', 'running in place at in-run size',
+    480, GOOSE_SIDE_H, (ctx, t) => drawGooseSideBySide(ctx, t), { animated: true, wide: true });
+  tile(grid, 'THE FLOCK — NOW, then A–C', [GOOSE_NOW, ...GOOSE_CANDIDATES].map((c) => `${c.letter === 'NOW' ? '·' : c.letter} ${c.name}`).join(' · '),
+    480, laneHeight(strips), (ctx, t) => drawGooseLineup(ctx, t, strips), { animated: true, wide: true });
+  for (const cand of [GOOSE_NOW, ...GOOSE_CANDIDATES]) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
+      (ctx, t) => drawGooseApproach(ctx, t, strips, cand), { animated: true, wide: true });
+  }
+}
+
+// ---------------------------------------------- THE ANIMALS AT LOWER RESOLUTION (lab)
+// 16 Oct 2026: the 16-frame gallop doubled the animals' canvas cache — "a/b the lower res
+// in gallery for one or 2". src/dev/animal-detail-ab.js.
+{
+  const grid = section('animal-detail-ab', 'THE ANIMALS AT LOWER RESOLUTION — A/B',
+    'The same animal three times, rasterised as the game does at ANIMAL_DETAIL 2 (shipped), 1.5 and 1, with what its 16-frame ring costs in memory under each. '
+    + 'Drawn at 8 device pixels per world unit — the most any player ever sees an animal at (desktop zoom on the top density rung); a phone sees less at every rung but the top one. '
+    + 'If you cannot tell 2 from 1.5 here, nobody can in play. The wolf (Crypt’s biggest) and the bobcat (the biggest cache of all). ANIMATED.',
+    '16 Oct 2026');
+  const ROWS = [
+    ['dogFeral', 'crypt', { label: 'CRYPT 3 · ECLIPSE', stageIndex: 3, camX: 2200, bc: { progress: 0.7 } }, 'THE WOLF'],
+    ['dogFeral', 'crypt', { label: 'CRYPT 1', stageIndex: 1, camX: 600 }, 'THE WOLF'],
+    ['bobcat', 'speed', { label: 'SPEED ZONE 2', stageIndex: 2, camX: 1400 }, 'THE BOBCAT'],
+  ];
+  for (const [name, cab, strip, title] of ROWS) {
+    tile(grid, `${title} — detail 2 · 1.5 · 1`, `${strip.label}, at 8 device px per world unit`, 480, 148,
+      (ctx, t) => drawDetailAB(ctx, t, name, cab, strip), { animated: true, wide: true, hires: DETAIL_AB_RS });
+  }
+}
+
+// --------------------------------------------- the near-miss catch, measured (lab)
+// 16 Oct 2026: "how far away is that? can you mock it up? I don't want it TOO far from the
+// edge — an arm's distance ideally". The far wall of a real pit, and Lorenzo the frame he
+// comes down at lip level a given distance short of it (his drawn centre to the wall, in
+// world px — the number run.js LEDGE_REACH is measured in). Green: the run hands him the
+// ledge (H, and the jump-out). Red: he falls (G2). The arm's own reach is 8.
+{
+  const grid = section('ledge-reach-mockup', 'NEAR MISS — how short of the far wall still catches',
+    `run.js LEDGE_REACH is ${LEDGE_REACH} world px, measured from his drawn centre to the far wall the frame `
+    + 'he comes down level with the lip. His raised arm reaches about 8 by itself; past that he lunges for it. '
+    + 'Each tile: that distance, and whether it catches. Static.', '16 Oct 2026');
+  const cab = CABINETS.find((c) => c.id === 'plumber');
+  const pack = getStylePack(cab.style, { stageIndex: 1 });
+  for (const d of [4, 8, 12, 18, 24]) {
+    const ok = d <= LEDGE_REACH;
+    tile(grid, `${d} px short`, ok ? 'CATCHES — the hang, and the jump-out' : 'FALLS — no ledge', 240, 150, (ctx) => {
+      const camX = 600;
+      ctx.fillStyle = cab.sky?.[0] || '#000'; ctx.fillRect(0, 0, 240, 150);
+      ctx.save(); ctx.translate(-120, -150);
+      pack.bg?.(ctx, 0, camX, cab, 6000, null, 0, { stageIndex: 1, progress: 0.1 });
+      ctx.save(); applyWorld(ctx, 2, 0);
+      const wall = camX + 150;                       // far wall, world x
+      const gap = { ...makeObstacle('gap', wall - 56), w: 56, fill: cab.pitFill || 'tar' };
+      pack.ground?.(ctx, camX, cab, [gap], [], 0);
+      drawPitFills(ctx, camX, cab, [gap], 0, true, null, 480, cab.groundDark);
+      const wx = wall - camX;                        // screen-relative world x of the wall
+      // The catch zone, shaded on the road side of the wall.
+      ctx.fillStyle = 'rgba(80,220,120,0.22)';
+      ctx.fillRect(wx - LEDGE_REACH, GROUND_Y - 30, LEDGE_REACH, 30);
+      const cx = wx - d;                             // his drawn centre
+      drawToon(ctx, 'lorenzo', { kind: 'jump', time: 0, vy: -40, grounded: false, facing: 1 }, cx - HERO_CENTER_OFF, GROUND_Y, HERO_DRAW_H);
+      ctx.strokeStyle = ok ? '#2fd06a' : '#e04848'; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(cx, GROUND_Y - 13); ctx.lineTo(wx, GROUND_Y - 13); ctx.stroke();
+      ctx.restore(); ctx.restore();
+      ctx.font = '800 16px ui-monospace, Menlo, monospace'; ctx.fillStyle = ok ? '#2fd06a' : '#e04848';
+      ctx.fillText(ok ? 'CATCH' : 'FALL', 8, 22);
+    }, { wide: false, choice: `${d}` });
+  }
+}
+
+// ------------------------------------------------ FIELD SERVICE — bees that follow him (lab)
+// 16 Oct 2026: "when the hero hits bees, could some bees follow him for a while?" — and
+// "would the halo replace the stars and birds?". Candidates: src/dev/bee-follow-candidates.js,
+// each the `after` of a generic hit (the flash, then the bees over the blink) for ~3s.
+// Nothing is wired into the run.
+{
+  const grid = section('bee-follow-bakeoff', 'FIELD SERVICE — bees that follow him (bake-off)',
+    'A bee swarm is a generic hit today: a white flash, then stars and birdies. These keep the flash and the whole hit '
+    + '(knock burst, shake, hitstop, 1.4s blink) and send a few of the swarm’s own bees after him for about three seconds instead, '
+    + 'peeling off one at a time — a picture only, no hitbox. The swarm vanishes the moment it connects, as if it had come off the road onto him. '
+    + 'Lorenzo, Clara, Kiko and B-33P on a 4.9s loop; turn on SLOW to read them. ANIMATED.',
+    '16 Oct 2026');
+  const strips = PLUMBER_OBSTACLES.strips.slice(0, 2);
+  for (const cand of [BEE_NOW, ...BEE_CANDIDATES]) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
+      (ctx, t) => drawBeeTile(ctx, t, PLUMBER_OBSTACLES.cabinet, strips, cand.paint ? cand : null), { animated: true, wide: true });
+  }
 }
 
 // ---------------------------------------------------------------- driver

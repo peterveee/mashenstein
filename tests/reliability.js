@@ -910,9 +910,17 @@ assert(pitFace.faceSurprised && pitFace.browRaise,
 for (let i = 0; i < 8; i++) run.update(1 / 60);
 assert(run.pitDeath.dx > 4 && run.heroScreenX() > PLAYER_X,
   `momentum carries him out over the hole (${run.pitDeath.dx.toFixed(1)}px)`);
-for (let i = 0; i < 40 && !run.pitDeath.in; i++) run.update(1 / 60);
-assert(run.pitDeath.in && run.player.y === PIT_SURFACE_Y,
-  `he stops at the material rather than falling through it (y ${run.player.y})`);
+// The coyote hang (sprites/pitFall.js, picture E) holds him over the hole for a
+// second before the drop, so the material is ~1.2s away, not 0.2s.
+for (let i = 0; i < 120 && !run.pitDeath.in; i++) run.update(1 / 60);
+// The material lies a fixed depth under the FLAT line (where pitFill draws it); his
+// altitude is over the floor under him, so a hill there comes out of the number.
+{
+  const { GROUND_Y: flatY } = await import('../src/game/run.js');
+  const want = PIT_SURFACE_Y - (flatY - run.playerGroundY());
+  assert(run.pitDeath.in && Math.abs(run.player.y - want) < 1e-9,
+    `he stops at the material rather than falling through it (y ${run.player.y} = ${want})`);
+}
 const pitSettledPose = poseFromPlayer(run.player, 0);
 assert(pitSettledPose.grounded && pitSettledPose.kind === 'run' && pitSettledPose.squash === 0,
   'the pit landing settles into an upright pose instead of a mid-jump squash');

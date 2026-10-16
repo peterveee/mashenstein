@@ -393,9 +393,11 @@ export class Spawner {
     // for at all: it is laid the first time the lane reaches `from`, so a level is sure
     // to deal it, and never after `by`. Terminal Velocity 1's Pythagoras (Peter, 16 Oct
     // 2026: "make sure we have one on level 1"), in the golden hour before the strike.
-    // No draw is spent on it, so the rest of the lane's rolls are left in order.
+    // No draw is spent on it, so the rest of the lane's rolls are left in order. It is
+    // AUTHORED placement, so a section's curation of the random bag does not reach it:
+    // the golden hour excludes targets from the bag and still deals its one due target.
     const progress = this.totalDist ? this.nextX / this.totalDist : null;
-    for (const p of bank) {
+    for (const p of this.cabinet.patterns) {
       if (!p.due || progress == null || p.tier > tierMax) continue;
       if (this.usedOnce.has(p.onceGroup || p)) continue;
       if (progress >= p.due[0] && progress <= p.due[1]) return p;

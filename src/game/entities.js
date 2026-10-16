@@ -471,10 +471,12 @@ export const OBSTACLES = {
   // sprites/neonCats.js): the rattlesnake's mechanic — sat in the road, a swipe AS YOU
   // ARRIVE (`strikes`), a box that takes in the reach — on a sitting cat's 18x11.
   catPythagoras: { w: 18, h: 11, sprite: 'catPythagoras', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
+  catManeki:     { w: 18, h: 11, sprite: 'catManeki', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
   catMechaNeon:  { w: 18, h: 11, sprite: 'catMechaNeon', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
   catNekoGhost:  { w: 18, h: 11, sprite: 'catNekoGhost', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
   catNeonBright: { w: 18, h: 11, sprite: 'catNeonBright', ground: true, breakable: false, action: 'jump', animal: true, strikes: true },
-  dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: false, action: 'jump', vx: -68, animal: true },
+  // 18x13 since 16 Oct (was 17x12): the feral is the wolf, a little bigger (sprites/dogs.js).
+  dogFeral:   { w: 18, h: 13, sprite: 'dogFeral', ground: true, breakable: false, action: 'jump', vx: -68, animal: true },
   catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
   cryptPanther:    { w: 11, h: 9, sprite: 'cryptPanther', ground: true, breakable: false, action: 'jump', vx: -78, animal: true },
   // SPEED ZONE's closer since 28 Sep 2026 (Peter, from the desert-cat bake-off: the streak
@@ -658,6 +660,7 @@ export const DEBRIS = {
   dogBruiser: { colors: ['#c08a4a', '#95622f', '#ecd6b2'], size: 2.8, count: 12, mat: 'soft' },
   rattlesnake: { colors: ['#c9a56b', '#6b4a2e', '#efe0b4'], size: 2.6, count: 10, mat: 'soft' },
   catPythagoras: { colors: ['#5a321d', '#341a0e', '#f2a52a'], size: 2.4, count: 10, mat: 'soft' },
+  catManeki:     { colors: ['#f7f3ea', '#d8263a', '#f2c23a'], size: 2.2, count: 10, mat: 'stone' },
   catMechaNeon:  { colors: ['#e8eaf4', '#6b7299', '#ff2e4d'], size: 2.2, count: 10, mat: 'metal' },
   catNekoGhost:  { colors: ['#33264a', '#1d152c', '#a99bff'], size: 2.4, count: 10, mat: 'soft' },
   catNeonBright: { colors: ['#1e1640', '#3d3470', '#ff2e4d'], size: 2.4, count: 10, mat: 'soft' },

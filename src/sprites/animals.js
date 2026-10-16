@@ -25,11 +25,12 @@ import { OUTLINE_SCALE } from './outline.js';
 import {
   CAT_PAINTERS, CAT_TYPES, CAT_FRAMES, CAT_FPS, CAT_IDLE_FRAMES, CAT_STRIKE_FRAMES, SWIPE_T, CAT_STRIKE_LEAD,
 } from './neonCats.js';
-import { DOG_PAINTERS, FINISH_DOG_PAINTERS as DOG_FINISH_PAINTERS } from './dogs.js';
-import { paintCryptAnimal } from './crypt-animals.js';
+import { DOG_PAINTERS, FINISH_DOG_PAINTERS as DOG_FINISH_PAINTERS, DOG_FRAMES, dogStride } from './dogs.js';
+import { paintCryptPanther, cryptPantherStride } from './crypt-animals.js';
 import {
-  paintBobcat, BOBCAT_FRAMES, BOBCAT_FPS, BOBCAT_TALL, BOBCAT_VISUAL,
+  paintBobcat, bobcatStride, BOBCAT_FRAMES, BOBCAT_TALL, BOBCAT_VISUAL,
 } from './bobcat.js';
+import { FELINE_FRAMES, FELINE_GALLOP, felineFoot, felineBody } from './felineGait.js';
 
 // --------------------------------------------------------------- primitives
 // Same ink as every other prop, so an animal standing beside a crate is drawn
@@ -212,35 +213,15 @@ function quadEdge(x0, y0, cx, cy, x2, y2, side = 1) {
 
 
 // ------------------------------------------------------------------- the rig
-// Frame count is shared by every animal and by ANIMAL_FRAMES below. A painter
-// that cycles on a different count from the table it is rasterized against
-// jumps at the loop seam, so the two read one constant.
-const FRAMES = 8;
-
-// Where each foot is in the cycle. A gallop is not a walk: the pairs move
-// nearly together and the whole animal leaves the ground once per cycle, so
-// the two feet of a pair sit a sliver apart rather than half a cycle apart.
-// Near/far offsets are what stop the legs stacking into one silhouette.
-const GAIT = {
-  frontNear: 0.00,
-  frontFar: 0.13,
-  hindNear: 0.47,
-  hindFar: 0.60,
-};
-
-// One foot's position for a phase. The foot travels a flattened ellipse:
-// backward along the ground while it carries weight, forward through the air
-// while it does not. `reach` is the stride, `lift` how high it picks up.
-function footAt(p, cx, ground, reach, lift) {
-  const a = p * TAU;
-  const s = Math.sin(a);
-  return {
-    x: cx + Math.cos(a) * reach,
-    // Only the airborne half lifts; the planted half stays pinned to the floor
-    // so the animal does not appear to skate.
-    y: ground - Math.max(0, s) * lift,
-  };
-}
+// THE PLANTED GALLOP (16 Oct 2026; sprites/felineGait.js — Peter, after the dogs got
+// theirs: "can we fix the other feline animals also"). The cat used to swing each foot
+// round a flattened ellipse, eight frames at 20 fps, and its "planted" half moved back
+// at about a fifth of the cat's own speed, so it skated. It now runs the shared feline
+// gallop: every stance paw nailed to the road, sixteen frames (FELINE_FRAMES, which
+// ANIMAL_FRAMES reads too — a painter cycling on a different count from its table jumps
+// at the seam), stepped by the road it covers (catFuryStride, ANIMAL_STRIDE below).
+// The cat's own drawing is untouched; what moves is the legs, the spine and the head.
+const DEG = Math.PI / 180;
 
 // --------------------------------------------------------------- the breeds
 // Every number is a fraction of the painter's box, so a breed is a shape rather
@@ -267,7 +248,19 @@ const BREEDS = {
     leg: 0.38, chest: 0.27, arch: 0.085, tuck: 0.085,
     shoulderX: 0.430, hipX: 0.780, headX: 0.235, headR: 0.118, headY: 0.345,
     muzzle: 0.048, jawDrop: 0.62, neck: 0.14,
-    reach: 0.082, lift: 0.105, bob: 0.042, flex: 0.036,
+    // The planted gallop (sprites/felineGait.js), in the cat's own terms. Its leg
+    // length for the gait is the rest height of shoulder and hip over the road, so
+    // strideL and the touch-downs are in the same units the other cats use.
+    //   spine     how far shoulder and hip each move along the back either side of
+    //             rest, a fraction of the box (the whole back is ~0.35 of it: ±13%)
+    //   archK     the arch's swing either side of rest, a fraction of `arch`
+    //   bob       the body's rise through the flights, in gait leg lengths
+    //   headHold  how much of that rise the head takes back out
+    gallop: {
+      ...FELINE_GALLOP,
+      strideL: 3.0, hindTD: 0.46, foreTD: 0.50, liftF: 0.36, liftH: 0.30,
+      spine: 0.023, archK: 0.55, bob: 0.13, headHold: 0.6,
+    },
     boneUp: 0.029, boneLo: 0.019, paw: 0.026, haunch: 0.095,
     teeth: 0.85, eye: '#7ce8a0',
   },
@@ -476,23 +469,42 @@ function head(ctx, w, h, u, P, hx, hy, R, gape, tilt) {
 // stateful, which is what lets the rasterizer cache each frame by index.
 function quadruped(ctx, w, h, frame, P) {
   const u = Math.max(w, h);
-  const p0 = (frame % FRAMES) / FRAMES;
+  const p0 = (frame % FELINE_FRAMES) / FELINE_FRAMES;
   const ground = h * 0.995;
-
-  // Body rise and spine flex. The gallop's suspension is once per cycle, so
-  // both ride a single sine rather than a doubled one.
-  const bob = -Math.sin(p0 * TAU + Math.PI * 0.35) * h * P.bob;
-  const flex = Math.cos(p0 * TAU) * h * P.flex;
-
+  const G = P.gallop;
   const legLen = h * P.leg;
+  // The gait's leg length: shoulder and hip over the road at rest, averaged.
+  const gaitL = legLen + h * P.chest * 0.56;
+
+  // Body rise and spine flex (sprites/felineGait.js): the rise peaks in BOTH flights,
+  // two a stride; `fl` runs -1 at the extended flight to +1 at the gathered one.
+  const body = felineBody(G, p0);
+  const bob = -(body.bump - 0.5) * G.bob * gaitL;
+  const fl = 2 * body.flex - 1;
+
   const bellyY = ground - legLen + bob;
   const withersY = bellyY - h * P.chest + bob * 0.2;
-  const shX = w * P.shoulderX, hpX = w * P.hipX;
   // Shoulder and hip counter-move: the animal gathers and extends along its own
   // length. Without this the legs cycle under a body that is rigid, which is
-  // the single clearest tell of a cheap run cycle.
-  const shoulder = { x: shX - flex * 0.5, y: bellyY - h * P.chest * 0.62 };
-  const hip = { x: hpX + flex * 0.5, y: bellyY - h * P.chest * 0.50 };
+  // the single clearest tell of a cheap run cycle. The whole torso is built off
+  // these two, so the back itself shortens and lengthens — a cat's gallop is
+  // mostly spine — and at rest (fl 0) it is the drawing exactly as it was.
+  const shX = w * (P.shoulderX + G.spine * fl), hpX = w * (P.hipX - G.spine * fl);
+  const shoulder = { x: shX, y: bellyY - h * P.chest * 0.62 };
+  const hip = { x: hpX, y: bellyY - h * P.chest * 0.50 };
+  // ...and the back rounds up on the gather and flattens on the extension.
+  const arch = P.arch * (1 + G.archK * fl);
+  // The paws, off the REST roots (where the old ellipse was centred), so a planted
+  // paw holds still against the road while the shoulder or hip flexes over it.
+  // Facing left: forward is -x.
+  const restS = w * (P.shoulderX + 0.010), restH = w * (P.hipX - 0.020);
+  const paws = {};
+  for (const [k, fore, near] of [['fore', true, true], ['foreFar', true, false], ['hind', false, true], ['hindFar', false, false]]) {
+    const f = felineFoot(G, p0, fore, near);
+    paws[k] = { x: (fore ? restS : restH) - f.x * gaitL, y: ground - f.y * gaitL, a: f.a, stance: f.stance };
+  }
+  // Each leg's bones are sized off its rest span, so they hold their length all stride.
+  const spanF = legLen + h * P.chest * 0.62, spanH = legLen + h * P.chest * 0.50;
   const rumpX = hpX + w * 0.075;
   const chestX = shX - w * 0.105;
   // Where the spine peaks. On the dogs that is the withers; on the cat the arch
@@ -503,11 +515,11 @@ function quadruped(ctx, w, h, frame, P) {
   // control sits at twice the arch we actually want. The same trap the hero
   // hair crown hit (see hairCrown in sprites/toons.js) — without the doubling
   // the cat's back humps by half what the parameter says and reads as a dog.
-  const archCtrlY = withersY - h * P.arch * 2;
+  const archCtrlY = withersY - h * arch * 2;
   // Where the spine actually is at t along the back, so the hackle ridge can
   // sit ON it rather than float over the arched breeds.
   const spineAt = (t) => {
-    const a = withersY - h * P.arch * 0.55, b = archCtrlY, cc = withersY + h * 0.012;
+    const a = withersY - h * arch * 0.55, b = archCtrlY, cc = withersY + h * 0.012;
     const mt = 1 - t;
     return mt * mt * a + 2 * mt * t * b + t * t * cc;
   };
@@ -539,8 +551,8 @@ function quadruped(ctx, w, h, frame, P) {
   }
 
   // ---- far pair, behind everything ---------------------------------------
-  hindLeg(ctx, u, w, h, P, GAIT.hindFar, p0, hip, ground, P.coatLo, 0.9);
-  frontLeg(ctx, u, w, h, P, GAIT.frontFar, p0, shoulder, ground, P.coatLo, 0.9);
+  hindLeg(ctx, u, w, h, P, paws.hindFar, hip, spanH, P.coatLo, 0.9);
+  frontLeg(ctx, u, w, h, P, paws.foreFar, shoulder, spanF, P.coatLo, 0.9);
 
   // ---- tail ---------------------------------------------------------------
   const wag = Math.sin(p0 * TAU * 2) * h * 0.045;
@@ -644,7 +656,7 @@ function quadruped(ctx, w, h, frame, P) {
   const torsoPath = (c) => {
     c.moveTo(chestX, bellyY - h * P.chest * 0.66);
     // back line: withers, then over the arch, then down to the croup
-    c.quadraticCurveTo(shX - w * 0.02, withersY - h * 0.02, shX + w * 0.045, withersY - h * P.arch * 0.55);
+    c.quadraticCurveTo(shX - w * 0.02, withersY - h * 0.02, shX + w * 0.045, withersY - h * arch * 0.55);
     c.quadraticCurveTo(midX, archCtrlY, hpX - w * 0.015, withersY + h * 0.012);
     c.quadraticCurveTo(rumpX + w * 0.02, withersY + h * 0.075, rumpX - w * 0.005, bellyY - h * 0.055);
     // haunch and stifle
@@ -718,7 +730,7 @@ function quadruped(ctx, w, h, frame, P) {
       // Same three control values spineAt uses, so the ridge sits ON the back
       // at every breed instead of floating over the arched ones. The x control
       // is the midpoint, which makes x linear in t and y follow spineAt exactly.
-      at: quadEdge(sx0, withersY - h * P.arch * 0.55,
+      at: quadEdge(sx0, withersY - h * arch * 0.55,
         (sx0 + sx1) / 2, archCtrlY,
         sx1, withersY + h * 0.012, -1),
       n: furN, lean: 0.62 * furLean, seed: 0, sink: h * 0.035,
@@ -734,11 +746,13 @@ function quadruped(ctx, w, h, frame, P) {
   // a bright line across the animal's throat.
   const headR = w * P.headR;
   const neckLift = Math.sin(p0 * TAU + 1.0) * h * 0.020;
-  const hx = w * P.headX + flex * 0.35;
+  // The head rides the shoulder along the back, but holds its height: most of the
+  // body's rise is taken back out at the neck, so the eyes stay level.
+  const hx = w * P.headX + (shX - w * P.shoulderX) * 0.8;
   // Seated off its OWN parameter rather than off the withers. The ears are the
   // tallest thing any of these draw, and derived placement kept pushing them
   // through the top of the box on whichever breed was retuned last.
-  const hy = h * P.headY + neckLift + bob * 0.5;
+  const hy = h * P.headY + neckLift + bob * (1 - G.headHold);
   ink(ctx, P.coat, u, (c) => {
     c.moveTo(shX + w * 0.055, withersY - h * 0.012);
     c.quadraticCurveTo(hx + headR * 0.80, hy - headR * 1.05, hx + headR * 0.15, hy - headR * 0.55);
@@ -814,16 +828,18 @@ function quadruped(ctx, w, h, frame, P) {
   head(ctx, w, h, u, P, hx, hy, headR, gape, tilt);
 
   // ---- near pair, in front of everything ----------------------------------
-  hindLeg(ctx, u, w, h, P, GAIT.hindNear, p0, hip, ground, P.coatHi, 1, true);
-  frontLeg(ctx, u, w, h, P, GAIT.frontNear, p0, shoulder, ground, P.coatHi, 1, true);
+  hindLeg(ctx, u, w, h, P, paws.hind, hip, spanH, P.coatHi, 1, true);
+  frontLeg(ctx, u, w, h, P, paws.fore, shoulder, spanF, P.coatHi, 1, true);
 
-  // Dust scuffed up by whichever hind foot is planted. Cheap, and it is what
-  // pins the animal to the floor instead of leaving it sliding above it.
-  const scuff = Math.max(0, -Math.sin(p0 * TAU));
+  // Dust scuffed up by the near hind as it drives off the road. Cheap, and it is
+  // what pins the animal to the floor instead of leaving it sliding above it.
+  const hs = paws.hind.stance;
+  const scuff = hs >= 0 ? Math.sin(Math.PI * hs) : 0;
   if (scuff > 0.25) {
+    const sx = paws.hind.x;
     fill(ctx, `rgba(210,196,170,${(0.28 * scuff).toFixed(3)})`, (c) => {
-      c.ellipse(hpX + w * 0.05, ground - h * 0.012, w * 0.095 * scuff, h * 0.030 * scuff, 0, 0, TAU);
-      c.ellipse(hpX + w * 0.15, ground - h * 0.042, w * 0.050 * scuff, h * 0.022 * scuff, 0, 0, TAU);
+      c.ellipse(sx + w * 0.03, ground - h * 0.012, w * 0.095 * scuff, h * 0.030 * scuff, 0, 0, TAU);
+      c.ellipse(sx + w * 0.13, ground - h * 0.042, w * 0.050 * scuff, h * 0.022 * scuff, 0, 0, TAU);
     });
   }
 }
@@ -847,16 +863,16 @@ function paw(ctx, u, w, P, fx, fy, ang, col, shade, edge = OUTLINE, ew = 0.019) 
 // toward the tail, which with the art facing left means bend = -1. The wrist is
 // the short near-vertical section above the foot, and it is what lets the leg
 // fold under the animal on the gather instead of swinging like a pendulum.
-function frontLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade, near = false) {
+// `f` is the paw (quadruped's `paws`): where it is, and the gait's carpus -> paw
+// angle `a` (authored facing right, so mirrored here). `span` is the leg's rest
+// height, which sizes the bones so they keep their length through the stride.
+function frontLeg(ctx, u, w, h, P, f, root, span, col, shade, near = false) {
   const edge = near ? OUTLINE_NEAR : OUTLINE, ew = 0.019;
-  const p = (p0 + phase) % 1;
-  const f = footAt(p, root.x + w * 0.010, ground, w * P.reach, h * P.lift);
-  const span = ground - root.y;
   const pastern = span * 0.15;
-  // The wrist sits above the foot and slightly behind it.
-  const wr = { x: f.x + (root.x - f.x) * 0.12, y: f.y - pastern };
-  const l = (Math.hypot(wr.x - root.x, wr.y - root.y) + span * 0.85) / 2;
-  const el = joint(root.x, root.y, wr.x, wr.y, l * 0.54, l * 0.54, -1);
+  // The wrist sits above the paw along the gait's angle: behind it on the road,
+  // folded up over it in the air.
+  const wr = { x: f.x + Math.cos(f.a * DEG) * pastern, y: f.y - Math.sin(f.a * DEG) * pastern };
+  const el = joint(root.x, root.y, wr.x, wr.y, span * 0.46, span * 0.46, -1);
   const wu = w * P.boneUp * shade, wl = w * P.boneLo * shade;
   bone(ctx, u, root.x, root.y, el.x, el.y, wu, wl * 1.15, col, 'far', edge, ew);
   bone(ctx, u, el.x, el.y, wr.x, wr.y, wl * 1.15, wl * 0.80, col, 'far', edge, ew);
@@ -868,16 +884,13 @@ function frontLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade, near = f
 // makes. Solved in two passes because a single two-bone chain can only break
 // one way and this one breaks both: the stifle forward, the hock backward.
 // Getting that Z is most of what separates a dog from a coffee table.
-function hindLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade, near = false) {
+function hindLeg(ctx, u, w, h, P, f, root, span, col, shade, near = false) {
   const edge = near ? OUTLINE_NEAR : OUTLINE, ew = 0.019;
-  const p = (p0 + phase) % 1;
-  const f = footAt(p, root.x - w * 0.020, ground, w * P.reach, h * P.lift);
-  const span = ground - root.y;
-  // Pass one: place the hock, treating thigh+shank as one long bone and the
-  // metatarsus (hock to foot) as the short one. The hock therefore rides high,
-  // which is where a dog's actually sits.
+  // Pass one: place the hock off the paw along the gait's paw -> hock angle `a`
+  // (authored facing right, mirrored here): the metatarsus is the short bone, so
+  // the hock rides high, which is where a cat's actually sits.
   const met = span * 0.34;
-  const hock = joint(root.x, root.y, f.x, f.y, span * 0.80, met, -1);
+  const hock = { x: f.x - Math.cos(f.a * DEG) * met, y: f.y + Math.sin(f.a * DEG) * met };
   // Pass two: break the thigh and shank apart at the stifle, forward.
   const stifle = joint(root.x, root.y, hock.x, hock.y, span * 0.44, span * 0.44, 1);
   const wu = w * P.boneUp * shade, wl = w * P.boneLo * shade;
@@ -1098,7 +1111,8 @@ const GOOSE = {
   body: '#f4f1ea', bodyShade: '#d6d0c4', wingShade: '#c9c1b2', ink: '#2a1a16', beak: '#f08a2c',
   beakDark: '#c4611a', leg: '#f08a2c', legDark: '#c4611a',
 };
-const GOOSE_FRAMES = 10;
+// 24 frames since 16 Oct 2026 (was 10): the waddle-and-hop below, its legs on the road.
+export const GOOSE_FRAMES = 24;
 // ONE LINE, EVERYWHERE (Peter, 24 Sep: "finer more consistent outlines (inc. beak)"):
 // every contour on the bird — silhouette, wings, beak, feet — is this width in the
 // one ink. About 0.4 of a pixel in the lane, the weight of the other animals' contour.
@@ -1123,33 +1137,135 @@ function gooseInk(ctx, fill, lw, path, color = GOOSE.ink) {
   if (fill) { ctx.fillStyle = fill; ctx.fill(); }
   ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
 }
+// THE WADDLE AND HOP (16 Oct 2026, the goose bake-off, src/dev/goose-waddle-candidates.js:
+// "i like waddle and hop … can we have the body animation around the same as before with
+// faster legs? … fix his wings? attach them better to his body"). One ring is one HOP:
+// four quick waddling steps, then a wing-flapped hop that carries the rest of the road.
+// The body keeps the old bird's rhythm — one ring a cycle at about the old 2.2 a second
+// (GOOSE_ROAD below sets it), the same bob, nod and beak snap — while the legs, bird
+// legs now (the ankle breaking BACKWARD, a webbed foot that lands flat), take two step
+// cycles inside the waddle. Every foot on the road moves back at exactly the ground
+// speed, and run.js steps the ring by the road covered (ANIMAL_STRIDE.goose), so the
+// feet stay put.
+//
+// THE WINGS grow out of the shoulder: each is one shape pivoting at a root buried inside
+// the body, its outline stroked everywhere but across that root, so the body's fill and
+// the wing's meet with no seam; a scalloped trailing edge and a shade band along it. They
+// lie folded through the waddle and open and beat once for the hop.
+const GOOSE_STEP_END = 0.62;   // the waddle; the hop is the rest of the ring
+const GOOSE_LEG_CYCLES = 2;    // step cycles (each foot twice) in the waddle
+const GOOSE_DUTY = 0.6;        // of a step cycle, a foot on the road
+const GOOSE_TD_X = -2.3;       // touch-down, from under the hip (−x is forward)
+const GOOSE_HOP = 5.5;         // the hop's height, goose units
+// Road per ring, in goose units: about the old cycle rate (2.2 a second) at vx −50 and
+// the goose's drawn size (FIT ≈ 0.9 world per unit).
+export const GOOSE_ROAD = 25;
+const lerp = (a, b, k) => a + (b - a) * k;
+function gooseHermite(p0, p1, m0, m1, v) {
+  const v2 = v * v, v3 = v2 * v;
+  return (2 * v3 - 3 * v2 + 1) * p0 + (v3 - 2 * v2 + v) * m0 + (-2 * v3 + 3 * v2) * p1 + (v3 - v2) * m1;
+}
+function gooseIk(ax, ay, bx, by, l1, l2, side) {
+  const dx = bx - ax, dy = by - ay;
+  const d = Math.hypot(dx, dy) || 1e-4;
+  const dd = Math.min(d, (l1 + l2) * 0.998);
+  const a = (l1 * l1 - l2 * l2 + dd * dd) / (2 * dd);
+  const hh = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  const ux = dx / d, uy = dy / d;
+  return { x: ax + ux * a + uy * hh * side, y: ay + uy * a - ux * hh * side };
+}
+// A foot in the waddle: `lp` is the step-cycle phase. On the road it moves back (+x) at
+// the road's speed; in the air it swings forward on a curve leaving and arriving at it.
+function gooseStepFoot(lp, td) {
+  const S = GOOSE_ROAD * GOOSE_STEP_END / GOOSE_LEG_CYCLES;   // road per step cycle
+  const u = (((lp - td) % 1) + 1) % 1;
+  const loX = GOOSE_TD_X + S * GOOSE_DUTY;
+  if (u < GOOSE_DUTY) return { x: GOOSE_TD_X + S * u, y: 0, down: true };
+  const v = (u - GOOSE_DUTY) / (1 - GOOSE_DUTY);
+  const m = S * (1 - GOOSE_DUTY) * 0.45;
+  return { x: gooseHermite(loX, GOOSE_TD_X, m, m, v), y: 1.3 * Math.pow(Math.sin(Math.PI * v), 1.2), down: false };
+}
+function gooseFeet(ph) {
+  const step = (lp) => [gooseStepFoot(lp, 0), gooseStepFoot(lp, 0.5)];
+  if (ph < GOOSE_STEP_END) return step((ph / GOOSE_STEP_END) * GOOSE_LEG_CYCLES);
+  // The hop: from where the waddle left each foot to where the next waddle picks it up,
+  // tucked up under the body on the way.
+  const v = (ph - GOOSE_STEP_END) / (1 - GOOSE_STEP_END);
+  const a = step(GOOSE_LEG_CYCLES - 1e-6), b = step(0);
+  const e = v * v * (3 - 2 * v);
+  return a.map((f, i) => ({
+    x: lerp(f.x, b[i].x, e) + 0.8 * Math.sin(Math.PI * v),
+    y: lerp(f.y, b[i].y, e) + 3.8 * Math.sin(Math.PI * v),
+    down: false,
+  }));
+}
+// The wing, folded, in the body's frame: root (buried in the body) at the shoulder, the
+// leading edge back along the top to the tip, the scalloped trailing edge home. `open`
+// leaves the root edge out, for the stroke.
+function gooseWing(c, open) {
+  if (open) c.moveTo(-1.9, -2.5); else { c.moveTo(-0.8, 0.4); c.lineTo(-1.9, -2.5); }
+  c.bezierCurveTo(1.5, -4.4, 5.6, -4.4, 8.7, -4.0);
+  c.quadraticCurveTo(8.4, -2.8, 7.2, -2.8);
+  c.quadraticCurveTo(6.8, -1.8, 5.4, -1.8);
+  c.quadraticCurveTo(4.9, -0.8, 3.4, -0.7);
+  c.quadraticCurveTo(1.4, 0.6, -0.8, 0.4);
+  if (!open) c.closePath();
+}
+const GOOSE_WING_PIVOT = { x: -1.3, y: -1.2 };
+function paintGooseWing(ctx, ang, fill, shade) {
+  ctx.save();
+  ctx.translate(GOOSE_WING_PIVOT.x, GOOSE_WING_PIVOT.y);
+  ctx.rotate(ang);
+  ctx.translate(-GOOSE_WING_PIVOT.x, -GOOSE_WING_PIVOT.y);
+  gooseFill(ctx, fill, (c) => gooseWing(c, false));
+  ctx.save(); ctx.beginPath(); gooseWing(ctx, false); ctx.clip();
+  gooseFill(ctx, shade, (c) => c.ellipse(4.4, -0.2, 6.2, 1.6, -0.12, 0, TAU));
+  ctx.restore();
+  gooseStroke(ctx, GOOSE.ink, GOOSE_LINE, (c) => gooseWing(c, true));
+  ctx.restore();
+}
 function goose(ctx, w, h, frame = 0) {
   const P = GOOSE;
-  const u = ((frame % GOOSE_FRAMES) / GOOSE_FRAMES) * TAU;   // one stride per ring
-  const bob = Math.abs(Math.sin(u)) * 0.8;
+  const ph = (frame % GOOSE_FRAMES) / GOOSE_FRAMES;
+  const u = ph * TAU;                                         // the body's own cycle, as before
+  const hopV = ph < GOOSE_STEP_END ? 0 : (ph - GOOSE_STEP_END) / (1 - GOOSE_STEP_END);
+  const hop = hopV > 0 ? Math.sin(Math.PI * hopV) : 0;
+  const bob = Math.abs(Math.sin(u)) * 0.8 * (1 - hop) + GOOSE_HOP * hop;
+  const rock = 0.05 * Math.sin(u);                            // tipping onto each foot
   const s = Math.min(w / (GOOSE_SPAN.left + GOOSE_SPAN.right + GOOSE_PAD), h / GOOSE_SPAN.top);
   ctx.save();
   ctx.translate(w - GOOSE_SPAN.right * s, h);
   ctx.scale(s, s);
-  // Legs and feet, paddling: the far one darker.
-  for (const side of [0, 1]) {
-    const k = u + side * Math.PI;
-    const fx = -0.5 + Math.cos(k) * 2.8 + (side ? 1.4 : -1.2);
-    const lift = Math.max(0, Math.sin(k)) * 1.7;
-    gooseStroke(ctx, side ? P.leg : P.legDark, 0.7, (c) => { c.moveTo(side ? 0.8 : -0.6, -5.4 - bob); c.lineTo(fx, -0.8 - lift); });
-    gooseInk(ctx, side ? P.leg : P.legDark, GOOSE_LINE, (c) => { c.moveTo(fx + 0.6, -0.9 - lift); c.lineTo(fx - 2.2, -0.5 - lift); c.lineTo(fx + 0.4, 0.1 - lift); c.closePath(); });
-  }
-  ctx.translate(0, -6.2 - bob);
-  const flap = Math.sin(u + 1);
-  const wing = (lift, far) => (c) => {
-    const a = -0.9 - lift * 0.5 - (far ? 0.25 : 0);
-    const tx = 1 + Math.cos(a) * 8, ty = -2 + Math.sin(a) * 8;
-    c.moveTo(-2, -2.2);
-    c.quadraticCurveTo(tx - 4, ty - 1.5, tx, ty);
-    c.lineTo(tx + 1.6, ty + 1.4); c.lineTo(tx - 0.2, ty + 1.8); c.lineTo(tx + 1, ty + 3.2); c.lineTo(tx - 1, ty + 3.2);
-    c.quadraticCurveTo(3, -1, 3.6, -1.2); c.closePath();
+  // Legs: the hip rides the body (and its rock); shin to an ankle breaking backward,
+  // tarsus to a webbed foot lying flat on the road and folding toes-down in the air.
+  const feet = gooseFeet(ph);
+  const pivot = { x: 1.0, y: -6.2 - bob };
+  const rotPt = (x, y) => {
+    const c = Math.cos(rock), sn = Math.sin(rock), dx = x - pivot.x, dy = y - pivot.y;
+    return { x: pivot.x + dx * c - dy * sn, y: pivot.y + dx * sn + dy * c };
   };
-  gooseInk(ctx, P.wingShade, GOOSE_LINE, wing(flap, true));
+  for (const side of [1, 0]) {
+    const f = feet[side];
+    const hip = rotPt(side ? 1.2 : -0.2, -4.6 - bob);
+    const fy = -f.y;
+    const ank = gooseIk(hip.x, hip.y, f.x + 0.1, fy - 0.35, 3.0, 2.9, -1);
+    const col = side ? P.legDark : P.leg;
+    const leg = (c) => { c.moveTo(hip.x, hip.y); c.lineTo(ank.x, ank.y); c.lineTo(f.x + 0.1, fy - 0.35); };
+    gooseStroke(ctx, P.ink, 1.25, leg);
+    gooseStroke(ctx, col, 0.72, leg);
+    const tilt = f.down ? 0 : 0.6 * Math.min(1, f.y / 1.2);
+    ctx.save(); ctx.translate(f.x, fy); ctx.rotate(-tilt);
+    gooseInk(ctx, col, GOOSE_LINE, (c) => { c.moveTo(0.6, -0.5); c.lineTo(-2.3, -0.1); c.lineTo(-1.9, 0.45); c.lineTo(0.5, 0.25); c.closePath(); });
+    ctx.restore();
+  }
+  ctx.translate(pivot.x, pivot.y);
+  ctx.rotate(rock);
+  ctx.translate(-pivot.x, 0);
+  // Folded, the wings ride the old gentle flap; for the hop they open and beat once.
+  const fold = 0.06 * Math.sin(u + 1);
+  const open = hop > 0 ? -0.9 * Math.sin(Math.PI * Math.min(1, hopV * 1.3)) : 0;
+  // The far wing shows only as it lifts, behind the body.
+  if (open < -0.05) paintGooseWing(ctx, open - 0.25, P.wingShade, P.bodyShade);
   const nb = Math.sin(u * 2) * 0.5;
   const body = (c) => {
     c.moveTo(-4.2, -2.4); c.quadraticCurveTo(-5.8, 2.8, 0.8, 3); c.quadraticCurveTo(5.8, 3, 7.2, -1);
@@ -1222,8 +1338,11 @@ function goose(ctx, w, h, frame = 0) {
     c.lineTo(-2.6, 0.6); c.bezierCurveTo(-5.6, -1.6, -7.6, -2.2 + nb, -10.8, -2 + nb); c.closePath();
   });
   ctx.restore();
-  gooseFill(ctx, '#1a1816', (c) => c.arc(-11.4, -3 + nb, 0.45, 0, TAU));
-  gooseInk(ctx, P.body, GOOSE_LINE, wing(flap * 0.8, false));
+  // THE EYE (16 Oct 2026: "position gooses eye a bit better he looks stupid"): forward on
+  // the head, over the root of the beak where a goose's eye actually sits, rather than
+  // mid-skull — which gave him a blank, far-set stare. (A brow was tried and dropped.)
+  gooseFill(ctx, '#1a1816', (c) => c.ellipse(-11.85, -2.9 + nb, 0.44, 0.5, 0, 0, TAU));
+  paintGooseWing(ctx, fold + open, P.body, P.wingShade);
   ctx.restore();
 }
 
@@ -1236,7 +1355,7 @@ export const ANIMAL_PAINTERS = {
   catFury: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.catFury),
   cryptPanther: (ctx, w, h, frame = 0) => {
     ctx.save(); ctx.scale(w / 100, h / 70);
-    paintCryptAnimal(ctx, frame / (8 * 1.45), 'violet');
+    paintCryptPanther(ctx, (frame % FELINE_FRAMES) / FELINE_FRAMES);
     ctx.restore();
   },
   // SPEED ZONE's streak bobcat, in the bruiser's place there (sprites/bobcat.js).
@@ -1266,23 +1385,25 @@ export const STRIKERS = {
 };
 
 export const ANIMAL_FRAMES = {
-  dogSnarler: FRAMES, dogBruiser: FRAMES, dogFeral: FRAMES, catFury: FRAMES,
-  cryptPanther: FRAMES,
+  dogSnarler: DOG_FRAMES, dogBruiser: DOG_FRAMES, dogFeral: DOG_FRAMES, catFury: FELINE_FRAMES,
+  cryptPanther: FELINE_FRAMES,
   bobcat: BOBCAT_FRAMES,
   rattlesnake: SNAKE_FRAMES,
   goose: GOOSE_FRAMES,
   ...Object.fromEntries(CAT_TYPES.map((t) => [t, CAT_FRAMES])),
 };
 
+// The dogs' and the three running cats' rates here are overwritten below (THE PLANTED
+// GALLOP'S CLOCK): derived from each one's stride and speed, not chosen.
 // A gallop outruns a rotor. The bruiser's short legs cycle FASTER than the
 // long-legged pair, not slower: stride length and stride rate trade off, and a
 // short-strided animal keeping up has to take more steps to do it.
 export const ANIMAL_FPS = {
   dogSnarler: 16, dogBruiser: 18, dogFeral: 15, catFury: 20,
   cryptPanther: 12,
-  bobcat: BOBCAT_FPS,
+  bobcat: 16,
   rattlesnake: SNAKE_FPS,
-  goose: 22,
+  goose: 22, // overwritten below: the waddle-and-hop's clock
   ...Object.fromEntries(CAT_TYPES.map((t) => [t, CAT_FPS])),
 };
 
@@ -1299,6 +1420,9 @@ export const ANIMAL_TALL = {
   goose: 1.35,
   // The swiping cats sit up over a box the height of their haunches (the bake-off's slot).
   ...Object.fromEntries(CAT_TYPES.map((t) => [t, 1.45])),
+  // The lucky cat's beckoning paw and bigger head stand taller than the others; the
+  // art is taller, the box is the same.
+  catManeki: 1.75,
 };
 
 // Supersampling. This is NOT the only multiplier: rasterize() applies its own
@@ -1325,10 +1449,14 @@ export const ANIMAL_TALL = {
 //
 // If ZOOM_PHONE (game/run.js) or the density ladder moves, re-derive against
 // that 286px worst case rather than adjusting this by eye.
+// 1.5 since 16 Oct 2026 for the running animals: the planted gallop doubled their rings
+// to 16 frames, and Peter A/B'd 2 against 1.5 and 1 at the sharpest any player sees them
+// (lab animal-detail-ab: "i can't even tell.. lets go with 1.5") — which buys the memory
+// back (the wolf's ring 4.4MB -> 2.5MB, the bobcat's 6.0 -> 3.4).
 export const ANIMAL_DETAIL = {
-  dogSnarler: 2, dogBruiser: 2, dogFeral: 2, catFury: 2, goose: 2,
-  cryptPanther: 2,
-  bobcat: 2,
+  dogSnarler: 1.5, dogBruiser: 1.5, dogFeral: 1.5, catFury: 1.5, goose: 1.5,
+  cryptPanther: 1.5,
+  bobcat: 1.5,
   // One, not two: the snake's ring is 24 frames, and at two it would hold four times
   // the pixels of a dog's eight for a drawing that is mostly flat tone.
   rattlesnake: 1,
@@ -1348,7 +1476,9 @@ export const ANIMAL_DETAIL = {
 // takes the most because it is the smallest box and the fastest closer, and it
 // is the one that most needs to be seen coming.
 export const ANIMAL_VISUAL = {
-  dogSnarler: 1.16, dogBruiser: 1.16, dogFeral: 1.16, catFury: 1.24,
+  // The feral is the wolf since 16 Oct, drawn bigger on a bigger box (18x13, was 17x12;
+  // 1.22, was 1.16 — Peter: "his size a little larger", "bigger hit box is fine").
+  dogSnarler: 1.16, dogBruiser: 1.16, dogFeral: 1.22, catFury: 1.24,
   // The panther has the cat's 11x9 collision box; draw its long body at the
   // selected gallery size without making the jump timing harder.
   cryptPanther: 1.7,
@@ -1362,3 +1492,79 @@ export const ANIMAL_VISUAL = {
   // 1.1 for the bird, times the room its honk lines need (GOOSE_PAD): same size on screen.
   goose: 1.1 * (16.4 + 9.8 + 5.5) / (16.4 + 9.8),
 };
+
+// THE PLANTED GALLOP'S CLOCK (16 Oct 2026; sprites/dogs.js gallopPose). A dog's ring is
+// stepped by how far it has actually run, not by a fixed rate: the stride is the road
+// that passes under a planted foot in one cycle, at the size the dog is drawn, and the
+// run advances `gaitPh` by |vx| / stride (run.js), so the feet stay on the road at any
+// speed — the finish guard's included, which accelerates. ANIMAL_FPS is the same clock
+// at the def's own vx, for anything that draws a dog without a run (menus, gallery).
+// The boxes and speeds mirror game/entities.js (dogSnarler, dogBruiser, dogFeral,
+// finishDog); change them together.
+const DOG_BOXES = {
+  dogSnarler: ['snarler', 16, 11, 62],
+  dogBruiser: ['bruiser', 15, 10, 38],
+  dogFeral: ['feral', 18, 13, 68],
+};
+const FINISH_BOX = [22, 15];
+const FINISH_OF = { finishSnarler: 'dogSnarler', finishBruiser: 'dogBruiser', finishFeral: 'dogFeral' };
+export const ANIMAL_STRIDE = {};
+for (const [name, [breed, w, h, v]] of Object.entries(DOG_BOXES)) {
+  ANIMAL_STRIDE[name] = dogStride(breed, false, w, h, ANIMAL_TALL[name], ANIMAL_VISUAL[name]);
+  ANIMAL_FPS[name] = DOG_FRAMES * v / ANIMAL_STRIDE[name];
+}
+for (const [alias, base] of Object.entries(FINISH_OF)) {
+  ANIMAL_STRIDE[alias] = dogStride(DOG_BOXES[base][0], true, FINISH_BOX[0], FINISH_BOX[1], ANIMAL_TALL[base], ANIMAL_VISUAL[base]);
+}
+// The three running cats on the feline planted gallop (sprites/felineGait.js), the same
+// clock: each rig turns its stride into world units at the size it is drawn — the box x
+// 4/3 x VISUAL wide, and x TALL as well in height. Boxes and speeds mirror
+// game/entities.js (catFury, cryptPanther, bobcat); change them together.
+const FELINE_BOXES = {
+  catFury: [11, 9, 78],
+  cryptPanther: [11, 9, 78],
+  bobcat: [29, 13, 38],
+};
+const FELINE_STRIDE = {
+  // The quadruped is drawn in fractions of its box: its gait leg is a height.
+  catFury: (w, h, n) => {
+    const P = BREEDS.catFury;
+    return P.gallop.strideL * (P.leg + P.chest * 0.56) * h * 4 / 3 * ANIMAL_TALL[n] * ANIMAL_VISUAL[n];
+  },
+  cryptPanther: (w, h, n) => cryptPantherStride(w * 4 / 3 * ANIMAL_VISUAL[n]),
+  bobcat: (w, h, n) => bobcatStride(w, ANIMAL_VISUAL[n]),
+};
+for (const [name, [w, h, v]] of Object.entries(FELINE_BOXES)) {
+  ANIMAL_STRIDE[name] = FELINE_STRIDE[name](w, h, name);
+  ANIMAL_FPS[name] = FELINE_FRAMES * v / ANIMAL_STRIDE[name];
+}
+
+// The goose on the same clock (the waddle-and-hop, goose() above): GOOSE_ROAD goose units
+// of road a ring, at the scale goose() fits itself to its art box. Box and speed mirror
+// game/entities.js (goose, 16x11, vx −50).
+{
+  const [w, h, v] = [16, 11, 50];
+  const fit = Math.min(w * 4 / 3 * ANIMAL_VISUAL.goose / (GOOSE_SPAN.left + GOOSE_SPAN.right + GOOSE_PAD),
+    h * 4 / 3 * ANIMAL_TALL.goose * ANIMAL_VISUAL.goose / GOOSE_SPAN.top);
+  ANIMAL_STRIDE.goose = GOOSE_ROAD * fit;
+  ANIMAL_FPS.goose = GOOSE_FRAMES * v / ANIMAL_STRIDE.goose;
+}
+
+// Cycles per second of an entity's gallop right now: the road it covers over its
+// stride, or — waiting at the post, not moving — the def's own rate in place.
+export function animalGaitRate(e) {
+  const name = e.skin || e.def?.sprite || e.type;
+  const stride = ANIMAL_STRIDE[name];
+  if (!stride) return 0;
+  const v = Math.abs(e.vx || 0);
+  const base = FINISH_OF[name] || name;
+  return v > 1e-3 && !e.waiting ? v / stride : (ANIMAL_FPS[base] || 15) / (ANIMAL_FRAMES[base] || DOG_FRAMES);
+}
+// Advance `gaitPh` (cycles) by dt — run.js, wherever a galloper moves. draw.js picks the
+// ring's frame from it; anything drawn without a run falls back to the ANIMAL_FPS clock.
+export function stepGait(e, dt) {
+  const r = animalGaitRate(e);
+  if (!r) return;
+  if (e.gaitPh == null) e.gaitPh = e.bobPhase || 0;
+  e.gaitPh += r * dt;
+}

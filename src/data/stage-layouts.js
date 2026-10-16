@@ -112,7 +112,7 @@ export const STAGE_LAYOUTS = {
     rewindAt: null,
     routes: {},
     sections: [
-      { to: 1, label: "sparse, animals over props", density: 0.7, exclude: ["gap","crate","dogBruiser"] },
+      { to: 1, label: "sparse, animals over props; the panther and the wolf", density: 0.7, exclude: ["gap","crate","dogBruiser","dogSnarler","catFury"] },
     ],
   },
   "crypt-2": {
@@ -122,7 +122,7 @@ export const STAGE_LAYOUTS = {
     pits: null,
     rewindAt: null,
     sections: [
-      { to: 1, label: "sparse, animals over props", density: 0.7, exclude: ["crate","dogBruiser"] },
+      { to: 1, label: "sparse, animals over props; the fury cat and the panther", density: 0.7, exclude: ["crate","dogBruiser","dogSnarler","dogFeral"] },
     ],
   },
   "crypt-3": {
@@ -132,7 +132,7 @@ export const STAGE_LAYOUTS = {
     pits: null,
     rewindAt: null,
     sections: [
-      { to: 1, label: "sparse, animals over props", density: 0.7, exclude: ["crate","dogBruiser"] },
+      { to: 1, label: "sparse, animals over props; the wolf and the fury cat", density: 0.7, exclude: ["crate","dogBruiser","dogSnarler","cryptPanther"] },
     ],
   },
   "neon-1": {
@@ -142,6 +142,10 @@ export const STAGE_LAYOUTS = {
     pits: [{ at: 0.37, w: 52 }, { at: 0.71, w: 56 }],
     rewindAt: null,
     routes: { islands: [{ at: 0.1, dwell: 2.769, stack: "neon1-a", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true }, { at: 0.3, dwell: 2.769, stack: "neon1-b", rise: 33, coinGap: 46, boardArc: true, bonus: "capShield", bonusHigh: true, battery: true }, { at: 0.55, dwell: 2.769, stack: "neon1-c", rise: 33, coinGap: 46, boardArc: true, bonus: "capLowGrav", bonusHigh: true }, { at: 0.8, dwell: 2.769, stack: "neon1-d", rise: 33, coinGap: 46, boardArc: true, bonus: "capAirJump", bonusHigh: true, battery: true }, { at: 0.967, endsAtFinish: true, dwell: 2.769, stack: "neon1-finish", rise: 33, coinGap: 46, boardArc: true, bonus: "capShield", bonusHigh: true }] },
+    sections: [
+      { to: 0.239, label: "golden hour, until the first train lands: spaced jumps and coins, Pythagoras", density: 0.85, exclude: ["drone","shooterDrone","target","buzzbird"] },
+      { to: 1, label: "the night" },
+    ],
   },
   "neon-2": {
     durationSec: 90,

@@ -27,7 +27,7 @@ import {
   textWidth, wrapText, drawPanel, drawMenuRow, textYForMid,
   drawKeyLegend, keyLegendWidth, drawPellet, TEXT_INK_H,
 } from '../engine/sprites.js';
-import { STRIKERS } from '../sprites/animals.js';
+import { STRIKERS, stepGait, animalGaitRate } from '../sprites/animals.js';
 // The swiping cats' paws, relative to the swipe's own pitch, and each one's swipe
 // (engine/audio.js SWIPE_SHAPES; CAT_SWIPE names a cat's own, else CAT_SWIPE_DEFAULT).
 // Seconds after a cat's strike clock starts that its swipe sound is fired.
@@ -35,14 +35,15 @@ const CAT_SWIPE_AT = 0.05;
 // ...and its pull-back fwip: the paw starts home at 0.48s and moves fastest around 0.66s;
 // the fwip peaks 0.06s after it fires, so 0.54 puts it at 0.6, as the paw comes back.
 const CAT_RECOIL_AT = 0.54;
-const CAT_PAW_PITCH = { catPythagoras: 1, catMechaNeon: 1.06, catNekoGhost: 0.9, catNeonBright: 1.1 };
+const CAT_PAW_PITCH = { catManeki: 1.04, catPythagoras: 1, catMechaNeon: 1.06, catNekoGhost: 0.9, catNeonBright: 1.1 };
 const CAT_SWIPE_SHAPES = Object.fromEntries(Object.keys(CAT_PAW_PITCH)
   .map((t) => [t, SWIPE_SHAPES[CAT_SWIPE[t] || CAT_SWIPE_DEFAULT]]));
 import { RAKE_SWING_LEAD } from '../sprites/props.js';
 import { ZAP_T, ZAP_XRAY_CHANCE, zapCanXray } from '../sprites/zap.js';
 import { BLAST_T } from '../sprites/blast.js';
 import { pickHitPicture, hitPicLife } from '../sprites/hitPictures.js';
-import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor } from './player.js';
+import { LEDGE_REACH, PIT_WORDS, PIT_HANG_RAN, PIT_HANG_JUMPED, PIT_GRIP, PIT_GRIP_ALT, PIT_GRIP_DX, PIT_MANTLE_T, pitGripSlip, pitMantle, warmPitFall } from '../sprites/pitFall.js';
+import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, LANDED_T } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
@@ -88,7 +89,7 @@ import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe, drawRangedProjectile, drawToon, toonFaceSprite, BOW_AIM_T, BOW_REACH_T, BOW_RELEASE_AT, AXE_THROW_AT, ARROW_ARC, ARROW_BOX_SPEED, RANGED_RELEASE_AT, caneScale } from '../sprites/toons.js';
 import { laneEntryBeats } from '../engine/lanes.js';
-import { propFps, propSprite, MASH_GLOW, glowSprite } from '../sprites/props.js';
+import { propSprite, MASH_GLOW, glowSprite } from '../sprites/props.js';
 import {
   drawFrostFlypast, FROST_FLYPAST_SPEED, FROST_FLYPAST_SPAN, FROST_FLYPAST_DEPTH,
   FROST_FLYPAST_CLEAR, FROST_FLYPAST_LEAD, flypastAt, flypastPathY, flypastScaleFor,
@@ -513,6 +514,34 @@ const PIT_PLUNGE_MAX = 90;
 // is not coming back out; without it the restore lands on top of the sink and
 // the beat reads as a stutter rather than as an ending.
 const PIT_DEATH_HOLD = 2.25;
+// THE LEDGE SAVE (16 Oct 2026) — the two knobs, together.
+//
+// A jump that comes down just short of the far wall catches the lip by his front hand
+// (sprites/pitFall.js, picture H) and he hangs there, the fingers coming off 3 → 2 → 1.
+// A JUMP press within LEDGE_SAVE_T of the catch saves him: a quick mantle up and over
+// onto the ground past the lip, running again with the speed ramped back in, the
+// usual post-hit i-frames, "CLOSE ONE!". No press in time and the fall goes on exactly
+// as an unsaved one. Never on a beat-locked stage (Rhythm Bankruptcy): a near miss there
+// is the plain picture.
+//   LEDGE_SAVE_T     seconds after the catch a JUMP press still saves him: while three or
+//                    two fingers are on the lip (Peter, 16 Oct: "let him jump out if there are
+//                    3 or 2 fingers so about .5 seconds total"). The finger countdown in
+//                    sprites/pitFall.js is timed to it — the second finger goes at
+//                    PIT_GRIP.LAST = 0.5 — so the 3 → 2 is the visible timer; on the last
+//                    finger he is gone, and lets go at PIT_GRIP.SLIP (0.65). Keep it under SLIP.
+//   LEDGE_SAVE_COST  battery cells a save costs. 0: free. Above 0 they are taken as an
+//                    ordinary hit takes them (shield, Ramon, noDamage and all) but with no
+//                    hit picture — so a save that empties the battery is a death.
+export const LEDGE_SAVE_T = 0.5;
+export const LEDGE_SAVE_COST = 0;
+// LEDGE_REACH (how short of the far wall still catches) lives in sprites/pitFall.js, so the
+// lab can measure it without loading the run.
+// After a save: the run's speed ramps from LEDGE_RESUME_FROM of itself back to all of it
+// over LEDGE_RESUME_T, and the camera eases back onto him (he ends the mantle a few px
+// ahead of his column) at LEDGE_CATCH per second.
+const LEDGE_RESUME_T = 0.3;
+const LEDGE_RESUME_FROM = 0.2;
+const LEDGE_CATCH = 9;
 // How far short of the lip the JUMP sign stands. Touching it, near enough.
 //
 // It went 52 -> 12 -> 2. At a run-up back it read as roadside furniture
@@ -4060,7 +4089,7 @@ export class RunState {
     this.prevPlayerAnim = this.player?.anim;
     this.prevFinishPlayerX = this.finishPlayerX;
     this.prevIntroRunX = this.introRunX;
-    this.prevPitDx = this.pitDeath ? this.pitDeath.dx : 0;
+    this.prevPitDx = this.heroPitDx();
   }
 
   captureRenderInterpolation() {
@@ -4080,7 +4109,7 @@ export class RunState {
     this.prevPlayerAnim = this.player?.anim;
     this.prevFinishPlayerX = this.finishPlayerX;
     this.prevIntroRunX = this.introRunX;
-    this.prevPitDx = this.pitDeath ? this.pitDeath.dx : 0;
+    this.prevPitDx = this.heroPitDx();
   }
 
   heroRenderPhase(alpha) {
@@ -4225,6 +4254,8 @@ export class RunState {
     this.dead = false;
     // The sink, while one is playing. See updatePitSink.
     this.pitDeath = null;
+    this.ledgeHang = null; this.ledgeLead = 0; this.ledgeResumeT = 0; this.pitFallNext = null;
+    if (this.player) this.player.pitFall = null;
     // How many times this stage has taken the hero off the bottom of a hole.
     //
     // `||= 0` rather than `= 0`, and that is the whole of it. enter() is not
@@ -6260,7 +6291,7 @@ export class RunState {
       // thing still RUNNING when the tape is crossed, and a charging dog that
       // freezes mid-stride beside the celebration reads as a crash the same way
       // the hanging cone did. Its own legs carry it off the left of the frame.
-      for (const ob of this.obstacles) if (ob.type === 'finishDog' && ob.live !== false) ob.x += ob.vx * dt;
+      for (const ob of this.obstacles) if (ob.type === 'finishDog' && ob.live !== false) { ob.x += ob.vx * dt; stepGait(ob, dt); }
       // And the villain leaves. Same reason as the two above: he is stepped by
       // updateEntities, which the finale does not run, so a copter still on
       // screen when the tape arrived hung frozen in the sky beside the
@@ -6440,6 +6471,9 @@ export class RunState {
     }
     if (!this.beatLock && this.hitstop > 0) { this.hitstop -= dt; Input.endFrame(); return; }
     if (this.dead) { this.updateDead(dt); Input.endFrame(); return; }
+    // On the far lip by his fingers, the ledge save's window open: the world holds
+    // still and nothing has been decided yet. See startLedgeHang.
+    if (this.ledgeHang) { this.updateLedgeHang(dt); Input.endFrame(); return; }
 
     // A beat stage never enters the rewind state, even if a developer/test
     // harness injected a stale charge while switching stages.
@@ -6569,7 +6603,9 @@ export class RunState {
     const hero = HERO_BY_ID[this.relay.current];
 
     // Movement / camera.
-    const sp = this.speed * this.rewindSpeedMul;
+    // ...and after a ledge save the run eases back up to speed (ledgeResumeMul).
+    const sp = this.speed * this.rewindSpeedMul * this.ledgeResumeMul();
+    if (this.ledgeResumeT > 0) this.ledgeResumeT = Math.max(0, this.ledgeResumeT - wdt);
     // Where the feet and the toe were BEFORE this frame moves anything, for the
     // island sweep below. Taken here, ahead of the scroll, on purpose: computed
     // after `camX` advances, last frame's altitude gets rebased against the NEW
@@ -6649,6 +6685,13 @@ export class RunState {
       if (pos.done) this.loop.done = true;
     } else {
       this.camX += sp * wdt;
+      // A ledge save leaves him a few px ahead of his column: the camera takes the
+      // lead back a little faster than the world, so he never runs backwards.
+      if (this.ledgeLead > 0) {
+        const take = this.ledgeLead < 0.05 ? this.ledgeLead : this.ledgeLead * (1 - Math.exp(-LEDGE_CATCH * wdt));
+        this.ledgeLead -= take;
+        this.camX += take;
+      }
       if (this.copterLoopHold > 0) this.stepCopterLoopHold(sp * wdt);
       // Paying back what a lap put the backdrop ahead by: it runs a little
       // slower than the world until the two agree again.
@@ -6767,6 +6810,11 @@ export class RunState {
       // whoever started the run and stays so through every tag.
       ceiling: this.insideTrain ? neonTrainHeadroom(this.insideTrain, this.relay.current) : null,
     });
+    // Whether he came down this tick: a pit met on landing is one he jumped into.
+    this.pitLandedTick = !!res.landed;
+    // The pit picture's eye measurements, one at a time while he runs (pitFall.js).
+    if (this.pitWarmFor !== this.relay.current && ((this.pitWarmTick = (this.pitWarmTick || 0) + 1) % 15 === 0)
+      && warmPitFall(this.relay.current)) this.pitWarmFor = this.relay.current;
     this.cueAbilityReady();
     const tookIsland = (!riding && this.routes.length) ? this.updateRoute(prevFeetY, prevToeX) : false;
     if (this.routes.length) this.updateGirderRing(wdt);
@@ -7154,6 +7202,9 @@ export class RunState {
     // the splash, the camera and the sprite all agree on where he went in —
     // collisions are over by the time this is non-zero, so nothing else cares.
     if (this.pitDeath) return PLAYER_X + this.pitDeath.dx;
+    // ...and so do the ledge hang and the few px a save leaves him ahead of it.
+    if (this.ledgeHang) return PLAYER_X + this.ledgeHang.dx;
+    if (this.ledgeLead > 0) return PLAYER_X + this.ledgeLead;
     return PLAYER_X;
   }
 
@@ -7165,6 +7216,12 @@ export class RunState {
     return Number(this.portraitConfig().heroAnchorX) - PLAYER_X;
   }
   playerWorldX() { return this.camX + this.heroScreenX(); }
+  // How far a pit (the fall, the ledge hang, a save's lead) has him off his column.
+  heroPitDx() {
+    if (this.pitDeath) return this.pitDeath.dx;
+    if (this.ledgeHang) return this.ledgeHang.dx;
+    return this.ledgeLead > 0 ? this.ledgeLead : 0;
+  }
 
   /** Whether this frame is being presented as a portrait phone frame. */
   portraitFrame() {
@@ -7493,6 +7550,7 @@ export class RunState {
       speed: sp, ice: this.cabinet.mechanic === 'ice',
       gravityScale: this.beatLock ? 1 : this.powerups.gravityMultiplier(),
     });
+    this.pitLandedTick = !!res.landed;
     if (res.landed) {
       Audio.sfx('land');
       if (res.slideKickLand) shake(1.6, 0.11);
@@ -9860,6 +9918,9 @@ export class RunState {
       // a frame, which is how a cone that should lead by 25px ended up a
       // screen-width down the road.
       if (moving && ob.vx && !ob.punted) ob.x += ob.vx * dt;
+      // A galloping animal's legs are stepped by the road it covers (animals.js
+      // ANIMAL_STRIDE), so its planted feet never slide.
+      stepGait(ob, dt);
       // The finish dog announces itself and keeps announcing itself, the whole
       // way across the screen. Three rules govern the voice:
       //
@@ -9895,8 +9956,10 @@ export class RunState {
         ob.barkT = (ob.barkT ?? 0) - dt;
         const rel = ob.x + ob.w - this.playerWorldX();
         const fade = rel >= 0 ? 1 : Math.max(0, 1 + rel / FINISH_DOG_FADE);
-        const fps = propFps(ob.skin || ob.type);
-        const tNext = (8 - ((this.tRun * fps + ob.bobPhase * 4) % 8)) / fps;
+        // Seconds until the gallop's ring next wraps to frame 0, on the ring's own
+        // clock (animals.js stepGait: road covered, or the rate while it waits).
+        const cps = animalGaitRate(ob);
+        const tNext = cps > 0 ? (1 - ((ob.gaitPh % 1) + 1) % 1) / cps : Infinity;
         const snap = ob.barkNext != null && ob.barkNext > BARK_LEAD && tNext <= BARK_LEAD;
         ob.barkNext = tNext;
         if (ob.barkT <= 0 && fade > 0.04 && snap) {
@@ -14601,6 +14664,8 @@ export class RunState {
     Audio.stopSleighCarol();
     this.dead = false;
     this.pitDeath = null;
+    this.ledgeHang = null; this.ledgeLead = 0; this.ledgeResumeT = 0; this.pitFallNext = null;
+    if (this.player) this.player.pitFall = null;
     this.player.iframes = 0.75;
     this.speechQueue = []; // pre-death banter does not survive the respawn
     this.speechWaitT = 0;
@@ -14772,6 +14837,12 @@ export class RunState {
     ps.deflectFlashT = p.deflectFlashT;
     ps.zapT = p.zapT; ps.zapXray = p.zapXray; ps.blastT = p.blastT;
     ps.hitPic = p.hitPic; ps.hitPicT = p.hitPicT; ps.hitPicPrev = p.hitPicPrev;   // never mutated, only replaced
+    // The pit picture and the ledge save. A capture never lands mid-hang (the hang and
+    // the fall both return before the tape records), so these are nearly always empty —
+    // recorded so a restore empties them rather than leaving a hang on a live run.
+    ps.pitFall = p.pitFall ? { ...p.pitFall } : null;
+    s.ledgeHang = this.ledgeHang ? { ...this.ledgeHang } : null;
+    s.ledgeLead = this.ledgeLead || 0; s.ledgeResumeT = this.ledgeResumeT || 0;
     ps.powerPoseT = p.powerPoseT; ps.powerType = p.powerType;
     ps.fistThrown = p.fistThrown; ps.axeThrown = p.axeThrown; ps.wrenchThrown = p.wrenchThrown;
     ps.headless = p.headless; ps.assemblyGraceUsed = p.assemblyGraceUsed;
@@ -14904,6 +14975,9 @@ export class RunState {
     p.deflectFlashT = ps.deflectFlashT;
     p.zapT = ps.zapT || 0; p.zapXray = !!ps.zapXray; p.blastT = ps.blastT || 0;
     p.hitPic = ps.hitPic || null; p.hitPicT = ps.hitPicT || 0; p.hitPicPrev = ps.hitPicPrev || {};
+    p.pitFall = ps.pitFall ? { ...ps.pitFall } : null;
+    this.ledgeHang = s.ledgeHang ? { ...s.ledgeHang } : null;
+    this.ledgeLead = s.ledgeLead || 0; this.ledgeResumeT = s.ledgeResumeT || 0;
     p.powerPoseT = ps.powerPoseT; p.powerType = ps.powerType;
     p.fistThrown = ps.fistThrown; p.axeThrown = ps.axeThrown; p.wrenchThrown = ps.wrenchThrown;
     p.headless = ps.headless; p.assemblyGraceUsed = ps.assemblyGraceUsed;
@@ -15115,7 +15189,15 @@ export class RunState {
           // of its own, and about the fall when it does not. A crossing carries
           // its own material, so this cannot be read off the cabinet.
           const said = FILL_FAIL_MESSAGES[ob.fill || this.cabinet.pitFill] || PIT_FAIL_MESSAGES;
-          this.takeHit(this.fxRng.pick(said), true, null, ob);
+          const msg = this.fxRng.pick(said);
+          // HOW HE WENT IN decides the picture (sprites/pitFall.js) — and a jump that
+          // only just fell short is offered the ledge save, a hang BEFORE the death
+          // rather than a death that is later undone. See startLedgeHang.
+          const kind = this.pitFallKind(ob);
+          if (kind === 'H' && this.ledgeSaveOffered()) { this.startLedgeHang(ob, msg); continue; }
+          this.pitFallNext = { kind };
+          this.takeHit(msg, true, null, ob);
+          this.pitFallNext = null;
         }
         continue;
       }
@@ -15734,10 +15816,34 @@ export class RunState {
         // raised one (see crossingRise). The material lies at a fixed depth
         // below the flat groundline, so the hill has to come out of the number
         // or he stops a hill's height above the teeth.
-        surfaceY: (pit && fillSurface(pit.fill).hard)
-          ? fillSurfaceY(pit.fill) - (GROUND_Y - this.groundYAt(this.playerWorldX()))
-          : PIT_SURFACE_Y,
+        // ...and a liquid's surface is at a fixed depth under the flat line too (the
+        // art draws it there: pitFill.js, drawPitFills at GROUND_Y), so over a hill or
+        // a crossing's raised road the same rise comes out of it — or he stops in mid-air
+        // above the tar and the picture cuts him off there.
+        surfaceY: ((pit && fillSurface(pit.fill).hard) ? fillSurfaceY(pit.fill) : PIT_SURFACE_Y)
+          - (GROUND_Y - this.groundYAt(this.playerWorldX())),
       };
+      // THE PICTURE (sprites/pitFall.js), picked by collide from how he went in: E ran
+      // off the lip, G2 jumped in, H just short of the far wall. `w` is the beat clock,
+      // seconds since it was decided; H off an unsaved ledge hang carries on from where
+      // the hang had got to, so the fingers and the slips do not start again.
+      {
+        const pf = this.pitFallNext || { kind: 'E' };
+        const d = this.pitDeath;
+        d.kind = pf.kind; d.w = 0; d.w0 = 0; d.said = 0;
+        // G2 stops dead in mid-air: no drift.
+        if (d.kind === 'G2') d.carry = 0;
+        if (d.kind === 'H') {
+          const h = pf.hang;
+          d.w = d.w0 = h ? h.w : 0;
+          d.dx = h ? h.dx : 0;
+          d.dx0 = h ? h.dx0 : 0;
+          d.y0 = h ? h.y0 : this.player.y;
+          d.said = h ? h.said : 0;
+          d.lipX = pit ? pit.x + pit.w : this.playerWorldX() + HERO_CENTER_OFF + PIT_GRIP_DX;
+        }
+        this.syncPitFall(d, pit);
+      }
       this.player.fallFace = true;
       this.player.vy = Math.min(this.player.vy, 0);
       // HE IS FALLING, NOT JUMPING. Miss a hop into a hole and the jump that
@@ -16017,11 +16123,33 @@ export class RunState {
     p.fallFace = true;
     if (d.in) settlePose();
     else p.grounded = false;
+    // THE BEAT CLOCK of the picture (sprites/pitFall.js): `w` since it was decided,
+    // `e` since he met the material. The words are floaties, so their stack runs on
+    // through the fall rather than freezing with the world.
+    d.w = (d.w || 0) + dt;
+    if (d.in) d.e = (d.e || 0) + dt;
+    this.tickFloaties(dt);
+    this.pitFallWords(d);
+    // FINGERTIPS: the run holds him on the far lip by his hand, slips him down it in
+    // two jerks, and lets go at PIT_GRIP.SLIP. After that the sink below is the same.
+    if (d.kind === 'H') {
+      if (this.stepPitGrip(d)) { this.syncPitFall(d); return; }
+      if (d.hard) { this.syncPitFall(d); return; }
+      d.plunge *= Math.pow(0.05, dt);
+      p.y -= Math.max(PIT_SINK_RATE, d.plunge) * dt;
+      this.syncPitFall(d);
+      return;
+    }
+    // THE COYOTE HANG (E ran off the lip, G2 jumped in): over the hole, not yet
+    // falling, until the beat table's DROP. He ran off — he keeps running on air for
+    // a fifth of a second, which is the only drift there is; he jumped in — he stops
+    // dead where the run decided it (carry 0).
+    const T = d.kind === 'G2' ? PIT_HANG_JUMPED : PIT_HANG_RAN;
     // Momentum, with drag on it, and only while he is still in the air. Not a
     // constant glide: he is falling, so the forward travel has to be dying away
     // while the drop is speeding up, or the arc reads as a step off a diving
     // board rather than as a runner who ran out of floor.
-    if (!d.in && d.dx < d.carry) {
+    if (!d.in && d.w <= T.RUN + dt && d.dx < d.carry) {
       d.vx *= Math.pow(0.22, dt);
       d.dx = Math.min(d.carry, d.dx + d.vx * dt);
     }
@@ -16032,60 +16160,274 @@ export class RunState {
     if (Number.isFinite(d.wallX)) {
       d.dx = Math.min(d.dx, Math.max(0, d.wallX - (this.camX + PLAYER_X)));
     }
+    if (!d.in && d.w < T.DROP) {
+      // Hanging in the air: the drop starts from rest.
+      p.vy = 0;
+      this.syncPitFall(d);
+      return;
+    }
     if (!d.in) {
+      // The surface is at a fixed depth under the FLAT line, and his altitude is over
+      // the floor under his column — which the drift may have carried onto a hill or
+      // off one since takeHit measured it. Re-measured where he is now.
+      d.surfaceY = (d.hard ? fillSurfaceY(d.fill) : PIT_SURFACE_Y) - (GROUND_Y - this.playerGroundY());
       p.vy -= this.gravityForDeath() * dt;
       p.y += p.vy * dt;
       if (p.y <= d.surfaceY) {
         p.y = d.surfaceY;
-        d.in = true;
-        settlePose();
-        // TEETH STOP HIM DEAD. No plunge, no sink, no plop: he arrives on the
-        // tips and stays there for the rest of the hold, which is the whole
-        // difference between a material that takes you and one that catches
-        // you. The impact keeps the shake and gets the harder cue.
-        if (d.hard) {
-          d.plunge = 0;
-          p.vy = 0;
-          Audio.sfx('crunch');
-          Audio.sfx('die');
-          shake(4, 0.24);
-          burst(this.playerWorldX() + 6, this.playerGroundY() - p.y, 10, 60, 0.45,
-            '#b9c4d0', 1.4, 90, () => this.fxRng.float());
-          return;
-        }
-        // HE BREAKS THE SURFACE, he does not land on it. Zeroing the fall here
-        // stopped him dead on the tar like a man stepping onto a floor, which
-        // is the one thing the material must not look like — the whole reason
-        // it is there is that it is not a floor. Most of the fall is taken out
-        // of him and the rest carries him under.
-        d.plunge = Math.min(PIT_PLUNGE_MAX, Math.abs(p.vy) * 0.4);
-        p.vy = 0;
-        Audio.sfx('plop');
-        // The sting, held back from the lip by takeHit so the run is announced
-        // at the moment it ends rather than at the moment it was decided.
-        Audio.sfx('die');
-        shake(3, 0.22);
-        // Whatever he went into, coming back up. Colourless on purpose: eight
-        // of the nine cabinets name no fill, and a burst that guessed orange
-        // would be lying about the pit on all of them.
-        burst(this.playerWorldX() + 6, this.playerGroundY() - p.y, 12, 70, 0.5,
-          '#8a8496', 1.5, 90, () => this.fxRng.float());
+        this.pitArrive(d, Math.abs(p.vy));
       }
+      this.syncPitFall(d);
       return;
     }
     // The plunge dies away into a sink, and the sink is what the beat is for:
     // slow is the point, because a fast one is just a second fall and what this
     // wants to show is the hero being visibly TAKEN rather than dropped.
     // Nothing to sink into. He is on the teeth where he landed.
-    if (d.hard) return;
+    if (d.hard) { this.syncPitFall(d); return; }
     d.plunge *= Math.pow(0.05, dt);
     p.y -= Math.max(PIT_SINK_RATE, d.plunge) * dt;
+    this.syncPitFall(d);
+  }
+
+  // HE MEETS THE MATERIAL: the one frame the fall becomes a death. `speed` is how
+  // fast he arrived, which sets how far a liquid's plunge carries him under.
+  pitArrive(d, speed) {
+    const p = this.player;
+    d.in = true;
+    d.e = 0;
+    this.settleDeathPose();
+    if (p.deathT == null) p.deathT = 0;
+    // Where the burst comes from: the surface, which is where he broke it (an H
+    // hanging by his hand is already below it).
+    const by = this.playerGroundY() - d.surfaceY;
+    // TEETH STOP HIM DEAD. No plunge, no sink, no plop: he arrives on the
+    // tips and stays there for the rest of the hold, which is the whole
+    // difference between a material that takes you and one that catches
+    // you. The impact keeps the shake and gets the harder cue.
+    if (d.hard) {
+      d.plunge = 0;
+      p.vy = 0;
+      Audio.sfx('crunch');
+      Audio.sfx('die');
+      shake(4, 0.24);
+      burst(this.playerWorldX() + 6, by, 10, 60, 0.45,
+        '#b9c4d0', 1.4, 90, () => this.fxRng.float());
+      return;
+    }
+    // HE BREAKS THE SURFACE, he does not land on it. Zeroing the fall here
+    // stopped him dead on the tar like a man stepping onto a floor, which
+    // is the one thing the material must not look like — the whole reason
+    // it is there is that it is not a floor. Most of the fall is taken out
+    // of him and the rest carries him under.
+    d.plunge = Math.min(PIT_PLUNGE_MAX, speed * 0.4);
+    p.vy = 0;
+    Audio.sfx('plop');
+    // The sting, held back from the lip by takeHit so the run is announced
+    // at the moment it ends rather than at the moment it was decided.
+    Audio.sfx('die');
+    shake(3, 0.22);
+    // Whatever he went into, coming back up. Colourless on purpose: eight
+    // of the nine cabinets name no fill, and a burst that guessed orange
+    // would be lying about the pit on all of them.
+    burst(this.playerWorldX() + 6, by, 12, 70, 0.5,
+      '#8a8496', 1.5, 90, () => this.fxRng.float());
+  }
+
+  // HE WENT IN HOW? The picture is chosen at the moment the run declares the pit
+  // (sprites/pitFall.js): 'E' he ran off the lip, 'G2' he came down into the hole
+  // off a jump, 'H' he came down off a jump just short of the far wall, his front
+  // hand within LEDGE_REACH of it. Running off the near lip is never H. The two
+  // scripted runs (the finish dash, the walk-on) move his column themselves, so
+  // they keep to the two hangs, which do not need to move him.
+  pitFallKind(ob) {
+    if (!this.pitLandedTick) return 'E';
+    if (this.finishing || this.introRunning || !ob) return 'G2';
+    const toWall = (ob.x + ob.w) - (this.playerWorldX() + HERO_CENTER_OFF);
+    return toWall > 0 && toWall <= LEDGE_REACH ? 'H' : 'G2';
+  }
+  ledgeSaveOffered() { return !this.beatLock && !this.devInvuln; }
+
+  // THE WORDS, as the run's own floaties, said by his head (floatText `head`): one of
+  // PIT_WORDS on the gulp beat — never the one he said last time — and OUCH! off teeth.
+  pitFallWords(d) {
+    const gulpAt = d.kind === 'H' ? PIT_GRIP.GULP
+      : d.kind === 'G2' ? PIT_HANG_JUMPED.BACK : PIT_HANG_RAN.BACK;
+    if (!(d.said & 1) && d.w >= gulpAt && !d.in) {
+      d.said |= 1;
+      const pool = PIT_WORDS.length > 1 ? PIT_WORDS.filter((x) => x !== this.pitWordLast) : PIT_WORDS;
+      this.pitWordLast = this.fxRng.pick(pool);
+      this.floatText(this.pitWordLast, '#ffffff', { hold: 0.7, head: true });
+    }
+    if (!(d.said & 2) && d.in) {
+      d.said |= 2;
+      if (d.hard) this.floatText('OUCH!', '#ffe680', { hold: 0.9, head: true });
+    }
+  }
+
+  // Hanging off the far lip by his hand, for FINGERTIPS and for the ledge save's
+  // window alike (`d` is the pit death or the ledge hang). Pulled onto the wall over
+  // PIT_GRIP.SNAP, slipped 1.5 px with each finger that goes, and let go at
+  // PIT_GRIP.SLIP. True while that is still the frame's whole story.
+  stepPitGrip(d) {
+    const p = this.player;
+    const w = d.w;
+    const k = 1 - Math.pow(1 - Math.min(1, w / PIT_GRIP.SNAP), 2);
+    const target = d.lipX - PIT_GRIP_DX - HERO_CENTER_OFF - (this.camX + PLAYER_X);
+    d.dx = d.dx0 + (target - d.dx0) * k;
+    // HIS HAND IS ON THE LIP, so the hang is measured from the lip's own height, not
+    // from the floor under his column (a hill or a raised far lip puts them apart).
+    const lipUp = this.playerGroundY() - this.groundYAt(d.lipX + 0.5);
+    if (w < PIT_GRIP.SLIP) {
+      const hang = PIT_GRIP_ALT + lipUp;
+      p.y = w < PIT_GRIP.SNAP ? d.y0 + (hang - d.y0) * k : hang - pitGripSlip(w);
+      p.vy = 0;
+      p.grounded = false;
+      return true;
+    }
+    if (d.in) return false;
+    p.y = PIT_GRIP_ALT + lipUp - pitGripSlip(w) - (d.hard ? 2 : 0);
+    if (this.pitDeath === d) this.pitArrive(d, 160);
+    return true;
+  }
+
+  // What the hero's painter needs, mirrored onto the player (drawHeroSprite reads
+  // player.pitFall). `pit`, when given, is the hole: its material is read once.
+  syncPitFall(d, pit) {
+    const p = this.player;
+    if (pit !== undefined) {
+      d.fill = (pit && pit.fill) || this.cabinet?.pitFill || 'tar';
+      // The body's stop is read off the hole's OWN fill (takeHit), the art off the
+      // cabinet's when the hole names none — so a hole with no fill of its own on a
+      // spike cabinet sinks him. The picture follows the body: no jolt off teeth he
+      // did not stop on, no liquid line through a spike bed; he goes on down, uncut.
+      if (fillSurface(d.fill).hard && !d.hard) d.fill = 'none';
+    }
+    const pf = p.pitFall || (p.pitFall = {});
+    pf.kind = d.kind; pf.w = d.w || 0; pf.e = d.in ? (d.e || 0) : -1;
+    pf.fill = d.fill; pf.hard = !!d.hard; pf.surfAlt = d.surfaceY;
+    // In the world frame the hero is drawn in: where the material's surface really is
+    // (a fixed depth under the flat line, as drawPitFills paints it) and the lip's top.
+    pf.surfY = GROUND_Y - (d.hard ? fillSurfaceY(d.fill) : PIT_SURFACE_Y);
+    pf.lipY = d.lipX != null ? this.groundYAt(d.lipX + 0.5) : null;
+    pf.wallDx = d.lipX != null ? d.lipX - (this.camX + this.heroScreenX() + HERO_CENTER_OFF) : PIT_GRIP_DX;
+    pf.mantle = d.mantle == null ? null : Math.min(1, d.mantle / PIT_MANTLE_T);
+  }
+
+  // ------------------------------------------------------------ the ledge save
+  // A NEAR MISS IS A HANG BEFORE IT IS A DEATH. He is on the far lip by his fingers
+  // and the world has stopped (he is the camera's anchor and he is not moving), but
+  // nothing has been decided: no death counted, no battery, no fail count, no
+  // noDamage flag, no cue, no banner. Within LEDGE_SAVE_T a JUMP press pulls him out
+  // (a save is not damage); past it, takeHit is called exactly as collide would have
+  // called it, and the fall carries on from the hang's own clock as picture H.
+  startLedgeHang(ob, msg) {
+    const p = this.player;
+    this.ledgeHang = {
+      kind: 'H', w: 0, dx: 0, dx0: 0, y0: p.y, said: 0, in: false, mantle: null,
+      lipX: ob.x + ob.w, ob, msg,
+      // read as takeHit reads them, so an unsaved hang hands over without a jump
+      hard: !!fillSurface(ob.fill).hard,
+      surfaceY: (fillSurface(ob.fill).hard ? fillSurfaceY(ob.fill) : PIT_SURFACE_Y)
+        - (GROUND_Y - this.groundYAt(this.playerWorldX())),
+    };
+    p.vy = 0;
+    p.fallFace = true;
+    p.clearSlideState();
+    p.sliding = false;
+    p.slideAmount = 0;
+    p.rollT = 0;
+    p.floating = false;
+    this.syncPitFall(this.ledgeHang, ob);
+  }
+
+  updateLedgeHang(dt) {
+    const h = this.ledgeHang;
+    const p = this.player;
+    this.updateCamera(dt);
+    updateShake(dt, () => this.fxRng.float());
+    updateParticles(dt);
+    this.tickFloaties(dt);
+    if (h.mantle != null) {
+      // THE MANTLE: up off the hang and over the lip onto the ground past it.
+      h.mantle += dt;
+      const m = pitMantle(h.mantle / PIT_MANTLE_T);
+      const standDx = h.lipX + 2 - HERO_CENTER_OFF - (this.camX + PLAYER_X);
+      p.y = h.mantleY0 + (0 - h.mantleY0) * m.up;
+      h.dx = h.mantleDx0 + (standDx - h.mantleDx0) * m.fwd;
+      p.grounded = false;
+      p.vy = 0;
+      if (h.mantle >= PIT_MANTLE_T) this.finishLedgeSave();
+      else this.syncPitFall(h);
+      return;
+    }
+    h.w += dt;
+    this.stepPitGrip(h);
+    this.pitFallWords(h);
+    if (Input.pressed('jump')) {
+      // SAVED. The climb starts from wherever the hang has him.
+      h.mantle = 0;
+      h.mantleY0 = p.y;
+      h.mantleDx0 = h.dx;
+      Audio.sfx('jump');
+      this.syncPitFall(h);
+      return;
+    }
+    if (h.w >= Math.min(LEDGE_SAVE_T, PIT_GRIP.SLIP - 0.01)) {
+      // NOT SAVED: the death collide would have declared, declared now.
+      this.ledgeHang = null;
+      this.pitFallNext = { kind: 'H', hang: h };
+      this.takeHit(h.msg, true, null, h.ob);
+      this.pitFallNext = null;
+      // A banked rewind took it instead: the tape has put him back, picture and all.
+      if (!this.pitDeath) this.player.pitFall = null;
+      return;
+    }
+    this.syncPitFall(h);
+  }
+
+  // On his feet past the lip: running again, the run's speed ramped back in and the
+  // camera easing back onto him, with the post-hit i-frames so nothing standing just
+  // past the lip can punish the save.
+  finishLedgeSave() {
+    const h = this.ledgeHang;
+    const p = this.player;
+    this.ledgeHang = null;
+    p.pitFall = null;
+    p.y = 0; p.vy = 0;
+    p.grounded = true;
+    p.jumps = 0;
+    p.launched = false;
+    p.fallFace = false;
+    p.landedT = LANDED_T;
+    this.ledgeLead = Math.max(0, h.dx);
+    this.ledgeResumeT = LEDGE_RESUME_T;
+    Audio.sfx('land');
+    this.floatText('CLOSE ONE!', '#7ce8a0');
+    if (LEDGE_SAVE_COST > 0) {
+      // Taken as an ordinary hit takes a cell — with no picture, because no obstacle
+      // did it — and then the rest of the cost straight off the battery.
+      this.takeHit(null, false, null);
+      if (!this.dead && LEDGE_SAVE_COST > 1 && !this.devInvuln) {
+        this.battery = Math.max(0, this.battery - (LEDGE_SAVE_COST - 1));
+        if (this.battery <= 0) this.die(null, true, null);
+      }
+    }
+    if (!this.dead) p.iframes = Math.max(p.iframes, this.devInvuln ? 0.35 : 1.4);
+  }
+  // The run's speed while a save ramps back in (1 the rest of the time).
+  ledgeResumeMul() {
+    if (!(this.ledgeResumeT > 0)) return 1;
+    const q = 1 - this.ledgeResumeT / LEDGE_RESUME_T;
+    return LEDGE_RESUME_FROM + (1 - LEDGE_RESUME_FROM) * q * q * (3 - 2 * q);
   }
 
   // How long the death holds before the checkpoint takes the run back. A pit
   // death owns its own clock because it has three phases to get through.
   deadHold() {
-    return this.pitDeath ? PIT_DEATH_HOLD : 0.5;
+    // An H off an unsaved ledge hang spent the start of its beat before the death
+    // was declared, so the whole picture still fits the one hold.
+    return this.pitDeath ? PIT_DEATH_HOLD - (this.pitDeath.w0 || 0) : 0.5;
   }
 
   updateDead(dt) {
@@ -16341,8 +16683,15 @@ export class RunState {
     this.floaties = this.floaties.filter((f) => f.t > 0);
   }
 
-  floatText(text, color, { solid = false, keep = false, hold = 0, wx = null, base = floatBaseY() } = {}) {
+  floatText(text, color, { solid = false, keep = false, hold = 0, wx = null, base = floatBaseY(), head = false } = {}) {
     if (this.recordBackground) return;
+    // BY HIS HEAD: a word he says (the pit's GULP, OUCH!) rides just above his head
+    // wherever he is drawn, out of the column — it neither stacks nor is stacked on.
+    if (head) {
+      this.floaties.push({ text, color, t: hold || 0.8, y: 0, solid, scale: 1, pitch: 0, keep, wx: null, head: true });
+      if (this.floaties.length > 8) this.floaties.shift();
+      return;
+    }
     // Comic asides need longer than impact words such as PEW or DEFLECTED.
     // `hold` is for a line that is not run chatter and does not want the
     // chatter budget: the cap above is there because ordinary popups queue
@@ -16370,11 +16719,13 @@ export class RunState {
     let y = base;
     if (portrait) {
       for (const f of this.floaties) {
+        if (f.head) continue;
         const previousPitch = f.pitch || pitch;
         if (f.y - previousPitch < y) y = f.y - previousPitch;
       }
     } else {
       for (const f of this.floaties) {
+        if (f.head) continue;
         if (f.y + 19 * (f.scale || 1) > y) y = f.y + 19 * (f.scale || 1);
       }
     }
@@ -16521,8 +16872,8 @@ export class RunState {
       ? mix(Number.isFinite(this.prevFinishPlayerX) ? this.prevFinishPlayerX : this.finishPlayerX, this.finishPlayerX)
       : this.introRunning
         ? mix(Number.isFinite(this.prevIntroRunX) ? this.prevIntroRunX : this.introRunX, this.introRunX)
-        : this.pitDeath
-          ? PLAYER_X + mix(this.prevPitDx || 0, this.pitDeath.dx)
+        : (this.pitDeath || this.ledgeHang || this.ledgeLead > 0)
+          ? PLAYER_X + mix(this.prevPitDx || 0, this.heroPitDx())
           : PLAYER_X;
     // ...and the column the ART is centred on, which is six pixels along from
     // it (see HERO_CENTER_OFF in drawHeroSprite). Anything asking the TERRAIN a
@@ -17938,6 +18289,16 @@ export class RunState {
         // rides the hero. The stack's shift is his too — it exists to get the
         // column out of his way when he jumps — so a pinned card ignores it.
         const pinned = f.wx != null;
+        // A word by his head: a small block centred just above and ahead of his
+        // crown, where he is drawn this frame (the hang, the lean, the drop).
+        if (f.head) {
+          const r = this.heroScreenRect(z, pan, floorY);
+          drawFloatie(d, { ...f, wx: 0, y: Math.round(r.y0 - 15) }, {
+            heroX: (r.x0 + r.x1) / 2 + (this.mirror ? -6 : 6) * z,
+            alpha: Math.max(0, Math.min(1, f.t / 0.2)),
+          });
+          continue;
+        }
         drawFloatie(d, f, {
           heroX: pinned ? ((f.wx - cam) + portraitWorldXOffset) * z : heroX,
           mirror: this.mirror,

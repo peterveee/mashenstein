@@ -75,7 +75,8 @@ const INK_LUMA = 0.32;
 function isInk(style) {
   if (typeof style !== 'string') return false;
   let r, g, b;
-  const hex = style.match(/^#([0-9a-f]{3}|[0-9a-f]{6})/i);
+  // Six digits first: tried the other way round, '#2a1a16' matched as '#2a1' and read light.
+  const hex = style.match(/^#([0-9a-f]{6}|[0-9a-f]{3})/i);
   if (hex) {
     const h = hex[1].length === 3 ? hex[1].split('').map((c) => c + c).join('') : hex[1];
     [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));

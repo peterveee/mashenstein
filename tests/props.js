@@ -128,7 +128,7 @@ for (const name of Object.keys(PROP_FRAMES)) {
   // so 34 of their 36 frames are distinct drawings.
   const MIN_POSES = { qcrate: Math.ceil(n / 2), switch: 2,
     sawhorse: 4, parcels: 5, crampons: 6, caltrops: 4, graveRoses: 7, saucer: 7,
-    catPythagoras: 34, catNeonBright: 34, catMechaNeon: 34, catNekoGhost: 34 };
+    catManeki: 34, catPythagoras: 34, catNeonBright: 34, catMechaNeon: 34, catNekoGhost: 34 };
   const distinct = MIN_POSES[name] ?? n;
   assert(seen.size >= distinct, `${name}: draws enough distinct poses across its ${n} frames`);
 }
@@ -152,14 +152,40 @@ for (const f of [0, 9, 18, 27]) {
 const ANIMALS = ['dogSnarler', 'dogBruiser', 'dogFeral', 'catFury'];
 assert(ANIMALS.every((n) => typeof PROP_PAINTERS[n] === 'function'),
   'all four animals register a vector painter through the ANIMAL_PAINTERS spread');
-assert(ANIMALS.every((n) => propFrames(n) === 8),
-  'every animal gallops over the same eight frames');
-assert(ANIMALS.every((n) => propFps(n) >= 15 && propFps(n) <= 20),
-  'animal cycle rates sit in the gallop band, faster than the 11fps default');
-assert(propFps('dogBruiser') > propFps('dogFeral'),
-  'the short-legged bruiser takes MORE steps to keep up, not fewer');
-assert(ANIMALS.every((n) => propDetailScale(n) === 2),
-  'animals rasterize at the same double internal detail as every other refined prop');
+// THE PLANTED GALLOP (16 Oct 2026, sprites/dogs.js): the dogs run a 16-frame ring
+// stepped by the road they cover, so a planted foot never slides — their fallback
+// clock is that same rate at the def's speed: frames x |vx| / stride.
+const DOGS = ['dogSnarler', 'dogBruiser', 'dogFeral'];
+{
+  const { ANIMAL_STRIDE } = await import('../src/sprites/animals.js');
+  const { DOG_FRAMES } = await import('../src/sprites/dogs.js');
+  assert(DOGS.every((n) => propFrames(n) === DOG_FRAMES && DOG_FRAMES === 16),
+    'every dog gallops over the planted gallop\'s sixteen frames');
+  assert(DOGS.every((n) => Math.abs(propFps(n) * ANIMAL_STRIDE[n] / DOG_FRAMES - Math.abs(OBSTACLES[n].vx)) < 0.01),
+    'each dog\'s cycle rate carries its planted foot back at exactly its own speed — no skating');
+  assert(DOGS.every((n) => propFps(n) > 20 && propFps(n) < 60),
+    'dog cycle rates sit in a smooth band — well over the 15fps the 8-frame ring stepped at');
+}
+// THE FELINE PLANTED GALLOP (16 Oct 2026, sprites/felineGait.js): the three running cats
+// got the dogs' contract — sixteen frames, the ring stepped by the road covered, and the
+// fallback clock that same rate at the def's speed.
+const FELINES = ['catFury', 'cryptPanther', 'bobcat'];
+{
+  const { ANIMAL_STRIDE, animalGaitRate } = await import('../src/sprites/animals.js');
+  const { FELINE_FRAMES } = await import('../src/sprites/felineGait.js');
+  assert(FELINES.every((n) => propFrames(n) === FELINE_FRAMES && FELINE_FRAMES === 16),
+    'every running cat gallops over the planted gallop\'s sixteen frames');
+  assert(FELINES.every((n) => ANIMAL_STRIDE[n] > 0
+    && Math.abs(propFps(n) * ANIMAL_STRIDE[n] / FELINE_FRAMES - Math.abs(OBSTACLES[n].vx)) < 0.01),
+    'each cat\'s cycle rate carries its planted paw back at exactly its own speed — no skating');
+  assert(FELINES.every((n) => Math.abs(animalGaitRate({ type: n, def: OBSTACLES[n], vx: OBSTACLES[n].vx })
+    - Math.abs(OBSTACLES[n].vx) / ANIMAL_STRIDE[n]) < 1e-9),
+    'a running cat\'s ring is stepped by the road it covers (animalGaitRate)');
+  assert(FELINES.every((n) => propFps(n) > 20 && propFps(n) < 60),
+    'cat cycle rates sit in a smooth band');
+}
+assert(ANIMALS.every((n) => propDetailScale(n) === 1.5),
+  'the running animals rasterize at 1.5 — A/B\'d against 2 at the sharpest any player sees them (16 Oct 2026)');
 assert(ANIMALS.every((n) => !propHazardRim(n)),
   'animals carry their own hairline and skip the shared blurry hazard halo');
 assert(ANIMALS.every((n) => propVisualScale(n) > 1 && propVisualScale(n) < 1.35),

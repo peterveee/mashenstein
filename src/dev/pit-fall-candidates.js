@@ -17,8 +17,11 @@
 //
 // THE CANDIDATES keep that clock: every one ends inside the same 2.25s hold. A changes only
 // the face; B–E spend the first second of the hold on a coyote hang over the hole, then drop
-// the same short drop. Side-on always: looking down is the head TILTED forward about the
-// neck (and the pupils down), never a turn to camera. Faces are the rig's own wherever it has
+// the same short drop; G and H are the other ways in (a jump that lands in the hole, a jump
+// that just misses the far lip). Side-on always: looking down is the whole figure LEANING
+// out (the rig's pose.lean, about his feet) and the eyes down, never a turn to camera, and
+// nothing is cut out of him (Peter, 16 Oct: the first cut tilted the head alone and "it is
+// slicing it"). Faces are the rig's own wherever it has
 // one (surprised, grim, the death face's closed lids and teeth); the pinprick pupils are an
 // overlay, measured per hero off his own drawing (eyesOf), so it carries to the cast.
 //
@@ -27,17 +30,21 @@
 // cx the hero's centre at the moment of death, fy the groundline, w seconds since he died
 // (0..PIT_FALL_HOLD), t a running clock, fill the hole's material id, surf the altitude he
 // stops at (negative, below the lip), hard whether it holds him, carry the drift budget,
-// phase0 the run frame he died on. It draws the hero and everything that goes with him.
+// phase0 the run frame he died on, wall the far wall's x. It draws the hero and everything that goes with him.
 import { drawToon } from '../sprites/toons.js';
-import { layer } from '../sprites/zap.js';
 import { HIT_KIT } from '../sprites/hitPictures.js';
+import {
+  PIT_POSES, PIT_FACES, PIT_HANG_RAN, PIT_HANG_JUMPED, PIT_GRIP, PIT_GRIP_ALT,
+  drawPitHero, pitSweat, pitTakeJitter, drawPitBottom, pitHangFigure, pitGripFigure, pitGripSlip,
+  pitGripFingers, drawPitFingertips,
+} from '../sprites/pitFall.js';
 import { GROUND_Y, applyWorld } from '../engine/camera.js';
 import { getStylePack, drawPitFills } from '../engine/stylePacks/index.js';
 import { CABINET_BY_ID } from '../data/cabinets.js';
 import { makeObstacle } from '../game/entities.js';
 import { PIT_APRON_DEPTH, PIT_FLOOR, fillSurface } from '../game/pitFill.js';
 
-const { U, hash, clamp01, lerp, easeOut, puff, star, flame, lines, iceTint } = HIT_KIT;
+const { U, hash, clamp01, lerp, easeOut, puff } = HIT_KIT;
 const INK = '#2a2226';
 
 // ---------------------------------------------------------------- the run's numbers
@@ -68,231 +75,22 @@ function drop(w, w0, a0, surf) {
   return { alt: surf, in: true, wa: e - fallT, e, fallT, vy: G * fallT };
 }
 
-// ---------------------------------------------------------------- poses
-// Every pose is static in its own time (time 0): a dead run does not animate the rig, and
-// the eye measurement below is keyed on the pose.
-const runFrame = (phase, face = {}) => ({ kind: 'run', phase: ((phase % 1) + 1) % 1, time: 0, grounded: true, facing: 1, ...face });
-// Arms up, legs together, toes pointed: the cartoon drop.
-const dropPose = (face = {}) => ({
-  kind: 'jump', vy: 0, time: 0, grounded: true, facing: 1, ...face,
-  dance: { hands: [[0.55, -1.0], [0.75, -1.0]], feet: [[-0.06, 0], [0.06, 0]], ankles: [0.25, 0.25] },
-});
-// The hang: frozen mid-stride over nothing, arms out at his sides.
-const hangPose = (face = {}) => ({
-  kind: 'jump', vy: 0, time: 0, grounded: true, facing: 1, ...face,
-  dance: { hands: [[0.45, 0.35], [-0.45, 0.4]], feet: [[-0.2, -0.02], [0.22, -0.06]], ankles: [0.2, -0.1] },
-});
+// ---------------------------------------------------------------- poses, faces, the hero
+// SHIPPED (16 Oct): E, G2 and H went into the run, and their painters live in
+// sprites/pitFall.js — the poses, the faces, the measured pinprick eyes, the hero drawn
+// whole and cut off only at a surface, the sweat, the bottom's answer, the fingertips.
+// The candidates that did not ship are drawn here with the same pieces.
+const { runFrame, dropPose, hangPose } = PIT_POSES;
+const { SURPRISED, GRIM, SHUT, DEAD } = PIT_FACES;
 // Holding a sign up on a stick: front hand high, back hand at his side.
 const signPose = (face = {}) => ({
   kind: 'jump', vy: 0, time: 0, grounded: true, facing: 1, ...face,
   dance: { hands: [[0.35, -1.0], [-0.3, 0.6]], feet: [[-0.06, 0], [0.06, 0]], ankles: [0.25, 0.25] },
 });
-// Stiff with the shock of the teeth: arms flung up, legs braced.
-const yelpPose = (face = {}) => ({
-  kind: 'jump', vy: 0, time: 0, grounded: true, facing: 1, ...face,
-  dance: { hands: [[0.85, -1.0], [0.85, -1.0]], feet: [[-0.12, 0], [0.12, 0]], ankles: [0, 0] },
-});
-
-// The faces. SURPRISED is today's; GRIM is the rig's flat-mouthed set face (the gulp);
-// SHUT borrows the death face's first beat — lids down, the teeth bared — and holds it, so
-// it never reaches the spirals; DEAD is the death face proper, on its own clock.
-const SURPRISED = { faceSurprised: true, browRaise: true };
-const GRIM = { faceGrim: true, browRaise: true };
-const SHUT = { deathFace: 0.13 };
-const DEAD = (wa) => ({ deathFace: wa });
-
-// ---------------------------------------------------------------- the eyes, measured
-// Where his eye whites are, for a pose: the hero drawn twice at 8x, looking hard left and
-// hard right; the pixels that change are the pupils, and the near-white flooded out from
-// them is the rest of each eye. One mask per eye, in U from his feet, filled with the eye's
-// own white — paint it over him and the pupil is gone; a pinprick goes back on top.
-const EYES = new Map();
-const MS = 8;
-function eyesOf(heroId, pose) {
-  const key = heroId + JSON.stringify(pose);
-  if (EYES.has(key)) return EYES.get(key);
-  let eyes = [];
-  if (typeof document !== 'undefined') {
-    const W = 60 * MS, H = 50 * MS, FX = 30, FY = 40;
-    const grab = (gx) => {
-      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-      const c = cv.getContext('2d');
-      c.setTransform(MS, 0, 0, MS, 0, 0);
-      drawToon(c, heroId, { ...pose, gazeAmt: 1, gazeX: gx, gazeY: 0 }, FX, FY, U);
-      return c.getImageData(0, 0, W, H).data;
-    };
-    const a = grab(-0.06), b = grab(0.06);
-    const n = W * H;
-    const white = (d, k) => d[k + 3] > 200 && d[k] > 205 && d[k + 1] > 205 && d[k + 2] > 205;
-    const diff = (k) => Math.abs(a[k] - b[k]) + Math.abs(a[k + 1] - b[k + 1]) + Math.abs(a[k + 2] - b[k + 2]) > 90;
-    const seen = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-      if (seen[i] || !diff(i * 4)) continue;
-      // flood: changed pixels, and white in either render
-      const stack = [i]; seen[i] = 1;
-      const px = [];
-      while (stack.length) {
-        const p = stack.pop(); px.push(p);
-        const x = p % W, y = (p / W) | 0;
-        for (const q of [x > 0 && p - 1, x < W - 1 && p + 1, y > 0 && p - W, y < H - 1 && p + W]) {
-          if (q === false || seen[q]) continue;
-          const k = q * 4;
-          if (diff(k) || white(a, k) || white(b, k)) { seen[q] = 1; stack.push(q); }
-        }
-      }
-      if (px.length < 40 || px.length > 4000) continue;
-      let x0 = W, y0 = H, x1 = 0, y1 = 0, sr = 0, sg = 0, sb = 0, sn = 0, sx = 0, sy = 0;
-      for (const p of px) {
-        const x = p % W, y = (p / W) | 0;
-        x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-        sx += x; sy += y;
-        const k = p * 4;
-        for (const d of [a, b]) if (white(d, k)) { sr += d[k]; sg += d[k + 1]; sb += d[k + 2]; sn++; }
-      }
-      if (!sn) continue;
-      const col = `rgb(${Math.round(sr / sn)},${Math.round(sg / sn)},${Math.round(sb / sn)})`;
-      // the mask, grown a pixel so no ring of the old pupil survives at the rim
-      const mw = x1 - x0 + 3, mh = y1 - y0 + 3;
-      const m = document.createElement('canvas'); m.width = mw; m.height = mh;
-      const mc = m.getContext('2d');
-      mc.fillStyle = col;
-      for (const p of px) {
-        const x = p % W - x0 + 1, y = ((p / W) | 0) - y0 + 1;
-        mc.fillRect(x - 1, y - 1, 3, 3);
-      }
-      eyes.push({
-        mask: m, x: (x0 - 1) / MS - FX, y: (y0 - 1) / MS - FY, w: mw / MS, h: mh / MS,
-        cx: sx / px.length / MS - FX, cy: sy / px.length / MS - FY, r: Math.min(x1 - x0, y1 - y0) / MS / 2,
-      });
-    }
-    // NO PUPILS TO MOVE: a face whose eyes are lights (B-33P's visor) does not glance, so
-    // nothing changed. Then the eyes are the white blobs high on the figure, and the
-    // pinprick is the light itself shrunk to a dot on the visor behind it.
-    if (!eyes.length) {
-      const seen2 = new Uint8Array(n);
-      const headY = (FY - 0.5 * U) * MS;
-      for (let i = 0; i < n; i++) {
-        if (seen2[i] || !white(a, i * 4) || i / W > headY) continue;
-        const stack = [i]; seen2[i] = 1; const px = [];
-        while (stack.length) {
-          const p = stack.pop(); px.push(p);
-          const x = p % W, y = (p / W) | 0;
-          for (const q of [x > 0 && p - 1, x < W - 1 && p + 1, y > 0 && p - W, y < H - 1 && p + W]) {
-            if (q === false || seen2[q] || !white(a, q * 4)) continue;
-            seen2[q] = 1; stack.push(q);
-          }
-        }
-        if (px.length < 60 || px.length > 3000) continue;
-        let x0 = W, y0 = H, x1 = 0, y1 = 0, sx = 0, sy = 0;
-        for (const p of px) {
-          const x = p % W, y = (p / W) | 0;
-          x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); sx += x; sy += y;
-        }
-        // what is behind the light: the first solid pixel left of it
-        const my = Math.round((y0 + y1) / 2);
-        const k = (my * W + Math.max(0, x0 - 3)) * 4;
-        // a light is set in something dark; a highlight on glass is not
-        if (a[k + 3] < 200 || a[k] + a[k + 1] + a[k + 2] > 3 * 90) continue;
-        const col = `rgb(${a[k]},${a[k + 1]},${a[k + 2]})`;
-        const mw = x1 - x0 + 3, mh = y1 - y0 + 3;
-        const m = document.createElement('canvas'); m.width = mw; m.height = mh;
-        const mc = m.getContext('2d'); mc.fillStyle = col;
-        for (const p of px) mc.fillRect(p % W - x0, ((p / W) | 0) - y0, 3, 3);
-        eyes.push({
-          led: true, mask: m, x: (x0 - 1) / MS - FX, y: (y0 - 1) / MS - FY, w: mw / MS, h: mh / MS,
-          cx: sx / px.length / MS - FX, cy: sy / px.length / MS - FY, r: Math.min(x1 - x0, y1 - y0) / MS / 2,
-        });
-      }
-    }
-    // two at most, left to right
-    eyes = eyes.sort((p, q) => q.w * q.h - p.w * p.h).slice(0, 2).sort((p, q) => p.cx - q.cx);
-  }
-  EYES.set(key, eyes);
-  return eyes;
-}
-// The neck, where a look down tilts from: under the eyes, a little behind them.
-function neckOf(heroId) {
-  const e = eyesOf(heroId, runFrame(0, SURPRISED));
-  if (!e.length) return { x: -0.02, y: -0.55 };
-  const ex = e.reduce((s, q) => s + q.cx, 0) / e.length, ey = e.reduce((s, q) => s + q.cy, 0) / e.length;
-  return { x: ex - 0.06 * U, y: ey + 0.2 * U };
-}
-
-// ---------------------------------------------------------------- the hero, drawn
-// `o`: { pin, look: [gx, gy] (pinprick offset, U), tilt (rad, + = chin down), jitter (rad),
-//        sx, sy (stretch about his feet), soot: [color, amt], ice (amt), clipY (world y he is
-//        cut off below: the surface of what swallows him) }.
-function hero(c, heroId, x, fy, pose, o = {}) {
-  const box = [x - 1.5 * U, fy - 2.3 * U, x + 1.5 * U, fy + 0.4 * U];
-  const eyes = o.pin ? eyesOf(heroId, pose) : null;
-  // Squeezed shut: the rig's own lids do it, except on a face of lights, which gets a pair
-  // of > < chevrons lit where its eyes were.
-  const squint = pose.deathFace === SHUT.deathFace
-    ? eyesOf(heroId, { ...pose, deathFace: undefined, ...SURPRISED }).filter((e) => e.led) : [];
-  const L = layer(41, c, box, (q) => {
-    q.save();
-    if (o.sx || o.sy) { q.translate(x, fy); q.scale(o.sx || 1, o.sy || 1); q.translate(-x, -fy); }
-    drawToon(q, heroId, pose, x, fy, U);
-    if (eyes) {
-      const [gx, gy] = o.look || [0, 0];
-      for (const e of eyes) {
-        q.drawImage(e.mask, x + e.x, fy + e.y, e.w, e.h);
-        q.fillStyle = INK;
-        if (e.led) { q.fillStyle = '#e8fbff'; q.shadowColor = '#7fe4ff'; q.shadowBlur = 1.2 * U / 24 * 2; }
-        q.beginPath(); q.arc(x + e.cx + gx * U, fy + e.cy + gy * U, e.led ? Math.max(0.6, e.r * 0.4) : Math.max(0.42, e.r * 0.3), 0, Math.PI * 2); q.fill();
-        q.shadowBlur = 0;
-      }
-    }
-    squint.forEach((e, i) => {
-      const dir = i === 0 ? 1 : -1, ex = x + e.cx, ey = fy + e.cy, r = Math.max(0.9, e.r * 0.9);
-      q.strokeStyle = '#bff3ff'; q.lineWidth = 0.6; q.lineCap = 'round'; q.lineJoin = 'round';
-      q.beginPath(); q.moveTo(ex - dir * r, ey - r * 0.8); q.lineTo(ex + dir * r * 0.7, ey); q.lineTo(ex - dir * r, ey + r * 0.8); q.stroke();
-    });
-    q.restore();
-  });
-  if (o.soot && o.soot[1] > 0) {
-    L.o.save(); L.o.globalCompositeOperation = 'source-atop'; L.o.globalAlpha = o.soot[1];
-    L.o.fillStyle = o.soot[0]; L.o.fillRect(0, 0, L.w, L.h); L.o.restore();
-  }
-  if (o.ice > 0) iceTint(L, o.ice);
-  // back to the canvas: the body as it is, the head turned about the neck
-  const m = c.getTransform();
-  const dev = (wx, wy) => [m.a * wx + m.c * wy + m.e, m.b * wx + m.d * wy + m.f];
-  const tilt = (o.tilt || 0) + (o.jitter || 0);
-  c.save();
-  c.setTransform(1, 0, 0, 1, 0, 0);
-  if (o.clipY != null) { const [, cy] = dev(0, o.clipY); c.beginPath(); c.rect(0, 0, 1e5, cy); c.clip(); }
-  if (!tilt) {
-    c.drawImage(L.cv, 0, 0, L.w, L.h, L.x, L.y, L.w, L.h);
-  } else {
-    const nk = neckOf(heroId);
-    const [px, py] = dev(x + nk.x * (o.sx || 1), fy + nk.y * (o.sy || 1));
-    c.save(); c.beginPath(); c.rect(0, py - 1, 1e5, 1e5); c.clip();
-    c.drawImage(L.cv, 0, 0, L.w, L.h, L.x, L.y, L.w, L.h);
-    c.restore();
-    c.save(); c.translate(px, py); c.rotate(tilt); c.translate(-px, -py);
-    c.beginPath(); c.rect(0, 0, 1e5, py); c.clip();
-    c.drawImage(L.cv, 0, 0, L.w, L.h, L.x, L.y, L.w, L.h);
-    c.restore();
-  }
-  c.restore();
-}
+const hero = drawPitHero;
 
 // ---------------------------------------------------------------- dressing
-const SWEAT = '#8fd3ff', SWEAT_INK = '#2f6688';
-// A bead of sweat flicked off the back of his head: e seconds since it left.
-function sweat(c, heroId, x, fy, e) {
-  if (e < 0 || e > 0.45) return;
-  const nk = neckOf(heroId);
-  const x0 = x + nk.x - 0.12 * U, y0 = fy + nk.y - 0.42 * U;
-  const px = x0 - 26 * e, py = y0 - 22 * e + 110 * e * e;
-  const ang = Math.atan2(-22 + 220 * e, -26);
-  c.save(); c.globalAlpha *= 1 - clamp01((e - 0.32) / 0.13);
-  c.translate(px, py); c.rotate(ang - Math.PI / 2);
-  c.beginPath(); c.moveTo(0, -1.9); c.quadraticCurveTo(1.1, 0, 0, 1.0); c.quadraticCurveTo(-1.1, 0, 0, -1.9);
-  c.fillStyle = SWEAT; c.fill(); c.strokeStyle = SWEAT_INK; c.lineWidth = 0.35; c.stroke();
-  c.restore();
-}
+const sweat = pitSweat;
 // Little hand-lettered word: "gulp", "ouch".
 function word(c, text, x, y, a = 1, size = 5, col = '#ffffff', rot = -0.12) {
   if (a <= 0) return;
@@ -303,8 +101,7 @@ function word(c, text, x, y, a = 1, size = 5, col = '#ffffff', rot = -0.12) {
   c.fillStyle = col; c.fillText(text, 0, 0);
   c.restore();
 }
-// The double-take: two quick snaps of the head, back-forward, settling.
-const takeJitter = (e) => (e < 0 || e > 0.2 ? 0 : 0.2 * Math.sin(e * 62) * (1 - e / 0.2));
+const takeJitter = pitTakeJitter;
 // The run's own bursts at the surface (updatePitSink): ten pale bits off teeth, twelve grey
 // off a liquid, thrown up and falling back.
 function arrivalBurst(c, x, y, e, hard) {
@@ -380,24 +177,18 @@ function paintA(c, heroId, s) {
 // ---------------------------------------------------------------- B — the coyote hang
 // The beats of the hang, in seconds since he died. The whole thing fits the same 2.25s hold:
 // a second over the hole, the 0.2s drop, the rest at the bottom.
-const H = { RUN: 0.2, LOOK: 0.36, BACK: 0.66, DROP: 1.0 };
+const H = PIT_HANG_RAN;                 // { RUN: 0.2, LOOK: 0.36, BACK: 0.66, DROP: 1.0 }
 // One frame of the hang-and-drop: where he is and how he is drawn. `face` hooks let C–E
 // change a beat without restating the clock.
-function hangState(heroId, s) {
+// `T` is the beat table (H, or G2's shorter one), `alt0` the height he hangs at (0: the lip;
+// G3 hangs at the top of a hop), `windmill` swaps the double-take for one turn of the arms.
+function hangState(heroId, s, T = H, alt0 = 0, windmill = false) {
   const w = s.w;
-  const legs = w < H.RUN ? runFrame(s.phase0 + w * 3.2, SURPRISED) : null;   // still running on air
-  const dx = driftAt(Math.min(w, H.RUN), s.carry);
-  const d = drop(w, H.DROP, 0, s.surf);
+  const dx = driftAt(Math.min(w, T.RUN), s.carry);
+  const d = drop(w, T.DROP, alt0, s.surf);
   const alt = d.in && !s.hard ? s.surf - sunk(d.wa, d.vy) : d.alt;
-  const st = { dx, alt, d, wa: d.in ? d.wa : -1, falling: w >= H.DROP && !d.in, o: {} };
-  if (w < H.RUN) { st.pose = legs; st.beat = 'run'; }
-  else if (w < H.LOOK) { st.pose = hangPose(SURPRISED); st.o.jitter = takeJitter(w - H.RUN); st.beat = 'take'; }
-  else if (w < H.BACK) {
-    const q = clamp01((w - H.LOOK) / 0.08) * (1 - clamp01((w - H.BACK + 0.06) / 0.06));
-    st.pose = hangPose(SURPRISED); st.o.pin = true; st.o.tilt = 0.5 * easeOut(q); st.o.look = [0.012, 0.03 * q]; st.beat = 'look';
-  } else if (w < H.DROP) { st.pose = hangPose(GRIM); st.o.pin = true; st.beat = 'gulp'; }
-  else { st.pose = dropPose(SHUT); st.beat = d.in ? 'in' : 'drop'; if (!d.in) { st.o.sx = 0.92; st.o.sy = 1.1; } }
-  return st;
+  const fig = pitHangFigure(T, w, s.phase0, windmill, d.in);
+  return { dx, alt, d, wa: d.in ? d.wa : -1, falling: w >= T.DROP && !d.in, o: fig.o, pose: fig.pose, beat: fig.beat };
 }
 function paintHang(c, heroId, s, { gulpWord = true } = {}) {
   const st = hangState(heroId, s);
@@ -449,7 +240,7 @@ function paintD(c, heroId, s) {
   const st = hangState(heroId, s);
   const x = s.cx + st.dx, y = s.fy - st.alt;
   const face = w < H.DROP ? GRIM : SHUT;
-  const o = { ...st.o, tilt: 0, jitter: 0, pin: w < H.DROP };
+  const o = { ...st.o, jitter: 0, pin: w < H.DROP };
   if (st.falling) { o.sx = 0.92; o.sy = 1.1; }
   hero(c, heroId, x, y, signPose(face), o);
   sweat(c, heroId, x, y, w - H.BACK - 0.03);
@@ -471,98 +262,121 @@ function paintD(c, heroId, s) {
 //           yelping, an "ouch" burst of sparks under him; then down onto the tips, eyes shut.
 //   slush   a splash ring and a crown of drops, and he frosts over pale blue as he goes down.
 //   tar     a dull gloop and a dust puff; when he has gone, two slow bubbles come up.
-const LAVA_SMOKE = '#77717a';
 function paintE(c, heroId, s) {
-  const fill = s.fill;
-  if (fill === 'spikes' || s.hard) { paintESpikes(c, heroId, s); return; }
   const st = hangState(heroId, s);
   const x = s.cx + st.dx, y = s.fy - st.alt;
-  const sy = s.fy - s.surf;            // the surface, world y
-  const e = st.wa;
-  const o = { ...st.o, clipY: sy + 0.6 };
-  if (fill === 'lava' && e >= 0) o.soot = [LAVA_SMOKE, 0.42 * clamp01(e / 0.12)];
-  if (fill === 'slush' && e >= 0) o.ice = 0.85 * clamp01(e / 0.25);
-  hero(c, heroId, x, y, st.pose, o);
+  bottom(c, heroId, s, { x, y, e: st.wa, pose: st.pose, o: st.o });
   if (st.beat === 'gulp') word(c, 'gulp', x + 9, y - 1.15 * U, 1 - clamp01((s.w - H.DROP + 0.08) / 0.08), 4.5);
   sweat(c, heroId, x, y, s.w - H.BACK - 0.03);
-  if (e < 0) return;
-  if (fill === 'lava') {
-    // flames licking up round him
-    for (const [dx, h0, ph] of [[-5, 9, 0], [5.5, 11, 1.7], [0.5, 7, 3.1]]) {
-      const life = clamp01(1 - (e - 0.05) / 0.55);
-      if (life <= 0) continue;
-      const g = easeOut(clamp01(e / 0.07)) * life;
-      const fl = 1 + 0.25 * Math.sin(s.t * 47 + ph) + 0.12 * Math.sin(s.t * 83 + ph);
-      flame(c, x + dx, sy + 0.5, 2.0 * g, h0 * g * fl);
-    }
-    // smoke off the surface, rising
-    for (let k = 0; k < 5; k++) {
-      const age = e - 0.06 - k * 0.12;
-      if (age < 0 || age > 0.7) continue;
-      const q = age / 0.7;
-      puff(c, x + (k % 2 ? 8 : -8) + (hash(k * 3.1) - 0.5) * 3 - 4 * q, sy - 2 - 14 * q, 1.3 + 2.6 * q, 0.9 * (1 - q), k % 2 === 0);
-    }
-  } else if (fill === 'slush') {
-    // a splash ring on the surface and a crown of drops
-    const q = clamp01(e / 0.4);
-    if (q < 1) {
-      c.save(); c.globalAlpha *= 1 - q;
-      c.strokeStyle = '#e8f7ff'; c.lineWidth = 0.9;
-      c.beginPath(); c.ellipse(x, sy, 4 + 10 * easeOut(q), 1 + 1.6 * easeOut(q), 0, 0, Math.PI * 2); c.stroke();
-      c.restore();
-    }
-    for (let i = 0; i < 9; i++) {
-      const life = 0.4 + 0.15 * hash(i * 2.7);
-      if (e > life) continue;
-      const side = i % 2 ? 1 : -1, vx = side * (20 + 30 * hash(i * 1.9)), vy = -(50 + 40 * hash(i * 5.3));
-      const px = x + side * 3 + vx * e, py = sy + vy * e + 260 * e * e;
-      if (py > sy + 1) continue;
-      c.fillStyle = '#f4fbff'; c.strokeStyle = '#5b8fb0'; c.lineWidth = 0.3;
-      c.beginPath(); c.arc(px, py, 0.9, 0, Math.PI * 2); c.fill(); c.stroke();
-    }
-  } else {
-    // tar (and whatever else is liquid): a dull gloop, a dust puff, and bubbles after
-    for (let i = 0; i < 7; i++) {
-      const life = 0.32;
-      if (e > life) continue;
-      const side = i % 2 ? 1 : -1, vx = side * (12 + 18 * hash(i * 1.7)), vy = -(30 + 30 * hash(i * 4.3));
-      const px = x + side * 2 + vx * e, py = sy + vy * e + 240 * e * e;
-      if (py > sy + 1) continue;
-      c.fillStyle = '#2a2430'; c.beginPath(); c.arc(px, py, 0.9 + 0.4 * hash(i), 0, Math.PI * 2); c.fill();
-    }
-    for (const side of [-1, 1]) {
-      const q = clamp01(e / 0.45);
-      puff(c, x + side * (3 + 8 * easeOut(q)), sy - 1 - 2 * q, 1.2 + 2.2 * easeOut(q), 0.95 * (1 - clamp01((e - 0.15) / 0.35)));
-    }
-    for (const [at, dx] of [[0.75, -2], [1.0, 2.5]]) {
-      const b = (e - at) / 0.22;
-      if (b < 0 || b > 1) continue;
-      c.save(); c.globalAlpha *= b < 0.8 ? 1 : 1 - (b - 0.8) / 0.2;
-      c.strokeStyle = '#7d7590'; c.lineWidth = 0.5; c.fillStyle = '#3a3242';
-      c.beginPath(); c.arc(x + dx, sy - 0.3, 0.6 + 1.3 * b, Math.PI, 0); c.fill(); c.stroke();
-      c.restore();
-    }
+}
+// The bottom's answer, shared by E, G and H: the shipped one (sprites/pitFall.js
+// drawPitBottom), with the OUCH! lettered by hand — the run says it as a floatie.
+function bottom(c, heroId, s, args) {
+  drawPitBottom(c, heroId, { ...s, surfY: s.fy - s.surf }, { ...args, word: (...a) => word(c, ...a) });
+}
+
+// ---------------------------------------------------------------- the other ways in
+// The hang only makes sense for a hero who RAN off the lip. Two more ways into a hole:
+// a jump that comes down inside it (G), and a jump that comes down just short of the far
+// wall (H). Both arrive off a real hop: BASE_JUMP_V-ish launch, the run's 900 gravity,
+// the world scrolling under him until the frame he dies, then the death's 600 gravity.
+const JUMP_G = 900;
+const JV = 230;                          // apex ~29 px: a hop, kept inside the frame
+const JT = 2 * JV / JUMP_G;              // takeoff to back at lip height
+const jumpPose = (vy, face = {}) => ({ kind: 'jump', vy, time: 0, grounded: false, facing: 1, ...face });
+// The run-in for G and H: running, then the hop, on the clock the tile hands in (w < 0).
+function jumpApproach(c, heroId, s) {
+  const tau = s.w + JT;
+  if (tau < 0) { drawToon(c, heroId, runFrame(s.tl * 1.7), s.cx, s.fy, U); return; }
+  const alt = JV * tau - 0.5 * JUMP_G * tau * tau, vy = JV - JUMP_G * tau;
+  drawToon(c, heroId, jumpPose(vy), s.cx, s.fy - alt, U);
+}
+
+// G — JUMPED IN. Already falling (vy = −JV) and partway across when the hole takes him, so
+// no hang: he keeps his arc — the forward drift and the short drop — and wears A's face on
+// the way: pinprick eyes, the gulp, eyes squeezed shut; then the bottom answers as in E.
+const gArrive = (surf) => (-JV + Math.sqrt(JV * JV + 2 * G * -surf)) / G;
+function paintG(c, heroId, s) {
+  const wArr = gArrive(s.surf);
+  const arrived = s.w >= wArr;
+  const wa = arrived ? s.w - wArr : -1;
+  const dx = driftAt(Math.min(s.w, wArr), s.carry);
+  const vyArr = JV + G * wArr;
+  const alt = !arrived ? -JV * s.w - 0.5 * G * s.w * s.w : s.hard ? s.surf : s.surf - sunk(wa, vyArr);
+  const x = s.cx + dx, y = s.fy - alt;
+  // A jump's speed puts the run's full plunge on him: a liquid has him under in a third of a
+  // second, so the face runs at the pace of the sink.
+  const GULP = s.hard ? 0.3 : 0.1, SHUT_AT = s.hard ? 0.66 : 0.3;
+  let pose, o = {};
+  if (wa < Math.min(0.12, GULP)) { pose = jumpPose(-JV, SURPRISED); o.pin = true; o.jitter = takeJitter(s.w); o.look = [0.01, 0.02]; }
+  else if (wa < GULP) { pose = jumpPose(-JV, SURPRISED); o.pin = true; o.look = [0.01, 0.02]; }
+  else if (wa < SHUT_AT) { pose = jumpPose(-JV, GRIM); o.pin = true; }
+  else pose = dropPose(SHUT);
+  bottom(c, heroId, s, { x, y, e: wa, pose, o });
+  if (!s.hard) {
+    sweat(c, heroId, x, y, wa - 0.05);
+    const g = wa - GULP;
+    if (g > 0 && g < SHUT_AT - GULP + 0.1) word(c, 'gulp', x + 9, s.fy - 12 - 6 * clamp01(g / 0.3), 1 - clamp01((g - 0.22) / 0.08), 4.5);
   }
 }
-function paintESpikes(c, heroId, s) {
-  const st = hangState(heroId, s);
-  if (st.wa < 0) { paintHang(c, heroId, s); return; }
-  const e = st.wa;
-  const sy = s.fy - s.surf;
-  // the jolt: straight up off the tips and back
-  const J = 0.42;
-  const up = e < J ? 4 * 7 * (e / J) * (1 - e / J) : 0;
-  const x = s.cx + st.dx, y = sy - up;
-  if (e < J) hero(c, heroId, x, y, yelpPose(SURPRISED), { pin: true, sx: 0.94, sy: 1.08 });
-  else hero(c, heroId, x, y, dropPose(SHUT), {});
-  // the "ouch" burst: sparks thrown off the tips under him, and the word
-  if (e < 0.3) {
-    const a = 1 - e / 0.3;
-    lines(c, x, sy - 0.5, 2.5 + 6 * e, 6 + 14 * e, [-Math.PI * 0.92, -Math.PI * 0.72, -Math.PI * 0.5, -Math.PI * 0.28, -Math.PI * 0.08], a, '#ffe680');
-    star(c, x - 6 - 10 * e, sy - 3 - 6 * e, 1.6 * a + 0.4, e * 9);
-    star(c, x + 6 + 10 * e, sy - 4 - 7 * e, 1.4 * a + 0.4, -e * 9);
+
+// G2 — JUMPED IN, WITH A HANG (Peter, 16 Oct: "can we not float a bit when he jumps in, we
+// know he's going to miss right?"). The hop comes down into the hole as in G, and the frame
+// his feet reach the lip — the frame the run already decides he is dead — he stops dead
+// there: one windmill of the arms, leans out and looks down, gulps, drops the short drop,
+// and the bottom answers as in E. No prediction: it hangs where the death is decided.
+const G2T = PIT_HANG_JUMPED;            // { RUN: 0, LOOK: 0.22, BACK: 0.46, DROP: 0.72 }
+function paintG2(c, heroId, s) { paintHangE(c, heroId, s, G2T, 0); }
+// G3 — HANG AT THE APEX. The same hang at the top of the hop, for when the run can tell at
+// the apex that nothing can save him (no air jump left, no float or dash ready): the classic
+// coyote, frozen at the height of his jump. Drops from there — further, so faster.
+// A smaller hop than G's, so the hang at its top stays inside this sheet's un-craned frame
+// (the run's camera would crane up for a real jump's apex).
+const JV3 = 190;
+const G3_ALT = JV3 * JV3 / (2 * JUMP_G);
+const G3T = { RUN: 0, LOOK: 0.22, BACK: 0.5, DROP: 0.78 };
+function paintG3(c, heroId, s) { paintHangE(c, heroId, s, G3T, G3_ALT); }
+function apexApproach(c, heroId, s) {
+  const tau = s.w + JV3 / JUMP_G;        // the apex is the frame he dies
+  if (tau < 0) { drawToon(c, heroId, runFrame(s.tl * 1.7), s.cx, s.fy, U); return; }
+  const alt = JV3 * tau - 0.5 * JUMP_G * tau * tau, vy = JV3 - JUMP_G * tau;
+  drawToon(c, heroId, jumpPose(vy), s.cx, s.fy - alt, U);
+}
+// The hang with E's bottom, at any height on any beat table.
+function paintHangE(c, heroId, s, T, alt0) {
+  const st = hangState(heroId, { ...s, carry: 0 }, T, alt0, true);
+  const x = s.cx, y = s.fy - st.alt;
+  bottom(c, heroId, s, { x, y, e: st.wa, pose: st.pose, o: st.o });
+  if (st.beat === 'gulp') word(c, 'gulp', x + 9, y - 1.15 * U, 1 - clamp01((s.w - T.DROP + 0.06) / 0.06), 4.5);
+  sweat(c, heroId, x, y, s.w - T.BACK - 0.02);
+}
+
+// H — FINGERTIPS. The hop comes down a few px short of the far wall: his front hand catches
+// the lip and he hangs there by it, body down in the hole (in the material, if it is a
+// liquid — he is going under anyway). He looks up at the hand, gulps, the fingers come off
+// the edge in two jerks (no scrape marks: Peter, 16 Oct — the hand is behind the floor) — and he goes in, and the bottom answers as in E.
+const HF = PIT_GRIP;                     // the shipped beats: three fingers, two, one, gone (pitFall.js)
+const HANG_ALT = PIT_GRIP_ALT;           // his front hand, at the top of his reach, on the lip
+function paintH(c, heroId, s) {
+  const w = s.w;
+  const x = s.cx;
+  // the two jerks as the fingers go
+  const slipBy = pitGripSlip(w);
+  let alt, pose, o = {}, e = -1;
+  if (w < HF.SLIP) {
+    alt = w < HF.SNAP ? lerp(0, HANG_ALT, easeOut(w / HF.SNAP)) : HANG_ALT - slipBy;
+    ({ pose, o } = pitGripFigure(w));
+  } else {
+    e = w - HF.SLIP;
+    alt = s.hard ? HANG_ALT - slipBy - 2 : HANG_ALT - slipBy - sunk(e, 160);
+    pose = dropPose(SHUT);
   }
-  word(c, 'OUCH!', x + 11, y - 1.25 * U - 2 * easeOut(clamp01(e / 0.1)), easeOut(clamp01(e / 0.06)) * (1 - clamp01((e - 0.55) / 0.15)), 5.5, '#ffe680', -0.16);
+  const y = s.fy - alt;
+  bottom(c, heroId, s, { x, y, e, pose, o, restY: s.fy - (HANG_ALT - slipBy - 2) });
+  // the fingers on the edge: three, then two, then one, then gone
+  if (w < HF.SLIP) drawPitFingertips(c, heroId, s.wall, s.fy, pitGripFingers(w));
+  if (w >= HF.GULP && w < HF.SLIP) word(c, 'gulp', x - 12, s.fy - 7, 1 - clamp01((w - HF.SCRAPE) / 0.08), 4.5, '#ffffff', 0.1);
+  sweat(c, heroId, x, y, w - HF.GULP - 0.02);
 }
 
 // ---------------------------------------------------------------- the candidates
@@ -577,7 +391,7 @@ export const PIT_FALL = [
     note: 'Today’s fall exactly, with a living face: a double-take at the lip, pupils gone to pinpricks on the way down, a bead of sweat flicked off as he lands, '
       + '“gulp”, then eyes squeezed shut and teeth bared as it takes him. No spirals — that is the face he goes under with.' },
   { letter: 'B', id: 'coyote', name: 'COYOTE HANG', paint: paintB,
-    note: 'Runs a step on thin air, stops dead over the hole, double-takes, tilts his head DOWN at it (side-on, the head turned about the neck, pupils to pinpricks), '
+    note: 'Runs a step on thin air, stops dead over the hole, double-takes, LEANS out over it to look down (the whole figure tipped forward about his feet, eyes down, pupils to pinpricks), '
       + 'looks back up with the gulp face and a bead of sweat, then drops — arms up, eyes squeezed, teeth bared — the same short drop. A second over the hole, all inside today’s 2.25s hold.' },
   { letter: 'C', id: 'whistle', name: 'B + STREAK AND POOF', paint: paintC,
     note: 'B, and the drop gets its cartoon: speed streaks above him from where he hung, then a dust puff out either side where he stops and a little “poof” rising out of the hole past the lip. '
@@ -588,6 +402,20 @@ export const PIT_FALL = [
     note: 'B, and what is at the bottom has its say where he stops. Lava: flames flick up round him, smoke off the surface, what is left of him above it goes singed grey. '
       + 'Spikes: he jolts straight up off them, pinprick-eyed, OUCH! and a burst of sparks, then down onto the tips, eyes shut. Slush: a splash ring and a crown of drops, and he frosts over as he goes. '
       + 'Tar: a dull gloop, a dust puff, two slow bubbles when he has gone. A liquid takes him UNDER — cut off at its surface rather than drawn over it.' },
+  { letter: 'G', id: 'jumped', name: 'JUMPED IN', paint: paintG, approach: jumpApproach, lipOff: -20, arrive: gArrive,
+    note: 'FOR: a jump that comes down inside the hole (already falling, partway across). No hang — there is no moment to hang in. He keeps his arc, the drift and the short drop, '
+      + 'wearing A’s face on the way: a double-take, pinprick eyes, then on the material the gulp and eyes squeezed shut; and the bottom answers as in E (tar, spikes, slush, lava).' },
+  { letter: 'G2', id: 'jumped-hang', name: 'JUMPED IN, WITH A HANG', paint: paintG2, approach: jumpApproach, lipOff: -20,
+    arrive: (surf) => G2T.DROP + Math.sqrt(2 * -surf / G),
+    note: 'FOR: a jump that comes down inside the hole — G, without the float past the moment it is decided. The frame his feet reach the lip (where the run already declares him dead) he stops dead in mid-air: '
+      + 'one windmill of the arms, leans out and looks down (whole figure, pinprick eyes), “gulp”, then the short drop and the bottom answers as in E. NEEDS NO PREDICTION: it hangs where the death is decided.' },
+  { letter: 'G3', id: 'jumped-apex', name: 'HANG AT THE APEX', paint: paintG3, approach: apexApproach, lipOff: -12,
+    arrive: (surf) => G3T.DROP + Math.sqrt(2 * (G3_ALT - surf) / G),
+    note: 'FOR: a jump the run can already tell is lost at the top of the hop. He hangs at the APEX — the classic coyote — windmills, looks down, gulps, and drops the whole way (further, so faster), and the bottom answers as in E. '
+      + 'NEEDS A PREDICTION IN THE RUN: at the apex, over a fatal hole, with nothing that could still save him (no air jump left, no float or dash ready, no spring or platform in reach).' },
+  { letter: 'H', id: 'fingertips', name: 'FINGERTIPS', paint: paintH, approach: jumpApproach, lipOff: -50, arrive: () => HF.SLIP,
+    note: 'FOR: a jump that comes down a few px short of the far wall. His front hand catches the far lip and he hangs by it, side-on, the rest of him down in the hole (in a liquid, already in it). '
+      + 'He looks up at the hand, pinprick-eyed; “gulp”; the fingers come off the edge in two jerks, and he goes in — and the bottom answers as in E.' },
 ];
 
 // ---------------------------------------------------------------- the tile
@@ -642,7 +470,8 @@ export function drawPitFallTile(ctx, t, cand, rows) {
     const camX = (row.camX ?? 600) + SCROLL * Math.min(tl, T_LIP);
     const y0 = i * (h + gap);
     // the run's shakes: 7 for 0.4s at the lip; 3 (4 on teeth) for ~0.23s on arrival
-    const fallT = cand.id === 'now' || cand.id === 'face' ? Math.sqrt(2 * -surf / G) : H.DROP + Math.sqrt(2 * -surf / G);
+    const fallT = cand.arrive ? cand.arrive(surf)
+      : cand.id === 'now' || cand.id === 'face' ? Math.sqrt(2 * -surf / G) : H.DROP + Math.sqrt(2 * -surf / G);
     const s1 = shakeAt(w, 7, 0.4, t), s2 = shakeAt(w - fallT, hard ? 4 : 3, hard ? 0.24 : 0.22, t);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, y0, 480, h); ctx.clip();
@@ -653,21 +482,24 @@ export function drawPitFallTile(ctx, t, cand, rows) {
     pack.bg?.(ctx, t, camX, cab, TOTAL, null, 0, bc);
     ctx.save();
     applyWorld(ctx, 2, 0);
-    const lipAt = (hx) => (row.camX ?? 600) + SCROLL * T_LIP + hx - 4;
+    const lipOff = cand.lipOff ?? -4;      // where the near lip is, from his centre, the frame he dies
+    const lipAt = (hx) => (row.camX ?? 600) + SCROLL * T_LIP + hx + lipOff;
     const obs = row.heroes.map((_, k) => ({ ...makeObstacle('gap', lipAt(HERO_XS[k])), fill }));
     pack.ground?.(ctx, camX, cab, obs, [], t);
     drawPitFills(ctx, camX, cab, obs, t, true, null, 480, cab.groundDark);
     row.heroes.forEach((heroId, k) => {
       const hx = HERO_XS[k];
+      const lip = hx + lipOff;
       if (w < 0) {
-        drawToon(ctx, heroId, runFrame(tl * 1.7), hx, GROUND_Y, U);
+        if (cand.approach) cand.approach(ctx, heroId, { cx: hx, fy: GROUND_Y, w, tl, t });
+        else drawToon(ctx, heroId, runFrame(tl * 1.7), hx, GROUND_Y, U);
         return;
       }
       if (w > PIT_FALL_HOLD) return;           // the hole, empty: then the checkpoint
-      const lip = hx - 4;
       cand.paint(ctx, heroId, {
         cx: hx, fy: GROUND_Y, w, t, fill, surf, hard,
-        carry: Math.min(GAP_W * 0.5, 40, lip + GAP_W - hx - 12),
+        wall: lip + GAP_W,
+        carry: Math.max(0, Math.min(GAP_W * 0.5, 40, lip + GAP_W - hx - 12)),
         phase0: T_LIP * 1.7,
       });
     });

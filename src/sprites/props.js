@@ -30,7 +30,7 @@ import {
 } from './cabinetProps.js';
 import { paintCrate, paintBarrel } from './crateBarrel.js';
 import { REDRAW_PAINTERS, DRONE_FRAMES } from './redrawProps.js';
-import { inkOutlined } from './outline.js';
+import { inkOutlined, OUTLINE_SCALE } from './outline.js';
 
 export const OUTLINE = 'rgba(26,16,40,0.34)';
 
@@ -629,7 +629,7 @@ const DRONE_EYE_FRAMES = 16;
 // sprites/animals.js) can't be raised for one showcase prop without paying for
 // it on every dog in every lane. The finish dog is the biggest hazard box in
 // the game and the star of the last three seconds of every plumber stage, so
-// its aliases take detail 3 — at its 22-unit box the detail-2 raster is
+// its aliases take more detail (2.5; 3 until the 16-frame gallop) — at its 22-unit box the detail-2 raster is
 // fractionally MAGNIFIED on the top density rung, which is the case the
 // pack dogs never hit and the whole reason the exception exists. Everything
 // else — body painter, frames, gait rate, stature, overdraw, self-outline — is
@@ -1703,7 +1703,9 @@ export const MASH_GLOW = {
 };
 function paintMashLetter(ctx, w, h, frame, letter, banked) {
   const u = Math.min(w, h);
-  const bw = w * 0.96, bh = h * 0.7, x = (w - bw) / 2, y = h * 0.16;
+  // Squatter than it was (Peter, 16 Oct: "reduce the height … a bit more SNES like"):
+  // 0.7 → 0.62 of the box, about 1.3 : 1, near a PAL/Japanese cart. Same centre.
+  const bw = w * 0.96, bh = h * 0.62, x = (w - bw) / 2, y = h * 0.2;
   const R = bh * 0.32, r = bh * 0.08;
   ctx.save();
   // The halo is drawWorldEntity's (draw.js MASH_GLOW), outside this raster.
@@ -1713,7 +1715,13 @@ function paintMashLetter(ctx, w, h, frame, letter, banked) {
   ctx.lineTo(x + bw, y + bh - r); ctx.quadraticCurveTo(x + bw, y + bh, x + bw - r, y + bh);
   ctx.lineTo(x + r, y + bh); ctx.quadraticCurveTo(x, y + bh, x, y + bh - r); ctx.closePath();
   ctx.fillStyle = banked ? '#b4b8c2' : '#a3a5b2'; ctx.fill();
-  ctx.strokeStyle = '#3c3e4a'; ctx.lineWidth = u * 0.06; ctx.stroke();
+  // On the outline dial (Peter, 16 Oct: "the mash outlines are too thick — the same as
+  // other obstacles"): u * 0.06 was 0.72 world units against the bold hand's 0.55, and
+  // never took OUTLINE_SCALE. INK brings the cart to 0.55 and then applies the dial; the
+  // label edge follows so the two keep their proportion. The glyph's own ink is left —
+  // it is the letter's border, and thinning it would let the white eat it.
+  const ink = (0.55 / 0.72) * OUTLINE_SCALE;
+  ctx.strokeStyle = '#3c3e4a'; ctx.lineWidth = u * 0.06 * ink; ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(x + R * 0.7, y + u * 0.04, bw - R * 1.4, u * 0.05);
   ctx.fillStyle = '#5a5c68'; ctx.fillRect(x + bw * 0.12, y + bh - u * 0.1, bw * 0.76, u * 0.07);
   ctx.fillStyle = 'rgba(40,42,52,0.45)';
@@ -1724,7 +1732,7 @@ function paintMashLetter(ctx, w, h, frame, letter, banked) {
   const lw = bw * 0.62, lh = bh * 0.42, lx = x + (bw - lw) / 2, ly = y + bh * 0.24;
   ctx.beginPath(); rr(ctx, lx, ly, lw, lh, u * 0.01);
   ctx.fillStyle = banked ? '#d2d6de' : MASH_LABEL[letter]; ctx.fill();
-  ctx.strokeStyle = 'rgba(30,30,40,0.5)'; ctx.lineWidth = u * 0.03; ctx.stroke();
+  ctx.strokeStyle = 'rgba(30,30,40,0.5)'; ctx.lineWidth = u * 0.03 * ink; ctx.stroke();
   // The letter takes the label's height and a width to suit it, so a short
   // landscape label carries a smaller letter rather than a squashed one.
   const lbh = lh * 0.72, lbw = Math.min(lw * 0.6, lbh * 0.85);
@@ -5566,8 +5574,9 @@ export const portalArtWidth = (h) => Math.round(h * (PORTAL_ART_W / PORTAL_ART_H
 // big snowman draw through these two, so they follow.
 // (The rattlesnake does it natively, in animals.js: its ink is a halo under a coil drawn
 // as fat strokes, and only the halo's margin may move.)
+// The goose sits under its sum (Peter, 16 Oct: "the goose outline is far too thick").
 const INK_BASE = {
-  goose: 1, snowman: 1.05, bearTrap: 1.3, switch: 1.15,
+  goose: 0.65, snowman: 1.05, bearTrap: 1.3, switch: 1.15,
   boomBarrier: 0.92, fireBarrel: 1, cactus: 0.71, cactusGreen: 0.65,
 };
 for (const [name, base] of Object.entries(INK_BASE)) PROP_PAINTERS[name] = inkOutlined(PROP_PAINTERS[name], base);
@@ -5781,7 +5790,9 @@ const PROP_DETAIL_SCALE = {
   ...OFFICE_PROP_DETAIL,
   ...GRAVITY_PROP_DETAIL,
   ...CABINET_PROP_DETAIL,
-  ...finishDogTable(null, 3), // the one detail-3 exception — see FINISH_DOG_ALIASES
+  // 2.5 since 16 Oct (was 3): the planted gallop doubled the ring to 16 frames, and at 3
+  // that is ~13MB for one dog; 2.5 holds it near the old 8-frame cost.
+  ...finishDogTable(null, 2.5), // the one detail exception — see FINISH_DOG_ALIASES
   // The sign's head is the finest drawing in the lane per pixel: a silhouette
   // with fangs and a nostril inside a board about 17px wide. At detail 2 the
   // notches closed up into the black.

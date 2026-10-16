@@ -21,6 +21,23 @@
 // FIXED bend side per joint: the elbow always breaks toward the tail, the stifle
 // toward the nose, so no joint can flip mid-cycle.
 //
+// THE PLANTED GALLOP (16 Oct 2026, from the feral-dog bake-off, src/dev/
+// feral-dog-candidates.js — "the new gait is very nice … fix the gait for all dogs").
+// The keyed gallop above stepped (8 frames at 15 fps) and its stance feet moved back
+// at about two-thirds of the dog's own speed, so they skated along the road. The lane
+// dogs and the finish guard now run on gallopPose(): each foot has a STANCE, nailed to
+// the road (it moves back at exactly the ground speed), and a SWING, a Hermite curve
+// that leaves and arrives at that speed — rotary double-suspension gallop, far hind,
+// near hind, extended flight, near fore, far fore, gathered flight; two body bumps a
+// stride, the spine flexing, the head held level. 16 frames, and the run steps them by
+// the dog's real ground speed (DOG_STRIDE, run.js gaitPh), so the feet never slide.
+// The collie keeps the keyed gait: it crouches, and it is drawn live on the backdrop.
+//
+// THE FERAL IS THE WOLF (bake-off B3, Peter 16 Oct: "B3 is great - bigger hit box is
+// fine. replace feral with him"): head level with the back, a full snarl, hackles as a
+// ragged crest, ruff and brush; silver with a dark saddle and a cream mask, a moonlit
+// top line and glowing eyes so he reads in Crypt's dark (B.look).
+//
 // THE BARK. run.js fires the finish dog's bark on the cycle's wrap to frame 0 (see
 // BARK_LEAD there): the jaw's widest gape is keyed ON frame 0 (GAIT.gape).
 //
@@ -36,7 +53,8 @@ const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const lerp = (a, b, k) => a + (b - a) * k;
-const FRAMES = 8;
+// Frames in the rasterised ring (the planted gallop's 16; the keyed gait had 8).
+const FRAMES = 16;
 
 // The contour: visible width in the dog's own world units (stroked at twice this and
 // half buried by the fills), in the props' translucent ink.
@@ -98,6 +116,7 @@ const BREEDS = {
     neckLen: 4.6, neckAng: -48, neckW: 1.85, headR: 1.75, muzzle: 2.9, muzzleH: 1.3,
     ear: 'crop', earLen: 2.7, tail: 'whip', legW: [1.25, 0.72, 0.56], pawR: 0.62,
     collar: 'spiked', teeth: 1.0,
+    gait: { stride: 0.8, height: 0.9, bob: 0.08, pitch: 0.07, gape: [0.3, 0.6] },
     pal: { coat: '#36313f', far: '#24202b', shade: '#28242f', mark: '#b87a44', markShade: '#94602f', eye: '#f6d33c', collar: '#7a2a1c' },
     marks: 'dobe',
   },
@@ -107,17 +126,24 @@ const BREEDS = {
     neckLen: 3.5, neckAng: -42, neckW: 3.3, headR: 2.6, muzzle: 1.4, muzzleH: 2.0,
     ear: 'rose', earLen: 1.7, tail: 'stub', legW: [2.0, 1.3, 1.0], pawR: 0.95,
     collar: 'spiked', teeth: 1.4, bowed: 0.35,
+    gait: { stride: 0.85, height: 0.9, bob: 0.07, pitch: 0.06, gape: [0.25, 0.65] },
     pal: { coat: '#c68d4c', far: '#94622f', shade: '#a6733c', mark: '#f2e2c4', markShade: '#d9c3a0', eye: '#e04848', collar: '#5a2a18' },
     marks: 'blaze',
   },
+  // The wolf (bake-off B3): the old feral's frame, fuller under and flatter on top,
+  // the head dropped level with the back. The look — crest, ruff, snarl, mask,
+  // moonlight, glowing eyes — is B.look, painted by furParts / snarlFace / moonlight.
   feral: {
-    L: 11.4, stride: 0.62, spine: 8.6, cx: -0.4, chestUp: 2.2, chestDown: 2.3, chestRx: 2.5,
-    rumpUp: 2.0, rumpDown: 1.7, rumpRx: 2.1, tuck: 1.6, arch: 1.0,
-    neckLen: 4.1, neckAng: -30, neckW: 2.1, headR: 2.05, muzzle: 2.8, muzzleH: 1.35,
-    ear: 'prick', earLen: 2.4, tail: 'brush', legW: [1.2, 0.66, 0.52], pawR: 0.62,
-    collar: 'none', teeth: 1.15, ribs: true, hackles: 1,
-    pal: { coat: '#858594', far: '#575764', shade: '#6a6a79', mark: '#aaa49c', markShade: '#8d8780', saddle: '#4c4c57', eye: '#f2e27a', collar: '#000' },
-    marks: 'wolf',
+    L: 11.4, spine: 8.6, cx: -0.4, chestUp: 2.2, chestDown: 2.7, chestRx: 2.7,
+    rumpUp: 2.0, rumpDown: 2.0, rumpRx: 2.3, tuck: 0.85, arch: 0.35,
+    neckLen: 4.4, neckAng: -12, neckW: 2.1, headR: 2.15, muzzle: 3.0, muzzleH: 1.35,
+    ear: 'prick', earLen: 2.2, tail: 'none', legW: [1.35, 0.76, 0.58], pawR: 0.62,
+    collar: 'none', teeth: 1.15,
+    gait: { stride: 0.78, height: 0.87, bob: 0.08, pitch: 0.07, gape: [0.55, 0.65] },
+    pal: { coat: '#a39fae', far: '#5e5a69', shade: '#85808f', mark: '#aaa49c', markShade: '#8d8780', saddle: '#4a4655', eye: '#ffd23a', collar: '#000' },
+    marks: 'none',
+    look: { crest: 1.25, ruff: 1.0, belly: 0.55, tail: [4.4, 0.9], mask: '#ece4d6', gum: '#a23a50', teeth: 1.1, drool: true,
+      scar: 'rgba(225,200,190,0.75)', rim: 'rgba(236,240,255,0.6)', glow: 'rgba(255,214,70,0.75)' },
   },
   // PLUMBER's working collie (backdrop art, drawCollie in stylePacks/
   // plumberLandmarks.js): black with a white ruff, blaze, socks and tail tip, the
@@ -184,6 +210,96 @@ function pose(B, S, phase, { crouch = 0, stretch = 0 } = {}) {
     hind: leg({ x: H0.x, y: H0.y }, false, 0), hindFar: leg({ x: H0.x - 0.2, y: H0.y }, false, 0.085),
     Hc, headR, tilt: -0.06 + nod * 0.08 + crouch * 0.15 - pitch * 0.5, gape,
     wag: Math.sin(phase * TAU * 2),
+  };
+}
+
+// --------------------------------------------------------- the planted gallop
+// Phases are fractions of one cycle; a foot's x is from its leg's REST root, in units of
+// L x the breed's gait.stride. Touch-down x is authored; lift-off is derived so every
+// planted foot moves back at the same speed, STRIDE_L per cycle.
+const STRIDE_L = 2.9;
+const GALLOP = {
+  hindFar: 0.00, hindNear: 0.07, foreNear: 0.44, foreFar: 0.52,
+  hindDuty: 0.30, foreDuty: 0.28,
+  hindTD: 0.42, foreTD: 0.46,
+  flightE: 0.405, flightG: 0.90, // the flights' middles: extended, gathered
+};
+const FORE_SWING_A = [122, 178, 228, 232, 160, 100, 80];
+const HIND_SWING_A = [-58, -28, 12, 18, -40, -88, -106];
+function spline(keys, v) {
+  const n = keys.length - 1;
+  const x = clamp01(v) * n;
+  const i = Math.min(Math.floor(x), n - 1), f = x - i;
+  const k0 = keys[Math.max(i - 1, 0)], k1 = keys[i], k2 = keys[i + 1], k3 = keys[Math.min(i + 2, n)];
+  return 0.5 * ((2 * k1) + (-k0 + k2) * f + (2 * k0 - 5 * k1 + 4 * k2 - k3) * f * f
+    + (-k0 + 3 * k1 - 3 * k2 + k3) * f * f * f);
+}
+function hermite(p0, p1, m0, m1, v) {
+  const v2 = v * v, v3 = v2 * v;
+  return (2 * v3 - 3 * v2 + 1) * p0 + (v3 - 2 * v2 + v) * m0 + (-2 * v3 + 3 * v2) * p1 + (v3 - v2) * m1;
+}
+function footAt(phase, td, duty, tdX, isFore) {
+  const u = (((phase - td) % 1) + 1) % 1;
+  const loX = tdX - STRIDE_L * duty;
+  if (u < duty) {
+    const s = u / duty;
+    return { x: lerp(tdX, loX, s), y: 0, a: isFore ? lerp(80, 122, s) : lerp(-106, -58, s) };
+  }
+  const v = (u - duty) / (1 - duty);
+  // Leaves and arrives at the ground's speed, eased (0.55) so the paw reaches past its
+  // mark and draws back onto it rather than flinging.
+  const m = -STRIDE_L * (1 - duty) * 0.55;
+  return {
+    x: hermite(loX, tdX, m, m, v),
+    y: (isFore ? 0.36 : 0.30) * Math.pow(Math.sin(Math.PI * v), 1.3),
+    a: spline(isFore ? FORE_SWING_A : HIND_SWING_A, v),
+  };
+}
+function gallopPose(B, S, phase) {
+  const g = B.gait;
+  const L = B.L * S.leg;
+  const st = g.stride;
+  const bump = 0.5 + 0.5 * Math.cos(TAU * 2 * (phase - GALLOP.flightE));
+  const lift = (bump - 0.5) * g.bob;
+  const pitch = g.pitch * Math.cos(TAU * (phase - 0.18));
+  const flex = 0.5 + 0.5 * Math.cos(TAU * (phase - GALLOP.flightG));
+  const spine = B.spine * (1.04 - 0.12 * flex);
+  const cx = B.cx;
+  const baseY = -(L * g.height + lift * L);
+  const half = spine / 2;
+  const S0 = { x: cx + half * Math.cos(pitch), y: baseY - half * Math.sin(pitch) };
+  const H0 = { x: cx - half * Math.cos(pitch), y: baseY + half * Math.sin(pitch) };
+  const restS = cx + B.spine / 2, restH = cx - B.spine / 2;
+  const leg = (root, isFore, td, dx = 0) => {
+    const f = footAt(phase, td, isFore ? GALLOP.foreDuty : GALLOP.hindDuty, isFore ? GALLOP.foreTD : GALLOP.hindTD, isFore);
+    const fx = (isFore ? restS : restH) + dx + f.x * L * st;
+    const fy = -f.y * L;
+    if (isFore) {
+      const a3 = L * 0.17, a1 = L * 0.47, a2 = L * 0.44;
+      const C = { x: fx - Math.cos(f.a * DEG) * a3, y: fy - Math.sin(f.a * DEG) * a3 };
+      return { root, mid: ik(root.x, root.y, C.x, C.y, a1, a2, -1), low: C, foot: { x: fx, y: fy }, fore: true };
+    }
+    const b3 = L * 0.36, b1 = L * 0.50, b2 = L * 0.50;
+    const Hk = { x: fx + Math.cos(f.a * DEG) * b3, y: fy + Math.sin(f.a * DEG) * b3 };
+    return { root, mid: ik(root.x, root.y, Hk.x, Hk.y, b1, b2, 1), low: Hk, foot: { x: fx, y: fy }, fore: false };
+  };
+  // The head holds its line through the bob and the pitch: a hunting dog's eyes stay level.
+  const neckAng = (g.neckAng ?? B.neckAng) * DEG - pitch * 0.4;
+  const Hc = {
+    x: S0.x + Math.cos(neckAng) * B.neckLen,
+    y: S0.y + Math.sin(neckAng) * B.neckLen + lift * L * 0.55,
+  };
+  return {
+    L, S: S0, Hp: H0, pitch, flex, lift, run: 1, crouch: 0, spine,
+    fore: leg({ x: S0.x, y: S0.y }, true, GALLOP.foreNear),
+    foreFar: leg({ x: S0.x - 0.2, y: S0.y }, true, GALLOP.foreFar, -0.2),
+    hind: leg({ x: H0.x, y: H0.y }, false, GALLOP.hindNear),
+    hindFar: leg({ x: H0.x - 0.2, y: H0.y }, false, GALLOP.hindFar, -0.2),
+    Hc, headR: B.headR * S.head, tilt: -0.06 - pitch * 0.7,
+    // Widest ON frame 0: run.js times the finish dog's bark to the cycle's wrap.
+    gape: g.gape[0] + g.gape[1] * (0.5 + 0.5 * Math.cos(TAU * phase)),
+    // The tail trails the body's pitch by a quarter cycle: follow-through, not a wag.
+    wag: 0.8 * Math.sin(TAU * (phase - 0.28)),
   };
 }
 
@@ -582,10 +698,193 @@ function friendlyFace(ctx, B, P, hd) {
   ctx.beginPath(); ctx.arc(e.x + ew * 0.3, e.y - eh * 0.3, eh * 0.3, 0, TAU); ctx.fill();
 }
 
+// ---------------------------------------------------------------- the wolf's look
+// A fringe of fur along a curve: spikes leaning back along it, pointing AWAY from
+// `away` (a point inside the body), joined to a base line sunk `sink` inside so the
+// fills merge it into the silhouette — one more part under the one outline.
+function fringe(pts, { heights, lean = 0.6, sink = 0.7, away, phase = 0, flutter = 0.08, n = 9 }) {
+  const curve = [];
+  for (let i = 0; i <= n * 2; i++) {
+    const s = i / (n * 2);
+    curve.push({ x: spline(pts.map((q) => q.x), s), y: spline(pts.map((q) => q.y), s), s });
+  }
+  const out = [], inner = [];
+  for (let i = 0; i < curve.length; i++) {
+    const a = curve[Math.max(0, i - 1)], b = curve[Math.min(curve.length - 1, i + 1)];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1e-4;
+    const tx = dx / d, ty = dy / d;
+    let nx = -ty, ny = tx;
+    const q = curve[i];
+    if ((q.x - away.x) * nx + (q.y - away.y) * ny < 0) { nx = -nx; ny = -ny; }
+    inner.push(pt(q.x - nx * sink, q.y - ny * sink));
+    if (i % 2 === 1) {
+      const k = (i - 1) / 2;
+      const h = heights(q.s, k) * (1 + flutter * Math.sin(TAU * phase * 2 + k * 1.7));
+      out.push(pt(q.x + nx * h + tx * h * lean, q.y + ny * h + ty * h * lean));
+    } else out.push(pt(q.x, q.y));
+  }
+  const p = new Path2D();
+  p.moveTo(out[0].x, out[0].y);
+  for (const q of out.slice(1)) p.lineTo(q.x, q.y);
+  for (const q of inner.reverse()) p.lineTo(q.x, q.y);
+  p.closePath();
+  return p;
+}
+const JAG = [1, 0.62, 0.92, 0.55, 1.05, 0.7, 0.88, 0.5, 0.8, 0.6, 0.95, 0.66];
+const jag = (k) => JAG[k % JAG.length];
+
+// A ragged brush of a tail, streaming back from the croup and swinging with `wag`.
+function raggedTail(B, P, len, thick) {
+  const { Hp } = P;
+  const t0 = pt(Hp.x - B.rumpRx * 0.7, Hp.y - B.rumpUp * 0.55);
+  const w = P.wag;
+  const spinePts = [];
+  for (let i = 0; i <= 8; i++) {
+    const s = i / 8;
+    spinePts.push(pt(t0.x - len * s, t0.y + 0.3 * s + w * 0.9 * s * s - 0.9 * Math.sin(Math.PI * s * 0.9)));
+  }
+  const top = [], bot = [];
+  spinePts.forEach((q, i) => {
+    const s = i / 8;
+    const a = spinePts[Math.max(0, i - 1)], b = spinePts[Math.min(8, i + 1)];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1e-4;
+    const nx = dy / d, ny = -dx / d;
+    const r = thick * (0.55 + 0.75 * Math.sin(Math.PI * Math.min(1, s * 1.15))) * (s > 0.92 ? 0.5 : 1);
+    const spike = i % 2 ? 1.35 : 0.85;
+    top.push(pt(q.x - nx * r * spike + (i % 2 ? 0.35 * r : 0), q.y - ny * r * spike));
+    bot.push(pt(q.x + nx * r * (i % 2 ? 0.85 : 1.3), q.y + ny * r * (i % 2 ? 0.85 : 1.3)));
+  });
+  const p = new Path2D();
+  p.moveTo(t0.x + 0.6, t0.y - thick * 0.6);
+  for (const q of top) p.lineTo(q.x, q.y);
+  const tip = spinePts[8];
+  p.lineTo(tip.x - 0.8, tip.y + 0.2);
+  for (const q of bot.reverse()) p.lineTo(q.x, q.y);
+  p.lineTo(t0.x + 0.6, t0.y + thick * 0.7);
+  p.closePath();
+  return p;
+}
+
+// Hackles from the back of the skull to the loin, a cheek ruff, a throat ruff and a
+// ragged belly line — all one with the outline.
+function furParts(parts, B, P, hd, phase) {
+  const look = B.look;
+  const { S: Sh, Hp, Hc } = P;
+  const { T, R } = hd;
+  const mid = pt((Sh.x + Hp.x) / 2, (Sh.y + Hp.y) / 2);
+  const centre = pt(mid.x, mid.y + 0.5);
+  const add = (path) => parts.push({ path, fill: B.pal.coat, id: 'fur' });
+  add(fringe([T(-R * 0.55, -R * 0.75), pt(lerp(Hc.x, Sh.x, 0.5) - 0.3, lerp(Hc.y, Sh.y, 0.5) - B.neckW * 0.55),
+    pt(Sh.x - 0.4, Sh.y - B.chestUp * 0.95), pt(mid.x, mid.y - B.chestUp * 0.82 - B.arch),
+    pt(lerp(mid.x, Hp.x, 0.65), lerp(mid.y, Hp.y, 0.65) - B.rumpUp * 0.95 - B.arch * 0.5)],
+  { heights: (s, k) => look.crest * (0.45 + 0.75 * Math.sin(Math.PI * Math.min(1, s * 1.25))) * jag(k), lean: 0.9, sink: 0.9, away: centre, phase, n: 10 }));
+  add(fringe([T(-R * 0.75, -R * 0.35), T(-R * 0.95, R * 0.3), T(-R * 0.55, R * 0.95)],
+    { heights: (s, k) => look.ruff * 0.75 * jag(k + 3), lean: 0.6, sink: 0.6, away: Hc, phase, n: 4 }));
+  add(fringe([T(-R * 0.1, R * 0.9), pt(lerp(Hc.x, Sh.x, 0.45) + B.neckW * 0.3, lerp(Hc.y, Sh.y, 0.45) + B.neckW * 0.6),
+    pt(Sh.x + B.chestRx * 0.75, Sh.y + B.chestDown * 0.55)],
+  { heights: (s, k) => look.ruff * (0.5 + 0.6 * Math.sin(Math.PI * s)) * jag(k + 5), lean: 0.5, sink: 0.6, away: pt(Sh.x - 1, Sh.y - 1), phase, n: 6 }));
+  add(fringe([pt(Sh.x - 0.4, Sh.y + B.chestDown), pt(mid.x + 0.4, mid.y + B.chestDown - B.tuck * 1.1),
+    pt(mid.x - 1.4, mid.y + B.chestDown - B.tuck * 1.4)],
+  { heights: (s, k) => look.belly * (1 - s * 0.6) * jag(k + 1), lean: 0.8, sink: 0.6, away: centre, phase, n: 6 }));
+  // The finish guard keeps its long raised tail; the lane wolf streams a brush.
+  if (look.tail && B.tail !== 'long') parts.unshift({ path: raggedTail(B, P, look.tail[0], look.tail[1]), fill: B.pal.coat, id: 'tail' });
+}
+
+// The snarl: lips peeled back off a full row of teeth, a wrinkled muzzle, a hard low
+// brow over a yellow eye with no white to it, a cream mask. At lane size the teeth and
+// the eye are what read.
+function snarlFace(ctx, B, P, hd) {
+  const look = B.look;
+  const { T, J, R, noseX, lipY, mh, M } = hd;
+  if (look.mask) {
+    ctx.save();
+    const clip = new Path2D(); clip.addPath(hd.skull); clip.addPath(hd.jaw);
+    ctx.clip(clip);
+    ctx.fillStyle = look.mask;
+    ctx.beginPath();
+    const m = [T(R * 0.55, -R * 0.05), T(noseX - M * 0.4, lipY - mh * 0.3), T(noseX + 0.5, lipY - 0.2), T(noseX + 0.5, lipY + 3), T(R * 0.2, R * 1.3)];
+    ctx.moveTo(m[0].x, m[0].y); for (const q of m.slice(1)) ctx.lineTo(q.x, q.y); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = look.gum;
+  ctx.beginPath();
+  const g = [T(R * 0.35, lipY + 0.02), T(noseX - 0.1, lipY + 0.02), T(noseX - 0.05, lipY - mh * 0.28), T(R * 0.7, lipY - mh * 0.34)];
+  ctx.moveTo(g[0].x, g[0].y); for (const q of g.slice(1)) ctx.lineTo(q.x, q.y); ctx.closePath(); ctx.fill();
+  const tooth = (fn, u, v, w, l, dir) => {
+    const a = fn(u - w / 2, v), b = fn(u + w / 2, v), c = fn(u + w * 0.15, v + dir * l);
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.closePath();
+  };
+  ctx.fillStyle = TOOTH;
+  ctx.beginPath();
+  const k = look.teeth;
+  for (let i = 0; i < 4; i++) tooth(T, lerp(R * 0.5, noseX - M * 0.5, i / 3), lipY, 0.34 * k, 0.42 * k, 1);
+  tooth(T, noseX - M * 0.3, lipY, 0.46 * k, 1.05 * k, 1);
+  tooth(T, noseX - 0.28, lipY, 0.3 * k, 0.4 * k, 1);
+  for (let i = 0; i < 3; i++) tooth(J, lerp(R * 0.6, noseX - M * 0.55, i / 2), lipY + 0.1, 0.3 * k, 0.36 * k, -1);
+  tooth(J, noseX - M * 0.2, lipY + 0.1, 0.42 * k, 0.9 * k, -1);
+  ctx.fill();
+  if (look.drool) {
+    const d0 = J(noseX - M * 0.3, lipY + mh * 0.38);
+    ctx.strokeStyle = 'rgba(232,240,248,0.55)'; ctx.lineWidth = LINE * 0.7;
+    ctx.beginPath(); ctx.moveTo(d0.x, d0.y);
+    ctx.quadraticCurveTo(d0.x + 0.3, d0.y + 0.9, d0.x - 0.1, d0.y + 1.6 + P.lift * 3); ctx.stroke();
+  }
+  const n = T(noseX - 0.05, -R * 0.14);
+  ctx.fillStyle = '#120d16';
+  ctx.beginPath(); ctx.ellipse(n.x, n.y, 0.55, 0.42, P.tilt, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(16,10,22,0.55)'; ctx.lineWidth = LINE * 0.9;
+  for (let i = 0; i < 3; i++) {
+    const a = T(R * 0.95 + i * 0.55, -R * 0.5 + i * 0.05), b = T(R * 1.1 + i * 0.55, -R * 0.12);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(a.x + 0.45, (a.y + b.y) / 2, b.x, b.y); ctx.stroke();
+  }
+  const e = T(R * 0.36, -R * 0.32);
+  const ew = R * 0.34, eh = R * 0.15, rot = P.tilt + 0.32;
+  if (look.glow) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const gr = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, R * 0.9);
+    gr.addColorStop(0, look.glow); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(e.x, e.y, R * 0.9, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = '#120d16';
+  ctx.beginPath(); ctx.ellipse(e.x, e.y, ew + 0.16, eh + 0.14, rot, 0, TAU); ctx.fill();
+  ctx.fillStyle = B.pal.eye;
+  ctx.beginPath(); ctx.ellipse(e.x, e.y, ew, eh, rot, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#0c0810';
+  ctx.beginPath(); ctx.ellipse(e.x + ew * 0.2, e.y, R * 0.05, eh * 0.9, rot, 0, TAU); ctx.fill();
+  const b0 = T(-R * 0.15, -R * 0.75), b1 = T(R * 0.78, -R * 0.3);
+  ctx.strokeStyle = 'rgba(14,9,20,0.9)'; ctx.lineWidth = R * 0.17;
+  ctx.beginPath(); ctx.moveTo(b0.x, b0.y); ctx.lineTo(b1.x, b1.y); ctx.stroke();
+  if (look.scar) {
+    const s0 = T(R * 0.05, -R * 0.85), s1 = T(R * 0.7, R * 0.05);
+    ctx.strokeStyle = look.scar; ctx.lineWidth = LINE * 0.8;
+    ctx.beginPath(); ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y); ctx.stroke();
+  }
+}
+
+// MOONLIGHT: a pale band inside the top edge of the head, neck, back and tail — the
+// outline shifted down and stroked, clipped to the animal — so he separates from a dark
+// night by his top line, as the moon would light him.
+function moonlight(ctx, B, parts) {
+  const body = parts.filter((q) => ['torso', 'neck', 'skull', 'tail', 'ear', 'fur'].includes(q.id));
+  const clip = new Path2D(); for (const q of body) clip.addPath(q.path);
+  const edge = new Path2D(); for (const q of body) if (q.id !== 'fur') edge.addPath(q.path);
+  ctx.save(); ctx.clip(clip);
+  ctx.translate(0.25, 0.5);
+  ctx.strokeStyle = B.look.rim; ctx.lineWidth = 0.75;
+  ctx.stroke(edge);
+  ctx.restore();
+}
+
 // One dog at `phase` (0..1), in world units, FACING LEFT, feet on y 0. `crouch`
 // 0..1 drops it toward the collie's eye-on-the-flock pose.
-function paintDog(ctx, B, phase, { crouch = 0 } = {}) {
-  const P = pose(B, S, phase, { crouch });
+// `hooks` is a gallery seam (src/dev/feral-dog-candidates.js): a candidate gait
+// (`pose`), extra silhouette parts (`parts`), its own face (`face`) and paint over the
+// finished dog (`after`). Nothing in the game passes it.
+export function paintDog(ctx, B, phase, { crouch = 0, hooks = null } = {}) {
+  const P = hooks?.pose ? hooks.pose(B, S, phase, { crouch })
+    : B.gait ? gallopPose(B, S, phase) : pose(B, S, phase, { crouch });
   const pal = B.pal;
   ctx.save();
   ctx.scale(-1, 1);          // authored facing right; obstacles face left
@@ -612,34 +911,41 @@ function paintDog(ctx, B, phase, { crouch = 0 } = {}) {
   for (const lp of nearLegs) parts.push({ path: lp, fill: pal.coat, id: 'leg' });
   const nearEar = earPath(B, S, P, false);
   if (nearEar) parts.push({ path: nearEar, fill: pal.coat, id: 'ear' });
+  if (B.look) furParts(parts, B, P, hd, phase);
+  hooks?.parts?.(parts, B, P, hd);
   silhouette(ctx, parts);
   shadeBody(ctx, torso, pal, B, P);
   markings(ctx, B, P, hd, parts, nearLegs, torso, neck);
   if (B.ribs) ribs(ctx, torso, P, B, LINE);
   collar(ctx, B, P);
-  face(ctx, B, P, hd);
+  if (hooks?.face) hooks.face(ctx, B, P, hd); else if (B.look) snarlFace(ctx, B, P, hd); else face(ctx, B, P, hd);
   if (nearEar) earInner(ctx, B, S, P, pal);
+  if (B.look?.rim) moonlight(ctx, B, parts);
+  hooks?.after?.(ctx, B, P, hd);
   ctx.restore();
 }
 
 // ------------------------------------------------------------------- the fit
 // The union of each dog's ink over all eight frames, in its own world units (x after
-// the mirror; y up to the tallest ear). Measured off the bake-off harness
-// (src/dev/dog-candidates.js, dogFitInfo) — re-measure there after any change to a
-// breed, the gait or a path, or the dog will overrun or underfill its box.
+// the mirror; y up to the tallest ear). Measured with
+// (dogInkBounds below) — re-measure after any change to a breed, the gait or a path,
+// or the dog will overrun or underfill its box.
 export const DOG_BOUNDS = {
-  snarler: { minX: -12, maxX: 10.625, minY: -16.375 },
-  bruiser: { minX: -10.125, maxX: 9.75, minY: -12.375 },
-  feral: { minX: -12.875, maxX: 10.125, minY: -17.375 },
-  snarlerLong: { minX: -12, maxX: 10.75, minY: -16.375 },
-  bruiserLong: { minX: -10.125, maxX: 10.625, minY: -12.375 },
-  feralLong: { minX: -12.875, maxX: 10.75, minY: -17.75 },
+  // Re-measured 16 Oct 2026 for the planted gallop and the wolf (dogInkBounds).
+  snarler: { minX: -11.875, maxX: 9.5, minY: -15.125 },
+  bruiser: { minX: -10, maxX: 8.625, minY: -11.25 },
+  feral: { minX: -14, maxX: 12, minY: -14.5 },
+  snarlerLong: { minX: -11.875, maxX: 10.75, minY: -15.125 },
+  bruiserLong: { minX: -10, maxX: 10.75, minY: -11.875 },
+  feralLong: { minX: -14, maxX: 11, minY: -16.25 },
 };
+const fitK = (b, w, h) => Math.min((w * 0.97) / (b.maxX - b.minX), (h * 0.975) / -b.minY);
+const breedOf = (breed, longTail) => (longTail ? { ...BREEDS[breed], tail: 'long' } : BREEDS[breed]);
 function painter(breed, longTail = false) {
-  const B = longTail ? { ...BREEDS[breed], tail: 'long' } : BREEDS[breed];
+  const B = breedOf(breed, longTail);
   const b = DOG_BOUNDS[longTail ? breed + 'Long' : breed];
   return (ctx, w, h, frame = 0) => {
-    const k = Math.min((w * 0.97) / (b.maxX - b.minX), (h * 0.975) / -b.minY);
+    const k = fitK(b, w, h);
     ctx.save();
     ctx.translate(w / 2, h);
     ctx.scale(k, k);
@@ -662,6 +968,44 @@ export const FINISH_DOG_PAINTERS = {
   finishFeral: painter('feral', true),
 };
 export const DOG_FRAMES = FRAMES;
+
+// THE STRIDE, in world units per gallop cycle, for a dog drawn over a `boxW` x `boxH`
+// def box at `tall` and `visual` (animals.js tables): how far the road moves under a
+// planted foot in one cycle. The run steps the ring by |vx| / stride (run.js gaitPh),
+// so the feet stay nailed to the road at any speed. The 4/3 is draw.js's hazard
+// overdraw; detail cancels out (the raster is drawn back at the art size).
+export function dogStride(breed, longTail, boxW, boxH, tall, visual) {
+  const B = breedOf(breed, longTail);
+  const b = DOG_BOUNDS[longTail ? breed + 'Long' : breed];
+  const kWorld = fitK(b, boxW, boxH * tall) * (4 / 3) * visual;
+  return STRIDE_L * B.gait.stride * B.L * kWorld;
+}
+
+// Re-measures DOG_BOUNDS (browser only; for the harness, never the game): the union of
+// a dog's ink over all its frames, in its own units after the mirror.
+export function dogInkBounds(breed, longTail = false) {
+  const B = breedOf(breed, longTail);
+  const K = 10, W = 640, H = 420, G = H - 40;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d', { willReadFrequently: true });
+  let minX = Infinity, maxX = -Infinity, minY = Infinity;
+  for (let f = 0; f < FRAMES; f++) {
+    c.clearRect(0, 0, W, H);
+    c.save(); c.translate(W / 2, G); c.scale(K, K); c.lineJoin = 'round'; c.lineCap = 'round';
+    paintDog(c, B, f / FRAMES);
+    c.restore();
+    const d = c.getImageData(0, 0, W, H).data;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (d[(y * W + x) * 4 + 3] > 8) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; }
+    }
+  }
+  const q = (v) => Math.round(v * 8) / 8;
+  return { minX: q((minX - W / 2) / K), maxX: q((maxX + 1 - W / 2) / K), minY: q((minY - G) / K) };
+}
+// For the gallery's candidates (src/dev/feral-dog-candidates.js): the breeds and the
+// kennel's own geometry, so a candidate is drawn the same way the shipped dogs are.
+export const DOG_BREEDS = BREEDS;
+export const DOG_KIT = { capsule, smoothClosed, ik, cyc, shadeBody, INK, LINE, MOUTH, TONGUE, TOOTH };
 
 // PLUMBER's working collie, for stylePacks/plumberLandmarks.js drawCollie: feet at
 // the origin, FACING RIGHT (the caller mirrors by the flock's `dir`), in the collie's

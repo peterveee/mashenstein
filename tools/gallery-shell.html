@@ -97,6 +97,12 @@
                 word-break:break-word; }
   .card .name b { color:var(--ink); font-weight:normal; }
   .card.wide { width:100%; }
+  /* The choice letter, big and prominent on every lettered tile (gallery-entry.js tile()). */
+  .card.has-choice { position:relative; }
+  .card .choice { position:absolute; top:12px; left:12px; z-index:2; pointer-events:none;
+    min-width:44px; padding:2px 10px; border-radius:8px; text-align:center;
+    font:800 30px/1.15 ui-monospace, Menlo, monospace; color:#16141c; background:#f6d33c;
+    box-shadow:0 2px 0 rgba(0,0,0,0.45), 0 0 0 2px rgba(22,20,28,0.85); }
   .card.err { border-color:#e04848; }
   .card.err:hover { border-color:#e04848; }
   .card.err .name { color:#e04848; }

@@ -65,8 +65,8 @@ assert(dog.h < worstJumpApex() * 0.75,
 assert(Array.isArray(dog.skins) && dog.skins.length === 3, 'the dog wears one of three rigs');
 for (const skin of dog.skins) {
   assert(hasProp(skin), `${skin} registers a painter`);
-  assert(propDetailScale(skin) === 3, `${skin} rasterizes at triple detail — it is the showcase prop`);
-  assert(propFrames(skin) === 8, `${skin} gallops over the pack dogs' eight frames`);
+  assert(propDetailScale(skin) > propDetailScale('dogSnarler'), `${skin} rasterizes at more detail than the pack — it is the showcase prop`);
+  assert(propFrames(skin) === propFrames('dogSnarler'), `${skin} gallops over the pack dogs' frames`);
   assert(propVisualScale(skin) > 1, `${skin} draws a little over its box, as the pack dogs do`);
 }
 // The aliases keep the same bodies as the pack dogs, with the finish-only tail
@@ -79,7 +79,7 @@ assert(Object.keys(ANIMAL_FRAMES).every((n) => propFrames(n) === ANIMAL_FRAMES[n
 for (const skin of dog.skins) {
   assert(!!propSprite(skin, dog.w, dog.h, 0), `${skin} rasterizes its finish-only silhouette`);
 }
-assert(propDetailScale('dogSnarler') === 2,
+assert(propDetailScale('dogSnarler') === 1.5,
   'the PACK dogs stay at double detail — the exception is the finish dog alone');
 
 // --- the sign --------------------------------------------------------------

@@ -1,5 +1,15 @@
 // Shared Crypt lane animal painters. The gallery and the shipped obstacle sprites
 // use the same authored shapes and running cycle. Coordinates are a 100 x 70 canvas.
+//
+// THE VIOLET PANTHER RUNS THE PLANTED GALLOP (16 Oct 2026; sprites/felineGait.js —
+// Peter, after the dogs got theirs: "can we fix the other feline animals also"). Same
+// drawing; only the movement changed. Its paws are nailed to the road through each stance
+// and swing through the air between, on the cats' bound-like rotary gallop: sixteen
+// frames (animals.js ANIMAL_FRAMES), stepped by the road it covers (cryptPantherStride).
+// The spine flex is the torso stretching long on the extension and drawing in short and
+// rounded on the gather, with the head and tail carried along at the shoulder and the
+// croup rather than squashed with it, and the head held level through the bump.
+import { FELINE_GALLOP, felineFoot, felineBody } from './felineGait.js';
 const I='rgba(26,16,40,.53)', S='rgba(26,16,40,.30)';
 function make(c){
  const path=(fill,fn,stroke=S,lw=1.8)=>{c.beginPath();fn(c);if(fill){c.fillStyle=fill;c.fill()}if(stroke){c.strokeStyle=stroke;c.lineWidth=lw;c.lineJoin='round';c.stroke()}};
@@ -25,7 +35,8 @@ function legs(c,t,pal,{cat=false,skeletal=false}={}){
 }
 // The shipped dogs use a keyed gallop: the pairs do not march in lockstep,
 // the feet lift on the return stroke, and the torso gathers between bounds.
-// H3 and C3 use that same rhythm while keeping their own silhouettes.
+// H3 and C3 used that same rhythm while keeping their own silhouettes; the
+// violet panther (C3) runs the feline planted gallop (paintCryptPanther) since 16 Oct.
 function boundPose(t){
  const a=t*Math.PI*2*1.45;
  return {a,bob:-3.1*Math.max(0,Math.sin(a+.25))+.65*Math.cos(a*2),stretch:1+.07*Math.cos(a)};
@@ -114,19 +125,27 @@ function skeleton(c,t,kind,skipLegs=false){
  if(armor)q.poly('#a8a8b0',[[42,28],[50,25],[60,28],[55,31]],null);
  if(skipLegs)c.restore();
 }
-function cat(c,t,kind,skipLegs=false){
+// `m` is the planted gallop's pose (pantherPose) when the panther's legs are drawn by
+// paintCryptPanther: the torso flexes about its middle (stretch, archY), the tail rides
+// the croup (hipDx/hipDy) and the head the shoulder (headDx/headDy). Without it, the
+// gallery's walking cat, drawn as it always was.
+function cat(c,t,kind,m=null){
  const q=make(c),panther=kind!=='cat',g=Math.sin(t*9),shade=kind==='violet';
  const base=panther?(shade?'#5d456d':'#343641'):'#8c7289';
  const shadow=panther?(shade?'#322c47':'#222833'):'#604f69';
  const hi=panther?(shade?'#ab80b5':'#8f959d'):'#c1a6b3';
  const tailY=panther?11:5;
- const tailSwing=skipLegs?4*Math.sin(t*Math.PI*2*1.45-.8):0;
+ const tailSwing=m?m.tail:0;
+ const torsoFrame=()=>{c.save();c.translate(50,49);c.scale(m.stretch,m.archY);c.translate(-50,-49)};
+ if(m){c.save();c.translate(m.hipDx,m.hipDy)}
  q.path(shadow,p=>{p.moveTo(75,41);p.bezierCurveTo(87,39,91,25,89+tailSwing,tailY);p.bezierCurveTo(89+tailSwing,-3,96+tailSwing,4,96+tailSwing,13);p.lineTo(94+tailSwing,18);p.quadraticCurveTo(87,17,82,44);p.closePath()},S,2);
- if(!skipLegs)legs(c,t,{base,shadow,paw:shadow},{cat:true});
+ if(m)c.restore();
+ if(!m)legs(c,t,{base,shadow,paw:shadow},{cat:true});
+ if(m)torsoFrame();
  q.path(base,p=>{p.moveTo(24,42);p.quadraticCurveTo(38,23,56,29);p.quadraticCurveTo(68,30,77,35);p.quadraticCurveTo(78,47,65,49);p.lineTo(35,49);p.closePath()},S,2);
  q.path(hi,p=>{p.moveTo(38,32);p.quadraticCurveTo(50,27,65,34);p.lineTo(59,35);p.quadraticCurveTo(48,31,38,36);p.closePath()},null);
  q.path(shadow,p=>{p.moveTo(24,42);p.quadraticCurveTo(45,49,72,40);p.lineTo(65,47);p.quadraticCurveTo(41,53,24,47);p.closePath()},null);
- if(skipLegs){c.save();c.translate(0,1.5*Math.sin(t*Math.PI*2*1.45+.4))}
+ if(m){c.restore();c.save();c.translate(m.headDx,m.headDy)}
  q.path(base,p=>{p.moveTo(34,35);p.quadraticCurveTo(31,23,17,23);p.quadraticCurveTo(5,28,5,39);p.lineTo(22,47);p.closePath()},S,1.8);
  q.poly(base,[[7,31],[6,11],[20,28]],S,1.8);q.poly(base,[[21,26],[28,10],[30,36]],S,1.8);
  q.poly(hi,[[9,25],[10,17],[16,27]],null);q.poly(hi,[[21,24],[26,17],[27,30]],null);
@@ -134,18 +153,91 @@ function cat(c,t,kind,skipLegs=false){
  q.oval('#fff4dc',14,32,5,4,null);q.oval(panther?'#e9b35d':'#e6c788',13,32,1.7,3,null);
  q.line(I,2.1,[[9,27],[19,29]]);q.oval('#352d38',0,41,2.2,1.8,null);
  q.line(hi,1.2,[[2,43],[-6,44]]);q.line(hi,1.1,[[4,45],[-4,48]]);
+ // The flank's lit line and spot are the torso's, so they flex with it.
+ if(m){c.restore();torsoFrame()}
  if(panther){q.line(hi,1.2,[[36,31],[51,28],[64,32]]);q.oval(hi,54,47,3,1.5,null)}
  else {for(let i=0;i<3;i++)q.line(hi,1.2,[[32+i*11,35],[36+i*11,40]])}
- if(skipLegs)c.restore();
+ if(m)c.restore();
+}
+
+// ------------------------------------------------ the panther's planted gallop
+// The shared feline footfalls (sprites/felineGait.js), in this canvas's units: a leg is
+// PANTHER_L (shoulder or hip at y 39, paw at y 64) and the art faces LEFT, so forward is
+// -x. The panther is the most elastic of the three: the torso stretches 11% either way
+// along its length and rounds up 6% on the gather.
+//   stretch  the torso's length change either side of rest (fraction)
+//   arch     its height change, gathered over extended (fraction)
+//   bob      the body's rise through the flights, in leg lengths (peak to trough)
+//   headHold how much of the bob the head takes back out (1 = rock steady)
+export const PANTHER_GALLOP = {
+  ...FELINE_GALLOP,
+  strideL: 3.8, stretch: 0.11, arch: 0.06, bob: 0.15, headHold: 0.6,
+};
+const PANTHER_L = 25;
+// Leg roots at rest (x; all at y 39): near fore and hind, then the far pair a little back.
+const PANTHER_ROOTS = { near: [[33, true], [72, false]], far: [[39, true], [77, false]] };
+// Upper and lower bone: the knee bends at rest, and the reach to a touch-down paw stays
+// inside their sum, so a planted leg never has to stretch.
+const PANTHER_BONES = [13.5, 15.5];
+function pantherPose(phase){
+ const G=PANTHER_GALLOP,b=felineBody(G,phase);
+ const bob=-(b.bump-.5)*G.bob*PANTHER_L;
+ const stretch=1+G.stretch*(1-2*b.flex), archY=1+G.arch*(2*b.flex-1);
+ return {phase,bob,stretch,archY,
+  // The croup (x 77, y 41) and the neck's root (x 30, y 35) as the torso flexes about (50,49).
+  hipDx:27*(stretch-1),hipDy:-8*(archY-1),
+  headDx:-20*(stretch-1),headDy:-14*(archY-1)-bob*G.headHold,
+  // The tail trails the stride by a quarter cycle: a counterweight, not a wag. Its
+  // root rides the croup but its tip does not (the -hipDx), so the extension never
+  // pushes it out through the back of the raster.
+  tail:3.3*Math.sin(Math.PI*2*(phase-.3))-27*(stretch-1)};
+}
+// Two-bone IK with a FIXED bend side, so no knee can flip mid-cycle: +1 breaks toward
+// the tail (+x, the fore's elbow), -1 toward the nose (the hind's stifle).
+function knee(ax,ay,bx,by,l1,l2,side){
+ const dx=bx-ax,dy=by-ay,d=Math.hypot(dx,dy)||1e-4,dd=Math.min(d,(l1+l2)*.995);
+ const a=(l1*l1-l2*l2+dd*dd)/(2*dd),h=Math.sqrt(Math.max(0,l1*l1-a*a)),ux=dx/d,uy=dy/d;
+ return [ax+ux*a+uy*h*side,ay+uy*a-ux*h*side];
+}
+function plantedLegs(c,m,near){
+ const q=make(c),G=PANTHER_GALLOP,[l1,l2]=PANTHER_BONES;
+ for(const [restX,fore] of PANTHER_ROOTS[near?'near':'far']){
+  const f=felineFoot(G,m.phase,fore,near);
+  // The root rides the flexing torso; the paw is placed off the REST root, so it is
+  // still against the road while the shoulder or hip moves over it.
+  const rx=50+(restX-50)*m.stretch, ry=49+(39-49)*m.archY+m.bob;
+  const fx=restX-f.x*PANTHER_L, fy=64-f.y*PANTHER_L;
+  const [kx,ky]=knee(rx,ry,fx,fy,l1,l2,fore?1:-1);
+  q.limb(near?'#72547f':'#38324d',near?6.2:5.2,[[rx,ry],[kx,ky],[fx,fy]]);
+  // The paw lies flat on the road, rolls onto its toes at the push, and curls up in the
+  // air: the fore's flips back under the wrist, the hind's trails toes-down.
+  const rot=f.stance>=0?-.35*f.stance*f.stance:(fore?1.1:-.6)*f.fold;
+  q.path(near?'#634a72':'#302a42',p=>p.ellipse(fx-2*Math.cos(rot),fy-2*Math.sin(rot),5.4,2.5,rot,0,Math.PI*2),null);
+ }
+}
+// The violet panther at gallop phase `phase` (0..1), in the 100 x 70 canvas.
+export function paintCryptPanther(c,phase){
+ const m=pantherPose(((phase%1)+1)%1);
+ plantedLegs(c,m,false);
+ c.save();c.translate(0,m.bob);
+ cat(c,m.phase/1.45,'violet',m);
+ c.restore();
+ plantedLegs(c,m,true);
+}
+// THE STRIDE, in world units per gallop cycle, for the panther drawn `artW` world units
+// wide (its box x 4/3 x VISUAL): the canvas is 100 wide, scaled to the art.
+export function cryptPantherStride(artW){
+ return PANTHER_GALLOP.strideL*PANTHER_L*artW/100;
 }
 
 export function paintCryptAnimal(c,t,kind){
- if(kind==='grave'||kind==='violet'){
+ // The panther's gallop runs 1.45 cycles per unit of the gallery's t, as it always did.
+ if(kind==='violet')paintCryptPanther(c,t*1.45);
+ else if(kind==='grave'){
   const m=boundPose(t);
   boundLegs(c,m,kind,false);
   c.save();c.translate(50,m.bob);c.scale(m.stretch,1);c.translate(-50,0);
-  if(kind==='grave')skeleton(c,t,kind,true);
-  else cat(c,t,kind,true);
+  skeleton(c,t,kind,true);
   c.restore();
   boundLegs(c,m,kind,true);
  }else if(kind==='moon'||kind==='ivory')skeleton(c,t,kind);

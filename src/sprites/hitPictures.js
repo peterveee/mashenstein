@@ -21,6 +21,7 @@
 import { drawToon } from './toons.js';
 import { ZAP_T, layer, tint, blit, zapHash } from './zap.js';
 import { OUTLINE_SCALE } from './outline.js';
+import { bee } from './plumberProps.js';
 
 // The zap's length — what the bake-off's candidates ran for.
 export const HIT_T = ZAP_T;
@@ -560,6 +561,54 @@ function starsAndBirdies(c, heroId, cx, fy, w, t) {
   });
 }
 
+// ======================================================================== BEES
+// THE BEE SWARM FOLLOWS HIM (Peter, 16 Oct 2026: "when the hero hits bees, could some bees
+// follow him for a while?" — then, of the lab's bee-follow-bakeoff, "I like the cloud …
+// keep them the same size as the swarm and then they can trail off while the stars/birds
+// keep going for their normal length"). The generic hit's flash and its stars and birdies
+// run exactly as they do for any other hit; over them twelve of the swarm's own bees loop
+// round his whole body, dragging behind him with a faint buzz line, and peel off backwards
+// one after another. A picture only.
+export const BEE_LIFE = 3.6;
+const BEE_SIZE = 0.85;          // the swarm's own bee: 1.15 on a 22px canvas shown 12 x 1.35 world px wide
+const BEE_TRAIL = 'rgba(42,26,22,0.5)';
+// [x radius, y radius, loop speed] in U / U / rad per s; the sign is the direction round.
+const BEE_CLOUD = [[0.62, 0.7, 7.0], [0.78, 0.55, -8.2], [0.55, 0.85, 9.0], [0.9, 0.6, -6.1], [0.7, 0.8, 7.6], [0.84, 0.7, -9.4],
+  [0.5, 0.62, -7.7], [0.95, 0.78, 6.6], [0.68, 0.5, 8.6], [0.8, 0.9, -7.2], [0.58, 0.74, -9.8], [0.88, 0.52, 6.0]];
+function beeCloud(c, heroId, cx, fy, w, t) {
+  if (w > BEE_LIFE) return;
+  const fade = clamp01((w - GEN_FLASH) / 0.12);
+  const bx = cx - 0.2 * U + 0.1 * U * Math.sin(t * 2), by = fy - 0.52 * U;
+  for (const front of [false, true]) {
+    BEE_CLOUD.forEach(([rx, ry, sp], i) => {
+      const ang = t * sp + i * 1.9, dir = Math.sign(sp);
+      if ((Math.sin(ang) > 0) !== front) return;
+      // Its turn to go: up and off behind him, left by the scroll, fading over 0.45s.
+      const at = 1.0 + i * 0.19, q = clamp01((w - at) / 0.45);
+      const dx = -SCROLL * 0.7 * q * q - 30 * q, dy = -34 * q - 10 * q * q, a = (1 - q) * fade;
+      if (a <= 0) return;
+      const at2 = (k) => [bx + Math.cos(ang - 0.16 * k * dir) * rx * U + dx, by + Math.sin(ang - 0.16 * k * dir) * ry * U * 0.85 + dy];
+      if (w < at) {
+        c.save(); c.globalAlpha *= 0.6 * fade;
+        c.beginPath();
+        for (let k = 0; k <= 4; k++) { const [px, py] = at2(k); if (k) c.lineTo(px, py); else c.moveTo(px, py); }
+        c.strokeStyle = BEE_TRAIL; c.lineWidth = 0.35; c.stroke();
+        c.restore();
+      }
+      const [x, y] = at2(0);
+      c.save(); c.globalAlpha *= a;
+      c.translate(x, y); c.scale(front ? 1 : 0.8, front ? 1 : 0.8);
+      bee(c, 0, 0, -Math.sin(ang) * dir * dir >= 0 ? -1 : 1, BEE_SIZE, Math.floor(t * 34 + i * 3) % 2 === 0);
+      c.restore();
+    });
+  }
+}
+// The stars and birdies for their normal length, the cloud over the top for its own.
+function starsBirdiesAndBees(c, heroId, cx, fy, w, t) {
+  starsAndBirdies(c, heroId, cx, fy, w, t);
+  beeCloud(c, heroId, cx, fy, w, t);
+}
+
 // ---------------------------------------------------------------- by what hit you
 // The family of every obstacle that has one; anything else that reaches the ordinary
 // hit is GENERIC. The live wire (zap), dynamite (blast), the banana peel (pratfall) and
@@ -573,6 +622,8 @@ const FAMILY_MEMBERS = {
   blades: ['floorSaw', 'bearTrap'],
   rollers: ['barrel', 'giantSnowball', 'mailCart', 'drinksTrolley', 'mopBucket', 'chair'],
   ice: ['iceCrystals', 'snowman', 'snowmanBig', 'iceBlocks', 'icicle'],
+  // The Field Service bee swarm, at either height.
+  bees: ['beeSwarm', 'beeSwarmHigh'],
 };
 export const HIT_FAMILY_OF = Object.freeze(Object.fromEntries(
   Object.entries(FAMILY_MEMBERS).flatMap(([family, types]) => types.map((type) => [type, family]))));
@@ -591,6 +642,7 @@ export const HIT_PICTURES = Object.freeze({
   blades: [{ id: 'ouchBare', T: HIT_LONG_T, life: HIT_LONG_T, paint: ouchBare }],
   rollers: [{ id: 'pancake', T: HIT_LONG_T, life: HIT_LONG_T, paint: paintPancake }],
   ice: [{ id: 'block', T: HIT_LONG_T, life: HIT_LONG_T, paint: paintIceBlock, after: iceShards }],
+  bees: [{ id: 'beeCloud', T: GEN_FLASH, life: BEE_LIFE, paint: paintFlash, after: starsBirdiesAndBees }],
   generic: [{ id: 'starsAndBirdies', T: GEN_FLASH, life: GEN_RING_LIFE, paint: paintFlash, after: starsAndBirdies }],
 });
 
@@ -642,5 +694,5 @@ export const HIT_KIT = Object.freeze({
   scratchFor, iceTint, flashWhite, puff, star, flame, prickle, lines, hopY, trail, squashed,
   ringAround, bird, faceOf,
   paintHotFoot, fireATrail, paintRocket, fireBTrail, paintOuchHop, paintPancake, paintIceBlock, iceShards,
-  paintFlash, starsAndBirdies,
+  paintFlash, starsAndBirdies, beeCloud,
 });

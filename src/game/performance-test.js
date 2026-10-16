@@ -1,5 +1,6 @@
 // User-started bot benchmark. The save is disposable; reports never leave the
 // device until the player presses Share/Download. Ordinary gameplay is untouched.
+import { STAGES } from '../data/stages.js';
 import { AttractState } from './attract.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -9,7 +10,18 @@ import { setPropCacheProfile, propCacheStats } from '../sprites/props.js';
 import { beginPerformanceCapture, endPerformanceCapture, performanceMark, performanceAdd, performanceLocation } from '../engine/performance-capture.js';
 import { suspendCrumbPersistence } from '../engine/diag.js';
 
-export const PERFORMANCE_STAGES = ['plumber-1','speed-1','rhythm-1','frost-1','crypt-1','neon-1','gravity-2','office-2','office-3','surge-3'];
+export const PERFORMANCE_STAGES = STAGES.map(stage=>stage.id);
+export const PERFORMANCE_SUITE_KEY = 'mash_performance_suite';
+export function newPerformanceSuite() {
+  return {schema:3,protocol:'bot-full-level-suite-v1',id:Date.now().toString(36),started:new Date().toISOString(),stages:[...PERFORMANCE_STAGES],index:0,runs:[],status:'ready'};
+}
+export function recordSuiteRun(suite,report) {
+  suite.runs.push(report);
+  if(report.status==='complete')suite.index++;
+  suite.status=suite.index>=suite.stages.length?'complete':report.status==='complete'?'ready':report.status;
+  suite.finished=report.finished;
+}
+
 export function performancePlan(id = 'frost-1') {
   if (!PERFORMANCE_STAGES.includes(id)) throw new Error('Unknown performance stage');
   return [{id, pass:1, seed:0x5eed+PERFORMANCE_STAGES.indexOf(id), seconds:30}];
@@ -21,6 +33,11 @@ export class PerformanceTestState extends AttractState {
   enter() {
     this.running = false;
     this.report = null;
+    try {
+      const token=new URLSearchParams(window.location.search).get('performanceSuite');
+      const saved=JSON.parse(sessionStorage.getItem(PERFORMANCE_SUITE_KEY) || 'null');
+      if(token && saved?.id===token && Array.isArray(saved.runs) && saved.stages?.every(id=>PERFORMANCE_STAGES.includes(id)) && saved.stages[saved.index]===this.o.freshStage)this.suite=saved;
+    } catch {}
     Input.clearAll();
     this.onVisibility = () => { if (document.hidden && this.running) this.finish('interrupted: app hidden'); };
     document.addEventListener('visibilitychange', this.onVisibility);
@@ -29,6 +46,8 @@ export class PerformanceTestState extends AttractState {
     this.onFatal=e=>{if(this.running){this.report.error=String(e.detail || 'fatal game error');this.finish('error');}};
     window.addEventListener('mashfatalerror',this.onFatal);
     this.showPanel();
+    // Touch browsers need a fresh user gesture for sound after navigation.
+    if(this.suite && !Input.isTouchDevice())this.autoStart=setTimeout(()=>{if(!document.hidden && this.o.freshStage)this.start(this.o.freshStage);},0);
   }
   panel(title, detail) {
     this.panelEl?.remove();
@@ -46,7 +65,8 @@ export class PerformanceTestState extends AttractState {
     b.onclick=action;this.panelEl.append(b);return b;
   }
   showPanel() {
-    this.panel('PERFORMANCE TEST', 'One complete level per fresh page load. Reports are split into 30-second windows, including later scenery. Keep the app visible and in the same orientation. Resolution stays fixed; progress is not saved. Download each report before preparing another level.');
+    this.panel('PERFORMANCE TEST', 'One complete level per fresh page load. Reports are split into 30-second windows, including later scenery. Keep the app visible and in the same orientation. Resolution stays fixed; your game save is unchanged. Run all saves results between reloads and exports one combined report. On touch devices, tap Start after each reload.');
+    if(this.suite){const p=document.createElement('p');p.textContent=`Level ${this.suite.index+1} of ${this.suite.stages.length} · ${this.suite.runs.filter(r=>r.status==='complete').length} completed`;this.panelEl.append(p);}
     if (this.o.freshStage) {
       this.button(`Start ${this.o.freshStage} full-level test`,()=>this.start(this.o.freshStage));
     } else {
@@ -54,14 +74,32 @@ export class PerformanceTestState extends AttractState {
       select.style.cssText='font:inherit;padding:12px';
       for(const id of PERFORMANCE_STAGES){const option=document.createElement('option');option.value=id;option.textContent=id;select.append(option);}
       select.value='frost-1';this.panelEl.append(select);
+      this.button(`Run all ${PERFORMANCE_STAGES.length} levels`,()=>{
+        this.suite=newPerformanceSuite();
+        if(this.saveSuite())this.reloadStage(this.suite.stages[0]);
+      });
       this.button('Prepare selected level (reload)',()=>{
-        const url=new URL(window.location.href);url.searchParams.delete('goto');url.searchParams.set('performanceStage',select.value);
+        this.suite=null;
+        const url=new URL(window.location.href);url.searchParams.delete('goto');url.searchParams.delete('performanceSuite');url.searchParams.set('performanceStage',select.value);
         window.location.assign(url.href);
       });
     }
     this.button('Back',()=>this.o.onExit());
-    try { const previous=localStorage.getItem('mash_performance_report');if(previous){this.button('Previous report',()=>{this.report=JSON.parse(previous);this.showReport();});} } catch {}
+    try { const previous=localStorage.getItem('mash_performance_report');if(previous){this.button('Previous report',()=>{this.suite=null;this.report=JSON.parse(previous);this.showReport();});} } catch {}
   }
+  saveSuite() {
+    try {sessionStorage.setItem(PERFORMANCE_SUITE_KEY,JSON.stringify(this.suite));return true;}
+    catch {
+      this.storageError='Could not save test progress. The test will not advance. Download any results before leaving.';
+      if(this.panelEl){const p=document.createElement('p');p.textContent=this.storageError;this.panelEl.append(p);}
+      return false;
+    }
+  }
+  reloadStage(id) {
+    const url=new URL(window.location.href);url.searchParams.delete('goto');url.searchParams.set('performanceStage',id);
+    url.searchParams.set('performanceSuite',this.suite.id);window.location.assign(url.href);
+  }
+  exportReport() {return this.suite ? {...this.suite,results:this.suite.runs.flatMap(r=>r.results)} : this.report;}
   start(id) {
     if(this.running || id !== this.o.freshStage)return;
     if (Dev.recording) { this.button('Stop video recording before testing',()=>{}); return; }
@@ -162,21 +200,27 @@ export class PerformanceTestState extends AttractState {
     this.wakeLock?.release().catch(()=>{});this.wakeLock=null;
     Dev.enabled=this.previousDev.enabled;Dev.timeScale=this.previousDev.timeScale;
     this.report.status=status;this.report.finished=new Date().toISOString();
-    // One write, after gameplay is stopped. Never save while measuring.
-    try{localStorage.setItem('mash_performance_report',JSON.stringify(this.report));}catch{}
+    if(this.suite)recordSuiteRun(this.suite,this.report);
+    const savedSuite=!this.suite || this.saveSuite();
+    // Writes occur only after gameplay stops, never while measuring.
+    try{localStorage.setItem('mash_performance_report',JSON.stringify(this.exportReport()));}catch{}
+    if(this.suite && savedSuite && status==='complete' && this.suite.status!=='complete'){this.reloadStage(this.suite.stages[this.suite.index]);return;}
     this.showReport();
   }
   showReport() {
-    this.panel('PERFORMANCE RESULTS',`${this.report.status || 'saved'} · ${this.report.results.length} windows. Send the JSON report back in chat. Slow frames are clues, not automatic diagnoses.`);
+    const report=this.exportReport();
+    this.panel('PERFORMANCE RESULTS',`${report.status || 'saved'} · ${report.results.length} windows. Send the JSON report back in chat. Slow frames are clues, not automatic diagnoses.`);
     const summary=document.createElement('pre');summary.style.cssText='white-space:pre-wrap;font:13px monospace';
-    summary.textContent=this.report.results.map(r=>`${r.id} ${r.fromSimulation?.toFixed(0) ?? 0}–${r.toSimulation?.toFixed(0) ?? 30}s: ${r.timing?.frames ? r.timing.fps.toFixed(1) : '—'} FPS, ${r.timing?.over25 ?? 0} gaps >25ms (${r.status})`).join('\n');this.panelEl.append(summary);
+    summary.textContent=report.results.map(r=>`${r.id} ${r.fromSimulation?.toFixed(0) ?? 0}–${r.toSimulation?.toFixed(0) ?? 30}s: ${r.timing?.frames ? r.timing.fps.toFixed(1) : '—'} FPS, ${r.timing?.over25 ?? 0} gaps >25ms (${r.status})`).join('\n');this.panelEl.append(summary);
+    if(this.storageError)summary.textContent+='\n'+this.storageError;
+    if(this.suite && this.suite.index<this.suite.stages.length)this.button('Continue suite (reload)',()=>{if(this.saveSuite())this.reloadStage(this.suite.stages[this.suite.index]);});
     this.button('Share / download report',()=>this.share());
-    this.button('Prepare another level',()=>this.showPanel());
-    this.button('Copy report',async()=>{try{await navigator.clipboard.writeText(JSON.stringify(this.report,null,2));summary.textContent+='\nReport copied.';}catch{summary.textContent+='\nClipboard unavailable. Use download.';}});
+    this.button('Prepare another level',()=>{this.suite=null;this.o.freshStage=null;this.showPanel();});
+    this.button('Copy report',async()=>{try{await navigator.clipboard.writeText(JSON.stringify(this.exportReport(),null,2));summary.textContent+='\nReport copied.';}catch{summary.textContent+='\nClipboard unavailable. Use download.';}});
     this.button('Back',()=>this.o.onExit());
   }
   async share() {
-    const text=JSON.stringify(this.report,null,2),name='mashenstein-performance.json';
+    const text=JSON.stringify(this.exportReport(),null,2),name='mashenstein-performance.json';
     const file=new File([text],name,{type:'application/json'});
     try {
       if(Input.isTouchDevice() && navigator.canShare?.({files:[file]}) && navigator.share){await navigator.share({files:[file],title:'MASHENSTEIN performance'});return;}
@@ -184,6 +228,7 @@ export class PerformanceTestState extends AttractState {
     }catch(e){if(e.name!=='AbortError')this.button('Download instead',()=>{const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(text);a.download=name;a.click();});}
   }
   exit() {
+    clearTimeout(this.autoStart);
     if(this.running)this.finish('left test');
     this.panelEl?.remove();document.removeEventListener('visibilitychange',this.onVisibility);window.removeEventListener('orientationchange',this.onOrientation);window.removeEventListener('mashfatalerror',this.onFatal);Input.clearAll();
   }

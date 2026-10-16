@@ -30,15 +30,23 @@
 // art on its box. BOBCAT_VISUAL / BOBCAT_TALL are the table numbers that size the art
 // round it.
 //
+// THE PLANTED GALLOP (16 Oct 2026; sprites/felineGait.js — Peter, after the dogs got
+// theirs: "can we fix the other feline animals also"). The keyed gait above is kept for
+// the bake-off's losing takes (BOBCAT_RIG.pose), but the shipped bobcat now runs on
+// gallopPose() below: every stance paw is nailed to the road, a cat's bound-like rotary
+// gallop with the back rounding hard on the gather, sixteen frames stepped by the road
+// he covers (bobcatStride, animals.js ANIMAL_STRIDE). Same drawing, same box, same fit.
+//
 // Authored FACING RIGHT in world units, feet on y 0, then mirrored: obstacles arrive
 // from the right, and world props are never flipped at draw time. Deterministic: every
 // pose is a function of the frame index only.
+
+import { FELINE_FRAMES, FELINE_GALLOP, felineFoot, felineBody } from './felineGait.js';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const lerp = (a, b, k) => a + (b - a) * k;
-const FRAMES = 8;
 
 // The kennel's contour and mouth colours (sprites/dogs.js), unchanged.
 const LINE = 0.26;
@@ -159,6 +167,74 @@ function pose(B, phase) {
     Hc, headR: B.headR, tilt: (B.tilt0 || 0) - 0.04 + nod * 0.06 - pitch * 0.5, gape,
     // The tail swings once a stride, lagging the body: a counterweight, not a wag.
     swing: Math.sin(phase * TAU - 1.1),
+    phase,
+  };
+}
+
+// --------------------------------------------------------- the planted gallop
+// The streak's footfalls on the shared feline gallop (sprites/felineGait.js). He is the
+// long, low one: a long reaching stride for his size (strideL, in his leg lengths), a
+// low carry so the paws lift less, and only a little bounce — the STREAK's "long and low
+// and in no hurry" — while the spine does the work: it shortens by the build's flexK and
+// the back rounds by flexArch on the gather, the same numbers the keyed gait read.
+//   bob    the body's rise through the two flights, in L (peak to trough)
+//   pitch  the rock, radians: nose up as the hinds carry, down as the fores do
+//   headHold  how much of the bump and pitch the head refuses (1 = rock steady)
+export const BOBCAT_GALLOP = {
+  ...FELINE_GALLOP,
+  strideL: 2.75, hindTD: 0.46, foreTD: 0.52, liftF: 0.30, liftH: 0.27,
+  bob: 0.09, pitch: 0.05, headHold: 0.7,
+};
+function gallopPose(B, phase, G = BOBCAT_GALLOP) {
+  const L = B.L;
+  const body = felineBody(G, phase);
+  const lift = (body.bump - 0.5) * G.bob;
+  const flex = body.flex;
+  const pitch = G.pitch * body.pitch;
+  const spine = B.spine * (1 - (B.flexK ?? 0.14) * flex);
+  const arch = B.arch + flex * B.flexArch;
+  const baseY = -(L * (0.96 - (B.low || 0)) + lift * L);
+  const half = spine / 2;
+  const S0 = { x: B.cx + half * Math.cos(pitch), y: baseY - half * Math.sin(pitch) };
+  const H0 = { x: B.cx - half * Math.cos(pitch), y: baseY + half * Math.sin(pitch) - (B.hipUp || 0) };
+  // The paws are placed off the REST roots — the spine at full length, where the keyed
+  // gait's flex 0 left it — so a planted paw holds still against the road while the
+  // shoulder and hip flex over it.
+  const restS = B.cx + B.spine / 2, restH = B.cx - B.spine / 2;
+  const leg = (root, isFore, near, dx = 0) => {
+    const f = felineFoot(G, phase, isFore, near);
+    const fx = (isFore ? restS : restH) + dx + f.x * L;
+    const fy = -f.y * L;
+    if (isFore) {
+      const a3 = L * 0.17, a1 = L * 0.47, a2 = L * 0.44;
+      // carpus -> foot points along `a`; the elbow breaks toward the tail.
+      const C = { x: fx - Math.cos(f.a * DEG) * a3, y: fy - Math.sin(f.a * DEG) * a3 };
+      return { root, mid: ik(root.x, root.y, C.x, C.y, a1, a2, -1), low: C, foot: { x: fx, y: fy }, fore: true };
+    }
+    const hk = B.hindK || 1;
+    const b3 = L * 0.34 * hk, b1 = L * 0.50 * hk, b2 = L * 0.50 * hk;
+    // foot -> hock points along `a`; the stifle breaks toward the nose.
+    const Hk = { x: fx + Math.cos(f.a * DEG) * b3, y: fy + Math.sin(f.a * DEG) * b3 };
+    return { root, mid: ik(root.x, root.y, Hk.x, Hk.y, b1, b2, 1), low: Hk, foot: { x: fx, y: fy }, fore: false };
+  };
+  // A cat's head rides level while the body pumps under it: most of the bump and the
+  // pitch are taken back out at the neck.
+  const hold = G.headHold;
+  const neckAng = B.neckAng * DEG - pitch * (1 - hold);
+  const Hc = {
+    x: S0.x + Math.cos(neckAng) * B.neckLen,
+    y: S0.y + Math.sin(neckAng) * B.neckLen + lift * L * hold,
+  };
+  const gape = clamp01((B.gape0 || 0) + (B.gapeK ?? 1) * cyc(GAIT.gape, phase) * (1 - (B.gape0 || 0)));
+  return {
+    L, S: S0, Hp: H0, pitch, flex, lift, spine, arch,
+    fore: leg({ x: S0.x, y: S0.y }, true, true),
+    foreFar: leg({ x: S0.x - 0.2, y: S0.y }, true, false, -0.2),
+    hind: leg({ x: H0.x, y: H0.y }, false, true),
+    hindFar: leg({ x: H0.x - 0.2, y: H0.y }, false, false, -0.2),
+    Hc, headR: B.headR, tilt: (B.tilt0 || 0) - 0.04 - pitch * (1 - hold),
+    // The bob trails the body's pitch by a quarter cycle: a counterweight, not a wag.
+    swing: Math.sin(TAU * (phase - 0.3)),
     phase,
   };
 }
@@ -652,7 +728,7 @@ function face(ctx, B, P, hd) {
 
 // One bobcat at `phase` (0..1), in world units, FACING LEFT, feet on y 0.
 function paintCat(ctx, B, phase) {
-  const P = pose(B, phase);
+  const P = gallopPose(B, phase);
   const pal = B.pal;
   ctx.save();
   ctx.scale(-1, 1);          // authored facing right; obstacles face left
@@ -720,13 +796,13 @@ export const BOBCAT_BOX = { w: 29, h: 13 };
 // world px and the raster's height is within 0.01%.
 export const BOBCAT_VISUAL = 0.833;
 export const BOBCAT_TALL = 0.965;
-// Eight keyed frames at 16 fps: the long stride cycles slower than the bruiser's 18.
-export const BOBCAT_FRAMES = FRAMES;
-export const BOBCAT_FPS = 16;
+// The planted gallop's sixteen frames. His rate is not chosen: animals.js derives it from
+// his stride and speed (THE PLANTED GALLOP'S CLOCK there), as it does the dogs'.
+export const BOBCAT_FRAMES = FELINE_FRAMES;
 // Debris colours for the hit burst: coat, shade, pale belly.
 export const BOBCAT_PARTICLE_COLORS = [BOBCAT_BUILD.pal.coat, BOBCAT_BUILD.pal.shade, BOBCAT_BUILD.pal.markShade];
 
-// The ANIMAL_PAINTERS contract: paint frame `frame` (0..7) into a w x h raster, feet on
+// The ANIMAL_PAINTERS contract: paint frame `frame` (0..15) into a w x h raster, feet on
 // the bottom edge, FACING LEFT, the head-and-body centred on the raster's centre line.
 // Scaled off the width alone, so a table's TALL only sets the headroom.
 export function paintBobcat(ctx, w, h, frame = 0) {
@@ -735,8 +811,17 @@ export function paintBobcat(ctx, w, h, frame = 0) {
   ctx.translate(w / 2, h);
   ctx.scale(kk, kk);
   ctx.translate(-CORE_CX, 0);
-  paintCat(ctx, BOBCAT_BUILD, (frame % FRAMES) / FRAMES);
+  paintCat(ctx, BOBCAT_BUILD, (frame % FELINE_FRAMES) / FELINE_FRAMES);
   ctx.restore();
+}
+
+// THE STRIDE, in world units per gallop cycle, for the bobcat drawn over a `boxW` def box
+// at `visual` (animals.js): the road a planted paw covers in one cycle. paintBobcat is
+// scaled off the width alone, so the world size of his unit is the art's width over
+// ART_W, times K; the 4/3 is draw.js's hazard overdraw.
+export function bobcatStride(boxW, visual) {
+  const kWorld = ((boxW * 4 / 3 * visual) / ART_W) * K;
+  return BOBCAT_GALLOP.strideL * BOBCAT_BUILD.L * kWorld;
 }
 
 // The rig, for the bake-off (src/dev/desert-cat-candidates.js), which draws every take
@@ -744,6 +829,6 @@ export function paintBobcat(ctx, w, h, frame = 0) {
 export const BOBCAT_RIG = {
   GAIT, LINE, INK, MOUTH, TONGUE, TOOTH,
   cyc, ik, capsule, smoothClosed, P2, pt, bez, ribbon,
-  pose, legPath, torsoPath, neckPath, headPaths, earFrame, earPath, earDetail, tailSpec, ruffPath,
+  pose, gallopPose, legPath, torsoPath, neckPath, headPaths, earFrame, earPath, earDetail, tailSpec, ruffPath,
   silhouette, coatBands, bodyAt, throatBib, bobcatCoat, face,
 };

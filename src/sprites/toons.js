@@ -226,6 +226,13 @@ const hair = (px, w) => Math.max(px * INK.floor / inkScale, w);
 // is unchanged. `hair`'s first argument is the finished-image floor, so both
 // halves come down together or the thinning stops at small sizes.
 const handInk = (ow, outer = true) => (outer ? hair(0.38, ow * 0.42) : hair(0.34, ow * 0.36));
+// The bare hand's ring as a hero of height `u` gets it right now (the live ink scale,
+// floor and contour colour), for a piece of hand drawn outside the rig — the pit's
+// fingertips on a lip (sprites/pitFall.js). Stroked at twice this UNDER the fill, as
+// paintHand does.
+export function toonHandInk(u = 24) {
+  return { w: handInk(hair(0.5, contour(0.016 * u)), false), color: OUTLINE };
+}
 
 // EVERY HAND ON THE RIG PAINTS THROUGH paintHand — the plumber glove, Kiko's
 // bracer, Clara's fingerless glove, Fernwick's bracelet, Grumpos's gauntlet and
