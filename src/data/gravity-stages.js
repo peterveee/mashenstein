@@ -67,9 +67,9 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
     // Long crossings are authored as groups; each is one held jump. Smaller
     // duck obstacles sit after the landing runway, never inside an ascent.
     hazards: [
-      // Three of the spike beds are live wire since 14 Oct (Peter: "replace some spikes
-      // with livewires in level 3"): the same span, jumped the same way.
-      attack('float-01', 4, 0, 'floatSpikes', 1.15),
+      // Most spike beds are live wire (Peter, 16 Oct: "use live wires rather than
+      // spikes for the most part", "leave some spikes for variety"): one bed stays spikes.
+      attack('float-01', 4, 0, 'railPulse', 1.15),
       hazard('float-duck-01', 8, 0, 'looseToolkit'),
       attack('laser-01', 12, 0, 'floatLaser', 1.5),
       hazard('float-duck-02', 16, 0, 'weldingDrone'),
@@ -91,7 +91,7 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
       hazard('float-duck-07', 56, 0, 'looseToolkit'),
       attack('laser-03', 60, 0, 'floatLaser', 1.85),
       hazard('float-duck-08', 64, 0, 'weldingDrone'),
-      attack('mixed-04-a', 68, 0, 'floatSpikes', 0.6),
+      attack('mixed-04-a', 68, 0, 'railPulse', 0.6),
       hazard('mixed-04-b', 68.7, 0, 'valveManifold'),
       attack('mixed-04-c', 68.9, 0, 'floatLaser', 0.95),
       hazard('float-duck-09', 72, 0, 'looseToolkit'),

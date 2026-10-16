@@ -1983,8 +1983,9 @@ function flickerBlock(t) {
 export class TitleState {
   static portraitMode = 'frame';
 
-  constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onLab, onIntro, onAttract, attractDelay, attractLabel, onTutorial, openExtras = false, extrasFocus = null }) {
+  constructor({ save, onSlotChosen, onSettings, onAbout, onHowTo, onGuide, onSoundTest, onLab, onIntro, onAttract, attractDelay, attractLabel, onTutorial, openExtras = false, extrasFocus = null }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onSettings = onSettings;
+    this.onAbout = onAbout;
     this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest; this.onLab = onLab; this.onIntro = onIntro;
     this.onAttract = onAttract; this.attractDelay = attractDelay ?? 60;
     this.attractLabel = attractLabel || 'DEMO';
@@ -2183,6 +2184,7 @@ export class TitleState {
     // The player's own songs, made from a riff and played live in the club.
     if (this.onLab) choices.push({ id: 'lab', label: 'THE LAB', act: () => this.onLab() });
     if (anyFile) choices.push({ id: 'erase', label: 'ERASE A SAVE FILE', act: () => this.beginErase() });
+    if (this.onAbout) choices.push({ id: 'about', label: 'ABOUT MASHENSTEIN', act: () => this.onAbout() });
     choices.push({ id: 'back', label: 'BACK', cancel: true });
     return choices;
   }
@@ -6541,6 +6543,115 @@ function drawDeleteConfirm(ctx, { rec, yes }) {
   ctx.stroke();
 }
 
+function aboutPageLayout() {
+  const portrait = portraitMenuActive();
+  const w = portrait ? Math.min(W - 48, 380) : 190;
+  const h = portrait ? 66 : 27;
+  const x = (W - w) / 2;
+  const bottom = portrait ? portraitMenuSafeBottom(24) : H - 14;
+  const reload = { x, y: bottom - 2 * h - (portrait ? 18 : 8), w, h };
+  return {
+    portrait,
+    back: { x, y: bottom - h, w, h },
+    reload,
+    returnToggle: portrait
+      ? { x, y: reload.y - 60, w, h: 42 }
+      : { x: W / 2 - 110, y: 166, w: 220, h: 20 },
+  };
+}
+
+export class AboutState {
+  static portraitMode = 'frame';
+
+  constructor({ onDone, onReload }) {
+    this.onDone = onDone;
+    this.onReload = onReload;
+    this.returnToAbout = true;
+    this.idx = 2; // Back is the safe keyboard default.
+  }
+  enter() { this.idx = 2; Input.setMenuButtons(); }
+  buildTime() {
+    return formatBuildTime(typeof window !== 'undefined' ? window.__MASH_BUILT_AT__ : '') || 'UNAVAILABLE';
+  }
+  update() {
+    const g = aboutPageLayout();
+    const hit = (r) => Input.pointer.x >= r.x && Input.pointer.x <= r.x + r.w
+      && Input.pointer.y >= r.y && Input.pointer.y <= r.y + r.h;
+    if (Input.pressed('back') || Input.pressed('slide')) { Audio.sfx('ui'); this.onDone(); }
+    else if (Input.pressed('up')) { this.idx = (this.idx + 2) % 3; Audio.sfx('ui'); }
+    else if (Input.pressed('down')) { this.idx = (this.idx + 1) % 3; Audio.sfx('ui'); }
+    else if (Input.pressed('pointer') && hit(g.back)) { Audio.sfx('ui'); this.onDone(); }
+    else if (Input.pressed('pointer') && hit(g.reload)) { Audio.sfx('uiConfirm'); this.onReload(this.returnToAbout); }
+    else if (Input.pressed('pointer') && hit(g.returnToggle)) { this.returnToAbout = !this.returnToAbout; Audio.sfx('ui'); }
+    else if (Input.pressed('confirm')) {
+      if (this.idx === 0) { this.returnToAbout = !this.returnToAbout; Audio.sfx('ui'); }
+      else if (this.idx === 1) { Audio.sfx('uiConfirm'); this.onReload(this.returnToAbout); }
+      else { Audio.sfx('ui'); this.onDone(); }
+    }
+    Input.endFrame();
+  }
+  draw(ctx) {
+    const g = aboutPageLayout();
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    if (g.portrait) {
+      const top = portraitMenuSafeTop();
+      const line = (copy, y, size, color, font = 'ui') => {
+        const fit = portraitMenuFit(copy, size, W - 48, font);
+        portraitMenuTextCentered(ctx, copy, W / 2, portraitMenuTextY(top + y, fit, font), color, fit, font);
+      };
+      line('MASHENSTEIN', 62, 3.4, '#ffcf33', 'title');
+      line('THE UNPLUGGENING', 111, 1.8, '#8fb0f5', 'subtitle');
+      line('A GAME STITCHED TOGETHER', 186, 1.8, '#f4f1fa');
+      line('FROM PARTS OF OTHER GAMES.', 218, 1.8, '#f4f1fa');
+      line('RUN. JUMP. DUCK. SHOOT.', 283, 1.65, '#c9a0ff', 'bold');
+      line('THREE BUTTONS. MANY BAD IDEAS.', 318, 1.55, '#9292a3');
+      line('BUILT (LOCAL TIME)', 402, 1.45, '#c9a0ff', 'bold');
+      line(this.buildTime(), 441, 1.5, '#f4f1fa');
+      line('RELOAD GAME CHECKS FOR A NEW BUILD', 494, 1.25, '#9292a3');
+    } else {
+      const line = (copy, y, size, color, font = 'ui') => {
+        const fit = Math.min(size, (W - 42) / Math.max(1, textWidth(copy, 1, font)));
+        drawTextCentered(ctx, copy, W / 2, textYForMid(y, fit, font), color, fit, font);
+      };
+      line('MASHENSTEIN', 26, 2.2, '#ffcf33', 'title');
+      line('THE UNPLUGGENING', 47, 1.2, '#8fb0f5', 'subtitle');
+      line('A GAME STITCHED TOGETHER FROM PARTS OF OTHER GAMES.', 77, 0.95, '#f4f1fa');
+      line('RUN. JUMP. DUCK. SHOOT.', 98, 0.95, '#c9a0ff', 'bold');
+      line('THREE BUTTONS. MANY BAD IDEAS.', 115, 0.85, '#9292a3');
+      line('BUILT (LOCAL TIME)', 141, 0.85, '#c9a0ff', 'bold');
+      line(this.buildTime(), 158, 0.9, '#f4f1fa');
+    }
+    const toggle = g.returnToggle;
+    const toggleLabel = `RETURN TO ABOUT: ${this.returnToAbout ? 'ON' : 'OFF'}`;
+    drawMenuRow(ctx, toggle.x, toggle.y, toggle.w, toggle.h, g.portrait ? 6 : 3,
+      this.idx === 0 ? undefined : BACK_BUTTON_PLATE);
+    if (g.portrait) {
+      const size = portraitMenuFit(toggleLabel, 1.45, toggle.w - 24);
+      portraitMenuTextCentered(ctx, toggleLabel, W / 2,
+        portraitMenuTextY(toggle.y + toggle.h / 2, size),
+        this.idx === 0 ? '#c9a0ff' : '#c8c8d8', size);
+    } else {
+      drawTextCentered(ctx, toggleLabel, W / 2, textYForMid(toggle.y + toggle.h / 2, 0.9),
+        this.idx === 0 ? '#c9a0ff' : '#c8c8d8', 0.9);
+    }
+    for (const [i, r, label] of [[1, g.reload, 'RELOAD GAME'], [2, g.back, 'BACK']]) {
+      const selected = this.idx === i;
+      drawMenuRow(ctx, r.x, r.y, r.w, r.h, g.portrait ? 7 : 4,
+        selected ? undefined : BACK_BUTTON_PLATE);
+      if (g.portrait) {
+        const size = portraitMenuFit(label, 2, r.w - 24, selected ? 'bold' : 'ui');
+        portraitMenuTextCentered(ctx, label, W / 2,
+          portraitMenuTextY(r.y + r.h / 2, size, selected ? 'bold' : 'ui'),
+          selected ? '#c9a0ff' : '#c8c8d8', size, selected ? 'bold' : 'ui');
+      } else {
+        drawTextCentered(ctx, label, W / 2, textYForMid(r.y + r.h / 2, 1.4),
+          selected ? '#c9a0ff' : '#c8c8d8', 1.4);
+      }
+    }
+  }
+}
+
 export class SettingsState {
   static portraitMode = 'frame';
 
@@ -6678,7 +6789,8 @@ export class SettingsState {
       // because what it writes and what it replaces both need saying first.
       ...(this.onSaveFile ? [{ label: 'IMPORT / EXPORT', act: () => { this.save.persist(); this.onSaveFile(); } }] : []),
       // What the game was doing when it last quit on its own (crash-log.js).
-      ...(this.onPerformanceTest ? [{ label: 'PERFORMANCE TEST', act: () => { this.save.persist(); this.onPerformanceTest(); } }] : []),
+      ...(this.onPerformanceTest ? [{ label: 'PERFORMANCE TEST', indentOnTouchLandscape: true,
+        act: () => { this.save.persist(); this.onPerformanceTest(); } }] : []),
       ...(this.onCrashLog ? [{ label: 'CRASH LOG', act: () => { this.save.persist(); this.onCrashLog(); } }] : []),
       { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },
       { label: 'BACK', act: () => { this.save.persist(); this.onDone(); } },
@@ -6813,7 +6925,8 @@ export class SettingsState {
       const rowTop = this.listY + (i - this.listStart) * this.rowH;
       if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2);
       const textY = textYForMid(rowTop + this.rowH / 2);
-      drawText(ctx, o.label, band.textX, textY, sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
+      drawText(ctx, o.label, band.textX + (o.indentOnTouchLandscape && Input.isTouchDevice() ? 12 : 0),
+        textY, sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     });
     if (this.listCount(opts) > this.visibleRows) {
       const trackY = this.listY + 4;

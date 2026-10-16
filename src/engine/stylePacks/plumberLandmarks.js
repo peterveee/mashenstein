@@ -1652,7 +1652,10 @@ export function drawPlumberPatchwork(ctx, t, camX, seat, paper = true, alpha = 1
     const Y0 = -70, Y1 = PATCH_BOT + 20;         // the piece's full ink, local
     const sx = Math.hypot(m.a, m.b), sy = Math.hypot(m.c, m.d);
     const cw = Math.max(1, Math.ceil((xr - xl) * sx)), ch = Math.max(1, Math.ceil((Y1 - Y0) * sy));
-    const STRIP = 3;
+    // The 320px entrance ramp is smooth enough to sample in 8px columns. This
+    // cuts the large canvas-to-canvas copies by roughly two thirds on HiDPI
+    // screens, where the old 3px strips dominated Plumber 1's late frames.
+    const STRIP = 8;
     // Three passes: the back band, the front band, then the cloud shadows on their own —
     // at the BACK band's height, because the back crest is their outline. Riding with
     // the front band, which stands taller on the slope, they came loose into the sky.

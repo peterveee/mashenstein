@@ -215,7 +215,8 @@ function floorPlane(ctx, f, P, wd) {
       ctx.lineTo(xOf(m * T + T, S, fa), ya);
       ctx.lineTo(xOf(m * T + T, S, fb), yb);
       ctx.lineTo(xOf(m * T, S, fb), yb);
-      ctx.closePath();
+      // fill() closes each tile implicitly. Explicitly closing thousands of
+      // subpaths every frame was expensive in Surge's Office appearance.
     }
   }
   ctx.fillStyle = B;

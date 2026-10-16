@@ -47,6 +47,9 @@ function recorder() {
 
 const surge = CABINET_BY_ID.surge;
 const cycle = __testing.SURGE_CYCLE;
+assert(getStylePack('surge', { surgeSeed: 0x5eed }).seed === 0x5eed
+  && getStylePack('surge', { surgeSeed: 0x5eed }).seed === 0x5eed,
+  'bot runs can reproduce the same cosmetic Surge cycle');
 const shipped = [...new Set(CABINETS.filter((c) => c.id !== 'surge').map((c) => c.style))].sort();
 assert(JSON.stringify([...cycle].sort()) === JSON.stringify(shipped),
   `the cycle is every other cabinet's shipped style (${cycle.join(', ')} vs ${shipped.join(', ')})`);

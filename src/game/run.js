@@ -4855,6 +4855,9 @@ export class RunState {
       ...this.save.settings,
       paperCabinet: this.cabinet.id,
       stageIndex: this.stage?.index ?? 1,
+      // Bot performance runs use a fixed gameplay seed; give their cosmetic
+      // Surge cycle the same repeatability without changing live-run variety.
+      surgeSeed: this.demo ? this.seed : undefined,
       // A known query preset is an intentional dev bakeoff override. It wins
       // over a stage's review default so the same authored level can show the
       // baseline and the candidate without editing stage data.
@@ -4892,9 +4895,15 @@ export class RunState {
     // And the gouache backdrop's bake (cryptGouache.js): ~0.6 s from cold, which would
     // otherwise all land on its first frame. The briefing's art warm-up normally gets
     // through it first, and then this returns at once.
-    if (this.cabinet?.style === 'gouache') finishCryptGouacheBake();
+    // Surge can borrow Crypt in a brief glitch before its scheduled Crypt slot.
+    // Demo/direct launches can skip the briefing's warm queue; never let that
+    // first glimpse synchronously bake the whole backdrop during a live frame.
+    if (this.cabinet?.style === 'gouache' || this.cabinet?.style === 'surge') finishCryptGouacheBake();
     // And Frost's crayon sky (stylePacks/frostCrayon/sky.js): its tooth and its bake.
-    if (this.cabinet?.id === 'frost') warmFrostSky(this.stage?.index ?? 1, isPhonePortraitPresentation());
+    // Surge's ghost/blocks glitches can reveal Frost long before its normal
+    // slot. Bake the matching sky before the run so that reveal cannot stall.
+    if (this.cabinet?.id === 'frost' || this.cabinet?.style === 'surge')
+      warmFrostSky(this.stage?.index ?? 1, isPhonePortraitPresentation());
     this.stageMusicBank = musicSong?.bank || this.cabinet.music;
     MusicDirector.enterStage(musicSong?.bank || this.cabinet.music, {
       mixOverride: musicSong?.mix,
@@ -15922,7 +15931,9 @@ export class RunState {
     // for ZAP_T (sprites/zap.js) — now and then as his own X-ray, never twice running,
     // and only for a hero whose skeleton has been drawn. Everything else about the hit
     // (shake, hitstop, burst, i-frames) is the ordinary one.
-    const zapContact = src === 'railPulse';
+    // The red beds (floatLaser) are live too (Peter, 16 Oct: "red live wires that also
+    // do the electrocution effect"): same bite, same jolt.
+    const zapContact = src === 'railPulse' || src === 'floatLaser';
     if (zapContact) {
       Audio.sfx('zap');
       if (this.battery > 0) {

@@ -58,6 +58,7 @@ const suites = [
   'tests/performance-handoff.js',
   // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.
   'tests/surge-cycle.js',
+  'tests/surge-entry-warmup.js',
   'tests/office-climb.js',
   'tests/office-lift.js',
   'tests/office-zombies.js',
@@ -521,6 +522,7 @@ const suites = [
   'tests/orientation-refresh.js',
   'tests/density.js',
   'tests/frame-health.js',
+  'tests/presentation-cadence.js',
   'tests/camera-framing.js',
   'tests/camera-jump-guard.js',
   'tests/camera-anchor-spring.js',

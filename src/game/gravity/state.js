@@ -5,13 +5,14 @@ import { frameGroundY } from '../../engine/frame.js';
 import { setAckHook, setBlastHook, setShotHook } from '../../dev/space-plateaus.js';
 import { setPilotHook, setFinishAckHook } from '../../dev/space-life.js';
 import { RunState, applyFraming, portraitGameplayEdges } from '../../game/run.js';
-import { makeObstacle, makePickup } from '../../game/entities.js';
+import { makeObstacle, makePickup, OBSTACLES } from '../../game/entities.js';
 import { GROUND_Y, screenYFor, setRestingZoom } from '../../engine/camera.js';
 import { W, H, isPhonePortraitPresentation, presentationFrame } from '../../engine/renderer.js';
 import { PHONE_PORTRAIT, LANDSCAPE } from '../../engine/frame.js';
 import { Audio } from '../../engine/audio.js';
 import { GravityPlayer } from './player.js';
-import { floatLaunch, jumpV } from '../player.js';
+import { floatLaunch, jumpV, gravityFor } from '../player.js';
+import { HEROES } from '../../data/heroes.js';
 import { drawGravityRoom } from '../../dev/gravity/scene.js';
 import { SPACE_LOOKS, drawSpaceRoom, railDepth } from '../../dev/space-look-candidates.js';
 import { GRAVITY_LEVEL as L, GRAVITY_CABINET } from './model.js';
@@ -85,6 +86,37 @@ function withWrongRailBeds(hazards, gates, total, speed) {
   return hazards.concat(beds);
 }
 
+// Nothing sits on the window frames (Peter, 16 Oct: "make sure there are no objects
+// or obstacles placed over the panels of glass... they SHOULD stand in front of
+// glass"): the room's panes run PANE_STEP apart, PANE_W wide, from PANE_OFF, in world
+// x, and each frame is the PANE_GAP between them. Obstacles that overlap in x (a jump
+// group) move together by the smallest slide that puts the group inside one pane;
+// anything wider than a pane (the long wires and lasers) can't, and stays put.
+const PANE_STEP = 102, PANE_OFF = 4, PANE_W = 94, PANE_MARGIN = 5, GROUP_GAP = 40;
+export function paneSlide(x0, x1) {
+  if (x1 - x0 > PANE_W - 2 * PANE_MARGIN) return 0;
+  let best = null;
+  for (let k = Math.floor((x0 - PANE_OFF) / PANE_STEP) - 1; k <= Math.floor((x1 - PANE_OFF) / PANE_STEP) + 1; k++) {
+    const lo = k * PANE_STEP + PANE_OFF + PANE_MARGIN, hi = k * PANE_STEP + PANE_OFF + PANE_W - PANE_MARGIN;
+    const d = x0 < lo ? lo - x0 : x1 > hi ? hi - x1 : 0;
+    if (best === null || Math.abs(d) < Math.abs(best)) best = d;
+  }
+  return best;
+}
+const NO_SLIDE = (h) => h.bed || h.type === 'maintenancePulse' || isGateField(h.type);
+function clearOfFrames(hazards, speed) {
+  const width = (h) => h.span ? h.span * speed : (OBSTACLES[h.type]?.w ?? 16);
+  const movable = hazards.filter(h => !NO_SLIDE(h) && OBSTACLES[h.type]).sort((a, b) => a.x - b.x);
+  for (let i = 0; i < movable.length;) {
+    let j = i + 1, end = movable[i].x + width(movable[i]);
+    while (j < movable.length && movable[j].x < end + GROUP_GAP) { end = Math.max(end, movable[j].x + width(movable[j])); j++; }
+    const d = Math.round(paneSlide(movable[i].x, end));
+    if (d) for (let n = i; n < j; n++) { movable[n].x += d; movable[n].at += d / speed; }
+    i = j;
+  }
+  return hazards;
+}
+
 const ZOOM_PHONE_FRAMING = 2.2, PHONE_TOP = 22, PHONE_BOTTOM = 3;
 // Under the HUD's first row on desktop and tablet; the ceiling rail runs behind
 // the second (BONUS), which play never reaches (Peter, 14 Oct: "i would like
@@ -120,7 +152,12 @@ export class GravityRunState extends RunState {
       // where the portrait frame puts it, the ceiling rises to just under the
       // status HUD.
       const z = config.worldZoom, ground = screenYFor(GROUND_Y, z, this.portraitFrameFit().pan, GROUND_Y);
-      const top = portraitGameplayEdges(presentationFrame(), this).top + 2;
+      // Not all the way up though (Peter, 16 Oct: "dont extend the windows all
+      // the way to the top, only make the floors and ceiling the same height"):
+      // the ceiling sits as far below the top of the screen as the floor sits
+      // above the bottom, never higher than under the status HUD.
+      const frame = presentationFrame();
+      const top = Math.max(portraitGameplayEdges(frame, this).top + 2, (Number(frame?.height) || 0) - ground);
       const fit = Math.floor((ground - top) / z / (1 + this.railRoom() / 137));
       // Capped at 2.2× — past that the windows grow wider than the screen.
       return Number.isFinite(fit) ? Math.max(L.corridor, Math.min(fit, Math.round(L.corridor * 2.2))) : L.corridor;
@@ -172,6 +209,23 @@ export class GravityRunState extends RunState {
       ? this.gravityStageData.rewards.map(g => ({ ...g, x: gravityWorldX(g.at, PLAYER_X, this.baseSpeed()) }))
       : this.gravityGates.map(g => ({ ...g, x: g.x + 175 }));
     return anchors.map(a => ({ ...a, lane: this.activeLaneAt(a.x) }));
+  }
+  // How high a capsule may sit: as high as the WEAKEST hero's held jump reaches
+  // in this corridor, and never above the ceiling (Peter, 16 Oct: "some of these
+  // rewards are too high to reach with any hero... rewards ABOVE the ceiling,
+  // make sure these are reachable by any hero, but high please"). The stage's
+  // authored altitude only staggers them below it. The apex is
+  // launch²/2g with the stage's jump scale, the same sum the coin arcs use.
+  rewardAltCap(h = 12) {
+    const gs = this.gravityScale();
+    const k = (this.gravityStageData.jumpHeightScale || 1) * this.jumpScaleK();
+    let apex = Infinity;
+    for (const hero of HEROES) {
+      const launch = jumpV(hero) * floatLaunch(gs) * k;
+      apex = Math.min(apex, launch * launch / (2 * gravityFor(hero) * gs));
+    }
+    // The hero's body collects it too, so the apex is a little conservative.
+    return Math.max(8, Math.min(Math.floor(apex * 0.95), this.corridor - h - 6));
   }
   // The rail the gates say is the running surface at world x.
   activeLaneAt(x) {
@@ -285,7 +339,7 @@ export class GravityRunState extends RunState {
     const xAt = (sec) => gravityWorldX(sec, PLAYER_X, speed);
     this.gravityGates = this.gravityStageData.gates.map((g, index) => ({ ...g, index, x: xAt(g.at) }));
     this.gravityHazards = this.gravityStageData.hazards.map((h) => ({ ...h, x: xAt(h.at) }));
-    this.gravityHazards = withWrongRailBeds(ceilingJumpsOnly(this.gravityHazards), this.gravityGates, this.totalDist, speed);
+    this.gravityHazards = clearOfFrames(withWrongRailBeds(ceilingJumpsOnly(this.gravityHazards), this.gravityGates, this.totalDist, speed), speed);
     this.gravitySpawned = new Set();
     this.obstacles = []; this.pickups = [];
     this.spawner.fill = () => this.fillGravityEntities();
@@ -469,8 +523,12 @@ export class GravityRunState extends RunState {
     for (const p of this.pickups) if (!before.has(p)) {
       const g = this.rewardAnchors().find(g => g.x >= p.x && g.x < stopX);
       if (!g) { p.live = false; continue; }
-      p.x = g.x; p.alt = Number.isFinite(g.alt) ? g.alt : 8;
+      p.x = g.x;
+      // Authored alt only staggers them below the cap (92 = right at it).
+      const cap = this.rewardAltCap(p.h);
+      p.alt = Number.isFinite(g.alt) ? Math.max(8, cap - Math.max(0, 92 - g.alt)) : 8;
       if (this.pickups.some(other => other !== p && other.live && Math.abs(other.x - p.x) < 16)) p.x += 18;
+      p.x += paneSlide(p.x, p.x + p.w);
       if (p.def.power) this.drip.notePowerMoved(p.x);
       if (g.lane) { p.alt = this.corridor - p.alt - p.h; p.gravityCeiling = this.corridor; }
     }

@@ -26,6 +26,20 @@ import { Audio, PORTAL_RELAY, PORTAL_RELAY_GAIN } from './engine/audio.js';
  * IS the doorway.
  */
 const levelOpenCue = () => Audio.sfx('portal', { gain: PORTAL_RELAY_GAIN, shape: PORTAL_RELAY });
+const ABOUT_RELOAD_KEY = 'mashenstein-return-to-about-after-reload';
+function setAboutReloadReturn(enabled) {
+  try {
+    if (enabled) sessionStorage.setItem(ABOUT_RELOAD_KEY, '1');
+    else sessionStorage.removeItem(ABOUT_RELOAD_KEY);
+  } catch { /* A restricted browser still gets the reload. */ }
+}
+function consumeAboutReloadReturn() {
+  try {
+    const enabled = sessionStorage.getItem(ABOUT_RELOAD_KEY) === '1';
+    sessionStorage.removeItem(ABOUT_RELOAD_KEY);
+    return enabled;
+  } catch { return false; }
+}
 import { save } from './engine/save.js';
 import { floorReflectionStats, resetFloorReflectionStats } from './engine/reflections.js';
 import { setState, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero, isTransitioning } from './engine/states.js';
@@ -42,7 +56,7 @@ import { warmPaperTexture } from './engine/paper-material.js';
 import { gameAlternate, GAME_ALTERNATES } from './data/game-alternates.js';
 import { STAGES, STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
-import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
+import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, SettingsState, AboutState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
 import { IntroState } from './game/intro.js';
 import { EXIT_CUE } from './game/hub/cabinet-dive.js';
 import { resultsOnTheBeat, installSoundtrack } from './game/results-chip.js';
@@ -410,6 +424,7 @@ const Flow = {
       }
     },
     onSettings: () => Flow.toSettings(),
+    onAbout: () => Flow.toAbout(),
     onHowTo: () => setState(new HowToPlayState({ onDone: () => Flow.toExtras('howto') })),
     onTutorial: () => Flow.toTutorial(true),
     onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toExtras('guide') })),
@@ -418,6 +433,18 @@ const Flow = {
     // A replay, not the real thing: this onDone only walks back to the title.
     // The new-file path above is the one that sets sawIntro and persists.
     onIntro: () => setState(new IntroState({ onDone: () => Flow.toExtras('intro') })),
+    }));
+  },
+
+  toAbout() {
+    setState(new AboutState({
+      onDone: () => Flow.toExtras('about'),
+      onReload: (returnToAbout) => {
+        save.persist();
+        setAboutReloadReturn(returnToAbout);
+        if (window.__mash_lifecycle?.forceReload) window.__mash_lifecycle.forceReload();
+        else window.location.reload();
+      },
     }));
   },
 
@@ -1049,7 +1076,11 @@ function boot() {
     window.__mash_routed = true;
     setState(new PerformanceTestState({freshStage:performanceStage, realSettings:save.settings, onExit:()=>Flow.toSettings()}));
   }
-  if (!window.__mash_routed) Flow.toTitle();
+  const returnToAbout = consumeAboutReloadReturn();
+  if (!window.__mash_routed) {
+    if (returnToAbout) Flow.toAbout();
+    else Flow.toTitle();
+  }
   // Keep an installed copy current silently. Browser-only iPhones never reach
   // this boot path: gate.js owns the sole Home Screen installation flow.
   initUpdates();

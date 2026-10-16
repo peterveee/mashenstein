@@ -12,9 +12,16 @@ import { beginPerformanceCapture, endPerformanceCapture, performanceMark, perfor
 import { suspendCrumbPersistence } from '../engine/diag.js';
 
 export const PERFORMANCE_STAGES = STAGES.map(stage=>stage.id);
+export const TARGETED_PERFORMANCE_STAGES = Object.freeze([
+  'speed-3', 'frost-3', 'crypt-3', 'gravity-3', 'office-2', 'surge-3',
+]);
 export const PERFORMANCE_SUITE_KEY = 'mash_performance_suite';
-export function newPerformanceSuite() {
-  return {schema:3,protocol:'bot-full-level-suite-v1',id:Date.now().toString(36),started:new Date().toISOString(),stages:[...PERFORMANCE_STAGES],index:0,runs:[],status:'ready'};
+export function newPerformanceSuite(stages = PERFORMANCE_STAGES, densityTarget = null) {
+  if (!Array.isArray(stages) || !stages.length || stages.some(id => !PERFORMANCE_STAGES.includes(id)))
+    throw new Error('Invalid performance suite stages');
+  if (densityTarget != null && (!Number.isFinite(densityTarget) || densityTarget <= 0))
+    throw new Error('Invalid performance suite density');
+  return {schema:3,protocol:'bot-full-level-suite-v1',id:Date.now().toString(36),started:new Date().toISOString(),stages:[...stages],densityTarget,index:0,runs:[],status:'ready'};
 }
 export function recordSuiteRun(suite,report) {
   suite.runs.push(report);
@@ -49,13 +56,13 @@ export class PerformanceTestState extends AttractState {
     window.addEventListener('mashfatalerror',this.onFatal);
     this.showPanel();
     // Touch browsers need a fresh user gesture for sound after navigation.
-    if(this.suite && !Input.isTouchDevice())this.autoStart=setTimeout(()=>{if(!document.hidden && this.o.freshStage)this.start(this.o.freshStage);},0);
+    if(this.suite && !Input.isTouchDevice())this.autoStart=setTimeout(()=>{if(!document.hidden && this.o.freshStage)this.start(this.o.freshStage,this.suite.densityTarget);},0);
   }
   panel(title, detail) {
     this.panelEl?.remove();
     const el = document.createElement('section');
     el.setAttribute('aria-label','Performance test');
-    el.style.cssText = 'position:fixed;z-index:10000;inset:0;box-sizing:border-box;padding:max(24px,env(safe-area-inset-top)) 22px max(24px,env(safe-area-inset-bottom));background:#101823;color:#edf3f8;font:16px system-ui;overflow:auto;touch-action:pan-y';
+    el.style.cssText = 'position:fixed;z-index:10000;inset:0;box-sizing:border-box;padding:max(24px,env(safe-area-inset-top)) max(22px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(22px,env(safe-area-inset-left));background:#101823;color:#edf3f8;font:16px system-ui;overflow:auto;touch-action:pan-y';
     const h = document.createElement('h1');h.textContent=title;el.append(h);
     const p = document.createElement('p');p.textContent=detail;p.style.maxWidth='680px';el.append(p);
     for(const type of ['pointerdown','pointerup','click','keydown'])el.addEventListener(type,e=>e.stopPropagation());
@@ -70,7 +77,15 @@ export class PerformanceTestState extends AttractState {
     this.panel('PERFORMANCE TEST', 'One complete level per fresh page load. Reports are split into 30-second windows, including later scenery. Keep the app visible and in the same orientation. Resolution stays fixed; your game save is unchanged. Run all saves results between reloads and exports one combined report. On touch devices, tap Start after each reload.');
     if(this.suite){const p=document.createElement('p');p.textContent=`Level ${this.suite.index+1} of ${this.suite.stages.length} · ${this.suite.runs.filter(r=>r.status==='complete').length} completed`;this.panelEl.append(p);}
     if (this.o.freshStage) {
-      this.button(`Start ${this.o.freshStage} full-level test`,()=>this.start(this.o.freshStage));
+      const suiteDensity = this.suite?.densityTarget ?? null;
+      this.button(suiteDensity
+        ? `Start ${this.o.freshStage} at ${suiteDensity}×`
+        : `Start ${this.o.freshStage} full-level test`,
+      ()=>this.start(this.o.freshStage,suiteDensity));
+      const renderer = rendererDiagnostics();
+      if (!suiteDensity && renderer.backend === 'webgl' && renderer.density > 1.5) {
+        this.button(`Start ${this.o.freshStage} at 1.5×`,()=>this.start(this.o.freshStage,1.5));
+      }
     } else {
       const select=document.createElement('select');select.setAttribute('aria-label','Level to test');
       select.style.cssText='font:inherit;padding:12px';
@@ -78,6 +93,10 @@ export class PerformanceTestState extends AttractState {
       select.value='frost-1';this.panelEl.append(select);
       this.button(`Run all ${PERFORMANCE_STAGES.length} levels`,()=>{
         this.suite=newPerformanceSuite();
+        if(this.saveSuite())this.reloadStage(this.suite.stages[0]);
+      });
+      this.button(`Run targeted ${TARGETED_PERFORMANCE_STAGES.length} levels at 1.5×`,()=>{
+        this.suite=newPerformanceSuite(TARGETED_PERFORMANCE_STAGES,1.5);
         if(this.saveSuite())this.reloadStage(this.suite.stages[0]);
       });
       this.button('Prepare selected level (reload)',()=>{
@@ -118,24 +137,25 @@ export class PerformanceTestState extends AttractState {
     window.location.replace(url.href);
   }
   exportReport() {const handoff=readPerformanceHandoff();let lastGameLoadError=null;try{lastGameLoadError=JSON.parse(localStorage.getItem('mash_game_load_error') || 'null');}catch{}return this.suite ? {...this.suite,handoff,lastGameLoadError,results:this.suite.runs.flatMap(r=>r.results)} : {...this.report,handoff,lastGameLoadError};}
-  start(id) {
+  start(id, densityOverride = null) {
     if(this.running || id !== this.o.freshStage)return;
     if (Dev.recording) { this.button('Stop video recording before testing',()=>{}); return; }
     this.plan=performancePlan(id);this.caseIndex=-1;this.windowIndex=0;this.o.freshStage=null;
     this.report={schema:2,protocol:'bot-full-level-isolated-v3',started:new Date().toISOString(),build:window.__MASH_BUILT_AT__ || null,
       userAgent:navigator.userAgent,viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},
       settings:JSON.parse(JSON.stringify(this.o.realSettings || {})),renderer:rendererDiagnostics(),
+      densityTarget:densityOverride,
       devBuild:!!window.__MASH_BUILD__,devToolsEnabledBefore:Dev.enabled,
       notes:['One full level after page reload; browser and disk caches may still be warm. No cross-level endurance test.',
         'Entry cost is reported separately; run-in and the first two simulation seconds are excluded. 30 simulation seconds per window, final partial window retained; same seeds and reactive bot, not recorded inputs.',
         'Update includes bot; blit includes overlay painting. Audio includes timer and frame scheduler calls.',
         'Frame gaps are presentation intervals, not proof of cause. GPU and garbage collection are not directly timed.',
-        'Dev toolkit disabled and breadcrumb persistence/uploads suspended during this test; resolution pinned to its starting density for comparable samples.',
+        'Dev toolkit disabled and breadcrumb persistence/uploads suspended during this test; resolution pinned to its starting density or the selected test density for comparable samples.',
         'Prop cache bytes exclude other scenery caches. JS heap is unavailable on some browsers.'],results:[]};
     this.previousDev={enabled:Dev.enabled,timeScale:Dev.timeScale};Dev.enabled=false;Dev.timeScale=1;
     suspendCrumbPersistence(true);this.running=true;
     this.previousDensity=rendererDiagnostics();
-    setDensityPin(this.previousDensity.density);
+    setDensityPin(densityOverride ?? this.previousDensity.density);
     this.report.wakeLock=navigator.wakeLock ? 'requested' : 'unavailable';
     navigator.wakeLock?.request('screen').then(lock=>{
       if(!this.running){lock.release();return;}this.wakeLock=lock;this.report.wakeLock='acquired';
@@ -148,7 +168,7 @@ export class PerformanceTestState extends AttractState {
     if(++this.caseIndex >= this.plan.length){this.finish('complete');return;}
     const test=this.plan[this.caseIndex];
     this.panelEl?.remove();this.panelEl=null;
-    const controls=document.createElement('div');controls.style.cssText='position:fixed;right:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:10000;background:#101823dd;color:white;padding:6px;font:12px system-ui';
+    const controls=document.createElement('div');controls.style.cssText='position:fixed;right:max(8px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));z-index:10000;background:#101823dd;color:white;padding:6px;font:12px system-ui';
     controls.append(document.createTextNode(`${test.id} · full level · fixed quality `));
     const stop=document.createElement('button');stop.textContent='Stop test';stop.style.cssText='padding:12px';stop.onclick=e=>{e.stopPropagation();this.finish('stopped');};
     controls.append(stop);document.body.append(controls);this.panelEl=controls;
@@ -165,7 +185,8 @@ export class PerformanceTestState extends AttractState {
     try {
       const at=performanceMark();this.bot?.update(dt);performanceAdd('bot',at);
       this.run.update(dt);
-      performanceLocation(this.run.tRun,this.run.distance,this.run.player?.anim);
+      performanceLocation(this.run.tRun,this.run.distance,this.run.player?.anim,
+        this.run.style?.name==='surge'?this.run.style.phase:null);
     } catch(e) { this.report.error=String(e.stack || e); this.finish('error'); return; }
     if(!this.measuring && this.run.tRun >= 2 && !this.run.introRunning && !this.run.introFreeze && !this.run.zoneCard)this.beginWindow();
     if(this.done || this.run.tRun>this.limit || performance.now()-this.caseStarted>Math.max(180000,this.limit*3000)) {
@@ -194,6 +215,7 @@ export class PerformanceTestState extends AttractState {
     const timing=endPerformanceCapture();
     this.report.results.push({...this.plan[this.caseIndex],status,window:++this.windowIndex,fromSimulation:this.measureFrom,toSimulation:this.run.tRun,entryMs:this.windowIndex===1?this.entryMs:null,
       elapsedSimulation:this.measuring?this.run.tRun-this.measureFrom:0, distance:this.run.distance,
+      surgeCosmeticSeed:this.run.style?.name==='surge'?this.run.style.seed:null,
       timing,render:renderProfileStats(),art:propCacheStats(),audio:Audio.takeSchedulerHealth(),
       rendererBefore:this.startingRenderer,rendererAfter:rendererDiagnostics(),
       music:{song:Audio.sourceBank?.name || Audio.sourceBank?.id || this.run.cabinet?.id, muted:Audio.silent, bpm:Audio.bpm},

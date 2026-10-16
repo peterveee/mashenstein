@@ -18,6 +18,7 @@
 // (run.js style.afterGround), so hero, hazards and pickups keep their colours. The LCD
 // look converts its whole frame in post() and holds its cast past it, so on that look
 // the pass runs after post() instead (the pack's choice, surgePack).
+import { performanceMark, performanceAdd } from '../performance-capture.js';
 
 const BEATS = 16;       // a look, SURGE_SLOT_BEATS
 const OPEN = 2;         // beats of the look's own colours first
@@ -138,7 +139,9 @@ function lowRes(ctx, fn) {
     if (!g || typeof g.getImageData !== 'function') return;
     g.imageSmoothingEnabled = true;
     g.drawImage(ctx.canvas, 0, 0, lw, lh);
+    const readAt = performanceMark();
     const img = g.getImageData(0, 0, lw, lh);
+    performanceAdd('paletteReadback', readAt);
     if (!img?.data) return;
     fn(img.data);
     g.putImageData(img, 0, 0);
@@ -160,6 +163,7 @@ const THERMAL_LUT = (() => {
 
 export function applySurgePalette(ctx, seg) {
   if (!seg || !ctx?.canvas) return;
+  const at = performanceMark();
   switch (seg.kind) {
     case 'wash': blend(ctx, 'color', seg.ink, 0.8); break;
     case 'duotone': gray(ctx); blend(ctx, 'multiply', seg.pair[1]); blend(ctx, 'screen', seg.pair[0]); break;
@@ -175,4 +179,5 @@ export function applySurgePalette(ctx, seg) {
     }); break;
     default: break;
   }
+  performanceAdd('palette', at);
 }

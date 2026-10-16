@@ -17,6 +17,7 @@
 // shape: a pixel crunch no coarser than 8 frame px, and a tear of a few px. Nothing that
 // blacks the lane out or moves it up and down.
 import { surgePalettes, surgePaletteAt } from './surgePalette.js';
+import { performanceMark, performanceAdd } from '../performance-capture.js';
 import { W, H, shake } from '../renderer.js';
 import { cellTile, grilleSoftTile, arcadeLandingDrop } from '../arcadeIntro.js';
 import { TapeRewindEffect } from '../../game/rewindFx.js';
@@ -360,6 +361,7 @@ const BLACK = '#050607';
 // The picture in R averaged into cells `cell` device px across, nearest-neighbour back.
 function pixelate(ctx, R, cell, soft = false) {
   if (R.w < 1 || R.h < 1 || cell < 1.5) return;
+  const at = performanceMark();
   const sw = Math.max(1, Math.round(R.w / cell)), sh = Math.max(1, Math.round(R.h / cell));
   const s = sheet(1, sw, sh);
   if (!s) return;
@@ -370,6 +372,7 @@ function pixelate(ctx, R, cell, soft = false) {
   ctx.imageSmoothingEnabled = soft;
   ctx.drawImage(s.c, 0, 0, sw, sh, R.x, R.y, R.w, R.h);
   ctx.imageSmoothingEnabled = true;
+  performanceAdd('surgePixelate', at);
 }
 // Plumber-1's soft aperture grille over R, multiplied, and a little lift back.
 function grille(ctx, R, k) {

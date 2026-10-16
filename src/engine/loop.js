@@ -106,6 +106,7 @@ export function startLoop({ update, draw, present }) {
   let queued = false;
   let fpsWindow = last;
   let fpsFrames = 0;
+  let nextPresentAt = null; // presentation clock, independent of simulation accumulator
   let rafAvgMs = 0;      // EWMA of the display's own callback interval
   let skipMs = 0;        // the head of the next gap a restartClockHere() has disowned
   let hitchWindow = last;
@@ -185,25 +186,23 @@ export function startLoop({ update, draw, present }) {
       // would drag the percentile down until it described the display's cadence
       // instead of the cost of the work.
       if (updateAt && steps) noteUpdateFrame(performance.now() - updateAt);
-      // Display motion can use the fraction of the next fixed step already
-      // elapsed. States that opt into it can render a continuous position
-      // without changing the deterministic 60 Hz simulation. On a 120 Hz
-      // ProMotion panel (every M1 iPad Pro), a callback with no simulation step
-      // is still skipped below: that frame would otherwise cost a full render
-      // and upload solely to show the same simulation state again. The
-      // interpolation is therefore for the frames we actually present, not a
-      // reason to double the whole game's render budget.
-      //
-      // Skipping on steps === 0 alone would be wrong: a 60 Hz display's rAF
-      // timestamps jitter either side of 16.67ms, so a frame arriving a hair
-      // early lands on steps === 0 and would drop a frame the display had room
-      // for. The gap since the last present cannot tell those apart either — a
-      // 60 Hz frame and a 120 Hz frame following a skipped one are both ~16.7ms.
-      // What does separate them is the display's OWN cadence, so measure that:
-      // only a panel whose rAF interval is genuinely shorter than a tick has
-      // redundant frames to drop.
-      rafAvgMs = rafAvgMs ? rafAvgMs * 0.9 + (dt * 1000) * 0.1 : dt * 1000;
-      if (steps === 0 && rafAvgMs < PRESENT_FLOOR_MS) { schedule(); return; }
+      // Simulation boundaries and display boundaries drift slightly against
+      // each other. Skipping whenever steps===0 makes a 120 Hz screen alternate
+      // 8/25 ms presents when timestamp jitter crosses a physics boundary.
+      // Keep an independent 60 Hz presentation deadline instead. Slower panels
+      // still draw every callback; interpolation uses the unchanged accumulator.
+      // A long stall says nothing about the panel's refresh interval. Folding
+      // it into the cadence average briefly mistakes 120 Hz for a slow panel
+      // and paints extra closely spaced catch-up frames.
+      const cadenceSample = dt * 1000;
+      if (cadenceSample < HITCH_MS) rafAvgMs = rafAvgMs ? rafAvgMs * 0.9 + cadenceSample * 0.1 : cadenceSample;
+      const interval = TICK * 1000;
+      const tolerance = 0.75; // absorb sub-millisecond vsync timestamp jitter
+      if (rafAvgMs < PRESENT_FLOOR_MS) {
+        if (nextPresentAt != null && now + tolerance < nextPresentAt) { schedule(); return; }
+        if (nextPresentAt == null || now - nextPresentAt >= interval) nextPresentAt = now + interval;
+        else nextPresentAt += interval;
+      } else nextPresentAt = now + interval;
       const renderAlpha = Math.max(0, Math.min(1, acc / TICK));
       draw(renderAlpha);
       if (present) present(now);
@@ -244,6 +243,7 @@ export function startLoop({ update, draw, present }) {
       last = performance.now();
       fpsWindow = last;
       fpsFrames = 0;
+      nextPresentAt = null;
       rafAvgMs = 0;      // the gap across a pause says nothing about the display
       measuredFps = 0;
       hitchWindow = last;

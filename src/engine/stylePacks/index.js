@@ -1,4 +1,5 @@
 import { efficiencyProfile } from '../render-efficiency.js';
+import { performanceMark, performanceAdd } from '../performance-capture.js';
 // Style packs: renderer-only modules. One draw interface, zero game logic.
 // Every pack draws: bg(ctx,t,camX,cab,totalDist,scene),
 // ground(ctx,camX,cab,obstacles), post(ctx,t). `routeGround` is an optional
@@ -18371,7 +18372,8 @@ function surgePack(settings) {
   }));
   const cabFor = (i, cab) => homes[i] || cab;
   // A fresh draw of moves and glitches every run.
-  const seed = 1 + Math.floor(Math.random() * 100000);
+  const seed = Number.isFinite(settings.surgeSeed)
+    ? (Math.floor(settings.surgeSeed) >>> 0) : 1 + Math.floor(Math.random() * 100000);
   const state = {};
   let ph = surgePhase(0, { seed, count: packs.length, names: SURGE_CYCLE });
   let live = null;
@@ -18439,10 +18441,13 @@ function surgePack(settings) {
       hudEv = ph.move || cycleBeat < SURGE_SETTLE ? null : surgeHudAt(cycleBeat, { level, seed });
       snowCamX = camX;
       live = paintSurgeBackdrop(ctx, ph, (i, dy = 0, scrub = 0) => {
+        const paintAt = performanceMark();
         ctx.save();
         if (dy) ctx.translate(0, dy);
         packs[i].bg(ctx, t, camX - scrub, cabFor(i, cab), totalDist, scene, bgShift, backgroundContext);
         ctx.restore();
+        performanceAdd('surgeBackdrop', paintAt);
+        performanceAdd(`surgePack${i}`, paintAt);
       });
     },
     ground(ctx, camX, cab, ...rest) {

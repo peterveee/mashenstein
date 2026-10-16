@@ -4,7 +4,7 @@ installDom();
 
 const { Input } = await import('../src/engine/input.js');
 const { defaultSettings } = await import('../src/engine/save.js');
-const { SettingsState } = await import('../src/game/menus.js');
+const { SettingsState, TitleState, AboutState } = await import('../src/game/menus.js');
 const { defaultFrame, frameForViewport } = await import('../src/engine/frame.js');
 const renderer = await import('../src/engine/renderer.js');
 
@@ -178,6 +178,66 @@ assert(portraitSettings.visibleRows === portraitSettings.listCount()
   'portrait settings use the available height to show the complete list with generous rows');
 portraitSettings.draw(document.createElement('canvas').getContext('2d'));
 renderer.setPresentationFrame(defaultFrame());
+
+// ABOUT is a Staff Only page. Its displayed build time is device-local, and
+// its Back and Reload actions go to the supplied flow callbacks.
+Input.clearAll();
+window.__MASH_BUILT_AT__ = '2026-10-16T09:42:21.275Z';
+let forceReloads = 0;
+let backs = 0;
+const title = new TitleState({ save: { data: { slots: [null, null, null] } }, onAbout() {} });
+assert(title.extrasChoices().some((o) => o.id === 'about')
+  && !real.options().some((o) => o.label === 'ABOUT'),
+  'ABOUT appears in Staff Only, not Advanced Settings');
+const extras = title.extrasChoices().map((o) => o.id);
+assert(extras.indexOf('about') === extras.length - 2,
+  'ABOUT is the last Staff Only entry before BACK');
+const about = new AboutState({ onDone() { backs++; }, onReload(returnToAbout) {
+  forceReloads++;
+  assert(returnToAbout === (forceReloads === 1),
+    'About reload uses the visible return switch');
+} });
+about.enter();
+assert(about.buildTime() === new Intl.DateTimeFormat(undefined, {
+  year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
+}).format(new Date(window.__MASH_BUILT_AT__)), 'ABOUT displays the build time in the device timezone');
+about.draw(document.createElement('canvas').getContext('2d'));
+Input.press('back');
+about.update(1 / 60);
+Input.release('back');
+assert(backs === 1, 'BACK returns to Staff Only');
+
+Input.press('up');
+about.update(1 / 60);
+Input.release('up');
+Input.press('confirm');
+about.update(1 / 60);
+Input.release('confirm');
+assert(forceReloads === 1, 'RELOAD GAME invokes the reload callback');
+
+Input.press('up');
+about.update(1 / 60);
+Input.release('up');
+Input.press('confirm');
+about.update(1 / 60);
+Input.release('confirm');
+assert(about.returnToAbout === false, 'About return switch can be turned off');
+Input.press('down');
+about.update(1 / 60);
+Input.release('down');
+Input.press('confirm');
+about.update(1 / 60);
+Input.release('confirm');
+assert(forceReloads === 2, 'RELOAD GAME follows the off switch too');
+
+renderer.setPresentationFrame(portraitFrame);
+about.draw(document.createElement('canvas').getContext('2d'));
+Input.press('back');
+about.update(1 / 60);
+Input.release('back');
+assert(backs === 2, 'portrait ABOUT also returns to Staff Only');
+renderer.setPresentationFrame(defaultFrame());
+delete window.__MASH_BUILT_AT__;
 
 Input.clearAll();
 console.log(failed ? 'SETTINGS MENU: FAILED' : 'SETTINGS MENU: PASSED');

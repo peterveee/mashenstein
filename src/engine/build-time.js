@@ -1,5 +1,5 @@
 // Build timestamps are ISO values in the bundle, but users should see the
-// same local device time everywhere: the install/portrait shell and Settings.
+// same local device time everywhere: the install/portrait shell and About.
 // Keep the formatter dependency-free so both the gate and the game bundle can
 // use it without pulling DOM or renderer code into the other side.
 const OPTIONS = {
