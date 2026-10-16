@@ -278,9 +278,10 @@ function hindLeg(c, R, { haunch = HAUNCH, fill, crease, ink = INK, edge = null, 
   // front of the haunch down to the floor, the haunch inside it a shade lighter; the
   // hind foot is its own flat shape along the floor beneath the haunch, inked like
   // everything else, its toe just ahead of the thigh, as in a seated cat.
-  const [hcx, hup, hrx, hry] = haunch;
+  const [hcx, hup, hrx0, hry0] = haunch;
+  const hrx = hrx0 * haunchScale, hry = hry0 * haunchScale;
   const g = R.g;
-  const tx = hcx + 0.2, ty = g - hup + 0.3, trx = hrx * 0.86, try_ = hry * 0.95;
+  const tx = hcx + 0.2, ty = g - hup + 0.3 + (hry0 - hry), trx = hrx * 0.86, try_ = hry * 0.95;
   // The thigh, a tone lighter in the cat's own lit colour, where it has one to spare.
   if (lit) {
     c.save();
@@ -294,7 +295,7 @@ function hindLeg(c, R, { haunch = HAUNCH, fill, crease, ink = INK, edge = null, 
   // A little more line ("a little more outline is ok"), still in the crease colour.
   strokePath(c, soft, 0.45, (p) => p.ellipse(tx, ty, trx, try_, 0, 0.55 * Math.PI, 1.0 * Math.PI));
   // The foot.
-  const fh = 2.0;
+  const fh = 2.6;   // the front paw's height ("thicker to better match front paws")
   // UNDER the haunch (Peter: "shouldn't the rear leg be UNDER the haunch?"): heel back
   // beneath the thigh, toe just ahead of the thigh's front line.
   const x0 = tx - trx - 0.9 + R.L * 0.2, x1 = tx + trx * 0.55;
@@ -318,10 +319,17 @@ function hindLeg(c, R, { haunch = HAUNCH, fill, crease, ink = INK, edge = null, 
 // The haunch sits back toward the tail (Peter, 16 Oct: "make the haunch a bit closer to
 // the tail and move the rear leg too so they aren't so close to the front - more squat").
 const HAUNCH = [18.1, 4.5, 5.0, 4.6];
+// HAUNCH SIZE, for the side-by-side (Peter, 16 Oct: "should haunch be a little smaller?"):
+// 1 as shipped. The thigh shape inside shrinks by the full factor, the body's outline
+// round the rump by half of it, so the rump keeps its curve.
+let haunchScale = 1;
+export function setHaunchScale(k) { haunchScale = k; }
 function torsoParts(R, { arch = 1.6, haunch = HAUNCH, chest = 0, round = 1.6 } = {}) {
   const { g, L } = R;
   const a = arch * R.wind + arch * 0.4 * R.s;
-  const [hcx, hup, hrx, hry] = haunch;
+  const [hcx, hup, hrx0, hry0] = haunch;
+  const ko = 1 - (1 - haunchScale) * 0.5;
+  const hrx = hrx0 * ko, hry = hry0 * ko;
   // `round` softens the bottom corners into the floor — a figurine's rounded base rather
   // than a block (the maneki-neko: "can we finesse the base a bit more?").
   const fx = 10.6 + L * 0.5 - chest * 0.3;
@@ -341,7 +349,7 @@ function torsoParts(R, { arch = 1.6, haunch = HAUNCH, chest = 0, round = 1.6 } =
       p.quadraticCurveTo(8.6 + L - chest, 15.6, 9.8 + L, 11.4);
       p.closePath();
     },
-    oval(hcx, g - hup, hrx, hry),
+    oval(hcx, g - hup + (hry0 - hry), hrx, hry),   // shrunk, it stays on the floor
   ];
 }
 

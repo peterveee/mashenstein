@@ -11331,12 +11331,19 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // SUBTLE: "less outline and a bit more subtle", then "same fine lines for
     // knees as hands and a darker silver" (16 Oct): the hands' own ink weight
     // (handInk), in the body's darker silver, a touch smaller, a fainter rim.
-    const r = w * 0.5;
-    outlined(ctx, fill, handInk(ow, false), (c) => c.arc(kx, ky, r, 0, Math.PI * 2));
+    // EXTREMELY SUBTLE (16 Oct): "make b33p's knee extremely subtle" — no ink
+    // outline at all, a smaller half-strength plate, and only a whisper of the
+    // lit rim. A hint that the knee is a joint, not a part.
+    const r = w * 0.4;
+    ctx.save();
+    ctx.globalAlpha *= 0.45;
+    ctx.fillStyle = fill;
+    ctx.beginPath(); ctx.arc(kx, ky, r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
     if (!lod) {
       // the lit rim on its upper-left, as the bake-off drew it
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-      ctx.lineWidth = hair(0.4, r * 0.22);
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = hair(0.3, r * 0.18);
       ctx.beginPath(); ctx.arc(kx, ky, r * 0.68, Math.PI * 0.95, Math.PI * 1.6); ctx.stroke();
     }
   };

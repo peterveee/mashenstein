@@ -158,6 +158,7 @@ import { GOOSE_CANDIDATES, GOOSE_NOW, drawGooseApproach, drawGooseLineup, drawGo
 import { FERAL_CANDIDATES, FERAL_NOW, drawFeralApproach, drawFeralLineup, drawFeralSideBySide, SIDE_H as FERAL_SIDE_H } from '../src/dev/feral-dog-candidates.js';
 import { MANEKI_CANDIDATES, BECKON_CANDIDATES } from '../src/dev/maneki-candidates.js';
 import { SNARL_CANDIDATES } from '../src/dev/snarl-candidates.js';
+import { KAIJU_CANDIDATES, KAIJU_LOOP, drawKaijuScene } from '../src/dev/kaiju-candidates.js';
 import { NEON_GOLDEN_MOOD as MANEKI_GOLDEN } from '../src/engine/stylePacks/index.js';
 import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/dev/hero-polish-candidates.js';
 import { FIRE_STAND_CANDIDATES, drawFireStandRun, drawFireStandStill } from '../src/dev/office-fire-alarm-stand-candidates.js';
@@ -10086,6 +10087,24 @@ function jadeSky(ctx, w, h, seed = 1) {
   for (const cand of [BEE_NOW, ...BEE_CANDIDATES]) {
     tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
       (ctx, t) => drawBeeTile(ctx, t, PLUMBER_OBSTACLES.cabinet, strips, cand.paint ? cand : null), { animated: true, wide: true });
+  }
+}
+
+// ------------------------------------------ TERMINAL VELOCITY — a kaiju on the attack (lab)
+// 16 Oct 2026: "Can we mockup a neon Godzilla on the attack for the neon levels? Laser
+// eyes destroying a building maybe?" src/dev/kaiju-candidates.js — a background set
+// piece in the pack's neonBehindNear seam. Nothing is wired into the run.
+{
+  const grid = section('kaiju-mockup', 'TERMINAL VELOCITY — a kaiju on the attack (mock-up)',
+    'A monster in the city behind the near row, keeping pace with the run. On a ' + KAIJU_LOOP + 's loop he sees a tower riding in, charges (eyes, and the plates up his back from the tail tip), '
+    + 'fires two beams from his eyes that slice the top off it, and roars as it topples into the smog — a flash on the street and a little shake. Background only; nothing in the lane. '
+    + 'Four looks on one rig, each on neon-2 and neon-3’s night. Full frame. Turn on SLOW to read the cut. ANIMATED.',
+    '16 Oct 2026');
+  for (const look of KAIJU_CANDIDATES) {
+    for (const stageIndex of [2, 3]) {
+      tile(grid, `${look.letter} — ${look.name} · neon-${stageIndex}`, look.note, 480, 270,
+        (ctx, t) => drawKaijuScene(ctx, t, look, { stageIndex }), { animated: true, wide: true });
+    }
   }
 }
 
