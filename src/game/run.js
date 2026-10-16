@@ -17164,7 +17164,7 @@ export class RunState {
       // The coyotes' voices: the backdrop asks as a howler's head is about to come up (the
       // run places the howl on the beat, speedCoyoteHowl) and as the finish's winker is
       // about to wink (the ding goes exactly where asked, on the sparkle).
-      coyoteCues: this.cabinet?.id === 'speed' ? this.speedCoyoteCues ||= {
+      coyoteCues: this.cabinet?.id === 'speed' || this.cabinet?.id === 'neon' ? this.speedCoyoteCues ||= {
         howl: (sec, minSec) => this.speedCoyoteHowl(sec, minSec),
         wink: (sec) => this.speedCoyoteWink(sec),
         yips: (sec, gap) => this.speedCoyoteYips(sec, gap),

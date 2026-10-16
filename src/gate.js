@@ -1,3 +1,4 @@
+import { showPerformanceHandoff } from './engine/performance-handoff.js';
 // The only code a browser-only iPhone executes. It decides whether the full
 // game is allowed before creating canvases, loading game fonts or requesting
 // game.js. Every other platform proceeds directly to the ordinary game boot.
@@ -322,20 +323,34 @@ async function loadGame() {
   const loading = document.getElementById('font-loading');
   if (loading?.remove) loading.remove();
 
-  const script = document.createElement('script');
   const embedded = document.getElementById('mash-embedded-game');
-  if (embedded) script.textContent = embedded.textContent;
-  else script.src = new URL('./game.js', document.baseURI).href;
-  script.onerror = () => {
-    const el = document.getElementById('boot-error');
-    if (el) {
-      el.style.display = 'block';
-      const message = document.getElementById('boot-error-message') || el;
-      message.textContent = 'MASHENSTEIN failed to load (the arcade remains unplugged).';
-      exposeError('The game script failed to load.');
-    }
+  const benchmark = !!new URLSearchParams(window.location?.search || '').get('performanceStage');
+  let attempt=0;
+  const appendScript=()=>{
+    attempt++;
+    const script=document.createElement('script');
+    if(embedded)script.textContent=embedded.textContent;
+    else script.src=new URL('./game.js',document.baseURI).href;
+    script.onload=()=>{
+      // Do not hide a real boot exception raised during script execution.
+      if(!window.__mash_fatal_error){const el=document.getElementById('boot-error');if(el)el.style.display='none';}
+    };
+    script.onerror=()=>{
+      const retry=benchmark && !embedded && attempt<3;
+      const detail={at:new Date().toISOString(),url:script.src,attempt,online:navigator.onLine ?? null,
+        stage:new URLSearchParams(window.location?.search || '').get('performanceStage')};
+      try{localStorage.setItem('mash_game_load_error',JSON.stringify(detail));}catch{}
+      const messageText=`MASHENSTEIN could not load its game script.\n${script.src}\nAttempt ${attempt}${benchmark?' of 3':''}. Browser connection: ${detail.online===false?'offline':detail.online===true?'online':'unknown'}.\n`+
+        (retry?'Retrying shortly. Completed test results are saved.':'Reload to try again. Completed test results are saved.');
+      const el=document.getElementById('boot-error');
+      if(el){el.style.display='block';(document.getElementById('boot-error-message') || el).textContent=messageText;}
+      script.remove?.();
+      if(retry)setTimeout(appendScript,1500);
+      else exposeError(messageText);
+    };
+    document.body.appendChild(script);
   };
-  document.body.appendChild(script);
+  appendScript();
 }
 
 function start() {
@@ -349,7 +364,7 @@ function start() {
     : detected;
   window.__mash_platform = platform;
   if (!platform.allowed) showInstallBlocker(platform);
-  else loadGame();
+  else if (!showPerformanceHandoff(loadGame)) loadGame();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });

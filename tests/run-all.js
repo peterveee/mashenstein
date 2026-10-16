@@ -55,6 +55,7 @@ const suites = [
   'tests/scenery-texture-cache.js',
   'tests/performance-capture.js',
   'tests/performance-test.js',
+  'tests/performance-handoff.js',
   // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.
   'tests/surge-cycle.js',
   'tests/office-climb.js',

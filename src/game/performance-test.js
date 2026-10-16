@@ -1,3 +1,4 @@
+import { markPerformanceHandoff, readPerformanceHandoff } from '../engine/performance-handoff.js';
 // User-started bot benchmark. The save is disposable; reports never leave the
 // device until the player presses Share/Download. Ordinary gameplay is untouched.
 import { STAGES } from '../data/stages.js';
@@ -31,6 +32,7 @@ export class PerformanceTestState extends AttractState {
   static portraitMode = 'frame';
   get performanceTesting() { return true; }
   enter() {
+    if(this.o.freshStage)markPerformanceHandoff('game-ready',this.o.freshStage);
     this.running = false;
     this.report = null;
     try {
@@ -80,12 +82,25 @@ export class PerformanceTestState extends AttractState {
       });
       this.button('Prepare selected level (reload)',()=>{
         this.suite=null;
-        const url=new URL(window.location.href);url.searchParams.delete('goto');url.searchParams.delete('performanceSuite');url.searchParams.set('performanceStage',select.value);
-        window.location.assign(url.href);
+        const url=new URL(window.location.href);url.searchParams.delete('goto');url.searchParams.delete('performanceSuite');url.searchParams.set('performanceStage',select.value);url.searchParams.set('performanceHandoff','1');
+        markPerformanceHandoff('leaving-game',select.value);
+        window.location.replace(url.href);
       });
     }
     this.button('Back',()=>this.o.onExit());
-    try { const previous=localStorage.getItem('mash_performance_report');if(previous){this.button('Previous report',()=>{this.suite=null;this.report=JSON.parse(previous);this.showReport();});} } catch {}
+    try {
+      const previous=localStorage.getItem('mash_performance_report');
+      if(previous){
+        const saved=JSON.parse(previous);
+        if(saved.protocol==='bot-full-level-suite-v1' && Array.isArray(saved.runs) && saved.stages?.every(id=>PERFORMANCE_STAGES.includes(id)) && Number.isInteger(saved.index) && saved.index>=0 && saved.index<saved.stages.length){
+          this.button(`Resume saved suite (${saved.index}/${saved.stages.length} completed)`,()=>{
+            const {results,...suite}=saved;this.suite=suite;
+            if(this.saveSuite())this.reloadStage(suite.stages[suite.index]);
+          });
+        }
+        this.button('Previous report',()=>{this.suite=null;this.report=saved;this.showReport();});
+      }
+    } catch {}
   }
   saveSuite() {
     try {sessionStorage.setItem(PERFORMANCE_SUITE_KEY,JSON.stringify(this.suite));return true;}
@@ -97,9 +112,12 @@ export class PerformanceTestState extends AttractState {
   }
   reloadStage(id) {
     const url=new URL(window.location.href);url.searchParams.delete('goto');url.searchParams.set('performanceStage',id);
-    url.searchParams.set('performanceSuite',this.suite.id);window.location.assign(url.href);
+    url.searchParams.set('performanceSuite',this.suite.id);url.searchParams.set('performanceHandoff','1');
+    markPerformanceHandoff('leaving-game',id);
+    this.panel('LOADING NEXT TEST', `Results saved. Reloading for ${id}. On iPhone, tap Start when the next page is ready.`);
+    window.location.replace(url.href);
   }
-  exportReport() {return this.suite ? {...this.suite,results:this.suite.runs.flatMap(r=>r.results)} : this.report;}
+  exportReport() {const handoff=readPerformanceHandoff();let lastGameLoadError=null;try{lastGameLoadError=JSON.parse(localStorage.getItem('mash_game_load_error') || 'null');}catch{}return this.suite ? {...this.suite,handoff,lastGameLoadError,results:this.suite.runs.flatMap(r=>r.results)} : {...this.report,handoff,lastGameLoadError};}
   start(id) {
     if(this.running || id !== this.o.freshStage)return;
     if (Dev.recording) { this.button('Stop video recording before testing',()=>{}); return; }

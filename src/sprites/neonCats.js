@@ -272,7 +272,7 @@ function shadeBand(q, parts, shade, fill, dx = -0.85, dy = -0.75) {
 // crease round the front and bottom of the haunch, and the hind foot lies flat along the
 // floor, forward from under the haunch toward the front paw, drawn over the body with
 // the body's own outline (or `edge`, for the neon cat).
-function hindLeg(c, R, { haunch = HAUNCH, fill, crease, ink = INK, edge = null, footFill = null, lit = null } = {}) {
+function hindLeg(c, R, { haunch = HAUNCH, fill, crease, ink = INK, edge = null, footFill = null, lit = null, litAlpha = 0.6, lineCol = null } = {}) {
   // Read as a LEG (Peter: "doesn't read as a rear leg to me at all"), still in our hand —
   // one ink, interior lines at the interior weight. The thigh is an inked line round the
   // front of the haunch down to the floor, the haunch inside it a shade lighter; the
@@ -281,24 +281,32 @@ function hindLeg(c, R, { haunch = HAUNCH, fill, crease, ink = INK, edge = null, 
   const [hcx, hup, hrx0, hry0] = haunch;
   const hrx = hrx0 * haunchScale, hry = hry0 * haunchScale;
   const g = R.g;
-  const tx = hcx + 0.2, ty = g - hup + 0.3 + (hry0 - hry), trx = hrx * 0.86, try_ = hry * 0.95;
+  // The thigh shifts a little with the strike's lean — the weight going forward onto the
+  // front — while the foot stays planted (Peter: "should it move on strike?").
+  const tx = hcx + 0.2 + R.L * 0.25, ty = g - hup + 0.3 + (hry0 - hry) - R.wind * 0.3, trx = hrx * 0.86, try_ = hry * 0.95;
   // The thigh, a tone lighter in the cat's own lit colour, where it has one to spare.
   if (lit) {
     c.save();
-    c.globalAlpha *= 0.45;
+    c.globalAlpha *= litAlpha;
     fillPath(c, lit, (p) => p.ellipse(tx, ty, trx, try_, 0, 0, TAU));
     c.restore();
   }
   // Soft, not inked (Peter: "a bit thicker and not outlined so much … I want the shape"):
   // the thigh and foot are edged in the cat's own crease colour, and never in neon.
-  const soft = crease;
-  // A little more line ("a little more outline is ok"), still in the crease colour.
-  strokePath(c, soft, 0.45, (p) => p.ellipse(tx, ty, trx, try_, 0, 0.55 * Math.PI, 1.0 * Math.PI));
+  // The leg's line: a step darker than the body's shade, never neon and never the black
+  // ink (Peter: "slightly darker outline (but not neon or black)"); the thigh's curve runs
+  // further round and up the front of the haunch, and a touch heavier ("make the haunch
+  // curve a bit more and be slightly more emphasised").
+  const soft = lineCol || crease;
+  // Softer ("soften the haunch line please"): thinner and part-transparent.
+  c.save(); c.globalAlpha *= 0.65;
+  strokePath(c, soft, 0.42, (p) => p.ellipse(tx, ty, trx, try_, 0, 0.55 * Math.PI, 1.2 * Math.PI));
+  c.restore();
   // The foot.
   const fh = 2.6;   // the front paw's height ("thicker to better match front paws")
   // UNDER the haunch (Peter: "shouldn't the rear leg be UNDER the haunch?"): heel back
   // beneath the thigh, toe just ahead of the thigh's front line.
-  const x0 = tx - trx - 0.9 + R.L * 0.2, x1 = tx + trx * 0.55;
+  const fx0 = hcx + 0.2, x0 = fx0 - trx - 0.9, x1 = fx0 + trx * 0.55;   // planted: off the haunch, not the thigh
   // Shaped like a paw, not a plank: a low heel under the thigh rising to a round toe.
   const foot = (p) => {
     p.moveTo(x1, g);
@@ -322,7 +330,7 @@ const HAUNCH = [18.1, 4.5, 5.0, 4.6];
 // HAUNCH SIZE, for the side-by-side (Peter, 16 Oct: "should haunch be a little smaller?"):
 // 1 as shipped. The thigh shape inside shrinks by the full factor, the body's outline
 // round the rump by half of it, so the rump keeps its curve.
-let haunchScale = 1;
+let haunchScale = 0.85;   // SHIPPED 85% (Peter, 16 Oct: "ok 90 is ok", then "a bit less haunch and ship it")
 export function setHaunchScale(k) { haunchScale = k; }
 function torsoParts(R, { arch = 1.6, haunch = HAUNCH, chest = 0, round = 1.6 } = {}) {
   const { g, L } = R;
@@ -368,9 +376,12 @@ export function tailSwing(R, k = 0, amp = 1.5) {
   const dy = -0.7 * Math.max(0, Math.sin(2 * a)) * amp * calm;
   return [dx, dy];
 }
+// Tails a little longer (Peter, 16 Oct: "I think all tails should be a little longer"):
+// the tip stands TAIL_LIFT higher than it did.
+const TAIL_LIFT = 1.8;
 function tailPath(R, { root = [20.8, R.g - 3], tip = null, sway = 1.5, k = 0 } = {}) {
   const [sw, lift] = tailSwing(R, k, sway);
-  const tp = tip || [21.0 + sw - k * 2.0, 9.8 - k * 0.8 - R.angry * 1.2 + lift];
+  const tp = tip || [21.0 + sw - k * 2.0, 9.8 - TAIL_LIFT - k * 0.8 - R.angry * 1.2 + lift];
   return (p) => {
     p.moveTo(root[0], root[1]);
     p.bezierCurveTo(23.4, root[1] - 0.6, 23.6 - k * 1.2, tp[1] + 3.6, tp[0], tp[1]);
@@ -415,7 +426,7 @@ export function nora(c, w, h, t, u) {
       fillPath(q, P.belly, oval(10.2 + R.L, 14.4, 1.5, 3.0, 0.2));
     },
   });
-  hindLeg(c, R, { fill: P.fur, crease: P.dark, lit: P.lit });
+  hindLeg(c, R, { fill: P.fur, crease: P.dark, lit: P.lit, lineCol: '#3a2e26' });
   const H = headParts(R, { notch: true });
   solid(c, H.parts, P.fur, {
     inner: (q) => {
@@ -549,7 +560,7 @@ export function maneki(c, w, h, t, u, o = {}) {
   const tipCol = P.marks[0]?.[5] || P.headMark || null;
   if (tipCol) {
     const [sw, lift] = tailSwing(R, 0, 1.5);
-    const tip = [21.0 + sw, 9.8 - R.angry * 1.2 + lift];
+    const tip = [21.0 + sw, 9.8 - TAIL_LIFT - R.angry * 1.2 + lift];
     c.save();
     c.beginPath(); c.arc(tip[0], tip[1], 2.0, 0, TAU); c.clip();
     c.beginPath(); tp(c); c.lineWidth = 1.6 + R.angry * 0.4; c.lineCap = 'round'; c.strokeStyle = tipCol; c.stroke();
@@ -589,7 +600,7 @@ export function maneki(c, w, h, t, u, o = {}) {
       strokePath(q, P.lit, 0.45, (p) => { p.moveTo(12.4 + R.L, 9.9); p.quadraticCurveTo(16.4, 8.8, 20.4, 13.0); });
     },
   });
-  hindLeg(c, R, { haunch: [18.0, 4.7, 5.2, 4.8], fill: P.glaze, crease: P.shade });
+  hindLeg(c, R, { haunch: [18.0, 4.7, 5.2, 4.8], fill: P.glaze, crease: P.shade, lineCol: '#a89a86' });
   // The base, finessed: the haunch's curve drawn round to the floor, so he sits rather
   // than stands on a block.
   // (The haunch line is hindLeg's now.)
@@ -893,7 +904,7 @@ export function neonCat(c, w, h, t, u, o = {}) {
     edge: (cc, all) => tube(cc, RED, TW, all, flick, GL),
     inner: (q) => strokePath(q, P.lit, 1.0, (p) => { p.moveTo(11.8 + R.L, 10.4); p.quadraticCurveTo(16.4, 9.2 - R.wind * 3.2, 20.4, 14); }),
   });
-  hindLeg(c, R, { fill: P.body, crease: P.lit, lit: P.lit, edge: (cc, all) => tube(cc, RED, 0.6, all, flick, 0.3) });
+  hindLeg(c, R, { fill: P.body, crease: P.lit, lit: P.lit, lineCol: '#4a4282' });
   const H = headParts(R, {});
   solid(c, H.parts, P.body, {
     edge: (cc, all) => tube(cc, RED, TW, all, flick, GL),
@@ -928,7 +939,7 @@ export function mecha(c, w, h, t, u, o = {}) {
     const k = i / 7;
     const root = [20.8, R.g - 3];
     const [sw, lift] = tailSwing(R, 0, 1.5);
-    const tip = [21.0 + sw, 9.8 - R.angry * 1.2 + lift];
+    const tip = [21.0 + sw, 9.8 - TAIL_LIFT - R.angry * 1.2 + lift];
     const m = 1 - k;
     const bx = m * m * m * root[0] + 3 * m * m * k * 23.4 + 3 * m * k * k * 23.6 + k * k * k * tip[0];
     const by = m * m * m * root[1] + 3 * m * m * k * (root[1] - 0.6) + 3 * m * k * k * (tip[1] + 3.6) + k * k * k * tip[1];
@@ -951,7 +962,7 @@ export function mecha(c, w, h, t, u, o = {}) {
       tube(q, RED, 0.45, (p) => { p.moveTo(15.6, 11.6); p.lineTo(19.2, 13.0); }, 0.6 + 0.4 * R.angry, 0.3);
     },
   });
-  hindLeg(c, R, { fill: P.shell, crease: P.shellDk, edge: o.edge || null });
+  hindLeg(c, R, { fill: P.shell, crease: P.shellDk, lineCol: '#7d84a8' });
   const H = headParts(R, { earH: 1.15, earW: 0.85, flat: R.angry * 0.35, muzzle: 0.9 });
   solid(c, H.parts, P.shell, {
     edge: o.edge,
@@ -1013,7 +1024,7 @@ export function nekomata(c, w, h, t, u, o = {}) {
   // Ghost-fire on each tip: a teardrop flame licking upward, flickering.
   for (let k = 0; k < 2; k++) {
     const [sw, lift] = tailSwing(R, k, 1.6);
-    const tx = 21.0 + sw - k * 2.0, ty = 9.8 - k * 0.8 - R.angry * 1.2 + lift;
+    const tx = 21.0 + sw - k * 2.0, ty = 9.8 - TAIL_LIFT - k * 0.8 - R.angry * 1.2 + lift;
     const fl = Math.sin(t * 11 + k * 2) * 0.4;
     const flame = (p) => {
       p.moveTo(tx - 1.0, ty - 0.2);
@@ -1035,7 +1046,7 @@ export function nekomata(c, w, h, t, u, o = {}) {
       strokePath(q, P.lit, 0.3, (p) => { for (let i = 0; i < 3; i++) { p.moveTo(9.8 + R.L + i * 0.3, 12.4 + i * 1.2); p.lineTo(10.8 + R.L + i * 0.3, 12.9 + i * 1.2); } });
     },
   });
-  hindLeg(c, R, { fill: P.fur, crease: P.lit, lit: P.lit, edge: o.rim ? haloEdge(o.rim) : null });
+  hindLeg(c, R, { fill: P.fur, crease: P.lit, lit: P.lit, lineCol: '#6a5a9a' });
   const H = headParts(R, { earH: 1.15 });
   solid(c, H.parts, P.fur, { edge: o.rim && haloEdge(o.rim), inner: (q) => fillPath(q, P.lit, circle(R.hx - 1.0, R.hy - 1.4, R.headR * 0.72)) });
   fillPath(c, '#5a2a4a', polyP([R.hx - 2.3, R.hy - 1.9, R.hx - 1.0, R.hy - 2.8, R.hx - 2.1 + R.angry * 2.0, R.hy - 4.8 + R.angry * 2.0]));
@@ -1219,7 +1230,7 @@ export function pythagoras(c, w, h, t, u, o = {}) {
   slashes(c, R, whiteSlash);
   // The tail: up and over in a question mark, as in the picture, darkening to the tip.
   const [sw, lift] = tailSwing(R, 0, 1.3);
-  const tp = tailPath(R, { tip: [20.2 + sw, 7.6 - R.angry * 0.8 + lift] });
+  const tp = tailPath(R, { tip: [20.2 + sw, 7.6 - TAIL_LIFT - R.angry * 0.8 + lift] });
   if (o.rim) tube(c, o.rim, 1.6 + R.angry * 0.5 + 1.5, tp, 1, 0.07);
   limb(c, tp, 1.6 + R.angry * 0.5, P.dark);
   limb(c, farLeg(R), 1.8, P.dark);
@@ -1235,7 +1246,7 @@ export function pythagoras(c, w, h, t, u, o = {}) {
       fillPath(q, P.lit, oval(10.4 + R.L, 13.8, 1.3, 2.6, 0.2));
     },
   });
-  hindLeg(c, R, { haunch: [18.0, 4.7, 5.2, 4.8], fill: P.coat, crease: P.coat, footFill: P.dark, lit: P.lit });
+  hindLeg(c, R, { haunch: [18.0, 4.7, 5.2, 4.8], fill: P.coat, crease: P.coat, footFill: P.dark, lit: P.lit, lineCol: '#2e170c' });
   const H = headParts(R, { r: 3.4, earH: 0.9, earW: 1.15, muzzle: 0.9, flat: R.angry * 0.8 });
   solid(c, H.parts, P.coat, {
     edge: o.rim && haloEdge(o.rim),

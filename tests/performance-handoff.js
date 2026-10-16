@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {showPerformanceHandoff,readPerformanceHandoff} from '../src/engine/performance-handoff.js';
+const store=new Map();globalThis.localStorage={getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)};
+let timer,listener,loaded=0,removed=0;
+globalThis.window={location:{search:'?performanceStage=speed-1&performanceHandoff=1',href:'https://example.test/?performanceStage=speed-1&performanceHandoff=1'}};
+globalThis.history={state:null,replaceState:(a,b,url)=>assert(!url.includes('performanceHandoff'))};
+globalThis.document={hidden:true,createElement:()=>({style:{},append(){},remove(){removed++;}}),body:{appendChild(){}},addEventListener:(type,fn)=>{listener=fn;},removeEventListener:()=>{}};
+const realTimer=globalThis.setTimeout;globalThis.setTimeout=(fn,ms)=>{assert.equal(ms,2000);timer=fn;};
+assert.equal(showPerformanceHandoff(()=>loaded++),true);
+assert.equal(loaded,0);timer();assert.equal(loaded,0,'hidden page does not start next game');
+document.hidden=false;listener();assert.equal(loaded,1);listener();assert.equal(loaded,1,'single boot');
+assert.equal(removed,1);assert.deepEqual(readPerformanceHandoff().events.map(e=>e.phase),['lightweight-page','loading-game']);
+window.location.search='';assert.equal(showPerformanceHandoff(()=>loaded++),false,'normal boot unchanged');
+globalThis.setTimeout=realTimer;
+console.log('ok: delayed benchmark-only handoff, visibility guard, single boot and diagnostic phases');

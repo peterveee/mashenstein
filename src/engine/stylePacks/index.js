@@ -17,6 +17,7 @@ import { efficiencyProfile } from '../render-efficiency.js';
 // wholesale instead; their art carries its own drawn highlights.
 import { H, W, bakeSS, onPresentationChanged } from '../renderer.js';
 import { GROUND_Y, ZOOM, PAN_MAX } from '../camera.js';
+import { drawKaijuTower, drawKaijuFront, KAIJU_SHAPE, KAIJU_RED } from '../../sprites/neonKaiju.js';
 import { backgroundParallaxOffset } from '../scenery-layout.js';
 import { glowSprite } from '../../sprites/props.js';
 // The 5x7 pixel font's raw rows. The LCD panel lays its own cells, so it takes
@@ -10326,9 +10327,35 @@ export function neonNightMood(aurora = 0) {
   return m;
 }
 
+// THE KAIJU, neon-3's closing set piece (Peter, 16 Oct 2026: "he should appear near the
+// end of neon 3... shoot down a building and ideally be visible when we are at the
+// finish line (at least in landscape)", then "we run past him at the end - he doesn't
+// run with us", and the building "should be before the finish line not after it").
+// Painter: sprites/neonKaiju.js. Revised 16 Oct: "facing the other direction, body fully
+// clear of the finish line... walking forward and shoots a building mid screen or earlier
+// and keeps walking as the building falls... a tiny bit faster". He faces LEFT, away from
+// the tape, and walks left the whole time; the tower he cuts stands at KAIJU_TOWER_PARK_X
+// once the camera parks (well left of centre), and he is at KAIJU_FIRE_X as the beams
+// start, tail clear of the pole. Both ride in from the right at the near row's parallax
+// (he a little faster, his own stride), the charge starts at KAIJU_CHARGE (about two
+// seconds short of the park), and after it he keeps walking at KAIJU_WALK_SPEED. Progress
+// only ARMS the charge; the attack runs on the scenery clock. Landscape only.
+const KAIJU_ARRIVE = 0.9;
+const KAIJU_CHARGE = 0.9464;
+const KAIJU_FIRE_X = 182;         // his feet when the camera parks and the beams start
+const KAIJU_WALK_SPEED = 26;      // px a second, leftward, from the park onward
+const KAIJU_LEAVE_SPEED = 34;     // ...and this much more once the hero has landed and he winks
+const KAIJU_WALK_LEAD = 0.05;     // ...and the same stride on the way in (x the camera's pace)
+const KAIJU_TOWER_PARK_X = 30;
+const KAIJU_WINK_LEAD = 0.35;     // ...the ding at least this far ahead, rounded up to a beat
+const KAIJU_HOLD = 5.3;          // the attack clock stops here: smirk held, never undone
+
 function neonPack(settings) {
   // What bg() leaves for ground(); see the note at the latch below.
   let neonFrame = null;
+  // The kaiju's clocks — when he came into view, when the charge began, how far he had
+  // walked by then; pack-local like neonFrame, cleared before his stretch.
+  const kaiju = { charged: null, parked: null, wink: null };
   return {
     name: 'neon',
     dark: true,
@@ -10417,6 +10444,8 @@ function neonPack(settings) {
       // A bolt that strikes INTO the city (the storm-bolt bake-off's depth mock-up) is
       // painted here, between the rows, so the near row and the smog stand in front.
       if (typeof backgroundContext?.neonBehindNear === 'function') backgroundContext.neonBehindNear(ctx);
+      const kst = neonKaijuState(kaiju, t, camX, totalDist, backgroundContext);
+      if (kst) drawKaijuTower(ctx, kst);
       if (reveal.nearWire > 0) {
         const row = NEON_WIRE_ROWS.near;
         layer('near', row.factor, (shift) => neonWireRow(ctx, shift, t, {
@@ -10438,6 +10467,11 @@ function neonPack(settings) {
       if (struck) {
         drawNeonStruckTower(ctx, t, struck, { lit: mood?.signs ?? 1, ink: mood?.wire?.inkB || struck.ink });
       }
+      // In front of the buildings but INSIDE the smog: the gallery's kaiju mock-up
+      // (src/dev/kaiju-candidates.js) — Peter, 16 Oct: "in the haze but in front of the
+      // buildings".
+      if (typeof backgroundContext?.neonBeforeVeil === 'function') backgroundContext.neonBeforeVeil(ctx);
+      if (kst) drawKaijuFront(ctx, kst);
       // In front of the city, behind everything the player plays with.
       layer('near', 0, () => neonBandVeil(ctx, cab, { context: backgroundContext, ...(mood?.veil || {}) }));
     },
@@ -10530,6 +10564,60 @@ function neonPack(settings) {
       ctx.drawImage(glowSprite(color, r), x + e.w / 2 - r, y + e.h / 2 - r, r * 2, r * 2);
       ctx.restore();
     },
+  };
+}
+
+// Where neon-3's kaiju is this frame, or null when he is not on: see KAIJU_ARRIVE.
+function neonKaijuState(k, t, camX, totalDist, context) {
+  const finish = context?.finish;
+  const p = context?.progress;
+  if (context?.stageIndex !== 3 || context?.portrait || !finish || !Number.isFinite(totalDist)
+    || !Number.isFinite(p) || p < KAIJU_ARRIVE) {
+    k.charged = k.parked = k.wink = null;
+    return null;
+  }
+  // How far he and the tower still are from where they park, at the near row's parallax.
+  const ahead = Math.max(0, finish.camX - camX) * 0.3 * ZOOM;
+  if (k.charged == null && p >= KAIJU_CHARGE) k.charged = t;
+  if (k.parked == null && ahead <= 0) k.parked = t;
+  // He faces LEFT, away from the tape, and walks that way all the while: on the way in
+  // his own stride adds KAIJU_WALK_LEAD of the scenery's pace (so he is at KAIJU_FIRE_X
+  // exactly as the camera parks), and from the park he keeps going, through the cut and
+  // the fall, off toward the other side of the street.
+  // Unhurried until the hero lands (so the wink is seen), then he picks up and goes.
+  const kx = KAIJU_FIRE_X + ahead * (1 + KAIJU_WALK_LEAD)
+    - (k.parked == null ? 0 : (t - k.parked) * KAIJU_WALK_SPEED)
+    - (k.wink ? Math.max(0, t - k.wink.askedT) * KAIJU_LEAVE_SPEED : 0);
+  if (kx > 700) return null;
+  // THE GOODBYE WINK, dinging on the beat like speed-3's coyote (run.js speedCoyoteWink via
+  // `cues.wink`): asked as the hero lands on the finish pad (finishPadT, as the coyote's is); the run
+  // moves it onto the next beat and says when, and the picture follows the heard audio clock.
+  const cues = context?.coyoteCues;
+  const landed = Number.isFinite(context?.finishPadT) && context.finishPadT > 0;
+  if (k.wink == null && landed && k.charged != null && kx < 420) {
+    const cued = typeof cues?.wink === 'function' ? cues.wink(KAIJU_WINK_LEAD) : null;
+    const now = typeof cues?.now === 'function' ? cues.now() : null;
+    k.wink = Number.isFinite(cued)
+      ? { at: Number.isFinite(now) ? now + cued : null, askedT: t, cued }
+      : { at: null, askedT: t, cued: KAIJU_WINK_LEAD };
+  }
+  let winkSince = null;
+  if (k.wink) {
+    const now = typeof cues?.now === 'function' ? cues.now() : null;
+    winkSince = k.wink.at != null && Number.isFinite(now) ? now - k.wink.at : t - k.wink.askedT - k.wink.cued;
+  }
+  return {
+    t,
+    ph: k.charged == null ? -1 : Math.min(KAIJU_HOLD, t - k.charged),
+    kx,
+    tx: KAIJU_TOWER_PARK_X + ahead,
+    rise: 0,
+    stomp: 1,
+    flip: true,
+    wink: winkSince,
+    shape: KAIJU_SHAPE,
+    look: KAIJU_RED,
+    style: 'tube',
   };
 }
 

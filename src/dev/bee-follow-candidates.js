@@ -125,7 +125,7 @@ export const BEE_CANDIDATES = [
   { letter: 'A', id: 'bees-halo', name: 'HALO', paint: beeHalo,
     note: 'The stars-and-birds ring replaced by four of the swarm’s bees going round his head on the same flat ring, wandering a little behind him. They stay about three seconds, leaving one at a time up and off behind him.' },
   { letter: 'B', id: 'bees-cloud', name: 'CLOUD', paint: beeCloud, shipped: true,
-    note: 'SHIPPED, at the swarm’s own bee size, with the stars and birds running their normal length under it. Twelve bees, each on its own wider loop round his whole body and dragging behind him, a faint buzz trail on each. They peel off backwards, one after another, the last gone at about 3.5 seconds.' },
+    note: 'SHIPPED, at the swarm’s own bee size, with the stars and birds running their normal length under it. Sixteen bees, each on its own wider loop round his whole body and dragging behind him, a faint buzz trail on each. They peel off backwards, one after another, the last gone at about 3.7 seconds.' },
   { letter: 'C', id: 'bees-angry', name: 'ONE ANGRY BEE', paint: beeStraggler,
     note: 'Two bees give up inside a second; one, a bit bigger, will not. It darts at his face and loops back over his head on a jittery zig-zag with a dashed buzz line, right through to the end, and flicks off.' },
   { letter: 'D', id: 'bees-stars', name: 'STARS, THEN BEES', paint: starsThenBees,

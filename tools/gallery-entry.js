@@ -159,6 +159,7 @@ import { FERAL_CANDIDATES, FERAL_NOW, drawFeralApproach, drawFeralLineup, drawFe
 import { MANEKI_CANDIDATES, BECKON_CANDIDATES } from '../src/dev/maneki-candidates.js';
 import { SNARL_CANDIDATES } from '../src/dev/snarl-candidates.js';
 import { KAIJU_CANDIDATES, KAIJU_LOOP, drawKaijuScene } from '../src/dev/kaiju-candidates.js';
+import { SPEED_FINISH_CANDIDATES, SPEED_FINISH_LOOP, drawSpeedFinishScene } from '../src/dev/speed-finish-candidates.js';
 import { NEON_GOLDEN_MOOD as MANEKI_GOLDEN } from '../src/engine/stylePacks/index.js';
 import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/dev/hero-polish-candidates.js';
 import { FIRE_STAND_CANDIDATES, drawFireStandRun, drawFireStandStill } from '../src/dev/office-fire-alarm-stand-candidates.js';
@@ -10092,19 +10093,40 @@ function jadeSky(ctx, w, h, seed = 1) {
 
 // ------------------------------------------ TERMINAL VELOCITY — a kaiju on the attack (lab)
 // 16 Oct 2026: "Can we mockup a neon Godzilla on the attack for the neon levels? Laser
-// eyes destroying a building maybe?" src/dev/kaiju-candidates.js — a background set
+// eyes destroying a building maybe?" Round 2: cute, breath, in front of the buildings.
+// Round 3: laser eyes again, no roar, neutral then a smirk as the tower is cut.
+// Round 4: red lasers only, five silhouettes, less childlike.
+// src/dev/kaiju-candidates.js — a background set
 // piece in the pack's neonBehindNear seam. Nothing is wired into the run.
 {
   const grid = section('kaiju-mockup', 'TERMINAL VELOCITY — a kaiju on the attack (mock-up)',
-    'A monster in the city behind the near row, keeping pace with the run. On a ' + KAIJU_LOOP + 's loop he sees a tower riding in, charges (eyes, and the plates up his back from the tail tip), '
-    + 'fires two beams from his eyes that slice the top off it, and roars as it topples into the smog — a flash on the street and a little shake. Background only; nothing in the lane. '
-    + 'Four looks on one rig, each on neon-2 and neon-3’s night. Full frame. Turn on SLOW to read the cut. ANIMATED.',
+    'Round 4 (“silhouette is a bit too child like can you do a few versions of it (we will go for laser red though)”): five bodies, all with red laser eyes and the same face, arms, plates and timing — A as it was, then B–E less childlike. '
+    + 'A neon-sign kaiju seen from the road up, in front of the city, keeping pace with the run. On a ' + KAIJU_LOOP + 's loop his eyes and plates light, two red beams cut across a tower riding in behind the near row, '
+    + 'he smirks as its top slides off and falls (a flash, a little shake), then the smirk fades. The face is after Peter’s second reference: a heavy brow over a big round eye, mouth shut in a pout, two little bottom fangs. '
+    + 'Each on neon-2 and neon-3’s night. Background only. Full frame. Turn on SLOW to read it. ANIMATED.',
     '16 Oct 2026');
   for (const look of KAIJU_CANDIDATES) {
     for (const stageIndex of [2, 3]) {
       tile(grid, `${look.letter} — ${look.name} · neon-${stageIndex}`, look.note, 480, 270,
         (ctx, t) => drawKaijuScene(ctx, t, look, { stageIndex }), { animated: true, wide: true });
     }
+  }
+}
+
+// ------------------------------------------ SPEED ZONE — a cute end set piece (lab)
+// 16 Oct 2026: after the neon kaiju and the gravity Martian, "any other ideas for cute
+// end set pieces for level 3s of cabinets?" -> "speed zone mock up".
+// src/dev/speed-finish-candidates.js — the slowest things on the Speed Zone road, on
+// the real speed-3 backdrop, road and hero. Nothing is wired into the run.
+{
+  const grid = section('speed-finish-mockup', 'SPEED ZONE — a cute end set piece (mock-up)',
+    'Four gags for the finish of speed-3, each the slowest thing on the road: A a granny on a mobility scooter, B a tow truck towing a much bigger tow truck, C a tortoise in a racing helmet, D a just-married convertible with a dog and tin cans. '
+    + 'Real speed-3 sunset, road and hero. On a ' + SPEED_FINISH_LOOP + 's loop the run scrolls at its pace, the camera parks for the finish and the gag creeps through the frame; each has one beat as it draws level with the hero. '
+    + 'Landscape only. Nothing is wired into the run. Turn on SLOW to read it. ANIMATED.',
+    '16 Oct 2026');
+  for (const cand of SPEED_FINISH_CANDIDATES) {
+    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
+      (ctx, t) => drawSpeedFinishScene(ctx, t, cand), { animated: true, wide: true });
   }
 }
 
