@@ -1,6 +1,6 @@
 // Campaign progress: plugs, ranks, coins, mastery XP, unlocks.
 import { REWARDS, MASTERY_LEVELS } from '../data/progression.js';
-import { UNLOCKS, STAGES, MASH_LETTERS } from '../data/stages.js';
+import { UNLOCKS, STAGES, MASH_LETTERS, RANK_TIME_FRAC } from '../data/stages.js';
 import { CABINETS } from '../data/cabinets.js';
 import { sendRunResult } from '../engine/telemetry.js';
 
@@ -130,7 +130,13 @@ export function computeRank(result, difficulty) {
   // without it a stage whose plug is banked could never rank S again.
   if (result.applianceGot || result.silverGot) pts++;
   if (result.damageTaken === 0) pts++;
-  let rank = pts >= 4 ? 'S' : pts === 3 ? 'A' : pts === 2 ? 'B' : 'C';
+  // TIME (17 Oct 2026): at the tape with a quarter of the clock or more still on
+  // it — about what a lap with no deaths leaves. A fifth point, so S asks for it.
+  const timed = Number.isFinite(result.timeLimit) && result.timeLimit > 0;
+  if (timed && result.timeLeft >= result.timeLimit * RANK_TIME_FRAC) pts++;
+  // Runs with no clock (bosses, overtime) are graded out of the four they have.
+  const full = timed ? 5 : 4;
+  let rank = pts >= full ? 'S' : pts === full - 1 ? 'A' : pts === full - 2 ? 'B' : 'C';
   // CONCERNING: an S earned while collecting zero coins (who ARE you), or any S on UNPLUGGED.
   if (rank === 'S' && (result.coins === 0 || difficulty === 5)) rank = 'CONCERNING';
   return rank;

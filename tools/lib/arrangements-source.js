@@ -107,6 +107,7 @@ export function renderArrangementsFile(arrangements, path) {
     const sections = entry.sections || [];
     const bpm = entry.bpm ?? null;
     const swing = entry.swing ?? null;
+    const transpose = entry.transpose || null;
     const loop = entry.loop ?? null;
     const resolution = entry.resolution ?? null;
     // The level lines and cuts (src/data/automation.js). Points are tuples, so JSON is
@@ -115,11 +116,12 @@ export function renderArrangementsFile(arrangements, path) {
     // A song with none of the three is a song nobody arranged. Skipped rather than
     // written as an empty object, so the file holds decisions and nothing else — and a
     // tempo is a decision on its own, so `{ bpm: 104 }` is a whole entry.
-    if (!order.length && !sections.length && bpm == null && swing == null && !loop
+    if (!order.length && !sections.length && bpm == null && swing == null && transpose == null && !loop
       && resolution == null && !automation) continue;
     body += `  ${JSON.stringify(id)}: {\n`;
     if (bpm != null) body += `    bpm: ${bpm},\n`;
     if (swing != null) body += `    swing: ${round(swing)},\n`;
+    if (transpose != null) body += `    transpose: ${transpose},\n`;
     if (resolution != null) body += `    resolution: ${resolution},\n`;
     if (loop) body += `    loop: ${JSON.stringify(loop)},\n`;
     if (automation) {

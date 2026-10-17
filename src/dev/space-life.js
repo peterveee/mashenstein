@@ -1383,24 +1383,16 @@ function lateSaucer(c, s) {
 const FINISH_BACK = 40;
 function finishWalker(c, s) {
   if (s.progress == null) return;
-  // Anchored to where the camera stops, so he is in the middle of the frame
-  // through the whole finish hold (Peter, 13 Oct: "visible near the finish").
+  // Anchored to a window in the parked finish frame, so he scrolls in with
+  // the station and remains there through the finish hold.
   const len = s.length ?? 4680;
-  const anchor = s.view * 0.5 + ((s.finishProgress ?? 0.97) - s.progress) * len;
+  const finishOffset = ((s.finishProgress ?? 0.97) - s.progress) * len;
+  const anchor = (s.finishWalkerPaneX ?? s.view * 0.5) + finishOffset;
   if (anchor < -140 || anchor > s.view + 140) return;
-  // Always inside a window, never behind the wall between two (Peter, 13 Oct):
-  // he hangs at the centre of whichever pane his anchor falls nearest. Panes
-  // are fixed to the station, so the choice holds as both scroll together.
-  // Only his own pane (the one nearest his anchor) — if that pane is off the
-  // list, so is he; never re-picked to a neighbour, which would be a jump.
-  // One window left of that (Peter, 14 Oct: "move left 1 window so he's not
-  // crowding the hero at the finish line"): the pane just before his own, so the
-  // choice is still fixed to the station as it scrolls.
-  // (The anchor itself moves one pane pitch left, so his pane is the nearest to it
-  // and he comes in from the right edge with it, rather than popping in when the
-  // pane to his right reaches the list.)
   let x = anchor, top = -134;
-  if (s.panes?.length) {
+  // Callers that haven't preselected a finish pane keep the old nearest-pane
+  // fallback; production room draws pass a pane fixed to the parked camera.
+  if (s.finishWalkerPaneX == null && s.panes?.length) {
     const panes = [...s.panes].sort((a, b) => a[0] - b[0]);
     const pitch = panes.length > 1 ? panes[1][0] - panes[0][0] : 0;
     const at = anchor - pitch;

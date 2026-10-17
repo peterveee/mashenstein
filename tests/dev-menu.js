@@ -59,7 +59,7 @@ const bundle = outputFiles[0].text;
   const stagesMenu = stagesItem && stagesItem.submenu(dev);
   const plumberItem = stagesMenu && stagesMenu.items.find((item) => /FIELD SERVICE/.test(item.label));
   const plumberMenu = plumberItem && plumberItem.submenu(dev);
-  const firstStageItem = plumberMenu && plumberMenu.items.find((item) => /^plumber-1\b/.test(item.label));
+  const firstStageItem = plumberMenu && plumberMenu.items.find((item) => item.label === '1. PIPE DREAMS');
   const firstStageMenu = firstStageItem && firstStageItem.submenu(dev);
   const playLastItem = firstStageMenu && firstStageMenu.items.find((item) => item.label === 'PLAY LAST ▸');
   const playLastMenu = playLastItem && playLastItem.submenu(dev);
@@ -179,12 +179,13 @@ const bundle = outputFiles[0].text;
       'devForceMission carries an objective stage to the finish (neon-1)');
   }
 
-  // Without the force, the same unpiloted run must fail at the line — this is
-  // the control that shows the flag is doing the work.
+  // Without the force the same unpiloted run still finishes — every mission is
+  // the finish line now (17 Oct 2026) — but the targets are its BONUS, and an
+  // unpiloted hero does not earn that.
   {
     const { result } = crash('neon-1', { devForceMission: false });
-    assert(result && !result.success,
-      'objective stage still fails unpiloted when the mission is not forced');
+    assert(result && result.success && !result.challengeDone,
+      'an unpiloted run finishes an objective stage without its bonus when nothing is forced');
   }
 
   // Iframe clamp. The normal 1.4s of post-hit mercy would ghost the hero

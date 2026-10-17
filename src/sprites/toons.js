@@ -4059,6 +4059,94 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}, spec = null) {
     ctx.stroke();
   }
 }
+// Candidate-only 90s shades. They are painted from the same projected eye
+// centres as drawEyes, so the far lens compresses with the shared three-quarter
+// head turn instead of sitting on a separate, front-facing face.
+function drawSunglasses(ctx, p, u, cx, cy, ex = {}, spec = null, ow = 0) {
+  if (!spec?.sunglasses) return;
+  const style = typeof spec.sunglasses === 'object' ? spec.sunglasses : {};
+  const eyeSepValue = Number(spec.faceEyeSep);
+  const eyeSep = Number.isFinite(eyeSepValue) && eyeSepValue > 0 ? eyeSepValue : 1;
+  const sep = 0.075 * u * eyeSep;
+  const turnLimit = Math.PI * 5 / 12;
+  const turnRad = Math.max(-turnLimit, Math.min(turnLimit, (Number(ex.turn) || 0) * Math.PI / 180));
+  const turnDepth = Math.abs(Math.sin(turnRad));
+  const nearSide = turnRad < 0 ? 1 : -1;
+  const eyeX = (side) => cx + side * sep * (Math.abs(turnRad) > 0.001 && side !== nearSide
+    ? 1 - 0.42 * turnDepth : 1);
+  const frame = style.frame || p.e || OUTLINE;
+  const lens = style.lens || '#e8152b';
+  const scale = Number(style.scale) > 0 ? Number(style.scale) : 1;
+  const lensH = 0.055 * u * scale;
+  const centers = [-1, 1].map((side) => ({
+    side, x: eyeX(side), halfW: 0.073 * u * scale * (side === nearSide ? 1 : 0.72),
+  }));
+  ctx.save();
+  if (style.wrap) {
+    const faceY = cy + (Number(style.drop) || 0) * u;
+    const [left, right] = centers;
+    const midX = (left.x + right.x) * 0.5;
+    const visor = (c) => {
+      c.moveTo(left.x - left.halfW * 1.08, faceY - lensH * 0.66);
+      c.quadraticCurveTo(left.x - left.halfW, faceY - lensH * 1.02,
+        left.x - left.halfW * 0.66, faceY - lensH);
+      c.lineTo(right.x + right.halfW * 0.66, faceY - lensH);
+      c.quadraticCurveTo(right.x + right.halfW, faceY - lensH * 0.94,
+        right.x + right.halfW * 1.08, faceY - lensH * 0.62);
+      c.lineTo(right.x + right.halfW * 0.98, faceY + lensH * 0.46);
+      c.quadraticCurveTo(right.x + right.halfW * 0.84, faceY + lensH * 0.78,
+        right.x + right.halfW * 0.53, faceY + lensH * 0.7);
+      c.lineTo(midX + 0.035 * u, faceY + lensH * 0.34);
+      c.lineTo(midX, faceY + lensH * 0.49);
+      c.lineTo(midX - 0.035 * u, faceY + lensH * 0.34);
+      c.lineTo(left.x - left.halfW * 0.53, faceY + lensH * 0.7);
+      c.quadraticCurveTo(left.x - left.halfW * 0.84, faceY + lensH * 0.78,
+        left.x - left.halfW * 0.98, faceY + lensH * 0.46);
+      c.closePath();
+    };
+    outlined(ctx, lens, hair(0.55, ow * 0.86), visor, frame);
+    // Separate cold reflections identify two lenses inside the joined frame.
+    ctx.fillStyle = style.glint || '#b8fbff';
+    ctx.globalAlpha *= 0.95;
+    for (const { x, halfW } of centers) {
+      ctx.beginPath();
+      ctx.ellipse(x - halfW * 0.1, faceY - lensH * 0.16,
+        0.024 * u * scale, 0.032 * u * scale, -0.12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha *= 0.72;
+      ctx.beginPath();
+      ctx.ellipse(x + halfW * 0.29, faceY + lensH * 0.16,
+        0.008 * u * scale, 0.01 * u * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha /= 0.72;
+    }
+    ctx.restore();
+    return;
+  }
+  // The bridge is under the lenses; the two small frames then stay visibly
+  // rectangular even when the projected far eye sits close to the near one.
+  ctx.strokeStyle = frame;
+  ctx.lineWidth = hair(0.45, 0.016 * u * scale);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(centers[0].x + centers[0].halfW * 0.78, cy - lensH * 0.1);
+  ctx.lineTo(centers[1].x - centers[1].halfW * 0.78, cy - lensH * 0.1);
+  ctx.stroke();
+  for (const { x, halfW } of centers) {
+    outlined(ctx, lens, hair(0.45, ow * 0.7), (c) =>
+      roundRectPath(c, x - halfW, cy - lensH, halfW * 2, lensH * 2, 0.012 * u * scale), frame);
+    // A narrow arcade-glint gives the bright lenses a clean read at the
+    // magnified lab size without becoming a distracting highlight at 24px.
+    ctx.strokeStyle = style.glint || '#ff7885';
+    ctx.lineWidth = hair(0.35, 0.009 * u * scale);
+    ctx.beginPath();
+    ctx.moveTo(x - halfW * 0.55, cy - lensH * 0.35);
+    ctx.lineTo(x + halfW * 0.42, cy - lensH * 0.35);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // Fit an upward-growing mouth into the skin it is allowed to have.
 //
 // `spec.openBand` is [top, bottom] in u, measured from the mouth line: how far
@@ -4183,6 +4271,9 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
     // speaker grille has no corners to pull down.
     ctx.moveTo(cx - 0.046 * u, cy + 0.008 * u);
     ctx.quadraticCurveTo(cx, cy + 0.002 * u, cx + 0.046 * u, cy + 0.008 * u);
+  } else if (spec.steeleFace) {
+    ctx.moveTo(cx - 0.046 * u, cy + 0.01 * u);
+    ctx.quadraticCurveTo(cx, cy - 0.002 * u, cx + 0.046 * u, cy + 0.01 * u);
   } else if (spec.mouth === 'smile') ctx.arc(cx, cy - 0.02 * u, 0.06 * u, 0.25 * Math.PI, 0.75 * Math.PI);
   else if (spec.mouth === 'smirk') { ctx.moveTo(cx, cy + 0.01 * u); ctx.quadraticCurveTo(cx + 0.05 * u, cy + 0.02 * u, cx + 0.08 * u, cy - 0.02 * u); }
   else if (spec.mouth === 'line') { ctx.moveTo(cx - 0.045 * u, cy); ctx.lineTo(cx + 0.045 * u, cy); }
@@ -5840,8 +5931,29 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     c.quadraticCurveTo(hx - R * 0.92, hy + R * 0.3, hx - R, hy + R * 0.06);
     c.closePath();
   };
-  if (id === 'grumpos') {
-    outlined(ctx, p.s, ow, blockHead);
+  if (id === 'grumpos' || spec.blockHead) {
+    if (spec.steeleFace) {
+      // Broad temples, a short squared jaw and a blunt chin make Steele's face
+      // read as an action-hero head instead of borrowing Grumpos's softer jaw.
+      outlined(ctx, p.s, ow, (c) => {
+        c.moveTo(hx - R * 0.96, hy + R * 0.04);
+        c.lineTo(hx - R * 0.96, hy - R * 0.52);
+        c.quadraticCurveTo(hx - R * 0.94, hy - R * 0.93, hx - R * 0.55, hy - R * 1.0);
+        c.quadraticCurveTo(hx, hy - R * 1.16, hx + R * 0.55, hy - R * 1.0);
+        c.quadraticCurveTo(hx + R * 0.94, hy - R * 0.93, hx + R * 0.96, hy - R * 0.52);
+        c.lineTo(hx + R * 0.96, hy + R * 0.28);
+        c.quadraticCurveTo(hx + R * 0.95, hy + R * 0.56, hx + R * 0.72, hy + R * 0.72);
+        c.lineTo(hx + R * 0.45, hy + R * 0.91);
+        c.quadraticCurveTo(hx + R * 0.37, hy + R * 0.96, hx + R * 0.27, hy + R * 0.96);
+        c.lineTo(hx - R * 0.27, hy + R * 0.96);
+        c.quadraticCurveTo(hx - R * 0.37, hy + R * 0.96, hx - R * 0.45, hy + R * 0.91);
+        c.lineTo(hx - R * 0.72, hy + R * 0.72);
+        c.quadraticCurveTo(hx - R * 0.95, hy + R * 0.56, hx - R * 0.96, hy + R * 0.28);
+        c.closePath();
+      });
+    } else {
+      outlined(ctx, p.s, ow, blockHead);
+    }
   } else {
     // A furred head fills with the coat colour, not with skin. Miss this and an
     // animal comes out wearing a human face inside its own ears.
@@ -6515,6 +6627,53 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
           });
         }
       }
+    }
+  } else if (spec.flatTop) {
+    // Steele's blonde flat top stays square at the crown, with close sides
+    // tucked to the shared head shape and carried by its existing turn.
+    const flatTopPath = (c) => {
+      c.moveTo(hx - R * 0.9, hy + R * 0.16);
+      c.lineTo(hx - R * 0.9, hy - R * 0.84);
+      c.quadraticCurveTo(hx - R * 0.9, hy - R * 1.08, hx - R * 0.68, hy - R * 1.1);
+      c.lineTo(hx + R * 0.7, hy - R * 1.1);
+      c.quadraticCurveTo(hx + R * 0.91, hy - R * 1.08, hx + R * 0.94, hy - R * 0.82);
+      c.lineTo(hx + R * 0.94, hy - R * 0.12);
+      c.quadraticCurveTo(hx + R * 0.86, hy + R * 0.07, hx + R * 0.72, hy + R * 0.12);
+      c.lineTo(hx + R * 0.62, hy - R * 0.32);
+      c.lineTo(hx - R * 0.64, hy - R * 0.32);
+      c.lineTo(hx - R * 0.73, hy + R * 0.12);
+      c.closePath();
+    };
+    outlined(ctx, p.h, ow, flatTopPath);
+    if (spec.flatTopFinish && !lod) {
+      const dark = p.hairDark || '#b49800';
+      ctx.save();
+      ctx.beginPath(); flatTopPath(ctx); ctx.clip();
+      // A bright top plane and close-cut grooves keep the short crew cut from
+      // reading as a single yellow block.
+      ctx.globalAlpha *= 0.42;
+      ctx.fillStyle = p.hairLight || '#fff36a';
+      ctx.beginPath();
+      ctx.moveTo(hx - R * 0.76, hy - R * 0.93);
+      ctx.quadraticCurveTo(hx - R * 0.34, hy - R * 1.08, hx + R * 0.42, hy - R * 1.0);
+      ctx.lineTo(hx + R * 0.28, hy - R * 0.82);
+      ctx.quadraticCurveTo(hx - R * 0.18, hy - R * 0.88, hx - R * 0.76, hy - R * 0.78);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha *= 0.8;
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = hair(0.38, ow * 0.62);
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      for (const x of [-0.42, -0.12, 0.18]) {
+        ctx.moveTo(hx + R * x, hy - R * 1.03);
+        ctx.lineTo(hx + R * (x + 0.04), hy - R * 0.74);
+      }
+      ctx.moveTo(hx - R * 0.88, hy - R * 0.08);
+      ctx.lineTo(hx - R * 0.7, hy + R * 0.04);
+      ctx.moveTo(hx + R * 0.88, hy - R * 0.08);
+      ctx.lineTo(hx + R * 0.72, hy + R * 0.02);
+      ctx.stroke();
+      ctx.restore();
     }
   } else if (spec.head === 'bald') {
     // Intentionally bare: Grumpos's asymmetric war-paint streak is drawn
@@ -7262,6 +7421,34 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     ctx.save();
     ctx.translate(0, faceDy);
   }
+  if (pose.catClawMarks && !lod) {
+    // These are injuries on the face, not a slash graphic floating beside the
+    // runner. Draw in the head's own turned/mirrored space and clip to its
+    // silhouette; the eyes, nose and mustache are painted afterward, on top.
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, R * 0.96, R * 0.96, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const tracks = [
+      [0.86, -0.16, 0.56, 0.12],
+      [0.9, -0.02, 0.6, 0.26],
+      [0.92, 0.12, 0.62, 0.4],
+    ];
+    for (let i = 0; i < tracks.length; i++) {
+      const [x0, y0, x1, y1] = tracks[i];
+      const sx = hx + R * x0, sy = hy + R * y0;
+      const ex = hx + R * x1, ey = hy + R * y1;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo((sx + ex) / 2 - R * 0.035, (sy + ey) / 2, ex, ey);
+      ctx.strokeStyle = i === 1 ? '#fff4f8' : '#e14863';
+      ctx.lineWidth = hair(0.42, 0.032 * u);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   // Fernwick's eyes sit a touch lower, giving her a taller, more childlike brow.
   // `eyeLift` is the same dial pointing the other way, and a spec field rather
   // than a hero id because it belongs to a FACE rather than to a name — it moves
@@ -7278,6 +7465,33 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   if (spec.eyeStyle === 'pika') pikaEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
   else drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx, spec);
   if (faceEx.brow === 'bushy' && !lod) bushyBrows(ctx, p, u, hx + 0.01 * u, eyeY, ex, ow, spec);
+  if (spec.sunglasses) drawSunglasses(ctx, p, u, hx + 0.01 * u, eyeY, faceEx, spec, ow);
+  if (spec.steeleFace && spec.sunglasses && !lod) {
+    const style = typeof spec.sunglasses === 'object' ? spec.sunglasses : {};
+    const scale = Number(style.scale) > 0 ? Number(style.scale) : 1;
+    const turnRad = Math.max(-turnLimit, Math.min(turnLimit, (Number(faceEx.turn) || 0) * Math.PI / 180));
+    const depth = Math.abs(Math.sin(turnRad));
+    const near = turnRad < 0 ? 1 : -1;
+    const faceCx = hx + 0.01 * u;
+    const faceY = eyeY + (Number(style.drop) || 0) * u;
+    const lensH = 0.055 * u * scale;
+    for (const side of [-1, 1]) {
+      const x = faceCx + side * 0.075 * u * (depth > 0.001 && side !== near ? 1 - 0.42 * depth : 1);
+      const halfW = 0.073 * u * scale * (side === near ? 1 : 0.72);
+      const browLine = faceY - lensH * 0.75;
+      const outerX = x + side * halfW * 0.7;
+      const innerX = x - side * halfW * 0.18;
+      const outerY = browLine - 0.014 * u;
+      const innerY = browLine + 0.008 * u;
+      outlined(ctx, p.hairDark || '#b49800', hair(0.45, ow * 0.62), (c) => {
+        c.moveTo(outerX, outerY);
+        c.lineTo(innerX, innerY);
+        c.lineTo(innerX, innerY + 0.022 * u);
+        c.lineTo(outerX, outerY + 0.018 * u);
+        c.closePath();
+      });
+    }
+  }
   if (spec.nose) {
     const noseScaleValue = Number(spec.lorenzoNoseScale);
     const noseScale = id === 'lorenzo' && Number.isFinite(noseScaleValue) && noseScaleValue > 0 ? noseScaleValue : 1;
@@ -11331,19 +11545,18 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // SUBTLE: "less outline and a bit more subtle", then "same fine lines for
     // knees as hands and a darker silver" (16 Oct): the hands' own ink weight
     // (handInk), in the body's darker silver, a touch smaller, a fainter rim.
-    // EXTREMELY SUBTLE (16 Oct): "make b33p's knee extremely subtle" — no ink
-    // outline at all, a smaller half-strength plate, and only a whisper of the
-    // lit rim. A hint that the knee is a joint, not a part.
-    const r = w * 0.4;
+    // Keep the joint plate as a faint mechanical cue; at game scale it should
+    // read as a hinge detail rather than a circular knee pad.
+    const r = w * 0.28;
     ctx.save();
-    ctx.globalAlpha *= 0.45;
+    ctx.globalAlpha *= 0.22;
     ctx.fillStyle = fill;
     ctx.beginPath(); ctx.arc(kx, ky, r, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     if (!lod) {
       // the lit rim on its upper-left, as the bake-off drew it
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-      ctx.lineWidth = hair(0.3, r * 0.18);
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.lineWidth = hair(0.2, r * 0.12);
       ctx.beginPath(); ctx.arc(kx, ky, r * 0.68, Math.PI * 0.95, Math.PI * 1.6); ctx.stroke();
     }
   };
@@ -11412,6 +11625,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // is a ball of limb standing proud of the body.
     const flushHip = hipJoin === 'flush';
     limb2(ctx, hipX, legRootYF, footF[0], footF[1] - ankleLift, thighSeg, kneeF, legWF, legFill, ow, legWF, flushHip, shinSeg);
+    if (spec.cargoPockets) {
+      const [kx, ky] = kneeAt(hipX, legRootYF, footF, kneeF);
+      paintCargoPocket(ctx, p, u, ow, lod, hipX, legRootYF, kx, ky, legWF);
+    }
     // THE UNDERSIDE LINE. Flush insets the whole outline, top edge and bottom
     // edge alike, and the top is the point — a rim crowning the root is the
     // socket line the bake-off was called on. The UNDERSIDE is not: that line
@@ -12327,6 +12544,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     paintBackAxe(ctx, p, u, ow, lod, axx, axy, spec.axeArt);
     if (pose.powerCooling) ctx.restore();
   }
+  if (spec.back === 'rifle') {
+    // The barrel clears the back shoulder and the stock peeks beside the hip;
+    // the shared torso and arms paint over the centre of the weapon afterward.
+    paintBackRifle(ctx, p, u, ow, lod,
+      torsoCx - torsoHalf * 0.72,
+      shoulderY + 0.09 * u,
+      Number.isFinite(Number(spec.rifleAngle)) ? Number(spec.rifleAngle) : -0.22);
+  }
 
   // The pack is slung on his back, so like the axe it belongs UNDER every
   // limb. Drawn after the arms (where it used to sit) it only looked right in
@@ -12533,6 +12758,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (stand && !raisedArmStudyFront && !armsReachFront) drawFrontArm();
   }
   limb2(ctx, hipAt(-1), legRootYB, footB[0], footB[1] - ankleLift, thighSeg, kneeB, legWB, recede(legFill, farShade), ow, legWB, false, shinSeg);
+  if (spec.cargoPockets) {
+    const hx = hipAt(-1), [kx, ky] = kneeAt(hx, legRootYB, footB, kneeB);
+    paintCargoPocket(ctx, p, u, ow, lod, hx, legRootYB, kx, ky, legWB, farShade);
+  }
   shortsLeg(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.p, farShade));
   bootShaft(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(footFill, farShade));
   kneeBolt(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.b, farShade));
@@ -12763,6 +12992,104 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.fill();
     ctx.restore();
   }
+  if (spec.steeleFinish && !lod && !slide) {
+    // A compact arcade cel-light pass keeps the red tank and field trousers
+    // from reading as two flat colour blocks. Both planes are clipped to the
+    // shared torso and move with its lean, turn and bob.
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    ctx.beginPath();
+    ctx.rect(torsoCx - torsoHalf * 1.12, torsoTop - 0.04 * u,
+      torsoHalf * 2.24, beltY - torsoTop + 0.06 * u); ctx.clip();
+    ctx.globalAlpha *= 0.22;
+    ctx.fillStyle = p.bLight || '#ff5b51';
+    ctx.beginPath();
+    ctx.moveTo(torsoCx - torsoHalf * 0.86, torsoTop + 0.08 * u);
+    ctx.quadraticCurveTo(torsoCx - torsoHalf * 0.2, torsoTop - 0.005 * u,
+      torsoCx + torsoHalf * 0.06, torsoTop + 0.11 * u);
+    ctx.lineTo(torsoCx - torsoHalf * 0.34, beltY - 0.06 * u);
+    ctx.lineTo(torsoCx - torsoHalf * 0.78, beltY - 0.08 * u);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha *= 1.2;
+    ctx.fillStyle = p.bShadow || '#ac1821';
+    ctx.beginPath();
+    ctx.moveTo(torsoCx + torsoHalf * 0.54, torsoTop + 0.06 * u);
+    ctx.quadraticCurveTo(torsoCx + torsoHalf * 0.98, torsoTop + 0.16 * u,
+      torsoCx + torsoHalf * 0.77, beltY - 0.025 * u);
+    ctx.lineTo(torsoCx + torsoHalf * 0.38, beltY - 0.04 * u);
+    ctx.quadraticCurveTo(torsoCx + torsoHalf * 0.61, torsoTop + 0.34 * u,
+      torsoCx + torsoHalf * 0.54, torsoTop + 0.06 * u);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    ctx.beginPath();
+    ctx.rect(torsoCx - torsoHalf * 1.12, beltY, torsoHalf * 2.24,
+      torsoBot - beltY + 0.1 * u); ctx.clip();
+    ctx.globalAlpha *= 0.18;
+    ctx.fillStyle = p.pLight || '#718064';
+    ctx.beginPath();
+    ctx.moveTo(torsoCx - torsoHalf * 0.72, beltY + 0.015 * u);
+    ctx.lineTo(torsoCx - torsoHalf * 0.24, beltY + 0.02 * u);
+    ctx.lineTo(torsoCx - torsoHalf * 0.04, torsoBot + 0.08 * u);
+    ctx.lineTo(torsoCx - torsoHalf * 0.52, torsoBot + 0.08 * u);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  if (spec.steeleChest && !lod && !slide) {
+    // Broader cel planes give Steele's bare torso a sculpted arcade read. They
+    // stay inside the shared torso silhouette and use the same turn, lean and
+    // run bob as the rest of his body.
+    const px = torsoCx;
+    const span = torsoBot - torsoTop;
+    const pecY = torsoTop + span * 0.35;
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    ctx.globalAlpha *= 0.28;
+    ctx.fillStyle = p.bShadow || '#bd6b54';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(px, pecY - 0.035 * u);
+      ctx.quadraticCurveTo(px + side * torsoHalf * 0.43, pecY - 0.11 * u,
+        px + side * torsoHalf * 0.84, pecY - 0.025 * u);
+      ctx.quadraticCurveTo(px + side * torsoHalf * 0.7, pecY + 0.105 * u,
+        px + side * torsoHalf * 0.13, pecY + 0.075 * u);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha *= 0.62;
+    ctx.fillStyle = p.bLight || '#ffc58f';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(px + side * torsoHalf * 0.045, pecY - 0.025 * u);
+      ctx.quadraticCurveTo(px + side * torsoHalf * 0.42, pecY - 0.09 * u,
+        px + side * torsoHalf * 0.75, pecY - 0.025 * u);
+      ctx.quadraticCurveTo(px + side * torsoHalf * 0.46, pecY + 0.01 * u,
+        px + side * torsoHalf * 0.12, pecY + 0.035 * u);
+      ctx.closePath(); ctx.fill();
+    }
+    const absTop = pecY + span * 0.16;
+    const absBot = Math.min(beltY - 0.055 * u, torsoTop + span * 0.9);
+    for (const side of [-1, 1]) {
+      for (const f of [0.08, 0.43, 0.78]) {
+        const y = absTop + (absBot - absTop) * f;
+        const w = torsoHalf * 0.36;
+        const hh = Math.min(0.07 * u, Math.max(0.025 * u, (absBot - absTop) * 0.3));
+        const muscleAlpha = ctx.globalAlpha;
+        ctx.globalAlpha = muscleAlpha * 0.88;
+        ctx.fillStyle = p.bLight || '#ffc58f';
+        ctx.beginPath();
+        roundRectPath(ctx, px + side * torsoHalf * 0.18 - w * 0.5, y - hh * 0.5,
+          w, hh, hh * 0.45);
+        ctx.fill();
+        ctx.globalAlpha = muscleAlpha * 0.48;
+        ctx.strokeStyle = p.bShadow || '#bd6b54';
+        ctx.lineWidth = hair(0.4, 0.009 * u);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
   // A `bust` block used to sit here — two soft crescents at whisper weight. It
   // is gone at Peter's call, not softened again: the figure already reads
   // female from the waist taper, the hair and the silhouette, and a chest line
@@ -12803,6 +13130,28 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.lineTo(px + torsoHalf * 0.26, ay);
     }
     ctx.stroke();
+    ctx.restore();
+  }
+  if (spec.steelMark && !lod && !slide) {
+    // His unit patch is a small shield with the 94 mark, clipped to the shirt
+    // so it stays on his chest through the shared run and jump poses.
+    const mx = torsoCx + sideF * torsoHalf * 0.48;
+    const my = torsoTop + (beltY - torsoTop) * 0.26;
+    const mw = 0.16 * u, mh = 0.17 * u;
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    outlined(ctx, p.a, hair(0.45, ow * 0.58), (c) => {
+      c.moveTo(mx - mw * 0.5, my - mh * 0.5);
+      c.lineTo(mx + mw * 0.5, my - mh * 0.5);
+      c.lineTo(mx + mw * 0.42, my + mh * 0.18);
+      c.lineTo(mx, my + mh * 0.55);
+      c.lineTo(mx - mw * 0.42, my + mh * 0.18);
+      c.closePath();
+    });
+    ctx.fillStyle = p.e;
+    ctx.font = `bold ${0.11 * u}px ui-monospace, monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('94', mx, my + 0.018 * u);
     ctx.restore();
   }
   if (id === 'grumpos' && !slide) {
@@ -13270,9 +13619,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     });
   }
   if (spec.harness && !slide) {
-    // Climbing harness: two shoulder straps and the sternum strap joining
-    // them. Straight lines over a curved body, which is what webbing does.
-    const sternumY = torsoTop + (beltY - torsoTop) * 0.36;
+    // Two separate shoulder braces. Each one follows the curved torso; they
+    // stay independent across the exposed chest.
     onTorso(() => {
       ctx.strokeStyle = p.w;
       ctx.lineWidth = 0.036 * u;
@@ -13281,11 +13629,27 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         ctx.moveTo(gearX + sgn * torsoHalf * 0.66, torsoTop - 0.01 * u);
         ctx.lineTo(gearX + sgn * torsoHalf * 0.36, beltY);
       }
-      ctx.moveTo(gearX - torsoHalf * 0.56, sternumY);
-      ctx.lineTo(gearX + torsoHalf * 0.56, sternumY);
       ctx.stroke();
     });
-    if (!lod) outlined(ctx, p.a, hair(0.4, ow * 0.45), (c) => c.arc(gearX, sternumY, 0.025 * u, 0, Math.PI * 2));
+    if (!lod && spec.harnessDetails) {
+      for (const side of [-1, 1]) {
+        const x0 = gearX + side * torsoHalf * 0.66;
+        const y0 = torsoTop - 0.01 * u;
+        const x1 = gearX + side * torsoHalf * 0.36;
+        const y1 = beltY;
+        const t = 0.57;
+        const x = x0 + (x1 - x0) * t;
+        const y = y0 + (y1 - y0) * t;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.atan2(y1 - y0, x1 - x0));
+        outlined(ctx, p.f, hair(0.45, ow * 0.5), (c) =>
+          roundRectPath(c, -0.027 * u, -0.043 * u, 0.054 * u, 0.086 * u, 0.008 * u),
+          p.rifleMetal || p.a);
+        dot(ctx, 0, 0, 0.008 * u, p.a);
+        ctx.restore();
+      }
+    }
   }
   if (spec.bandolier && !slide) {
     // One strap, near shoulder to far hip. Signed off sideF rather than screen
@@ -13357,6 +13721,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) =>
       roundRectPath(c, gearX - 0.031 * u * bk, beltY - 0.029 * u * bk,
         0.062 * u * bk, 0.055 * u * bk, 0.012 * u * bk));
+    if (spec.buckleMark && !lod) {
+      ctx.save();
+      ctx.fillStyle = p.e || '#17131a';
+      ctx.font = `bold ${0.046 * u * bk}px ui-monospace, monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(spec.buckleMark), gearX, beltY - 0.001 * u);
+      ctx.restore();
+    }
     if (!lod) {
       // One pouch. Two is clutter at 24px and three is a tool belt, which is
       // Lorenzo's read and not hers.
@@ -14488,6 +14860,82 @@ function paintBackAxe(ctx, p, u, ow, lod, x, y, o = {}) {
   ctx.restore();
 }
 
+// Candidate-only sci-fi rifle carried flat to the back. It is drawn under the
+// shared torso and limb passes, so only the muzzle, stock and outside edge show
+// past Steele's silhouette. The small parts use the same u-based scale as the
+// hero and remain attached through run, jump and slide poses.
+function paintBackRifle(ctx, p, u, ow, lod, x, y, angle = -0.22) {
+  const hull = p.rifle || '#39433f';
+  const edge = p.rifleEdge || '#222a29';
+  const metal = p.rifleMetal || '#7b8880';
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  // Stock and foregrip, then the receiver and barrel as separate hard-edged
+  // parts so the diagonal silhouette reads as a compact rifle rather than a rod.
+  outlined(ctx, p.p || hull, ow, (c) => roundRectPath(c, -0.055 * u, 0.12 * u, 0.11 * u, 0.18 * u, 0.018 * u));
+  outlined(ctx, hull, ow, (c) => roundRectPath(c, -0.044 * u, -0.34 * u, 0.088 * u, 0.27 * u, 0.018 * u));
+  outlined(ctx, hull, ow, (c) => roundRectPath(c, -0.069 * u, -0.09 * u, 0.138 * u, 0.21 * u, 0.022 * u));
+  outlined(ctx, metal, hair(0.55, ow * 0.72), (c) => roundRectPath(c, -0.041 * u, -0.29 * u, 0.082 * u, 0.14 * u, 0.012 * u));
+  outlined(ctx, edge, hair(0.55, ow * 0.72), (c) => roundRectPath(c, -0.052 * u, -0.38 * u, 0.104 * u, 0.065 * u, 0.012 * u));
+  // Receiver-mounted magazine and angled pistol grip.
+  outlined(ctx, edge, hair(0.55, ow * 0.74), (c) => {
+    c.moveTo(0.008 * u, 0.035 * u); c.lineTo(0.067 * u, 0.045 * u);
+    c.lineTo(0.054 * u, 0.205 * u); c.lineTo(0.002 * u, 0.184 * u); c.closePath();
+  });
+  outlined(ctx, hull, hair(0.55, ow * 0.74), (c) => {
+    c.moveTo(0.036 * u, 0.09 * u); c.lineTo(0.095 * u, 0.1 * u);
+    c.lineTo(0.12 * u, 0.205 * u); c.lineTo(0.073 * u, 0.218 * u); c.closePath();
+  });
+  // Optic, rail notches, hot red sight and a simple sling. These marks stay
+  // sparse enough to survive at the game's 24-unit character height.
+  outlined(ctx, edge, hair(0.5, ow * 0.68), (c) => roundRectPath(c, -0.032 * u, -0.145 * u, 0.064 * u, 0.06 * u, 0.012 * u));
+  if (!lod) {
+    ctx.strokeStyle = metal;
+    ctx.lineWidth = hair(0.45, ow * 0.72);
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    for (const yy of [-0.25, -0.21, -0.17]) {
+      ctx.moveTo(-0.054 * u, yy * u); ctx.lineTo(-0.044 * u, yy * u);
+      ctx.moveTo(0.054 * u, yy * u); ctx.lineTo(0.044 * u, yy * u);
+    }
+    ctx.moveTo(-0.038 * u, 0.01 * u); ctx.lineTo(0.038 * u, 0.01 * u);
+    ctx.stroke();
+    dot(ctx, 0, -0.115 * u, 0.018 * u, p.rifleAlert || '#ef202a');
+    ctx.strokeStyle = p.w || '#765238';
+    ctx.lineWidth = 0.018 * u;
+    ctx.beginPath();
+    ctx.moveTo(0.06 * u, -0.25 * u);
+    ctx.quadraticCurveTo(0.115 * u, -0.02 * u, 0.075 * u, 0.18 * u);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// One moving cargo pocket, placed from the leg's live two-bone solution. The
+// drawing frame follows the thigh, which keeps the flap seated through the
+// existing snap gait rather than sliding over a separately animated leg.
+function paintCargoPocket(ctx, p, u, ow, lod, hipX, rootY, kneeX, kneeY, legW, shade = 0) {
+  if (lod) return;
+  const t = 0.42;
+  const x = hipX + (kneeX - hipX) * t;
+  const y = rootY + (kneeY - rootY) * t;
+  const angle = Math.atan2(kneeY - rootY, kneeX - hipX) - Math.PI / 2;
+  const w = Math.min(0.19 * u, legW * 1.58), h = 0.12 * u;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.globalAlpha *= 1 - Math.max(0, Math.min(0.6, shade * 0.62));
+  outlined(ctx, p.pocket || '#35453a', hair(0.5, ow * 0.65),
+    (c) => roundRectPath(c, -w * 0.5, -h * 0.5, w, h, 0.014 * u));
+  ctx.fillStyle = p.pLight || '#718064';
+  ctx.globalAlpha *= 0.75;
+  ctx.fillRect(-w * 0.43, -h * 0.42, w * 0.86, h * 0.27);
+  outlined(ctx, p.a || '#e2b631', hair(0.35, ow * 0.5),
+    (c) => c.arc(0, -h * 0.22, 0.012 * u, 0, Math.PI * 2));
+  ctx.restore();
+}
+
 const lodCapsule = (u) => u < 16;
 function thighHolsterAt(ctx, p, u, ow, lod, rootX, rootY, kx, ky, w, shadeAmt, drawn, t = 0.74) {
   // Low on the thigh, near the knee. Up at the hip — where the first cut put
@@ -14814,6 +15262,14 @@ function slideTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w, 
     outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) =>
       roundRectPath(c, beltX - 0.029 * u * bk, -0.031 * u * bk,
         0.055 * u * bk, 0.062 * u * bk, 0.012 * u * bk));
+    if (spec.buckleMark && !lodCapsule(u)) {
+      ctx.save();
+      ctx.fillStyle = p.e || '#17131a';
+      ctx.font = `bold ${0.043 * u * bk}px ui-monospace, monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(spec.buckleMark), beltX, 0);
+      ctx.restore();
+    }
   }
   if (spec.tatSide) {
     // Grumpos's war paint, clipped to the body like the standing stripe: a
@@ -15232,6 +15688,10 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
   // torso; folded any tighter the blue thigh lies along the blue bib and
   // reads as trousers riding up the chest
   limb2(ctx, hipX, hipY, footRearX, -0.045 * u, 0.17 * u, 1, legW, p.p, ow, legW * 0.94);
+  if (spec.cargoPockets) {
+    const [kx, ky] = joint(hipX, hipY, footRearX, -0.045 * u, 0.17 * u, 1, 0.17 * u);
+    paintCargoPocket(ctx, p, u, ow, lod, hipX, hipY, kx, ky, legW);
+  }
   // `slideBootCover` grows each boot a little and seats it back over the
   // shin's end. The boots are offset 0.03u past the point the leg is drawn
   // to, and the leg's round end cap pokes out from under them — invisible on
@@ -15325,6 +15785,18 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
     paintBackAxe(ctx, p, u, ow, lod, 0.16 * u, 0.1 * u);
     ctx.restore();
   }
+  if (spec.back === 'rifle') {
+    // Turn the same slung rifle with the reclined torso axis, and seat it just
+    // behind the shoulder so the torso and slide limbs naturally mask it.
+    const dx = shX - hipX, dy = shY - hipY, L = Math.hypot(dx, dy) || 1;
+    const ax = dx / L, ay = dy / L;
+    const nx = ay, ny = -ax;
+    ctx.save();
+    ctx.translate(shX + nx * torsoW * 0.34, shY + ny * torsoW * 0.34);
+    ctx.rotate(Math.atan2(ax, -ay));
+    paintBackRifle(ctx, p, u, ow, lod, 0, 0, 0);
+    ctx.restore();
+  }
   if (spec.back === 'quiver') {
     const dx = shX - hipX, dy = shY - hipY, L = Math.hypot(dx, dy) || 1;
     const ax = dx / L, ay = dy / L;          // hip -> shoulder
@@ -15367,6 +15839,58 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
     // way.
     axisOffset(hipX, hipY, capSx, capSy, shX + SLIDE_HEAD_SEAT * u - (spec.slideHeadBack || 0) * u, shY - (heavy ? 0.15 : 0.12) * u)
       * (spec.slideNeckFollow ?? V_FOLLOWS_FACE));
+  if ((spec.steelMark || spec.bandolier === 'single' || (spec.harness && spec.harnessDetails)) && !lod) {
+    ctx.save();
+    ctx.translate(torso.hipX, torso.hipY);
+    ctx.rotate(torso.angle);
+    ctx.beginPath(); torso.capsule(ctx); ctx.clip();
+    if (spec.steelMark) {
+      const mx = torso.beltX + (torso.L - torso.beltX) * 0.63;
+      const my = torso.w * 0.12, mw = 0.15 * u, mh = 0.14 * u;
+      outlined(ctx, p.a, hair(0.45, ow * 0.58), (c) => {
+        c.moveTo(mx - mw * 0.5, my - mh * 0.5);
+        c.lineTo(mx + mw * 0.5, my - mh * 0.5);
+        c.lineTo(mx + mw * 0.42, my + mh * 0.18);
+        c.lineTo(mx, my + mh * 0.52);
+        c.lineTo(mx - mw * 0.42, my + mh * 0.18);
+        c.closePath();
+      });
+      ctx.fillStyle = p.e;
+      ctx.font = `bold ${0.095 * u}px ui-monospace, monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('94', mx, my + 0.014 * u);
+    }
+    if (spec.bandolier === 'single') {
+      const x0 = torso.L - 0.015 * u, y0 = -torso.w * 0.3;
+      const x1 = torso.beltX + 0.02 * u, y1 = torso.w * 0.28;
+      ctx.strokeStyle = p.w;
+      ctx.lineWidth = 0.05 * u;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      for (const t of [0.3, 0.5, 0.7]) {
+        dot(ctx, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, 0.017 * u, p.a);
+      }
+    }
+    if (spec.harness && spec.harnessDetails) {
+      const fittingX = torso.beltX + (torso.L - torso.beltX) * 0.55;
+      const rails = [-1, 1].map((side) => ({ x: side * torso.w * 0.17 }));
+      ctx.strokeStyle = p.w;
+      ctx.lineWidth = 0.036 * u;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (const { x } of rails) {
+        ctx.moveTo(torso.beltX + 0.015 * u, x);
+        ctx.lineTo(torso.L - 0.015 * u, x);
+      }
+      ctx.stroke();
+      for (const { x } of rails) {
+        outlined(ctx, p.f, hair(0.4, ow * 0.45), (c) =>
+          roundRectPath(c, fittingX - 0.025 * u, x - 0.025 * u,
+            0.05 * u, 0.05 * u, 0.008 * u), p.rifleMetal || p.a);
+        dot(ctx, fittingX, x, 0.007 * u, p.a);
+      }
+    }
+    ctx.restore();
+  }
   // near leg: bent like the rear one — knee up, foot planted ahead — and OVER
   // the body: a slide crosses the near leg in front of the reclined torso, so
   // its thigh paints on top of the seat. The root is the GROUNDED hip: he is
@@ -15415,6 +15939,10 @@ function drawSlideKick(ctx, id, spec, p, pose, u, ow, lod) {
   // thing that goes: a flat cut at the true root, full length kept.
   const flushHip = hipJoin === 'flush' ? 'butt' : false;
   limb2(ctx, slideRootX, slideRootY, kickX, kickY, slideSeg, 1, legW, p.p, ow, legW * 0.94, flushHip);
+  if (spec.cargoPockets) {
+    const [kx, ky] = joint(slideRootX, slideRootY, kickX, kickY, slideSeg, 1, slideSeg);
+    paintCargoPocket(ctx, p, u, ow, lod, slideRootX, slideRootY, kx, ky, legW);
+  }
   if (spec.holster === 'thigh') {
     // Her thigh rig, on the leg that is on top. The knee comes from the same
     // solver limb2 just used, so the holster cannot drift off the bone the

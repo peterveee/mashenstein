@@ -64,7 +64,7 @@ import {
   mcmBigEar, mcmMast, mcmLookout, mcmLaunchPad, mcmWaterTower, mcmWindFarm,
   mcmPumpjacks, mcmSpeedTrap, mcmJet, mcmRoadSign,
 } from './speedMcmObjects.js';
-import { drawJonesCoyote, WINK_SPARKLE_AFTER, CHORUS_YIP_AFTER, CHORUS_YIP_GAP } from './speedMcmCoyote.js';
+import { drawJonesCoyote, WINK_SPARKLE_AFTER } from './speedMcmCoyote.js';
 import { paintFrostSky } from './frostCrayon/sky.js';
 import { surgeHudAt } from './surgeHud.js';
 import { SURGE_BPM, surgePhase, paintSurgeBackdrop, surgePost, surgeSnowOn, surgeBurst, SURGE_BURST_BEATS } from './surgeCut.js';
@@ -7510,10 +7510,10 @@ function desertTileAt(atCam, factor, period, at, keep = () => true) {
 // THE COYOTES PERFORM (Peter, 24 Sep 2026, from the coyote bake-off). A stage passes
 // two coyote summits (near tiles 11 and 14, at about 63% and 81% of a 60 s lap), so
 // each stage's pair is a mix, dealt by the summit's order in the stage: speed-1 howls
-// then yawns, speed-2 sings with a pup then howls, speed-3 yawns then sings. Past the
+// then yawns, speed-2 howls then sings with a pup, speed-3 yawns then sings. Past the
 // pattern (an overtime run) the pair repeats. The shows are the painter's own
 // (desertLandmarks.js drawDesertCoyote `mode`).
-const DESERT_COYOTE_SHOWS = { 1: ['howl', 'yawn'], 2: ['chorus', 'howl'], 3: ['yawn', 'chorus'] };
+const DESERT_COYOTE_SHOWS = { 1: ['howl', 'yawn'], 2: ['howl', 'chorus'], 3: ['yawn', 'chorus'] };
 // SPEED-3'S WINKER IS AT THE FINISH (Peter, 25 Sep 2026: "The winking coyote needs to be
 // near the finish line in level 2-3"). It is not one of the hashed coyotes — the last of
 // those comes at about 81% — but its own, seated as near the tape as it can get in the
@@ -7573,12 +7573,9 @@ const desertCoyoteLatch = new Map();
 // howls on its way in. Once per pass: the latch re-arms like the others'.
 const DESERT_HOWL_ARM = 45;
 const desertHowlAt = new Map();
-// AND THE PUP YIPS (Peter, 29 Sep 2026: "a corresponding pair of yips when it's the 2
-// coyotes"). A chorus latches as its ledge comes into view, as ever; on the latch it asks
-// `cues.yips` (run.js speedCoyoteYips) for its pup's two yips, and the show is moved onto
-// the answer the way the howl is (desertHowlAt, sinceCued), so both mouths open on a yip.
-// Seconds since an event the run placed: on the heard audio clock when there is one, else
-// on the painter's own `t` from when it was asked.
+// The pair sings the solo's full phrase in harmony, using the same arming distance
+// and heard-time clock. Both mouths follow the beat without portrait speed-up.
+// Seconds since the scheduled sound, using the heard clock when available.
 function sinceCued(placed, now, t) {
   if (!placed) return null;
   return placed.at != null && Number.isFinite(now) ? now - placed.at : t - placed.askedT - placed.cued;
@@ -7783,14 +7780,16 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
       for (let j = Math.max(0, k - 600); j < k; j++) if (isCoyote(j)) order++;
       const mode = shows[order % shows.length];
       coyoteXs.push(x);
-      // A dozing one always lies facing left, back toward the oncoming hero (Peter, 28
-      // Sep 2026: "If he appears at the end in the yawn pose he should be facing left").
-      const facing = mode === 'yawn' ? -1 : desertHash(k * 7 + stageIndex * 13 + 11) < 0.5 ? -1 : 1;
+      // The speed-2 pair is at the finish-side end of the run, so both face left,
+      // back toward the oncoming hero. Dozing coyotes also always lie facing left
+      // (Peter, 28 Sep 2026: "If he appears at the end in the yawn pose he should be facing left").
+      const facesBack = mode === 'yawn' || (stageIndex === 2 && mode === 'chorus');
+      const facing = facesBack ? -1 : desertHash(k * 7 + stageIndex * 13 + 11) < 0.5 ? -1 : 1;
       // Only a run passes heroFrac; the gallery loops every show on its clock.
       let since = null;
       // A run's howler howls ONCE, with its sound (DESERT_HOWL_ARM); until then it sits
       // quiet (a since far in the past plays howlOnce's rest).
-      const howls = mode === 'howl';
+      const howls = mode === 'howl' || mode === 'chorus';
       if (Number.isFinite(heroFrac)) {
         const key = stageIndex * 1e6 + k;
         const armAt = howls ? seen.right - DESERT_HOWL_ARM : entry;
@@ -7802,15 +7801,10 @@ function drawDesertLife(ctx, t, camX, totalDist, stageIndex, seat, jetY, heroId 
             if (desertCoyoteLatch.size > 32) { desertCoyoteLatch.clear(); desertHowlAt.clear(); }
             desertCoyoteLatch.set(key, t);
             desertHowlAt.delete(key);
-            if (howls && howlCue) {
-              const cued = howlCue(0);
+            const sing = mode === 'chorus' ? cues?.chorus : howlCue;
+            if (howls && typeof sing === 'function') {
+              const cued = sing(0);
               if (Number.isFinite(cued)) desertHowlAt.set(key, { at: Number.isFinite(now) ? now + cued : null, askedT: t, cued });
-            } else if (mode === 'chorus' && typeof cues?.yips === 'function') {
-              const pace = portrait ? DESERT_COYOTE_PORTRAIT_PACE : 1;
-              const want = CHORUS_YIP_AFTER / pace;
-              const cued = cues.yips(want, CHORUS_YIP_GAP / pace);
-              // Held as "the first yip, heard at `at`": since is counted back from it.
-              if (Number.isFinite(cued)) desertHowlAt.set(key, { at: Number.isFinite(now) ? now + cued : null, askedT: t, cued, lead: want });
             }
           }
           const placed = desertHowlAt.get(key);

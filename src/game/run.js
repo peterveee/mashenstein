@@ -42,6 +42,7 @@ import { RAKE_SWING_LEAD } from '../sprites/props.js';
 import { ZAP_T, ZAP_XRAY_CHANCE, zapCanXray } from '../sprites/zap.js';
 import { BLAST_T } from '../sprites/blast.js';
 import { pickHitPicture, hitPicLife } from '../sprites/hitPictures.js';
+import { CAT_HIT_T, CAT_IFRAMES_T, catSwipeActive, catHitScreenOffset } from './cat-hit.js';
 import { LEDGE_REACH, PIT_WORDS, PIT_HANG_RAN, PIT_HANG_JUMPED, PIT_GRIP, PIT_GRIP_ALT, PIT_GRIP_DX, PIT_MANTLE_T, pitGripSlip, pitMantle, warmPitFall } from '../sprites/pitFall.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, LANDED_T } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
@@ -61,12 +62,12 @@ import {
 export { FINISH_CLEAR };
 import { entityBox, overlaps, makePickup, makeObstacle, isFloorPad, isOpenGap, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { PIT_FLOOR, PIT_APRON_DEPTH, fillSurface } from './pitFill.js';
-import { HERO_BY_ID, heroShoots } from '../data/heroes.js';
+import { HEROES, HERO_BY_ID, heroShoots } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS, cabinetForStage } from '../data/cabinets.js';
-import { STAGES, MASH_LETTERS } from '../data/stages.js';
-import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, SNAKE_SHOT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
+import { STAGES, MASH_LETTERS, timeLimitFor, bonusSentence, stageLabel } from '../data/stages.js';
+import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, COPTER_DEFLECT_SHORT, DOG_SHOT_SHORT, CAT_SHOT_SHORT, BIRD_SHOT_SHORT, SNAKE_SHOT_SHORT } from '../data/jokes.js';
 import { plumberBarnAtCamFor, plumberBarnFracAt, getStylePack, sunShock, drawPitFills, drawBridgeDecks, BRIDGE_LAY_T, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS,
   frostBlizzardRung, frostBlizzardRamp, frostFlypastArc, frostStageLight, NEON_GOLDEN_MOOD, neonNightMood, setNeonGlow, takeDesertTrapShutter, desertSpeedTrapStage,
   neonStruckX, neonStruckPlanL, neonStruckTower, neonPickMast, neonTowerNow, neonTokyoTowerTip, warmFrostSky }
@@ -83,7 +84,7 @@ import { paperStrengthOf, paperTextureSource } from '../engine/paper-material.js
 import { finishCryptGouacheBake, CRYPT_WEATHER_TIMING, cryptNight } from '../engine/stylePacks/cryptGouache.js';
 import { drawArcadeIntroBackdrop, arcadeIntroResolve, ARCADE_INTRO_POWER_DOWN_BEAT, arcadeLandingDrop, ARCADE_LANDING_SECS, ARCADE_LANDING_SHAKE, warmArcadeIntro } from '../engine/arcadeIntro.js';
 import { paintHudGlitched } from '../engine/stylePacks/surgeHud.js';
-import { RIBBON_BOTTOM, drawHud, hudTopBands, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail } from './hud.js';
+import { RIBBON_BOTTOM, drawHud, hudTopBands, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, HINT_TIME, BONUS_TIME, BONUS_NOTE_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, speechChannel, speechPageCount, FLOAT_BASE_CEILING, portraitRhythmRail, clockText } from './hud.js';
 import { runChromeButtons, declareRunChrome } from './touchchrome.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
@@ -114,6 +115,28 @@ import { BACKGROUND_DEPTHS, resolveSceneryLayout } from '../engine/scenery-layou
 import { resolveCompositionProfile } from '../engine/composition-profile.js';
 import { PORTRAIT_GROUND_ANCHOR_RATIO } from '../engine/portrait-geometry.js';
 import { drawLayoutDiagnostic, layoutDiagnosticEnabled, toggleLayoutDiagnostic } from './layout-diagnostic.js';
+
+// THE CLOCK (Peter, 17 Oct 2026). Every mission is the finish line now, so the
+// clock is what a stage can be failed on, in seconds of live running. It stops
+// for a death and its respawn, a pause, the cards and the run past the tape, and
+// a rewind does not wind it back — so what it actually measures is the running a
+// player has had to do AGAIN. The camera scrolls at the cabinet's speed, so a
+// clean lap always spends about the stage's length; the rest is the budget for
+// replays, and whatever is left at the tape is paid out as coins.
+//
+// The limits themselves are data: TIME_TIERS in data/stages.js.
+// The leftover seconds walk into the coin count after the flag's own coins, one
+// coin a second of clock, quicker than those — it is a tally, Mario's flagpole.
+const TIME_COIN_STEP = 0.035;
+const TIME_COIN_GAP = 0.35;   // between the flag's last coin and the clock's first
+// The last stretch, Mario's hurry-up: the clock goes red and the song is pushed.
+export const HURRY_SEC = 30;
+// Off the beat lane the song plays faster and keeps its key, as a speed burst
+// does. ON the beat lane the chart is the song, so the tempo cannot move — it
+// goes up a semitone instead.
+const HURRY_TEMPO = 1.12;
+const HURRY_PITCH_BEAT = 1.0595;
+const TIMEOUT_TAPE_ARM_SEC = 5;
 
 export { GROUND_Y };
 
@@ -606,6 +629,11 @@ const MASH_PIT_ALT = 44;
 // the lane mid-gap (measured across the cast), so 58 takes it and a short or late
 // hop goes under it — over the spikes.
 const MASH_HOP_ALT = 58;
+// The highest any hero's head gets on one jump from the lane (~77, the 1.10
+// jumper), and the least a letter on a raised road stands above the lane: 11
+// clear of that, the height speed-3's M was lifted to by hand.
+const MASH_LANE_REACH = Math.max(...HEROES.map(jumpHeightFor)) + PLAYER_H;
+const MASH_ROAD_MIN_ALT = Math.ceil(MASH_LANE_REACH) + 11;
 // How far before a scripted switched pit its switch stands — the lane patterns' 120.
 const SCRIPTED_SWITCH_LEAD = 120;
 // The edge marker's plate, and the top of the band it may stand in: clear of
@@ -2484,6 +2512,15 @@ export class RunState {
     this.devMaxTime = opts.devMaxTime || 0; // seconds; 0 = no limit
     this.devRunTime = 0;                     // elapsed wall-clock seconds
     this.devStartPercent = opts.devStartPercent || 0; // 0–1; skip to N% of the stage
+    // THE CLOCK, in the constructor and not enter(): a death before the first
+    // checkpoint calls enter() again, and that must not hand back the time.
+    // The limit itself is set by enter(), which is where the stage's length is
+    // known. ?noclock turns it off for tests and long inspection runs.
+    this.clockT = 0;
+    this.timeLimit = undefined;
+    this.hurried = false;
+    this.noClock = !!opts.noClock
+      || (typeof location !== 'undefined' && /[?&]noclock\b/.test(location.search || ''));
     // RECORD BACKGROUND (dev menu): the stage's scenery and one hero, nothing
     // else. Every frame the lane is stripped to its holes (see
     // stripForBackground), the HUD, chatter, portal and finish pole are off,
@@ -4202,7 +4239,6 @@ export class RunState {
       scheduled ? portalSchedule(o.stage.durationSec) : null, o.initialHeroId);
     if (this.corrupted.includes('randomswap')) this.relay.portalEvery = 10;
     this.usedHeroes = new Set([this.relay.current]);
-    this.exitSpoken = new Set();   // heroes who have already said their goodbye
     this.player = this.createPlayer(this.relay.current, this.modIds);
     this.player.jumpScale = 1;
     this.powerups = new Powerups(this.bench, this.modIds);
@@ -4282,6 +4318,8 @@ export class RunState {
     this.finishPlayerX = PLAYER_X;
     this.flip = null;           // graded at the plunger; null until contact
     this.flipCoins = null;      // the grade's coin payout, mid-transfer into the pill
+    this.timeCoins = null;      // the clock's leftover seconds, mid-transfer into the pill
+    this.timeAtTape = null;     // seconds on the clock at the tape, before the payout
     this.flypast = null;        // the Frost sleigh crossing the sky; see armFlypast
     this.flypastShot = null;    // where the background pass last put it, in screen space
     this.flypastArmed = false;  // one sleigh per attempt, however the tape is reached
@@ -4411,14 +4449,18 @@ export class RunState {
     this.copter = null;         // chase mission / taunt flyby
     this.copterBonks = 0;       // bonks landed this run; the copter itself is transient
     this.copterPressure = COPTER_PRESSURE_START; // how low he is flying; see nudgeCopter
+    this.tauntT = 30;           // Eggshell only taunts during a visible chase; see updateTaunts.
     // Whether he lines up so a connecting barrel lands on the beat line (see
     // COPTER_SHOT_LEAD_BARS). A switch so the fairness test can play the same
     // road both ways and show the two connect at the same rate.
     this.copterOnBeat = true;
-    this.tauntT = 30;
 
     const duration = this.overtime ? Infinity : (this.layout ? this.layout.durationSec : 330);
     this.duration = duration;
+    if (this.timeLimit === undefined) {
+      this.timeLimit = this.stage && !this.overtime && !this.demo && !this.recordBackground
+        && !this.noClock && Number.isFinite(duration) ? timeLimitFor(this.stage, duration) : null;
+    }
     this.distance = 0;
     // Beat and gravity stages are exactly one fixed-speed duration; ordinary
     // lanes retain their small finish cushion. Gravity encounters are authored
@@ -4693,11 +4735,16 @@ export class RunState {
     this.finishDogPlanned = dogChance > 0
       && !this.overtime && Number.isFinite(this.totalDist)
       && (dogChance >= 1 || this.rng.stream('finishDog').float() < dogChance);
-    this.fuseHeld = this.mission.type === 'fuse';
-    if (this.mission.type === 'mash') this.setupMashLetters();
+    this.fuseHeld = this.bonus.type === 'fuse';
+    if (this.bonus.type === 'mash') {
+      this.setupMashLetters();
+      // All four banked on earlier runs: the bonus is met from the first frame,
+      // and a BONUS toast at 0:00 would announce nothing the player did.
+      if (this.bonusMet()) this.goalSeen.challenge = true;
+    }
     this.missionTimers = { cord: 8, resident: 10, chaseNear: 0 };
     this.escapeWall = this.mission.type === 'escape' ? -140 : null;
-    if (this.mission.type === 'chase') {
+    if (this.bonus.type === 'chase') {
       // He does not start in the frame: we are catching up to him. Two bars
       // of the cabinet's song off the right edge, then he flies in and hangs
       // over the hero (see the copter passes in updateEntities).
@@ -4910,7 +4957,7 @@ export class RunState {
       arrangementOverride: musicSong?.arrangement,
       variants: musicSong?.variants,
     });
-    if (this.beatLock) Audio.setWarp(this.laneTempo(), 1);
+    if (this.beatLock) Audio.setWarp(this.laneTempo(), this.hurried ? HURRY_PITCH_BEAT : 1);
     // And the Speed Zone coyote's howl, baked at this song's tempo (Audio.coyoteHowl).
     if (this.cabinet?.id === 'speed') Audio.warmCoyoteHowl?.();
     // BUILD THE VOICES THIS STAGE IS ABOUT TO NEED, here, behind the shutter.
@@ -4975,7 +5022,13 @@ export class RunState {
     // enter() runs at the shutter's covered midpoint, which is already a third of a
     // second after the button that caused it, and by the time the swoosh peaked from
     // here the picture had been up for a fifth of a second. The wipe IS the doorway.
-    Audio.setDetune(1);
+    if (this.beatLock) {
+      // A full retry resets Rhythm 3 to its opening lane tempo, but the clock
+      // still owns its hurry pitch. Keep that colour through the audio handoff.
+      Audio.setWarp(this.laneTempo(), this.hurried ? HURRY_PITCH_BEAT : 1);
+    } else {
+      Audio.setDetune(1);
+    }
     this.invActive = false;
     this.lastCoinSprayT = -1;
     Audio.setInvincible(false);
@@ -5035,7 +5088,6 @@ export class RunState {
     // Undefined until it can be worked out, null once it is known there is no
     // gate (a retry, a stage with no sign). See rhythmOpeningGate.
     this.rhythmOpeningUntil = undefined;
-    this.narrateT = this.unplugged ? 6 : 0;
     // The keyboard legend is a teaching aid, so it only runs while there is
     // something to teach: the campaign's opening stage, or a run with no stage
     // behind it (endless, where nothing came before it either). The bot needs
@@ -5052,6 +5104,9 @@ export class RunState {
     // just the teaching one: it is a different sentence each time, so unlike the
     // key legend there is always something new to say.
     this.bonusT = this.challenge ? BONUS_TIME : 0;
+    // The bonus note — its second line — gets that same opening read and no
+    // other: BONUS_HOLD re-arms bonusT for news, which is not when to repeat it.
+    this.bonusNoteT = this.challenge?.note ? BONUS_NOTE_TIME : 0;
     this.setButtons();
     this.resetRenderInterpolation();
     // Breaker-box bonus: applied exactly once per run (enter() re-runs on retry).
@@ -5115,7 +5170,8 @@ export class RunState {
     // boot-time node stays (same predicate as everywhere else in the feature).
     if (this.beatLock || !Input.rewindAvailable()) Audio.setCaptureEnabled(false);
     // setContext already dropped the paused screen's borrowed key mapping.
-    this.keepSongTempo(); Audio.setInvincible(false);
+    if (this.failMsg !== "TIME'S UP") this.keepSongTempo();
+    Audio.setInvincible(false);
     // Nothing here changes the song — the results screen deliberately keeps playing it —
     // but a handover still waiting for its bar line has to be settled. See endStage:
     // quit inside the first two bars and it would otherwise land on the results screen.
@@ -5322,8 +5378,7 @@ export class RunState {
    * exactly as they were. It is the path a death before the first checkpoint
    * already takes (updateDead calls enter() for precisely this reason): the
    * seed lives on the run's opts, and enter() re-reads it rather than rolling
-   * a new one. A retry from the RESULTS screen is the other thing — that one
-   * deliberately passes no seed and gets a fresh pattern.
+   * a new one. A retry from the RESULTS screen also preserves this seed.
    *
    * It is another attempt in the same series, not a new visit: the ACT card,
    * the bench parade and the touch-control card are constructor state and stay
@@ -5514,38 +5569,18 @@ export class RunState {
   // The Speed Zone coyote's howl, placed like the gate's slam: rounded to the nearest half
   // beat of the cabinet's own song at least `minSec` and the clock's warning out, so the
   // yips fall on the grid. Returns the seconds to it, which the backdrop lifts the head on.
-  speedCoyoteHowl(sec, minSec = 0) {
+  speedCoyoteHowl(sec, minSec = 0, cue = 'coyoteHowl') {
     const beat = Audio.sourceBank === this.cabinet?.music ? Audio.songBeat() : null;
     const bpm = Audio.bpm * (Audio.tempo || 1);
     if (!Number.isFinite(beat) || !(bpm > 0)) {
-      Audio.sfx('coyoteHowl', { inSeconds: sec });
+      Audio.sfx(cue, { inSeconds: sec });
       return sec;
     }
     const spb = 60 / bpm;
     const least = Math.max(minSec, Audio.cueLeadSec()) / spb;
     let target = Math.round((beat + sec / spb) * 2) / 2;
     if (target - beat < least) target = Math.ceil((beat + least) * 2) / 2;
-    Audio.sfx('coyoteHowl', { inBeats: target - beat });
-    return (target - beat) * spb;
-  }
-
-  // The chorus pup's two yips, `gap` seconds apart: the first rounded to the nearest half
-  // beat like the howl, the second where the pup's mouth opens again after it. Returns the
-  // seconds to the first, which the backdrop moves the show onto.
-  speedCoyoteYips(sec, gap) {
-    const beat = Audio.sourceBank === this.cabinet?.music ? Audio.songBeat() : null;
-    const bpm = Audio.bpm * (Audio.tempo || 1);
-    if (!Number.isFinite(beat) || !(bpm > 0)) {
-      Audio.sfx('coyoteYip', { inSeconds: sec });
-      Audio.sfx('coyoteYip', { inSeconds: sec + gap });
-      return sec;
-    }
-    const spb = 60 / bpm;
-    const least = Audio.cueLeadSec() / spb;
-    let target = Math.round((beat + sec / spb) * 2) / 2;
-    if (target - beat < least) target = Math.ceil((beat + least) * 2) / 2;
-    Audio.sfx('coyoteYip', { inBeats: target - beat });
-    Audio.sfx('coyoteYip', { inBeats: target - beat + gap / spb });
+    Audio.sfx(cue, { inBeats: target - beat });
     return (target - beat) * spb;
   }
 
@@ -5706,6 +5741,11 @@ export class RunState {
     // enter() clears `paused` itself, but the input scheme is still the pause
     // screen's until pauseChanged swaps it back — setMenuKeys above all, which
     // is what has the arrows meaning "next plate" rather than ability/slide.
+    //
+    // A RESTART is a new attempt, so it gets a full clock — unlike a death
+    // before the first checkpoint, which re-enters with the time already spent.
+    this.clockT = 0;
+    this.hurried = false;
     this.enter();
     this.pauseChanged();
   }
@@ -6464,9 +6504,10 @@ export class RunState {
     if (this.rhythmSyncPending) {
       const beat = this.rhythmBeatNow();
       if (Number.isFinite(beat)) {
-        // Keep the rhythm tempo fixed without stripping the star's permitted
-        // pitch colour while a retry is settling.
-        const pitch = this.powerups?.isInvincible?.() ? 1.08 : 1;
+        // Keep the rhythm tempo fixed while retaining both the star's pitch
+        // colour and the clock's hurry pitch during a retry settle.
+        const pitch = (this.powerups?.isInvincible?.() ? 1.08 : 1)
+          * (this.hurried ? HURRY_PITCH_BEAT : 1);
         Audio.setWarp(this.laneTempo(), pitch);
         this.rhythmSyncT = Math.max(0, this.rhythmSyncT - dt);
         if (this.rhythmSyncT <= 0) {
@@ -6594,11 +6635,14 @@ export class RunState {
     // as the star's electrified one, and the two stack without either gimmick
     // eating the other.
     const star = this.powerups.isInvincible() ? 1.08 : 1;
+    const hurry = this.hurried ? (this.beatLock ? 1 : HURRY_TEMPO) : 1;
+    const hurryPitch = this.hurried && this.beatLock ? HURRY_PITCH_BEAT : 1;
     Audio.setWarp(this.beatLock ? this.laneTempo()
-      : star * this.powerups.musicTempoMultiplier(), star);
+      : star * hurry * this.powerups.musicTempoMultiplier(), star * hurryPitch);
     const wdt = dt;   // world time (the hit-jolt affects world, not score accrual)
 
     this.tRun += wdt;
+    if (this.tickClock(dt)) { Input.endFrame(); return; }
     // A heartbeat on the crash trail (diag.js): where the run was when the page last spoke.
     if (Math.floor(this.tRun / 3) !== this.crumbBeat) {
       this.crumbBeat = Math.floor(this.tRun / 3);
@@ -6608,6 +6652,7 @@ export class RunState {
     // screen or an ACT banner, both of which return before this line.
     if (this.hintT > 0) this.hintT -= wdt;
     if (this.bonusT > 0) this.bonusT -= wdt;
+    if (this.bonusNoteT > 0) this.bonusNoteT -= wdt;
     if (this.rhythmBonusT > 0) this.rhythmBonusT -= wdt;
     const hero = HERO_BY_ID[this.relay.current];
 
@@ -6666,7 +6711,7 @@ export class RunState {
       // otherwise take the WHOLE lap at the stumble's 0.72 and come off the ring
       // still stumbling a second later — a frozen clock is not the same thing as
       // a paused one, and only the position is being driven here.
-      for (const k of ['iframes', 'dashT', 'rollT', 'stumbleT', 'slipT', 'landedT', 'boostT']) {
+      for (const k of ['iframes', 'catHitT', 'catIframesT', 'dashT', 'rollT', 'stumbleT', 'slipT', 'landedT', 'boostT']) {
         if (this.player[k] > 0) this.player[k] = Math.max(0, this.player[k] - wdt);
       }
       // The climb. Stepped off the angle he has actually covered, so a rung
@@ -6956,8 +7001,8 @@ export class RunState {
     this.updateEntities(wdt, sp);
     this.updateProjectiles(wdt, sp);
     this.updateMission(wdt);
-    this.updateCoinMagnet(wdt);
     this.updateTaunts(wdt);
+    this.updateCoinMagnet(wdt);
     // Leave the final approach clean: nothing new is allowed to appear past
     // the finish line, and the finish run itself has no hazards or pickups.
     if (this.overtime || this.camX + W + 200 < this.finishWorldX()) {
@@ -7128,6 +7173,86 @@ export class RunState {
     } else if (missionAdvanced) {
       this.showPortraitObjectiveNotice('GOAL', `${missionNow}/${missionTotal}`);
     }
+  }
+
+  /**
+   * THE STAGE'S BONUS, whatever it is — the object the letters, the copter, the
+   * crates, the alarms, the safes, the bridges and the cords count into. Every
+   * mission is the finish line now (Peter, 17 Oct 2026), so the mechanics that
+   * used to read `this.mission` read this. Never null: a run with no challenge
+   * (overtime, a boss) gets an inert stand-in, so a guard on `.type` is enough.
+   */
+  get bonus() {
+    return this.challenge || this.noBonus || (this.noBonus = { type: null, n: 0, count: 0 });
+  }
+
+  /** Seconds left on the clock, or null on a run that has none. */
+  timeLeft() {
+    return this.timeLimit == null ? null : Math.max(0, this.timeLimit - this.clockT);
+  }
+
+  /**
+   * One frame of the clock. Called only from the live part of update(), which
+   * is what keeps the death, the pause, the cards and the finish run off it.
+   * True when time ran out this frame and the run has ended.
+   */
+  tickClock(dt) {
+    if (this.timeLimit == null || this.finished || this.finishing) return false;
+    this.clockT += dt;
+    const left = this.timeLimit - this.clockT;
+    // Rhythm stages normally leave the rewind recorder off. Warm it only for
+    // the last few seconds so a timeout can replay the just-heard mix as it
+    // slows, without carrying the recorder's cost through the whole run.
+    if (left <= TIMEOUT_TAPE_ARM_SEC && !Audio.captureEnabled) Audio.setCaptureEnabled(true);
+    if (!this.hurried && left <= HURRY_SEC) {
+      this.hurried = true;
+      Audio.sfx('uiBad');
+      this.floatText('HURRY UP!', '#e04848', { solid: true });
+    }
+    if (left > 0) return false;
+    this.failMsg = "TIME'S UP";
+    this.failDetail = '';
+    const tempo = Math.max(1, (Audio.bpm || 120) * (Audio.tempo || 1));
+    Audio.timeoutTapeStop?.(240 / tempo);
+    this.endRun(false, "TIME'S UP");
+    return true;
+  }
+
+  /**
+   * How much longer the finish hold has to stand for the clock's tally to land:
+   * the part of it that runs past the flag's own hold. Zero with nothing left.
+   */
+  timeCoinsHold() {
+    const b = this.timeCoins;
+    if (!b) return 0;
+    const end = b.delay + b.total * TIME_COIN_STEP + 0.4;
+    return Math.max(0, end - (FINALE_HOLD + (this.flip?.band.hold || 0)));
+  }
+
+  // The clock's seconds into the coin count, one a step, and the pill's clock
+  // spends them as they go so it reads 0 when the last coin lands. Runs on the
+  // finale hold's dt, alongside the flag's own coins (updateFlipCoins).
+  updateTimeCoins(dt) {
+    const b = this.timeCoins;
+    if (!b || b.left <= 0) return;
+    b.t += dt;
+    while (b.left > 0 && b.t >= b.delay + (b.total - b.left) * TIME_COIN_STEP) {
+      b.left--;
+      this.coins += 1;
+      this.clockT = Math.min(this.timeLimit, this.clockT + 1);
+      // A tick per second, not a scale: the flag's run-up climbs because it is
+      // short, and sixty climbing semitones would leave the audible range.
+      Audio.sfx('coin', { pitch: b.left === 0 ? 1.5 : 1.25 });
+    }
+    if (b.left === 0) this.clockT = this.timeLimit;
+  }
+
+  /** Whether the bonus is met right now — the results card and the payoff both ask. */
+  bonusMet() {
+    const c = this.challenge;
+    if (!c || c.failed) return false;
+    if (c.type === 'noDamage') return this.damageTaken === 0;
+    return (Number(c.count) || 0) >= (Number(c.n) || 0);
   }
 
   missionSatisfied() {
@@ -7689,7 +7814,7 @@ export class RunState {
       Audio.sfx('slideWhistle', { dur: ride, when: hopT });
       this.finaleBarWait = false;
       this.finaleT = FINALE_HOLD + this.flip.band.hold + FINALE_TAIL
-        + (this.flipSlide ? this.flipSlide.dur : 0) + this.finaleExtraHold();
+        + (this.flipSlide ? this.flipSlide.dur : 0) + this.finaleExtraHold() + this.timeCoinsHold();
     }
     // Post-contact: the hold is running, the plunger is going down. Nothing else
     // to simulate — update()'s finaleT branch owns the frame from here.
@@ -7731,6 +7856,15 @@ export class RunState {
         t: 0, doneT: null, delay: FLIP_COIN_WAIT, alpha: 0,
       };
     }
+    // THE CLOCK PAYS OUT TOO. What was left on it at the tape is counted down
+    // into the coins, a coin a second, starting once the flag's own coins are in
+    // — the pill's clock runs to zero as its seconds land in the count beside it.
+    const left = Math.floor(this.timeLeft() ?? 0);
+    this.timeAtTape = this.timeLeft();
+    if (left > 0) {
+      const after = band.bonus > 0 ? FLIP_COIN_WAIT + band.coins * FLIP_COIN_STEP : FLIP_COIN_WAIT;
+      this.timeCoins = { total: left, left, t: 0, delay: after + TIME_COIN_GAP };
+    }
 
     const lx = this.finishWorldX();
     const ly = this.groundYAt(lx);
@@ -7761,6 +7895,7 @@ export class RunState {
   // frame would otherwise stretch the whole tally, and the last coin has to
   // land before the results card takes the screen.
   updateFlipCoins(dt) {
+    this.updateTimeCoins(dt);
     const b = this.flipCoins;
     if (!b) return;
     b.t += dt;
@@ -8400,9 +8535,9 @@ export class RunState {
         this.tossCoins(cx, ob.def.bonusCoins, alt, silent);
       }
     }
-    if (ob.def.isTarget && this.mission.type === 'targets' && (!this.mission.targetType || this.mission.targetType === ob.type)) {
-      this.mission.count++;
-      this.floatText(`${this.mission.count}/${this.mission.n}`, '#48e0c8');
+    if (ob.def.isTarget && this.bonus.type === 'targets' && (!this.bonus.targetType || this.bonus.targetType === ob.type)) {
+      this.bonus.count++;
+      this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
     }
     if (ob.def.isSwitch) this.openGates(ob);
   }
@@ -8463,7 +8598,7 @@ export class RunState {
   // pushed past it — so a double-height safe never stands in a pattern that was
   // spaced for a crate, and an alarm never hangs over a hazard.
   spawnMissionTargets() {
-    if (this.mission.type === 'targets') this.layPlaced(this.mission);
+    if (this.bonus.type === 'targets') this.layPlaced(this.bonus);
     if (this.challenge?.type === 'shoot') this.layPlaced(this.challenge);
   }
 
@@ -8500,9 +8635,9 @@ export class RunState {
     burst(cx, cy, 8, 135, 0.3, '#fff8d0', 1, 40, r);
     this.tossCoins(cx, 5, ob.h * 0.5);
     this.tossCoins(cx, 3, ob.h * 0.6, true, 'banknote');
-    if (this.mission.type === 'targets' && this.mission.targetType === ob.type) {
-      this.mission.count++;
-      this.floatText(`${this.mission.count}/${this.mission.n}`, '#48e0c8');
+    if (this.bonus.type === 'targets' && this.bonus.targetType === ob.type) {
+      this.bonus.count++;
+      this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
     }
   }
 
@@ -8514,10 +8649,10 @@ export class RunState {
     ob.skin = 'fireAlarmPulled';
     Audio.sfx('switchFlick');
     shake(0.5, 0.06);
-    if (this.mission.type === 'targets' && this.mission.targetType === ob.type) {
-      this.mission.count++;
-      this.floatText(`${this.mission.count}/${this.mission.n}`, '#48e0c8');
-      if (this.mission.count === this.mission.n) this.raiseFireAlarm();
+    if (this.bonus.type === 'targets' && this.bonus.targetType === ob.type) {
+      this.bonus.count++;
+      this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
+      if (this.bonus.count === this.bonus.n) this.raiseFireAlarm();
     }
   }
 
@@ -8537,7 +8672,7 @@ export class RunState {
   updateEvacuation(dt) {
     if (this.fireAlarmT == null || !(dt > 0)) return;
     // A rewind or a checkpoint back to before the third pull un-rings it.
-    if ((this.mission.count || 0) < this.mission.n) { this.fireAlarmT = null; return; }
+    if ((this.bonus.count || 0) < this.bonus.n) { this.fireAlarmT = null; return; }
     this.fireAlarmT += dt;
   }
 
@@ -8795,9 +8930,9 @@ export class RunState {
     // arriving are two events, and the player is about to run over the second
     // one. It stands off the flick's transient by 20ms of its own accord.
     Audio.sfx('bridgeLay');
-    if (this.mission.type === 'bridges') {
-      this.mission.count = (this.mission.count || 0) + 1;
-      this.floatText(`BRIDGE ${Math.min(this.mission.count, this.mission.n)}/${this.mission.n}`, '#b8e0f8');
+    if (this.bonus.type === 'bridges') {
+      this.bonus.count = (this.bonus.count || 0) + 1;
+      this.floatText(`BRIDGE ${Math.min(this.bonus.count, this.bonus.n)}/${this.bonus.n}`, '#b8e0f8');
     } else this.floatText('BRIDGE. YOU EARNED IT.', '#b8e0f8');
   }
 
@@ -8889,6 +9024,28 @@ export class RunState {
         if (!pp.switch) continue;
         const from = pp.x - SCRIPTED_SWITCH_LEAD - 40, to = pp.x + pp.w + 80;
         if (px > from && px < to) { px = to; moved = true; }
+      }
+    }
+    return px;
+  }
+
+  /**
+   * NEVER OVER A TUNNEL'S HOLES (Peter, 17 Oct 2026: a portal in mid air on
+   * plumber-3, where the underground comes back up). The lane is missing over
+   * the mouth, the mid-span holes and the road's far end (the roof gap, which
+   * runs back into the chamber ahead of the staged exit), and a portal parked
+   * in one is seated on lane that is not drawn. Step on past the opening onto
+   * ground; past the chamber that is the shelf, which the portal stands on.
+   */
+  portalClearOfTunnelOpenings(px) {
+    const MARGIN = 48;
+    for (let moved = true, guard = 0; moved && guard < 8; guard++) {
+      moved = false;
+      for (const r of this.routes || []) {
+        if (r.kind !== 'tunnel') continue;
+        for (const h of tunnelSweepOpenings(r)) {
+          if (px > h.x - MARGIN && px < h.x + h.w + MARGIN) { px = h.x + h.w + MARGIN; moved = true; }
+        }
       }
     }
     return px;
@@ -9021,7 +9178,7 @@ export class RunState {
       // train, i don't like that at all"). A neon train is a standing car across the
       // lane — or one about to land there — so a portal whose column falls on one steps
       // on past its nose instead, with clear road either side.
-      px = this.portalClearOfSwitchedPits(this.portalClearOfTrains(px));
+      px = this.portalClearOfTunnelOpenings(this.portalClearOfSwitchedPits(this.portalClearOfTrains(px)));
       this.portal = { x: px, hero };
       this.clearPortalLane(this.portal.x);
       this.relay.portalSpawned();
@@ -9172,24 +9329,12 @@ export class RunState {
     if (hero.startShield && this.powerups.shieldStack === 0) this.powerups.shieldStack = 1;
     if (this.modIds.includes('tagspeed') && result.to === 'rusty') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
     // No per-swap button callout: the HUD's ability panel top-right already
-    // names this hero's power and shows whether it is ready, so repeating it in
-    // a bubble every swap is the same fact twice. The one-time firstAbility
-    // tutor below still teaches the button once.
+    // names this hero's power and shows whether it is ready. The one-time
+    // firstAbility tutor below still teaches the button once.
     const btn = Input.usingTouch ? 'ATTACK' : 'X / SHIFT / MIDDLE CLICK';
-    // The departing hero gets a parting shot. Only the first time each hero
-    // tags out in a run: everyone gets their moment without a swap-heavy run
-    // turning into a conversation you read instead of playing. (Only one voice
-    // per swap — see EXIT_LINES.)
-    const exit = !this.demo && !this.stage?.quiet && !this.exitSpoken.has(result.from) && EXIT_LINES[result.from];
     this.speech = null;
     this.speechQueue = [];
     this.speechWaitT = 0;
-    if (exit) {
-      this.exitSpoken.add(result.from);
-      // Through say(): a portal can be taken mid-air, and the parting shot is
-      // worth a beat's wait rather than printing over a hero still falling.
-      this.say({ text: this.speechRng.pick(exit), t: 1.8, who: result.from });
-    }
     this.tutor('firstAbility', `EVERY HERO HAS A POWER. PRESS ${btn}.`);
   }
 
@@ -9780,6 +9925,7 @@ export class RunState {
     if (!c || c.flyOff || c.hitT > 0) return false;
     const spec = COPTER_BONK_CAUSES[cause] || COPTER_BONK_CAUSES.head;
     this.copterBonks++;
+    if (this.bonus.type === 'chase') this.bonus.count = this.copterBonks;
     c.hitT = COPTER_HIT_T;
     c.nearMissT = 0; c.rollT = 0;   // he is neither smug nor bored about one he took
     c.mode = 'leave'; c.modeT = 0; c.fromDx = null; c.homeT = null;
@@ -9789,7 +9935,7 @@ export class RunState {
     if (c.bonkCued) c.bonkCued = false;
     else Audio.sfx('copterBonk');
     shake(3, 0.2);
-    const goal = this.mission.n || 0;
+    const goal = this.bonus.n || 0;
     const past = this.copterBonks > goal;
     const coins = past ? Math.max(spec.coins, COPTER_OVER_COINS) : spec.coins;
     if (coins) this.coins += coins;
@@ -11427,6 +11573,30 @@ export class RunState {
     return this.player.grounded && this.player.landedT <= 0;
   }
 
+  updateTaunts(dt) {
+    if (this.overtime || this.demo || this.finishing || this.finished
+      || this.bonus?.type !== 'chase') return;
+
+    this.tauntT = Math.max(0, (Number.isFinite(this.tauntT) ? this.tauntT : 30) - dt);
+    if (this.tauntT > 0) return;
+
+    // The bubble is Eggshell's voice, so only start it while his copter is in
+    // the actual picture. The left edge moves in portrait along with the hero.
+    const copter = this.copter;
+    if (!copter || copter.flyOff) return;
+    const box = this.copterBox(copter);
+    const visibleLeft = this.camX + this.portraitWorldXOffset();
+    const visibleRight = this.viewRightX();
+    if (!box || box.x + box.w <= visibleLeft || box.x >= visibleRight) return;
+
+    // Never stack a taunt behind another bubble, and wait for a settled hero so
+    // the taunt starts cleanly rather than appearing over a jump.
+    if (this.speech || this.speechQueue.length || !this.speechSettled()) return;
+
+    this.tauntT = 55 + this.fxRng.range(0, 20);
+    this.say({ text: this.fxRng.pick(EGGSHELL_TAUNTS), t: 3.2, who: 'eggshell' });
+  }
+
   /**
    * The bubble's clock: expire what is up, start what is waiting.
    *
@@ -11484,30 +11654,11 @@ export class RunState {
     else this.speech = { ...line, page: 0, pageDuration: line.pageDuration ?? line.t };
   }
 
-  updateTaunts(dt) {
-    // A quiet stage has no ambient chat (data/stages.js `quiet`).
-    if (this.overtime || this.stage?.quiet) return;
-    this.tauntT -= dt;
-    if (this.tauntT <= 0) {
-      this.tauntT = 55 + this.fxRng.range(0, 20);
-      // In-run taunts are ambient texture only. The cabinet's authored line is
-      // not played here — the stage-1 briefing already delivers it, expanded.
-      this.say({ text: this.fxRng.pick(EGGSHELL_TAUNTS), t: 3.2, who: 'eggshell' });
-    }
-    if (this.narrateT > 0) {
-      this.narrateT -= dt;
-      if (this.narrateT <= 0) {
-        this.narrateT = 18 + this.fxRng.range(0, 10);
-        // Narration is Eggshell speaking, so it comes out of his mouth — the
-        // speech bubble — not the feedback stack, where it read as a game event.
-        this.say({ text: this.fxRng.pick(EGGSHELL_NARRATION), t: 3.2, who: 'eggshell' });
-      }
-    }
-  }
-
   updateMission(dt) {
-    const m = this.mission;
-    const beforeMission = m?.n ? Math.min(Number(m.n), Math.max(0, Number(this.missionCount()) || 0)) : 0;
+    const beforeMission = this.mission?.n ? Math.min(Number(this.mission.n), Math.max(0, Number(this.missionCount()) || 0)) : 0;
+    // The cords and the residents are BONUSES now (every mission is the finish
+    // line), so their spawn clocks read the bonus.
+    const m = this.bonus;
     const beforeChallenge = this.challengeCount();
     if (m.type === 'cords') {
       this.missionTimers.cord -= dt;
@@ -12994,7 +13145,7 @@ export class RunState {
           if (cellX != null && Math.abs(x - cellX) < coinGap * 0.6) continue;
           // A train's roof letter is not laid until the train stands, so its coin
           // is left out here rather than taken away in view.
-          if (this.mission.letters?.some((l) => l.train != null && !l.inside && this.mashTrain(l) === is
+          if (this.bonus.letters?.some((l) => l.train != null && !l.inside && this.mashTrain(l) === is
             && Math.abs(x + PICKUPS.coin.w / 2 - l.x) < PICKUPS[`letter${l.letter}`].w)) continue;
           const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
           this.pickups.push(Object.assign(makePickup('coin', x, alt), { road: is }));
@@ -13428,8 +13579,8 @@ export class RunState {
     // four as needed. The save still banks them; this only declines to read it.
     const dev = typeof window !== 'undefined' && window.__MASH_DEV__ === true;
     const banked = new Set(dev ? [] : this.save.slot.campaign.mash?.[this.stage.id] || []);
-    const at = this.mission.at || [];
-    this.mission.letters = MASH_LETTERS.map((letter, i) => {
+    const at = this.bonus.at || [];
+    this.bonus.letters = MASH_LETTERS.map((letter, i) => {
       const spot = at[i] ?? (i + 1) / (MASH_LETTERS.length + 1);
       const plan = spot.pit != null ? this.pitPlan[spot.pit] : null;
       const stone = plan && spot.stone != null ? plan.crossing?.stones[spot.stone] : null;
@@ -13462,12 +13613,12 @@ export class RunState {
       }
       return { letter, x, alt, lift, clear, inside, train: train ? spot.train : null, banked: banked.has(letter), spawned: false, got: false, missed: false };
     });
-    this.mission.count = this.mashHeld();
+    this.bonus.count = this.mashHeld();
     this.mashGold = false;
   }
 
   /** Letters that count toward the mission: taken this run or banked before it. */
-  mashHeld() { return this.mission.letters.filter((l) => l.got || l.banked).length; }
+  mashHeld() { return this.bonus.letters.filter((l) => l.got || l.banked).length; }
 
   /** The road a letter's spot falls on, if any — never across one of its breaks. */
   mashRoadAt(x) {
@@ -13480,8 +13631,23 @@ export class RunState {
   /** A letter's road; none for one inside a train, which is on the floor under it. */
   mashLetterRoad(l) { return l.inside ? null : this.mashRoadAt(l.x); }
 
+  /**
+   * How high a road letter stands above the LANE under it. A letter on a raised
+   * road is never taken by one jump from the lane (Peter, 17 Oct 2026): it rests
+   * on the road, or at MASH_ROAD_MIN_ALT if that is higher. The road's top is a
+   * fixed height while the lane rolls under it, so the same island stands lower
+   * over a crest — frost-3's opening island is 62 over the lane at its M but 76
+   * over the flat, which put a letter resting on it in reach from the lane.
+   * Trains and crossing stones are boarded from the lane, so they keep theirs.
+   */
+  mashRoadLetterAlt(l, road) {
+    const rise = this.groundYAt(l.x) - this.routeGroundY(l.x, road);
+    const alt = rise + (l.lift ?? COIN_FLOOR);
+    return rise > 0 && l.train == null && !road.crossing ? Math.max(alt, MASH_ROAD_MIN_ALT) : alt;
+  }
+
   spawnMashLettersMaybe() {
-    const letters = this.mission.letters;
+    const letters = this.bonus.letters;
     if (!letters || this.overtime) return;
     const pbox = this.playerBox();
     for (const l of letters) {
@@ -13494,7 +13660,7 @@ export class RunState {
         if (road && !road.spawned) continue;
         const type = `letter${l.letter}`;
         const def = PICKUPS[type];
-        const alt = road ? this.groundYAt(l.x) - this.routeGroundY(l.x, road) + (l.lift ?? COIN_FLOOR) : l.alt;
+        const alt = road ? this.mashRoadLetterAlt(l, road) : l.alt;
         for (const c of this.pickups) {
           if (c.live && c.def.coin && (c.road || null) === road && Math.abs(c.x + c.w / 2 - l.x) < def.w) c.live = false;
         }
@@ -13576,7 +13742,7 @@ export class RunState {
    * so the choice between them is seen before the boarding that makes it.
    */
   drawTrainMashLetters(ctx, cam, ceilingY) {
-    for (const l of this.mission.letters || []) {
+    for (const l of this.bonus.letters || []) {
       if (l.train == null || l.spawned || l.got) continue;
       const train = this.mashTrain(l);
       const air = trainArrival(cam, train);
@@ -13613,16 +13779,16 @@ export class RunState {
   // THE PAYOFF (`mission.payoff`): scenery stood by the exit once the mission is
   // met — office-3's pile of money from the safes. Drawn behind the actors.
   drawMissionPayoff(ctx, cam) {
-    const po = this.mission.payoff;
-    if (!po || !Number.isFinite(this.totalDist) || !this.missionSatisfied()) return;
+    const po = this.bonus.payoff;
+    if (!po || !Number.isFinite(this.totalDist) || !this.bonusMet()) return;
     const x = this.finishWorldX() + po.dx - cam;
     if (x > W || x + po.w < -8) return;
     ctx.drawImage(propSprite(po.prop, po.w, po.h, Math.floor(this.backgroundT * 4)), Math.round(x), GROUND_Y - po.h, po.w, po.h);
   }
 
   drawMashMarkers(d, z, pan, floorY, cam, xOff) {
-    const letters = this.mission.letters;
-    if (!letters || this.mission.markers === false || this.finishing || this.paused || this.dead) return;
+    const letters = this.bonus.letters;
+    if (!letters || this.bonus.markers === false || this.finishing || this.paused || this.dead) return;
     const PW = MASH_MARK_W, PH = MASH_MARK_H;
     for (const l of letters) {
       const m = this.mashMarker(l, z, pan, floorY, cam, xOff);
@@ -13672,15 +13838,15 @@ export class RunState {
   }
 
   takeMashLetter(p) {
-    const l = this.mission.letters?.find((q) => q.letter === p.def.mashLetter);
+    const l = this.bonus.letters?.find((q) => q.letter === p.def.mashLetter);
     if (!l || l.got) return;
     l.got = true;
-    this.mission.count = this.mashHeld();
+    this.bonus.count = this.mashHeld();
     this.score += MASH_LETTER_SCORE;
     const inBeats = this.pickupLineInBeats(p);
     // ALL FOUR IN ONE RUN — the gold MASH. Letters banked on an earlier attempt
     // count toward the mission but not toward this: it is the one-run chase.
-    if (!this.mashGold && this.mission.letters.every((q) => q.got)) {
+    if (!this.mashGold && this.bonus.letters.every((q) => q.got)) {
       this.mashGold = true;
       this.score += MASH_GOLD_SCORE;
       Audio.sfx('win', { inBeats });
@@ -13688,7 +13854,7 @@ export class RunState {
       return;
     }
     Audio.sfx('perfect', { inBeats });
-    this.floatText(this.mission.letters.map((q) => (q.got || q.banked ? q.letter : '_')).join(' '), '#f6d33c');
+    this.floatText(this.bonus.letters.map((q) => (q.got || q.banked ? q.letter : '_')).join(' '), '#f6d33c');
   }
 
   spawnApplianceMaybe() {
@@ -14339,10 +14505,10 @@ export class RunState {
       this.floatText(gained ? `CHECKPOINT. +${gained} BATTERY.` : 'CHECKPOINT. DULY NOTED.', '#8ddd8d');
       this.snapshot = this.makeSnapshot();
       // Rescue delivery.
-      if (this.mission.type === 'rescue') {
+      if (this.bonus.type === 'rescue') {
         const carried = this.pickups.filter((p) => p.following);
-        for (const p of carried) { p.live = false; this.mission.count++; }
-        if (carried.length) this.floatText(`RESIDENTS DELIVERED: ${this.mission.count}/${this.mission.n}`, '#48e0c8');
+        for (const p of carried) { p.live = false; this.bonus.count++; }
+        if (carried.length) this.floatText(`RESIDENTS DELIVERED: ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
       }
       // AND THE TEMPO TAKES A STEP, on a stage that asked for one (bpmRamp).
       //
@@ -14384,7 +14550,9 @@ export class RunState {
       // pending ones and leaves anything already cut standing.
       if (this.beatBpmStep()) {
         this.beatBpmSteps = (this.beatBpmSteps || 0) + 1;
-        Audio.setWarp(this.laneTempo(), this.powerups?.isInvincible?.() ? 1.08 : 1);
+        const pitch = (this.powerups?.isInvincible?.() ? 1.08 : 1)
+          * (this.hurried ? HURRY_PITCH_BEAT : 1);
+        Audio.setWarp(this.laneTempo(), pitch);
         this.spawner?.resnapPits?.();
       }
     }
@@ -14406,7 +14574,6 @@ export class RunState {
         tagT: this.relay.tagT, prev: this.relay.prev,
       },
       usedHeroes: [...this.usedHeroes],
-      exitSpoken: [...this.exitSpoken],
       abilityCooldowns: { ...this.player.abilityCooldowns },
       // Keep movement state with the checkpoint. In particular, a checkpoint
       // can be crossed during the committed aerial slide, and restoring it at
@@ -14521,7 +14688,6 @@ export class RunState {
       this.relay.prev = s.relayState.prev ?? null;
     }
     if (s.usedHeroes) this.usedHeroes = new Set(s.usedHeroes);
-    if (s.exitSpoken) this.exitSpoken = new Set(s.exitSpoken);
     this.player = this.createPlayer(this.relay.current, this.modIds);
     // A fresh Player starts at altitude 0, which means "on the floor" — so the
     // floor has to be the one the snapshot was taken on, or the hero is stood
@@ -14642,7 +14808,7 @@ export class RunState {
     // ahead of him that he had not taken come round again. The mission object
     // (and with it what he HAD taken) is the snapshot's, so a letter grabbed
     // after the flag is offered again rather than kept.
-    for (const l of this.mission.letters || []) {
+    for (const l of this.bonus.letters || []) {
       if (!l.got && l.x > this.camX) { l.spawned = false; l.missed = false; }
     }
     // The ring is the same kind of one-shot and takes the same guard. It has
@@ -14665,6 +14831,8 @@ export class RunState {
     this.finishPlayerX = PLAYER_X;
     this.flip = null;
     this.flipCoins = null;
+    this.timeCoins = null;
+    this.timeAtTape = null;
     this.flypast = null;
     this.flypastShot = null;
     this.flypastArmed = false;
@@ -14802,7 +14970,7 @@ export class RunState {
     s.battery = this.battery; s.damageTaken = this.damageTaken; s.speedBoost = this.speedBoost; s.speedBoostHoldT = this.speedBoostHoldT;
     s.coinCombo = this.coinCombo; s.coinComboT = this.coinComboT;
     s.powerupsCollected = this.powerupsCollected;
-    s.hintT = this.hintT; s.bonusT = this.bonusT;
+    s.hintT = this.hintT; s.bonusT = this.bonusT; s.bonusNoteT = this.bonusNoteT;
     // Which road he is on. `player.y` is altitude above the CURRENT floor, so
     // restoring y without restoring the floor it was measured from puts the
     // hero at the right height above the wrong thing — rewinding onto a slab
@@ -14836,6 +15004,7 @@ export class RunState {
     ps.powerJumpBonus = p.powerJumpBonus; ps.sliding = p.sliding;
     ps.slideAmount = p.slideAmount; ps.slideDirection = p.slideDirection;
     ps.floating = p.floating; ps.iframes = p.iframes; ps.anim = p.anim;
+    ps.catHitT = p.catHitT; ps.catIframesT = p.catIframesT;
     ps.slideSlamming = p.slideSlamming;
     ps.landingSlideT = p.landingSlideT; ps.slideKickT = p.slideKickT;
     ps.standT = p.standT; ps.slideHoldT = p.slideHoldT; ps.slideSpent = p.slideSpent;
@@ -14931,7 +15100,6 @@ export class RunState {
     s.finishPlayerX = this.finishPlayerX;
     s.flip = this.flip ? assignInto(this.flip, s.flip || {}) : null;
     s.usedHeroes = copySetInto(this.usedHeroes, s.usedHeroes);
-    s.exitSpoken = copySetInto(this.exitSpoken, s.exitSpoken);
     s.checkpointHit = copyArrayInto(this.checkpointHit, s.checkpointHit);
     // The pooled tape slot never owns the death checkpoint. A checkpoint is
     // banked progress, while rewind only restores the last few seconds of live
@@ -14960,7 +15128,7 @@ export class RunState {
     this.battery = s.battery; this.damageTaken = s.damageTaken; this.speedBoost = s.speedBoost; this.speedBoostHoldT = s.speedBoostHoldT || 0;
     this.coinCombo = s.coinCombo; this.coinComboT = s.coinComboT;
     this.powerupsCollected = s.powerupsCollected;
-    this.hintT = s.hintT; this.bonusT = s.bonusT;
+    this.hintT = s.hintT; this.bonusT = s.bonusT; this.bonusNoteT = s.bonusNoteT ?? 0;
     // Before the player fields below: `p.y` is read against this floor.
     this.route = s.route >= 0 ? this.routes[s.route] : null;
     this.routeReleaseLock = s.routeReleaseLock >= 0 ? this.routes[s.routeReleaseLock] : null;
@@ -14974,6 +15142,7 @@ export class RunState {
     p.powerJumpBonus = ps.powerJumpBonus; p.sliding = ps.sliding;
     p.slideAmount = ps.slideAmount; p.slideDirection = ps.slideDirection;
     p.floating = ps.floating; p.iframes = ps.iframes; p.anim = ps.anim;
+    p.catHitT = ps.catHitT || 0; p.catIframesT = ps.catIframesT || 0;
     p.slideSlamming = !!ps.slideSlamming;
     p.landingSlideT = ps.landingSlideT || 0; p.slideKickT = ps.slideKickT || 0;
     p.standT = ps.standT || 0; p.slideHoldT = ps.slideHoldT || 0; p.slideSpent = !!ps.slideSpent;
@@ -15092,7 +15261,6 @@ export class RunState {
     this.finishing = s.finishing; this.finishT = s.finishT; this.finishPlayerX = s.finishPlayerX;
     this.flip = s.flip ? { ...s.flip } : null;
     this.usedHeroes = new Set(s.usedHeroes);
-    this.exitSpoken = new Set(s.exitSpoken);
     this.checkpointHit = s.checkpointHit.slice();
     // Leave `snapshot` alone. Crossing a checkpoint shifts it out of the
     // pending list permanently, so clearing the banked death snapshot here
@@ -15364,6 +15532,15 @@ export class RunState {
       // back through it must not open a second gate.
       if (ob.thrown || ob.cracked) continue;
       if (!overlaps(pbox, box)) continue;
+      // A planted cat is dangerous only during the paw's drawn strike, when
+      // swipeOf() in neonCats.js has the claws out. Touching the sitting cat
+      // before or after that active window is harmless.
+      if (CAT_PAW_PITCH[ob.type]) {
+        if (!catSwipeActive(ob.strikeT)) continue;
+        // I-frames remove the contact entirely for a cat, including the
+        // rolling-contact feedback above the ordinary damage gate.
+        if (this.player.invincible || this.powerups.isInvincible()) continue;
+      }
       if (this.player.rolling && ob.def.ground) {
         this.player.rollContactIds ||= new Set();
         if (!this.player.rollContactIds.has(ob.id)) {
@@ -15667,9 +15844,9 @@ export class RunState {
     } else if (p.def.mashLetter) {
       this.takeMashLetter(p);
     } else if (p.def.cord) {
-      this.mission.count++;
+      this.bonus.count++;
       Audio.sfx('checkpoint');
-      this.floatText(`CORD PIECE ${this.mission.count}/${this.mission.n}`, '#48e0c8');
+      this.floatText(`CORD PIECE ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
     } else if (p.def.resident) {
       p.live = true; p.following = true;
       Audio.sfx('ui');
@@ -15886,6 +16063,7 @@ export class RunState {
     // The extra gain is intentional: this is the mechanism's close, dry snap,
     // not the generic damage wash used by the rest of the lane.
     const trapContact = !isPit && src === 'bearTrap';
+    const catSwipeHit = !isPit && !!CAT_PAW_PITCH[src];
     if (trapContact) Audio.sfx('trapSnap', { gain: TRAP_SNAP_GAIN });
     const absorb = this.powerups.absorbHit();
     sunShock(); // the level-1 sun gasps at any real impact (shielded or not)
@@ -15926,7 +16104,7 @@ export class RunState {
       this.challenge.failed = true;
       this.bonusT = BONUS_HOLD;   // losing it is news too — say so before folding back
     }
-    if (this.mission.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848', { solid: true });
+    if (this.bonus.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848', { solid: true });
     // THE LIVE WIRE bites instead of hitting: its own sound, and the hero jolts rigid
     // for ZAP_T (sprites/zap.js) — now and then as his own X-ray, never twice running,
     // and only for a hero whose skeleton has been drawn. Everything else about the hit
@@ -15952,7 +16130,7 @@ export class RunState {
     // drawn by what it was — fire, spikes, blades, rollers, ice, or the flash and the
     // stars-and-birdies for everything else. A picture only: everything about the hit
     // is the ordinary one. Not the wire, the dynamite, the peel's pratfall or a pit.
-    if (!zapContact && !isPit && OBSTACLES[src] && !OBSTACLES[src].explodes && !OBSTACLES[src].slip
+    if (!zapContact && !isPit && !catSwipeHit && OBSTACLES[src] && !OBSTACLES[src].explodes && !OBSTACLES[src].slip
       && this.battery > 0) {
       const pic = pickHitPicture(src, this.player.hitPicPrev, () => this.fxRng.float());
       if (pic) {
@@ -15961,8 +16139,14 @@ export class RunState {
         this.player.hitPicPrev = { ...this.player.hitPicPrev, [pic.family]: pic.variant };
       }
     }
-    shake(5, 0.3);
-    this.hitstop = this.beatLock ? 0 : 0.08;
+    if (catSwipeHit) {
+      this.player.hitPic = null;
+      this.player.hitPicT = 0;
+      this.player.catHitT = CAT_HIT_T;
+      this.player.catIframesT = this.devInvuln ? 0.35 : CAT_IFRAMES_T;
+    }
+    shake(catSwipeHit ? 1.5 : 5, catSwipeHit ? 0.15 : 0.3, catSwipeHit ? -1 : 0);
+    this.hitstop = catSwipeHit || this.beatLock ? 0 : 0.08;
     // playerWorldX, not camX + PLAYER_X: on the finish run the hero is the thing
     // moving and the camera is the thing standing still, so the anchor has to be
     // the one that follows them across the screen.
@@ -15974,7 +16158,8 @@ export class RunState {
       // The normal 1.4s of mercy would ghost the hero straight through the next
       // several obstacles. Crash test drops to the same-frame debounce so every
       // hazard in the level actually registers.
-      this.player.iframes = this.devInvuln ? 0.35 : 1.4;
+      this.player.iframes = catSwipeHit ? (this.devInvuln ? 0.35 : CAT_IFRAMES_T)
+        : this.devInvuln ? 0.35 : 1.4;
     }
   }
 
@@ -16544,14 +16729,14 @@ export class RunState {
   endRun(success, reason) {
     if (this.finished) return;
     this.finished = true;
-    this.keepSongTempo();
+    if (reason !== "TIME'S UP") this.keepSongTempo();
     Audio.setRewinding(false);
     this.invActive = false;
     Audio.setInvincible(false);
-    if (success && this.mission.type === 'rescue') {
+    if (success && this.bonus.type === 'rescue') {
       // Residents carried across the finish line are delivered.
       for (const p of this.pickups) {
-        if (p.live && p.def.resident && p.following) { p.live = false; this.mission.count++; }
+        if (p.live && p.def.resident && p.following) { p.live = false; this.bonus.count++; }
       }
     }
     const result = {
@@ -16561,11 +16746,19 @@ export class RunState {
       score: Math.floor(this.score), coins: this.coins,
       damageTaken: this.damageTaken,
       bestCombo: 0,
-      challengeDone: this.challenge ? (!this.challenge.failed && (this.challenge.type === 'noDamage' ? this.damageTaken === 0 : this.challenge.count >= this.challenge.n)) : false,
+      challengeDone: this.challenge ? (!this.challenge.failed && this.bonusMet()) : false,
       applianceGot: this.applianceGot,
       silverGot: this.silverGot,
       // The letters taken THIS run; progress.js banks them whatever the ending.
-      mashGot: this.mission.letters ? this.mission.letters.filter((l) => l.got).map((l) => l.letter) : null,
+      // What was on the clock at the tape (before it was paid out as coins),
+      // and the limit, so the rank can award its TIME point.
+      timeLeft: this.timeAtTape ?? null,
+      timeLimit: this.timeLimit ?? null,
+      // Seconds left at the tape, paid out as coins (updateTimeCoins) and
+      // already folded into `coins` below — carried separately so the results
+      // screen can show the payout as its own line, Mario's flagpole tally.
+      timeBonusCoins: this.timeCoins?.total || 0,
+      mashGot: this.bonus.letters ? this.bonus.letters.filter((l) => l.got).map((l) => l.letter) : null,
       mashGold: !!this.mashGold,
       team: [...this.usedHeroes],
       // Who was actually holding the baton at the end. `team` is a Set in
@@ -17178,7 +17371,7 @@ export class RunState {
       coyoteCues: this.cabinet?.id === 'speed' || this.cabinet?.id === 'neon' ? this.speedCoyoteCues ||= {
         howl: (sec, minSec) => this.speedCoyoteHowl(sec, minSec),
         wink: (sec) => this.speedCoyoteWink(sec),
-        yips: (sec, gap) => this.speedCoyoteYips(sec, gap),
+        chorus: (sec) => this.speedCoyoteHowl(sec, 0, 'coyoteChorus'),
         // Seconds per beat, which the howl's picture is written in (speedMcmCoyote.js howlOnce).
         spb: () => 60 / ((Audio.bpm || 128) * (Audio.tempo || 1)),
         // The audio clock as HEARD, which both answers above are seconds from. The pictures
@@ -18067,9 +18260,13 @@ export class RunState {
     // so overriding the field from outside changed nothing on screen.
     const hideFuse = this.recordBackground
       || (typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideFuse));
-    const carryFuse = !hideFuse && this.mission.type === 'fuse';
+    const carryFuse = !hideFuse && this.bonus.type === 'fuse';
     const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, carryFuse,
-      { mirror: this.mirror, screenX: heroScreenX, animationPhase: this.heroRenderPhase(alpha), zoom: z, pan, floorY, xOffset: portraitXOffset, specialOrbAlpha: orbAlpha,
+      { mirror: this.mirror,
+        // screenX is world-facing before the optional mirror transform, so
+        // invert the offset there to keep the visible recoil moving backward.
+        screenX: heroScreenX + catHitScreenOffset(this.player.catHitT, VIEW_W) * (this.mirror ? -1 : 1),
+        animationPhase: this.heroRenderPhase(alpha), zoom: z, pan, floorY, xOffset: portraitXOffset, specialOrbAlpha: orbAlpha,
         // THE CONTACT SHADOW (see CONTACT_SHADOW in draw.js). Every platform,
         // not just the phone it was asked for: separating the hero from the
         // strip he is standing on is worth having on a monitor too, and the
@@ -18217,7 +18414,7 @@ export class RunState {
     // see when there is light". So the brown-out follows the catacomb's own depth
     // (brownOutLevel): none on the surface, coming in down the entry and gone again on the
     // climb out, with no switch anywhere.
-    const brownOut = this.mission.type === 'blackout' ? this.brownOutLevel() : 0;
+    const brownOut = this.stage?.blackout ? this.brownOutLevel() : 0;
     if (brownOut > 0) {
       // A brown-out, not a blackout: the edges dim hard but hazards stay
       // readable — the tension is squinting, not guessing. Drawn in screen
@@ -18510,11 +18707,11 @@ export class RunState {
     drawPanel(ctx, panelX, panelTop, panelW, panelH, 10, 'rgba(11,11,20,0.94)',
       { border: 'rgba(72,224,200,0.42)', shadow: true });
 
-    const cabNo = CABINETS.findIndex((c) => c.id === this.cabinet.id) + 1;
     const where = this.overtime ? 'OVERTIME'
       : this.bossCab ? 'BOSS'
-      : this.stage ? `STAGE ${cabNo}-${this.stage.index}` : '';
-    const title = where ? `${this.cabinet.name} · ${where}` : this.cabinet.name;
+      : this.stage ? stageLabel(this.stage) : '';
+    const title = this.stage && !this.overtime && !this.bossCab
+      ? where : where ? `${this.cabinet.name} · ${where}` : this.cabinet.name;
     const pauseScale = Math.min(PORTRAIT_PAUSE_TITLE_S,
       innerW / Math.max(1, textWidth('PAUSED', 1, 'title')));
     const titleScale = Math.min(PORTRAIT_PAUSE_WHERE_S,
@@ -18549,13 +18746,16 @@ export class RunState {
       });
       y += groupGap - 10;
     };
-    drawBlock('MISSION', this.mission.desc, '#c8e0ff',
-      compact ? 2.0 : PORTRAIT_PAUSE_MISSION_S, compact ? 2 : 3);
+    // No MISSION block: every mission is the finish line. What a pause is for
+    // is the time left and what the bonus asks.
+    const clock = clockText(this);
+    if (clock) drawBlock('TIME LEFT', clock, this.hurried ? '#ff5a4a' : '#c8e0ff',
+      compact ? 2.0 : PORTRAIT_PAUSE_MISSION_S, 1);
     if (this.challenge && !this.overtime && this.stage) {
       const c = this.challenge;
       const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
       const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
-      drawBlock('BONUS', `${c.desc}${tail ? ` · ${tail}` : ''}`,
+      drawBlock('BONUS', `${bonusSentence(c)}${tail ? ` · ${tail}` : ''}`,
         c.failed ? '#8a8a98' : done ? '#74c947' : '#b8c7d9',
         compact ? 1.95 : PORTRAIT_PAUSE_BONUS_S, compact ? 2 : 3);
     }
@@ -18654,26 +18854,23 @@ export class RunState {
     // read word by word to find the one word you paused to look up.
     const legend = (pairs, y, opts) =>
       drawKeyLegend(ctx, pairs, W / 2 - keyLegendWidth(pairs, opts?.scale) / 2, y, opts);
-    // WHERE YOU ARE, first. The hero is on screen behind the dim and the mission
-    // is two lines down, but nothing else here says which cabinet this is — and
-    // "which stage was I on" is a question a paused player genuinely has, with
-    // nine cabinets of three stages each. Numbered exactly as the briefing card
-    // numbers it (cabinet's place in the roll, then the stage's), so the two
-    // screens name the same stage the same way. A boss and an overtime lap have
-    // no number, so they say what they are instead.
-    const cabNo = CABINETS.findIndex((c) => c.id === this.cabinet.id) + 1;
+    // The same numbered episode title as the cabinet and dev stage menus.
     const where = this.overtime ? 'OVERTIME'
       : this.bossCab ? 'BOSS'
-      : this.stage ? `STAGE ${cabNo}-${this.stage.index}` : '';
+      : this.stage ? stageLabel(this.stage) : '';
     // A quarter larger than the rows under it, and the only line on the read-out
     // that is: it is the answer to "where am I", which is what the rest of the
     // panel is context for, and at a flat scale it read as just another grey row
     // in the stack. The three pixels the rows below give up keep the gap under it
     // wider than the gaps between them, so the size reads as a heading rather
     // than as one line that happens to be big.
-    drawTextCentered(ctx, where ? `${this.cabinet.name}: ${where}` : this.cabinet.name,
+    drawTextCentered(ctx, this.stage && !this.overtime && !this.bossCab
+      ? where : where ? `${this.cabinet.name}: ${where}` : this.cabinet.name,
       W / 2, 48, '#e8e8f0', 1.25);
-    drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 76, '#c8e0ff');
+    // The time left where the mission used to be (every mission is the finish
+    // line now), and the bonus under it as before.
+    const clock = clockText(this);
+    if (clock) drawTextCentered(ctx, `TIME LEFT ${clock}`, W / 2, 76, this.hurried ? '#ff5a4a' : '#c8e0ff');
     // The challenge in full, directly under the mission and in the same order
     // the HUD stacks them. The HUD folds this sentence away ten seconds into the
     // stage and keeps only the count, which is the right trade while you are
@@ -18683,7 +18880,7 @@ export class RunState {
       const c = this.challenge;
       const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
       const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
-      drawTextCentered(ctx, `BONUS: ${c.desc}${tail ? ` ${tail}` : ''}`, W / 2, 92,
+      drawTextCentered(ctx, `BONUS: ${bonusSentence(c)}${tail ? ` ${tail}` : ''}`, W / 2, 92,
         c.failed ? '#6a6a78' : done ? '#74c947' : '#8a8a98');
     }
     // Plug standing lives here rather than in the HUD: it is a "how am I doing"
@@ -18697,7 +18894,7 @@ export class RunState {
     const chips = [];
     if (!this.overtime && this.stage) {
       const got = goalsDone(this).filter(Boolean).length;
-      chips.push([`GOALS ${got}/3`, got ? '#f6d33c' : '#8a8a98']);
+      chips.push([`PLUGS ${got}/3`, got ? '#f6d33c' : '#8a8a98']);
     }
     if (!this.beatLock && this.powerups.active.rewind) chips.push(['REWIND ARMED: UNDOES YOUR NEXT MISTAKE', '#7ce8a0']);
     if (chips.length) {

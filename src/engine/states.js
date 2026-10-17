@@ -53,7 +53,9 @@ function preparePresentation(next) {
 function publish() {
   if (typeof window === 'undefined') return;
   window.__mash_state = current.constructor.name;
-  crumb('state', current.constructor.name + (current.stage?.id ? ` ${current.stage.id}` : ''));
+  crumb('state', (current.constructor.diagnosticName || current.constructor.name)
+    + (current.stage?.id ? ` ${current.stage.id}` : '')
+    + (current.lab ? ' Lab' : ''));
   window.__mash_cur = current;
   // Orientation policy depends on the active screen. Recompute immediately
   // after a state transition so the jukebox can enter portrait without

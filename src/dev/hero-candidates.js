@@ -1455,3 +1455,62 @@ export const RUSTY_CANE_CANDIDATES = [
 // which is Clara's, for wearing her belt on the hips), `beltSlantRun` (the far
 // end rising once the rig fakes a turn), `beltH`, and `pouchLineW` with the
 // `pouch` / `pouchLine` palette slots.
+
+
+// ---------------------------------------------------------------------------
+// STEELE HAMMER — gallery/lab character study. He is intentionally not in
+// TOON_SPECS, HERO_SPRITES or HEROES. The body uses the existing heavy
+// humanoid proportions and shared snap gait. Costume details stay on that rig:
+// they move with the torso, legs and head rather than inventing new animation.
+export const STEELE_HAMMER_CANDIDATE = {
+  id: 'steele-hammer',
+  name: 'STEELE HAMMER',
+  spec: {
+    rig: 'humanoid', head: 'bald', blockHead: true, steeleFace: true, flatTop: true,
+    flatTopFinish: true,
+    sunglasses: { frame: '#111116', lens: '#17191e', glint: '#b8fbff', scale: 1.34, drop: 0.012, wrap: true },
+    mouth: 'flat', nose: false,
+    heavy: true, shoulders: 1.1, torsoWidth: 1.08, taper: 0.66,
+    pecs: true, armDepth: true, armWidth: 1.02, armLift: 0.015,
+    limbStyle: 'snap', clothKnee: 1,
+    tank: true, bareArms: true, pants: true,
+    shoeShape: 'boot', boots: 0.72,
+    gearBelt: true, buckle: 1.12, buckleMark: 'S',
+    bandolier: 'single', back: 'rifle', cargoPockets: true,
+    steelMark: true, steeleFinish: true, gloves: true,
+  },
+  pal: {
+    h: '#FFE600', hairDark: '#b49800', hairLight: '#fff36a',
+    s: '#e8a36f', n: '#f3b785',
+    e: '#17131a', m: '#63352b',
+    b: '#ef202a', bLight: '#ff5b51', bShadow: '#ac1821',
+    p: '#4a5d4e', pLight: '#718064', pShadow: '#2f3c34', pocket: '#35453a',
+    f: '#292f30', w: '#765238', a: '#e2b631', cuff: '#3d3328',
+    arm: '#48504d', rifle: '#39433f', rifleEdge: '#202727',
+    rifleMetal: '#77847e', rifleAlert: '#ef202a',
+  },
+};
+
+// Alternate gallery treatment based on the exposed-chest field-rig reference.
+// It deliberately shares Steele's id and all pose-facing proportions so the
+// lab can compare the costume on the exact same runner animation.
+export const STEELE_HAMMER_HARNESS_CANDIDATE = {
+  ...STEELE_HAMMER_CANDIDATE,
+  name: 'STEELE HAMMER — FIELD HARNESS',
+  spec: {
+    ...STEELE_HAMMER_CANDIDATE.spec,
+    tank: false,
+    harness: true,
+    harnessDetails: true,
+    bandolier: false,
+    steelMark: false,
+    steeleChest: true,
+  },
+  pal: {
+    ...STEELE_HAMMER_CANDIDATE.pal,
+    s: '#e8a36f', b: '#e8a36f',
+    bLight: '#ffc58f', bShadow: '#bd6b54',
+    p: '#353b3a', pLight: '#596158', pShadow: '#222827', pocket: '#2e3433',
+    w: '#292a2e', a: '#c39b49',
+  },
+};

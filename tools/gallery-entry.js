@@ -160,6 +160,7 @@ import { MANEKI_CANDIDATES, BECKON_CANDIDATES } from '../src/dev/maneki-candidat
 import { SNARL_CANDIDATES } from '../src/dev/snarl-candidates.js';
 import { KAIJU_CANDIDATES, KAIJU_LOOP, drawKaijuScene } from '../src/dev/kaiju-candidates.js';
 import { SPEED_FINISH_CANDIDATES, SPEED_FINISH_LOOP, drawSpeedFinishScene } from '../src/dev/speed-finish-candidates.js';
+import { SLIP_NOW, SLIP_CANDIDATES, drawSlipTile } from '../src/dev/banana-slip-candidates.js';
 import { NEON_GOLDEN_MOOD as MANEKI_GOLDEN } from '../src/engine/stylePacks/index.js';
 import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/dev/hero-polish-candidates.js';
 import { FIRE_STAND_CANDIDATES, drawFireStandRun, drawFireStandStill } from '../src/dev/office-fire-alarm-stand-candidates.js';
@@ -171,7 +172,7 @@ import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-en
 import { CRYPT_MOVIE_LANE, CRYPT_MOVIE_BACKDROPS, CRYPT_MOVIE_MOMENTS, drawCryptMovieLane, drawCryptMovieBackdrop } from '../src/dev/crypt-movie-bakeoff.js';
 import { FROST_FORTRESS_CANDIDATES, FROST_ROCK_CANDIDATES, drawFrostRockFortressScene } from '../src/dev/frost-rock-fortress-candidates.js';
 
-import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL } from '../src/dev/hero-candidates.js';
+import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL, STEELE_HAMMER_CANDIDATE, STEELE_HAMMER_HARNESS_CANDIDATE } from '../src/dev/hero-candidates.js';
 import {
   EGGSHELL_TRAVEL, drawEggshellTravel,
 } from '../src/dev/eggshell-candidates.js';
@@ -3371,6 +3372,83 @@ let officeFounderCandidates = null;
       ctx.restore();
     }, { animated: true, wide: true, world: true, hires: 6 });
   }
+}
+
+// -------------------------------------- Steele Hammer, costume direction study
+// Both treatments stay in the gallery only and use the exact shared controller
+// pose adapter, humanoid painter and 24px gameplay footprint.
+{
+  const tank = STEELE_HAMMER_CANDIDATE;
+  const c = STEELE_HAMMER_HARNESS_CANDIDATE;
+  const tankOpts = { spec: tank.spec, pal: tank.pal };
+  const harnessOpts = { spec: c.spec, pal: c.pal };
+  const gamePose = (id, kind, t) => {
+    const sliding = kind === 'slide';
+    const jumping = kind === 'jump';
+    const derived = poseFromPlayer({
+      hero: { id }, grounded: !jumping, jumps: jumping ? 1 : 0,
+      vy: jumping ? -160 : 0, anim: (t * 1.6) % 1,
+      sliding, slideAmount: sliding ? 1 : 0,
+    }, t);
+    // poseFromPlayer reads the live roster to select a slide rig; a lab
+    // candidate is intentionally outside that roster, so hand it the same
+    // humanoid power-slide style the run gives playable heroes.
+    return sliding ? { ...derived, slideStyle: 'kick' } : derived;
+  };
+
+  const s = sectionEl('steele-hammer-candidate', 'Steele Hammer — field harness direction',
+    'GALLERY/LAB ONLY · exposed chest, two separate dark shoulder braces and a back-slung rifle on the shared heavy humanoid rig. '
+    + 'The four poses use the game controller and match Grumpos at 24px tall. Compare the previous red-tank outfit '
+    + 'beside the harness version at detail scale and in the real gameplay lane.');
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  s.appendChild(grid);
+
+  const H = 64, W = 112, FEET = 91, TILE_H = 102;
+  for (const [kind, note] of [
+    ['idle', 'Shared humanoid idle stance.'],
+    ['run', 'poseFromPlayer run cycle, with the gameplay head turn.'],
+    ['jump', 'poseFromPlayer jump silhouette.'],
+    ['slide', 'The shared humanoid power slide.'],
+  ]) {
+    tile(grid, `Steele Hammer — ${kind}`, note, W, TILE_H, (ctx, t) => {
+      const p = kind === 'idle' ? pose('idle', t) : gamePose(c.id, kind, t);
+      drawToon(ctx, c.id, p, W / 2, FEET, H, harnessOpts);
+    }, { animated: true, wide: true, hires: 5 });
+  }
+
+  tile(grid, 'Steele Hammer — red tank vs. field harness',
+    'Same three-quarter run pose, controller timing, body proportions and back-slung rifle. The clothing and chest rig are the only direction change.',
+    360, 226, (ctx, t) => {
+      drawToon(ctx, c.id, gamePose(c.id, 'run', t), 90, 202, 132, tankOpts);
+      drawToon(ctx, c.id, gamePose(c.id, 'run', t), 270, 202, 132, harnessOpts);
+      ctx.fillStyle = 'rgba(255,255,255,.78)';
+      ctx.font = 'bold 9px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('RED TANK', 90, 18);
+      ctx.fillText('EXPOSED CHEST / FIELD RIG', 270, 18);
+    }, { animated: true, wide: true, hires: 5 });
+
+  const LW = 264, LH = 62, LGY = 46;
+  tile(grid, 'Runner scale — Lorenzo / tank / harness / Grumpos',
+    'All four drawn at the real 24px hero height through the shared painter. Compare both costume reads against Lorenzo and Grumpos in the gameplay lane.',
+    LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
+      ctx.scale(WORLD_Z, WORLD_Z);
+      laneStrip(ctx, LW, LH, LGY);
+      const samples = [
+        ['lorenzo', 34, 'LORENZO', undefined],
+        [c.id, 99, 'TANK', tankOpts],
+        [c.id, 164, 'HARNESS', harnessOpts],
+        ['grumpos', 229, 'GRUMPOS', undefined],
+      ];
+      for (const [id, x, label, look] of samples) {
+        drawToon(ctx, id, gamePose(id, 'run', t), x, LGY, HERO_DRAW_H, look);
+        ctx.fillStyle = 'rgba(255,255,255,.7)';
+        ctx.font = '4.5px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, x, 9);
+      }
+    }, { animated: true, wide: true, world: true, hires: 5 });
 }
 
 // ------------------------------------------- animal hero, replacing Gnash
@@ -10127,6 +10205,28 @@ function jadeSky(ctx, w, h, seed = 1) {
   for (const cand of SPEED_FINISH_CANDIDATES) {
     tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
       (ctx, t) => drawSpeedFinishScene(ctx, t, cand), { animated: true, wide: true });
+  }
+}
+
+// ------------------------------------------------- THE BANANA SLIP (lab)
+// 17 Oct 2026: "can we improve our banana slip animation? its very basic... bakeoff".
+// Today the whole figure tips back 0.62 rad about his heels over SLIP_T and returns
+// (game/draw.js). Candidates: src/dev/banana-slip-candidates.js — each a picture in the
+// zap's seam (drawn instead of the running toon for its T, the blink waiting for it), built
+// from his own toon turned about his hips so it carries to the whole cast. Nothing is wired
+// into the run.
+{
+  const grid = section('banana-slip-bakeoff', 'THE BANANA SLIP (bake-off)',
+    'The real peel on Field Service, at in-run size: Lorenzo, Clara, Kiko and B-33P run into it at the same moment on a 2.8s loop. '
+    + 'NOW is the slip as it plays today — the figure tipped back and returned over 0.55s, blinking through it. '
+    + 'A–E keep everything else the hit does (the red knock burst, the shake, the 0.08s hitstop, the 1.4s i-frames) and change only how he is drawn for the first second. '
+    + 'Each is longer than the 0.55s stumble — SLIP_T would follow the pick, or the stumble would stay and the picture play on past it. Turn on SLOW to read them frame by frame. ANIMATED.',
+    '17 Oct 2026');
+  const strips = PLUMBER_OBSTACLES.strips.slice(0, 2);
+  const heroes = ['lorenzo', 'clara', 'kiko', 'b33p'];
+  for (const cand of [SLIP_NOW, ...SLIP_CANDIDATES]) {
+    tile(grid, `${cand.letter} — ${cand.name}${cand.letter === 'NOW' ? '' : ` · ${cand.T}s`}`, cand.note, 480, laneHeight(strips),
+      (ctx, t) => drawSlipTile(ctx, t, cand.id, 'plumber', strips, heroes), { animated: true, wide: true });
   }
 }
 

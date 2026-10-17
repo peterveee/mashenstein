@@ -1,14 +1,17 @@
-// M-A-S-H: Field Service 3's mission. Four letters at fixed spots, each on a road
+// M-A-S-H: Field Service 3's bonus. Four letters at fixed spots, each on a road
 // the player has to choose; you cannot run back for one, so a letter is banked the
-// moment it is taken and kept across attempts, and the stage clears on the run that
-// ends with all four banked. All four in ONE run is the gold MASH, a score bonus.
+// moment it is taken and kept across attempts, and the bonus is won on the run that
+// finishes with all four banked. All four in ONE run is the gold MASH, a score
+// bonus. (It was the stage's mission until every mission became the finish line,
+// 17 Oct 2026.)
 //
 // Claims, over real headless runs:
 //   - every letter stands on the road it was placed for, on every difficulty and
 //     both corrupted speeds, and is never laid on top of a hazard
 //   - a letter passed untaken is MISSED at once, and only a needed one says so
 //   - letters bank on a FAILED run, come back as outlines, and still count
-//   - the run that finishes with all four banked clears the stage
+//   - missing letters cost the bonus, never the stage
+//   - the run that finishes with all four banked wins the bonus
 //   - the gold MASH pays once, and only for all four taken in the same run
 //   - a death that goes back to a checkpoint offers the letters ahead again
 //   - on a stage with no roads (Speed Zone 3) the letters anchor to the lane, the
@@ -67,10 +70,11 @@ function playOut(run, each = () => {}) {
 }
 
 // ---------------------------------------------------------------- the data
-assert(stage.mission.type === 'mash' && stage.mission.n === MASH_LETTERS.length,
-  'Field Service 3 is the M-A-S-H mission, four letters to collect');
-assert(stage.mission.at.length === MASH_LETTERS.length
-  && stage.mission.at.every((f, i, a) => f > 0 && f < 1 && (i === 0 || f > a[i - 1])),
+assert(stage.mission.type === 'reach', 'Field Service 3 is won at the finish line');
+assert(stage.challenge.type === 'mash' && stage.challenge.n === MASH_LETTERS.length,
+  'and M-A-S-H is its bonus, four letters to collect');
+assert(stage.challenge.at.length === MASH_LETTERS.length
+  && stage.challenge.at.every((f, i, a) => f > 0 && f < 1 && (i === 0 || f > a[i - 1])),
   'its four spots are fractions of the stage, in letter order');
 for (const L of MASH_LETTERS) {
   assert(PICKUPS[`letter${L}`]?.mashLetter === L, `${L} is a pickup that knows its letter`);
@@ -87,7 +91,7 @@ const CONFIGS = [
 for (const cfg of CONFIGS) {
   const run = newRun(cfg);
   const label = `d${cfg.difficulty}${cfg.corrupted.length ? ` ${cfg.corrupted[0]}` : ''}`;
-  const kinds = run.mission.letters.map((l) => run.mashRoadAt(l.x)?.kind || 'lane');
+  const kinds = run.challenge.letters.map((l) => run.mashRoadAt(l.x)?.kind || 'lane');
   assert(kinds.join() === ROADS.join(), `${label}: each spot falls on its road (${kinds.join(', ')})`);
 }
 
@@ -101,7 +105,7 @@ for (let seed = 1; seed <= 6; seed++) {
       if (!p.live || !p.def.mashLetter || seen.has(p.def.mashLetter)) continue;
       seen.add(p.def.mashLetter);
       spawns++;
-      const l = r.mission.letters.find((q) => q.letter === p.def.mashLetter);
+      const l = r.challenge.letters.find((q) => q.letter === p.def.mashLetter);
       if (Math.abs(p.x + p.w / 2 - l.x) > 0.5) laidOn += 100;   // off its spot is worse
       if (r.obstacles.some((o) => o.live && !o.def.isGap && (o.route || null) === (p.road || null)
         && o.x < p.x + p.w + 4 && o.x + o.w > p.x - 4)) laidOn++;
@@ -116,26 +120,24 @@ freshSave();
 let run = newRun();
 const missedAt = {};
 const first = playOut(run, (r) => {
-  for (const l of r.mission.letters) if (l.missed && missedAt[l.letter] == null) missedAt[l.letter] = r.camX;
+  for (const l of r.challenge.letters) if (l.missed && missedAt[l.letter] == null) missedAt[l.letter] = r.camX;
 });
 const got = first.mashGot || [];
-const missed = run.mission.letters.filter((l) => l.missed).map((l) => l.letter);
+const missed = run.challenge.letters.filter((l) => l.missed).map((l) => l.letter);
 assert(got.length > 0 && got.length < 4, `the bot takes some letters and not others (${got.join(' ')})`);
 assert(missed.length === 4 - got.length && missed.every((L) => !got.includes(L)),
   `every letter it did not take is marked missed (${missed.join(' ')})`);
-assert(missed.every((L) => missedAt[L] < run.mission.letters.find((l) => l.letter === L).x + 40),
+assert(missed.every((L) => missedAt[L] < run.challenge.letters.find((l) => l.letter === L).x + 40),
   'and marked as it goes past, not at the end of the run');
-assert(!first.success && first.failMsg === 'MISSION INCOMPLETE', 'missing letters fail the stage at the line');
-assert(first.failDetail.startsWith(`MISSING ${missed.join(' ')}.`) && first.failDetail.includes('KEPT'),
-  `the card names what is missing and says the rest are kept (${first.failDetail})`);
+assert(first.success && !first.challengeDone, 'missing letters cost the bonus, not the stage');
 
 applyResult(save, first);
 assert(save.slot.campaign.mash[stage.id].join() === got.join(), 'a failed run still banks its letters');
-assert(!(save.slot.campaign.plugs[stage.id] || [])[0], 'but not the mission plug');
+assert(!(save.slot.campaign.plugs[stage.id] || [])[1], 'but not the bonus plug');
 
 // -------------------------------- banked letters return as outlines, still count
 run = newRun();
-assert(run.mission.count === got.length, `the next attempt starts holding the banked letters (${run.mission.count}/4)`);
+assert(run.challenge.count === got.length, `the next attempt starts holding the banked letters (${run.challenge.count}/4)`);
 const second = playOut(run, (r) => {
   for (const p of r.pickups) {
     if (p.def.mashLetter && got.includes(p.def.mashLetter) && p.skin !== `letter${p.def.mashLetter}Banked`) {
@@ -144,20 +146,19 @@ const second = playOut(run, (r) => {
   }
 });
 assert(!run.badSkin, 'a banked letter is offered again in its outline skin');
-assert(!second.success && second.failDetail.startsWith(`MISSING ${missed.join(' ')}.`),
-  'and missing the same letters again still fails, naming only those');
+assert(!second.challengeDone, 'and missing the same letters again still misses the bonus');
 applyResult(save, second);
 
-// ------------------------------------------ all four banked clears the stage
+// ------------------------------------------ all four banked wins the bonus
 run = newRun();
 for (const L of missed) run.onPickup(makePickup(`letter${L}`, run.camX + 100, 30));
-assert(run.missionSatisfied(), 'taking the missing letters satisfies the mission');
+assert(run.bonusMet(), 'taking the missing letters meets the bonus');
 assert(!run.mashGold, 'and is not a gold MASH: the others were taken on another run');
 const third = playOut(run);
-assert(third.success, 'the run that finishes with all four banked clears the stage');
+assert(third.success && third.challengeDone, 'the run that finishes with all four banked wins the bonus');
 applyResult(save, third);
 assert(save.slot.campaign.mash[stage.id].join('') === 'MASH', 'all four are banked, in letter order');
-assert((save.slot.campaign.plugs[stage.id] || [])[0], 'and the mission plug with them');
+assert((save.slot.campaign.plugs[stage.id] || [])[1], 'and the bonus plug with them');
 
 // ------------------------------------------------------------ the gold MASH
 freshSave();
@@ -172,14 +173,14 @@ assert(run.score - score0 === once, `it pays once (+${once}), and a letter canno
 // ------------------------------------------- a checkpoint offers them again
 freshSave();
 run = newRun();
-const S = run.mission.letters.find((l) => l.letter === 'S');
+const S = run.challenge.letters.find((l) => l.letter === 'S');
 let restoredFresh = false, offeredAgain = false, died = false;
 playOut(run, (r) => {
   // Kill him once S has gone past, between the checkpoint behind it and the next.
   if (!died && S.missed && r.snapshot && r.camX < r.totalDist * 0.6) {
     died = true;
     r.restoreSnapshot(r.snapshot);
-    const s = r.mission.letters.find((l) => l.letter === 'S');
+    const s = r.challenge.letters.find((l) => l.letter === 'S');
     restoredFresh = !s.spawned && !s.missed;
   }
   if (died && !offeredAgain && r.pickups.some((p) => p.live && p.def.mashLetter === 'S')) offeredAgain = true;
@@ -193,7 +194,7 @@ assert(offeredAgain, 'and the letter is offered again on the way back through');
 const markedOver = (run) => {
   const marked = new Set();
   playOut(run, (r) => {
-    for (const l of r.mission.letters) {
+    for (const l of r.challenge.letters) {
       if (r.mashMarker(l, r.camZoom, r.camPan || 0, r.camFloorY, r.camX, r.portraitWorldXOffset())) marked.add(l.letter);
     }
   });
@@ -208,7 +209,7 @@ const LANE = 30;
 for (const cfg of CONFIGS) {
   const run = newRun({ ...cfg, on: speed3 });
   const label = `speed-3 d${cfg.difficulty}${cfg.corrupted.length ? ` ${cfg.corrupted[0]}` : ''}`;
-  const [M, A, S3, H3] = run.mission.letters;
+  const [M, A, S3, H3] = run.challenge.letters;
   const cr = run.pitPlan[1].crossing, stone = cr?.stones[3];
   assert(run.mashRoadAt(M.x)?.kind === 'island' && !run.mashRoadAt(M.x).crossing, `${label}: M is on top of the opening island`);
   const pit = run.pitPlan[0];
@@ -226,7 +227,7 @@ for (let seed = 1; seed <= 6; seed++) {
   const checked = new Set();
   const result = playOut(run, (r) => {
     const clear = 120;
-    for (const l of r.mission.letters) {
+    for (const l of r.challenge.letters) {
       if (!r.mashRoadAt(l.x) && r.mashMarker(l, r.camZoom, r.camPan || 0, r.camFloorY, r.camX, r.portraitWorldXOffset())) laneMarks++;
       if (!l.clear || r.mashRoadAt(l.x) || checked.has(l.letter) || l.x > r.viewRightX()) continue;
       checked.add(l.letter);
@@ -240,6 +241,33 @@ assert(crowded === 0, `nothing stands within a reaction runway of a bare lane le
 assert(laneMarks === 0, 'no Speed Zone 3 lane letter ever gets an edge marker');
 assert(botGot.has('A') && botGot.has('S'), `the jump that clears the pit takes A, a clean crossing S (${[...botGot].join(' ')})`);
 
+// ------------------------------------- No letter on a raised road in one jump
+// A letter on an island or fork is out of every hero's single-jump reach from
+// the lane under it — measured against the ROLLING lane, which is what put
+// frost-3's M in reach (Peter, 17 Oct 2026) — and still in the lowest jumper's
+// reach from the road itself. Trains and crossing stones are boarded from the
+// lane, so they are exempt.
+{
+  const { HEROES } = await import('../src/data/heroes.js');
+  const { jumpHeightFor, PLAYER_H } = await import('../src/game/player.js');
+  const heads = HEROES.map((h) => jumpHeightFor(h) + PLAYER_H);
+  const high = Math.max(...heads), low = Math.min(...heads);
+  for (const id of ['plumber-3', 'speed-3', 'frost-3', 'neon-2']) {
+    for (const cfg of CONFIGS) {
+      const run = newRun({ ...cfg, on: STAGE_BY_ID[id] });
+      const bad = [];
+      for (const l of run.challenge.letters) {
+        const road = run.mashLetterRoad(l);
+        const rise = road ? run.groundYAt(l.x) - run.routeGroundY(l.x, road) : 0;
+        if (!road || rise <= 0 || l.train != null || road.crossing) continue;
+        const alt = run.mashRoadLetterAlt(l, road);
+        if (alt <= high || alt - rise >= low) bad.push(`${l.letter} at ${alt.toFixed(1)} over a ${rise.toFixed(1)} road`);
+      }
+      assert(!bad.length, `${id} d${cfg.difficulty}${cfg.corrupted[0] ? ` ${cfg.corrupted[0]}` : ''}: road letters need the road (${bad.join(', ') || `all over ${high.toFixed(1)}`})`);
+    }
+  }
+}
+
 // ------------------------------------- Frost 3: letters in switched pits
 // Each letter lies IN a hole at deck height, behind a frozen switch: the bridge
 // the switch lays carries you through it, and a jump over the hole misses it.
@@ -249,11 +277,11 @@ assert(botGot.has('A') && botGot.has('S'), `the jump that clears the pit takes A
     const run = newRun({ ...cfg, on: frost3 });
     const ok4 = run.pitPlan.length === 4 && run.pitPlan.every((pp) => pp.switch);
     const inHoles = [[1, 1], [3, 3]].every(([li, pi]) => {
-      const l = run.mission.letters[li], pp = run.pitPlan[pi];
+      const l = run.challenge.letters[li], pp = run.pitPlan[pi];
       return Math.abs(l.x - (pp.x + pp.w / 2)) < 0.5 && l.alt === 8 && !run.mashRoadAt(l.x);
     });
-    const sky = run.mashRoadAt(run.mission.letters[2].x);
-    const top = run.mashRoadAt(run.mission.letters[0].x);
+    const sky = run.mashRoadAt(run.challenge.letters[2].x);
+    const top = run.mashRoadAt(run.challenge.letters[0].x);
     assert(ok4 && inHoles && sky?.kind === 'fork' && sky.sky && top?.kind === 'island' && !top.crossing,
       `frost-3 d${cfg.difficulty}${cfg.corrupted[0] ? ` ${cfg.corrupted[0]}` : ''}: four switched pits; M on the opening island, A and H in pits at deck height, S on the sky road`);
   }
@@ -270,7 +298,7 @@ assert(botGot.has('A') && botGot.has('S'), `the jump that clears the pit takes A
         if (hole && Math.abs(hole.x - o.x - 120) < 1) { linked++; seenSwitch.add(o.id); }
       }
       if (hit) for (const o of r.obstacles) if (o.live && o.def.isSwitch && !o.thrown && o.x - r.playerWorldX() < 20) r.throwSwitch(o);
-      for (const l of r.mission.letters) {
+      for (const l of r.challenge.letters) {
         // Only the pit letters (A, H) live behind a switch; M is on the island and S on the sky road.
         if (!l.got || l._checked || (l.letter !== 'A' && l.letter !== 'H')) continue;
         l._checked = true;

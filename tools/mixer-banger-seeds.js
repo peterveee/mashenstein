@@ -12,6 +12,7 @@ import { styleFor } from './lib/banger/styles/index.js';
 
 export function createSeedDesk(desk) {
   const { $, ask, tell, toast, closeMenu } = desk;
+  const fetchAction = desk.fetchAction || ((...args) => fetch(...args));
   const esc = (s) => desk.escapeHtml(String(s ?? ''));
   // Where each song of an A/B pair was left, and which pair is open.
   const places = new Map();
@@ -34,7 +35,7 @@ export function createSeedDesk(desk) {
 
   async function post(url, body) {
     try {
-      const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetchAction(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const out = await res.json().catch(() => ({ ok: false, problems: [`the desk answered ${res.status}`] }));
       return out;
     } catch (err) {

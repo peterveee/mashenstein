@@ -1,7 +1,7 @@
-// CRASH LOG: SETTINGS > CRASH LOG.
+// CRASH REPORT: ABOUT > CRASH REPORT.
 //
 // The breadcrumb trail (engine/diag.js) used to be reachable only by five taps on
-// a build stamp that a phone in portrait never shows. It is a settings row now:
+// a build stamp that a phone in portrait never shows. It is an About-screen action now:
 // this screen says whether the game was last killed mid-play and what it was
 // doing, shows which build is running, and SEND hands the whole trail to the
 // share sheet (Messages, Mail, Save to Files) so it can be passed on as text.

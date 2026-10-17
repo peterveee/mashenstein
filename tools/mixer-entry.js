@@ -20,7 +20,7 @@ import { LANES, deskLanes as engineDeskLanes, laneActivity, deskBank, songBlocks
 // The arrangement layer: what plays when, as opposed to what it sounds like. The
 // desk edits it in bars (`arrangement-edit`), the engine reads it back as an order.
 import {
-  ARRANGEMENTS, applyArrangement, arrangementIssues, loopSteps, SWING_MAX, SWING_STRAIGHT,
+  ARRANGEMENTS, applyArrangement, arrangementIssues, loopSteps, SWING_MAX, SWING_STRAIGHT, TRANSPOSE_MAX,
   bpmOf, swingOf, loopOf, resolutionOf,
 } from '../src/data/arrangements.js';
 // The two exports the desk used to ask a server for. Both run here now — the WAV
@@ -62,7 +62,7 @@ import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, setChokePartner, chokePartner, deleteBars, duplicateBars,
   transposeBars, offsetBars, gainBars, panBars, copyBars, pasteBars,
   insertSilence, copyLaneBars, fitLaneClip, copyLaneTrack, pasteLaneTrack, moveLaneBars, duplicateLaneContent, writeBarNotes, writeBarNotesShared, patternStarts,
-  barCount, removeLanes, setTempo, setSwing, setSongLoop, setBarNoteFx, setBarEffects,
+  barCount, removeLanes, setTempo, setSwing, setSongTranspose, setSongLoop, setBarNoteFx, setBarEffects,
   renderArpToNotes,
   readBarLane, DRUM_LANES,
   setFade, setCrossfade, clearAutomation, addCut, setLaneAutomation, automationDbAt,
@@ -1000,6 +1000,24 @@ function toast(msg, ms = 2200) {
   }
 }
 
+// A server-backed button can outlive the `npm run mixer` process that served this
+// page. Keep those failures legible at the point of the action; background reads use
+// plain fetch so an idle/offline desk does not keep warning on its own.
+let suppressServerFollowupTell = false;
+async function fetchMixerAction(input, init) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    await tell('Mixer server is not responding',
+      '<p>This action needs the Mixer server. Start it with <b>npm run mixer</b>, then try again.</p>');
+    // The action's older catch handler often has a generic follow-up dialog. This
+    // pop-up already gives the useful answer, so consume that immediate duplicate.
+    suppressServerFollowupTell = true;
+    setTimeout(() => { suppressServerFollowupTell = false; }, 0);
+    throw error;
+  }
+}
+
 function undo() {
   // A take that has not been written yet is not on this stack, so undoing past it would
   // step back over the bar BEFORE the one you just played — and then the buffered notes
@@ -1076,6 +1094,7 @@ function undo() {
     // of the undo you can see. The swing rides on the same entry and needs the same.
     pushTempo();
     pushSwing();
+    pushSongTranspose();
     buildTimeline();
   }
   if (step.trackId !== trackId) { void selectSong(step.trackId); }
@@ -2001,7 +2020,7 @@ async function saveEffectDefault(scope, id, name, snapshot) {
   if (!ok) return;
   let res;
   try {
-    res = await fetch('/effect-default-save', {
+    res = await fetchMixerAction('/effect-default-save', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-mixer-role': 'dev' },
       body: JSON.stringify({ scope, id, params: snapshot() }),
@@ -2212,6 +2231,7 @@ function loadTrack(id) {
   // feel with it, which is straight unless its arrangement says otherwise.
   pushTempo();
   pushSwing();
+  pushSongTranspose();
   loopAnchor = 0;              // a different song means a different timeline
   pendingLoopAnchor = null;
   parkedAt = 0;
@@ -3534,7 +3554,7 @@ async function pinPresetInSongs(voiceId, preset, trackIds) {
   for (const id of ids) draft[id] = entries[id];
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   try {
-    const res = await fetch('/save', {
+    const res = await fetchMixerAction('/save', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ids, entries }, null, 2),
     });
@@ -4453,6 +4473,7 @@ const voiceEditor = createVoiceEditor({
   el: voiceEditEl,
   knob,
   toast,
+  fetchAction: (...args) => fetchMixerAction(...args),
   // The full-window editor, built the first time EDIT is pressed and never otherwise.
   // Its two elements are held for the same reason `voiceEditEl` is: they live outside the
   // rack, so a rack repaint never touches them.
@@ -8311,7 +8332,7 @@ async function saveM8trxVersion() {
     return;
   }
   try {
-    const res = await fetch('/save', {
+    const res = await fetchMixerAction('/save', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: trackId, patch: { m8trx: payload } }),
     });
@@ -16716,6 +16737,12 @@ function openDrawer() {
 }
 
 $('navbtn').onclick = (ev) => { ev.stopPropagation(); openDrawer(); };
+// Track modules are part of the page bundle. The local Desk rebuilds that bundle
+// from the song folders on each request; its existing reload recovery keeps song
+// drafts and workspace state, while the browser's unload guard protects unsaved
+// library-preset edits.
+$('refreshtracks').hidden = STATIC;
+$('refreshtracks').onclick = () => { if (!STATIC) location.reload(); };
 $('settingsmenu').onclick = (ev) => {
   ev.stopPropagation();
   closeMenu();
@@ -17229,6 +17256,51 @@ dragNumber($('swing'), {
     toast(Math.round(composedSwing()) === SWING_STRAIGHT
       ? 'Back to straight — on the grid this song is written on'
       : `Back to ${Math.round(composedSwing())}% swing — what this song is written with`);
+  },
+});
+
+// The song's key, moved by one number — the swing's twin on the same rails: the same
+// arrangement entry, the same ⌘Z, the same Save, the same click-to-revert. Every pitched
+// part moves by these semitones on top of whatever a bar's own transpose says; drums stay
+// where they are. It is ONE number for the song and is never spread onto its bars, so the
+// timeline, the roll and the bar fields go on showing the notes as written.
+const deskSongTranspose = () => arrFor(trackId)?.transpose ?? 0;
+const fmtSemis = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+function showSongTranspose() {
+  const el = $('songtranspose');
+  if (!el) return;
+  const n = deskSongTranspose();
+  el.textContent = fmtSemis(n);
+  el.classList.toggle('tweaked', n !== 0);
+  el.parentElement.title = n
+    ? `Every pitched part ${Math.abs(n)} semitone${Math.abs(n) === 1 ? '' : 's'} ${n > 0 ? 'up' : 'down'}, drums untouched`
+      + ' — click to go back to the key it is written in. Saved with the song.'
+    : 'Drag to move the whole song up or down in semitones — every pitched part, drums untouched.'
+      + ' Saved with the song.';
+}
+function pushSongTranspose() { showSongTranspose(); }
+function setDeskSongTranspose(v) {
+  const n = clamp(Math.round(v), -TRANSPOSE_MAX, TRANSPOSE_MAX);
+  if (n === deskSongTranspose()) return;
+  // Like the swing: no bars, lanes or lengths move, so there is no timeline to rebuild.
+  // One undo step per drag, coalesced on the tag.
+  pushUndo('transpose');
+  const entry = entryOf(editBank(), setSongTranspose(arrDraftOf(), n));
+  arrDraft[trackId] = entry;
+  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  // Heard from the next sixteenth: scheduleStep reads the shift off the bank every step.
+  Audio.setArrangement(entry);
+  pushSongTranspose();
+  updateStatus();
+}
+dragNumber($('songtranspose'), {
+  value: deskSongTranspose,
+  set: setDeskSongTranspose,
+  range: 24, step: 1,
+  onClick: () => {
+    if (!deskSongTranspose()) return;
+    setDeskSongTranspose(0);
+    toast('Back to the key this song is written in');
   },
 });
 
@@ -19156,6 +19228,8 @@ function forgetRecent(id) {
 
 let songLoadRequest = 0;
 let pendingSongLoad = null;
+const songStateLoaded = new Set();
+let allSongStateLoaded = false;
 
 function selectSong(id) {
   if (pendingSongLoad?.id === id) return pendingSongLoad.promise;
@@ -19174,6 +19248,11 @@ function selectSong(id) {
     await nextPaint();
     if (request !== songLoadRequest) return false;
     try {
+      if (!allSongStateLoaded && !songStateLoaded.has(id)) {
+        setLoadProgress('Loading saved song…', 0.08, MIXER_BRAND);
+        await refreshSaved(id);
+        if (request !== songLoadRequest) return false;
+      }
       await loadTrack(id, (stage, fraction) => setLoadProgress(stage, fraction, MIXER_BRAND));
       if (request !== songLoadRequest) return false;
       $('nowsong').textContent = track.title;
@@ -19424,7 +19503,7 @@ async function createNewSong() {
   let res = null;
   if (!STATIC) {
     try {
-      res = await fetch('/new-song', {
+      res = await fetchMixerAction('/new-song', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -19488,6 +19567,7 @@ const bangerDesk = createBangerDesk({
   tell: (...args) => tell(...args),
   escapeHtml: (text) => escapeHtml(text),
   isStatic: () => STATIC,
+  fetchAction: (...args) => fetchMixerAction(...args),
   current: () => ({ id: trackId, track }),
   currentMix: () => mixFor(trackId),
   barCount: () => arrDraftOf().plan.length,
@@ -19560,6 +19640,7 @@ const seedDesk = createSeedDesk({
   tell: (...args) => tell(...args),
   escapeHtml: (text) => escapeHtml(text),
   isStatic: () => STATIC,
+  fetchAction: (...args) => fetchMixerAction(...args),
   current: () => ({ id: trackId, track }),
   resolveTrack,
   isDirty,
@@ -19595,7 +19676,7 @@ async function deleteScratchSong() {
     delete variantSaved[id];
     delete variantDraft[id];
   } else try {
-    res = await fetch('/delete-song', {
+    res = await fetchMixerAction('/delete-song', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id }),
     });
@@ -20382,27 +20463,40 @@ $('ab').addEventListener('mouseleave', abUp);
  * Best effort. An older server with no /mix route leaves the page's own copy in place,
  * which is what the desk did before this existed.
  */
-async function refreshSaved() {
+async function refreshSaved(id = null, background = false) {
   // Nothing to ask on the deployed desk: the bundled modules ARE the file, and the
   // request would only put a failed fetch in the tester's console.
   if (STATIC) return;
   try {
-    const res = await fetch('/mix');
+    const res = await fetch(id ? `/mix?track=${encodeURIComponent(id)}` : '/mix');
     if (!res.ok) throw new Error(String(res.status));
     const { mix, arrangements, m8trx } = await res.json();
-    if (mix && typeof mix === 'object') saved = mix;
-    if (arrangements && typeof arrangements === 'object') savedArr = arrangements;
-    if (m8trx && typeof m8trx === 'object') {
-      savedM8trx = m8trx;
-      localStorage.setItem(M8TRX_KEY, JSON.stringify(savedM8trx));
+    if (id) {
+      if (mix && Object.hasOwn(mix, id)) saved[id] = mix[id];
+      if (arrangements && Object.hasOwn(arrangements, id)) savedArr[id] = arrangements[id];
+      if (m8trx && Object.hasOwn(m8trx, id)) savedM8trx[id] = m8trx[id];
+      songStateLoaded.add(id);
+    } else if (background) {
+      // A song opened or saved while this slow library read was in flight wins over
+      // its earlier snapshot. Drafts remain separate throughout.
+      for (const [key, value] of Object.entries(mix || {})) if (!songStateLoaded.has(key)) saved[key] = value;
+      for (const [key, value] of Object.entries(arrangements || {})) if (!songStateLoaded.has(key)) savedArr[key] = value;
+      for (const [key, value] of Object.entries(m8trx || {})) if (!songStateLoaded.has(key)) savedM8trx[key] = value;
+      allSongStateLoaded = true;
+    } else {
+      if (mix && typeof mix === 'object') saved = mix;
+      if (arrangements && typeof arrangements === 'object') savedArr = arrangements;
+      if (m8trx && typeof m8trx === 'object') savedM8trx = m8trx;
+      allSongStateLoaded = true;
     }
+    if (m8trx && typeof m8trx === 'object') localStorage.setItem(M8TRX_KEY, JSON.stringify(savedM8trx));
   } catch { /* keep the copy we have — see above */ }
 }
 
 $('revert').onclick = async () => {
   // The file first, then the comparison. Reverting to a remembered version of the file
   // is how an afternoon's work goes back to a morning nobody asked for.
-  await refreshSaved();
+  await refreshSaved(trackId);
   if (!isDirty(trackId)) { toast('Nothing to discard — this song already matches its file'); return; }
   pushUndo(null);
   discardSongDraft(draft, arrDraft, trackId);
@@ -20635,7 +20729,7 @@ async function renderJob(btn, route, working, describe, passes = rememberedPasse
   try {
     let res;
     try {
-      res = await fetch(route, {
+      res = await fetchMixerAction(route, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         // The ARRANGEMENT as well as the mix, and the live draft of it rather than
         // whatever the file last saw — for the same reason the mix is sent live. A
@@ -22024,7 +22118,7 @@ $('renderwav').onclick = async () => {
       // minutes to make, so it comes down as a file instead and says so.
       let res = null;
       try {
-        res = await fetch(`/write-render?track=${encodeURIComponent(id)}`, {
+        res = await fetchMixerAction(`/write-render?track=${encodeURIComponent(id)}`, {
           method: 'POST', headers: { 'content-type': 'audio/wav' }, body: out.wav,
         });
       } catch { res = null; }
@@ -22164,7 +22258,7 @@ $('exportaaf').onclick = async () => {
     toast(`Exporting AAF — ${lane.label} (${i} of ${lanes.length})${pct == null ? '' : ` ${pct}%`}${stopped}`, 0);
   };
   const post = async (url, body) => {
-    const res = await fetch(url, {
+    const res = await fetchMixerAction(url, {
       method: 'POST', ...(body ? { headers: { 'content-type': 'audio/wav' }, body } : {}),
     }).catch(() => null);
     if (!res) throw new Error('the mixer server did not answer');
@@ -22300,7 +22394,7 @@ $('midifile').onchange = async () => {
   // Held rather than re-read: answering the name question posts the same bytes a second
   // time, and the input has already been cleared so the File is the only copy left.
   const bytes = await file.arrayBuffer();
-  const post = (id = null) => fetch(`/import-midi?file=${encodeURIComponent(file.name)}`
+  const post = (id = null) => fetchMixerAction(`/import-midi?file=${encodeURIComponent(file.name)}`
     + (id ? `&id=${encodeURIComponent(id)}` : ''), { method: 'POST', body: bytes });
 
   let res = await post();
@@ -22480,6 +22574,7 @@ function reloadSongState() {
   Audio.setArrangement(arrFor(trackId));
   pushTempo();                 // the tempo is on the arrangement, so it moved too
   pushSwing();                 // and the swing beside it
+  pushSongTranspose();         // and the key
   buildTimeline();
   rebuildForShape();
   applyLoop(Audio.step);
@@ -22519,7 +22614,7 @@ async function saveMix(id) {
   const variantsDirty = variantDirty(id);
   if (variantsDirty) patch.variants = JSON.parse(JSON.stringify(variantDraft[id] ?? null));
   if (!Object.keys(patch).length) return true;
-  const res = await fetch('/save', {
+  const res = await fetchMixerAction('/save', {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id, patch }, null, 2),
   });
@@ -22584,7 +22679,7 @@ function whenLabel(ms) {
 async function restoreFrom(file) {
   let mix, arrangements;
   try {
-    const res = await fetch(`/history/${encodeURIComponent(file)}`);
+    const res = await fetchMixerAction(`/history/${encodeURIComponent(file)}`);
     if (!res.ok) throw new Error(await res.text());
     ({ mix, arrangements } = await res.json());
   } catch (err) {
@@ -22611,6 +22706,7 @@ async function restoreFrom(file) {
   Audio.setArrangement(arrFor(trackId));
   pushTempo();                 // including the tempo that version was played at
   pushSwing();                 // and the feel it was played with
+  pushSongTranspose();         // and the key it was played in
   buildTimeline();
   rebuildForShape();
   applyLoop(Audio.step);
@@ -22628,7 +22724,7 @@ $('history').onclick = async (ev) => {
   try {
     // This song's own saves, and no others. The server does the filtering, because it
     // is the side that named the files and knows how it slugged them.
-    const res = await fetch(`/history?track=${encodeURIComponent(trackId)}`);
+    const res = await fetchMixerAction(`/history?track=${encodeURIComponent(trackId)}`);
     if (!res.ok) throw new Error(String(res.status));
     ({ snapshots } = await res.json());
   } catch {
@@ -22668,7 +22764,13 @@ const escapeHtml = (text) => String(text)
   .replace(/\n/g, '<br>');
 
 /** Say something, in the desk. The `alert()` half of ask(). */
-const tell = (title, body) => ask(title, body, 'OK', { cancel: false });
+const tell = (title, body) => {
+  if (suppressServerFollowupTell) {
+    suppressServerFollowupTell = false;
+    return Promise.resolve(false);
+  }
+  return ask(title, body, 'OK', { cancel: false });
+};
 
 function ask(title, body, okLabel = 'Save song', { cancel = true, wide = false } = {}) {
   return new Promise((resolve) => {
@@ -22833,7 +22935,7 @@ async function saveCopy() {
   let res = null;
   if (!STATIC) {
     try {
-      res = await fetch('/save-copy', {
+      res = await fetchMixerAction('/save-copy', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ sourceId, title, mix, arrangement, variants }, null, 2),
       });
@@ -22921,7 +23023,7 @@ async function saveAlternate() {
   freezeVoices(mix, trackId);
   let res;
   try {
-    res = await fetch('/save-alternate', {
+    res = await fetchMixerAction('/save-alternate', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         sourceId: trackId,
@@ -22975,7 +23077,7 @@ async function promoteAlternate() {
   if (isDirty(trackId) && !await saveMix(trackId)) return;
   let res;
   try {
-    res = await fetch('/promote-alternate', {
+    res = await fetchMixerAction('/promote-alternate', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: trackId }),
     });
@@ -23792,7 +23894,7 @@ addEventListener('keydown', unlockAudio, { capture: true, once: true });
 
 void (async () => {
   showLoadProgress(MIXER_BRAND);
-  setLoadProgress('Loading saved songs…', 0.05, MIXER_BRAND);
+  setLoadProgress('Preparing the desk…', 0.05, MIXER_BRAND);
   // Before anything builds a panel: the shell's own nineteen dropdowns are in the
   // document already, and the observer this leaves behind takes every one built after.
   watchDeskSelects();
@@ -23802,7 +23904,7 @@ void (async () => {
   Audio.ensure();
   activeLatencyPreference = latencyPreference;
   syncAudioSettingsStatus();
-  await refreshSaved();
+  // selectSong fetches the current file first; the library read can finish later.
   // The deployed desk ships one song, so that is the one it opens on — first visit,
   // and any later one where the remembered id is something this build does not carry.
   // Before it plays anything, the tester's own saved copy becomes what "saved" means,
@@ -23825,7 +23927,6 @@ void (async () => {
   const initialDeskSessionMatches = savedDeskSession?.version === 1
     && savedDeskSession.song === trackId;
   setDevicesFolded(!(initialDeskSessionMatches && savedDeskSession.effectsOpen === true), false);
-  selectSong(trackId);
   await selectSong(trackId);
   // If the preset library was open last session, open it again.
   const sessionMatches = savedDeskSession?.version === 1 && savedDeskSession.song === trackId;
@@ -23842,6 +23943,7 @@ void (async () => {
   freezeRestoreReady = true;
   queueFrozenRestorePrompt(trackId);
   tick();
+  if (!STATIC) setTimeout(() => { void refreshSaved(null, true); }, 0);
   // First visit gets the tour offered rather than hidden behind a button nobody has a
   // reason to press yet. After `selectSong`, because half the cards anchor to a channel
   // strip and there is no rack before it. Somebody who left the preset library open is

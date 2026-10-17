@@ -184,20 +184,24 @@ renderer.setPresentationFrame(defaultFrame());
 Input.clearAll();
 window.__MASH_BUILT_AT__ = '2026-10-16T09:42:21.275Z';
 let forceReloads = 0;
+let crashReports = 0;
+let performanceTests = 0;
 let backs = 0;
 const title = new TitleState({ save: { data: { slots: [null, null, null] } }, onAbout() {} });
 assert(title.extrasChoices().some((o) => o.id === 'about')
   && !real.options().some((o) => o.label === 'ABOUT'),
   'ABOUT appears in Staff Only, not Advanced Settings');
+assert(!real.options().some((o) => /^(CRASH LOG|CRASH REPORT|PERFORMANCE TEST)$/.test(o.label)),
+  'crash reports and performance tests are no longer in Advanced Settings');
 const extras = title.extrasChoices().map((o) => o.id);
 assert(extras.indexOf('about') === extras.length - 2,
   'ABOUT is the last Staff Only entry before BACK');
-const about = new AboutState({ onDone() { backs++; }, onReload(returnToAbout) {
-  forceReloads++;
-  assert(returnToAbout === (forceReloads === 1),
-    'About reload uses the visible return switch');
-} });
+const about = new AboutState({ onDone() { backs++; }, onReload() { forceReloads++; },
+  onCrashLog() { crashReports++; }, onPerformanceTest() { performanceTests++; } });
 about.enter();
+assert(about.actions().map((o) => o.label).join('|') === 'CRASH REPORT|PERFORMANCE TEST|RELOAD GAME|BACK'
+  && !('returnToAbout' in about),
+  'ABOUT has the diagnostics, reload, and back actions without a restart destination switch');
 assert(about.buildTime() === new Intl.DateTimeFormat(undefined, {
   year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
 }).format(new Date(window.__MASH_BUILT_AT__)), 'ABOUT displays the build time in the device timezone');
@@ -221,14 +225,14 @@ Input.release('up');
 Input.press('confirm');
 about.update(1 / 60);
 Input.release('confirm');
-assert(about.returnToAbout === false, 'About return switch can be turned off');
-Input.press('down');
+assert(performanceTests === 1, 'PERFORMANCE TEST opens from ABOUT');
+Input.press('up');
 about.update(1 / 60);
-Input.release('down');
+Input.release('up');
 Input.press('confirm');
 about.update(1 / 60);
 Input.release('confirm');
-assert(forceReloads === 2, 'RELOAD GAME follows the off switch too');
+assert(crashReports === 1, 'CRASH REPORT opens from ABOUT');
 
 renderer.setPresentationFrame(portraitFrame);
 about.draw(document.createElement('canvas').getContext('2d'));

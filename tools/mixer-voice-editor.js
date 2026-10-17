@@ -4979,6 +4979,7 @@ function rawId(label) {
  */
 export function createVoiceEditor({
   el, knob, toast, refresh, noiseBuf, sampleRate, onChanged, assign, close,
+  fetchAction = (...args) => fetch(...args),
   // Solo one layer of a stack for listening — `(voiceId, layerKey, on) => void`, and
   // `null` to drop them all. Monitoring state that belongs to the ENGINE rather than to
   // this panel, because the panel forgets everything when it closes and a solo left
@@ -7360,7 +7361,7 @@ export function createVoiceEditor({
     const was = btn.textContent;
     btn.textContent = 'Measuring…';
     try {
-      const res = await fetch('/voice-save', {
+      const res = await fetchAction('/voice-save', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -7472,7 +7473,7 @@ export function createVoiceEditor({
       toast(`${v.label} discarded`);
       return;
     }
-    const send = (force) => fetch('/voice-delete', {
+    const send = (force) => fetchAction('/voice-delete', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

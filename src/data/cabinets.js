@@ -1010,6 +1010,10 @@ export const CABINETS = [
     // the stage's own floor through cabinetForStage().
     patterns: OFFICE_BY_FLOOR[2],
     floorPatterns: OFFICE_BY_FLOOR,
+    // Fewer vending machines on floor 23 (Peter, 17 Oct 2026): they were dealt
+    // heavily when SHOOT VENDING MACHINES was office-2's bonus, and that bonus is
+    // gone. Only floor 23 deals the machine, so the other floors are untouched.
+    weights: { snackMachine: 0.4 },
     taunt: 'THIS MEETING COULD HAVE BEEN AN EMAIL. THE EMAIL IS ALSO A TRAP.',
   },
   {

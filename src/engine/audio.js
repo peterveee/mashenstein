@@ -27,6 +27,7 @@ import { trackIdOf } from '../data/tracks.js';
 import {
   applyArrangement, resolveSection, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
   resolutionOf, promoteResolution, LEGACY_RESOLUTION, FINE_RESOLUTION, RESOLUTIONS,
+  songTransposeOf,
 } from '../data/arrangements.js';
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 import { createLaneView, autoPortamentoLane, autoPortamentoReportOf } from './lane-view.js';
@@ -868,7 +869,10 @@ const COYOTE_HOWL_NOTES = [
 // a fifth), an octave up on E6 because the pup is small. The coyoteYip cue is one of them;
 // the run fires two, where the pup's mouth opens (speedMcmCoyote.js chorusShow).
 const COYOTE_YIP_NOTES = [[0, 1318.51, 0.2]];
-const COYOTE_NOTES = { howl: COYOTE_HOWL_NOTES, yip: COYOTE_YIP_NOTES };
+// The pup follows the same rhythm a diatonic third above: D6, G5, D6, B5.
+const COYOTE_HARMONY_NOTES = COYOTE_HOWL_NOTES.map(([beat, , duration], i) =>
+  [beat, [1174.66, 1174.66, 1174.66, 783.99, 1174.66, 987.77][i], duration]);
+const COYOTE_NOTES = { howl: COYOTE_HOWL_NOTES, yip: COYOTE_YIP_NOTES, chorus: COYOTE_HOWL_NOTES };
 
 // THE FROST SLEIGH'S CAROL (sleighCarol below; run.js cueSleighCarol): a Christmas tune,
 // turned minor, on a vibraphone while Santa's team crosses the sky at frost-3's tape.
@@ -968,6 +972,7 @@ export const SFX_TRIM = {
   // preview": it went in at 0.16 (-39.9 RMS over its 3.3 s, tools/render-cues.js) and was
   // brought up to here on the SFX desk, -28.2 RMS.
   coyoteHowl: 0.61,
+  coyoteChorus: 0.61,
   // The winking coyote's "ting!" at speed-3's finish. Levelled against cameraClick, the
   // other Speed Zone scenery gag: -34.0 RMS against its -34.4.
   coyoteWink: 0.733,
@@ -1473,6 +1478,7 @@ class AudioSys {
     // so we can play it backwards during rewind.
     this._capBuf = null;     // Float32Array ring buffer (~4s)
     this._capPos = 0;        // write cursor
+    this._capSamples = 0;    // valid samples since the latest capture start
     this._capNode = null;    // capture AudioWorkletNode (ScriptProcessorNode fallback)
     this._capGain = null;    // zero-gain sink
     this.captureEnabled = true;
@@ -1512,6 +1518,7 @@ class AudioSys {
     this.silentLaneSkip = false;
     this._revTimer = null;   // interval for reverse-chunk scheduling
     this._revSources = [];   // active reversed BufferSources
+    this._timeoutTape = null; // one-shot timeout brake; cancelled by a new song
     // A mixer panic is a momentary emergency cut, not a saved mute. The next
     // deliberate play/preview/SFX action opens the buses again.
     this.panicked = false;
@@ -3101,6 +3108,8 @@ class AudioSys {
     const shift = (value, semitones) => Array.isArray(value)
       ? value.map((v) => shift(v, semitones))
       : typeof value === 'number' && value > 0 ? value * 2 ** (semitones / 12) : value;
+    // The song's own key shift (`arrangement.transpose`), on top of any bar's.
+    const songShift = songTransposeOf(bank);
 
     // Counted in whole ticks for the same reason the transport is (see `get step`):
     // `step += tick` is exact at 1 and 0.5 and drifts at a third, and this walk is the
@@ -3123,7 +3132,7 @@ class AudioSys {
       }
       const transposeKeys = new Set([
         ...Object.keys(typeof bar.transpose === 'object' ? bar.transpose || {} : {}),
-        ...(typeof bar.transpose === 'number'
+        ...(typeof bar.transpose === 'number' || songShift
           ? [...LANE_KEYS, ...(b.__layers || []).map((layer) => layer.key)]
             .filter((key) => !PERCUSSION_LANES.includes(baseLane(key)))
           : []),
@@ -3131,7 +3140,8 @@ class AudioSys {
       if (transposeKeys.size) {
         b = { ...b };
         for (const key of transposeKeys) {
-          const semitones = barValue(bar.transpose, key);
+          const semitones = barValue(bar.transpose, key)
+            + (PERCUSSION_LANES.includes(baseLane(key)) ? 0 : songShift);
           if (semitones && Array.isArray(b[key])) b[key] = b[key].map((v) => shift(v, semitones));
         }
       }
@@ -3205,6 +3215,65 @@ class AudioSys {
     if (!this.ctx) return;
     if (enabled) this._startCapture();
     else this._stopCapture();
+  }
+
+  /** Replay the last bar as a slowing tape, then stop the song. */
+  timeoutTapeStop(seconds = 0.8) {
+    const ctx = this.ctx;
+    if (!ctx || !this.songOut || this.offline) return false;
+    const duration = Math.max(0.4, Math.min(4, Number(seconds) || 0.8));
+    const now = ctx.currentTime;
+    const start = now + 0.015;
+    const end = start + duration;
+    let source = null;
+    let gain = null;
+    const samples = Math.min(this._capSamples, Math.round(duration * ctx.sampleRate));
+    if (this._capBuf && this.master && samples >= Math.round(duration * ctx.sampleRate * 0.6)) {
+      try {
+        const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
+        const out = buffer.getChannelData(0);
+        const masterLevel = this.master?.gain.value ?? 0;
+        const normaliseMaster = masterLevel > 1e-4;
+        let read = (this._capPos - samples + this._capBuf.length) % this._capBuf.length;
+        for (let i = 0; i < samples; i++) {
+          out[i] = normaliseMaster ? this._capBuf[read] / masterLevel : this._capBuf[read];
+          read = (read + 1) % this._capBuf.length;
+        }
+        source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.setValueAtTime(1, start);
+        source.playbackRate.exponentialRampToValueAtTime(0.035, end);
+        gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(1, start + 0.06);
+        gain.gain.linearRampToValueAtTime(0, end);
+        source.connect(gain);
+        // The capture sits after master. Undo that gain before replaying through it
+        // so a mute or volume change still applies during the brake.
+        gain.connect(this.master);
+        source.addEventListener('ended', () => {
+          try { source.disconnect(); } catch { /* already disconnected */ }
+          try { gain.disconnect(); } catch { /* already disconnected */ }
+        });
+        source.start(start);
+        source.stop(end);
+      } catch {
+        try { source?.disconnect(); } catch { /* incomplete graph */ }
+        source = null;
+        gain = null;
+      }
+    }
+
+    // Move the live song out of the way, leaving only the copied mix to brake.
+    this._fadeSongOut(source ? Math.min(0.06, duration * 0.15) : duration);
+    const pending = { source, gain, timer: null };
+    pending.timer = setTimeout(() => {
+      if (this._timeoutTape !== pending) return;
+      this._timeoutTape = null;
+      this.setBank(null);
+    }, Math.ceil(duration * 1000) + 35);
+    this._timeoutTape = pending;
+    return true;
   }
 
   /** Silent right now, for either reason — the saved setting or this boot's switch. */
@@ -3556,7 +3625,7 @@ class AudioSys {
     this.osc('triangle', f / 2, f / 2, 0.5, 0.05);
   }
 
-  /** Bake the howl and the pup's yip for a tempo ahead of needing them (RunState.enter). */
+  /** Bake the solo, duet and legacy yip for a tempo ahead of needing them (RunState.enter). */
   warmCoyoteHowl(bpm = (this.bpm || 128) * (this.tempo || 1)) {
     for (const kind of Object.keys(COYOTE_NOTES)) this._coyoteHowlBuffer(bpm, kind).catch(() => {});
   }
@@ -3582,9 +3651,12 @@ class AudioSys {
         const rack = new VoiceRack(octx, this.noiseBuf, this.crashBuf);
         const dry = octx.createGain();
         dry.connect(octx.destination);
-        notes.forEach(([b, hz, d], step) => {
-          rack.play('howl', 'coyoteHowl', hz, {
-            time: 0.005 + b * spb, dur: d * spb, gain: 0.8, dry, wet: null, echo: false, step,
+        const parts = kind === 'chorus'
+          ? [{ notes, role: 'howl', gain: 0.56 }, { notes: COYOTE_HARMONY_NOTES, role: 'pup', gain: 0.48 }]
+          : [{ notes, role: 'howl', gain: 0.8 }];
+        for (const part of parts) part.notes.forEach(([b, hz, d], step) => {
+          rack.play(part.role, 'coyoteHowl', hz, {
+            time: 0.005 + b * spb, dur: d * spb, gain: part.gain, dry, wet: null, echo: false, step,
           });
         });
         rendering = octx.startRendering();
@@ -5818,6 +5890,7 @@ class AudioSys {
       case 'faxHandshake': this.faxHandshake(); break;
       case 'gateSlam': this.gateSlam(); break;
       case 'coyoteHowl': this.coyoteHowl(); break;
+      case 'coyoteChorus': this.coyoteHowl('chorus'); break;
       case 'coyoteYip': this.coyoteHowl('yip'); break;
       case 'coyoteWink': this.coyoteWink(); break;
       case 'sleighCarol': this.sleighCarol(opt); break;
@@ -6812,6 +6885,20 @@ class AudioSys {
   // hundredths of a second: the club's BOLT brings a new take in on the old one's bar line.
   setBank(bank, mixOverride = undefined, arrangementOverride = undefined,
     { gap = 0.5, formLoop = true, countIn = 0, startAtBeginning = false, at = null, once = false } = {}) {
+    if (this._timeoutTape) {
+      const pending = this._timeoutTape;
+      this._timeoutTape = null;
+      clearTimeout(pending.timer);
+      if (pending.source && this.ctx) {
+        const t = this.ctx.currentTime;
+        try {
+          pending.gain.gain.cancelScheduledValues(t);
+          pending.gain.gain.setValueAtTime(pending.gain.gain.value, t);
+          pending.gain.gain.linearRampToValueAtTime(0, t + 0.025);
+          pending.source.stop(t + 0.03);
+        } catch { /* the buffer may already have ended */ }
+      }
+    }
     // A SONG ARRIVES AT ITS OWN TEMPO. The transport warp belongs to whatever was
     // performing the last one — the star powerup's whole tone, slow-mo's drag, and
     // above all the bpm ramp a beat stage banks at every checkpoint. That last one
@@ -6821,14 +6908,20 @@ class AudioSys {
     // after it played about 4% fast, forever. A cabinet screen plays its song at the
     // song's tempo. Reset before the early return below, because arriving back at the
     // song already up is exactly the case that was wrong.
-    crumb('setBank', String(bank?.id || bank?.name || bank?.title || '').slice(0, 40));
+    const diagnosticBank = bank
+      ? String(trackIdOf(bank) || bank.id || bank.name || bank.title || 'unregistered').slice(0, 40)
+      : 'stopped';
+    crumb('setBank', diagnosticBank);
     this.setWarp(1, 1);
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
     // Compared against the bank as PASSED IN: applyMix may hand back a copy with
     // the saved voice overrides merged, and comparing against that copy would make
     // every re-selection look like a change.
-    if (this.sourceBank === bank && mixOverride === undefined && arrangementOverride === undefined) return;
+    if (this.sourceBank === bank && mixOverride === undefined && arrangementOverride === undefined) {
+      crumb('setBank unchanged', diagnosticBank);
+      return;
+    }
     // A pending edit repair belongs to the song being replaced. The fire-time checks
     // would drop it anyway; cancelling here means it does not sit on a timer holding a
     // reference to a bank nobody is playing.
@@ -7016,6 +7109,7 @@ class AudioSys {
     // A groove change belongs to the song that asked for it. Left standing, a swing
     // queued in the last bar of one song would land on the downbeat of the next.
     this.pendingSwing = null;
+    crumb('setBank ready', `${diagnosticBank} context=${this.ctx?.state || 'none'}`);
   }
 
   /**
@@ -7151,6 +7245,10 @@ class AudioSys {
     // are untouched, so a drag across the range re-feels the music without a seam in it.
     const swing = patch?.swing ?? source.swing ?? 0;
     if (swing) next.swing = swing; else delete next.swing;
+    // The song-wide key shift, the same way round again, and heard from the next
+    // sixteenth: scheduleStep reads it off the bank on every step.
+    const transpose = patch?.transpose ?? source.transpose ?? 0;
+    if (transpose) next.transpose = transpose; else delete next.transpose;
     // Keep the internal straight value canonical. A stored 50% swing and an omitted
     // swing are musically identical; using 50 here nevertheless sends a different
     // numeric value through rhythm effects and can produce tiny render differences.
@@ -7824,6 +7922,7 @@ class AudioSys {
     const buf = new Float32Array(Math.floor(ctx.sampleRate * CAPTURE_SEC));
     this._capBuf = buf;
     this._capPos = 0;
+    this._capSamples = 0;
     if (!canHostEngineWorklets(ctx)) { this._wireCapture(null); return; }
     prepareEngineWorklets(ctx).then((ok) => {
       // Stopped, restarted or re-contexted while registering: that start is not ours.
@@ -7861,6 +7960,7 @@ class AudioSys {
       pos = (pos + 1) % len;
     }
     this._capPos = pos;
+    this._capSamples = Math.min(len, this._capSamples + input.length);
   }
 
   _stopCapture() {
@@ -7880,6 +7980,7 @@ class AudioSys {
     this._capGain = null;
     this._capBuf = null;
     this._capPos = 0;
+    this._capSamples = 0;
   }
 
   // Start playing the capture buffer backwards in overlapping chunks. Each
@@ -9409,9 +9510,12 @@ class AudioSys {
       // `semitone`; it is applied per value in the transpose pass below.
       const rearrangeHarmony = rearranged?.operation?.harmony || 0;
       const rearrangeKey = rearrangeHarmony ? this.rearrangement?.key || null : null;
+      // The song-wide key shift (`arrangement.transpose`): one number for the whole song,
+      // never written onto a bar, added to whatever the bar's own transpose says. Drums
+      // excluded on the same rule as everything else here.
+      const songShift = songTransposeOf(this.bank);
       const semitone = (key) => barValue(bar.transpose, key)
-        + (rearrangeTranspose && !PERCUSSION_LANES.includes(baseLane(key))
-          ? rearrangeTranspose : 0);
+        + (PERCUSSION_LANES.includes(baseLane(key)) ? 0 : rearrangeTranspose + songShift);
       const shift = (v, n) => Array.isArray(v)
         ? v.map((x) => shift(x, n))
         : typeof v === 'number' && v > 0 ? v * 2 ** (n / 12) : v;
@@ -9429,7 +9533,7 @@ class AudioSys {
             .filter((k) => !PERCUSSION_LANES.includes(baseLane(k)))
           : []),
       ]);
-      if (rearrangeTranspose || rearrangeKey) {
+      if (rearrangeTranspose || rearrangeKey || songShift) {
         for (const key of [...LANE_KEYS, ...(b.__layers || []).map((L) => L.key)]) {
           if (!PERCUSSION_LANES.includes(baseLane(key))) transposeKeys.add(key);
         }
@@ -10751,7 +10855,8 @@ class AudioSys {
     const beat = (heard == null ? this.step / 4 : heard) + (leadBeats || 0);
     const bars = plan.length;
     const bar = plan[((Math.floor(beat / 4) % bars) + bars) % bars];
-    const tr = Number(bar?.transpose?.bass) || 0;
+    const tr = (typeof bar?.transpose === 'number' ? bar.transpose : Number(bar?.transpose?.bass) || 0)
+      + songTransposeOf(this.bank);
     return key.root * Math.pow(2, tr / 12);
   }
 

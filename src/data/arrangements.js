@@ -242,6 +242,24 @@ export function swingOf(bank, id, table = ARRANGEMENTS) {
   return entry?.swing ?? bank?.swing ?? SWING_STRAIGHT;
 }
 
+/** The widest song-wide key shift the desk will write, either way, in semitones. */
+export const TRANSPOSE_MAX = 12;
+
+/**
+ * The song's own key shift, in whole semitones: every pitched part played this far up
+ * (or down), drums untouched — ONE number for the whole song, on the arrangement beside
+ * its tempo and swing, never written onto a bar. It adds to a bar's own `transpose`
+ * rather than replacing it, so a song with a key change keeps it, just higher.
+ *
+ * Read off a bank that `applyArrangement` has already shaped (`bank.transpose`), so the
+ * engine, the renders and the game all hear the same number; 0 for anything that is not
+ * a whole number in range rather than a song played in a key nobody chose.
+ */
+export function songTransposeOf(bank) {
+  const n = Number(bank?.transpose);
+  return Number.isInteger(n) && Math.abs(n) <= TRANSPOSE_MAX ? n : 0;
+}
+
 /**
  * Where a song starts and what it repeats — `{ startBar, fromBar, toBar }` in 1-based
  * inclusive bars, or null for the whole form round and round.
@@ -404,12 +422,16 @@ export function applyArrangement(bank, id, table = ARRANGEMENTS) {
   // Automation counts on its own too: a fade on an otherwise untouched song is still a
   // decision about how it plays, and the engine reads it off the bank.
   const automation = hasAutomation(entry.automation) ? entry.automation : null;
+  // And a key shift: `{ transpose: 3 }` is a song played three up, which may well be
+  // the only thing said about it.
+  const transpose = entry.transpose ? entry.transpose : null;
   if (!layer.length && !order && entry.bpm == null && entry.swing == null
-    && fine == null && !automation) return bank;
+    && fine == null && !automation && transpose == null) return bank;
   const out = { ...bank };
   if (automation) out.automation = automation;
   if (entry.bpm != null) out.bpm = entry.bpm;
   if (entry.swing != null) out.swing = entry.swing;
+  if (transpose != null) out.transpose = transpose;
   if (fine != null) out.resolution = fine;
   // Only when there is something to add: a bank with no sections must keep having
   // none, or `songBlocks` starts reading `sections[0]` of an empty list and every
@@ -448,6 +470,10 @@ export function arrangementIssues(bank, entry, laneKeys = null) {
   // swing but a lane offset written in the wrong field; at 100 it would land on the next
   // beat exactly and the pair would collapse into one. 75 is the dotted shuffle and the
   // far end of anything anyone plays.
+  if (entry.transpose != null
+    && !(Number.isInteger(entry.transpose) && Math.abs(entry.transpose) <= TRANSPOSE_MAX)) {
+    issues.push(`the transpose is ${entry.transpose} — a song moves by whole semitones, at most ${TRANSPOSE_MAX} either way`);
+  }
   if (entry.swing != null
     && !(Number.isFinite(entry.swing) && entry.swing >= SWING_STRAIGHT && entry.swing <= SWING_MAX)) {
     issues.push(`the swing is ${entry.swing} — a song swings between ${SWING_STRAIGHT} (straight) and ${SWING_MAX}`);

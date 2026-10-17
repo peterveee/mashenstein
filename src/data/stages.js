@@ -14,12 +14,31 @@ const CAB_DURATION = {
   gravity: 84, office: 100, surge: 110,
 };
 
+// Player-facing episode names; save keys remain independent of display copy.
+const STAGE_NAMES = {
+  plumber: ['PIPE DREAMS', 'CRATE EXPECTATIONS', 'ALPHABET SPAGHETTI'],
+  speed: ['ZOOM SERVICE', 'BONK VOYAGE', 'AIR MAIL'],
+  rhythm: ['BOP TILL YOU DROP', 'COMBO MAMBO', 'BONK TO THE BEAT'],
+  frost: ['ICE TO MEET YOU', 'SNOW PROBLEM', 'ALPHABET SLUSH'],
+  crypt: ['DEAD QUIET', 'TOMB SERVICE', 'BOO, AGAIN'],
+  neon: ['FARE GAME', 'LETTER EXPRESS', 'MIDNIGHT DASH'],
+  gravity: ['WRONG SIDE UP', 'DUST BUSTED', 'SPACE INVADED'],
+  office: ['PLEASE SIGN IN', 'MEETING CANCELLED', 'UNSAFE SAVINGS'],
+  surge: ['YOU AGAIN', 'SECOND HELPING', 'ONE LAST MASH'],
+};
+
+export function stageLabel(stage) {
+  return `${stage.index}. ${stage.name}`;
+}
+
 const S = (cab, idx, mission, challenge, opts = {}) => ({
   id: `${cab}-${idx}`,
   cabinet: cab,
   index: idx,
+  name: STAGE_NAMES[cab][idx - 1],
   mission,             // {type, n?, desc}
-  challenge,           // {type, n, desc}
+  challenge,           // {type, n, desc, note?} — desc is the HUD line, note the
+                       // second line it shows briefly under it at the start
   durationSec: opts.durationSec || CAB_DURATION[cab],
   applianceAt: opts.applianceAt ?? (0.55 + 0.1 * ((idx * 7) % 3)), // fraction of distance
   applianceHigh: opts.applianceHigh ?? (idx % 2 === 0),
@@ -44,6 +63,11 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   // bubbles in this one"). The intro, the one-time teaching prompts and lines tied to something
   // on screen (the Martians' ACKs, the neon platform calls) still speak.
   quiet: !!opts.quiet,
+  // THE BROWN-OUT (crypt-1 and -3): the screen edges dim hard underground. Was
+  // the `blackout` mission type until every mission became the finish line.
+  blackout: !!opts.blackout,
+  // Steps this stage outside its clock tier (TIME_TIERS below), in seconds.
+  timeLimit: opts.timeLimit || null,
   speedMult: opts.speedMult ?? 1,  // per-stage speed override (1 = 100% of cabinet speed)
   // Optional renderer-only material selection. Most non-Plumber cabinets leave
   // this unset; a cabinet can opt its authored stages into the shared paper
@@ -142,13 +166,19 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   arcadeIntro: !!opts.arcadeIntro,
 });
 
+// EVERY STAGE'S MISSION IS THE FINISH LINE (Peter, 17 Oct 2026). What used to
+// be a stage's mission — the letters, the copter, the crates, the safes — is now
+// its one BONUS, and the clock (run.js TIME_LIMIT_MULT) is what a run can fail
+// on. `desc` here is not shown; the HUD and the briefing describe the bonus.
+const REACH = { type: 'reach', desc: 'REACH THE FINISH LINE.' };
+
 export const STAGES = [
   // ACT I ---------------------------------------------------------------------
   S('plumber', 1,
-    { type: 'reach', desc: 'REACH THE FINISH LINE. HIT IT. SAVE EVERYTHING.' },
+    REACH,
     { type: 'coins', n: 50, desc: 'COLLECT 50 COINS' },
     { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
-      introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.',
+      intro: 'YOUR TECHNICIAN WILL ARRIVE BETWEEN 8 AM AND 5 PM. WE CANNOT NARROW THE WINDOW.',
       speedMult: 0.9,
       // No SPEED on the first stage of the game (Peter, 30 Sep 2026). Its two
       // authored speed prizes — the fork's and the tunnel's low roads — are
@@ -190,8 +220,8 @@ export const STAGES = [
   // neighbours intact, and being the smallest crossing in the game suits the
   // one in Act I.
   S('plumber', 2,
-    { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 !-CRATES. THE ! MEANS HIT IT.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    REACH,
+    { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 !-CRATES', note: 'THE ! MEANS HIT IT.' },
     { speedMult: 0.95, rewindAt: 0.15, pits: [{ at: 0.36, jumps: 4, fill: 'gears' }] }),
   // THREE TAR PITS, at fixed fractions of the stage. `pits` is a scripted
   // placement, not a pattern: a cabinet's pattern list is shuffled by the
@@ -219,12 +249,12 @@ export const STAGES = [
   // spot that lands on a road puts the letter on that road; the four here are
   // checked against the built roads on every difficulty by tests/mash-letters.js.
   S('plumber', 3,
+    REACH,
     { type: 'mash', n: 4, at: [0.090, 0.235, 0.508, 0.662],
-      desc: 'COLLECT THE LETTERS M-A-S-H. A LETTER YOU TAKE STAYS TAKEN.' },
-    { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
+      desc: 'COLLECT M-A-S-H', note: 'A LETTER YOU TAKE STAYS TAKEN.' },
     { speedMult: 1.0, pits: [{ at: 0.12, w: 52 }, { at: 0.45, w: 58 }, { at: 0.78, w: 64 }] }),
   S('speed', 1,
-    { type: 'reach', desc: 'REACH THE EXIT. NICE AND CLEAR, FOR ONCE.' },
+    REACH,
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },
     { introBy: 'rusty', intro: 'ALREADY FINISHED THIS ONE. I AM WAITING AT THE END. TAKE YOUR TIME.',
       paperPreset: 'cardstockClear' }),
@@ -233,8 +263,8 @@ export const STAGES = [
   // laid inside its guard lane — and 0.14 rather than the 0.25 this used to be,
   // which charged fifteen seconds of replay for a hole in the opening third.
   S('speed', 2,
-    { type: 'chase', n: 3, desc: 'BONK THE CLOWN-COPTER FROM BELOW, 3 TIMES. IT IS UNDERINSURED.' },
-    { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
+    REACH,
+    { type: 'chase', n: 3, desc: 'BONK CLOWN-COPTER', note: 'FROM BELOW, 3 TIMES. IT IS UNDERINSURED.' },
     { pits: [{ at: 0.14, w: 52 }, { at: 0.72, w: 56 }], paperPreset: 'cardstockClear' }),
   // THE THIRD CROSSING, and the one the cabinet's own furniture argues for: a
   // road that files for collapse should have a stretch where it has actually
@@ -259,6 +289,7 @@ export const STAGES = [
   // or low gravity can still reach it from the lane — that is jumping twice. All four are in shot a full screen ahead, so
   // none of them gets an edge marker.
   S('speed', 3,
+    REACH,
     { type: 'mash', n: 4,
       // M is lifted 26 off the top step (Peter: "this is in reach by a single
       // jump" — resting on the step, a strong jumper took it from the lane): at
@@ -268,13 +299,12 @@ export const STAGES = [
       // with both in the crossing they read as one set piece with two letters
       // (Peter: "A & S are too close", twice).
       at: [{ at: 0.167, lift: 26 }, { pit: 0 }, { pit: 1, stone: 3 }, { after: 0.84, dx: 50, alt: 81 }],
-      desc: 'COLLECT M-A-S-H ON THE LAP. A LETTER YOU TAKE STAYS TAKEN.' },
-    { type: 'boosts', n: 5, desc: 'HIT 5 BOOST PADS' },
+      desc: 'COLLECT M-A-S-H', note: 'ON THE LAP. A LETTER YOU TAKE STAYS TAKEN.' },
     { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 5 }], paperPreset: 'cardstockClear' }),
   S('rhythm', 1,
-    { type: 'reach', desc: 'RUN TO THE BEAT. OR NEAR THE BEAT. THE BEAT IS FLEXIBLE.' },
+    REACH,
     { type: 'onbeat', n: 30, desc: '30 ON-BEAT ACTIONS' },
-    { intro: 'THIS CABINET OWES MONEY TO EVERY OTHER CABINET.' }),
+    { intro: 'THE BEAT IS EASY TO FOLLOW. THE CABINET IS HARD TO PLEASE.' }),
   // THE ACT I CROSSING. Four jumps over a spiked break on three stones, at 0.70
   // — just past the second checkpoint (2/3), which is the whole of why it is
   // there rather than in the middle: a set piece that can take several attempts
@@ -288,8 +318,8 @@ export const STAGES = [
   // (a fatal hole you cannot see coming is a wall) and frost is ice, where a
   // landing you do not choose the end of is not a landing.
   S('rhythm', 2,
-    { type: 'reach', desc: 'SURVIVE THE CHORUS. THE BAND IS IN DEBT.' },
-    { type: 'combo', n: 10, desc: 'GET A 10 COMBO' },
+    REACH,
+    { type: 'combo', n: 10, desc: '10 COMBO', note: 'HIT 10 ARROWS ON THE BEAT IN A ROW. YOUR BEST STREAK COUNTS.' },
     // ONLY THE CROSSING. The 0.37 hole that used to stand here was authored when
     // the beat lane cut none of its own; the chart now lays two pairs of holes
     // every sixteen beats (songs/rhythm.js), so a single scripted pit at a fixed
@@ -317,14 +347,15 @@ export const STAGES = [
   // the next, falls from about 48ms to about 13ms. That is the number that runs
   // out first, at around 132bpm.
   S('rhythm', 3,
-    { type: 'chase', n: 3, desc: 'BONK THE COPTER 3 TIMES. IT IS SOMEHOW ON BEAT.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    REACH,
+    { type: 'chase', n: 3, desc: 'BONK CLOWN-COPTER', note: '3 TIMES. IT IS SOMEHOW ON BEAT.' },
     { bpmRamp: 1 }),
   // ACT II --------------------------------------------------------------------
   S('frost', 1,
-    { type: 'reach', desc: 'CROSS THE ICE. THE ICE IS NOT YOUR FRIEND. IT TOLD US.' },
+    REACH,
     { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' },
     { act: 'ACT II. THE EXTENSION CRISIS. EVERYONE IS COLD AND BRAVE.',
+      intro: 'LANDING ON ICE DOESN’T MEAN YOU’VE STOPPED.',
       paperPreset: 'cardstockClear' }),
   // Act II/III pits, and which stages get NONE, on purpose: the blackout
   // stages (crypt-1/3 — a fatal hole inside a light radius is a wall, not a
@@ -337,8 +368,8 @@ export const STAGES = [
   // or a checkpoint (tests/spike-crossing.js), clear of the berg stairs at 0.08
   // and the sky road at 0.55.
   S('frost', 2,
-    { type: 'bridges', n: 4, label: 'BRIDGES', desc: 'BUILD 4 BRIDGES. THE ICE WILL NOT DO IT FOR YOU.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    REACH,
+    { type: 'bridges', n: 4, label: 'BRIDGES', desc: 'BUILD 4 BRIDGES', note: 'THE ICE WILL NOT DO IT FOR YOU.' },
     { pits: [{ at: 0.04, w: 56, switch: true }, { at: 0.36, w: 56, switch: true }, { at: 0.42, w: 60, switch: true }, { at: 0.70, w: 60, switch: true }, { at: 0.76, w: 64, switch: true }], paperPreset: 'cardstockClear' }),
   // Was the fuse run over holes, on ice — plumber-3's design graduated.
   //
@@ -355,22 +386,23 @@ export const STAGES = [
     // And M went up onto the opening two-step island (Peter: "we have islands
     // near the start, perhaps put a letter there?"), on its top step past the
     // shield. The first and third switched pits keep switch and bridge, no letter.
+    REACH,
     { type: 'mash', n: 4, at: [0.0935, { pit: 1 }, 0.591, { pit: 3 }],
-      desc: 'COLLECT M-A-S-H. LOOK HIGH AND LOW.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+      desc: 'COLLECT M-A-S-H', note: 'LOOK HIGH AND LOW.' },
     { pits: [{ at: 0.105, w: 60, switch: true }, { at: 0.37, w: 60, switch: true },
       { at: 0.43, w: 64, switch: true }, { at: 0.74, w: 64, switch: true }],
       paperPreset: 'cardstockClear' }),
   S('crypt', 1,
-    { type: 'blackout', desc: 'SURVIVE THE BLACKOUT. THE DARK IS BUDGETARY.' },
+    REACH,
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { introBy: 'gary', intro: 'MY FORMER COWORKERS ARE WAVING. I OWE SEVERAL OF THEM SHIFTS.' }),
+    { blackout: true, introBy: 'gary', intro: 'MY FORMER COWORKERS ARE WAVING. I OWE SEVERAL OF THEM SHIFTS.' }),
   S('crypt', 2,
-    { type: 'rescue', n: 3, desc: 'ESCORT 3 CONFUSED CABINET RESIDENTS TO SAFETY.' },
+    REACH,
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' }),
   S('crypt', 3,
-    { type: 'blackout', desc: 'SURVIVE A LONGER BLACKOUT. THE BUDGET GOT WORSE.' },
-    { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' }),
+    REACH,
+    { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' },
+    { blackout: true }),
   // THE TRAINS OPEN THE CABINET. Three of them back to back from the start
   // line, which is where they have to be if the arrival cut scene is going to
   // make sense: you watch a train pull in, you are on it, and the stage begins.
@@ -387,8 +419,8 @@ export const STAGES = [
   // scripted pits below are the holes this stage guarantees. Both sit just past
   // a checkpoint, which is the rule every pit on this page obeys.
   S('neon', 1,
-    { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE.' },
-    { type: 'coins', n: 50, desc: 'COLLECT 50 COINS' },
+    REACH,
+    { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS', note: 'THEY ARE VERY DESTROYABLE.' },
     { introBy: 'b33p', intro: 'I FEEL AT HOME HERE. I AM ALSO STILL LOW ON CYAN.',
       trains: [{ at: 0.000, cars: 6 }, { at: 0.040, cars: 6 }, { at: 0.080, cars: 6 }],
       pits: [{ at: 0.37, w: 52 }, { at: 0.71, w: 56 }] }),
@@ -401,6 +433,7 @@ export const STAGES = [
   // would mean a death sending the player back to a boarding they have already
   // done, which is an errand rather than a setback.
   S('neon', 2,
+    REACH,
     // M over the first pit, A on the first train's roof, S INSIDE the second train
     // in the door you step in at, and H on the finish train's roof. Both trains fly in over the hero carrying
     // their letters, which is the telegraph; no edge markers (Peter, 15 Oct).
@@ -414,39 +447,40 @@ export const STAGES = [
       // A at 0.7, clear of the roof's battery (a third along) and its high capsule
       // (over the middle) — at 0.3 it sat on the battery.
       at: [{ pit: 0 }, { train: 0, along: 0.7 }, { train: 1, door: 'rear' }, { train: 2, along: 0.25 }],
-      desc: 'COLLECT THE LETTERS M-A-S-H. A LETTER YOU TAKE STAYS TAKEN.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+      desc: 'COLLECT M-A-S-H', note: 'A LETTER YOU TAKE STAYS TAKEN.' },
     { trains: [{ at: 0.46, cars: 6 }, { at: 0.58, cars: 6 }],
       pits: [{ at: 0.36, w: 52 }, { at: 0.70, w: 56 }] }),
   // Neon has no routes and no loop, so the only geometry these two dodge is the
   // finishing straight — 0.70 is well clear of it. Both sit a couple of seconds
   // past a checkpoint, which is where the replay budget wants them.
   S('neon', 3,
-    { type: 'reach', desc: 'REACH THE END. QUIET NIGHT.' },
+    REACH,
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
     { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
   // ACT III -------------------------------------------------------------------
   S('gravity', 1,
-    { type: 'reach', desc: 'REACH THE AIRLOCK.' },
+    REACH,
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
     { durationSec: 84, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'],
-      act: 'ACT III. THE PLACE WHERE DOWN IS UP. FOLLOW THE ARROWS.' }),
+      act: 'ACT III. THE PLACE WHERE DOWN IS UP. FOLLOW THE ARROWS.',
+      intro: 'THE STATION HAS TWO FLOORS. THE CEILING IS ONE OF THEM.' }),
   // Levels 2 and 3 swapped their gameplay on 13 Oct 2026 (Peter): the cleaner
   // is level 2; low gravity — the station's gravity giving out — is level 3,
   // where the Martian invasion fills the windows.
   S('gravity', 2,
-    { type: 'maintenance', n: 3, desc: 'SURVIVE THREE CLEANING CYCLES.' },
+    REACH,
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
     { intro: 'THE CLEANER HAS MISTAKEN YOU FOR DEBRIS.', durationSec: 100, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'], quiet: true }),
   S('gravity', 3,
-    { type: 'reach', desc: 'CROSS THE LOW-GRAVITY DECK.' },
+    REACH,
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
     { intro: 'LOW GRAVITY. LONG JUMPS. LOOSE HARDWARE.', durationSec: 96, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'], quiet: true }),
   S('office', 1,
-    { type: 'reach', desc: 'GET THROUGH THE OFFICE. THE MEETINGS HAVEN\'T STARTED.' },
+    REACH,
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
     { intro: 'THE PRINTERS SMELL FEAR. AND TONER. MOSTLY TONER.' }),
   S('office', 2,
+    REACH,
     // FOUR ALARMS ON THE WALL, THREE ASKED FOR (Peter, 15 Oct): one before the
     // first checkpoint, one well after it, and the last two close together just
     // before the interview room (0.9) as the last chance — so the third can never
@@ -454,23 +488,21 @@ export const STAGES = [
     // at the line follows close behind. The wall's own
     // DO NOT HIT THE FIRE ALARMS sign introduces them (officeClimb.js).
     { type: 'targets', n: 3, targetType: 'fireAlarm', label: 'ALARMS', at: [0.15, 0.45, 0.82, 0.855],
-      desc: 'PULL 3 FIRE ALARMS. THE MEETING IS CANCELLED.' },
-    // Four machines placed so the bonus can always be had; the lane deals more.
-    { type: 'shoot', n: 4, targetType: 'snackMachine', at: [0.08, 0.28, 0.55, 0.74], desc: 'SHOOT VENDING MACHINES' },
+      desc: 'PULL 3 FIRE ALARMS', note: 'THE MEETING IS CANCELLED.' },
     { quiet: true, introBy: 'eggshell', introSec: 7,
       intro: 'DO NOT TOUCH MY FIRE ALARMS. THE MEETING ENDS WHEN I SAY.' }),
   // CRACK THE SAFES (Peter, 15 Oct): four double-height safes placed on floor 88,
   // three asked for, and one SHOT opens each (Run.crackSafe). Was the escort.
   S('office', 3,
+    REACH,
     { type: 'targets', n: 3, targetType: 'vaultSafe', label: 'SAFES', at: [0.2, 0.4, 0.58, 0.8],
       // Met, and a giant pile of money waits by the exit (Peter, 15 Oct).
       payoff: { prop: 'moneyPile', dx: -150, w: 64, h: 35 },
-      desc: 'CRACK 3 SAFES. SHOOT THE LOCK. TAKE THE MONEY.' },
-    { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
+      desc: 'CRACK 3 SAFES', note: 'SHOOT THE LOCK. TAKE THE MONEY.' },
     // Eggshell introduces the safes himself, by forbidding them (Peter, 15 Oct).
     { introBy: 'eggshell', intro: 'DO NOT SHOOT MY SAFES. THAT MONEY IS FOR TAXES. I AM NOT PAYING THEM.', introSec: 7 }),
   S('surge', 1,
-    { type: 'reach', desc: 'EVERYTHING AT ONCE. KEEP RUNNING.' },
+    REACH,
     { type: 'coins', n: 40, desc: 'COLLECT 40 COINS' },
     { intro: 'THE CABINETS ARE BLEEDING TOGETHER. NOBODY IS ADDRESSING THIS.' }),
   // The crossing again, on the cabinet that is everything at once — and again
@@ -478,20 +510,51 @@ export const STAGES = [
   // second half of a stage: it is a set piece, and a set piece that turns up
   // every other level is furniture.
   S('surge', 2,
-    { type: 'cords', n: 6, desc: 'RECOVER 6 CORD PIECES. THE SOCKET IS WAITING.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    REACH,
+    { type: 'cords', n: 6, desc: 'RECOVER 6 CORD PIECES', note: 'THE SOCKET IS WAITING.' },
     { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 6 }] }),
   // The finale finally has ground that gives way under it — "everything at
   // once" was 116 patterns on a road with no holes.
   S('surge', 3,
-    { type: 'escape', desc: 'OUTRUN THE UNPLUGGENING ITSELF. THE SOCKET IS CLOSE.' },
+    REACH,
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
     { pits: [{ at: 0.07, w: 60 }, { at: 0.40, w: 64 }, { at: 0.72, w: 68 }] }),
 ];
 
+// THE CLOCK's limits (run.js tickClock). Every mission is the finish line, and
+// the clock is what a stage is failed on.
+//
+// THREE LIMITS, not a multiple (Peter: "i would prefer just a few different
+// values"), picked by the stage's length: the minute-long Act I stages, the
+// minute-and-a-half middle of the game, and the long ones. A stage can name its
+// own `timeLimit` in stages.js to step outside its tier.
+export const TIME_TIERS = [
+  { upTo: 60, limit: 100 },        // plumber, speed
+  { upTo: 96, limit: 150 },        // rhythm, frost, crypt, neon, gravity-1 and -3
+  { upTo: Infinity, limit: 200 },  // office, gravity-2, surge
+];
+export function timeLimitFor(stage, durationSec) {
+  if (stage?.timeLimit) return stage.timeLimit;
+  return TIME_TIERS.find((t) => durationSec <= t.upTo).limit;
+}
+// The rank's TIME point: at the tape with at least this much of the clock left.
+export const RANK_TIME_FRAC = 0.25;
+
 export const STAGE_BY_ID = Object.fromEntries(STAGES.map((s) => [s.id, s]));
 // The letters a `mash` mission spells, in the order they stand along the stage.
 export const MASH_LETTERS = ['M', 'A', 'S', 'H'];
+// The whole bonus in one sentence, for the places with room to say it — the
+// briefing card and the pause screen. The HUD prints `desc` on its own and the
+// note only briefly, underneath, at the start of the stage.
+export function bonusSentence(c) { return c?.note ? `${c.desc}. ${c.note}` : c?.desc || ''; }
+// The HUD line. A countable bonus prints its own count beside it (0/6), so the
+// number comes out of the words: BREAK !-CRATES 0/6, not BREAK 6 !-CRATES 0/6
+// (Peter, 17 Oct 2026). The briefing card and the pause screen keep the number.
+export function bonusHudLine(c) {
+  const desc = c?.desc || '';
+  if (!(c?.n > 1)) return desc;
+  return desc.split(' ').filter((w) => w !== String(c.n)).join(' ');
+}
 export function stagesForCabinet(cabId) { return STAGES.filter((s) => s.cabinet === cabId); }
 
 // Plug thresholds (from the spec).

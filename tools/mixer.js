@@ -1835,6 +1835,27 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Startup and song switches need only the song being opened. Reading the whole
+    // library here makes the first usable desk slower with every added song.
+    if (req.method === 'GET' && req.url.startsWith('/mix?')) {
+      const id = new URL(req.url, `http://${HOST}`).searchParams.get('track');
+      if (!id || !/^[a-zA-Z0-9_-]+$/.test(id) || !resolveTrack(id)) {
+        res.writeHead(404); res.end('unknown song'); return;
+      }
+      const file = songFileIn(ROOT, id) || join(ROOT, 'src/data/songs', `${id}.js`);
+      if (!existsSync(file)) {
+        res.writeHead(404); res.end('song file missing'); return;
+      }
+      const mod = await freshImport(file);
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({
+        mix: { [id]: mod.mix ?? null },
+        arrangements: { [id]: mod.arrangement ?? null },
+        m8trx: { [id]: mod.m8trx ?? null },
+      }));
+      return;
+    }
+
     if (req.method === 'GET' && (req.url === '/MRDR3/' || req.url.startsWith('/MRDR3/?'))) {
       const html = await buildMrdr3Page();
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

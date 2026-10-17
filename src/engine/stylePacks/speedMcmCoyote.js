@@ -217,30 +217,12 @@ function yawnShow(u, t, dir, sit = HEAD_SIT, lieAt = HEAD_LIE, markAt = [0, 0]) 
   }
   return [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, p]];
 }
-// The pup's two yips: their mouths open at u CHORUS_YIP_U and CHORUS_YIP_U + CHORUS_YIP_GAP
-// (the positive halves of one sine), and the coyoteYip cue is struck on each.
-const CHORUS_YIP_U = 1.8;
-export const CHORUS_YIP_GAP = 0.5;
-// `pupDx` is how far along the ledge the pup sits (a bigger-headed model wants room).
-function chorusShow(u, t, dir, pupDx = 9.5) {
-  const A = howlAt(rest(t), u, t, 0.8, 3.4);
-  const B = rest(t + 1.3);
-  const upB = smooth(1.6, 1.8, u) * (1 - smooth(3.4, 3.8, u));
-  const yipT = u - CHORUS_YIP_U;
-  const yip = yipT > 0 && yipT < CHORUS_YIP_GAP * 1.5 ? Math.max(0, Math.sin((yipT / (CHORUS_YIP_GAP / 2)) * Math.PI)) : 0;
-  const howlB = u > 2.55 && u < 3.4;
-  B.head.rot = -upB * (howlB ? 1.05 : 0.7) + B.head.rot * (1 - upB);
-  B.head.jaw = howlB ? 0.4 + Math.sin(t * 7.3) * 0.08 : yip * 0.45;
-  B.head.eye = howlB ? 'shut' : 'open';
-  B.rings = howlB ? 1 : yip > 0.3 ? 0.8 : 0;
-  B.ringDir = B.head.rot - 0.1;
+// Both singers share the full solo phrase, with independent idle/vibrato motion.
+function chorusShow(u, t, dir, pupDx = 9.5, beat = 60 / 128) {
+  const A = howlOnce(t, u, beat);
+  const B = howlOnce(t + 1.3, u, beat);
   B.ringRate = 1.9;
   B.ringSize = 0.62;
-  const after = smooth(3.9, 4.3, u) * (1 - smooth(5.2, 5.6, u));
-  A.head.rot = lerp(A.head.rot, 0.62, after);
-  if (after > 0.8) A.head.eye = 'shut';
-  B.head.rot = lerp(B.head.rot, -0.4, after);
-  B.tw += Math.sin(t * 8) * 0.9 * after;
   return [
     [{ ox: -6 * dir, oy: -12.2, s: 1.5, dir }, A],
     [{ ox: pupDx * dir, oy: -11.9, s: 1.1, dir, headScale: 1.12, pup: true }, B],
@@ -528,9 +510,6 @@ const SHOWS = {
   winkWait: { loop: 6, start: 0.2 },
 };
 export const MCM_COYOTE_MODES = ['howl', 'yawn', 'chorus', 'wink'];
-// When the pup's first yip opens, in show seconds after a latched chorus starts (divide by
-// the pace for real ones): stylePacks/index.js places the coyoteYip pair on it.
-export const CHORUS_YIP_AFTER = CHORUS_YIP_U - SHOWS.chorus.start;
 // THE WINK WAITS FOR THE FINISH, as the paper one does (desertLandmarks.js 'winkWait'):
 // until the run says the hero is on the finish pad (`since` null) it sits square on and
 // only blinks; then it plays the wink once and holds this still moment of it.
@@ -588,7 +567,7 @@ export function drawCoyoteModel(ctx, t, x, ledgeTop, facing, K, model, { mode = 
     const u = fract(clock / show.loop) * show.loop;
     cast = mode === 'yawn'
       ? yawnShow(u, t, dir, model.headSit, model.headLie ?? model.headSit, model.marks)
-      : chorusShow(u, t, dir, model.pupDx);
+      : chorusShow(since == null ? t % (8 * beat) : since, t, dir, model.pupDx, beat);
   } else {
     cast = [[{ ox: -3 * dir, oy: -12.2, s: 1.5, dir }, since == null ? howlLoop(t) : howlOnce(t, since, beat)]];
   }

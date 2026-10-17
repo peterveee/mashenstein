@@ -7,7 +7,7 @@ import { W, H, screen } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { drawText, drawTextCentered, drawPanel, textYForMid, textWidth } from '../engine/sprites.js';
 import { setState, currentState } from '../engine/states.js';
-import { STAGES, stagesForCabinet, UNLOCKS } from '../data/stages.js';
+import { STAGES, stagesForCabinet, stageLabel, UNLOCKS } from '../data/stages.js';
 import { CABINETS, CABINET_BY_ID } from '../data/cabinets.js';
 import { GAME_ALTERNATES } from '../data/game-alternates.js';
 import { DESK_SONGS } from './desk-songs.js';
@@ -123,16 +123,15 @@ function instantClear(dev, stage) {
 function instantFail(dev, stage) {
   const { save, Flow } = dev.ctx;
   const cab = CABINET_BY_ID[stage.cabinet];
-  const m = stage.mission;
+  // Every mission is the finish line now, so the way to lose at the end of a
+  // run is the clock.
   const result = {
     ...fakeResult(stage),
-    success: false, reason: 'MISSION INCOMPLETE',
+    success: false, reason: "TIME'S UP",
     score: 4210, coins: 120,
     challengeDone: false, applianceGot: false,
-    failMsg: 'MISSION INCOMPLETE',
-    // Two short of the bar, or blank on the survive-to-the-end types — which
-    // can never actually fail this way, but the preview should still open.
-    failDetail: m.n ? `${m.type.toUpperCase()} ${Math.max(0, m.n - 2)}/${m.n}` : '',
+    failMsg: "TIME'S UP",
+    failDetail: '',
   };
   const gains = applyResult(save, result);
   dev.close();
@@ -194,7 +193,7 @@ function stageActions(dev, stage) {
     })),
   });
   const build = () => ({
-    title: stage.id.toUpperCase(),
+    title: stageLabel(stage),
     items: [
       { label: 'PLAY', act: () => { dev.close(); dev.ctx.Flow.launchStage(cab, stage, [], dev.seedLock ?? undefined); } },
       { label: 'PLAY LAST ▸', submenu: playLast },
@@ -207,8 +206,8 @@ function stageActions(dev, stage) {
       { label: 'INSTANT-CLEAR', act: () => instantClear(dev, stage) },
       { label: 'INSTANT-FAIL', act: () => instantFail(dev, stage) },
       { label: 'BRIEFING', act: () => { dev.close(); setState(new BriefingState({ cab, stage, onDone: () => dev.ctx.Flow.toHub() })); } },
-      { label: `MISSION: ${stage.mission.type}${stage.mission.n ? ' x' + stage.mission.n : ''}`, act: null },
-      { label: `CHALLENGE: ${stage.challenge.type}`, act: null },
+      { label: 'FINISH: REACH THE LINE', act: null },
+      { label: `BONUS: ${stage.challenge.desc}`, act: null },
       { label: `DURATION: ${stage.durationSec}s`, act: null },
     ],
   });
@@ -219,7 +218,7 @@ function cabinetStages(dev, cab) {
   const build = () => ({
     title: cab.name.toUpperCase(),
     items: stagesForCabinet(cab.id).map((s) => ({
-      label: `${s.id}  ${s.mission.type}`,
+      label: stageLabel(s),
       submenu: () => stageActions(dev, s),
     })),
   });
@@ -371,7 +370,7 @@ function scenesMenu(dev) {
       // The losing half of the same screen. Deliberately not STAGES[0]: the
       // shortfall line only has something to say on a counted mission, and
       // plumber-1 is a reach.
-      { label: 'RESULTS (fake mission fail)', act: () => instantFail(dev, STAGES.find((s) => s.mission.n)) },
+      { label: "RESULTS (fake time's up)", act: () => instantFail(dev, STAGES[1]) },
       { label: 'FINALE', act: go(() => Flow.startFinale()) },
       // Every authored text screen in one index — see dev/prose.js for why the
       // rows below cannot cover it (the stage intros have no other route at
@@ -448,7 +447,7 @@ function gameAlternatesMenu(dev) {
           submenu: () => ({
             title: 'GAME LOOP',
             items: stages.map((stage) => ({
-              label: stage.id.toUpperCase(),
+              label: stageLabel(stage),
               act: go(() => { Flow.setGameAlternate(song.id); Flow.launchStage(cab, stage, []); }),
             })),
           }),
@@ -800,7 +799,7 @@ export function rootMenu(dev) {
       { label: 'GRAVITY GRID — PLAYTEST ▸', submenu: () => ({
         title: 'GRAVITY GRID',
         items: stagesForCabinet('gravity').map((stage) => ({
-          label: `${stage.index}. ${stage.mission.desc}`,
+          label: stageLabel(stage),
           act: () => {
             dev.close();
             const cab = CABINET_BY_ID.gravity;

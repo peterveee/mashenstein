@@ -39,10 +39,12 @@ import { drawBoostFx } from './boostFx.js';
 import { paintAlarmPillar } from '../sprites/officeProps.js';
 import { ZAP_T, drawZapHero } from '../sprites/zap.js';
 import { BLAST_T, drawBlastHero } from '../sprites/blast.js';
+import { drawBananaSlip } from '../sprites/bananaSlip.js';
 import { hitPicLife, hitPicShowing, drawHitPicture, drawHitAfter } from '../sprites/hitPictures.js';
 import { drawPitFall } from '../sprites/pitFall.js';
 import { GROUND_Y } from '../engine/camera.js';
 import { PLAYER_X, SLIP_T } from './player.js';
+import { CAT_HIT_T, CAT_HIT_SLASH_T, catHitPose, catHitFlickerAlpha } from './cat-hit.js';
 
 export const HERO_DRAW_W = 18;
 export const HERO_DRAW_H = 24;
@@ -488,6 +490,29 @@ export function drawPowerPose(c, cx, feetY, type, alpha = 1, scale = 1) {
   c.restore();
 }
 
+function drawCatClawSlash(ctx, cx, feetY, age) {
+  const q = Math.max(0, Math.min(1, age / CAT_HIT_SLASH_T));
+  const fade = 1 - q;
+  const y = feetY - HERO_DRAW_H * 0.64;
+  ctx.save();
+  ctx.globalAlpha *= fade;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // The cat is just ahead of the runner; three quick claw tracks rake back
+  // across the near shoulder and cheek on the contact frame.
+  for (let i = 0; i < 3; i++) {
+    const sx = cx + 11 - i * 1.4;
+    const sy = y - 3 + i * 4;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo(sx - 2, sy + 2, sx - 6, sy + 5);
+    ctx.strokeStyle = i === 1 ? '#fff4f8' : '#ff4d76';
+    ctx.lineWidth = i === 1 ? 1.8 : 1.25;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts = {}) {
   // Heroes are procedurally animated vector toons (sprites/toons.js).
   // During play they render ABOVE the low-res backbuffer at device resolution
@@ -512,18 +537,29 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // only for the picture itself.
   const hitW = zapW < 0 && blastW < 0 && player.hitPic && player.hitPicT > 0 ? hitPicLife(player.hitPic) - player.hitPicT : -1;
   const hitPicUp = hitW >= 0 && hitPicShowing(player.hitPic, hitW);
+  // The banana peel's hop (sprites/bananaSlip.js) likewise — mutually exclusive with the
+  // above by construction (run.js never sets slipT alongside zapT/blastT/hitPic).
+  const slipW = player.slipT > 0 ? SLIP_T - player.slipT : -1;
   // A pit (sprites/pitFall.js: the hang, the fingertips, the drop, the bottom's answer,
   // a ledge save's mantle) is its own picture, set by the run on player.pitFall.
   const pitFall = player.pitFall || null;
-  const blink = !starLeft && !pitFall && zapW < 0 && blastW < 0 && !hitPicUp && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
+  const catHitAge = player.catHitT > 0 ? CAT_HIT_T - player.catHitT : -1;
+  const catIframes = player.catIframesT > 0;
+  const catAlpha = catHitFlickerAlpha(t, player.catIframesT);
+  const blink = !catIframes && !starLeft && !pitFall && zapW < 0 && blastW < 0 && !hitPicUp && slipW < 0
+    && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0;
   if (blink && !(opts.contactShadow > 0) && hitW < 0) return;
   // opts.pose patches the derived pose. The controller only ever reports run /
   // jump / slide, because those are the only things a hero does while a stage is
   // moving — a scene that has STOPPED the world (training's epilogue) has to be
   // able to say "stand there and wave", or the hero holds whatever stride frame
   // the treadmill died on.
-  const pose = opts.pose ? { ...poseFromPlayer(player, t), ...opts.pose } : poseFromPlayer(player, t);
+  let pose = opts.pose ? { ...poseFromPlayer(player, t), ...opts.pose } : poseFromPlayer(player, t);
   if (Number.isFinite(opts.animationPhase) && opts.pose?.phase == null) pose.phase = opts.animationPhase;
+  if (catHitAge >= 0) pose = catHitPose(pose, catHitAge);
+  // Persistent cuts are part of the head painter so they follow the character's
+  // face and stay clipped to its silhouette through every pose and blink.
+  if (catIframes) pose = { ...pose, catClawMarks: true };
   // THE GROUND UNDER EACH FOOT. `groundDelta` already existed for the boost
   // effect's chevrons, which shear to lie along a hill; the rig never got it,
   // so the hero's feet planted on a level line however the terrain ran. Handing
@@ -546,20 +582,6 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // backwards, and the run cycle carrying on underneath is exactly the picture
   // of legs still going while the rest of him is no longer above them.
   //
-  // Rotated about the FEET, not the middle: a pivot at the waist swings the
-  // boots up through the floor, and the floor is the one thing in the shot the
-  // player is using to read where he is.
-  //
-  // The curve is a single arc out and back — sin over the whole clock — so he
-  // is upright again on the frame control returns. A tumble that was still
-  // unwinding after the stumble cleared read as lag rather than as a fall.
-  const slipQ = SLIP_T > 0 ? Math.max(0, Math.min(1, (player.slipT || 0) / SLIP_T)) : 0;
-  // Backwards, and not all the way over: at a full quarter turn he is lying on
-  // the floor and the whole silhouette stops reading as the hero. This is the
-  // moment his heels went out, held long enough to be seen.
-  const slipAngle = slipQ > 0
-    ? Math.sin(slipQ * Math.PI) * 0.62
-    : 0;
   const paintFigure = (c) => {
     let starFade = 1;
     // A boost variant paints the hero itself (ordering is the whole point of
@@ -598,6 +620,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       });
     } else if (zapW >= 0 && !boostPainted) drawZapHero(c, heroId, cx, feetY, zapW, t, { xray: player.zapXray });
     else if (blastW >= 0 && !boostPainted) drawBlastHero(c, heroId, cx, feetY, blastW, t);
+    else if (slipW >= 0 && !boostPainted) drawBananaSlip(c, heroId, cx, feetY, slipW, t, pose);
     else if (hitPicUp && !boostPainted) drawHitPicture(c, player.hitPic, heroId, cx, feetY, hitW, t, pose);
     else if (!boostPainted) drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
     // opts.specialOrb false hides the readiness orb. A run always wants it —
@@ -651,20 +674,17 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       drawPowerPose(c, cx, feetY, player.powerType, Math.min(1, player.powerPoseT * 5));
     }
   };
-  // No slip, no transform at all: the ordinary frame pays nothing for this.
-  const paintBody = slipAngle === 0 ? paintFigure : (c) => {
-    c.save();
-    c.translate(cx, feetY);
-    c.rotate(-slipAngle);
-    c.translate(-cx, -feetY);
-    paintFigure(c);
-    c.restore();
-  };
+  // No outer transform here any more: the slip used to tip the whole painted
+  // figure back as a wrapper around it, but the picture (sprites/bananaSlip.js)
+  // now turns him about his hips INSIDE its own offscreen layer, the way the
+  // zap and the blast already do — so paintBody is just paintFigure.
+  const paintBody = paintFigure;
   // THE SHADOW IS THE GROUND, so it sits outside both of the things that happen
-  // to the FIGURE. Outside the pratfall rotation, because that turns the whole
-  // hero about his heels and a shadow that tilts with him is a floor tilting.
-  // And outside the i-frame blink, because a flickering shadow reads as the
-  // ground glitching rather than as the hero being briefly untouchable.
+  // to the FIGURE. Outside any picture's own turn — the peel's hop, the zap's
+  // jolt, the blast's flip — because a shadow that tilted with one would be a
+  // floor tilting. And outside the i-frame blink, because a flickering shadow
+  // reads as the ground glitching rather than as the hero being briefly
+  // untouchable.
   //
   // `contactShadow` is the share of the footprint with floor under it, so the
   // caller decides both whether there is a shadow at all and whether the hero is
@@ -675,6 +695,8 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
         player.y, opts.contactShadow);
     }
     if (!blink) {
+      c.save();
+      c.globalAlpha *= catAlpha;
       const transform = player.drawTransform?.();
       if (transform) {
         c.save();
@@ -696,7 +718,9 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
           }
         }
       } else paintBody(c);
+      c.restore();
     }
+    if (catHitAge >= 0 && catHitAge < CAT_HIT_SLASH_T) drawCatClawSlash(c, cx, feetY, catHitAge);
     // The hit picture's after — the stars and birdies, the smoke, the shards — over the
     // blink, which hides the hero but not what is going round his head.
     if (hitW >= 0 && !hitPicUp && !pitFall) drawHitAfter(c, player.hitPic, heroId, cx, feetY, hitW, t);

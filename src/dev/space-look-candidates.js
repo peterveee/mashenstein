@@ -1115,6 +1115,27 @@ function gatePanes(gates, cam, view, fk = 1) {
   run(last, last + PANE.step * Math.max(1, Math.ceil((cam + view + PANE.step - last) / PANE.step)));
   return out;
 }
+function roomPanes(look, gates, cam, view) {
+  if (look.gatePanes) return gatePanes(gates, cam, view, frameOf(look));
+  const out = [];
+  for (let i = Math.floor(cam / PANE.step) - 1; i * PANE.step < cam + view + PANE.step; i++) {
+    out.push([i * PANE.step - cam + PANE.off, PANE.w]);
+  }
+  return out;
+}
+function finishWalkerPane(look, gates, cam, view) {
+  const panes = roomPanes(look, gates, cam, view);
+  if (!panes.length) return null;
+  const pitch = panes.length > 1 ? panes[1][0] - panes[0][0] : PANE.step * frameOf(look);
+  const target = view * 0.5 - pitch;
+  // A one-window-left target can land in a pane clipped by the phone edge.
+  // Pick the nearest pane that stays fully inside the finish frame instead.
+  const safe = panes.filter(([x, w]) => x >= 8 && x + w <= view - 8);
+  const choices = safe.length ? safe : panes;
+  const pane = choices.reduce((best, p) =>
+    Math.abs(p[0] + p[1] / 2 - target) < Math.abs(best[0] + best[1] / 2 - target) ? p : best);
+  return pane[0] + pane[1] / 2 - 2;
+}
 
 // Same call shape as drawGravityRoom, so the run swaps one for the other.
 export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = GATES, hintGates = new Set(), progress = null, length = L.length, stage = 1, finishCam = null, noGates = false, holdT = 0, speed = 120, finishLine = null, portrait = false, lane = 0, gateLane = 0 }) {
@@ -1128,6 +1149,10 @@ export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = G
   // whole, for the finish hold (Peter, 13 Oct).
   const fc = finishCam ?? length * 0.97;
   s.finishProgress = fc / length;
+  // Anchor level 1's finish astronaut to a window chosen at the parked camera.
+  // Re-picking from only the currently visible panes can send him into a pane
+  // clipped by the portrait edge just as the finish arrives.
+  s.finishWalkerPaneX = finishWalkerPane(look, gates, fc, view);
   // He rests a screen before the finish (Peter, 13 Oct), so the hold shows
   // only the saucer: centred in a window at that earlier camera.
   const loneCam = fc - view / 0.6;
@@ -1153,8 +1178,7 @@ export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = G
     s.sceneS = 1.3;
   }
   look.hull(c, s);
-  const panes = look.gatePanes ? gatePanes(gates, cam, view, frameOf(look)) : [];
-  if (!look.gatePanes) for (let i = Math.floor(cam / PANE.step) - 1; i * PANE.step < cam + view + PANE.step; i++) panes.push([i * PANE.step - cam + PANE.off, PANE.w]);
+  const panes = roomPanes(look, gates, cam, view);
   s.panes = panes;   // screen [x, w] of each window, for things that must sit inside one
   c.save(); c.beginPath(); for (const [x, w] of panes) look.paneClip(c, x, w); c.clip();
   if (s.sceneS > 1) {
@@ -1167,6 +1191,7 @@ export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = G
     // length too: stage-timed things travel (progress × length) in vista units,
     // and must cross the screen at the room's own speed.
     const sv = { ...s, length: s.length / S, view: s.view / S, cam: s.cam / S, top: dy(s.top), bottom: dy(s.bottom), finishLine: d(s.finishLine),
+      finishWalkerPaneX: d(s.finishWalkerPaneX),
       loneRestX: d(s.loneRestX), finishPaneX: d(s.finishPaneX), panes: s.panes.map(([x, w]) => [x / S, w / S]), glassTop: dy(s.glassTop), glassBottom: dy(s.glassBottom) };
     c.translate(0, B); c.scale(S, S); c.translate(0, -G); look.vista(c, sv);
   } else look.vista(c, s);

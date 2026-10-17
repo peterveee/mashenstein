@@ -726,7 +726,9 @@ function poster(g, h, P) {
     // The whole kitten, paws to toes, fits above the caption band.
     g.save();
     g.translate(kx, iy);
-    g.scale(0.62, 0.62);
+    // Leave a clear margin above the caption so both hind paws and the curled tail
+    // stay fully inside the illustrated panel at the hanging poster size.
+    g.scale(0.56, 0.56);
     g.translate(-kx, -iy);
     const fur = '#858a98';
     const furLight = '#b8bac5';
@@ -813,6 +815,9 @@ function poster(g, h, P) {
     ell(g, kx + 1.7, headY - 0.28, 0.28, 0.83, '#272731', null, 0);
     circ(g, kx - 1.9, headY - 0.9, 0.28, '#ffffff');
     circ(g, kx + 1.5, headY - 0.9, 0.28, '#ffffff');
+    // Raised inner brows and a small downturned mouth make the kitten look worried.
+    lines(g, [kx - 2.9, headY - 2.25, kx - 0.8, headY - 3.0,
+      kx + 0.8, headY - 3.0, kx + 2.9, headY - 2.25], outline, 0.58);
     lines(g, [kx - 0.7, headY - 4.2, kx - 0.25, headY - 3.2, kx + 0.05, headY - 4.25, kx + 0.35, headY - 3.2, kx + 0.75, headY - 4.1, kx + 0.62, headY - 3.1], furDark, 0.65);
     ell(g, kx - 1.2, headY + 2.05, 1.75, 1.35, '#e5e1e8', null, 0);
     ell(g, kx + 1.2, headY + 2.05, 1.75, 1.35, '#e5e1e8', null, 0);
@@ -820,9 +825,9 @@ function poster(g, h, P) {
     line(g, kx, headY + 2.25, kx, headY + 2.8, outline, 0.38);
     g.beginPath();
     g.moveTo(kx, headY + 2.8);
-    g.quadraticCurveTo(kx - 1.1, headY + 3.6, kx - 1.75, headY + 2.95);
+    g.quadraticCurveTo(kx - 1.1, headY + 3.15, kx - 1.75, headY + 3.85);
     g.moveTo(kx, headY + 2.8);
-    g.quadraticCurveTo(kx + 1.1, headY + 3.6, kx + 1.75, headY + 2.95);
+    g.quadraticCurveTo(kx + 1.1, headY + 3.15, kx + 1.75, headY + 3.85);
     pen(g, outline, 0.4);
     g.stroke();
     lines(g, [kx - 2.4, headY + 2.1, kx - 5.6, headY + 1.3, kx - 2.5, headY + 2.8, kx - 5.5, headY + 3.2, kx + 2.4, headY + 2.1, kx + 5.6, headY + 1.3, kx + 2.5, headY + 2.8, kx + 5.5, headY + 3.2], furDark, 0.38);

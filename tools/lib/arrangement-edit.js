@@ -28,7 +28,7 @@
 // Every function returns a NEW draft; none of them modify the one passed in, so the
 // desk's undo is a snapshot and nothing more.
 import {
-  expandOrder, orderOf, resolveSection, BAR_MAPS, SWING_MAX, SWING_STRAIGHT,
+  expandOrder, orderOf, resolveSection, BAR_MAPS, SWING_MAX, SWING_STRAIGHT, TRANSPOSE_MAX,
   FINE_RESOLUTION, resolutionOf, RESOLUTIONS, LEGACY_RESOLUTION, promoteResolution,
 } from '../../src/data/arrangements.js';
 
@@ -130,6 +130,9 @@ export function draftOf(bank, entry = null) {
     // means "as composed" — straight, for every song in the game so far — rather than 50,
     // so `entryOf` can tell a song nobody has swung from one dragged back to straight.
     swing: entry?.swing ?? null,
+    // The song-wide key shift in semitones, the same way: null means "in the key it is
+    // written in". One number for the song, never spread onto its bars.
+    transpose: entry?.transpose ?? null,
     // The kit's choke channels, lane -> channel. One setting per track for the whole
     // song, so it sits here with the tempo and the swing rather than on a bar: a kit
     // does not re-wire itself halfway through a chorus.
@@ -226,6 +229,7 @@ export function entryOf(bank, draft) {
   const bpm = draft.bpm != null && draft.bpm !== bank.bpm ? draft.bpm : null;
   const composedSwing = bank.swing ?? SWING_STRAIGHT;
   const swing = draft.swing != null && draft.swing !== composedSwing ? draft.swing : null;
+  const transpose = draft.transpose ? draft.transpose : null;
   const same = JSON.stringify(order) === JSON.stringify(orderOf(bank));
   const loop = draft.loop || null;
   // Zeroes are dropped rather than written: "not choked" is the absence of the key, so a
@@ -252,10 +256,12 @@ export function entryOf(bank, draft) {
   // swing is — and a line taken back off compacts to no key at all.
   const automation = hasAutomation(draft.automation) ? clone(draft.automation) : null;
   if (same && !compacted.sections.length) {
-    if (bpm == null && swing == null && !loop && resolution == null && !choke && !automation) return null;
+    if (bpm == null && swing == null && transpose == null && !loop && resolution == null
+      && !choke && !automation) return null;
     return {
       ...(bpm == null ? {} : { bpm }),
       ...(swing == null ? {} : { swing }),
+      ...(transpose == null ? {} : { transpose }),
       ...(choke ? { choke } : {}),
       ...(loop ? { loop } : {}),
       ...(resolution == null ? {} : { resolution }),
@@ -266,6 +272,7 @@ export function entryOf(bank, draft) {
   if (compacted.sections.length) out.sections = compacted.sections;
   if (bpm != null) out.bpm = bpm;
   if (swing != null) out.swing = swing;
+  if (transpose != null) out.transpose = transpose;
   if (choke) out.choke = choke;
   if (loop) out.loop = loop;
   if (resolution != null) out.resolution = resolution;
@@ -574,6 +581,18 @@ export function setSwing(draft, swing) {
 }
 
 /**
+ * Play every pitched part of the song `semitones` up (or down) — or, with null or 0, in
+ * the key it is written in. One number for the whole song, saved on the arrangement
+ * beside the tempo and the swing; the bars and their own transposes are untouched.
+ */
+export function setSongTranspose(draft, semitones) {
+  const out = copy(draft);
+  const n = Math.round(Number(semitones) || 0);
+  out.transpose = n ? Math.max(-TRANSPOSE_MAX, Math.min(TRANSPOSE_MAX, n)) : null;
+  return out;
+}
+
+/**
  * Where the song starts and what it repeats — `{ startBar, fromBar, toBar }` in 1-based
  * inclusive bars, or null for the whole form round and round.
  *
@@ -706,7 +725,7 @@ export function planToOrder(plan) {
 // warning `loop` carries in `draftOf`, and the reason `choke` is spelled out too.
 const copy = (draft) => ({
   plan: draft.plan.map(copyBar), sections: clone(draft.sections), bpm: draft.bpm ?? null,
-  swing: draft.swing ?? null, loop: clone(draft.loop ?? null),
+  swing: draft.swing ?? null, transpose: draft.transpose ?? null, loop: clone(draft.loop ?? null),
   choke: clone(draft.choke ?? null),
   automation: hasAutomation(draft.automation) ? clone(draft.automation) : null,
   resolution: fineOr(draft.resolution),

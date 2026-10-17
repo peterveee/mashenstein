@@ -42,7 +42,7 @@ function assert(cond, msg) {
 
 save.load(); save.newSlot(0, 0);
 const TICK = 1 / 60, MAX = 60 * 60 * 4;
-const CHASES = STAGES.filter((s) => s.mission.type === 'chase');
+const CHASES = STAGES.filter((s) => s.challenge?.type === 'chase');
 
 // The highest copter alt a punted barrel can touch, from the arc rather than
 // from a number typed twice — the same derivation run.js makes.

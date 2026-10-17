@@ -19,6 +19,7 @@ import { toonFaceSprite } from '../sprites/toons.js';
 import { KANA_FACE, KANA_WEIGHT } from '../engine/kana.js';
 import { drawProp, drawHudBattery, hudBatteryW } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
+import { bonusHudLine } from '../data/stages.js';
 import { POWER_DEFS } from './powerups.js';
 import { HERO_CENTER_OFF } from './draw.js';
 import { Input } from '../engine/input.js';
@@ -30,7 +31,6 @@ import {
   portraitHudLayout, portraitChatScale, PORTRAIT_CHAT_MAX_LINES,
   PORTRAIT_CHAT_ROW, PORTRAIT_CHAT_PADDING,
   PORTRAIT_FLOATIE_MAX_LINES, PORTRAIT_FLOATIE_ROW, PORTRAIT_FLOATIE_PADDING,
-  portraitObjectiveSlide,
   portraitVisibleControlIds,
   PORTRAIT_OBJECTIVE_NOTICE_ENTRY_SEC, PORTRAIT_OBJECTIVE_NOTICE_EXIT_SEC,
 } from './portrait-layout.js';
@@ -895,28 +895,46 @@ export const BONUS_HOLD = 3;
 // incoming rhythm prompts again.
 export const RHYTHM_BONUS_TIME = 3;
 const BONUS_FOLD = 0.55;
+// THE PANEL ONLY FOLDS ON A BEAT STAGE NOW. It folded everywhere when GOAL and
+// BONUS were two rows up there and the corner could not afford two sentences;
+// with GOAL gone the bonus is the only thing on that side of the top row, so the
+// line stays whole (Peter, 17 Oct 2026). A beat stage still folds because the
+// ribbon shares the row and the sentence would stand on its far end.
+const bonusFoldFor = (run) => (run?.beatLock ? bonusPanelFold(run) : 0);
 
-// GOAL-panel display labels. The counted missions (targets/cords/chase/rescue/
-// combo) fall through to the raw type name because the count printed beside it
-// carries the meaning. The four survive-to-the-end types have no count, so a
-// bare "REACH"/"FUSE"/"BLACKOUT"/"ESCAPE" reads as an incomplete instruction —
-// spell out what "done" is instead.
-const GOAL_LABELS = {
-  // Not CHASE, and no longer HIT: the mission is a BONK, the hero's own head
-  // into the underside of the tub, and this panel is where that is taught. A
-  // barrel put through him counts as one too, but the bonk is the thing the
-  // player is being asked to do and the word the stage descriptions use.
-  chase: 'BONK',
-  reach: 'REACH END',
-  fuse: 'CARRY FUSE',
-  blackout: 'SURVIVE',
-  escape: 'ESCAPE',
-  maintenance: 'CYCLES',
-  // The letters themselves are the count — see mashTail.
-  mash: 'COLLECT',
-};
-// A mission may name its own count (`label` in data/stages.js: office-2's ALARMS,
-// office-3's SAFES), which wins over the type's word here.
+// THE BONUS NOTE — the challenge's second line (stage.challenge.note), the joke
+// or the how-to that used to ride on the end of the sentence and made it too
+// long for the panel. It shows once, smaller, under the panel at the start of
+// the stage, then fades; the pause screen and the briefing card keep it whole.
+export const BONUS_NOTE_TIME = 5;
+const BONUS_NOTE_FADE = 0.6;
+const BONUS_NOTE_S = 0.8;
+const BONUS_NOTE_H = 12;
+function bonusNoteAlpha(run) {
+  const c = run?.challenge;
+  if (!c?.note || c.failed || !(run.bonusNoteT > 0)) return 0;
+  return Math.min(1, run.bonusNoteT / BONUS_NOTE_FADE);
+}
+// Hangs off `right` when given, otherwise stands on `left`. A note wider
+// than `maxWidth` (the portrait column) wraps to a second line.
+function drawBonusNote(ctx, run, y, { right = null, left = null, alpha = 1, maxWidth = Infinity } = {}) {
+  const a = bonusNoteAlpha(run) * alpha;
+  if (a <= 0) return;
+  const TP = 5, LINE = 10;
+  const text = run.challenge.note;
+  const lines = textWidth(text, BONUS_NOTE_S) + TP * 2 <= maxWidth
+    ? [text] : wrapText(text, maxWidth - TP * 2, BONUS_NOTE_S, 2);
+  const w = Math.round(Math.max(...lines.map((l) => textWidth(l, BONUS_NOTE_S))) + TP * 2);
+  const h = BONUS_NOTE_H + (lines.length - 1) * LINE;
+  const x = right != null ? right - w : left;
+  ctx.save();
+  ctx.globalAlpha *= a;
+  drawPanel(ctx, x, y, w, h, 4, undefined, PANEL);
+  lines.forEach((l, i) => rawDrawText(ctx, l, x + TP,
+    textY(y + BONUS_NOTE_H / 2 + i * LINE, BONUS_NOTE_S), 'rgba(255,255,255,0.8)', BONUS_NOTE_S));
+  ctx.restore();
+}
+
 // THE M-A-S-H READOUT. The four letters stand in the count's slot, each in the
 // ink of where it is: gold once taken this run, silver if banked on an earlier
 // attempt (it counts; it is just not this run's), red once it has gone past
@@ -1255,7 +1273,7 @@ export function bonusPlacement(fold, goalLeft, slot = BONUS_SLOT) {
 // permanent furniture rather than off the temporary plate.
 function leftColumnTop(run) {
   const base = run?.beatLock ? BEAT_RIBBON_BOTTOM + 3 : PILL_Y + PILL_H + 3;
-  return Math.max(base, heroIconBottom() + 3);
+  return Math.max(base, heroIconBottom() + 3) + (clockBelowPill(run) && clockText(run) ? PILL_H + 3 : 0);
 }
 
 // Whether the column's first row is spoken for this frame — the one thing the
@@ -1265,7 +1283,7 @@ function leftColumnTop(run) {
 // toast and the finish plate are passing, so it shows on the hand-offs that do
 // not collide with one.
 function leftColumnBusy(run) {
-  return !!(run?.oneHit
+  return !!((clockBelowPill(run) && clockText(run)) || run?.oneHit
     || (run?.goalToasts && run.goalToasts[0])
     || (run?.flipCoins && run.flipCoins.left > 0));
 }
@@ -1334,7 +1352,51 @@ function statusPillW(run, style = HERO_CHIP) {
   // A chip that lives INSIDE the pill replaces the meter's inset with its own
   // lead — it already ends in the gap the cells would have been inset by.
   const lead = heroChipGeom(style, run).lead || meterInset(cells);
-  return lead + cellsW + splitGap(cells) + COIN_D + 3 + countW + PILL_TUNE.pad;
+  return lead + cellsW + splitGap(cells) + COIN_D + 3 + countW + (clockBelowPill(run) ? 0 : clockW(run)) + PILL_TUNE.pad;
+}
+
+// THE CLOCK, in the pill after the coins (Peter, 17 Oct 2026: "no, i don't
+// want two rows in the top hud.. how about near the coins"). Plain seconds
+// counting down ("make the timer countdown seconds to be simpler to
+// understand"), in the same tabular cells as the coin count, right-aligned in a
+// slot as wide as the limit so the pill never twitches as it drops a digit.
+// Null on a run with no clock (overtime, bosses, the tutorial, ?noclock).
+const CLOCK_D = 11, CLOCK_GAP = 7;
+// Landscape rhythm needs the original narrow status corner beside the playhead.
+function clockBelowPill(run) {
+  return !!run?.beatLock && !isPhonePortraitPresentation();
+}
+export function clockText(run) {
+  const t = typeof run?.timeLeft === 'function' ? run.timeLeft() : null;
+  if (t == null) return null;
+  return String(Math.ceil(t));
+}
+function clockSlotW(run) {
+  return coinCountW(String(Math.ceil(run.timeLimit || 0)));
+}
+function clockW(run) {
+  const text = clockText(run);
+  return text ? CLOCK_GAP + CLOCK_D + 3 + clockSlotW(run) : 0;
+}
+// A stopwatch: a ring, a crown and one hand that sweeps once a second, so the
+// glyph says "time" without a word, and moving says it is running.
+function drawStopwatch(ctx, x, cy, color, t) {
+  const r = CLOCK_D / 2 - 1, cx = x + CLOCK_D / 2, y = cy + 0.5;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillRect(cx - 1.5, y - r - 2.5, 3, 1.5);
+  const a = -Math.PI / 2 + (((t % 1) + 1) % 1) * Math.PI * 2;
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  ctx.moveTo(cx, y);
+  ctx.lineTo(cx + Math.cos(a) * (r - 1.5), y + Math.sin(a) * (r - 1.5));
+  ctx.stroke();
+  ctx.restore();
 }
 
 // THE WHOLE CORNER'S WIDTH — the hero icon's column plus the pill beside it,
@@ -1915,6 +1977,29 @@ export function drawStatusPill(ctx, run, style = HERO_CHIP, reveal = HERO_REVEAL
   // source, this is the destination, and for a second they are the same colour.
   const paying = run.flipCoins && run.flipCoins.left > 0;
   drawTabularCount(ctx, count, x + COIN_D + 3, textY(PILL_CY), paying ? '#f6d33c' : '#ffffff');
+  const clock = clockText(run);
+  if (clock) {
+    const inked = coinCountW(count);
+    const below = clockBelowPill(run);
+    const cy = below ? PILL_CY + PILL_H + 3 : PILL_CY;
+    const cx = below ? PILL_X + PILL_TUNE.pad
+      : x + COIN_D + 3 + (PILL_TUNE.floor ? Math.max(inked, coinCountW('00')) : inked) + CLOCK_GAP;
+    if (below) {
+      drawPanel(ctx, PILL_X, cy - PILL_H / 2,
+        PILL_TUNE.pad * 2 + CLOCK_D + 3 + clockSlotW(run), PILL_H, PILL_R, undefined, PANEL);
+    }
+    // Red for the hurry-up, and it blinks off for a beat each second so the
+    // corner pulls the eye the way the song now does.
+    const left = run.timeLeft();
+    const hurry = run.hurried;
+    const ink = hurry ? '#ff5a4a' : '#ffffff';
+    // Not while it pays out at the tape: that is a tally, not a warning.
+    const blink = hurry && left > 0 && (left % 1) < 0.18 && !run.finishing && run.finaleT == null;
+    if (!blink) {
+      drawStopwatch(ctx, cx, cy, ink, run.clockT || 0);
+      drawTabularCount(ctx, clock, cx + CLOCK_D + 3 + clockSlotW(run) - coinCountW(clock), textY(cy), ink);
+    }
+  }
   // One-hit runs have no cells to show, so the pill states the terms instead —
   // on its own panel under it, red-edged, where the row of cells would have
   // been. A panel rather than a bare plated line: it is a standing readout of
@@ -2108,35 +2193,28 @@ function portraitTrim(text, maxWidth, scale = 1) {
   return out === String(text ?? '') ? out : `${out.slice(0, -2)}..`;
 }
 
-function portraitGoalText(run) {
-  if (!run?.stage) return 'READY';
-  if (run.overtime) return 'OVERTIME';
-  const m = run.mission || {};
-  if (m.type === 'mash' && m.letters) {
-    return `MASH ${m.letters.map((l) => (l.got || l.banked ? l.letter : '_')).join('')}`;
-  }
-  const label = m.label ?? GOAL_LABELS[m.type] ?? String(m.type || 'GOAL').toUpperCase();
-  const count = m.n
-    ? (m.type === 'chase' && typeof run.missionCount === 'function'
-      ? run.missionCount() : (m.count ?? 0))
-    : null;
-  return count == null ? label : `${label} ${count}/${m.n}`;
-}
-
+// [tag, [head, tail, widest], tagColor, ink]: the sentence AND the live part,
+// for the whole stage, the way the landscape row prints it. Only the head is
+// ever trimmed to fit (see the caller) — the count is the part worth keeping.
 function portraitBonusText(run) {
   const c = run?.challenge;
   if (!c) return null;
   if (c.failed) return ['BONUS', 'NOT THIS TIME', '#a8a0b0', 'rgba(255,255,255,0.45)'];
-  const clock = run?.beatLock ? run.rhythmBonusT : run.bonusT;
-  const open = Number(clock) > 0;
+  const desc = bonusHudLine(c);
   if (c.type === 'noDamage') {
     const done = run.damageTaken === 0 && run.distance > 0;
-    return ['BONUS', done ? 'OK' : (open ? c.desc || 'NO DAMAGE' : 'NO DAMAGE'),
+    return ['BONUS', done ? [`${desc} `, 'OK', 'OK'] : [desc || 'NO DAMAGE', '', ''],
       done ? '#74c947' : '#f6c945', '#ffffff'];
   }
   const n = Number(c.n) || 0;
   const count = Math.min(Number(c.count) || 0, n);
-  return ['BONUS', open ? (c.desc || `${count}/${n}`) : `${count}/${n}`,
+  if (c.type === 'mash' && c.letters && count < n) {
+    const word = c.letters.map((l) => (l.got || l.banked ? l.letter : '_')).join(' ');
+    return ['BONUS', [`${desc}  `, word, word], '#f6c945', '#ffffff'];
+  }
+  const best = c.type === 'combo' ? 'BEST ' : '';
+  const tail = count >= n ? 'OK' : `${best}${count}/${n}`;
+  return ['BONUS', [`${desc} `, tail, count >= n ? 'OK' : `${best}${widestDigit().repeat(String(n).length)}/${n}`],
     count >= n ? '#74c947' : '#f6c945', '#ffffff'];
 }
 
@@ -2295,7 +2373,6 @@ function drawPortraitHud(ctx, run) {
     rhythmStage,
     oneHit: run?.oneHit === true,
   });
-  const objectiveSlide = portraitObjectiveSlide(run?.tRun);
   // `layout` is expressed in logical canvas pixels.  The frame's scale is the
   // CSS conversion; panelScale is the authored enlargement needed to keep the
   // same glyphs readable after that conversion on a phone.
@@ -2367,36 +2444,31 @@ function drawPortraitHud(ctx, run) {
     ctx.beginPath();
     ctx.rect(0, layout.sceneryTop, W, Math.max(0, H - layout.sceneryTop));
     ctx.clip();
-    // The opening objective read also leaves through the left edge now that
-    // the portrait stack is a left-aligned column.
     const maxText = Math.max(90, (layout.right - layout.left) / s - 22);
-    const goalText = portraitTrim(portraitGoalText(run), maxText, 1);
-    const goalWidth = objectivePanelMetrics('GOAL', goalText, 1, 0).width;
     const objectiveLeft = layout.left / s;
-    const goalRight = objectiveLeft + goalWidth;
-    ctx.save();
-    ctx.translate(-((layout.left + goalWidth * s + 8) * objectiveSlide),
-      layout.goalY - OBJ_ROW_Y * s);
-    ctx.scale(s, s);
-    const goalLeft = drawObjectivePanel(ctx, 'GOAL', '#74c947', goalText, '#ffffff',
-      OBJ_ROW_Y, 1, 0, goalRight);
-    ctx.restore();
-    run.hudGoalLeft = goalLeft * s;
-    objLeft = Math.min(objLeft, run.hudGoalLeft);
-
-    const bonus = portraitBonusText(run);
+    // NO GOAL ROW: every mission is the finish line and the clock is in the
+    // pill (Peter, 17 Oct 2026). The bonus takes the row GOAL had; overtime,
+    // which has no bonus, still names itself there.
+    const bonus = run.overtime ? ['MODE', 'OVERTIME', '#b888f0', '#ffffff'] : portraitBonusText(run);
     if (bonus) {
       const [tag, text, tagColor, ink] = bonus;
-      const bonusText = portraitTrim(text, maxText, 0.9);
-      const bonusFullWidth = objectivePanelMetrics(tag, bonusText, 0.9, 0).width;
+      const bonusText = Array.isArray(text)
+        ? [portraitTrim(text[0].trimEnd(), maxText - textWidth(`  ${text[2]}`), 1) + text[0].match(/\s*$/)[0], text[1], text[2]]
+        : portraitTrim(text, maxText, 1);
+      const bonusFullWidth = objectivePanelMetrics(tag, bonusText, 1, 0).width;
       const expandedRight = objectiveLeft + bonusFullWidth;
       ctx.save();
-      ctx.translate(-((layout.left + bonusFullWidth * s + 8) * objectiveSlide),
-        layout.bonusY - OBJ_ROW_Y * s);
+      // It STAYS now (Peter, 17 Oct 2026): it used to slide out through the left
+      // edge after the opening read, but with GOAL gone it is the only objective
+      // up here, so it holds for the whole run, as it does in landscape.
+      ctx.translate(0, layout.goalY - OBJ_ROW_Y * s);
       ctx.scale(s, s);
-      drawObjectivePanel(ctx, tag, tagColor, bonusText, ink,
-        OBJ_ROW_Y, 0.9, 0, expandedRight);
+      const left = drawObjectivePanel(ctx, tag, tagColor, bonusText, ink,
+        OBJ_ROW_Y, 1, 0, expandedRight);
+      if (!run.overtime) drawBonusNote(ctx, run, OBJ_ROW_Y + PILL_H + 3, { left: objectiveLeft, maxWidth: maxText + 22 });
       ctx.restore();
+      run.hudGoalLeft = left * s;
+      objLeft = Math.min(objLeft, run.hudGoalLeft);
     }
     ctx.restore();
   }
@@ -2728,7 +2800,7 @@ export function drawHud(ctx, run) {
   // folds to the live count before the lane is established. A constructor-held
   // clock makes this read once per run; BONUS_HOLD updates later in the stage
   // still use their goal toast and cannot reopen it over incoming prompts.
-  const fold = bonusPanelFold(run);
+  const fold = bonusFoldFor(run);
   // The BONUS line — and only that one — leaves before the marker arrives. It is
   // a statement of what is still being ASKED, and by the time the flagpole is on
   // screen there is nothing left to ask: the challenge is already whatever it
@@ -2746,27 +2818,10 @@ export function drawHud(ctx, run) {
   const remain = Number.isFinite(run.totalDist) ? run.totalDist - run.distance : Infinity;
   const bonusAlpha = run.finishing ? 0 : 1 - smoothstep(Math.min(1, Math.max(0, (560 - remain) / 200)));
   if (!run.overtime && run.stage) {
-    const m = run.mission;
-    const label = m.label ?? GOAL_LABELS[m.type] ?? m.type.toUpperCase();
-    let prog = '', slot = '';
-    if (m.n) { prog = `${m.count ?? 0}/${m.n}`; slot = countSlot(m.n); }
-    // Through the run's own counter, not a field beside it: the win check
-    // reads missionCount(), and a HUD that reads anything else can disagree
-    // with it. It did — the chase tally lived on the copter, which is removed
-    // when he leaves, so the goal fell back to 0/3 and stayed there.
-    if (m.type === 'chase') prog = `${run.missionCount()}/${m.n}`;
-    if (m.type === 'combo') { prog = `BEST ${run.relay.bestCombo}/${m.n}`; slot = countSlot(m.n, 'BEST '); }
-    // The count rides in a reserved slot (see drawObjective) so the panel holds
-    // its width from 0/n to n/n; the label is truncated against that reserve,
-    // not against whatever the count happens to measure this frame.
-    let goalInks = null;
-    if (m.type === 'mash' && m.letters) {
-      const t = mashTail(m.letters);
-      prog = t.text; slot = t.text; goalInks = t.inks;
-    }
-    const goalText = prog ? [`${fitRight(label, textWidth(` ${slot}`))} `, prog, slot] : fitRight(label);
-    const goalLeft = objective('GOAL', '#74c947', goalText, '#ffffff', OBJ_Y, 1, 0, 1, objRight, goalInks);
-    run.hudGoalLeft = goalLeft;
+    // NO GOAL PANEL. Every mission is the finish line now (Peter, 17 Oct 2026)
+    // and the clock that can fail it sits in the status pill, so the corner
+    // carries one row: the bonus, in the slot GOAL used to hold.
+    run.hudGoalLeft = objRight;
 
     // WHAT THE BONUS SAYS, settled before WHERE it goes. The two used to be one
     // expression, which is why the readout could only ever live in the one slot
@@ -2779,21 +2834,28 @@ export function drawHud(ctx, run) {
     if (run.challenge && !run.challenge.failed) {
       const c = run.challenge;
       const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;
-      const tail = done ? 'OK' : c.type === 'noDamage' ? ''
+      // The letters keep their own inks (taken, banked, still out there), the way
+      // the GOAL panel printed them when M-A-S-H was a mission.
+      const mash = c.type === 'mash' && c.letters && !done ? mashTail(c.letters) : null;
+      const tail = done ? 'OK' : mash ? mash.text : c.type === 'noDamage' ? ''
         : c.type === 'combo' ? `BEST ${Math.min(c.count, c.n)}/${c.n}`
         : `${Math.min(c.count, c.n)}/${c.n}`;
       // The slot the count is reserved in. OK is its own width on purpose:
       // completing is a one-time event with a colour change, and the panel
       // settling to a shorter word is part of that event, not the twitch the
       // reserve exists to stop.
-      const widest = done || c.type === 'noDamage' ? tail
+      const widest = done || mash || c.type === 'noDamage' ? tail
         : c.type === 'combo' ? countSlot(c.n, 'BEST ') : countSlot(c.n);
+      // Full size and white now that it is the corner's only row: the BONUS is
+      // the one thing up here the player is asked to do.
       bonus = {
-        tagColor: done ? '#74c947' : 'rgba(255,255,255,0.5)',
-        ink: done ? '#74c947' : 'rgba(255,255,255,0.72)',
-        head: `${fitRight(c.desc, textWidth(` ${widest}`, 0.85))} `,
+        tagColor: done ? '#74c947' : '#f6c945',
+        ink: done ? '#74c947' : '#ffffff',
+        // Two spaces before the letters: one and COLLECT M-A-S-H runs into M A S H.
+        head: `${fitRight(bonusHudLine(c), textWidth(`  ${widest}`))} ${mash ? ' ' : ''}`,
         tail,
         widest,
+        tailInks: mash ? mash.inks : null,
         frac: c.n ? Math.min(1, (c.count || 0) / c.n) : 1,
         color: done ? '#74c947' : '#f6c945',
       };
@@ -2809,7 +2871,7 @@ export function drawHud(ctx, run) {
       bonus = {
         tagColor: 'rgba(255,255,255,0.3)',
         ink: 'rgba(255,255,255,0.35)',
-        head: `${fitRight(run.challenge.desc, textWidth(' - NOT THIS TIME', 0.85))} - `,
+        head: `${fitRight(bonusHudLine(run.challenge), textWidth(' - NOT THIS TIME'))} - `,
         tail: 'NOT THIS TIME',
         widest: 'NOT THIS TIME',
         frac: 0,
@@ -2818,25 +2880,15 @@ export function drawHud(ctx, run) {
     }
     if (bonus) {
       const words = [bonus.head, bonus.tail, bonus.widest];
-      // Every panel cut asks bonusPlacement where it goes; only the donut, which
-      // is not a panel, is placed here. The gallery's bake-off asks the same
-      // function, which is what keeps its tiles honest about the real layout.
-      const at = bonusPlacement(fold, goalLeft);
-      if (at) {
-        objective('BONUS', bonus.tagColor, words, bonus.ink, at.y, 0.85, at.fold, bonusAlpha, at.right);
-      } else if (BONUS_SLOT === 'shelf' && bonusAlpha > 0) {
-        // At the END of the power-up row, in the row's own language: a donut
-        // that fills. It is last because the power-ups are transient and this
-        // is not — a timer expiring must not shuffle the standing readout.
-        ctx.save();
-        ctx.globalAlpha *= bonusAlpha;
-        gauge(px, SHELF_CY, SHELF_R, 2.7, bonus.frac, bonus.color,
-          bonus.tail ? `BONUS ${bonus.tail}` : 'BONUS', bonus.ink, 0.8);
-        ctx.restore();
-      }
+      // The first row, where GOAL used to stand — the only row there is now.
+      // Its fold is the same clock it always had: the sentence for the opening
+      // read, then the live count.
+      run.hudGoalLeft = objective('BONUS', bonus.tagColor, words, bonus.ink, OBJ_Y, 1, fold,
+        bonusAlpha, objRight, bonus.tailInks);
+      drawBonusNote(ctx, run, OBJ_Y2, { right: objRight, alpha: bonusAlpha });
     }
   } else {
-    run.hudGoalLeft = objective('GOAL', '#b888f0', 'OVERTIME', '#ffffff', OBJ_Y, 1);
+    run.hudGoalLeft = objective('MODE', '#b888f0', 'OVERTIME', '#ffffff', OBJ_Y, 1);
   }
 
   // Keyboard controls hint; the power status lives in the top-right gauge.

@@ -7,7 +7,7 @@ import {
   songBars, stepLen, toneLen, perNoteLengthLane, effectiveToneLength, LANE_KEYS,
   sequenceValue,
 } from '../../src/engine/lanes.js';
-import { SWING_STRAIGHT, resolutionOf, LEGACY_RESOLUTION } from '../../src/data/arrangements.js';
+import { SWING_STRAIGHT, resolutionOf, LEGACY_RESOLUTION, songTransposeOf } from '../../src/data/arrangements.js';
 import { baseLane, isLayer, PERCUSSION_LANES } from '../../src/data/voices.js';
 
 const PPQ = 96;          // ticks per quarter note
@@ -179,9 +179,11 @@ function barBank(b, bar) {
     out = { ...out };
     for (const key of silenced) out[key] = null;
   }
+  // The song-wide key shift on top of the bar's own, drums excluded — as the engine plays it.
+  const songShift = songTransposeOf(b);
   const transposeKeys = new Set([
     ...Object.keys(typeof bar?.transpose === 'object' ? bar.transpose || {} : {}),
-    ...(typeof bar?.transpose === 'number'
+    ...(typeof bar?.transpose === 'number' || songShift
       ? [...LANE_KEYS, ...(out.__layers || []).map((L) => L.key)]
         .filter((k) => !PERCUSSION_LANES.includes(baseLane(k)))
       : []),
@@ -189,7 +191,8 @@ function barBank(b, bar) {
   if (transposeKeys.size) {
     out = { ...out };
     for (const key of transposeKeys) {
-      const semitones = barValue(bar.transpose, key);
+      const semitones = barValue(bar?.transpose, key)
+        + (PERCUSSION_LANES.includes(baseLane(key)) ? 0 : songShift);
       if (semitones && Array.isArray(out[key])) out[key] = out[key].map((v) => shift(v, semitones));
     }
   }

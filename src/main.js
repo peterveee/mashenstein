@@ -27,10 +27,9 @@ import { Audio, PORTAL_RELAY, PORTAL_RELAY_GAIN } from './engine/audio.js';
  */
 const levelOpenCue = () => Audio.sfx('portal', { gain: PORTAL_RELAY_GAIN, shape: PORTAL_RELAY });
 const ABOUT_RELOAD_KEY = 'mashenstein-return-to-about-after-reload';
-function setAboutReloadReturn(enabled) {
+function markReloadToAbout() {
   try {
-    if (enabled) sessionStorage.setItem(ABOUT_RELOAD_KEY, '1');
-    else sessionStorage.removeItem(ABOUT_RELOAD_KEY);
+    sessionStorage.setItem(ABOUT_RELOAD_KEY, '1');
   } catch { /* A restricted browser still gets the reload. */ }
 }
 function consumeAboutReloadReturn() {
@@ -119,7 +118,7 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 //   ?goto=soundtest&audition                   — audition every megamix move
 //
 // Recognised goto values:
-//   title  tutorial  hub  trophy  difficulty  howto  fieldguide  settings  calibrate  savefile  cast
+//   title  tutorial  hub  trophy  difficulty  howto  fieldguide  settings  about  calibrate  savefile  cast
 //   attract  intro  finale  soundtest  stage  gravity  boss  overtime
 // (?goto=thelab is not one of these: it works in published builds too — see boot().)
 function routeDevUrl(goto, p) {
@@ -225,9 +224,10 @@ function routeDevUrl(goto, p) {
         onDone: () => Flow.toTitle(),
         onCalibrate: () => Flow.toCalibrate(() => routeDevUrl('settings', p)),
         onSaveFile: () => Flow.toSaveFile(() => routeDevUrl('settings', p)),
-        onPerformanceTest: () => Flow.toPerformanceTest(),
-        onCrashLog: () => Flow.toCrashLog(() => routeDevUrl('settings', p)),
         onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
+      break;
+    case 'about':
+      Flow.toAbout();
       break;
     case 'calibrate':
       Flow.toCalibrate(() => Flow.toTitle());
@@ -439,11 +439,19 @@ const Flow = {
   toAbout() {
     setState(new AboutState({
       onDone: () => Flow.toExtras('about'),
-      onReload: (returnToAbout) => {
+      onReload: () => {
         save.persist();
-        setAboutReloadReturn(returnToAbout);
+        markReloadToAbout();
         if (window.__mash_lifecycle?.forceReload) window.__mash_lifecycle.forceReload();
         else window.location.reload();
+      },
+      onCrashLog: () => {
+        save.persist();
+        Flow.toCrashLog(() => Flow.toAbout());
+      },
+      onPerformanceTest: () => {
+        save.persist();
+        Flow.toPerformanceTest();
       },
     }));
   },
@@ -494,8 +502,6 @@ const Flow = {
       onDone: () => Flow.toExtras('settings'),
       onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()),
       onSaveFile: () => Flow.toSaveFile(() => Flow.toSettings()),
-      onPerformanceTest: () => Flow.toPerformanceTest(),
-      onCrashLog: () => Flow.toCrashLog(() => Flow.toSettings()),
       onDevMenu: Dev.enabled ? () => Dev.openMenu() : null }));
   },
 
@@ -518,7 +524,7 @@ const Flow = {
   },
 
   toPerformanceTest() {
-    setState(new PerformanceTestState({ realSettings: save.settings, onExit: () => Flow.toSettings() }));
+    setState(new PerformanceTestState({ realSettings: save.settings, onExit: () => Flow.toAbout() }));
   },
 
   toCrashLog(onDone) {
@@ -548,7 +554,7 @@ const Flow = {
       onCalibrate: () => { markAsked(); Flow.toCalibrate(() => Flow.startStage(cab, stage, corrupted)); } }));
   },
 
-  // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
+  // seedOverride: dev-menu seed lock or the previous attempt's seed. Runs are deterministic given a seed
   // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
   launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, devForceMission = false, previewTouchControls = false, skipActCard = false) {
     // You walk into the cabinet as yourself. The dev menu still overrides.
@@ -565,9 +571,10 @@ const Flow = {
     const startingPowerup = flags.pendingPowerup || null;
     if (startingPowerup) { delete flags.pendingPowerup; save.persist(); }
     const Run = cab.mechanic === 'gravity' ? GravityRunState : RunState;
+    const seed = seedOverride ?? ((Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0);
     setState(new Run({
       stage, cabinet: cab, save, startingPowerup,
-      seed: seedOverride ?? ((Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0),
+      seed,
       difficulty: save.slot.difficulty,
       corrupted,
       initialHeroId,
@@ -583,16 +590,18 @@ const Flow = {
         Flow.setHero(result.finalHero);
         if (devAutoExit) { Flow.toTitle(); return; }
         const gains = applyResult(save, result);
-        // On the beat the song turns 8-bit (results-chip.js); a win waits for the bar.
-        resultsOnTheBeat((chip) => setStateNoCameo(new ResultsState({
+        // Timeouts show their verdict over the tape brake and leave the song silent.
+        // Other results switch to 8-bit on the beat; a win waits for the bar.
+        const showResults = (chip = null) => setStateNoCameo(new ResultsState({
           result, gains, save, chip,
           onDone: () => Flow.toHub(false, cab.id, !!result.success),
           // launchStage, not startStage: a retry has already read the briefing.
-          // No seed passed either, so the next attempt is a fresh roll rather
-          // than a replay of the pattern that just went wrong. announceBench:false
+          // Keep the seed so the next attempt replays the same pattern. announceBench:false
           // so the bench-upgrade toasts don't parade a second time.
-          onRetry: () => Flow.launchStage(cab, stage, corrupted, undefined, undefined, false),
-        })), { bar: !!result.success });
+          onRetry: () => Flow.launchStage(cab, stage, corrupted, seed, undefined, false),
+        }));
+        if (result.reason === "TIME'S UP") showResults();
+        else resultsOnTheBeat(showResults, { bar: !!result.success });
       },
     }));
   },
@@ -609,12 +618,13 @@ const Flow = {
   },
 
   startBoss(cabId, seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
+    const seed = seedOverride ?? ((Date.now() ^ 0xb055) >>> 0);
     levelOpenCue();
     // The exit cue is an offline render; pay for it now, not when the level ends.
     Audio.warmVoiceReverse?.(EXIT_CUE.id, EXIT_CUE.seconds);
     setState(new BossState({
       bossCab: cabId, save,
-      seed: seedOverride ?? ((Date.now() ^ 0xb055) >>> 0),
+      seed,
       difficulty: save.slot.difficulty,
       initialHeroId: initialHeroId || Flow.heroId(),
       devInvuln, devAutoExit, devMaxTime, devStartPercent,
@@ -633,7 +643,7 @@ const Flow = {
             if (result.success && cabId === 'surge') Flow.startFinale();
             else Flow.toHub(false, cabId, !!result.success);
           },
-          onRetry: () => Flow.startBoss(cabId, undefined, initialHeroId, devInvuln, devAutoExit, devMaxTime),
+          onRetry: () => Flow.startBoss(cabId, seed, initialHeroId, devInvuln, devAutoExit, devMaxTime),
         })), { bar: !!result.success });
       },
     }));
@@ -817,6 +827,7 @@ function boot() {
   let gameplayProfileRequested = false;
   let benchDiag = null;
   let sessionMute = false;
+  const returnToAbout = typeof window !== 'undefined' && consumeAboutReloadReturn();
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
     if (p.has('lcdPanelCache')) setLCDPanelCacheEnabled(p.get('lcdPanelCache') !== '0');
@@ -1053,7 +1064,7 @@ function boot() {
 
   // Dev URL shortcuts — append ?goto=screen to jump directly to any surface.
   // Only active when __MASH_BUILD__ is set (npm run dev / watch builds).
-  if (Dev.enabled && typeof window !== 'undefined') {
+  if (Dev.enabled && !returnToAbout && typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
     const goto = p.get('goto');
     if (goto) routeDevUrl(goto, p);
@@ -1064,7 +1075,7 @@ function boot() {
   // lands where the title's own menu would take you and seeds no save file; every
   // other target above stays dev-only.
   //   ?goto=thelab  → THE LAB (mashenstein.com/thelab)
-  if (!window.__mash_routed && typeof window !== 'undefined'
+  if (!returnToAbout && !window.__mash_routed && typeof window !== 'undefined'
       && new URLSearchParams(window.location.search).get('goto') === 'thelab') {
     window.__mash_routed = true;
     setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') }));
@@ -1072,11 +1083,10 @@ function boot() {
 
   // Explicit user-requested benchmark: a fresh page isolates level resources.
   const performanceStage = new URLSearchParams(window.location.search).get('performanceStage');
-  if (PERFORMANCE_STAGES.includes(performanceStage)) {
+  if (!returnToAbout && PERFORMANCE_STAGES.includes(performanceStage)) {
     window.__mash_routed = true;
-    setState(new PerformanceTestState({freshStage:performanceStage, realSettings:save.settings, onExit:()=>Flow.toSettings()}));
+    setState(new PerformanceTestState({freshStage:performanceStage, realSettings:save.settings, onExit:()=>Flow.toAbout()}));
   }
-  const returnToAbout = consumeAboutReloadReturn();
   if (!window.__mash_routed) {
     if (returnToAbout) Flow.toAbout();
     else Flow.toTitle();

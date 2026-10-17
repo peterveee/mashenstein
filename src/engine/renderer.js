@@ -1713,11 +1713,12 @@ export function commitChromeFrame() {
   chromePaintedSig = sig;
 }
 
-let shakeX = 0, shakeY = 0, shakePower = 0, shakeTime = 0;
+let shakeX = 0, shakeY = 0, shakePower = 0, shakeTime = 0, shakeDirection = 0;
 let shakeScale = 1; // accessibility: screen-shake slider 0..1
 
 export function setShakeScale(s) { shakeScale = s; }
-export function shake(power, duration) {
+export function shake(power, duration, direction = 0) {
+  if (power >= shakePower) shakeDirection = Math.max(-1, Math.min(1, Number(direction) || 0));
   shakePower = Math.max(shakePower, power);
   shakeTime = Math.max(shakeTime, duration);
 }
@@ -1726,9 +1727,11 @@ export function updateShake(dt, rand) {
   if (shakeTime > 0) {
     shakeTime -= dt;
     const p = shakePower * Math.min(1, shakeTime * 4) * shakeScale;
-    shakeX = (rand() * 2 - 1) * p;
-    shakeY = (rand() * 2 - 1) * p;
-    if (shakeTime <= 0) { shakePower = 0; shakeX = 0; shakeY = 0; }
+    shakeX = shakeDirection
+      ? shakeDirection * p * (0.65 + rand() * 0.35) + (rand() * 2 - 1) * p * 0.2
+      : (rand() * 2 - 1) * p;
+    shakeY = (rand() * 2 - 1) * p * (shakeDirection ? 0.45 : 1);
+    if (shakeTime <= 0) { shakePower = 0; shakeX = 0; shakeY = 0; shakeDirection = 0; }
   }
 }
 

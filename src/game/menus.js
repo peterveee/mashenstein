@@ -2,6 +2,7 @@
 // finale, settings. All keyboard + touch navigable.
 import { W, H, bakeSS, onPresentationChanged, screen, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame, isPhonePortraitPresentation, presentationFrame } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
+import { crumb } from '../engine/diag.js';
 import { beginStageArtWarmup, stepArtWarmup } from './art-warmup.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -84,6 +85,7 @@ import { HEROES } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { cabinetPalette, cabinetScreenRect, deadScreenBurst, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
+import { bonusSentence } from '../data/stages.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from '../data/shop-themes.js';
 import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
@@ -1981,6 +1983,7 @@ function flickerBlock(t) {
 }
 
 export class TitleState {
+  static diagnosticName = 'Title';
   static portraitMode = 'frame';
 
   constructor({ save, onSlotChosen, onSettings, onAbout, onHowTo, onGuide, onSoundTest, onLab, onIntro, onAttract, attractDelay, attractLabel, onTutorial, openExtras = false, extrasFocus = null }) {
@@ -3078,7 +3081,8 @@ export class BriefingState {
     this.idx = 1;
     Input.setMenuButtons();
     this.pieces = [
-      { head: null, text: `MISSION: ${this.stage.mission.desc}` },
+      // The bonus, not the mission: every mission is the finish line now.
+      ...(this.stage.challenge ? [{ head: null, text: `BONUS: ${bonusSentence(this.stage.challenge)}` }] : []),
       ...(BRIEFINGS[this.stage.id] || []),
     ];
     // The offer takes a row out of the memo's band rather than overlapping it.
@@ -3622,6 +3626,9 @@ export class ResultsState {
     this.lastBurst = null;
     clearParticles();
     Input.setMenuButtons();
+    // The timeout has its own tape brake and silence. Do not fire the loss
+    // sting or arm the usual 8-bit results handover over that sound.
+    if (this.result.reason === "TIME'S UP") { this.chip = null; return; }
     Audio.sfx(this.celebrating ? 'win' : 'lose');
     // 8-BIT RESULTS: the level's song onto the 8-Bit set (results-chip.js) — made already when
     // the run brought this screen up on the beat (resultsOnTheBeat).
@@ -3741,6 +3748,10 @@ export class ResultsState {
     const r = this.result;
     const rows = [];
     const line = (t, c) => { if (String(t).trim()) rows.push([t, c || '#c8c8d8']); };
+    // Mario's flagpole tally: what the clock still had at the tape, paid out
+    // as coins and already folded into COINS BANKED below — its own line so
+    // the player sees what the clock itself was worth, not just the total.
+    if (r.timeBonusCoins > 0) line(`TIME BONUS: +${formatCoins(r.timeBonusCoins)}`, '#48c8e0');
     line(`COINS BANKED: +${formatCoins(this.gains.coins)}`, '#f6d33c');
     if (r.overtime) line(`TIME SURVIVED: ${formatRunTime(r.time)}`, '#48e0c8');
     if (r.newBestTime) line(`NEW RECORD! PREVIOUS: ${formatRunTime(r.prevBestTime)}`, '#f6d33c');
@@ -3749,7 +3760,7 @@ export class ResultsState {
       const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
       // The plug marks are status, not multiplication signs: a tick means the
       // objective was earned, while a dash means it is still missing.
-      line(`PLUGS: ${['MISSION', 'CHALLENGE', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? '✓' : '-'}`).join('  ')}`, '#48e0c8');
+      line(`PLUGS: ${['FINISH', 'BONUS', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? '✓' : '-'}`).join('  ')}`, '#48e0c8');
       if (this.gains.plugsNew > 0) line(`+${this.gains.plugsNew} NEW PLUG${this.gains.plugsNew > 1 ? 'S' : ''}`, '#48e0c8');
       else {
         const nxt = nextStage(r.stage);
@@ -5027,6 +5038,7 @@ const VISUAL_OUT_TOTAL = 0.45;
 const DEV_BUILD = () => typeof window !== 'undefined' && !!window.__MASH_BUILD__;
 
 export class SoundTestState {
+  static diagnosticName = 'Jukebox';
   // The listening/visualiser surface is deliberately usable in portrait. Its
   // list uses the same uniform frame and full-height rows as the other staff
   // menus; the visualiser itself still takes over the whole viewport when it
@@ -5239,6 +5251,7 @@ export class SoundTestState {
     if (!paused && Audio.songEnded && !this.advanceTimer && !this.lab && this.playing >= 0) this.autoAdvance();
   }
   clearVisualiser() {
+    if (this.visualiser) crumb('jukebox visualiser off', this.visualiser.label || this.visualiser.name);
     setVisualiserFullscreen(false);
     this.visualState = 'list';
     this.visualT = 0;
@@ -5265,6 +5278,8 @@ export class SoundTestState {
       : ((requested % VISUALISER_NAMES.length) + VISUALISER_NAMES.length) % VISUALISER_NAMES.length;
     this.lastVisualiserIndex = this.visualiserIndex;
     const seed = ((Math.random() * 0xffffffff) ^ (this.visualiserIndex * 0x9e3779b9)) >>> 0;
+    // Persist before construction: a native page crash cannot run an error handler.
+    crumb('jukebox visualiser start', `${VISUALISER_NAMES[this.visualiserIndex]} seed=${seed}`);
     this.visualiser = createVisualiser(this.visualiserIndex, seed, this.tracks[this.playing].bank);
     this.previousVisualiser = null;
     this.visualSwitchT = 0;
@@ -5292,6 +5307,7 @@ export class SoundTestState {
     this.previousVisualiser = this.visualiser;
     this.visualiserIndex = next;
     const seed = ((Math.random() * 0xffffffff) ^ (next * 0x9e3779b9) ^ this.t * 1000) >>> 0;
+    crumb('jukebox visualiser switch', `${VISUALISER_NAMES[next]} seed=${seed}`);
     this.visualiser = createVisualiser(next, seed, this.tracks[this.playing]?.bank);
     this.visualSwitchT = 0.35;
     this.labelT = 0;
@@ -5424,6 +5440,7 @@ export class SoundTestState {
     this.cancelAdvance();
     const tr = this.tracks[i];
     if (!tr) { Audio.setBank(null); return; }
+    crumb('jukebox song', `${jukeboxTitle(tr)} repeat=${this.repeatOn} visualiser=${this.visualiserOn} 8bit=${soundtrack8bit()}`);
     // Sound Test is a listening surface: always play the first bar on the first pass,
     // even when gameplay normally skips into a song at its authored start marker.
     // Its repeat region stays armed, so only the initial entry differs — unless REPEAT is
@@ -5887,6 +5904,8 @@ export class SoundTestState {
       // not only when the player asks for a different preset.
       const shownLabel = this.visualiser ? (this.visualiser.label || this.visualiser.name) : null;
       if (shownLabel !== this.shownLabel) {
+        // Includes the megamix's internal preset changes; never a per-frame write.
+        crumb('jukebox visualiser active', shownLabel || 'none');
         this.shownLabel = shownLabel;
         this.labelT = 0;
       }
@@ -5901,6 +5920,7 @@ export class SoundTestState {
         // The menu has fully disappeared and the beat-sized gap is over. Only
         // now expand the canvas, while the frame is already a dark visualiser
         // field, so the menu never visibly zooms or crops.
+        crumb('jukebox fullscreen', `${this.visualiser?.name || ''} entering`);
         setVisualiserFullscreen(true);
         this.fullscreenReady = true;
       }
@@ -6349,8 +6369,8 @@ export class HowToPlayState {
     for (const [label, desc] of CONTROL_ROWS(Input.isTouchDevice())) line(label, desc);
     line('PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8');
     y += 4;
-    line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
-    line('CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');
+    line('FINISH', 'REACH THE LINE BEFORE THE CLOCK RUNS OUT. EARNS A PLUG.', '#f890b8');
+    line('BONUS', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');
     line('TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8');
     line('PLUGS', 'ONE-TIME EACH. UNLOCK CABINETS. COINS BUY UPGRADES.', '#f890b8');
     drawTextCentered(ctx, 'JUMP RED HAZARDS. SLIDE UNDER DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
@@ -6370,8 +6390,8 @@ export class HowToPlayState {
     const rows = [
       ...CONTROL_ROWS(Input.isTouchDevice()).map(([label, desc]) => [label, desc, '#f6d33c']),
       ['PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8'],
-      ['MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8'],
-      ['CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8'],
+      ['FINISH', 'REACH THE LINE BEFORE THE CLOCK RUNS OUT. EARNS A PLUG.', '#f890b8'],
+      ['BONUS', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8'],
       ['TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8'],
       ['PLUGS', 'ONE-TIME EACH. UNLOCK CABINETS. COINS BUY UPGRADES.', '#f890b8'],
     ];
@@ -6382,7 +6402,7 @@ export class HowToPlayState {
     const sectionHeaderS = 1.5;
     const labelSBase = 1.35;
     const descriptionS = 1.4;
-    const sectionNames = new Map([[0, 'CONTROLS'], [4, 'STAGE GOALS']]);
+    const sectionNames = new Map([[0, 'CONTROLS'], [4, 'EARNING PLUGS']]);
     let rowTop = titleMid + 52;
     rows.forEach(([label, description, color], i) => {
       if (sectionNames.has(i)) {
@@ -6546,49 +6566,71 @@ function drawDeleteConfirm(ctx, { rec, yes }) {
 function aboutPageLayout() {
   const portrait = portraitMenuActive();
   const w = portrait ? Math.min(W - 48, 380) : 190;
-  const h = portrait ? 66 : 27;
+  const h = portrait ? 54 : 22;
+  const gap = portrait ? 9 : 5;
   const x = (W - w) / 2;
-  const bottom = portrait ? portraitMenuSafeBottom(24) : H - 14;
-  const reload = { x, y: bottom - 2 * h - (portrait ? 18 : 8), w, h };
-  return {
-    portrait,
-    back: { x, y: bottom - h, w, h },
-    reload,
-    returnToggle: portrait
-      ? { x, y: reload.y - 60, w, h: 42 }
-      : { x: W / 2 - 110, y: 166, w: 220, h: 20 },
-  };
+  const bottom = portrait ? portraitMenuSafeBottom(16) : H - 10;
+  const row = (index) => ({ x, y: bottom - h - index * (h + gap), w, h });
+  return { portrait, crash: row(3), performance: row(2), reload: row(1), back: row(0) };
 }
 
 export class AboutState {
   static portraitMode = 'frame';
 
-  constructor({ onDone, onReload }) {
+  constructor({ onDone, onReload, onCrashLog = null, onPerformanceTest = null }) {
     this.onDone = onDone;
     this.onReload = onReload;
-    this.returnToAbout = true;
-    this.idx = 2; // Back is the safe keyboard default.
+    this.onCrashLog = onCrashLog;
+    this.onPerformanceTest = onPerformanceTest;
+    this.idx = 3; // Back is the safe keyboard default.
   }
-  enter() { this.idx = 2; Input.setMenuButtons(); }
+  enter() { this.idx = 3; Input.setMenuButtons(); }
   buildTime() {
     return formatBuildTime(typeof window !== 'undefined' ? window.__MASH_BUILT_AT__ : '') || 'UNAVAILABLE';
+  }
+  actions() {
+    return [
+      { label: 'CRASH REPORT', act: this.onCrashLog },
+      { label: 'PERFORMANCE TEST', act: this.onPerformanceTest },
+      { label: 'RELOAD GAME', act: () => this.onReload?.() },
+      { label: 'BACK', act: this.onDone },
+    ];
   }
   update() {
     const g = aboutPageLayout();
     const hit = (r) => Input.pointer.x >= r.x && Input.pointer.x <= r.x + r.w
       && Input.pointer.y >= r.y && Input.pointer.y <= r.y + r.h;
     if (Input.pressed('back') || Input.pressed('slide')) { Audio.sfx('ui'); this.onDone(); }
-    else if (Input.pressed('up')) { this.idx = (this.idx + 2) % 3; Audio.sfx('ui'); }
-    else if (Input.pressed('down')) { this.idx = (this.idx + 1) % 3; Audio.sfx('ui'); }
+    else if (Input.pressed('up')) { this.idx = (this.idx + 3) % 4; Audio.sfx('ui'); }
+    else if (Input.pressed('down')) { this.idx = (this.idx + 1) % 4; Audio.sfx('ui'); }
     else if (Input.pressed('pointer') && hit(g.back)) { Audio.sfx('ui'); this.onDone(); }
-    else if (Input.pressed('pointer') && hit(g.reload)) { Audio.sfx('uiConfirm'); this.onReload(this.returnToAbout); }
-    else if (Input.pressed('pointer') && hit(g.returnToggle)) { this.returnToAbout = !this.returnToAbout; Audio.sfx('ui'); }
+    else if (Input.pressed('pointer') && hit(g.reload)) { Audio.sfx('uiConfirm'); this.onReload?.(); }
+    else if (Input.pressed('pointer') && hit(g.crash)) { Audio.sfx('uiConfirm'); this.onCrashLog?.(); }
+    else if (Input.pressed('pointer') && hit(g.performance)) { Audio.sfx('uiConfirm'); this.onPerformanceTest?.(); }
     else if (Input.pressed('confirm')) {
-      if (this.idx === 0) { this.returnToAbout = !this.returnToAbout; Audio.sfx('ui'); }
-      else if (this.idx === 1) { Audio.sfx('uiConfirm'); this.onReload(this.returnToAbout); }
-      else { Audio.sfx('ui'); this.onDone(); }
+      const action = this.actions()[this.idx];
+      if (action?.act) { Audio.sfx(this.idx === 3 ? 'ui' : 'uiConfirm'); action.act(); }
     }
     Input.endFrame();
+  }
+  drawPicture(ctx, cx, cy, w, h) {
+    ctx.save();
+    ctx.fillStyle = '#21192d';
+    platePath(ctx, cx - w / 2, cy - h / 2, w, h, Math.min(10, h * 0.12));
+    ctx.fill();
+    ctx.strokeStyle = '#c9a04a';
+    ctx.lineWidth = 2;
+    platePath(ctx, cx - w / 2 + 2, cy - h / 2 + 2, w - 4, h - 4, Math.min(8, h * 0.1));
+    ctx.stroke();
+    ctx.fillStyle = '#51376f';
+    ctx.beginPath(); ctx.arc(cx, cy - h * 0.08, Math.min(w, h) * 0.31, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f6d33c';
+    for (const [sx, sy, r] of [[-0.31, -0.31, 2], [0.32, -0.17, 1.7], [0.29, 0.3, 1.4]]) {
+      ctx.fillRect(cx + w * sx - r, cy + h * sy - r, r * 2, r * 2);
+    }
+    drawToon(ctx, 'lorenzo', { kind: 'idle', grounded: true, time: this.t || 0, menu: true },
+      cx, cy + h * 0.34, Math.min(h * 0.72, w * 0.82));
+    ctx.restore();
   }
   draw(ctx) {
     const g = aboutPageLayout();
@@ -6600,42 +6642,31 @@ export class AboutState {
         const fit = portraitMenuFit(copy, size, W - 48, font);
         portraitMenuTextCentered(ctx, copy, W / 2, portraitMenuTextY(top + y, fit, font), color, fit, font);
       };
-      line('MASHENSTEIN', 62, 3.4, '#ffcf33', 'title');
-      line('THE UNPLUGGENING', 111, 1.8, '#8fb0f5', 'subtitle');
-      line('A GAME STITCHED TOGETHER', 186, 1.8, '#f4f1fa');
-      line('FROM PARTS OF OTHER GAMES.', 218, 1.8, '#f4f1fa');
-      line('RUN. JUMP. DUCK. SHOOT.', 283, 1.65, '#c9a0ff', 'bold');
-      line('THREE BUTTONS. MANY BAD IDEAS.', 318, 1.55, '#9292a3');
-      line('BUILT (LOCAL TIME)', 402, 1.45, '#c9a0ff', 'bold');
-      line(this.buildTime(), 441, 1.5, '#f4f1fa');
-      line('RELOAD GAME CHECKS FOR A NEW BUILD', 494, 1.25, '#9292a3');
+      line('MASHENSTEIN', 38, 3.4, '#ffcf33', 'title');
+      line('THE UNPLUGGENING', 77, 1.8, '#8fb0f5', 'subtitle');
+      this.drawPicture(ctx, W / 2, top + 151, 92, 104);
+      line('A GAME STITCHED TOGETHER', 229, 1.8, '#f4f1fa');
+      line('FROM PARTS OF OTHER GAMES.', 258, 1.8, '#f4f1fa');
+      line('RUN. JUMP. DUCK. SHOOT.', 296, 1.65, '#c9a0ff', 'bold');
+      line('THREE BUTTONS. MANY BAD IDEAS.', 327, 1.5, '#9292a3');
+      line('BUILT (LOCAL TIME)', 379, 1.4, '#c9a0ff', 'bold');
+      line(this.buildTime(), 410, 1.45, '#f4f1fa');
+      line('RELOAD CHECKS FOR A NEW BUILD', 441, 1.2, '#9292a3');
     } else {
-      const line = (copy, y, size, color, font = 'ui') => {
-        const fit = Math.min(size, (W - 42) / Math.max(1, textWidth(copy, 1, font)));
-        drawTextCentered(ctx, copy, W / 2, textYForMid(y, fit, font), color, fit, font);
+      const line = (copy, y, size, color, font = 'ui', center = W / 2, maxWidth = W - 42) => {
+        const fit = Math.min(size, maxWidth / Math.max(1, textWidth(copy, 1, font)));
+        drawTextCentered(ctx, copy, center, textYForMid(y, fit, font), color, fit, font);
       };
-      line('MASHENSTEIN', 26, 2.2, '#ffcf33', 'title');
-      line('THE UNPLUGGENING', 47, 1.2, '#8fb0f5', 'subtitle');
-      line('A GAME STITCHED TOGETHER FROM PARTS OF OTHER GAMES.', 77, 0.95, '#f4f1fa');
-      line('RUN. JUMP. DUCK. SHOOT.', 98, 0.95, '#c9a0ff', 'bold');
-      line('THREE BUTTONS. MANY BAD IDEAS.', 115, 0.85, '#9292a3');
-      line('BUILT (LOCAL TIME)', 141, 0.85, '#c9a0ff', 'bold');
-      line(this.buildTime(), 158, 0.9, '#f4f1fa');
+      line('MASHENSTEIN', 20, 2.05, '#ffcf33', 'title');
+      line('THE UNPLUGGENING', 39, 1.15, '#8fb0f5', 'subtitle');
+      this.drawPicture(ctx, 62, 99, 66, 72);
+      line('A GAME STITCHED TOGETHER', 73, 0.86, '#f4f1fa', 'ui', 302, 335);
+      line('FROM PARTS OF OTHER GAMES.', 90, 0.86, '#f4f1fa', 'ui', 302, 335);
+      line('RUN. JUMP. DUCK. SHOOT.', 108, 0.86, '#c9a0ff', 'bold', 302, 335);
+      line('BUILT (LOCAL TIME)', 126, 0.72, '#c9a0ff', 'bold', 302, 335);
+      line(this.buildTime(), 140, 0.75, '#f4f1fa', 'ui', 302, 335);
     }
-    const toggle = g.returnToggle;
-    const toggleLabel = `RETURN TO ABOUT: ${this.returnToAbout ? 'ON' : 'OFF'}`;
-    drawMenuRow(ctx, toggle.x, toggle.y, toggle.w, toggle.h, g.portrait ? 6 : 3,
-      this.idx === 0 ? undefined : BACK_BUTTON_PLATE);
-    if (g.portrait) {
-      const size = portraitMenuFit(toggleLabel, 1.45, toggle.w - 24);
-      portraitMenuTextCentered(ctx, toggleLabel, W / 2,
-        portraitMenuTextY(toggle.y + toggle.h / 2, size),
-        this.idx === 0 ? '#c9a0ff' : '#c8c8d8', size);
-    } else {
-      drawTextCentered(ctx, toggleLabel, W / 2, textYForMid(toggle.y + toggle.h / 2, 0.9),
-        this.idx === 0 ? '#c9a0ff' : '#c8c8d8', 0.9);
-    }
-    for (const [i, r, label] of [[1, g.reload, 'RELOAD GAME'], [2, g.back, 'BACK']]) {
+    for (const [i, r, label] of [[0, g.crash, 'CRASH REPORT'], [1, g.performance, 'PERFORMANCE TEST'], [2, g.reload, 'RELOAD GAME'], [3, g.back, 'BACK']]) {
       const selected = this.idx === i;
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, g.portrait ? 7 : 4,
         selected ? undefined : BACK_BUTTON_PLATE);
@@ -6645,19 +6676,20 @@ export class AboutState {
           portraitMenuTextY(r.y + r.h / 2, size, selected ? 'bold' : 'ui'),
           selected ? '#c9a0ff' : '#c8c8d8', size, selected ? 'bold' : 'ui');
       } else {
-        drawTextCentered(ctx, label, W / 2, textYForMid(r.y + r.h / 2, 1.4),
-          selected ? '#c9a0ff' : '#c8c8d8', 1.4);
+        drawTextCentered(ctx, label, W / 2, textYForMid(r.y + r.h / 2, 1.1),
+          selected ? '#c9a0ff' : '#c8c8d8', 1.1);
       }
     }
   }
 }
 
 export class SettingsState {
+  static diagnosticName = 'Settings';
   static portraitMode = 'frame';
 
   // `onDevMenu` is passed only by a dev build (main.js, when Dev.enabled): it puts a
   // DEV MENU row at the top of the list, the phone's way in without the five-tap corner.
-  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, onCrashLog = null, onPerformanceTest = null, pause = false, onExitTitle = null }) {
+  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, pause = false, onExitTitle = null }) {
     this.pause = pause;
     this.onExitTitle = onExitTitle;
     this.save = save;
@@ -6665,8 +6697,6 @@ export class SettingsState {
     this.onDevMenu = onDevMenu;
     this.onCalibrate = onCalibrate;
     this.onSaveFile = onSaveFile;
-    this.onCrashLog = onCrashLog;
-    this.onPerformanceTest = onPerformanceTest;
     this.listStart = 0;
     this.pointerGesture = null;
     this.layout();
@@ -6788,10 +6818,6 @@ export class SettingsState {
       // The whole save to a .mash file and back (save-file.js). Its own screen,
       // because what it writes and what it replaces both need saying first.
       ...(this.onSaveFile ? [{ label: 'IMPORT / EXPORT', act: () => { this.save.persist(); this.onSaveFile(); } }] : []),
-      // What the game was doing when it last quit on its own (crash-log.js).
-      ...(this.onPerformanceTest ? [{ label: 'PERFORMANCE TEST', indentOnTouchLandscape: true,
-        act: () => { this.save.persist(); this.onPerformanceTest(); } }] : []),
-      ...(this.onCrashLog ? [{ label: 'CRASH LOG', act: () => { this.save.persist(); this.onCrashLog(); } }] : []),
       { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },
       { label: 'BACK', act: () => { this.save.persist(); this.onDone(); } },
     ];

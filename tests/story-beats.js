@@ -8,7 +8,7 @@ const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 const { STAGES, STAGE_BY_ID } = await import('../src/data/stages.js');
 const { CABINETS, CABINET_BY_ID } = await import('../src/data/cabinets.js');
-const { EGGSHELL_TAUNTS, EXIT_LINES, TAG_LINES } = await import('../src/data/jokes.js');
+const { EGGSHELL_TAUNTS } = await import('../src/data/jokes.js');
 const { BRIEFINGS, BRIEFING_PROMPTS } = await import('../src/data/briefings.js');
 const { BriefingState } = await import('../src/game/menus.js');
 const { BOSSES } = await import('../src/game/boss.js');
@@ -247,8 +247,8 @@ for (const id of ['gravity-2', 'gravity-3', 'office-2']) {
     cab: CABINET_BY_ID.frost, stage: STAGE_BY_ID['frost-1'], onDone: () => { launched = true; },
   });
   st.enter();
-  assert(st.pieces.length === 3 && st.pieces[0].text.startsWith('MISSION:'),
-    'frost-1 briefing = mission line + 2 memo blocks');
+  assert(st.pieces.length === 3 && st.pieces[0].text.startsWith('BONUS:'),
+    'frost-1 briefing = bonus line + 2 memo blocks');
   st.update(TICK);
   assert(!st.landed() && !launched, 'the memo is still landing; no early launch');
   Input.press('confirm'); st.update(TICK); Input.release('confirm'); st.update(TICK);
@@ -257,24 +257,10 @@ for (const id of ['gravity-2', 'gravity-3', 'office-2']) {
   assert(launched, 'second confirm launches the stage');
 }
 
-// --- Relay exit lines: one voice per swap, once per hero per run -----------
+// --- Relay exits stay silent during gameplay ------------------------------
 {
-  const { HEROES: ROSTER } = await import('../src/data/heroes.js');
-  // Coverage against the ROSTER rather than a hardcoded 8. Every count in this
-  // suite that was written as a literal has since had to be edited by hand the
-  // first time the cast changed, and a test edited by hand is a test edited
-  // without being read.
-  for (const hero of ROSTER) {
-    assert(Array.isArray(EXIT_LINES[hero.id]) ? EXIT_LINES[hero.id].length > 0 : !!EXIT_LINES[hero.id],
-      `${hero.id} has exit lines`);
-  }
-  for (const [id, lines] of Object.entries(EXIT_LINES)) {
-    assert(TAG_LINES[id], `exit lines for ${id} use a real hero id`);
-    assert(lines.length && lines.every((l) => typeof l === 'string' && l.length),
-      `${id} exit lines are non-empty strings`);
-  }
-
-  // A player past the one-time tutorials — those rightly outrank flavour once.
+  // A player past the one-time tutorials — the ability prompt is not part of
+  // this check, and tag-outs themselves stay silent.
   save.slot.tutor = { firstPortal: true, firstSwitch: true, firstAbility: true };
   const run = makeRun(STAGE_BY_ID['plumber-1']);
   clearIntro(run);
@@ -282,22 +268,15 @@ for (const id of ['gravity-2', 'gravity-3', 'office-2']) {
   run.relay.current = 'lorenzo';
   run.relay.next = 'rusty';
   run.doSwitch();
-  assert(run.speech && run.speech.who === 'lorenzo' && EXIT_LINES.lorenzo.includes(run.speech.text),
-    'the departing hero speaks at the swap');
-  // Nothing queues behind it: the HUD's ability panel already names the
-  // incoming hero's power, so no button tip repeats it.
-  assert(!run.speechQueue.length,
-    'nothing follows the exit line — the incoming hero does not reply');
-  run.speech.t = 0.001;
-  run.update(TICK);
-  assert(!run.speech, 'the bubble clears rather than handing off to a button tip');
+  assert(!run.speech && !run.speechQueue.length,
+    'tagging out does not start or queue a bubble');
 
-  // Second time around, lorenzo has said his piece: the swap is silent.
+  // Repeated swaps stay silent too.
   run.relay.current = 'lorenzo';
   run.relay.next = 'rusty';
   run.doSwitch();
   assert(!run.speech && !run.speechQueue.length,
-    'a hero only says goodbye once per run');
+    'a repeated tag-out is still silent');
 }
 
 // --- Relay hand-offs are shuffled, not biased toward roster order ----------

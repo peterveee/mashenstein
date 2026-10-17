@@ -172,9 +172,12 @@ export async function openRenderer({ headless = true } = {}) {
       : gated;
     const played = bpmOf(gated, lookupId, arrangementTable);
     const swung = swingOf(gated, lookupId, arrangementTable);
+    // The song-wide key shift rides the same way, so a render is in the key the game plays.
+    const keyed = (lookupId ? (arrangementTable || ARRANGEMENTS)[lookupId]?.transpose : null) ?? gated.transpose ?? 0;
     const forPage = played === gated.bpm && swung === (gated.swing ?? SWING_STRAIGHT)
+      && keyed === (gated.transpose ?? 0)
       ? gated
-      : { ...gated, bpm: played, swing: swung };
+      : { ...gated, bpm: played, swing: swung, ...(keyed ? { transpose: keyed } : {}) };
     const blocks = songBlocks(sizedBank, repeat).length;
     const arrangedFormSteps = arrangement !== undefined ? barPlan(sizedBank).length * 16 : 0;
 

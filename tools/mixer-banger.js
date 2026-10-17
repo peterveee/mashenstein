@@ -58,6 +58,7 @@ export function deskBangerVariation(options, variation) {
  */
 export function createBangerDesk(desk) {
   const { $, ask, tell, toast, escapeHtml, closeMenu } = desk;
+  const fetchAction = desk.fetchAction || ((...args) => fetch(...args));
 
   // ---------------------------------------------------------------- the dialog
   const sel = (value, want) => (String(value) === String(want) ? ' selected' : '');
@@ -707,7 +708,7 @@ export function createBangerDesk(desk) {
     if (!desk.isStatic()) {
       let res;
       try {
-        res = await fetch('/make-banger', {
+        res = await fetchAction('/make-banger', {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ title, generated: out }),
         });
@@ -762,7 +763,7 @@ export function createBangerDesk(desk) {
   const forget = (id) => takeCache.delete(id);
 
   /** Where the banger on the desk stands. */
-  async function takes() {
+  async function takes({ warnOnFailure = false } = {}) {
     const { id, track } = desk.current();
     if (!track?.banger) return null;
     if (desk.isStatic()) {
@@ -772,7 +773,8 @@ export function createBangerDesk(desk) {
       return { take, takes: list, mixed: false, previous: [...list].reverse().find((n) => n < take) ?? null, next: list.find((n) => n > take) ?? null, banger: track.banger };
     }
     try {
-      const res = await fetch(`/banger-takes?id=${encodeURIComponent(id)}`);
+      const get = warnOnFailure ? fetchAction : fetch;
+      const res = await get(`/banger-takes?id=${encodeURIComponent(id)}`);
       return res.ok ? await res.json() : null;
     } catch { return null; }
   }
@@ -793,7 +795,7 @@ export function createBangerDesk(desk) {
   async function moveTo(direction, { generated = null, options = null } = {}) {
     const { id, track } = desk.current();
     forget(id);
-    const state = await takes();
+    const state = await takes({ warnOnFailure: true });
     if (!state) return;
     const verb = direction === 'another' ? 'Remix' : direction === 'previous' ? 'Previous Take' : 'Next Take';
     if (!await okToLeave(state, verb)) return;
@@ -806,7 +808,7 @@ export function createBangerDesk(desk) {
     if (!desk.isStatic()) {
       let res;
       try {
-        res = await fetch('/banger-take', {
+        res = await fetchAction('/banger-take', {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ id, direction, generated: out }),
         });
@@ -854,7 +856,7 @@ export function createBangerDesk(desk) {
   /** Banger Settings…: the recipe in the dialog; Make a New Take writes it as the next take. */
   async function settings() {
     closeMenu();
-    const state = await takes();
+    const state = await takes({ warnOnFailure: true });
     if (!state) return;
     const recipe = state.banger || desk.current().track.banger;
     const answer = await dialog({ mode: 'settings', recipe });
@@ -867,7 +869,7 @@ export function createBangerDesk(desk) {
   /** Modify Take…: the recipe in the dialog with the take's shape locked; OK modifies it in place. */
   async function openModify() {
     closeMenu();
-    const state = await takes();
+    const state = await takes({ warnOnFailure: true });
     if (!state) return;
     const recipe = state.banger || desk.current().track.banger;
     const answer = await dialog({ mode: 'modify', recipe });
@@ -917,7 +919,7 @@ export function createBangerDesk(desk) {
     if (!desk.isStatic()) {
       let res;
       try {
-        res = await fetch('/banger-take', {
+        res = await fetchAction('/banger-take', {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ id, direction: 'modify', generated }),
         });

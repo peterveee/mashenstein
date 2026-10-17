@@ -88,9 +88,18 @@ import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
 import * as BARBER_OF_SEVILLE from './barber-of-seville.js';
 import * as BARBER_Q from './barber-q.js';
 import * as BARBER from './barber.js';
+import * as BRAHMS_LULLABY_ITALO from './brahms-lullaby-italo.js';
+import * as BRAHMS_LULLABY_JUNGLE from './brahms-lullaby-jungle.js';
+import * as BRAHMS_LULLABY_SYNTHWAVE from './brahms-lullaby-synthwave.js';
+import * as BRAHMS_LULLABY_TRIPHOP from './brahms-lullaby-triphop.js';
 import * as CARDBOARD_8BIT from './cardboard-8bit.js';
 import * as CARDBOARD_KINGDOM_BANGER_COPY from './cardboard-kingdom-banger-copy.js';
 import * as CASTLE from './castle.js';
+import * as CHOPIN_MINUTE_WALTZ_BOOGIE_MELODY from './chopin-minute-waltz-boogie-melody.js';
+import * as CHOPIN_MINUTE_WALTZ_BOOGIE_RHYTHM from './chopin-minute-waltz-boogie-rhythm.js';
+import * as CHOPIN_MINUTE_WALTZ_BOOGIE_VELVET_SWITCH from './chopin-minute-waltz-boogie-velvet-switch.js';
+import * as CHOPIN_MINUTE_WALTZ_BOOGIE from './chopin-minute-waltz-boogie.js';
+import * as CHOPIN_MINUTE_WALTZ_CLUB from './chopin-minute-waltz-club.js';
 import { CHOPIN3 } from './chopin3.js';
 import * as CORP_REMIX_1_COPY_2 from './corp-remix-1-copy-2.js';
 import * as CORP_REMIX_1 from './corp-remix-1.js';
@@ -404,9 +413,18 @@ export const IMPORTED_BY_ID = {
   "barber-of-seville": { bank: BARBER_OF_SEVILLE.bank, title: BARBER_OF_SEVILLE.title, group: "imported", writable: true },
   "barber-q": { bank: BARBER_Q.bank, title: BARBER_Q.title, group: "imported", writable: true },
   "barber": { bank: BARBER.bank, title: BARBER.title, group: "imported", writable: true },
+  "brahms-lullaby-italo": { bank: BRAHMS_LULLABY_ITALO.bank, title: BRAHMS_LULLABY_ITALO.title, group: "imported", writable: true, banger: BRAHMS_LULLABY_ITALO.banger },
+  "brahms-lullaby-jungle": { bank: BRAHMS_LULLABY_JUNGLE.bank, title: BRAHMS_LULLABY_JUNGLE.title, group: "imported", writable: true, banger: BRAHMS_LULLABY_JUNGLE.banger },
+  "brahms-lullaby-synthwave": { bank: BRAHMS_LULLABY_SYNTHWAVE.bank, title: BRAHMS_LULLABY_SYNTHWAVE.title, group: "imported", writable: true, banger: BRAHMS_LULLABY_SYNTHWAVE.banger },
+  "brahms-lullaby-triphop": { bank: BRAHMS_LULLABY_TRIPHOP.bank, title: BRAHMS_LULLABY_TRIPHOP.title, group: "imported", writable: true, banger: BRAHMS_LULLABY_TRIPHOP.banger },
   "cardboard-8bit": { bank: CARDBOARD_8BIT.bank, title: CARDBOARD_8BIT.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "cardboard-kingdom-banger-copy": { bank: CARDBOARD_KINGDOM_BANGER_COPY.bank, title: CARDBOARD_KINGDOM_BANGER_COPY.title, group: "copy", writable: true },
   "castle": { bank: CASTLE.bank, title: CASTLE.title, group: "imported", writable: true },
+  "chopin-minute-waltz-boogie-melody": { bank: CHOPIN_MINUTE_WALTZ_BOOGIE_MELODY.bank, title: CHOPIN_MINUTE_WALTZ_BOOGIE_MELODY.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_BOOGIE_MELODY.banger },
+  "chopin-minute-waltz-boogie-rhythm": { bank: CHOPIN_MINUTE_WALTZ_BOOGIE_RHYTHM.bank, title: CHOPIN_MINUTE_WALTZ_BOOGIE_RHYTHM.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_BOOGIE_RHYTHM.banger },
+  "chopin-minute-waltz-boogie-velvet-switch": { bank: CHOPIN_MINUTE_WALTZ_BOOGIE_VELVET_SWITCH.bank, title: CHOPIN_MINUTE_WALTZ_BOOGIE_VELVET_SWITCH.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_BOOGIE_VELVET_SWITCH.banger },
+  "chopin-minute-waltz-boogie": { bank: CHOPIN_MINUTE_WALTZ_BOOGIE.bank, title: CHOPIN_MINUTE_WALTZ_BOOGIE.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_BOOGIE.banger },
+  "chopin-minute-waltz-club": { bank: CHOPIN_MINUTE_WALTZ_CLUB.bank, title: CHOPIN_MINUTE_WALTZ_CLUB.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_CLUB.banger },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
   "corp-remix-1-copy-2": { bank: CORP_REMIX_1_COPY_2.bank, title: CORP_REMIX_1_COPY_2.title, group: "copy", writable: true },
   "corp-remix-1": { bank: CORP_REMIX_1.bank, title: CORP_REMIX_1.title, group: "copy", writable: true },

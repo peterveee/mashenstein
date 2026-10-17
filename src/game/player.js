@@ -4,6 +4,7 @@
 import { HERO_BY_ID } from '../data/heroes.js';
 import { BASE_SPEED } from './layout.js';
 import { hitPicOnJump } from '../sprites/hitPictures.js';
+import { SLIP_T as BANANA_SLIP_T } from '../sprites/bananaSlip.js';
 
 export const GRAVITY = 900;
 export const BASE_JUMP_V = 320;
@@ -79,21 +80,20 @@ export const SLIDE_KICK_T = 0.34;
 // kick's own 0.34s, so the leg finishes its swing on the way up and the stand
 // reads as the follow-through rather than as the slide being cancelled.
 export const STAND_AFTER_PLOW_T = 0.38;
-// HOW LONG THE BANANA-PEEL PRATFALL LASTS — both the tumble the hero is drawn
-// in and the stumble that slows him and holds his jump.
+// HOW LONG THE BANANA-PEEL PRATFALL LASTS — both the hop the hero is drawn
+// going through (sprites/bananaSlip.js, the single source of this number: the
+// picture's own length) and the stumble that slows him and holds his jump,
+// which now end on the same frame because by the time the stumble lifts he is
+// already back in his own stride.
 //
-// 0.55s, read against the two clocks either side of it. The hit's own i-frames
-// are 1.4s, so the slip is comfortably inside the mercy it comes with: he is
+// Read against the two clocks either side of it. The hit's own i-frames are
+// 1.4s, so the slip is comfortably inside the mercy it comes with: he is
 // never handed control back into a hazard he cannot yet be hurt by and then
 // hurt by the next one. And the spawner's reaction floor is 0.25s of clear
 // ground after any action cell, which at run speed is well short of this — so
 // the peel is deliberately NOT placed as the first cell of a pair. See the
 // patterns in data/cabinets.js, which give it a lane of its own.
-//
-// Longer was tried and it is the difference between a gag and a punishment:
-// at 0.9s the player has time to press jump, watch nothing happen, and press
-// it again, which reads as the controls having been taken away.
-export const SLIP_T = 0.55;
+export const SLIP_T = BANANA_SLIP_T;
 // THE RUN CADENCE, in strides per second. The cycle is still wound by scroll
 // speed rather than wall time, but on a square root of it, not in proportion.
 // It used to be speed / 40 — 4 strides/s at base and every multiplier the run
@@ -260,6 +260,8 @@ export class Player {
     this.slideSpent = false;  // window used up; release to re-arm
     this.floating = false;
     this.iframes = 0;
+    this.catHitT = 0;
+    this.catIframesT = 0;
     this.anim = 0;
     // Down pressed during a real jump: fast descent now, ordinary slide-kick
     // on contact.
@@ -371,6 +373,10 @@ export class Player {
     this.standT = 0;
     this.slideHoldT = 0;
     this.slideSpent = false;
+    // The reaction belongs to the hero who took the swipe. Ordinary i-frames
+    // still protect the newly tagged hero through a relay swap.
+    this.catHitT = 0;
+    this.catIframesT = 0;
   }
 
   get abilityCd() { return this.abilityCooldowns[this.heroId] || 0; }
@@ -545,6 +551,8 @@ export class Player {
   update(dt, input, world) {
     this.anim += dt * (world ? gaitRate(world.speed, this.hero) : 8);
     if (this.iframes > 0) this.iframes -= dt;
+    if (this.catHitT > 0) this.catHitT = Math.max(0, this.catHitT - dt);
+    if (this.catIframesT > 0) this.catIframesT = Math.max(0, this.catIframesT - dt);
     // The bench recharges alongside the hero you are holding, so the moment a
     // cooldown reaches zero is recorded rather than announced here: only the
     // CURRENT hero's edge is worth a sound, and only when time ran it down. A

@@ -678,7 +678,7 @@ export class DemoBot {
       const dx = p.x - px;
       if (dx > 8 && dx < sp * 0.32 && p.alt > 16) { grab = p; break; }
     }
-    const copter = run.mission && run.mission.type === 'chase' ? run.copter : null;
+    const copter = run.challenge && run.challenge.type === 'chase' ? run.copter : null;
     // He comes into reach for about a bar at a time now, so the jump is taken
     // while he is overhead — and ONLY with a clear stride beyond the landing.
     // The optional gate below already refuses a jump that lands in a hole, but
@@ -705,7 +705,7 @@ export class DemoBot {
     this.copterLastGap = copter ? chaseGap : null;
     // A quarter of a second is about what his head takes to reach the tub.
     const chaseJump = copter && copter.mode === 'hover'
-      && run.copterBonks < (run.mission.n || 0)
+      && run.copterBonks < (run.challenge.n || 0)
       // The window is 14, not 12: on the SPEED cabinet everything closes faster
       // and a tighter acceptance left the demo one bonk short of the mission.
       && Math.abs(chaseGap + gapVx * 0.26) < 14;

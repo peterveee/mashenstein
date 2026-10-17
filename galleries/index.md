@@ -33,7 +33,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-20 | `6e67727` | [2026-09-20-6e67727.html](2026-09-20-6e67727.html) | [bake-offs](2026-09-20-6e67727-lab.html) | Archive published build 0862cd5 |
 | 2026-09-27 | `833af42` | [2026-09-27-833af42.html](2026-09-27-833af42.html) | [bake-offs](2026-09-27-833af42-lab.html) | feat: add audio reports functionality and UI updates |
 | 2026-10-04 | `c25625e` | [2026-10-04-c25625e.html](2026-10-04-c25625e.html) | [bake-offs](2026-10-04-c25625e-lab.html) | feat: add new Banger report and section effects functionality |
-| 2026-10-10 | `dcb355e` | [2026-10-10-dcb355e.html](2026-10-10-dcb355e.html) | [bake-offs](2026-10-10-dcb355e-lab.html) | Fix the deploy: pots reach the new kit presets, two flaky jukebox checks |
 | 2026-10-11 | `906ea68` | [2026-10-11-906ea68.html](2026-10-11-906ea68.html) | [bake-offs](2026-10-11-906ea68-lab.html) | Add WASM audio engine kernel implementations in JS and C, along with a probe for browser compatibility |
 | 2026-10-12 | `b5dca4b` | [2026-10-12-b5dca4b.html](2026-10-12-b5dca4b.html) | [bake-offs](2026-10-12-b5dca4b-lab.html) | Add comprehensive tests for office environment and interactions |
 | 2026-10-12 | `f21e408` | [2026-10-12-f21e408.html](2026-10-12-f21e408.html) | [bake-offs](2026-10-12-f21e408-lab.html) | Fix the six failing suites |
@@ -52,3 +51,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-16 | `f9aac8d` | [2026-10-16-f9aac8d.html](2026-10-16-f9aac8d.html) | [bake-offs](2026-10-16-f9aac8d-lab.html) | Add test for giant snowball kick behavior in snowball-kick.js |
 | 2026-10-16 | `95019a5` | [2026-10-16-95019a5.html](2026-10-16-95019a5.html) | [bake-offs](2026-10-16-95019a5-lab.html) | Refactor performance testing and audio processing; enhance report structure and profiling |
 | 2026-10-16 | `e3174cb` | [2026-10-16-e3174cb.html](2026-10-16-e3174cb.html) | [bake-offs](2026-10-16-e3174cb-lab.html) | Add pitFall.js for character falling mechanics and animations |
+| 2026-10-16 | `35da346` | [2026-10-16-35da346.html](2026-10-16-35da346.html) | [bake-offs](2026-10-16-35da346-lab.html) | feat: add AboutState and integrate into menu flow |

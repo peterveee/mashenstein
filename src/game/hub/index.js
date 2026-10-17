@@ -34,7 +34,7 @@ import { mix as HUB_MIX, arrangement as HUB_ARRANGEMENT } from '../../data/songs
 // corner responsive to a saved desk edit without requiring a dev URL or promotion.
 import * as ARCADE_THEME_SONG from '../../data/imported/arcade-theme.js';
 import { COUNTER_DANCE_MIX_THEME } from '../../data/shop-themes.js';
-import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
+import { STAGES, stagesForCabinet, stageLabel, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
@@ -5561,8 +5561,9 @@ export class StageSelectState {
         // A locked row keeps its name and its empty pips — it is a place you
         // are going, not a hole in the list — but drops to a colour that reads
         // as unavailable even while the cursor is sitting on it.
-        drawText(ctx, `${o.stage.id.toUpperCase()}  ${o.stage.mission.type.toUpperCase()}`,
-          40, y, open ? c : sel ? '#8a7a52' : '#54545e', ROW_S);
+        drawText(ctx, stageLabel(o.stage),
+          40, y, open ? c : sel ? '#8a7a52' : '#54545e',
+          Math.min(ROW_S, (plugX - 52) / textWidth(stageLabel(o.stage), 1)));
         // The pip row already says how many plugs you have, so the n/3 counter
         // that used to sit here was the same fact twice.
         drawPlugRow(ctx, plugX, y - 0.5, plugs, undefined, PIP);
@@ -5570,7 +5571,7 @@ export class StageSelectState {
         // Naming the stage that opens it, rather than a bare LOCKED, means the
         // gate never sends anyone hunting for which of the nine cabinets it
         // meant — the answer is always the row directly above.
-        const desc = open ? o.stage.mission.desc : `LOCKED - EARN A PLUG IN ${prevStage(o.stage).id.toUpperCase()}`;
+        const desc = open ? stageBonusLine(o.stage) : `LOCKED - EARN A PLUG IN ${stageLabel(prevStage(o.stage))}`;
         drawText(ctx, fitText(desc, W - 60, DESC_S), 52, descY(y), open ? '#5a5a68' : '#6a5a3a', DESC_S);
       } else if (o.kind === 'boss') {
         drawText(ctx, `BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`, 40, y, sel ? '#e04848' : '#c05050', ROW_S);
@@ -5621,10 +5622,10 @@ export class StageSelectState {
     const labelRight = plugX - css(14);
     const labelWidth = Math.max(css(120), labelRight - labelX);
     const longestStageLabel = stagesForCabinet(this.cab.id)
-      .map((s) => `${s.id.toUpperCase()}  ${s.mission.type.toUpperCase()}`)
+      .map(stageLabel)
       .reduce((longest, label) => textWidth(label, 1) > textWidth(longest, 1) ? label : longest, '');
     const labelFit = labelWidth / Math.max(1, textWidth(longestStageLabel, 1));
-    const labelScale = Math.max(1.8, Math.min(3, 15 / (TEXT_INK_H * frame.scale), labelFit));
+    const labelScale = Math.min(3, 15 / (TEXT_INK_H * frame.scale), labelFit);
     const descScale = Math.max(1.7, labelScale * 0.8);
     const rowCompact = this.rowH < css(108);
     const labelMidOffset = css(rowCompact ? 20 : 29);
@@ -5667,7 +5668,7 @@ export class StageSelectState {
         const plugs = slot.campaign.plugs[o.stage.id] || [];
         const rank = slot.campaign.ranks[o.stage.id];
         const open = stageUnlocked(slot, o.stage);
-        const label = `${o.stage.id.toUpperCase()}  ${o.stage.mission.type.toUpperCase()}`;
+        const label = stageLabel(o.stage);
         drawText(ctx, label, labelX, labelY, open ? c : selected ? '#8a7a52' : '#54545e', labelScale);
         const plugGap = Math.max(2, Math.min(8,
           (this.rowH - PORTRAIT_STAGE_PIP * 3) / 2));
@@ -5679,8 +5680,8 @@ export class StageSelectState {
           drawTextCentered(ctx, shownRank, rankCx,
             textYForMid(rowTop + this.rowH / 2, rankScale, 'bold'), '#48e0c8', rankScale, 'bold');
         }
-        const desc = open ? o.stage.mission.desc
-          : `LOCKED - EARN A PLUG IN ${prevStage(o.stage).id.toUpperCase()}`;
+        const desc = open ? stageBonusLine(o.stage)
+          : `LOCKED - EARN A PLUG IN ${stageLabel(prevStage(o.stage))}`;
         const lines = rowCompact
           ? [fitText(desc, descWidth, descScale)]
           : wrapText(desc, descWidth, descScale, 2);
@@ -6586,4 +6587,10 @@ export class ArcadeState {
     if (!touch && broke) drawTextCentered(ctx, 'THE COIN SLOT IS UNMOVED BY YOUR POVERTY.', W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
     drawMenuHint(ctx, 'PLAY');
   }
+}
+
+// A stage row's second line. Every mission is the finish line now (Peter, 17 Oct
+// 2026), so the row names what the stage's bonus asks instead.
+function stageBonusLine(stage) {
+  return stage.challenge ? `BONUS: ${stage.challenge.desc}` : '';
 }

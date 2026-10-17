@@ -211,7 +211,7 @@ assert(demoDeaths.length === 0,
 assert(demoStuck === 0, `and every demo run reaches an ending (${demoStuck} hit the sim's cap)`);
 
 // ---- the villain does not cost the demo the level ----------------------------
-const CHASE = STAGES.filter((s) => s.mission.type === 'chase');
+const CHASE = STAGES.filter((s) => s.challenge?.type === 'chase');
 assert(CHASE.length === 2, `both chase stages are in play (${CHASE.map((s) => s.id).join(', ')})`);
 for (const stage of CHASE) {
   let bonks = 0;

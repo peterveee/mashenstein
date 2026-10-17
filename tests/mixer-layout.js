@@ -4453,7 +4453,7 @@ assert(/const devicesOpen = \(\) => \$\('devices'\)\.classList\.contains\('fxwin
   && /function setDevicesFolded[\s\S]*?\$\('fxbtn'\)\?\.classList\.toggle\('on', !on\);[\s\S]*?setAttribute\('aria-pressed'/.test(entry),
   'the toolbar toggle opens and closes the effects panel, and reads back what the panel is doing');
 const bootBody = /void \(async \(\) => \{[\s\S]*?\n\}\)\(\);/.exec(entry)?.[0] || '';
-assert(/const initialDeskSessionMatches = savedDeskSession\?\.version === 1[\s\S]*?setDevicesFolded\(!\(initialDeskSessionMatches && savedDeskSession\.effectsOpen === true\), false\);\s*selectSong\(trackId\);/.test(bootBody)
+assert(/const initialDeskSessionMatches = savedDeskSession\?\.version === 1[\s\S]*?setDevicesFolded\(!\(initialDeskSessionMatches && savedDeskSession\.effectsOpen === true\), false\);\s*await selectSong\(trackId\);/.test(bootBody)
   && /selectSong\(trackId\);[\s\S]*?if \(sessionMatches\) restoreDeskSession\(savedDeskSession\);/.test(bootBody),
   'the saved Effects dock state is applied before the first arranger build');
 assert(/\.fxicon \.body \{ fill: currentColor; \}/.test(shell.replace(/\n\s+/g, ' '))

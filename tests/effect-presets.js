@@ -198,8 +198,8 @@ for (const [id, expected] of Object.entries(characterPresetExpectations)) {
 }
 
 const nativeMultibandPresetNames = effectPresetNames('mbCompN');
-assert(nativeMultibandPresetNames.length === 5,
-  'native multiband ships five named presets');
+assert(nativeMultibandPresetNames.length === 6,
+  'native multiband ships six named presets');
 for (const name of nativeMultibandPresetNames) {
   const resolved = resolveEffectPreset('mbCompN', name);
   assert(resolved && EFFECT_BY_ID.mbCompN.params.every((key) => Object.hasOwn(resolved, key)),

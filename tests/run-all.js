@@ -9,6 +9,8 @@ const suites = [
   'tests/migration.js',
   'tests/difficulty-identity.js',
   'tests/run-complete.js',
+  // Every mission is the finish line; the clock is what a stage is failed on.
+  'tests/stage-clock.js',
   // What the run is allowed to tell the audio engine to stop synthesizing, and when.
   // Beside the full-run integration because it is the same headless RunState, and its
   // subject is a boundary: the skip must not eat the tune arriving at the bar line.
@@ -42,6 +44,7 @@ const suites = [
   'tests/tutorial.js',
   'tests/hero-kits.js',
   'tests/gravity-level.js',
+  'tests/gravity-portrait-finish.js',
   'tests/mid-air-slide-kick.js',
   'tests/snowball-kick.js',
   'tests/barrel-arrival.js',
@@ -66,6 +69,7 @@ const suites = [
   'tests/office-wall-cache.js',
   'tests/gravity-art-warmup.js',
   'tests/hero-render-motion.js',
+  'tests/cat-hit-reaction.js',
   'tests/frost-aurora.js',
   'tests/frost-weather.js',
   'tests/crypt-weather.js',
@@ -162,6 +166,9 @@ const suites = [
   // under a running transport. Cheap and browserless, which is itself the claim — a
   // groove change builds nothing and disposes nothing.
   'tests/swing.js',
+  // The song-wide key shift: one number on the arrangement, never spread onto bars,
+  // added to a bar's own transpose, drums untouched.
+  'tests/song-transpose.js',
   // Source-backed scratch creation: starter patterns, writable saves, history,
   // collision-safe ids, and a mixed legacy/scratch imported index.
   'tests/new-song.js',
@@ -836,7 +843,7 @@ const soundSuites = [
   'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-fusion.js', 'tests/banger-mood-pairs.js', 'tests/banger-rolls.js', 'tests/banger-forms.js', 'tests/banger-chords-early.js', 'tests/banger-modify.js',
   'tests/banger-expression.js', 'tests/banger-voice-leading.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
-  'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
+  'tests/arrangement.js', 'tests/automation.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js', 'tests/song-transpose.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',
   'tests/auto-portamento.js', 'tests/auto-portamento-render.js', 'tests/note-velocity.js',
   'tests/song-processing.js',
