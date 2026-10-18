@@ -679,7 +679,7 @@ const REWIND_DISABLED = typeof window !== 'undefined'
 // music pulls the ground out from under it. Keep capStar banned too: it is the
 // legacy score-star capsule and may still arrive through authored/stale data.
 const BEAT_BANNED_POWERS = new Set([
-  'capSpeed', 'capLowGrav', 'capRewind', 'capMagnet', 'capUnpeel', 'capStar',
+  'capSpeed', 'capLowGrav', 'capRewind', 'capSlow', 'capMagnet', 'capUnpeel', 'capStar',
 ]);
 // The capsules a CABINET bans on every stage, beat or not (`bannedPowers` in its
 // data) — the neon cabinet's invincibility (Peter, 24 Sep) — and the ones a single
@@ -4771,6 +4771,7 @@ export class RunState {
     // own this flag: once the one-shot has fired, travelling into the recorded
     // past must not resurrect its capsule or deal another one.
     this.rewindUsed = false;
+    this.slowCapSpawned = false;
 
     // The one loop-de-loop of the run, if this cabinet has them. A SET PIECE
     // rather than a pattern: it is placed at a known point in the stage instead
@@ -5114,7 +5115,7 @@ export class RunState {
     const ownBan = ownBannedPowers(this.cabinet, this.stage);
     const bannedStartingPower = (this.beatLock &&
       (BEAT_BANNED_POWERS.has(this.startingPowerup)
-        || ['speed', 'lowGrav', 'rewind', 'magnet', 'unpeel', 'star'].includes(this.startingPowerup)))
+        || ['speed', 'lowGrav', 'rewind', 'magnet', 'unpeel', 'star', 'slowdown'].includes(this.startingPowerup)))
       || (ownBan
         && (ownBan.includes(this.startingPowerup)
           // The ban lists CAPSULES (capSpeed) and a starting power is a POWER
@@ -6207,6 +6208,7 @@ export class RunState {
       : 1 + SPEED_RAMP_K * Math.sqrt(this.tRun);
     const capped = Math.min(this.overtime ? 2.4 : SPEED_RAMP_CAP, ramp);
     return this.baseSpeed() * hero.speedMult * capped * (1 + this.speedBoost) * this.powerups.speedMultiplier() *
+      this.powerups.slowMultiplier() *
       (this.player.dashT > 0 ? 1.8 : this.player.rollT > 0 ? 1.25 : this.player.stumbleT > 0 ? 0.72 : 1);
   }
 
@@ -6651,7 +6653,7 @@ export class RunState {
     const hurry = this.hurried ? (this.beatLock ? 1 : HURRY_TEMPO) : 1;
     const hurryPitch = this.hurried && this.beatLock ? HURRY_PITCH_BEAT : 1;
     Audio.setWarp(this.beatLock ? this.laneTempo()
-      : star * hurry * this.powerups.musicTempoMultiplier(), star * hurryPitch);
+      : star * hurry * this.powerups.musicTempoMultiplier() * this.powerups.musicSlowMultiplier(), star * hurryPitch);
     const wdt = dt;   // world time (the hit-jolt affects world, not score accrual)
 
     this.tRun += wdt;
@@ -7032,6 +7034,7 @@ export class RunState {
     }
     this.spawnApplianceMaybe();
     this.spawnScriptedRewindMaybe();
+    this.spawnScriptedSlowMaybe();
     this.updateEvacuation(wdt);
     this.spawnDogSign();
     this.spawnFinishDog();
@@ -14049,6 +14052,28 @@ export class RunState {
     this.drip.notePower(x, 'capRewind');
   }
 
+  // The stage's scripted slow-down capsule, placed by hand ahead of a stretch
+  // where less speed helps rather than hurts (see stages.js slowAt) — the
+  // inverse of a boost pad, and the one capsule the random drip never deals
+  // (see PICKUPS.capSlow). Same mechanics as the rewind capsule just above:
+  // slowAt is a fraction of stage distance like rewindAt, the drip's spacing
+  // ledger keeps it a screen clear of whatever the dice dealt, and it is a
+  // one-shot per attempt.
+  spawnScriptedSlowMaybe() {
+    if (this.beatLock || this.overtime || !this.layout || this.layout.slowAt == null) return;
+    if (this.slowCapSpawned) return;
+    const at = this.layout.slowAt * this.totalDist;
+    if (this.camX + W <= at) return;
+    const maxX = this.laneWallX() - PICKUPS.capSlow.w;
+    const x = this.clearOfHazards(Math.min(at + W, maxX), PICKUPS.capSlow.w, 34,
+      PICKUPS.capSlow.h, maxX);
+    if (x == null) return;                   // no clear ground left — retry next frame
+    if (!this.drip.canPlacePower(x)) return; // crowded — retry next frame
+    this.slowCapSpawned = true;
+    this.pickups.push(makePickup('capSlow', x, 34));
+    this.drip.notePower(x, 'capSlow');
+  }
+
   // The plumber gatekeeper: one unkillable dog holds the finish line. It
   // spawns just this side of the tape as the pole comes into view and charges
   // the hero, barking (see the finishDog block in updateEntities). Scripted
@@ -14639,6 +14664,7 @@ export class RunState {
       applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot, silverGot: this.silverGot,
       finishDogSpawned: this.finishDogSpawned, dogSignSpawned: this.dogSignSpawned,
       rewindCapSpawned: this.rewindCapSpawned,
+      slowCapSpawned: this.slowCapSpawned,
       // Whether the run's one loop has been stood up yet. It is a one-shot, and
       // the restore rebuilds the entity lists from this snapshot — so a run that
       // checkpointed at a third and then died would come back with the flag
@@ -14757,6 +14783,7 @@ export class RunState {
     this.finishDogSpawned = !!s.finishDogSpawned;
     this.dogSignSpawned = !!s.dogSignSpawned;
     this.rewindCapSpawned = this.rewindUsed || !!s.rewindCapSpawned;
+    this.slowCapSpawned = !!s.slowCapSpawned;
     this.loopSpawned = !!s.loopSpawned;
     if (s.pitsDone) for (let i = 0; i < this.pitPlan.length; i++) this.pitPlan[i].done = !!s.pitsDone[i];
     if (s.pitsSpawned) for (let i = 0; i < this.pitPlan.length; i++) this.pitPlan[i].spawned = !!s.pitsSpawned[i];
@@ -15113,6 +15140,7 @@ export class RunState {
     s.finishDogSpawned = this.finishDogSpawned;
     s.dogSignSpawned = this.dogSignSpawned;
     s.rewindCapSpawned = this.rewindCapSpawned;
+    s.slowCapSpawned = this.slowCapSpawned;
     s.fuseHeld = this.fuseHeld;
     s.escapeWall = this.escapeWall;
 
@@ -15259,6 +15287,7 @@ export class RunState {
     this.finishDogSpawned = !!s.finishDogSpawned;
     this.dogSignSpawned = !!s.dogSignSpawned;
     this.rewindCapSpawned = this.rewindUsed || !!s.rewindCapSpawned;
+    this.slowCapSpawned = !!s.slowCapSpawned;
     this.loopSpawned = s.loopSpawned;
     for (let i = 0; i < this.pitPlan.length; i++) this.pitPlan[i].done = !!(s.pitsDone && s.pitsDone[i]);
     this.signShown = !!s.signShown;

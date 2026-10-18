@@ -5889,6 +5889,19 @@ class AudioSys {
       case 'doorSwingShut': this.doorWhoosh(false, true); break;
       case 'faxHandshake': this.faxHandshake(); break;
       case 'gateSlam': this.gateSlam(); break;
+      case 'vacuumSuck':
+        this.noise(0.18, 0.11, 'lowpass', 620);
+        this.osc('sine', 260, 470, 0.2, 0.07, 0.015);
+        break;
+      case 'vacuumLoad':
+        this.noise(0.08, 0.06, 'lowpass', 980);
+        this.osc('sine', 420, 620, 0.1, 0.05, 0.012);
+        break;
+      case 'vacuumLaunch':
+        this.noise(0.07, 0.19, 'bandpass', 1050);
+        this.osc('triangle', 190, 92, 0.16, 0.11, 0.006);
+        this.osc('square', 520, 260, 0.07, 0.07, 0.014);
+        break;
       case 'coyoteHowl': this.coyoteHowl(); break;
       case 'coyoteChorus': this.coyoteHowl('chorus'); break;
       case 'coyoteYip': this.coyoteHowl('yip'); break;

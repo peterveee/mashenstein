@@ -3700,6 +3700,19 @@ export const PROP_PAINTERS = {
       c.moveTo(rightBase - triW, cy); c.lineTo(rightBase, top); c.lineTo(rightBase, bottom); c.closePath();
     });
   },
+  capSlow(ctx, w, h) {
+    // An hourglass: the clearest "less time pressure" glyph at 8px, and it
+    // reads as the mirror of capSpeed's lightning bolt rather than a cousin
+    // of it. Teal, not the arrow shapes the kinetic powers use.
+    const u = Math.max(w, h);
+    fineShape(ctx, '#48c8c8', u, (c) => {
+      c.moveTo(w * 0.14, h * 0.08); c.lineTo(w * 0.86, h * 0.08);
+      c.lineTo(w * 0.5, h * 0.48); c.closePath();
+      c.moveTo(w * 0.14, h * 0.92); c.lineTo(w * 0.86, h * 0.92);
+      c.lineTo(w * 0.5, h * 0.52); c.closePath();
+    });
+    plain(ctx, '#d8fbf8', (c) => { c.moveTo(w * 0.32, h * 0.82); c.lineTo(w * 0.68, h * 0.82); c.lineTo(w * 0.5, h * 0.58); c.closePath(); });
+  },
   appliance(ctx, w, h, frame = 0, finish = null) {
     finish = finish || GOLD_TOASTER_FINISH;
     const u = Math.max(w, h);
@@ -5825,7 +5838,7 @@ const PROP_DETAIL_SCALE = {
   bananaPeel: 3,
   coin: 2, battery: 2,
   capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
-  capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRewind: 2,
+  capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRewind: 2, capSlow: 2,
   appliance: 2, applianceSilver: 2, cord: 2, resident: 2, dustdevil: 2,
   // Six sockets and two pin slots each inside a bar that ships around 56 units
   // wide and 9 tall. The slots are what stop the gangs reading as louvres.

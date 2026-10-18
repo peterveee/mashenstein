@@ -153,6 +153,12 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   // The power-up's guaranteed introduction on every device — the drip can
   // also deal one anywhere, but only the dice say when.
   rewindAt: opts.rewindAt ?? null,
+  // Scripted slow-down capsule, a fraction of stage distance like rewindAt.
+  // Hand-placed ahead of a stretch where less speed helps the player rather
+  // than hurts — never dealt by the random drip, and never on a beat stage
+  // (run.js's beatLock short-circuits the world-speed and music-tempo chains
+  // it feeds, so it would be a no-op there anyway).
+  slowAt: opts.slowAt ?? null,
   // CAPSULES THIS ONE STAGE NEVER DEALS, on top of any its cabinet bans
   // (cabinets.js `bannedPowers`). run.js merges the two into the one set every
   // spawner, the lane sweep, the pickup itself and the breaker-box starting power
@@ -260,11 +266,16 @@ export const STAGES = [
     { type: 'mash', n: 4, at: [0.090, 0.235, 0.508, 0.662],
       desc: 'COLLECT M-A-S-H', note: 'A LETTER YOU TAKE STAYS TAKEN.' },
     { speedMult: 1.0, pits: [{ at: 0.12, w: 52 }, { at: 0.45, w: 58 }, { at: 0.78, w: 64 }] }),
+  // The slow-down capsule's guaranteed introduction, and this stage on
+  // purpose: SPEED ZONE already teaches boost pads, so its own cabinet
+  // handing out the opposite knob reads as the same lesson from both ends.
+  // 0.2 is early and there is no hazard to pair it with yet — the capsule is
+  // the whole lesson here, same instinct as plumber-2's rewind at 0.15.
   S('speed', 1,
     REACH,
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },
     { introBy: 'rusty', intro: 'ALREADY FINISHED THIS ONE. I AM WAITING AT THE END. TAKE YOUR TIME.',
-      paperPreset: 'cardstockClear' }),
+      paperPreset: 'cardstockClear', slowAt: 0.2 }),
   // The collapsing road finally collapses. Both holes clear the loop set piece
   // at 0.55 (see LOOP.at) by a third of the stage or more, so neither can be
   // laid inside its guard lane — and 0.14 rather than the 0.25 this used to be,
@@ -425,12 +436,16 @@ export const STAGES = [
   // the drones, targets and buzzbirds exactly as it does today, and the two
   // scripted pits below are the holes this stage guarantees. Both sit just past
   // a checkpoint, which is the rule every pit on this page obeys.
+  // A slow-down capsule at 0.30, a comfortable run-up ahead of the 0.37 pit —
+  // TERMINAL VELOCITY is the first of the higher-speed cabinets (speedBonus
+  // 0.3), and this is the kind of spot the capsule is for: more road to read
+  // the gap on, right before it is needed.
   S('neon', 1,
     REACH,
     { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS', note: 'THEY ARE VERY DESTROYABLE.' },
     { introBy: 'b33p', intro: 'I FEEL AT HOME HERE. I AM ALSO STILL LOW ON CYAN.',
       trains: [{ at: 0.000, cars: 6 }, { at: 0.040, cars: 6 }, { at: 0.080, cars: 6 }],
-      pits: [{ at: 0.37, w: 52 }, { at: 0.71, w: 56 }] }),
+      pits: [{ at: 0.37, w: 52 }, { at: 0.71, w: 56 }], slowAt: 0.3 }),
   // ONE TRAIN, MID-STAGE, and deliberately less than Neon 1 had. The opening
   // cabinet spends its trains teaching the idea; this stage is mostly ground,
   // and the single set at 0.46 is the callback — long enough to board, cross a
@@ -496,8 +511,11 @@ export const STAGES = [
     // DO NOT HIT THE FIRE ALARMS sign introduces them (officeClimb.js).
     { type: 'targets', n: 3, targetType: 'fireAlarm', label: 'ALARMS', at: [0.15, 0.45, 0.82, 0.855],
       desc: 'PULL 3 FIRE ALARMS', note: 'THE MEETING IS CANCELLED.' },
+    // A slow-down capsule at 0.73, ahead of the two alarms sitting close
+    // together at 0.82 and 0.855 — CORPORATE KOMBAT runs at speedBonus 0.3125,
+    // and the last-chance pair is exactly the spot a little less pace helps.
     { quiet: true, introBy: 'eggshell', introSec: 7,
-      intro: 'DO NOT TOUCH MY FIRE ALARMS. THE MEETING ENDS WHEN I SAY.' }),
+      intro: 'DO NOT TOUCH MY FIRE ALARMS. THE MEETING ENDS WHEN I SAY.', slowAt: 0.73 }),
   // CRACK THE SAFES (Peter, 15 Oct): four double-height safes placed on floor 88,
   // three asked for, and one SHOT opens each (Run.crackSafe). Replaced the
   // retired escort bonus.
@@ -527,10 +545,13 @@ export const STAGES = [
   // just past a checkpoint, at 0.70. Twice in the game and both times in the
   // second half of a stage: it is a set piece, and a set piece that turns up
   // every other level is furniture.
+  // A slow-down capsule at 0.60, ahead of the six-jump crossing at 0.70 — the
+  // widest crossing in the game, on the cabinet with the highest speedBonus
+  // (0.35). The run-up is exactly where the capsule earns its keep.
   S('surge', 2,
     REACH,
     { type: 'cords', n: 6, desc: 'RECOVER 6 CORD PIECES', note: 'THE SOCKET IS WAITING.' },
-    { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 6 }] }),
+    { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 6 }], slowAt: 0.6 }),
   // The finale finally has ground that gives way under it — "everything at
   // once" was 116 patterns on a road with no holes.
   S('surge', 3,

@@ -142,9 +142,12 @@ function body(c, heroId, cx, fy, k) {
     drawToon(o, heroId, k.pose, x, y, U);
     o.restore();
   };
-  // A context with no transform to read (a test stub) or no DOM gets the plain pose
-  // (see zap.js's drawZapHero, the same offscreen-layer trick).
-  const L = typeof document !== 'undefined' && c.getTransform ? layer(23, c, bigBox(cx, fy), paint) : null;
+  // A context with no real transform to read (a test stub's getTransform exists
+  // but returns nothing usable, so check the result rather than the method) or
+  // no DOM gets the plain pose (see zap.js's drawZapHero, the same offscreen-
+  // layer trick).
+  const m = typeof document !== 'undefined' && c.getTransform && c.getTransform();
+  const L = m && Number.isFinite(m.a) ? layer(23, c, bigBox(cx, fy), paint) : null;
   if (!L) paint(c);
   else blit(c, L);
 }

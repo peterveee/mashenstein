@@ -39,7 +39,7 @@ const GUIDE_ICON_SIZES = {
   tombstone: [11, 8], zombieWalk: [10, 14], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], cardBox: [12, 11], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRewind: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7], letterM: [10, 12],
+  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRewind: [9, 9], capSlow: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7], letterM: [10, 12],
   eggshell: [24, 20], eggshellCopter: [28, 28], target: [9, 9], beatBar: [8, 14],
   // Standing hazards. Each is its def box times PROP_TALL, rounded — the guide
   // has to show the art the lane shows, and for these the art is mostly the
@@ -4778,9 +4778,11 @@ const ALL_GUIDE_PAGES = [
       { s: 'eggshellCopter', name: 'CLOWN-COPTER', desc: 'FLIES AHEAD. WHEN IT DROPS IN, JUMP AND BONK IT.' },
     ],
   },
-  // All eight capsules live on one page. They come from the same drip table and
+  // All nine capsules live on one page. They come from the same drip table and
   // behave identically, so splitting them by flavour ("essentials" vs "hero
-  // traits") only made players think the missing half did not exist.
+  // traits") only made players think the missing half did not exist. SLOW
+  // DOWN is the one exception to "same drip table" — it is hand-placed, never
+  // dealt by the dice — but it still belongs on this page as a timed power.
   {
     title: 'PICKUPS: CAPSULES', color: '#72d8f0', hint: 'BLUE = A TIMED POWER. GRAB A DUPLICATE TO OVERCHARGE IT.',
     rows: [
@@ -4792,6 +4794,7 @@ const ALL_GUIDE_PAGES = [
       { s: 'capLowGrav', name: 'LOW GRAVITY', desc: 'YOUR JUMPS HANG IN THE AIR. PHYSICS FILES A COMPLAINT.' },
       { s: 'capUnpeel', name: 'UNPEELABLE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
       { s: 'capRewind', name: 'REWIND', desc: 'RARE. YOUR NEXT MISTAKE UNDOES ITSELF. EVEN A PIT.' },
+      { s: 'capSlow', name: 'SLOW DOWN', desc: 'RUNS SLOWER. THE MUSIC TOO. EASIER THAN IT SOUNDS.' },
     ],
   },
   {

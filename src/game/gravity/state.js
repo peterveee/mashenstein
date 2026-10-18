@@ -19,8 +19,10 @@ import { GRAVITY_LEVEL as L, GRAVITY_CABINET } from './model.js';
 import { GRAVITY_STAGE_DATA, isGateField } from '../../data/gravity-stages.js';
 import { STAGE_BY_ID } from '../../data/stages.js';
 import { PLAYER_X } from '../player.js';
-import { drawFloatingBolts, drawMaintenanceRobot } from '../../sprites/gravity-encounters.js';
-import { gravityMissionStateFor, gravitySeconds, gravityStageDataFor, gravityWorldX } from './encounters.js';
+import { drawFloatingBolts, drawMaintenanceVacuum, vacuumShotAheadForView } from '../../sprites/gravity-encounters.js';
+import { gravityMissionStateFor, gravitySeconds, gravityStageDataFor, gravityWorldX,
+  VACUUM_LOADED_SECONDS, VACUUM_PREP_SECONDS, VACUUM_SHOT_SPEED, VACUUM_SOURCE_LEAD_SECONDS,
+  VACUUM_WARNING_SECONDS, vacuumAttackPhase } from './encounters.js';
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const FINISH_RETURN_LEAD_SECONDS = 3;
@@ -328,6 +330,8 @@ export class GravityRunState extends RunState {
     } : null);
     this.gravityFailures ||= new Map();
     this.gravityMissionState = gravityMissionStateFor(this.gravityStageData, this.gravityMissionState);
+    this.gravityVacuumCues = { suction: [], load: [], launch: [] };
+    this.gravityVacuumShots = [];
     this.gravityGates = null;
     this.gravityLane = 0; this.gravityGate = 0;
     this.gravityTransfer = null; this.gravitySpark = 0;
@@ -339,11 +343,11 @@ export class GravityRunState extends RunState {
     const xAt = (sec) => gravityWorldX(sec, PLAYER_X, speed);
     this.gravityGates = this.gravityStageData.gates.map((g, index) => ({ ...g, index, x: xAt(g.at) }));
     this.gravityHazards = this.gravityStageData.hazards.map((h) => ({ ...h, x: xAt(h.at) }));
+    this.gravityVacuumAttacks = (this.gravityStageData.vacuumAttacks || []).map((a) => ({ ...a, x: xAt(a.at) }));
     this.gravityHazards = clearOfFrames(withWrongRailBeds(ceilingJumpsOnly(this.gravityHazards), this.gravityGates, this.totalDist, speed), speed);
     this.gravitySpawned = new Set();
     this.obstacles = []; this.pickups = [];
     this.spawner.fill = () => this.fillGravityEntities();
-    this.fillGravityEntities();
     this.style = {
       ...this.style, name: 'gravity', lightBg: this.spaceLook?.lightBg ?? false, smoothMotion: true,
       heroShadow: false, bgPan: 0, ownSurface: true, noTerrain: true, coversFrame: true,
@@ -376,17 +380,32 @@ export class GravityRunState extends RunState {
         if (this.gravityStageData.floatingBolts) {
           drawFloatingBolts(c, cam, view, this.backgroundT ?? t, this.corridor);
         }
-        if (this.gravityStageData.sequences) drawMaintenanceRobot(c, {
-          cam, view, time: t, seconds: this.gravityTravelTime(), corridor: this.corridor,
-          playerX: this.playerWorldX() - cam, hazards: this.obstacles,
-          sequences: this.gravityStageData.sequences,
-        });
+        if (this.gravityStageData.sequences) {
+          const seconds = this.gravityTravelTime();
+          drawMaintenanceVacuum(c, {
+            view, time: t, seconds, corridor: this.corridor,
+            playerX: this.playerWorldX() - cam,
+            attacks: (this.gravityVacuumAttacks || []).map((a) => ({ ...a, ...vacuumAttackPhase(a, seconds),
+              sourceVisible: seconds >= a.at - VACUUM_PREP_SECONDS - VACUUM_SOURCE_LEAD_SECONDS })),
+            sequences: this.gravityStageData.sequences,
+          });
+        }
         c.restore();
       },
       post: () => {},
     };
     this.updateCamera();
+    this.positionVacuumAttackLaunches();
+    this.fillGravityEntities();
     this.resetRenderInterpolation();
+  }
+  vacuumShotAhead() { return vacuumShotAheadForView(W / (this.camZoom || 1)); }
+  positionVacuumAttackLaunches() {
+    const shotAhead = this.vacuumShotAhead();
+    (this.gravityVacuumAttacks || []).forEach((attack, index) => {
+      if (this.gravitySpawned?.has(`vacuum-${index}`)) return;
+      attack.x = gravityWorldX(attack.at, PLAYER_X, this.baseSpeed()) + shotAhead;
+    });
   }
   fillGravityEntities() {
     this.gravityHazards.forEach((h, index) => {
@@ -444,6 +463,23 @@ export class GravityRunState extends RunState {
         this.pickups.push(coin);
       }
     });
+    (this.gravityVacuumAttacks || []).forEach((a, index) => {
+      const key = `vacuum-${index}`;
+      if (this.gravitySpawned.has(key) || this.gravityTravelTime() < a.at) return;
+      this.gravitySpawned.add(key);
+      const ob = makeObstacle('vacuumShot', a.x);
+      if (a.x + ob.w < this.playerWorldX() - 20) return;
+      ob.gravityAuthoredId = a.id;
+      ob.vacuumLaunchAt = a.at;
+      ob.vacuumLaunchX = a.x;
+      ob.vacuumLane = a.lane;
+      ob.vacuumSourceLane = a.sourceLane;
+      ob.x = a.x - VACUUM_SHOT_SPEED * (this.gravityTravelTime() - a.at);
+      ob.def = { ...ob.def, armored: true, breakable: false, action: 'jump' };
+      if (a.lane) { ob.alt = this.corridor - ob.alt - ob.h; ob.gravityCeiling = this.corridor; }
+      (this.gravityVacuumShots ||= []).push(ob);
+      this.obstacles.push(ob);
+    });
     this.positionGravityHazards();
   }
   crossGravity(gate) {
@@ -469,6 +505,26 @@ export class GravityRunState extends RunState {
   gravityTravelTime() { return gravitySeconds(this.distance, this.baseSpeed()); }
   updateGravityMission() {
     const seconds = this.gravityTravelTime();
+    this.positionVacuumAttackLaunches();
+    for (const attack of this.gravityVacuumAttacks || []) {
+      if (seconds >= attack.at - VACUUM_PREP_SECONDS && seconds < attack.at
+        && !this.gravityVacuumCues.suction.includes(attack.id)) {
+        this.gravityVacuumCues.suction.push(attack.id);
+        Audio.sfx('vacuumSuck');
+      }
+      const loadAt = attack.at - VACUUM_WARNING_SECONDS - VACUUM_LOADED_SECONDS;
+      if (seconds >= loadAt && seconds < attack.at - VACUUM_WARNING_SECONDS
+        && !this.gravityVacuumCues.load.includes(attack.id)) {
+        this.gravityVacuumCues.load.push(attack.id);
+        Audio.sfx('vacuumLoad');
+      }
+      const flightSeconds = this.vacuumShotAhead() / (this.baseSpeed() + VACUUM_SHOT_SPEED);
+      if (seconds >= attack.at && seconds <= attack.at + flightSeconds
+        && !this.gravityVacuumCues.launch.includes(attack.id)) {
+        this.gravityVacuumCues.launch.push(attack.id);
+        Audio.sfx('vacuumLaunch');
+      }
+    }
     for (const sequence of this.gravityStageData.sequences || []) {
       if (seconds >= sequence.end && !this.gravityMissionState.completed.includes(sequence.id)) {
         this.gravityMissionState.completed.push(sequence.id);
@@ -486,6 +542,11 @@ export class GravityRunState extends RunState {
     for (const ob of this.obstacles) if (ob.type === 'maintenancePulse') {
       const drift = Math.max(-1.5, Math.min(1.5, seconds - ob.gravityAt));
       ob.x = gravityWorldX(ob.gravityAt, PLAYER_X, this.baseSpeed()) - drift * this.baseSpeed() * 0.35;
+    }
+    for (const ob of this.gravityVacuumShots || []) {
+      const age = seconds - ob.vacuumLaunchAt;
+      ob.x = ob.vacuumLaunchX - VACUUM_SHOT_SPEED * Math.max(0, age);
+      ob.live = age >= 0 && ob.x + ob.w >= this.playerWorldX() - 20;
     }
   }
   updateMission(dt) {
@@ -596,13 +657,15 @@ export class GravityRunState extends RunState {
       transfer: this.gravityTransfer ? { ...this.gravityTransfer } : null,
       spark: this.gravitySpark, spawned: [...this.gravitySpawned],
       ceilings: this.obstacles.concat(this.pickups).filter(e => e.gravityCeiling != null).map(e => e.id),
-      mission: clone(this.gravityMissionState) };
+      mission: clone(this.gravityMissionState), vacuumCues: clone(this.gravityVacuumCues) };
   }
   restoreGravity(s) {
     this.gravityLane = s.lane; this.gravityGate = s.gate;
     this.gravityTransfer = s.transfer ? { ...s.transfer } : null;
     this.gravitySpark = s.spark; this.gravitySpawned = new Set(s.spawned);
     if (s.mission) this.gravityMissionState = clone(s.mission);
+    this.gravityVacuumCues = s.vacuumCues ? clone(s.vacuumCues) : { suction: [], load: [], launch: [] };
+    this.gravityVacuumShots = this.obstacles.filter(e => e.type === 'vacuumShot');
     const ceilingIds = new Set(s.ceilings);
     for (const e of this.obstacles.concat(this.pickups)) if (ceilingIds.has(e.id)) e.gravityCeiling = this.corridor;
     if (this.gravityStageData.sequences) this.mission.count = this.gravityMissionState.completed.length;
@@ -613,7 +676,7 @@ export class GravityRunState extends RunState {
     this.restoreGravity(s.gravity);
     // The shared checkpoint restore discards transient entities. Rebuild the
     // remaining authored lane at its original coordinates and polarity.
-    this.obstacles = []; this.pickups = []; this.gravitySpawned.clear();
+    this.obstacles = []; this.pickups = []; this.gravityVacuumShots = []; this.gravitySpawned.clear();
     this.fillGravityEntities();
     this.resetRenderInterpolation();
   }

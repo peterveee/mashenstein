@@ -76,7 +76,7 @@ assert.equal(run.portraitObjectiveNotice.text, '10/20',
 
 run.challenge.count = 20;
 run.updatePortraitObjectiveNotice(1, 10);
-assert.equal(run.portraitObjectiveNotice.text, 'COMPLETE',
+assert.equal(run.portraitObjectiveNotice.text, '✓',
   'long objectives still announce completion');
 
 const ctx = globalThis.document.createElement('canvas').getContext('2d');

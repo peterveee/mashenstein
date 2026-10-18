@@ -10,6 +10,8 @@ const { HEROES } = await import('../src/data/heroes.js');
 const { GRAVITY_LEVEL: L, GRAVITY_CABINET } = await import('../src/game/gravity/model.js');
 const { STAGE_BY_ID } = await import('../src/data/stages.js');
 const { isGateField } = await import('../src/data/gravity-stages.js');
+const { VACUUM_PREP_SECONDS, VACUUM_SHOT_SPEED, vacuumAttackPhase } = await import('../src/game/gravity/encounters.js');
+const { VACUUM_SHOT_AHEAD, vacuumRobotAheadForView, vacuumShotAheadForView } = await import('../src/sprites/gravity-encounters.js');
 save.load();
 function create(hero = 'lorenzo', stageId = 'gravity-1') {
   save.newSlot(0, 0);
@@ -243,6 +245,36 @@ for (const hero of HEROES) {
   r.updateGravityMission(); assert.equal(r.mission.count, 1);
   r.exit();
 }
+// Vacuum phase order, opposite-rail pickup, and mirrored lane placement.
+{
+  const r = create('lorenzo', 'gravity-2');
+  const floorAttack = r.gravityVacuumAttacks.find(a => a.lane === 0);
+  const ceilingAttack = r.gravityVacuumAttacks.find(a => a.lane === 1);
+  assert.equal(vacuumRobotAheadForView(400), 128, 'desktop keeps the original robot position');
+  const portraitRobotAhead = vacuumRobotAheadForView(480 / 2.2);
+  assert.ok(portraitRobotAhead < 128, 'portrait brings the hover vacuum fully into the narrower view');
+  assert.equal(vacuumShotAheadForView(480 / 2.2), portraitRobotAhead - 24,
+    'portrait launch point remains aligned to the robot outlet');
+  assert.equal(floorAttack.sourceLane, 1, 'floor shot pulls its canister from the ceiling');
+  assert.equal(ceilingAttack.sourceLane, 0, 'ceiling shot lifts its canister from the floor');
+  assert.equal(vacuumAttackPhase(ceilingAttack, ceilingAttack.at - VACUUM_PREP_SECONDS - 0.01).phase, 'waiting');
+  assert.equal(vacuumAttackPhase(ceilingAttack, ceilingAttack.at - VACUUM_PREP_SECONDS).phase, 'suction');
+  assert.equal(vacuumAttackPhase(ceilingAttack, ceilingAttack.at - 0.7).phase, 'loaded');
+  assert.equal(vacuumAttackPhase(ceilingAttack, ceilingAttack.at - 0.2).phase, 'telegraph');
+  assert.equal(vacuumAttackPhase(ceilingAttack, ceilingAttack.at).phase, 'launched');
+  assert.equal(r.gravityVacuumShots.length, 0, 'future canisters are visual only until the authored launch');
+  r.exit();
+  for (const attack of [floorAttack, ceilingAttack]) {
+    const run = create('lorenzo', 'gravity-2');
+    const authored = run.gravityVacuumAttacks.find(a => a.id === attack.id);
+    run.distance = authored.at * run.baseSpeed(); run.camX = run.distance; run.fillGravityEntities();
+    const shot = run.obstacles.find(o => o.gravityAuthoredId === attack.id);
+    assert.ok(shot?.live, `${attack.id}: collision starts at launch`);
+    assert.equal(shot.gravityCeiling != null, !!attack.lane, `${attack.id}: art and hitbox use its selected rail`);
+    assert.equal(shot.x, authored.x, `${attack.id}: shot starts at the robot outlet`);
+    run.exit();
+  }
+}
 // These are actual hazards, not a timer that permits a no-input victory.
 for (const stageId of ['gravity-3', 'gravity-2']) {
   const r = create('lorenzo', stageId);
@@ -283,23 +315,24 @@ for (const hero of ['lorenzo', 'ramon']) for (let off = -70; off <= -45; off += 
   assert.ok(minY > -1, `${hero} jumping ${off} from the arrow never goes below the floor (${minY.toFixed(1)})`);
   r.exit();
 }
-// Tool hitboxes work on the floor, including a real held duck.
-for (const lane of [0]) for (const duck of [false, true]) {
+// Launched canisters use the same floor/ceiling hitbox as their visible sprite.
+for (const lane of [0, 1]) {
   const r = create('lorenzo', 'gravity-2');
-  const ob = r.obstacles.find(o => o.type === 'maintenanceBrush' && !!o.gravityCeiling === !!lane);
-  r.gravityLane = lane; r.player.y = lane ? L.corridor - 24 : 0;
+  r.introRunning = false; r.introFreeze = 0;
+  const attack = r.gravityVacuumAttacks.find(a => a.lane === lane);
+  const impactAt = attack.at + VACUUM_SHOT_AHEAD / (r.baseSpeed() + VACUUM_SHOT_SPEED);
+  r.distance = impactAt * r.baseSpeed(); r.camX = r.distance;
+  r.gravityLane = lane; r.player.y = lane ? r.corridor - 24 : 0;
   r.player.grounded = true; r.player.iframes = 0;
-  ob.x = r.playerWorldX(); r.obstacles = [ob]; r.pickups = [];
-  if (duck) {
-    r.player.slidePressed();
-    r.player.update(0.15, { held: a => a === 'slide', pressed: () => false }, { speed: 120 });
-  }
+  r.fillGravityEntities();
+  const shot = r.obstacles.find(o => o.gravityAuthoredId === attack.id);
+  r.positionGravityHazards(); r.obstacles = [shot]; r.pickups = [];
   r.collide();
-  assert.equal(r.damageTaken > 0, !duck, `brush on rail ${lane}: standing hits, duck clears`);
+  assert.ok(r.damageTaken > 0, `launched canister hits a standing runner on rail ${lane}`);
   r.exit();
 }
-// Checkpoint reconstruction keeps a wide field whose leading edge is behind
-// the player, and rewind keeps the moving pulse at its recorded position.
+// Checkpoint reconstruction keeps the rollers intact; vacuum flight follows
+// route time and rewind restores its exact position and launch cue state.
 {
   const r = create('lorenzo', 'gravity-2');
   r.introFreeze = 0; r.introRunning = false;
@@ -311,15 +344,20 @@ for (const lane of [0]) for (const duck of [false, true]) {
   const rollers = r.obstacles.find(o => o.gravityAuthoredId === 'rollers-1');
   assert.ok(rollers && rollers.x < r.playerWorldX() && rollers.x + rollers.w > r.playerWorldX(),
     'restoring halfway over rollers keeps the entire dangerous floor');
-  r.distance = 37.5 * r.baseSpeed(); r.camX = r.distance; r.updateGravityMission();
-  const pulse = r.obstacles.find(o => o.gravityAuthoredId === 'pulse-2');
-  const px = pulse.x, rewind = {}; r.writeRewindSnapshot(rewind);
+  const attack = r.gravityVacuumAttacks.find(a => a.id === 'vacuum-4');
+  r.distance = (attack.at + 0.2) * r.baseSpeed(); r.camX = r.distance; r.updateGravityMission(); r.fillGravityEntities();
+  const shot = r.obstacles.find(o => o.gravityAuthoredId === attack.id);
+  const px = shot.x, rewind = {}; r.writeRewindSnapshot(rewind);
   r.distance += r.baseSpeed() * 0.25; r.updateGravityMission();
-  assert.ok(pulse.x < px, 'electrical pulse travels towards the runner');
+  assert.ok(shot.x < px, 'launched canister moves back toward the runner');
   r.restoreRewindSnapshot(rewind);
-  assert.equal(r.obstacles.find(o => o.gravityAuthoredId === 'pulse-2').x, px, 'rewind restores pulse position');
+  assert.equal(r.obstacles.find(o => o.gravityAuthoredId === attack.id).x, px, 'rewind restores projectile position');
   r.updateGravityMission();
-  assert.equal(r.obstacles.find(o => o.gravityAuthoredId === 'pulse-2').x, px, 'resuming rewind does not jump the pulse');
+  assert.equal(r.obstacles.find(o => o.gravityAuthoredId === attack.id).x, px, 'resuming rewind keeps projectile position stable');
+  const midShotCheckpoint = r.makeSnapshot();
+  r.distance += r.baseSpeed() * 0.1; r.updateGravityMission();
+  r.restoreSnapshot(midShotCheckpoint);
+  assert.equal(r.obstacles.find(o => o.gravityAuthoredId === attack.id).x, px, 'checkpoint restore rebuilds the active projectile at the same phase');
   r.exit();
 }
 // Drive the authored levels with only jump and duck for the full roster.
@@ -378,4 +416,4 @@ assert.equal(run.gravityLane, 1, 'rewind restores polarity');
 const box = run.player.box(run.camX, 232);
 assert.equal(box.y, 232 - L.corridor, 'ceiling hitbox is anchored to its supporting surface');
 run.exit();
-console.log('Gravity Grid: all three campaign routes, full-cast damage-free clears, low-gravity airtime, robot tool collisions, shared recovery, fixed corridor camera, theme loop, ceiling collisions, checkpoint and rewind persistence passed.');
+console.log('Gravity Grid: all three campaign routes, full-cast damage-free clears, low-gravity airtime, vacuum-shot collisions, shared recovery, fixed corridor camera, theme loop, ceiling collisions, checkpoint and rewind persistence passed.');

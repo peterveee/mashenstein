@@ -3333,6 +3333,63 @@ let officeFounderCandidates = null;
         (ctx) => paintOfficePrint(ctx, { x: 3, y: 3, w: 76, h: 74, seed: 101 + i * 7, kind }, floor, OFFICE_LIGNE_PAL[floor]));
     });
   }
+  // ------------------------------------------------- THE SURGE — breaker box, mockup
+  // A gallery-only visual for the proposed Surge-2 replacement bonus. The row is
+  // a three-beat explanation at lane scale: live and sparking; Lorenzo jumps into
+  // the box and throws its large lever; the box settles to a steady light. No
+  // obstacle or objective is registered in the game by this study.
+  {
+    const grid = section('surge-breaker-mockup', 'THE SURGE — breaker box (proposed bonus)',
+      'GALLERY MOCKUP ONLY. One breaker at the same 19x25u footprint as drawn here, beside Lorenzo at his normal 24u height: '
+      + 'live and crackling → jump into the lever → steady light when restored. This is the visual read for the proposed '
+      + 'three-breaker Surge-2 bonus; it is not wired into the stage.');
+    tile(grid, 'LIVE → FLIP → RESTORED',
+      'One box, shown at lane scale. The active state sparks; the contact state swings the lever; the completed state holds a calm mint light.',
+      480, 116, (ctx, t) => {
+        ctx.scale(WORLD_Z, WORLD_Z);
+        const GY = 51;
+        const panelW = 40;
+        for (let i = 0; i < 3; i++) {
+          const x = i * panelW;
+          ctx.fillStyle = ['#1b1b2b', '#202033', '#1b1b2b'][i];
+          ctx.fillRect(x, 0, panelW, 58);
+          ctx.fillStyle = 'rgba(152,143,184,.14)';
+          ctx.fillRect(x + 3, 8 + (i % 2) * 2, panelW - 6, 0.35);
+          ctx.fillRect(x + 4, 13 + (i % 2) * 2, panelW - 8, 0.25);
+          ctx.fillStyle = '#303040';
+          ctx.fillRect(x, GY, panelW, 7);
+          ctx.fillStyle = '#77758a';
+          ctx.fillRect(x, GY, panelW, 0.65);
+          if (i) {
+            ctx.fillStyle = 'rgba(196,190,220,.32)';
+            ctx.fillRect(x, 0, 0.35, 58);
+          }
+        }
+
+        ctx.fillStyle = '#ff7598';
+        ctx.font = '3.1px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('LIVE · SPARKS', panelW / 2, 3.3);
+        ctx.fillStyle = '#ffe08a';
+        ctx.fillText('JUMP TO FLIP', panelW * 1.5, 3.3);
+        ctx.fillStyle = '#62f1cf';
+        ctx.fillText('RESTORED', panelW * 2.5, 3.3);
+
+        drawToon(ctx, 'lorenzo', pose('run', t), 7, GY, 24);
+        drawSurgeBreaker(ctx, 20, GY, t, 'live');
+
+        // Mid-contact pose, close enough to read the single action as a jump into
+        // the lever rather than a collected object. The changing sparks and lever
+        // make this middle panel animate without introducing a new control.
+        drawToon(ctx, 'lorenzo', pose('jump', t, { lean: 0.12 }), 17, GY - 5, 24);
+        drawSurgeBreaker(ctx, panelW + 20, GY, t + 0.35, 'flip');
+
+        drawToon(ctx, 'lorenzo', pose('run', t + 0.22), panelW * 2 + 7, GY, 24);
+        drawSurgeBreaker(ctx, panelW * 2 + 20, GY, t, 'on');
+      }, { animated: true, hires: 5, wide: true, world: true });
+  }
+
   beginLab();
   // Keep each pre-refinement outline weight available for an honest
   // before/after after the production painters have been updated. These names
@@ -6193,9 +6250,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
-// The breaker box shape bake-off used to sit here. The shape was picked and
-// the section came out of the gallery; BREAKER_BOX_VARIANTS still holds them.
-
 // The contour taper bake-off used to sit here. 0.5 shipped and the section
 // came out of the gallery; CONTOUR in toons.js still carries the exponent.
 
@@ -8547,63 +8601,6 @@ function cryptStyleTiles(grid, tag, cand) {
       }
     }, { animated: true });
   }
-}
-
-// ------------------------------------------------- THE SURGE — breaker box, mockup
-// A gallery-only visual for the proposed Surge-2 replacement bonus. The row is
-// a three-beat explanation at lane scale: live and sparking; Lorenzo jumps into
-// the box and throws its large lever; the box settles to a steady light. No
-// obstacle or objective is registered in the game by this study.
-{
-  const grid = section('surge-breaker-mockup', 'THE SURGE — breaker box (proposed bonus)',
-    'GALLERY MOCKUP ONLY. One breaker at the same 19x25u footprint as drawn here, beside Lorenzo at his normal 24u height: '
-    + 'live and crackling → jump into the lever → steady light when restored. This is the visual read for the proposed '
-    + 'three-breaker Surge-2 bonus; it is not wired into the stage.');
-  tile(grid, 'LIVE → FLIP → RESTORED',
-    'One box, shown at lane scale. The active state sparks; the contact state swings the lever; the completed state holds a calm mint light.',
-    480, 116, (ctx, t) => {
-      ctx.scale(WORLD_Z, WORLD_Z);
-      const GY = 51;
-      const panelW = 40;
-      for (let i = 0; i < 3; i++) {
-        const x = i * panelW;
-        ctx.fillStyle = ['#1b1b2b', '#202033', '#1b1b2b'][i];
-        ctx.fillRect(x, 0, panelW, 58);
-        ctx.fillStyle = 'rgba(152,143,184,.14)';
-        ctx.fillRect(x + 3, 8 + (i % 2) * 2, panelW - 6, 0.35);
-        ctx.fillRect(x + 4, 13 + (i % 2) * 2, panelW - 8, 0.25);
-        ctx.fillStyle = '#303040';
-        ctx.fillRect(x, GY, panelW, 7);
-        ctx.fillStyle = '#77758a';
-        ctx.fillRect(x, GY, panelW, 0.65);
-        if (i) {
-          ctx.fillStyle = 'rgba(196,190,220,.32)';
-          ctx.fillRect(x, 0, 0.35, 58);
-        }
-      }
-
-      ctx.fillStyle = '#ff7598';
-      ctx.font = '3.1px ui-monospace, monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText('LIVE · SPARKS', panelW / 2, 3.3);
-      ctx.fillStyle = '#ffe08a';
-      ctx.fillText('JUMP TO FLIP', panelW * 1.5, 3.3);
-      ctx.fillStyle = '#62f1cf';
-      ctx.fillText('RESTORED', panelW * 2.5, 3.3);
-
-      drawToon(ctx, 'lorenzo', pose('run', t), 7, GY, 24);
-      drawSurgeBreaker(ctx, 20, GY, t, 'live');
-
-      // Mid-contact pose, close enough to read the single action as a jump into
-      // the lever rather than a collected object. The changing sparks and lever
-      // make this middle panel animate without introducing a new control.
-      drawToon(ctx, 'lorenzo', pose('jump', t, { lean: 0.12 }), 17, GY - 5, 24);
-      drawSurgeBreaker(ctx, panelW + 20, GY, t + 0.35, 'flip');
-
-      drawToon(ctx, 'lorenzo', pose('run', t + 0.22), panelW * 2 + 7, GY, 24);
-      drawSurgeBreaker(ctx, panelW * 2 + 20, GY, t, 'on');
-    }, { animated: true, hires: 5, wide: true, world: true });
 }
 
 // Eight regular Lab choreographies per hero, plus the occasional moonwalk for Lorenzo, B-33P and Rusty.

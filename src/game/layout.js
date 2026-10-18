@@ -200,6 +200,7 @@ export function resolveLayout(stage, cabinet, entry = undefined) {
     appliance: l.appliance ?? { at: stage.applianceAt, high: stage.applianceHigh },
     // `null` is an authored "none" for both of these; only absence falls back.
     rewindAt: l.rewindAt !== undefined ? l.rewindAt : (stage.rewindAt ?? null),
+    slowAt: l.slowAt !== undefined ? l.slowAt : (stage.slowAt ?? null),
     pits: l.pits !== undefined ? l.pits : (stage.pits || null),
     // Route override: a stage that declares routes stops inheriting the
     // cabinet's. Omitted = the cabinet's arrays keep flowing, so a hand edit
@@ -225,6 +226,7 @@ export const PINNED_EVENTS = [
   { id: 'crossing', label: 'SPIKE CROSSING', lane: 'hazards' },
   { id: 'appliance', label: 'GOLDEN TOASTER', lane: 'rewards' },
   { id: 'rewind', label: 'REWIND CAPSULE', lane: 'rewards' },
+  { id: 'slowdown', label: 'SLOW DOWN CAPSULE', lane: 'rewards' },
   { id: 'loop', label: 'LOOP-DE-LOOP', lane: 'setpieces' },
   { id: 'finishDog', label: 'FINISH DOG', lane: 'setpieces' },
   { id: 'checkpoint', label: 'CHECKPOINT', lane: 'checkpoints' },

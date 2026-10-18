@@ -63,6 +63,10 @@ function clearIntro(run) {
   assert(run.introFreeze <= 0 && run.camX > 0, 'world advances once the banner clears');
 
   // --- Taunts are ambient only: the cabinet's line belongs to the briefing --
+  // Eggshell only taunts while his copter is actually in the picture (run.js
+  // updateTaunts), so a non-chase stage like frost-1 needs one faked into view.
+  run.challenge = { type: 'chase', n: 3, count: 0 };
+  run.copter = { x: run.camX + 40, alt: 78, mode: 'hang', flyOff: false };
   run.tauntT = 0.001;
   run.update(TICK);
   assert(run.speech && EGGSHELL_TAUNTS.includes(run.speech.text),

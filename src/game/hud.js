@@ -2714,8 +2714,8 @@ export function drawHud(ctx, run) {
     // Beat-locked stages never expose timing-changing pickups.  Keep the HUD
     // defensive as well: a stale developer/test state must not advertise a
     // rewind, speed, or low-gravity effect that collection would discard.
-    if (run.beatLock && (id === 'capSpeed' || id === 'capLowGrav' || id === 'capRewind'
-      || id === 'speed' || id === 'lowGrav' || id === 'rewind')) continue;
+    if (run.beatLock && (id === 'capSpeed' || id === 'capLowGrav' || id === 'capRewind' || id === 'capSlow'
+      || id === 'speed' || id === 'lowGrav' || id === 'rewind' || id === 'slowdown')) continue;
     const def = POWER_DEFS[id];
     if (!def) continue;
     const persistent = !!a.persistent;

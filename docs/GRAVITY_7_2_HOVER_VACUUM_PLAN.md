@@ -2,7 +2,7 @@
 
 Date: 18 October 2026  
 For: Luna Max  
-Status: approved concept, implementation pending  
+Status: implemented; focused Gravity Grid checks and production build pass
 Reference: [desktop hover-vacuum mockup](../work/mockups/gravity-7-2-cleaner-options/01c-hover-through.png)
 
 ## Intended encounter
@@ -24,7 +24,7 @@ Use one readable path per attack: source object at rest on its rail → colored 
 
 Keep stage ID `gravity-2`, MAINTENANCE MAYHEM, its 100-second route, six gravity gates at 18/28/49/61/80/90 seconds, three cleaning cycles ending at 33/66/94.5 seconds, checkpoints, rewards, no-damage bonus, and normal finish. Preserve the auto-run and existing jump, duck and forward-shoot controls. Firing stays optional; every required encounter is clearable without it. Ceiling encounters must ask for a jump, never a duck.
 
-The current implementation in `src/data/gravity-stages.js` scripts `maintenancePulse` and `maintenanceBrush` at 5, 11, 24, 38, 43, 55, 58, 70, 74, 85 and 87 seconds. `maintenanceRollers` occupy the abandoned rail just after each gate. `src/sprites/gravity-encounters.js` draws the rail-mounted arm. `src/game/gravity/state.js` creates and positions the hazards, credits cycles by travel time, and snapshots gravity state. Treat the eleven pulse/brush slots as the starting **attack beats**; replace or selectively retain their gameplay patterns only after measuring the revised spacing. Keep the six long rollers because they communicate the transfer decision. Avoid stacking a new projectile into a gate landing, roller, reward, checkpoint, or required jump recovery window.
+At the time this plan was written, `src/data/gravity-stages.js` scripted `maintenancePulse` and `maintenanceBrush` at 5, 11, 24, 38, 43, 55, 58, 70, 74, 85 and 87 seconds, while six `maintenanceRollers` occupied the rail abandoned at each gate. The implementation outcome below records their replacement and the spacing checks.
 
 Update the existing briefing in `src/data/briefings.js` so it describes suction, the low shots, jumping, and transfers. Remove instructions to duck a brush if no brush remains. Keep the short in-world intro and cycle-count HUD coherent with the final encounter.
 
@@ -76,3 +76,12 @@ The first visual cue must be readable on the narrowest supported portrait view b
 - The old arm motion and obsolete brush/pulse instructions are gone. The hover, intake from each opposite rail, contained piece, warning, discharge and straight flight are legible at gameplay scale in desktop and portrait captures.
 
 For implementation evidence, use focused Gravity Grid checks and a production build, then inspect served gameplay frames for the actual attack phases and collision alignment. Report those separately from human difficulty approval. Avoid changing unrelated Gravity levels or the concurrent art work elsewhere in the tree.
+
+## Implementation outcome — 18 October 2026
+
+- Replaced the ten old brush/pulse beats with ten authored vacuum launch beats, keeping the six gate rollers, three cleaning cycles, checkpoint/reward route and finish.
+- The source part appears one second before intake. Suction lasts 1.5 seconds, containment 0.4 seconds and the outlet warning 0.55 seconds. Launch speed is 32 world units per second; the runner-relative launch offset follows the visible robot and contracts in portrait so the machine and source stay inside the narrower view.
+- Floor attacks pull from the ceiling and fire along the floor. Ceiling attacks lift from the floor and fire along the ceiling. Canister art is shared across source, body and collision projectile; the robot has no collision.
+- Added quiet suction, load and discharge cues. Route-time position and checkpoint/rewind reconstruction keep collision, art and sound state deterministic. The robot bob and loose-part spin reduce under `prefers-reduced-motion`.
+- Replaced the old briefing and updated `docs/GRAVITY_LEVELS_2_3.md`.
+- `node tests/gravity-level.js` and `npm run build` pass. The served desktop view was reviewed at full game scale. Portrait framing keeps the vacuum visible; the browser preview exposes the full 1080×1920 viewport, although the screenshot returned by the inspection surface truncates the lower part of tall portrait captures. Physical-device and human difficulty review remain separate.

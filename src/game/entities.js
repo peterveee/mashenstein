@@ -8,6 +8,7 @@ export const OBSTACLES = {
   floatSpikes: { w: 48, h: 8, ground: true, armored: true, action: 'jump', gravityArt: true },
   maintenanceBrush: { w: 30, h: 30, alt: 13, armored: true, action: 'slide', gravityArt: true },
   maintenancePulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },
+  vacuumShot: { w: 14, h: 10, ground: true, armored: true, breakable: false, action: 'jump', gravityArt: true },
   // The wrong rail's live wire (gravity/state.js withWrongRailBeds): the pulse's zigzag,
   // held still and stretched the length of the bed.
   railPulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },
@@ -703,6 +704,9 @@ export const PICKUPS = {
   // one-shot beside the free hold-Left scrub on desktop.
   // See docs/mobile-rewind-powerup.md.
   capRewind: { w: 8, h: 8, sprite: 'capRewind', power: 'rewind' },
+  // Scripted-only: placed by hand ahead of a stretch where less speed helps
+  // rather than hurts (see stages.js slowAt). Not in the random drip's bands.
+  capSlow:   { w: 8, h: 8, sprite: 'capSlow', power: 'slowdown' },
   appliance: { w: 22, h: 18, sprite: 'appliance', appliance: true, bob: true },
   // The gold toaster's stand-in once its plug is banked: same flight, same
   // spot, pays coins and nothing else. See Run.spawnApplianceMaybe.

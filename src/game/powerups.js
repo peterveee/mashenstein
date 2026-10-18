@@ -18,6 +18,13 @@ export const POWER_DEFS = {
   // blue-white; a third blue would read as one of them at 8px.
   // See docs/mobile-rewind-powerup.md.
   rewind:  { name: 'REWIND', color: '#7ce8a0' },
+  // Scripted only — placed by hand ahead of a stretch where less speed helps
+  // (stages.js slowAt), never dealt by the random drip. Teal and free of the
+  // retired Slow-Mo's old job: that one warped the whole game's timescale
+  // (the hero's own controls included) and fought the player for control; this
+  // one only leans on world speed and music tempo, the same two knobs a speed
+  // burst already turns the other way.
+  slowdown: { name: 'SLOW DOWN', color: '#48c8c8' },
 };
 
 // Shared by drip spawns and !-crate prizes. The borrowed traits are exciting
@@ -214,6 +221,7 @@ export class Powerups {
       speed: [0, 10, 13][level] || 10,
       lowgrav: [0, 12, 16][level] || 12,
       unpeel: [0, 12, 13, 14, 15][level] || 12,
+      slowdown: [0, 7, 9][level] || 7,
     }[id] || 8;
     return base * this.durMult();
   }
@@ -252,6 +260,24 @@ export class Powerups {
   musicTempoMultiplier() {
     const a = this.active.speed;
     return !a ? 1 : (a.level >= 2 ? 1.18 : 1.12);
+  }
+
+  // The world's own small mercy: placed by hand ahead of a stretch where less
+  // speed helps rather than hurts (stages.js slowAt). A flat quarter off the
+  // base level, a third off if a second one somehow stacks on top.
+  slowMultiplier() {
+    const a = this.active.slowdown;
+    return !a ? 1 : (a.level >= 2 ? 0.65 : 0.75);
+  }
+
+  // The music's half of the same effect, leaning less than the world does for
+  // the reason musicTempoMultiplier leans less than speedMultiplier: under
+  // ~10% a tempo change reads as nothing, and the mix's delays and reverb
+  // pre-delays are timed against the bank's own bpm, so a slide much past that
+  // floor drags every echo off the beat with it.
+  musicSlowMultiplier() {
+    const a = this.active.slowdown;
+    return !a ? 1 : (a.level >= 2 ? 0.85 : 0.9);
   }
 
   gravityMultiplier() {

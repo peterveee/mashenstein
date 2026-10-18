@@ -134,14 +134,20 @@ export class DemoBot {
     // The lane's own: a SPEED capsule, which ends on a clock the bot can read.
     const cap = run.powerups?.active?.speed;
     const capM = run.powerups ? run.powerups.speedMultiplier() : 1;
+    // The lane's own slow-down capsule, the same shape as the speed one above
+    // but pulling the other way.
+    const slow = run.powerups?.active?.slowdown;
+    const slowM = run.powerups ? run.powerups.slowMultiplier() : 1;
     const b = run.speedBoost || 0;
-    const plain = run.speed / (state.m * capM * (1 + b));
+    const plain = run.speed / (state.m * capM * slowM * (1 + b));
     const at = (t) => (t < state.t ? state.m : 1) * (cap && t < cap.t ? capM : 1)
+      * (slow && t < slow.t ? slowM : 1)
       * (1 + Math.max(0, b - 0.6 * t));
     // One slice per thing that can lapse, evaluated at its midpoint: the states
     // are steps and the boost is a straight line, so the midpoint is exact for
     // both.
-    const marks = [...new Set([0, T, Math.min(T, state.t), cap ? Math.min(T, cap.t) : T])]
+    const marks = [...new Set([0, T, Math.min(T, state.t), cap ? Math.min(T, cap.t) : T,
+      slow ? Math.min(T, slow.t) : T])]
       .sort((x, y) => x - y);
     let d = 0;
     for (let i = 1; i < marks.length; i++) {

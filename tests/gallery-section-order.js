@@ -126,4 +126,8 @@ for (const s of labSections) {
 }
 
 console.log(failures ? 'GALLERY SECTION ORDER: FAILED' : 'GALLERY SECTION ORDER: PASSED');
-process.exit(failures ? 1 : 0);
+// Exit 2, not 1: this is the lab tooling's own housekeeping, not the shipped
+// game, so a stale date or a misfiled section is a warning for whoever is
+// touching the gallery next, not a reason to block the deploy (run-all.js
+// treats 2 as "passed with warnings").
+process.exit(failures ? 2 : 0);

@@ -82,6 +82,8 @@ const GROUPS = [
       { cue: 'bridgeLay', what: 'the ice deck laying across the break' },
       { cue: 'fireBell', what: 'the office fire bell when the third alarm is pulled, office-2' },
       { cue: 'trapSnap', what: 'a bear trap', gain: 0.72 },
+      { cue: 'vacuumSuck', what: 'the Gravity Grid vacuum pulling the hero in' },
+      { cue: 'vacuumLaunch', what: 'the Gravity Grid vacuum spitting the hero back out' },
       { cue: 'boom', what: 'an explosion; a card box bursting', gain: 1.5 },
       { cue: 'smallBoom', what: 'a Martian raider blown up outside the Gravity Grid windows', gain: 0.75 },
       { cue: 'martianPew', what: 'a Martian ray-gun shot in the Gravity Grid raid', gain: 0.65 },

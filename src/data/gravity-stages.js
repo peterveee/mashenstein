@@ -13,6 +13,7 @@ const forcedTransferSpikes = (prefix, gates, first = 0, delay = 1.25) => gates.m
 const runGates = [gate(5, 1), gate(13, 0), gate(18.5, 1), gate(29, 0), gate(37, 1), gate(45, 0), gate(54, 1), gate(63, 0), gate(72, 1), gate(78, 0)];
 const maintenanceGates = [gate(18, 1), gate(28, 0), gate(49, 1), gate(61, 0), gate(80, 1), gate(90, 0)];
 const attack = (id, at, lane, type, span) => ({ id, at, lane, type, ...(span ? { span } : {}) });
+const vacuumAttack = (id, at, lane) => ({ id, at, lane, sourceLane: 1 - lane });
 // A short live wire on your own floor, jumped like any crate (Peter, 15 Oct: "i would
 // like to use short wires as obstacles to jump over ordinarily"). Seconds of travel.
 const SHORT_WIRE = 0.3;
@@ -117,19 +118,24 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
   'gravity-2': {
     name: 'MAINTENANCE MAYHEM',
     gates: maintenanceGates,
+    // `at` is the launch time. The canister starts from a view-aware point just
+    // ahead of the runner and moves back toward them. Intake begins 2.45 seconds
+    // before launch; the loose source part is visible one second before intake.
+    vacuumAttacks: [
+      vacuumAttack('vacuum-1', 5, 0),
+      vacuumAttack('vacuum-2', 11, 0),
+      vacuumAttack('vacuum-3', 24, 1),
+      vacuumAttack('vacuum-4', 38, 0),
+      vacuumAttack('vacuum-5', 43, 0),
+      vacuumAttack('vacuum-6', 55, 1),
+      vacuumAttack('vacuum-7', 58, 1),
+      vacuumAttack('vacuum-8', 70, 0),
+      vacuumAttack('vacuum-9', 74, 0),
+      vacuumAttack('vacuum-10', 85, 1),
+    ],
     hazards: [
-      // Three attack passes: introduce, mirror, combine. No aim or selectors.
-      attack('pulse-1', 5, 0, 'maintenancePulse'),
-      attack('brush-1', 11, 0, 'maintenanceBrush'),
-      attack('brush-2', 24, 1, 'maintenanceBrush'),
-      attack('pulse-2', 38, 0, 'maintenancePulse'),
-      attack('brush-3', 43, 0, 'maintenanceBrush'),
-      attack('pulse-3', 55, 1, 'maintenancePulse'),
-      attack('brush-4', 58, 1, 'maintenanceBrush'),
-      attack('pulse-4', 70, 0, 'maintenancePulse'),
-      attack('brush-5', 74, 0, 'maintenanceBrush'),
-      attack('brush-6', 85, 1, 'maintenanceBrush'),
-      attack('pulse-5', 87, 1, 'maintenancePulse'),
+      // The hovering vacuum owns the airborne canisters; only the six
+      // transfer rollers remain as authored static machinery hazards.
       ...maintenanceGates.map((g, i) => attack(`rollers-${i + 1}`,
         g.at + 1.25, 1 - g.lane, 'maintenanceRollers', 2.6)),
     ].sort((a, b) => a.at - b.at),

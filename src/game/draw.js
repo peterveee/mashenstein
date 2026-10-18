@@ -28,6 +28,7 @@ const POWER_GLOW = {
   capAirJump: 'rgba(114,216,240,0.5)', capSpeed: 'rgba(248,144,72,0.5)', capLowGrav: 'rgba(184,136,240,0.5)',
   capUnpeel: 'rgba(232,232,240,0.5)',
   capRewind: 'rgba(124,232,160,0.52)',
+  capSlow: 'rgba(72,200,200,0.5)',
 };
 // The battery's halo. Not an entry in POWER_GLOW because that table is keyed by
 // capsule type and gated on def.power, and the battery is a heal. Green rather

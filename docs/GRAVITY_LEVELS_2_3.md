@@ -17,8 +17,8 @@ Implemented 13 October 2026 after the two-panel concept review. Replaces the rej
 ## Level 3: Maintenance Mayhem
 
 - 100 seconds, ordinary cabinet gravity, three cleaning cycles ending at 33, 66 and 94.5 seconds.
-- A yellow maintenance robot tracks alongside the runner behind the lane, animating its arm to the next tool.
-- Purple brushes leave a duck gap; low electrical pulses approach the hero; extended beds of exposed, toothed grinding rollers occupy the rail abandoned at each polarity switch.
+- A yellow hover-vacuum tracks ahead of the runner. It pulls one loose canister from the opposite rail through a visible intake stream, holds it in the lit body, then fires it horizontally back along the runner's rail. Ten canisters are timed across the three cleaning cycles; the player jumps over each one. The robot is visual only; the launched canister is the hazard.
+- The canister source alternates with gravity: floor runners see debris pulled down from the ceiling, while ceiling runners see a part lifted from the floor. The six exposed, toothed roller beds remain on the rail abandoned at each polarity switch.
 - Six switches alternate floor/ceiling. Rollers extend 2.6 seconds along the abandoned rail, making the other surface necessary. Early attacks are isolated; later cycles mirror and combine familiar attacks with recovery space between them.
 - Survive all three cycles; optional no-damage bonus. Cycle credit is part of checkpoint/rewind state, and progress cannot be counted twice by rewinding. Robot exits after cycle three; final approach is on the floor.
 
@@ -26,10 +26,10 @@ Implemented 13 October 2026 after the two-panel concept review. Replaces the rej
 
 - `src/data/gravity-stages.js`: authored hazards, rewards, cycles, gravity scale.
 - `src/game/gravity/`: production controller, shared player and data validation.
-- `src/sprites/gravity-encounters.js`: new tool art, tracking robot, floating hardware.
+- `src/sprites/gravity-encounters.js`: hover-vacuum, canister, and floating-hardware art.
 - `src/dev/gravity/state.js`: compatibility re-export of the production controller.
 - The existing station/exterior painting and `src/dev/space-look-candidates.js` are unchanged by this rebuild.
 
-`node tests/gravity-level.js` covers all heroes, no-input damage, low-gravity airtime/height, floor/ceiling brush collisions, cycle credit, wide-field checkpoint reconstruction, moving-pulse rewind, floor finish return, and existing level-one progression.
+`node tests/gravity-level.js` covers all heroes, no-input damage, low-gravity airtime/height, floor/ceiling canister collisions, vacuum phase timing, cycle credit, wide-field checkpoint reconstruction, projectile rewind, floor finish return, and existing level-one progression.
 
 Local previews: `/?goto=gravity&stage=2&seed=42` and `/?goto=gravity&stage=3&seed=42`. Render-check artifacts are in `work/space-level-rebuild/`. Browser screenshots are visual checks, not physical-device or human difficulty sign-off.
