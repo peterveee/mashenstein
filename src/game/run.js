@@ -18809,11 +18809,8 @@ export class RunState {
       });
       y += groupGap - 10;
     };
-    // No MISSION block: every mission is the finish line. What a pause is for
-    // is the time left and what the bonus asks.
-    const clock = clockText(this);
-    if (clock) drawBlock('TIME LEFT', clock, this.hurried ? '#ff5a4a' : '#c8e0ff',
-      compact ? 2.0 : PORTRAIT_PAUSE_MISSION_S, 1);
+    // The clock stays visible beneath the pause scrim, so the card spends its
+    // space on the bonus and controls instead of repeating TIME LEFT.
     if (this.challenge && !this.overtime && this.stage) {
       const c = this.challenge;
       const failed = this.challengeFailed();
@@ -18933,10 +18930,8 @@ export class RunState {
     drawTextCentered(ctx, this.stage && !this.overtime && !this.bossCab
       ? where : where ? `${this.cabinet.name}: ${where}` : this.cabinet.name,
       W / 2, 48, '#e8e8f0', 1.25);
-    // The time left where the mission used to be (every mission is the finish
-    // line now), and the bonus under it as before.
-    const clock = clockText(this);
-    if (clock) drawTextCentered(ctx, `TIME LEFT ${clock}`, W / 2, 76, this.hurried ? '#ff5a4a' : '#c8e0ff');
+    // The live clock remains visible under the pause scrim. Put the full bonus
+    // in its place, directly under the stage title.
     // The challenge in full, directly under the mission and in the same order
     // the HUD stacks them. The HUD folds this sentence away ten seconds into the
     // stage and keeps only the count, which is the right trade while you are
@@ -18949,7 +18944,7 @@ export class RunState {
       const tail = failed ? '×' : done ? '✓' : c.type === 'finishUnder'
         ? `${Math.ceil(this.challengeTimeLeft())}s`
         : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
-      drawTextCentered(ctx, `BONUS: ${bonusSentence(c)}${tail ? ` ${tail}` : ''}`, W / 2, 92,
+      drawTextCentered(ctx, `BONUS: ${bonusSentence(c)}${tail ? ` ${tail}` : ''}`, W / 2, 76,
         failed ? '#e04848' : done ? '#74c947' : '#8a8a98');
     }
     // Plug standing lives here rather than in the HUD: it is a "how am I doing"

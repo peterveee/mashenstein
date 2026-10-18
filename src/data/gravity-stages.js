@@ -13,7 +13,7 @@ const forcedTransferSpikes = (prefix, gates, first = 0, delay = 1.25) => gates.m
 const runGates = [gate(5, 1), gate(13, 0), gate(18.5, 1), gate(29, 0), gate(37, 1), gate(45, 0), gate(54, 1), gate(63, 0), gate(72, 1), gate(78, 0)];
 const maintenanceGates = [gate(18, 1), gate(28, 0), gate(49, 1), gate(61, 0), gate(80, 1), gate(90, 0)];
 const attack = (id, at, lane, type, span) => ({ id, at, lane, type, ...(span ? { span } : {}) });
-const vacuumAttack = (id, at, lane) => ({ id, at, lane, sourceLane: 1 - lane });
+const vacuumAttack = (id, at, lane, count = 1) => ({ id, at, lane, count, sourceLane: 1 - lane });
 // A short live wire on your own floor, jumped like any crate (Peter, 15 Oct: "i would
 // like to use short wires as obstacles to jump over ordinarily"). Seconds of travel.
 const SHORT_WIRE = 0.3;
@@ -124,15 +124,25 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
     // paper, dust, foil and bolts are gathered from the opposite rail.
     vacuumAttacks: [
       vacuumAttack('vacuum-1', 5, 0),
+      vacuumAttack('vacuum-extra-1', 8, 0, 2),
       vacuumAttack('vacuum-2', 11, 0),
-      vacuumAttack('vacuum-3', 24, 1),
-      vacuumAttack('vacuum-4', 38, 0),
-      vacuumAttack('vacuum-5', 43, 0),
-      vacuumAttack('vacuum-6', 55, 1),
+      vacuumAttack('vacuum-extra-2', 14, 0, 2),
+      vacuumAttack('vacuum-3', 24, 1, 2),
+      // A six-volley run: each complete intake / compact / eject cycle finishes
+      // before the next starts. Both transfer runways stay clear.
+      vacuumAttack('vacuum-extra-3', 33.6, 0, 2),
+      vacuumAttack('vacuum-extra-4', 36.05, 0, 2),
+      vacuumAttack('vacuum-4', 38.5, 0, 2),
+      vacuumAttack('vacuum-extra-5', 40.95, 0, 2),
+      vacuumAttack('vacuum-5', 43.4, 0, 2),
+      vacuumAttack('vacuum-extra-6', 45.85, 0, 2),
+      vacuumAttack('vacuum-6', 55, 1, 2),
       vacuumAttack('vacuum-7', 58, 1),
+      vacuumAttack('vacuum-extra-7', 66.8, 0, 2),
       vacuumAttack('vacuum-8', 70, 0),
-      vacuumAttack('vacuum-9', 74, 0),
-      vacuumAttack('vacuum-10', 85, 1),
+      vacuumAttack('vacuum-9', 74, 0, 2),
+      vacuumAttack('vacuum-extra-8', 77, 0),
+      vacuumAttack('vacuum-10', 85.7, 1, 2),
     ],
     hazards: [
       // The hovering vacuum owns the garbage cubes; only the six

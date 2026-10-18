@@ -5,14 +5,18 @@ For: Luna Max
 Status: original implementation completed; see the 18 October follow-up below for the current compactor design
 Reference: [desktop hover-vacuum mockup](../work/mockups/gravity-7-2-cleaner-options/01c-hover-through.png)
 
-## Follow-up: anthropomorphic vacuum / compactor bakeoff
+## Follow-up: vacuum / compactor bakeoff — revised 19 October
 
 The later brief replaces the single canister and full-height discharge pipe with loose rubbish, a flexible hose and brush head, visible belly compaction, and a garbage cube ejected onto the running surface. The original handoff below records the earlier design; this follow-up takes precedence for appearance.
 
 - Desktop animated comparison: [A Dusty / B Squish / C Bristle](../work/mockups/gravity-7-2-vacuum-bakeoff/vacuum-robot-bakeoff.html). The three bodies remain review candidates until Peter chooses one. The campaign retains the existing yellow casing with the updated shared cleaning mechanism.
-- Each authored attack now has a fixed world-position debris batch: paper, lint, foil and a bolt. The brush gathers those pieces from the opposite rail; it retracts while the hose carries them into the compaction window. Debris removal is derived from route time, so checkpoint and rewind do not need a second particle ledger.
-- The side outlet clears all three faces when firing upward. During the existing 0.55-second warning the cube moves toward the marked running surface; the existing 14×10 collider becomes active at rail impact. Its horizontal speed, attack timings and all player controls remain as implemented.
-- Only 7-2 uses sparse warning wires: at most one 72-unit section per wrong-rail span, seven sections total. The six transfer roller belts remain. The other Gravity levels retain their existing wire beds.
+- The robot has ducted propellers and a conventional vacuum wand and brush head. The revised candidates use fixed optical sensors and steel grippers, without smiling, winking or waving.
+- Up to 58 smaller rubbish batches fill the gaps between attacks and are swept continuously; batches overlapping live wires are omitted. Gate/roller runways and compaction/ejection intervals stay clear.
+- Increased the route from ten to eighteen cube attacks, including a six-cube stretch between the 28 s and 49 s gravity changes. Full 2.45 s preparation cycles are retained. The sweep piles are closer together to keep the opposite rail littered as more debris is converted into cubes.
+- C’s head, cap and sensors are 25% smaller, scaled around the existing neck seat; its body and compactor are unchanged.
+- Each authored attack also has a larger fixed world-position debris batch: paper, lint, foil and a bolt. The brush gathers those pieces from the opposite rail; it retracts while the hose carries them into the compaction window. Debris removal is derived from route time, so checkpoint and rewind do not need a second particle ledger.
+- The side outlet clears all three faces when firing upward. During the existing 0.55-second warning the cube moves toward the marked running surface; the enlarged 21×15 collider becomes active at rail impact. Its horizontal speed, attack timings and all player controls remain as implemented.
+- Only 7-2 uses sparse warning wires: repeated short sections up to 36 units long, separated by rubbish patches throughout the opposite rail. The six transfer roller belts remain. Primary intake piles reserve a clear patch across portrait and desktop layouts. Cubes now persist until fully beyond the camera edge, rather than disappearing behind the player. Cube art uses rough compressed layers of paper, foil, crushed metal and an embedded screw. The other Gravity levels retain their existing wire beds.
 - The standalone bakeoff has synchronized playback, quarter/half speed, frame stepping, scrubbing, both gravity directions, enlarged views and a 3840×1200 PNG export. It uses the same debris, brush, hose, chamber and cube painters as the campaign.
 - Build and rendered review evidence for this follow-up is recorded in the bakeoff README. The original test results at the end of this document apply to the earlier implementation, not this revision.
 
@@ -96,3 +100,7 @@ For implementation evidence, use focused Gravity Grid checks and a production bu
 - Added quiet suction, load and discharge cues. Route-time position and checkpoint/rewind reconstruction keep collision, art and sound state deterministic. The robot bob and loose-part spin reduce under `prefers-reduced-motion`.
 - Replaced the old briefing and updated `docs/GRAVITY_LEVELS_2_3.md`.
 - `node tests/gravity-level.js` and `npm run build` pass. The served desktop view was reviewed at full game scale. Portrait framing keeps the vacuum visible; the browser preview exposes the full 1080×1920 viewport, although the screenshot returned by the inspection surface truncates the lower part of tall portrait captures. Physical-device and human difficulty review remain separate.
+
+### 19 October: higher output and top rotor
+
+The yellow casing now has its compactor window raised three units and one shallow two-blade top rotor inspired by Eggshell. Eighteen launch beats now eject 31 cubes: thirteen paired drops and five singles. Pairs are side by side, 24 units apart, and share the existing telegraph and launch time. Transfer gaps are retained. The preview demonstrates a single followed by a double drop. Build and rendered-art review completed; gameplay balance has not been playtested for paired drops.

@@ -402,12 +402,7 @@ export function drawGravityHazard(c, e, x, bottom, t) {
     }
     disc(c, 1, -3.5, 2, LIGHT); disc(c, e.w - 1, -3.5, 2, LIGHT);
   } else if (e.type === 'vacuumShot') {
-    // Compacted rubbish keeps the existing, clearly jumpable rail footprint.
-    c.save(); c.globalAlpha = 0.72;
-    line(c, e.w + 4, -e.h * 0.55, e.w + 13, -e.h * 0.55, '#ff9e54', 2.5);
-    line(c, e.w + 2, -e.h * 0.55, e.w + 9, -e.h * 0.55, '#fff0c1', 0.8);
-    c.restore();
-    drawGarbageCube(c, e.w / 2, -e.h / 2);
+    drawGarbageCube(c, e.w / 2, -e.h / 2, e.h / 10);
   } else if (e.type === 'maintenanceRollers') {
     // Exposed counter-rotating cutter drums. Teeth break the upper silhouette;
     // no protective bar or fan spokes suggest a safe surface to stand on.
@@ -458,7 +453,7 @@ export function drawGravityHazard(c, e, x, bottom, t) {
 
 // Debris belongs to fixed world positions, including before the robot arrives.
 // The brush consumes each batch once; rewind simply draws the earlier phase.
-export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, playerX, attacks, sequences }) {
+export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, playerX, attacks, sequences, lane=0, sweep=[] }) {
   const last = sequences.at(-1).end;
   const arrival = clamp((2 - seconds) / 1.5, 0, 1);
   const departure = clamp((seconds - last) / 2, 0, 1);
@@ -467,7 +462,12 @@ export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, player
   const reducedMotion = typeof window !== 'undefined'
     && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const active = attacks.find(a => a.phase !== 'waiting' && a.phase !== 'launched');
-  const attack = active || attacks.find(a => a.phase === 'waiting' && a.sourceVisible);
+  const attack = active || {phase:'sweep',progress:.5,lane,sourceLane:1-lane,sourceX:x+35};
+  for(const a of sweep) {
+    if(a.sourceX < -40 || a.sourceX > view+40) continue;
+    drawVacuumDebris(c,{x:a.sourceX,railY:a.sourceLane?-corridor:0,lane:a.sourceLane,
+      progress:clamp((seconds-a.at+.18)/.36,0,1),brushX:x+35});
+  }
   for (const a of attacks) {
     if(a.phase !== 'waiting' && a.phase !== 'suction') continue;
     if(a.sourceX < -40 || a.sourceX > view+40) continue;

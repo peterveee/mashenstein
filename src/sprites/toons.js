@@ -1329,6 +1329,9 @@ export const TOON_SPECS = {
   // gown is drawn by princessCostume instead (see PRINCESS_COSTUMES).
   fernwick: {
     rig: 'humanoid', shoeShape: 'slipper', head: 'floppy', mouth: 'smile', back: 'quiver', ranged: 'bow',
+    // Lowered a little (19 Oct 2026, Peter): the rig default sat her mouth
+    // high enough to read as crowding the nose.
+    mouthLift: -0.012,
     bowStyle: 'high', tunic: true, rollTuck: true, slim: true, armDepth: true,
     hands: true, limbStyle: 'tunic', ears: true, clothKnee: 1,
     // The head, off the G1 study.
@@ -1457,7 +1460,10 @@ export const TOON_SPECS = {
   // jaw, a W cut into the hairline with hair piled on the crown, two ribbon ends
   // per bun beside the long tails, a gold band on the bun/hair join, and ears.
   // docs/notes/kiko-persona.md records what each of those beat and why.
-  kiko: { rig: 'humanoid', shoeShape: 'slipper', headScale: 0.88, mouthLift: 0.014, eyeLift: 0.008, head: 'buns', mouth: 'smile', slim: true,  armLift: 0.014, armOut: 0.03, armDepth: true, limbStyle: 'snap', bareArms: true, puffs: true, dress: 'split', waistRise: 0.035, bracers: true, boots: 0.52, kiblast: true, handsFront: true, jumpKneeDrop: 0.14, celebTuck: 0.48,
+  kiko: { rig: 'humanoid', shoeShape: 'slipper', headScale: 0.88, mouthLift: 0.006, eyeLift: 0.008, head: 'buns', mouth: 'smile', slim: true,  armLift: 0.014, armOut: 0.03, armDepth: true, limbStyle: 'snap', bareArms: true, puffs: true, dress: 'split', waistRise: 0.035, bracers: true, boots: 0.52, kiblast: true, handsFront: true, jumpKneeDrop: 0.14, celebTuck: 0.48,
+    // mouthLift lowered from 0.014 (19 Oct 2026, Peter: "needs to be lowered a
+    // little bit"). Still above 0 — the chibi-young reasoning for a raised
+    // mouth (see the mouthY comment below) still applies, just less of it.
     hairCut: 'jaw', fringe: 'twin-pile', bunStubs: 'pair', bunJoin: 'band', ears: true, earStud: true ,
     // proportions — written by the character editor (tools/character-editor.js)
     hipTuck: 1.2,
@@ -3508,6 +3514,18 @@ export const DEATH_EYE_STYLES = [
   { id: 'x', name: 'A - X', note: 'two crossed strokes where the eye was' },
   { id: 'stitch', name: 'B - CROSSED OUT', note: 'the eye white stays; the X is struck through it' },
 ];
+
+// A SECOND MOUTH UNDER THE SAME MUSTACHE (19 Oct 2026). Outside the death hole
+// above and the celebration grin, Lorenzo is the only hero drawMouth never
+// reaches at all (the gate below it excludes anyone with a beard or moustache)
+// — so where every other hero gasps on a jump or a hit (ex.surprise), he does
+// nothing. Rather than drawMouth's own vertical gasp (tried first; read as a
+// shapeless blob under this mustache), this reuses the DEATH hole's own
+// wide-oval-plus-teeth treatment, proven under this same mustache already.
+// `startleMouthY` is the gallery-only dial (see src/dev/hero-candidates.js
+// LORENZO_STARTLE_CANDIDATES). SETTLED 19 Oct 2026 — Peter picked round 2's
+// L1 ("L1 is good"), the closest rung tried, over the wider gaps above it.
+export const LORENZO_STARTLE_MOUTH_Y = 0.15;
 
 // 0 at the start, 1 at the end, overshooting about a tenth on the way - the
 // standard back-out. The mark is driven by SCALE and not by alpha because a
@@ -7557,6 +7575,25 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       ctx.fillRect(mx - rx, my - ry, rx * 2, ry * 0.72);
       ctx.restore();
     }
+  }
+  if (spec.mustache && !lod && ex.surprise && !ex.death && !ex.joy) {
+    // THE STARTLED MOUTH, under the mustache. NOT drawMouth's ordinary gasp
+    // (a tall vertical "O") — that read as a shapeless blob under this
+    // mustache. Reuses the death hole's own treatment instead: a wide oval,
+    // teeth included, the one value-separation fix that already proved out
+    // against dark brown (see the death-mouth block below — "TEETH SHIPS").
+    // Drawn before the lobes, like the grin and the death hole, so they
+    // still own the top edge.
+    const startleY = Number.isFinite(spec.startleMouthY) ? spec.startleMouthY : LORENZO_STARTLE_MOUTH_Y;
+    const mx = hx + 0.015 * u, my = hy + startleY * u;
+    const rx = 0.052 * u, ry = 0.032 * u;
+    const hole = (c) => c.ellipse(mx, my, rx, ry, 0, 0, Math.PI * 2);
+    outlined(ctx, '#48141f', hair(0.5, ow * 0.5) * INK.face, hole);
+    ctx.save();
+    ctx.beginPath(); hole(ctx); ctx.clip();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(mx - rx, my - ry, rx * 2, ry * 0.72);
+    ctx.restore();
   }
   if (spec.mustache && !lod) {
     // Two buoyant lobes give Lorenzo a readable expression instead of a flat

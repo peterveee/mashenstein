@@ -1,8 +1,8 @@
-import { VACUUM_ROBOT_CANDIDATES, VACUUM_BAKEOFF_LOOP, drawVacuumRobotStudy } from '../src/dev/vacuum-robot-candidates.js';
+import { VACUUM_ROBOT_CANDIDATES, VACUUM_BAKEOFF_LOOP, VACUUM_BAKEOFF_LAUNCHES, drawVacuumRobotStudy } from '../src/dev/vacuum-robot-candidates.js';
 import { vacuumAttackPhase } from '../src/game/gravity/encounters.js';
 
 const main=document.querySelector('main'), play=document.querySelector('#play'), scrub=document.querySelector('#time');
-let playing=!matchMedia('(prefers-reduced-motion: reduce)').matches,t=3.5,last=null,focus=null;
+let playing=!matchMedia('(prefers-reduced-motion: reduce)').matches,t=1.35,last=null,focus=null;
 const cards=VACUUM_ROBOT_CANDIDATES.map(candidate=>{
   const card=document.createElement('article');
   card.style.setProperty('--accent',candidate.color);
@@ -47,8 +47,10 @@ document.querySelector('#save').onclick=()=>{
   exportBox.append(link,preview);exportBox.hidden=false;
 };
 function draw(){
-  const lane=Number(document.querySelector('#gravity').value),phase=vacuumAttackPhase({at:5.5},t).phase;
-  const names={waiting:'Approach',suction:'Brush & suck',loaded:'Compact',telegraph:'Eject',launched:'Cube on the running surface'};
+  const lane=Number(document.querySelector('#gravity').value);
+  const at=VACUUM_BAKEOFF_LAUNCHES.find(at=>at>t) ?? VACUUM_BAKEOFF_LAUNCHES.at(-1);
+  const phase=vacuumAttackPhase({at},t).phase;
+  const names={waiting:'Routine sweep',suction:'Brush & suck',loaded:'Compact',telegraph:'Eject',launched:'Cube on the running surface'};
   document.querySelector('#phase').textContent=names[phase];
   document.querySelector('#direction').textContent=lane?'Floor rubbish → compactor → ceiling cube':'Ceiling rubbish → compactor → floor cube';
   scrub.value=t;document.querySelector('#clock').textContent=`${t.toFixed(2)} s`;

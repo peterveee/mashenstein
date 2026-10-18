@@ -76,10 +76,10 @@ function pumpScale(w) {
   const sx = lerp(1.5, 1, clamp01((sy - 0.24) / 0.76));
   return [sx, sy];
 }
-function paintPumped(c, heroId, cx, fy, w, t) {
+function paintPumped(c, heroId, cx, fy, w, t, live) {
   const [sx, sy] = pumpScale(w);
   const flat = w < 0.38;
-  const L = squashed(c, heroId, cx, fy, t, sx, sy, flat ? standPose(0) : runPose(t), (o) => {
+  const L = squashed(c, heroId, cx, fy, t, sx, sy, flat ? standPose(0) : runPose(t, live), (o) => {
     if (w >= 0.29) return;
     // tread: the staves' bands rolled across him
     o.save(); o.globalCompositeOperation = 'source-atop'; o.fillStyle = 'rgba(40,30,30,0.42)';
@@ -92,6 +92,120 @@ function paintPumped(c, heroId, cx, fy, w, t) {
   for (const ws of [0.2, 0.29, 0.38]) {
     const q = clamp01((w - ws) / 0.12);
     if (q > 0 && q < 1) puff(c, cx - 0.35 * U - 3 * q, fy - 0.2 * U - 2 * q, 0.9 + 1.4 * q, 1 - q);
+  }
+}
+
+// ROUND 2 (19 Oct 2026). Peter on A, the shipped one: "timing feels wrong",
+// "the pop-back is off", "silhouette doesn't read as pancake". All three come
+// off the same root cause — A (and B) squash his ORDINARY RUNNING STRIDE flat,
+// so the silhouette is a flattened runner, not a pancake, and A holds that
+// shape for 0.8 of its 1.0s (PANCAKE_POP), most of the picture. These three
+// hold a genuinely splayed pose instead (arms and legs spread to the sides,
+// like he hit the ground spread-eagled) and hold it for far less of the 1s.
+//
+// SPLAT_POSE: flat on his face, arms thrown wide, legs sprawled rather than
+// stepping — the shape a flattening actually makes, not a stride frozen
+// mid-step. Peter (round 2, on the first cut): "i don't like that the front
+// leg is po[s]ed out in front. they all seem to be like this" — that cut used
+// feet `out` values of 0.8-0.85, four times pitFall.js's own sprawled-grip
+// range (-0.2 to 0.22; see hangPose/gripPose there), which read as a deliberate
+// kick rather than a flop. The front leg now tucks in near-neutral; only the
+// back one trails, so the sprawl is asymmetric, not a mirrored kick.
+const SPLAT_POSE = Object.freeze({
+  kind: 'jump', time: 0, vy: 0, grounded: true, facing: 1, faceSurprised: true, browRaise: true,
+  dance: { hands: [[0.55, 0.12], [0.5, -0.1]], feet: [[0.08, -0.05], [-0.22, 0.08]], ankles: [0.15, -0.15] },
+});
+
+// C — SPLAT. Quick squash into SPLAT_POSE, a short flat hold (0.4s, half A's),
+// one clean snap back into his stride.
+const SPLAT_FLAT = 0.4, SPLAT_POP_T = 0.22;
+function splatScale(w) {
+  if (w < 0.035) { const q = easeOut(w / 0.035); return [lerp(1, 1.7, q), lerp(1, 0.22, q)]; }
+  if (w < SPLAT_FLAT) {
+    const k = 0.025 * Math.sin((w - 0.035) * 30) * Math.max(0, 1 - (w - 0.035) / (SPLAT_FLAT - 0.035));
+    return [1.7 + k, 0.22 - k * 0.3];
+  }
+  if (w < SPLAT_FLAT + SPLAT_POP_T) {
+    const q = easeOut((w - SPLAT_FLAT) / SPLAT_POP_T);
+    return [lerp(1.7, 1, q), lerp(0.22, 1, q)];
+  }
+  const q = clamp01((w - SPLAT_FLAT - SPLAT_POP_T) / 0.1), d = Math.exp(-q * 5) * Math.cos(q * Math.PI * 2.4);
+  return [1 - d * 0.1, 1 + d * 0.16];
+}
+function paintSplat(c, heroId, cx, fy, w, t, live) {
+  const [sx, sy] = splatScale(w);
+  const flat = w < SPLAT_FLAT + SPLAT_POP_T * 0.3;
+  const L = squashed(c, heroId, cx, fy, t, sx, sy, flat ? SPLAT_POSE : runPose(t, live));
+  if (w < 0.03) { flashWhite(c, L); return; }
+  blit(c, L);
+  if (w < 0.22) {
+    const q = clamp01((w - 0.035) / 0.185);
+    puff(c, cx - 0.6 * U - 4 * q, fy - 1.5 - 2 * q, 1.2 + 1.5 * q, 1 - q);
+    puff(c, cx + 0.6 * U + 4 * q, fy - 1.5 - 2 * q, 1.2 + 1.5 * q, 1 - q);
+  }
+  if (w > SPLAT_FLAT && w < SPLAT_FLAT + 0.14) {
+    lines(c, cx, fy - 0.6 * U, 0.55 * U, 0.75 * U,
+      [-Math.PI * 0.85, -Math.PI * 0.65, -Math.PI * 0.35, -Math.PI * 0.15], 1 - (w - SPLAT_FLAT) / 0.14);
+  }
+}
+
+// D — STEAMROLLED. SPLAT_POSE's silhouette, B's own fix for "the pop-back is
+// off" (the tread bands making it legible that something rolled OVER him, and
+// the three-jerk reinflation rather than a generic elastic bounce), but B's
+// own timing tightened to match: the steps start sooner and run faster.
+function steamScale(w) {
+  if (w < 0.035) { const q = easeOut(w / 0.035); return [lerp(1, 1.6, q), lerp(1, 0.22, q)]; }
+  const steps = [[0.12, 0.5], [0.19, 0.75], [0.26, 1]];
+  let sy = 0.22, at = -1;
+  for (const [ws, to] of steps) if (w >= ws) { sy = to; at = ws; }
+  if (at > 0) { const q = (w - at) / 0.08; sy *= 1 + 0.12 * Math.exp(-q * 3.2) * Math.cos(q * 7); }
+  const sx = lerp(1.6, 1, clamp01((sy - 0.22) / 0.78));
+  return [sx, sy];
+}
+function paintSteamrolled(c, heroId, cx, fy, w, t, live) {
+  const [sx, sy] = steamScale(w);
+  const flat = w < 0.26;
+  const L = squashed(c, heroId, cx, fy, t, sx, sy, flat ? SPLAT_POSE : runPose(t, live), (o) => {
+    if (w >= 0.19) return;
+    o.save(); o.globalCompositeOperation = 'source-atop'; o.fillStyle = 'rgba(40,30,30,0.42)';
+    for (let i = 0; i < 3; i++) o.fillRect(cx - 0.75 * U, fy - (0.1 + i * 0.2) * U, 1.5 * U, 0.08 * U);
+    o.restore();
+  });
+  if (w < 0.03) { flashWhite(c, L); return; }
+  blit(c, L);
+  for (const ws of [0.12, 0.19, 0.26]) {
+    const q = clamp01((w - ws) / 0.1);
+    if (q > 0 && q < 1) puff(c, cx - 0.4 * U - 3 * q, fy - 0.2 * U - 2 * q, 0.9 + 1.4 * q, 1 - q);
+  }
+}
+
+// E — QUICK SPLAT. The snappy extreme: SPLAT_POSE's silhouette, barely any
+// hold at all (0.16s), for comparison against C and D's more cartoon "beat".
+const QUICK_FLAT = 0.16, QUICK_POP_T = 0.16;
+function quickScale(w) {
+  if (w < 0.03) { const q = easeOut(w / 0.03); return [lerp(1, 1.75, q), lerp(1, 0.2, q)]; }
+  if (w < QUICK_FLAT) return [1.75, 0.2];
+  if (w < QUICK_FLAT + QUICK_POP_T) {
+    const q = easeOut((w - QUICK_FLAT) / QUICK_POP_T);
+    return [lerp(1.75, 1, q), lerp(0.2, 1, q)];
+  }
+  const q = clamp01((w - QUICK_FLAT - QUICK_POP_T) / 0.09), d = Math.exp(-q * 5) * Math.cos(q * Math.PI * 2.6);
+  return [1 - d * 0.12, 1 + d * 0.18];
+}
+function paintQuickSplat(c, heroId, cx, fy, w, t, live) {
+  const [sx, sy] = quickScale(w);
+  const flat = w < QUICK_FLAT + QUICK_POP_T * 0.3;
+  const L = squashed(c, heroId, cx, fy, t, sx, sy, flat ? SPLAT_POSE : runPose(t, live));
+  if (w < 0.025) { flashWhite(c, L); return; }
+  blit(c, L);
+  if (w < QUICK_FLAT + 0.05) {
+    const q = clamp01(w / (QUICK_FLAT + 0.05));
+    puff(c, cx - 0.6 * U - 4 * q, fy - 1.5 - 2 * q, 1.2 + 1.2 * q, 1 - q);
+    puff(c, cx + 0.6 * U + 4 * q, fy - 1.5 - 2 * q, 1.2 + 1.2 * q, 1 - q);
+  }
+  if (w > QUICK_FLAT && w < QUICK_FLAT + 0.12) {
+    lines(c, cx, fy - 0.6 * U, 0.5 * U, 0.7 * U,
+      [-Math.PI * 0.85, -Math.PI * 0.65, -Math.PI * 0.35, -Math.PI * 0.15], 1 - (w - QUICK_FLAT) / 0.12);
   }
 }
 
@@ -196,6 +310,15 @@ export const HIT_EFFECTS = [
   { ...at('rollers'), letter: 'B', id: 'rollers-pumped', name: 'PUMPED BACK UP',
     note: 'Flattened with the tread rolled across him in bands, then he reinflates in three jerks — a puff of air with each — and runs on.',
     paint: paintPumped },
+  { ...at('rollers'), letter: 'C', id: 'rollers-splat', name: 'SPLAT',
+    note: 'ROUND 2. Arms and legs thrown out to the sides as he flattens — an actual splayed silhouette, not his running stride squashed — held half as long as A (0.4s against 0.8s), one clean snap back to his stride.',
+    T: HIT_LONG_T, paint: paintSplat },
+  { ...at('rollers'), letter: 'D', id: 'rollers-steamrolled', name: 'STEAMROLLED',
+    note: 'ROUND 2. SPLAT\'s splayed silhouette plus B\'s own fix for the pop — the tread bands and the three-jerk reinflation — both retimed to start and finish sooner.',
+    T: HIT_LONG_T, paint: paintSteamrolled },
+  { ...at('rollers'), letter: 'E', id: 'rollers-quicksplat', name: 'QUICK SPLAT',
+    note: 'ROUND 2. The snappy extreme: SPLAT\'s silhouette with barely any hold at all (0.16s) — how little beat the hit can get away with.',
+    T: HIT_LONG_T, paint: paintQuickSplat },
   { ...at('ice'), letter: 'A', id: 'ice-block', name: 'ICE BLOCK',
     note: 'SHIPPED. Frozen mid-leap, side-on and startled, inside a flat block of ice, blue all over; a crack runs down it, it shatters off him in shards left behind by the scroll, and the blue drains out of him as he runs on.',
     T: HIT_LONG_T, paint: K.paintIceBlock, after: K.iceShards, shipped: true },

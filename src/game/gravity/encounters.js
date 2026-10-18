@@ -7,6 +7,24 @@ export const VACUUM_PREP_SECONDS = VACUUM_SUCTION_SECONDS + VACUUM_LOADED_SECOND
 export const VACUUM_SOURCE_LEAD_SECONDS = 1;
 export const VACUUM_SHOT_SPEED = 32;
 
+// Smaller sweep batches fill the long spaces between authored cube attacks.
+// Their collection time is fixed, so the rubbish stays attached to the station
+// and reappears correctly on rewind without a mutable particle system.
+export function vacuumSweepBatches(data) {
+  if (!data.debrisRail) return [];
+  const batches=[];
+  const end=data.sequences.at(-1).end;
+  // The denser cube schedule consumes more full intake batches. Pack the
+  // remaining sweep stretches more closely so the source rail stays littered.
+  for(let i=0,at=2.5;at<end-.6;i++,at=2.5+i*.275) {
+    if(data.gates.some(g=>at>g.at-.7 && at<g.at+4.5)) continue;
+    if(data.vacuumAttacks.some(a=>at>a.at-VACUUM_PREP_SECONDS-.25 && at<a.at+.4)) continue;
+    const lane=data.gates.filter(g=>g.at<=at).at(-1)?.lane ?? 0;
+    batches.push({id:`sweep-${i}`,at,sourceLane:1-lane});
+  }
+  return batches;
+}
+
 export function vacuumAttackPhase(attack, seconds) {
   if (seconds >= attack.at) return { phase: 'launched', progress: 1 };
   const elapsed = seconds - (attack.at - VACUUM_PREP_SECONDS);

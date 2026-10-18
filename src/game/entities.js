@@ -8,7 +8,7 @@ export const OBSTACLES = {
   floatSpikes: { w: 48, h: 8, ground: true, armored: true, action: 'jump', gravityArt: true },
   maintenanceBrush: { w: 30, h: 30, alt: 13, armored: true, action: 'slide', gravityArt: true },
   maintenancePulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },
-  vacuumShot: { w: 14, h: 10, ground: true, armored: true, breakable: false, action: 'jump', gravityArt: true },
+  vacuumShot: { w: 21, h: 15, ground: true, armored: true, breakable: false, action: 'jump', gravityArt: true },
   // The wrong rail's live wire (gravity/state.js withWrongRailBeds): the pulse's zigzag,
   // held still and stretched the length of the bed.
   railPulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },

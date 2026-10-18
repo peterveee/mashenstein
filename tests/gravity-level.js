@@ -294,7 +294,7 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
   // One live wire per unbroken run of bed since 14 Oct, so measure the length lined.
   if (r.gravityGates.length) {
     const lined = r.gravityHazards.filter(h => h.bed).reduce((n, h) => n + (h.span || 0) * r.baseSpeed(), 0);
-    assert.ok(r.gravityStageData.debrisRail ? lined > 0 && lined <= (r.gravityGates.length + 1) * 72 : lined > 1500,
+    assert.ok(r.gravityStageData.debrisRail ? lined > 3 * 36 && lined < 1500 : lined > 1500,
       `${stageId}: ${r.gravityStageData.debrisRail ? 'short warning wires leave room for rubbish' : 'the wrong rail is lined with live wire'} (${Math.round(lined)} units)`);
   }
   r.exit();

@@ -34,8 +34,6 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-09-27 | `833af42` | [2026-09-27-833af42.html](2026-09-27-833af42.html) | [bake-offs](2026-09-27-833af42-lab.html) | feat: add audio reports functionality and UI updates |
 | 2026-10-04 | `c25625e` | [2026-10-04-c25625e.html](2026-10-04-c25625e.html) | [bake-offs](2026-10-04-c25625e-lab.html) | feat: add new Banger report and section effects functionality |
 | 2026-10-11 | `906ea68` | [2026-10-11-906ea68.html](2026-10-11-906ea68.html) | [bake-offs](2026-10-11-906ea68-lab.html) | Add WASM audio engine kernel implementations in JS and C, along with a probe for browser compatibility |
-| 2026-10-12 | `b5dca4b` | [2026-10-12-b5dca4b.html](2026-10-12-b5dca4b.html) | [bake-offs](2026-10-12-b5dca4b-lab.html) | Add comprehensive tests for office environment and interactions |
-| 2026-10-12 | `f21e408` | [2026-10-12-f21e408.html](2026-10-12-f21e408.html) | [bake-offs](2026-10-12-f21e408-lab.html) | Fix the six failing suites |
 | 2026-10-12 | `69d03d3` | [2026-10-12-69d03d3.html](2026-10-12-69d03d3.html) | [bake-offs](2026-10-12-69d03d3-lab.html) | Office: Jost typeface, signage clear of the HUD, save-import slot fix |
 | 2026-10-12 | `637994a` | [2026-10-12-637994a.html](2026-10-12-637994a.html) | [bake-offs](2026-10-12-637994a-lab.html) | Add WOK THIS WAY menu and CORPORATE KOMBAT armchair bake-off |
 | 2026-10-12 | `4e37a1e` | [2026-10-12-4e37a1e.html](2026-10-12-4e37a1e.html) | [bake-offs](2026-10-12-4e37a1e-lab.html) | Refactor titles and save file terminology; introduce diner candidates for corporate combat scenes |
@@ -53,3 +51,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-16 | `e3174cb` | [2026-10-16-e3174cb.html](2026-10-16-e3174cb.html) | [bake-offs](2026-10-16-e3174cb-lab.html) | Add pitFall.js for character falling mechanics and animations |
 | 2026-10-16 | `35da346` | [2026-10-16-35da346.html](2026-10-16-35da346.html) | [bake-offs](2026-10-16-35da346-lab.html) | feat: add AboutState and integrate into menu flow |
 | 2026-10-18 | `d6ac24f` | [2026-10-18-d6ac24f.html](2026-10-18-d6ac24f.html) | [bake-offs](2026-10-18-d6ac24f-lab.html) | Enhance trophy CRT feed rendering and caching |
+| 2026-10-18 | `9cee3fd` | [2026-10-18-9cee3fd.html](2026-10-18-9cee3fd.html) | [bake-offs](2026-10-18-9cee3fd-lab.html) | Add vacuum robot bakeoff feature with candidate designs and animations |

@@ -107,9 +107,15 @@ jobs:
       # The gallery is a visual record, so it only earns a snapshot when the art
       # itself moves. Gating on these paths keeps galleries/ occasional rather
       # than one ~230KB copy per push, the way releases/ works.
+      #
+      # continue-on-error: the site is already live by this point (the Deploy
+      # step above has run) — a gallery snapshot is a nice-to-have, never a
+      # reason to mark the run, or the phone ping, "FAILED" for a deploy that
+      # actually succeeded.
       - name: Check for art changes
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         id: art
+        continue-on-error: true
         run: |
           BASE='${{ github.event.before }}'
           # workflow_dispatch has no before-SHA, and a branch's first push
@@ -135,6 +141,7 @@ jobs:
 
       - name: Archive asset gallery
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.art.outputs.changed == 'true'
+        continue-on-error: true
         run: |
           npm run gallery
           npm run archive:gallery

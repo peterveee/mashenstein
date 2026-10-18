@@ -1,3 +1,6 @@
+import { TOON_SPECS, LORENZO_STARTLE_MOUTH_Y } from '../sprites/toons.js';
+import { HERO_SPRITES } from '../sprites/heroes.js';
+
 // Cast candidates — characters being designed, before anyone has picked one.
 //
 // A candidate is NOT cast. It has no entry in HEROES, TOON_SPECS or
@@ -1514,3 +1517,39 @@ export const STEELE_HAMMER_HARNESS_CANDIDATE = {
     w: '#292a2e', a: '#c39b49',
   },
 };
+
+// LORENZO'S STARTLED MOUTH — POSITION, ROUND 2 (19 Oct 2026). He is the one
+// hero whose mustache gates him out of drawMouth entirely, so outside the
+// death hole and the celebration grin he has never had a mouth for the
+// ordinary gasp every other hero gets on a jump or a hit (toons.js
+// LORENZO_STARTLE_MOUTH_Y, the new block right above the mustache lobes).
+// Peter, round 1: "not sure on position... lets do a bakeoff" — then, seeing
+// it: "need more separation from the moustache". Round 1's rungs ran
+// 0.11-0.19u (bracketing the lobes' own ~0.13u lower edge and the death
+// hole's 0.145u); these start past where that one topped out and run on to
+// clear daylight. The only thing on trial is the Y seat — `startleMouthY`, in
+// u below head centre, the same dial family as RUSTY_MOUTH_CANDIDATES above.
+//
+// EACH CANDIDATE GETS ITS OWN id, NOT 'lorenzo'. Round 1 used the real id for
+// all five and they all rendered on top of candidate 1: toons.js's faceFit()
+// caches the face-crop framing keyed by heroId alone, not by spec, so the
+// first 'lorenzo' measured won and every later candidate's lower mouth fell
+// outside that stale crop — "only the first one is on face". pal must then be
+// given explicitly too (pal(id) indexes HERO_SPRITES[id] directly and throws
+// on a made-up one) — exactly the RUSTY_MOUTH_CANDIDATES pattern above, which
+// already carries its own fake id and PANDA_PAL for the same reason.
+export const LORENZO_STARTLE_CANDIDATES = [0.15, 0.19, LORENZO_STARTLE_MOUTH_Y, 0.27, 0.31].map((y, i) => ({
+  id: `lorenzo-startle-${i}`,
+  name: y === LORENZO_STARTLE_MOUTH_Y ? `L${i + 1} — ${y.toFixed(2)}u (default)` : `L${i + 1} — ${y.toFixed(2)}u`,
+  note: y === 0.15
+    ? 'Where round 1\'s top rung (0.19u) was closest to clearing — now the floor of this round.'
+    : y === 0.19
+      ? 'A clear gap under the lobes, nothing touching.'
+      : y === LORENZO_STARTLE_MOUTH_Y
+        ? 'Comfortably clear of the mustache, still well above the chin.'
+        : y === 0.27
+          ? 'Generous separation — reads as a distinct mouth, not an extension of the mustache.'
+          : 'The low edge — starts to crowd the chin and reads as a long face.',
+  spec: { ...TOON_SPECS.lorenzo, startleMouthY: y },
+  pal: HERO_SPRITES.lorenzo.pal,
+}));

@@ -22,13 +22,13 @@ All eight are available in every normal stage. Portals switch between them autom
 
 | # | Hero | Full Name | Tagline | Skill | Ability |
 |---|---|---|---|---|---|
-| 1 | **LORENZO** | Lorenzo "Wrenches" Bracciano | "STANDARD PLUMBING PROCEDURE." | High Jump (15% higher) | STOMP / SMASH — air stomp or grounded wrench smash |
+| 1 | **LORENZO** | Lorenzo "Wrenches" Bracciano | "STANDARD PLUMBING PROCEDURE." | High Jump (13% higher) | PIPE WRENCH — throws his wrench; it breaks hazards, then hovers and flies back |
 | 2 | **RUSTY** | Rusty, Focus-Tested | "ALREADY THERE. WAITING." *(Gnash's, on loan)* | Speed Boost (15% faster) | BAMBOO SHOOT — pulls a cane from his dispenser and throws it; it breaks on contact |
 | 3 | **FERNWICK** | Fernwick, Hero of Thyme | "THE RECEIPT FORETOLD THIS." | Starting Shield | LONGBOW — reaches back for her bow, draws, and looses an arcing arrow that breaks ground hazards |
 | 4 | **B-33P** | Unit B-33P "Blastbot" | "LOW ON CYAN." | Battery Efficient (25% faster recharge) | LEMON CANNON — fires a shot that destroys ground obstacles |
-| 5 | **CLARA** | Clara Vault, Mall Raider | "CHAPTER ONE: SHE ARRIVED." | Cliffhanger (jumps 15% higher) | PLOT HOLE — fires both pistols, a quick pair of slugs that destroy ground obstacles |
+| 5 | **CLARA** | Clara Vault, Mall Raider | "CHAPTER ONE: SHE ARRIVED." | Cliffhanger (jumps 16% higher) | PLOT HOLE — fires both pistols, a quick pair of slugs that destroy ground obstacles |
 | 6 | **KIKO** | Kiko, Jurisdiction Pending | "NOBODY REPORTED IT. I NOTICED." | Foot Pursuit (jumps twice) | WARNING SHOT — fires a slow ball of energy that destroys ground obstacles |
-| 7 | **RAY M'N** | Ray M'n, Appendage-Optional | "LIMBS WERE OUT OF BUDGET." | Loose Assembly (survives one fatal hit) | ROCKET FIST — throws a fist that returns |
+| 7 | **RAMON** | Ramon, Appendage-Optional | "LIMBS WERE OUT OF BUDGET." | Loose Assembly (survives one fatal hit) | ROCKET FIST — throws a fist that returns |
 | 8 | **GRUMPOS** | Grumpos, Dad of Boy | "BOY." | Legendary Presence (+20% score) | RETURNING AXE — throws an axe; ground + air hazards |
 
 **Tag-in lines** (spoken when entering via portal):
@@ -38,7 +38,7 @@ All eight are available in every normal stage. Portals switch between them autom
 - B-33P: "LOW ON CYAN."
 - CLARA: "SUDDENLY: CLARA VAULT."
 - KIKO: "THIS IS A CRIME SCENE."
-- RAY M'N: "HANDS OFF. LITERALLY."
+- RAMON: "HANDS OFF. LITERALLY."
 - GRUMPOS: "BOY."
 
 **Running jokes** (one comedic bit per hero, hammered repeatedly):
@@ -48,20 +48,10 @@ All eight are available in every normal stage. Portals switch between them autom
 - B-33P constantly reports low on cyan, regardless of context.
 - Clara narrates her own lunch. In the past tense.
 - Kiko maintains a case file on every object in this building.
-- Ray M'n's insurance form requires a limb count. He keeps writing "OPTIONAL."
+- Ramon's insurance form requires a limb count. He keeps writing "OPTIONAL."
 - Grumpos throws his axe majestically. Occasionally fails to catch it.
 
-**Authored portal hand-offs** (scripted exchanges between specific pairs):
-| Outgoing → Incoming | Lines |
-|---|---|
-| LORENZO → RUSTY *(Gnash's lines)* | "APPLYING INDUSTRIAL THREAD SEALANT." → "TOO SLOW. I ALREADY PASSED THE VALVE." |
-| RUSTY → FERNWICK *(Gnash's lines)* | "ALREADY AT THE NEXT CORNER. SPEED UP." → "THE RECEIPT EXPRESSLY FORBIDS RUNNING." |
-| FERNWICK → B-33P | "THE PROPHECY FORETOLD A METALLIC CHASSIS." → "CHASSIS OPERATIONAL. CYAN LEVEL: CRITICAL." |
-| B-33P → CLARA | "PORTAL ENGAGED. SCANNING EXTRA-DIMENSIONAL SPECIMEN." → "SUDDENLY: CLARA VAULT." |
-| CLARA → KIKO | "TO BE CONTINUED." → "I WILL NEED THAT AS A STATEMENT." |
-| KIKO → RAY M'N | "I AM NOT LEAVING. I AM CANVASSING." → "CANVASS THE GLOVE. IT ACTS ALONE." |
-| RAY M'N → GRUMPOS | "HANDS OFF. LITERALLY. THEY ARE UNSECURED." → "BOY. FETCH THE SPARE APPENDAGES." |
-| GRUMPOS → LORENZO | "PREPARE FOR BALLISTIC DISPATCH, PLUMBER." → "STANDARD PROCEDURE. AIM FOR THE DUCTWORK." |
+**Exit lines** (`src/data/jokes.js` `EXIT_LINES`): the two-hander hand-off exchanges have been retired. Each hero now has a pool of three stand-alone parting lines, spoken by whoever is leaving at a portal swap — the first time they tag out in a run, then quiet for the rest of it. No outgoing/incoming pair, no setup waiting for a punchline; the incoming hero's own tag-in line (above) is the only reply. Rusty's pool is still Gnash's, on loan, same as his tagline and joke.
 
 ### 2.2 The Villain
 
@@ -71,15 +61,15 @@ A giant egg-shaped ape with a mustache, tiny science goggles, and a spiky shell.
 
 - Taunt pool rotates every 55–75 seconds during runs, plus each cabinet has one bespoke taunt.
 - Chase missions: he hovers OVER the hero and is bonked from underneath, three times a stage.
-- Appears as the Act I boss (Clown-Copter — a bust in a striped tub under a three-quarter rotor) and Act III final boss (Eggshell & The Absolutely Final Power Strip, arriving by striped clown balloon; the balloon is the weak point).
+- Appears as the Act II boss (Clown-Copter — a bust in a striped tub under a three-quarter rotor, ending TERMINAL VELOCITY) and Act III final boss (Eggshell & The Absolutely Final Power Strip, arriving by striped clown balloon; the balloon is the weak point).
 - In the ending: "SO THIS IS THE WARMTH I NEVER GOT" — the game's one stab at pathos for him.
 
 ### 2.3 NPCs
 
-**GARY (DECEASED)** — *"PHYSICAL JURISDICTION RETAINED."*
-Deceased pawn-shop clerk. Runs GARY'S LEGAL PAWN SHOP from behind his counter in the food court. The only entity with real hands; resolves the plot by casually flipping a physical toggle switch in the finale. Deadpan office-drone jokes about being dead.
+**GARY, STILL ON THE CLOCK** — *"TECHNICALLY I NEVER CLOCKED OUT."*
+Deceased pawn-shop clerk. Runs GARY'S LEGAL PAWN SHOP from behind his counter in the food court. The only entity with real hands; resolves the plot by casually flipping a physical toggle switch in the finale. Deadpan office-drone jokes about being dead — HR has not approved the leave.
 
-**DOLORES (ON BREAK)** — *"NEXT."*
+**DOLORES, NOT YET RELIEVED** — *"NEXT."*
 Food court counter staff, still on shift. Runs DOLORES' REPAIR COUNTER — her steam table, where power-up repairs are priced and portioned like lunch. Never acknowledges the arcade is dead; her shift has not ended. Calls NEXT to an empty concourse. The menu board reads NOW SERVING 0.
 
 **DUST DEVIL 9000** — *"DEEP CLEAN ENGAGED."*
@@ -87,7 +77,10 @@ A haunted vacuum cleaner. Running background gag across acts:
 - Act I: cleans the floor
 - Act II: cleans the ceiling
 - Act III: cleans the inside of a CRT
-Becomes the Act II boss. The only antagonist with a conscience — apologizes for hitting you.
+Becomes the Act I boss, ending RHYTHM BANKRUPTCY. The only antagonist with a conscience — apologizes for hitting you.
+
+**MISS CHOMP, IN RESIDENCE** — *"THE FOOD COURT IS MY HOMELAND. I AM ITS QUEEN."*
+Retired from the relay, not from the arcade: Kiko took her double-jump slot in the roster and Miss Chomp went back to the food court she always claimed as home. Her card plays straight, with no wink at having been a hero once — she has not noticed she stopped being one. Currently nowhere in the building and excluded from the hub roll call; cameo at most, never a precedent for bringing her back.
 
 ---
 
@@ -97,7 +90,7 @@ Becomes the Act II boss. The only antagonist with a conscience — apologizes fo
 
 ### 3.1 Cold Open (The Opening Film)
 
-Eleven shots, 32.20s, played once on a new file after difficulty select. It is a
+Ten shots, 33.13s, played once on a new file after difficulty select. It is a
 film, not a slideshow: one continuous arcade — the hub's own room, drawn by the
 hub's own painters — that a camera moves through. `INTRO_SHOTS` in
 `src/data/jokes.js` carries the script, the shot lengths, the camera boxes and
@@ -106,25 +99,28 @@ the cue sheet; `src/game/intro.js` is the projector.
 | # | shot | the picture | the line |
 |---|---|---|---|
 | 1 | `row` | slow truck along six lit machines | THE ARCADE. 11:58 PM.<br>CABINETS DREAMING ELECTRIC DREAMS. |
-| 2 | `arrival` | the clown-copter flies in; camera cranes to meet it | DON K. EGGSHELL, PHD.<br>FORTY YEARS OF DEFEAT BY PLUMBERS.<br>NEVER ON TOP. |
-| 3 | `threat` | lock-off on his face | IF HE CANNOT WIN... NOBODY PLAYS. |
-| 4 | `reach` | tilt down onto the master strip; his claw takes the rocker | HIS VACUUM IS ALSO CHARGING. PRIORITIES. |
-| 5 | `socket` | hard cut to the separate far-right terminal before the row dies; the full bank empties last-to-first | MCGFN-1. THE SOCKET HAS NOT RECEIVED THE MEMO. |
-| 6 | `dark` | after the socket empties, six screens die left to right, then near-silence | THE ARCADE GOES DARK.<br>EGGSHELL TAKES THE CREDIT. |
-| 7 | `doors` | the black centre-parting service door opens from the middle to reveal Lorenzo already idle; he holds the line, starts running, then the others enter closely behind and the whole cast accelerates | DUE TO BUDGET CUTS, ONLY ONE HERO CAN PLAY AT A TIME. |
-| 8 | `rollcall` | a wide runway view keeps the runners moving together for a sustained run | EIGHT HEROES. ONE SOCKET.<br>A RELAY BEGINS. |
-| 9 | `lineup` | the relay continues in motion with a long clear gap before the first cabinet | *(no caption; the relay line continues from the previous shot)* |
-| 10 | `dive` | Lorenzo runs beyond the marks and dives into the first PLUMBER PANIC cabinet; the action carries the beat without another caption | *(no caption)* |
-| 11 | `wide` | observers keep moving around the fully live PLUMBER PANIC cabinet while the camera stays with it | HISTORY WILL RECORD WHAT HAPPENS NEXT.<br>PROBABLY INCORRECTLY. |
+| 2 | `arrival` | Eggshell flies in over the marquees; the camera cranes up and pushes in to meet him | DON K. EGGSHELL, PHD.<br>FORTY YEARS OF DEFEAT BY PLUMBERS.<br>NEVER ON TOP. |
+| 3 | `threat` | lock-off on his face, no camera move | *(caption continues from `arrival`)* |
+| 4 | `socket` | he flies into frame, drops onto the bar, and physically throws the rocker; the bank empties last-to-first | IF HE CANNOT WIN...<br>NOBODY PLAYS. |
+| 5 | `dark` | cut wide on the whole row; six screens die left to right over 0.72s, then near-silence | THE ARCADE GOES DARK.<br>EGGSHELL TAKES THE CREDIT. |
+| 6 | `doors` | the black centre-parting service door opens from the middle to reveal Lorenzo already idle; he holds the line, starts running, then the others enter closely behind and the whole cast accelerates | DUE TO BUDGET CUTS,<br>ONLY ONE HERO CAN PLAY AT A TIME. |
+| 7 | `rollcall` | a wide runway view keeps the seven runners moving together as they cross behind him | *(caption continues from `doors`)* |
+| 8 | `lineup` | the relay continues in motion with a long clear gap before the first cabinet | EIGHT HEROES. ONE SOCKET.<br>A RELAY BEGINS. |
+| 9 | `dive` | Lorenzo runs beyond the marks and dives into the first FIELD SERVICE cabinet; the action carries the beat without another caption | *(caption continues from `lineup`)* |
+| 10 | `wide` | observers keep moving around the fully live FIELD SERVICE cabinet while the camera stays with it | HISTORY WILL RECORD WHAT HAPPENS NEXT.<br>PROBABLY INCORRECTLY. |
 
 **The music cut is the spine.** It opens on the title nocturne at 56bpm, kills
-the music dead on the rocker (shot 4 → 5) for the terminal and dark inserts, and
-slams THE SURGE in at 132 on shot 7's first frame, where the door goes.
+the music dead on the rocker (inside shot 4, `socket`) for the brownout, and
+slams THE SURGE in at 132 on shot 6's (`doors`) first frame, where the door goes.
+From there every beat of the entrance lands on a bar line: the launch on bar
+two, the target cabinet crossing into frame on bar four, the takeoff on bar
+five, the glass crossing a beat and a half later, and the pack pulling up
+together on the "and" of two in bar six.
 
 **Seconds are authoritative; the music follows.** The action pass stores explicit
 shot seconds and resolves them once at module load. The runtime never reads the
 song clock, so a muted phone, a headless test and a video render all play the
-identical 32.20-second film and cut on the identical frame. Alternate opening
+identical 33.13-second film and cut on the identical frame. Alternate opening
 themes remain a separate audition pass.
 
 ### 3.2 The Hub — The Food Court
@@ -143,19 +139,19 @@ Unplayed heroes loiter in the concourse, wandering and hopping. Press DOWN to ta
 
 | Act | Cabinet | Style | Genre | Stages | Boss |
 |---|---|---|---|---|---|
-| I | PLUMBER PANIC | pixel | Platformer | 3 | Dust Devil 9000 (end of Act I) |
+| I | FIELD SERVICE | pixel | Platformer | 3 | — |
 | I | SPEED ZONE | faux-3D | Racing | 3 | — |
-| I | RHYTHM BANKRUPTCY | LCD handheld | Rhythm | 3 | — |
-| II | FROST FORTRESS | watercolor | Ice Adventure | 3 | Clown-Copter (end of Act II) |
+| I | RHYTHM BANKRUPTCY | LCD handheld | Rhythm | 3 | Dust Devil 9000 (end of Act I) |
+| II | FROST FORTRESS | watercolor | Ice Adventure | 3 | — |
 | II | CRYPT SHIFT | VHS | Horror | 3 | — |
-| II | TERMINAL VELOCITY | neon vector | SHMUP | 3 | — |
-| III | CARDBOARD KINGDOM | cardboard | Fake-o-rama | 3 | Eggshell & The Power Strip (end of Act III) |
+| II | TERMINAL VELOCITY | neon vector | SHMUP | 3 | Clown-Copter (end of Act II) |
+| III | GRAVITY GRID | space station | Gravity Flip | 3 | — |
 | III | CORPORATE KOMBAT | office / clear line | Office Action | 3 | — |
-| III | THE SURGE | mashup | Everything | 3 | — |
+| III | DÉJÀ VIEW (THE SURGE) | mashup | Everything | 3 | Eggshell & The Power Strip (end of Act III) |
 
 Each stage opens on a briefing screen (typewriter, 70 chars/sec) stating the mission objective, a memo block for comedy, and a cabinet-specific validation prompt. One input completes the text; a second proceeds.
 
-**Nominal stage duration:** Plumber/Speed 60s; Rhythm and Act II 90s; Cardboard 95s, Corporate Kombat 100s, and The Surge 110s.
+**Nominal stage duration:** Field Service/Speed Zone 60s; Rhythm Bankruptcy and Act II 90s; Gravity Grid ~84–100s (its three stages vary), Corporate Kombat 100s, and Déjà View 110s. A stage's own countdown clock (§4.6) can still fail a run faster or slower than its duration implies.
 
 ### 3.4 The Finale
 
@@ -198,21 +194,21 @@ Each hero has a unique ability on a cooldown (1.8–3.5 seconds). An in-world ci
 
 **Close-range heroes** (melee / screen-range actions):
 
-- **Stomp / Smash** (Lorenzo, 2.5s, held jump = 15% higher): In the air, stomps downward to break ground obstacles beneath him. On the ground, swings a wrench forward to smash a single nearby obstacle. A banked Relay Blast charge clears the whole screen.
-
 - **Bamboo Shoot** (Rusty, 3.2s, passive +15% speed): Reaches to the dispenser on his hip, pulls a bamboo cane and whips it forward; it leaves on the throw's release beat and breaks on first contact. His two canes — one long, one short — alternate every throw, and the one in the air is the one he pulled. *(Replaced Gnash's Spin Dash on 10 Sep 2026; Gnash is held for an NPC role.)*
 
 - **Longbow** (Fernwick, 2.4s, starts stages with one shield): She reaches back for the bow, draws, and the arrow leaves 0.18s after the press on a short arc into ground hazards, then she lowers and slings the bow. Broadhead (mastery) and a charged Relay Blast make the arrow pierce.
 
-- **Plot Hole** (Clara, 3.0s, jumps 15% higher): Fires both pistols — a double-tap pair of fast small slugs (shotBurst 2) that destroy ground obstacles. A charged Relay Blast version fires a piercing three-way spread, doubled. *(Cosmic Squish retired from the roster with Mochi, held for a cameo.)*
+- **Plot Hole** (Clara, 3.0s, jumps 16% higher): Fires both pistols — a double-tap pair of fast small slugs (shotBurst 2) that destroy ground obstacles. A charged Relay Blast version fires a piercing three-way spread, doubled. *(Cosmic Squish retired from the roster with Mochi, held for a cameo.)*
 
 - **Warning Shot** (Kiko, 3.5s): Fires a ball of energy that destroys ground obstacles. Ground-only and one-hit, like B-33P's Lemon Cannon — but slower and fatter, and on more than twice his cooldown, since his fast recharge is his whole skill. A charged Relay Blast version fires a three-round spread, every shot piercing.
 
 **Thrown-projectile heroes** (weapons leave the body and return):
 
+- **Pipe Wrench** (Lorenzo, 2.4s, held jump = 13% higher): Replaced the old stomp/smash on 10 Sep 2026. Takes the wrench off his belt loop and throws it across himself; it breaks a ground hazard, then hovers above the action — dim, spinning — and flies back when the cooldown resets, the same flight the axe uses. A charged Relay Blast wrench works the whole screen before returning.
+
 - **Lemon Cannon** (B-33P, 1.35s effective, 0.75× cooldown multiplier): Fires a forward pellet that destroys ground obstacles. A charged Relay Blast spreads three piercing pellets.
 
-- **Rocket Fist** (Ray M'n, 3s, survives one fatal hit): Throws his detachable fist. The fist streaks forward, hits one obstacle or unbreakable, then hovers above the action — dim, spinning, out of the combat lane — and flies back to him when the cooldown resets. A charged Relay Blast fist pierces everything and returns faster.
+- **Rocket Fist** (Ramon, 3s, survives one fatal hit): Throws his detachable fist. The fist streaks forward, hits one obstacle or unbreakable, then hovers above the action — dim, spinning, out of the combat lane — and flies back to him when the cooldown resets. A charged Relay Blast fist pierces everything and returns faster.
 
 - **Returning Axe** (Grumpos, 2.8s, +20% score): Throws his axe forward through ground and air hazards alike. After its hits are spent, the axe hovers above the action — dim, spinning — then flies back when the cooldown resets. A charged Relay Blast axe works the whole screen before returning.
 
@@ -232,7 +228,9 @@ Collected during runs; timers drain in real-time. Stackable levels (1–4):
 
 ### 4.6 Missions & Challenges
 
-**Stage goals:** Every stage requires reaching the finish. Optional bonus methods currently include coins, M-A-S-H letters, targets, no-damage runs, copter chases, boosts, on-beat actions, combos, bridges and cord pieces. Escort and rescue goals have been retired.
+**Stage goals (redesigned 17 Oct 2026):** Every stage's mission is simply to reach the finish line. What used to be the stage's mission — the letters, the copter chase, the crates, the safes — is now that stage's one optional bonus challenge: coins, M-A-S-H letters, targets (crates, fire alarms, safes), no-damage runs, copter chases, boosts, on-beat actions, combos, bridges, cord pieces, or finishing under a time. Escort and rescue goals have been retired.
+
+**The clock:** A stage can now be failed on time, not only on health. A countdown (`run.js` `tickClock`) ticks down from one of three limits by stage length — 100s for the ~60s Act I openers, 150s for the ~90s middle stages, 200s for the longest — and a handful of stages set their own limit outside that tier. Replayed ground (a death sent back to a checkpoint, a missed set piece) costs clock as well as time.
 
 **M-A-S-H letters** (Field Service 3, Speed Zone 3): four letters at fixed spots. On Field Service 3 each is on a road you have to choose — the opening island, the tunnel floor, the staircase top, the sky road. Speed Zone 3 has no roads, so each asks for a different jump — a hop on clear lane, over the tar pit, on a crossing stone, and one high enough to want the jump held; the lane around a bare letter is kept clear. A letter banks the moment it is taken and is kept on a failed run; the stage clears on the run that finishes with all four banked. All four in one run is the gold MASH (+1000). A letter the camera cannot show in time — overhead or underfoot — gets a marker on the frame's edge from the moment its road comes into view; letters in the picture's band get none.
 
@@ -292,7 +290,7 @@ Choosing UNPLUGGED prompts: "ARE YOU SURE? (WE ARE NOT.) ENTER: YES / ESC: WISDO
 
 | Plugs | Unlocks |
 |---|---|
-| 0 | PLUMBER PANIC |
+| 0 | FIELD SERVICE |
 | 3 | SPEED ZONE |
 | 6 | RHYTHM BANKRUPTCY |
 | 12 | FROST FORTRESS (Act II) |
@@ -333,13 +331,13 @@ XP thresholds: 100, 300, 700, 1400 (levels 1–5). Each hero has one sidegrade w
 
 | Hero | Sidegrade | Effect |
 |---|---|---|
-| Lorenzo | SHOCK STOMP | Shockwave breaks nearby obstacles, scatters nearby coins |
+| Lorenzo | SECOND BITE | The wrench breaks a second hazard before it comes home |
 | Rusty | MOMENTUM GUY | Stacking speed after every tag |
 | Fernwick | BROADHEAD | The arrow punches through and keeps going |
 | B-33P | CHARGE SHOT | Pellets pierce ground and flying obstacles |
 | Clara | SERIALIZED | The shot is faster but smaller |
 | Kiko | REASONABLE FORCE | The warning shot is wider but travels slower |
-| Ray M'n | FREELANCE FIST | Rocket fist collects coins before returning |
+| Ramon | FREELANCE FIST | Rocket fist collects coins before returning |
 | Grumpos | RICOCHET AXE | Axe hits a second target, harder to catch |
 
 ---
@@ -374,15 +372,15 @@ Each cabinet has a distinct visual identity — palette, ground/enemy art, sky c
 
 | Cabinet | Style | Palettes | Distinctive Elements |
 |---|---|---|---|
-| PLUMBER PANIC | pixel | Green ground, blue sky | !-crates, pipes, cacti |
+| FIELD SERVICE | pixel | Green ground, blue sky | !-crates, pipes, cacti, floating islands |
 | SPEED ZONE | faux-3D | Orange/warm ground | Boost pads, traffic cones, road gaps |
-| TERMINAL VELOCITY | neon vector | Dark navy/purple | Drones, shooters, targets, pellet trails |
+| RHYTHM BANKRUPTCY | LCD handheld | Olive/muted green | Beat-synced bars, on-beat bonus |
 | FROST FORTRESS | watercolor | Pale blue/white | Snowmen, icicles, frozen switches, slide physics |
 | CRYPT SHIFT | VHS | Dark purple/grey | Tombstones, zombies, darkness radius |
-| RHYTHM BANKRUPTCY | LCD handheld | Olive/muted green | Beat-synced bars, on-beat bonus |
-| CARDBOARD KINGDOM | cardboard | Warm tan/brown | Collapsing scenery, fake perspective props |
+| TERMINAL VELOCITY | neon vector | Dark navy/purple | Drones, shooters, targets, train-roof set pieces |
+| GRAVITY GRID | space station | Dark navy, lit corridor | Polarity-arrow floor/ceiling flips, hover-vacuum debris, low-gravity holds |
 | CORPORATE KOMBAT | office / LIGNE ’89 lit | Morning lobby → noon floor 23 → violet dusk floor 88 | Chairs, printers, paperwork obstacles |
-| THE SURGE | mashup | Dark everything | Remixes elements from all eight previous cabinets |
+| DÉJÀ VIEW (THE SURGE) | mashup | Dark everything | Remixes elements from all eight previous cabinets |
 
 ### 7.5 Sprite System
 
@@ -409,15 +407,15 @@ Each cabinet has a fully authored step-sequenced song with its own BPM, instrume
 
 | Cabinet | BPM | Character |
 |---|---|---|
-| PLUMBER PANIC | 112 | A-F-C-G loop with melodic variations, building chord stabs |
+| FIELD SERVICE | 112 | A-F-C-G loop with melodic variations, building chord stabs |
 | SPEED ZONE | 128 | E minor lap that modulates I→IV→V like gear changes |
-| TERMINAL VELOCITY | 120 | Sawtooth lead, driving percussion |
+| RHYTHM BANKRUPTCY | 124 | Dense percussion, on-beat accents |
 | FROST FORTRESS | 100 | Triangle lead, sparse, spacious |
 | CRYPT SHIFT | 90 | Triangle lead, sparse kick, dark |
-| RHYTHM BANKRUPTCY | 124 | Dense percussion, on-beat accents |
-| CARDBOARD KINGDOM | 108 | Triangle lead, warm and slightly off |
+| TERMINAL VELOCITY | 120 | Sawtooth lead, driving percussion |
+| GRAVITY GRID | 112 | "TIME VORTEX" — theremin/choir/strings intro, sparse at speed, gear-shift snare build into the drop |
 | CORPORATE KOMBAT | 116 | Driving hats, work-drone feel |
-| THE SURGE | 132 | Sawtooth, remix engine, everything at once |
+| DÉJÀ VIEW (THE SURGE) | 132 | Sawtooth, remix engine, everything at once |
 
 **Hub theme:** 90 BPM loiter groove (Am-Em-G-D) that builds from bare bass to double-arpeggio crescendo over 8 sections. Also plays from the Sound Test menu.
 

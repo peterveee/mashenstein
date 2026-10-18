@@ -22,7 +22,7 @@ import { PLAYER_X } from '../player.js';
 import { drawFloatingBolts, drawMaintenanceVacuum, vacuumShotAheadForView } from '../../sprites/gravity-encounters.js';
 import { gravityMissionStateFor, gravitySeconds, gravityStageDataFor, gravityWorldX,
   VACUUM_LOADED_SECONDS, VACUUM_PREP_SECONDS, VACUUM_SHOT_SPEED, VACUUM_SOURCE_LEAD_SECONDS,
-  VACUUM_WARNING_SECONDS, vacuumAttackPhase } from './encounters.js';
+  VACUUM_WARNING_SECONDS, vacuumAttackPhase, vacuumSweepBatches } from './encounters.js';
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const FINISH_RETURN_LEAD_SECONDS = 3;
@@ -55,7 +55,7 @@ const BED_STEP = 24, BED_W = 15, WIRE_MAX = 150, WIRE_GAP = 24;   // a clear gap
 // the wire and gets the zap (sprites/zap.js), not a field that spends the hit first.
 const WIRE_CLEARS = new Set(['foilCrate', 'specimenCase', 'fuelCell', 'maintenanceBot',
   'coolantRadiator', 'valveManifold', 'weldingDrone', 'looseToolkit']);
-function withWrongRailBeds(hazards, gates, total, speed, debrisRail = false) {
+function withWrongRailBeds(hazards, gates, total, speed, debrisRail = false, debrisSources = []) {
   if (!gates.length) return hazards;
   const spans = [{ start: 0, end: gates[0].x - 38, lane: 1 },
     ...gates.map((g, i) => ({ start: g.x + 52, end: (gates[i + 1]?.x ?? total) - 38, lane: 1 - g.lane }))];
@@ -65,22 +65,28 @@ function withWrongRailBeds(hazards, gates, total, speed, debrisRail = false) {
     && x + BED_W + 14 > h.x && x - 14 < h.x + (h.span ? h.span * speed : 16));
   const beds = [];
   for (const span of spans) {
-    let warningPlaced = false;
     let run = null;
     // No wire longer than WIRE_MAX: a longer run is laid as several, end to end with
     // a WIRE_GAP between (Peter, 14 Oct: "to avoid long uninterrupted sections").
     const close = () => {
       if (run) {
-        const len = run.x1 - run.x0, n = Math.ceil(len / WIRE_MAX), piece = (len - WIRE_GAP * (n - 1)) / n;
-        for (let i = 0; i < n; i++) {
-          // The cleaner's opposite rail is its rubbish supply. Keep one short
-          // warning wire per transfer span; the authored rollers still enforce
-          // leaving that surface. Other Gravity Grid stages keep their beds.
-          if (debrisRail && warningPlaced) break;
-          const x = run.x0 + i * (piece + WIRE_GAP);
-          beds.push({ id: `bed-${span.lane}-${Math.round(x)}`, lane: span.lane, type: 'railPulse',
-            x, at: x / speed, span: (debrisRail ? Math.min(72, piece) : piece) / speed, bed: true });
-          warningPlaced = true;
+        const len = run.x1 - run.x0;
+        if (debrisRail) {
+          // Short electrical hazards alternate with generous rubbish patches.
+          // Reserve the full portrait-to-desktop intake range for attack piles.
+          for (let x = run.x0; x + 24 <= run.x1; x += 192) {
+            const width = Math.min(36, run.x1 - x);
+            if (debrisSources.some(a => a.lane === span.lane && x + width > a.left && x < a.right)) continue;
+            beds.push({ id: `bed-${span.lane}-${Math.round(x)}`, lane: span.lane, type: 'railPulse',
+              x, at: x / speed, span: width / speed, bed: true });
+          }
+        } else {
+          const n = Math.ceil(len / WIRE_MAX), piece = (len - WIRE_GAP * (n - 1)) / n;
+          for (let i = 0; i < n; i++) {
+            const x = run.x0 + i * (piece + WIRE_GAP);
+            beds.push({ id: `bed-${span.lane}-${Math.round(x)}`, lane: span.lane, type: 'railPulse',
+              x, at: x / speed, span: piece / speed, bed: true });
+          }
         }
       }
       run = null;
@@ -350,8 +356,12 @@ export class GravityRunState extends RunState {
     this.gravityGates = this.gravityStageData.gates.map((g, index) => ({ ...g, index, x: xAt(g.at) }));
     this.gravityHazards = this.gravityStageData.hazards.map((h) => ({ ...h, x: xAt(h.at) }));
     this.gravityVacuumAttacks = (this.gravityStageData.vacuumAttacks || []).map((a) => ({ ...a, x: xAt(a.at) }));
+    this.gravityVacuumSweep = vacuumSweepBatches(this.gravityStageData);
     this.gravityHazards = clearOfFrames(withWrongRailBeds(ceilingJumpsOnly(this.gravityHazards), this.gravityGates,
-      this.totalDist, speed, this.gravityStageData.debrisRail), speed);
+      this.totalDist, speed, this.gravityStageData.debrisRail,
+      this.gravityVacuumAttacks.map(a => ({ lane: a.sourceLane,
+        left: xAt(a.at - VACUUM_PREP_SECONDS + .25) + 80 - 28,
+        right: xAt(a.at - VACUUM_PREP_SECONDS + .25) + 144 + 28 }))), speed);
     this.gravitySpawned = new Set();
     this.obstacles = []; this.pickups = [];
     this.spawner.fill = () => this.fillGravityEntities();
@@ -392,6 +402,13 @@ export class GravityRunState extends RunState {
           drawMaintenanceVacuum(c, {
             view, time: t, seconds, corridor: this.corridor,
             playerX: this.playerWorldX() - cam,
+            lane: this.activeLaneAt(this.playerWorldX()),
+            sweep: this.gravityVacuumSweep.filter(a => {
+              const source = xAt(a.at) + this.vacuumShotAhead() + 59;
+              return !this.gravityHazards.some(h => h.bed && h.lane === a.sourceLane
+                && source + 28 > h.x && source - 28 < h.x + h.span * speed);
+            }).map(a=>({ ...a,
+              sourceX: xAt(a.at) + this.vacuumShotAhead() + 59 - cam })),
             attacks: (this.gravityVacuumAttacks || []).map((a) => ({ ...a, ...vacuumAttackPhase(a, seconds),
               sourceX: a.sourceX - cam,
               sourceVisible: seconds >= a.at - VACUUM_PREP_SECONDS - VACUUM_SOURCE_LEAD_SECONDS })),
@@ -479,18 +496,22 @@ export class GravityRunState extends RunState {
       const key = `vacuum-${index}`;
       if (this.gravitySpawned.has(key) || this.gravityTravelTime() < a.at) return;
       this.gravitySpawned.add(key);
-      const ob = makeObstacle('vacuumShot', a.x);
-      if (a.x + ob.w < this.playerWorldX() - 20) return;
-      ob.gravityAuthoredId = a.id;
-      ob.vacuumLaunchAt = a.at;
-      ob.vacuumLaunchX = a.x;
-      ob.vacuumLane = a.lane;
-      ob.vacuumSourceLane = a.sourceLane;
-      ob.x = a.x - VACUUM_SHOT_SPEED * (this.gravityTravelTime() - a.at);
-      ob.def = { ...ob.def, armored: true, breakable: false, action: 'jump' };
-      if (a.lane) { ob.alt = this.corridor - ob.alt - ob.h; ob.gravityCeiling = this.corridor; }
-      (this.gravityVacuumShots ||= []).push(ob);
-      this.obstacles.push(ob);
+      for(let cube=0;cube<(a.count||1);cube++) {
+        const launchX=a.x+cube*24;
+        const ob = makeObstacle('vacuumShot', launchX);
+
+        ob.gravityAuthoredId = a.id;
+        ob.vacuumLaunchAt = a.at;
+        ob.vacuumLaunchX = launchX;
+        ob.vacuumLane = a.lane;
+        ob.vacuumSourceLane = a.sourceLane;
+        ob.x = launchX - VACUUM_SHOT_SPEED * (this.gravityTravelTime() - a.at);
+        if (ob.x + ob.w < this.camX - 80) continue;
+        ob.def = { ...ob.def, armored: true, breakable: false, action: 'jump' };
+        if (a.lane) { ob.alt = this.corridor - ob.alt - ob.h; ob.gravityCeiling = this.corridor; }
+        (this.gravityVacuumShots ||= []).push(ob);
+        this.obstacles.push(ob);
+      }
     });
     this.positionGravityHazards();
   }
@@ -558,7 +579,8 @@ export class GravityRunState extends RunState {
     for (const ob of this.gravityVacuumShots || []) {
       const age = seconds - ob.vacuumLaunchAt;
       ob.x = ob.vacuumLaunchX - VACUUM_SHOT_SPEED * Math.max(0, age);
-      ob.live = age >= 0 && ob.x + ob.w >= this.playerWorldX() - 20;
+      // Keep the cube and its trailing dust until they have fully left the camera.
+      ob.live = age >= 0 && ob.x + ob.w >= this.camX - 80;
     }
   }
   updateMission(dt) {
