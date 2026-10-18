@@ -83,3 +83,5 @@ console.log('dist/eggshell-cape-bakeoff.html written');
 
 // Focused Fernwick attachment study, kept alongside the main galleries.
 await import('./build-fernwick-quiver-bakeoff.js');
+await import('./build-bobcat-animation-bakeoff.js');
+await import('./build-pythagoras-tail-bakeoff.js');

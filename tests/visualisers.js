@@ -3,7 +3,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { Audio } = await import('../src/engine/audio.js');
-const { createVisualiser, pickVisualiser, VISUALISER_NAMES, MEGAMIX_CYCLE_BEATS, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition, setVisualiserViewport, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS } = await import('../src/engine/visualisers.js');
+const { createVisualiser, createGoldenToasterParade, pickVisualiser, VISUALISER_NAMES, MEGAMIX_CYCLE_BEATS, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition, setVisualiserViewport, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS } = await import('../src/engine/visualisers.js');
 const { SoundTestState } = await import('../src/game/menus.js');
 const { Input } = await import('../src/engine/input.js');
 
@@ -459,6 +459,79 @@ assert(toasterParade.toasters.length >= 64
   && specialEditionLaunched
   && toasterParade.toasters.some((p) => p.x < firstToasterX || p.x < -40),
   'toaster sky parade keeps about one fifth of the flock stocked, pops only their toast, and sends a few through flight loops plus periodic special editions');
+
+const goldenViewHeight = 166;
+const goldenViewWidth = goldenViewHeight * 4 / 3;
+const standardBobParade = createVisualiser(13, 0x18f4a9d3, { bpm: 90 });
+const goldenParade = createGoldenToasterParade(0x18f4a9d3, 27, {
+  viewWidth: goldenViewWidth,
+  viewHeight: goldenViewHeight,
+  bpm: 90,
+});
+const goldenInitialX = goldenParade.toasters.map((p) => p.x);
+const goldenInitialBob = goldenParade.toasters[3].bob;
+const standardInitialBob = standardBobParade.toasters[3].bob;
+goldenParade.update(1.8, { bass: 0.7 });
+const goldenIntroLoop = goldenParade.toasters[0];
+goldenParade.specialToasterTimer = 0;
+goldenParade.update(0, {});
+goldenParade.drawToasterFleet(ctx);
+assert(goldenParade.toasters.length === 27
+  && goldenParade.toasters.every((p) => p.entryDelay === 0 && !p.specialColor && !p.specialFinish)
+  && new Set(goldenParade.toasters.map((p) => p.scale)).size > 1
+  && goldenIntroLoop.loopActive && Math.abs(goldenIntroLoop.drawY - goldenIntroLoop.y) > 1
+  && goldenParade.toasters.some((p) => p.hasToast)
+  && goldenParade.skyParticles.length === 0
+  && goldenParade.toasterViewWidth === goldenViewWidth
+  && goldenParade.toasterViewHeight === goldenViewHeight
+  && goldenParade.horizontalSpeedScale === 0.8
+  && Math.abs(goldenParade.beat - 2.7) < 1e-9
+  && goldenInitialX[0] === -52
+  && goldenInitialX.slice(1).every((x) => x >= -35 && x <= goldenViewWidth + 35),
+  'the Trophy Room fits 27 native-size gold toasters into a compact 4:3 view and follows the Food Court beat');
+assert(Math.abs(goldenInitialBob - standardInitialBob * 0.45) < 1e-9,
+  'Golden Toasters use 45% of the visualiser vertical-bob amplitude');
+
+const measureScalePulseRange = (parade, toaster) => {
+  const originalScale = ctx.scale;
+  const scaleSamples = [];
+  ctx.scale = (scale) => scaleSamples.push(scale);
+  const sampleAt = (phase) => {
+    parade.t = (phase - toaster.phase) / 1.8;
+    parade.beatPulse = 0.5;
+    parade.drawToasterFleet(ctx);
+    const scale = scaleSamples.at(-1);
+    scaleSamples.length = 0;
+    return scale;
+  };
+  const range = sampleAt(Math.PI / 2) - sampleAt(Math.PI * 1.5);
+  ctx.scale = originalScale;
+  return range / toaster.scale;
+};
+const scalePulseSeed = 0x18f4a9d3;
+const standardScaleProbe = createVisualiser(13, scalePulseSeed, { bpm: 90 });
+const goldenScaleProbe = createGoldenToasterParade(scalePulseSeed, 1, { bpm: 90 });
+const standardPulseRange = measureScalePulseRange(standardScaleProbe, standardScaleProbe.toasters[0]);
+const goldenPulseRange = measureScalePulseRange(goldenScaleProbe, goldenScaleProbe.toasters[0]);
+assert(goldenPulseRange > 0 && goldenPulseRange < standardPulseRange * 0.51,
+  'Golden Toasters retain a visible but halved scale pulse');
+
+const wingTestToaster = goldenParade.toasters[3];
+wingTestToaster.framePhase = 0.25;
+const wingFrames = [];
+const drawAppliance = goldenParade.drawAppliance;
+goldenParade.drawAppliance = (_ctx, p, frame) => {
+  if (p === wingTestToaster) wingFrames.push(frame % 12);
+};
+goldenParade.drawToasterFleet(ctx);
+const wingFrameBefore = wingFrames.at(-1);
+wingFrames.length = 0;
+goldenParade.update(1 / 18 + 1e-6, {});
+goldenParade.drawToasterFleet(ctx);
+const wingFrameAfter = wingFrames.at(-1);
+goldenParade.drawAppliance = drawAppliance;
+assert(wingFrameAfter === (wingFrameBefore + 1) % 12,
+  'Golden Toaster wing animation advances in time with the 90 BPM Food Court theme');
 
 const codeRain = createVisualiser(15, 0x0c0de5a1, { bpm: 120 });
 const rainOpeningGrid = Array.from(codeRain.grid);

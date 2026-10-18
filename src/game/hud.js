@@ -1202,6 +1202,17 @@ export function speechPageCount(speech, opts = {}) {
   return Math.max(1, Math.ceil(all.length / Math.max(1, Math.trunc(opts.maxLines ?? 3))));
 }
 
+// How long a speech card should hold a line for it to be read in full: a beat to find the card,
+// then the words at an easy pace for all-caps jokes. 3.2s was fine for "NEXT." and a third of
+// what the hundred-character lines need. The floor keeps a one-word bark from flashing past
+// before anyone has looked up.
+const SPEECH_NOTICE_S = 1;
+const SPEECH_READ_CPS = 12;
+const SPEECH_MIN_HOLD_S = 4;
+export function speechHoldSeconds(text) {
+  return Math.max(SPEECH_MIN_HOLD_S, SPEECH_NOTICE_S + String(text ?? '').length / SPEECH_READ_CPS);
+}
+
 /**
  * WHERE THE BONUS PANEL SITS AT A GIVEN POINT IN ITS FOLD — the whole of what
  * BONUS_SLOT decides, in one place both the run and the gallery ask.
@@ -2199,12 +2210,12 @@ function portraitTrim(text, maxWidth, scale = 1) {
 function portraitBonusText(run) {
   const c = run?.challenge;
   if (!c) return null;
-  if (c.failed) return ['BONUS', 'NOT THIS TIME', '#a8a0b0', 'rgba(255,255,255,0.45)'];
+  if (c.failed) return ['BONUS', '×', '#a8a0b0', '#e04848'];
   const desc = bonusHudLine(c);
   if (c.type === 'noDamage') {
     const done = run.damageTaken === 0 && run.distance > 0;
-    return ['BONUS', done ? [`${desc} `, 'OK', 'OK'] : [desc || 'NO DAMAGE', '', ''],
-      done ? '#74c947' : '#f6c945', '#ffffff'];
+    return ['BONUS', done ? [`${desc} `, '✓', 'OK'] : [desc || 'NO DAMAGE', '', ''],
+      done ? '#74c947' : '#f6c945', '#ffffff', done ? ['#74c947'] : null];
   }
   const n = Number(c.n) || 0;
   const count = Math.min(Number(c.count) || 0, n);
@@ -2213,9 +2224,10 @@ function portraitBonusText(run) {
     return ['BONUS', [`${desc}  `, word, word], '#f6c945', '#ffffff'];
   }
   const best = c.type === 'combo' ? 'BEST ' : '';
-  const tail = count >= n ? 'OK' : `${best}${count}/${n}`;
-  return ['BONUS', [`${desc} `, tail, count >= n ? 'OK' : `${best}${widestDigit().repeat(String(n).length)}/${n}`],
-    count >= n ? '#74c947' : '#f6c945', '#ffffff'];
+  const done = count >= n;
+  const tail = done ? '✓' : `${best}${count}/${n}`;
+  return ['BONUS', [`${desc} `, tail, done ? 'OK' : `${best}${widestDigit().repeat(String(n).length)}/${n}`],
+    done ? '#74c947' : '#f6c945', '#ffffff', done ? ['#74c947'] : null];
 }
 
 function drawPortraitActionShelf(ctx, run, layout) {
@@ -2451,7 +2463,7 @@ function drawPortraitHud(ctx, run) {
     // which has no bonus, still names itself there.
     const bonus = run.overtime ? ['MODE', 'OVERTIME', '#b888f0', '#ffffff'] : portraitBonusText(run);
     if (bonus) {
-      const [tag, text, tagColor, ink] = bonus;
+      const [tag, text, tagColor, ink, tailInks] = bonus;
       const bonusText = Array.isArray(text)
         ? [portraitTrim(text[0].trimEnd(), maxText - textWidth(`  ${text[2]}`), 1) + text[0].match(/\s*$/)[0], text[1], text[2]]
         : portraitTrim(text, maxText, 1);
@@ -2464,7 +2476,7 @@ function drawPortraitHud(ctx, run) {
       ctx.translate(0, layout.goalY - OBJ_ROW_Y * s);
       ctx.scale(s, s);
       const left = drawObjectivePanel(ctx, tag, tagColor, bonusText, ink,
-        OBJ_ROW_Y, 1, 0, expandedRight);
+        OBJ_ROW_Y, 1, 0, expandedRight, tailInks);
       if (!run.overtime) drawBonusNote(ctx, run, OBJ_ROW_Y + PILL_H + 3, { left: objectiveLeft, maxWidth: maxText + 22 });
       ctx.restore();
       run.hudGoalLeft = left * s;
@@ -2837,14 +2849,12 @@ export function drawHud(ctx, run) {
       // The letters keep their own inks (taken, banked, still out there), the way
       // the GOAL panel printed them when M-A-S-H was a mission.
       const mash = c.type === 'mash' && c.letters && !done ? mashTail(c.letters) : null;
-      const tail = done ? 'OK' : mash ? mash.text : c.type === 'noDamage' ? ''
+      const tail = done ? '✓' : mash ? mash.text : c.type === 'noDamage' ? ''
         : c.type === 'combo' ? `BEST ${Math.min(c.count, c.n)}/${c.n}`
         : `${Math.min(c.count, c.n)}/${c.n}`;
-      // The slot the count is reserved in. OK is its own width on purpose:
-      // completing is a one-time event with a colour change, and the panel
-      // settling to a shorter word is part of that event, not the twitch the
-      // reserve exists to stop.
-      const widest = done || mash || c.type === 'noDamage' ? tail
+      // Keep the former OK-width slot for the completion mark so the description
+      // does not shift when the count changes to a tick.
+      const widest = done ? 'OK' : mash || c.type === 'noDamage' ? tail
         : c.type === 'combo' ? countSlot(c.n, 'BEST ') : countSlot(c.n);
       // Full size and white now that it is the corner's only row: the BONUS is
       // the one thing up here the player is asked to do.
@@ -2859,21 +2869,17 @@ export function drawHud(ctx, run) {
         frac: c.n ? Math.min(1, (c.count || 0) / c.n) : 1,
         color: done ? '#74c947' : '#f6c945',
       };
-    } else if (run.challenge && !run.beatLock) {
-      // Folded, this one keeps the verdict rather than the description: a missed
-      // challenge is a tombstone, and the words that matter are the last three.
-      //
-      // AND ON A BEAT STAGE IT DOES NOT GET A STONE AT ALL. Folded is not small
-      // here — NOT THIS TIME is a hundred pixels of tail, further left than the
-      // ribbon's far end — so the panel that has nothing left to say would spend
-      // the rest of the run standing on the markers that still do. It is already
-      // lost, the results card says so, and the toast said so when it happened.
+    } else if (run.challenge) {
+      // The compact failure mark keeps the verdict visible without the long
+      // tombstone that used to stretch back across the beat markers.
+      const widest = 'OK';
       bonus = {
         tagColor: 'rgba(255,255,255,0.3)',
         ink: 'rgba(255,255,255,0.35)',
-        head: `${fitRight(bonusHudLine(run.challenge), textWidth(' - NOT THIS TIME'))} - `,
-        tail: 'NOT THIS TIME',
-        widest: 'NOT THIS TIME',
+        head: `${fitRight(bonusHudLine(run.challenge), textWidth(`  ${widest}`))} `,
+        tail: '×',
+        widest,
+        tailInks: ['#e04848'],
         frac: 0,
         color: 'rgba(255,255,255,0.3)',
       };

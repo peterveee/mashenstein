@@ -521,7 +521,7 @@ export const CABINETS = [
     // Mid-century modern since 28 Sep 2026 (stylePacks/speedMcm.js); the paper desert
     // it replaced is the faux3d pack, kept for the Surge.
     id: 'speed', name: 'SPEED ZONE', act: 1, style: 'mcm',
-    unlockPlugs: 2, speedBonus: 0.125,
+    unlockPlugs: 3, speedBonus: 0.125,
     mechanic: 'boost',
     // Keep the sky and road in sun-baked clay, then cool the depth cues: the
     // far mesas carry a dusty sage/blue-gray, while the near hills stay warm
@@ -604,7 +604,7 @@ export const CABINETS = [
   },
   {
     id: 'rhythm', name: 'RHYTHM BANKRUPTCY', act: 1, style: 'lcd',
-    unlockPlugs: 5, speedBonus: 0.3,
+    unlockPlugs: 6, speedBonus: 0.3,
     mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
     // What a capsule on this lane can be. The beat ban (run.js) strikes every
     // timing power from the shipped ladder, and the ladder's substitute for a
@@ -807,7 +807,7 @@ export const CABINETS = [
     // SLOWED 26 Sep 2026 (Peter: "slow down the game lane a lot to match the slower music…
     // to make the new zombies more visible and read better"): 1.25x → 0.85x base, about a
     // third slower. Stages keep their 90 s; the lane simply covers less ground.
-    unlockPlugs: 16, speedBonus: -0.15,
+    unlockPlugs: 18, speedBonus: -0.15,
     mechanic: 'darkness', // light radius; cursed shortcuts
     // Never the same animal twice running (spawner.js pickPattern).
     varyAnimals: true,
@@ -891,7 +891,7 @@ export const CABINETS = [
   },
   {
     id: 'neon', name: 'TERMINAL VELOCITY', act: 2, style: 'neon',
-    unlockPlugs: 20, speedBonus: 0.3,
+    unlockPlugs: 24, speedBonus: 0.3,
     mechanic: 'pellets',
     sky: ['#0a0a2a', '#1a1048'], ground: '#282858', groundDark: '#181838',
     far: '#302868', hills: '#282050',
@@ -986,7 +986,7 @@ export const CABINETS = [
     // Was 'cardboard' (Cardboard Kingdom's slot) until 13 Oct 2026; old saves are
     // carried over by migrateCabinetIds in engine/save.js.
     id: 'gravity', name: 'GRAVITY GRID', act: 3, style: 'gravity',
-    unlockPlugs: 28, speedBonus: -0.25,
+    unlockPlugs: 30, speedBonus: -0.25,
     mechanic: 'gravity',
     sky: ['#07131e', '#162935'], ground: '#1a3546', groundDark: '#0b1723',
     far: '#293441',
@@ -999,7 +999,7 @@ export const CABINETS = [
   },
   {
     id: 'office', name: 'CORPORATE KOMBAT', act: 3, style: 'office',
-    unlockPlugs: 34, speedBonus: 0.3125,
+    unlockPlugs: 36, speedBonus: 0.3125,
     mechanic: 'meetings', // floor-by-floor furniture: see OFFICE_FLOORS
     sky: ['#f5d7ed', '#cbe7e8'], ground: '#d6a7ba', groundDark: '#654c68',
     far: '#b9b2d2', hills: '#789da4',
@@ -1018,7 +1018,7 @@ export const CABINETS = [
   },
   {
     id: 'surge', name: 'DÉJÀ VIEW', act: 3, style: 'surge',
-    unlockPlugs: 40, speedBonus: 0.35,
+    unlockPlugs: 42, speedBonus: 0.35,
     mechanic: 'remix', // segments sample other cabinets
     sky: ['#181828', '#282838'], ground: '#484858', groundDark: '#303040',
     far: '#404050', hills: '#383848',

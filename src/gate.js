@@ -181,7 +181,10 @@ function createGameDom() {
     <canvas id="game"></canvas>
     <canvas id="chrome"></canvas>
     <div id="safe-area" aria-hidden="true"></div>
-    <div id="font-loading" role="status" aria-live="polite">REPLACING BURNT-OUT LETTERS…</div>
+    <div id="font-loading" role="status" aria-live="polite">
+      <div class="mash-boot-spinner" aria-hidden="true"></div>
+      <div id="font-loading-label">REPLACING BURNT-OUT LETTERS…</div>
+    </div>
     <div id="boot-error" role="alert">
       <pre id="boot-error-message"></pre>
       <button id="boot-error-reload" type="button">RELOAD GAME</button>
@@ -320,8 +323,18 @@ async function loadGame() {
   });
 
   await fontsReady;
+  // Keep the spinner up through game.js's own boot — fonts resolving is not
+  // the player seeing anything yet, and the gap between this and the first
+  // real frame (script fetch, initRenderer, buildAllSprites) was a second
+  // blank/black screen with no sign the game was still coming.
   const loading = document.getElementById('font-loading');
-  if (loading?.remove) loading.remove();
+  const label = document.getElementById('font-loading-label');
+  if (label) label.textContent = 'WARMING UP…';
+  const removeLoadingWhenBooted = () => {
+    if (window.__mash_booted || window.__mash_fatal_error) { loading?.remove?.(); return; }
+    requestAnimationFrame(removeLoadingWhenBooted);
+  };
+  if (loading) requestAnimationFrame(removeLoadingWhenBooted);
 
   const embedded = document.getElementById('mash-embedded-game');
   const benchmark = !!new URLSearchParams(window.location?.search || '').get('performanceStage');

@@ -55,6 +55,14 @@ export function priorCabinet(cabId) {
   return i > 0 ? CABINETS[i - 1] : null;
 }
 
+// The two gates on a cabinet that has not been started: the plug total it needs while the slot is
+// short of it (else 0), and the cabinet before it while that has never been played (else null).
+function gates(slot, cabId, have) {
+  const need = UNLOCKS[cabId] ?? 0;
+  const prior = priorCabinet(cabId);
+  return { plugs: have < need ? need : 0, first: prior && !cabinetStarted(slot, prior.id) ? prior : null };
+}
+
 // What still keeps a cabinet shut, or null when it is open: `plugs`, the campaign total it needs
 // (0 when that is met), and `first`, the cabinet before it when that one has never been played.
 // The second gate (Peter, 15 Oct 2026) makes sure every cabinet is met in order, which the later
@@ -62,13 +70,35 @@ export function priorCabinet(cabId) {
 // them — without asking for a clear: one plug anywhere in it, and the toaster banks even on a
 // failed run, so one go at its first stage is enough. A cabinet already started never shuts
 // again, so no save made before the rule loses a cabinet it had.
+//
+// `playFirst` is `first` again, but only while that cabinet can be played right now, because it is
+// what a sign may tell the player to go and do. A machine that is shut itself is no instruction:
+// Déjà View at six plugs said PLAY CORPORATE KOMBAT FIRST about a cabinet that wanted thirty-six.
+// The bank opens in order, so the one cabinet whose prior is ever open is the first shut one on
+// the floor, and that is the only one that names a cabinet to play (Peter, 18 Oct 2026).
 export function cabinetLock(slot, cabId) {
   if (cabinetStarted(slot, cabId)) return null;
-  const need = UNLOCKS[cabId] ?? 0;
-  const plugs = totalPlugs(slot) < need ? need : 0;
-  const prior = priorCabinet(cabId);
-  const first = prior && !cabinetStarted(slot, prior.id) ? prior : null;
-  return plugs || first ? { plugs, first } : null;
+  const have = totalPlugs(slot);
+  const { plugs, first } = gates(slot, cabId, have);
+  if (!plugs && !first) return null;
+  const before = first && gates(slot, first.id, have);
+  return { plugs, first, playFirst: before && !before.plugs && !before.first ? first : null };
+}
+
+// The line at a shut cabinet. UNLOCKS WITH, not a bare "42 PLUGS": the number is the total to get
+// to, and with PLUGS 6/81 on the row below it, "LOCKED: 42 PLUGS" read as another 42 to find. The
+// cabinet before it is named only where it can be acted on (playFirst); with the plugs in hand
+// and nothing playable to point at, the order is all there is left to say.
+export function lockedCabinetPrompt(label, { plugs, playFirst }) {
+  const says = [plugs && `UNLOCKS WITH ${plugs} PLUGS`, playFirst && `PLAY ${playFirst.name} FIRST`].filter(Boolean);
+  return `${label} - ${says.length ? says.join(', ') : 'UNLOCKS IN ORDER'}`;
+}
+
+// What a shut cabinet says when it is pressed: the plugs first, as ever, with the count the slot
+// has, then the cabinet before it on the same terms as lockedCabinetPrompt.
+export function lockedCabinetTalk({ plugs, playFirst }, have) {
+  if (!plugs) return playFirst ? `YOU HAVE THE PLUGS. PLAY ${playFirst.name} FIRST.` : 'YOU HAVE THE PLUGS. THE CABINETS UNLOCK IN ORDER.';
+  return `NEEDS ${plugs} PLUGS. YOU HAVE ${have}. THE MATH IS SINCERE.${playFirst ? ` AND PLAY ${playFirst.name} FIRST.` : ''}`;
 }
 
 export function cabinetUnlocked(slot, cabId) {

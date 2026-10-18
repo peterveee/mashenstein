@@ -29,7 +29,7 @@ slot.stats.deathsByHero.lorenzo = 5;
 slot.stats.distanceTraveled = 123456;
 slot.stats.coinsEarned = 9876;
 slot.stats.powerupsCollected = 31;
-slot.stats.appliancesFound = 12;
+slot.stats.appliancesFound = 310;
 slot.overtime.best = 7654;
 slot.overtime.bestRelay = 9;
 const save = { slot, settings: {} };
@@ -59,6 +59,12 @@ const levelRecords = room.levelRecords();
 const allLevelRecords = levelRecords.flatMap((group) => group.levels);
 assert(levelRecords.length === 9 && allLevelRecords.length === STAGES.length,
   'the gallery contains a record for every campaign level');
+assert(room.foundGoldenToasterStages().map((stage) => stage.id).join(',')
+  === STAGES.slice(0, 5).map((stage) => stage.id).join(','),
+  'the Golden Toasters screen gets one toaster for each level with its gold appliance banked');
+slot.campaign.plugs[STAGES[5].id] = [true, true, false];
+assert(room.foundGoldenToasterStages().length === 5,
+  'mission and challenge plugs do not add to the golden-toaster collection');
 assert(allLevelRecords[0].plugs === 2 && allLevelRecords[0].rank === 'S' && allLevelRecords[0].score === 12345,
   'each level record reports plugs, best rank, and best score');
 assert(allLevelRecords[0].plugStates.join(',') === 'true,false,true',
@@ -76,13 +82,13 @@ assert(allStats.some(([label, value]) => label === 'CLUMSIEST' && value === 'LOR
 assert(allStats.some(([label, value]) => label === 'OVERTIME RECORD' && value === '7,654'),
   'the career board clearly labels the endless-mode record');
 assert(statGroups.find((group) => group.title === 'COLLECTION').rows
-  .some(([label, value]) => label === 'TOASTERS FOUND' && value === '12'),
-  'the toaster total is clearly named and grouped under collection');
+  .some(([label, value]) => label === 'GOLDEN TOASTERS' && value === '5'),
+  'the collection board shows each banked golden toaster only once, not the lifetime pickup total');
 assert(statGroups.find((group) => group.title === 'CAREER').rows.map(([label]) => label).join(',')
   === 'LIVES LOST,LIFETIME COINS,CLUMSIEST',
   'career stats lead with lives lost');
 assert(statGroups.find((group) => group.title === 'COLLECTION').rows.map(([label]) => label).join(',')
-  === 'LEVELS CLEARED,PLUGS,TOASTERS FOUND',
+  === 'LEVELS CLEARED,PLUGS,GOLDEN TOASTERS',
   'collection stats progress from levels to plugs to toasters');
 assert(!allStats.some(([label]) => label === 'BEST RELAY'),
   'the obsolete always-zero relay record is not displayed');
@@ -130,6 +136,13 @@ const blankStats = blankRoom.statGroups().flatMap((group) => group.rows);
 assert(blankStats.some(([label, value]) => label === 'BEST LEVEL SCORE' && value === '-')
   && !blankStats.some(([label]) => label.includes('OVERTIME')),
   'an unfinished file shows a spoiler-free best-level score instead of Overtime');
+assert(blankStats.some(([label, value]) => label === 'GOLDEN TOASTERS' && value === '0')
+  && !blankStats.some(([label]) => label === 'TOASTERS FOUND'),
+  'an empty file displays zero unique Golden Toasters under the corrected label');
+for (const stage of STAGES) blankSave.slot.campaign.plugs[stage.id] = [false, false, true];
+assert(blankRoom.foundGoldenToasterStages().length === STAGES.length,
+  'the Golden Toasters screen supports the full campaign collection');
+blankRoom.draw(ctx);
 blankRoom.exit();
 
 const clickExitRoom = new TrophyRoomState({ save: blankSave, flow });
@@ -201,7 +214,7 @@ depthRoom.doorWalk = null;   // skip the entrance walk; drive the position direc
 depthRoom.px = 90;
 depthRoom.update(1 / 60);
 const nearWet = wetWrites.at(-1), nearAir = airWrites.at(-1);
-depthRoom.px = 900;
+depthRoom.px = 2500;
 depthRoom.update(1 / 60);
 const farWet = wetWrites.at(-1), farAir = airWrites.at(-1);
 assert(nearWet > doorwayWet && farWet > nearWet && farWet <= 1,

@@ -14,11 +14,11 @@ import {
   makeCabinetDive, DIVE_VARIANT_BY_ID, DEFAULT_DIVE_VARIANT, DEFAULT_DIVE_ZOOM, aimForZoom, EXIT_CUE,
   DIVE_OUT_SMILE, DIVE_LEAP_AT, diveCueFirings,
 } from './cabinet-dive.js';
-import { drawProp } from '../../sprites/props.js';
+import { drawProp, createPropPreviewRenderer, hasProp, propFrames, propFps, propTall, propVisualScale } from '../../sprites/props.js';
 import { drawFoodCourtMural, MURAL_W, MURAL_H } from '../../sprites/mural.js';
 import { drawFoodStall, drawSmoothieMenuBoard, MENU_BOARD_H, drawWokMenuBoard, WOK_BOARD_H, pickSmoothieMenu, STALLS, STALL_W, COUNTER_UNITS, COUNTER_UNIT_W, UNIT_FASCIA_TOP, UNIT_FASCIA_H } from '../../sprites/stalls.js';
 import {
-  cabinetPalette, cabinetBrownoutAlpha, cabinetScreenRect, cabinetStyle, deadScreenArt, drawCabinetShell, drawCabinetScreen, drawCabinetSignalInterference, drawDeadScreen, drawScreenSweep,
+  cabinetPalette, cabinetBrownoutAlpha, cabinetScreenRect, cabinetStyle, deadScreenArt, drawCabinetShell, drawCabinetScreen, drawCabinetFront, drawCabinetSignalInterference, drawDeadScreen, drawScreenSweep,
   stickGlint,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, drawCounter, COUNTER_W, COUNTER_H, COUNTER_STAFF_X,
   drawFoodCourtTable,
@@ -28,7 +28,7 @@ import {
 } from '../../sprites/backwall.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { SPACE_LOOKS, SPACE_SHOTS, drawSpaceShot } from '../../dev/space-look-candidates.js';
-import { mix as HUB_MIX, arrangement as HUB_ARRANGEMENT } from '../../data/songs/hub.js';
+import { bank as HUB_BANK, mix as HUB_MIX, arrangement as HUB_ARRANGEMENT } from '../../data/songs/hub.js';
 // The Mixer alternate is the editable source of truth for the Arcade Corner when it
 // exists. It is still a game alternate by design, so this direct import keeps the
 // corner responsive to a saved desk edit without requiring a dev URL or promotion.
@@ -38,21 +38,24 @@ import { STAGES, stagesForCabinet, stageLabel, UNLOCKS } from '../../data/stages
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
-import { totalPlugs, MAX_PLUGS, cabinetLock, cabinetStarted, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
+import { totalPlugs, MAX_PLUGS, cabinetLock, cabinetStarted, lockedCabinetPrompt, lockedCabinetTalk, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
 import { MusicDirector } from '../../engine/music-director.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
-import { drawSpeech } from '../hud.js';
+import { drawSpeech, speechHoldSeconds } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
 import { setTransitionHero } from '../../engine/states.js';
 import { getStylePack } from '../../engine/stylePacks/index.js';
 import { makeObstacle, OBSTACLES } from '../entities.js';
 import { drawWorldEntity } from '../draw.js';
+import { drawSelectedCryptEnemy } from '../../sprites/crypt-enemies.js';
+import { USUAL_SUSPECTS } from '../usualSuspects.js';
 import { hashStr } from '../../engine/rng.js';
 import { Player } from '../player.js';
 import { drawSoftContactShadow } from '../../engine/shadows.js';
 import { beginFloorReflectionBand, addFloorReflection, endFloorReflectionBand } from '../../engine/reflections.js';
 import { GROUND_Y } from '../../engine/camera.js';
 import { LANDSCAPE_HEIGHT } from '../../engine/frame.js';
+import { createGoldenToasterParade } from '../../engine/visualisers.js';
 
 // Arcade Corner is the same Food Court composition, but its imaginary hardware has
 // four tiny channels and no patience for sustained synths. These song-local voices stay
@@ -792,6 +795,9 @@ const NPC_H = 46, PLAYER_H = 46;
 // carries a portrait and a name header as well, so the words can be a little
 // smaller than a bare row and still read as the largest thing on screen.
 const PORTRAIT_SPEECH_S = 1.9;
+// Rows the portrait card may take before a line would spill onto a second page. The hub never
+// turns pages, so this has to seat the longest line at that scale (four rows today).
+const PORTRAIT_SPEECH_ROWS = 6;
 // How dark the cast is allowed to get in a dead bay, as a floor under the room's
 // own 0..1 brightness. The wall may go to nothing; bodies may not. Raise it and
 // the concourse lighting stops reading on the cast at all; drop it and the hero
@@ -1056,6 +1062,10 @@ export function heroIdFor(flow) {
 // screen blits a moving window across it. Rendering the pack live per frame per
 // cabinet would mean four full parallax scenes a frame for a 33x22 result.
 const SCENES = new Map();
+// The cabinet glass is a tiny teaser of the moving level. Give its props a
+// lighter stroke while they are rendered into that thumbnail; gameplay keeps
+// the normal sprite cache and outline weight.
+const CABINET_SCENE_PROP_RENDERER = createPropPreviewRenderer({ strokeScale: 0.9 });
 onPresentationChanged(() => SCENES.clear());
 
 // Cabinet glass only shows a narrow, moving slice of this scene. Drawing the full
@@ -1192,7 +1202,9 @@ function cabinetScene(cab) {
       }
       if (pack.bg) pack.bg(x, 0, 0, cab, 1000);
       if (pack.ground) pack.ground(x, 0, cab, obstacles);
-      for (const o of obstacles) drawWorldEntity(x, o, 0, 0, pack, {});
+      for (const o of obstacles) {
+        drawWorldEntity(x, o, 0, 0, pack, {}, { propPreviewRenderer: CABINET_SCENE_PROP_RENDERER });
+      }
     }
   } catch {
     c = null; // headless, or a pack that needs run state: fall back to the motif
@@ -1206,7 +1218,7 @@ function cabinetScene(cab) {
 // comment, which was fine while the screen was the only thing that read them.
 // The cabinet dive has to land a hero ON that ground line, so all three are now
 // stated once and derived from rather than restated.
-const SCREEN_WIN_FRAC = 0.2;   // window width, as a fraction of the scene canvas
+const SCREEN_WIN_FRAC = 0.25;  // a wider slice shows more of each level's scenery
 const SCREEN_WIN_TOP = 0.62;   // landscape-frame fraction for the window's top edge
 // __mash_dev.screenWinTop: capture-only, the same pattern as the other hide/pin
 // flags. It is authored as a fraction of the landscape frame, then mapped to the
@@ -1264,10 +1276,8 @@ export function cabinetScreenGeometry(glassW, glassH) {
 export function cabinetScreenArt(cab, t, seed = 0) {
   const src = cabinetScene(cab);
   if (!src) return null;
-  // A tight window: at 0.42 of the scene the hazards came out ~2px across on a
-  // 34px screen — texture, but not readable as anything. 0.2 puts a cactus at a
-  // legible 5px, which is what makes this read as a game rather than as a
-  // gradient. Height follows the glass aspect so nothing is squashed.
+  // A wider window now shows more of the level around the ground line. Height
+  // follows the glass aspect so the scenery stays undistorted.
   const winW = src.width * SCREEN_WIN_FRAC;
   const span = src.width - winW;
   // Ping-pong rather than jump-cut: a hard wrap on a 33px screen reads as a
@@ -2335,19 +2345,18 @@ export class HubState {
 
   setChromeWalkButtons() {
     this.chromeGen = chromeGeo.gen;
-    this.chromeTouch = Input.usingTouch;
-    // The walk arrows are the food court's touch navigation (touchchrome.js:
-    // on the picture's edges, or in a margin wide enough to hold them, plus
-    // the margin itself as a zone). Mouse and keyboard already have
-    // click-to-walk and left/right, so showing the discs there only turns
-    // otherwise quiet canvas into duplicate chrome.
-    Input.setChromeButtons(Input.usingTouch ? hubChromeButtons() : []);
+    this.chromeTouch = Input.isTouchDevice();
+    // The walk arrows are touch navigation (touchchrome.js: on the picture's
+    // edges or in a margin wide enough to hold them). Desktop keeps the cog
+    // for the same pause settings without duplicating click-to-walk controls.
+    Input.setChromeButtons(hubChromeButtons({ walk: Input.isTouchDevice() }));
   }
 
   drawChromeWalkButtons() {
+    if (chromeGeo.gen !== this.chromeGen || Input.isTouchDevice() !== this.chromeTouch) this.setChromeWalkButtons();
     // A poster up is a modal: nothing behind it is a control. Neither is a
     // concourse you have already left through the front of a machine.
-    if (!Input.usingTouch || this.poster || this.dive) return;
+    if (this.poster || this.dive) return;
     declareHubChrome();
   }
 
@@ -2643,7 +2652,7 @@ export class HubState {
       return;
     }
     this.t += dt;
-    if (chromeGeo.gen !== this.chromeGen || Input.usingTouch !== this.chromeTouch) this.setChromeWalkButtons();
+    if (chromeGeo.gen !== this.chromeGen || Input.isTouchDevice() !== this.chromeTouch) this.setChromeWalkButtons();
     this.updateNpcs(dt);
     const st = this.stations();
     const directionHeld = Input.held('left') || Input.held('right');
@@ -2900,7 +2909,7 @@ export class HubState {
         this.walkToNpc = null;
         if (!this.lockedTrophyBump) {
           Audio.sfx('uiBad');
-          this.talk = { text: 'CLEAR 1 LEVEL TO OPEN THE TROPHY ROOM.', t: 3, who: null };
+          this.say('CLEAR 1 LEVEL TO OPEN THE TROPHY ROOM.');
           this.lockedTrophyBump = true;
         }
         Input.endFrame();
@@ -3071,18 +3080,15 @@ export class HubState {
     const slot = this.save.slot;
     if (st.type === 'shelf' && !trophyRoomUnlocked(slot)) {
       Audio.sfx('uiBad');
-      this.talk = { text: 'CLEAR 1 LEVEL TO OPEN THE TROPHY ROOM.', t: 3, who: null };
+      this.say('CLEAR 1 LEVEL TO OPEN THE TROPHY ROOM.');
       return;
     }
     Audio.sfx('uiConfirm');
     if (st.type === 'cabinet') {
       if (!st.unlocked) {
-        // the plugs first, as ever; the cabinet before it, when that has never been played, as
-        // the extra line (progress.js cabinetLock)
-        const { plugs, first } = st.lock || {};
-        this.talk = { text: plugs
-          ? `NEEDS ${plugs} PLUGS. YOU HAVE ${totalPlugs(slot)}. THE MATH IS SINCERE.${first ? ` AND PLAY ${first.name} FIRST.` : ''}`
-          : `YOU HAVE THE PLUGS. PLAY ${first.name} FIRST.`, t: 3, who: null };
+        // the plugs first, as ever; the cabinet before it only where it can be played right now
+        // (progress.js cabinetLock)
+        this.say(lockedCabinetTalk(st.lock || {}, totalPlugs(slot)));
         return;
       }
       // The hero goes in through the front of the machine; the dive calls
@@ -3178,11 +3184,17 @@ export class HubState {
     return true;
   }
 
+  // Put a line up on the speech card, held long enough to read it all (a null `who` is the
+  // room itself talking: the locked doors and cabinets).
+  say(text, who = null) {
+    this.talk = { text, t: speechHoldSeconds(text), who };
+  }
+
   talkTo(npc) {
     const lines = HUB_LINES[npc.id];
     const slot = this.save.slot;
     const seen = slot.hub.npcSeen[npc.id] || 0;
-    this.talk = { text: lines[seen % lines.length], t: 3.2, who: npc.id };
+    this.say(lines[seen % lines.length], npc.id);
     slot.hub.npcSeen[npc.id] = seen + 1;
     Audio.sfx('ui');
   }
@@ -3791,13 +3803,14 @@ export class HubState {
         // the larger of the two means a dive can only ever add a glint, never eat
         // one that was already on its way up.
         const glint = Math.max(s.unlocked ? stickGlint(this.t, pal.seed) : 0, dive ? dive.glint : 0);
+        const cabinetOpts = dive
+          ? { stickLean: dive.stick, stickFwd: dive.stickFwd, buttonPress: dive.button, glint }
+          : { glint };
         // The stick moves for the machine the hero is inside, and only that one.
         ctx.save();
         ctx.globalAlpha = brownout ? cabinetBrownoutAlpha(this.t, pal.seed) : 1;
         drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined,
-          dive
-            ? { stickLean: dive.stick, stickFwd: dive.stickFwd, buttonPress: dive.button, glint }
-            : { glint });
+          { ...cabinetOpts, deferFront: true });
         // The attract screen carries its own scanlines; the bright bar rolling
         // down it runs on the hub's clock, so it is drawn here, over them.
         // The dive paints INSIDE the glass by wrapping the art callback, which
@@ -3823,6 +3836,12 @@ export class HubState {
         if (brownout && scr && !hiddenInMirror(mirror, scr.y + scr.h)) {
           drawCabinetSignalInterference(ctx, scr, this.t, pal.seed);
         }
+        // Finish in depth order: the screen and its effects sit behind the
+        // cabinet's physical deck, lip and controls.
+        ctx.save();
+        ctx.globalAlpha = brownout ? cabinetBrownoutAlpha(this.t, pal.seed) : 1;
+        drawCabinetFront(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, pal, undefined, cabinetOpts);
+        ctx.restore();
         // The corner badge used to be one gold star for `cleared` — every stage's
         // MISSION plug banked. That flag is doing two unrelated jobs: on six
         // cabinets it means "missions done", and on neon/rhythm/surge it is
@@ -4229,8 +4248,7 @@ export class HubState {
       const lockedCabinet = this.near.type === 'cabinet' && !this.near.unlocked;
       const lockedTrophy = this.near.type === 'shelf' && !this.near.unlocked;
       if (lockedCabinet) {
-        const { plugs, first } = this.near.lock || {};
-        promptText = `${this.near.label} - LOCKED: ${[plugs && `${plugs} PLUGS`, first && `PLAY ${first.name} FIRST`].filter(Boolean).join(', ')}`;
+        promptText = lockedCabinetPrompt(this.near.label, this.near.lock || {});
       } else if (lockedTrophy) {
         promptText = 'TROPHY ROOM - LOCKED: CLEAR 1 LEVEL';
       } else {
@@ -4396,6 +4414,7 @@ export class HubState {
     return {
       light: true,
       scale: PORTRAIT_SPEECH_S,
+      maxLines: PORTRAIT_SPEECH_ROWS,
       centerX: Math.max(W * 0.3, Math.min(W * 0.7, (speakerX - cam) * layout.zoom)),
       // `y` is the card's preferred FIRST ROW and `bottomY` the lowest its plate
       // may end. placeSpeechCard only ever pulls a card up off bottomY, so the
@@ -4525,10 +4544,8 @@ export class HubState {
 // both rooms one visible floor, character size, and zoom without rewriting the
 // gallery's long horizontal exhibit coordinates.
 const TROPHY_FLOOR_Y = HUB_FLOOR_PIN_Y;
-// The gallery ends a little past the last exhibit case. It used to run on for
-// another 350 units to hold the practice lane; with the podium and the target
-// gone that was blank floor with a walk arrow pointing at it.
-const TROPHY_WORLD_W = 1010;
+// The gallery now carries the framed suspect wall beyond the management cases,
+// with enough runway for the player to walk along and read the collection.
 const TROPHY_DOOR_W = DOOR_W * HUB_ZOOM;
 const TROPHY_DOOR_H = DOOR_H * HUB_ZOOM;
 const TROPHY_EXIT_X = TROPHY_DOOR_W / 2;
@@ -4545,6 +4562,18 @@ const TROPHY_BOSSES_W = 150;
 const TROPHY_CASE_H = 94;
 const TROPHY_BOSSES_X = TROPHY_LEVELS_X + TROPHY_LEVELS_W
   + TROPHY_BOARD_GAP + TROPHY_BOSSES_W / 2;
+const TROPHY_SUSPECTS_X = TROPHY_BOSSES_X + TROPHY_BOSSES_W / 2 + TROPHY_BOARD_GAP;
+const TROPHY_SUSPECTS_W = 1080;
+const TROPHY_SUSPECTS_H = 180;
+const TROPHY_TOASTER_ZONE_X = TROPHY_SUSPECTS_X + TROPHY_SUSPECTS_W + TROPHY_BOARD_GAP;
+const TROPHY_TOASTER_TV_H = TROPHY_SUSPECTS_H;
+const TROPHY_TOASTER_TV_W = TROPHY_TOASTER_TV_H * 4 / 3;
+const TROPHY_TOASTER_TV_X = TROPHY_TOASTER_ZONE_X;
+const TROPHY_TOASTER_SCREEN_H = TROPHY_TOASTER_TV_H - 4;
+const TROPHY_TOASTER_SCREEN_W = TROPHY_TOASTER_SCREEN_H * 4 / 3;
+const TROPHY_TOASTER_SCREEN_X = (TROPHY_TOASTER_TV_W - TROPHY_TOASTER_SCREEN_W) / 2;
+const TROPHY_TOASTER_SCREEN_Y = 2;
+const TROPHY_WORLD_W = TROPHY_TOASTER_TV_X + TROPHY_TOASTER_TV_W / 2 + W / 2 + 30;
 const TROPHY_BOARD_TITLE_SCALE = 1.38;
 const TROPHY_BOARD_TITLE_Y = 13;
 // Keep the first exhibit's established position as the alignment reference.
@@ -4604,6 +4633,334 @@ function drawTrophyPanel(ctx, x, y, w, h, radius = 5, fill = '#100e16', border =
   ctx.stroke();
 }
 
+function usualSuspectMonitorRects(layout = trophyPresentation()) {
+  const board = trophyBoardLayout(layout);
+  const rows = 2, columns = Math.ceil(USUAL_SUSPECTS.length / rows);
+  const gridX = TROPHY_SUSPECTS_X + 8, gridW = TROPHY_SUSPECTS_W - 16;
+  const innerY = board.y + 5, rowH = (TROPHY_SUSPECTS_H - 9) / rows, colW = gridW / columns;
+  return USUAL_SUSPECTS.map((suspect, index) => {
+    const col = Math.floor(index / rows), row = index % rows;
+    const cellX = gridX + col * colW, cellY = innerY + row * rowH;
+    const cx = cellX + colW / 2;
+    const screenW = Math.min(78, colW - 18), screenH = Math.min(53, rowH - 22);
+    return {
+      suspect, index, colW, cx, cellX, cellY,
+      x: cx - screenW / 2, y: cellY + 2, w: screenW, h: screenH,
+      radius: Math.min(8, screenH * 0.16),
+    };
+  });
+}
+
+// The feeds sit directly on the gallery wall, so the glass itself has to sell
+// the CRT shape. Let all four edges bulge just a little and keep the corners
+// round enough that they still read as screens at cabinet scale.
+function trophyCrtPath(ctx, screen, inset = 0, radius = 6) {
+  const x = screen.x + inset, y = screen.y + inset;
+  const w = Math.max(1, screen.w - inset * 2), h = Math.max(1, screen.h - inset * 2);
+  const r = Math.min(radius, w * 0.14, h * 0.18);
+  const bowX = w * 0.035, bowY = h * 0.045;
+  const cx = x + w / 2, cy = y + h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y + bowY * 0.16);
+  ctx.quadraticCurveTo(cx, y - bowY, x + w - r, y + bowY * 0.16);
+  ctx.quadraticCurveTo(x + w, y + bowY * 0.16, x + w, y + r);
+  ctx.quadraticCurveTo(x + w + bowX, cy, x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h - bowY * 0.16, x + w - r, y + h - bowY * 0.16);
+  ctx.quadraticCurveTo(cx, y + h + bowY, x + r, y + h - bowY * 0.16);
+  ctx.quadraticCurveTo(x, y + h - bowY * 0.16, x, y + h - r);
+  ctx.quadraticCurveTo(x - bowX, cy, x, y + r);
+  ctx.quadraticCurveTo(x, y + bowY * 0.16, x + r, y + bowY * 0.16);
+  ctx.closePath();
+}
+
+function trophyCrtNoise(index, tick) {
+  let noise = ((index + 1) * 0x45d9f3b) ^ (tick * 0x27d4eb2d);
+  return () => {
+    noise = (Math.imul(noise ^ (noise >>> 15), noise | 1) + 0x6d2b79f5) | 0;
+    noise ^= noise + Math.imul(noise ^ (noise >>> 7), noise | 61);
+    return ((noise ^ (noise >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function drawTrophyCrtFeed(ctx, screen, index, tick, { staticFeed = false, detail = 1, flat = false } = {}) {
+  ctx.save();
+  const { x, y, w, h } = screen;
+  if (flat) {
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+  } else trophyCrtPath(ctx, screen, 1, Math.min(6, h * 0.16));
+  ctx.clip();
+
+  const cx = x + w / 2;
+  const rand = trophyCrtNoise(index, tick);
+
+  if (staticFeed) {
+    // Dense, mostly monochrome grain gives the monitors real television snow;
+    // longer flecks and a travelling sync tear keep it from reading as a flat
+    // dotted texture. The same seeded field holds still between 10 Hz updates.
+    const specks = Math.max(90, Math.min(700, Math.floor(w * h * 0.038)));
+    for (let i = 0; i < specks; i++) {
+      const value = 126 + Math.floor(rand() * 126);
+      const alpha = 0.12 + rand() * 0.46;
+      const sw = rand() < 0.82 ? 1 : 2 + Math.floor(rand() * Math.max(2, w * 0.09));
+      const sh = rand() < 0.9 ? 1 : 2;
+      ctx.fillStyle = `rgba(${value},${value},${Math.min(255, value + 5)},${alpha})`;
+      ctx.fillRect(x + rand() * Math.max(1, w - sw), y + rand() * Math.max(1, h - sh), sw, sh);
+    }
+
+    const tearY = y + ((tick * Math.max(2, Math.floor(h * 0.16)) + index * 7) % Math.max(1, h));
+    const tearH = Math.max(2, h * 0.045);
+    const tear = ctx.createLinearGradient(0, tearY - tearH, 0, tearY + tearH);
+    tear.addColorStop(0, 'rgba(225,239,241,0)');
+    tear.addColorStop(0.48, 'rgba(225,239,241,0.20)');
+    tear.addColorStop(0.56, 'rgba(12,18,22,0.34)');
+    tear.addColorStop(1, 'rgba(225,239,241,0)');
+    ctx.fillStyle = tear;
+    ctx.fillRect(x, tearY - tearH, w, tearH * 2);
+  }
+
+  // Curved monitors bend the raster to their glass; the Golden Toasters panel
+  // uses straight rows that reach both edges of its flat screen.
+  const scanStep = Math.max(2, Math.round(3 / detail));
+  const rasterBow = flat ? 0 : Math.min(10, w * 0.014);
+  for (let yy = y + (flat ? 0 : 1); yy < y + h; yy += scanStep) {
+    const phase = (yy - y) / Math.max(1, h);
+    const bow = rasterBow * (phase < 0.5 ? -1 : 1);
+    ctx.beginPath();
+    ctx.moveTo(flat ? x : x + 1, yy);
+    if (flat) ctx.lineTo(x + w, yy);
+    else ctx.quadraticCurveTo(cx, yy + bow, x + w - 1, yy);
+    ctx.strokeStyle = staticFeed ? 'rgba(7,12,15,0.30)' : 'rgba(8,14,17,0.23)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Gentle edge falloff and a dim center glow add depth without reshaping the feed.
+  const falloff = ctx.createRadialGradient(cx, y + h * 0.48, Math.min(w, h) * 0.12,
+    cx, y + h * 0.48, Math.max(w, h) * 0.68);
+  falloff.addColorStop(0, 'rgba(180,218,225,0)');
+  falloff.addColorStop(0.72, 'rgba(10,17,21,0.02)');
+  falloff.addColorStop(1, 'rgba(3,7,10,0.28)');
+  ctx.fillStyle = falloff;
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
+function drawTrophyCrtGlass(ctx, screen, radius = 6) {
+  const { x, y, w, h } = screen;
+  const lampX = x + w * 0.29, lampY = y + h * 0.14;
+  const lampRX = Math.max(1, w * 0.075), lampRY = Math.max(1, h * 0.035);
+  ctx.save();
+  trophyCrtPath(ctx, screen, 0, radius);
+  ctx.clip();
+
+  const sides = ctx.createLinearGradient(x, y, x + w, y);
+  sides.addColorStop(0, 'rgba(245,253,255,0.10)');
+  sides.addColorStop(0.09, 'rgba(255,255,255,0.015)');
+  sides.addColorStop(0.50, 'rgba(255,255,255,0.025)');
+  sides.addColorStop(0.91, 'rgba(255,255,255,0.015)');
+  sides.addColorStop(1, 'rgba(245,253,255,0.10)');
+  ctx.fillStyle = sides;
+  ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+
+  // A ceiling-tube reflection catches the upper glass as a small, warm blur.
+  // It stays low contrast so the snow and portraits remain the bright parts.
+  const lampGlow = ctx.createRadialGradient(lampX, lampY, 0, lampX, lampY,
+    Math.max(lampRX, lampRY) * 1.8);
+  lampGlow.addColorStop(0, 'rgba(255,240,190,0.12)');
+  lampGlow.addColorStop(0.55, 'rgba(255,229,163,0.045)');
+  lampGlow.addColorStop(1, 'rgba(255,229,163,0)');
+  ctx.beginPath();
+  ctx.moveTo(lampX - lampRX, lampY);
+  ctx.quadraticCurveTo(lampX, lampY - lampRY, lampX + lampRX, lampY);
+  ctx.quadraticCurveTo(lampX, lampY + lampRY, lampX - lampRX, lampY);
+  ctx.fillStyle = lampGlow;
+  ctx.fill();
+
+  trophyCrtPath(ctx, screen, 0.6, radius);
+  ctx.strokeStyle = 'rgba(231,248,250,0.21)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+}
+
+const TROPHY_BOUNDS_SAMPLE_W = 192;
+const TROPHY_PROP_INK_BOUNDS = new Map();
+const TROPHY_ROLE_INK_BOUNDS = new Map();
+let trophyBoundsCanvas = null;
+
+function trophyBoundsContext(w, h) {
+  if (!trophyBoundsCanvas) trophyBoundsCanvas = document.createElement('canvas');
+  if (trophyBoundsCanvas.width !== w || trophyBoundsCanvas.height !== h) {
+    trophyBoundsCanvas.width = w;
+    trophyBoundsCanvas.height = h;
+  }
+  const ctx = trophyBoundsCanvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return ctx;
+}
+
+function trophyAlphaBounds(ctx, w, h, threshold = 12) {
+  const pixels = ctx.getImageData(0, 0, w, h).data;
+  let left = w, top = h, right = -1, bottom = -1;
+  for (let p = 3; p < pixels.length; p += 4) {
+    if (pixels[p] <= threshold) continue;
+    const i = (p - 3) >> 2, x = i % w, y = Math.floor(i / w);
+    if (x < left) left = x;
+    if (x > right) right = x;
+    if (y < top) top = y;
+    if (y > bottom) bottom = y;
+  }
+  return right < left ? null : {
+    left: left / w, top: top / h,
+    right: (right + 1) / w, bottom: (bottom + 1) / h,
+  };
+}
+
+// Measure the union of every painted frame once. This includes transparent
+// padding in neither the size nor the centering, while still reserving enough
+// room for tails, whiskers, swipe effects and the snake's full strike.
+//
+// The measurement gets its OWN canvas and its OWN preview renderer rather than
+// borrowing the one the gallery draws with. Sharing it made some props measure
+// a row or two taller than they paint — the borrow comes back through the
+// renderer's reusable surface — and because the result is cached, the whole
+// gallery then fitted those suspects small and floating: Tape Hound, Snarl
+// Barkley, Wildfang and Lucky Paw were each drawn at about two thirds of their
+// proper size, well above the floor. One-off allocation per suspect is cheap;
+// a poisoned cache is not.
+function trophySuspectPropInkBounds(propName, artW, artH) {
+  const aspect = artW / artH;
+  const key = `${propName}:${aspect.toFixed(4)}`;
+  if (TROPHY_PROP_INK_BOUNDS.has(key)) return TROPHY_PROP_INK_BOUNDS.get(key);
+  const w = TROPHY_BOUNDS_SAMPLE_W, h = Math.max(1, Math.round(w / aspect));
+  // Capture paint outside the authored box too: the panther reaches left of
+  // it, the snake's coil drops below it, and neon halos spill on every side.
+  const padX = Math.ceil(w / 2), padY = Math.ceil(h / 2);
+  const sampleW = w + padX * 2, sampleH = h + padY * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = sampleW;
+  canvas.height = sampleH;
+  const ctx = canvas.getContext('2d');
+  const drawProp = createPropPreviewRenderer({ padding: 0.5 });
+  let left = sampleW, top = sampleH, right = -1, bottom = -1;
+  const frames = Math.max(1, propFrames(propName));
+  for (let frame = 0; frame < frames; frame++) {
+    ctx.clearRect(0, 0, sampleW, sampleH);
+    drawProp(ctx, propName, padX, padY, w, h, frame);
+    const bounds = trophyAlphaBounds(ctx, sampleW, sampleH, 2);
+    if (!bounds) continue;
+    left = Math.min(left, Math.floor(bounds.left * sampleW));
+    top = Math.min(top, Math.floor(bounds.top * sampleH));
+    right = Math.max(right, Math.ceil(bounds.right * sampleW) - 1);
+    bottom = Math.max(bottom, Math.ceil(bounds.bottom * sampleH) - 1);
+  }
+  const bounds = right < left
+    ? { left: 0, top: 0, right: 1, bottom: 1 }
+    : {
+      left: (left - padX) / w, top: (top - padY) / h,
+      right: (right + 1 - padX) / w, bottom: (bottom + 1 - padY) / h,
+    };
+  TROPHY_PROP_INK_BOUNDS.set(key, bounds);
+  return bounds;
+}
+
+function trophySuspectRoleInkBounds(role) {
+  if (TROPHY_ROLE_INK_BOUNDS.has(role)) return TROPHY_ROLE_INK_BOUNDS.get(role);
+  const w = TROPHY_BOUNDS_SAMPLE_W, h = TROPHY_BOUNDS_SAMPLE_W;
+  const anchorX = w / 2, anchorY = h * 0.78, ctx = trophyBoundsContext(w, h);
+  let left = w, top = h, right = -1, bottom = -1;
+  for (let i = 0; i < 12; i++) {
+    ctx.clearRect(0, 0, w, h);
+    drawSelectedCryptEnemy(ctx, i / 6, role, anchorX, anchorY, { facing: 1, idle: true });
+    const bounds = trophyAlphaBounds(ctx, w, h);
+    if (!bounds) continue;
+    left = Math.min(left, Math.floor(bounds.left * w));
+    top = Math.min(top, Math.floor(bounds.top * h));
+    right = Math.max(right, Math.ceil(bounds.right * w) - 1);
+    bottom = Math.max(bottom, Math.ceil(bounds.bottom * h) - 1);
+  }
+  const bounds = right < left ? { left: -14, top: -30, right: 14, bottom: 0 } : {
+    left: left - anchorX, top: top - anchorY,
+    right: right + 1 - anchorX, bottom: bottom + 1 - anchorY,
+  };
+  TROPHY_ROLE_INK_BOUNDS.set(role, bounds);
+  return bounds;
+}
+
+// Fit the visible paint, not the often-roomier gameplay collision box. The
+// small inset protects the bowed glass; ground-based suspects share one floor
+// line, while airborne suspects are centered in the same usable area.
+//
+// No suspect is scaled past that fit. An earlier per-prop "fill boost" pushed
+// the three broadest animals (Violet Vengeance, Tape Hound, Snarl Barkley) to
+// 1.25x of it, which is the one thing this box must never do: at that size the
+// panther's ears and tail and the dogs' paws ran off the tube, and the pose
+// that was clipped was a different one on every frame.
+//
+// The two adjustments below are deliberately outside that argument. `scale` is
+// only ever at or under 1, so it can shrink a suspect but never crop one; and
+// `sink` only moves a body down toward the floor, never up out of the tube.
+// `sink` is a fraction of the tube's height, so the zoom (the same monitor,
+// magnified) keeps the same composition as the wall.
+const TROPHY_SUSPECT_DISPLAY = Object.freeze({
+  // A saucer is all hull and no body, so at full fit it dwarfs the animals
+  // either side of it. It is airborne, so it stays centered as it shrinks.
+  saucer: { scale: 0.6 },
+  // These two hang a wide soft glow below their feet. Anchoring that halo to
+  // the glass bottom — which is what one shared floor line does — stands the
+  // cat itself a third of a tube off the ground. Dropping the pair lets the
+  // glow run into the floor inset instead, where it reads as spill. The values
+  // are 4 and 5 units in the wall's 53-unit tube.
+  catMechaNeon: { sink: 4 / 53 },
+  catNekoGhost: { sink: 5 / 53 },
+});
+
+function trophySuspectPropBox(portrait, propName, screen) {
+  const artW = portrait.def.w * 4 / 3 * propVisualScale(propName);
+  const artH = portrait.def.h * 4 / 3 * propTall(propName) * propVisualScale(propName);
+  const bounds = trophySuspectPropInkBounds(propName, artW, artH);
+  const inkW = artW * (bounds.right - bounds.left);
+  const inkH = artH * (bounds.bottom - bounds.top);
+  const insetX = Math.max(3, screen.w * 0.06);
+  const insetTop = Math.max(2, screen.h * 0.055);
+  const insetFloor = Math.max(2, screen.h * 0.035);
+  const fitW = Math.max(1, screen.w - insetX * 2);
+  const fitH = Math.max(1, screen.h - insetTop - insetFloor);
+  const display = TROPHY_SUSPECT_DISPLAY[propName] || null;
+  const scale = Math.min(fitW / inkW, fitH / inkH) * (display?.scale || 1);
+  const drawW = artW * scale, drawH = artH * scale;
+  const visibleW = inkW * scale, visibleH = inkH * scale;
+  const visibleLeft = screen.x + (screen.w - visibleW) / 2;
+  const visibleTop = portrait.def.ground
+    ? screen.y + screen.h - insetFloor - visibleH + (display?.sink || 0) * screen.h
+    : screen.y + insetTop + (fitH - visibleH) / 2;
+  return {
+    x: visibleLeft - bounds.left * drawW,
+    y: visibleTop - bounds.top * drawH,
+    w: drawW,
+    h: drawH,
+  };
+}
+
+function trophySuspectRoleBox(role, screen) {
+  const bounds = trophySuspectRoleInkBounds(role);
+  const inkW = bounds.right - bounds.left, inkH = bounds.bottom - bounds.top;
+  const insetX = Math.max(3, screen.w * 0.06);
+  const insetTop = Math.max(2, screen.h * 0.055);
+  const insetFloor = Math.max(2, screen.h * 0.035);
+  const fitW = Math.max(1, screen.w - insetX * 2);
+  const fitH = Math.max(1, screen.h - insetTop - insetFloor);
+  const scale = Math.min(fitW / inkW, fitH / inkH);
+  const visibleW = inkW * scale, visibleH = inkH * scale;
+  return {
+    x: screen.x + (screen.w - visibleW) / 2 - bounds.left * scale,
+    y: screen.y + screen.h - insetFloor - bounds.bottom * scale,
+    scale,
+  };
+}
+
 const TROPHY_BOSSES = [
   { id: 'rhythm', label: 'DEEP CLEAN', relic: 'dustdevil' },
   { id: 'neon', label: 'COPTER', relic: 'copter' },
@@ -4613,9 +4970,21 @@ const TROPHY_BOSSES = [
 export class TrophyRoomState {
   static portraitMode = 'frame';
 
-  constructor({ save, flow }) {
+  constructor({ save, flow, revealAllSuspects = false, resume = null }) {
     this.save = save;
     this.flow = flow;
+    this.revealAllSuspects = resume?.revealAllSuspects ?? revealAllSuspects;
+    this.resumeState = resume;
+    this.toasterParade = resume?.toasterParade || null;
+    this.toasterParadeKey = resume?.toasterParadeKey ?? null;
+    this.suspectPortraits = new Map(USUAL_SUSPECTS.filter((s) => !s.role)
+      .map((s) => [s.id, makeObstacle(s.type, -(OBSTACLES[s.type]?.w || 10) / 2)]));
+    this.drawSuspectProp = createPropPreviewRenderer({ padding: 0.5 });
+    this.suspectZoomId = null;
+    this.suspectZoomProgress = 0;
+    this.suspectZoomClosing = false;
+    this.suspectZoomFrom = null;
+    this.syncGoldenToasterParade();
   }
 
   heroId() {
@@ -4627,27 +4996,29 @@ export class TrophyRoomState {
     this.setChromeWalkButtons();
     Input.setButtons([]);
     enterTrophyRoomAudio();
-    this.t = 0;
+    const resume = this.resumeState;
+    this.resumeState = null;
+    this.t = resume?.t ?? 0;
     // Keep the authored entrance spawn in every presentation. The portrait
     // camera is narrower, but entering the room should still put the hero
     // beside the Food Court door rather than silently moving him gallery-deep.
-    this.px = 90;
-    this.facing = 1;
-    this.walkTarget = null;
-    this.walkHoldT = 0;
-    this.moving = false;
-    this.doorOpen = 0;
-    this.doorTarget = null;   // see doorStep(): no cue for the arrival frame
-    this.departed = false;
-    this.player = new Player(this.heroId());
+    this.px = resume?.px ?? 90;
+    this.facing = resume?.facing ?? 1;
+    this.walkTarget = resume?.walkTarget ?? null;
+    this.walkHoldT = resume?.walkHoldT ?? 0;
+    this.moving = resume?.moving ?? false;
+    this.doorOpen = resume?.doorOpen ?? 0;
+    this.doorTarget = resume?.doorTarget ?? null;   // see doorStep(): no cue for the arrival frame
+    this.departed = resume?.departed ?? false;
+    this.player = resume?.player || new Player(this.heroId());
     // He comes OUT of the door he just came through, rather than standing
     // beside it already. Same sequence as the concourse, mirrored.
-    this.doorWalk = makeDoorEntry({
+    this.doorWalk = resume?.doorWalk || (resume ? null : makeDoorEntry({
       kind: 'slide', doorX: TROPHY_EXIT_X, type: 'exit', toX: this.px,
       speed: TROPHY_MOVE_SPEED, gaitCycle: TROPHY_PLAYER_H * GAIT_DISTANCE_PER_CYCLE,
-    });
-    Audio.sfx('doorOpen');   // see the concourse's copy: the open needs cueing too
-    this.player.grounded = true;
+    }));
+    if (!resume) Audio.sfx('doorOpen');   // see the concourse's copy: the open needs cueing too
+    if (!resume) this.player.grounded = true;
     // He is standing in the doorway, so the room starts at its driest rather than
     // arriving at one depth and sliding to another on the first frame.
     setTrophyRoomDepth(this.audioDepth());
@@ -4661,14 +5032,35 @@ export class TrophyRoomState {
 
   setChromeWalkButtons() {
     this.chromeGen = chromeGeo.gen;
-    this.chromeTouch = Input.usingTouch;
-    // (the trophy room has no pause: BACK leaves it)
-    Input.setChromeButtons(Input.usingTouch ? hubChromeButtons().filter((b) => b.id !== 'hubPause') : []);
+    this.chromeTouch = Input.isTouchDevice();
+    Input.setChromeButtons(this.suspectZoomId ? [] : hubChromeButtons({
+      walk: Input.isTouchDevice(), pauseAction: 'pause',
+    }));
   }
 
   drawChromeWalkButtons() {
-    if (!Input.usingTouch) return;
+    if (chromeGeo.gen !== this.chromeGen || Input.isTouchDevice() !== this.chromeTouch) this.setChromeWalkButtons();
+    if (this.suspectZoomId) return;
     declareHubChrome();
+  }
+
+  resumeSnapshot() {
+    return {
+      revealAllSuspects: this.revealAllSuspects,
+      t: this.t,
+      px: this.px,
+      facing: this.facing,
+      walkTarget: this.walkTarget,
+      walkHoldT: this.walkHoldT,
+      moving: this.moving,
+      doorOpen: this.doorOpen,
+      doorTarget: this.doorTarget,
+      departed: this.departed,
+      player: this.player,
+      doorWalk: this.doorWalk,
+      toasterParade: this.toasterParade,
+      toasterParadeKey: this.toasterParadeKey,
+    };
   }
 
   defeatedBosses() {
@@ -4681,6 +5073,7 @@ export class TrophyRoomState {
     const clumsyName = clumsy ? (HERO_BY_ID[clumsy[0]]?.short || clumsy[0]).toUpperCase() : 'NOBODY';
     const overtimeOpen = !!slot.campaign.storyFlags.sawEnding;
     const bestLevelScore = Math.max(0, ...Object.values(slot.campaign.bestScore || {}));
+    const goldenToasterCount = this.foundGoldenToasterStages().length;
     return [
       {
         title: 'PLAY',
@@ -4705,7 +5098,7 @@ export class TrophyRoomState {
         rows: [
           ['LEVELS CLEARED', `${Object.keys(slot.campaign.ranks).length}/${STAGES.length}`],
           ['PLUGS', `${totalPlugs(slot)}/${MAX_PLUGS}`],
-          ['TOASTERS FOUND', formatCoins(slot.stats.appliancesFound)],
+          ['GOLDEN TOASTERS', formatCoins(goldenToasterCount)],
         ],
       },
     ];
@@ -4723,6 +5116,25 @@ export class TrophyRoomState {
         score: campaign.bestScore[stage.id] || 0,
       })),
     }));
+  }
+
+  foundGoldenToasterStages() {
+    const plugs = this.save.slot.campaign.plugs || {};
+    return STAGES.filter((stage) => !!plugs[stage.id]?.[2]);
+  }
+
+  syncGoldenToasterParade() {
+    const stages = this.foundGoldenToasterStages();
+    const key = stages.map((stage) => stage.id).join(',');
+    if (key === this.toasterParadeKey) return;
+    this.toasterParadeKey = key;
+    this.toasterParade = stages.length
+      ? createGoldenToasterParade(hashStr(`trophy-gold-toasters:${key}`), stages.length, {
+        viewWidth: TROPHY_TOASTER_SCREEN_W,
+        viewHeight: TROPHY_TOASTER_SCREEN_H,
+        bpm: HUB_BANK.bpm,
+      })
+      : null;
   }
 
   // The door out is at the left wall and he leaves leftward, so this is the
@@ -4750,7 +5162,9 @@ export class TrophyRoomState {
 
   update(dt) {
     this.t += dt;
-    if (chromeGeo.gen !== this.chromeGen || Input.usingTouch !== this.chromeTouch) this.setChromeWalkButtons();
+    this.syncGoldenToasterParade();
+    this.toasterParade?.update(dt);
+    if (chromeGeo.gen !== this.chromeGen || Input.isTouchDevice() !== this.chromeTouch) this.setChromeWalkButtons();
 
     // The same staged exit the concourse uses, so the door out of this room and
     // the door into it behave alike. See hub/door-walk.js.
@@ -4760,6 +5174,11 @@ export class TrophyRoomState {
       this.doorWalk = null;   // see the concourse's copy: skipping never moves him
     }
     if (this.doorWalk) {
+      if (Input.pressed('pause')) {
+        this.flow.toTrophyPause?.(this);
+        Input.endFrame?.();
+        return;
+      }
       const was = this.doorWalk.state().phase;
       this.doorWalk.update(dt);
       setTrophyRoomDepth(this.audioDepth());   // the walk owns his x; see audioDepth
@@ -4782,6 +5201,28 @@ export class TrophyRoomState {
       return;
     }
 
+    if (this.suspectZoomId) {
+      if (this.suspectZoomClosing) {
+        this.suspectZoomProgress = Math.max(0, this.suspectZoomProgress - dt / 0.2);
+        if (this.suspectZoomProgress === 0) {
+          this.suspectZoomId = null;
+          this.suspectZoomClosing = false;
+          this.suspectZoomFrom = null;
+          this.setChromeWalkButtons();
+        }
+      } else {
+        this.suspectZoomProgress = Math.min(1, this.suspectZoomProgress + dt / 0.2);
+        if (Input.pressed('pointer') || Input.pressed('confirm') || Input.pressed('back')
+          || Input.pressed('jump')) {
+          this.suspectZoomClosing = true;
+          Audio.sfx('ui');
+        }
+      }
+      Input.endFrame?.();
+      return;
+    }
+
+    if (Input.pressed('pause')) { this.flow.toTrophyPause?.(this); return; }
     if (Input.pressed('back')) { this.flow.toHub(); return; }
 
     // The room itself is the touch UI. Tapping an exhibit walks over and uses
@@ -4801,6 +5242,24 @@ export class TrophyRoomState {
       const onExit = x >= 0 && x <= TROPHY_DOOR_W + 6
         && y >= TROPHY_FLOOR_Y - TROPHY_DOOR_H - 6 && y <= TROPHY_FLOOR_Y + 6;
       if (onExit) { this.startExitWalk(); return; }
+      const monitor = usualSuspectMonitorRects(layout).find((rect) =>
+        x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h);
+      if (monitor) {
+        this.suspectZoomId = monitor.suspect.id;
+        this.suspectZoomProgress = 0;
+        this.suspectZoomClosing = false;
+        this.suspectZoomFrom = {
+          x: (monitor.x - camera) * layout.zoom,
+          y: (monitor.y - layout.camY) * layout.zoom,
+          w: monitor.w * layout.zoom,
+          h: monitor.h * layout.zoom,
+        };
+        this.setChromeWalkButtons();
+        this.walkTarget = null;
+        this.moving = false;
+        Audio.sfx('uiConfirm');
+        return;
+      }
       if (x < TROPHY_DOOR_W + 6) this.walkTarget = TROPHY_EXIT_X;
       else this.walkTarget = Math.max(68, Math.min(TROPHY_WORLD_W - 30, x));
     }
@@ -4845,7 +5304,7 @@ export class TrophyRoomState {
       const x = TROPHY_LEVELS_X + act * (TROPHY_LEVEL_BOARD_W + TROPHY_LEVEL_BOARD_GAP);
       const y = board.y, w = TROPHY_LEVEL_BOARD_W, h = 156;
       const actTitle = `ACT ${act + 1} PROGRESS`;
-      drawTextCentered(ctx, actTitle, x + w / 2, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+      drawTextVector(ctx, actTitle, x + 7, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
       drawTrophyPanel(ctx, x, y, w, h, 5, '#100e16', '#73657c');
       records.slice(act * 3, act * 3 + 3).forEach((group, cabinetIndex) => {
         const blockY = y + 3 + cabinetIndex * 50;
@@ -4899,7 +5358,7 @@ export class TrophyRoomState {
     const board = trophyBoardLayout(layout);
     const w = TROPHY_BOSSES_W, h = TROPHY_CASE_H, x0 = TROPHY_BOSSES_X - w / 2, y0 = board.y;
     const title = 'MANAGEMENT ARCHIVE';
-    drawTextCentered(ctx, title, TROPHY_BOSSES_X, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+    drawTextVector(ctx, title, x0 + 7, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
     drawTrophyPanel(ctx, x0, y0, w, h, 5, '#100e16', '#73657c');
     if (!earned.length) {
       // One closed archive instead of three mystery silhouettes. Before the
@@ -4925,6 +5384,256 @@ export class TrophyRoomState {
     });
   }
 
+  drawUsualSuspects(ctx, layout = trophyPresentation()) {
+    const board = trophyBoardLayout(layout);
+    const x = TROPHY_SUSPECTS_X, y = board.y, w = TROPHY_SUSPECTS_W, h = TROPHY_SUSPECTS_H;
+    const camera = this.camX(), visibleRight = camera + layout.viewW;
+    const discovered = this.save?.slot?.hub?.usualSuspects || {};
+    const foundCount = this.revealAllSuspects
+      ? USUAL_SUSPECTS.length
+      : USUAL_SUSPECTS.filter((suspect) => discovered[suspect.id]).length;
+    drawTextVector(ctx, `THE USUAL SUSPECTS ${foundCount}/${USUAL_SUSPECTS.length}`,
+      x + 7, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+    drawTrophyPanel(ctx, x, y, w, h, 5, '#100e16', '#73657c');
+
+    usualSuspectMonitorRects(layout).forEach(({ suspect, index, colW, cx, cellX, x: screenX,
+      y: screenY, w: screenW, h: screenH, radius: glassRadius }) => {
+      // Static is intentionally lively, but drawing every off-screen feed on
+      // every frame wastes phone time while the player is viewing one section.
+      if (cellX + colW < camera || cellX > visibleRight) return;
+      const unlocked = this.revealAllSuspects || !!discovered[suspect.id];
+      const screen = { x: screenX, y: screenY, w: screenW, h: screenH };
+
+      // The glass is the whole object: no picture frame, plastic bezel,
+      // control strip, or pilot light. A bowed silhouette and curved raster
+      // lines make the glass read as an old tube display.
+      ctx.save();
+      trophyCrtPath(ctx, screen, 0, glassRadius);
+      ctx.clip();
+      const glass = ctx.createLinearGradient(0, screenY, 0, screenY + screenH);
+      glass.addColorStop(0, unlocked ? '#17232a' : '#17212b');
+      glass.addColorStop(0.52, '#0d151c');
+      glass.addColorStop(1, '#070d13');
+      ctx.fillStyle = glass;
+      ctx.fillRect(screenX - 3, screenY - 3, screenW + 6, screenH + 6);
+      ctx.restore();
+
+      if (unlocked) {
+        ctx.save();
+        trophyCrtPath(ctx, screen, 1, glassRadius - 1);
+        ctx.clip();
+        if (suspect.role) {
+          const box = trophySuspectRoleBox(suspect.role, screen);
+          ctx.translate(box.x, box.y);
+          ctx.scale(box.scale, box.scale);
+          drawSelectedCryptEnemy(ctx, this.t, suspect.role, 0, 0, { facing: 1, idle: true });
+        } else {
+          const portrait = this.suspectPortraits.get(suspect.id);
+          if (portrait) {
+            const propName = portrait.skin && hasProp(portrait.skin) ? portrait.skin
+              : hasProp(portrait.type) ? portrait.type
+                : hasProp(portrait.def?.sprite) ? portrait.def.sprite : null;
+            if (propName) {
+              const box = trophySuspectPropBox(portrait, propName, screen);
+              const frame = Math.floor(this.t * propFps(propName) + portrait.bobPhase * 4)
+                % Math.max(1, propFrames(propName));
+              this.drawSuspectProp(ctx, propName, box.x, box.y, box.w, box.h, frame);
+            } else {
+              // Fallback for a future suspect represented by a raster sprite.
+              const scale = Math.min((screenW - 10) / portrait.w, (screenH - 8) / portrait.h);
+              ctx.translate(cx, screenY + screenH / 2 - GROUND_Y * scale);
+              ctx.scale(scale, scale);
+              drawWorldEntity(ctx, portrait, 0, this.t, null, {}, { preculled: true });
+            }
+          }
+        }
+        ctx.restore();
+      }
+
+      const tick = Math.floor(this.t * 10);
+      drawTrophyCrtFeed(ctx, screen, index, tick, { staticFeed: !unlocked });
+      drawTrophyCrtGlass(ctx, screen, glassRadius);
+
+      if (unlocked) {
+        const label = suspect.label.toUpperCase();
+        const labelMaxWidth = colW - 8;
+        const words = label.split(/\s+/);
+        const labelScale = Math.min(1.02, ...words.map((word) =>
+          labelMaxWidth / Math.max(1, textWidth(word, 1, 'bold'))));
+        const lines = [];
+        let line = '';
+        for (const word of words) {
+          const candidate = line ? `${line} ${word}` : word;
+          if (line && textWidth(candidate, labelScale, 'bold') > labelMaxWidth) {
+            lines.push(line);
+            line = word;
+          } else {
+            line = candidate;
+          }
+        }
+        if (line) lines.push(line);
+        const lineGap = 11 * labelScale;
+        const firstLineY = screenY + screenH + 8 - ((lines.length - 1) * lineGap) / 2;
+        lines.forEach((caption, i) => drawTextCentered(ctx, caption, cx,
+          firstLineY + i * lineGap, '#c8b880', labelScale, 'bold'));
+      }
+    });
+  }
+
+  drawGoldenToasterScreen(ctx, layout = trophyPresentation()) {
+    const board = trophyBoardLayout(layout);
+    const x = TROPHY_TOASTER_TV_X, y = board.y;
+    const w = TROPHY_TOASTER_TV_W, h = TROPHY_TOASTER_TV_H;
+    this.syncGoldenToasterParade();
+    const stages = this.foundGoldenToasterStages();
+    const count = stages.length;
+    const screen = {
+      x: x + TROPHY_TOASTER_SCREEN_X,
+      y: y + TROPHY_TOASTER_SCREEN_Y,
+      w: TROPHY_TOASTER_SCREEN_W,
+      h: TROPHY_TOASTER_SCREEN_H,
+    };
+    const title = `GOLDEN TOASTERS ${count}/${STAGES.length}`;
+    const titleScale = Math.min(TROPHY_BOARD_TITLE_SCALE,
+      (w - 14) / Math.max(1, textWidth(title, 1, 'title')));
+    drawTextVector(ctx, title, x + 7, board.titleY, '#f6d33c', titleScale, 'title');
+    drawTrophyPanel(ctx, x, y, w, h, 5, '#100e16', '#73657c');
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(screen.x, screen.y, screen.w, screen.h);
+    ctx.clip();
+    const glass = ctx.createLinearGradient(0, screen.y, 0, screen.y + screen.h);
+    glass.addColorStop(0, '#18252d');
+    glass.addColorStop(0.52, '#0d151c');
+    glass.addColorStop(1, '#070d13');
+    ctx.fillStyle = glass;
+    ctx.fillRect(screen.x - 3, screen.y - 3, screen.w + 6, screen.h + 6);
+
+    if (this.toasterParade) {
+      ctx.save();
+      ctx.translate(screen.x, screen.y);
+      this.toasterParade.drawToasterFleet(ctx);
+      ctx.restore();
+    } else {
+      drawTextCentered(ctx, 'NO GOLDEN TOASTERS FOUND',
+        screen.x + screen.w / 2, screen.y + screen.h / 2 - 4, '#77848e', 1.05, 'bold');
+    }
+    ctx.restore();
+
+    drawTrophyCrtFeed(ctx, screen, STAGES.length, Math.floor(this.t * 10), { flat: true });
+  }
+
+  drawSuspectZoom(ctx, layout = trophyPresentation()) {
+    if (!this.suspectZoomId || !this.suspectZoomFrom) return;
+    const suspect = USUAL_SUSPECTS.find((entry) => entry.id === this.suspectZoomId);
+    if (!suspect) return;
+
+    const rawProgress = Math.max(0, Math.min(1, this.suspectZoomProgress));
+    const progress = rawProgress * rawProgress * (3 - 2 * rawProgress);
+    const discovered = this.save?.slot?.hub?.usualSuspects || {};
+    const unlocked = this.revealAllSuspects || !!discovered[suspect.id];
+    const screenMaxH = Math.max(96, Math.min(H - 120, H * 0.62));
+    const screenW = Math.min(W - 36, screenMaxH * 1.55);
+    const screenH = screenW / 1.55;
+    const totalH = screenH + (unlocked ? 82 : 76);
+    const target = {
+      x: (W - screenW) / 2,
+      y: Math.max(8, Math.min((H - totalH) / 2, H - totalH - 8)),
+      w: screenW,
+      h: screenH,
+    };
+    const from = this.suspectZoomFrom;
+    const screen = {
+      x: from.x + (target.x - from.x) * progress,
+      y: from.y + (target.y - from.y) * progress,
+      w: from.w + (target.w - from.w) * progress,
+      h: from.h + (target.h - from.h) * progress,
+    };
+    const cx = screen.x + screen.w / 2;
+    const radius = Math.min(20, screen.h * 0.12);
+
+    // The monitor grows out of its place in the wall. Keep the exhibit itself
+    // as the only shape on top; the modal adds no card or frame around the CRT.
+    ctx.fillStyle = `rgba(5,4,10,${0.9 * progress})`;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    trophyCrtPath(ctx, screen, 0, radius);
+    ctx.clip();
+    const glass = ctx.createLinearGradient(0, screen.y, 0, screen.y + screen.h);
+    glass.addColorStop(0, unlocked ? '#17232a' : '#17212b');
+    glass.addColorStop(0.52, '#0d151c');
+    glass.addColorStop(1, '#070d13');
+    ctx.fillStyle = glass;
+    ctx.fillRect(screen.x - 3, screen.y - 3, screen.w + 6, screen.h + 6);
+
+    if (unlocked) {
+      trophyCrtPath(ctx, screen, 1, radius - 1);
+      ctx.clip();
+      if (suspect.role) {
+        const box = trophySuspectRoleBox(suspect.role, screen);
+        ctx.save();
+        ctx.translate(box.x, box.y);
+        ctx.scale(box.scale, box.scale);
+        drawSelectedCryptEnemy(ctx, this.t, suspect.role, 0, 0, { facing: 1, idle: true });
+        ctx.restore();
+      } else {
+        const portrait = this.suspectPortraits.get(suspect.id);
+        if (portrait) {
+          const propName = portrait.skin && hasProp(portrait.skin) ? portrait.skin
+            : hasProp(portrait.type) ? portrait.type
+              : hasProp(portrait.def?.sprite) ? portrait.def.sprite : null;
+          if (propName) {
+            const box = trophySuspectPropBox(portrait, propName, screen);
+            const frame = Math.floor(this.t * propFps(propName) + portrait.bobPhase * 4)
+              % Math.max(1, propFrames(propName));
+            this.drawSuspectProp(ctx, propName, box.x, box.y, box.w, box.h, frame);
+          } else {
+            const scale = Math.min((screen.w - 28) / portrait.w, (screen.h - 24) / portrait.h);
+            ctx.save();
+            ctx.translate(cx, screen.y + screen.h / 2 - GROUND_Y * scale);
+            ctx.scale(scale, scale);
+            drawWorldEntity(ctx, portrait, 0, this.t, null, {}, { preculled: true });
+            ctx.restore();
+          }
+        }
+      }
+    }
+    ctx.restore();
+
+    const tick = Math.floor(this.t * 10);
+    const index = USUAL_SUSPECTS.indexOf(suspect);
+    drawTrophyCrtFeed(ctx, screen, index, tick, { staticFeed: !unlocked });
+    drawTrophyCrtGlass(ctx, screen, radius);
+
+    if (unlocked && progress > 0.02) {
+      const label = suspect.label.toUpperCase();
+      const scale = Math.min(layout.portrait ? 2.1 : 1.55,
+        (W - 32) / Math.max(1, textWidth(label, 1, 'bold')));
+      ctx.save();
+      ctx.globalAlpha = progress;
+      drawTextCentered(ctx, label, W / 2, screen.y + screen.h + 23, '#f6d33c', scale, 'bold');
+      ctx.restore();
+    }
+    if (!unlocked && progress > 0.02) {
+      const hint = 'KEEP PLAYING TO UNLOCK';
+      const scale = Math.min(1.05, (W - 36) / Math.max(1, textWidth(hint, 1, 'bold')));
+      ctx.save();
+      ctx.globalAlpha = progress * 0.95;
+      drawTextCentered(ctx, hint, W / 2, screen.y + screen.h + 20, '#f6d33c', scale, 'bold');
+      ctx.restore();
+    }
+    if (progress > 0.02) {
+      const prompt = Input.isTouchDevice() ? 'TAP TO CLOSE' : 'CLICK OR ESC TO CLOSE';
+      const scale = Math.min(1.05, (W - 36) / Math.max(1, textWidth(prompt, 1, 'bold')));
+      ctx.save();
+      ctx.globalAlpha = progress * 0.8;
+      drawTextCentered(ctx, prompt, W / 2, screen.y + screen.h + (unlocked ? 58 : 50), '#c8b880', scale, 'bold');
+      ctx.restore();
+    }
+  }
+
   drawRecordsBoard(ctx, layout = trophyPresentation()) {
     const groups = this.statGroups();
     const board = trophyBoardLayout(layout);
@@ -4935,7 +5644,7 @@ export class TrophyRoomState {
     // values stagger beneath them at lower-right, so neither has to surrender
     // size to share one baseline and the whole board can be substantially
     // narrower.
-    drawTextCentered(ctx, 'OVERALL STATUS', x + w / 2, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+    drawTextVector(ctx, 'OVERALL STATUS', x + 7, board.titleY, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
     drawTrophyPanel(ctx, x, y, w, h, 5, '#100e16', '#73657c');
     groups.forEach((group, column) => {
       const gx = x + column * colW;
@@ -4990,6 +5699,14 @@ export class TrophyRoomState {
         0.68,
       ]),
       [TROPHY_BOSSES_X, this.defeatedBosses().length ? 0.72 : 0.42],
+      ...Array.from({ length: 4 }, (_, i) => [
+        TROPHY_SUSPECTS_X + TROPHY_SUSPECTS_W * (i + 0.5) / 4,
+        0.68,
+      ]),
+      ...Array.from({ length: 2 }, (_, i) => [
+        TROPHY_TOASTER_TV_X + TROPHY_TOASTER_TV_W * (i + 0.5) / 2,
+        0.68,
+      ]),
     ];
     lights.forEach(([center, strength], i) => {
       const x = center - LIGHT_W / 2;
@@ -5100,6 +5817,8 @@ export class TrophyRoomState {
 
     this.drawLevelRecords(ctx, layout);
     this.drawBossCase(ctx, layout);
+    this.drawUsualSuspects(ctx, layout);
+    this.drawGoldenToasterScreen(ctx, layout);
     this.drawRecordsBoard(ctx, layout);
     drawExitDoor(ctx);
     drawAvatar(ctx);
@@ -5114,13 +5833,12 @@ export class TrophyRoomState {
     const roomTitle = 'TROPHY ROOM';
     const roomTitleScale = layout.portrait ? 2.1 : 1.1;
     const footerY = layout.portrait ? H - 34 : H - 11;
-    const footerText = layout.portrait ? drawTextVector : drawText;
-    const footerCentered = layout.portrait ? drawTextVectorCentered : drawTextCentered;
     if (layout.portrait) {
-      footerCentered(ctx, roomTitle, W / 2, footerY, '#f6d33c', roomTitleScale, 'bold');
+      drawTextVectorCentered(ctx, roomTitle, W / 2, footerY, '#f6d33c', roomTitleScale, 'bold');
     } else {
-      footerText(ctx, roomTitle, 12, footerY, '#f6d33c', roomTitleScale, 'bold');
+      drawTextVector(ctx, roomTitle, 12, footerY, '#f6d33c', roomTitleScale, 'bold');
     }
+    this.drawSuspectZoom(ctx, layout);
     this.drawChromeWalkButtons();
   }
 }
@@ -5896,7 +6614,7 @@ export class BenchState {
     drawToon(ctx, 'dolores', pose, doleX, doleFeet, doleH);
     // The overhead sign still spans the whole station; the list, its glosses and
     // the price column all sit in the left column, clear of Dolores.
-    drawTextCentered(ctx, COUNTER_TITLE_DOLORES, W / 2, LANDSCAPE_COUNTER_TITLE_Y,
+    drawTextVectorCentered(ctx, COUNTER_TITLE_DOLORES, W / 2, LANDSCAPE_COUNTER_TITLE_Y,
       '#f6d33c', LANDSCAPE_COUNTER_TITLE_S, 'title');
     const menuCx = LANDSCAPE_COUNTER_LIST_CENTER;
     const labelX = LANDSCAPE_COUNTER_LABEL_X;
@@ -6242,7 +6960,7 @@ export class ShopState {
     ctx.fillStyle = '#100a14';
     ctx.fillRect(0, 0, W, H);
     this.drawGary(ctx, 410, 234, 138);
-    drawTextCentered(ctx, COUNTER_TITLE_GARY, W / 2, LANDSCAPE_COUNTER_TITLE_Y,
+    drawTextVectorCentered(ctx, COUNTER_TITLE_GARY, W / 2, LANDSCAPE_COUNTER_TITLE_Y,
       '#f890b8', LANDSCAPE_COUNTER_TITLE_S, 'title');
     drawLandscapeCounterChat(ctx, this.line, 'gary', '#f890b8', 'rgba(248,144,184,0.35)');
     const slot = this.save.slot;
@@ -6556,7 +7274,7 @@ export class ArcadeState {
     }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'THE GRAVEYARD', W / 2, 16, '#48e0c8', 2, 'title');
+    drawTextVectorCentered(ctx, 'THE GRAVEYARD', W / 2, 16, '#48e0c8', 2, 'title');
     drawTextCentered(ctx, `${ARCADE_PLAY_COST} COINS A GO. WIN: +${REWARDS.arcadeWin} AND A POWER-UP.`, W / 2, 40, '#8a8a98');
     const touch = Input.isTouchDevice();
     const broke = this.save.slot.coins < ARCADE_PLAY_COST;

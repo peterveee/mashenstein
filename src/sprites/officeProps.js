@@ -937,7 +937,7 @@ function champagneCork(c, W, H, f) {
 // (box 16x24), gold body, black door, white dial; one shot blows the door open and
 // the money comes out (Run.crackSafe). `open` is the door swung back on its hinge
 // with the cash shelf and gold bars showing.
-const CASH = '#8fcf8a', CASH_DK = '#5fa45e', VAULT = '#16131d';
+const CASH = '#8fcf8a', CASH_LT = '#b9e6ae', CASH_PALE = '#e5f2cc', CASH_DK = '#5fa45e', VAULT = '#16131d';
 function glint4(c, x, y, s, col = '#ffffff') {
   if (s <= 0) return;
   poly(c, [x, y - s, x + s * 0.28, y - s * 0.28, x + s, y, x + s * 0.28, y + s * 0.28,
@@ -1032,49 +1032,63 @@ function banknote(c, W, H, f) {
 }
 
 // THE PAYOFF ON FLOOR 88 (Peter, 15 Oct): crack the safes and a giant pile of
-// money is waiting by the exit (box 48x26) — banded notes, gold bars, coins and a
-// few loose notes on top. Scenery: Run.drawMissionPayoff stands it there once the
-// mission is met; nothing collides with it.
+// money waits by the exit. Stacks of strapped notes form the mound, with loose
+// bills and coins spilling over both sides.
 function moneyPile(c, W, H, f) {
   const g = H - 0.3, cx = W / 2;
   const h01 = (n) => { const v = Math.sin(n * 91.7 + 13.1) * 43758.5453; return v - Math.floor(v); };
-  // The mound's silhouette, filled dark green so the gaps between bundles read as depth.
+  ell(c, cx, g + 0.4, W * 0.46, 2.2, 'rgba(31,29,38,0.22)');
   poly(c, [1, g, cx - W * 0.22, g - H * 0.62, cx, g - H * 0.86, cx + W * 0.24, g - H * 0.6, W - 1, g], CASH_DK, INK, LW);
-  // Rows of banded bundles, narrowing toward the top.
-  const rows = 6, bw = 6.4, bh = 2.6;
-  for (let r = 0; r < rows; r++) {
-    const y = g - 1.2 - r * (bh + 0.4) - bh;
-    const half = (W / 2 - 3) * (1 - r / (rows + 0.6));
-    for (let x = cx - half; x + bw <= cx + half + 0.5; x += bw + 0.3) {
-      const k = h01(r * 31 + Math.round(x));
-      const jx = x + (k - 0.5) * 1.2;
-      if (k < 0.16) {
-        // A gold bar in place of the bundle.
-        poly(c, [jx, y + bh, jx + bw, y + bh, jx + bw - 1.2, y, jx + 1.2, y], BRASS, INK, LWF);
-        line(c, jx + 1.6, y + 0.6, jx + bw - 1.6, y + 0.6, BRASS_LT, 0.4);
-      } else {
-        box(c, jx, y, bw, bh, k < 0.6 ? CASH : '#a5dba0', INK, LWF);
-        box(c, jx + bw / 2 - 0.6, y, 1.2, bh, PAPER);
-      }
+  const rows = [4, 3, 2, 1], bw = 10.8, bh = 5, gap = 1.2;
+  let bundle = 0;
+  for (let r = 0; r < rows.length; r++) {
+    const count = rows[r], rowW = count * bw + (count - 1) * gap;
+    const y = g - 2.2 - bh - r * 5.7;
+    const x0 = cx - rowW / 2 + (r % 2 ? 0.6 : -0.3);
+    for (let col = 0; col < count; col++, bundle++) {
+      const x = x0 + col * (bw + gap) + (h01(bundle + 3) - 0.5) * 0.7;
+      const tone = [CASH, CASH_LT, '#a5dba0'][bundle % 3];
+      const band = [PAPER_DK, BRASS_LT, PINKPAPER][(bundle + r) % 3];
+      c.save();
+      c.translate(x + bw / 2, y + bh / 2);
+      c.rotate((h01(bundle + 19) - 0.5) * 0.09);
+      rbox(c, -bw / 2 + 0.2, -bh / 2 + 1, bw - 0.4, bh - 0.7, 0.55, CASH_DK, INK, LWF);
+      line(c, -bw / 2 + 1, bh / 2 - 1, bw / 2 - 1, bh / 2 - 1, PAPER_DK, 0.35);
+      line(c, -bw / 2 + 1, bh / 2 - 0.45, bw / 2 - 1, bh / 2 - 0.45, CASH_LT, 0.3);
+      rbox(c, -bw / 2, -bh / 2, bw, bh - 1.1, 0.65, tone, INK, 0.35);
+      rbox(c, -bw / 2 + 0.75, -bh / 2 + 0.55, bw - 1.5, bh - 2.15, 0.4, null, CASH_DK, 0.28);
+      box(c, -0.8, -bh / 2 + 0.35, 1.6, bh - 1.8, band, INK, 0.16);
+      ell(c, 0, 0.1, 1.45, 0.82, CASH_PALE, CASH_DK, 0.24);
+      line(c, 0, -0.35, 0, 0.5, CASH_DK, 0.28);
+      line(c, -0.45, -0.12, 0.45, -0.12, CASH_DK, 0.24);
+      line(c, -0.4, 0.25, 0.4, 0.25, CASH_DK, 0.24);
+      c.restore();
     }
   }
-  // Coins spilled down both flanks.
+  // Flat coin faces and their raised edges keep the spill from reading as dots.
   for (let i = 0; i < 14; i++) {
     const side = i % 2 ? 1 : -1, t = h01(i + 7);
     const x = cx + side * (W * 0.3 + t * W * 0.16), y = g - 1.2 - (1 - t) * H * 0.25;
-    circ(c, x, y, 1.4, LEMON, INK, LWF);
-    line(c, x - 0.5, y - 0.5, x + 0.2, y - 0.9, LEMON_LT, 0.35);
+    const rx = 1.45 + t * 0.5, ry = 1 + t * 0.3;
+    ell(c, x, y + 0.55, rx, ry, LEMON_DK, INK, LWF);
+    ell(c, x, y, rx, ry, LEMON, INK, LWF);
+    ell(c, x - rx * 0.24, y - 0.25, rx * 0.34, ry * 0.3, LEMON_LT);
+    line(c, x - rx * 0.42, y + 0.1, x + rx * 0.42, y + 0.1, BRASS_DK, 0.22);
   }
-  // Loose notes on the summit, and a glint that wanders across it.
-  for (let i = 0; i < 3; i++) {
-    const x = cx - 7 + i * 6, y = g - H * 0.86 + 1 + (i % 2) * 1.4;
+  const looseNote = (x, y, w, h, angle, tone) => {
     c.save();
     c.translate(x, y);
-    c.rotate((i - 1) * 0.4);
-    rbox(c, -3.2, -1.6, 6.4, 3.2, 0.4, CASH, INK, LWF);
-    ell(c, 0, 0, 1.1, 0.9, PAPER, INK, 0.15);
+    c.rotate(angle);
+    rbox(c, -w / 2 + 0.5, -h / 2 + 0.8, w, h, 0.65, CASH_DK, INK, 0.28);
+    rbox(c, -w / 2, -h / 2, w, h - 0.7, 0.65, tone, INK, 0.3);
+    rbox(c, -w / 2 + 0.9, -h / 2 + 0.55, w - 1.8, h - 1.8, 0.4, null, CASH_DK, 0.24);
+    ell(c, 0, 0, 1.5, 1, PAPER, INK, 0.18);
+    line(c, 0, -0.55, 0, 0.55, CASH_DK, 0.25);
     c.restore();
-  }
+  };
+  looseNote(cx - 6.5, g - H * 0.84, 11, 5.2, -0.2, CASH_LT);
+  looseNote(cx + 5.5, g - H * 0.88 + 1.2, 10, 5, 0.18, CASH);
+  looseNote(cx + 11.5, g - H * 0.75 + 0.8, 9, 4.6, 0.32, '#a5dba0');
   const gx = cx + ((f / 8) * 2 - 1) * W * 0.25;
   poly(c, [gx, g - H * 0.7 - 2.2, gx + 0.6, g - H * 0.7 - 0.6, gx + 2.2, g - H * 0.7, gx + 0.6, g - H * 0.7 + 0.6,
     gx, g - H * 0.7 + 2.2, gx - 0.6, g - H * 0.7 + 0.6, gx - 2.2, g - H * 0.7, gx - 0.6, g - H * 0.7 - 0.6], '#fffbe0');

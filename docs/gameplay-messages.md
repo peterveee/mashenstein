@@ -319,6 +319,12 @@ Trigger: breaker-box minigame ends ([minigames/index.js](../src/game/minigames/i
 Trigger: player visits the food court hub and interacts with a character;
 each interaction cycles to the next line in that character's pool (one line
 per visit). Speech bubble, Gary-style card. From [jokes.js](../src/data/jokes.js#L208-L387).
+A hub card is timed: it stays up for as long as the line takes to read
+(`speechHoldSeconds` in [hud.js](../src/game/hud.js) — a second to find the
+card, then twelve characters a second, never under four seconds), so the
+longest lines hold for about nine. The locked-door and locked-cabinet notes
+use the same clock. On a phone the card grows to as many rows as the line
+needs rather than cutting it off.
 Representative examples per character (each has 7–12 lines in the pool):
 - **Lorenzo** (plumbing/food court): "THE PIPES HERE ARE DECORATIVE. IT DISGUSTS ME." · "I BROUGHT A TROMBONE. FOR PLUMBING."
 - **Gnash** (speed/impatience): "I FINISHED TALKING TO YOU YESTERDAY. YOU ARE JUST NOW ARRIVING." · "THE SODA MACHINE IS STILL DISPENSING MY DRINK. I FINISHED IT TEN MINUTES AGO."

@@ -59,7 +59,7 @@ const bundle = outputFiles[0].text;
   const stagesMenu = stagesItem && stagesItem.submenu(dev);
   const plumberItem = stagesMenu && stagesMenu.items.find((item) => /FIELD SERVICE/.test(item.label));
   const plumberMenu = plumberItem && plumberItem.submenu(dev);
-  const firstStageItem = plumberMenu && plumberMenu.items.find((item) => item.label === '1. PIPE DREAMS');
+  const firstStageItem = plumberMenu && plumberMenu.items.find((item) => item.label === '1. PLUG AND PLAY');
   const firstStageMenu = firstStageItem && firstStageItem.submenu(dev);
   const playLastItem = firstStageMenu && firstStageMenu.items.find((item) => item.label === 'PLAY LAST ▸');
   const playLastMenu = playLastItem && playLastItem.submenu(dev);

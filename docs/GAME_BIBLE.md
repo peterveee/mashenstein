@@ -8,7 +8,7 @@
 
 Don K. Eggshell, PhD — a giant egg-shaped ape with a magnificent red mustache, tiny science goggles, and a spiky shell — has unplugged the arcade's master power strip after losing to the heroes for 40 straight fiscal years. Due to budget cuts, the arcade can only render ONE hero at a time, so eight parody heroes must relay-run through nine dying arcade cabinets to reach THE SOCKET and restore power.
 
-**Tagline:** *"A game stitched together from parts of other games."*
+**Tagline:** *"He unplugged the arcade. They're plugging it back in."*
 
 **The load-bearing joke:** The entire design is justified as a budget constraint. One hero renders at a time — so the game is a *relay*, not a party. Every mechanic descends from this: portals, switch lines, the automatic Relay Blast. The How-To-Play screen restates it: `ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.`
 
@@ -293,16 +293,16 @@ Choosing UNPLUGGED prompts: "ARE YOU SURE? (WE ARE NOT.) ENTER: YES / ESC: WISDO
 | Plugs | Unlocks |
 |---|---|
 | 0 | PLUMBER PANIC |
-| 2 | SPEED ZONE |
-| 5 | RHYTHM BANKRUPTCY |
+| 3 | SPEED ZONE |
+| 6 | RHYTHM BANKRUPTCY |
 | 12 | FROST FORTRESS (Act II) |
-| 16 | CRYPT SHIFT |
-| 20 | TERMINAL VELOCITY |
+| 18 | CRYPT SHIFT |
+| 24 | TERMINAL VELOCITY |
 | 25 | THE BACK ROOM appears |
-| 28 | CARDBOARD KINGDOM (Act III) |
-| 34 | CORPORATE KOMBAT |
-| 40 | THE SURGE |
-| 45 | Finale gate (inside the 81-plug ceiling) |
+| 30 | GRAVITY GRID (Act III) |
+| 36 | CORPORATE KOMBAT |
+| 42 | DÉJÀ VIEW (THE SURGE) |
+| 48 | Finale gate (inside the 81-plug ceiling) |
 
 Total campaign: 81 plugs (27 stages × 3).
 

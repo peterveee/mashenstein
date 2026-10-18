@@ -30,12 +30,44 @@ function mix(a, b, t) {
   const A = rgb(a), B = rgb(b);
   return `rgb(${Math.round(A[0] + (B[0] - A[0]) * t)},${Math.round(A[1] + (B[1] - A[1]) * t)},${Math.round(A[2] + (B[2] - A[2]) * t)})`;
 }
+function mixHex(a, b, t) {
+  const A = rgb(a), B = rgb(b);
+  return `#${A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
+}
 const lighten = (c, t) => mix(c, '#ffffff', t);
 const darken = (c, t) => mix(c, INK_DARK, t);
 // Perceptual-ish brightness, used to decide whether a screen wants dark ink or
 // light ink on it. Cabinet skies run from #0a0a2a to #e8e8f0, so a fixed choice
 // would be invisible on half the row.
 function luma(c) { const [r, g, b] = rgb(c); return (r * 0.299 + g * 0.587 + b * 0.114) / 255; }
+function relativeLuma(c) {
+  const channels = rgb(c).map((v) => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+}
+function contrastRatio(a, b) {
+  const A = relativeLuma(a), B = relativeLuma(b);
+  return (Math.max(A, B) + 0.05) / (Math.min(A, B) + 0.05);
+}
+function marqueeInk(pal) {
+  // Match the shell's rgba(26,16,40,0.34) outline over its hood. When that
+  // border tone would disappear on the glass, move only as far as needed in
+  // the same ink hue to give the emblem a clear read at cabinet size.
+  const hood = pal.hood.startsWith('#') ? pal.hood : mixHex(pal.body, '#ffffff', 0.08);
+  let ink = mixHex(hood, '#1a1028', 0.34);
+  if (contrastRatio(ink, pal.glass) >= 3.5) return ink;
+  const dark = '#1a1028', light = '#d8d4e4';
+  const target = contrastRatio(dark, pal.glass) >= contrastRatio(light, pal.glass) ? dark : light;
+  let low = 0, high = 1;
+  for (let i = 0; i < 16; i++) {
+    const mid = (low + high) / 2;
+    if (contrastRatio(mixHex(ink, target, mid), pal.glass) >= 3.5) high = mid;
+    else low = mid;
+  }
+  return mixHex(ink, target, high);
+}
 
 // A small stable number per cabinet id. Staggers the dead-screen static so nine
 // unplugged machines never crackle in unison — and, because deadScreenBurst()
@@ -76,6 +108,17 @@ export function cabinetScreenRect(x, y, w, h, style) {
   return { x: x + w * s.x0, y: y + h * s.y0, w: w * (s.x1 - s.x0), h: h * (s.y1 - s.y0) };
 }
 
+function cabinetScreenRadius(r, style) {
+  const fraction = cabinetStyle(style).box.screenR ?? 0.1;
+  return Math.min(r.w * fraction, r.h / 2);
+}
+
+function clipCabinetScreen(ctx, r, style) {
+  ctx.beginPath();
+  rr(ctx, r.x, r.y, r.w, r.h, cabinetScreenRadius(r, style));
+  ctx.clip();
+}
+
 // A cabinet's colours, derived entirely from its CABINETS entry. Takes anything
 // cabinet-shaped ({id, sky, ground, groundDark}) rather than importing the data
 // module, which keeps sprites/ from depending on data/.
@@ -97,6 +140,9 @@ export function cabinetPalette(cab, unlocked = true) {
     id: cab.id, lit: true, motif: cab.id, seed: idSeed(cab.id),
     body,
     shade,
+    // Frost's pale sky and ground collapse into near-white on the stacked
+    // chibi panels. Give its lower box a cooler blue pulled from its own shade.
+    lowerBody: cab.id === 'frost' ? mixHex(body, shade, 0.48) : body,
     deck: lighten(body, 0.16),
     lipC: darken(shade, 0.25),
     hood: lighten(body, 0.08),
@@ -118,9 +164,7 @@ export function cabinetBrownoutAlpha(t, seed) {
 
 export function drawCabinetSignalInterference(ctx, scr, t, seed) {
   ctx.save();
-  ctx.beginPath();
-  ctx.rect(scr.x, scr.y, scr.w, scr.h);
-  ctx.clip();
+  clipCabinetScreen(ctx, scr);
   const roll = (t * 4.5) % (scr.h + 8);
   for (let i = 0; i < 4; i++) {
     const y = scr.y + ((roll + i * 9) % (scr.h + 8)) - 4;
@@ -397,57 +441,87 @@ function paintRounded(ctx, w, h, pal, opts = {}) {
 // marquee and screen on a short stubby chassis. Wider and shorter than the
 // reference — 44x78 rather than 40x90.
 const CHIBI_BOX = {
-  hood: { x0: 0, x1: 1, y0: 0, y1: 0.235 },
+  // The marquee and monitor/control face are separate stacked shells.
+  hood: { x0: 0.06, x1: 0.94, y0: 0, y1: 0.235 },
   // Glass stops just short of the hood's bottom edge: the strip it leaves behind
   // carries the plug bulbs (hub/index.js drawPlugLights). It was cut back
   // further than this to fit oversized bulbs; they are small again, so the
   // marquee gets its height back.
-  glass: { x0: 0.07, x1: 0.93, y0: 0.04, y1: 0.193 },
-  upper: { x0: 0.06, x1: 0.94, y0: 0.235, y1: 0.6 },
-  bezel: { x0: 0.1, x1: 0.9, y0: 0.265, y1: 0.585 },
-  screen: { x0: 0.14, x1: 0.86, y0: 0.283, y1: 0.567 }, screenR: 0.111,
-  deck: { x0: 0, x1: 1, y0: 0.585, y1: 0.685 },
-  lip: { x0: 0, x1: 1, y0: 0.685, y1: 0.73 },
-  lower: { x0: 0.1, x1: 0.9, y0: 0.73, y1: 0.945 },
+  glass: { x0: 0.13, x1: 0.87, y0: 0.04, y1: 0.193 },
+  upper: { x0: 0.06, x1: 0.94, y0: 0.235, y1: 0.585 },
+  // The monitor is centered in the face between the marquee and control
+  // divider. Leave enough casing inside the bezel outline for its rim to stay
+  // visible on every cabinet palette.
+  bezel: { x0: 0.115, x1: 0.885, y0: 0.275, y1: 0.555 },
+  screen: { x0: 0.141, x1: 0.859, y0: 0.29, y1: 0.54 }, screenR: 0.1,
+  // This face is deliberately matte. The former diagonal gloss read as a
+  // pale patch sitting on top of the small marquee and monitor.
+  marqueeReflection: false,
+  screenReflection: false,
+  deck: { x0: 0.06, x1: 0.94, y0: 0.585, y1: 0.705 },
+  lip: { x0: 0, x1: 1, y0: 0.705, y1: 0.735 },
+  lower: { x0: 0.1, x1: 0.9, y0: 0.735, y1: 0.945 },
 };
 
-function paintChibi(ctx, w, h, pal, opts = {}) {
-  const u = olU(w), B = CHIBI_BOX;
+function paintChibiFront(ctx, w, h, pal, opts = {}) {
+  const u = olU(w), B = opts.monitorBox || CHIBI_BOX;
   const X = (n) => w * n, Y = (n) => h * n;
   const bx = (k) => [X(B[k].x0), Y(B[k].y0), X(B[k].x1 - B[k].x0), Y(B[k].y1 - B[k].y0)];
-
-  cabFeet(ctx, w, pal, Y(0.925), h * 0.07, 0.14);
-  shape(ctx, pal.body, u, (c) => rr(c, X(0.06), Y(0.2), X(0.88), Y(0.45), w * 0.13));
-  shape(ctx, pal.body, u, (c) => rr(c, ...bx('lower'), w * 0.11));
-  sideArt(ctx, pal, X(0.13), Y(0.75), X(0.74), Y(0.17));
-  plain(ctx, lighten(pal.body, 0.16), (c) => rr(c, X(0.085), Y(0.26), w * 0.07, h * 0.3, w * 0.035));
-  plain(ctx, pal.shade, (c) => rr(c, X(0.855), Y(0.26), w * 0.08, h * 0.3, w * 0.035));
-
-  // The head: a fat rounded hood carrying most of the character.
-  shape(ctx, pal.hood, u, (c) => rr(c, ...bx('hood'), w * 0.17));
-  plain(ctx, pal.glass, (c) => rr(c, ...bx('glass'), w * 0.1));
-  if (pal.lit) {
-    marqueeArt(ctx, pal, X(B.glass.x0), Y(B.glass.y0), X(B.glass.x1 - B.glass.x0), Y(B.glass.y1 - B.glass.y0));
-    glassGloss(ctx, X(B.glass.x0), Y(B.glass.y0), X(B.glass.x1 - B.glass.x0), Y(B.glass.y1 - B.glass.y0), 0.14);
-    const g = ctx.createLinearGradient(0, Y(0.235), 0, Y(0.4));
-    g.addColorStop(0, mix(pal.glass, pal.body, 0.5));
-    g.addColorStop(1, pal.body);
-    plain(ctx, g, (c) => rr(c, X(0.1), Y(0.235), w * 0.8, h * 0.16, w * 0.05));
-  }
-
-  shape(ctx, pal.shade, u, (c) => rr(c, ...bx('bezel'), w * 0.12));
-  plain(ctx, pal.well, (c) => rr(c, ...bx('screen'), w * 0.08));
-
-  shape(ctx, pal.deck, u, (c) => {
-    c.moveTo(X(0.07), Y(B.deck.y0));
-    c.lineTo(X(0.93), Y(B.deck.y0));
-    c.arcTo(X(1), Y(B.deck.y1), X(0.88), Y(B.deck.y1), w * 0.12);
-    c.lineTo(X(0.12), Y(B.deck.y1));
-    c.arcTo(X(0), Y(B.deck.y1), X(0.07), Y(B.deck.y0), w * 0.12);
-    c.closePath();
+  // This is a divider on the shared cabinet face, not the outline of a second
+  // rounded control box. The screen ends well above it, leaving a casing gap.
+  stroke(ctx, darken(pal.body, 0.24), Math.max(0.45, w * 0.012), (c) => {
+    c.moveTo(X(0.085), Y(B.deck.y0));
+    c.lineTo(X(0.915), Y(B.deck.y0));
   });
   shape(ctx, pal.lipC, u, (c) => rr(c, ...bx('lip'), w * 0.07));
-  deckControls(ctx, w, pal, Y(0.6), 1.15, opts.stickLean, opts.buttonPress, opts.stickFwd, [Y(B.deck.y0), Y(B.deck.y1)], opts.glint);
+  deckControls(ctx, w, pal, Y(0.625), 1.05, opts.stickLean, opts.buttonPress, opts.stickFwd,
+    [Y(B.deck.y0), Y(B.deck.y1)], opts.glint);
+}
+
+function paintChibi(ctx, w, h, pal, opts = {}) {
+  const u = olU(w), B = opts.monitorBox || CHIBI_BOX;
+  const X = (n) => w * n, Y = (n) => h * n;
+  const bx = (k) => [X(B[k].x0), Y(B[k].y0), X(B[k].x1 - B[k].x0), Y(B[k].y1 - B[k].y0)];
+  const bodyCornerRadius = w * 0.11;
+  const screenRadius = w * (B.screen.x1 - B.screen.x0) * (B.screenR ?? 0.1);
+  const bezelRadius = screenRadius + w * (B.screen.x0 - B.bezel.x0);
+  const hoodRadius = Math.min(w * 0.17, X(B.hood.x1 - B.hood.x0) / 2,
+    Y(B.hood.y1 - B.hood.y0) / 2);
+  const glassRadius = bodyCornerRadius;
+  const lowerBody = pal.lowerBody || pal.body;
+
+  cabFeet(ctx, w, pal, Y(0.925), h * 0.07, 0.14);
+  shape(ctx, lowerBody, u, (c) => rr(c, ...bx('lower'), bodyCornerRadius));
+  sideArt(ctx, pal, X(0.13), Y(0.75), X(0.74), Y(0.17), lowerBody);
+  // Keep the upper face flat around the inset monitor. The old side strips
+  // crossed the bezel edge and looked like pieces of a second frame.
+  const rightAccent = opts.monitorAccent === undefined
+    ? null
+    : opts.monitorAccent;
+  if (rightAccent && rightAccent.width > 0) {
+    const accentColor = rightAccent.blend ? mix(pal.shade, pal.body, rightAccent.blend) : pal.shade;
+    plain(ctx, accentColor, (c) => rr(c, X(rightAccent.x), Y(0.26), w * rightAccent.width,
+      h * 0.3, w * Math.min(0.015, rightAccent.width / 2)));
+  }
+
+  // The monitor and controls share one rounded housing. Its top corners stay
+  // visible below the separate marquee, and both boxes share the same center.
+  shape(ctx, pal.body, u, (c) => rr(c, X(B.upper.x0), Y(0.245),
+    X(B.upper.x1 - B.upper.x0), Y(B.deck.y1 - 0.245), bodyCornerRadius));
+  shape(ctx, pal.hood, u, (c) => rr(c, ...bx('hood'), hoodRadius));
+  plain(ctx, pal.glass, (c) => rr(c, ...bx('glass'), glassRadius));
+  if (pal.lit) {
+    marqueeArt(ctx, pal, X(B.glass.x0), Y(B.glass.y0), X(B.glass.x1 - B.glass.x0), Y(B.glass.y1 - B.glass.y0));
+    if (B.marqueeReflection !== false) {
+      glassGloss(ctx, X(B.glass.x0), Y(B.glass.y0), X(B.glass.x1 - B.glass.x0), Y(B.glass.y1 - B.glass.y0), 0.14);
+    }
+  }
+
+  shape(ctx, pal.shade, u, (c) => rr(c, ...bx('bezel'), bezelRadius));
+  plain(ctx, pal.well, (c) => rr(c, ...bx('screen'), screenRadius));
+  // In the hub the live screen is drawn between the cabinet's rear housing
+  // and this foreground deck/control pass, so the glass cannot paint over them.
+  if (!opts.deferFront) paintChibiFront(ctx, w, h, pal, opts);
 }
 
 // --- candy: the curved Japanese cab ---------------------------------------
@@ -550,7 +624,10 @@ export const CABINET_STYLES = {
 // later costs a word, not a redraw.
 export const CABINET_STYLE = 'chibi';
 
-export function cabinetStyle(name) { return CABINET_STYLES[name] || CABINET_STYLES[CABINET_STYLE]; }
+export function cabinetStyle(name) {
+  if (name && typeof name === 'object' && name.box && typeof name.paint === 'function') return name;
+  return CABINET_STYLES[name] || CABINET_STYLES[CABINET_STYLE];
+}
 
 // ------------------------------------------------- shared cabinet hardware
 // The parts every silhouette needs. Three styles should differ in their
@@ -617,7 +694,7 @@ export function crtScanlines(ctx, x, y, w, h, amt = 0.22, rad = null) {
 function marqueeArt(ctx, pal, gx, gy, gw, gh) {
   const art = GENRE_MOTIFS[pal.motif];
   if (!art) return;
-  const tint = mix(pal.glass, pal.body, 0.5);
+  const tint = marqueeInk(pal);
   const s = gh * 0.82;
   ctx.save();
   ctx.translate(gx + gw / 2 - s / 2, gy + (gh - s) / 2);
@@ -811,12 +888,12 @@ function cabFeet(ctx, w, pal, top, fh, inset = 0.08) {
 
 // Side art: the diagonal banding every real cabinet has down its flanks, which
 // is what stops the lower body reading as a blank slab.
-function sideArt(ctx, pal, x, y, aw, ah) {
+function sideArt(ctx, pal, x, y, aw, ah, body = pal.body) {
   ctx.save();
   ctx.beginPath();
   rr(ctx, x, y, aw, ah, aw * 0.12);
   ctx.clip();
-  plain(ctx, lighten(pal.body, 0.1), (c) => {
+  plain(ctx, lighten(body, 0.1), (c) => {
     for (let i = -2; i < 6; i++) {
       const sx = x + aw * (i * 0.34);
       c.moveTo(sx, y + ah); c.lineTo(sx + aw * 0.17, y + ah);
@@ -854,6 +931,14 @@ export function drawCabinetShell(ctx, x, y, w, h, pal, style, opts) {
   paintInto(ctx, x, y, w, h, cabinetStyle(style).paint, pal, opts);
 }
 
+// The active chibi cabinet's front deck is a separate pass in the hub: the
+// shell and bezel go down first, then the live CRT, then this physical hardware.
+export function drawCabinetFront(ctx, x, y, w, h, pal, style, opts = {}) {
+  if (cabinetStyle(style).paint !== paintChibi) return false;
+  paintInto(ctx, x, y, w, h, paintChibiFront, pal, opts);
+  return true;
+}
+
 // The attract screen: glass fill plus the genre motif. Takes the CABINET box
 // (not the glass box) and places itself, so callers never do the arithmetic.
 // The moving scanline is deliberately NOT in here — it belongs to the caller's
@@ -866,27 +951,24 @@ export function drawCabinetShell(ctx, x, y, w, h, pal, style, opts) {
 export function drawCabinetScreen(ctx, x, y, w, h, pal, style, art) {
   if (!pal.lit || (!pal.motif && !art)) return null;
   const r = cabinetScreenRect(x, y, w, h, style);
-  const rad = r.w * (cabinetStyle(style).box.screenR ?? 0.1);
+  const rad = cabinetScreenRadius(r, style);
   paintInto(ctx, r.x, r.y, r.w, r.h, (c, cw, ch) => {
     // Clipped to the recess and filled edge to edge. The picture used to be
     // inset inside a slightly larger dark well, which left a black rim around
     // every screen — truer to a real bezel, worse to look at. Now the well and
     // the picture are the same rect, so the art runs right to the glass.
     c.save();
-    c.beginPath();
-    rr(c, 0, 0, cw, ch, rad);
-    c.clip();
+    clipCabinetScreen(c, { x: 0, y: 0, w: cw, h: ch }, style);
     plain(c, pal.screen, (p) => p.rect(0, 0, cw, ch));
     if (art) art(c, cw, ch);
     else {
       const motif = GENRE_MOTIFS[pal.motif];
       if (motif) motif(c, cw, ch, pal.ink, pal.screen);
     }
-    // Scanlines go over the art but under the gloss — the reflection is on the
-    // outside of the glass, the phosphor grid is behind it.
+    // Scanlines sit over the art. Reflective cabinets add a separate surface
+    // glint after them; the chibi Food Court face keeps both panes matte.
     crtScanlines(c, 0, 0, cw, ch, 0.22, rad);
-    // The glass reads as a lit surface rather than a hole punched in the bezel.
-    glassGloss(c, 0, 0, cw, ch, 0.12, rad);
+    if (cabinetStyle(style).box.screenReflection !== false) glassGloss(c, 0, 0, cw, ch, 0.12, rad);
     c.restore();
   });
   return r;
@@ -969,27 +1051,40 @@ export function drawScreenSweep(ctx, r, t, seed = 0) {
   // either — matching rates with different offsets would resync on every wrap.
   const rate = 2.4 + (seed % 5) * 0.4;
   const step = Math.floor(t * rate + (seed % 97) * 0.31) % 4;
+  ctx.save();
+  clipCabinetScreen(ctx, r);
   ctx.fillStyle = 'rgba(255,255,255,0.3)';
   ctx.fillRect(r.x, r.y + step * (r.h / 4), r.w, Math.max(0.5, r.h * 0.05));
+  ctx.restore();
 }
 
 // One live frame of a dead screen, painted over the dark well the shell already
 // drew. `amount` normally comes from the intermittent burst clock, but a cabinet
 // can supply a fixed value for continuous static. Not cached and not baked: the
-// bands have to move, and at five rects a frame there is nothing to save.
+// bands have to move, and at ten small marks a frame there is little to save.
 function drawDeadScreenBands(ctx, x, y, w, h, t, seed, amount) {
   // Deterministic noise stepped ~18x a second, so the bands snap between
   // positions like real static instead of sliding smoothly down the glass.
   let n = (Math.floor(t * 18) * 2654435761 + seed * 40503) >>> 0;
   const rnd = () => ((n = (n * 1664525 + 1013904223) >>> 0) / 4294967296);
   ctx.save();
-  ctx.globalAlpha = amount * 0.5;
-  for (let i = 0; i < 5; i++) {
+  ctx.globalAlpha = amount * 0.38;
+  // Short, uneven streaks keep the glass busy without turning into broad
+  // shutters. A couple of nearly full-width traces suggest weak signal lock.
+  for (let i = 0; i < 9; i++) {
+    const bw = w * (i < 2 ? 0.7 + rnd() * 0.3 : 0.16 + rnd() * 0.68);
+    const bx = x + rnd() * Math.max(0, w - bw);
     const by = y + rnd() * h;
-    const bh = Math.max(0.7, rnd() * h * 0.16);
+    const bh = Math.max(0.35, rnd() * h * 0.055);
     ctx.fillStyle = rnd() > 0.72 ? '#c8d0e0' : '#464e60';
-    ctx.fillRect(x, by, w, Math.min(bh, y + h - by));
+    ctx.fillRect(bx, by, bw, Math.min(bh, y + h - by));
   }
+  // A hairline of lost horizontal hold drifts down the tube; it catches the
+  // eye as motion without overpowering the grain.
+  ctx.globalAlpha = amount * 0.22;
+  ctx.fillStyle = '#dce6f6';
+  const syncY = y + ((Math.floor(t * 18 + seed * 0.37) * 1.7) % h);
+  ctx.fillRect(x, syncY, w, Math.max(0.35, h * 0.012));
   // The spark: one bright pop at the height of the burst. This is the bit that
   // reads at a glance from across the concourse — the bands alone are too low
   // contrast to catch the eye at 24px wide.
@@ -1013,15 +1108,18 @@ export function drawDeadScreen(ctx, x, y, w, h, t, seed, style, amount = deadScr
   const amt = amount;
   if (amt <= 0) return 0;
   const r = cabinetScreenRect(x, y, w, h, style);
+  ctx.save();
+  clipCabinetScreen(ctx, r, style);
   drawDeadScreenBands(ctx, r.x, r.y, r.w, r.h, t, seed, amt);
+  ctx.restore();
   // The same tube the live screens have. Only worth drawing during a burst —
   // on the black well of a quiet dead screen there is nothing for the lines to
   // darken, so they would cost a loop and show nothing.
-  crtScanlines(ctx, r.x, r.y, r.w, r.h, amt * 0.3, r.w * (cabinetStyle(style).box.screenR ?? 0.1));
-  // A burst lights the glass from inside and spills past the bezel, which is
-  // what sells the machine as a thing with power still in it rather than as a
-  // picture of noise.
+  crtScanlines(ctx, r.x, r.y, r.w, r.h, amt * 0.3, cabinetScreenRadius(r, style));
+  // A burst brightens the tube itself; keep the glow inside the rounded glass
+  // so it does not wash over the thin bezel.
   ctx.save();
+  clipCabinetScreen(ctx, r, style);
   ctx.globalAlpha = amt * 0.16;
   ctx.fillStyle = '#8fa8d8';
   ctx.fillRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6);

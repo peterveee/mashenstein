@@ -1,0 +1,12 @@
+import esbuild from 'esbuild';
+import { mkdirSync, writeFileSync } from 'node:fs';
+const result = await esbuild.build({ entryPoints: ['tools/pythagoras-tail-bakeoff.js'], bundle: true, format: 'iife', write: false });
+const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pythagoras · extreme tail bake-off</title><style>
+*{box-sizing:border-box}body{margin:0;padding:24px;background:#25212c;color:#f4e9d7;font:15px system-ui}header,main{max-width:1600px;margin:auto}h1{margin:0 0 10px;font-size:28px}header p{max-width:980px;line-height:1.5;color:#d0c5d5}.controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:20px 0}label{display:flex;gap:8px;align-items:center}button,select{font:inherit;background:#e9d4ad;color:#28212c;border:0;border-radius:6px;padding:8px 12px}main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}article{border:1px solid #62566d;border-radius:10px;background:#342d3c;overflow:hidden}h2{font-size:21px;margin:16px 18px 8px}article p{color:#d0c5d5;min-height:40px;margin:0 18px 16px;line-height:1.4}canvas{display:block;width:100%;aspect-ratio:16/9}@media(max-width:760px){body{padding:14px}main{grid-template-columns:1fr}}
+</style></head><body><header><h1>Pythagoras · extreme tail bake-off</h1><p>A — Whip Crack is shipped. 0 is the previous swish; B–E remain as alternative studies. Same tail thickness, dark-to-light fur, body and four-paw idle in every card. Default playback uses the game’s 12 frames/second, so you can judge the actual animation cadence. A uses the production tail animation.</p><div class="controls"><button id="play">Pause</button><button id="step">Next frame</button><label>Speed <select id="speed"><option value="1">Normal</option><option value="0.5">Half</option><option value="0.25">Quarter</option></select></label><label>Cadence <select id="cadence"><option value="game">Game · 12 fps</option><option value="smooth">Smooth study</option></select></label><label>Pose <input id="phase" type="range" min="0" max="23" step="1" value="0" aria-label="Idle frame"></label></div></header><main></main><script>${js}</script></body></html>`;
+for (const dir of ['dist', 'work/mockups/pythagoras-tail']) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(`${dir}/pythagoras-tail-bakeoff.html`, html);
+}
+console.log('Pythagoras tail bake-off written to dist/ and work/mockups/pythagoras-tail/');

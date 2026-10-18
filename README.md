@@ -1,6 +1,6 @@
 # MASHENSTEIN: THE UNPLUGGENING
 
-*A game stitched together from parts of other games.*
+*He unplugged the arcade. They're plugging it back in.*
 
 Don K. Eggshell, PhD — a giant egg-shaped ape with a magnificent red mustache,
 tiny science goggles, and a spiky shell — has unplugged the arcade's master

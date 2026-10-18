@@ -167,22 +167,25 @@ const DOGS = ['dogSnarler', 'dogBruiser', 'dogFeral'];
     'dog cycle rates sit in a smooth band — well over the 15fps the 8-frame ring stepped at');
 }
 // THE FELINE PLANTED GALLOP (16 Oct 2026, sprites/felineGait.js): the three running cats
-// got the dogs' contract — sixteen frames, the ring stepped by the road covered, and the
+// got the dogs' contract — the ring stepped by the road covered, and the
 // fallback clock that same rate at the def's speed.
 const FELINES = ['catFury', 'cryptPanther', 'bobcat'];
 {
   const { ANIMAL_STRIDE, animalGaitRate } = await import('../src/sprites/animals.js');
   const { FELINE_FRAMES } = await import('../src/sprites/felineGait.js');
-  assert(FELINES.every((n) => propFrames(n) === FELINE_FRAMES && FELINE_FRAMES === 16),
-    'every running cat gallops over the planted gallop\'s sixteen frames');
+  const { BOBCAT_FRAMES } = await import('../src/sprites/bobcat.js');
+  const { PANTHER_FRAMES } = await import('../src/sprites/crypt-animals.js');
+  assert(FELINES.every((n) => propFrames(n) === (n === 'bobcat' ? BOBCAT_FRAMES : n === 'cryptPanther' ? PANTHER_FRAMES : FELINE_FRAMES))
+    && BOBCAT_FRAMES === 32 && PANTHER_FRAMES === 32 && FELINE_FRAMES === 16,
+    'Dust Runner and Violet Vengeance use 32 poses; Fury retains sixteen');
   assert(FELINES.every((n) => ANIMAL_STRIDE[n] > 0
-    && Math.abs(propFps(n) * ANIMAL_STRIDE[n] / FELINE_FRAMES - Math.abs(OBSTACLES[n].vx)) < 0.01),
+    && Math.abs(propFps(n) * ANIMAL_STRIDE[n] / propFrames(n) - Math.abs(OBSTACLES[n].vx)) < 0.01),
     'each cat\'s cycle rate carries its planted paw back at exactly its own speed — no skating');
   assert(FELINES.every((n) => Math.abs(animalGaitRate({ type: n, def: OBSTACLES[n], vx: OBSTACLES[n].vx })
     - Math.abs(OBSTACLES[n].vx) / ANIMAL_STRIDE[n]) < 1e-9),
     'a running cat\'s ring is stepped by the road it covers (animalGaitRate)');
-  assert(FELINES.every((n) => propFps(n) > 20 && propFps(n) < 60),
-    'cat cycle rates sit in a smooth band');
+  assert(FELINES.every((n) => propFps(n) / propFrames(n) > .5 && propFps(n) / propFrames(n) < 5),
+    'cat stride rates stay within their movement band regardless of pose count');
 }
 assert(ANIMALS.every((n) => propDetailScale(n) === 1.5),
   'the running animals rasterize at 1.5 — A/B\'d against 2 at the sharpest any player sees them (16 Oct 2026)');

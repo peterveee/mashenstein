@@ -6,7 +6,7 @@ export const CAT_SWIPE_ACTIVE_FROM = 0.2;
 export const CAT_SWIPE_ACTIVE_TO = 0.48;
 export const CAT_HIT_POSE_T = 0.14;
 export const CAT_HIT_SLASH_T = 4 / 60;
-export const CAT_HIT_KNOCKBACK_FRACTION = 0.12;
+export const CAT_HIT_KNOCKBACK_FRACTION = 0.04;
 
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
 const smoothstep = (q) => q * q * (3 - 2 * q);

@@ -194,6 +194,10 @@ let presentationGroundAnchorRatio = 0.80;
 const presentationListeners = new Set();
 const presentationRefreshListeners = new Set();
 let viewportOrientation = null;
+// Phones use a deliberate 2x ceiling in portrait. Keep the last selected
+// density for each orientation so that ceiling does not become the starting
+// quality when the player turns back to a wider frame.
+let orientationDensities = { portrait: null, landscape: null };
 
 // A refresh is a presentation concern. It may pause the game loop while the
 // expensive surface rebuild happens, but it must not decide whether audio is
@@ -251,6 +255,7 @@ function setRefreshCover(visible) {
 
 function startPresentationRefresh() {
   if (!presentationRefresh.active) {
+    rememberOrientationDensity();
     presentationRefresh.active = true;
     presentationRefresh.phase = 'settling';
     presentationRefresh.generation++;
@@ -305,6 +310,7 @@ function finishPresentationRefresh() {
   presentationRefresh.quietUntil = 0;
   qualitySuppressedUntil = resizeNow() + 500;
   resetAdaptiveSamples();
+  rememberOrientationDensity();
   emitPresentationRefresh({ phase: 'ready', active: false });
 }
 
@@ -678,6 +684,13 @@ export function rendererDiagnostics() {
   };
 }
 
+function rememberOrientationDensity(orientation = viewportOrientation) {
+  if (!phonePlatform || coverFitActive
+    || (orientation !== 'portrait' && orientation !== 'landscape') || rung < 0) return;
+  const value = ladder[rung];
+  if (Number.isFinite(value) && value > 0) orientationDensities[orientation] = value;
+}
+
 function selectBackend(name) {
   backend = name;
   if (typeof window !== 'undefined') window.__mash_renderer = name;
@@ -864,6 +877,7 @@ export function initRenderer(platform = {}, persistence = {}) {
   coverRestoreDensity = 0;
   devPortraitFill = false;
   viewportOrientation = null;
+  orientationDensities = { portrait: null, landscape: null };
   // The density seed limits initial high-DPI fill-rate; measured frame timing
   // decides where every device ultimately settles. phonePlatform picks the
   // lowest seed and caps the touch-chrome dpr; desktopPlatform skips the seed
@@ -1021,6 +1035,7 @@ export function initRenderer(platform = {}, persistence = {}) {
     }
     orientationPending = null;
     orientationSig = sig;
+    rememberOrientationDensity();
     resize({ notify: false });
     // The insets we just adopted are part of the published presentation now.
     // Without this the next viewport event would compare against the pre-flip
@@ -1194,9 +1209,25 @@ function resize(options = {}) {
   // (`window.screen` in full: this module's own `screen` export shadows it.)
   const display = window.screen
     ? Math.max(Number(window.screen.width) || 0, Number(window.screen.height) || 0) : 0;
+  // Same quirk, rotated: in landscape the bar-sized deficit lands on height
+  // again (iOS's innerHeight math is not orientation-aware), but the display's
+  // short side — screen never rotates — is now the true landscape height.
+  // Measured 18 Oct 2026 on Peter's 17 Pro: still exactly 62pt, the same
+  // number as the portrait case, just landed on the bottom instead of the
+  // top. The inset that bar occupies moves off `safe.top` onto whichever side
+  // the dynamic island ends up on depending on rotation direction (sometimes
+  // reading 0 on the side it didn't land on), so bounding by an inset is not
+  // reliable here — a fixed ceiling comfortably above the measured deficit
+  // and comfortably below any real browser toolbar (100pt+) is safer.
+  const STATUS_BAR_DEFICIT_MAX = 70;
+  const displayShort = window.screen
+    ? Math.min(Number(window.screen.width) || 0, Number(window.screen.height) || 0) : 0;
   if (navigator.standalone === true && winH > winW && display > 0) {
     const deficit = display - winH;
     if (deficit > 0 && deficit <= safe.top + 2) winH = display;
+  } else if (navigator.standalone === true && winW > winH && displayShort > 0) {
+    const deficit = displayShort - winH;
+    if (deficit > 0 && deficit <= STATUS_BAR_DEFICIT_MAX) winH = displayShort;
   }
   const previousOrientation = viewportOrientation;
   const orientation = winH > winW ? 'portrait' : 'landscape';
@@ -1317,6 +1348,14 @@ function resize(options = {}) {
     // rather than letting the visualiser's optimism promote every other screen.
     rung = nearestIndex(ladder, coverRestoreDensity);
     coverRestoreDensity = 0;
+  } else if (phonePlatform && previousOrientation && previousOrientation !== orientation) {
+    // Portrait's 2x cap is a cost-control choice for that tall frame, not a
+    // performance verdict on landscape. Restore the density last selected in
+    // the destination orientation; when the phone boots upright first, seed
+    // the newly seen landscape orientation with the normal phone policy.
+    const remembered = orientationDensities[orientation];
+    rung = Number.isFinite(remembered) && remembered > 0
+      ? nearestIndex(ladder, remembered) : seedRung();
   } else {
     const cur = pinnedDensity != null ? pinnedDensity : prevLadder[Math.min(rung, prevLadder.length - 1)];
     rung = nearestIndex(ladder, cur);
@@ -1414,6 +1453,7 @@ function resize(options = {}) {
       density: renderPx,
     });
   }
+  if (!presentationRefresh.active) rememberOrientationDensity();
 }
 
 function resetAdaptiveSamples() {
@@ -1577,15 +1617,27 @@ function resizeChrome(winW, winH, ox, oy, dpr, portraitSurface = null) {
   chrome.vh = winH;
   chrome.mode = ox >= CHROME_MIN_MARGIN ? 'side' : oy >= CHROME_MIN_MARGIN ? 'topbottom' : 'none';
   const safe = safeInsets();
+  const portraitViewport = winH > winW;
+  const surface = portraitSurface || { width: winW, height: winH, x: 0, y: 0 };
+  const portraitLayout = () => portraitTouchLayout({
+    viewportWidth: surface.width, viewportHeight: surface.height,
+    safeInsets: safe, revision: getActiveFrame().revision, includeRewind: true,
+  });
+  const portraitHubButtons = () => {
+    const controls = portraitLayout().controls;
+    return [
+      ['hubLeft', 'left', controls.jump],
+      ['hubRight', 'right', controls.slide],
+      ['hubPause', 'back', controls.pause],
+    ].map(([id, action, b]) => ({
+      id, action, x: surface.x + b.cx, y: surface.y + b.cy, r: b.r,
+    }));
+  };
   if (getActiveFrame().mode === PHONE_PORTRAIT) {
     // Portrait controls live in viewport CSS pixels and keep their geometry
     // independent of the camera/world zoom. Broad lower zones are explicitly
     // marked as gesture surfaces so Input can run tap/hold/swipe arbitration.
-    const surface = portraitSurface || { width: winW, height: winH, x: 0, y: 0 };
-    const layout = portraitTouchLayout({
-      viewportWidth: surface.width, viewportHeight: surface.height,
-      safeInsets: safe, revision: getActiveFrame().revision, includeRewind: true,
-    });
+    const layout = portraitLayout();
     const controls = (hasPower) => {
       const discs = Object.entries(layout.controls)
         .filter(([id]) => id !== 'rewind' && (hasPower || id !== 'use'))
@@ -1601,33 +1653,29 @@ function resizeChrome(winW, winH, ox, oy, dpr, portraitSurface = null) {
       }));
       return [...discs, ...zones];
     };
-    // The hub has no jump/slide vocabulary, but it still needs two explicit
-    // walk handles on a full-height portrait surface. Reuse the portrait
-    // lower-corner control geometry so the arrows clear the same safe area and
-    // bottom gutter as the gameplay discs; the hub's painter swaps the ids and
-    // glyphs while Input receives the ordinary left/right actions.
-    const hub = ['jump', 'slide'].map((id) => {
-      const b = layout.controls[id];
-      return {
-        id: id === 'jump' ? 'hubLeft' : 'hubRight',
-        action: id === 'jump' ? 'left' : 'right',
-        x: surface.x + b.cx, y: surface.y + b.cy, r: b.r,
-      };
-    });
-    const hubPause = layout.controls.pause;
-    if (hubPause) hub.unshift({ id: 'hubPause', action: 'back', x: surface.x + hubPause.cx, y: surface.y + hubPause.cy, r: hubPause.r });
+    // Hub walk buttons use the same corner positions as gameplay, with their
+    // own left/right actions and glyphs. The viewport decides the layout during
+    // a rotation, even if the presentation frame has not settled yet.
+    const hubButtons = portraitViewport ? portraitHubButtons() : layoutTouchChrome({
+      vw: winW, vh: winH, ox, oy, cssW: screen.cssW, cssH: screen.cssH,
+      scale: screen.scale, safe,
+    }).hub;
     Object.assign(chrome, {
       run: controls(true), runNoPower: controls(false),
-      hub, split: surface.x + surface.width / 2, scale: screen.scale,
+      hub: hubButtons, split: surface.x + surface.width / 2, scale: screen.scale,
       landscapeSide: null,
     });
   } else {
     // Landscape and all ordinary screens retain the shipped shared layout.
     const orientation = viewportOrientationInfo();
-    Object.assign(chrome, layoutTouchChrome({
+    const layout = layoutTouchChrome({
       vw: winW, vh: winH, ox, oy, cssW: screen.cssW, cssH: screen.cssH, scale: screen.scale, safe,
       orientationAngle: orientation.angle, orientationType: orientation.type,
-    }));
+    });
+    // The Food Court and Trophy Room can remain open while the phone rotates.
+    // Their navigation must follow the physical viewport even during the brief
+    // interval before the portrait presentation frame catches up.
+    Object.assign(chrome, layout, { hub: portraitViewport ? portraitHubButtons() : layout.hub });
   }
   chrome.gen++;
   // The backing store was just reassigned (blank): force the next commit to

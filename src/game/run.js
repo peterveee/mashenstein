@@ -28,6 +28,7 @@ import {
   drawKeyLegend, keyLegendWidth, drawPellet, TEXT_INK_H,
 } from '../engine/sprites.js';
 import { STRIKERS, stepGait, animalGaitRate } from '../sprites/animals.js';
+import { usualSuspectIdForObstacle } from './usualSuspects.js';
 // The swiping cats' paws, relative to the swipe's own pitch, and each one's swipe
 // (engine/audio.js SWIPE_SHAPES; CAT_SWIPE names a cat's own, else CAT_SWIPE_DEFAULT).
 // Seconds after a cat's strike clock starts that its swipe sound is fired.
@@ -6218,6 +6219,14 @@ export class RunState {
   }
 
   // ------------------------------------------------------------------ update
+  // The state machine normally holds the outgoing screen while a shutter
+  // closes. A finished run opts into this presentation-only hook so the hero's
+  // finish celebration keeps moving until the result screen covers it.
+  updateTransition(dt) {
+    if (!this.finished || this.paused) return;
+    this.markerT = (this.markerT || 0) + dt;
+  }
+
   update(dt) {
     // The handover's bar line has been SCHEDULED (MusicDirector._fire cleared its
     // pending), which is at least a lookahead before anyone hears it — and the ramp's
@@ -6231,7 +6240,11 @@ export class RunState {
     // or every background froze just before the results (Peter, 13 Oct — most
     // visible over level 2's arriving Martian fleet).
     if (this.finished) {
-      if (!this.paused) { this.prevBackgroundT = this.backgroundT; this.backgroundT += dt; }
+      if (!this.paused) {
+        this.prevBackgroundT = this.backgroundT;
+        this.backgroundT += dt;
+        this.markerT = (this.markerT || 0) + dt;
+      }
       Input.endFrame(); return;
     }
     this.captureRenderInterpolation();
@@ -7165,7 +7178,7 @@ export class RunState {
     // outranks the bonus; the next event can replace it without building a
     // stale queue of coin-by-coin notices.
     if (bonusComplete) {
-      this.showPortraitObjectiveNotice('BONUS', 'COMPLETE', true);
+      this.showPortraitObjectiveNotice('BONUS', '✓', true);
     } else if (missionComplete) {
       this.showPortraitObjectiveNotice('GOAL', 'COMPLETE', true);
     } else if (bonusAdvanced) {
@@ -8638,6 +8651,16 @@ export class RunState {
     if (this.bonus.type === 'targets' && this.bonus.targetType === ob.type) {
       this.bonus.count++;
       this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
+      if (this.bonus.count === this.bonus.n) this.spawnMissionPayoffPickups();
+    }
+  }
+
+  spawnMissionPayoffPickups() {
+    const po = this.bonus.payoff;
+    if (!po?.pickups?.length || !Number.isFinite(this.totalDist)) return;
+    const x = this.finishWorldX() + po.dx;
+    for (const item of po.pickups) {
+      this.pickups.push(makePickup(item.type, x + item.dx, item.alt));
     }
   }
 
@@ -10000,9 +10023,24 @@ export class RunState {
     // change every stage in the game to fix one that lays its hazards
     // differently. Everything else about an obstacle — beat sync, a falling
     // icicle's telegraph, collision — is left alone either way.
-    const wake = this.viewRightX() + WAKE_MARGIN;
+    const sightRight = this.viewRightX();
+    const wake = sightRight + WAKE_MARGIN;
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
+      // A suspect is logged when its collision box enters the visible run view,
+      // not when a route or spawner lays it far ahead. This permanent discovery
+      // is outside rewind snapshots and is written only on first sight.
+      const suspectId = usualSuspectIdForObstacle(ob, this.cabinet?.id);
+      if (suspectId && ob.x <= sightRight && ob.x + ob.w >= this.camX) {
+        const hub = this.save?.slot?.hub;
+        if (hub) {
+          hub.usualSuspects ||= {};
+          if (!hub.usualSuspects[suspectId]) {
+            hub.usualSuspects[suspectId] = true;
+            this.save.persist();
+          }
+        }
+      }
       // The snap runs on its own clock, not the prop ring's — see the frame
       // choice in draw.js. It keeps counting past TRAP_SNAP_T harmlessly; the
       // draw clamps to the last frame and holds it.
@@ -15840,7 +15878,7 @@ export class RunState {
       // Quiet: the 'win' jingle above is already this plug's sound. The floatie
       // carries the joke, the toast carries the fact that you banked something.
       this.goalToast('BONUS: THE GOLDEN APPLIANCE', true);
-      this.showPortraitObjectiveNotice('BONUS', 'COMPLETE', true);
+      this.showPortraitObjectiveNotice('BONUS', '✓', true);
     } else if (p.def.mashLetter) {
       this.takeMashLetter(p);
     } else if (p.def.cord) {
@@ -18754,9 +18792,9 @@ export class RunState {
     if (this.challenge && !this.overtime && this.stage) {
       const c = this.challenge;
       const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
-      const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
+      const tail = c.failed ? '×' : done ? '✓' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
       drawBlock('BONUS', `${bonusSentence(c)}${tail ? ` · ${tail}` : ''}`,
-        c.failed ? '#8a8a98' : done ? '#74c947' : '#b8c7d9',
+        c.failed ? '#e04848' : done ? '#74c947' : '#b8c7d9',
         compact ? 1.95 : PORTRAIT_PAUSE_BONUS_S, compact ? 2 : 3);
     }
     y += groupGap;
@@ -18879,9 +18917,9 @@ export class RunState {
     if (this.challenge && !this.overtime && this.stage) {
       const c = this.challenge;
       const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
-      const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
+      const tail = c.failed ? '×' : done ? '✓' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
       drawTextCentered(ctx, `BONUS: ${bonusSentence(c)}${tail ? ` ${tail}` : ''}`, W / 2, 92,
-        c.failed ? '#6a6a78' : done ? '#74c947' : '#8a8a98');
+        c.failed ? '#e04848' : done ? '#74c947' : '#8a8a98');
     }
     // Plug standing lives here rather than in the HUD: it is a "how am I doing"
     // question, which is the question you paused to ask, and it does not belong

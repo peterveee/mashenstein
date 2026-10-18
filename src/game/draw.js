@@ -1105,7 +1105,11 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
       const a = Math.exp(-(((hover - SHEEN_AT) / SHEEN_LOBE) ** 2));
       if (a > 0.03) art = applianceSheenSprite(sw, shT, frame, { pos: hover, a });
     }
-    ctx.drawImage(art || (propName ? propSprite(propName, sw, shT, frame) : (natural ? spr : src)), ox, oy, w0, h0);
+    const usedPreviewRenderer = !art && propName && typeof renderOptions.propPreviewRenderer === 'function'
+      && renderOptions.propPreviewRenderer(ctx, propName, ox, oy, w0, h0, frame, { w: sw, h: shT });
+    if (!usedPreviewRenderer) {
+      ctx.drawImage(art || (propName ? propSprite(propName, sw, shT, frame) : (natural ? spr : src)), ox, oy, w0, h0);
+    }
     ctx.imageSmoothingEnabled = prevSmooth;
   };
   // Do not paint a landing mark for airborne hazards. It is only decoration,

@@ -164,7 +164,9 @@ export function updateState(dt) {
   }
   // Once a destination is queued, freeze the outgoing screen. This prevents
   // a held confirm/pointer press from scheduling another state while the
-  // shutter is closing. The incoming state updates during its reveal.
+  // shutter is closing. The incoming state updates during its reveal. States
+  // may opt into a presentation-only clock here for an ending that should keep
+  // moving beneath the shutter; this hook must not consume gameplay input.
   //
   // The finally is a backstop, not decoration. Every state ends its own update
   // with Input.endFrame(), so a throw partway through one skips it — and an
@@ -173,7 +175,9 @@ export function updateState(dt) {
   // into a permanently unresponsive screen instead of a single dropped frame
   // (it did exactly that to the food court once already). endFrame just clears
   // two Sets, so calling it twice in a normal frame costs nothing.
-  if (!pending && current && current.update) {
+  if (pending && current && current.updateTransition) {
+    current.updateTransition(dt);
+  } else if (!pending && current && current.update) {
     try {
       current.update(dt);
     } finally {

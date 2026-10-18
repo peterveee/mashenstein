@@ -55,6 +55,8 @@ const SHAPES = {
   pewA: { pew: 'A' }, pewB: { pew: 'B' }, pewC: { pew: 'C' }, pewD: { pew: 'D' }, pewE: { pew: 'E' },
   // The live wire's zap candidates (audio.js zap()).
   zapA: { zap: 'A' }, zapB: { zap: 'B' }, zapC: { zap: 'C' }, zapD: { zap: 'D' }, zapE: { zap: 'E' },
+  // The banana slip's own cue (audio.js `case 'bananaHop'`), 18 Oct 2026 bake-off.
+  hopA: { hop: 'A' }, hopB: { hop: 'B' }, hopC: { hop: 'C' }, hopD: { hop: 'D' },
 
   long:    { stretch: 1.8 },
   longer:  { stretch: 2.6 },

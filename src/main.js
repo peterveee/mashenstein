@@ -52,10 +52,10 @@ import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { CABINET_BY_ID } from './data/cabinets.js';
 import { tngr2WorkerAvailable } from './engine/tngr2/tables.js';
 import { warmPaperTexture } from './engine/paper-material.js';
-import { gameAlternate, GAME_ALTERNATES } from './data/game-alternates.js';
 import { STAGES, STAGE_BY_ID } from './data/stages.js';
+import { loadGameAlternatesModule, gameAlternatesIfLoaded } from './data/game-alternates-loader.js';
 import { HERO_BY_ID } from './data/heroes.js';
-import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, SettingsState, AboutState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
+import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, SettingsState, AboutState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX, loadBangerModule } from './game/menus.js';
 import { IntroState } from './game/intro.js';
 import { EXIT_CUE } from './game/hub/cabinet-dive.js';
 import { resultsOnTheBeat, installSoundtrack } from './game/results-chip.js';
@@ -114,6 +114,7 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 //   ?goto=stage&cab=plumber                   — stage select for that cabinet
 //   ?goto=hub&hero=lorenzo                     — start hub as a specific hero
 //   ?goto=trophy&hero=lorenzo                  — open the trophy room
+//   ?goto=trophy&allSuspects                   — preview every suspect portrait without saving
 //   ?goto=difficulty                           — open difficulty select
 //   ?goto=soundtest&audition                   — audition every megamix move
 //
@@ -121,6 +122,14 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 //   title  tutorial  hub  trophy  difficulty  howto  fieldguide  settings  about  calibrate  savefile  cast
 //   attract  intro  finale  soundtest  stage  gravity  boss  overtime
 // (?goto=thelab is not one of these: it works in published builds too — see boot().)
+//
+// Every song's alternate takes (8-bit versions, remixes, scrapped transitions)
+// live in data/game-alternates.js — generated, ~14MB, and read only by this
+// dev tooling (the ?alt= param above, and the GAME ALTERNATES menu in
+// src/dev/menus.js). loadGameAlternatesModule() fetches its own bundle
+// (build.js's gameAlternates entry) with a <script> tag only the moment
+// either is actually used — see data/game-alternates-loader.js, shared with
+// dev/menus.js so neither has to import the other to reach it.
 function routeDevUrl(goto, p) {
   // So Flow.toTitle() is skipped. The last line of boot() guards on this flag.
   window.__mash_routed = true;
@@ -172,10 +181,15 @@ function routeDevUrl(goto, p) {
   };
   const alternateFrom = (params, parentId) => {
     const id = params.get('alt');
-    const song = gameAlternate(id, parentId);
-    if (id && !song) return false;
-    Flow.setGameAlternate(song?.id || null);
-    return true;
+    // The overwhelmingly common case — no ?alt= at all — needs none of this:
+    // resolve synchronously and skip fetching gameAlternates.js entirely.
+    if (!id) { Flow.setGameAlternate(null); return Promise.resolve(true); }
+    return loadGameAlternatesModule().then(({ gameAlternate }) => {
+      const song = gameAlternate(id, parentId);
+      if (!song) return false;
+      Flow.setGameAlternate(song.id);
+      return true;
+    });
   };
 
   // Some targets need a valid save slot. Seed one if none exists.
@@ -197,14 +211,16 @@ function routeDevUrl(goto, p) {
       setState(new TutorialState({ save, onDone: () => Flow.toTitle() }));
       break;
     case 'hub': {
-      if (!alternateFrom(p, 'hub')) { Flow.toTitle(); break; }
-      heroFrom(p); // validates and calls Flow.setHero if valid
-      Flow.toHub();
+      alternateFrom(p, 'hub').then((ok) => {
+        if (!ok) { Flow.toTitle(); return; }
+        heroFrom(p); // validates and calls Flow.setHero if valid
+        Flow.toHub();
+      });
       break;
     }
     case 'trophy':
       heroFrom(p);
-      setState(new TrophyRoomState({ save, flow: Flow }));
+      setState(new TrophyRoomState({ save, flow: Flow, revealAllSuspects: p.has('allSuspects') }));
       break;
     case 'difficulty':
       setState(new DifficultyState({
@@ -267,7 +283,7 @@ function routeDevUrl(goto, p) {
     // instead of one every sixteen bars.
     // ?goto=lab — THE LAB (STAFF ONLY): the player's own songs, and the club.
     case 'lab':
-      setState(new SoundTestState({ lab: true, onDone: () => Flow.toTitle() }));
+      loadBangerModule().then(() => setState(new SoundTestState({ lab: true, onDone: () => Flow.toTitle() })));
       break;
     case 'soundtest': {
       const audition = p.has('audition');
@@ -312,18 +328,20 @@ function routeDevUrl(goto, p) {
       if (!cabId) { Flow.toTitle(); break; }
       const cab = CABINET_BY_ID[cabId];
       if (!cab) { Flow.toTitle(); break; }
-      if (!alternateFrom(p, cabId)) { Flow.toTitle(); break; }
-      if (stageId) {
-        const stage = STAGE_BY_ID[stageId];
-        if (stage && stage.cabinet === cabId) {
-          Flow.launchStage(cab, stage, [], seedFrom(p), heroFrom(p), true, invulnFrom(p), autoExitFrom(p),
-            timeFrom(p), startAtFrom(p, stage), p.has('finish'));
+      alternateFrom(p, cabId).then((ok) => {
+        if (!ok) { Flow.toTitle(); return; }
+        if (stageId) {
+          const stage = STAGE_BY_ID[stageId];
+          if (stage && stage.cabinet === cabId) {
+            Flow.launchStage(cab, stage, [], seedFrom(p), heroFrom(p), true, invulnFrom(p), autoExitFrom(p),
+              timeFrom(p), startAtFrom(p, stage), p.has('finish'));
+          } else {
+            Flow.toTitle();
+          }
         } else {
-          Flow.toTitle();
+          Flow.openCabinet(cab);
         }
-      } else {
-        Flow.openCabinet(cab);
-      }
+      });
       break;
     }
     case 'boss': {
@@ -372,7 +390,10 @@ const Flow = {
     setTransitionHero(Flow.heroId());
   },
   setGameAlternate(id) {
-    this.gameAlternate = id ? GAME_ALTERNATES[id] || null : null;
+    // Every caller resolves an id through loadGameAlternatesModule() first (see
+    // alternateFrom above, and the GAME ALTERNATES dev menu), so the module is
+    // already cached here whenever id is non-null.
+    this.gameAlternate = id ? gameAlternatesIfLoaded()?.GAME_ALTERNATES[id] || null : null;
     return this.gameAlternate;
   },
   gameSongFor(parentId) {
@@ -429,7 +450,7 @@ const Flow = {
     onTutorial: () => Flow.toTutorial(true),
     onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toExtras('guide') })),
     onSoundTest: () => setState(new SoundTestState({ onDone: () => Flow.toExtras('soundtest') })),
-    onLab: () => setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') })),
+    onLab: () => loadBangerModule().then(() => setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') }))),
     // A replay, not the real thing: this onDone only walks back to the title.
     // The new-file path above is the one that sets sawIntro and persists.
     onIntro: () => setState(new IntroState({ onDone: () => Flow.toExtras('intro') })),
@@ -508,9 +529,21 @@ const Flow = {
   // The food court's pause: the settings list cut down to audio, assist speed, EXIT TO TITLE, BACK.
   toHubPause() {
     setState(new SettingsState({ save, pause: true,
+      escapeToTitle: true,
       onDone: () => Flow.toHub(false),
       onExitTitle: () => Flow.toTitle(),
       onCalibrate: () => Flow.toCalibrate(() => Flow.toHubPause()) }));
+  },
+
+  toTrophyPause(roomOrResume) {
+    const resume = roomOrResume?.resumeSnapshot
+      ? roomOrResume.resumeSnapshot()
+      : roomOrResume || null;
+    const returnToRoom = () => Flow.openTrophyRoom({ resume });
+    setState(new SettingsState({ save, pause: true,
+      onDone: returnToRoom,
+      onExitTitle: () => Flow.toTitle(),
+      onCalibrate: () => Flow.toCalibrate(() => Flow.toTrophyPause(resume)) }));
   },
 
   toCalibrate(onDone) {
@@ -684,7 +717,7 @@ const Flow = {
   openBench() { setState(new BenchState({ save, flow: Flow })); },
   openShop() { setState(new ShopState({ save, flow: Flow })); },
   openArcade() { setState(new ArcadeState({ save, flow: Flow })); },
-  openTrophyRoom() { setState(new TrophyRoomState({ save, flow: Flow })); },
+  openTrophyRoom(options = {}) { setState(new TrophyRoomState({ save, flow: Flow, ...options })); },
 
   toTutorial(fromExtras = false) {
     setState(new TutorialState({ save, onDone: () => (fromExtras ? Flow.toExtras('tutorial') : Flow.toTitle()) }));
@@ -1078,7 +1111,7 @@ function boot() {
   if (!returnToAbout && !window.__mash_routed && typeof window !== 'undefined'
       && new URLSearchParams(window.location.search).get('goto') === 'thelab') {
     window.__mash_routed = true;
-    setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') }));
+    loadBangerModule().then(() => setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') })));
   }
 
   // Explicit user-requested benchmark: a fresh page isolates level resources.

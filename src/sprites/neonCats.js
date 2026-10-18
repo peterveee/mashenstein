@@ -18,9 +18,14 @@
 // raster cache wants: CAT_IDLE_FRAMES of idle at CAT_FPS (every idle motion runs whole
 // cycles in that ring, so it loops), then CAT_STRIKE_FRAMES over SWIPE_T.
 
+import { inkOutlined } from './outline.js';
+
 const TAU = Math.PI * 2;
 const lerp = (a, b, k) => a + (b - a) * k;
 const smooth = (e0, e1, v) => { const k = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return k * k * (3 - 2 * k); };
+// Pythagoras and Maneki use a 1.1-unit silhouette stroke (LW * 2); half
+// weight brings that outline to the standard obstacle's 0.55 before its dial.
+const standardObstacleOutline = (paint) => inkOutlined(paint, 0.5);
 
 // The rattlesnake's numbers (sprites/animals.js SNAKE_STRIKE_T / SNAKE_STRIKE_LEAD),
 // restated rather than imported because animals.js imports this module.
@@ -93,6 +98,26 @@ function solid(c, parts, fill, { ink = INK, lw = LW, edge = null, inner = null }
 function limb(c, path, width, fill, ink = INK, lw = LW) {
   if (ink) strokePath(c, ink, width + lw * 2, path);
   strokePath(c, fill, width, path);
+}
+
+// Filled fur geometry keeps its width when the shared ink dial changes.
+function ribbon(points, width) {
+  const sides = [-1, 1].map((side) => points.map(([x, y], i) => {
+    const a = points[Math.max(0, i - 1)], b = points[Math.min(points.length - 1, i + 1)];
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+    return [x - dy / len * width * 0.5 * side, y + dx / len * width * 0.5 * side];
+  }));
+  return polyP([...sides[0], ...sides[1].reverse()].flat());
+}
+
+function softFur(c, x, y, rx, ry, color, opacity = 0.8, angle = 0) {
+  const rgb = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)).join(',');
+  c.save(); c.translate(x, y); c.rotate(angle); c.scale(rx, ry);
+  const wash = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+  for (const [stop, alpha] of [[0, 1], [0.4, 0.72], [0.8, 0.15], [1, 0]]) {
+    wash.addColorStop(stop, `rgba(${rgb},${opacity * alpha})`);
+  }
+  fillPath(c, wash, circle(0, 0, 1)); c.restore();
 }
 
 const hotCache = new Map();
@@ -227,7 +252,7 @@ function whiskers(c, R, col, lw = 0.12, { y = 0.9, len = 3.8, n = 3, tube: asTub
 
 // Head parts: a round skull, a whisker pad forward of it, two ears. `flat` lays the ears
 // back (0..1); `big` scales the lot for the chibi.
-function headParts(R, { r = R.headR, earH = 1, earW = 1, flat = R.angry, muzzle = 1, notch = false } = {}) {
+function headParts(R, { r = R.headR, earH = 1, earW = 1, earRootInset = 0, earSpread = 0, earRound = 0, flat = R.angry, muzzle = 1, notch = false } = {}) {
   const { hx, hy } = R;
   const k = r / 3.3;
   const tilt = flat * 2.2 * k;
@@ -235,19 +260,28 @@ function headParts(R, { r = R.headR, earH = 1, earW = 1, flat = R.angry, muzzle 
     const tx = tip[0] + tilt + tw * 1.3, ty = tip[1] + tilt * 0.9 + tw * 0.6;
     return (p) => {
       p.moveTo(b0[0], b0[1]);
-      p.lineTo(tx, ty);
+      if (earRound && !notch) {
+        const before = Math.min(0.25, earRound / Math.hypot(tx - b0[0], ty - b0[1]));
+        const after = Math.min(0.25, earRound / Math.hypot(tx - b1[0], ty - b1[1]));
+        p.lineTo(lerp(tx, b0[0], before), lerp(ty, b0[1], before));
+        p.quadraticCurveTo(tx, ty, lerp(tx, b1[0], after), lerp(ty, b1[1], after));
+      } else p.lineTo(tx, ty);
       if (notch) { p.lineTo(lerp(tx, b1[0], 0.35) + 0.5, lerp(ty, b1[1], 0.35)); p.lineTo(lerp(tx, b1[0], 0.5), lerp(ty, b1[1], 0.5)); }
       p.lineTo(b1[0], b1[1]);
       p.closePath();
     };
   };
-  const fb0 = [hx - 2.9 * k * earW, hy - 1.3 * k], fb1 = [hx - 0.5 * k, hy - 3.0 * k];
-  const ftip = [hx - 2.5 * k * earW, hy - (3.0 + 2.3 * earH) * k];
+  const root = (x, y) => {
+    const inset = 1 - earRootInset / r;
+    return [hx + x * inset, hy + y * inset];
+  };
+  const fb0 = root(-2.9 * k * earW, -1.3 * k), fb1 = root(-0.5 * k, -3.0 * k);
+  const ftip = [hx - 2.5 * k * earW - earSpread * k, hy - (3.0 + 2.3 * earH) * k];
   const front = ear(fb0, fb1, ftip, R.twitch);
   // The front ear as drawn (its tip after the tilt and twitch), for an inner ear that
   // follows it.
   const frontTri = [fb0, fb1, [ftip[0] + tilt + R.twitch * 1.3, ftip[1] + tilt * 0.9 + R.twitch * 0.6]];
-  const back = ear([hx + 0.2 * k, hy - 3.2 * k], [hx + 2.6 * k * earW, hy - 1.9 * k], [hx + 1.7 * k * earW, hy - (3.2 + 2.3 * earH) * k], 0);
+  const back = ear(root(0.2 * k, -3.2 * k), root(2.6 * k * earW, -1.9 * k), [hx + 1.7 * k * earW + earSpread * k, hy - (3.2 + 2.3 * earH) * k], 0);
   const parts = [back, front, circle(hx, hy, r)];
   if (muzzle) parts.push(oval(hx - 2.3 * k, hy + 0.95 * k, 1.55 * k * muzzle, 1.2 * k * muzzle));
   return { parts, k, front, back, frontTri };
@@ -532,7 +566,7 @@ function beckonPose(style, t) {
 // on the koban at the chest as on every shop counter, and that is the paw that swipes.
 // The head tips back a little while it smiles ("a slight tilt of the face to sell the
 // smile") and drops forward into the snarl.
-export function maneki(c, w, h, t, u, o = {}) {
+function paintManeki(c, w, h, t, u, o = {}) {
   const P = { ...MANEKI_DESIGNS[MANEKI_DEFAULT], ...(MANEKI_DESIGNS[o.design] || {}) };
   const style = o.beckon || BECKON_DEFAULT;
   const { ang, curl, lift } = beckonPose(style, t);
@@ -801,6 +835,7 @@ export function maneki(c, w, h, t, u, o = {}) {
   }
   claws(c, R, 1.3, WHITE, 0.32, 1.2);
 }
+export const maneki = standardObstacleOutline(paintManeki);
 
 // C — KAWAII (chibi). The street-fashion mascot: a round white cat that is mostly head,
 // pink cheeks, big shining eyes, a red bow behind one ear. On the wind its eyes go to
@@ -888,6 +923,12 @@ const NEON = { body: '#120e26', lit: '#2a2450', eye: '#ff6a80' };
 export function neonCat(c, w, h, t, u, o = {}) {
   const P = o.pal || NEON;
   const TW = o.tw ?? 0.75, GL = o.glow ?? 0.32;
+  if (o.standing) return standingCat(c, w, h, t, u, {
+    neon: true, tw: TW, glow: GL,
+    pal: { coat: P.body, dark: P.body, mask: P.body, ear: P.body,
+      lit: P.lit, sheen: P.lit, bodyLit: P.lit, bodySheen: P.lit,
+      eye: P.eye, nose: P.body, noseLit: P.lit, noseShade: P.body },
+  });
   const R = rig(w, h, t, u, { headLift: 2.0 });   // the snarl clears the swiping arm
   // The swipe marks go down first: the cat swipes through them, not behind them.
   slashes(c, R, redSlash);
@@ -1122,8 +1163,12 @@ export function chonk(c, w, h, t, u) {
 // the face, ears and tail; a round head with a short muzzle; ears wide-set and rounded at
 // the tip; big gold-amber eyes under a low, unimpressed brow. No stripes — the coat's
 // only pattern is its sheen, a lit band down the back and over the skull.
-const PYTH = { coat: '#5a321d', lit: '#8a5532', sheen: '#b07a4e', dark: '#341a0e', mask: '#2a150c',
-  ear: '#3a1c10', eye: '#f2a52a', eyeDk: '#b86a12', nose: '#2a140c' };
+const PYTH = {
+  coat: '#5a321d', lit: '#8a5532', sheen: '#b07a4e', bodyLit: '#754932', bodySheen: '#986d4e',
+  backLit: '#805236',
+  dark: '#342116', tail: '#714a30', mask: '#291b14', ear: '#3a261a', eye: '#e6bb64', eyeDk: '#9b6a2e',
+  nose: '#4d3022', noseLit: '#b68a62', noseShade: '#3b2418',
+};
 // THE SNARL, several ways (Peter, 16 Oct 2026, of Pythagoras: "could we do a bake off
 // with more prominent teeth baring … it is a little subtle right now"). Profile, facing
 // left, the mouth under the muzzle; `g` is how far into the swipe (0..1).
@@ -1222,43 +1267,241 @@ function snarl(c, R, style, g) {
   wrinkles(2);
 }
 
-export function pythagoras(c, w, h, t, u, o = {}) {
-  const P = PYTH;
-  // The snarl bake-off's takes lift the head on the strike so the teeth clear the arm.
-  const R = rig(w, h, t, u, { headR: 3.4, headX: 8.6, headY: 8.4, headLift: (o.snarl || SNARL_DEFAULT) === 'now' ? 0 : 2.0 });
-  // The swipe marks go down first: the cat swipes through them, not behind them.
-  slashes(c, R, whiteSlash);
-  // The tail: up and over in a question mark, as in the picture, darkening to the tip.
-  const [sw, lift] = tailSwing(R, 0, 1.3);
-  const tp = tailPath(R, { tip: [20.2 + sw, 7.6 - TAIL_LIFT - R.angry * 0.8 + lift] });
-  if (o.rim) tube(c, o.rim, 1.6 + R.angry * 0.5 + 1.5, tp, 1, 0.07);
-  limb(c, tp, 1.6 + R.angry * 0.5, P.dark);
-  limb(c, farLeg(R), 1.8, P.dark);
-  // Compact and muscular: a fuller chest and a rounder haunch than the stray.
-  solid(c, torsoParts(R, { arch: 1.2, haunch: [18.0, 4.7, 5.2, 4.8], chest: 0.6 }), P.coat, {
-    edge: o.rim && haloEdge(o.rim),
+// A — Whip Crack, selected 18 Oct 2026.
+export function pythagorasWhipTail(t) {
+  const a = t * TAU;
+  return { sweep: 5.8 * Math.tanh(3.5 * Math.sin(a)), lift: -0.8 * Math.sin(2 * a),
+    flick: 1.3 * Math.sin(3 * a + 0.6), bend: -1.5 * Math.sin(a - 0.6), stretch: 1 + 0.2 * Math.sin(a) ** 2 };
+}
+function paintPythagoras(c, w, h, t, u, o = {}) {
+  standingCat(c, w, h, t, u, { tailAmp: 2.25, tailMotion: pythagorasWhipTail, ...o });
+}
+
+// Shared standing silhouette; each cat retains its own face and finish.
+function standingCat(c, w, h, t, u, o = {}) {
+  const P = o.pal || PYTH;
+  const flick = 0.85 + 0.15 * Math.sin(t * 23) * Math.sin(t * 7);
+  const contour = o.neon
+    ? (cc, all) => tube(cc, RED, o.tw, all, flick, o.glow)
+    : o.rim && haloEdge(o.rim);
+  const drawLimb = (ctx, path, width, fill, inkWidth = LW) => {
+    if (!o.neon) { limb(ctx, path, width, fill, INK, inkWidth); return; }
+    // Outline both sides of the filled limb/tail, using the body's red edge
+    // and white core. A thin tube down its centre disappears beneath the fill.
+    ctx.save(); ctx.globalAlpha *= flick;
+    strokePath(ctx, RED, width + o.tw * 2, path);
+    strokePath(ctx, whiteHot(RED), width + o.tw, path);
+    strokePath(ctx, fill, width, path);
+    ctx.restore();
+  };
+  // Four staggered weight shifts in the two-second ring: each paw gets a turn
+  // while the other three support the cat. The near foreleg also winds and strikes.
+  const stepAt = (now, phase = 0) => {
+    const a = now * TAU * 0.5 + phase;
+    return [Math.sin(a) * 0.26, Math.max(0, Math.cos(a)) ** 4 * 0.55];
+  };
+  const R = rig(w, h, t, u, { headR: 3.4, headX: 8.0, headY: 8.3,
+    headLift: 1.6, shoulderX: 10.0, shoulderY: 11.4,
+    rest: (now) => {
+      const [shift, lift] = stepAt(now);
+      return [8.7 + shift, h - 1.4 - lift];
+    }, wind: [10.4, 7.3], reach: [1.7, 13.6] });
+  const idle = 1 - R.angry;
+  const [rearShift, rearLift] = stepAt(t, Math.PI * 0.5).map((v) => v * idle);
+  const [frontShift, frontLift] = stepAt(t, Math.PI).map((v) => v * idle);
+  const [hindShift, hindLift] = stepAt(t, Math.PI * 1.5).map((v) => v * idle);
+  const rearX = 20.7 + rearShift, rearY = R.g - 1.2 - rearLift;
+  const farFrontX = 11.3 + frontShift, farFrontY = R.g - 1.2 - frontLift;
+  const hindX = 18.7 + hindShift, hindY = R.g - 1.2 - hindLift;
+  const breath = Math.sin(t * TAU * 0.5) * 0.24 * (1 - R.angry);
+  R.shoulder[1] += breath;
+  slashes(c, R, o.neon ? redSlash : whiteSlash);
+  // One full tail beat per second (two whole beats in the idle ring), with a
+  // little extra reach at the peak so the swish stretches instead of pivoting.
+  const tailStudy = o.tailMotion?.(t) || {};
+  const [baseSw, baseLift] = tailSwing({ ...R, t: t * 2 }, 0, o.tailAmp ?? 1.9);
+  const sw = tailStudy.sweep ?? baseSw, lift = tailStudy.lift ?? baseLift;
+  const tipFlick = tailStudy.flick ?? Math.sin(t * TAU * 1.5 + 0.8) * (o.tailAmp ? 0.5 : 0.38);
+  const bend = tailStudy.bend ?? 0;
+  const rootX = 20.4, rootY = 12.2 + breath * 0.4;
+  const stretch = tailStudy.stretch ?? 1 + Math.min(0.14, Math.abs(sw) * 0.055);
+  const tailX = (x) => rootX + (x - rootX) * stretch;
+  const tailY = (y) => rootY + (y - rootY) * stretch;
+  const tailCurves = [
+    [[rootX, rootY], [tailX(24.2), tailY(12.6)], [tailX(24.5 + bend), tailY(8.5)], [tailX(23 + sw * 0.35), tailY(6.2)]],
+    [[tailX(23 + sw * 0.35), tailY(6.2)], [tailX(21.7 + sw * 0.5 - bend), tailY(3.8)],
+      [tailX(22 + sw + tipFlick * 0.5), tailY(3.3 + lift - tipFlick * 0.2)],
+      [tailX(23 + sw + tipFlick), tailY(3 + lift + tipFlick * 0.3)]],
+  ];
+  const tp = (p) => {
+    p.moveTo(rootX, rootY);
+    for (const curve of tailCurves) p.bezierCurveTo(...curve.slice(1).flat());
+  };
+  if (o.rim) tube(c, o.rim, 3.0, tp, 1, 0.07);
+  if (P.tail) {
+    const points = tailCurves.flatMap((curve, segment) => Array.from({ length: 17 }, (_, i) => {
+      const t = i / 16, s = 1 - t;
+      return [0, 1].map((axis) => s ** 3 * curve[0][axis] + 3 * s * s * t * curve[1][axis]
+        + 3 * s * t * t * curve[2][axis] + t ** 3 * curve[3][axis]);
+    }).slice(segment ? 1 : 0));
+    const tip = points[points.length - 1];
+    const fur = c.createLinearGradient(rootX, rootY, ...tip);
+    fur.addColorStop(0, P.dark);
+    fur.addColorStop(0.55, P.tail);
+    fur.addColorStop(1, '#a77950');
+    const tailWidth = 0.85;
+    solid(c, [ribbon(points, tailWidth), circle(...tip, tailWidth / 2)], fur);
+  } else drawLimb(c, tp, 1.8, P.dark);
+  // Every paw uses the same shape, coat fill, highlight, and outline weight.
+  const foot = (x, y, col, lit = null) => {
+    solid(c, [circle(x, y, 1.2)], col, {
+      edge: contour,
+      inner: lit ? (q) => fillPath(q, lit, circle(x - 0.3, y - 0.4, 0.8)) : null,
+    });
+  };
+  // Far limbs first, visible in the gaps beneath the raised belly.
+  // Fur legs are filled shapes like the near foreleg, independent of the tail.
+  if (!o.neon) {
+    solid(c, [(p) => {
+      p.moveTo(19.6, 12.8); p.quadraticCurveTo(21, 16, rearX - 0.75, rearY);
+      p.lineTo(rearX + 0.75, rearY); p.quadraticCurveTo(22.6, 16, 21.2, 12.8); p.closePath();
+    }, (p) => {
+      const x = 11.6 + R.L * 0.5;
+      p.moveTo(x - 0.8, 12); p.quadraticCurveTo(11.2 + frontShift * 0.5, 16.5 - frontLift * 0.5, farFrontX - 0.75, farFrontY);
+      p.lineTo(farFrontX + 0.75, farFrontY); p.quadraticCurveTo(12.8 + frontShift * 0.5, 16.5 - frontLift * 0.5, x + 0.8, 12); p.closePath();
+    }], P.coat);
+  } else {
+    drawLimb(c, (p) => { p.moveTo(20.4, 12.8); p.quadraticCurveTo(21.8, 16.0, rearX, rearY); }, 1.65, P.dark);
+    drawLimb(c, (p) => { p.moveTo(11.6 + R.L * 0.5, 12.0); p.quadraticCurveTo(12.0 + frontShift * 0.5, 16.5 - frontLift * 0.5, farFrontX, farFrontY); }, 1.65, P.dark);
+  }
+  foot(farFrontX, farFrontY, P.coat, P.bodyLit);
+  const haunch = o.neon ? 0 : 0.45;
+  const body = (p) => {
+    p.moveTo(9.4 + R.L, 8.8 + breath);
+    p.bezierCurveTo(13.0, 9.0 - R.wind * 0.4 + breath, 18.8, 8.8 + breath * 0.7, 21.0, 11.2 + breath * 0.4);
+    p.bezierCurveTo(23.0 + haunch * 0.6, 13.0, 21.4 + haunch * 0.4, 15.6, 18.7, 15.5);
+    p.quadraticCurveTo(15.2, 14.4 + breath * 0.4, 13.0 + R.L * 0.3, 15.6 + breath * 0.7);
+    p.quadraticCurveTo(9.0 + R.L, 17.2 + breath * 0.5, 8.8 + R.L, 12.3 + breath);
+    p.closePath();
+  };
+  // Tapered limbs join the torso in a single silhouette. Filling the union
+  // hides the shoulder/hip outlines that made the old capsule legs look stuck on.
+  const [sx, sy] = R.shoulder, [px, py] = R.paw;
+  const dx = px - sx, dy = py - sy, length = Math.hypot(dx, dy) || 1;
+  const nx = dy / length, ny = -dx / length;
+  const mx = (sx + px) / 2 + (1 - R.s) * 0.7, my = (sy + py) / 2;
+  const foreleg = (p) => {
+    p.moveTo(sx + nx * 1.65, sy + ny * 1.65);
+    p.quadraticCurveTo(mx + nx * 1.25, my + ny * 1.25, px + nx * 0.95, py + ny * 0.95);
+    p.quadraticCurveTo(px + dx / length * 0.65, py + dy / length * 0.65, px - nx * 0.95, py - ny * 0.95);
+    p.quadraticCurveTo(mx - nx * 1.25, my - ny * 1.25, sx - nx * 1.65, sy - ny * 1.65);
+    p.closePath();
+  };
+  const thighTop = [17.7 - haunch, 12.4 - haunch];
+  const thighControl = [16.6 - haunch, 15.8];
+  const thighKnee = [18.5 + hindShift * 0.5, 17.3 - (haunch ? 0.8 : 0) - hindLift * 0.5];
+  const thighEndT = haunch ? 0.83 : 1;
+  const thighCurveControl = thighTop.map((v, i) => lerp(v, thighControl[i], thighEndT));
+  const thighCurveEnd = thighTop.map((v, i) => (1 - thighEndT) ** 2 * v
+    + 2 * (1 - thighEndT) * thighEndT * thighControl[i] + thighEndT ** 2 * thighKnee[i]);
+  const shinJoin = [hindX - 0.9, hindY].map((v, i) => lerp(thighKnee[i], v, haunch ? 0.28 : 0));
+  const rearleg = (p) => {
+    p.moveTo(17.7 - haunch, 12.4 - haunch);
+    p.quadraticCurveTo(21.6 + haunch, 12.0 - haunch, 20.3 + hindShift * 0.5, 16.5 - hindLift * 0.5);
+    p.lineTo(hindX + 1.3, hindY); p.lineTo(hindX - 0.9, hindY);
+    p.lineTo(...shinJoin);
+    if (haunch) p.quadraticCurveTo(...thighKnee, ...thighCurveEnd);
+    p.quadraticCurveTo(...thighCurveControl, ...thighTop); p.closePath();
+  };
+  const parts = [body, rearleg,
+    circle(hindX, hindY, 1.2),
+    foreleg, circle(px, py, 1.2)];
+  const haunchEdge = (p) => {
+    // Follow the same underside and rounded shin transition as the silhouette.
+    const t = 0.2 / thighEndT, s = 1 - t;
+    p.moveTo(s * s * thighTop[0] + 2 * s * t * thighCurveControl[0] + t * t * thighCurveEnd[0],
+      s * s * thighTop[1] + 2 * s * t * thighCurveControl[1] + t * t * thighCurveEnd[1]);
+    p.quadraticCurveTo(lerp(thighCurveControl[0], thighCurveEnd[0], t),
+      lerp(thighCurveControl[1], thighCurveEnd[1], t), ...thighCurveEnd);
+    p.quadraticCurveTo(...thighKnee, ...shinJoin);
+  };
+  solid(c, parts, P.coat, {
+    edge: contour,
     inner: (q) => {
-      shadeBand(q, torsoParts(R, { arch: 1.2, haunch: [18.0, 4.7, 5.2, 4.8], chest: 0.6 }), P.dark, P.coat);
-      strokePath(q, P.lit, 1.6, (p) => { p.moveTo(11.8 + R.L, 10.8); p.quadraticCurveTo(16.4, 9.4 - R.wind * 2, 20.4, 14.2); });
-      strokePath(q, P.sheen, 0.45, (p) => { p.moveTo(13.0 + R.L, 9.9); p.quadraticCurveTo(16.4, 8.9 - R.wind * 2, 19.4, 11.6); });
-      fillPath(q, P.lit, oval(17.6, R.g - 6.2, 2.6, 1.6, -0.3));
-      // The chest a shade warmer, catching the light.
-      fillPath(q, P.lit, oval(10.4 + R.L, 13.8, 1.3, 2.6, 0.2));
+      shadeBand(q, parts, P.dark, P.coat, -0.45, -0.4);
+      q.save(); q.translate(0, breath);
+      // The earlier flat chocolate coat and restrained painted highlights.
+      q.save(); q.beginPath(); body(q); q.clip();
+      if (P.backLit) softFur(q, 15.6 + R.L * 0.25, 10.1, 6.6, 3.2, P.backLit, 0.85, 0.14);
+      else strokePath(q, P.bodyLit, 1.4, (p) => {
+        p.moveTo(11.8 + R.L, 10.2); p.quadraticCurveTo(16.4, 9.4, 20.4, 12.0);
+      });
+      if (o.neon) strokePath(q, P.bodySheen, 0.38, (p) => {
+        p.moveTo(13.0 + R.L, 9.9); p.quadraticCurveTo(16.4, 9.4, 19.4, 10.9);
+      });
+      if (!P.backLit) {
+        fillPath(q, P.bodyLit, oval(19.1, 13.1, 1.7, 1.1, -0.3));
+        fillPath(q, P.bodyLit, oval(10.4 + R.L, 13.5, 1.0, 1.8, 0.2));
+      }
+      q.restore();
+      if (P.backLit) {
+        softFur(q, 10.1 + R.L, 13.1, 2.1, 3.0, '#9b653b', 0.78, 0.18);
+        softFur(q, 18.9, 13.1, 2.5, 1.9, '#8a5b3c', 0.65, -0.3);
+      }
+      q.restore();
     },
   });
-  hindLeg(c, R, { haunch: [18.0, 4.7, 5.2, 4.8], fill: P.coat, crease: P.coat, footFill: P.dark, lit: P.lit, lineCol: '#2e170c' });
-  const H = headParts(R, { r: 3.4, earH: 0.9, earW: 1.15, muzzle: 0.9, flat: R.angry * 0.8 });
+  if (haunch) {
+    // A short inset follows the thigh, at the same depth as the foreleg crease.
+    strokePath(c, INK, LW, haunchEdge);
+  }
+  // Draw the moving far paw over the lower rump so its lifted step reads clearly.
+  foot(rearX, rearY, P.coat, P.bodyLit);
+  // Only the inside foreleg crease is needed: the filled silhouette already
+  // inks its outside. Trim the actual quadratic so no loose end projects out.
+  strokePath(c, o.neon ? RED : INK, LW, (p) => {
+    const a = [sx + nx * 1.65, sy + ny * 1.65];
+    const b = [mx + nx * 1.25, my + ny * 1.25];
+    const end = [px + nx * 0.95, py + ny * 0.95];
+    const t = 0.25, s = 1 - t;
+    p.moveTo(s * s * a[0] + 2 * s * t * b[0] + t * t * end[0],
+      s * s * a[1] + 2 * s * t * b[1] + t * t * end[1]);
+    p.quadraticCurveTo(lerp(b[0], end[0], t), lerp(b[1], end[1], t), ...end);
+  });
+  foot(hindX, hindY, P.coat, P.bodyLit);
+  const H = headParts(R, { r: 3.4, earH: o.neon ? 0.9 : 0.98, earW: 1.15, earRootInset: 0.55,
+    earSpread: o.neon ? 0 : 0.7, earRound: o.neon ? 0 : 0.22,
+    muzzle: o.neon ? 0.9 : 0.8, flat: 0.14 + R.angry * 0.66 });
   solid(c, H.parts, P.coat, {
-    edge: o.rim && haloEdge(o.rim),
+    edge: contour,
     inner: (q) => {
       // The mask: the face darker than the coat, the skull lit on top.
-      fillPath(q, P.mask, oval(R.hx - 1.8, R.hy + 0.8, 2.6, 2.2));
-      fillPath(q, P.lit, oval(R.hx + 0.2, R.hy - 2.4, 2.4, 1.3));
-      fillPath(q, P.sheen, oval(R.hx + 0.4, R.hy - 2.7, 1.2, 0.45));
+      if (P.backLit) {
+        softFur(q, R.hx - 1.8, R.hy + 0.8, 2.8, 2.4, P.mask, 0.95);
+        softFur(q, R.hx + 0.2, R.hy - 2.4, 2.6, 1.65, P.lit, 0.8);
+        softFur(q, R.hx + 0.4, R.hy - 2.7, 1.4, 0.65, P.sheen, 0.4);
+      } else {
+        fillPath(q, P.mask, oval(R.hx - 1.8, R.hy + 0.8, 2.6, 2.2));
+        fillPath(q, P.lit, oval(R.hx + 0.2, R.hy - 2.4, 2.4, 1.3));
+        fillPath(q, P.sheen, oval(R.hx + 0.4, R.hy - 2.7, 1.2, 0.45));
+      }
       fillPath(q, P.ear, (p) => p.rect(R.hx - 6, R.hy - 8, 12, 4.4));
     },
   });
-  fillPath(c, '#6a3424', polyP([R.hx - 2.5, R.hy - 1.8, R.hx - 1.2, R.hy - 2.8, R.hx - 2.1 + R.angry * 2.0, R.hy - 4.3 + R.angry * 1.9]));
+  if (!o.neon) {
+    const cx = H.frontTri.reduce((sum, p) => sum + p[0], 0) / 3;
+    const cy = H.frontTri.reduce((sum, p) => sum + p[1], 0) / 3;
+    fillPath(c, '#6a3424', polyP(H.frontTri.flatMap(([x, y]) => [cx + (x - cx) * 0.55, cy + (y - cy) * 0.55])));
+  }
+  if (o.neon) {
+    const eo = R.blink ? 0.08 : 0.45 * (1 - R.angry * 0.5);
+    const ex = R.hx - 1.5, ey = R.hy - 0.5;
+    fillPath(c, P.eye, oval(ex, ey, 0.75, eo, -0.15));
+    fillPath(c, WHITE, oval(ex, ey, 0.3, Math.max(0.05, eo * 0.5), -0.15));
+    strokePath(c, P.eye, 0.26, (p) => { p.moveTo(ex - 0.9, ey - 0.05); p.lineTo(ex + 0.8, ey - 0.62); });
+    whiskers(c, R, RED, 0.18, { y: 1.0, n: 2,
+      tube: (path) => tube(c, RED, 0.18, path, flick * 0.8, 0.2) });
+  } else {
   // Big gold-amber eyes, round pupils, a low flat brow over them — the look in the
   // picture. The brow drops further for the swipe; the eye never goes to a slit.
   const eo = R.blink ? 0.08 : 0.95 * (1 - R.angry * 0.3);
@@ -1271,26 +1514,37 @@ export function pythagoras(c, w, h, t, u, o = {}) {
     fillPath(c, WHITE, circle(ex - 0.55, ey - 0.3, 0.17));
   }
   // The lid: a flat line across the top of the eye, lower toward the nose — the scowl.
-  const lid = (k) => ey - eo - 0.2 + (0.35 + R.angry * 0.35) * k;
+  const lid = (k) => ey - eo - 0.2 + (0.5 + R.angry * 0.35) * k;
   fillPath(c, P.mask, polyP([ex - 1.4, ey - eo - 0.6, ex + 1.3, ey - eo - 0.6, ex + 1.3, lid(0.45), ex - 1.4, lid(1.4)]));
   strokePath(c, INK, 0.32, (p) => { p.moveTo(ex - 1.3, lid(1.4)); p.lineTo(ex + 1.2, lid(0.45)); });
-  fillPath(c, P.nose, polyP([R.hx - 4.0, R.hy + 0.5, R.hx - 3.2, R.hy + 0.5, R.hx - 3.6, R.hy + 1.0]));
+  // A small rounded nose seated on the muzzle, inside its silhouette.
+  c.save(); c.translate(R.hx - 3.15, R.hy + 0.7); c.scale(0.68, 0.68);
+  fillPath(c, P.nose, (p) => {
+    p.moveTo(-0.36, -0.22);
+    p.quadraticCurveTo(0, -0.34, 0.37, -0.18);
+    p.quadraticCurveTo(0.31, 0.06, -0.03, 0.28);
+    p.quadraticCurveTo(-0.29, 0.17, -0.36, -0.22);
+    p.closePath();
+  });
+  fillPath(c, P.noseShade, oval(0.1, 0.03, 0.13, 0.12, -0.5));
+  fillPath(c, P.noseLit, oval(-0.13, -0.16, 0.18, 0.078, -0.1));
+  c.restore();
   // Pale whiskers, as long as the picture's — under the mouth, so a snarl's teeth are
   // never crossed by them.
   whiskers(c, R, 'rgba(255,236,210,0.8)', 0.12, { y: 1.0, len: 4.4 });
+  }
   const gape = R.angry;
   if (gape > 0.1) snarl(c, R, o.snarl || SNARL_DEFAULT, gape);
   else {
-    strokePath(c, INK, 0.2, (p) => { p.moveTo(R.hx - 3.6, R.hy + 1.1); p.quadraticCurveTo(R.hx - 3.0, R.hy + 1.5, R.hx - 2.4, R.hy + 1.3); });
+    strokePath(c, INK, 0.2, (p) => {
+      p.moveTo(R.hx - 3.1704, R.hy + 0.8904); p.lineTo(R.hx - 3.15, R.hy + 1.12);
+      p.quadraticCurveTo(R.hx - 2.95, R.hy + 1.5, R.hx - 2.4, R.hy + 1.3);
+    });
   }
-  if (o.rim) {
-    const [sx, sy] = R.shoulder, [px, py] = R.paw, bend = 1 - R.s;
-    tube(c, o.rim, 1.95 + 1.5, (p) => { p.moveTo(sx, sy); p.quadraticCurveTo((sx + px) / 2 + 1.1 * bend, (sy + py) / 2 + 0.4 * bend, px, py); }, 1, 0.07);
-  }
-  nearLeg(c, R, 1.95, P.coat);
-  solid(c, [circle(R.paw[0], R.paw[1], 1.2)], P.coat, { edge: o.rim && haloEdge(o.rim), inner: (q) => fillPath(q, P.lit, circle(R.paw[0] - 0.3, R.paw[1] - 0.4, 0.8)) });
-  claws(c, R, 1.2);
+  foot(px, py, P.coat, P.bodyLit);
+  claws(c, R, 1.2, o.neon ? whiteHot(RED, 0.75) : WHITE);
 }
+export const pythagoras = standardObstacleOutline(paintPythagoras);
 
 // ======================================================= round 2: D, E, F
 // Peter, 16 Oct 2026, on the eight: "I love F but I feel he won't read well in the dark
@@ -1319,7 +1573,7 @@ export const mechaGun = (c, w, h, t, u) => mecha(c, w, h, t, u, { pal: MECHA_GUN
 // L — NEON CAT, BRIGHTER. D with a heavier tube and a stronger throw of light, and the
 // body lifted a step toward violet, so the silhouette holds at golden hour too.
 export const neonBright = (c, w, h, t, u) => neonCat(c, w, h, t, u, {
-  tw: 0.95, glow: 0.45, pal: { body: '#1e1640', lit: '#3d3470', eye: '#ff6a80' },
+  standing: true, tw: 0.95, glow: 0.45, pal: { body: '#1e1640', lit: '#3d3470', eye: '#ff6a80' },
 });
 
 // M — NEKOMATA IN NEON (D x F). F, unchanged, given D's red rim: the two-tailed yōkai
@@ -1345,13 +1599,16 @@ export const CAT_FRAMES = CAT_IDLE_FRAMES + CAT_STRIKE_FRAMES;
 // cut by the raster's edge.
 // 1.9 a side: the swishing tails and the neon glows reach past the 24-wide envelope.
 const CAT_W = 24, CAT_H = 21, CAT_PAD_X = 1.9, CAT_PAD_Y = 0.6;
-function catPainter(paint) {
+// Paired with the animal's world overdraw to retain the same body size while
+// giving the selected whip animation room beyond the old texture boundary.
+export const PYTHAGORAS_TAIL_ROOM = 1.5;
+function catPainter(paint, horizontalRoom = 1) {
   return (ctx, w, h, frame = 0) => {
     const f = ((frame % CAT_FRAMES) + CAT_FRAMES) % CAT_FRAMES;
     const idle = f < CAT_IDLE_FRAMES;
     const t = idle ? f / CAT_FPS : 0;
     const u = idle ? -1 : ((f - CAT_IDLE_FRAMES + 0.5) / CAT_STRIKE_FRAMES) * SWIPE_T;
-    const k = Math.min(w / (CAT_W + 2 * CAT_PAD_X), h / (CAT_H + CAT_PAD_Y));
+    const k = Math.min(w / ((CAT_W + 2 * CAT_PAD_X) * horizontalRoom), h / (CAT_H + CAT_PAD_Y));
     ctx.save();
     ctx.translate((w - CAT_W * k) / 2, h - CAT_H * k);
     ctx.scale(k, k);
@@ -1360,7 +1617,7 @@ function catPainter(paint) {
   };
 }
 export const CAT_PAINTERS = {
-  catPythagoras: catPainter(pythagoras),
+  catPythagoras: catPainter(pythagoras, PYTHAGORAS_TAIL_ROOM),
   // The lucky cat, first of all of them on Terminal Velocity 1 (Peter, 16 Oct 2026).
   catManeki: catPainter(maneki),
   catMechaNeon: catPainter(mechaTrim),

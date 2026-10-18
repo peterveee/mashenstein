@@ -1779,10 +1779,16 @@ class ArcadeArtGallery extends BaseVisualiser {
 // and a deep blue hangar wash) so the toasters feel like a new visualiser, not
 // another pass over an existing preset's background.
 class ToasterSkyParade extends BaseVisualiser {
-  constructor(seed, track) {
+  constructor(seed, track, { count = 72, viewWidth = W, viewHeight = H, goldOnly = false } = {}) {
     super(seed, track);
     this.name = VISUALISER_NAMES[13];
-    this.toasters = makePool(72);
+    this.toasterViewWidth = Math.max(1, viewWidth);
+    this.toasterViewHeight = Math.max(1, viewHeight);
+    this.goldOnly = goldOnly;
+    this.horizontalSpeedScale = goldOnly ? 0.8 : 1;
+    this.verticalBobScale = goldOnly ? 0.45 : 1;
+    this.scalePulseScale = goldOnly ? 0.5 : 1;
+    this.toasters = makePool(count);
     for (const p of this.toasters) this.resetToaster(p, true);
     // Opening beat: one larger hero toaster makes the first pass and loop,
     // then the rest of the flock is released in a staggered swarm behind it.
@@ -1803,34 +1809,42 @@ class ToasterSkyParade extends BaseVisualiser {
       p.introLoopDuration = lead ? 2.15 : 1.55;
       p.introLoopRadius = loopRadius;
     };
-    configureIntroToaster(this.toasters[0], {
-      delay: 0, y: H * 0.52, scale: 2.15, speed: 132, loopStart: 1.25, loopRadius: 50, lead: true,
+    if (this.toasters[0]) configureIntroToaster(this.toasters[0], {
+      delay: 0, y: this.toasterViewHeight * 0.52, scale: 2.15, speed: 132, loopStart: 1.25, loopRadius: 50, lead: true,
     });
-    configureIntroToaster(this.toasters[1], {
-      delay: 3.45, y: H * 0.34, scale: 1.55, speed: 118, loopStart: 4.15, loopRadius: 35,
+    if (this.toasters[1]) configureIntroToaster(this.toasters[1], {
+      delay: 3.45, y: this.toasterViewHeight * 0.34, scale: 1.55, speed: 118, loopStart: 4.15, loopRadius: 35,
     });
-    configureIntroToaster(this.toasters[2], {
-      delay: 4.85, y: H * 0.67, scale: 1.78, speed: 124, loopStart: 5.75, loopRadius: 39,
+    if (this.toasters[2]) configureIntroToaster(this.toasters[2], {
+      delay: 4.85, y: this.toasterViewHeight * 0.67, scale: 1.78, speed: 124, loopStart: 5.75, loopRadius: 39,
     });
-    for (let i = 3; i < this.toasters.length; i++) {
-      const p = this.toasters[i];
-      // A quick succession of small waves makes the flock build after the
-      // three intro loops instead of snapping onto the screen all at once.
-      p.entryDelay = 7.3 + (i - 3) / (this.toasters.length - 3) * 3.7 + this.rng.float() * 0.18;
-      p.x = -55 - this.rng.float() * 90;
+    if (goldOnly) {
+      for (const p of this.toasters) {
+        p.entryDelay = 0;
+        p.x = p.introLead ? -52 : this.rng.range(-35, this.toasterViewWidth + 35);
+        if (p.introLead) p.introLoopStart = 0.25;
+      }
+    } else {
+      for (let i = 3; i < this.toasters.length; i++) {
+        const p = this.toasters[i];
+        // A quick succession of small waves makes the flock build after the
+        // three intro loops instead of snapping onto the screen all at once.
+        p.entryDelay = 7.3 + (i - 3) / (this.toasters.length - 3) * 3.7 + this.rng.float() * 0.18;
+        p.x = -55 - this.rng.float() * 90;
+      }
     }
-    this.specialToasterTimer = 10 + this.rng.float() * 5;
+    this.specialToasterTimer = goldOnly ? Infinity : 10 + this.rng.float() * 5;
     this.specialToasterColor = 0;
-    this.skyParticles = makePool(220);
+    this.skyParticles = makePool(goldOnly ? 0 : 220);
     for (const p of this.skyParticles) this.resetSkyParticle(p, true);
   }
 
   resetToaster(p, initial = false) {
-    p.x = initial ? -70 + this.rng.float() * (W + 150) : -55 - this.rng.float() * 125;
-    p.baseY = 22 + this.rng.float() * (H - 67);
+    p.x = initial ? -70 + this.rng.float() * (this.toasterViewWidth + 150) : -55 - this.rng.float() * 125;
+    p.baseY = 22 + this.rng.float() * (this.toasterViewHeight - 67);
     p.speed = 32 + this.rng.float() * 76;
     p.scale = 0.55 + this.rng.float() * 1.55;
-    p.bob = 3 + this.rng.float() * (7 + this.mid * 9);
+    p.bob = (3 + this.rng.float() * (7 + this.mid * 9)) * this.verticalBobScale;
     p.bobRate = 0.8 + this.rng.float() * 1.9;
     p.phase = this.rng.float() * TAU;
     // Toasters enter upright. Their full spatial rolls are scheduled as rare,
@@ -1875,6 +1889,7 @@ class ToasterSkyParade extends BaseVisualiser {
   }
 
   launchSpecialToaster() {
+    if (this.goldOnly || !this.toasters.length) return;
     // Reuse one of the flock as a fresh left-edge launch.  This guarantees an
     // unmistakable single special toaster instead of quietly colouring a few
     // ordinary ones already in the air.
@@ -1887,7 +1902,7 @@ class ToasterSkyParade extends BaseVisualiser {
   }
 
   drawAppliance(ctx, p, frame) {
-    if (p.specialFinish) drawApplianceFinish(ctx, -12.5, -10.5, 25, 21, frame, p.specialFinish);
+    if (!this.goldOnly && p.specialFinish) drawApplianceFinish(ctx, -12.5, -10.5, 25, 21, frame, p.specialFinish);
     else drawProp(ctx, 'appliance', -12.5, -10.5, 25, 21, frame);
   }
 
@@ -1966,14 +1981,16 @@ class ToasterSkyParade extends BaseVisualiser {
 
   update(dt, a) {
     super.update(dt, a);
-    this.specialToasterTimer -= dt;
-    if (this.specialToasterTimer <= 0) {
-      if (this.toasters.some((p) => p.specialColor)) {
-        // Hold the next launch until the current special has flown off.
-        this.specialToasterTimer = 1;
-      } else {
-        this.launchSpecialToaster();
-        this.specialToasterTimer = 12 + this.rng.float() * 8;
+    if (!this.goldOnly) {
+      this.specialToasterTimer -= dt;
+      if (this.specialToasterTimer <= 0) {
+        if (this.toasters.some((p) => p.specialColor)) {
+          // Hold the next launch until the current special has flown off.
+          this.specialToasterTimer = 1;
+        } else {
+          this.launchSpecialToaster();
+          this.specialToasterTimer = 12 + this.rng.float() * 8;
+        }
       }
     }
     for (const p of this.toasters) {
@@ -1981,11 +1998,12 @@ class ToasterSkyParade extends BaseVisualiser {
         p.entryDelay = Math.max(0, p.entryDelay - dt);
         if (p.entryDelay > 0) continue;
       }
-      p.x += dt * p.speed * (0.78 + this.bass * 0.45 + this.beatPulse * 0.08);
-      if (p.x > W + 72) this.resetToaster(p);
+      p.x += dt * p.speed * this.horizontalSpeedScale
+        * (0.78 + this.bass * 0.45 + this.beatPulse * 0.08);
+      if (p.x > this.toasterViewWidth + 72) this.resetToaster(p);
       p.y = p.baseY
         + Math.sin(this.t * p.bobRate + p.phase) * p.bob
-        - this.beatPulse * (3 + p.depth * 8);
+        - this.beatPulse * (3 + p.depth * 8) * this.verticalBobScale;
       // The opening leader has a clean flight line; its loop supplies all of
       // the vertical motion, rather than reading as a bounce before or during
       // the stunt.
@@ -2041,37 +2059,24 @@ class ToasterSkyParade extends BaseVisualiser {
     }
   }
 
-  draw(ctx) {
-    this.toasterBackdrop(ctx);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    // Fine particles are round, never square, and leave a short luminous wake.
-    for (const p of this.skyParticles) {
-      const alpha = clamp(p.life / p.maxLife) * (0.16 + this.treble * 0.54);
-      const color = this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
-      ctx.strokeStyle = rgba(color, alpha * 0.55);
-      ctx.lineWidth = p.size * 0.7;
-      ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.x, p.y); ctx.stroke();
-      ctx.fillStyle = rgba(color, alpha);
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.65 + this.beatPulse * 0.5), 0, TAU); ctx.fill();
-    }
-    ctx.restore();
-
+  drawToasterFleet(ctx) {
     for (const p of this.toasters) {
       if (p.entryDelay > 0) continue;
-      const scale = p.scale * (0.95 + 0.09 * Math.sin(this.t * 1.8 + p.phase) + this.beatPulse * 0.16);
+      const scale = p.scale * (0.95 + this.scalePulseScale
+        * (0.09 * Math.sin(this.t * 1.8 + p.phase) + this.beatPulse * 0.16));
       const w = 25 * scale;
       const h = 21 * scale;
       // Appliance frames are interleaved as 12 wing poses x 8 toast poses.
-      // Keep the wing pose on its ordinary 24fps clock while selecting a
-      // toastless toasters use the concealed band; toast-bearing ones hold a
-      // raised slice until their occasional pop sweeps through all eight poses.
-      const wingFrame = Math.floor(this.t * propFps('appliance') + p.framePhase) % 12;
+      // The jukebox keeps its 24fps clock; the gallery gives one wing cycle
+      // to each Food Court beat while toast continues through its eight poses.
+      const wingClock = this.goldOnly ? this.beat * 12 : this.t * propFps('appliance');
+      const wingFrame = Math.floor(wingClock + p.framePhase) % 12;
       const frame = wingFrame + p.toastBand * 12;
-      const color = this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
+      const color = this.goldOnly ? '#f6d33c'
+        : this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
       // Four ghosted positions read as a trail while retaining crisp moving art.
       for (let trail = 4; trail >= 1; trail--) {
-        const tx = p.drawX - p.speed * trail * 0.018;
+        const tx = p.drawX - p.speed * this.horizontalSpeedScale * trail * 0.018;
         const ty = p.drawY + Math.sin(this.t * p.bobRate + p.phase - trail * 0.12) * p.bob * 0.18;
         ctx.save();
         ctx.globalAlpha = this.frameAlpha * (0.035 + this.beatPulse * 0.025) * (5 - trail) * (0.4 + p.depth * 0.6);
@@ -2090,9 +2095,41 @@ class ToasterSkyParade extends BaseVisualiser {
       this.drawAppliance(ctx, p, frame);
       ctx.restore();
     }
+  }
+
+  draw(ctx) {
+    this.toasterBackdrop(ctx);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // Fine particles are round, never square, and leave a short luminous wake.
+    for (const p of this.skyParticles) {
+      const alpha = clamp(p.life / p.maxLife) * (0.16 + this.treble * 0.54);
+      const color = this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
+      ctx.strokeStyle = rgba(color, alpha * 0.55);
+      ctx.lineWidth = p.size * 0.7;
+      ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.x, p.y); ctx.stroke();
+      ctx.fillStyle = rgba(color, alpha);
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.65 + this.beatPulse * 0.5), 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+
+    this.drawToasterFleet(ctx);
     this.drawDust(ctx, 0.75);
     this.modernFinish(ctx, 0.12);
   }
+}
+
+export function createGoldenToasterParade(seed, count, {
+  viewWidth = W,
+  viewHeight = H,
+  bpm = 112,
+} = {}) {
+  return new ToasterSkyParade(seed >>> 0, { bpm }, {
+    count: Math.max(0, Math.floor(count)),
+    viewWidth,
+    viewHeight,
+    goldOnly: true,
+  });
 }
 
 // The film's title sequence photographed its glyphs through a mirror, which is

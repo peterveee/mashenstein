@@ -1,3 +1,5 @@
+import { CABINETS } from './cabinets.js';
+
 // 27 campaign stages: mission, optional challenge, appliance placement.
 // Fast & furious: Act I stages ~1 minute, ramping to ~2 minutes by Act III.
 // Appliance spots are FIXED per stage (fraction of stage distance + height),
@@ -16,7 +18,7 @@ const CAB_DURATION = {
 
 // Player-facing episode names; save keys remain independent of display copy.
 const STAGE_NAMES = {
-  plumber: ['PIPE DREAMS', 'CRATE EXPECTATIONS', 'ALPHABET SPAGHETTI'],
+  plumber: ['PLUG AND PLAY', 'CRATE EXPECTATIONS', 'ALPHABET SPAGHETTI'],
   speed: ['ZOOM SERVICE', 'BONK VOYAGE', 'AIR MAIL'],
   rhythm: ['BOP TILL YOU DROP', 'COMBO MAMBO', 'BONK TO THE BEAT'],
   frost: ['ICE TO MEET YOU', 'SNOW PROBLEM', 'ALPHABET SLUSH'],
@@ -27,8 +29,13 @@ const STAGE_NAMES = {
   surge: ['YOU AGAIN', 'SECOND HELPING', 'ONE LAST MASH'],
 };
 
+export function stageCode(stage) {
+  const cabinetNumber = CABINETS.findIndex((cab) => cab.id === stage.cabinet) + 1;
+  return `${cabinetNumber}-${stage.index}`;
+}
+
 export function stageLabel(stage) {
-  return `${stage.index}. ${stage.name}`;
+  return `${stageCode(stage)} ${stage.name}`;
 }
 
 const S = (cab, idx, mission, challenge, opts = {}) => ({
@@ -497,7 +504,17 @@ export const STAGES = [
     REACH,
     { type: 'targets', n: 3, targetType: 'vaultSafe', label: 'SAFES', at: [0.2, 0.4, 0.58, 0.8],
       // Met, and a giant pile of money waits by the exit (Peter, 15 Oct).
-      payoff: { prop: 'moneyPile', dx: -150, w: 64, h: 35 },
+      payoff: {
+        prop: 'moneyPile', dx: -150, w: 64, h: 35,
+        pickups: [
+          { type: 'coin', dx: 4, alt: 5 }, { type: 'coin', dx: 14, alt: 5 },
+          { type: 'coin', dx: 24, alt: 5 }, { type: 'coin', dx: 34, alt: 5 },
+          { type: 'coin', dx: 44, alt: 5 }, { type: 'coin', dx: 54, alt: 5 },
+          { type: 'banknote', dx: 8, alt: 9 }, { type: 'banknote', dx: 20, alt: 9 },
+          { type: 'banknote', dx: 32, alt: 9 }, { type: 'banknote', dx: 44, alt: 9 },
+          { type: 'coin', dx: 24, alt: 16 }, { type: 'coin', dx: 36, alt: 16 },
+        ],
+      },
       desc: 'CRACK 3 SAFES', note: 'SHOOT THE LOCK. TAKE THE MONEY.' },
     // Eggshell introduces the safes himself, by forbidding them (Peter, 15 Oct).
     { introBy: 'eggshell', intro: 'DO NOT SHOOT MY SAFES. THAT MONEY IS FOR TAXES. I AM NOT PAYING THEM.', introSec: 7 }),
@@ -559,6 +576,6 @@ export function stagesForCabinet(cabId) { return STAGES.filter((s) => s.cabinet 
 
 // Plug thresholds (from the spec).
 export const UNLOCKS = {
-  speed: 2, rhythm: 5, frost: 12, crypt: 16, neon: 20,
-  gravity: 28, office: 34, surge: 40, finale: 45,
+  speed: 3, rhythm: 6, frost: 12, crypt: 18, neon: 24,
+  gravity: 30, office: 36, surge: 42, finale: 48,
 };

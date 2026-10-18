@@ -49,7 +49,15 @@
      reason, see resize()). Scoped to standalone so a browser tab, whose
      shortfall is its own toolbar, is left alone. */
   @media (display-mode: standalone) {
-    html, body { min-height: calc(100% + env(safe-area-inset-top)); }
+    /* Same shortfall, rotated: in landscape the status bar's strip lands on
+       left or right depending on which way the phone is turned (top reads 0
+       there), so the deficit now shows at the bottom instead. Adding
+       whichever inset is actually nonzero covers both orientations from one
+       rule — the other term is 0 and drops out. */
+    html, body {
+      min-height: calc(100% + env(safe-area-inset-top)
+        + max(env(safe-area-inset-left), env(safe-area-inset-right)));
+    }
   }
   body { touch-action: none; -webkit-user-select: none; user-select: none;
          -webkit-touch-callout: none; overscroll-behavior: none;
@@ -95,9 +103,16 @@
     outline: 3px solid #ffcf33; outline-offset: 3px;
   }
   #boot-error-reload:active { transform: translateX(-50%) translateY(1px); }
-  #font-loading { position: fixed; inset: 0; display: flex; align-items: center;
-                  justify-content: center; color: #5fd6c8; font: 700 .78rem/1 ui-monospace,
+  #font-loading { position: fixed; inset: 0; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; gap: 14px;
+                  color: #5fd6c8; font: 700 .78rem/1 ui-monospace,
                   SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
+  .mash-boot-spinner {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid rgba(95,214,200,0.25); border-top-color: #5fd6c8;
+    animation: mash-boot-spin 0.8s linear infinite;
+  }
+  @keyframes mash-boot-spin { to { transform: rotate(360deg); } }
   #safe-area { position: fixed; inset: 0; visibility: hidden; pointer-events: none;
                padding: env(safe-area-inset-top) env(safe-area-inset-right)
                         env(safe-area-inset-bottom) env(safe-area-inset-left); }

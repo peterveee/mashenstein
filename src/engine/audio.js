@@ -6301,6 +6301,59 @@ class AudioSys {
         this.noise(d, 0.05, 'bandpass', 1800, w, HOLD);
         break;
       }
+      // THE BANANA SLIP'S OWN CUE (18 Oct 2026 bake-off). Peter, of the new hop-and-land-
+      // running picture (sprites/bananaSlip.js, SHIPPED 17 Oct): "we need a better sound
+      // effect to go with this". `slideWhistle` is a DESCENT's sound — built for the pole
+      // ride sliding DOWN — and the peel no longer describes a descent: he goes UP, blurs
+      // through the air, and lands already running. Reusing slideWhistle's downward gliss
+      // for an upward hop was describing the wrong half of the move, the same fault its own
+      // comment warns against for the opposite case.
+      //
+      // Four candidates, by shape (`node tools/render-cues.js bananaHop:hopA` … hopD), timed
+      // against bananaSlip.js's own arc (UP ends ~0.23s, HANG ~0.40s, lands ~0.58-0.65s):
+      //   A BOING UP    the slide whistle's own trick (twin detuned sines, a noise band)
+      //                 but RISING and a third the length, into two light foot-pats landing
+      //   B SPRING      a coil-spring twang at the launch (detuned triangles, a quick
+      //                 decay), silence through the air, a soft thump and two pats landing
+      //   C WHISTLE-UP  the closest cousin of the shipped cue — same construction, same
+      //                 family, just inverted and shortened — catching on a little "oop"
+      //                 blip at the top before the landing pats
+      //   D YELP        a short surprised "oop!" at launch, near-silent through the air,
+      //                 then a rapid three-tap scurry landing — leans hardest into "he's
+      //                 already running", the furthest from the old gag
+      // Not yet picked. `NOW_HOP` is a placeholder for the audition only, not a ship pick.
+      case 'bananaHop': {
+        const v = opt.shape?.hop || 'A';
+        if (v === 'A') {
+          this.osc('sine', 420 * pitch, 1500 * pitch, 0.34, 0.18, 0, null, 0.12);
+          this.osc('sine', 424 * pitch, 1508 * pitch, 0.34, 0.12, 0, null, 0.12);
+          this.noise(0.34, 0.05, 'bandpass', 1800, 0, 0.12);
+          this.noise(0.04, 0.13, 'highpass', 3400, 0.58);
+          this.noise(0.04, 0.11, 'highpass', 3200, 0.62);
+        } else if (v === 'B') {
+          this.osc('triangle', 180 * pitch, 560 * pitch, 0.12, 0.24, 0);
+          this.osc('triangle', 168 * pitch, 510 * pitch, 0.12, 0.15, 0.012);
+          this.noise(0.1, 0.09, 'bandpass', 900, 0);
+          this.noise(0.09, 0.15, 'lowpass', 500, 0.57);
+          this.noise(0.035, 0.11, 'highpass', 3000, 0.6);
+          this.noise(0.035, 0.09, 'highpass', 2800, 0.64);
+        } else if (v === 'C') {
+          this.osc('sine', 450 * pitch, 1400 * pitch, 0.4, 0.17, 0, null, 0.92);
+          this.osc('sine', 454 * pitch, 1408 * pitch, 0.4, 0.11, 0, null, 0.92);
+          this.noise(0.4, 0.05, 'bandpass', 1700, 0, 0.92);
+          this.osc('square', 1600 * pitch, 1300 * pitch, 0.06, 0.1, 0.37);
+          this.noise(0.035, 0.12, 'highpass', 3200, 0.58);
+          this.noise(0.035, 0.1, 'highpass', 3000, 0.62);
+        } else {
+          this.osc('square', 500 * pitch, 900 * pitch, 0.07, 0.2, 0);
+          this.osc('square', 900 * pitch, 650 * pitch, 0.05, 0.14, 0.06);
+          this.noise(0.05, 0.08, 'highpass', 2600, 0);
+          this.noise(0.03, 0.12, 'highpass', 3400, 0.56);
+          this.noise(0.03, 0.1, 'highpass', 3200, 0.595);
+          this.noise(0.03, 0.1, 'highpass', 3600, 0.63);
+        }
+        break;
+      }
       case 'fizzUp':
         this.noise(0.3, 0.09, 'bandpass', 1500);
         this.osc('sine', 260 * pitch, 880 * pitch, 0.3, 0.045);

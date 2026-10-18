@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { CAT_HIT_T, CAT_IFRAMES_T, CAT_HIT_KNOCKBACK_FRACTION,
+const { CAT_HIT_T, CAT_IFRAMES_T,
   catSwipeActive, catHitScreenOffset, catHitPose, catHitFlickerAlpha } = await import('../src/game/cat-hit.js');
 const { RunState } = await import('../src/game/run.js');
 const { makeObstacle } = await import('../src/game/entities.js');
@@ -15,8 +15,10 @@ assert.equal(catSwipeActive(0.19), false, 'the cat cannot hit while the paw is w
 assert.equal(catSwipeActive(0.2), false, 'the hitbox waits until the paw actually starts moving');
 assert.equal(catSwipeActive(0.3), true, 'the cat hitbox opens when the paw reaches out');
 assert.equal(catSwipeActive(0.49), false, 'the cat hitbox closes as the paw pulls back');
-assert.equal(catHitScreenOffset(CAT_HIT_T, 200), -200 * CAT_HIT_KNOCKBACK_FRACTION,
-  'the drawn hero steps back by 12% of the viewport at contact');
+assert.equal(catHitScreenOffset(CAT_HIT_T, 200), -8,
+  'the drawn hero steps back by 4% of the viewport at contact');
+assert.ok(Math.abs(catHitScreenOffset(CAT_HIT_T, 480)) <= 20,
+  'the initial recoil stays within 20 logical pixels on the default viewport');
 assert.ok(catHitScreenOffset(0.4, 200) < 0 && catHitScreenOffset(0.4, 200) > -24,
   'the drawn hero eases toward the ordinary running anchor');
 assert.equal(catHitScreenOffset(0, 200), 0, 'the draw-only recoil ends at the running anchor');

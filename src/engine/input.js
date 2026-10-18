@@ -104,13 +104,20 @@ class InputSys {
       }
       this.activity++;
       const act = this.actionForKey(e.code);
-      if (act) { this.press(act, e.timeStamp); e.preventDefault(); }
+      if (act) {
+        this.press(act, e.timeStamp);
+        // Menus still interpret Escape as BACK, but also retain the key's
+        // distinct identity for screens where Escape has its own action.
+        if (e.code === 'Escape' && this.context !== 'run') this.press('escape', e.timeStamp);
+        e.preventDefault();
+      }
       this.onAnyGesture && this.onAnyGesture();
     });
     window.addEventListener('keyup', (e) => {
       if (this.suspended) return;
       const act = this.actionForKey(e.code);
       if (act) this.release(act);
+      if (e.code === 'Escape' && this.context !== 'run') this.release('escape');
     });
     // #chrome is the ONE pointer surface: full-viewport, on top of #game (which
     // is pointer-events:none), so every tap — on the picture, on a disc, out in

@@ -6,7 +6,7 @@ const dom = installDom();
 const { RunState, ACT_BANNER_TIME } = await import('../src/game/run.js');
 const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
-const { STAGES, STAGE_BY_ID } = await import('../src/data/stages.js');
+const { STAGES, STAGE_BY_ID, stageCode, stageLabel } = await import('../src/data/stages.js');
 const { CABINETS, CABINET_BY_ID } = await import('../src/data/cabinets.js');
 const { EGGSHELL_TAUNTS } = await import('../src/data/jokes.js');
 const { BRIEFINGS, BRIEFING_PROMPTS } = await import('../src/data/briefings.js');
@@ -21,6 +21,14 @@ function assert(cond, msg) {
   if (!cond) { console.error('FAIL:', msg); failed = true; }
   else console.log('ok:', msg);
 }
+
+assert(
+  stageCode(STAGE_BY_ID['plumber-1']) === '1-1'
+  && stageCode(STAGE_BY_ID['speed-2']) === '2-2'
+  && stageCode(STAGE_BY_ID['surge-3']) === '9-3'
+  && stageLabel(STAGE_BY_ID['plumber-1']) === `1-1 ${STAGE_BY_ID['plumber-1'].name}`,
+  'stage labels and briefings use cabinet-stage dash numbers',
+);
 
 const TICK = 1 / 60;
 function makeRun(stage, onEnd = () => {}) {

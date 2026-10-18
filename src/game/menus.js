@@ -83,9 +83,10 @@ import {
 } from '../data/jokes.js';
 import { HEROES } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
-import { cabinetPalette, cabinetScreenRect, deadScreenBurst, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep } from '../sprites/arcade.js';
+import { cabinetPalette, cabinetScreenRect, cabinetStyle, deadScreenBurst, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep } from '../sprites/arcade.js';
+import { REFLECT_SQUASH, beginFloorReflectionBand, addFloorReflection, endFloorReflectionBand } from '../engine/reflections.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
-import { bonusSentence } from '../data/stages.js';
+import { bonusSentence, stageCode } from '../data/stages.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from '../data/shop-themes.js';
 import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
@@ -93,17 +94,34 @@ import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
 // arrangement — see bpmOf.
 import { bpmOf } from '../data/arrangements.js';
 import { trackIdOf } from '../data/tracks.js';
-import { BangerMakerState, rerollTake } from './banger/maker.js';
 import { setState, setStateNow } from '../engine/states.js';
-import {
-  jukeboxBangerRows, songFor, deleteBanger, bangerTitle, lastPlayedBanger, rememberBanger,
-  reviseBanger, keepBanger,
-} from './banger/store.js';
-import { BangerClubState } from './banger/club.js';
 import { ChipResults, soundtrack8bit, setSoundtrack8bit, retuneOnTheBeat, playsEightBit } from './results-chip.js';
-import { BangerBirthState } from './banger/birth.js';
-import { pickBirthSwitch } from './banger/birth-switches.js';
-import { pickBirthFace } from './banger/birth-faces.js';
+// THE BANGER LAB (STAFF ONLY -> THE LAB) is the only place any of this is
+// used — see the `lab` flag below — but maker/club/birth pull in a generated
+// calibration table that alone is several megabytes. Shipped as its own
+// bundle (build.js's `bangerLab` entry, src/game/banger/lazy.js) and fetched
+// with a <script> tag only when the player actually opens the Lab, the same
+// way gate.js loads game.js itself — a plain import() here would NOT defer
+// anything: esbuild's IIFE format has no code-splitting, so it would just
+// inline the whole thing into this bundle regardless.
+let _banger = null;
+let _bangerPromise = null;
+export function loadBangerModule() {
+  if (_banger) return Promise.resolve(_banger);
+  if (!_bangerPromise) {
+    _bangerPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = new URL('./bangerLab.js', document.baseURI).href;
+      script.onload = () => {
+        if (window.__mash_banger) { _banger = window.__mash_banger; resolve(_banger); }
+        else reject(new Error('bangerLab.js loaded but did not set window.__mash_banger'));
+      };
+      script.onerror = () => reject(new Error('bangerLab.js failed to load'));
+      document.body.appendChild(script);
+    });
+  }
+  return _bangerPromise;
+}
 import { totalPlugs, MAX_PLUGS, formatCoins, formatRunTime, nextStage, stageUnlocked } from './progress.js';
 import {
   portraitMenuActive, portraitMenuScale, portraitMenuText, portraitMenuTextCentered,
@@ -3154,8 +3172,9 @@ export class BriefingState {
     }
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
-    const cabNo = CABINETS.findIndex((c) => c.id === this.cab.id) + 1;
-    drawTextCentered(ctx, `STAGE ${cabNo}-${this.stage.index} BRIEFING`, W / 2, 26, '#e8e8f0', 2, 'title');
+    const titleScale = Math.min(2, (W - 32) / Math.max(1, textWidth(this.stage.name, 1, 'title')));
+    drawTextCentered(ctx, this.stage.name, W / 2, 22, '#f6d33c', titleScale, 'title');
+    drawTextCentered(ctx, `STAGE ${stageCode(this.stage)} BRIEFING`, W / 2, 42, '#e8e8f0', 1, 'title');
     // Letterhead and memo cascade together, in the order they are read: a head
     // is just the line its memo starts with.
     const { lines, scale } = this.layout;
@@ -3224,13 +3243,15 @@ export class BriefingState {
     }
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
-    const headingText = `STAGE ${this.stage.index} BRIEFING`;
-    // Title is the largest thing on the card, but its fit is measured against
-    // the same padded glass as the body so it never becomes a one-line crop.
+    const titleText = this.stage.name;
+    const headingText = `STAGE ${stageCode(this.stage)} BRIEFING`;
     const headingWidth = Math.max(css(180), safe.width - margin * 2);
-    const headingScale = headingWidth / Math.max(1, textWidth(headingText, 1, 'title'));
+    const titleScale = Math.min(3.2, headingWidth / Math.max(1, textWidth(titleText, 1, 'title')));
+    const headingScale = Math.min(1.8, headingWidth / Math.max(1, textWidth(headingText, 1, 'title')));
+    drawTextCentered(ctx, titleText, center,
+      safe.top + css(24), '#f6d33c', titleScale, 'title');
     drawTextCentered(ctx, headingText, center,
-      safe.top + css(28), '#e8e8f0', headingScale, 'title');
+      safe.top + css(56), '#e8e8f0', headingScale, 'title');
     const revealed = Math.min(this.reveal / 0.02, lines.join(' ').length);
     let chars = 0;
     lines.forEach((line, i) => {
@@ -5077,7 +5098,7 @@ export class SoundTestState {
     // choosing it again stops it (Peter, 3 Oct 2026).
     this.labPlaying = this.lab ? labPlaying : null;
     this.baseTracks = this.lab ? [] : (tracks && tracks.length ? tracks : JUKEBOX);
-    this.tracks = this.lab ? jukeboxBangerRows() : [...this.baseTracks];
+    this.tracks = this.lab ? _banger.jukeboxBangerRows() : [...this.baseTracks];
     this.initialTrack = initialTrack;
     this.initialSelect = initialSelect;
     this.startVisualiserOnEnter = startVisualiser;
@@ -5159,7 +5180,7 @@ export class SoundTestState {
       ? this.initialTrack : -1;
     const select = Number.isInteger(this.initialSelect) && this.initialSelect >= 0 && this.initialSelect <= this.tracks.length + 1
       ? this.initialSelect : -1;
-    const remembered = this.lab && select < 0 ? lastPlayedBanger() : null;
+    const remembered = this.lab && select < 0 ? _banger.lastPlayedBanger() : null;
     const rememberedIndex = remembered ? this.tracks.findIndex((row) => row.banger === remembered) : -1;
     this.idx = initial >= 0 ? initial : (select >= 0 ? select : (rememberedIndex >= 0 ? rememberedIndex : 0));
     this.rowFocus = this.idx < this.tracks.length ? this.idx : -1;
@@ -5228,7 +5249,7 @@ export class SoundTestState {
     this.playing = i;
     if (this.lab) {
       this.labPlaying = this.tracks[i].banger;
-      rememberBanger(this.labPlaying);
+      _banger.rememberBanger(this.labPlaying);
     }
     this.openTrack(i);
     // the new song's opening queued now, ahead of the lock screen's cover being painted
@@ -5619,8 +5640,8 @@ export class SoundTestState {
     if (i < 0) return;
     if (this.playing === i) { this.playing = -1; Audio.setBank(null); }
     else if (this.playing > i) this.playing -= 1;     // the song playing moved up a row
-    deleteBanger(rec);
-    this.tracks = [...this.baseTracks, ...jukeboxBangerRows()];
+    _banger.deleteBanger(rec);
+    this.tracks = [...this.baseTracks, ..._banger.jukeboxBangerRows()];
     const n = this.tracks.length;
     // The cursor lands on the song that moved up into its place, else the song before it
     // if that is one of theirs, else on LAB.
@@ -5658,9 +5679,9 @@ export class SoundTestState {
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
-    setState(new BangerMakerState({
+    setState(new _banger.BangerMakerState({
       // Back on NEW BANGER, wherever the list now ends.
-      onDone: () => setState(this.labAgain(jukeboxBangerRows().length + 1)),
+      onDone: () => setState(this.labAgain(_banger.jukeboxBangerRows().length + 1)),
       // The song just made is previewed in the club, not kept: saving is the player's call.
       onMade: (rec, song, from, recharging) => this.openPendingClub({ rec, song, from, birth: !recharging }),
     }));
@@ -5673,7 +5694,7 @@ export class SoundTestState {
    */
   openPendingClub({ rec, song, from, birth = false, room = null }) {
     this.pending = { from, rec, song };
-    if (birth) setState(new BangerBirthState({ rec, lever: pickBirthSwitch(), subject: pickBirthFace().paint, onDone: () => this.openClub(rec, this.pending) }));
+    if (birth) setState(new _banger.BangerBirthState({ rec, lever: _banger.pickBirthSwitch(), subject: _banger.pickBirthFace().paint, onDone: () => this.openClub(rec, this.pending) }));
     else this.openClub(rec, this.pending, room);
   }
   /** A song from the Lab, in the club; its back button returns here with the song selected.
@@ -5681,11 +5702,11 @@ export class SoundTestState {
   openClub(rec, pending = null, room = null) {
     // THE BOLT's room (`strike`) comes up this frame under its own lightning, not the shutter
     if (!room?.strike) Audio.sfx('uiConfirm');
-    if (!pending) rememberBanger(rec);
+    if (!pending) _banger.rememberBanger(rec);
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
-    (room?.strike ? setStateNow : setState)(new BangerClubState({
+    (room?.strike ? setStateNow : setState)(new _banger.BangerClubState({
       rec,
       pending: pending ? { kind: pending.from ? (pending.from.preset ? 'starter' : 'edit') : 'new', song: pending.song } : null,
       onSave: pending ? (asNew) => this.commitPending(asNew) : null,
@@ -5694,7 +5715,7 @@ export class SoundTestState {
       onEdit: (r, p, left) => { if (p) this.reEditPending(left); else this.openEditor(r, left); },
       onReroll: (r, p) => this.rerollClub(r, p),
       // the song plays on in the Lab; choosing it there again stops it
-      onBack: (r) => setState(this.labAgain(Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === r)), r)),
+      onBack: (r) => setState(this.labAgain(Math.max(0, _banger.jukeboxBangerRows().findIndex((row) => row.banger === r)), r)),
     }));
   }
   /** SAVE on the pending song: update the original in place, or keep a new one. */
@@ -5704,12 +5725,12 @@ export class SoundTestState {
     // SAVE AS NEW is a new song under a new name; only a brand-new banger keeps the
     // name its preview has already shown.
     const rec = p.from && !asNew
-      ? reviseBanger(p.from, p.rec)
-      : keepBanger({ ...p.rec, fresh: true, name: p.from ? null : p.rec.name });
+      ? _banger.reviseBanger(p.from, p.rec)
+      : _banger.keepBanger({ ...p.rec, fresh: true, name: p.from ? null : p.rec.name });
     if (!rec) return null;      // the list is full: the song stays pending, nothing saved
     this.pending = null;
-    songFor(rec, p.song);
-    rememberBanger(rec);
+    _banger.songFor(rec, p.song);
+    _banger.rememberBanger(rec);
     return rec;
   }
   /** DON'T SAVE: back to the Lab, nothing kept, nothing playing. */
@@ -5717,7 +5738,7 @@ export class SoundTestState {
     const p = this.pending;
     this.pending = null;
     Audio.setBank(null);
-    setState(this.labAgain(p?.from ? Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === p.from)) : jukeboxBangerRows().length + 1));
+    setState(this.labAgain(p?.from ? Math.max(0, _banger.jukeboxBangerRows().findIndex((row) => row.banger === p.from)) : _banger.jukeboxBangerRows().length + 1));
   }
   /** The pencil while a banger is pending: another pass on the same recipe, the original
    *  kept, and straight back to the club — the ceremony is NEW BANGER's alone. */
@@ -5725,7 +5746,7 @@ export class SoundTestState {
     const p = this.pending;
     if (!p) return;
     Audio.sfx('uiConfirm');
-    setState(new BangerMakerState({
+    setState(new _banger.BangerMakerState({
       from: p.from,
       seed: p.rec,
       onDone: () => this.openClub(p.rec, p, room),
@@ -5740,7 +5761,7 @@ export class SoundTestState {
   rerollClub(rec, pending) {
     const p = pending ? this.pending : null;
     const from = p ? p.from : rec;
-    const take = rerollTake(p ? p.rec : rec, from);
+    const take = _banger.rerollTake(p ? p.rec : rec, from);
     if (!take) return null;
     return { commit: (room) => this.openPendingClub({ rec: take.rec, song: take.song, from, room }) };
   }
@@ -5751,7 +5772,7 @@ export class SoundTestState {
    */
   openEditor(rec, room = null) {
     Audio.sfx('uiConfirm');
-    setState(new BangerMakerState({
+    setState(new _banger.BangerMakerState({
       from: rec,
       onDone: () => this.openClub(rec, null, room),
       onMade: (r, song, from, recharging) => this.openPendingClub({ rec: r, song, from, birth: !recharging, room }),
@@ -6106,19 +6127,15 @@ export class SoundTestState {
       backSelected ? undefined : BACK_BUTTON_PLATE);
     const backTextY = textYForMid(this.backY + this.backH / 2, JUKEBOX_ITEM_S);
     const backColor = backSelected ? '#c9a0ff' : '#c8c8d8';
-    // The jukebox's buttons start their labels as far in from the plate's edge as the
-    // track titles do from the row's (Peter, 8 Oct 2026); in the Lab BACK centres like
-    // its neighbours.
     const labelPad = textX - rowX;
-    if (this.lab) menuTextCentered('BACK', plates.back.x + plates.back.w / 2, backTextY, backColor, JUKEBOX_ITEM_S);
-    else menuText('BACK', plates.back.x + labelPad, backTextY, backColor, JUKEBOX_ITEM_S);
+    menuTextCentered('BACK', plates.back.x + plates.back.w / 2, backTextY, backColor, JUKEBOX_ITEM_S);
     this.drawGener8(ctx, this.backY + 1, this.backH - 2, 3, JUKEBOX_ITEM_S,
       (gen, color, size) => menuTextCentered('NEW BANGER', gen.x + gen.w / 2, backTextY, color, size));
     this.drawDelete(ctx, this.backY + 1, this.backH - 2, 3, JUKEBOX_ITEM_S,
       (del, color, size) => menuTextCentered('DELETE', del.x + del.w / 2, backTextY, color, size));
     this.drawSwitches(ctx, 1, this.backH - 2, 3, JUKEBOX_ITEM_S, (plate, color, size, label) =>
-      menuText(label, plate.x + labelPad, backTextY, color,
-        Math.min(size, size * (plate.w - labelPad - 6) / textWidth(label, size))));
+      menuTextCentered(label, plate.x + plate.w / 2, backTextY, color,
+        Math.min(size, size * (plate.w - 2 * labelPad) / textWidth(label, size))));
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
@@ -6183,8 +6200,7 @@ export class SoundTestState {
     const backS = portraitMenuFit('BACK', PORTRAIT_JUKEBOX_ITEM_S, plates.back.w - 24);
     const backTextY = portraitMenuTextY(this.backY + this.backH / 2, backS);
     const backColor = backSelected ? '#c9a0ff' : '#c8c8d8';
-    if (this.lab) portraitMenuTextCentered(ctx, 'BACK', plates.back.x + plates.back.w / 2, backTextY, backColor, backS);
-    else portraitMenuText(ctx, 'BACK', titleX, backTextY, backColor, backS);
+    portraitMenuTextCentered(ctx, 'BACK', plates.back.x + plates.back.w / 2, backTextY, backColor, backS);
     this.drawGener8(ctx, this.backY + 2, this.backH - 4, 8, PORTRAIT_JUKEBOX_ITEM_S, (gen, color, size) => {
       const s = portraitMenuFit('NEW BANGER', size, gen.w - 24);
       portraitMenuTextCentered(ctx, 'NEW BANGER', gen.x + gen.w / 2, portraitMenuTextY(this.backY + this.backH / 2, s), color, s);
@@ -6193,10 +6209,10 @@ export class SoundTestState {
       const s = portraitMenuFit('DELETE', size, del.w - 24);
       portraitMenuTextCentered(ctx, 'DELETE', del.x + del.w / 2, portraitMenuTextY(this.backY + this.backH / 2, s), color, s);
     });
-    // Left-aligned like BACK, as far in from the plate's edge as the titles from the row's.
     this.drawSwitches(ctx, 2, this.backH - 4, 8, PORTRAIT_JUKEBOX_ITEM_S, (plate, color, size, label) => {
       const s = portraitMenuFit(label, size, plate.w - 2 * (titleX - rowX));
-      portraitMenuText(ctx, label, plate.x + titleX - rowX, portraitMenuTextY(plate.y + this.backH / 2, s), color, s);
+      portraitMenuTextCentered(ctx, label, plate.x + plate.w / 2,
+        portraitMenuTextY(plate.y + this.backH / 2, s), color, s);
     });
     if (this.playing >= 0) {
       for (let i = 0; i < 12; i++) {
@@ -6541,7 +6557,7 @@ function drawDeleteConfirm(ctx, { rec, yes }) {
   platePath(ctx, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, g.portrait ? 12 : 5);
   ctx.stroke();
   const title = 'ARE YOU SURE?';
-  const line = `DELETE ${bangerTitle(rec)}?`;
+  const line = `DELETE ${_banger.bangerTitle(rec)}?`;
   if (g.portrait) {
     const ts = portraitMenuFit(title, 2.1, g.w - 36, 'title');
     portraitMenuTextCentered(ctx, title, W / 2, portraitMenuTextY(g.y + 56, ts, 'title'), '#e04848', ts, 'title');
@@ -6563,15 +6579,112 @@ function drawDeleteConfirm(ctx, { rec, yes }) {
   ctx.stroke();
 }
 
+// Landscape: the text runs down the left, the picture sits in the top right corner and
+// the four buttons make one row along the bottom, all on the same side margins. The
+// picture is as wide as a button and stands over the last one. Portrait keeps its
+// centred stack.
+const ABOUT_MARGIN = 28;
+
 function aboutPageLayout() {
   const portrait = portraitMenuActive();
-  const w = portrait ? Math.min(W - 48, 380) : 190;
-  const h = portrait ? 54 : 22;
-  const gap = portrait ? 9 : 5;
+  if (!portrait) {
+    const gap = 6;
+    const h = 26;
+    const w = (W - 2 * ABOUT_MARGIN - 3 * gap) / 4;
+    const y = H - 10 - h;
+    const col = (index) => ({ x: ABOUT_MARGIN + index * (w + gap), y, w, h });
+    const picture = { x: W - ABOUT_MARGIN - w, y: 14, w, h: 124 };
+    return { portrait, picture, crash: col(0), performance: col(1), reload: col(2), back: col(3) };
+  }
+  const w = Math.min(W - 48, 380);
+  const h = 54;
+  const gap = 9;
   const x = (W - w) / 2;
-  const bottom = portrait ? portraitMenuSafeBottom(16) : H - 10;
+  const bottom = portraitMenuSafeBottom(16);
   const row = (index) => ({ x, y: bottom - h - index * (h + gap), w, h });
   return { portrait, crash: row(3), performance: row(2), reload: row(1), back: row(0) };
+}
+
+// The About picture is the arcade itself, unplugged: the hub's dark cabinet with a screen full of
+// static. One palette, built once, so the machine is the same one the hub leaves dark.
+let aboutCabinetPal = null;
+
+// Constant static on the glass: snow stepped 20 times a second, with the dead-screen bands, scanlines
+// and glow the hub gives an unplugged machine laid over it. The hub runs those only in short bursts.
+function drawCabinetStatic(ctx, x, y, w, h, pal, t) {
+  const r = cabinetScreenRect(x, y, w, h);
+  // The old 28-column snow made chunky blocks on the About illustration. Use
+  // finer cells and more luminance steps so it reads as CRT noise, not a tile.
+  const cell = Math.max(0.36, r.w / 84);
+  const cols = Math.ceil(r.w / cell);
+  const levels = new Uint8Array(cols * Math.ceil(r.h / cell));
+  let n = (Math.floor(t * 20) * 2654435761 + pal.seed * 40503) >>> 0;
+  for (let i = 0; i < levels.length; i++) {
+    n = (n * 1664525 + 1013904223) >>> 0;
+    const v = n >>> 24;
+    levels[i] = v < 34 ? 0 : v < 82 ? 1 : v < 146 ? 2 : v < 202 ? 3 : v < 242 ? 4 : 5;
+  }
+  ctx.save();
+  platePath(ctx, r.x, r.y, r.w, r.h, r.w * (cabinetStyle().box.screenR ?? 0.1));
+  ctx.clip();
+  ['#101522', '#252d40', '#46516a', '#78869e', '#b8c4d8', '#f3f5ff'].forEach((color, level) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for (let i = 0; i < levels.length; i++) {
+      if (levels[i] === level) ctx.rect(r.x + (i % cols) * cell, r.y + Math.floor(i / cols) * cell, cell, cell);
+    }
+    ctx.fill();
+  });
+  ctx.restore();
+  drawDeadScreen(ctx, x, y, w, h, t, pal.seed, undefined, 1);
+}
+
+// Even unplugged, this cabinet keeps its blank marquee panel and speaker grille.
+// These details give the About illustration more character without changing
+// the shared hub machine.
+function drawAboutCabinetDetails(ctx, x, y, w, h, style) {
+  const glass = style.box.glass;
+  const gx = x + w * glass.x0, gy = y + h * glass.y0;
+  const gw = w * (glass.x1 - glass.x0), gh = h * (glass.y1 - glass.y0);
+  const mx = gx + gw * 0.045, my = gy + gh * 0.14;
+  const mw = gw * 0.91, mh = gh * 0.72;
+  ctx.save();
+  ctx.fillStyle = '#1c1d27';
+  platePath(ctx, mx, my, mw, mh, mh * 0.16);
+  ctx.fill();
+  ctx.strokeStyle = '#4b4650';
+  ctx.lineWidth = 0.28;
+  ctx.stroke();
+  // Dim pilot lamps; nothing here is lit by the dead machine.
+  for (const [p, color] of [[0.06, '#704b3f'], [0.94, '#77704d']]) {
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(mx + mw * p, my + mh * 0.5, Math.min(mh * 0.11, 0.42), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+
+  // A recessed speaker panel on the striped lower body, with five grille cuts
+  // and corner screws. Keep the stripes visible at either side of the panel.
+  const pw = w * 0.32, ph = h * 0.085;
+  const px = x + (w - pw) / 2, py = y + h * 0.79;
+  ctx.save();
+  ctx.fillStyle = '#181b24';
+  platePath(ctx, px, py, pw, ph, ph * 0.12);
+  ctx.fill();
+  ctx.strokeStyle = '#3e4552';
+  ctx.lineWidth = 0.32;
+  ctx.stroke();
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = i === 0 ? '#59616f' : '#333a47';
+    platePath(ctx, px + pw * 0.2, py + ph * (0.2 + i * 0.12), pw * 0.6, Math.max(0.18, ph * 0.035), ph * 0.02);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#6d6250';
+  for (const dx of [0.1, 0.9]) {
+    for (const dy of [0.22, 0.78]) {
+      ctx.beginPath(); ctx.arc(px + pw * dx, py + ph * dy, Math.min(ph * 0.045, 0.22), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 export class AboutState {
@@ -6583,8 +6696,9 @@ export class AboutState {
     this.onCrashLog = onCrashLog;
     this.onPerformanceTest = onPerformanceTest;
     this.idx = 3; // Back is the safe keyboard default.
+    this.t = 0; // Clock for the screen static and its flicker.
   }
-  enter() { this.idx = 3; Input.setMenuButtons(); }
+  enter() { this.idx = 3; this.t = 0; Input.setMenuButtons(); }
   buildTime() {
     return formatBuildTime(typeof window !== 'undefined' ? window.__MASH_BUILT_AT__ : '') || 'UNAVAILABLE';
   }
@@ -6596,13 +6710,14 @@ export class AboutState {
       { label: 'BACK', act: this.onDone },
     ];
   }
-  update() {
+  update(dt) {
+    this.t += dt || 0;
     const g = aboutPageLayout();
     const hit = (r) => Input.pointer.x >= r.x && Input.pointer.x <= r.x + r.w
       && Input.pointer.y >= r.y && Input.pointer.y <= r.y + r.h;
     if (Input.pressed('back') || Input.pressed('slide')) { Audio.sfx('ui'); this.onDone(); }
-    else if (Input.pressed('up')) { this.idx = (this.idx + 3) % 4; Audio.sfx('ui'); }
-    else if (Input.pressed('down')) { this.idx = (this.idx + 1) % 4; Audio.sfx('ui'); }
+    else if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + 3) % 4; Audio.sfx('ui'); }
+    else if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % 4; Audio.sfx('ui'); }
     else if (Input.pressed('pointer') && hit(g.back)) { Audio.sfx('ui'); this.onDone(); }
     else if (Input.pressed('pointer') && hit(g.reload)) { Audio.sfx('uiConfirm'); this.onReload?.(); }
     else if (Input.pressed('pointer') && hit(g.crash)) { Audio.sfx('uiConfirm'); this.onCrashLog?.(); }
@@ -6613,23 +6728,69 @@ export class AboutState {
     }
     Input.endFrame();
   }
+  // The unplugged arcade in a gold frame: the hub's wall, baseboard and floor, the dark cabinet
+  // standing on it with its reflection, and the static lighting the wall and the floor in front.
   drawPicture(ctx, cx, cy, w, h) {
+    const x = cx - w / 2;
+    const y = cy - h / 2;
+    const t = this.t || 0;
+    const pal = aboutCabinetPal || (aboutCabinetPal = cabinetPalette({ id: 'about' }, false));
+    const style = cabinetStyle();
+    const floorY = y + h * 0.81;
+    const cabH = h * 0.72;
+    const cabW = cabH * (style.w / style.h);
+    const cabX = cx - cabW / 2;
+    const cabY = floorY - cabH;
+    const wallBase = floorY - cabH * 0.062;
+    const glint = Math.sin(Math.floor(t * 20) * 12.9898) * 43758.5453;
+    const flick = 0.78 + 0.22 * (glint - Math.floor(glint));
+    const scr = cabinetScreenRect(cabX, cabY, cabW, cabH);
     ctx.save();
-    ctx.fillStyle = '#21192d';
-    platePath(ctx, cx - w / 2, cy - h / 2, w, h, Math.min(10, h * 0.12));
+    ctx.fillStyle = '#120d1f';
+    platePath(ctx, x, y, w, h, Math.min(10, h * 0.12));
     ctx.fill();
+    ctx.save();
+    platePath(ctx, x + 3, y + 3, w - 6, h - 6, Math.min(7, h * 0.09));
+    ctx.clip();
+    ctx.fillStyle = '#241c30';
+    ctx.fillRect(x, y, w, wallBase - y);
+    ctx.fillStyle = '#38304a';
+    ctx.fillRect(x, wallBase, w, 3.2);
+    const floor = ctx.createLinearGradient(0, wallBase + 3.2, 0, y + h);
+    floor.addColorStop(0, '#1c1626');
+    floor.addColorStop(1, '#130e1b');
+    ctx.fillStyle = floor;
+    ctx.fillRect(x, wallBase + 3.2, w, y + h - wallBase - 3.2);
+    const glow = ctx.createRadialGradient(scr.x + scr.w / 2, scr.y + scr.h / 2, 0, scr.x + scr.w / 2, scr.y + scr.h / 2, cabW * 1.6);
+    glow.addColorStop(0, `rgba(143,168,216,${(0.4 * flick).toFixed(3)})`);
+    glow.addColorStop(1, 'rgba(143,168,216,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(x, y, w, wallBase - y);
+    ctx.save();
+    ctx.translate(cx, floorY + 5);
+    ctx.scale(1, 0.22);
+    const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, cabW);
+    pool.addColorStop(0, `rgba(143,168,216,${(0.34 * flick).toFixed(3)})`);
+    pool.addColorStop(1, 'rgba(143,168,216,0)');
+    ctx.fillStyle = pool;
+    ctx.fillRect(-cabW, -cabW, cabW * 2, cabW * 2);
+    ctx.restore();
+    // The hub's reflection, held a little longer and stronger than its falloff would be here, since
+    // this floor is only a few units deep and the frame clips whatever runs past it.
+    const band = beginFloorReflectionBand(ctx, floorY, {
+      height: (y + h - 3 - floorY) / REFLECT_SQUASH * 1.5,
+      alpha: 0.75,
+    });
+    addFloorReflection(band, { draw: (c) => drawCabinetShell(c, cabX, cabY, cabW, cabH, pal), height: cabH, anchorX: cx, lift: 0 });
+    endFloorReflectionBand(band);
+    drawCabinetShell(ctx, cabX, cabY, cabW, cabH, pal);
+    drawCabinetStatic(ctx, cabX, cabY, cabW, cabH, pal, t);
+    drawAboutCabinetDetails(ctx, cabX, cabY, cabW, cabH, style);
+    ctx.restore();
     ctx.strokeStyle = '#c9a04a';
-    ctx.lineWidth = 2;
-    platePath(ctx, cx - w / 2 + 2, cy - h / 2 + 2, w - 4, h - 4, Math.min(8, h * 0.1));
+    ctx.lineWidth = 1.15;
+    platePath(ctx, x + 2, y + 2, w - 4, h - 4, Math.min(8, h * 0.1));
     ctx.stroke();
-    ctx.fillStyle = '#51376f';
-    ctx.beginPath(); ctx.arc(cx, cy - h * 0.08, Math.min(w, h) * 0.31, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#f6d33c';
-    for (const [sx, sy, r] of [[-0.31, -0.31, 2], [0.32, -0.17, 1.7], [0.29, 0.3, 1.4]]) {
-      ctx.fillRect(cx + w * sx - r, cy + h * sy - r, r * 2, r * 2);
-    }
-    drawToon(ctx, 'lorenzo', { kind: 'idle', grounded: true, time: this.t || 0, menu: true },
-      cx, cy + h * 0.34, Math.min(h * 0.72, w * 0.82));
     ctx.restore();
   }
   draw(ctx) {
@@ -6645,28 +6806,33 @@ export class AboutState {
       line('MASHENSTEIN', 38, 3.4, '#ffcf33', 'title');
       line('THE UNPLUGGENING', 77, 1.8, '#8fb0f5', 'subtitle');
       this.drawPicture(ctx, W / 2, top + 151, 92, 104);
-      line('A GAME STITCHED TOGETHER', 229, 1.8, '#f4f1fa');
-      line('FROM PARTS OF OTHER GAMES.', 258, 1.8, '#f4f1fa');
+      line('HE UNPLUGGED THE ARCADE.', 229, 1.8, '#f4f1fa');
+      line("THEY'RE PLUGGING IT BACK IN.", 258, 1.8, '#f4f1fa');
       line('RUN. JUMP. DUCK. SHOOT.', 296, 1.65, '#c9a0ff', 'bold');
       line('THREE BUTTONS. MANY BAD IDEAS.', 327, 1.5, '#9292a3');
       line('BUILT (LOCAL TIME)', 379, 1.4, '#c9a0ff', 'bold');
       line(this.buildTime(), 410, 1.45, '#f4f1fa');
       line('RELOAD CHECKS FOR A NEW BUILD', 441, 1.2, '#9292a3');
     } else {
-      const line = (copy, y, size, color, font = 'ui', center = W / 2, maxWidth = W - 42) => {
-        const fit = Math.min(size, maxWidth / Math.max(1, textWidth(copy, 1, font)));
-        drawTextCentered(ctx, copy, center, textYForMid(y, fit, font), color, fit, font);
+      const p = g.picture;
+      const maxWidth = p.x - ABOUT_MARGIN - 12;
+      const line = (copy, y, size, color, font = 'ui', limit = maxWidth) => {
+        const fit = Math.min(size, limit / Math.max(1, textWidth(copy, 1, font)));
+        drawText(ctx, copy, ABOUT_MARGIN, textYForMid(y, fit, font), color, fit, font);
       };
-      line('MASHENSTEIN', 20, 2.05, '#ffcf33', 'title');
-      line('THE UNPLUGGENING', 39, 1.15, '#8fb0f5', 'subtitle');
-      this.drawPicture(ctx, 62, 99, 66, 72);
-      line('A GAME STITCHED TOGETHER', 73, 0.86, '#f4f1fa', 'ui', 302, 335);
-      line('FROM PARTS OF OTHER GAMES.', 90, 0.86, '#f4f1fa', 'ui', 302, 335);
-      line('RUN. JUMP. DUCK. SHOOT.', 108, 0.86, '#c9a0ff', 'bold', 302, 335);
-      line('BUILT (LOCAL TIME)', 126, 0.72, '#c9a0ff', 'bold', 302, 335);
-      line(this.buildTime(), 140, 0.75, '#f4f1fa', 'ui', 302, 335);
+      line('MASHENSTEIN', 27, 3.4, '#ffcf33', 'title');
+      line('THE UNPLUGGENING', 58, 1.9, '#8fb0f5', 'subtitle');
+      this.drawPicture(ctx, p.x + p.w / 2, p.y + p.h / 2, p.w, p.h);
+      line('HE UNPLUGGED THE ARCADE.', 102, 2, '#f4f1fa');
+      line("THEY'RE PLUGGING IT BACK IN.", 131, 2, '#f4f1fa');
+      line('RUN. JUMP. DUCK. SHOOT.', 172, 2, '#c9a0ff', 'bold');
+      line(this.buildTime(), 212, 1, '#9292a3', 'ui', W - 2 * ABOUT_MARGIN);
     }
-    for (const [i, r, label] of [[0, g.crash, 'CRASH REPORT'], [1, g.performance, 'PERFORMANCE TEST'], [2, g.reload, 'RELOAD GAME'], [3, g.back, 'BACK']]) {
+    const rows = [[0, g.crash, 'CRASH REPORT'], [1, g.performance, 'PERFORMANCE TEST'], [2, g.reload, 'RELOAD GAME'], [3, g.back, 'BACK']];
+    // One label size for the whole landscape row, set by the longest label, so the buttons match.
+    const rowSize = g.portrait ? 0
+      : Math.min(1.1, ...rows.map(([, r, label]) => (r.w - 14) / Math.max(1, textWidth(label, 1))));
+    for (const [i, r, label] of rows) {
       const selected = this.idx === i;
       drawMenuRow(ctx, r.x, r.y, r.w, r.h, g.portrait ? 7 : 4,
         selected ? undefined : BACK_BUTTON_PLATE);
@@ -6676,8 +6842,8 @@ export class AboutState {
           portraitMenuTextY(r.y + r.h / 2, size, selected ? 'bold' : 'ui'),
           selected ? '#c9a0ff' : '#c8c8d8', size, selected ? 'bold' : 'ui');
       } else {
-        drawTextCentered(ctx, label, W / 2, textYForMid(r.y + r.h / 2, 1.1),
-          selected ? '#c9a0ff' : '#c8c8d8', 1.1);
+        drawTextCentered(ctx, label, r.x + r.w / 2, textYForMid(r.y + r.h / 2, rowSize),
+          selected ? '#c9a0ff' : '#c8c8d8', rowSize);
       }
     }
   }
@@ -6689,9 +6855,10 @@ export class SettingsState {
 
   // `onDevMenu` is passed only by a dev build (main.js, when Dev.enabled): it puts a
   // DEV MENU row at the top of the list, the phone's way in without the five-tap corner.
-  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, pause = false, onExitTitle = null }) {
+  constructor({ save, onDone, onCalibrate = null, onDevMenu = null, onSaveFile = null, pause = false, onExitTitle = null, escapeToTitle = false }) {
     this.pause = pause;
     this.onExitTitle = onExitTitle;
+    this.escapeToTitle = escapeToTitle;
     this.save = save;
     this.onDone = onDone;
     this.onDevMenu = onDevMenu;
@@ -6873,6 +7040,12 @@ export class SettingsState {
       else if (Input.pressed('back') || Input.pressed('slide') || hit(g.no)) {
         this.confirming = false; Audio.sfx('ui');
       }
+      Input.endFrame();
+      return;
+    }
+    if (this.escapeToTitle && Input.pressed('escape')) {
+      this.save.persist();
+      this.onExitTitle?.();
       Input.endFrame();
       return;
     }

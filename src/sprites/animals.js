@@ -23,10 +23,10 @@
 
 import { OUTLINE_SCALE } from './outline.js';
 import {
-  CAT_PAINTERS, CAT_TYPES, CAT_FRAMES, CAT_FPS, CAT_IDLE_FRAMES, CAT_STRIKE_FRAMES, SWIPE_T, CAT_STRIKE_LEAD,
+  CAT_PAINTERS, CAT_TYPES, CAT_FRAMES, CAT_FPS, CAT_IDLE_FRAMES, CAT_STRIKE_FRAMES, SWIPE_T, CAT_STRIKE_LEAD, PYTHAGORAS_TAIL_ROOM,
 } from './neonCats.js';
 import { DOG_PAINTERS, FINISH_DOG_PAINTERS as DOG_FINISH_PAINTERS, DOG_FRAMES, dogStride } from './dogs.js';
-import { paintCryptPanther, cryptPantherStride } from './crypt-animals.js';
+import { paintCryptPanther, cryptPantherStride, PANTHER_FRAMES } from './crypt-animals.js';
 import {
   paintBobcat, bobcatStride, BOBCAT_FRAMES, BOBCAT_TALL, BOBCAT_VISUAL,
 } from './bobcat.js';
@@ -1355,7 +1355,7 @@ export const ANIMAL_PAINTERS = {
   catFury: (ctx, w, h, frame = 0) => quadruped(ctx, w, h, frame, BREEDS.catFury),
   cryptPanther: (ctx, w, h, frame = 0) => {
     ctx.save(); ctx.scale(w / 100, h / 70);
-    paintCryptPanther(ctx, (frame % FELINE_FRAMES) / FELINE_FRAMES);
+    paintCryptPanther(ctx, (frame % PANTHER_FRAMES) / PANTHER_FRAMES);
     ctx.restore();
   },
   // SPEED ZONE's streak bobcat, in the bruiser's place there (sprites/bobcat.js).
@@ -1386,7 +1386,7 @@ export const STRIKERS = {
 
 export const ANIMAL_FRAMES = {
   dogSnarler: DOG_FRAMES, dogBruiser: DOG_FRAMES, dogFeral: DOG_FRAMES, catFury: FELINE_FRAMES,
-  cryptPanther: FELINE_FRAMES,
+  cryptPanther: PANTHER_FRAMES,
   bobcat: BOBCAT_FRAMES,
   rattlesnake: SNAKE_FRAMES,
   goose: GOOSE_FRAMES,
@@ -1489,6 +1489,8 @@ export const ANIMAL_VISUAL = {
   // Drawn at its box: its box already takes in the strike.
   rattlesnake: 1,
   ...Object.fromEntries(CAT_TYPES.map((t) => [t, 1])),
+  // Paired with Pythagoras's wider painter fit; his body remains the same size.
+  catPythagoras: PYTHAGORAS_TAIL_ROOM,
   // 1.1 for the bird, times the room its honk lines need (GOOSE_PAD): same size on screen.
   goose: 1.1 * (16.4 + 9.8 + 5.5) / (16.4 + 9.8),
 };
@@ -1536,7 +1538,7 @@ const FELINE_STRIDE = {
 };
 for (const [name, [w, h, v]] of Object.entries(FELINE_BOXES)) {
   ANIMAL_STRIDE[name] = FELINE_STRIDE[name](w, h, name);
-  ANIMAL_FPS[name] = FELINE_FRAMES * v / ANIMAL_STRIDE[name];
+  ANIMAL_FPS[name] = ANIMAL_FRAMES[name] * v / ANIMAL_STRIDE[name];
 }
 
 // The goose on the same clock (the waddle-and-hop, goose() above): GOOSE_ROAD goose units

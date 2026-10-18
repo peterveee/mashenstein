@@ -9,7 +9,7 @@ import { drawText, drawTextCentered, drawPanel, textYForMid, textWidth } from '.
 import { setState, currentState } from '../engine/states.js';
 import { STAGES, stagesForCabinet, stageLabel, UNLOCKS } from '../data/stages.js';
 import { CABINETS, CABINET_BY_ID } from '../data/cabinets.js';
-import { GAME_ALTERNATES } from '../data/game-alternates.js';
+import { loadGameAlternatesModule, gameAlternatesIfLoaded } from '../data/game-alternates-loader.js';
 import { DESK_SONGS } from './desk-songs.js';
 import { BOSSES } from '../game/boss.js';
 import { OBSTACLES } from '../game/entities.js';
@@ -415,6 +415,20 @@ function scenesMenu(dev) {
 
 function gameAlternatesMenu(dev) {
   const { Flow } = dev.ctx;
+  // ~14MB of generated song data, fetched only the moment this menu is
+  // actually opened (see data/game-alternates-loader.js). The menu system
+  // re-runs `rebuild` on its own, so returning a placeholder here and kicking
+  // off the load is enough — it swaps to the real list once loaded.
+  const loaded = gameAlternatesIfLoaded();
+  if (!loaded) {
+    // dev.refresh() re-runs `rebuild` in place — the menu system does that
+    // after a keypress, but nothing drives it on its own, so the load's own
+    // completion has to ask for it directly or the LOADING… row would sit
+    // there until the player happens to press a key.
+    loadGameAlternatesModule().then(() => dev.refresh());
+    return { title: 'GAME ALTERNATES', items: [{ label: 'LOADING…' }], rebuild: () => gameAlternatesMenu(dev) };
+  }
+  const { GAME_ALTERNATES } = loaded;
   const go = (fn) => () => { dev.close(); fn(); };
   const launchMenu = (song) => {
     // The food court is the game's hub, not a cabinet, but it is still a live
@@ -815,7 +829,7 @@ export function rootMenu(dev) {
       { label: 'BOSSES ▸', submenu: () => bossesMenu(dev) },
       { label: 'TROPHY ROOM', act: () => {
         dev.close();
-        dev.ctx.Flow.openTrophyRoom();
+        dev.ctx.Flow.openTrophyRoom({ revealAllSuspects: true });
       } },
       { label: "DOLORES' REPAIR BENCH", act: () => {
         dev.close();

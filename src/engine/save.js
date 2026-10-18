@@ -217,7 +217,7 @@ export function defaultSlot() {
     mastery: {},      // heroId -> {xp, level, equipped: []}
     mods: { found: [], equipped: [], slots: 2 },
     tutor: {},        // one-time teaching prompts already shown
-    hub: { roomsOpen: 1, manualsFound: [], npcSeen: {} },
+    hub: { roomsOpen: 1, manualsFound: [], npcSeen: {}, usualSuspects: {} },
     overtime: { best: 0, bestRelay: 0, bestTime: 0, seedBests: {} },
     stats: {
       runs: 0, tags: 0, perfectTags: 0, deaths: 0, coinsEarned: 0,

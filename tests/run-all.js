@@ -476,12 +476,17 @@ const suites = [
   'tests/shop-themes.js',
   'tests/shop-menu.js',
   'tests/trophy-workshop.js',
+  // The food court's speech cards hold a line for as long as it takes to read, and the phone's
+  // card seats the longest of them instead of cutting off the end.
+  'tests/hub-talk-hold.js',
   'tests/breaker-bonus.js',
   // RESTART on the pause screen. It is a seed promise more than a menu item —
   // the plate says "this level again", and the only thing making that true is
   // that enter() re-reads the run's own seed. Checked by replaying the road.
   'tests/pause-restart.js',
   'tests/props.js',
+  // 8-3's safe bonus pays out actual currency pickups at the painted money pile.
+  'tests/office-money-pile.js',
   // The peel: a hazard defined by the escape hatches it does NOT have, which is
   // the kind of fact a later tidy-up quietly grants it. Beside the prop suites
   // because half of what it pins is the 5px drawing.

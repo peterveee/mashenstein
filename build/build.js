@@ -62,6 +62,17 @@ const options = {
   entryPoints: {
     gate: join(root, 'src/gate.js'),
     game: join(root, 'src/main.js'),
+    // THE BANGER LAB (staff-only), split off because its generated calibration
+    // table alone is several megabytes — see src/game/banger/lazy.js. A fourth
+    // key here, in the SAME shared build as gate/game, so the dev server's
+    // in-memory serve layer answers for it exactly like the other two; only
+    // production's emit() also writes it to disk (dist/bangerLab.js).
+    bangerLab: join(root, 'src/game/banger/lazy.js'),
+    // Every song's alternate takes (8-bit versions, remixes, scrapped
+    // transitions), ~14MB, read only by the dev-only GAME ALTERNATES audition
+    // menu (src/dev/menus.js) — no shipped gameplay path touches it. Same
+    // split-bundle treatment as bangerLab.
+    gameAlternates: join(root, 'src/data/game-alternates-lazy.js'),
   },
   bundle: true,
   format: 'iife',
@@ -163,7 +174,7 @@ function emitManifest(dist, icons) {
   const body = JSON.stringify({
     name: 'MASHENSTEIN: The Unpluggening',
     short_name: 'MASHENSTEIN',
-    description: 'A game stitched together from parts of other games.',
+    description: "He unplugged the arcade. They're plugging it back in.",
     // The installed app's identity, said outright rather than left to be worked out
     // from start_url. './' resolves to that same URL, so an existing install is still
     // the same app. Added 8 Oct 2026 while the lock-screen NOW PLAYING card's tap was
@@ -213,6 +224,8 @@ function output(result, name) {
 function emit(result) {
   const gateJs = output(result, 'gate');
   const gameJs = buildStamp() + output(result, 'game');
+  const bangerLabJs = output(result, 'bangerLab');
+  const gameAlternatesJs = output(result, 'gameAlternates');
   const timestamp = buildTimestamp();
   const template = readFileSync(join(root, 'build/template.html'), 'utf8')
     .replaceAll('__BUILD_TIMESTAMP__', timestamp)
@@ -229,9 +242,15 @@ function emit(result) {
   writeFileSync(join(dist, 'index.html'), html);
   writeFileSync(join(dist, 'game.js'), gameJs);
   // Weapon cues are synthesised in-engine now (src/engine/weapon-sfx.js), so
-  // there are no audio assets to copy — the game ships as index.html + game.js.
+  // there are no audio assets to copy — the game ships as index.html + game.js,
+  // plus bangerLab.js (THE BANGER LAB) and gameAlternates.js (the dev audition
+  // menu's song takes), each fetched only if actually opened.
+  writeFileSync(join(dist, 'bangerLab.js'), bangerLabJs);
+  writeFileSync(join(dist, 'gameAlternates.js'), gameAlternatesJs);
   console.log(`dist/index.html written (${(html.length / 1024).toFixed(0)} KB gate)`);
   console.log(`dist/game.js written (${(gameJs.length / 1024).toFixed(0)} KB game)`);
+  console.log(`dist/bangerLab.js written (${(bangerLabJs.length / 1024).toFixed(0)} KB banger lab)`);
+  console.log(`dist/gameAlternates.js written (${(gameAlternatesJs.length / 1024).toFixed(0)} KB game alternates)`);
 
   // The icon and manifest an INSTALLED copy needs, and a loose index.html does
   // not: each degrades to nothing if it is missing. Watch builds get their own

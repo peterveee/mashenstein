@@ -34,14 +34,14 @@
 // theirs: "can we fix the other feline animals also"). The keyed gait above is kept for
 // the bake-off's losing takes (BOBCAT_RIG.pose), but the shipped bobcat now runs on
 // gallopPose() below: every stance paw is nailed to the road, a cat's bound-like rotary
-// gallop with the back rounding hard on the gather, sixteen frames stepped by the road
+// gallop with the back rounding hard on the gather, frames stepped by the road
 // he covers (bobcatStride, animals.js ANIMAL_STRIDE). Same drawing, same box, same fit.
 //
 // Authored FACING RIGHT in world units, feet on y 0, then mirrored: obstacles arrive
 // from the right, and world props are never flipped at draw time. Deterministic: every
 // pose is a function of the frame index only.
 
-import { FELINE_FRAMES, FELINE_GALLOP, felineFoot, felineBody } from './felineGait.js';
+import { FELINE_GALLOP, felineFoot, felineBody } from './felineGait.js';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
@@ -101,7 +101,7 @@ function ik(ax, ay, bx, by, l1, l2, side) {
 //   liftK / pitchK / nodK   the bounce, the rock and the head's nod, against the dogs'
 //   earBack the ears pinned back (0 up .. 1 flat); gape0 / gapeK the mouth
 //   bobAng / bobLen   the bob's carry and length; spotK the coat's spot size
-export const BOBCAT_BUILD = {
+export const BOBCAT_LEGACY_BUILD = {
   L: 6.2, spine: 9.6, cx: -0.5, low: 0.12,
   chestUp: 2.15, chestDown: 2.2, chestRx: 2.35,
   rumpUp: 2.2, rumpDown: 1.65, rumpRx: 2.5, tuck: 1.0, pouch: 0.1, arch: 0.15,
@@ -117,6 +117,15 @@ export const BOBCAT_BUILD = {
   },
   marks: 'bobcat', rev: 2,
 };
+
+// B POWER BOUND — selected and shipped 18 Oct 2026. Keep the earlier build
+// available to the lab; production and the selected card share these numbers.
+export const BOBCAT_BUILD = {
+  ...BOBCAT_LEGACY_BUILD,
+  flexK: .35, flexArch: 2.15, low: .10, farOffset: .65,
+  hindSegments: [.46, .42, .20], foreSegments: [.50, .48, .17], pawCurl: .8,
+};
+export const BOBCAT_MOUTH = [.18, .44, .83, 1, .74, .26, .03, .05];
 
 // ------------------------------------------------------------------- the pose
 function pose(B, phase) {
@@ -180,10 +189,16 @@ function pose(B, phase) {
 //   bob    the body's rise through the two flights, in L (peak to trough)
 //   pitch  the rock, radians: nose up as the hinds carry, down as the fores do
 //   headHold  how much of the bump and pitch the head refuses (1 = rock steady)
-export const BOBCAT_GALLOP = {
+export const BOBCAT_LEGACY_GALLOP = {
   ...FELINE_GALLOP,
   strideL: 2.75, hindTD: 0.46, foreTD: 0.52, liftF: 0.30, liftH: 0.27,
   bob: 0.09, pitch: 0.05, headHold: 0.7,
+};
+export const BOBCAT_GALLOP = {
+  ...BOBCAT_LEGACY_GALLOP,
+  strideL: 3.2, bob: .22, pitch: .12, headHold: .65, liftF: .46, liftH: .42,
+  hindNear: .10, foreNear: .46, foreFar: .59, foreDuty: .24, hindDuty: .25,
+  flightE: .405, flightG: .915,
 };
 function gallopPose(B, phase, G = BOBCAT_GALLOP) {
   const L = B.L;
@@ -206,16 +221,18 @@ function gallopPose(B, phase, G = BOBCAT_GALLOP) {
     const fx = (isFore ? restS : restH) + dx + f.x * L;
     const fy = -f.y * L;
     if (isFore) {
-      const a3 = L * 0.17, a1 = L * 0.47, a2 = L * 0.44;
+      const [upper, lower, wrist] = B.foreSegments || [.47, .44, .17];
+      const a3 = L * wrist, a1 = L * upper, a2 = L * lower;
       // carpus -> foot points along `a`; the elbow breaks toward the tail.
       const C = { x: fx - Math.cos(f.a * DEG) * a3, y: fy - Math.sin(f.a * DEG) * a3 };
-      return { root, mid: ik(root.x, root.y, C.x, C.y, a1, a2, -1), low: C, foot: { x: fx, y: fy }, fore: true };
+      return { root, mid: ik(root.x, root.y, C.x, C.y, a1, a2, -1), low: C, foot: { x: fx, y: fy }, fore: true, pawAngle: f.stance >= 0 ? 0 : (B.pawCurl ?? 0) * f.fold };
     }
     const hk = B.hindK || 1;
-    const b3 = L * 0.34 * hk, b1 = L * 0.50 * hk, b2 = L * 0.50 * hk;
+    const [thigh, shin, hock] = B.hindSegments || [0.50, 0.50, 0.34];
+    const b3 = L * hock * hk, b1 = L * thigh * hk, b2 = L * shin * hk;
     // foot -> hock points along `a`; the stifle breaks toward the nose.
     const Hk = { x: fx + Math.cos(f.a * DEG) * b3, y: fy + Math.sin(f.a * DEG) * b3 };
-    return { root, mid: ik(root.x, root.y, Hk.x, Hk.y, b1, b2, 1), low: Hk, foot: { x: fx, y: fy }, fore: false };
+    return { root, mid: ik(root.x, root.y, Hk.x, Hk.y, b1, b2, 1), low: Hk, foot: { x: fx, y: fy }, fore: false, pawAngle: f.stance >= 0 ? 0 : -(B.pawCurl ?? 0) * .65 * f.fold };
   };
   // A cat's head rides level while the body pumps under it: most of the bump and the
   // pitch are taken back out at the neck.
@@ -225,14 +242,15 @@ function gallopPose(B, phase, G = BOBCAT_GALLOP) {
     x: S0.x + Math.cos(neckAng) * B.neckLen,
     y: S0.y + Math.sin(neckAng) * B.neckLen + lift * L * hold,
   };
-  const gape = clamp01((B.gape0 || 0) + (B.gapeK ?? 1) * cyc(GAIT.gape, phase) * (1 - (B.gape0 || 0)));
+  const gape = clamp01((B.gape0 || 0) + (B.gapeK ?? 1) * cyc(B.mouthKeys || BOBCAT_MOUTH, phase) * (1 - (B.gape0 || 0)));
+  const farOffset = B.farOffset ?? .2;
   return {
     L, S: S0, Hp: H0, pitch, flex, lift, spine, arch,
     fore: leg({ x: S0.x, y: S0.y }, true, true),
-    foreFar: leg({ x: S0.x - 0.2, y: S0.y }, true, false, -0.2),
+    foreFar: leg({ x: S0.x - farOffset, y: S0.y }, true, false, -farOffset),
     hind: leg({ x: H0.x, y: H0.y }, false, true),
-    hindFar: leg({ x: H0.x - 0.2, y: H0.y }, false, false, -0.2),
-    Hc, headR: B.headR, tilt: (B.tilt0 || 0) - 0.04 - pitch * (1 - hold),
+    hindFar: leg({ x: H0.x - farOffset, y: H0.y }, false, false, -farOffset),
+    Hc, gape, headR: B.headR, tilt: (B.tilt0 || 0) - 0.04 - pitch * (1 - hold),
     // The bob trails the body's pitch by a quarter cycle: a counterweight, not a wag.
     swing: Math.sin(TAU * (phase - 0.3)),
     phase,
@@ -301,24 +319,31 @@ function ribbon(p, pts, w0, w1) {
 // rather than a bone with a knob on the end. The paws sit flat and under the leg. The
 // paw is wound the same way as the capsules, or the nonzero fill punches it out where
 // it overlaps the leg and it reads as a ring.
+function pawShape(lg, B, k = 1) {
+  const pr = B.pawR * k, angle = lg.pawAngle || 0;
+  const rx = pr * .95, ry = pr * .6;
+  const x = lg.foot.x + pr * .22;
+  // A planted paw touches the road; a swinging one curls with the wrist/hock.
+  const y = lg.foot.y - Math.hypot(rx * Math.sin(angle), ry * Math.cos(angle));
+  return { x, y, rx, ry, angle };
+}
+
 function legPath(lg, B, k) {
   const [w0, w1, w2] = B.legW.map((v) => v * k * 0.5);
-  const pr = B.pawR * k;
   const p = new Path2D();
   const { root, mid, low, foot } = lg;
+  const paw = pawShape(lg, B, k);
   if (lg.fore) {
     capsule(p, root.x, root.y, mid.x, mid.y, w0 * 1.3, w1 * 1.12);
     capsule(p, mid.x, mid.y, low.x, low.y, w1 * 1.12, w2 * 1.0);
-    capsule(p, low.x, low.y, foot.x, foot.y, w2 * 1.0, w2 * 0.9);
+    capsule(p, low.x, low.y, paw.x, paw.y, w2 * 1.0, w2 * 0.9);
   } else {
     capsule(p, root.x, root.y + w0 * 0.3, mid.x, mid.y, w0 * 1.45, w1 * 1.15);
     capsule(p, mid.x, mid.y, low.x, low.y, w1 * 1.0, w2 * 0.95);
-    capsule(p, low.x, low.y, foot.x, foot.y, w2 * 0.95, w2 * 0.9);
+    capsule(p, low.x, low.y, paw.x, paw.y, w2 * 0.95, w2 * 0.9);
   }
-  const a = Math.atan2(foot.y - low.y, foot.x - low.x);
-  const px = foot.x + Math.cos(a) * pr * 0.05 + pr * 0.22, py = foot.y - pr * 0.34;
-  p.moveTo(px + pr * 0.95, py);
-  p.ellipse(px, py, pr * 0.95, pr * 0.6, 0, TAU, 0, true);
+  p.moveTo(paw.x + paw.rx * Math.cos(paw.angle), paw.y + paw.rx * Math.sin(paw.angle));
+  p.ellipse(paw.x, paw.y, paw.rx, paw.ry, paw.angle, TAU, 0, true);
   return p;
 }
 
@@ -571,6 +596,81 @@ function muzzleMarks(ctx, B, P, hd, skull, jaw) {
   });
 }
 
+// Paint a limb from hip/shoulder toward the paw. Each segment owns its markings;
+// the next segment covers them wherever a folded joint crosses back over itself.
+function markedLeg(ctx, B, lg, torso) {
+  const [w0, w1, w2] = B.legW.map(v => v * 0.5);
+  const { root, mid, low, foot } = lg;
+  const segment = (a, b, ra, rb) => P2(p => capsule(p, a.x, a.y, b.x, b.y, ra, rb));
+  const upper = lg.fore
+    ? segment(root, mid, w0 * 1.3, w1 * 1.12)
+    : segment(pt(root.x, root.y + w0 * .3), mid, w0 * 1.45, w1 * 1.15);
+  const shank = segment(mid, low, w1 * (lg.fore ? 1.12 : 1), w2 * (lg.fore ? 1 : .95));
+  const paw = pawShape(lg, B);
+  const ankle = segment(low, paw, w2 * (lg.fore ? 1 : .95), w2 * .9);
+  const fill = path => { ctx.fillStyle = B.pal.coat; ctx.fill(path); };
+  fill(upper);
+  if (!lg.fore) clipTo(ctx, [upper], () => {
+    const angle = Math.atan2(mid.y - root.y, mid.x - root.x);
+    const k = B.spotK ?? 1;
+    for (const [f, offset, radius] of [[.22,.35,.28],[.44,-.3,.27],[.66,.18,.23]]) {
+      const x = lerp(root.x, mid.x, f) - Math.sin(angle) * offset;
+      const y = lerp(root.y, mid.y, f) + Math.cos(angle) * offset;
+      fillP(ctx, B.pal.spot, c => c.ellipse(x, y, radius * k * 1.25, radius * k, angle, 0, TAU));
+    }
+  });
+  fill(shank);
+  clipTo(ctx, [shank], () => {
+    const angle = Math.atan2(low.y - mid.y, low.x - mid.x) + Math.PI / 2;
+    ctx.strokeStyle = lg.fore ? B.pal.dark : B.pal.spot;
+    ctx.lineWidth = lg.fore ? .34 : .26;
+    ctx.lineCap = 'butt';
+    for (const f of [.32, .62]) {
+      const x = lerp(mid.x, low.x, f), y = lerp(mid.y, low.y, f);
+      ctx.beginPath();
+      ctx.moveTo(x - Math.cos(angle) * 1.2, y - Math.sin(angle) * 1.2);
+      ctx.lineTo(x + Math.cos(angle) * 1.2, y + Math.sin(angle) * 1.2);
+      ctx.stroke();
+    }
+  });
+  fill(ankle);
+  fillP(ctx, B.pal.coat, c => c.ellipse(paw.x, paw.y, paw.rx, paw.ry, paw.angle, 0, TAU));
+  // Use the actual tapered capsule edge and round knee cap. A free curve
+  // through the joint centre cuts across the thigh when the bend changes.
+  const top = lg.fore ? root : pt(root.x, root.y + w0 * .3);
+  const dx = mid.x - top.x, dy = mid.y - top.y, length = Math.hypot(dx, dy) || 1;
+  const nx = -dy / length, ny = dx / length, side = lg.fore ? 1 : -1;
+  const ra = w0 * (lg.fore ? 1.3 : 1.45), rb = w1 * (lg.fore ? 1.12 : 1.15);
+  const edge0 = pt(top.x + nx * ra * side, top.y + ny * ra * side);
+  const edge1 = pt(mid.x + nx * rb * side, mid.y + ny * rb * side);
+  const startAt = lg.fore ? .08 : .38;
+  const start = pt(lerp(edge0.x, edge1.x, startAt), lerp(edge0.y, edge1.y, startAt));
+  const angle = Math.atan2(ny * side, nx * side);
+  ctx.save();
+  // The shank, hock and paw cover the thigh's outline when the limb folds.
+  // Clip each separately so overlapping masks cannot cancel one another out.
+  const pawPath = P2(c => c.ellipse(paw.x, paw.y, paw.rx, paw.ry, paw.angle, 0, TAU));
+  for (const occluder of [shank, ankle, pawPath]) {
+    const visible = new Path2D(); visible.rect(-100, -100, 200, 200);
+    visible.addPath(occluder); ctx.clip(visible, 'evenodd');
+  }
+  ctx.strokeStyle = INK; ctx.lineWidth = LINE * .95; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(edge1.x, edge1.y);
+  ctx.arc(mid.x, mid.y, rb, angle, angle - Math.PI * side, side > 0);
+  ctx.stroke();
+  if (lg.fore) clipTo(ctx, [torso], () => {
+    // The front edge of the upper arm also continues into the chest. Keep
+    // the shoulder open: two short limb edges, without a ring round the root.
+    const front0 = pt(top.x - nx * ra, top.y - ny * ra);
+    const front1 = pt(mid.x - nx * rb, mid.y - ny * rb);
+    ctx.beginPath();
+    ctx.moveTo(lerp(front0.x, front1.x, .08), lerp(front0.y, front1.y, .08));
+    ctx.lineTo(lerp(front0.x, front1.x, .8), lerp(front0.y, front1.y, .8));
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
 // The bobcat's coat. The spots ride the body (bodyAt) and are scaled with it; the
 // forearm bars sit BELOW the elbow, where they can only be leg; the facial lines sweep
 // from behind the eye back into the ruff; the bob is coat-coloured with bars on top,
@@ -584,6 +684,13 @@ function bobcatCoat(ctx, B, P, hd, parts, nearLegs, torso, neck, ruff) {
   const k = B.spotK ?? 1;
   const back = Math.atan2(P.S.y - P.Hp.y, P.S.x - P.Hp.x);
   clipTo(ctx, [torso], () => {
+    // The rounded croup extends behind bodyAt's hip-to-shoulder coordinates.
+    // These spots belong to that rump surface, in the hip's moving frame.
+    const cs = Math.cos(back), sn = Math.sin(back);
+    for (const [u, v, r] of [[-.65,-1.45,.27],[-1.5,-.9,.26],[-.65,-.35,.31],[-1.65,.2,.24],[-.9,.8,.25]]) {
+      const x = P.Hp.x + u * cs - v * sn, y = P.Hp.y + u * sn + v * cs;
+      fillP(ctx, pal.spot, c => c.ellipse(x, y, r * k * 1.2, r * k, back + .15, 0, TAU));
+    }
     for (const [s, v, r, st] of SPOTS) {
       const q = bodyAt(B, P, s, v);
       // Streaks lie along the back line; flank spots tip a little with the barrel.
@@ -598,33 +705,10 @@ function bobcatCoat(ctx, B, P, hd, parts, nearLegs, torso, neck, ruff) {
       fillP(ctx, pal.spot, (c) => c.ellipse(q.x, q.y, r * k * 1.5, r * k, ang, 0, TAU));
     }
   });
-  const [nearHind, nearFore] = nearLegs;
-  clipTo(ctx, [nearFore], () => {
-    const lg = P.fore;
-    const a = Math.atan2(lg.low.y - lg.mid.y, lg.low.x - lg.mid.x) + Math.PI / 2;
-    ctx.strokeStyle = pal.dark; ctx.lineWidth = 0.34; ctx.lineCap = 'butt';
-    for (const f of [0.3, 0.56]) {
-      const x = lerp(lg.mid.x, lg.low.x, f), y = lerp(lg.mid.y, lg.low.y, f);
-      ctx.beginPath(); ctx.moveTo(x - Math.cos(a) * 1.2, y - Math.sin(a) * 1.2);
-      ctx.lineTo(x + Math.cos(a) * 1.2, y + Math.sin(a) * 1.2); ctx.stroke();
-    }
-    ctx.lineCap = 'round';
-  });
-  clipTo(ctx, [nearHind], () => {
-    const lg = P.hind;
-    const ang = Math.atan2(lg.mid.y - lg.root.y, lg.mid.x - lg.root.x);
-    for (const [f, o, r] of [[0.25, 0.25, 0.3], [0.5, -0.35, 0.28], [0.7, 0.3, 0.26], [0.45, 0.75, 0.22]]) {
-      const x = lerp(lg.root.x, lg.mid.x, f) - Math.sin(ang) * o, y = lerp(lg.root.y, lg.mid.y, f) + Math.cos(ang) * o;
-      fillP(ctx, pal.spot, (c) => c.ellipse(x, y, r * k * 1.3, r * k, ang, 0, TAU));
-    }
-    // Two bars across the back of the shank, above the hock.
-    const b = Math.atan2(lg.low.y - lg.mid.y, lg.low.x - lg.mid.x) + Math.PI / 2;
-    ctx.strokeStyle = pal.spot; ctx.lineWidth = 0.26;
-    for (const f of [0.28, 0.5]) {
-      const x = lerp(lg.mid.x, lg.low.x, f), y = lerp(lg.mid.y, lg.low.y, f);
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - Math.cos(b) * 0.9, y - Math.sin(b) * 0.9); ctx.stroke();
-    }
-  });
+  // Restore the near limbs over flank paint, then attach each marking to its
+  // own segment. The foreleg is nearest and covers the hind leg on crossings.
+  markedLeg(ctx, B, P.hind, torso);
+  markedLeg(ctx, B, P.fore, torso);
   // The facial lines: two dark sweeps from behind the eye back into the ruff, and two
   // faint streaks over the crown.
   clipTo(ctx, [ruff || skull, skull, jaw], () => {
@@ -727,8 +811,7 @@ function face(ctx, B, P, hd) {
 }
 
 // One bobcat at `phase` (0..1), in world units, FACING LEFT, feet on y 0.
-function paintCat(ctx, B, phase) {
-  const P = gallopPose(B, phase);
+function paintCat(ctx, B, phase, P = gallopPose(B, phase)) {
   const pal = B.pal;
   ctx.save();
   ctx.scale(-1, 1);          // authored facing right; obstacles face left
@@ -795,23 +878,36 @@ export const BOBCAT_BOX = { w: 29, h: 13 };
 // 0.8326, TALL 0.9649; at these three-place values the drawn size is the same 32 x 14
 // world px and the raster's height is within 0.01%.
 export const BOBCAT_VISUAL = 0.833;
-export const BOBCAT_TALL = 0.965;
-// The planted gallop's sixteen frames. His rate is not chosen: animals.js derives it from
+// Power Bound reserves extra transparent headroom; width still determines body scale.
+export const BOBCAT_TALL = 1.04;
+// Thirty-two poses preserve the approved bound's smoother recovery. The rate comes from
 // his stride and speed (THE PLANTED GALLOP'S CLOCK there), as it does the dogs'.
-export const BOBCAT_FRAMES = FELINE_FRAMES;
+export const BOBCAT_FRAMES = 32;
 // Debris colours for the hit burst: coat, shade, pale belly.
 export const BOBCAT_PARTICLE_COLORS = [BOBCAT_BUILD.pal.coat, BOBCAT_BUILD.pal.shade, BOBCAT_BUILD.pal.markShade];
 
-// The ANIMAL_PAINTERS contract: paint frame `frame` (0..15) into a w x h raster, feet on
+// The ANIMAL_PAINTERS contract: paint frame `frame` (0..31) into a w x h raster, feet on
 // the bottom edge, FACING LEFT, the head-and-body centred on the raster's centre line.
 // Scaled off the width alone, so a table's TALL only sets the headroom.
 export function paintBobcat(ctx, w, h, frame = 0) {
   const kk = (w / ART_W) * K;
   ctx.save();
-  ctx.translate(w / 2, h);
+  ctx.translate(w / 2, h - kk * (LINE + .03));
   ctx.scale(kk, kk);
   ctx.translate(-CORE_CX, 0);
-  paintCat(ctx, BOBCAT_BUILD, (frame % FELINE_FRAMES) / FELINE_FRAMES);
+  paintCat(ctx, BOBCAT_BUILD, (frame % BOBCAT_FRAMES) / BOBCAT_FRAMES);
+  ctx.restore();
+}
+
+// Lab entry point: reuse the production parts and exact fit with an explicit pose.
+// Candidates never change the shipped build, gait, raster ring or collision box.
+export function paintBobcatStudy(ctx, w, h, build, pose) {
+  const kk = (w / ART_W) * K;
+  ctx.save();
+  ctx.translate(w / 2, h - kk * (LINE + .03));
+  ctx.scale(kk, kk);
+  ctx.translate(-CORE_CX, 0);
+  paintCat(ctx, build, pose.phase, pose);
   ctx.restore();
 }
 

@@ -35,6 +35,10 @@ if (renderer.chrome.landscapeSide !== 'left') {
   console.error('FAIL: landscape-primary keeps pause on the notch-left rail');
   process.exit(1);
 }
+if (renderer.rendererDiagnostics().density !== 3) {
+  console.error('FAIL: the phone starts its landscape frame at the 3x quality seed');
+  process.exit(1);
+}
 renderer.setPresentationMode('portrait');
 window.innerWidth = 390;
 window.innerHeight = 844;
@@ -50,6 +54,10 @@ if (changed < 1 || fontLoads.length !== 4) {
 }
 if (renderer.screen.cssW !== 390 || renderer.screen.cssH !== 844) {
   console.error('FAIL: portrait rotation publishes the new renderer geometry');
+  process.exit(1);
+}
+if (renderer.rendererDiagnostics().density !== 2) {
+  console.error('FAIL: portrait rotation uses its deliberate 2x quality ceiling');
   process.exit(1);
 }
 if (!renderer.presentationRefreshState().revealPending) {
@@ -80,7 +88,8 @@ window.orientation = 270;
 dom.fire('win:orientationchange');
 dom.fire('win:resize');
 for (let i = 0; i < 25; i++) dom.frame();
-if (changed !== 1 || fontLoads.length !== 4 || renderer.screen.cssW !== 699 || renderer.screen.cssH !== 393) {
+if (changed !== 1 || fontLoads.length !== 4 || renderer.screen.cssW !== 699 || renderer.screen.cssH !== 393
+  || renderer.rendererDiagnostics().density !== 3) {
   console.error('FAIL: landscape rotation refreshes fonts and geometry on the way back');
   process.exit(1);
 }
@@ -239,6 +248,38 @@ const portraitArrows = (renderer.chrome.hub || []).filter((b) => b.r != null && 
 if (!portraitArrows.every((b) => b.y > window.innerHeight * 0.75)) {
   console.error('FAIL: portrait walk arrows sit in the bottom quarter');
   process.exit(1);
+}
+
+// BOOTING UPRIGHT BEFORE THE PHONE HAS SEEN A LANDSCAPE FRAME.
+//
+// There is no landscape quality to restore yet, so leaving portrait must use
+// the ordinary phone seed rather than carrying the portrait cap over.
+{
+  const portraitDom = installDom({
+    locationSearch: '?renderer=2d', innerWidth: 393, innerHeight: 852, devicePixelRatio: 3,
+  });
+  window.screen = { orientation: { angle: 0, type: 'portrait-primary' } };
+  window.orientation = 0;
+  const uprightFirst = await import('../src/engine/renderer.js?orientation-density-upright-first');
+  uprightFirst.initRenderer({ isIphone: true });
+  uprightFirst.setPresentationMode('portrait');
+  if (uprightFirst.rendererDiagnostics().density !== 2) {
+    console.error('FAIL: a phone that boots upright uses the portrait quality ceiling');
+    process.exit(1);
+  }
+  window.innerWidth = 852;
+  window.innerHeight = 393;
+  window.screen.orientation.angle = 90;
+  window.screen.orientation.type = 'landscape-primary';
+  window.orientation = 90;
+  portraitDom.fire('win:orientationchange');
+  portraitDom.fire('win:resize');
+  for (let i = 0; i < 30; i++) portraitDom.frame();
+  uprightFirst.revealPresentationRefresh();
+  if (uprightFirst.rendererDiagnostics().density !== 3) {
+    console.error('FAIL: a portrait-first phone uses its normal landscape seed after turning');
+    process.exit(1);
+  }
 }
 
 console.log('ORIENTATION REFRESH: PASSED');

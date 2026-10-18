@@ -1,7 +1,7 @@
 {
   "name": "mashenstein",
   "version": "0.1.0",
-  "description": "MASHENSTEIN: THE UNPLUGGENING — a game stitched together from parts of other games.",
+  "description": "MASHENSTEIN: THE UNPLUGGENING — He unplugged the arcade. They're plugging it back in.",
   "private": true,
   "type": "module",
   "scripts": {

@@ -4,8 +4,8 @@
 // THE VIOLET PANTHER RUNS THE PLANTED GALLOP (16 Oct 2026; sprites/felineGait.js —
 // Peter, after the dogs got theirs: "can we fix the other feline animals also"). Same
 // drawing; only the movement changed. Its paws are nailed to the road through each stance
-// and swing through the air between, on the cats' bound-like rotary gallop: sixteen
-// frames (animals.js ANIMAL_FRAMES), stepped by the road it covers (cryptPantherStride).
+// and swing through the air between, on its own bound-like rotary gallop: 32
+// poses (18 Oct 2026; smoother like Dust Runner, without copying its gait), stepped by the road it covers (cryptPantherStride).
 // The spine flex is the torso stretching long on the extension and drawing in short and
 // rounded on the gather, with the head and tail carried along at the shoulder and the
 // croup rather than squashed with it, and the head held level through the bump.
@@ -169,9 +169,13 @@ function cat(c,t,kind,m=null){
 //   arch     its height change, gathered over extended (fraction)
 //   bob      the body's rise through the flights, in leg lengths (peak to trough)
 //   headHold how much of the bob the head takes back out (1 = rock steady)
+export const PANTHER_FRAMES = 32;
 export const PANTHER_GALLOP = {
   ...FELINE_GALLOP,
   strideL: 3.8, stretch: 0.11, arch: 0.06, bob: 0.15, headHold: 0.6,
+  // A little more lead between the sides lets the far paws emerge in profile.
+  // Keep Violet's longer stride, lighter bounce and elastic silhouette.
+  hindNear: .10, foreFar: .60, flightE: .385, flightG: .905,
 };
 const PANTHER_L = 25;
 // Leg roots at rest (x; all at y 39): near fore and hind, then the far pair a little back.
@@ -208,7 +212,16 @@ function plantedLegs(c,m,near){
   const rx=50+(restX-50)*m.stretch, ry=49+(39-49)*m.archY+m.bob;
   const fx=restX-f.x*PANTHER_L, fy=64-f.y*PANTHER_L;
   const [kx,ky]=knee(rx,ry,fx,fy,l1,l2,fore?1:-1);
-  q.limb(near?'#72547f':'#38324d',near?6.2:5.2,[[rx,ry],[kx,ky],[fx,fy]]);
+  // Round the elbow/knee transition along the two bone directions, rather
+  // than changing direction abruptly at one polyline corner.
+  const width=near?6.2:5.2, col=near?'#72547f':'#38324d';
+  const bend=.18;
+  const before=[kx+(rx-kx)*bend,ky+(ry-ky)*bend];
+  const after=[kx+(fx-kx)*bend,ky+(fy-ky)*bend];
+  const contour=()=>{c.beginPath();c.moveTo(rx,ry);c.lineTo(...before);
+   c.quadraticCurveTo(kx,ky,...after);c.lineTo(fx,fy);c.lineCap='round';c.lineJoin='round'};
+  contour();c.strokeStyle=I;c.lineWidth=width+2;c.stroke();
+  contour();c.strokeStyle=col;c.lineWidth=width;c.stroke();
   // The paw lies flat on the road, rolls onto its toes at the push, and curls up in the
   // air: the fore's flips back under the wrist, the hind's trails toes-down.
   const rot=f.stance>=0?-.35*f.stance*f.stance:(fore?1.1:-.6)*f.fold;

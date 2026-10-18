@@ -30,7 +30,7 @@ import {
 } from './cabinetProps.js';
 import { paintCrate, paintBarrel } from './crateBarrel.js';
 import { REDRAW_PAINTERS, DRONE_FRAMES } from './redrawProps.js';
-import { inkOutlined, OUTLINE_SCALE } from './outline.js';
+import { inkOutlined, OUTLINE_SCALE, scaledContext } from './outline.js';
 
 export const OUTLINE = 'rgba(26,16,40,0.34)';
 
@@ -3142,6 +3142,10 @@ export const PROP_PAINTERS = {
     const a = rakeSwingAngle(u);
     // The drawing's own units: tines centred on x 0, handle lying out to +x.
     const s = Math.min(w / (RAKE_SPAN.left + RAKE_SPAN.right), h / RAKE_SPAN.top);
+    // Match the spring pad's visible outline and keep both just under the
+    // traffic cone's body stroke. The rake is drawn larger than its box, so
+    // divide by `s` for the custom 45x38 art coordinates.
+    const ink = Math.max(0.2, 0.0095 * Math.max(w, h) / s);
     ctx.save();
     ctx.translate(RAKE_SPAN.left * s, h);
     ctx.scale(s, s);
@@ -3161,17 +3165,17 @@ export const PROP_PAINTERS = {
     {
       const nx = -(ey - py), ny = ex, nl = Math.hypot(nx, ny) || 1;
       const ox = (nx / nl) * 0.8, oy = (ny / nl) * 0.8;
-      body(P.wood, P.ink, 0.5, (c) => {
+      body(P.wood, P.ink, ink, (c) => {
         c.moveTo(ox, py + oy); c.lineTo(ex + ox, ey + oy); c.lineTo(ex - ox, ey - oy); c.lineTo(-ox, py - oy); c.closePath();
       });
-      line(P.woodShade, 0.4, (c) => { c.moveTo(Math.cos(a) * 2, py + 0.2 - Math.sin(a) * 2); c.lineTo(ex, ey + 0.3); });
+      line(P.woodShade, ink * 0.65, (c) => { c.moveTo(Math.cos(a) * 2, py + 0.2 - Math.sin(a) * 2); c.lineTo(ex, ey + 0.3); });
     }
     // The head: a steel bar with its teeth pointing up.
-    body(P.metal, P.metalDark, 0.4, (c) => rr(c, -4.8, -2.2, 9.6, 1.6, 0.5));
+    body(P.metal, P.metalDark, ink, (c) => rr(c, -4.8, -2.2, 9.6, 1.6, 0.5));
     body(P.metalLight, null, 0, (c) => c.rect(-4.4, -2.1, 8.8, 0.5));
     for (let i = 0; i < 7; i++) {
       const tx = -4.2 + i * 1.4;
-      body(P.metal, P.metalDark, 0.25, (c) => { c.moveTo(tx - 0.45, -2); c.lineTo(tx, -5.4); c.lineTo(tx + 0.45, -2); c.closePath(); });
+      body(P.metal, P.metalDark, ink, (c) => { c.moveTo(tx - 0.45, -2); c.lineTo(tx, -5.4); c.lineTo(tx + 0.45, -2); c.closePath(); });
     }
     body(P.metalDark, null, 0, (c) => rr(c, -1, -2.6, 2, 1.2, 0.3));
     // THWACK at the top of the swing, on the hero's side of the handle's end.
@@ -3180,7 +3184,7 @@ export const PROP_PAINTERS = {
       ctx.save();
       ctx.globalAlpha *= 1 - k * 0.6;
       const sr = 3.4 + k * 2.4;
-      body(P.star, P.starEdge, 0.45, (c) => {
+      body(P.star, P.starEdge, ink, (c) => {
         for (let i = 0; i < 16; i++) {
           const aa = (i / 16) * Math.PI * 2 + 0.2, r = i % 2 ? sr * 0.45 : sr;
           const px = ex - 2.5 + Math.cos(aa) * r, py2 = ey + 1.5 + Math.sin(aa) * r;
@@ -3193,7 +3197,7 @@ export const PROP_PAINTERS = {
     // Wobble ticks either side of the handle while it quivers upright.
     if (u > 0.12 && u < 0.62) {
       for (const side of [-1, 1]) {
-        line('rgba(255,255,255,0.85)', 0.45, (c) => c.arc(0, py, L * 0.92, -a - 0.12 * side - 0.05, -a - 0.12 * side + 0.05));
+        line('rgba(255,255,255,0.85)', ink, (c) => c.arc(0, py, L * 0.92, -a - 0.12 * side - 0.05, -a - 0.12 * side + 0.05));
       }
     }
     ctx.restore();
@@ -4185,20 +4189,22 @@ export const PROP_PAINTERS = {
     // Ground shadow and cream bolted housing. It stays still while the crown
     // works, which makes the compression legible as motion rather than scale.
     plain(ctx, 'rgba(5,7,12,.2)', (c) => c.ellipse(w / 2, h * 0.96, w * 0.47, h * 0.035, 0, 0, Math.PI * 2));
+    // Match the traffic cone's ~0.2 world-unit contour. At the pad's 2x
+    // detail raster, 0.0095 lands just under that weight after reduction.
     fineShape(ctx, '#f2d8a7', u, (c) => rr(c, w * 0.015, h * 0.82, w * 0.97, h * 0.16, h * 0.038),
-      'rgba(8,10,18,.72)', 0.025);
+      'rgba(8,10,18,.72)', 0.0095);
     plain(ctx, 'rgba(255,255,255,.34)',
       (c) => rr(c, w * 0.055, h * 0.839, w * 0.89, h * 0.029, h * 0.012));
     for (const x of [0.12, 0.88]) {
       fineShape(ctx, '#d8e1e8', u,
         (c) => c.arc(w * x, h * 0.9, Math.max(0.45, w * 0.035), 0, Math.PI * 2),
-        '#29303d', 0.012);
+        '#29303d', 0.0095);
     }
 
     // Polished centre shaft: one moving support instead of three abstract bars.
     fineShape(ctx, '#aeb9c8', u,
       (c) => rr(c, w * 0.43, crownY + h * 0.1, w * 0.14, h * 0.69 - crownY, w * 0.035),
-      '#343b49', 0.025);
+      '#343b49', 0.0095);
     plain(ctx, '#5d6877',
       (c) => rr(c, w * 0.47, crownY + h * 0.12, w * 0.035, h * 0.64 - crownY, w * 0.015));
 
@@ -4210,7 +4216,7 @@ export const PROP_PAINTERS = {
       c.quadraticCurveTo(w * 0.5, crownY - h * 0.1, w * 0.69, crownY - h * 0.035);
       c.quadraticCurveTo(w * 0.83, crownY, w * 0.86, crownY + h * 0.14);
       c.closePath();
-    }, '#49212c', 0.03);
+    }, '#49212c', 0.0095);
     plain(ctx, 'rgba(255,255,255,.5)',
       (c) => c.ellipse(w * 0.43, crownY + h * 0.015, w * 0.2, h * 0.035, -0.08, 0, Math.PI * 2));
   },
@@ -6232,6 +6238,58 @@ export function sparkSprite(color) {
 }
 
 // Convenience: draw a vector prop smoothly into a logical-coordinate box.
+// Animated gallery footage owns one bounded surface, reused for every subject
+// and frame. Never put enlarged preview frames in the gameplay sprite cache.
+export function createPropPreviewRenderer({ strokeScale = 1, padding = 0 } = {}) {
+  let surface = null;
+  const edge = padding > 0 ? 1536 : 768;
+  return (ctx, name, x, y, w, h, frame = 0, painterSize = null) => {
+    const paint = PROP_PAINTERS[name];
+    if (!paint || !(w > 0 && h > 0)) return false;
+    const transform = ctx.getTransform();
+    const density = Math.max(Math.hypot(transform.a, transform.b), Math.hypot(transform.c, transform.d));
+    const extent = 1 + padding * 2;
+    const fit = Math.min((edge - (padding > 0 ? 2 : 0)) / (Math.max(w, h) * extent), Math.max(2, density * 2));
+    const cw = Math.max(1, Math.round(w * fit)), ch = Math.max(1, Math.round(h * fit));
+    const px = Math.ceil(cw * padding), py = Math.ceil(ch * padding);
+    const sampleW = cw + px * 2, sampleH = ch + py * 2;
+    if (!surface) {
+      surface = document.createElement('canvas');
+      surface.width = sampleW;
+      surface.height = sampleH;
+    } else {
+      if (surface.width < sampleW) surface.width = sampleW;
+      if (surface.height < sampleH) surface.height = sampleH;
+    }
+    const c = surface.getContext('2d');
+    // Some callers draw the usual 4/3-size world art. Keep its authored painter
+    // box separate from the larger destination so the preview matches gameplay
+    // geometry instead of enlarging the object a second time.
+    const painterW = Number.isFinite(painterSize?.w) ? painterSize.w : w;
+    const painterH = Number.isFinite(painterSize?.h) ? painterSize.h : h;
+    const detail = propDetailScale(name), rw = painterW * detail, rh = painterH * detail;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    // The output only samples this subject-sized patch. Clearing the full
+    // maximum canvas (up to 1536x1536) for every animated monitor was needless
+    // pixel work, especially in galleries with several previews per frame.
+    c.clearRect(0, 0, sampleW, sampleH);
+    c.save();
+    try {
+      c.translate(px, py);
+      c.scale(cw / rw, ch / rh);
+      c.lineJoin = c.lineCap = 'round';
+      const painterContext = strokeScale === 1 ? c : scaledContext(c, strokeScale);
+      paint(painterContext, rw, rh, ((frame % propFrames(name)) + propFrames(name)) % propFrames(name));
+    } finally { c.restore(); }
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(surface, 0, 0, sampleW, sampleH,
+      x - px / cw * w, y - py / ch * h, w * (1 + px * 2 / cw), h * (1 + py * 2 / ch));
+    ctx.restore();
+    return true;
+  };
+}
+
 export function drawProp(ctx, name, x, y, w, h, frame = 0) {
   const spr = propSprite(name, w, h, frame);
   if (!spr) return false;

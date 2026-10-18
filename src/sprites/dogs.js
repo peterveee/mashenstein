@@ -116,7 +116,8 @@ const BREEDS = {
     neckLen: 4.6, neckAng: -48, neckW: 1.85, headR: 1.75, muzzle: 2.9, muzzleH: 1.3,
     ear: 'crop', earLen: 2.7, tail: 'whip', legW: [1.25, 0.72, 0.56], pawR: 0.62,
     collar: 'spiked', teeth: 1.0,
-    gait: { stride: 0.8, height: 0.9, bob: 0.08, pitch: 0.07, gape: [0.3, 0.6] },
+    gait: { stride: 0.8, height: 0.9, bob: 0.08, pitch: 0.07, gape: [0.3, 0.6],
+      hindNear: .11, foreFar: .57, farOffset: .70, flightE: .425, flightG: .925 },
     pal: { coat: '#36313f', far: '#24202b', shade: '#28242f', mark: '#b87a44', markShade: '#94602f', eye: '#f6d33c', collar: '#7a2a1c' },
     marks: 'dobe',
   },
@@ -126,7 +127,8 @@ const BREEDS = {
     neckLen: 3.5, neckAng: -42, neckW: 3.3, headR: 2.6, muzzle: 1.4, muzzleH: 2.0,
     ear: 'rose', earLen: 1.7, tail: 'stub', legW: [2.0, 1.3, 1.0], pawR: 0.95,
     collar: 'spiked', teeth: 1.4, bowed: 0.35,
-    gait: { stride: 0.85, height: 0.9, bob: 0.07, pitch: 0.06, gape: [0.25, 0.65] },
+    gait: { stride: 0.85, height: 0.9, bob: 0.07, pitch: 0.06, gape: [0.25, 0.65],
+      hindNear: .11, foreFar: .57, farOffset: .70, flightE: .425, flightG: .925 },
     pal: { coat: '#c68d4c', far: '#94622f', shade: '#a6733c', mark: '#f2e2c4', markShade: '#d9c3a0', eye: '#e04848', collar: '#5a2a18' },
     marks: 'blaze',
   },
@@ -257,12 +259,14 @@ function footAt(phase, td, duty, tdX, isFore) {
 }
 function gallopPose(B, S, phase) {
   const g = B.gait;
+  const G = { ...GALLOP, ...g };
+  const farOffset = g.farOffset ?? .2;
   const L = B.L * S.leg;
   const st = g.stride;
-  const bump = 0.5 + 0.5 * Math.cos(TAU * 2 * (phase - GALLOP.flightE));
+  const bump = 0.5 + 0.5 * Math.cos(TAU * 2 * (phase - G.flightE));
   const lift = (bump - 0.5) * g.bob;
   const pitch = g.pitch * Math.cos(TAU * (phase - 0.18));
-  const flex = 0.5 + 0.5 * Math.cos(TAU * (phase - GALLOP.flightG));
+  const flex = 0.5 + 0.5 * Math.cos(TAU * (phase - G.flightG));
   const spine = B.spine * (1.04 - 0.12 * flex);
   const cx = B.cx;
   const baseY = -(L * g.height + lift * L);
@@ -271,7 +275,7 @@ function gallopPose(B, S, phase) {
   const H0 = { x: cx - half * Math.cos(pitch), y: baseY + half * Math.sin(pitch) };
   const restS = cx + B.spine / 2, restH = cx - B.spine / 2;
   const leg = (root, isFore, td, dx = 0) => {
-    const f = footAt(phase, td, isFore ? GALLOP.foreDuty : GALLOP.hindDuty, isFore ? GALLOP.foreTD : GALLOP.hindTD, isFore);
+    const f = footAt(phase, td, isFore ? G.foreDuty : G.hindDuty, isFore ? G.foreTD : G.hindTD, isFore);
     const fx = (isFore ? restS : restH) + dx + f.x * L * st;
     const fy = -f.y * L;
     if (isFore) {
@@ -291,10 +295,10 @@ function gallopPose(B, S, phase) {
   };
   return {
     L, S: S0, Hp: H0, pitch, flex, lift, run: 1, crouch: 0, spine,
-    fore: leg({ x: S0.x, y: S0.y }, true, GALLOP.foreNear),
-    foreFar: leg({ x: S0.x - 0.2, y: S0.y }, true, GALLOP.foreFar, -0.2),
-    hind: leg({ x: H0.x, y: H0.y }, false, GALLOP.hindNear),
-    hindFar: leg({ x: H0.x - 0.2, y: H0.y }, false, GALLOP.hindFar, -0.2),
+    fore: leg({ x: S0.x, y: S0.y }, true, G.foreNear),
+    foreFar: leg({ x: S0.x - farOffset, y: S0.y }, true, G.foreFar, -farOffset),
+    hind: leg({ x: H0.x, y: H0.y }, false, G.hindNear),
+    hindFar: leg({ x: H0.x - farOffset, y: H0.y }, false, G.hindFar, -farOffset),
     Hc, headR: B.headR * S.head, tilt: -0.06 - pitch * 0.7,
     // Widest ON frame 0: run.js times the finish dog's bark to the cycle's wrap.
     gape: g.gape[0] + g.gape[1] * (0.5 + 0.5 * Math.cos(TAU * phase)),
@@ -353,7 +357,7 @@ function legPath(lg, B, S, k) {
   const toe = lg.fore ? 1 : 1;
   const px = foot.x + Math.cos(a) * pr * 0.2 + toe * pr * 0.25, py = foot.y - pr * 0.25;
   p.moveTo(px + pr, py);
-  p.ellipse(px, py, pr, pr * 0.62, 0, 0, TAU);
+  p.ellipse(px, py, pr, pr * 0.62, 0, TAU, 0, true);
   return p;
 }
 
@@ -894,6 +898,16 @@ export function paintDog(ctx, B, phase, { crouch = 0, hooks = null } = {}) {
   const farEar = earPath(B, S, P, true);
   if (farEar) back.push({ path: farEar, fill: pal.far });
   silhouette(ctx, back);
+  // The far paws have the same tan/white socks, shaded for depth. Leaving
+  // them solid coat colour hid the moving pair, especially on dark monitors.
+  if (B.marks === 'dobe' || B.marks === 'blaze') {
+    for (const lg of [P.hindFar, P.foreFar]) {
+      ctx.save();ctx.clip(legPath(lg, B, S, .9));
+      ctx.fillStyle = pal.markShade;
+      ctx.beginPath();ctx.arc(lg.foot.x, lg.foot.y, B.L * (B.marks === 'dobe' ? .3 : .2), 0, TAU);ctx.fill();
+      ctx.restore();
+    }
+  }
   // The near silhouette.
   const parts = [];
   const tail = tailPath(B, P);
@@ -933,9 +947,9 @@ export function paintDog(ctx, B, phase, { crouch = 0, hooks = null } = {}) {
 export const DOG_BOUNDS = {
   // Re-measured 16 Oct 2026 for the planted gallop and the wolf (dogInkBounds).
   snarler: { minX: -11.875, maxX: 9.5, minY: -15.125 },
-  bruiser: { minX: -10, maxX: 8.625, minY: -11.25 },
+  bruiser: { minX: -10, maxX: 9.125, minY: -11.25 },
   feral: { minX: -14, maxX: 12, minY: -14.5 },
-  snarlerLong: { minX: -11.875, maxX: 10.75, minY: -15.125 },
+  snarlerLong: { minX: -11.875, maxX: 10.875, minY: -15.125 },
   bruiserLong: { minX: -10, maxX: 10.75, minY: -11.875 },
   feralLong: { minX: -14, maxX: 11, minY: -16.25 },
 };

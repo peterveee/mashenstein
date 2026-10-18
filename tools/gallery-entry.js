@@ -1,4 +1,5 @@
 import { HAIR_STUDIES, LUNCH_STUDIES, drawHairStudy, drawLunchStudy } from '../src/dev/office-people-bakeoff.js';
+import { PYTHAGORAS_TAIL_CANDIDATES, drawPythagorasTailStudy } from '../src/dev/pythagoras-tail-candidates.js';
 // Dev asset gallery: renders every drawable in the game into its own canvas by
 // calling the REAL draw functions, so the page can never drift from the source.
 // Built by tools/build-gallery.js into two standalone pages: dist/gallery.html
@@ -49,6 +50,7 @@ import { TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, caneScal
 import { HERO_SPRITES } from '../src/sprites/heroes.js';
 import { plumberBarnAtCamFor, getStylePack, neonCityReveal, NEON_GOLDEN_MOOD, neonNightMood, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS, LCD_GORILLA_NOSTRIL_STYLES, lcdGorillaHeadPos, drawSpeedSceneryItem, drawLevelSceneryItem } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
+import { FOOD_COURT_MONITOR_CANDIDATES } from '../src/dev/food-court-monitor-candidates.js';
 
 import { UNLOCKS } from '../src/data/stages.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
@@ -166,6 +168,7 @@ import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/
 import { FIRE_STAND_CANDIDATES, drawFireStandRun, drawFireStandStill } from '../src/dev/office-fire-alarm-stand-candidates.js';
 import { MASH_LETTER_CANDIDATES, MASH_LETTER_PALETTES, drawMashLetterCandidate, SNES_VARIANTS, drawSnesVariant } from '../src/dev/mash-letter-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
+import { BOBCAT_ANIMATION_CANDIDATES, drawBobcatAnimationStudy } from '../src/dev/bobcat-animation-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
 import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SLOT_BEATS, drawSurgeFx } from '../src/dev/surge-transition-candidates.js';
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
@@ -3331,6 +3334,21 @@ let officeFounderCandidates = null;
     });
   }
   beginLab();
+  // Active Food Court question: keep this comparison at the front of the lab.
+  {
+    const grid = section('foodcourt-monitor-bakeoff', 'Food Court — monitor edge bake-off',
+      'Rhythm Bankruptcy shows the pale monitor trim most clearly. A uses a smaller centered glass with room above the deck; B tests a wider, near-flush glass. Both use a matte face so the screen sits cleanly behind the front controls.');
+    const cab = CABINETS.find((item) => item.id === 'rhythm');
+    const pal = cabinetPalette(cab, true);
+    const CW = 64, CH = 113, X = 8, Y = 8;
+    for (const candidate of FOOD_COURT_MONITOR_CANDIDATES) {
+      tile(grid, candidate.label, candidate.note, 80, 129, (ctx) => {
+        drawCabinetShell(ctx, X, Y, CW, CH, pal, candidate.style);
+        const scr = drawCabinetScreen(ctx, X, Y, CW, CH, pal, candidate.style);
+        if (scr) drawScreenSweep(ctx, scr, 0.7, pal.seed);
+      }, { hires: 3 });
+    }
+  }
   // The unselected candidates are a lab section of their own, further down in date order.
   officeFounderCandidates = { candidates, drawPosters };
 }
@@ -8300,6 +8318,29 @@ function cryptStyleTiles(grid, tag, cand) {
   }
   tile(grid, 'All of them side by side', 'Every take at 2x its lane size, on one clock.', W, H,
     (ctx, t) => drawDesertCatLineup(ctx, t, W, H), { animated: true });
+}
+
+{
+  const grid = section('bobcat-animation-bakeoff', 'SPEED ZONE — cat animation (0 / A / B / C)',
+    'B Power Bound ships (18 Oct 2026). Previous gait, A fluid gallop and C low pursuit remain for comparison. '
+    + 'Each repairs the missing jaw pose and explores spine flex, shoulder weight and foot timing. '
+    + 'Source artwork rendered directly at desktop display resolution. '
+    + 'Stride cadence follows the actual 38 units/second road speed. '
+    + 'For slow motion and frame stepping, open bobcat-animation-bakeoff.html.', '18 Oct 2026');
+  for (const cand of BOBCAT_ANIMATION_CANDIDATES) {
+    tile(grid, `${cand.id} — ${cand.name}`, cand.note, 640, 360,
+      (ctx, t) => drawBobcatAnimationStudy(ctx, t, cand), { animated: true, choice: cand.id });
+  }
+}
+
+{
+  const grid = section('pythagoras-tail-bakeoff', 'PYTHAGORAS — extreme tail motion (0 / A–E)',
+    'A Whip Crack ships. Previous swish and four alternative angry-tail studies remain for comparison. Same fur, tail thickness and four-paw idle. '
+    + 'Open pythagoras-tail-bakeoff.html for slow motion, frame stepping and a smooth-motion comparison.', '18 Oct 2026');
+  for (const candidate of PYTHAGORAS_TAIL_CANDIDATES) {
+    tile(grid, `${candidate.id} — ${candidate.name}`, candidate.note, 640, 360,
+      (ctx, t) => drawPythagorasTailStudy(ctx, t, candidate), { animated: true, choice: candidate.id });
+  }
 }
 
 // ------------------------------------------------ run cadence vs speed

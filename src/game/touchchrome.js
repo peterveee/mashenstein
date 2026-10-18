@@ -12,7 +12,7 @@
 // Nothing here knows which device it is on. The layout supplies CSS-pixel
 // positions for the current safe frame; this painter only gives each disc its
 // shared visual vocabulary.
-import { chrome, chromeCtx, paintChrome } from '../engine/renderer.js';
+import { chrome, chromeCtx, paintChrome, screen } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { drawRoundButton, GLYPH_PX } from '../engine/sprites.js';
 import { ACTION_INK } from './beatground.js';
@@ -25,7 +25,23 @@ import { specialMoveColor } from './draw.js';
 export function runChromeButtons({ hasPower = true } = {}) {
   return hasPower ? chrome.run : chrome.runNoPower;
 }
-export function hubChromeButtons() { return chrome.hub; }
+export function hubChromeButtons({ walk = true, pauseAction = 'back' } = {}) {
+  return chrome.hub
+    .filter((b) => walk || b.id === 'hubPause')
+    .map((b) => {
+      if (b.id !== 'hubPause') return b;
+      const pause = { ...b, action: pauseAction };
+      // With no walk discs the mouse does not need the touch thumb's inset.
+      // Move the desktop cog to the outer top-right, using the empty top bar
+      // when there is enough room to keep it clear of signs and labels.
+      if (!walk) {
+        pause.x = screen.ox + screen.cssW - pause.r - 10;
+        const topMargin = screen.oy;
+        if (topMargin >= pause.r * 2 + 16) pause.y = Math.min(pause.y, topMargin / 2);
+      }
+      return pause;
+    });
+}
 
 // The look, once. Landscape actions get a slightly stronger translucent glass
 // fill so they stay readable when they sit over the level; portrait keeps the
