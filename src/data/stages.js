@@ -185,7 +185,7 @@ export const STAGES = [
     REACH,
     { type: 'coins', n: 50, desc: 'COLLECT 50 COINS' },
     { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
-      intro: 'YOUR TECHNICIAN WILL ARRIVE BETWEEN 8 AM AND 5 PM. WE CANNOT NARROW THE WINDOW.',
+      introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.',
       speedMult: 0.9,
       // No SPEED on the first stage of the game (Peter, 30 Sep 2026). Its two
       // authored speed prizes — the fork's and the tunnel's low roads — are
@@ -362,12 +362,12 @@ export const STAGES = [
     REACH,
     { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' },
     { act: 'ACT II. THE EXTENSION CRISIS. EVERYONE IS COLD AND BRAVE.',
-      intro: 'LANDING ON ICE DOESN’T MEAN YOU’VE STOPPED.',
       paperPreset: 'cardstockClear' }),
   // Act II/III pits, and which stages get NONE, on purpose: the blackout
   // stages (crypt-1/3 — a fatal hole inside a light radius is a wall, not a
-  // read) and the escort stages (crypt-2, office-3 — the residents' pathing
-  // has never met a hole). Every cabinet's stage 1 stays pit-free except
+  // read) and the old escort layouts (crypt-2, office-3). Their resident
+  // pathing constraints remain until those roads are deliberately reauthored.
+  // Every cabinet's stage 1 stays pit-free except
   // office-1, whose act runs at tierMax 2 from the first stage anyway.
   // BUILD THE BRIDGES: five switched pits, four asked for, and the mission
   // never says there is a spare (Peter, 15 Oct). Any bridge counts, the lane's
@@ -499,7 +499,8 @@ export const STAGES = [
     { quiet: true, introBy: 'eggshell', introSec: 7,
       intro: 'DO NOT TOUCH MY FIRE ALARMS. THE MEETING ENDS WHEN I SAY.' }),
   // CRACK THE SAFES (Peter, 15 Oct): four double-height safes placed on floor 88,
-  // three asked for, and one SHOT opens each (Run.crackSafe). Was the escort.
+  // three asked for, and one SHOT opens each (Run.crackSafe). Replaced the
+  // retired escort bonus.
   S('office', 3,
     REACH,
     { type: 'targets', n: 3, targetType: 'vaultSafe', label: 'SAFES', at: [0.2, 0.4, 0.58, 0.8],

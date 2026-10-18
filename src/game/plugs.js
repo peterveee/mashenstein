@@ -13,10 +13,8 @@ import { drawProp } from '../sprites/props.js';
 // trophy already worked the right way round: it stands for CHALLENGE, not for
 // coins-or-no-damage.
 //
-// The work order also has to cover every mission, and `reach` is only ten of the
-// 27 stages — the rest are targets, cords, chase, rescue, onbeat, fuse, escape
-// and blackout. That is what rules out the otherwise obvious breaker switch: it
-// would depict one mission in three.
+// Every stage now asks the player to reach the finish, so the work order can
+// represent that shared goal without depicting one cabinet's challenge.
 //
 // The toaster slot points at plugToaster, HUD-only art, rather than at the
 // `appliance` world prop it stands for. The world prop reserves the top fifth

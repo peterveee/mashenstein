@@ -21,7 +21,9 @@ const {
 } = await import('../src/game/banger/store.js');
 const { BangerMakerState, MAKER_VARIATIONS } = await import('../src/game/banger/maker.js');
 const { BANGER_VOLTAGES, voltageSettings } = await import('../src/game/banger/voltage.js');
-const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
+const { SoundTestState, JUKEBOX, loadBangerModule } = await import('../src/game/menus.js');
+await import('../src/game/banger/lazy.js');
+await loadBangerModule();
 const { BangerClubState, LED_COLS, DICE_LINES } = await import('../src/game/banger/club.js');
 const { HERO_MOVES, PARTS, partOf, kikoPlan, moveSeconds, holdChain, landingFor, dragValue, echoLevel, drainSeconds, nextStopStep,
   nowAt, nextSixteenthAt } = await import('../src/game/banger/club-fx.js');

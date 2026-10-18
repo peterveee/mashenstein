@@ -28,8 +28,8 @@ assert(!OBSTACLES.shrub && !OBSTACLES.flames, 'no shrub or flames obstacle survi
 assert(typeof PROP_PAINTERS.cactus === 'function', 'cactus has a vector painter');
 assert(typeof PROP_PAINTERS.snowman === 'function', 'snowman has a vector painter');
 assert(typeof PROP_PAINTERS.bearTrap === 'function', 'bear trap has a vector painter');
-assert(PICKUPS.resident.sprite === 'resident' && typeof PROP_PAINTERS.resident === 'function',
-  'residents use distinct friendly art instead of the zombie hazard sprite');
+assert(!PICKUPS.resident && typeof PROP_PAINTERS.resident === 'function',
+  'residents keep friendly art for background use and are not collectable pickups');
 assert(PICKUPS.appliance.w === 22 && PICKUPS.appliance.h === 18 && PICKUPS.appliance.bob,
   'flying toaster has a detailed mid-size body plus launch headroom and bobs');
 assert(propFrames('appliance') === 96, 'the flying toaster combines a four-second toast pop with its quick flap');

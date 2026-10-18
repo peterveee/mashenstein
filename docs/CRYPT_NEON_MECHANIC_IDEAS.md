@@ -8,7 +8,7 @@ Design references: [Game Bible](GAME_BIBLE.md) and [Story / Script](SCRIPT.md). 
 
 **Crypt makes you manipulate the haunting; Neon makes you dismantle the machinery.** Each cabinet should give the player a new rule to learn and then get clever with.
 
-Crypt already has darkness, catacombs and Gary's stranded coworkers. Neon has shooting targets and drones. These are useful foundations, with room for stronger identities. The ten candidates below are alternatives to choose from, rather than ten features to cram in. Existing islands, pits and tunnels can provide familiar ground between distinctive encounters, subject to visibility and fairness.
+Crypt already has darkness, catacombs and Gary's former coworkers as background characters. Neon has shooting targets and drones. These are useful foundations, with room for stronger identities. The nine candidates below are alternatives to choose from, rather than nine features to cram in. Existing islands, pits and tunnels can provide familiar ground between distinctive encounters, subject to visibility and fairness.
 
 - Preserve continuous forward running, jump, slide and hero ability controls. No stopping or reversing is required by these concepts.
 - Keep warnings, action windows and routes readable in portrait as well as landscape. Darkness must not conceal a mandatory reaction until it is too late.
@@ -55,19 +55,11 @@ Use a cheap ghost outline rather than a second rendered hero. The budget joke su
 
 > PREVIOUS SHIFT STILL IN ATTENDANCE.
 
-### 5. Rescued coworkers become a moving haunted staircase
-
-Give the existing rescue mission an active payoff. At marked locations, your ghost coworkers float ahead and hold enormous spectral timecards at staggered heights. These become temporary platforms leading to an upper exit or bonus cache.
-
-You rescue someone, then immediately see them help you. Across the stage, the growing group can form increasingly ambitious routes. Their formation is automatic; your job is to jump through it.
-
-> ADDITIONAL DUTIES. NO ADDITIONAL PAY.
-
 ## Neon Blasters
 
 The shooting concepts below assume the proposed shared automatic cannon described above, with hero abilities retained separately.
 
-### 6. Shoot the circuit; watch the level shut down
+### 5. Shoot the circuit; watch the level shut down
 
 *Strongest recommended Neon mechanic.*
 
@@ -77,7 +69,7 @@ The payoff is immediate and physical: sparks race down the cable, machinery wind
 
 > WARRANTY VOID. ACCESS GRANTED.
 
-### 7. The Return-to-Sender shield
+### 6. The Return-to-Sender shield
 
 Some drones fire one large, clearly signalled energy ball. A brief shield at the start of a slide reflects it back into their armour. Holding slide still gets you underneath, but a well-timed slide destroys the attacker.
 
@@ -85,7 +77,7 @@ That gives us a satisfying optional skill: **dodge safely, or turn defence into 
 
 > DELIVERY REFUSED.
 
-### 8. Invader formations with a removable keystone
+### 7. Invader formations with a removable keystone
 
 Drones assemble into big, readable shapes: an arch, a staircase, a wall with a low opening. One conspicuous command drone holds the formation together.
 
@@ -95,7 +87,7 @@ This makes enemies act as **moving level geometry**, with the pleasure of collap
 
 > MANAGEMENT POSITION ELIMINATED.
 
-### 9. Magnetic boots: the floor bends up the wall
+### 8. Magnetic boots: the floor bends up the wall
 
 *Ambitious movement alternative; audition the basic feel before building a cabinet around it.*
 
@@ -105,7 +97,7 @@ Ceiling sections let you shoot the exposed tops of machines that were armoured f
 
 > PLEASE RETAIN CONTACT WITH COMPANY PROPERTY.
 
-### 10. The Midnight Express: dismantle a train while running on it
+### 9. The Midnight Express: dismantle a train while running on it
 
 *The big set piece.*
 
@@ -121,11 +113,11 @@ This develops the train-chase direction from earlier design discussion. It remai
 
 **Lead with shadow platforms for Crypt and destructible circuits for Neon.** Each is strong enough to become the feature someone remembers about its cabinet.
 
-Pair Crypt's shadows with the Night Watchman and helpful ghost coworkers. Pair Neon's circuits with drone formations and make the train the third-stage payoff. The following is a possible progression, not a committed replacement for the existing missions:
+Pair Crypt's shadows with the Night Watchman and creaky floorboards. Pair Neon's circuits with drone formations and make the train the third-stage payoff. The following is a possible progression, not a committed replacement for the existing bonuses:
 
 | Cabinet | Stage 1 | Stage 2 | Stage 3 |
 |---|---|---|---|
-| Crypt Shift | Learn the haunting: introduce solid shadows and moving light above safe ground. | Rescue the staff: introduce helpful coworker platforms and the Night Watchman's inspection beam. | Escape using their help: combine shadow routes, inspections and the rescued coworkers' formations. |
+| Crypt Shift | Learn the haunting: introduce solid shadows and moving light above safe ground. | Learn the floor: combine creaky boards with the Night Watchman's inspection beam. | Escape the inspection: combine shadow routes, floorboards and the beam. |
 | Neon Blasters | Learn to dismantle machinery: introduce the shared cannon, firing height and visible power circuits. | Break the formations: combine circuit choices with command drones and navigable enemy formations. | The Midnight Express: apply shooting and movement skills to dismantling the rival train. |
 
 Creaky floorboards and Return-to-Sender remain additional candidates if the selected mechanics leave room for another encounter type. The VHS echo and magnetic boots are the experimental alternatives: prototype their basic feel before committing to their broader design.

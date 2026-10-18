@@ -10,11 +10,6 @@ import { PYTHAGORAS_TAIL_CANDIDATES, drawPythagorasTailStudy } from '../src/dev/
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
 import { drawOfficeProductionScene, OFFICE_PORTRAIT_FRAME } from '../src/dev/office-production.js';
-import { OFFICE_CHAIR_CANDIDATES, OFFICE_CHAIR_ROOMS, drawOfficeChairScene } from '../src/dev/office-chair-candidates.js';
-import { OFFICE_SAFE_CANDIDATES, OFFICE_SAFE_LANE_H, drawOfficeSafeLane } from '../src/dev/office-safe-candidates.js';
-import { OFFICE_ZOMBIE_CANDIDATES, drawOfficeZombieScene } from '../src/dev/office-zombie-candidates.js';
-import { PROFILE_CANDIDATES, drawProfileQueueScene, drawProfileFrames } from '../src/dev/office-zombie-profile-candidates.js';
-import { GIRL_CANDIDATES, drawGirlQueueScene, drawGirlLineupScene, drawGirlFrames } from '../src/dev/office-zombie-girl-candidates.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from '../src/engine/stylePacks/officeLigne/professorArt.js';
 import { OFFICE_POSTERS, officePosterSize, OFFICE_PRINTS, paintOfficePrint } from '../src/engine/stylePacks/officeLigne/artwork.js';
 import { poster as paintOfficePoster } from '../src/engine/stylePacks/officeLigne/wall.js';
@@ -114,9 +109,6 @@ import {
 import { levelObstacleTypes, levelPlacedTypes } from '../src/dev/level-obstacles.js';
 import { GENERIC_CRATE_BARREL } from '../src/dev/generic-crate-barrel-candidates.js';
 import { REDRAW } from '../src/sprites/redrawProps.js';
-import { LEDGE_REACH } from '../src/sprites/pitFall.js';
-import { drawPitFills } from '../src/engine/stylePacks/index.js';
-import { HERO_CENTER_OFF } from '../src/game/draw.js';
 import { scaledContext, OUTLINE_WEIGHT, OUTLINE_SCALE } from '../src/sprites/outline.js';
 import { crateX, barrelArcade } from '../src/sprites/crateBarrel.js';
 import { scarecrow as scarecrowPaint } from '../src/sprites/plumberProps.js';
@@ -148,25 +140,8 @@ import { BAKEOFF as NEON_OBSTACLES } from '../src/dev/neon-obstacle-candidates.j
 import { BAKEOFF as GRAVITY_OBSTACLES, LANE_W as GRAVITY_LANE_W, LANE_H as GRAVITY_LANE_H, drawGravityCandidateLane, drawGravityControlLineup, drawGravityCandidateLineup, gravityCandidateCaption } from '../src/dev/gravity-obstacle-candidates.js';
 import { WALKER_CANDIDATES, drawWalkerTile } from '../src/dev/space-walker-candidates.js';
 import { RAIL_WIRE_CANDIDATES, drawRailWireTile } from '../src/dev/rail-wire-candidates.js';
-import { ZAP_CANDIDATES, drawZapTile } from '../src/dev/zap-candidates.js';
-import { BLAST_CANDIDATES, BLAST_NOW, BLAST_T, drawBlastTile } from '../src/dev/blast-candidates.js';
-import { HIT_EFFECTS, HIT_FAMILIES, HIT_NOW, HIT_T, drawHitTile, drawIceCastTile } from '../src/dev/hit-effect-candidates.js';
-import { BEE_NOW, BEE_CANDIDATES, drawBeeTile } from '../src/dev/bee-follow-candidates.js';
-import { PIT_FALL, PIT_FALL_NOW, PIT_FALL_ROWS, PIT_FALL_HOLD, drawPitFallTile, pitLaneHeight } from '../src/dev/pit-fall-candidates.js';
-import { NEON_CAT_CANDIDATES, NEON_CAT_NOW, drawNeonCatApproach, drawNeonCatLineup } from '../src/dev/neon-cat-candidates.js';
-import { COBRA_CANDIDATES, COBRA_NOW, drawCobraApproach, drawCobraLineup } from '../src/dev/cobra-candidates.js';
-import { drawDetailAB, DETAIL_AB_RS } from '../src/dev/animal-detail-ab.js';
-import { GOOSE_CANDIDATES, GOOSE_NOW, drawGooseApproach, drawGooseLineup, drawGooseSideBySide, GOOSE_SIDE_H } from '../src/dev/goose-waddle-candidates.js';
-import { FERAL_CANDIDATES, FERAL_NOW, drawFeralApproach, drawFeralLineup, drawFeralSideBySide, SIDE_H as FERAL_SIDE_H } from '../src/dev/feral-dog-candidates.js';
-import { MANEKI_CANDIDATES, BECKON_CANDIDATES } from '../src/dev/maneki-candidates.js';
-import { SNARL_CANDIDATES } from '../src/dev/snarl-candidates.js';
 import { KAIJU_CANDIDATES, KAIJU_LOOP, drawKaijuScene } from '../src/dev/kaiju-candidates.js';
-import { SPEED_FINISH_CANDIDATES, SPEED_FINISH_LOOP, drawSpeedFinishScene } from '../src/dev/speed-finish-candidates.js';
-import { SLIP_NOW, SLIP_CANDIDATES, drawSlipTile } from '../src/dev/banana-slip-candidates.js';
-import { NEON_GOLDEN_MOOD as MANEKI_GOLDEN } from '../src/engine/stylePacks/index.js';
 import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/dev/hero-polish-candidates.js';
-import { FIRE_STAND_CANDIDATES, drawFireStandRun, drawFireStandStill } from '../src/dev/office-fire-alarm-stand-candidates.js';
-import { MASH_LETTER_CANDIDATES, MASH_LETTER_PALETTES, drawMashLetterCandidate, SNES_VARIANTS, drawSnesVariant } from '../src/dev/mash-letter-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
 import { BOBCAT_ANIMATION_CANDIDATES, drawBobcatAnimationStudy } from '../src/dev/bobcat-animation-candidates.js';
 import { PIXEL_INTRO_CANDIDATES, PIXEL_INTRO_ROUND_TWO, PIXEL_INTRO_ROUND_THREE, PIXEL_INTRO_ROUND_FOUR, PIXEL_INTRO_BPM, PIXEL_INTRO_LOOP_BARS, drawPixelIntro, pixelIntroCost } from '../src/dev/field-service-pixel-intro.js';
@@ -174,8 +149,9 @@ import { SURGE_FX_CANDIDATES, SURGE_GLITCH_CANDIDATES, SURGE_FX_BPM, SURGE_FX_SL
 import { CRYPT_ENEMY_CANDIDATES, drawCryptEnemyStudy } from '../src/dev/crypt-enemy-candidates.js';
 import { CRYPT_MOVIE_LANE, CRYPT_MOVIE_BACKDROPS, CRYPT_MOVIE_MOMENTS, drawCryptMovieLane, drawCryptMovieBackdrop } from '../src/dev/crypt-movie-bakeoff.js';
 import { FROST_FORTRESS_CANDIDATES, FROST_ROCK_CANDIDATES, drawFrostRockFortressScene } from '../src/dev/frost-rock-fortress-candidates.js';
+import { drawSurgeBreaker } from '../src/dev/surge-breaker-mockup.js';
 
-import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL, STEELE_HAMMER_CANDIDATE, STEELE_HAMMER_HARNESS_CANDIDATE } from '../src/dev/hero-candidates.js';
+import { ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES, PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES, PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES, RUSTY_BROW_CANDIDATES, RUSTY_BROWSHAPE_CANDIDATES, RUSTY_OPENBROW_CANDIDATES, RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES, RUSTY_EXPRESSIVE_CANDIDATES, RUSTY_BUNDLE_CANDIDATES, RUSTY_CANE_CANDIDATES, RUSTY_W3B, PANDA_PAL } from '../src/dev/hero-candidates.js';
 import {
   EGGSHELL_TRAVEL, drawEggshellTravel,
 } from '../src/dev/eggshell-candidates.js';
@@ -3358,105 +3334,18 @@ let officeFounderCandidates = null;
     });
   }
   beginLab();
-  // Keep the former rake weight available for an honest before/after in the
-  // gallery. The other two variants normalize only the silhouette ink to the
-  // desktop contour; their hitboxes, fills, and secondary hazard treatment stay
-  // as authored. These names exist only in this gallery bundle.
+  // Keep each pre-refinement outline weight available for an honest
+  // before/after after the production painters have been updated. These names
+  // exist only in this gallery bundle; they do not affect gameplay.
   const rakeOldToCurrent = 0.0095 / (0.0075 * OUTLINE_SCALE);
   definePropVariant('rakeOutlineBefore', 'rake', (ctx, w, h, frame) =>
     PROP_PAINTERS.rake(scaledContext(ctx, rakeOldToCurrent), w, h, frame), { rim: false });
-  definePropVariant('cactusGreenOutlineStandard', 'cactusGreen',
-    scaleSelectedStrokes(PROP_PAINTERS.cactusGreen, 0.63, ['#16331d']));
-  definePropVariant('brazierOutlineStandard', 'brazier',
-    scaleSelectedStrokes(PROP_PAINTERS.brazier, 0.345, ['#231b16']));
+  definePropVariant('cactusGreenOutlineBefore', 'cactusGreen',
+    scaleSelectedStrokes(PROP_PAINTERS.cactusGreen, 1 / 0.63, ['#16331d']));
+  definePropVariant('brazierOutlineBefore', 'brazier',
+    scaleSelectedStrokes(PROP_PAINTERS.brazier, 1 / 0.345, ['#231b16']));
 
-  // Focused outline bake-off. Each panel uses the real obstacle draw path and
-  // the same enlarged gameplay raster on both sides, so only the ink weight
-  // changes. A fixed camera magnification makes the differences easy to judge
-  // at desktop size while retaining the production hitboxes and art placement.
-  {
-    const grid = section('obstacle-outline-bakeoff', 'Obstacle outlines — before / standard weight',
-      'Paired through drawWorldEntity at 1.5× gameplay magnification, with the same animation frame on each side. '
-      + 'After candidates target the 0.385-world-unit desktop contour; only the rake change is already in gameplay.');
-    // The lab page's many-link sticky header is taller than the shell's normal
-    // 120px anchor offset. Land this section below it when its nav pill is used.
-    const heading = grid.parentElement?.querySelector('h2');
-    if (heading) heading.style.scrollMarginTop = '620px';
-    const style = getStylePack('pixel', {});
-    const PANEL_W = 240, TILE_W = PANEL_W * 2, TILE_H = 130;
-    const GROUND = 105, MAG = 1.5, SCENE_SCALE = MAG * WORLD_Z;
-    const rows = [
-      {
-        type: 'rake', before: 'rakeOutlineBefore', after: 'rake',
-        name: 'Rake — previous / current',
-        beforeLabel: 'BEFORE · PREVIOUS', afterLabel: 'AFTER · CURRENT',
-        note: 'Current is the refined line-art stroke already used in gameplay.',
-        turf: '#3a9c48', floor: '#327f3d',
-      },
-      {
-        type: 'cactus', before: 'cactusGreen', after: 'cactusGreenOutlineStandard',
-        name: 'Green cactus — shipped / standard contour',
-        beforeLabel: 'BEFORE · SHIPPED', afterLabel: 'AFTER · STANDARD',
-        note: 'Candidate keeps the green-skin hazard rim and thins its body contour.',
-        turf: '#3a9c48', floor: '#327f3d',
-      },
-      {
-        type: 'brazier', before: 'brazier', after: 'brazierOutlineStandard',
-        name: 'Brazier — shipped / standard contour',
-        beforeLabel: 'BEFORE · SHIPPED', afterLabel: 'AFTER · STANDARD',
-        note: 'Candidate normalizes the bowl outline; the stand remains structural.',
-        turf: '#282431', floor: '#3d3543',
-      },
-    ];
-    for (const row of rows) {
-      tile(grid, row.name, `${row.note} · exact prop geometry, magnified for desktop review`, TILE_W, TILE_H,
-        (ctx, t) => {
-          for (let i = 0; i < 2; i++) {
-            const x = i * PANEL_W;
-            ctx.fillStyle = row.turf;
-            ctx.fillRect(x, 0, PANEL_W, TILE_H);
-            ctx.fillStyle = row.floor;
-            ctx.fillRect(x, GROUND, PANEL_W, TILE_H - GROUND);
-            ctx.fillStyle = 'rgba(10, 13, 18, 0.72)';
-            ctx.fillRect(x, 0, PANEL_W, 25);
-            ctx.fillStyle = '#f2e8c5';
-            ctx.font = 'bold 10px ui-sans-serif, system-ui, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(i ? row.afterLabel : row.beforeLabel, x + PANEL_W / 2, 13);
-          }
-          ctx.fillStyle = 'rgba(240, 230, 194, 0.35)';
-          ctx.fillRect(PANEL_W - 1, 0, 2, TILE_H);
 
-          ctx.save();
-          ctx.scale(SCENE_SCALE, SCENE_SCALE);
-          ctx.translate(0, GROUND / SCENE_SCALE - GROUND_Y);
-          for (let i = 0; i < 2; i++) {
-            const e = makeObstacle(row.type, 100);
-            e.x = (i * PANEL_W + PANEL_W / 2) / SCENE_SCALE - e.w / 2;
-            e.skin = i ? row.after : row.before;
-            drawWorldEntity(ctx, e, 0, t, style, {});
-          }
-          ctx.restore();
-        }, { animated: true, wide: true, hires: 3 });
-    }
-  }
-
-  // Active Food Court question: keep this comparison at the front of the lab.
-  {
-    const grid = section('foodcourt-monitor-bakeoff', 'Food Court — monitor edge bake-off',
-      'Rhythm Bankruptcy shows the pale monitor trim most clearly. A uses a smaller centered glass with room above the deck; B tests a wider, near-flush glass. Both use a matte face so the screen sits cleanly behind the front controls.');
-    const cab = CABINETS.find((item) => item.id === 'rhythm');
-    const pal = cabinetPalette(cab, true);
-    const CW = 64, CH = 113, X = 8, Y = 8;
-    for (const candidate of FOOD_COURT_MONITOR_CANDIDATES) {
-      tile(grid, candidate.label, candidate.note, 80, 129, (ctx) => {
-        drawCabinetShell(ctx, X, Y, CW, CH, pal, candidate.style);
-        const scr = drawCabinetScreen(ctx, X, Y, CW, CH, pal, candidate.style);
-        if (scr) drawScreenSweep(ctx, scr, 0.7, pal.seed);
-      }, { hires: 3 });
-    }
-  }
   // The unselected candidates are a lab section of their own, further down in date order.
   officeFounderCandidates = { candidates, drawPosters };
 }
@@ -3498,83 +3387,6 @@ let officeFounderCandidates = null;
       ctx.restore();
     }, { animated: true, wide: true, world: true, hires: 6 });
   }
-}
-
-// -------------------------------------- Steele Hammer, costume direction study
-// Both treatments stay in the gallery only and use the exact shared controller
-// pose adapter, humanoid painter and 24px gameplay footprint.
-{
-  const tank = STEELE_HAMMER_CANDIDATE;
-  const c = STEELE_HAMMER_HARNESS_CANDIDATE;
-  const tankOpts = { spec: tank.spec, pal: tank.pal };
-  const harnessOpts = { spec: c.spec, pal: c.pal };
-  const gamePose = (id, kind, t) => {
-    const sliding = kind === 'slide';
-    const jumping = kind === 'jump';
-    const derived = poseFromPlayer({
-      hero: { id }, grounded: !jumping, jumps: jumping ? 1 : 0,
-      vy: jumping ? -160 : 0, anim: (t * 1.6) % 1,
-      sliding, slideAmount: sliding ? 1 : 0,
-    }, t);
-    // poseFromPlayer reads the live roster to select a slide rig; a lab
-    // candidate is intentionally outside that roster, so hand it the same
-    // humanoid power-slide style the run gives playable heroes.
-    return sliding ? { ...derived, slideStyle: 'kick' } : derived;
-  };
-
-  const s = sectionEl('steele-hammer-candidate', 'Steele Hammer — field harness direction',
-    'GALLERY/LAB ONLY · exposed chest, two separate dark shoulder braces and a back-slung rifle on the shared heavy humanoid rig. '
-    + 'The four poses use the game controller and match Grumpos at 24px tall. Compare the previous red-tank outfit '
-    + 'beside the harness version at detail scale and in the real gameplay lane.');
-  const grid = document.createElement('div');
-  grid.className = 'grid';
-  s.appendChild(grid);
-
-  const H = 64, W = 112, FEET = 91, TILE_H = 102;
-  for (const [kind, note] of [
-    ['idle', 'Shared humanoid idle stance.'],
-    ['run', 'poseFromPlayer run cycle, with the gameplay head turn.'],
-    ['jump', 'poseFromPlayer jump silhouette.'],
-    ['slide', 'The shared humanoid power slide.'],
-  ]) {
-    tile(grid, `Steele Hammer — ${kind}`, note, W, TILE_H, (ctx, t) => {
-      const p = kind === 'idle' ? pose('idle', t) : gamePose(c.id, kind, t);
-      drawToon(ctx, c.id, p, W / 2, FEET, H, harnessOpts);
-    }, { animated: true, wide: true, hires: 5 });
-  }
-
-  tile(grid, 'Steele Hammer — red tank vs. field harness',
-    'Same three-quarter run pose, controller timing, body proportions and back-slung rifle. The clothing and chest rig are the only direction change.',
-    360, 226, (ctx, t) => {
-      drawToon(ctx, c.id, gamePose(c.id, 'run', t), 90, 202, 132, tankOpts);
-      drawToon(ctx, c.id, gamePose(c.id, 'run', t), 270, 202, 132, harnessOpts);
-      ctx.fillStyle = 'rgba(255,255,255,.78)';
-      ctx.font = 'bold 9px ui-monospace, monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('RED TANK', 90, 18);
-      ctx.fillText('EXPOSED CHEST / FIELD RIG', 270, 18);
-    }, { animated: true, wide: true, hires: 5 });
-
-  const LW = 264, LH = 62, LGY = 46;
-  tile(grid, 'Runner scale — Lorenzo / tank / harness / Grumpos',
-    'All four drawn at the real 24px hero height through the shared painter. Compare both costume reads against Lorenzo and Grumpos in the gameplay lane.',
-    LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
-      ctx.scale(WORLD_Z, WORLD_Z);
-      laneStrip(ctx, LW, LH, LGY);
-      const samples = [
-        ['lorenzo', 34, 'LORENZO', undefined],
-        [c.id, 99, 'TANK', tankOpts],
-        [c.id, 164, 'HARNESS', harnessOpts],
-        ['grumpos', 229, 'GRUMPOS', undefined],
-      ];
-      for (const [id, x, label, look] of samples) {
-        drawToon(ctx, id, gamePose(id, 'run', t), x, LGY, HERO_DRAW_H, look);
-        ctx.fillStyle = 'rgba(255,255,255,.7)';
-        ctx.font = '4.5px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(label, x, 9);
-      }
-    }, { animated: true, wide: true, world: true, hires: 5 });
 }
 
 // ------------------------------------------- animal hero, replacing Gnash
@@ -8428,29 +8240,6 @@ function cryptStyleTiles(grid, tag, cand) {
     (ctx, t) => drawDesertCatLineup(ctx, t, W, H), { animated: true });
 }
 
-{
-  const grid = section('bobcat-animation-bakeoff', 'SPEED ZONE — cat animation (0 / A / B / C)',
-    'B Power Bound ships (18 Oct 2026). Previous gait, A fluid gallop and C low pursuit remain for comparison. '
-    + 'Each repairs the missing jaw pose and explores spine flex, shoulder weight and foot timing. '
-    + 'Source artwork rendered directly at desktop display resolution. '
-    + 'Stride cadence follows the actual 38 units/second road speed. '
-    + 'For slow motion and frame stepping, open bobcat-animation-bakeoff.html.', '18 Oct 2026');
-  for (const cand of BOBCAT_ANIMATION_CANDIDATES) {
-    tile(grid, `${cand.id} — ${cand.name}`, cand.note, 640, 360,
-      (ctx, t) => drawBobcatAnimationStudy(ctx, t, cand), { animated: true, choice: cand.id });
-  }
-}
-
-{
-  const grid = section('pythagoras-tail-bakeoff', 'PYTHAGORAS — extreme tail motion (0 / A–E)',
-    'A Whip Crack ships. Previous swish and four alternative angry-tail studies remain for comparison. Same fur, tail thickness and four-paw idle. '
-    + 'Open pythagoras-tail-bakeoff.html for slow motion, frame stepping and a smooth-motion comparison.', '18 Oct 2026');
-  for (const candidate of PYTHAGORAS_TAIL_CANDIDATES) {
-    tile(grid, `${candidate.id} — ${candidate.name}`, candidate.note, 640, 360,
-      (ctx, t) => drawPythagorasTailStudy(ctx, t, candidate), { animated: true, choice: candidate.id });
-  }
-}
-
 // ------------------------------------------------ run cadence vs speed
 //
 // The run cycle is wound by the lane's speed: Player.update adds
@@ -8758,6 +8547,63 @@ function cryptStyleTiles(grid, tag, cand) {
       }
     }, { animated: true });
   }
+}
+
+// ------------------------------------------------- THE SURGE — breaker box, mockup
+// A gallery-only visual for the proposed Surge-2 replacement bonus. The row is
+// a three-beat explanation at lane scale: live and sparking; Lorenzo jumps into
+// the box and throws its large lever; the box settles to a steady light. No
+// obstacle or objective is registered in the game by this study.
+{
+  const grid = section('surge-breaker-mockup', 'THE SURGE — breaker box (proposed bonus)',
+    'GALLERY MOCKUP ONLY. One breaker at the same 19x25u footprint as drawn here, beside Lorenzo at his normal 24u height: '
+    + 'live and crackling → jump into the lever → steady light when restored. This is the visual read for the proposed '
+    + 'three-breaker Surge-2 bonus; it is not wired into the stage.');
+  tile(grid, 'LIVE → FLIP → RESTORED',
+    'One box, shown at lane scale. The active state sparks; the contact state swings the lever; the completed state holds a calm mint light.',
+    480, 116, (ctx, t) => {
+      ctx.scale(WORLD_Z, WORLD_Z);
+      const GY = 51;
+      const panelW = 40;
+      for (let i = 0; i < 3; i++) {
+        const x = i * panelW;
+        ctx.fillStyle = ['#1b1b2b', '#202033', '#1b1b2b'][i];
+        ctx.fillRect(x, 0, panelW, 58);
+        ctx.fillStyle = 'rgba(152,143,184,.14)';
+        ctx.fillRect(x + 3, 8 + (i % 2) * 2, panelW - 6, 0.35);
+        ctx.fillRect(x + 4, 13 + (i % 2) * 2, panelW - 8, 0.25);
+        ctx.fillStyle = '#303040';
+        ctx.fillRect(x, GY, panelW, 7);
+        ctx.fillStyle = '#77758a';
+        ctx.fillRect(x, GY, panelW, 0.65);
+        if (i) {
+          ctx.fillStyle = 'rgba(196,190,220,.32)';
+          ctx.fillRect(x, 0, 0.35, 58);
+        }
+      }
+
+      ctx.fillStyle = '#ff7598';
+      ctx.font = '3.1px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('LIVE · SPARKS', panelW / 2, 3.3);
+      ctx.fillStyle = '#ffe08a';
+      ctx.fillText('JUMP TO FLIP', panelW * 1.5, 3.3);
+      ctx.fillStyle = '#62f1cf';
+      ctx.fillText('RESTORED', panelW * 2.5, 3.3);
+
+      drawToon(ctx, 'lorenzo', pose('run', t), 7, GY, 24);
+      drawSurgeBreaker(ctx, 20, GY, t, 'live');
+
+      // Mid-contact pose, close enough to read the single action as a jump into
+      // the lever rather than a collected object. The changing sparks and lever
+      // make this middle panel animate without introducing a new control.
+      drawToon(ctx, 'lorenzo', pose('jump', t, { lean: 0.12 }), 17, GY - 5, 24);
+      drawSurgeBreaker(ctx, panelW + 20, GY, t + 0.35, 'flip');
+
+      drawToon(ctx, 'lorenzo', pose('run', t + 0.22), panelW * 2 + 7, GY, 24);
+      drawSurgeBreaker(ctx, panelW * 2 + 20, GY, t, 'on');
+    }, { animated: true, hires: 5, wide: true, world: true });
 }
 
 // Eight regular Lab choreographies per hero, plus the occasional moonwalk for Lorenzo, B-33P and Rusty.
@@ -9468,160 +9314,6 @@ function jadeSky(ctx, w, h, seed = 1) {
  }
 }
 
-// --------------------------------------------- CORPORATE KOMBAT — meeting-room chairs (lab)
-// 14 Oct 2026: "dont love these chairs - they look like they are part of the peoples bodies".
-// src/dev/office-chair-candidates.js, through room.js setOfficeChairStyle; the real rooms at
-// in-run size, frosted below the table as shipped.
-{
-  const grid = section('office-chair-bakeoff', 'CORPORATE KOMBAT — meeting-room chairs (D shipped)',
-    'The sitters in the glass rooms are seen from behind. NOW’s chair back is as wide as their shoulders and the colour of their suits, so '
-    + 'it reads as their bodies. A–E change the chair; each is shown in floor 23’s training room and floor 88’s boardroom. D SHIPPED 15 Oct (B briefly before it). ANIMATED.',
-    '14 Oct 2026');
-  for (const cand of OFFICE_CHAIR_CANDIDATES) {
-    for (const room of OFFICE_CHAIR_ROOMS) {
-      tile(grid, `${cand.letter} — ${cand.name} · ${room.name}`, cand.note, 480, 270,
-        (ctx, t) => drawOfficeChairScene(ctx, t, cand.style, room), { animated: true });
-    }
-  }
-}
-
-// --------------------------------------------- CORPORATE KOMBAT — the crypt's zombies at work (lab)
-// 15 Oct 2026: a callback from Crypt Shift (cabinet 5) in Corporate Kombat (8). "How to incorporate
-// our zombie character/s from the crypt in the art style of the corporate level? Bake-off".
-// src/dev/office-zombie-candidates.js, painted into the real floors through officeLigne/index.js
-// setOfficeMidExtra, at in-run size.
-{
-  const grid = section('office-zombie-bakeoff', 'CORPORATE KOMBAT — the crypt’s zombies at work (bake-off · SHIPPED)',
-    'The crypt’s own zombie drawings, tweaked to fit floor 23 rather than redrawn. SHIPPED 15 Oct (officeLigne/zombies.js), on every '
-    + 'run: the usher in the lift near the start, the purple clerk in the staff canteen, the clerk as EMPLOYEE OF THE MONTH over a '
-    + 'cube farm with the clerk himself at the cooler at its end. Below: the rounds that got there. ANIMATED.',
-    '15 Oct 2026');
-  for (const cand of OFFICE_ZOMBIE_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
-      (ctx, t) => drawOfficeZombieScene(ctx, t, cand), { animated: true });
-  }
-}
-
-// --------------------------------------------- GRAVITY GRID — zapped by the live wire (lab)
-// 15 Oct 2026: "it would be nice if we had a shocked animation if the hero makes contact
-// rather than our generic ... mock up 1 character being zapped in the gallery, perhaps give
-// me a few options". Candidates: src/dev/zap-candidates.js. Nothing is wired into the run.
-{
-  const grid = section('gravity-zap-bakeoff', 'GRAVITY GRID — zapped by the live wire (B + sometimes C SHIPPED)',
-    'SHIPPED 15 Oct: B, with C one hit in three (never twice running, only for heroes with an X-ray drawn), and the A BUZZ sound (sprites/zap.js, audio.js zap). Lorenzo runs along the floor rail into the live wire, on a 3.2s loop. NOW is the hit every hazard gets today; '
-    + 'A–F keep its shake and its 1.4s mercy window and change only what he does inside them. A, D and E work on '
-    + 'any hero as drawn; B, C and F pose him, and C’s skeleton is laid out for Lorenzo. Turn on SLOW to read the '
-    + 'strobes frame by frame. ANIMATED.',
-    '15 Oct 2026');
-  for (const cand of ZAP_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270, (ctx, t) => drawZapTile(ctx, t, cand.id), { animated: true });
-  }
-}
-
-// --------------------------------------------- M-A-S-H letters — look bake-off (lab)
-// 15 Oct 2026: "id like to build the letters better... can we do a few options?" —
-// "bakeoff". Candidates: src/dev/mash-letter-candidates.js, each in the shipped
-// letter's painter seam. Nothing is wired into the run.
-{
-  const grid = section('mash-letter-bakeoff', 'M-A-S-H letters — look + colour bake-off (F SHIPPED)',
-    'SHIPPED 15 Oct: F, the SNES cart, with its labels in the Super Famicom\'s four button colours — M red, A yellow, '
-    + 'S green, H blue (see the Pickups section). The rest stay as the record. Each shape in four colours: RED, TEAL, VIOLET and GOLD (what shipped first; the coins\' and toaster\'s '
-    + 'colour). Top row over Field Service, bottom row over Speed Zone, Lorenzo for scale, letters at in-run size '
-    + 'and the height they float in the run. The last letter in each row is the BANKED look — neutral grey in every '
-    + 'colour, so it never reads as one you still need. ANIMATED.',
-    '15 Oct 2026');
-  const TW = 360, ROW = 60, TH = ROW * 2, LW = 16, LH = 19;
-  for (const cand of MASH_LETTER_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, TW, TH, (ctx, t) => {
-      const frame = Math.floor(t * 6) % 8;
-      const rows = [
-        { y: 0, sky: ['#78c8f0', '#78c8f0'], ground: ['#3a9c48', '#2a7038'], hero: 'lorenzo', L: 'M' },
-        { y: ROW, sky: ['#e9a27c', '#d98a66'], ground: ['#c99a6a', '#5e5260'], hero: 'fernwick', L: 'S' },
-      ];
-      for (const r of rows) {
-        const gy = r.y + ROW - 12;
-        ctx.fillStyle = r.sky[0]; ctx.fillRect(0, r.y, TW, (gy - r.y) * 0.55);
-        ctx.fillStyle = r.sky[1]; ctx.fillRect(0, r.y + (gy - r.y) * 0.55, TW, (gy - r.y) * 0.45);
-        ctx.fillStyle = r.ground[0]; ctx.fillRect(0, gy, TW, 3);
-        ctx.fillStyle = r.ground[1]; ctx.fillRect(0, gy + 3, TW, r.y + ROW - gy - 3);
-        drawToon(ctx, r.hero, pose('run', t * 0.9 + r.y), 10, gy, 24);
-        MASH_LETTER_PALETTES.forEach((pal, i) => {
-          ctx.save(); ctx.translate(52 + i * 64, gy - 22 - LH);
-          drawMashLetterCandidate(ctx, cand.id, LW, LH, frame, r.L, false, pal.id);
-          ctx.restore();
-          if (r.y === 0) {
-            ctx.fillStyle = 'rgba(16,16,24,.6)'; ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
-            ctx.fillText(pal.name, 50 + i * 64, gy + 9);
-          }
-        });
-        ctx.save(); ctx.translate(52 + 4 * 64, gy - 22 - LH);
-        drawMashLetterCandidate(ctx, cand.id, LW, LH, frame, r.L, true);
-        ctx.restore();
-        ctx.fillStyle = 'rgba(16,16,24,.6)'; ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
-        ctx.fillText('BANKED', 50 + 4 * 64, gy + 9);
-      }
-    }, { animated: true, hires: 4, wide: true, world: true });
-  }
-}
-
-// --------------------------------------------- M-A-S-H carts — SNES variations (lab)
-// 15 Oct 2026: after picking the SNES cart in Super Famicom colours, "can we bake off
-// a few variations on the SNES cartridge...". src/dev/mash-letter-candidates.js.
-{
-  const grid = section('mash-cart-bakeoff', 'M-A-S-H carts — SNES variations (E1 SHIPPED)',
-    'SHIPPED 15 Oct: E1, the glow with a Super Famicom-proportioned label, widened a touch. Six takes on the SNES cart, all four letters in their Super Famicom colours (M red, A yellow, S green, '
-    + 'H blue) over Field Service (top) and Speed Zone (bottom) at in-run size, Lorenzo for scale; the grey one at '
-    + 'the end of each row is the BANKED look. NOW is what ships. ANIMATED.',
-    '15 Oct 2026');
-  const TW = 380, ROW = 60, TH = ROW * 2, LW = 16, LH = 19;
-  for (const v of SNES_VARIANTS) {
-    tile(grid, `${v.letter} — ${v.name}`, v.note, TW, TH, (ctx, t) => {
-      const frame = Math.floor(t * 6) % 8;
-      const rows = [
-        { y: 0, sky: ['#78c8f0', '#78c8f0'], ground: ['#3a9c48', '#2a7038'], hero: 'lorenzo' },
-        { y: ROW, sky: ['#e9a27c', '#d98a66'], ground: ['#c99a6a', '#5e5260'], hero: 'fernwick' },
-      ];
-      for (const r of rows) {
-        const gy = r.y + ROW - 12;
-        ctx.fillStyle = r.sky[0]; ctx.fillRect(0, r.y, TW, (gy - r.y) * 0.55);
-        ctx.fillStyle = r.sky[1]; ctx.fillRect(0, r.y + (gy - r.y) * 0.55, TW, (gy - r.y) * 0.45);
-        ctx.fillStyle = r.ground[0]; ctx.fillRect(0, gy, TW, 3);
-        ctx.fillStyle = r.ground[1]; ctx.fillRect(0, gy + 3, TW, r.y + ROW - gy - 3);
-        drawToon(ctx, r.hero, pose('run', t * 0.9 + r.y), 10, gy, 24);
-        ['M', 'A', 'S', 'H'].forEach((L, i) => {
-          ctx.save(); ctx.translate(56 + i * 58, gy - 22 - LH);
-          drawSnesVariant(ctx, v.id, LW, LH, frame, L);
-          ctx.restore();
-        });
-        ctx.save(); ctx.translate(56 + 4 * 58 + 20, gy - 22 - LH);
-        drawSnesVariant(ctx, v.id, LW, LH, frame, 'M', true);
-        ctx.restore();
-        ctx.fillStyle = 'rgba(16,16,24,.6)'; ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
-        ctx.fillText('BANKED', 54 + 4 * 58 + 20, gy + 9);
-      }
-    }, { animated: true, hires: 4, wide: true, world: true });
-  }
-}
-
-// --------------------------------------------- CORPORATE KOMBAT — the safe, CRACK 3 SAFES (lab)
-// 15 Oct 2026: office-3's new mission replaces the escort with CRACK 3 SAFES. The safe must read
-// instantly as a safe and as a prize, stand twice a normal obstacle's height, be SHOT to crack
-// (contact doesn't), and burst open with collectable notes + coins. src/dev/office-safe-candidates.js;
-// nothing wired into the run.
-{
-  const grid = section('office-safe-bakeoff', 'CORPORATE KOMBAT — the safe, for CRACK 3 SAFES (bake-off)',
-    'Floor 88’s new target. Every candidate stands in a 16x24 box — twice a crate’s height — on the real 8-3 floor at '
-    + 'in-run size, Lorenzo for scale. Top strip: intact, a real crate beside it. Middle: three shots land, the lock '
-    + 'flashes, the door blows open and the money flies — coins are the game’s own coin pickup, the green note is a '
-    + 'new banknote pickup, both resting at pickup height to be run through. Bottom: the burst frozen at two moments. '
-    + 'NOW is the shipped officeSafe hazard. Pick a letter (the note design is shared by all). ANIMATED.',
-    '15 Oct 2026');
-  for (const cand of OFFICE_SAFE_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, OFFICE_SAFE_LANE_H,
-      (ctx, t) => drawOfficeSafeLane(ctx, t, cand), { animated: true, wide: true });
-  }
-}
-
 // --------------------------------------------- OBSTACLES — level by level (lab)
 // 15 Oct 2026: "in the lab just have one row with all obstacles as shipped. or pending
 // per level, don't need to see each one running. include corporate kombat". One tile
@@ -9780,26 +9472,6 @@ function jadeSky(ctx, w, h, seed = 1) {
   }
 }
 
-// --------------------------------------------- CORPORATE KOMBAT — the zombie clerk side on (lab)
-// 15 Oct 2026: the fire-exit queue on floor 23 walks right, everyone side on (room.js walkerSide);
-// the crypt clerk dropped in as drawn shuffled sideways, and recoloured workers were the wrong
-// thing ("i meant the new style zombie not zombies in the style of the workers"). The same clerk,
-// turned to profile: src/dev/office-zombie-profile-candidates.js. Nothing wired into the run.
-{
-  const grid = section('office-zombie-profile-bakeoff', 'CORPORATE KOMBAT — the zombie clerk side on, for the fire-exit queue (bake-off)',
-    'The crypt’s clerk as the office draws him (drawOfficeZombie: its face, glasses, suit, tie, badge, briefcase, its ink, rims '
-    + 'and SOFT colours, ZOMBIE_SHAPE’s proportions) turned to profile and walking right, so it can join the fire-exit queue. '
-    + 'For each letter: the queue walking to the fire exit on floor 23 at in-run size, the blue clerk and the pink temp among '
-    + 'the office’s own walkers; then the walk cycle in six stills beside the moving one, blue over pink. Pick a letter. ANIMATED.',
-    '15 Oct 2026');
-  for (const cand of PROFILE_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name} · in the queue`, cand.note, 480, 270,
-      (ctx, t) => drawProfileQueueScene(ctx, t, cand.id), { animated: true });
-    tile(grid, `${cand.letter} — the walk, blue and pink`, 'Left, walking on the spot; then one cycle in six stills.', 480, 270,
-      (ctx, t) => drawProfileFrames(ctx, t, cand.id), { animated: true });
-  }
-}
-
 // --------------------------------------------- ONE box and ONE barrel, everywhere (lab)
 // 15 Oct 2026, after the per-cabinet set: "id rather keep them generic throughout as a
 // constant.. esp the barrel which needs to be kicked deliberately (and we want it to
@@ -9886,158 +9558,6 @@ function jadeSky(ctx, w, h, seed = 1) {
   }
 }
 
-// --------------------------------------------- CORPORATE KOMBAT — fire alarms on stands (lab)
-// 15 Oct 2026: "the fire alarms are suspended in mid air, what can we do about that?" —
-// stand each one on a freestanding fire point, the call point at the same height, so the
-// run is unchanged. src/dev/office-fire-alarm-stand-candidates.js; nothing wired into the run.
-{
-  const grid = section('office-fire-alarm-stand-bakeoff', 'CORPORATE KOMBAT — fire alarms on freestanding stands (bake-off)',
-    'Floor 23 (office-2, PULL 3 FIRE ALARMS) at in-run size. Every candidate keeps the call point exactly where it is (alt 36, '
-    + 'box 10x11): hop into it or shoot it, as now. The stand is drawn behind the hero and kept thin at his height so it reads as '
-    + 'scenery, not a hurdle. Per candidate: IN THE LANE (scrolling at run speed, Lorenzo hops into each one and runs past the '
-    + 'pulled one) and STILL (a waiting one beside him, a pulled one further on). ANIMATED.',
-    '15 Oct 2026');
-  for (const cand of FIRE_STAND_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name} · in the lane`, cand.note, 480, 270,
-      (ctx, t) => drawFireStandRun(ctx, t, cand.id), { animated: true });
-    tile(grid, `${cand.letter} — ${cand.name} · still: waiting / pulled`, cand.note, 480, 270,
-      (ctx, t) => drawFireStandStill(ctx, t, cand.id), { animated: true });
-  }
-}
-
-// --------------------------------------------- CORPORATE KOMBAT — a woman zombie for the queue (lab)
-// 15 Oct 2026: "can we do a girl zombie while we're at it?" — the shipped queue clerk
-// (profileZombie.js) dressed as a late-80s office woman: src/dev/office-zombie-girl-candidates.js.
-{
-  const grid = section('office-zombie-girl-bakeoff', 'CORPORATE KOMBAT — a woman zombie clerk for the fire-exit queue (bake-off)',
-    'The queue clerk’s own drawing (green skin, heavy-lidded red eye, slack jaw, stitched scalp, soft outline, the office’s '
-    + 'ink, rims and SOFT colours, ZOMBIE_SHAPE’s skeleton, the step-and-drag with the far arm out) as a late-80s office '
-    + 'woman: pencil skirt, court shoes, shoulder pads, earrings, lipstick; hair and what she carries vary by letter. First, '
-    + 'every letter in one stretch of the queue among the shipped men; then per letter both colourways in the queue on floor '
-    + '23 at in-run size, and the walk (beside a man for height) with one cycle in six stills. Pick a letter. ANIMATED.',
-    '15 Oct 2026');
-  tile(grid, 'ALL — A to G in the queue', GIRL_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · '), 480, 270,
-    (ctx, t) => drawGirlLineupScene(ctx, t), { animated: true });
-  for (const cand of GIRL_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name} · in the queue`, cand.note, 480, 270,
-      (ctx, t) => drawGirlQueueScene(ctx, t, cand.id), { animated: true });
-    tile(grid, `${cand.letter} — the walk, ${cand.outfits.map(([n]) => n.toLowerCase()).join(' and ')}`,
-      'Left: a man of the queue for height, then her walking on the spot; then one cycle in six stills.', 480, 270,
-      (ctx, t) => drawGirlFrames(ctx, t, cand.id), { animated: true });
-  }
-}
-
-// --------------------------------------------- SPEED ZONE — dynamite in the face (lab)
-// 16 Oct 2026: "can we draw heroes differently when they get exploded in their face? like
-// we do for the livewires?" Candidates: src/dev/blast-candidates.js, each a painter in the
-// zap's seam (drawn instead of the running toon for BLAST_T, the blink waiting for it).
-// Nothing is wired into the run.
-{
-  const grid = section('blast-hero-bakeoff', 'SPEED ZONE — dynamite in the face (bake-off)',
-    'Speed Zone at in-run size: Lorenzo, Clara, Kiko and B-33P each run into a stick of the dynamite at the same moment, on a 2.6s loop. '
-    + 'NOW is the hit it gets today (plus a flat flash on the stick, drawn on every tile here — the run itself only throws dynamiteBlast’s sparks and smoke). '
-    + 'A–F keep all of that — the stick’s own blast, the shake, the 0.08s hitstop, the 1.4s blink — '
-    + `and change only how the hero is drawn for the first ${BLAST_T}s, as the live wire’s jolt does. Every one works on the hero’s `
-    + 'own drawing (his own eye whites in the soot), so it carries to the whole cast. Turn on SLOW to read them frame by frame. ANIMATED.',
-    '16 Oct 2026');
-  const strips = SPEED_OBSTACLES.strips.slice(0, 2);
-  const heroes = ['lorenzo', 'clara', 'kiko', 'b33p'];
-  for (const cand of [BLAST_NOW, ...BLAST_CANDIDATES]) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
-      (ctx, t) => drawBlastTile(ctx, t, cand.id, strips, heroes), { animated: true, wide: true });
-  }
-}
-
-// ------------------------------------------- TERMINAL VELOCITY — the swiping cat (lab)
-// 16 Oct 2026: "bake off a new obstacle, a stationary cat that would swipe at us in the neon
-// level... in a similar way that the cobra strikes at us in the desert levels... not sure if we
-// should go for realism or cutesy". Candidates: src/dev/neon-cat-candidates.js — one rig, the
-// rattlesnake's strike clock, eight looks. Nothing is wired into the run.
-{
-  const grid = section('neon-cat-bakeoff', 'TERMINAL VELOCITY — the swiping cat (bake-off)',
-    'A cat sits in the neon road and swipes as you arrive — the rattlesnake’s mechanic exactly: the swipe fires half a second ahead of the hero, '
-    + 'winds up, lashes out low across the lane, holds, and draws back; its box takes in the reach, so the answer is the jump. '
-    + 'Round 2 (16 Oct, after “torn between D and E” and “F won’t read in the dark”): I–N, variants of D, E and F, line-up first. Round 1: eight looks on the one rig, from realistic (A, and H — Pythagoras, the chocolate Burmese) through Tokyo-specific (B, D, E, F) to cutesy (C, G), each on neon-1’s golden hour, its night and neon-3’s tower. '
-    + 'First the line-up with the shipped snake for size and timing, then each one riding in at the hero, who hops it. Turn on SLOW to read the swipe. ANIMATED.',
-    '16 Oct 2026');
-  const strips = NEON_OBSTACLES.strips;
-  const round1 = NEON_CAT_CANDIDATES.filter((c) => c.look !== 'round 2');
-  const round2 = NEON_CAT_CANDIDATES.filter((c) => c.look === 'round 2');
-  tile(grid, 'ROUND 2 LINE-UP — D, E, F, H and their variants I–O', `D · E · F · H, then ` + round2.map((c) => `${c.letter} ${c.name}`).join(' · '),
-    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, NEON_CAT_CANDIDATES.filter((c) => 'DEFH'.includes(c.letter) || c.look === 'round 2'), false), { animated: true, wide: true });
-  tile(grid, 'LINE-UP — the snake, then A–H', `· ${NEON_CAT_NOW.name} · ` + round1.map((c) => `${c.letter} ${c.name}`).join(' · '),
-    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, round1), { animated: true, wide: true });
-  for (const cand of [NEON_CAT_NOW, ...NEON_CAT_CANDIDATES]) {
-    tile(grid, `${cand.letter} — ${cand.name}${cand.look ? ` · ${cand.look}` : ''}`, cand.note, 480, laneHeight(strips),
-      (ctx, t) => drawNeonCatApproach(ctx, t, strips, cand), { animated: true, wide: true });
-  }
-}
-
-// ------------------------------------------------- HIT PICTURES — by what hit you (lab)
-// 16 Oct 2026: after the live wire's jolt and the dynamite's flip, a picture per family of
-// obstacle — fire, spikes, rollers, ice, and Peter's "little ring of stars with a flash"
-// for everything else. Candidates: src/dev/hit-effect-candidates.js, each a painter in
-// the zap's seam (drawn instead of the running toon for HIT_T, the blink waiting for it).
-// Nothing is wired into the run.
-{
-  const s = sectionEl('hit-effects-bakeoff', 'HIT PICTURES — by what hit you (bake-off)',
-    'One family of obstacle to a row, each on a cabinet it belongs to, at in-run size: Lorenzo, Clara, Kiko and B-33P run into the real obstacle at the same moment, on a 2.6s loop. '
-    + 'NOW is the hit every one of them gets today (the red knock burst, the shake, the 0.08s hitstop, the 1.4s blink). '
-    + `A and B keep all of that and change only how the hero is drawn for the first ${HIT_T}s, as the live wire’s jolt does — `
-    + 'same length, same sound, same spot, same hitbox. Each works on the hero’s own drawing, so it carries to the whole cast. Turn on SLOW to read them frame by frame. ANIMATED.',
-    '16 Oct 2026');
-  const subhead = (text, note) => {
-    const h3 = document.createElement('h3');
-    h3.className = 'subhead';
-    h3.textContent = text;
-    s.appendChild(h3);
-    if (note) {
-      const p = document.createElement('p');
-      p.className = 'note';
-      p.textContent = note;
-      s.appendChild(p);
-    }
-    const grid = document.createElement('div');
-    grid.className = 'grid';
-    s.appendChild(grid);
-    return grid;
-  };
-  const BAKE = { plumber: PLUMBER_OBSTACLES, speed: SPEED_OBSTACLES, frost: FROST_OBSTACLES };
-  const heroes = ['lorenzo', 'clara', 'kiko', 'b33p'];
-  for (const fam of HIT_FAMILIES) {
-    const grid = subhead(fam.title, `${fam.members}. Shown on ${fam.shown}.`);
-    const strips = BAKE[fam.cabinet].strips.slice(0, 2);
-    for (const cand of [HIT_NOW, ...HIT_EFFECTS.filter((c) => c.family === fam.family)]) {
-      tile(grid, `${fam.title} ${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
-        (ctx, t) => drawHitTile(ctx, t, fam.family, cand.id, strips, heroes), { animated: true, wide: true });
-    }
-    if (fam.family === 'ice') {
-      const cast = ['lorenzo', 'rusty', 'fernwick', 'b33p', 'clara', 'kiko', 'ramon', 'grumpos'];
-      tile(grid, 'ICE A — the whole cast, frozen', 'Bigger ice for bigger heroes: the chunk is sized to each hero’s own frozen silhouette (head, hair, hat, helmet, arms, weapon), measured once per hero, with its base sunk below his feet.',
-        480, laneHeight(strips), (ctx, t) => drawIceCastTile(ctx, t, strips, cast), { animated: true, wide: true });
-    }
-  }
-}
-
-// ------------------------------------------------- SPEED ZONE — a better cobra (lab)
-// 16 Oct 2026, mid-way through the neon cat: "can you draw a better cobra while you're at
-// it?" — his name for the shipped rattlesnake. Candidates: src/dev/cobra-candidates.js —
-// three real cobras and the rattler redrawn, on the snake's own strike clock.
-{
-  const grid = section('cobra-bakeoff', 'SPEED ZONE — a better cobra (bake-off)',
-    'The coiled striker, redrawn. A–C are real cobras reared up with the hood spread (standing taller than the coil, on the same 18x10 box, so the jump is unchanged); '
-    + 'D is the rattlesnake itself rebuilt, in case “the cobra” means the one already in the road. All strike on the shipped clock — half a second ahead of the hero. '
-    + 'Line-up with the shipped snake first, then each riding in at Lorenzo, who hops it. Turn on SLOW to read the strike. ANIMATED.',
-    '16 Oct 2026');
-  const strips = SPEED_OBSTACLES.strips;
-  tile(grid, 'LINE-UP — the shipped snake, then A–D', `· ${COBRA_NOW.name} · ` + COBRA_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · '),
-    480, laneHeight(strips), (ctx, t) => drawCobraLineup(ctx, t, SPEED_OBSTACLES.cabinet, strips), { animated: true, wide: true });
-  for (const cand of [COBRA_NOW, ...COBRA_CANDIDATES]) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
-      (ctx, t) => drawCobraApproach(ctx, t, SPEED_OBSTACLES.cabinet, strips, cand), { animated: true, wide: true });
-  }
-}
-
 // --------------------------------------------- LORENZO + RAMON, POLISHED — idle (lab)
 // 16 Oct 2026: "a bake off for a different more polished version of ramon and lorenzo …
 // just do the idle poses for now". Candidates: src/dev/hero-polish-candidates.js — the
@@ -10096,228 +9616,6 @@ function jadeSky(ctx, w, h, seed = 1) {
     }, { animated: true, wide: true });
 }
 
-// ------------------------------------------- SIDE-ON SHOES IN THE STANDING HAND (lab)
-// 16 Oct 2026: after the standing shoe shipped (toons.js paintStanceShoe), "should we
-// try to match the side on to the front view? just do a mockup first". The mockup is
-// a candidate spec key, `sideBean` (the shoe's length in the side view, as a multiple
-// of the standing one), passed through drawToon's spec seam — nothing in the game sets it.
-{
-  const grid = section('side-shoe-mockup', 'SIDE-ON SHOES — matched to the standing shoe (SHIPPED)',
-    'SHIPPED 16 Oct (“ok, do it”). Top of each tile: the run as it was, profile shoes (wedge, strap, heel tab) — `sideBean: 0`. Middle: the run as it ships now, the profile shoe in the standing shoe’s hand — '
-    + 'the domed toe, the sole strip, the glint, 1.3 of its length, keeping the trainer’s strap and the runner’s flash. Bottom: the standing shoe. Clara (boot) and the oval feet are not in it. ANIMATED.',
-    '16 Oct 2026');
-  const IDS = ['lorenzo', 'rusty', 'fernwick', 'kiko', 'grumpos', 'gary'];
-  const H = 110;
-  const runPose = (t) => ({ kind: 'run', phase: (t * 1.7) % 1, time: t, grounded: true, facing: 1 });
-  for (const id of IDS) {
-    tile(grid, id.toUpperCase(), 'was · ships · standing', 300, 3 * (H + 14), (ctx, t) => {
-      ctx.fillStyle = '#26344d'; ctx.fillRect(0, 0, 300, 3 * (H + 14));
-      [0, null, 'stand'].forEach((m, r) => {
-        const feet = (r + 1) * (H + 14) - 8;
-        ctx.fillStyle = '#16203a'; ctx.fillRect(0, feet, 300, 6);
-        const opts = typeof m === 'number' ? { spec: { ...TOON_SPECS[id], sideBean: m } } : {};
-        drawToon(ctx, id, m === 'stand' ? { kind: 'idle', time: t, grounded: true, facing: 1 } : runPose(t), 150, feet, H, opts);
-      });
-    }, { animated: true });
-  }
-}
-
-// ------------------------------------------------ FALLING INTO A PIT (lab)
-// 16 Oct 2026: "i feel like we need better effects when we fall into a pit.. the shocked
-// face is a bit boring with the 'dead' eyes..." — and "remember the pits aren't super deep
-// often". Candidates: src/dev/pit-fall-candidates.js, each the whole fall inside the run's
-// own 2.25s pit-death hold. Nothing is wired into the run.
-{
-  const grid = section('pit-fall-bakeoff', 'FALLING INTO A PIT (bake-off)',
-    'At in-run size, on real gaps carved by each cabinet’s own ground and filled by the run’s own pit fills: two heroes to a strip run into their own hole at the same moment, '
-    + 'the world freezes as they go in (as the run’s does), and each candidate plays the whole fall inside today’s '
-    + `${PIT_FALL_HOLD}s hold before the checkpoint. The drop is SHORT — the material lies 12px under the lip, a spike bed’s tips 5 — so every payoff happens where he actually stops, in view. `
-    + 'WHICH WAY IN: running off the lip → B/C/D/E (the hang); jumping in → G (or G2, which hangs where the death is decided, or G3 at the apex, which needs a prediction); a near miss at the far lip → H. A is the face alone, on today’s fall. '
-    + 'NOW, A–D, G, G2, G3, H: Field Service (tar, the default) over Rhythm Bankruptcy (spikes). E on each fill: Speed (lava), Rhythm (spikes), Frost (slush), Field Service (tar); H on Frost (slush) too. '
-    + 'The fail banner the run puts up on arrival is left off. Turn on SLOW to read them frame by frame. ANIMATED.',
-    '16 Oct 2026');
-  const tileFor = (cand, rows, suffix = '') => tile(grid, `${cand.letter} — ${cand.name}${suffix}`, cand.note, 480, pitLaneHeight(rows),
-    (ctx, t) => drawPitFallTile(ctx, t, cand, rows), { animated: true, wide: true });
-  const byId = (id) => PIT_FALL.find((c) => c.id === id);
-  for (const cand of [PIT_FALL_NOW, ...['face', 'coyote', 'whistle', 'sign'].map(byId)]) tileFor(cand, PIT_FALL_ROWS.mixed);
-  for (const [key, name] of [['speed', 'lava'], ['rhythm', 'spikes'], ['frost', 'slush'], ['plumber', 'tar']]) tileFor(byId('payoff'), PIT_FALL_ROWS[key], ` · ${name}`);
-  tileFor(byId('jumped'), PIT_FALL_ROWS.mixed);
-  tileFor(byId('jumped-hang'), PIT_FALL_ROWS.mixed);
-  tileFor(byId('jumped-apex'), PIT_FALL_ROWS.mixed);
-  tileFor(byId('fingertips'), PIT_FALL_ROWS.mixed);
-  tileFor(byId('fingertips'), PIT_FALL_ROWS.frost, ' · slush');
-}
-
-// ------------------------------------------- TERMINAL VELOCITY — the maneki-neko (lab)
-// 16 Oct 2026: the lucky cat goes in as neon-1's first cat ("subverts the expectation of a
-// lucky cat and preps user to avoid cats"); six designs, five beckons. src/dev/maneki-candidates.js.
-{
-  const grid = section('maneki-bakeoff', 'TERMINAL VELOCITY — the maneki-neko (bake-off)',
-    'The lucky cat that opens Terminal Velocity 1, a few seconds in, before Pythagoras. Six designs, mostly white and one all gold, '
-    + 'all drawn flatter to sit with the neon hand: smiling while it beckons, snarling — red slits, fangs — when it swipes. '
-    + 'Then five ways for the beckoning paw to move (on the classic). The game deals A with beckon 1 until a pick. '
-    + 'On neon-1\u2019s golden hour, where it appears. Turn on SLOW to read the beckon. ANIMATED.',
-    '16 Oct 2026');
-  const strips = [{ label: 'TERMINAL VELOCITY 1 · GOLDEN HOUR', stageIndex: 1, camX: 300, bc: { neonMood: MANEKI_GOLDEN, progress: 0.06 } }];
-  tile(grid, 'DESIGNS — A–F', MANEKI_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · '),
-    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, MANEKI_CANDIDATES, false), { animated: true, wide: true });
-  tile(grid, 'BECKONS — 1–5', BECKON_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · ') + ' — pivot: quick flap from the elbow, slow lift; curl: the paw folds at the wrist; rock: the whole forearm rocks evenly; double: two flaps then a pause; slide: the old straight up-and-down',
-    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, BECKON_CANDIDATES, false), { animated: true, wide: true });
-  for (const cand of MANEKI_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name}`, 'Riding in at Lorenzo, who hops it.', 480, laneHeight(strips),
-      (ctx, t) => drawNeonCatApproach(ctx, t, strips, cand), { animated: true, wide: true });
-  }
-}
-
-// ------------------------------------------------ CRYPT — the feral dog, redone (lab)
-// 16 Oct 2026: "redoing the dogs to look better and have a smoother run cycle? just do the
-// most vicious looking one" — "bakeoff". src/dev/feral-dog-candidates.js; every take is
-// drawn by the shipped painter (sprites/dogs.js paintDog, its gallery hooks seam).
-{
-  const grid = section('feral-dog-bakeoff', 'CRYPT — the feral dog, redone (bake-off)',
-    'B3 SHIPPED 16 Oct as the feral (“B3 is great - bigger hit box is fine”), and the planted gallop went to all three dogs and the finish guard — NOW below is the shipped B3, so the original feral now appears only inside A and E. The most vicious of the three lane dogs, redrawn and re-gaited. The shipped run is 8 frames at 15 fps and its planted feet slide along the road (they move back at about two-thirds of the dog’s speed), which is most of why it steps. '
-    + 'A–D run a new gallop: 16 frames, every stance foot nailed to the road, two flights a stride, the head held level, the frame rate set from the stride so the feet match the ground exactly. '
-    + 'A is the shipped drawing on the new gait alone; B–D are redrawn. Same 17x12 box, same art size, same speed. '
-    + 'First the pack running together over Crypt 1 and the eclipse, then each one riding in at Lorenzo, who hops it. Turn on SLOW to read the legs. ANIMATED.',
-    '16 Oct 2026');
-  const strips = [CRYPT_OBSTACLES.strips[0], CRYPT_OBSTACLES.strips[2]];
-  const r1 = FERAL_CANDIDATES.filter((c) => !c.round);
-  const r2 = [FERAL_NOW, r1.find((c) => c.letter === 'B'), ...FERAL_CANDIDATES.filter((c) => c.round === 2)];
-  tile(grid, 'ROUND 2 — NOW, B, then B2, B3, E, on a light ground', '“keep the wolf … a little larger … skinny in the belly … hard to read in the crypt esp when dark”; “perhaps the original dog just needs a restyle to be sleeker and less hunch backy”',
-    480, FERAL_SIDE_H, (ctx, t) => drawFeralSideBySide(ctx, t, r2), { animated: true, wide: true });
-  tile(grid, 'ROUND 2 — on the dark', 'the same five on the eclipse’s darkest colours',
-    480, FERAL_SIDE_H, (ctx, t) => drawFeralSideBySide(ctx, t, r2, true), { animated: true, wide: true });
-  tile(grid, 'ROUND 2 — the pack in Crypt', r2.map((c) => `${c.letter === 'NOW' ? '·' : c.letter} ${c.name}`).join(' · '),
-    480, laneHeight(strips), (ctx, t) => drawFeralLineup(ctx, t, strips, r2), { animated: true, wide: true });
-  tile(grid, 'SIDE BY SIDE — NOW, then A–D, on a light ground', 'running in place at in-run size, each at its own frame rate',
-    480, FERAL_SIDE_H, (ctx, t) => drawFeralSideBySide(ctx, t, [FERAL_NOW, ...r1]), { animated: true, wide: true });
-  tile(grid, 'THE PACK — NOW, then A–D', `· ${FERAL_NOW.name} · ` + r1.map((c) => `${c.letter} ${c.name}`).join(' · '),
-    480, laneHeight(strips), (ctx, t) => drawFeralLineup(ctx, t, strips, [FERAL_NOW, ...r1]), { animated: true, wide: true });
-  for (const cand of [FERAL_NOW, ...FERAL_CANDIDATES]) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
-      (ctx, t) => drawFeralApproach(ctx, t, strips, cand), { animated: true, wide: true });
-  }
-}
-
-// ------------------------------------------- TERMINAL VELOCITY — Pythagoras's snarl (lab)
-// 16 Oct 2026: "more prominent teeth baring on pythagoras? it is a little subtle right now".
-// src/dev/snarl-candidates.js.
-{
-  const grid = section('snarl-bakeoff', 'TERMINAL VELOCITY — Pythagoras bares his teeth (bake-off)',
-    'How Pythagoras snarls as he swipes. A is as shipped (a small gape and one fang). B GAPE drops the jaw wide with long fangs top and bottom; '
-    + 'C HISS curls the lips right back to a white bar of teeth with fangs at each end and a wrinkled nose; D VAMPIRE hangs two long fangs over the lip; '
-    + 'E ROAR throws the whole jaw open, red inside, every tooth. B–E also lift his head on the strike so the teeth clear his own arm. ANIMATED.',
-    '16 Oct 2026');
-  const strips = [{ label: 'TERMINAL VELOCITY 1 · GOLDEN HOUR', stageIndex: 1, camX: 300, bc: { neonMood: MANEKI_GOLDEN, progress: 0.06 } }];
-  tile(grid, 'SNARLS — A–E', SNARL_CANDIDATES.map((c) => `${c.letter} ${c.name}`).join(' · '),
-    480, laneHeight(strips), (ctx, t) => drawNeonCatLineup(ctx, t, strips, SNARL_CANDIDATES, false), { animated: true, wide: true });
-  for (const cand of SNARL_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name}`, 'Riding in at Lorenzo, who hops it.', 480, laneHeight(strips),
-      (ctx, t) => drawNeonCatApproach(ctx, t, strips, cand), { animated: true, wide: true });
-  }
-}
-
-// ------------------------------------------------ FIELD SERVICE — the goose, waddling (lab)
-// 16 Oct 2026: after the planted gallop went onto the dogs and cats, "maybe a waddle would
-// be better for the goose". src/dev/goose-waddle-candidates.js — the shipped drawing, new
-// legs and a planted step; three ways for a short-legged bird to keep up at vx −50.
-{
-  const grid = section('goose-waddle-bakeoff', 'FIELD SERVICE — the goose, waddling (bake-off)',
-    'C SHIPPED 16 Oct, reworked (“i like waddle and hop … body animation around the same as before with faster legs … fix his wings”): one hop a cycle at the old 2.2 a second, four quick planted steps before it, and wings rooted in the shoulder — so NOW below is that shipped goose; C here is the take as first drawn. Before that, NOW was stick legs paddling round an ellipse, its feet sliding at under half its speed. A–C keep the drawing line for line and give it a bird’s legs (the ankle breaking backward, a webbed foot landing flat) '
-    + 'and planted feet — every foot on the road moves back at exactly the ground speed, the frame rate set from the stride. A waddles (rocking onto each foot, head pumping) and has to scurry to keep up; '
-    + 'B charges, head down and wings beating, on longer strides; C waddles two steps then flaps into a hop, which carries ground and lets the steps slow down. Same box, same speed. '
-    + 'Side by side, then the flock on Field Service 1 and 3, then each riding in at Lorenzo. Turn on SLOW to read the feet. ANIMATED.',
-    '16 Oct 2026');
-  const strips = PLUMBER_OBSTACLES.strips;
-  tile(grid, 'SIDE BY SIDE — NOW, then A–C, on a light ground', 'running in place at in-run size',
-    480, GOOSE_SIDE_H, (ctx, t) => drawGooseSideBySide(ctx, t), { animated: true, wide: true });
-  tile(grid, 'THE FLOCK — NOW, then A–C', [GOOSE_NOW, ...GOOSE_CANDIDATES].map((c) => `${c.letter === 'NOW' ? '·' : c.letter} ${c.name}`).join(' · '),
-    480, laneHeight(strips), (ctx, t) => drawGooseLineup(ctx, t, strips), { animated: true, wide: true });
-  for (const cand of [GOOSE_NOW, ...GOOSE_CANDIDATES]) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
-      (ctx, t) => drawGooseApproach(ctx, t, strips, cand), { animated: true, wide: true });
-  }
-}
-
-// ---------------------------------------------- THE ANIMALS AT LOWER RESOLUTION (lab)
-// 16 Oct 2026: the 16-frame gallop doubled the animals' canvas cache — "a/b the lower res
-// in gallery for one or 2". src/dev/animal-detail-ab.js.
-{
-  const grid = section('animal-detail-ab', 'THE ANIMALS AT LOWER RESOLUTION — A/B',
-    'The same animal three times, rasterised as the game does at ANIMAL_DETAIL 2 (shipped), 1.5 and 1, with what its 16-frame ring costs in memory under each. '
-    + 'Drawn at 8 device pixels per world unit — the most any player ever sees an animal at (desktop zoom on the top density rung); a phone sees less at every rung but the top one. '
-    + 'If you cannot tell 2 from 1.5 here, nobody can in play. The wolf (Crypt’s biggest) and the bobcat (the biggest cache of all). ANIMATED.',
-    '16 Oct 2026');
-  const ROWS = [
-    ['dogFeral', 'crypt', { label: 'CRYPT 3 · ECLIPSE', stageIndex: 3, camX: 2200, bc: { progress: 0.7 } }, 'THE WOLF'],
-    ['dogFeral', 'crypt', { label: 'CRYPT 1', stageIndex: 1, camX: 600 }, 'THE WOLF'],
-    ['bobcat', 'speed', { label: 'SPEED ZONE 2', stageIndex: 2, camX: 1400 }, 'THE BOBCAT'],
-  ];
-  for (const [name, cab, strip, title] of ROWS) {
-    tile(grid, `${title} — detail 2 · 1.5 · 1`, `${strip.label}, at 8 device px per world unit`, 480, 148,
-      (ctx, t) => drawDetailAB(ctx, t, name, cab, strip), { animated: true, wide: true, hires: DETAIL_AB_RS });
-  }
-}
-
-// --------------------------------------------- the near-miss catch, measured (lab)
-// 16 Oct 2026: "how far away is that? can you mock it up? I don't want it TOO far from the
-// edge — an arm's distance ideally". The far wall of a real pit, and Lorenzo the frame he
-// comes down at lip level a given distance short of it (his drawn centre to the wall, in
-// world px — the number run.js LEDGE_REACH is measured in). Green: the run hands him the
-// ledge (H, and the jump-out). Red: he falls (G2). The arm's own reach is 8.
-{
-  const grid = section('ledge-reach-mockup', 'NEAR MISS — how short of the far wall still catches',
-    `run.js LEDGE_REACH is ${LEDGE_REACH} world px, measured from his drawn centre to the far wall the frame `
-    + 'he comes down level with the lip. His raised arm reaches about 8 by itself; past that he lunges for it. '
-    + 'Each tile: that distance, and whether it catches. Static.', '16 Oct 2026');
-  const cab = CABINETS.find((c) => c.id === 'plumber');
-  const pack = getStylePack(cab.style, { stageIndex: 1 });
-  for (const d of [4, 8, 12, 18, 24]) {
-    const ok = d <= LEDGE_REACH;
-    tile(grid, `${d} px short`, ok ? 'CATCHES — the hang, and the jump-out' : 'FALLS — no ledge', 240, 150, (ctx) => {
-      const camX = 600;
-      ctx.fillStyle = cab.sky?.[0] || '#000'; ctx.fillRect(0, 0, 240, 150);
-      ctx.save(); ctx.translate(-120, -150);
-      pack.bg?.(ctx, 0, camX, cab, 6000, null, 0, { stageIndex: 1, progress: 0.1 });
-      ctx.save(); applyWorld(ctx, 2, 0);
-      const wall = camX + 150;                       // far wall, world x
-      const gap = { ...makeObstacle('gap', wall - 56), w: 56, fill: cab.pitFill || 'tar' };
-      pack.ground?.(ctx, camX, cab, [gap], [], 0);
-      drawPitFills(ctx, camX, cab, [gap], 0, true, null, 480, cab.groundDark);
-      const wx = wall - camX;                        // screen-relative world x of the wall
-      // The catch zone, shaded on the road side of the wall.
-      ctx.fillStyle = 'rgba(80,220,120,0.22)';
-      ctx.fillRect(wx - LEDGE_REACH, GROUND_Y - 30, LEDGE_REACH, 30);
-      const cx = wx - d;                             // his drawn centre
-      drawToon(ctx, 'lorenzo', { kind: 'jump', time: 0, vy: -40, grounded: false, facing: 1 }, cx - HERO_CENTER_OFF, GROUND_Y, HERO_DRAW_H);
-      ctx.strokeStyle = ok ? '#2fd06a' : '#e04848'; ctx.lineWidth = 0.6;
-      ctx.beginPath(); ctx.moveTo(cx, GROUND_Y - 13); ctx.lineTo(wx, GROUND_Y - 13); ctx.stroke();
-      ctx.restore(); ctx.restore();
-      ctx.font = '800 16px ui-monospace, Menlo, monospace'; ctx.fillStyle = ok ? '#2fd06a' : '#e04848';
-      ctx.fillText(ok ? 'CATCH' : 'FALL', 8, 22);
-    }, { wide: false, choice: `${d}` });
-  }
-}
-
-// ------------------------------------------------ FIELD SERVICE — bees that follow him (lab)
-// 16 Oct 2026: "when the hero hits bees, could some bees follow him for a while?" — and
-// "would the halo replace the stars and birds?". Candidates: src/dev/bee-follow-candidates.js,
-// each the `after` of a generic hit (the flash, then the bees over the blink) for ~3s.
-// Nothing is wired into the run.
-{
-  const grid = section('bee-follow-bakeoff', 'FIELD SERVICE — bees that follow him (bake-off)',
-    'A bee swarm is a generic hit today: a white flash, then stars and birdies. These keep the flash and the whole hit '
-    + '(knock burst, shake, hitstop, 1.4s blink) and send a few of the swarm’s own bees after him for about three seconds instead, '
-    + 'peeling off one at a time — a picture only, no hitbox. The swarm vanishes the moment it connects, as if it had come off the road onto him. '
-    + 'Lorenzo, Clara, Kiko and B-33P on a 4.9s loop; turn on SLOW to read them. ANIMATED.',
-    '16 Oct 2026');
-  const strips = PLUMBER_OBSTACLES.strips.slice(0, 2);
-  for (const cand of [BEE_NOW, ...BEE_CANDIDATES]) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, laneHeight(strips),
-      (ctx, t) => drawBeeTile(ctx, t, PLUMBER_OBSTACLES.cabinet, strips, cand.paint ? cand : null), { animated: true, wide: true });
-  }
-}
-
 // ------------------------------------------ TERMINAL VELOCITY — a kaiju on the attack (lab)
 // 16 Oct 2026: "Can we mockup a neon Godzilla on the attack for the neon levels? Laser
 // eyes destroying a building maybe?" Round 2: cute, breath, in front of the buildings.
@@ -10340,44 +9638,117 @@ function jadeSky(ctx, w, h, seed = 1) {
   }
 }
 
-// ------------------------------------------ SPEED ZONE — a cute end set piece (lab)
-// 16 Oct 2026: after the neon kaiju and the gravity Martian, "any other ideas for cute
-// end set pieces for level 3s of cabinets?" -> "speed zone mock up".
-// src/dev/speed-finish-candidates.js — the slowest things on the Speed Zone road, on
-// the real speed-3 backdrop, road and hero. Nothing is wired into the run.
 {
-  const grid = section('speed-finish-mockup', 'SPEED ZONE — a cute end set piece (mock-up)',
-    'Four gags for the finish of speed-3, each the slowest thing on the road: A a granny on a mobility scooter, B a tow truck towing a much bigger tow truck, C a tortoise in a racing helmet, D a just-married convertible with a dog and tin cans. '
-    + 'Real speed-3 sunset, road and hero. On a ' + SPEED_FINISH_LOOP + 's loop the run scrolls at its pace, the camera parks for the finish and the gag creeps through the frame; each has one beat as it draws level with the hero. '
-    + 'Landscape only. Nothing is wired into the run. Turn on SLOW to read it. ANIMATED.',
-    '16 Oct 2026');
-  for (const cand of SPEED_FINISH_CANDIDATES) {
-    tile(grid, `${cand.letter} — ${cand.name}`, cand.note, 480, 270,
-      (ctx, t) => drawSpeedFinishScene(ctx, t, cand), { animated: true, wide: true });
+  const grid = section('bobcat-animation-bakeoff', 'SPEED ZONE — cat animation (0 / A / B / C)',
+    'B Power Bound ships (18 Oct 2026). Previous gait, A fluid gallop and C low pursuit remain for comparison. '
+    + 'Each repairs the missing jaw pose and explores spine flex, shoulder weight and foot timing. '
+    + 'Source artwork rendered directly at desktop display resolution. '
+    + 'Stride cadence follows the actual 38 units/second road speed. '
+    + 'For slow motion and frame stepping, open bobcat-animation-bakeoff.html.', '18 Oct 2026');
+  for (const cand of BOBCAT_ANIMATION_CANDIDATES) {
+    tile(grid, `${cand.id} — ${cand.name}`, cand.note, 640, 360,
+      (ctx, t) => drawBobcatAnimationStudy(ctx, t, cand), { animated: true, choice: cand.id });
   }
 }
 
-// ------------------------------------------------- THE BANANA SLIP (lab)
-// 17 Oct 2026: "can we improve our banana slip animation? its very basic... bakeoff".
-// Today the whole figure tips back 0.62 rad about his heels over SLIP_T and returns
-// (game/draw.js). Candidates: src/dev/banana-slip-candidates.js — each a picture in the
-// zap's seam (drawn instead of the running toon for its T, the blink waiting for it), built
-// from his own toon turned about his hips so it carries to the whole cast. Nothing is wired
-// into the run.
 {
-  const grid = section('banana-slip-bakeoff', 'THE BANANA SLIP (bake-off)',
-    'The real peel on Field Service, at in-run size: Lorenzo, Clara, Kiko and B-33P run into it at the same moment on a 2.8s loop. '
-    + 'NOW is the slip as it plays today — the figure tipped back and returned over 0.55s, blinking through it. '
-    + 'A–E keep everything else the hit does (the red knock burst, the shake, the 0.08s hitstop, the 1.4s i-frames) and change only how he is drawn for the first second. '
-    + 'Each is longer than the 0.55s stumble — SLIP_T would follow the pick, or the stumble would stay and the picture play on past it. Turn on SLOW to read them frame by frame. ANIMATED.',
-    '17 Oct 2026');
-  const strips = PLUMBER_OBSTACLES.strips.slice(0, 2);
-  const heroes = ['lorenzo', 'clara', 'kiko', 'b33p'];
-  for (const cand of [SLIP_NOW, ...SLIP_CANDIDATES]) {
-    tile(grid, `${cand.letter} — ${cand.name}${cand.letter === 'NOW' ? '' : ` · ${cand.T}s`}`, cand.note, 480, laneHeight(strips),
-      (ctx, t) => drawSlipTile(ctx, t, cand.id, 'plumber', strips, heroes), { animated: true, wide: true });
+  const grid = section('pythagoras-tail-bakeoff', 'PYTHAGORAS — extreme tail motion (0 / A–E)',
+    'A Whip Crack ships. Previous swish and four alternative angry-tail studies remain for comparison. Same fur, tail thickness and four-paw idle. '
+    + 'Open pythagoras-tail-bakeoff.html for slow motion, frame stepping and a smooth-motion comparison.', '18 Oct 2026');
+  for (const candidate of PYTHAGORAS_TAIL_CANDIDATES) {
+    tile(grid, `${candidate.id} — ${candidate.name}`, candidate.note, 640, 360,
+      (ctx, t) => drawPythagorasTailStudy(ctx, t, candidate), { animated: true, choice: candidate.id });
   }
 }
+
+// The monitor bake-off, kept in date order rather than pinned to the front (18 Oct 2026).
+  {
+    const grid = section('foodcourt-monitor-bakeoff', 'Food Court — monitor edge bake-off',
+      'Rhythm Bankruptcy shows the pale monitor trim most clearly. A uses a smaller centered glass with room above the deck; B tests a wider, near-flush glass. Both use a matte face so the screen sits cleanly behind the front controls.', '18 Oct 2026');
+    const cab = CABINETS.find((item) => item.id === 'rhythm');
+    const pal = cabinetPalette(cab, true);
+    const CW = 64, CH = 113, X = 8, Y = 8;
+    for (const candidate of FOOD_COURT_MONITOR_CANDIDATES) {
+      tile(grid, candidate.label, candidate.note, 80, 129, (ctx) => {
+        drawCabinetShell(ctx, X, Y, CW, CH, pal, candidate.style);
+        const scr = drawCabinetScreen(ctx, X, Y, CW, CH, pal, candidate.style);
+        if (scr) drawScreenSweep(ctx, scr, 0.7, pal.seed);
+      }, { hires: 3 });
+    }
+  }
+
+// Kept in date order rather than pinned right after beginLab() (18 Oct 2026).
+  // Focused outline bake-off. Each panel uses the real obstacle draw path and
+  // the same enlarged gameplay raster on both sides, so only the ink weight
+  // changes. A fixed camera magnification makes the differences easy to judge
+  // at desktop size while retaining the production hitboxes and art placement.
+  {
+    const grid = section('obstacle-outline-bakeoff', 'Obstacle outlines — before / current weight',
+      'Paired through drawWorldEntity at 1.5× gameplay magnification, with the same animation frame on each side. '
+      + 'The green cactus body and brazier bowl now use the 0.385-world-unit desktop contour; the rake also shows its shipped refinement.', '18 Oct 2026');
+    // The lab page's many-link sticky header is taller than the shell's normal
+    // 120px anchor offset. Land this section below it when its nav pill is used.
+    const heading = grid.parentElement?.querySelector('h2');
+    if (heading) heading.style.scrollMarginTop = '620px';
+    const style = getStylePack('pixel', {});
+    const PANEL_W = 240, TILE_W = PANEL_W * 2, TILE_H = 130;
+    const GROUND = 105, MAG = 1.5, SCENE_SCALE = MAG * WORLD_Z;
+    const rows = [
+      {
+        type: 'rake', before: 'rakeOutlineBefore', after: 'rake',
+        name: 'Rake — previous / current',
+        beforeLabel: 'BEFORE · PREVIOUS', afterLabel: 'AFTER · CURRENT',
+        note: 'Current is the refined line-art stroke already used in gameplay.',
+        turf: '#3a9c48', floor: '#327f3d',
+      },
+      {
+        type: 'cactus', before: 'cactusGreenOutlineBefore', after: 'cactusGreen',
+        name: 'Green cactus — previous / current',
+        beforeLabel: 'BEFORE · PREVIOUS', afterLabel: 'AFTER · CURRENT',
+        note: 'Current keeps the green-skin hazard rim and thins its body contour.',
+        turf: '#3a9c48', floor: '#327f3d',
+      },
+      {
+        type: 'brazier', before: 'brazierOutlineBefore', after: 'brazier',
+        name: 'Brazier — previous / current',
+        beforeLabel: 'BEFORE · PREVIOUS', afterLabel: 'AFTER · CURRENT',
+        note: 'Current normalizes the bowl outline; the stand remains structural.',
+        turf: '#282431', floor: '#3d3543',
+      },
+    ];
+    for (const row of rows) {
+      tile(grid, row.name, `${row.note} · exact prop geometry, magnified for desktop review`, TILE_W, TILE_H,
+        (ctx, t) => {
+          for (let i = 0; i < 2; i++) {
+            const x = i * PANEL_W;
+            ctx.fillStyle = row.turf;
+            ctx.fillRect(x, 0, PANEL_W, TILE_H);
+            ctx.fillStyle = row.floor;
+            ctx.fillRect(x, GROUND, PANEL_W, TILE_H - GROUND);
+            ctx.fillStyle = 'rgba(10, 13, 18, 0.72)';
+            ctx.fillRect(x, 0, PANEL_W, 25);
+            ctx.fillStyle = '#f2e8c5';
+            ctx.font = 'bold 10px ui-sans-serif, system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(i ? row.afterLabel : row.beforeLabel, x + PANEL_W / 2, 13);
+          }
+          ctx.fillStyle = 'rgba(240, 230, 194, 0.35)';
+          ctx.fillRect(PANEL_W - 1, 0, 2, TILE_H);
+
+          ctx.save();
+          ctx.scale(SCENE_SCALE, SCENE_SCALE);
+          ctx.translate(0, GROUND / SCENE_SCALE - GROUND_Y);
+          for (let i = 0; i < 2; i++) {
+            const e = makeObstacle(row.type, 100);
+            e.x = (i * PANEL_W + PANEL_W / 2) / SCENE_SCALE - e.w / 2;
+            e.skin = i ? row.after : row.before;
+            drawWorldEntity(ctx, e, 0, t, style, {});
+          }
+          ctx.restore();
+        }, { animated: true, wide: true, hires: 3 });
+    }
+  }
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.

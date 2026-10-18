@@ -65,7 +65,9 @@ for (const sw of BIRTH_SWITCHES) {
 
 // The jukebox: a NEW BANGER's birth comes with one of them.
 {
-  const { SoundTestState } = await import('../src/game/menus.js');
+  const { SoundTestState, loadBangerModule } = await import('../src/game/menus.js');
+  await import('../src/game/banger/lazy.js');
+  await loadBangerModule();
   const { currentState } = await import('../src/engine/states.js');
   SoundTestState.prototype.openPendingClub.call({ openClub() {} }, { rec, song: {}, from: null, birth: true });
   const st = currentState();

@@ -135,7 +135,7 @@ export function sweepCoinsAroundHole(pickups, hx, hw, clear, view = null) {
   const doomed = new Set();
   for (const p of pickups) {
     const formation = formationOf(p);
-    if (!p.live || p.following || formation == null || !p.def.coin) continue;
+    if (!p.live || formation == null || !p.def.coin) continue;
     if (p.x + p.w > hx - clear && p.x < hx + hw + clear) doomed.add(formation);
   }
   if (!doomed.size) return;

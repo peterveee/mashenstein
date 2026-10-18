@@ -42,7 +42,7 @@ const mixerSource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.
 // The card builder and the surfaces it chooses between moved out of the entry — see
 // tools/mixer-effect-cards.js.
 const cardsSource = readFileSync(new URL('../tools/mixer-effect-cards.js', import.meta.url), 'utf8');
-assert(mixerSource.includes("fetch('/effect-default-save'"), 'DEV card save posts to the effect-default route');
+assert(mixerSource.includes("fetchMixerAction('/effect-default-save'"), 'DEV card save posts to the effect-default route');
 assert(mixerSource.includes('Save new default settings for ${name}'), 'the dialog uses the requested title');
 assert(mixerSource.includes("scope: 'returns'"), 'pinned return cards use the return preset namespace');
 assert(cardsSource.includes("if ((def.params || []).length)"),

@@ -673,7 +673,7 @@ export class DemoBot {
     let grab = null;
     for (const p of run.pickups) {
       if (!p.live) continue;
-      const want = p.def.appliance || p.def.cord || p.def.resident;
+      const want = p.def.appliance || p.def.cord;
       if (!want) continue;
       const dx = p.x - px;
       if (dx > 8 && dx < sp * 0.32 && p.alt > 16) { grab = p; break; }

@@ -2004,6 +2004,7 @@ export const PROP_PAINTERS = {
     const p = hzPhase(frame, 8);
     hzGlow(ctx, w * 0.5, h * 0.97, w * 0.5, h * 0.04, '#ff9a3c', 0.28);
     const bowlY = h * 0.52;
+    const bowlOutlineScale = 0.345;
     for (const s of [-1, 0.15, 1]) {
       hzLine(ctx, '#333b46', Math.max(0.28, w * 0.09), (c) => {
         c.moveTo(w * (0.5 + s * 0.15), bowlY + h * 0.07);
@@ -2013,13 +2014,13 @@ export const PROP_PAINTERS = {
     hzLine(ctx, '#5d6774', Math.max(0.2, w * 0.05), (c) => {
       c.moveTo(w * 0.22, h * 0.78); c.lineTo(w * 0.78, h * 0.78);
     });
-    hzPath(ctx, '#4d4038', '#231b16', Math.max(0.2, w * 0.045), (c) => {
+    hzPath(ctx, '#4d4038', '#231b16', Math.max(0.2, w * 0.045) * bowlOutlineScale, (c) => {
       c.moveTo(w * 0.18, bowlY); c.lineTo(w * 0.82, bowlY);
       c.quadraticCurveTo(w * 0.72, bowlY + h * 0.2, w * 0.5, bowlY + h * 0.21);
       c.quadraticCurveTo(w * 0.28, bowlY + h * 0.2, w * 0.18, bowlY);
       c.closePath();
     });
-    hzPath(ctx, '#6a5a4c', '#231b16', Math.max(0.16, w * 0.035), (c) => {
+    hzPath(ctx, '#6a5a4c', '#231b16', Math.max(0.16, w * 0.035) * bowlOutlineScale, (c) => {
       c.ellipse(w * 0.5, bowlY, w * 0.32, h * 0.05, 0, 0, HZ_TAU);
     });
     for (let i = 0; i < 4; i++) {
@@ -2162,7 +2163,8 @@ export const PROP_PAINTERS = {
     const armBobL = h * 0.02 * Math.sin(p + 1.1);
     const armBobR = h * 0.02 * Math.sin(p + 3.9);
     const ink = '#16331d';
-    const lineW = Math.max(0.3, w * 0.05);
+    // Match the standard desktop contour while retaining the shared hazard rim.
+    const lineW = Math.max(0.3, w * 0.05) * 0.63;
     hzPath(ctx, '#2f7a3c', ink, lineW, (c) => {
       hzRR(c, w * 0.38, h * 0.1, w * 0.24, h * 0.9, w * 0.12);
     });
@@ -4595,11 +4597,9 @@ export const PROP_PAINTERS = {
   // instead of three plugs earned three ways. The winner had to be the
   // ASSIGNMENT, not the payout.
   //
-  // It also has to be generic. The mission is `reach` in only ten of the 27
-  // stages — the rest are targets, cords, chase, rescue, onbeat, fuse, escape
-  // and blackout — so a breaker switch depicts one mission in three. The trophy
-  // beside it gets this right already: it stands for CHALLENGE, not for
-  // coins-or-no-damage.
+  // It also has to be generic. Every stage now asks the player to reach the
+  // finish, while each stage's bonus differs. The trophy beside it gets this
+  // right already: it stands for CHALLENGE, not for coins-or-no-damage.
   //
   // All three candidates keep a cream or teal read so the row still separates by
   // hue before shape has to do any work, and none of them is thinner anywhere

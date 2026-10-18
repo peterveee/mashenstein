@@ -137,12 +137,16 @@ const STAND_H = 0.45;
 function body(c, heroId, cx, fy, k) {
   const Px = cx + (k.dx || 0), Py = fy - k.H * U;
   const x = Px - HIP.ox * U, y = Py - HIP.oy * U;
-  const L = layer(23, c, bigBox(cx, fy), (o) => {
+  const paint = (o) => {
     o.save(); o.translate(Px, Py); o.rotate(k.rot); o.translate(-Px, -Py);
     drawToon(o, heroId, k.pose, x, y, U);
     o.restore();
-  });
-  blit(c, L);
+  };
+  // A context with no transform to read (a test stub) or no DOM gets the plain pose
+  // (see zap.js's drawZapHero, the same offscreen-layer trick).
+  const L = typeof document !== 'undefined' && c.getTransform ? layer(23, c, bigBox(cx, fy), paint) : null;
+  if (!L) paint(c);
+  else blit(c, L);
 }
 function bodyPoint(cx, fy, k, bx, by) {
   const Px = cx + (k.dx || 0), Py = fy - k.H * U;

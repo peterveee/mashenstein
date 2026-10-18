@@ -1,5 +1,5 @@
-// CORPORATE KOMBAT — the safe as a mission target (lab). 15 Oct 2026: office-3 (floor 88, the
-// money floor, at dusk) is getting a new mission, CRACK 3 SAFES, in place of the escort. The safe
+// CORPORATE KOMBAT — the safe as a bonus target (lab). 15 Oct 2026: office-3 (floor 88, the
+// money floor, at dusk) is getting a new bonus, CRACK 3 SAFES, in place of the escort bonus. The safe
 // becomes the target. Peter's terms, the same day:
 //   * it must read INSTANTLY as a safe at in-run size, and as a PRIZE to crack, not a hazard;
 //   * it stands DOUBLE THE HEIGHT of a normal ground obstacle (crate 12x11 / cactus 13x12 box),

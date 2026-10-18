@@ -36,7 +36,7 @@ import { framingIsChosen } from './run.js';
 // Field-guide icon sizes (logical px) for vector props.
 const GUIDE_ICON_SIZES = {
   cactus: [13, 19], thistle: [13, 19], snowman: [13, 19], crate: [12, 11], barrel: [13, 13], chair: [12, 10],
-  tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
+  tombstone: [11, 8], zombieWalk: [10, 14], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], cardBox: [12, 11], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
   capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRewind: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7], letterM: [10, 12],
@@ -108,6 +108,7 @@ let _banger = null;
 let _bangerPromise = null;
 export function loadBangerModule() {
   if (_banger) return Promise.resolve(_banger);
+  if (window.__mash_banger) { _banger = window.__mash_banger; return Promise.resolve(_banger); }
   if (!_bangerPromise) {
     _bangerPromise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -4794,14 +4795,13 @@ const ALL_GUIDE_PAGES = [
     ],
   },
   {
-    title: 'PICKUPS: ESSENTIALS + MISSION', color: '#f6d33c', hint: 'GOLD = COLLECT. NO DOWNSIDES. PROBABLY.',
+    title: 'PICKUPS: ESSENTIALS + BONUS', color: '#f6d33c', hint: 'GOLD = COLLECT. NO DOWNSIDES. PROBABLY.',
     rows: [
       { s: 'coin', name: 'COIN', desc: 'MONEY. THE ARCADE RUNS ON IT.' },
       { s: 'battery', name: 'BATTERY', desc: '+1 BATTERY CELL. HEALTH, BASICALLY.' },
       { s: 'appliance', name: 'GOLDEN TOASTER', desc: 'THE THIRD PLUG. GRAB IT MID-STAGE.' },
-      { s: 'cord', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
-      { s: 'letterM', name: 'M-A-S-H LETTER', desc: 'MISSION PICKUP. ONCE TAKEN, KEPT. EVEN ON A BAD RUN.' },
-      { s: 'resident', name: 'RESIDENT', desc: 'ALIVE. WAVES. FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },
+      { s: 'cord', name: 'CORD PIECE', desc: 'BONUS PICKUP. COLLECT THE PIECES.' },
+      { s: 'letterM', name: 'M-A-S-H LETTER', desc: 'BONUS PICKUP. ONCE TAKEN, KEPT. EVEN ON A BAD RUN.' },
     ],
   },
 ];

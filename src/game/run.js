@@ -4743,7 +4743,7 @@ export class RunState {
       // and a BONUS toast at 0:00 would announce nothing the player did.
       if (this.bonusMet()) this.goalSeen.challenge = true;
     }
-    this.missionTimers = { cord: 8, resident: 10, chaseNear: 0 };
+    this.missionTimers = { cord: 8, chaseNear: 0 };
     this.escapeWall = this.mission.type === 'escape' ? -140 : null;
     if (this.bonus.type === 'chase') {
       // He does not start in the frame: we are catching up to him. Two bars
@@ -7124,10 +7124,6 @@ export class RunState {
     const m = this.mission;
     switch (m.type) {
       case 'chase': return this.copterBonks;
-      // Residents still in tow count: checkpoints stop at 2/3 distance (and
-      // don't exist at all on one-hit runs), so carrying them across the
-      // finish must satisfy the mission or late pickups soft-lock the run.
-      case 'rescue': return m.count + this.pickups.filter((p) => p.live && p.def.resident && p.following).length;
       default: return m.count ?? 0;
     }
   }
@@ -7317,7 +7313,7 @@ export class RunState {
   }
   // Where the tape sits on screen. finishLineX() exactly when the finish run
   // arms, and nearer than that when the objective was only met after the camera
-  // had already carried the pole part of the way in — a late rescue is allowed
+  // had already carried the pole part of the way in — a late objective clear is allowed
   // to shorten the victory lap, but it must not make the pole jump back out to
   // a constant the moment the hero starts running at it.
   finishScreenX() { return this.finishWorldX() - this.camX; }
@@ -7666,7 +7662,7 @@ export class RunState {
     // here made him blink out the frame the finish armed.
     if (this.copter) { this.copter.flyOff = true; this.copter.hitT = 0; }
     // AND THE SLEIGH, if the approach did not already put it up — a checkpoint
-    // restore or a rescue can drop the hero past the lead distance entirely.
+    // restore or a late objective clear can drop the hero past the lead distance entirely.
     this.armFlypast(0);
     // TRANSIENT CHATTER GOES, A PUNCHLINE STAYS. Arming the finish used to
     // empty the stack outright, which is right for PEW and PICKED UP A BATTERY
@@ -11694,8 +11690,8 @@ export class RunState {
 
   updateMission(dt) {
     const beforeMission = this.mission?.n ? Math.min(Number(this.mission.n), Math.max(0, Number(this.missionCount()) || 0)) : 0;
-    // The cords and the residents are BONUSES now (every mission is the finish
-    // line), so their spawn clocks read the bonus.
+    // The cords are a bonus now (every mission is the finish line), so their
+    // spawn clock reads the bonus.
     const m = this.bonus;
     const beforeChallenge = this.challengeCount();
     if (m.type === 'cords') {
@@ -11706,13 +11702,6 @@ export class RunState {
         // piece the mission gives up on — come back for it in a moment, by
         // which time the stretch being offered is different ground.
         if (!this.spawnObjective('cord', this.fxRng.pick([10, 30, 46]))) this.missionTimers.cord = 0.6;
-      }
-    }
-    if (m.type === 'rescue') {
-      this.missionTimers.resident -= dt;
-      if (this.missionTimers.resident <= 0 && m.count < m.n) {
-        this.missionTimers.resident = (this.totalDist / this.speed) / (m.n + 1.5);
-        if (!this.spawnObjective('resident', 0)) this.missionTimers.resident = 0.6;
       }
     }
     if (this.challenge && this.challenge.type === 'coins') this.challenge.count = this.coins;
@@ -11727,7 +11716,7 @@ export class RunState {
     this.updatePortraitObjectiveNotice(beforeMission, beforeChallenge);
   }
 
-  // A replacement cord or resident, dropped far enough ahead that it scrolls in
+  // A replacement cord, dropped far enough ahead that it scrolls in
   // rather than popping into an occupied screen.
   //
   // It must also land THIS side of the finish line. Past the tape the draw culls it
@@ -11740,7 +11729,7 @@ export class RunState {
   // offering pieces that cannot be taken.
   //
   // The wall is FINISH_CLEAR, the same one the pattern lane and the drip stop
-  // at, not a token 24px of daylight. A late cord or resident used to be placed
+  // at, not a token 24px of daylight. A late cord used to be placed
   // at the very foot of the pole — standing on the plunger, close enough to
   // read as part of the marker — which is exactly the clutter the clear
   // approach exists to prevent. A piece is a piece whether the mission wants it
@@ -14252,7 +14241,7 @@ export class RunState {
       // capsule near a lip is a gift rather than a lure, and the appliance is
       // one per stage — sweeping it for landing beside a scripted pit costs the
       // player the objective rather than a few coins.
-      this.pickups = this.pickups.filter((pk) => !pk.live || pk.following || pk.def.mashLetter
+      this.pickups = this.pickups.filter((pk) => !pk.live || pk.def.mashLetter
         || pk.x + 6 < plan.x - 4 || pk.x > plan.x + plan.w + 4);
       const hole = makeObstacle('gap', plan.x, {});
       hole.w = plan.w;
@@ -14344,7 +14333,7 @@ export class RunState {
       // see. Off screen, the complete run is removed rather than amputated.
       const view = { x: this.camX, w: W / this.camZoom };
       sweepCoinsAroundHole(this.pickups, plan.x, plan.w, clear, view);
-      this.pickups = this.pickups.filter((pk) => !pk.live || pk.following || pk.def.mashLetter
+      this.pickups = this.pickups.filter((pk) => !pk.live || pk.def.mashLetter
         || pk.def.coin || pk.x + 6 < plan.x - clear || pk.x > plan.x + plan.w + clear);
       plan.spawned = true;
       plan.done = true;
@@ -14542,12 +14531,6 @@ export class RunState {
       const gained = this.battery - before;
       this.floatText(gained ? `CHECKPOINT. +${gained} BATTERY.` : 'CHECKPOINT. DULY NOTED.', '#8ddd8d');
       this.snapshot = this.makeSnapshot();
-      // Rescue delivery.
-      if (this.bonus.type === 'rescue') {
-        const carried = this.pickups.filter((p) => p.following);
-        for (const p of carried) { p.live = false; this.bonus.count++; }
-        if (carried.length) this.floatText(`RESIDENTS DELIVERED: ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
-      }
       // AND THE TEMPO TAKES A STEP, on a stage that asked for one (bpmRamp).
       //
       // Here and nowhere else, and the counter is never wound back: a death
@@ -15794,7 +15777,6 @@ export class RunState {
     const reachBox = { x: pbox.x, y: pbox.y + pbox.h - PLAYER_H, w: pbox.w, h: PLAYER_H };
     for (const p of this.pickups) {
       if (!p.live) continue;
-      if (p.def.resident && p.following) { p.x = playerX - 16; continue; }
       const box = { x: p.x, y: this.entityGroundY(p) - p.alt - p.h, w: p.w, h: p.h };
       if (!overlaps(ridePbox || reachBox, box)) continue;
       p.live = false;
@@ -15885,10 +15867,6 @@ export class RunState {
       this.bonus.count++;
       Audio.sfx('checkpoint');
       this.floatText(`CORD PIECE ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
-    } else if (p.def.resident) {
-      p.live = true; p.following = true;
-      Audio.sfx('ui');
-      this.floatText('A RESIDENT FOLLOWS YOU. CONFUSED BUT GAME.', '#b2d3b2');
     }
   }
 
@@ -16771,12 +16749,6 @@ export class RunState {
     Audio.setRewinding(false);
     this.invActive = false;
     Audio.setInvincible(false);
-    if (success && this.bonus.type === 'rescue') {
-      // Residents carried across the finish line are delivered.
-      for (const p of this.pickups) {
-        if (p.live && p.def.resident && p.following) { p.live = false; this.bonus.count++; }
-      }
-    }
     const result = {
       success, reason,
       stage: this.stage, overtime: this.overtime, offRecord: this.offRecord,

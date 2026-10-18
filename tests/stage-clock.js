@@ -48,7 +48,7 @@ const toLive = (run) => {
 // ------------------------------------------------------------------ the data
 assert(STAGES.every((s) => s.mission.type === 'reach'), 'every mission is the finish line');
 assert(STAGES.every((s) => s.challenge && s.challenge.type), 'every stage has one bonus');
-assert(!STAGES.some((s) => s.challenge.type === 'rescue'), 'the escort is gone');
+assert(!STAGES.some((s) => s.mission.type === 'rescue' || s.challenge.type === 'rescue'), 'escort and rescue goals are absent');
 assert(STAGE_BY_ID['crypt-1'].blackout && STAGE_BY_ID['crypt-3'].blackout && !STAGE_BY_ID['crypt-2'].blackout,
   'the brown-out stays on crypt-1 and crypt-3');
 

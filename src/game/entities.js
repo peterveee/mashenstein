@@ -708,7 +708,6 @@ export const PICKUPS = {
   // spot, pays coins and nothing else. See Run.spawnApplianceMaybe.
   applianceSilver: { w: 22, h: 18, sprite: 'applianceSilver', appliance: true, silver: true, bob: true },
   cord:      { w: 14, h: 9, sprite: 'cord', cord: true },
-  resident:  { w: 10, h: 12, sprite: 'resident', resident: true, shamble: true },
   // THE M-A-S-H LETTERS, one type per letter so the mission can tell which one
   // was taken. A letter banked on an earlier attempt still spawns, wearing the
   // `letter?Banked` skin — the outline — because taking all four in one run is

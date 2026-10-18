@@ -55,7 +55,7 @@ run.challenge.count = 6;
 run.updatePortraitObjectiveNotice(3, 1);
 assert.equal(run.portraitObjectiveNotice.tag, 'BONUS',
   'bonus completion can replace the goal completion notice');
-assert.equal(run.portraitObjectiveNotice.text, 'COMPLETE',
+assert.equal(run.portraitObjectiveNotice.text, '✓',
   'bonus completion gets a distinct notice');
 
 run.stage.mission = { type: 'coins', n: 20, desc: 'COLLECT COINS' };

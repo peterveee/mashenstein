@@ -226,20 +226,20 @@ restoredFinish.endRun(true);
 assert(restoredFinishResult?.success && restoredFinishEnds === 1,
   'death, restore and finish still resolve through one completion');
 
-// A resident picked up after the normal finish threshold counts immediately,
-// and the already-visible tape stays where it was when the victory run begins.
-const rescueStage = { ...stage, mission: { type: 'rescue', n: 1, count: 0, desc: 'TEST' } };
-const rescueRun = new RunState({ stage: rescueStage, save, seed: 46, difficulty: 1, skipRunIn: true, onEnd() {} });
-rescueRun.enter();
-rescueRun.camX = rescueRun.finishCameraX() + 18;
-const follower = makePickup('resident', rescueRun.playerWorldX(), 0); follower.following = true;
-rescueRun.pickups = [follower]; rescueRun.obstacles = [];
-rescueRun.update(1 / 60);
-assert(rescueRun.finishing && rescueRun.missionSatisfied(), 'a late following resident completes the rescue mission');
-const visibleTapeX = rescueRun.finishScreenX();
-rescueRun.update(1 / 60);
-assert(rescueRun.finishScreenX() === visibleTapeX && visibleTapeX < VIEW_W - 32,
-  'a late-completed mission starts a shortened finish run without moving the tape');
+// A counted objective completed after the normal finish threshold still starts
+// the victory run without moving the already-visible tape.
+const lateGoalStage = { ...stage, mission: { type: 'targets', n: 1, count: 0, desc: 'TEST' } };
+const lateGoalRun = new RunState({ stage: lateGoalStage, save, seed: 46, difficulty: 1, skipRunIn: true, onEnd() {} });
+lateGoalRun.enter();
+lateGoalRun.camX = lateGoalRun.finishCameraX() + 18;
+lateGoalRun.mission.count = 1;
+lateGoalRun.pickups = []; lateGoalRun.obstacles = [];
+lateGoalRun.update(1 / 60);
+assert(lateGoalRun.finishing && lateGoalRun.missionSatisfied(), 'a late-completed target objective starts the finish run');
+const visibleTapeX = lateGoalRun.finishScreenX();
+lateGoalRun.update(1 / 60);
+assert(lateGoalRun.finishScreenX() === visibleTapeX && visibleTapeX < VIEW_W - 32,
+  'a late-completed objective starts a shortened finish run without moving the tape');
 
 // Counted mission failures carry the exact counter tested by the win check.
 const shortStage = { ...stage, mission: { type: 'cords', n: 4, count: 3, desc: 'TEST' } };
@@ -263,16 +263,10 @@ const lastCord = objectiveRun.pickups.at(-1);
 assert(spawnedCord && lastCord.x >= objectiveRun.camX + VIEW_W
   && lastCord.x + PICKUPS.cord.w + FINISH_CLEAR <= objectiveRun.finishWorldX(),
   'a late cord spawns ahead of view and clear of the finish approach');
-objectiveRun.camX = objectiveRun.finishWorldX() - PICKUPS.resident.w - FINISH_CLEAR - VIEW_W + 1;
-const beforeResidents = objectiveRun.pickups.length;
-assert(!objectiveRun.spawnObjective('resident', 0) && objectiveRun.pickups.length === beforeResidents,
+objectiveRun.camX = objectiveRun.finishWorldX() - PICKUPS.cord.w - FINISH_CLEAR - VIEW_W + 1;
+const beforeLateCord = objectiveRun.pickups.length;
+assert(!objectiveRun.spawnObjective('cord', 0) && objectiveRun.pickups.length === beforeLateCord,
   'an objective is not spawned when no reachable runway remains');
-objectiveRun.mission = { type: 'rescue', n: 3, count: 1 };
-const carriedA = makePickup('resident', 0, 0); carriedA.following = true;
-const carriedB = makePickup('resident', 0, 0); carriedB.following = true;
-objectiveRun.pickups = [carriedA, carriedB];
-assert(objectiveRun.missionCount() === 3 && objectiveRun.missionSatisfied(),
-  'rescue progress includes delivered and currently-following residents');
 
 // ?startAt / ?finish drop the camera mid-stage and pre-fill the lane in one
 // pass. That pass used to fill to infinity, which at ?finish=3 — inside the
@@ -556,8 +550,8 @@ Object.assign(chrome, layoutTouchChrome(fitFor(852, 393, { left: 59, right: 59, 
 chrome.gen++;
 Input.usingTouch = false;
 returnedHub.setChromeWalkButtons();
-assert(Input.chromeButtons.length === 0,
-  'food court keeps second-canvas walking controls hidden outside touch mode');
+assert(Input.chromeButtons.length === 1 && Input.chromeButtons[0].id === 'hubPause',
+  'food court keeps second-canvas walking controls hidden outside touch mode, but the desktop pause cog stays');
 Input.usingTouch = true;
 returnedHub.setChromeWalkButtons();
 assert(Input.chromeButtons.filter((b) => b.r != null && b.id !== 'hubPause').map((b) => b.action).join(',') === 'left,right',
@@ -783,7 +777,7 @@ const overtimeInsideStaticBands = [0, 1, 10].map((t) => {
   }, 48, 72);
   return bands.length;
 });
-assert(overtimeInsideStaticBands.every((count) => count === 5),
+assert(overtimeInsideStaticBands.every((count) => count === 10),
   'the OVERTIME dive keeps moving static behind the player');
 
 let overtimeStarts = 0;
@@ -1104,7 +1098,7 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
             if (gw <= 0) continue;
           }
           for (const pk of r.pickups) {
-            if (!pk.live || pk.following || !pk.def.coin) continue;
+            if (!pk.live || !pk.def.coin) continue;
             // A ROUTE's own coins stay. The line diving into a mouth and the run
             // along the road below are the only thing on the surface that says
             // the hole is a way in, and they carry no formation id — which is

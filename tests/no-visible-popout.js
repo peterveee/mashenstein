@@ -113,7 +113,7 @@ for (const stageId of PLAY) {
     };
     const excusedPick = (was) => {
       const p = was.ref;
-      if (p.following || p.magnetized) return true;
+      if (p.magnetized) return true;
       const px = run.playerWorldX();
       return was.x < px + 90 && was.x + was.w > px - 60;
     };

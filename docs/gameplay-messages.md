@@ -177,7 +177,6 @@ override with charged/uncharged variants:
   - "BONUS: RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY."
   - "BONUS: RUN TO THE BEAT. OR NEAR THE BEAT. THE BEAT IS FLEXIBLE."
   - "BONUS: SURVIVE THE BLACKOUT. THE DARK IS BUDGETARY."
-  - "BONUS: ESCORT 3 CONFUSED CABINET RESIDENTS TO SAFETY."
   - "BONUS: DESTROY 5 HOSTILE PRINTERS. HR HAS APPROVED THIS."
 - **Appliance bonus** ([run.js](../src/game/run.js#L7093)): collecting the optional golden toaster. "BONUS: THE GOLDEN APPLIANCE" (shown silently, no toast sound).
 - **Bench upgrade announcement** ([run.js](../src/game/run.js#L1708)): once per run, if the player starts with purchased power-up bench upgrades. Format "[UPGRADE NAME] + [RANK]" e.g. "SHIELD I".
@@ -190,8 +189,6 @@ override with charged/uncharged variants:
 - **Chase progress**: format "CAUGHT [COUNT]/[TOTAL]. IT FILED A COMPLAINT." Gold.
 - **Checkpoint** ([run.js](../src/game/run.js#L6053)): touching a checkpoint restores battery. Format "CHECKPOINT. +[N] BATTERY." when a cell actually lands; at full battery nothing is restored and it reads "CHECKPOINT. DULY NOTED." Green `#8ddd8d`.
 - **Bridge earned**: completing a challenge that unlocks a gap-crossing bridge. "BRIDGE. YOU EARNED IT." Light blue `#b8e0f8`.
-- **Residents delivered** ([run.js](../src/game/run.js#L6059)): escort-mission progress. Format "RESIDENTS DELIVERED: [CURRENT]/[TOTAL]". Teal.
-- **Escape mission start**: mission description shown when an escape/wave mission begins (from `stages.js`), e.g. "OUTRUN THE UNPLUGGENING ITSELF. THE SOCKET IS CLOSE." / "ESCAPE THE FOLDING WAVE. DO NOT BECOME A FLAP."
 
 ---
 
@@ -351,7 +348,6 @@ Representative examples per character (each has 7–12 lines in the pool):
 - **Shield breaks**: "SHIELD BROKE. IT DID ITS JOB." (cyan `#a8e6ff`)
 - **Fuse survives a hit**: "THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING." (red `#e04848`, solid/opaque floatie)
 - **Ray M'n reassembly**: "RAY M'N SCATTERED. REASSEMBLY IS IN PROGRESS." (teal `#48e0c8`)
-- **Resident picked up (escort start)**: "A RESIDENT FOLLOWS YOU. CONFUSED BUT GAME." (green `#b2d3b2`)
 
 ---
 
@@ -449,12 +445,7 @@ already explains the event, so their job is flavour rather than instruction.
   "NO TARGET. NOTHING ON THE MENU." The cooldown can otherwise feel spent
   without an explanation in a busy lane.
 
-3. **Resident pickup** -- Current: "A RESIDENT FOLLOWS YOU. CONFUSED BUT
-  GAME." Replace with: "A RESIDENT FOLLOWS YOU. CONFUSED, BUT WILLING."
-  "Game" is a valid idiom, but it is needlessly opaque in the line that first
-  establishes escort behaviour.
-
-4. **Bench affordability response** -- Some randomized affordability gags are
+3. **Bench affordability response** -- Some randomized affordability gags are
   funny but indirect, e.g. "A BOLD PURCHASE. THE COINS DISAGREE." Prefix every
   insufficient-funds notice in [hub/index.js](../src/game/hub/index.js) with
   "NOT ENOUGH COINS." and retain the selected gag after it. The price and
@@ -483,7 +474,7 @@ register while keeping the actionable noun or outcome in view.
 - Death messages can remain oblique because the death banner and the hazard on
   screen already make the result unambiguous; source-specific pools add useful
   cause information where it matters.
-- Goal, checkpoint, cord, resident-delivery, chase, beat, rewind, and portal
+- Goal, checkpoint, cord, chase, beat, rewind, and portal
   teaching messages already name a concrete state change or action.
 - Character exits, hub chatter, stage briefings, boss phase dialogue, story
   panels, and rank comments are non-interactive flavour shown in calm or
