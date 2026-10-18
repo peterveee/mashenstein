@@ -40,33 +40,12 @@ const darken = (c, t) => mix(c, INK_DARK, t);
 // light ink on it. Cabinet skies run from #0a0a2a to #e8e8f0, so a fixed choice
 // would be invisible on half the row.
 function luma(c) { const [r, g, b] = rgb(c); return (r * 0.299 + g * 0.587 + b * 0.114) / 255; }
-function relativeLuma(c) {
-  const channels = rgb(c).map((v) => {
-    const s = v / 255;
-    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  });
-  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
-}
-function contrastRatio(a, b) {
-  const A = relativeLuma(a), B = relativeLuma(b);
-  return (Math.max(A, B) + 0.05) / (Math.min(A, B) + 0.05);
-}
 function marqueeInk(pal) {
-  // Match the shell's rgba(26,16,40,0.34) outline over its hood. When that
-  // border tone would disappear on the glass, move only as far as needed in
-  // the same ink hue to give the emblem a clear read at cabinet size.
+  // Match the shell's rgba(26,16,40,0.34) outline composited over its hood.
+  // Keeping the marquee art on this same tint makes it belong to the cabinet;
+  // contrast-adjusting it toward near-black made the pale Frost icon too harsh.
   const hood = pal.hood.startsWith('#') ? pal.hood : mixHex(pal.body, '#ffffff', 0.08);
-  let ink = mixHex(hood, '#1a1028', 0.34);
-  if (contrastRatio(ink, pal.glass) >= 3.5) return ink;
-  const dark = '#1a1028', light = '#d8d4e4';
-  const target = contrastRatio(dark, pal.glass) >= contrastRatio(light, pal.glass) ? dark : light;
-  let low = 0, high = 1;
-  for (let i = 0; i < 16; i++) {
-    const mid = (low + high) / 2;
-    if (contrastRatio(mixHex(ink, target, mid), pal.glass) >= 3.5) high = mid;
-    else low = mid;
-  }
-  return mixHex(ink, target, high);
+  return mixHex(hood, '#1a1028', 0.34);
 }
 
 // A small stable number per cabinet id. Staggers the dead-screen static so nine

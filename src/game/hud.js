@@ -2204,9 +2204,9 @@ function portraitTrim(text, maxWidth, scale = 1) {
   return out === String(text ?? '') ? out : `${out.slice(0, -2)}..`;
 }
 
-// [tag, [head, tail, widest], tagColor, ink]: the sentence AND the live part,
-// for the whole stage, the way the landscape row prints it. Only the head is
-// ever trimmed to fit (see the caller) — the count is the part worth keeping.
+// [tag, [head, tail, widest], tagColor, ink, tailInks]: the sentence AND the
+// live part for the whole stage, the way the landscape row prints it. Only the
+// head is ever trimmed to fit (see the caller) — the count is worth keeping.
 function portraitBonusText(run) {
   const c = run?.challenge;
   if (!c) return null;

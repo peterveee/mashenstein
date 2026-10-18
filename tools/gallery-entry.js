@@ -39,7 +39,7 @@ import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entiti
 import { PUNT, HEAVY_PUNT, startPunt, stepPunt } from '../src/game/punt.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
 import { HERO_DANCE_LAB_CANDIDATES, drawHeroDanceCard } from '../src/dev/hero-dance-candidates.js';
-import { PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE, PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME, eggshellCopterArt, switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T } from '../src/sprites/props.js';
+import { PROP_PAINTERS, definePropVariant, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE, PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME, eggshellCopterArt, switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
   cabinetPalette, drawCabinetShell, drawCabinetScreen,
@@ -462,6 +462,30 @@ function section(id, title, note, date) {
   grid.className = 'grid';
   sectionEl(id, title, note, date).appendChild(grid);
   return grid;
+}
+
+// Scale only named ink passes in a gallery painter while leaving its geometry
+// and fills untouched. Canvas methods stay bound to the real context; stroke()
+// temporarily changes lineWidth so save/restore and painter helpers keep their
+// normal behavior.
+function scaleSelectedStrokes(painter, factor, colors) {
+  const selected = new Set(colors.map((color) => color.toLowerCase()));
+  return (ctx, ...args) => painter(new Proxy(ctx, {
+    get(target, prop) {
+      if (prop === 'stroke') return (...strokeArgs) => {
+        if (!selected.has(String(target.strokeStyle).toLowerCase())) {
+          return target.stroke(...strokeArgs);
+        }
+        const width = target.lineWidth;
+        target.lineWidth = width * factor;
+        try { return target.stroke(...strokeArgs); }
+        finally { target.lineWidth = width; }
+      };
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+    set(target, prop, value) { return Reflect.set(target, prop, value, target); },
+  }), ...args);
 }
 
 // The boundary between the two pages. Everything defined after this call is
@@ -3334,6 +3358,90 @@ let officeFounderCandidates = null;
     });
   }
   beginLab();
+  // Keep the former rake weight available for an honest before/after in the
+  // gallery. The other two variants normalize only the silhouette ink to the
+  // desktop contour; their hitboxes, fills, and secondary hazard treatment stay
+  // as authored. These names exist only in this gallery bundle.
+  const rakeOldToCurrent = 0.0095 / (0.0075 * OUTLINE_SCALE);
+  definePropVariant('rakeOutlineBefore', 'rake', (ctx, w, h, frame) =>
+    PROP_PAINTERS.rake(scaledContext(ctx, rakeOldToCurrent), w, h, frame), { rim: false });
+  definePropVariant('cactusGreenOutlineStandard', 'cactusGreen',
+    scaleSelectedStrokes(PROP_PAINTERS.cactusGreen, 0.63, ['#16331d']));
+  definePropVariant('brazierOutlineStandard', 'brazier',
+    scaleSelectedStrokes(PROP_PAINTERS.brazier, 0.345, ['#231b16']));
+
+  // Focused outline bake-off. Each panel uses the real obstacle draw path and
+  // the same enlarged gameplay raster on both sides, so only the ink weight
+  // changes. A fixed camera magnification makes the differences easy to judge
+  // at desktop size while retaining the production hitboxes and art placement.
+  {
+    const grid = section('obstacle-outline-bakeoff', 'Obstacle outlines — before / standard weight',
+      'Paired through drawWorldEntity at 1.5× gameplay magnification, with the same animation frame on each side. '
+      + 'After candidates target the 0.385-world-unit desktop contour; only the rake change is already in gameplay.');
+    // The lab page's many-link sticky header is taller than the shell's normal
+    // 120px anchor offset. Land this section below it when its nav pill is used.
+    const heading = grid.parentElement?.querySelector('h2');
+    if (heading) heading.style.scrollMarginTop = '620px';
+    const style = getStylePack('pixel', {});
+    const PANEL_W = 240, TILE_W = PANEL_W * 2, TILE_H = 130;
+    const GROUND = 105, MAG = 1.5, SCENE_SCALE = MAG * WORLD_Z;
+    const rows = [
+      {
+        type: 'rake', before: 'rakeOutlineBefore', after: 'rake',
+        name: 'Rake — previous / current',
+        beforeLabel: 'BEFORE · PREVIOUS', afterLabel: 'AFTER · CURRENT',
+        note: 'Current is the refined line-art stroke already used in gameplay.',
+        turf: '#3a9c48', floor: '#327f3d',
+      },
+      {
+        type: 'cactus', before: 'cactusGreen', after: 'cactusGreenOutlineStandard',
+        name: 'Green cactus — shipped / standard contour',
+        beforeLabel: 'BEFORE · SHIPPED', afterLabel: 'AFTER · STANDARD',
+        note: 'Candidate keeps the green-skin hazard rim and thins its body contour.',
+        turf: '#3a9c48', floor: '#327f3d',
+      },
+      {
+        type: 'brazier', before: 'brazier', after: 'brazierOutlineStandard',
+        name: 'Brazier — shipped / standard contour',
+        beforeLabel: 'BEFORE · SHIPPED', afterLabel: 'AFTER · STANDARD',
+        note: 'Candidate normalizes the bowl outline; the stand remains structural.',
+        turf: '#282431', floor: '#3d3543',
+      },
+    ];
+    for (const row of rows) {
+      tile(grid, row.name, `${row.note} · exact prop geometry, magnified for desktop review`, TILE_W, TILE_H,
+        (ctx, t) => {
+          for (let i = 0; i < 2; i++) {
+            const x = i * PANEL_W;
+            ctx.fillStyle = row.turf;
+            ctx.fillRect(x, 0, PANEL_W, TILE_H);
+            ctx.fillStyle = row.floor;
+            ctx.fillRect(x, GROUND, PANEL_W, TILE_H - GROUND);
+            ctx.fillStyle = 'rgba(10, 13, 18, 0.72)';
+            ctx.fillRect(x, 0, PANEL_W, 25);
+            ctx.fillStyle = '#f2e8c5';
+            ctx.font = 'bold 10px ui-sans-serif, system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(i ? row.afterLabel : row.beforeLabel, x + PANEL_W / 2, 13);
+          }
+          ctx.fillStyle = 'rgba(240, 230, 194, 0.35)';
+          ctx.fillRect(PANEL_W - 1, 0, 2, TILE_H);
+
+          ctx.save();
+          ctx.scale(SCENE_SCALE, SCENE_SCALE);
+          ctx.translate(0, GROUND / SCENE_SCALE - GROUND_Y);
+          for (let i = 0; i < 2; i++) {
+            const e = makeObstacle(row.type, 100);
+            e.x = (i * PANEL_W + PANEL_W / 2) / SCENE_SCALE - e.w / 2;
+            e.skin = i ? row.after : row.before;
+            drawWorldEntity(ctx, e, 0, t, style, {});
+          }
+          ctx.restore();
+        }, { animated: true, wide: true, hires: 3 });
+    }
+  }
+
   // Active Food Court question: keep this comparison at the front of the lab.
   {
     const grid = section('foodcourt-monitor-bakeoff', 'Food Court — monitor edge bake-off',

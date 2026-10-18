@@ -198,7 +198,9 @@ function beehive(c, w, h, t) {
 function scarecrow(c, w, h, t) {
   const f = frameOf(t, 8, 8), g = h - 0.2;
   const p8 = (f / 8) * TAU;
-  const flapL = Math.sin(p8) * 0.7, flapR = Math.sin(p8 + 2.2) * 0.7;
+  const gust = Math.max(0, Math.sin(p8 + 0.45));
+  const lean = Math.sin(p8 + 0.25) * 0.035;
+  const flapL = Math.sin(p8) * 1.0, flapR = Math.sin(p8 + 2.2) * 1.0;
   // The soil the post is driven into, and the post.
   ell(c, 11.5, g - 0.3, 3.6, 0.7, SOIL, INK, LWF);
   body(c, rect(10.8, 3.0, 1.6, g - 3.2), TIMBER, (p) => box(p, 11.8, 0, 1, h, TIMBER_DK));
@@ -219,7 +221,12 @@ function scarecrow(c, w, h, t) {
     box(p, 8.2, 16.0, 0.7, 6, DENIM_LT);
   });
   box(c, 8.4, 19.0, 2.0, 1.9, RED, INK, LWF);
-  // The shirt: torso and both sleeves along the crossbar, flapping at the ends.
+  // The shirt rocks against the fixed post while each sleeve catches the gust
+  // at a slightly different time.
+  c.save();
+  c.translate(11.5, 15.6);
+  c.rotate(lean);
+  c.translate(-11.5, -15.6);
   const shirt = (p) => {
     p.moveTo(7.2, 16.0);
     p.lineTo(7.4, 10.8);
@@ -258,6 +265,13 @@ function scarecrow(c, w, h, t) {
   cuff(21.1, 7.8 + flapR, 1, 1);
   // The rope belt.
   line(c, 7.4, 15.6, 15.7, 15.6, STRAW_DK, 0.8);
+  // The sack gives a small bob and tilt, following the shirt's sway.
+  const headX = Math.sin(p8 + 0.7) * 0.12;
+  const headY = gust * 0.12;
+  c.save();
+  c.translate(11.6 + headX, 4.6 + headY);
+  c.rotate(Math.sin(p8 + 1.1) * 0.035);
+  c.translate(-11.6, -4.6);
   // The head: a sack tied at the neck, a stitched face.
   lines(c, [10.0, 7.6, 9.4, 8.8, 11.5, 7.6, 11.5, 9.0, 13.0, 7.6, 13.6, 8.8], STRAW_INK, 0.55);
   body(c, (p) => p.ellipse(11.6, 4.6, 3.0, 2.9, 0, 0, TAU), SACK, (p) => {
@@ -273,17 +287,19 @@ function scarecrow(c, w, h, t) {
   lines(c, [10.5, 5.8, 10.5, 6.6, 11.6, 6.0, 11.6, 6.9, 12.7, 5.8, 12.7, 6.6], INK, 0.18);
   // The hat, tipped to one side and lifting on the gust.
   c.save();
-  const tip = -0.12 + (f >= 2 && f <= 4 ? -0.08 : 0);
-  c.translate(11.6, 2.4);
+  const tip = -0.12 - gust * 0.04;
+  c.translate(11.6, 2.5 - gust * 0.06);
   c.rotate(tip);
   poly(c, [-4.6, 0.3, 4.6, 0.3, 4.2, -0.6, -4.4, -0.6], FELT, INK, LWI);
   body(c, shape([-2.6, -0.4, -2.2, -2.4, 0, -2.0, 2.0, -2.5, 2.6, -0.4]), FELT, (p) => box(p, 1.0, -3, 2, 3, FELT_DK), INK, LWI);
   box(c, -2.5, -1.0, 5.0, 0.6, SKYBLUE);
   c.restore();
+  c.restore();
+  c.restore();
   // A straw blown off downwind, toward the hero.
   const k = f / 8;
   c.save();
-  c.translate(3.6 - k * 3.2, 13.0 + Math.sin(k * TAU) * 0.8);
+  c.translate(3.6 - k * 3.6, 13.0 + Math.sin(k * TAU) * 1.0);
   c.rotate(k * 4);
   line(c, -0.8, 0, 0.8, 0, STRAW_INK, 0.55);
   line(c, -0.8, 0, 0.8, 0, STRAW, 0.3);

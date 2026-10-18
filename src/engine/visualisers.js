@@ -1779,12 +1779,15 @@ class ArcadeArtGallery extends BaseVisualiser {
 // and a deep blue hangar wash) so the toasters feel like a new visualiser, not
 // another pass over an existing preset's background.
 class ToasterSkyParade extends BaseVisualiser {
-  constructor(seed, track, { count = 72, viewWidth = W, viewHeight = H, goldOnly = false } = {}) {
+  constructor(seed, track, {
+    count = 72, viewWidth = W, viewHeight = H, goldOnly = false, giant = false,
+  } = {}) {
     super(seed, track);
     this.name = VISUALISER_NAMES[13];
     this.toasterViewWidth = Math.max(1, viewWidth);
     this.toasterViewHeight = Math.max(1, viewHeight);
     this.goldOnly = goldOnly;
+    this.giant = giant;
     this.horizontalSpeedScale = goldOnly ? 0.8 : 1;
     this.verticalBobScale = goldOnly ? 0.45 : 1;
     this.scalePulseScale = goldOnly ? 0.5 : 1;
@@ -1823,6 +1826,36 @@ class ToasterSkyParade extends BaseVisualiser {
         p.entryDelay = 0;
         p.x = p.introLead ? -52 : this.rng.range(-35, this.toasterViewWidth + 35);
         if (p.introLead) p.introLoopStart = 0.25;
+      }
+      // The complete collection swaps the opening hero for one enormous
+      // toaster that owns the little screen, flying slowly among the flock
+      // instead of looping in front of it.
+      if (giant && this.toasters[0]) {
+        const g = this.toasters[0];
+        g.giant = true;
+        g.introLead = false;
+        g.introChoreo = false;
+        g.entryDelay = 0;
+        g.x = -this.toasterViewWidth * 0.46;
+        g.baseY = this.toasterViewHeight * 0.58;
+        g.y = g.baseY;
+        g.speed = 32;
+        // About half the little panel's height once the appliance's reserved
+        // toast slot is counted: the sprite box is ~74% of the screen, so the
+        // metal body reads as an enormous centrepiece among the flock.
+        g.scale = Math.min(this.toasterViewWidth, this.toasterViewHeight) / 21 * 0.74;
+        g.bob = 3.5;
+        g.bobRate = 0.62;
+        g.phase = 0;
+        g.rotation = 0;
+        g.rollCycle = Infinity;
+        g.rollDuration = 0;
+        g.rollOffset = 0;
+        g.rollActive = false;
+        g.loopEligible = false;
+        g.loopActive = false;
+        g.loopEver = true;
+        g.depth = 0.95;
       }
     } else {
       for (let i = 3; i < this.toasters.length; i++) {
@@ -1886,6 +1919,15 @@ class ToasterSkyParade extends BaseVisualiser {
     p.introLoopDuration = 0;
     p.introLoopRadius = 0;
     p.entryDelay = 0;
+    p.giant = false;
+  }
+
+  resetGiantToaster(p) {
+    p.x = -this.toasterViewWidth * 0.46;
+    p.y = p.baseY;
+    p.drawX = p.x;
+    p.drawY = p.y;
+    p.rotation = 0;
   }
 
   launchSpecialToaster() {
@@ -2000,7 +2042,10 @@ class ToasterSkyParade extends BaseVisualiser {
       }
       p.x += dt * p.speed * this.horizontalSpeedScale
         * (0.78 + this.bass * 0.45 + this.beatPulse * 0.08);
-      if (p.x > this.toasterViewWidth + 72) this.resetToaster(p);
+      if (p.x > this.toasterViewWidth + 72) {
+        if (p.giant) this.resetGiantToaster(p);
+        else this.resetToaster(p);
+      }
       p.y = p.baseY
         + Math.sin(this.t * p.bobRate + p.phase) * p.bob
         - this.beatPulse * (3 + p.depth * 8) * this.verticalBobScale;
@@ -2074,6 +2119,20 @@ class ToasterSkyParade extends BaseVisualiser {
       const frame = wingFrame + p.toastBand * 12;
       const color = this.goldOnly ? '#f6d33c'
         : this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
+      // The complete-collection giant is drawn at its full screen size so the
+      // vector toaster stays crisp at this scale, with a single wide glow
+      // instead of the flock's ghosted trail.
+      if (p.giant) {
+        this.glowDot(ctx, p.drawX, p.drawY,
+          Math.max(w, h) * (0.72 + this.beatPulse * 0.3), color, 0.14 + p.depth * 0.1);
+        ctx.save();
+        ctx.globalAlpha = this.frameAlpha;
+        ctx.translate(p.drawX, p.drawY);
+        ctx.rotate(p.rotation);
+        drawProp(ctx, 'appliance', -w / 2, -h / 2, w, h, frame);
+        ctx.restore();
+        continue;
+      }
       // Four ghosted positions read as a trail while retaining crisp moving art.
       for (let trail = 4; trail >= 1; trail--) {
         const tx = p.drawX - p.speed * this.horizontalSpeedScale * trail * 0.018;
@@ -2123,12 +2182,14 @@ export function createGoldenToasterParade(seed, count, {
   viewWidth = W,
   viewHeight = H,
   bpm = 112,
+  giant = false,
 } = {}) {
   return new ToasterSkyParade(seed >>> 0, { bpm }, {
     count: Math.max(0, Math.floor(count)),
     viewWidth,
     viewHeight,
     goldOnly: true,
+    giant,
   });
 }
 

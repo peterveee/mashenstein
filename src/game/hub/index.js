@@ -4682,7 +4682,16 @@ function trophyCrtNoise(index, tick) {
   };
 }
 
-function drawTrophyCrtFeed(ctx, screen, index, tick, { staticFeed = false, detail = 1, flat = false } = {}) {
+const TROPHY_CRT_FEED_CACHE = new Map();
+
+function trophyCrtCacheScale(ctx) {
+  const transform = ctx.getTransform?.();
+  if (!transform) return 1;
+  const density = Math.max(Math.hypot(transform.a, transform.b), Math.hypot(transform.c, transform.d));
+  return Math.max(1, Math.min(4, Math.ceil(density)));
+}
+
+function paintTrophyCrtFeed(ctx, screen, index, tick, { staticFeed = false, detail = 1, flat = false } = {}) {
   ctx.save();
   const { x, y, w, h } = screen;
   if (flat) {
@@ -4746,6 +4755,41 @@ function drawTrophyCrtFeed(ctx, screen, index, tick, { staticFeed = false, detai
   ctx.restore();
 }
 
+function drawTrophyCrtFeed(ctx, screen, index, tick, { staticFeed = false, detail = 1, flat = false, cache = true } = {}) {
+  if (!cache) return paintTrophyCrtFeed(ctx, screen, index, tick, { staticFeed, detail, flat });
+
+  const scale = trophyCrtCacheScale(ctx);
+  const pixelW = Math.max(1, Math.ceil(screen.w * scale));
+  const pixelH = Math.max(1, Math.ceil(screen.h * scale));
+  // Animated suspect feeds share the same raster/falloff layer. Snow is
+  // specific to a monitor and refreshes only when its seeded 10 Hz tick moves.
+  const key = [staticFeed ? `snow:${index}` : 'feed', screen.w.toFixed(3), screen.h.toFixed(3),
+    pixelW, pixelH, scale, detail, flat ? 1 : 0].join(':');
+  let entry = TROPHY_CRT_FEED_CACHE.get(key);
+  if (!entry) {
+    const canvas = document.createElement('canvas');
+    canvas.width = pixelW;
+    canvas.height = pixelH;
+    entry = { canvas, ctx: canvas.getContext('2d'), tick: null, ready: false };
+    TROPHY_CRT_FEED_CACHE.set(key, entry);
+  }
+
+  if (!entry.ready || (staticFeed && entry.tick !== tick)) {
+    entry.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    entry.ctx.clearRect(0, 0, pixelW, pixelH);
+    entry.ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    paintTrophyCrtFeed(entry.ctx, { x: 0, y: 0, w: screen.w, h: screen.h }, index, tick,
+      { staticFeed, detail, flat });
+    entry.tick = staticFeed ? tick : null;
+    entry.ready = true;
+  }
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(entry.canvas, screen.x, screen.y, screen.w, screen.h);
+  ctx.restore();
+}
+
 function drawTrophyCrtGlass(ctx, screen, radius = 6) {
   const { x, y, w, h } = screen;
   const lampX = x + w * 0.29, lampY = y + h * 0.14;
@@ -4784,9 +4828,15 @@ function drawTrophyCrtGlass(ctx, screen, radius = 6) {
   ctx.restore();
 }
 
-const TROPHY_BOUNDS_SAMPLE_W = 192;
+const TROPHY_BOUNDS_SAMPLE_W = 96;
 const TROPHY_PROP_INK_BOUNDS = new Map();
 const TROPHY_ROLE_INK_BOUNDS = new Map();
+// Keep the modest, downsampled gallery frames across room visits. Rebuilding
+// every suspect's frames each time the Trophy Room is entered just moves the
+// same preparation cost onto the next entrance.
+const TROPHY_PROP_FRAME_SPRITES = new Map();
+const TROPHY_BOUNDS_JOBS = [];
+const TROPHY_BOUNDS_PENDING = new Set();
 let trophyBoundsCanvas = null;
 
 function trophyBoundsContext(w, h) {
@@ -4795,7 +4845,7 @@ function trophyBoundsContext(w, h) {
     trophyBoundsCanvas.width = w;
     trophyBoundsCanvas.height = h;
   }
-  const ctx = trophyBoundsCanvas.getContext('2d');
+  const ctx = trophyBoundsCanvas.getContext('2d', { willReadFrequently: true });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, w, h);
   return ctx;
@@ -4818,75 +4868,130 @@ function trophyAlphaBounds(ctx, w, h, threshold = 12) {
   };
 }
 
-// Measure the union of every painted frame once. This includes transparent
-// padding in neither the size nor the centering, while still reserving enough
-// room for tails, whiskers, swipe effects and the snake's full strike.
-//
-// The measurement gets its OWN canvas and its OWN preview renderer rather than
-// borrowing the one the gallery draws with. Sharing it made some props measure
-// a row or two taller than they paint — the borrow comes back through the
-// renderer's reusable surface — and because the result is cached, the whole
-// gallery then fitted those suspects small and floating: Tape Hound, Snarl
-// Barkley, Wildfang and Lucky Paw were each drawn at about two thirds of their
-// proper size, well above the floor. One-off allocation per suspect is cheap;
-// a poisoned cache is not.
-function trophySuspectPropInkBounds(propName, artW, artH) {
+function trophyPropBoundsCacheKey(propName, artW, artH) {
+  return `${propName}:${(artW / artH).toFixed(4)}`;
+}
+
+function trophyPropFrameCacheKey(cacheKey, frame) { return `${cacheKey}:${frame}`; }
+
+function queueTrophyPropInkBounds(propName, artW, artH) {
+  const cacheKey = trophyPropBoundsCacheKey(propName, artW, artH);
   const aspect = artW / artH;
-  const key = `${propName}:${aspect.toFixed(4)}`;
-  if (TROPHY_PROP_INK_BOUNDS.has(key)) return TROPHY_PROP_INK_BOUNDS.get(key);
-  const w = TROPHY_BOUNDS_SAMPLE_W, h = Math.max(1, Math.round(w / aspect));
-  // Capture paint outside the authored box too: the panther reaches left of
-  // it, the snake's coil drops below it, and neon halos spill on every side.
-  const padX = Math.ceil(w / 2), padY = Math.ceil(h / 2);
-  const sampleW = w + padX * 2, sampleH = h + padY * 2;
-  const canvas = document.createElement('canvas');
-  canvas.width = sampleW;
-  canvas.height = sampleH;
-  const ctx = canvas.getContext('2d');
-  const drawProp = createPropPreviewRenderer({ padding: 0.5 });
-  let left = sampleW, top = sampleH, right = -1, bottom = -1;
+  const pendingKey = `prop:${cacheKey}`;
   const frames = Math.max(1, propFrames(propName));
-  for (let frame = 0; frame < frames; frame++) {
-    ctx.clearRect(0, 0, sampleW, sampleH);
-    drawProp(ctx, propName, padX, padY, w, h, frame);
-    const bounds = trophyAlphaBounds(ctx, sampleW, sampleH, 2);
-    if (!bounds) continue;
-    left = Math.min(left, Math.floor(bounds.left * sampleW));
-    top = Math.min(top, Math.floor(bounds.top * sampleH));
-    right = Math.max(right, Math.ceil(bounds.right * sampleW) - 1);
-    bottom = Math.max(bottom, Math.ceil(bounds.bottom * sampleH) - 1);
+  const needsSprites = Array.from({ length: frames }, (_, frame) =>
+    !TROPHY_PROP_FRAME_SPRITES.has(trophyPropFrameCacheKey(cacheKey, frame))).some(Boolean);
+  const needsBounds = !TROPHY_PROP_INK_BOUNDS.has(cacheKey);
+  if ((!needsBounds && !needsSprites) || TROPHY_BOUNDS_PENDING.has(pendingKey)) return;
+  const paintW = TROPHY_BOUNDS_SAMPLE_W;
+  const paintH = Math.max(1, Math.round(paintW / aspect));
+  const padX = Math.ceil(paintW / 2), padY = Math.ceil(paintH / 2);
+  TROPHY_BOUNDS_PENDING.add(pendingKey);
+  TROPHY_BOUNDS_JOBS.push({
+    kind: 'prop', cacheKey, pendingKey, propName, paintW, paintH, padX, padY,
+    canvasW: paintW + padX * 2, canvasH: paintH + padY * 2,
+    frames, frame: 0, needsBounds, ctx: null, drawProp: null,
+    frameCanvas: null, frameCtx: null,
+  });
+}
+
+function queueTrophyRoleInkBounds(role) {
+  const pendingKey = `role:${role}`;
+  if (TROPHY_ROLE_INK_BOUNDS.has(role) || TROPHY_BOUNDS_PENDING.has(pendingKey)) return;
+  const canvasW = TROPHY_BOUNDS_SAMPLE_W;
+  TROPHY_BOUNDS_PENDING.add(pendingKey);
+  TROPHY_BOUNDS_JOBS.push({
+    kind: 'role', cacheKey: role, pendingKey, role, canvasW, canvasH: canvasW,
+    anchorX: canvasW / 2, anchorY: canvasW * 0.78, frames: 12, frame: 0, ctx: null,
+  });
+}
+
+const TROPHY_PROP_BOUNDS_PENDING = Object.freeze({ left: -0.25, top: -0.25, right: 1.25, bottom: 1.25 });
+const TROPHY_ROLE_BOUNDS_PENDING = Object.freeze({ left: -14, top: -30, right: 14, bottom: 0 });
+
+function updateTrophyBoundsPreparation() {
+  const job = TROPHY_BOUNDS_JOBS[0];
+  if (!job) return;
+  if (job.needsBounds && !job.ctx) {
+    job.ctx = trophyBoundsContext(job.canvasW, job.canvasH);
   }
-  const bounds = right < left
-    ? { left: 0, top: 0, right: 1, bottom: 1 }
-    : {
-      left: (left - padX) / w, top: (top - padY) / h,
-      right: (right + 1 - padX) / w, bottom: (bottom + 1 - padY) / h,
+
+  if (job.kind === 'prop') {
+    if (!job.drawProp) job.drawProp = createPropPreviewRenderer({ padding: 0.5 });
+    if (!job.frameCanvas) {
+      job.frameCanvas = document.createElement('canvas');
+      job.frameCanvas.width = job.canvasW;
+      job.frameCanvas.height = job.canvasH;
+      job.frameCtx = job.frameCanvas.getContext('2d');
+    } else {
+      job.frameCtx.clearRect(0, 0, job.canvasW, job.canvasH);
+    }
+    job.drawProp(job.frameCtx, job.propName, job.padX, job.padY, job.paintW, job.paintH, job.frame);
+    if (job.needsBounds) job.ctx.drawImage(job.frameCanvas, 0, 0);
+
+    const cropX = Math.round(job.padX - job.paintW / 2);
+    const cropY = Math.round(job.padY - job.paintH / 2);
+    const cropW = Math.round(job.paintW * 2);
+    const cropH = Math.round(job.paintH * 2);
+    const frameSprite = document.createElement('canvas');
+    frameSprite.width = cropW;
+    frameSprite.height = cropH;
+    frameSprite.getContext('2d').drawImage(
+      job.frameCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH,
+    );
+    TROPHY_PROP_FRAME_SPRITES.set(trophyPropFrameCacheKey(job.cacheKey, job.frame), frameSprite);
+  } else {
+    if (!job.ctx) job.ctx = trophyBoundsContext(job.canvasW, job.canvasH);
+    drawSelectedCryptEnemy(job.ctx, job.frame / 6, job.role, job.anchorX, job.anchorY, { facing: 1, idle: true });
+  }
+  job.frame++;
+  if (job.frame < job.frames) return;
+
+  if (job.kind === 'prop') {
+    if (job.needsBounds) {
+      const painted = trophyAlphaBounds(job.ctx, job.canvasW, job.canvasH, 2);
+      const bounds = !painted
+        ? { left: 0, top: 0, right: 1, bottom: 1 }
+        : {
+          left: (Math.floor(painted.left * job.canvasW) - job.padX) / job.paintW,
+          top: (Math.floor(painted.top * job.canvasH) - job.padY) / job.paintH,
+          right: (Math.ceil(painted.right * job.canvasW) - job.padX) / job.paintW,
+          bottom: (Math.ceil(painted.bottom * job.canvasH) - job.padY) / job.paintH,
+        };
+      TROPHY_PROP_INK_BOUNDS.set(job.cacheKey, bounds);
+    }
+  } else {
+    const painted = trophyAlphaBounds(job.ctx, job.canvasW, job.canvasH, 12);
+    const bounds = !painted ? TROPHY_ROLE_BOUNDS_PENDING : {
+      left: Math.floor(painted.left * job.canvasW) - job.anchorX,
+      top: Math.floor(painted.top * job.canvasH) - job.anchorY,
+      right: Math.ceil(painted.right * job.canvasW) - job.anchorX,
+      bottom: Math.ceil(painted.bottom * job.canvasH) - job.anchorY,
     };
-  TROPHY_PROP_INK_BOUNDS.set(key, bounds);
-  return bounds;
+    TROPHY_ROLE_INK_BOUNDS.set(job.cacheKey, bounds);
+  }
+  TROPHY_BOUNDS_PENDING.delete(job.pendingKey);
+  TROPHY_BOUNDS_JOBS.shift();
+}
+
+function cancelTrophyBoundsPreparation() {
+  TROPHY_BOUNDS_JOBS.forEach((job) => TROPHY_BOUNDS_PENDING.delete(job.pendingKey));
+  TROPHY_BOUNDS_JOBS.length = 0;
+  trophyBoundsCanvas = null;
+}
+
+function trophySuspectPropInkBounds(propName, artW, artH) {
+  const key = trophyPropBoundsCacheKey(propName, artW, artH);
+  const bounds = TROPHY_PROP_INK_BOUNDS.get(key);
+  if (bounds) return bounds;
+  return TROPHY_PROP_BOUNDS_PENDING;
 }
 
 function trophySuspectRoleInkBounds(role) {
-  if (TROPHY_ROLE_INK_BOUNDS.has(role)) return TROPHY_ROLE_INK_BOUNDS.get(role);
-  const w = TROPHY_BOUNDS_SAMPLE_W, h = TROPHY_BOUNDS_SAMPLE_W;
-  const anchorX = w / 2, anchorY = h * 0.78, ctx = trophyBoundsContext(w, h);
-  let left = w, top = h, right = -1, bottom = -1;
-  for (let i = 0; i < 12; i++) {
-    ctx.clearRect(0, 0, w, h);
-    drawSelectedCryptEnemy(ctx, i / 6, role, anchorX, anchorY, { facing: 1, idle: true });
-    const bounds = trophyAlphaBounds(ctx, w, h);
-    if (!bounds) continue;
-    left = Math.min(left, Math.floor(bounds.left * w));
-    top = Math.min(top, Math.floor(bounds.top * h));
-    right = Math.max(right, Math.ceil(bounds.right * w) - 1);
-    bottom = Math.max(bottom, Math.ceil(bounds.bottom * h) - 1);
-  }
-  const bounds = right < left ? { left: -14, top: -30, right: 14, bottom: 0 } : {
-    left: left - anchorX, top: top - anchorY,
-    right: right + 1 - anchorX, bottom: bottom + 1 - anchorY,
-  };
-  TROPHY_ROLE_INK_BOUNDS.set(role, bounds);
-  return bounds;
+  const bounds = TROPHY_ROLE_INK_BOUNDS.get(role);
+  if (bounds) return bounds;
+  queueTrophyRoleInkBounds(role);
+  return TROPHY_ROLE_BOUNDS_PENDING;
 }
 
 // Fit the visible paint, not the often-roomier gameplay collision box. The
@@ -4916,6 +5021,25 @@ const TROPHY_SUSPECT_DISPLAY = Object.freeze({
   catMechaNeon: { sink: 4 / 53 },
   catNekoGhost: { sink: 5 / 53 },
 });
+
+function trophySuspectPropName(portrait) {
+  return portrait.skin && hasProp(portrait.skin) ? portrait.skin
+    : hasProp(portrait.type) ? portrait.type
+      : hasProp(portrait.def?.sprite) ? portrait.def.sprite : null;
+}
+
+function queueTrophySuspectBounds(suspect, portrait) {
+  if (suspect.role) {
+    queueTrophyRoleInkBounds(suspect.role);
+    return;
+  }
+  if (!portrait) return;
+  const propName = trophySuspectPropName(portrait);
+  if (!propName) return;
+  const artW = portrait.def.w * 4 / 3 * propVisualScale(propName);
+  const artH = portrait.def.h * 4 / 3 * propTall(propName) * propVisualScale(propName);
+  queueTrophyPropInkBounds(propName, artW, artH);
+}
 
 function trophySuspectPropBox(portrait, propName, screen) {
   const artW = portrait.def.w * 4 / 3 * propVisualScale(propName);
@@ -4979,6 +5103,13 @@ export class TrophyRoomState {
     this.toasterParadeKey = resume?.toasterParadeKey ?? null;
     this.suspectPortraits = new Map(USUAL_SUSPECTS.filter((s) => !s.role)
       .map((s) => [s.id, makeObstacle(s.type, -(OBSTACLES[s.type]?.w || 10) / 2)]));
+    this.suspectPropFrameSprites = TROPHY_PROP_FRAME_SPRITES;
+    const discovered = this.save?.slot?.hub?.usualSuspects || {};
+    USUAL_SUSPECTS.forEach((suspect) => {
+      if (this.revealAllSuspects || discovered[suspect.id]) {
+        queueTrophySuspectBounds(suspect, this.suspectPortraits.get(suspect.id));
+      }
+    });
     this.drawSuspectProp = createPropPreviewRenderer({ padding: 0.5 });
     this.suspectZoomId = null;
     this.suspectZoomProgress = 0;
@@ -5026,6 +5157,7 @@ export class TrophyRoomState {
 
   exit() {
     leaveTrophyRoomAudio();
+    cancelTrophyBoundsPreparation();
     Input.setButtons([]);
     Input.setChromeButtons([]);
   }
@@ -5133,6 +5265,7 @@ export class TrophyRoomState {
         viewWidth: TROPHY_TOASTER_SCREEN_W,
         viewHeight: TROPHY_TOASTER_SCREEN_H,
         bpm: HUB_BANK.bpm,
+        giant: stages.length === STAGES.length,
       })
       : null;
   }
@@ -5162,6 +5295,7 @@ export class TrophyRoomState {
 
   update(dt) {
     this.t += dt;
+    updateTrophyBoundsPreparation();
     this.syncGoldenToasterParade();
     this.toasterParade?.update(dt);
     if (chromeGeo.gen !== this.chromeGen || Input.isTouchDevice() !== this.chromeTouch) this.setChromeWalkButtons();
@@ -5384,6 +5518,20 @@ export class TrophyRoomState {
     });
   }
 
+  drawSuspectPropFrame(ctx, portrait, propName, box, frame) {
+    const artW = portrait.def.w * 4 / 3 * propVisualScale(propName);
+    const artH = portrait.def.h * 4 / 3 * propTall(propName) * propVisualScale(propName);
+    const cacheKey = trophyPropFrameCacheKey(trophyPropBoundsCacheKey(propName, artW, artH), frame);
+    const sprite = this.suspectPropFrameSprites.get(cacheKey);
+    if (!sprite) return this.drawSuspectProp(ctx, propName, box.x, box.y, box.w, box.h, frame);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(sprite, box.x - box.w / 2, box.y - box.h / 2, box.w * 2, box.h * 2);
+    ctx.restore();
+    return true;
+  }
+
   drawUsualSuspects(ctx, layout = trophyPresentation()) {
     const board = trophyBoardLayout(layout);
     const x = TROPHY_SUSPECTS_X, y = board.y, w = TROPHY_SUSPECTS_W, h = TROPHY_SUSPECTS_H;
@@ -5430,14 +5578,12 @@ export class TrophyRoomState {
         } else {
           const portrait = this.suspectPortraits.get(suspect.id);
           if (portrait) {
-            const propName = portrait.skin && hasProp(portrait.skin) ? portrait.skin
-              : hasProp(portrait.type) ? portrait.type
-                : hasProp(portrait.def?.sprite) ? portrait.def.sprite : null;
+            const propName = trophySuspectPropName(portrait);
             if (propName) {
               const box = trophySuspectPropBox(portrait, propName, screen);
               const frame = Math.floor(this.t * propFps(propName) + portrait.bobPhase * 4)
                 % Math.max(1, propFrames(propName));
-              this.drawSuspectProp(ctx, propName, box.x, box.y, box.w, box.h, frame);
+              this.drawSuspectPropFrame(ctx, portrait, propName, box, frame);
             } else {
               // Fallback for a future suspect represented by a raster sprite.
               const scale = Math.min((screenW - 10) / portrait.w, (screenH - 8) / portrait.h);
@@ -5604,7 +5750,7 @@ export class TrophyRoomState {
 
     const tick = Math.floor(this.t * 10);
     const index = USUAL_SUSPECTS.indexOf(suspect);
-    drawTrophyCrtFeed(ctx, screen, index, tick, { staticFeed: !unlocked });
+    drawTrophyCrtFeed(ctx, screen, index, tick, { staticFeed: !unlocked, cache: false });
     drawTrophyCrtGlass(ctx, screen, radius);
 
     if (unlocked && progress > 0.02) {
@@ -5675,12 +5821,15 @@ export class TrophyRoomState {
     // span rather than leaving a transparent strip above the old wall origin.
     const visibleTop = layout.camY;
     const visibleBottom = layout.camY + H / layout.zoom + 4;
+    const worldLeft = Math.max(0, camera);
+    const worldRight = Math.min(TROPHY_WORLD_W, camera + layout.viewW);
+    const worldWidth = Math.max(0, worldRight - worldLeft);
     ctx.fillStyle = '#0d0a12';
-    ctx.fillRect(0, visibleTop, TROPHY_WORLD_W, visibleBottom - visibleTop);
+    ctx.fillRect(worldLeft, visibleTop, worldWidth, visibleBottom - visibleTop);
     ctx.fillStyle = '#281f32';
-    ctx.fillRect(0, visibleTop, TROPHY_WORLD_W, TROPHY_FLOOR_Y - visibleTop);
+    ctx.fillRect(worldLeft, visibleTop, worldWidth, TROPHY_FLOOR_Y - visibleTop);
     // Reclaimed wall panels stop the museum from reading as one flat fill.
-    for (let x = 0; x < TROPHY_WORLD_W; x += 48) {
+    for (let x = Math.floor(worldLeft / 48) * 48; x < worldRight; x += 48) {
       ctx.fillStyle = (x / 48) % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.035)';
       ctx.fillRect(x, visibleTop, 47, TROPHY_FLOOR_Y - visibleTop);
       ctx.fillStyle = '#17131e'; ctx.fillRect(x + 47, visibleTop, 1, TROPHY_FLOOR_Y - visibleTop);
@@ -5709,6 +5858,9 @@ export class TrophyRoomState {
       ]),
     ];
     lights.forEach(([center, strength], i) => {
+      // A light's halo and beam reach only a short way past its fixture. Skip
+      // distant bays before constructing their many gradients and beam paths.
+      if (center + LIGHT_W < worldLeft - 64 || center > worldRight + 64) return;
       const x = center - LIGHT_W / 2;
       const flick = lightFlicker(this.t, i + 11);
       drawCeilingLight(ctx, x, layout.portrait ? layout.camY : 0,
@@ -5730,7 +5882,13 @@ export class TrophyRoomState {
     // HUB_PORTRAIT_ZOOM (2.5) and this room at 2.5/1.3, so the trophy tiles were
     // 41.6px against the food court's 80 — the floor next door drawn not quite
     // half size, along with the skirting and the row pitch that share `unit`.
-    drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, TROPHY_WORLD_W, 0, HUB_ZOOM);
+    // The floor painter starts at local x=0 and phases tiles from worldOffsetX.
+    // Move that local origin into the visible world slice so it paints only
+    // what the camera can show while preserving the room-wide tile pattern.
+    ctx.save();
+    ctx.translate(worldLeft, 0);
+    drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, worldWidth, worldLeft, HUB_ZOOM);
+    ctx.restore();
   }
 
   draw(ctx) {

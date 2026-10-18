@@ -3142,10 +3142,12 @@ export const PROP_PAINTERS = {
     const a = rakeSwingAngle(u);
     // The drawing's own units: tines centred on x 0, handle lying out to +x.
     const s = Math.min(w / (RAKE_SPAN.left + RAKE_SPAN.right), h / RAKE_SPAN.top);
-    // Match the spring pad's visible outline and keep both just under the
-    // traffic cone's body stroke. The rake is drawn larger than its box, so
-    // divide by `s` for the custom 45x38 art coordinates.
-    const ink = Math.max(0.2, 0.0095 * Math.max(w, h) / s);
+    // The rake is line art, so its edge should sit just under the traffic
+    // cone's fine body contour at gameplay size. Its 1.38x art overscale used
+    // to make this custom stroke noticeably heavier; the lower base width and
+    // shared dial keep it light on desktop while retaining the phone lift.
+    // Divide by `s` for the custom 45x38 art coordinates.
+    const ink = OUTLINE_SCALE * Math.max(0.12, 0.0075 * Math.max(w, h) / s);
     ctx.save();
     ctx.translate(RAKE_SPAN.left * s, h);
     ctx.scale(s, s);

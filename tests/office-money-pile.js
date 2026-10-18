@@ -46,10 +46,20 @@ if (stage && payoff?.pickups?.length) {
   run.crackSafe(makeObstacle('vaultSafe', 1100));
   assert(pilePickups().length === beforeExtraSafe, 'an extra safe does not duplicate the payout');
 
-  const note = reward.find((item) => item.type === 'banknote');
-  const coinsBefore = run.coins;
-  run.onPickup(note);
-  assert(run.coins === coinsBefore + 5, 'running through a banknote collects its five-coin value');
+  run.obstacles = [];
+  run.projectiles = [];
+  run.player.grounded = true;
+  run.player.y = 0;
+  for (const item of [reward.find((pickup) => pickup.type === 'coin' && pickup.alt <= 9),
+    reward.find((pickup) => pickup.type === 'banknote' && pickup.alt <= 9)]) {
+    run.pickups = [item];
+    const box = run.playerBox();
+    run.camX += item.x + item.w / 2 - (box.x + box.w / 2);
+    const coinsBefore = run.coins;
+    run.collide();
+    assert(!item.live && run.coins === coinsBefore + (item.def.coinValue || 1),
+      `running into a ${item.type} collects it`);
+  }
 }
 
 console.log(failed ? 'OFFICE-MONEY-PILE: FAILED' : 'OFFICE-MONEY-PILE: PASSED');
