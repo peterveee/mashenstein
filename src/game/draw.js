@@ -620,7 +620,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
         wall: cx + pitFall.wallDx, phase0: pose.phase || 0,
       });
     } else if (zapW >= 0 && !boostPainted) drawZapHero(c, heroId, cx, feetY, zapW, t, { xray: player.zapXray });
-    else if (blastW >= 0 && !boostPainted) drawBlastHero(c, heroId, cx, feetY, blastW, t);
+    else if (blastW >= 0 && !boostPainted) drawBlastHero(c, heroId, cx, feetY, blastW, t, undefined, pose);
     else if (slipW >= 0 && !boostPainted) drawBananaSlip(c, heroId, cx, feetY, slipW, t, pose);
     else if (hitPicUp && !boostPainted) drawHitPicture(c, player.hitPic, heroId, cx, feetY, hitW, t, pose);
     else if (!boostPainted) drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);

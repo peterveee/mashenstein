@@ -55,7 +55,7 @@ const BED_STEP = 24, BED_W = 15, WIRE_MAX = 150, WIRE_GAP = 24;   // a clear gap
 // the wire and gets the zap (sprites/zap.js), not a field that spends the hit first.
 const WIRE_CLEARS = new Set(['foilCrate', 'specimenCase', 'fuelCell', 'maintenanceBot',
   'coolantRadiator', 'valveManifold', 'weldingDrone', 'looseToolkit']);
-function withWrongRailBeds(hazards, gates, total, speed) {
+function withWrongRailBeds(hazards, gates, total, speed, debrisRail = false) {
   if (!gates.length) return hazards;
   const spans = [{ start: 0, end: gates[0].x - 38, lane: 1 },
     ...gates.map((g, i) => ({ start: g.x + 52, end: (gates[i + 1]?.x ?? total) - 38, lane: 1 - g.lane }))];
@@ -65,6 +65,7 @@ function withWrongRailBeds(hazards, gates, total, speed) {
     && x + BED_W + 14 > h.x && x - 14 < h.x + (h.span ? h.span * speed : 16));
   const beds = [];
   for (const span of spans) {
+    let warningPlaced = false;
     let run = null;
     // No wire longer than WIRE_MAX: a longer run is laid as several, end to end with
     // a WIRE_GAP between (Peter, 14 Oct: "to avoid long uninterrupted sections").
@@ -72,9 +73,14 @@ function withWrongRailBeds(hazards, gates, total, speed) {
       if (run) {
         const len = run.x1 - run.x0, n = Math.ceil(len / WIRE_MAX), piece = (len - WIRE_GAP * (n - 1)) / n;
         for (let i = 0; i < n; i++) {
+          // The cleaner's opposite rail is its rubbish supply. Keep one short
+          // warning wire per transfer span; the authored rollers still enforce
+          // leaving that surface. Other Gravity Grid stages keep their beds.
+          if (debrisRail && warningPlaced) break;
           const x = run.x0 + i * (piece + WIRE_GAP);
           beds.push({ id: `bed-${span.lane}-${Math.round(x)}`, lane: span.lane, type: 'railPulse',
-            x, at: x / speed, span: piece / speed, bed: true });
+            x, at: x / speed, span: (debrisRail ? Math.min(72, piece) : piece) / speed, bed: true });
+          warningPlaced = true;
         }
       }
       run = null;
@@ -344,7 +350,8 @@ export class GravityRunState extends RunState {
     this.gravityGates = this.gravityStageData.gates.map((g, index) => ({ ...g, index, x: xAt(g.at) }));
     this.gravityHazards = this.gravityStageData.hazards.map((h) => ({ ...h, x: xAt(h.at) }));
     this.gravityVacuumAttacks = (this.gravityStageData.vacuumAttacks || []).map((a) => ({ ...a, x: xAt(a.at) }));
-    this.gravityHazards = clearOfFrames(withWrongRailBeds(ceilingJumpsOnly(this.gravityHazards), this.gravityGates, this.totalDist, speed), speed);
+    this.gravityHazards = clearOfFrames(withWrongRailBeds(ceilingJumpsOnly(this.gravityHazards), this.gravityGates,
+      this.totalDist, speed, this.gravityStageData.debrisRail), speed);
     this.gravitySpawned = new Set();
     this.obstacles = []; this.pickups = [];
     this.spawner.fill = () => this.fillGravityEntities();
@@ -386,6 +393,7 @@ export class GravityRunState extends RunState {
             view, time: t, seconds, corridor: this.corridor,
             playerX: this.playerWorldX() - cam,
             attacks: (this.gravityVacuumAttacks || []).map((a) => ({ ...a, ...vacuumAttackPhase(a, seconds),
+              sourceX: a.sourceX - cam,
               sourceVisible: seconds >= a.at - VACUUM_PREP_SECONDS - VACUUM_SOURCE_LEAD_SECONDS })),
             sequences: this.gravityStageData.sequences,
           });
@@ -405,6 +413,10 @@ export class GravityRunState extends RunState {
     (this.gravityVacuumAttacks || []).forEach((attack, index) => {
       if (this.gravitySpawned?.has(`vacuum-${index}`)) return;
       attack.x = gravityWorldX(attack.at, PLAYER_X, this.baseSpeed()) + shotAhead;
+      // A fixed patch on the opposite surface passes under the brush early in
+      // suction. It moves with the room, never along with the hovering robot.
+      attack.sourceX = gravityWorldX(attack.at - VACUUM_PREP_SECONDS + .25, PLAYER_X, this.baseSpeed())
+        + shotAhead + 40;
     });
   }
   fillGravityEntities() {

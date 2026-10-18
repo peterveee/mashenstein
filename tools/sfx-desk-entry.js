@@ -83,6 +83,7 @@ const GROUPS = [
       { cue: 'fireBell', what: 'the office fire bell when the third alarm is pulled, office-2' },
       { cue: 'trapSnap', what: 'a bear trap', gain: 0.72 },
       { cue: 'vacuumSuck', what: 'the Gravity Grid vacuum pulling the hero in' },
+      { cue: 'vacuumLoad', what: 'the Gravity Grid vacuum charging up before it fires' },
       { cue: 'vacuumLaunch', what: 'the Gravity Grid vacuum spitting the hero back out' },
       { cue: 'boom', what: 'an explosion; a card box bursting', gain: 1.5 },
       { cue: 'smallBoom', what: 'a Martian raider blown up outside the Gravity Grid windows', gain: 0.75 },

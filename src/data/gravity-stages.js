@@ -118,9 +118,10 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
   'gravity-2': {
     name: 'MAINTENANCE MAYHEM',
     gates: maintenanceGates,
-    // `at` is the launch time. The canister starts from a view-aware point just
-    // ahead of the runner and moves back toward them. Intake begins 2.45 seconds
-    // before launch; the loose source part is visible one second before intake.
+    debrisRail: true,
+    // `at` is when the compacted cube lands on the running surface and starts
+    // moving toward the runner. Intake begins 2.45 seconds before that: loose
+    // paper, dust, foil and bolts are gathered from the opposite rail.
     vacuumAttacks: [
       vacuumAttack('vacuum-1', 5, 0),
       vacuumAttack('vacuum-2', 11, 0),
@@ -134,7 +135,7 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
       vacuumAttack('vacuum-10', 85, 1),
     ],
     hazards: [
-      // The hovering vacuum owns the airborne canisters; only the six
+      // The hovering vacuum owns the garbage cubes; only the six
       // transfer rollers remain as authored static machinery hazards.
       ...maintenanceGates.map((g, i) => attack(`rollers-${i + 1}`,
         g.at + 1.25, 1 - g.lane, 'maintenanceRollers', 2.6)),

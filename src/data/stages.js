@@ -371,7 +371,7 @@ export const STAGES = [
   // ACT II --------------------------------------------------------------------
   S('frost', 1,
     REACH,
-    { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' },
+    { type: 'finishUnder', seconds: 90, desc: 'FINISH UNDER 90 SECONDS', note: 'REPLAYED GROUND COSTS TIME.' },
     { act: 'ACT II. THE EXTENSION CRISIS. EVERYONE IS COLD AND BRAVE.',
       paperPreset: 'cardstockClear' }),
   // Act II/III pits, and which stages get NONE, on purpose: the blackout

@@ -7137,6 +7137,22 @@ export class RunState {
     return Math.min(Number(c.n), Math.max(0, Number(c.count) || 0));
   }
 
+  challengeFailed() {
+    const c = this.challenge;
+    if (!c) return false;
+    // The run clock is monotonic across death retries and rewind playback.
+    // Challenge snapshots can restore older flags, so derive this deadline
+    // from the clock as well as the stored verdict.
+    if (c.type === 'finishUnder' && !c.done && this.clockT >= Number(c.seconds)) return true;
+    return !!c.failed;
+  }
+
+  challengeTimeLeft() {
+    const c = this.challenge;
+    if (c?.type !== 'finishUnder' || !Number.isFinite(Number(c.seconds))) return null;
+    return Math.max(0, Number(c.seconds) - this.clockT);
+  }
+
   showPortraitObjectiveNotice(tag, text, complete = false) {
     if (!isPhonePortraitPresentation() || this.overtime || !this.stage) return;
     this.portraitObjectiveNotice = {
@@ -7262,8 +7278,9 @@ export class RunState {
   /** Whether the bonus is met right now — the results card and the payoff both ask. */
   bonusMet() {
     const c = this.challenge;
-    if (!c || c.failed) return false;
+    if (!c || this.challengeFailed()) return false;
     if (c.type === 'noDamage') return this.damageTaken === 0;
+    if (c.type === 'finishUnder') return !!c.done;
     return (Number(c.count) || 0) >= (Number(c.n) || 0);
   }
 
@@ -7637,6 +7654,12 @@ export class RunState {
   startFinishRun() {
     if (this.finishing) return;
     this.finishing = true;
+    const c = this.challenge;
+    if (c?.type === 'finishUnder') {
+      c.done = this.clockT < Number(c.seconds);
+      c.failed = !c.done;
+      if (c.done) this.checkGoalsMet();
+    }
     this.finishT = 0;
     this.finishPlayerX = PLAYER_X;
     // The final stretch remains part of the level. Keep anything the player
@@ -11787,7 +11810,8 @@ export class RunState {
   checkGoalsMet() {
     if (this.overtime || !this.stage) return;
     const c = this.challenge;
-    if (c && !this.goalSeen.challenge && !c.failed && c.type !== 'noDamage' && c.count >= c.n) {
+    const challengeMet = c?.type === 'finishUnder' ? c.done : c && c.count >= c.n;
+    if (c && !this.goalSeen.challenge && !this.challengeFailed() && c.type !== 'noDamage' && challengeMet) {
       this.goalSeen.challenge = true;
       this.goalToast(`BONUS: ${c.desc}`);
       this.bonusT = BONUS_HOLD;   // re-open the panel to say it in words, then fold back
@@ -18792,10 +18816,13 @@ export class RunState {
       compact ? 2.0 : PORTRAIT_PAUSE_MISSION_S, 1);
     if (this.challenge && !this.overtime && this.stage) {
       const c = this.challenge;
-      const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
-      const tail = c.failed ? '×' : done ? '✓' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
+      const failed = this.challengeFailed();
+      const done = this.bonusMet();
+      const tail = failed ? '×' : done ? '✓' : c.type === 'finishUnder'
+        ? `${Math.ceil(this.challengeTimeLeft())}s`
+        : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
       drawBlock('BONUS', `${bonusSentence(c)}${tail ? ` · ${tail}` : ''}`,
-        c.failed ? '#e04848' : done ? '#74c947' : '#b8c7d9',
+        failed ? '#e04848' : done ? '#74c947' : '#b8c7d9',
         compact ? 1.95 : PORTRAIT_PAUSE_BONUS_S, compact ? 2 : 3);
     }
     y += groupGap;
@@ -18917,10 +18944,13 @@ export class RunState {
     // ask, so the words live down here, unabbreviated and untruncated.
     if (this.challenge && !this.overtime && this.stage) {
       const c = this.challenge;
-      const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
-      const tail = c.failed ? '×' : done ? '✓' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
+      const failed = this.challengeFailed();
+      const done = this.bonusMet();
+      const tail = failed ? '×' : done ? '✓' : c.type === 'finishUnder'
+        ? `${Math.ceil(this.challengeTimeLeft())}s`
+        : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
       drawTextCentered(ctx, `BONUS: ${bonusSentence(c)}${tail ? ` ${tail}` : ''}`, W / 2, 92,
-        c.failed ? '#e04848' : done ? '#74c947' : '#8a8a98');
+        failed ? '#e04848' : done ? '#74c947' : '#8a8a98');
     }
     // Plug standing lives here rather than in the HUD: it is a "how am I doing"
     // question, which is the question you paused to ask, and it does not belong

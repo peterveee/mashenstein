@@ -2,8 +2,19 @@
 
 Date: 18 October 2026  
 For: Luna Max  
-Status: implemented; focused Gravity Grid checks and production build pass
+Status: original implementation completed; see the 18 October follow-up below for the current compactor design
 Reference: [desktop hover-vacuum mockup](../work/mockups/gravity-7-2-cleaner-options/01c-hover-through.png)
+
+## Follow-up: anthropomorphic vacuum / compactor bakeoff
+
+The later brief replaces the single canister and full-height discharge pipe with loose rubbish, a flexible hose and brush head, visible belly compaction, and a garbage cube ejected onto the running surface. The original handoff below records the earlier design; this follow-up takes precedence for appearance.
+
+- Desktop animated comparison: [A Dusty / B Squish / C Bristle](../work/mockups/gravity-7-2-vacuum-bakeoff/vacuum-robot-bakeoff.html). The three bodies remain review candidates until Peter chooses one. The campaign retains the existing yellow casing with the updated shared cleaning mechanism.
+- Each authored attack now has a fixed world-position debris batch: paper, lint, foil and a bolt. The brush gathers those pieces from the opposite rail; it retracts while the hose carries them into the compaction window. Debris removal is derived from route time, so checkpoint and rewind do not need a second particle ledger.
+- The side outlet clears all three faces when firing upward. During the existing 0.55-second warning the cube moves toward the marked running surface; the existing 14×10 collider becomes active at rail impact. Its horizontal speed, attack timings and all player controls remain as implemented.
+- Only 7-2 uses sparse warning wires: at most one 72-unit section per wrong-rail span, seven sections total. The six transfer roller belts remain. The other Gravity levels retain their existing wire beds.
+- The standalone bakeoff has synchronized playback, quarter/half speed, frame stepping, scrubbing, both gravity directions, enlarged views and a 3840×1200 PNG export. It uses the same debris, brush, hose, chamber and cube painters as the campaign.
+- Build and rendered review evidence for this follow-up is recorded in the bakeoff README. The original test results at the end of this document apply to the earlier implementation, not this revision.
 
 ## Intended encounter
 

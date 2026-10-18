@@ -285,7 +285,7 @@ for (const stageId of ['gravity-3', 'gravity-2']) {
   r.exit();
 }
 // The ceiling is jump-only (13 Oct 2026): nothing up there asks for a duck,
-// and the wrong rail behind every gate is a spike bed.
+// and the wrong rail retains its stage-specific warning layout.
 for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
   const r = create('lorenzo', stageId);
   const ducks = r.obstacles.filter(o => o.gravityCeiling != null && o.def.action === 'slide');
@@ -294,7 +294,8 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
   // One live wire per unbroken run of bed since 14 Oct, so measure the length lined.
   if (r.gravityGates.length) {
     const lined = r.gravityHazards.filter(h => h.bed).reduce((n, h) => n + (h.span || 0) * r.baseSpeed(), 0);
-    assert.ok(lined > 1500, `${stageId}: the wrong rail is lined with live wire (${Math.round(lined)} units)`);
+    assert.ok(r.gravityStageData.debrisRail ? lined > 0 && lined <= (r.gravityGates.length + 1) * 72 : lined > 1500,
+      `${stageId}: ${r.gravityStageData.debrisRail ? 'short warning wires leave room for rubbish' : 'the wrong rail is lined with live wire'} (${Math.round(lined)} units)`);
   }
   r.exit();
 }

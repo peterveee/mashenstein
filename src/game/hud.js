@@ -2204,18 +2204,45 @@ function portraitTrim(text, maxWidth, scale = 1) {
   return out === String(text ?? '') ? out : `${out.slice(0, -2)}..`;
 }
 
+function challengeFailed(run) {
+  return typeof run?.challengeFailed === 'function'
+    ? run.challengeFailed() : !!run?.challenge?.failed;
+}
+
+function challengeMet(run) {
+  if (typeof run?.bonusMet === 'function') return run.bonusMet();
+  const c = run?.challenge;
+  if (!c || c.failed) return false;
+  return c.type === 'noDamage' ? run.damageTaken === 0
+    : c.type === 'finishUnder' ? !!c.done
+    : (Number(c.count) || 0) >= (Number(c.n) || 0);
+}
+
+function challengeSecondsLeft(run) {
+  if (typeof run?.challengeTimeLeft === 'function') return run.challengeTimeLeft();
+  const seconds = Number(run?.challenge?.seconds);
+  return Number.isFinite(seconds) ? Math.max(0, seconds - (Number(run?.clockT) || 0)) : 0;
+}
+
 // [tag, [head, tail, widest], tagColor, ink, tailInks]: the sentence AND the
 // live part for the whole stage, the way the landscape row prints it. Only the
 // head is ever trimmed to fit (see the caller) — the count is worth keeping.
 function portraitBonusText(run) {
   const c = run?.challenge;
   if (!c) return null;
-  if (c.failed) return ['BONUS', '×', '#a8a0b0', '#e04848'];
+  if (challengeFailed(run)) return ['BONUS', '×', '#a8a0b0', '#e04848'];
   const desc = bonusHudLine(c);
   if (c.type === 'noDamage') {
     const done = run.damageTaken === 0 && run.distance > 0;
     return ['BONUS', done ? [`${desc} `, '✓', 'OK'] : [desc || 'NO DAMAGE', '', ''],
       done ? '#74c947' : '#f6c945', '#ffffff', done ? ['#74c947'] : null];
+  }
+  if (c.type === 'finishUnder') {
+    const done = challengeMet(run);
+    const left = Math.ceil(challengeSecondsLeft(run));
+    const seconds = Number(c.seconds) || 0;
+    return ['BONUS', [`${desc} `, done ? '✓' : `${left}s`, `${seconds}s`],
+      done ? '#74c947' : '#f6c945', done ? '#74c947' : '#ffffff', done ? ['#74c947'] : null];
   }
   const n = Number(c.n) || 0;
   const count = Math.min(Number(c.count) || 0, n);
@@ -2843,18 +2870,20 @@ export function drawHud(ctx, run) {
     // others; a challenge with no count (noDamage) has no progress to draw, so
     // it reads as full for as long as it is still alive.
     let bonus = null;
-    if (run.challenge && !run.challenge.failed) {
+    if (run.challenge && !challengeFailed(run)) {
       const c = run.challenge;
-      const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;
+      const done = challengeMet(run);
       // The letters keep their own inks (taken, banked, still out there), the way
       // the GOAL panel printed them when M-A-S-H was a mission.
       const mash = c.type === 'mash' && c.letters && !done ? mashTail(c.letters) : null;
-      const tail = done ? '✓' : mash ? mash.text : c.type === 'noDamage' ? ''
+      const timed = c.type === 'finishUnder' && !done;
+      const tail = done ? '✓' : timed ? `${Math.ceil(challengeSecondsLeft(run))}s`
+        : mash ? mash.text : c.type === 'noDamage' ? ''
         : c.type === 'combo' ? `BEST ${Math.min(c.count, c.n)}/${c.n}`
         : `${Math.min(c.count, c.n)}/${c.n}`;
       // Keep the former OK-width slot for the completion mark so the description
       // does not shift when the count changes to a tick.
-      const widest = done ? 'OK' : mash || c.type === 'noDamage' ? tail
+      const widest = done ? 'OK' : timed ? `${c.seconds}s` : mash || c.type === 'noDamage' ? tail
         : c.type === 'combo' ? countSlot(c.n, 'BEST ') : countSlot(c.n);
       // Full size and white now that it is the corner's only row: the BONUS is
       // the one thing up here the player is asked to do.
@@ -2866,7 +2895,8 @@ export function drawHud(ctx, run) {
         tail,
         widest,
         tailInks: mash ? mash.inks : null,
-        frac: c.n ? Math.min(1, (c.count || 0) / c.n) : 1,
+        frac: timed ? Math.max(0, challengeSecondsLeft(run) / c.seconds)
+          : c.n ? Math.min(1, (c.count || 0) / c.n) : 1,
         color: done ? '#74c947' : '#f6c945',
       };
     } else if (run.challenge) {

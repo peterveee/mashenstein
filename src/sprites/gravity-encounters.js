@@ -1,3 +1,4 @@
+import { drawGarbageCube, drawVacuumAssembly, drawVacuumDebris, vacuumBrushPose } from './vacuum-compactor.js';
 // Gameplay-owned props and ambience. The station painting remains independent.
 const INK = '#14222b', STEEL = '#526b79', LIGHT = '#d9ece7';
 const GOLD = '#e8b947', PURPLE = '#b072cb', HOT = '#ff8061';
@@ -401,12 +402,12 @@ export function drawGravityHazard(c, e, x, bottom, t) {
     }
     disc(c, 1, -3.5, 2, LIGHT); disc(c, e.w - 1, -3.5, 2, LIGHT);
   } else if (e.type === 'vacuumShot') {
-    // The source part, loaded part and live projectile all share one silhouette.
+    // Compacted rubbish keeps the existing, clearly jumpable rail footprint.
     c.save(); c.globalAlpha = 0.72;
     line(c, e.w + 4, -e.h * 0.55, e.w + 13, -e.h * 0.55, '#ff9e54', 2.5);
     line(c, e.w + 2, -e.h * 0.55, e.w + 9, -e.h * 0.55, '#fff0c1', 0.8);
     c.restore();
-    drawVacuumCanister(c, e.w / 2, -e.h / 2, t);
+    drawGarbageCube(c, e.w / 2, -e.h / 2);
   } else if (e.type === 'maintenanceRollers') {
     // Exposed counter-rotating cutter drums. Teeth break the upper silhouette;
     // no protective bar or fan spokes suggest a safe surface to stand on.
@@ -455,131 +456,25 @@ export function drawGravityHazard(c, e, x, bottom, t) {
   c.restore();
 }
 
-function drawVacuumCanister(c, x, y, t, scale = 1) {
-  c.save(); c.translate(x, y); c.scale(scale, scale); c.rotate(Math.sin(t * 8) * 0.06);
-  box(c, -7, -5, 14, 10, '#d9a53d', 2);
-  box(c, -4, -3, 8, 6, '#526f78', 1);
-  tape(c, -2, -3, 3, 6);
-  for (const xx of [-6, 6]) disc(c, xx, 0, 1.6, LIGHT);
-  c.restore();
-}
-
+// Debris belongs to fixed world positions, including before the robot arrives.
+// The brush consumes each batch once; rewind simply draws the earlier phase.
 export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, playerX, attacks, sequences }) {
   const last = sequences.at(-1).end;
-  if (seconds < 0.5 || seconds > last + 2) return;
   const arrival = clamp((2 - seconds) / 1.5, 0, 1);
   const departure = clamp((seconds - last) / 2, 0, 1);
-  const robotAhead = vacuumRobotAheadForView(view);
-  const x = playerX + robotAhead + (arrival + departure) * (view + 60);
-  const cy = -corridor * 0.5 + Math.sin(time * 2.1) * 2.2;
-  const activeAttack = attacks.find((a) => a.phase !== 'waiting'
-    && (a.phase !== 'launched' || a.progress < 0.28));
-  // Show one loose, non-colliding part before the intake starts. This makes the
-  // source rail and the cross-corridor direction legible before it begins moving.
-  const attack = activeAttack || attacks.find((a) => a.phase === 'waiting' && a.sourceVisible);
-  const phase = attack?.phase || 'idle';
-  const targetY = attack?.lane ? -corridor + 7 : -7;
-  const sourceY = attack?.sourceLane ? -corridor + 7 : -7;
-  const sourceX = x + 20;
-  const intakeX = x + 26, intakeY = cy;
+  const x = playerX + vacuumRobotAheadForView(view) + (arrival + departure) * (view + 60);
+  const y = -corridor * .5;
   const reducedMotion = typeof window !== 'undefined'
     && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const bob = reducedMotion ? 0 : Math.sin(time * 2.1) * 2.2;
-  const drawCurvePoint = (p0, p1, p2, p3, t) => {
-    const u = 1 - t, a = u * u * u, b = 3 * u * u * t, d = 3 * u * t * t, e = t * t * t;
-    return [a * p0[0] + b * p1[0] + d * p2[0] + e * p3[0],
-      a * p0[1] + b * p1[1] + d * p2[1] + e * p3[1]];
-  };
-  c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
-
-  // Twin fans and a soft hover shadow sit behind the drum.
-  c.fillStyle = 'rgba(0,0,0,0.2)'; c.beginPath();
-  c.ellipse(x, cy + 27 + bob, 23, 3.2, 0, 0, Math.PI * 2); c.fill();
-  for (const dx of [-17, 17]) {
-    box(c, x + dx - 6, cy + 14 + bob, 12, 8, '#3d5b65', 3);
-    line(c, x + dx, cy + 22 + bob,
-      x + dx, cy + 30 + bob + (reducedMotion ? 0 : Math.sin(time * 10 + dx) * 2), '#55d6d0', 2);
+  const active = attacks.find(a => a.phase !== 'waiting' && a.phase !== 'launched');
+  const attack = active || attacks.find(a => a.phase === 'waiting' && a.sourceVisible);
+  for (const a of attacks) {
+    if(a.phase !== 'waiting' && a.phase !== 'suction') continue;
+    if(a.sourceX < -40 || a.sourceX > view+40) continue;
+    const brush = vacuumBrushPose({ x, y, corridor, attack: a });
+    drawVacuumDebris(c, { x:a.sourceX, railY:a.sourceLane ? -corridor : 0,
+      lane:a.sourceLane, progress:a.phase === 'suction' ? a.progress : 0, brushX:brush.x });
   }
-
-  // The discharge channel points to the selected running surface. It brightens
-  // only for the warning; otherwise the source-to-machine stream owns attention.
-  if (attack) {
-    const warning = phase === 'telegraph';
-    const outletGlow = warning && !reducedMotion ? (0.4 + 0.6 * Math.sin(time * 24) ** 2) : warning ? 0.9 : 0.24;
-    line(c, x - 14, cy + bob, x - 14, targetY, INK, 8);
-    line(c, x - 14, cy + bob, x - 14, targetY,
-      warning ? `rgba(255,139,77,${outletGlow})` : 'rgba(121,197,193,0.48)', 3);
-    line(c, x - 14, targetY, x - 29, targetY, INK, 9);
-    line(c, x - 14, targetY, x - 29, targetY, warning ? '#ffad67' : '#73969a', 4);
-    c.beginPath(); c.moveTo(x - 33, targetY); c.lineTo(x - 25, targetY - 4); c.lineTo(x - 25, targetY + 4); c.closePath();
-    c.fillStyle = warning ? '#fff0c1' : '#b9dad3'; c.fill();
-  }
-
-  // Draw the sealed hover drum before the effects so the intake stream and the
-  // one contained part can sit visibly over its glass window.
-  box(c, x - 29, cy - 18 + bob, 58, 36, '#d9a42f', 9);
-  box(c, x - 25, cy - 14 + bob, 50, 28, '#f3c750', 7);
-  box(c, x - 20, cy - 9 + bob, 40, 18, '#173544', 6);
-  line(c, x - 16, cy + bob, x + 15, cy + bob, '#76e7cd', 2.6);
-  if (phase === 'suction') {
-    for (const [dx, sign] of [[-12, -1], [-3, -1], [6, -1]]) {
-      c.beginPath(); c.moveTo(x + dx - sign * 3, cy - 3 + bob); c.lineTo(x + dx + sign, cy + bob); c.lineTo(x + dx - sign * 3, cy + 3 + bob);
-      c.strokeStyle = '#d4fff0'; c.lineWidth = 1.2; c.stroke();
-    }
-  } else if (phase === 'telegraph') {
-    for (const dx of [-12, -3, 6]) {
-      c.beginPath(); c.moveTo(x + dx + 3, cy - 3 + bob); c.lineTo(x + dx - 1, cy + bob); c.lineTo(x + dx + 3, cy + 3 + bob);
-      c.strokeStyle = '#fff1c9'; c.lineWidth = 1.5; c.stroke();
-    }
-  }
-  const blink = reducedMotion || Math.sin(time * 3.2) > 0.82;
-  for (const dx of [-12, 12]) disc(c, x + dx, cy - 13 + bob,
-    2, phase === 'telegraph' && blink ? '#ff8b61' : '#a3f3d7');
-  disc(c, x + 27, cy + bob, 4, phase === 'suction' ? '#5de4cd' : STEEL);
-  disc(c, x + 27, cy + bob, 1.6, '#e8fff6');
-  tape(c, x - 21, cy + 16 + bob, 42, 3);
-
-  if (phase === 'loaded') {
-    drawVacuumCanister(c, x - 1, cy + bob, reducedMotion ? 0 : time, 0.74);
-  }
-
-  // The loose part rests at the source rail, then follows one smooth curved
-  // suction stream all the way to the intake. Brightness survives desktop and
-  // portrait downscaling without filling the whole corridor with a glow.
-  if (attack && phase === 'waiting') {
-    const halo = reducedMotion ? 1 : 0.8 + Math.sin(time * 4) * 0.12;
-    disc(c, sourceX, sourceY, 7, `rgba(93,228,205,${0.12 * halo})`);
-    disc(c, sourceX, sourceY, 3.7, 'rgba(93,228,205,0.7)');
-    drawVacuumCanister(c, sourceX, sourceY, reducedMotion ? 0 : time, 1);
-  } else if (attack && phase === 'suction') {
-    const p = clamp(attack.progress, 0, 1);
-    const ease = p * p * (3 - 2 * p);
-    const p0 = [sourceX, sourceY], p1 = [sourceX + 18, sourceY + (intakeY - sourceY) * 0.25];
-    const p2 = [intakeX + 34, intakeY - (intakeY - sourceY) * 0.2], p3 = [intakeX, intakeY + bob];
-    c.beginPath(); c.moveTo(...p0); c.bezierCurveTo(...p1, ...p2, ...p3);
-    c.strokeStyle = 'rgba(45,223,201,0.22)'; c.lineWidth = 12; c.stroke();
-    c.strokeStyle = 'rgba(93,228,205,0.92)'; c.lineWidth = 3; c.stroke();
-    c.strokeStyle = 'rgba(231,255,248,0.88)'; c.lineWidth = 0.8; c.stroke();
-    const item = drawCurvePoint(p0, p1, p2, p3, ease);
-    const itemAngle = Math.atan2(intakeY - sourceY, intakeX - sourceX);
-    const sourcePulse = reducedMotion ? 0 : Math.sin(time * 14) * 1.2;
-    disc(c, sourceX, sourceY, 5 + sourcePulse, 'rgba(93,228,205,0.42)');
-    for (let i = 0; i < 3; i++) {
-      const q = reducedMotion ? (i + 1) / 4 : (p * 0.72 + i / 3) % 1;
-      const [px, py] = drawCurvePoint(p0, p1, p2, p3, q);
-      disc(c, px, py, i ? 1.5 : 2, i % 2 ? '#d7fff0' : '#5de4cd');
-    }
-    drawVacuumCanister(c, item[0], item[1], reducedMotion ? 0 : time, 1);
-    disc(c, intakeX, intakeY + bob, 7, 'rgba(93,228,205,0.2)');
-    disc(c, intakeX, intakeY + bob, 3.5, '#5de4cd');
-  } else if (attack && phase === 'telegraph') {
-    const p = clamp(attack.progress, 0, 1);
-    const down = Math.min(1, p / 0.72);
-    const itemX = p < 0.72 ? x - 14 : x - 14 - (p - 0.72) / 0.28 * 15;
-    const itemY = cy + bob + (targetY - cy - bob) * down;
-    const flash = reducedMotion ? 0.65 : Math.sin(time * 26) > 0 ? 0.92 : 0.4;
-    disc(c, x - 14, itemY, 10, `rgba(255,173,103,${flash * 0.22})`);
-    drawVacuumCanister(c, itemX, itemY, reducedMotion ? 0 : time, 0.9);
-  }
-  c.restore();
+  if(seconds < .5 || seconds > last + 2) return;
+  drawVacuumAssembly(c, { x, y, corridor, attack, time, reducedMotion });
 }

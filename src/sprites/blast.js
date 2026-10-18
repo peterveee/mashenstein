@@ -33,6 +33,9 @@ const standPose = (t) => ({
   kind: 'jump', time: t, vy: 0, grounded: true, facing: 1, faceSurprised: true, browRaise: true,
   dance: { hands: [[0.15, 0.95], [0.15, 0.95]], feet: [[-0.14, 0], [0.16, 0]], ankles: [0, 0] },
 });
+// Landed and already running it off — `live` is the run's own pose for this frame (the
+// hitPictures.js rule: hand back to exactly what the ordinary draw would show).
+const runPose = (t, live) => live || { kind: 'run', phase: (t * 1.7) % 1, time: t, grounded: true, facing: 1 };
 // In the air, everything flung out — the jolt's own arms.
 const flungPose = (t) => ({
   kind: 'jump', time: t, vy: 0, grounded: true, facing: 1, faceSurprised: true, browRaise: true,
@@ -84,10 +87,11 @@ function puff(c, x, y, r, a) {
   c.restore();
 }
 
-// w: seconds since the hit, 0..BLAST_T. `sootName` picks from BLAST_SOOTS (the lab shows both).
-export function drawBlastHero(c, heroId, cx, fy, w, t, sootName = BLAST_SOOT) {
+// w: seconds since the hit, 0..BLAST_T. `live`: the run's own pose for this frame, so the
+// landing resumes it instead of freezing. `sootName` picks from BLAST_SOOTS (the lab shows both).
+export function drawBlastHero(c, heroId, cx, fy, w, t, sootName = BLAST_SOOT, live = null) {
   const S = BLAST_SOOTS[sootName] || BLAST_SOOTS[BLAST_SOOT];
-  if (w >= BLAST_FLIP_T) { drawDazed(c, heroId, cx, fy, w - BLAST_FLIP_T, t, S); return; }
+  if (w >= BLAST_FLIP_T) { drawDazed(c, heroId, cx, fy, w - BLAST_FLIP_T, t, S, live); return; }
   const q = clamp01(w / BLAST_FLIP_T);
   const up = 4 * 15 * q * (1 - q);                       // peak 15 units at mid-flight
   const back = -5 * Math.sin(q * Math.PI);               // blown back a little, then caught up
@@ -113,14 +117,15 @@ export function drawBlastHero(c, heroId, cx, fy, w, t, sootName = BLAST_SOOT) {
   }
   blit(c, L);
 }
-// THE DAZE: landed, he stands a beat on the spot, side-on, still lightly sooted, swaying
-// on his heels as it wears off, a thin curl of smoke off the top of him. d: 0..BLAST_DAZE_T.
-function drawDazed(c, heroId, cx, fy, d, t, S) {
+// THE DAZE: landed already running it off, side-on, still lightly sooted, swaying on his
+// heels over the stride as it wears off, a thin curl of smoke off the top of him.
+// d: 0..BLAST_DAZE_T.
+function drawDazed(c, heroId, cx, fy, d, t, S, live) {
   const q = clamp01(d / BLAST_DAZE_T);
   const sway = 0.09 * Math.sin(d * 17) * (1 - q * 0.6);
   const L = layer(10, c, bigBox(cx, fy), (o) => {
     o.save(); o.translate(cx, fy); o.rotate(sway); o.translate(-cx, -fy);
-    drawToon(o, heroId, standPose(t), cx, fy, U);
+    drawToon(o, heroId, runPose(t, live), cx, fy, U);
     o.restore();
   });
   // the soot he landed with (half of the flip's), fading as he comes round

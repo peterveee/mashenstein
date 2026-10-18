@@ -140,6 +140,7 @@ import { BAKEOFF as NEON_OBSTACLES } from '../src/dev/neon-obstacle-candidates.j
 import { BAKEOFF as GRAVITY_OBSTACLES, LANE_W as GRAVITY_LANE_W, LANE_H as GRAVITY_LANE_H, drawGravityCandidateLane, drawGravityControlLineup, drawGravityCandidateLineup, gravityCandidateCaption } from '../src/dev/gravity-obstacle-candidates.js';
 import { WALKER_CANDIDATES, drawWalkerTile } from '../src/dev/space-walker-candidates.js';
 import { RAIL_WIRE_CANDIDATES, drawRailWireTile } from '../src/dev/rail-wire-candidates.js';
+import { VACUUM_ROBOT_CANDIDATES, drawVacuumRobotStudy } from '../src/dev/vacuum-robot-candidates.js';
 import { KAIJU_CANDIDATES, KAIJU_LOOP, drawKaijuScene } from '../src/dev/kaiju-candidates.js';
 import { HERO_POLISH_CANDIDATES, POLISH_HEROES, drawPolishedHero } from '../src/dev/hero-polish-candidates.js';
 import { DESERT_CAT_CANDIDATES, drawDesertCatTile, drawDesertCatInLane, drawDesertCatLineup } from '../src/dev/desert-cat-candidates.js';
@@ -9955,6 +9956,16 @@ collapseAllEl.addEventListener('click', () => {
 const small = document.querySelector('h1 small');
 small.textContent =
   `${small.textContent} · ${tiles.length} tiles across ${root.querySelectorAll('section').length} sections`;
+
+// Anthropomorphic cleaner studies, with the campaign's hose and compaction rig.
+{
+  const grid=section('vacuum-robot-bakeoff','7-2 — floating vacuum / compactor',
+    'A DUSTY, B SQUISH, C BRISTLE. Rubbish, dust and bolts are brushed off the opposite rail, '
+    + 'compacted in the belly and ejected onto the running surface. '
+    + '<a href="vacuum-robot-bakeoff.html">Open the desktop comparison for enlarged views, gravity reversal and frame controls.</a>', '18 Oct 2026');
+  for(const cand of VACUUM_ROBOT_CANDIDATES) tile(grid,`${cand.id} — ${cand.name}`,cand.note,640,420,
+    (c,t)=>drawVacuumRobotStudy(c,t,cand),{animated:true,hires:2,displayScale:1});
+}
 
 // ---------------------------------------------------------------- controls
 // A world-unit tile owes its content the run's camera on top of the screen

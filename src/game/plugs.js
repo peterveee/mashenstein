@@ -70,9 +70,15 @@ export function goalsDone(run) {
   if (run.overtime || !run.stage) return [false, false, false];
   const banked = run.save.slot.campaign.plugs[run.stage.id] || [false, false, false];
   const c = run.challenge;
+  const challengeFailed = typeof run.challengeFailed === 'function'
+    ? run.challengeFailed() : !!c?.failed;
+  const challengeMet = typeof run.bonusMet === 'function'
+    ? run.bonusMet()
+    : !!(c && !challengeFailed && (c.type === 'noDamage' ? run.damageTaken === 0
+      : c.type === 'finishUnder' ? c.done : c.count >= c.n));
   const live = [
     false,
-    !!(c && !c.failed && (c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n)),
+    !!(c && !challengeFailed && challengeMet),
     run.applianceGot,
   ];
   return [0, 1, 2].map((i) => !!banked[i] || live[i]);
