@@ -151,7 +151,10 @@ console.log('cues with no start on this stub:', silent.join(' ') || 'none');
 // than assumed, because a typo'd key would fail silently as "no entry, use the
 // generic lead" — which is the bug the table was added to fix, restored.
 for (const [name, lead] of Object.entries(CUE_ONSET_LEAD)) {
-  assert(lead > LEAD, `${name}'s own lead is wider than the generic one, or it need not be in the table`);
+  // 'coin' is the one entry that is a tuning knob (COIN_CUE_DELAY_MS, 0 once tuned by ear
+  // on 19 Oct 2026), so it may sit on the generic lead; anything else in the table must differ.
+  assert(name === 'coin' ? lead >= LEAD - 0.1 : lead > LEAD,
+    `${name}'s own lead is wider than the generic one, or it need not be in the table`);
   starts.length = 0;
   Audio.sfx(name, { inBeats: 1 });
   assert(starts.length > 0 && Math.abs(Math.min(...starts) - (10.3 - lead)) < 1e-9,

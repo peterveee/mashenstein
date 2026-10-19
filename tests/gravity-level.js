@@ -11,7 +11,7 @@ const { GRAVITY_LEVEL: L, GRAVITY_CABINET } = await import('../src/game/gravity/
 const { STAGE_BY_ID } = await import('../src/data/stages.js');
 const { isGateField } = await import('../src/data/gravity-stages.js');
 const { VACUUM_PREP_SECONDS, VACUUM_SHOT_SPEED, vacuumAttackPhase } = await import('../src/game/gravity/encounters.js');
-const { VACUUM_SHOT_AHEAD, vacuumRobotAheadForView, vacuumShotAheadForView } = await import('../src/sprites/gravity-encounters.js');
+const { VACUUM_SHOT_AHEAD, VACUUM_ROBOT_AHEAD, vacuumRobotAheadForView, vacuumShotAheadForView } = await import('../src/sprites/gravity-encounters.js');
 save.load();
 function create(hero = 'lorenzo', stageId = 'gravity-1') {
   save.newSlot(0, 0);
@@ -140,7 +140,9 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
   assert.equal(r.gravityStageData.surfaceBreaks, undefined, `${stageId}: continuous rails`);
   assert.equal(r.cabinet.hills, undefined, `${stageId}: outside ridges do not come from lane terrain`);
   for (const gate of r.gravityStageData.gates) {
-    assert.ok(r.gravityStageData.hazards.some((h) => (isGateField(h.type) || h.type === 'maintenanceRollers')
+    // gravity-2's gates leave a short railPulse wire (it used to be the rollers).
+    assert.ok(r.gravityStageData.hazards.some((h) => (isGateField(h.type) || h.type === 'maintenanceRollers'
+      || h.type === 'railPulse')
       && h.lane === 1 - gate.lane && Math.abs(h.at - (gate.at + 1.25)) < 0.001),
     `${stageId}: transfer ${gate.at}s leaves a spike field behind`);
   }
@@ -250,11 +252,11 @@ for (const hero of HEROES) {
   const r = create('lorenzo', 'gravity-2');
   const floorAttack = r.gravityVacuumAttacks.find(a => a.lane === 0);
   const ceilingAttack = r.gravityVacuumAttacks.find(a => a.lane === 1);
-  assert.equal(vacuumRobotAheadForView(400), 128, 'desktop keeps the original robot position');
+  assert.equal(vacuumRobotAheadForView(400), VACUUM_ROBOT_AHEAD, 'desktop keeps the authored robot position');
   const portraitRobotAhead = vacuumRobotAheadForView(480 / 2.2);
-  assert.ok(portraitRobotAhead < 128, 'portrait brings the hover vacuum fully into the narrower view');
-  assert.equal(vacuumShotAheadForView(480 / 2.2), portraitRobotAhead + 24,
-    'portrait launch point remains aligned to the robot outlet');
+  assert.ok(portraitRobotAhead < VACUUM_ROBOT_AHEAD, 'portrait brings the hover vacuum fully into the narrower view');
+  assert.equal(vacuumShotAheadForView(480 / 2.2), portraitRobotAhead - (VACUUM_ROBOT_AHEAD - VACUUM_SHOT_AHEAD),
+    'portrait launch point keeps its authored offset from the robot outlet');
   assert.equal(floorAttack.sourceLane, 1, 'floor shot pulls its canister from the ceiling');
   assert.equal(ceilingAttack.sourceLane, 0, 'ceiling shot lifts its canister from the floor');
   assert.equal(vacuumAttackPhase(ceilingAttack, ceilingAttack.at - VACUUM_PREP_SECONDS - 0.01).phase, 'waiting');
@@ -294,7 +296,9 @@ for (const stageId of ['gravity-1', 'gravity-3', 'gravity-2']) {
   // One live wire per unbroken run of bed since 14 Oct, so measure the length lined.
   if (r.gravityGates.length) {
     const lined = r.gravityHazards.filter(h => h.bed).reduce((n, h) => n + (h.span || 0) * r.baseSpeed(), 0);
-    assert.ok(r.gravityStageData.debrisRail ? lined > 3 * 36 && lined < 1500 : lined > 1500,
+    // The cleaner's rail is a short wire every 192 units with rubbish between (19 Oct),
+    // so "leaves room" is a share of the stage, not a fixed length: under a quarter.
+    assert.ok(r.gravityStageData.debrisRail ? lined > 3 * 36 && lined < r.totalDist * 0.25 : lined > 1500,
       `${stageId}: ${r.gravityStageData.debrisRail ? 'short warning wires leave room for rubbish' : 'the wrong rail is lined with live wire'} (${Math.round(lined)} units)`);
   }
   r.exit();
@@ -327,30 +331,37 @@ for (const lane of [0, 1]) {
   r.player.grounded = true; r.player.iframes = 0;
   r.fillGravityEntities();
   const shot = r.obstacles.find(o => o.gravityAuthoredId === attack.id);
+  // The cube now lands a few units behind the outlet, so stand the runner on the cube itself
+  // rather than at the outlet's distance.
+  r.distance += shot.x + shot.w / 2 - r.playerWorldX(); r.camX = r.distance;
   r.positionGravityHazards(); r.obstacles = [shot]; r.pickups = [];
   r.collide();
   assert.ok(r.damageTaken > 0, `launched canister hits a standing runner on rail ${lane}`);
   r.exit();
 }
-// Checkpoint reconstruction keeps the rollers intact; vacuum flight follows
+// Checkpoint reconstruction keeps the gate wire intact; vacuum flight follows
 // route time and rewind restores its exact position and launch cue state.
 {
   const r = create('lorenzo', 'gravity-2');
   r.introFreeze = 0; r.introRunning = false;
-  r.distance = 20.5 * r.baseSpeed(); r.camX = r.distance;
+  // The first gate leaves a short wire (it was the rollers until 19 Oct), so stand halfway over it.
+  const wire = r.gravityHazards.find((h) => h.id === 'gate-wire-1');
+  r.distance = wire.x + wire.span * r.baseSpeed() / 2 - (r.playerWorldX() - r.distance); r.camX = r.distance;
   r.gravityLane = 1; r.player.y = r.corridor - 24; r.player.grounded = true;
   r.updateGravityMission();
   const checkpoint = r.makeSnapshot();
   r.restoreSnapshot(checkpoint);
-  const rollers = r.obstacles.find(o => o.gravityAuthoredId === 'rollers-1');
+  const rollers = r.obstacles.find(o => o.gravityAuthoredId === 'gate-wire-1');
   assert.ok(rollers && rollers.x < r.playerWorldX() && rollers.x + rollers.w > r.playerWorldX(),
-    'restoring halfway over rollers keeps the entire dangerous floor');
+    'restoring halfway over a gate wire keeps the entire dangerous floor');
   const attack = r.gravityVacuumAttacks.find(a => a.id === 'vacuum-4');
   r.distance = (attack.at + 0.2) * r.baseSpeed(); r.camX = r.distance; r.updateGravityMission(); r.fillGravityEntities();
   const shot = r.obstacles.find(o => o.gravityAuthoredId === attack.id);
   const px = shot.x, rewind = {}; r.writeRewindSnapshot(rewind);
   r.distance += r.baseSpeed() * 0.25; r.updateGravityMission();
-  assert.ok(shot.x < px, 'launched canister moves back toward the runner');
+  // Landed cubes are fixed world obstacles (VACUUM_SHOT_SPEED 0): camera travel brings them
+  // to the runner, so the cube itself holds still in the world.
+  assert.equal(shot.x, px, 'a landed cube holds its world position as the runner closes on it');
   r.restoreRewindSnapshot(rewind);
   assert.equal(r.obstacles.find(o => o.gravityAuthoredId === attack.id).x, px, 'rewind restores projectile position');
   r.updateGravityMission();
