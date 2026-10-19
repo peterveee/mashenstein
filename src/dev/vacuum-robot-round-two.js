@@ -1,6 +1,6 @@
 // Review-only designs. All use the live robot's hose, sockets and cube outlet.
 import { VACUUM_INK as INK, vacuumBox as box, vacuumOval as oval,
-  vacuumLine as line, drawCompactorWindow, drawVacuumControlBody, unit } from '../sprites/vacuum-compactor.js';
+  vacuumLine as line, drawCompactorWindow, drawVacuumControlBody, drawVacuumMawBody, unit } from '../sprites/vacuum-compactor.js';
 export { drawVacuumRobotStudy, VACUUM_BAKEOFF_LOOP } from './vacuum-robot-candidates.js';
 
 function shape(c, points, fill, width=.8) {
@@ -70,21 +70,6 @@ function drawNull(c,p) {
   for(const side of [-1,1])for(let i=0;i<3;i++)line(c,side*20,1+i*3,side*20,2+i*3,'#31565b',.8);
   shape(c,[[-4,18],[4,18],[2,20],[-2,20]],'#91b7ad',.5);
 }
-function drawMaw(c,p) {
-  // Dark upper shell and a broad lime compaction jaw, visibly built to chew.
-  box(c,-24,-21,48,42,'#54435e',8);
-  box(c,-21,-18,42,18,'#75617e',5);
-  box(c,-18,-15,36,11,'#202e39',3);
-  const b=bite(p),aim=p.phase==='suction'?.2:0;
-  dash(c,-8,-9,.2+aim+b*.2,'#d7ec91',7-b*2,1.8);
-  dash(c,8,-9,-.2-aim-b*.2,'#d7ec91',7-b*2,1.8);
-  shape(c,[[-24,2],[-19,-1],[19,-1],[24,2],[24,12],[16,21],[-16,21],[-24,12]],'#b5c65e');
-  shape(c,[[-20,4],[-16,1],[16,1],[20,4],[20,12],[14,18],[-14,18],[-20,12]],'#d3d991',.6);
-  mouth(c,p,{x:-1,y:9,w:.91,h:.86,lights:19});
-  for(const side of [-1,1]){oval(c,side*22,3,1.2,1.2,'#7b8950');line(c,side*23,9,side*20,13,'#758242',.9);}
-  line(c,-12,-19,12,-19,'#a58bae',.65);
-}
-
 export const VACUUM_ROUND_TWO = [
   {id:'A',name:'FOREMAN',subtitle:'Industrial yellow / hard-edged shoulders',color:'#e6b744',draw:drawForeman,
     note:'A blunt factory supervisor. A heavy brow tightens as the teeth compact; hazard marks make the drop feel deliberate.'},
@@ -92,8 +77,8 @@ export const VACUUM_ROUND_TWO = [
     note:'Rounded red casing, cream jaw and unequal eye shutters. A slightly smug appliance with a very inconvenient cleaning routine.'},
   {id:'C',name:'NULL',subtitle:'Porcelain and teal / clinical automation',color:'#bad6c9',draw:drawNull,
     note:'Cold optical lenses and a tapered laboratory shell. Its shutters lower under pressure, then reopen as it releases the cube.'},
-  {id:'D',name:'MAW',subtitle:'Plum and acid lime / heavy compaction jaw',color:'#d3d991',draw:drawMaw,
+  {id:'D',name:'MAW',subtitle:'Selected / plum and acid lime compactor',color:'#d3d991',draw:drawVacuumMawBody,
     note:'A dark upper shell above a broad lime jaw. The largest mouth and sharpest eyes give the chewing a more threatening character.'},
 ];
-export const VACUUM_CURRENT={id:'NOW',name:'CURRENT ROBOT',subtitle:'Your existing yellow vacuum',color:'#f3c750',draw:drawVacuumControlBody,
-  note:'The current production body, using exactly the same hose, outlet and animation cycle as the four studies.'};
+export const VACUUM_CURRENT={id:'OLD',name:'PREVIOUS BODY',subtitle:'Original yellow design',color:'#f3c750',draw:drawVacuumControlBody,
+  note:'The former yellow casing, shown as a reference. MAW is now the body used in 7-2.'};

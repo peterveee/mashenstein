@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statS
 import { createHash } from 'node:crypto';
 import { execFileSync, execFile } from 'node:child_process';
 import { createServer, request as httpRequest } from 'node:http';
+import { createGzip } from 'node:zlib';
 import { createServer as createTlsServer } from 'node:https';
 import { dirname, join } from 'node:path';
 import { hostname, networkInterfaces } from 'node:os';
@@ -58,6 +59,20 @@ if (existsSync(envPath)) {
   }
 }
 
+// The lab's calibration table is the one heavy thing in it, and the ONLY thing split off. In every
+// bundle but bangerLab's own it is a live empty object (calibration-shim.js) that bangerLab.js
+// fills in once the Lab is opened. Everything else about the Lab ships in game.js, because a
+// separate IIFE bundle gets its own copy of every module it imports -- its own save, its own
+// Audio, its own state machine -- which is how the Lab came up with no songs and no sound.
+const calibrationPlugin = {
+  name: 'banger-calibration-split',
+  setup(b) {
+    b.onResolve({ filter: /calibration-data\.js$/ }, (args) => (
+      args.importer.endsWith('/banger/lazy.js') ? undefined
+        : { path: join(root, 'src/game/banger/calibration-shim.js') }));
+  },
+};
+
 const options = {
   entryPoints: {
     gate: join(root, 'src/gate.js'),
@@ -78,12 +93,15 @@ const options = {
   format: 'iife',
   target: ['es2020'],
   minify: !watch,
-  sourcemap: watch ? 'inline' : false,
+  // LINKED, not inline: inline put a 42 MB map inside game.js, three quarters of what a phone
+  // on the dev server downloaded and parsed on every reload. Linked, the browser fetches
+  // the .map only when its devtools are open; stack traces are the same either way.
+  sourcemap: watch ? 'linked' : false,
   // Rewrites the tunable constants from `const` to `let` and hands the dev
   // strip a setter for each, so physics and gait can be moved while the game
   // runs. Watch only: a production bundle keeps `const` and keeps its constant
   // folding in the 60Hz hot path. tests/tunables.js asserts this ternary.
-  plugins: watch ? [tunablePlugin()] : [],
+  plugins: watch ? [tunablePlugin(), calibrationPlugin] : [calibrationPlugin],
   // We write both public outputs ourselves after putting the gate into the
   // template. In watch mode esbuild's serve layer also exposes its in-memory
   // outputs; park those under a private URL so raw /game.js cannot shadow the
@@ -108,7 +126,8 @@ function buildStamp() {
   const p = (n) => String(n).padStart(2, '0');
   const s = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
     + `${p(d.getHours())}:${p(d.getMinutes())}`;
-  return `window.__MASH_BUILD__=${JSON.stringify(s)};\n`;
+  // No newline: game.js.map counts lines from esbuild's output, and this goes in front of it.
+  return `window.__MASH_BUILD__=${JSON.stringify(s)};`;
 }
 
 // The install decision runs before game.js is requested, so the game bundle's
@@ -215,8 +234,8 @@ function emitServiceWorker(dist, html, gameJs) {
   console.log(`dist/sw.js written (build ${version})`);
 }
 
-function output(result, name) {
-  const found = result.outputFiles.find((file) => file.path.endsWith(`/${name}.js`));
+function output(result, name, ext = '.js') {
+  const found = result.outputFiles.find((file) => file.path.endsWith(`/${name}${ext}`));
   if (!found) throw new Error(`esbuild did not produce ${name}.js`);
   return found.text;
 }
@@ -247,6 +266,8 @@ function emit(result) {
   // menu's song takes), each fetched only if actually opened.
   writeFileSync(join(dist, 'bangerLab.js'), bangerLabJs);
   writeFileSync(join(dist, 'gameAlternates.js'), gameAlternatesJs);
+  // Watch builds' linked source maps, beside the bundles that name them.
+  if (watch) for (const name of ['game', 'bangerLab', 'gameAlternates']) writeFileSync(join(dist, `${name}.js.map`), output(result, name, '.js.map'));
   console.log(`dist/index.html written (${(html.length / 1024).toFixed(0)} KB gate)`);
   console.log(`dist/game.js written (${(gameJs.length / 1024).toFixed(0)} KB game)`);
   console.log(`dist/bangerLab.js written (${(bangerLabJs.length / 1024).toFixed(0)} KB banger lab)`);
@@ -565,6 +586,19 @@ function startProxy(host, port, upstreamPort, tls = null) {
           'cross-origin-opener-policy': 'same-origin',
           'cross-origin-embedder-policy': 'require-corp',
         } : {};
+        // GZIP over the LAN. game.js is ~15 MB of unminified source and ~3 MB gzipped, and a
+        // phone on Wi-Fi feels every byte of it on each reload. Script, page and JSON only:
+        // live reload's event stream must not sit in a compressor's buffer.
+        const type = String(upstreamRes.headers['content-type'] || '');
+        const gzip = /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))
+          && /javascript|html|json/.test(type) && !upstreamRes.headers['content-encoding'];
+        if (gzip) {
+          const headers = { ...upstreamRes.headers, ...isolate, 'content-encoding': 'gzip', vary: 'accept-encoding' };
+          delete headers['content-length'];
+          res.writeHead(upstreamRes.statusCode, headers);
+          upstreamRes.pipe(createGzip({ level: 1 })).pipe(res);
+          return;
+        }
         res.writeHead(upstreamRes.statusCode, { ...upstreamRes.headers, ...isolate });
         upstreamRes.pipe(res);
       });

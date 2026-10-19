@@ -96,28 +96,28 @@ import { bpmOf } from '../data/arrangements.js';
 import { trackIdOf } from '../data/tracks.js';
 import { setState, setStateNow } from '../engine/states.js';
 import { ChipResults, soundtrack8bit, setSoundtrack8bit, retuneOnTheBeat, playsEightBit } from './results-chip.js';
-// THE BANGER LAB (STAFF ONLY -> THE LAB) is the only place any of this is
-// used — see the `lab` flag below — but maker/club/birth pull in a generated
-// calibration table that alone is several megabytes. Shipped as its own
-// bundle (build.js's `bangerLab` entry, src/game/banger/lazy.js) and fetched
-// with a <script> tag only when the player actually opens the Lab, the same
-// way gate.js loads game.js itself — a plain import() here would NOT defer
-// anything: esbuild's IIFE format has no code-splitting, so it would just
-// inline the whole thing into this bundle regardless.
-let _banger = null;
+import { BangerMakerState, rerollTake } from './banger/maker.js';
+import {
+  jukeboxBangerRows, songFor, deleteBanger, bangerTitle, lastPlayedBanger, rememberBanger,
+  reviseBanger, keepBanger,
+} from './banger/store.js';
+import { BangerClubState } from './banger/club.js';
+import { BangerBirthState } from './banger/birth.js';
+import { pickBirthSwitch } from './banger/birth-switches.js';
+import { pickBirthFace } from './banger/birth-faces.js';
+// The Lab's calibration table (several MB) is the one piece fetched on demand -- see
+// banger/lazy.js. Everything else of the Lab is in this bundle, so it shares the game's save,
+// Audio and state machine. Resolves at once where the table is already there (a node test
+// imports lazy.js itself).
 let _bangerPromise = null;
 export function loadBangerModule() {
-  if (_banger) return Promise.resolve(_banger);
-  if (window.__mash_banger) { _banger = window.__mash_banger; return Promise.resolve(_banger); }
+  if (globalThis.__mash_calibration_loaded) return Promise.resolve();
   if (!_bangerPromise) {
     _bangerPromise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = new URL('./bangerLab.js', document.baseURI).href;
-      script.onload = () => {
-        if (window.__mash_banger) { _banger = window.__mash_banger; resolve(_banger); }
-        else reject(new Error('bangerLab.js loaded but did not set window.__mash_banger'));
-      };
-      script.onerror = () => reject(new Error('bangerLab.js failed to load'));
+      script.onload = () => resolve();
+      script.onerror = () => { _bangerPromise = null; reject(new Error('bangerLab.js failed to load')); };
       document.body.appendChild(script);
     });
   }
@@ -5101,7 +5101,7 @@ export class SoundTestState {
     // choosing it again stops it (Peter, 3 Oct 2026).
     this.labPlaying = this.lab ? labPlaying : null;
     this.baseTracks = this.lab ? [] : (tracks && tracks.length ? tracks : JUKEBOX);
-    this.tracks = this.lab ? _banger.jukeboxBangerRows() : [...this.baseTracks];
+    this.tracks = this.lab ? jukeboxBangerRows() : [...this.baseTracks];
     this.initialTrack = initialTrack;
     this.initialSelect = initialSelect;
     this.startVisualiserOnEnter = startVisualiser;
@@ -5183,7 +5183,7 @@ export class SoundTestState {
       ? this.initialTrack : -1;
     const select = Number.isInteger(this.initialSelect) && this.initialSelect >= 0 && this.initialSelect <= this.tracks.length + 1
       ? this.initialSelect : -1;
-    const remembered = this.lab && select < 0 ? _banger.lastPlayedBanger() : null;
+    const remembered = this.lab && select < 0 ? lastPlayedBanger() : null;
     const rememberedIndex = remembered ? this.tracks.findIndex((row) => row.banger === remembered) : -1;
     this.idx = initial >= 0 ? initial : (select >= 0 ? select : (rememberedIndex >= 0 ? rememberedIndex : 0));
     this.rowFocus = this.idx < this.tracks.length ? this.idx : -1;
@@ -5252,7 +5252,7 @@ export class SoundTestState {
     this.playing = i;
     if (this.lab) {
       this.labPlaying = this.tracks[i].banger;
-      _banger.rememberBanger(this.labPlaying);
+      rememberBanger(this.labPlaying);
     }
     this.openTrack(i);
     // the new song's opening queued now, ahead of the lock screen's cover being painted
@@ -5643,8 +5643,8 @@ export class SoundTestState {
     if (i < 0) return;
     if (this.playing === i) { this.playing = -1; Audio.setBank(null); }
     else if (this.playing > i) this.playing -= 1;     // the song playing moved up a row
-    _banger.deleteBanger(rec);
-    this.tracks = [...this.baseTracks, ..._banger.jukeboxBangerRows()];
+    deleteBanger(rec);
+    this.tracks = [...this.baseTracks, ...jukeboxBangerRows()];
     const n = this.tracks.length;
     // The cursor lands on the song that moved up into its place, else the song before it
     // if that is one of theirs, else on LAB.
@@ -5682,9 +5682,9 @@ export class SoundTestState {
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
-    setState(new _banger.BangerMakerState({
+    setState(new BangerMakerState({
       // Back on NEW BANGER, wherever the list now ends.
-      onDone: () => setState(this.labAgain(_banger.jukeboxBangerRows().length + 1)),
+      onDone: () => setState(this.labAgain(jukeboxBangerRows().length + 1)),
       // The song just made is previewed in the club, not kept: saving is the player's call.
       onMade: (rec, song, from, recharging) => this.openPendingClub({ rec, song, from, birth: !recharging }),
     }));
@@ -5697,7 +5697,7 @@ export class SoundTestState {
    */
   openPendingClub({ rec, song, from, birth = false, room = null }) {
     this.pending = { from, rec, song };
-    if (birth) setState(new _banger.BangerBirthState({ rec, lever: _banger.pickBirthSwitch(), subject: _banger.pickBirthFace().paint, onDone: () => this.openClub(rec, this.pending) }));
+    if (birth) setState(new BangerBirthState({ rec, lever: pickBirthSwitch(), subject: pickBirthFace().paint, onDone: () => this.openClub(rec, this.pending) }));
     else this.openClub(rec, this.pending, room);
   }
   /** A song from the Lab, in the club; its back button returns here with the song selected.
@@ -5705,11 +5705,11 @@ export class SoundTestState {
   openClub(rec, pending = null, room = null) {
     // THE BOLT's room (`strike`) comes up this frame under its own lightning, not the shutter
     if (!room?.strike) Audio.sfx('uiConfirm');
-    if (!pending) _banger.rememberBanger(rec);
+    if (!pending) rememberBanger(rec);
     Audio.setBank(null);
     this.clearVisualiser();
     setJukeboxPortrait(false);
-    (room?.strike ? setStateNow : setState)(new _banger.BangerClubState({
+    (room?.strike ? setStateNow : setState)(new BangerClubState({
       rec,
       pending: pending ? { kind: pending.from ? (pending.from.preset ? 'starter' : 'edit') : 'new', song: pending.song } : null,
       onSave: pending ? (asNew) => this.commitPending(asNew) : null,
@@ -5718,7 +5718,7 @@ export class SoundTestState {
       onEdit: (r, p, left) => { if (p) this.reEditPending(left); else this.openEditor(r, left); },
       onReroll: (r, p) => this.rerollClub(r, p),
       // the song plays on in the Lab; choosing it there again stops it
-      onBack: (r) => setState(this.labAgain(Math.max(0, _banger.jukeboxBangerRows().findIndex((row) => row.banger === r)), r)),
+      onBack: (r) => setState(this.labAgain(Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === r)), r)),
     }));
   }
   /** SAVE on the pending song: update the original in place, or keep a new one. */
@@ -5728,12 +5728,12 @@ export class SoundTestState {
     // SAVE AS NEW is a new song under a new name; only a brand-new banger keeps the
     // name its preview has already shown.
     const rec = p.from && !asNew
-      ? _banger.reviseBanger(p.from, p.rec)
-      : _banger.keepBanger({ ...p.rec, fresh: true, name: p.from ? null : p.rec.name });
+      ? reviseBanger(p.from, p.rec)
+      : keepBanger({ ...p.rec, fresh: true, name: p.from ? null : p.rec.name });
     if (!rec) return null;      // the list is full: the song stays pending, nothing saved
     this.pending = null;
-    _banger.songFor(rec, p.song);
-    _banger.rememberBanger(rec);
+    songFor(rec, p.song);
+    rememberBanger(rec);
     return rec;
   }
   /** DON'T SAVE: back to the Lab, nothing kept, nothing playing. */
@@ -5741,7 +5741,7 @@ export class SoundTestState {
     const p = this.pending;
     this.pending = null;
     Audio.setBank(null);
-    setState(this.labAgain(p?.from ? Math.max(0, _banger.jukeboxBangerRows().findIndex((row) => row.banger === p.from)) : _banger.jukeboxBangerRows().length + 1));
+    setState(this.labAgain(p?.from ? Math.max(0, jukeboxBangerRows().findIndex((row) => row.banger === p.from)) : jukeboxBangerRows().length + 1));
   }
   /** The pencil while a banger is pending: another pass on the same recipe, the original
    *  kept, and straight back to the club — the ceremony is NEW BANGER's alone. */
@@ -5749,7 +5749,7 @@ export class SoundTestState {
     const p = this.pending;
     if (!p) return;
     Audio.sfx('uiConfirm');
-    setState(new _banger.BangerMakerState({
+    setState(new BangerMakerState({
       from: p.from,
       seed: p.rec,
       onDone: () => this.openClub(p.rec, p, room),
@@ -5764,7 +5764,7 @@ export class SoundTestState {
   rerollClub(rec, pending) {
     const p = pending ? this.pending : null;
     const from = p ? p.from : rec;
-    const take = _banger.rerollTake(p ? p.rec : rec, from);
+    const take = rerollTake(p ? p.rec : rec, from);
     if (!take) return null;
     return { commit: (room) => this.openPendingClub({ rec: take.rec, song: take.song, from, room }) };
   }
@@ -5775,7 +5775,7 @@ export class SoundTestState {
    */
   openEditor(rec, room = null) {
     Audio.sfx('uiConfirm');
-    setState(new _banger.BangerMakerState({
+    setState(new BangerMakerState({
       from: rec,
       onDone: () => this.openClub(rec, null, room),
       onMade: (r, song, from, recharging) => this.openPendingClub({ rec: r, song, from, birth: !recharging, room }),
@@ -6560,7 +6560,7 @@ function drawDeleteConfirm(ctx, { rec, yes }) {
   platePath(ctx, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, g.portrait ? 12 : 5);
   ctx.stroke();
   const title = 'ARE YOU SURE?';
-  const line = `DELETE ${_banger.bangerTitle(rec)}?`;
+  const line = `DELETE ${bangerTitle(rec)}?`;
   if (g.portrait) {
     const ts = portraitMenuFit(title, 2.1, g.w - 36, 'title');
     portraitMenuTextCentered(ctx, title, W / 2, portraitMenuTextY(g.y + 56, ts, 'title'), '#e04848', ts, 'title');

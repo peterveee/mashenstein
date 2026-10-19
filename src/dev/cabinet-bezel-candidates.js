@@ -182,3 +182,4 @@ export const OFFICE_COLOUR_CANDIDATES = [
   { letter: 'K5', name: 'charcoal', pal: officePal({ body: '#3a3846', groundDark: '#1f1d26' }),
     note: 'The lobby\'s marble band, #3a3846, near-black bezel.' },
 ];
+

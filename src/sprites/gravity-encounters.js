@@ -470,8 +470,9 @@ function drawVacuumBonusCoin(c, x, y, scale=1) {
 export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, playerX, attacks, sequences, departAt=null, lane=0, flip=null, flipPrep=0, sweep=[], debrisPatches=[], bonusCoins=[] }) {
   const last = sequences.at(-1).end;
   const exitAt = departAt ?? last, exitDuration = 1.25;
-  const arrival = clamp((2 - seconds) / 1.5, 0, 1);
-  const departure = clamp((seconds - exitAt) / exitDuration, 0, 1);
+  const eased = p => { const u = clamp(p, 0, 1); return u * u * (3 - 2 * u); };
+  const arrival = eased((2 - seconds) / 1.5);
+  const departure = eased((seconds - exitAt) / exitDuration);
   const x = playerX + vacuumRobotAheadForView(view) + (arrival + departure) * (view + 60);
   const y = -corridor * .5;
   const reducedMotion = typeof window !== 'undefined'

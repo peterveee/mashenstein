@@ -491,6 +491,12 @@ const Flow = {
   // not a result.
   toHub(cameo = true, fromCab = null, won = true) {
     if (fromCab) queueCabinetDiveOut(fromCab, won);
+    // The dev menu can reach the hub with no save at all (a fresh browser); the hub reads the slot.
+    if (!save.slot) {
+      const idx = save.data.slots.findIndex(Boolean);
+      if (idx >= 0) save.selectSlot(idx);
+      else { save.newSlot(0, Date.now()); save.slot.campaign.storyFlags.sawIntro = true; save.persist(); }
+    }
     const go = cameo ? setState : setStateNoCameo;
     go(new HubState({ save, flow: Flow }));
   },

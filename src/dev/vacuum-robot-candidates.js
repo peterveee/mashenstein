@@ -127,7 +127,8 @@ export function drawVacuumRobotStudy(c,time,candidate,{lane=0,width=640,height=4
   c.restore();
   const rigAttack=attack.phase==='waiting'||attack.phase==='launched'
     ? {...attack,phase:'sweep',progress:.5,sourceX:x-35} : attack;
-  drawVacuumAssembly(c,{x,y,corridor,attack:rigAttack,time:t,lane,drawBody:candidate.draw});
+  drawVacuumAssembly(c,{x,y,corridor,attack:rigAttack,time:t,lane,
+    drawBody:candidate.draw,drawHose:candidate.drawHose,drawBrush:candidate.drawBrush});
   for(const at of VACUUM_BAKEOFF_LAUNCHES) if(t>=at){
     // Once landed, the cube has no world motion; this gallery camera travels at 20.
     const age=t-at,xx=x-age*20;

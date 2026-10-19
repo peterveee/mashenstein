@@ -134,6 +134,30 @@ export function drawVacuumControlBody(c, pose) {
   c.restore();
 }
 
+export function drawVacuumMawBody(c, pose) {
+  // MAW: a dark service shell over a broad lime compaction jaw.
+  vacuumBox(c,-24,-21,48,42,'#54435e',8);
+  vacuumBox(c,-21,-18,42,18,'#75617e',5);
+  vacuumBox(c,-18,-15,36,11,'#202e39',3);
+  const crush=pose.phase==='loaded' ? smooth(pose.progress)
+    : pose.phase==='telegraph' ? 1-smooth(pose.progress/.2) : 0;
+  const aiming=pose.phase==='suction' ? .2 : 0;
+  const eyeTilt=1.5+aiming*2+crush*1.5, eyeWidth=1.8-crush*.25;
+  vacuumLine(c,-11,-9+eyeTilt,-5,-9-eyeTilt,'#d7ec91',eyeWidth);
+  vacuumLine(c,5,-9-eyeTilt,11,-9+eyeTilt,'#d7ec91',eyeWidth);
+  polygon(c,[[-24,2],[-19,-1],[19,-1],[24,2],[24,12],[16,21],[-16,21],[-24,12]],'#b5c65e');
+  polygon(c,[[-20,4],[-16,1],[16,1],[20,4],[20,12],[14,18],[-14,18],[-20,12]],'#d3d991',.6);
+  // The teeth close with the cube during compaction while the mouth itself
+  // narrows, then open for the gravity-aware discharge.
+  c.save();c.translate(-1,9);c.scale(.91,.86*(1-.44*crush));c.translate(0,-10.5);
+  drawCompactorWindow(c,pose.phase,pose.progress,pose.time,true,19,6.5);c.restore();
+  for(const side of [-1,1]){
+    vacuumOval(c,side*22,3,1.2,1.2,'#7b8950');
+    vacuumLine(c,side*23,9,side*20,13,'#758242',.9);
+  }
+  vacuumLine(c,-12,-19,12,-19,'#a58bae',.65);
+}
+
 function hose(c, points, time, active) {
   const trace=()=>{c.beginPath();c.moveTo(...points[0]);c.bezierCurveTo(...points[1],...points[2],...points[3]);};
   for(const [color,width] of [[VACUUM_INK,4.8],['#617c80',3.6],['#a5bab4',.9]]){
@@ -141,6 +165,17 @@ function hose(c, points, time, active) {
   }
   trace();c.setLineDash([.5,2.5]);c.strokeStyle='#304b52';c.lineWidth=3.2;c.stroke();c.setLineDash([]);
   if(active){trace();c.setLineDash([3,14]);c.lineDashOffset=time*30;c.strokeStyle='#a9f4d2';c.lineWidth=1;c.stroke();c.setLineDash([]);}
+}
+
+function brushHead(c) {
+  // Flexible corrugated hose meets the brush swivel directly.
+  vacuumOval(c,-2,-3,3,2.7,'#6a8584');
+  vacuumBox(c,-14,-1,28,6,'#d3e3d8',2);
+  vacuumBox(c,-11,-3,22,4,'#78958f',1.5);
+  vacuumBox(c,-7,-3.6,5,1.8,'#e0bb65',.6);
+  for(let i=-11;i<=11;i+=1.7) vacuumLine(c,i,5,i+.3,7,'#344e50',.65);
+  for(const dx of [-12,12])vacuumOval(c,dx,3.7,1.8,1.8,'#344e50');
+  vacuumLine(c,-10,1,10,1,'#e8ede1',.7);
 }
 
 export function vacuumBrushPose({ x, y, corridor, attack }) {
@@ -152,9 +187,9 @@ export function vacuumBrushPose({ x, y, corridor, attack }) {
 
 // Body designs plug into one common brush / hose / compaction / discharge rig.
 // A cube is a visual warning while descending; its existing rail collider starts
-// at release, exactly where this path ends. No hidden mid-air collision.
+// at release, exactly where the blast ends. No hidden mid-air collision.
 export function drawVacuumAssembly(c, { x, y, corridor, attack, time=0, lane=0, flip=null, flipPrep=0,
-  drawBody=drawVacuumControlBody, reducedMotion=false }) {
+  drawBody=drawVacuumMawBody, drawHose=hose, drawBrush=brushHead, reducedMotion=false }) {
   const phase=attack?.phase || 'idle', progress=attack?.progress || 0;
   const bob=reducedMotion ? 0 : Math.sin(time*2.1)*1.5;
   y+=bob;
@@ -190,16 +225,9 @@ export function drawVacuumAssembly(c, { x, y, corridor, attack, time=0, lane=0, 
     [mix(brush.x-27,tailControl[0],retract),mix(brush.y-brushSign*26,tailControl[1],retract)],
     [brushX-2*Math.cos(brushAngle)+3*Math.sin(brushAngle),
       brushY-2*Math.sin(brushAngle)-3*Math.cos(brushAngle)]];
-  hose(c,pts,reducedMotion?0:time,phase==='suction'||phase==='sweep');
+  drawHose(c,pts,reducedMotion?0:time,phase==='suction'||phase==='sweep');
   c.save();c.translate(brushX,brushY);c.rotate(brushAngle);
-  // Flexible corrugated hose meets the brush swivel directly.
-  vacuumOval(c,-2,-3,3,2.7,'#6a8584');
-  vacuumBox(c,-14,-1,28,6,'#d3e3d8',2);
-  vacuumBox(c,-11,-3,22,4,'#78958f',1.5);
-  vacuumBox(c,-7,-3.6,5,1.8,'#e0bb65',.6);
-  for(let i=-11;i<=11;i+=1.7) vacuumLine(c,i,5,i+.3,7,'#344e50',.65);
-  for(const dx of [-12,12])vacuumOval(c,dx,3.7,1.8,1.8,'#344e50');
-  vacuumLine(c,-10,1,10,1,'#e8ede1',.7);
+  drawBrush(c,{time:reducedMotion?0:time,active:phase==='suction'||phase==='sweep'});
   c.restore();
   c.save();c.translate(x,y);c.rotate(angle);
   // Seat the narrow socket behind the casing so its lower edge is hidden by
@@ -211,19 +239,46 @@ export function drawVacuumAssembly(c, { x, y, corridor, attack, time=0, lane=0, 
   drawBody(c,{phase,progress,time:reducedMotion?0:time,targetSign});
   c.restore();
   if(phase==='telegraph') {
-    const p=smooth((progress-.2)/.8);
-    const a=local(0,30),b=local(0,53),d=[x,targetY-targetSign*15],e=[x,targetY];
-    const u=1-p;
-    const cubeX=u*u*u*a[0]+3*u*u*p*b[0]+3*u*p*p*d[0]+p*p*p*e[0];
-    const cubeY=u*u*u*a[1]+3*u*u*p*b[1]+3*u*p*p*d[1]+p*p*p*e[1];
-    // Static landing brackets communicate the destination before the drop.
-    const surface=attack.lane?-corridor:0;
-    for(const dx of [-14,14+((attack.count||1)-1)*24]) vacuumLine(c,x+dx,surface-targetSign*.8,x+dx,surface-targetSign*4,'#ffd689',1);
-    c.save();c.setLineDash([1,4]);c.beginPath();c.moveTo(...a);c.bezierCurveTo(...b,...d,...e);
-    c.strokeStyle='rgba(255,213,139,.4)';c.lineWidth=.7;c.stroke();c.restore();
+    const flight=unit((progress-.2)/.8);
+    // The cube leaves the outlet slowly and accelerates toward its existing
+    // rail position. It has no separate horizontal pace after landing.
+    const travel=flight*flight*(2-flight);
+    const outlet=local(0,30);
+    const cubeX=x, cubeY=mix(outlet[1],targetY,travel);
     if(progress>=.2) {
+      if(!reducedMotion) {
+        const blast=1-smooth(flight/.32);
+        if(blast>0) {
+          c.save();c.translate(...outlet);c.scale(1,targetSign);c.globalAlpha=blast;
+          polygon(c,[[-5,0],[5,0],[7,5],[3,4],[0,13],[-3,4],[-7,5]],'#f8e2a6',.35);
+          vacuumLine(c,-9,3,-13,9,'#f3ba67',1.3);
+          vacuumLine(c,9,3,13,9,'#f3ba67',1.3);
+          c.restore();
+        }
+        const streak=unit((flight-.06)/.18)*(1-smooth((flight-.78)/.22));
+        if(streak>0) {
+          c.save();c.globalAlpha=.8*streak;
+          for(const dx of [-5,0,5]) {
+            const length=dx===0 ? 14 : 8;
+            vacuumLine(c,cubeX+dx,cubeY-targetSign*(11+length),
+              cubeX+dx,cubeY-targetSign*11,dx===0?'#f8dfa2':'#e9aa64',dx===0?1.6:1);
+          }
+          c.restore();
+        }
+        const impact=smooth((flight-.85)/.12)*(1-smooth((flight-.97)/.03));
+        if(impact>0) {
+          c.save();c.globalAlpha=.75*impact;
+          for(const side of [-1,1]) {
+            vacuumOval(c,x+side*10,targetY-targetSign*3,3.8,1.8,'#e2bd80');
+            vacuumLine(c,x+side*8,targetY-targetSign*4,
+              x+side*15,targetY-targetSign*7,'#f8dda0',1.2);
+          }
+          c.restore();
+        }
+      }
       c.save();c.translate(cubeX,cubeY);c.scale(1,targetSign);
-      for(let i=0;i<(attack.count||1);i++) drawGarbageCube(c,i*24*p,0);c.restore();
+      for(let i=0;i<(attack.count||1);i++) drawGarbageCube(c,i*24*travel,0);
+      c.restore();
     }
   }
   c.restore();

@@ -136,5 +136,28 @@ for (const stageId of STAGES) {
 assert(anchors.size === new Set(Object.values(HERO_ANCHOR)).size && anchors.size > 1,
   `the hero stood at ${anchors.size} different columns across the framings (${[...anchors].join(', ')})`);
 
+// AND FAR ENOUGH AHEAD FOR A SLOW EAR. On Bluetooth or a positive AUDIO SYNC the ping
+// needs more warning than the hitbox front's 10px, or it cannot be scheduled early
+// enough and rings late (run.js coinReachAheadPx). Asked of the method directly with
+// a stand-in clock: headless runs have no audio context, so they never exercise it.
+{
+  installDom();
+  const { RunState } = await import('../src/game/run.js');
+  const { Audio, CUE_ONSET_LEAD } = await import('../src/engine/audio.js');
+  const { PLAYER_SPRITE_W, PLAYER_W } = await import('../src/game/player.js');
+  const ctx0 = Audio.ctx, heard0 = Audio.heardLatencySec;
+  Audio.ctx = {};
+  const fake = { beatLock: true, speed: 160, laneBpm: () => 124 };
+  for (const lat of [0.01, 0.06, 0.2]) {
+    Audio.heardLatencySec = () => lat;
+    const extra = RunState.prototype.coinReachAheadPx.call(fake);
+    const leadSec = ((PLAYER_SPRITE_W + PLAYER_W) / 2 + extra) / fake.speed;
+    const need = lat + CUE_ONSET_LEAD.coin;
+    assert(leadSec >= need, `a ${lat * 1000}ms ear: the coin is taken ${(leadSec * 1000).toFixed(0)}ms ahead, `
+      + `enough to place its ping (${(need * 1000).toFixed(0)}ms)`);
+  }
+  Audio.ctx = ctx0; Audio.heardLatencySec = heard0;
+}
+
 if (failed) { console.error('BEAT-CONTACT: FAILED'); process.exit(1); }
 console.log('BEAT-CONTACT: PASSED');

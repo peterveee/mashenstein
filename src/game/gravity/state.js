@@ -433,17 +433,24 @@ export class GravityRunState extends RunState {
           drawFloatingBolts(c, cam, view, this.backgroundT ?? t, this.corridor);
         }
         if (this.gravityStageData.sequences) {
-          const seconds = this.gravityTravelTime();
-          const playerWorld = this.playerWorldX();
+          // The room is painted against the interpolated camera. Derive the
+          // robot's visual clock and anchor from that same frame; the live sim
+          // camera would add a small sawtooth wobble, especially during exit.
+          const seconds = gravitySeconds(cam, this.baseSpeed());
+          const playerWorld = cam + PLAYER_X;
           const pendingGate = this.gravityGates.find(g => g.lane !== this.gravityLane
             && g.x - L.arrowLeftOffset >= playerWorld
             && g.x - L.arrowLeftOffset <= playerWorld + speed * .4);
           const flipPrep = this.gravityTransfer ? 1 : pendingGate
             ? Math.max(0, Math.min(1, 1 - (pendingGate.x - L.arrowLeftOffset - playerWorld) / (speed * .4))) : 0;
+          const flip = this.gravityTransfer && {
+            ...this.gravityTransfer,
+            elapsed: Math.max(0, this.gravityTransfer.elapsed - (this.gravityTravelTime() - seconds)),
+          };
           drawMaintenanceVacuum(c, {
-            view, time: t, seconds, corridor: this.corridor,
-            playerX: this.playerWorldX() - cam,
-            lane: this.gravityLane, flip: this.gravityTransfer, flipPrep,
+            view, time: seconds, seconds, corridor: this.corridor,
+            playerX: PLAYER_X,
+            lane: this.gravityLane, flip, flipPrep,
             debrisPatches: this.gravityVacuumDebrisPatches.map(a => ({ ...a, x: a.x - cam })),
             bonusCoins: this.gravityVacuumBonusCoins.map(a => ({ ...a,
               sourceX: a.sourceX - cam, landingX: a.landingX - cam,

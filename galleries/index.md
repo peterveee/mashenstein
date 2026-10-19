@@ -51,3 +51,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-18 | `9cee3fd` | [2026-10-18-9cee3fd.html](2026-10-18-9cee3fd.html) | [bake-offs](2026-10-18-9cee3fd-lab.html) | Add vacuum robot bakeoff feature with candidate designs and animations |
 | 2026-10-19 | `cf2e65c` | [2026-10-19-cf2e65c.html](2026-10-19-cf2e65c.html) | [bake-offs](2026-10-19-cf2e65c-lab.html) | Enhance vacuum robot bakeoff functionality and add new gallery files |
 | 2026-10-19 | `2696638` | [2026-10-19-2696638.html](2026-10-19-2696638.html) | [bake-offs](2026-10-19-2696638-lab.html) | Refactor tests and implement new beat contact test |
+| 2026-10-19 | `808ab3f` | [2026-10-19-808ab3f.html](2026-10-19-808ab3f.html) | [bake-offs](2026-10-19-808ab3f-lab.html) | Bring gravity-level and cue-scheduling tests up to date with the changes they were failing on |

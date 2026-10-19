@@ -208,14 +208,24 @@ export const OVERTIME_PALETTE = {
 // colour behind it for knock-outs. At that size these have to be silhouettes:
 // a shape you recognize in one glance, not an illustration.
 export const GENRE_MOTIFS = {
-  // PLUMBER PANIC: a pipe, and something leaping over it.
-  plumber(c, w, h, ink) {
-    plain(c, ink, (p) => rr(p, w * 0.14, h * 0.5, w * 0.24, h * 0.5, w * 0.04));
-    plain(c, ink, (p) => rr(p, w * 0.08, h * 0.38, w * 0.36, h * 0.16, w * 0.04));
-    stroke(c, ink, Math.max(0.5, h * 0.08), (p) => {
-      p.moveTo(w * 0.5, h * 0.92);
-      p.quadraticCurveTo(w * 0.68, h * 0.04, w * 0.94, h * 0.6);
-    });
+  // FIELD SERVICE: a spanner (it was a pipe and a leaping figure back when the
+  // cabinet was Plumber Panic). Drawn upright and turned 45 degrees: a thick shaft,
+  // a ring bored through one end and an open jaw cut into the other. Both holes are
+  // knocked out in the glass colour; at ~15 logical px they are the whole difference
+  // between a spanner and a bone, so they are cut deep and kept wide.
+  plumber(c, w, h, ink, back) {
+    const s = Math.min(w, h);
+    c.save();
+    c.translate(w / 2, h / 2);
+    c.rotate(Math.PI / 4);
+    c.scale(1.1, 1.1);
+    c.translate(-s / 2, -s / 2);
+    plain(c, ink, (p) => rr(p, s * 0.395, s * 0.22, s * 0.21, s * 0.6, s * 0.04));   // shaft
+    plain(c, ink, (p) => p.arc(s * 0.5, s * 0.2, s * 0.24, 0, Math.PI * 2));          // open end
+    plain(c, back, (p) => rr(p, s * 0.4, s * -0.08, s * 0.2, s * 0.3, 0));           // the jaw
+    plain(c, ink, (p) => p.arc(s * 0.5, s * 0.82, s * 0.19, 0, Math.PI * 2));         // ring end
+    plain(c, back, (p) => p.arc(s * 0.5, s * 0.82, s * 0.085, 0, Math.PI * 2));
+    c.restore();
   },
   // SPEED ZONE: a checkered flag on its pole.
   speed(c, w, h, ink) {
@@ -257,16 +267,23 @@ export const GENRE_MOTIFS = {
       }
     });
   },
-  // CRYPT SHIFT: a headstone with a cross knocked out of it.
+  // CRYPT SHIFT: a ghost — a sheet with two eyes and a scalloped hem (bake-off G1,
+  // 19 Oct 2026). It was a headstone with a cross; Peter wanted it simpler and
+  // without the religious imagery.
   crypt(c, w, h, ink, back) {
     plain(c, ink, (p) => {
-      p.moveTo(w * 0.28, h * 0.96); p.lineTo(w * 0.28, h * 0.4);
-      p.arc(w * 0.5, h * 0.4, w * 0.22, Math.PI, 0);
-      p.lineTo(w * 0.72, h * 0.96); p.closePath();
+      p.moveTo(w * 0.22, h * 0.9); p.lineTo(w * 0.22, h * 0.44);
+      p.arc(w * 0.5, h * 0.44, w * 0.28, Math.PI, 0);
+      p.lineTo(w * 0.78, h * 0.9);
+      for (let i = 0; i < 3; i++) {
+        const x1 = w * (0.78 - (i + 0.5) * 0.187), x2 = w * (0.78 - (i + 1) * 0.187);
+        p.quadraticCurveTo(x1, h * (i % 2 ? 0.98 : 0.76), x2, h * 0.9);
+      }
+      p.closePath();
     });
-    stroke(c, back, Math.max(0.5, w * 0.06), (p) => {
-      p.moveTo(w * 0.5, h * 0.28); p.lineTo(w * 0.5, h * 0.76);
-      p.moveTo(w * 0.36, h * 0.46); p.lineTo(w * 0.64, h * 0.46);
+    plain(c, back, (p) => {
+      p.ellipse(w * 0.4, h * 0.42, w * 0.06, h * 0.09, 0, 0, Math.PI * 2);
+      p.moveTo(w * 0.66, h * 0.42); p.ellipse(w * 0.6, h * 0.42, w * 0.06, h * 0.09, 0, 0, Math.PI * 2);
     });
   },
   // RHYTHM BANKRUPTCY: an eighth note.
@@ -546,12 +563,21 @@ function paintChibi(ctx, w, h, pal, opts = {}) {
     // The glass sits back in a recess (bake-off E, 19 Oct 2026): the top of the
     // rim is in the casing's shadow and the bottom catches the light. The ring is
     // inset 0.3px so the outline shape() drew stays visible round it.
-    shape(ctx, darken(pal.shade, 0.15), u, (c) => rr(c, ...bx('bezel'), bezelRadius));
+    // Toned down and thinly outlined so the insert is not stark against the casing
+    // (Peter, 19 Oct): the shadow/light swing is about half what E first had, and the
+    // outline is a light, soft hairline rather than shape()'s dark ~1px.
+    plain(ctx, darken(pal.shade, 0.08), (c) => rr(c, ...bx('bezel'), bezelRadius));
+    // A hairline of the casing's own colour, lightened and mostly transparent: it
+    // softens the edge instead of drawing a dark line round it.
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    stroke(ctx, lighten(pal.body, 0.4), 0.3, (c) => rr(c, ...bx('bezel'), bezelRadius));
+    ctx.restore();
     const [rx, ry, rw, rh] = bx('bezel'), k = 0.3;
     const g = ctx.createLinearGradient(0, ry, 0, ry + rh);
-    g.addColorStop(0, darken(pal.shade, 0.42));
-    g.addColorStop(0.55, darken(pal.shade, 0.08));
-    g.addColorStop(1, lighten(pal.shade, 0.22));
+    g.addColorStop(0, darken(pal.shade, 0.2));
+    g.addColorStop(0.55, darken(pal.shade, 0.04));
+    g.addColorStop(1, lighten(pal.shade, 0.1));
     ctx.beginPath();
     rr(ctx, rx + k, ry + k, rw - k * 2, rh - k * 2, bezelRadius - k);
     rr(ctx, ...bx('screen'), screenRadius);
@@ -741,9 +767,15 @@ function marqueeArt(ctx, pal, gx, gy, gw, gh) {
   ctx.translate(gx + gw / 2 - s / 2, gy + (gh - s) / 2);
   art(ctx, s, s, tint, pal.glass);
   ctx.restore();
+  // A speaker grille either side: four short upright slots (bake-off M2, 19 Oct
+  // 2026). These were two pills standing in for a title nobody could read; the
+  // drilled-hole grid (M3) shipped first and blurred to a smudge on a phone.
   plain(ctx, tint, (c) => {
-    rr(c, gx + gw * 0.04, gy + gh * 0.36, gw * 0.26, gh * 0.28, gh * 0.14);
-    rr(c, gx + gw * 0.7, gy + gh * 0.36, gw * 0.26, gh * 0.28, gh * 0.14);
+    for (const x0 of [0.04, 0.7]) {
+      const bx = gx + gw * x0, by = gy + gh * 0.12, bw = gw * 0.26, bh = gh * 0.76;
+      const sw = bw * 0.12;
+      for (let i = 0; i < 4; i++) rr(c, bx + bw * (0.12 + i * 0.22), by + bh * 0.22, sw, bh * 0.56, sw / 2);
+    }
   });
 }
 

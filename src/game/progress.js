@@ -45,7 +45,7 @@ export const MAX_PLUGS = STAGES.length * 3;
 
 export function totalPlugs(slot) {
   let n = 0;
-  for (const arr of Object.values(slot.campaign.plugs)) n += arr.filter(Boolean).length;
+  for (const arr of Object.values(slot.campaign?.plugs || {})) if (Array.isArray(arr)) n += arr.filter(Boolean).length;
   return n;
 }
 
@@ -127,7 +127,8 @@ export function nextStage(stage) {
 // it". Both callers want the former: the gate below opens a cabinet's next
 // stage, and the ACT card uses it to decide whether it is a first read.
 export function stagePlayed(slot, stage) {
-  return (slot.campaign.plugs[stage.id] || []).some(Boolean);
+  const banked = slot.campaign?.plugs?.[stage.id];
+  return Array.isArray(banked) && banked.some(Boolean);
 }
 
 export function cabinetStarted(slot, cabId) {

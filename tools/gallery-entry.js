@@ -9264,6 +9264,9 @@ function jadeSky(ctx, w, h, seed = 1) {
   }
 }
 
+// Marquee speakers (M3 drilled holes) and Crypt Shift's ghost emblem (G1) were baked
+// off here on 19 Oct 2026 and shipped; Peter asked for both sections to come out.
+
 // The IntersectionObserver was already here, already tracking visibility and
 // already reaching 200px beyond the viewport — it simply was not trusted with
 // frame zero. It is now: a tile paints the first time it comes into range and

@@ -14,7 +14,7 @@ import {
   Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT,
   PORTAL_RELAY_GAIN, PORTAL_RELAY_IN_GAIN, portalCueFlashAt,
   SLEIGH_CAROLS, SLEIGH_CAROL, FAX_HANDSHAKE_END_SEC,
-  SWIPE_SHAPES, CAT_SWIPE, CAT_SWIPE_DEFAULT, CAT_SWIPE_RECOIL,
+  SWIPE_SHAPES, CAT_SWIPE, CAT_SWIPE_DEFAULT, CAT_SWIPE_RECOIL, CUE_ONSET_LEAD,
 } from '../engine/audio.js';
 import { MusicDirector } from '../engine/music-director.js';
 import { Rng } from '../engine/rng.js';
@@ -1240,6 +1240,19 @@ const PAUSE_BUTTONS = [
 // A blind nudge, deliberately — the picture is frozen, so nothing here can be
 // heard against anything. It is the coarse control for "that felt late"; the
 // tap test on the briefing is the one that measures.
+// THE COIN, 5dB DOWN ON A BEAT STAGE (Peter, 19 Oct 2026: "the coin sound is quite
+// loud in this cabinet … they won't clash with the perceived rhythm if they're
+// softer"). There a coin lands on nearly every beat and sixteenth, so at its
+// everywhere-else level it is a second drum part — and its loudest moment is its
+// high note, 60ms in, which a loud coin turns into a flam just after the kick.
+// Scoped to the call on the beat lane, not the cue's trim, so every other cabinet
+// keeps its coin. ?coingain=<dB> overrides it on a dev build, to tune by ear.
+const BEAT_COIN_DB = (() => {
+  const dev = typeof window !== 'undefined' && window.__MASH_DEV__ && typeof location !== 'undefined'
+    ? /[?&]coingain=(-?[\d.]+)/.exec(location.search || '') : null;
+  return dev ? Number(dev[1]) : -5;
+})();
+const BEAT_COIN_GAIN = 10 ** (BEAT_COIN_DB / 20);
 const PAUSE_SYNC_Y = 206;
 const PAUSE_SYNC_H = 14;
 // The read-out rows under the BONUS line (drawPaused). They sat at 108 / 132 / 148
@@ -15870,8 +15883,10 @@ export class RunState {
       if (!p.live || p.taken) continue;
       const box = { x: p.x, y: this.entityGroundY(p) - p.alt - p.h, w: p.w, h: p.h };
       // A beat-lined pickup is laid beatLayOff past its line, and his reach for it is
-      // carried forward the same, so he still meets it ~10px before its beat.
-      const ahead = Number.isFinite(p.actionBeat) ? Math.max(0, beatLayOff(p.w)) : 0;
+      // carried forward the same, so he still meets it ~10px before its beat — and
+      // further still on a device whose ear is further behind (coinReachAheadPx).
+      const ahead = Number.isFinite(p.actionBeat)
+        ? Math.max(0, beatLayOff(p.w)) + (p.def.coin ? this.coinReachAheadPx() : 0) : 0;
       const reach = ridePbox || reachBox;
       if (!overlaps(ahead ? { ...reach, w: reach.w + ahead } : reach, box)) continue;
       // A CHART COIN IS TAKEN EARLY AND SEEN TAKEN ON ITS BEAT (Peter, 19 Oct 2026:
@@ -15885,6 +15900,30 @@ export class RunState {
       else p.live = false;
       this.onPickup(p);
     }
+  }
+
+  /**
+   * HOW MUCH FURTHER AHEAD HE TAKES A BEAT COIN, in world px, so its ping can still
+   * be PLACED on its beat on a device whose ear is far behind the graph (Peter, 19 Oct
+   * 2026: "do we not compensate for audio sync for coin in rhythm levels?").
+   *
+   * The ping is scheduled the moment the coin is taken, to sound on its beat — and it
+   * can only be scheduled if the coin was taken at least the output latency + AUDIO
+   * SYNC + the cue's own lead before that beat. His hitbox front meets a coin 10px
+   * early, ~40ms, which covers built-in speakers and nothing more: on a positive AUDIO
+   * SYNC or Bluetooth the schedule clamped to "now" and the coin rang late by the
+   * difference. So the reach grows to cover the whole of it, plus a frame for the
+   * loop to notice. The coin is still held on screen and pops on its beat
+   * (popTakenCoins), so nothing moves for the eye; what changes is that a coin is
+   * counted that much before he visibly reaches it. Capped below a beat, the most
+   * pickupLineInBeats will place.
+   */
+  coinReachAheadPx() {
+    if (!this.beatLock || !Audio.ctx) return 0;
+    const needSec = Audio.heardLatencySec() + (CUE_ONSET_LEAD.coin ?? 0) + 1 / 60;
+    const pxPerBeat = this.speed * 60 / this.laneBpm();
+    const have = (PLAYER_SPRITE_W + PLAYER_W) / 2;   // the hitbox front's own lead
+    return Math.max(0, Math.min(pxPerBeat * 0.9, needSec * this.speed) - have);
   }
 
   /** The held coins (see collide) go on their beat. */
@@ -15935,7 +15974,9 @@ export class RunState {
       // The chart knows the beat it wrote the coin on; the ping is placed there
       // (Audio.sfx's inBeats, see pickupLineInBeats).
       const line = this.pickupLineInBeats(p);
-      Audio.sfx('coin', { combo: Math.min(12, this.coinCombo), inBeats: line });
+      // Quieter on the beat lane (BEAT_COIN_GAIN): there it is nearly every beat.
+      Audio.sfx('coin', { combo: Math.min(12, this.coinCombo), inBeats: line,
+        ...(this.beatLock ? { gain: BEAT_COIN_GAIN } : {}) });
       // A held coin sparkles when it pops, on its beat (popTakenCoins).
       if (p.taken) p.takenAt = this.tRun;
       else spawn(p.x, this.entityGroundY(p) - p.alt - 8, 0, -40, 0.4, '#f6d33c', 1, 0);
