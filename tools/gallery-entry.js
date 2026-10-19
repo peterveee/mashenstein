@@ -21,7 +21,7 @@ import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld } from '../src/engine/camera.js';
 import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
 import {
   HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook,
-  drawHubSocket,
+  drawHubSocket, cabinetScreenArt,
 } from '../src/game/hub/index.js';
 import { INTRO_ZOOM_START, OUTRO_ZOOM } from '../src/game/tutorial.js';
 import { getSprite, drawPellet } from '../src/engine/sprites.js';
@@ -36,9 +36,10 @@ import { HERO_DANCE_LAB_CANDIDATES, drawHeroDanceCard } from '../src/dev/hero-da
 import { PROP_PAINTERS, definePropVariant, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE, PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME, eggshellCopterArt, switchBonkLift, SWITCH_BONK_T, SWITCH_THROW_FRAMES, SWITCH_THROW_T } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
-  cabinetPalette, drawCabinetShell, drawCabinetScreen,
+  cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen,
   drawScreenSweep, drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
+import { BEZEL_CANDIDATES, SEAM_CANDIDATES, OFFICE_COLOUR_CANDIDATES } from '../src/dev/cabinet-bezel-candidates.js';
 import { drawPoster, POSTER_W, POSTER_H, CABINET_STAR } from '../src/sprites/backwall.js';
 import { TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, caneScale, setInkScale, setInkDensity, ACTIVE_CELEBRATION_STYLE, DEATH_FACE_TIMING, DEATH_EYE_STYLES, TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction, b33pTitleShotPose, poseFromPlayer, drawRangedProjectile, RANGED_RELEASE_AT, BOW_RELEASE_AT, RANGED_RELEASE_POINT, BOW_AIM_T, BOW_REACH_T, ARROW_ARC, drawThrownAxe, drawRocketFist, AXE_THROW_AT } from '../src/sprites/toons.js';
 import { HERO_SPRITES } from '../src/sprites/heroes.js';
@@ -1726,7 +1727,10 @@ function propNominalSize(name) {
     'The hub concourse, at the size HubState draws it: nine cabinets lit and dead '
     + '(sprites/arcade.js), the overtime machine, and every service door. '
     + 'Cabinet colours come straight from each CABINETS entry.');
-  const CW = 40, CH = 90, DW = 44, DH = 84;
+  // The cabinet's footprint comes from the style the hub stands up; a hardcoded
+  // 40x90 here was the retired upright's, and squeezed the 48-wide chibi.
+  const { w: CW, h: CH } = cabinetStyle();
+  const DW = 44, DH = 84;
   const cabTile = (cab, unlocked) => {
     const pal = cabinetPalette(cab, unlocked);
     // The first cabinet has no unlock threshold at all, so UNLOCKS has no entry
@@ -9199,6 +9203,65 @@ function jadeSky(ctx, w, h, seed = 1) {
         ctx.restore();
       });
     }, { animated: false, wide: true, world: true, hires: 5 });
+}
+
+// ------------------------------------------- monitor bezel bake-off (19 Oct 2026)
+// Peter, after the screens went 4:3 with a marquee-width casing band round them:
+// "bake off a few different widths style for the monitor border/bezels —
+// different widths, flat, not flat". Every candidate keeps that outer frame and
+// refits the glass to exactly 4:3 inside its own rim (src/dev/cabinet-bezel-
+// candidates.js). Drawn at the hub's own zoom with the live attract screens, on
+// four cabinets that span the row's range of body colours. Two side questions
+// asked in the same breath ride along: the deck seam, and Corporate Kombat's colour.
+{
+  const grid = section('cabinet-bezel-bakeoff', 'FOOD COURT — monitor bezels, the deck seam, the office cabinet colour (bake-off)',
+    'SHIPPED 19 Oct: <b>NOW</b> (E, thinned to 1.7px) and <b>K1</b> dusty teal; the seam stays S1. '
+    + '<b>NOW, X, A–I</b>: the monitor bezel (X is the flat rim that shipped before). Every candidate keeps the shipped outer frame (the ~3.4px '
+    + 'casing band that matches the marquee border) and changes only the rim inside it, so a wider rim means a '
+    + 'smaller glass; the glass is refitted to exactly 4:3 every time. A–C are widths, all flat; D–I are '
+    + 'treatments. <b>S1–S3</b>: the line under the monitor — short of the edges (shipped), full width, or none. '
+    + '<b>K0–K5</b>: Corporate Kombat out of pink (K0 is the pink), every colour from the office level\'s own palette, shown between '
+    + 'its real neighbours (Gravity Grid, Déjà View).',
+    '19 Oct 2026');
+  const Z = HUB_ZOOM, GAP = 8, M = 4;
+  const { w: CW, h: CH } = cabinetStyle();
+  const byId = (id) => CABINETS.find((c) => c.id === id);
+  const BEZEL_ROW = ['plumber', 'speed', 'rhythm', 'crypt'].map(byId);
+  const OFFICE_ROW = ['gravity', 'office', 'surge'].map(byId);
+  const wall = (ctx, w, h) => {
+    ctx.fillStyle = '#241c30';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#332a44';
+    ctx.fillRect(0, h - M - 2, w, M + 2);
+  };
+  // One cabinet as the hub draws it: shell, then the live attract window and its
+  // rolling bar inside the glass.
+  const cabinet = (ctx, t, x, cab, style, pal = cabinetPalette(cab, true)) => {
+    drawCabinetShell(ctx, x, M, CW, CH, pal, style, { glint: 0 });
+    const scr = drawCabinetScreen(ctx, x, M, CW, CH, pal, style, cabinetScreenArt(cab, t, pal.seed));
+    if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+  };
+  const rowTile = (name, note, cabs, pick) => {
+    const lw = cabs.length * CW + (cabs.length - 1) * GAP + M * 2, lh = CH + M * 2;
+    tile(grid, name, note, lw * Z, lh * Z, (ctx, t) => {
+      ctx.scale(Z, Z);
+      wall(ctx, lw, lh);
+      cabs.forEach((cab, i) => {
+        const { style, pal } = pick(cab);
+        cabinet(ctx, t, M + i * (CW + GAP), cab, style, pal);
+      });
+    }, { animated: true });
+  };
+  for (const c of BEZEL_CANDIDATES) {
+    rowTile(`${c.letter} — ${c.name}${c.shipped ? ' (SHIPPED)' : ''}`, c.note, BEZEL_ROW, () => ({ style: c.style }));
+  }
+  for (const c of SEAM_CANDIDATES) {
+    rowTile(`${c.letter} — ${c.name}${c.shipped ? ' (SHIPPED)' : ''}`, c.note, BEZEL_ROW, () => ({ style: c.style }));
+  }
+  for (const c of OFFICE_COLOUR_CANDIDATES) {
+    rowTile(`${c.letter} — ${c.name}${c.shipped ? ' (SHIPPED)' : ''}`, c.note, OFFICE_ROW,
+      (cab) => ({ style: undefined, pal: cab.id === 'office' ? c.pal : undefined }));
+  }
 }
 
 // The IntersectionObserver was already here, already tracking visibility and

@@ -40,12 +40,37 @@ const darken = (c, t) => mix(c, INK_DARK, t);
 // light ink on it. Cabinet skies run from #0a0a2a to #e8e8f0, so a fixed choice
 // would be invisible on half the row.
 function luma(c) { const [r, g, b] = rgb(c); return (r * 0.299 + g * 0.587 + b * 0.114) / 255; }
+// The marquee art is the cabinet's own hood colour, pushed just far enough from
+// the glass to read: MARQUEE_CONTRAST in luma, darker on a pale sign and lighter
+// on a dark one. It used to be one fixed darkening (the shell's outline over the
+// hood), which gave Rhythm a near-black icon (0.62 under its glass) and left the
+// four dark cabinets — Crypt, Neon, Gravity, Surge — with art barely 0.05-0.09
+// off a glass it was the wrong side of. 0.32 is where Frost and Speed already
+// sat, the two Peter called subtle; forcing it toward near-black made the pale
+// Frost icon too harsh.
+const MARQUEE_CONTRAST = 0.32;
+const MARQUEE_INKS = new WeakMap();
 function marqueeInk(pal) {
-  // Match the shell's rgba(26,16,40,0.34) outline composited over its hood.
-  // Keeping the marquee art on this same tint makes it belong to the cabinet;
-  // contrast-adjusting it toward near-black made the pale Frost icon too harsh.
+  let ink = MARQUEE_INKS.get(pal);
+  if (ink) return ink;
   const hood = pal.hood.startsWith('#') ? pal.hood : mixHex(pal.body, '#ffffff', 0.08);
-  return mixHex(hood, '#1a1028', 0.34);
+  const glassL = luma(pal.glass);
+  const target = glassL > 0.5 ? glassL - MARQUEE_CONTRAST : glassL + MARQUEE_CONTRAST;
+  // Slide the hood until it lands on the target: toward the outline's dark violet
+  // if it is too light, otherwise up toward the glass itself where that is lighter
+  // (Rhythm's charcoal hood under pale LCD green comes out an LCD olive, not grey)
+  // or toward white on a dark sign. Luma is monotonic along each leg, so bisect.
+  const darker = luma(hood) > target;
+  const toward = darker ? '#1a1028' : glassL > target ? pal.glass : '#ffffff';
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2;
+    const L = luma(mixHex(hood, toward, mid));
+    if (darker ? L > target : L < target) lo = mid; else hi = mid;
+  }
+  ink = mixHex(hood, toward, (lo + hi) / 2);
+  MARQUEE_INKS.set(pal, ink);
+  return ink;
 }
 
 // A small stable number per cabinet id. Staggers the dead-screen static so nine
@@ -112,7 +137,9 @@ export function cabinetPalette(cab, unlocked = true) {
       knob: '#3a4150', button: '#3a4150', screen: '#101018', ink: '#1a1e26',
     };
   }
-  const body = cab.ground;
+  // A cabinet wears its level's ground and sky unless its CABINETS entry gives
+  // the shell its own colours (`shell: { body, glass }`).
+  const body = cab.shell?.body || cab.ground;
   const shade = cab.groundDark;
   const sky = cab.sky[0];
   return {
@@ -125,10 +152,7 @@ export function cabinetPalette(cab, unlocked = true) {
     deck: lighten(body, 0.16),
     lipC: darken(shade, 0.25),
     hood: lighten(body, 0.08),
-    // Rhythm's sky is near-black olive, which left its marquee a dark hole above
-    // a pale LCD-green bezel. Light it in the bezel's own green instead, so the
-    // sign and the screen surround read as one panel colour.
-    glass: cab.id === 'rhythm' ? shade : cab.sky[1],
+    glass: cab.shell?.glass || cab.sky[1],
     well: '#0b0b14',
     plate: '#100c18',
     knob: '#e04848',
@@ -424,10 +448,10 @@ function paintRounded(ctx, w, h, pal, opts = {}) {
 // reference — 44x78 rather than 40x90.
 //
 // Every y below is a fraction of the 90-tall box. The glass was 34x21 (1.62:1),
-// which read as a letterbox; it is now 32.8x24.6, exactly 4:3, the old CRT shape.
+// which read as a letterbox; it is now 31.6x23.7, exactly 4:3, the old CRT shape.
 // The casing round the bezel is ~3.4px on all four sides — the same band the hood
-// leaves round the marquee glass — and the bezel rim stays ~1.25px. Holding both
-// at 4:3 needed a taller face, so the cabinet grew from 85 to 90: everything above
+// leaves round the marquee glass — and inside it a recessed rim of ~1.7px. Holding
+// both at 4:3 needed a taller face, so the cabinet grew from 85 to 90: everything above
 // the glass is where it was in pixels, everything below it moved down 5px.
 const CHIBI_BOX = {
   // The marquee and monitor/control face are separate stacked shells.
@@ -442,7 +466,9 @@ const CHIBI_BOX = {
   // divider. Leave enough casing inside the bezel outline for its rim to stay
   // visible on every cabinet palette.
   bezel: { x0: 0.1323, x1: 0.8677, y0: 0.2692, y1: 0.5703 },
-  screen: { x0: 0.1583, x1: 0.8417, y0: 0.2831, y1: 0.5564 }, screenR: 0.1,
+  // Recessed rim, 1.7px top and bottom (bezel bake-off E, thinned); the glass is
+  // the largest 4:3 that leaves it, so the sides come out a touch wider.
+  screen: { x0: 0.1708, x1: 0.8292, y0: 0.2881, y1: 0.5514 }, screenR: 0.1,
   // This face is deliberately matte. The former diagonal gloss read as a
   // pale patch sitting on top of the small marquee and monitor.
   marqueeReflection: false,
@@ -458,10 +484,16 @@ function paintChibiFront(ctx, w, h, pal, opts = {}) {
   const bx = (k) => [X(B[k].x0), Y(B[k].y0), X(B[k].x1 - B[k].x0), Y(B[k].y1 - B[k].y0)];
   // This is a divider on the shared cabinet face, not the outline of a second
   // rounded control box. The screen ends well above it, leaving a casing gap.
-  stroke(ctx, darken(pal.body, 0.24), Math.max(0.45, w * 0.012), (c) => {
-    c.moveTo(X(0.085), Y(B.deck.y0));
-    c.lineTo(X(0.915), Y(B.deck.y0));
-  });
+  // `opts.divider` ('full' | 'none') is the bezel bake-off's seam; the shipped
+  // groove stops short of both edges.
+  const divider = opts.divider || 'inset';
+  if (divider !== 'none') {
+    const [d0, d1] = divider === 'full' ? [B.upper.x0, B.upper.x1] : [0.085, 0.915];
+    stroke(ctx, darken(pal.body, 0.24), Math.max(0.45, w * 0.012), (c) => {
+      c.moveTo(X(d0), Y(B.deck.y0));
+      c.lineTo(X(d1), Y(B.deck.y0));
+    });
+  }
   shape(ctx, pal.lipC, u, (c) => rr(c, ...bx('lip'), w * 0.07));
   deckControls(ctx, w, pal, Y(0.646), 1.05, opts.stickLean, opts.buttonPress, opts.stickFwd,
     [Y(B.deck.y0), Y(B.deck.y1)], opts.glint);
@@ -506,8 +538,27 @@ function paintChibi(ctx, w, h, pal, opts = {}) {
     }
   }
 
-  shape(ctx, pal.shade, u, (c) => rr(c, ...bx('bezel'), bezelRadius));
-  plain(ctx, pal.well, (c) => rr(c, ...bx('screen'), screenRadius));
+  // `opts.bezel` swaps in a candidate frame from the bezel bake-off
+  // (src/dev/cabinet-bezel-candidates.js); it paints both the frame and the well.
+  if (opts.bezel) {
+    opts.bezel(ctx, { w, h, pal, u, B, bx, bezelRadius, screenRadius, mix, lighten, darken });
+  } else {
+    // The glass sits back in a recess (bake-off E, 19 Oct 2026): the top of the
+    // rim is in the casing's shadow and the bottom catches the light. The ring is
+    // inset 0.3px so the outline shape() drew stays visible round it.
+    shape(ctx, darken(pal.shade, 0.15), u, (c) => rr(c, ...bx('bezel'), bezelRadius));
+    const [rx, ry, rw, rh] = bx('bezel'), k = 0.3;
+    const g = ctx.createLinearGradient(0, ry, 0, ry + rh);
+    g.addColorStop(0, darken(pal.shade, 0.42));
+    g.addColorStop(0.55, darken(pal.shade, 0.08));
+    g.addColorStop(1, lighten(pal.shade, 0.22));
+    ctx.beginPath();
+    rr(ctx, rx + k, ry + k, rw - k * 2, rh - k * 2, bezelRadius - k);
+    rr(ctx, ...bx('screen'), screenRadius);
+    ctx.fillStyle = g;
+    ctx.fill('evenodd');
+    plain(ctx, pal.well, (c) => rr(c, ...bx('screen'), screenRadius));
+  }
   // In the hub the live screen is drawn between the cabinet's rear housing
   // and this foreground deck/control pass, so the glass cannot paint over them.
   if (!opts.deferFront) paintChibiFront(ctx, w, h, pal, opts);

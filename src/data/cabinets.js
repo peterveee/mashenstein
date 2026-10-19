@@ -619,6 +619,9 @@ export const CABINETS = [
     // mid-section with these, on top of the pack's panel-lit road, and the
     // olive drab it used to carry read as mud on the screen.
     sky: ['#202018', '#383828'], ground: '#3c3f45', groundDark: '#dce49a',
+    // The food-court cabinet's marquee. The sky is near-black olive, which left it a
+    // dark hole above the pale LCD-green bezel; it is lit in that bezel green instead.
+    shell: { glass: '#dce49a' },
     far: '#404030', hills: '#383828',
     // TEETH. This cabinet's beat lane cuts its own holes on the grid
     // (songs/rhythm.js), so a hole here is not an occasional set piece, it is
@@ -1003,6 +1006,9 @@ export const CABINETS = [
     mechanic: 'meetings', // floor-by-floor furniture: see OFFICE_FLOORS
     sky: ['#f5d7ed', '#cbe7e8'], ground: '#d6a7ba', groundDark: '#654c68',
     far: '#b9b2d2', hills: '#789da4',
+    // The food-court cabinet is not pink: it wears the hills' dusty teal, and the
+    // pink moves up to the marquee glass (bake-off K1, 19 Oct 2026).
+    shell: { body: '#789da4', glass: '#f5d7ed' },
     music: OFFICE.bank,
     // The bank is written once in the lane's shared vocabulary and dressed per
     // floor (OFFICE_FLOORS, above). `patterns` is floor 23 — the office as the
