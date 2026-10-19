@@ -12,6 +12,14 @@ const forcedTransferSpikes = (prefix, gates, first = 0, delay = 1.25) => gates.m
   hazard(`${prefix}-spikes-${i + 1}`, g.at + delay, 1 - g.lane, GATE_FIELD_TYPES[(i + first) % 2]));
 const runGates = [gate(5, 1), gate(13, 0), gate(18.5, 1), gate(29, 0), gate(37, 1), gate(45, 0), gate(54, 1), gate(63, 0), gate(72, 1), gate(78, 0)];
 const maintenanceGates = [gate(18, 1), gate(28, 0), gate(49, 1), gate(61, 0), gate(80, 1), gate(90, 0)];
+// Rubbish stays on the station rails until the brush reaches it. The short
+// gaps around gates leave room for their wires and the larger gate piles.
+const maintenanceDebrisPatches = Array.from({ length: 168 }, (_, i) => {
+  const at = 2.2 + i * .55;
+  const lane = maintenanceGates.filter(g => g.at <= at).at(-1)?.lane ?? 0;
+  return { id: `rail-rubbish-${i + 1}`, at, lane: 1 - lane,
+    ...(i % 4 === 1 ? { bonusCoin: true } : {}) };
+}).filter(p => !maintenanceGates.some(g => p.at > g.at - .35 && p.at < g.at + 1.9));
 const attack = (id, at, lane, type, span) => ({ id, at, lane, type, ...(span ? { span } : {}) });
 const vacuumAttack = (id, at, lane, count = 1) => ({ id, at, lane, count, sourceLane: 1 - lane });
 // A short live wire on your own floor, jumped like any crate (Peter, 15 Oct: "i would
@@ -119,42 +127,66 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
     name: 'MAINTENANCE MAYHEM',
     gates: maintenanceGates,
     debrisRail: true,
+    // Loose rubbish sits beside the short post-gate wires until the hovering
+    // cleaner's brush passes it on the rail the hero just left.
+    debrisPatches: [...maintenanceDebrisPatches,
+      ...maintenanceGates.map((g, i) => ({ id: `gate-rubbish-${i + 1}`,
+        at: g.at + 1.8, lane: 1 - g.lane }))],
     // `at` is when the compacted cube lands on the running surface and starts
     // moving toward the runner. Intake begins 2.45 seconds before that: loose
     // paper, dust, foil and bolts are gathered from the opposite rail.
     vacuumAttacks: [
       vacuumAttack('vacuum-1', 5, 0),
-      vacuumAttack('vacuum-extra-1', 8, 0, 2),
       vacuumAttack('vacuum-2', 11, 0),
-      vacuumAttack('vacuum-extra-2', 14, 0, 2),
-      vacuumAttack('vacuum-3', 24, 1, 2),
-      // A six-volley run: each complete intake / compact / eject cycle finishes
-      // before the next starts. Both transfer runways stay clear.
-      vacuumAttack('vacuum-extra-3', 33.6, 0, 2),
-      vacuumAttack('vacuum-extra-4', 36.05, 0, 2),
-      vacuumAttack('vacuum-4', 38.5, 0, 2),
-      vacuumAttack('vacuum-extra-5', 40.95, 0, 2),
-      vacuumAttack('vacuum-5', 43.4, 0, 2),
-      vacuumAttack('vacuum-extra-6', 45.85, 0, 2),
-      vacuumAttack('vacuum-6', 55, 1, 2),
-      vacuumAttack('vacuum-7', 58, 1),
-      vacuumAttack('vacuum-extra-7', 66.8, 0, 2),
-      vacuumAttack('vacuum-8', 70, 0),
+      vacuumAttack('vacuum-3', 21, 1),
+      // Single cubes leave room for a different station obstacle between
+      // drops; the occasional pair remains a distinct jump pattern.
+      vacuumAttack('vacuum-extra-3', 31, 0),
+      vacuumAttack('vacuum-extra-4', 35, 0),
+      vacuumAttack('vacuum-4', 39, 0, 2),
+      vacuumAttack('vacuum-5', 43, 0),
+      vacuumAttack('vacuum-6', 52, 1),
+      vacuumAttack('vacuum-7', 57, 1, 2),
+      vacuumAttack('vacuum-extra-7', 64.5, 0),
+      vacuumAttack('vacuum-8', 69, 0),
       vacuumAttack('vacuum-9', 74, 0, 2),
-      vacuumAttack('vacuum-extra-8', 77, 0),
-      vacuumAttack('vacuum-10', 85.7, 1, 2),
+      vacuumAttack('vacuum-10', 82, 1),
     ],
     hazards: [
-      // The hovering vacuum owns the garbage cubes; only the six
-      // transfer rollers remain as authored static machinery hazards.
-      ...maintenanceGates.map((g, i) => attack(`rollers-${i + 1}`,
-        g.at + 1.25, 1 - g.lane, 'maintenanceRollers', 2.6)),
+      // Ordinary jump obstacles occupy the running rail between cube arrivals.
+      // Their spacing leaves a landing after each volley and a clear approach
+      // to every gravity gate; short wires punish a missed transfer.
+      hazard('cleaner-deck-01', 2.5, 0, 'foilCrate'),
+      hazard('cleaner-deck-02', 8.2, 0, 'fuelCell'),
+      hazard('cleaner-deck-03', 14.2, 0, 'coolantRadiator'),
+      hazard('cleaner-deck-04', 16.5, 0, 'specimenCase'),
+      hazard('cleaner-deck-05', 24.2, 1, 'valveManifold'),
+      hazard('cleaner-deck-06', 26.3, 1, 'foilCrate'),
+      hazard('cleaner-deck-07', 33.8, 0, 'coolantRadiator'),
+      hazard('cleaner-deck-08', 37.8, 0, 'specimenCase'),
+      hazard('cleaner-deck-09', 41.8, 0, 'fuelCell'),
+      hazard('cleaner-deck-10', 46.2, 0, 'coolantRadiator'),
+      hazard('cleaner-deck-11', 50.5, 1, 'foilCrate'),
+      hazard('cleaner-deck-12', 54.8, 1, 'coolantRadiator'),
+      hazard('cleaner-deck-13', 63, 0, 'fuelCell'),
+      hazard('cleaner-deck-14', 67.5, 0, 'valveManifold'),
+      hazard('cleaner-deck-15', 72, 0, 'specimenCase'),
+      hazard('cleaner-deck-16', 77.5, 0, 'foilCrate'),
+      hazard('cleaner-deck-17', 85, 1, 'fuelCell'),
+      hazard('cleaner-deck-18', 88, 1, 'coolantRadiator'),
+      hazard('cleaner-deck-19', 93.2, 0, 'valveManifold'),
+      hazard('cleaner-deck-20', 96.4, 0, 'foilCrate'),
+      ...maintenanceGates.map((g, i) => attack(`gate-wire-${i + 1}`,
+        g.at + 1.25, 1 - g.lane, 'railPulse', SHORT_WIRE)),
     ].sort((a, b) => a.at - b.at),
     sequences: [
       { id: 'sweep', start: 2, end: 33 },
       { id: 'scrub', start: 35, end: 66 },
-      { id: 'polish', start: 68, end: 94.5 },
+      { id: 'polish', start: 68, end: 82.5 },
     ],
+    // Let the Martian fighters enter before the cleaner begins its exit, so
+    // both share the screen during the handoff into the last plateau raid.
+    vacuumDepartAt: 92.5,
     rewards: [{ at: 15, lane: 0 }, { at: 33.5, lane: 0 }, { at: 46, lane: 0 },
       { at: 66.5, lane: 0 }, { at: 77, lane: 0 }],
     intro: 'THE CLEANER HAS MISTAKEN YOU FOR DEBRIS.',

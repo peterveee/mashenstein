@@ -153,7 +153,43 @@ export function gaitRate(speed, hero) {
 // screen 0 — at ZOOM_MIN they sit at 73 instead of 112, behind the pill. Only
 // the cape/triple heights pull back that far, and they grazed it at the old
 // anchor too; it is the price of the left edge staying welded.
-export const PLAYER_X = 59;      // fixed world offset from camX
+//
+// 55 on desktop (was 59; Peter, 19 Oct 2026: "keep the zoom … buy a few extra
+// pixels by squishing the battery … and making the coin a little smaller"). The
+// meter's segments went 0.36 -> 0.27 of its height and the coin 12 -> 10, which took
+// ~7px off the pill. What sets the figure now is the beat ribbon's playhead (hud.js
+// ribbonAnchor), which stands on PLAYHEAD_OFF below; see the HERO_ANCHOR table.
+//
+// PER MODE, NOT ONE NUMBER (Peter, 19 Oct 2026: "i want the flexibility to have the
+// hero at different positions in different modes"). HERO_ANCHOR is the table and
+// applyFraming (run.js) installs the entry for this device with setHeroAnchor, next
+// to the zoom it goes with. A phone frames at 2.2, where the pill is nowhere near the
+// playhead, so it stands further left and buys runway instead. Nothing has to be
+// re-timed for it: every rhythm item is laid from the hero's LIVE world x
+// (BeatSpawner.fill), so the lane moves with him — tests/beat-contact.js holds that.
+// `let` and a setter for the same reason camera.js does ZOOM that way: the imports
+// are live bindings, so every reader sees the new value on its next read.
+// THE COLUMNS (Peter, 19 Oct 2026: "adjust the runway as much as possible … with a
+// 16th note gap with 100+ coins at all times"). The rule: the playhead tab, centred
+// at (PLAYER_X + PLAYHEAD_OFF) * zoom and 4px wide, starts a 16th (13px) clear of the
+// status pill. On the landscape rhythm corner the coins ride in the clock's row under
+// the pill (hud.js coinsBelowPill — "lets add the coins with the time"), so the pill
+// is the hero disc and the meter and ends at ~55.5 whatever the count: the rule is
+// (PLAYER_X + 7) * zoom >= 70.5. Each stands 5 right of that floor — Peter wanted
+// him "a bit more to the right" once the playhead had moved to his centre:
+//   desktop      1.6  46   (38 is the floor; Peter, 19 Oct 2026: 46, matching ZOOM IN)
+//   tablet       2.0  34   (29)
+//   phone        2.2  31   (26)
+// desktopClose, the desktop's ZOOM IN (2.0), stands further right on purpose: Peter
+// wanted the hero clear of the whole corner, the coins-and-clock row included at
+// 100+ coins and 100+ seconds (its right edge ~76.5). His drawing reaches 3px left
+// of his slot, so (PLAYER_X - 3) * 2 >= 76.5 + ~4 of air -> 44, and 2 more with the
+// rest -> 46.
+// The zoom is chosen outside a run and never changes inside one, so the hero never
+// moves under items already laid.
+export const HERO_ANCHOR = Object.freeze({ desktop: 46, desktopClose: 46, tablet: 34, phone: 31 });
+export let PLAYER_X = HERO_ANCHOR.desktop;      // fixed world offset from camX
+export function setHeroAnchor(x) { PLAYER_X = x; }
 export const PLAYER_W = 8;       // hitbox (12px sprite, 2px inset)
 export const PLAYER_H = 14;
 export const SLIDE_H = 7;
@@ -167,6 +203,19 @@ export const SLIDE_H = 7;
 // purpose: the player aims the landing with the sprite, so the sprite is what
 // has to be over the ledge. See RunState.playerFootprint.
 export const PLAYER_SPRITE_W = 12;
+// WHERE THE RIBBON'S PLAYHEAD STANDS ON THE HERO, from the left of his slot
+// (heroScreenX): one past his centre (Peter, 19 Oct 2026: "a bit closer to their
+// center again", then "one position to the right so it's a little forward of the
+// hero center").
+export const PLAYHEAD_OFF = PLAYER_SPRITE_W / 2 + 1;
+// WHERE A BEAT-LINED PICKUP IS LAID, past its line, so its CENTRE is on the playhead
+// on its beat: PLAYHEAD_OFF less half its width (3 for a coin). His reach for one is
+// carried forward by the same amount (run.js collide), so his hitbox front still meets
+// it ~10px before its beat — the lead that lets its ping be PLACED on the beat
+// (pickupLineInBeats) rather than fired an output latency late. It is then held on
+// screen until its beat and pops there (popTakenCoins), so the dot crossing the
+// playhead, the pop and the ping are one instant. tests/beat-contact.js.
+export const beatLayOff = (w) => PLAYHEAD_OFF - w / 2;
 
 // The gravity actually acting on a hero. One reader for the `heavy` flag, so
 // the four places that used to spell out the conditional cannot drift apart.

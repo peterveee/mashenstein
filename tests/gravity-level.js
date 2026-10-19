@@ -253,7 +253,7 @@ for (const hero of HEROES) {
   assert.equal(vacuumRobotAheadForView(400), 128, 'desktop keeps the original robot position');
   const portraitRobotAhead = vacuumRobotAheadForView(480 / 2.2);
   assert.ok(portraitRobotAhead < 128, 'portrait brings the hover vacuum fully into the narrower view');
-  assert.equal(vacuumShotAheadForView(480 / 2.2), portraitRobotAhead - 24,
+  assert.equal(vacuumShotAheadForView(480 / 2.2), portraitRobotAhead + 24,
     'portrait launch point remains aligned to the robot outlet');
   assert.equal(floorAttack.sourceLane, 1, 'floor shot pulls its canister from the ceiling');
   assert.equal(ceilingAttack.sourceLane, 0, 'ceiling shot lifts its canister from the floor');

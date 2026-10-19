@@ -8,7 +8,7 @@ export const OBSTACLES = {
   floatSpikes: { w: 48, h: 8, ground: true, armored: true, action: 'jump', gravityArt: true },
   maintenanceBrush: { w: 30, h: 30, alt: 13, armored: true, action: 'slide', gravityArt: true },
   maintenancePulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },
-  vacuumShot: { w: 21, h: 15, ground: true, armored: true, breakable: false, action: 'jump', gravityArt: true },
+  vacuumShot: { w: 17, h: 17, ground: true, armored: true, breakable: false, action: 'jump', gravityArt: true },
   // The wrong rail's live wire (gravity/state.js withWrongRailBeds): the pulse's zigzag,
   // held still and stretched the length of the bed.
   railPulse: { w: 20, h: 7, ground: true, armored: true, action: 'jump', gravityArt: true },
@@ -530,7 +530,9 @@ export const OBSTACLES = {
   // `explodes` (16 Oct 2026): broken or run into, it goes off (run.js dynamiteBlast).
   dynamite:     { w: 13, h: 12, sprite: 'dynamite', ground: true, breakable: true, action: 'jump', explodes: true },
   barrelCactus: { w: 17, h: 14, sprite: 'barrelCactus', ground: true, breakable: true, action: 'jump' },
-  smudgePot:    { w: 13, h: 13, sprite: 'smudgePot', ground: true, breakable: true, action: 'jump' },
+  // The smudge pot reads as a cartoon bomb — black ball, lit wick — so it goes off like
+  // the dynamite rather than scorching him like the fires (Peter, 19 Oct 2026).
+  smudgePot:    { w: 13, h: 13, sprite: 'smudgePot', ground: true, breakable: true, action: 'jump', explodes: true },
   sawhorse:     { w: 16, h: 9, sprite: 'sawhorse', ground: true, armored: true, breakable: false, action: 'jump', splitFeet: true },
   // Speed Zone's flier in the songbird's place: its box, height and answer; not an animal.
   saucer:       { w: 12, h: 7, sprite: 'saucer', alt: 34, armored: false, breakable: false, action: 'none', bob: true, airVx: -28 },

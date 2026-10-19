@@ -564,7 +564,8 @@ const TRAIN_DEPART_DOORS = 0.22;   // doors are shut this far into the window
 // deriving it means a later change to LEAD, BACK, SETTLE or EASE cannot
 // silently put the train back through the hero. The margin past the sprite is
 // there so the nose does not shave him.
-const TRAIN_CLEAR_X = PLAYER_X + PLAYER_SPRITE_W + 10;
+// A function: PLAYER_X is per framing (player.js HERO_ANCHOR).
+const trainClearX = () => PLAYER_X + PLAYER_SPRITE_W + 10;
 
 /** The tail's screen x at `u`, in world px from the camera's left edge. */
 function trainTailAt(u) {
@@ -579,7 +580,7 @@ function trainTailAt(u) {
 const TRAIN_FLIGHT_CLEAR_U = (() => {
   for (let i = 1; i <= 400; i++) {
     const u = i / 400;
-    if (trainTailAt(u) >= TRAIN_CLEAR_X) return u;
+    if (trainTailAt(u) >= trainClearX()) return u;
   }
   // Nothing cleared — keep it in the air for the whole approach rather than
   // dropping it on him.

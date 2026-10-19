@@ -152,8 +152,10 @@ export const BATTERY_FOCUS = (() => {
 const BATT = {
   ink: 0.11,   // shell stroke
   pad: 0.06,   // shell interior to segment
-  seg: 0.36,   // one segment's width
-  gap: 0.12,   // between segments
+  // Squished from 0.36 / 0.12 (Peter, 19 Oct 2026) to narrow the status pill, so the
+  // hero's anchor could come left and give back runway — see player.js PLAYER_X.
+  seg: 0.27,   // one segment's width
+  gap: 0.1,    // between segments
   nub: 0.19,   // terminal, hung off the right edge — same way round as the pickup
   nubH: 0.42,
 };

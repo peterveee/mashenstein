@@ -745,8 +745,20 @@ const CUE_PERCEPTUAL_LEAD = CUE_ATTACK * 0.9 - 0.002;
 // The number is that gap plus the generic lead, i.e. where the ear puts the
 // sound rather than where the file starts. Cues absent from the table keep
 // CUE_PERCEPTUAL_LEAD, which is still right for all of them.
+// 'coin' can be placed off the generic lead (Peter, 19 Oct 2026: "the coins sound
+// slightly off still"). It is two squares, the low note then the high one 60ms in
+// (render: rise 7ms, loudest at 76ms). Tried by ear on 19 Oct at +15, -15, +10, +5
+// (lined up in Logic against work/auditions/coin-timing), +3 and -5, and set back to
+// 0 — the generic placement. COIN_CUE_DELAY_MS is how much later than that it sounds,
+// negative earlier; ?coindelay=<ms> overrides it on a dev build to tune by ear.
+const COIN_CUE_DELAY_MS = (() => {
+  const dev = typeof window !== 'undefined' && window.__MASH_DEV__
+    && typeof location !== 'undefined' ? /[?&]coindelay=(-?[\d.]+)/.exec(location.search || '') : null;
+  return dev ? Number(dev[1]) : 0;
+})();
 export const CUE_ONSET_LEAD = {
   boom: CUE_PERCEPTUAL_LEAD + 0.037,
+  coin: CUE_PERCEPTUAL_LEAD - COIN_CUE_DELAY_MS / 1000,
 };
 
 export const MAX_CUE_LEAD = Math.max(CUE_PERCEPTUAL_LEAD, ...Object.values(CUE_ONSET_LEAD));
@@ -958,6 +970,8 @@ export const MARTIAN_PEW = 'B';   // Peter's pick, 13 Oct
 // The live wire's zap (see zap()): Peter's pick, 15 Oct — A, after C was "too short and
 // high pitched".
 export const ZAP_SOUND = 'A';
+// The roller's splat: B, the squelch (Peter, 19 Oct 2026, of rollSplat's six candidates).
+export const ROLL_SPLAT_SOUND = 'B';
 export const SFX_TRIM = {
   blockBreak: 0.495, coinSpray: 0.822, hit: 0.785,
   // Levelled against 'boom', its opposite number, and deliberately far over it — the
@@ -3517,6 +3531,7 @@ class AudioSys {
     out.gain.value = this.cueGain;
     motor.connect(panner); panner.connect(out); out.connect(this.cueDest || this.sfxGain);
     lfo.start(t0); lfo.stop(end);
+    this._unwireWhenDone(lfo, depth);
     this._sleighCarolOut = { out, end };
 
     const partial = (t, f, peak, decay) => {
@@ -3910,6 +3925,7 @@ class AudioSys {
     o.start(t); o.stop(t + DUR + 0.02);
     o2.start(t); o2.stop(t + DUR + 0.02);
     lfo.start(t); lfo.stop(t + DUR + 0.02);
+    this._unwireWhenDone(lfo, lfoDepth);
 
     // The arc itself: a thin band of noise up where the spark lives, riding on
     // through the buzz rather than snapping shut after one frame.
@@ -3957,6 +3973,7 @@ class AudioSys {
       const d = ctx.createGain(); d.gain.value = depth;
       lfo.connect(d); d.connect(gate.gain);
       lfo.start(t); lfo.stop(t + dur + 0.03);
+      this._unwireWhenDone(lfo, d);
       gate.connect(out);
       return gate;
     };
@@ -3991,6 +4008,7 @@ class AudioSys {
       const fm = ctx.createOscillator(); fm.frequency.value = 57;
       const fmd = ctx.createGain(); fmd.gain.value = 45;
       fm.connect(fmd); fmd.connect(o.frequency); fm.start(t); fm.stop(t + DUR + 0.03);
+      this._unwireWhenDone(fm, fmd);
       tone(gate, 'square', 300, 190, DUR, 0.06, { hold: 0.4, lp: 4200 });
       hiss(gate, 'bandpass', 3200, DUR, 0.12, { hold: 0.4, Q: 1.1 });
       hiss(out, 'highpass', 2800, 0.04, 0.28);                       // bzz…
@@ -4019,6 +4037,90 @@ class AudioSys {
       let seed = 11;
       const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
       for (let i = 0; i < 9; i++) hiss(out, 'highpass', 3500, 0.012 + rnd() * 0.012, 0.26 * (0.6 + 0.4 * rnd()), { at: t + rnd() * DUR });
+    }
+  }
+
+  // THE ROLLER'S SPLAT — candidates (19 Oct 2026, Peter: "can we bake off some splat sound
+  // effects"), for the rollers' ROLLED picture (sprites/hitPictures.js, shipped the same day):
+  // pressed flat front to back on the hit (0-0.09s, inside the hitstop), held flat to 0.2s,
+  // a sprung pop (overshoot ~0.29s), stars from ~0.32s. It would REPLACE 'hit' for the roller
+  // family, the way the live wire's zap does. B SHIPS (ROLL_SPLAT_SOUND); the other five stay
+  // drawable: `node tools/render-cues.js rollSplat:splatA` … splatF. Level-matched by RMS.
+  //   A SPLAT        a wet slap: a noise burst whose filter falls 3k -> 250 Hz, over a low thud
+  //   B SQUELCH      resonant noise sliding down with a rubbery wobble — wetter and longer
+  //   C SPLAT+BOING  A's slap, then a spring twang on the picture's pop (0.2s)
+  //   D STEAMROLLER  a heavy press: a low rumble and thump with cardboard crunching on top
+  //   E PFFT-POP     the air squeezed out of him (a falling breathy whistle), a cork on the pop
+  //   F SQUEAKY TOY  a rubber toy squashed (squeak down) and let go (squeak up, on the pop)
+  rollSplat(v = ROLL_SPLAT_SOUND) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = this.cueAt(), out = this.cueDest || this.sfxGain;
+    // ≈ −31.4 dB RMS each, 2 dB over 'hit' (the cue it would replace), as the zap's were.
+    const q = this.cueGain * ({ A: 0.359, B: 0.531, C: 0.452, D: 0.457, E: 0.495, F: 0.851 }[v] ?? 1);
+    const env = (g, peak, dur, hold, atk, at) => {
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(peak * q, at + atk);
+      if (hold > atk) g.gain.setValueAtTime(peak * q, at + hold);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      g.gain.linearRampToValueAtTime(0, at + dur + 0.015);
+    };
+    const tone = (type, f0, f1, dur, peak, { hold = 0, at = 0, lp = 0, vib = 0, vibHz = 0 } = {}) => {
+      const s0 = t + at, o = ctx.createOscillator(); o.type = type;
+      o.frequency.setValueAtTime(f0, s0);
+      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, s0 + dur);
+      if (vib) {
+        const lfo = ctx.createOscillator(), d = ctx.createGain();
+        lfo.frequency.value = vibHz; d.gain.value = vib;
+        lfo.connect(d); d.connect(o.frequency); lfo.start(s0); lfo.stop(s0 + dur + 0.03);
+        this._unwireWhenDone(lfo, d);
+      }
+      let node = o;
+      if (lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; node.connect(f); node = f; }
+      const g = ctx.createGain(); env(g, peak, dur, hold * dur, 0.004, s0);
+      node.connect(g); g.connect(out);
+      o.start(s0); o.stop(s0 + dur + 0.03);
+    };
+    const hiss = (type, f0, f1, dur, peak, { hold = 0, at = 0, Q = 0.8 } = {}) => {
+      const s0 = t + at, src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = type; f.Q.value = Q;
+      f.frequency.setValueAtTime(f0, s0);
+      if (f1 !== f0) f.frequency.exponentialRampToValueAtTime(f1, s0 + dur);
+      const g = ctx.createGain(); env(g, peak, dur, hold * dur, 0.002, s0);
+      src.connect(f); f.connect(g); g.connect(out);
+      src.start(s0); src.stop(s0 + dur + 0.03);
+    };
+    const slap = () => {
+      hiss('lowpass', 3200, 260, 0.16, 0.5, { Q: 1.2 });
+      hiss('bandpass', 1400, 500, 0.06, 0.25, { Q: 2 });
+      tone('sine', 150, 48, 0.18, 0.5);
+    };
+    if (v === 'A') slap();
+    else if (v === 'B') {
+      hiss('bandpass', 1800, 300, 0.24, 0.45, { Q: 6, hold: 0.3 });
+      tone('sine', 420, 160, 0.22, 0.18, { vib: 40, vibHz: 28 });
+      hiss('lowpass', 900, 200, 0.1, 0.3);
+      tone('sine', 120, 50, 0.14, 0.35);
+    } else if (v === 'C') {
+      slap();
+      tone('triangle', 170, 520, 0.22, 0.28, { at: 0.2, vib: 25, vibHz: 18 });
+      tone('triangle', 160, 470, 0.22, 0.16, { at: 0.212 });
+    } else if (v === 'D') {
+      hiss('lowpass', 260, 140, 0.32, 0.55, { hold: 0.4 });
+      tone('sawtooth', 70, 50, 0.3, 0.12, { lp: 300, hold: 0.4 });
+      tone('sine', 110, 45, 0.2, 0.4);
+      let seed = 7;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      for (let i = 0; i < 10; i++) hiss('bandpass', 2400, 1600, 0.015 + rnd() * 0.015, 0.25, { at: rnd() * 0.12, Q: 1.5 });
+    } else if (v === 'E') {
+      hiss('bandpass', 2600, 700, 0.2, 0.32, { Q: 3, hold: 0.5 });
+      tone('sine', 1400, 600, 0.18, 0.06);
+      tone('sine', 130, 50, 0.12, 0.4);
+      tone('sine', 900, 220, 0.06, 0.4, { at: 0.2 });
+      hiss('highpass', 2500, 2500, 0.04, 0.3, { at: 0.2 });
+    } else {
+      tone('square', 1500, 1050, 0.13, 0.12, { vib: 60, vibHz: 34, lp: 4000 });
+      tone('sine', 140, 60, 0.1, 0.3);
+      tone('square', 950, 1550, 0.12, 0.11, { at: 0.2, vib: 60, vibHz: 34, lp: 4000 });
     }
   }
 
@@ -4163,6 +4265,7 @@ class AudioSys {
     o.connect(g); g.connect(this.sfxGain);
     o.start(t); o.stop(t + dur + 0.02);
     lfo.start(t); lfo.stop(t + dur + 0.02);
+    this._unwireWhenDone(lfo, depth);
     for (const [ratio, amp] of [[2.76, 0.045], [5.40, 0.025]]) {
       this.osc('sine', f0 * ratio, f0 * ratio * 0.9, 0.1, amp);
     }
@@ -4261,6 +4364,7 @@ class AudioSys {
       const lg = ctx.createGain(); lg.gain.value = 0.18;
       lfo.connect(lg); lg.connect(shake.gain);
       lfo.start(t0); lfo.stop(t0 + hiss + 0.1);
+      this._unwireWhenDone(lfo, lg);
       n.connect(hp); hp.connect(pk); pk.connect(g); g.connect(shake); shake.connect(level);
       n.start(t0); n.stop(t0 + hiss + 0.1);
       // The spit: a sharp burst of the same air with a low pop under it, where the
@@ -4332,6 +4436,7 @@ class AudioSys {
       const depth = ctx.createGain(); depth.gain.value = S.rough * 0.5;
       lfo.connect(depth); depth.connect(throat.gain);
       lfo.start(t); lfo.stop(end + 0.05);
+      this._unwireWhenDone(lfo, depth);
     }
     throat.connect(sum);
     const sources = [['sawtooth', 1, -7, 0.5], ['sawtooth', 1, 7, 0.5]];
@@ -4533,6 +4638,7 @@ class AudioSys {
     lfo.connect(lfoAmt); lfoAmt.connect(rough.gain);
     rough.connect(shaper);
     lfo.start(t); lfo.stop(stop);
+    this._unwireWhenDone(lfo, lfoAmt);
 
     // ---- envelope: hit, collapse, tail. No sustain anywhere --------------
     const env = ctx.createGain();
@@ -5551,6 +5657,27 @@ class AudioSys {
   }
 
   /**
+   * Unwire a cue's modulators from the params they drive once `lfo` has stopped.
+   *
+   * THE iPHONE CRASH. A gain left connected INTO an AudioParam (an LFO's depth into a
+   * gate's gain, a vibrato into a frequency) is collected still wired, and WebKit then
+   * deletes that param's summing junction off the graph lock while the render thread is
+   * walking it — the silent reload of 8 Oct (memory: webkit-summing-junction-crash), fixed
+   * for the song voices by voices.js `_retireNote`. The SFX here never got the same rule,
+   * and a GC does not care when the bark was: crypt's dogs plant one, and the jukebox,
+   * minutes later, is where the collection happens (crash trail, 18 Oct: jukebox GRAVITY
+   * GRID after crypt-1 + plumber-1, then nothing). An explicit disconnect goes through the
+   * junction guard, which holds the nodes until the audio thread is done with them.
+   * Realtime only, like `_retireNote`: an offline render is one finite pass.
+   */
+  _unwireWhenDone(lfo, ...mods) {
+    if (this.offline || typeof lfo?.addEventListener !== 'function') return;
+    lfo.addEventListener('ended', () => {
+      for (const m of mods) { try { m.disconnect(); } catch { /* already gone */ } }
+    }, { once: true });
+  }
+
+  /**
    * THE PLAYER'S AUDIO SYNC OFFSET, in milliseconds, positive meaning the sound
    * reaches the ear LATER than the browser admits to.
    *
@@ -5719,7 +5846,7 @@ class AudioSys {
       // Two square pings a fourth apart, in the key of whatever is playing —
       // see coinNotes for why the numbers are not written down here.
       case 'coin': {
-        const [lo, hi] = this.coinNotes(pitch);
+        const [lo, hi] = this.coinNotes(pitch, opt.key);
         this.osc('square', lo, lo, 0.06, 0.12);
         this.osc('square', hi, hi, 0.07, 0.12, 0.06);
         break;
@@ -6396,6 +6523,8 @@ class AudioSys {
       case 'neonBuzz': this.neonBuzz(); break;
       // The live wire biting the hero (see zap() above) — fired by takeHit in its place.
       case 'zap': this.zap(opt.shape?.zap); break;
+      // The roller flattening him (see rollSplat above) — fired by takeHit in place of 'hit'.
+      case 'rollSplat': this.rollSplat(opt.shape?.splat); break;
     }
   }
 
@@ -10935,8 +11064,7 @@ class AudioSys {
    * stable for as long as the section does — so a cue firing ten times in a
    * second builds this once.
    */
-  songLadder(lo, hi) {
-    const key = this.songKey();
+  songLadder(lo, hi, key = this.songKey()) {
     if (!key) return null;
     const memo = this._songLadderMemo;
     if (memo && memo.key === key && memo.lo === lo && memo.hi === hi) return memo.notes;
@@ -10971,8 +11099,8 @@ class AudioSys {
    * Null when there is no song to be in key with, so callers keep their own
    * fallback and a cue with the music off sounds like it always did.
    */
-  songSnap(freq, lo, hi) {
-    const ladder = this.songLadder(lo, hi);
+  songSnap(freq, lo, hi, key) {
+    const ladder = this.songLadder(lo, hi, key);
     if (!ladder) return null;
     let best = ladder[0];
     for (const f of ladder) {
@@ -11003,14 +11131,20 @@ class AudioSys {
    * No song, no ladder, no change: the menus with the music off, a bank that
    * failed to load, and every cabinet playing nothing get the cue as it was.
    *
+   * `key` pins the ladder to a key read earlier (a songKey() result, or null
+   * for none) instead of the one sounding now. The clock's time-bonus tally
+   * passes the key it started in (Peter, 19 Oct 2026: "dont change the pitch of
+   * the coins being collected if the key changes, just use the initial startup
+   * key"). Left out, the coin follows the song as above.
+   *
    * Split out of the cue so it can be checked without an AudioContext — the
    * claim worth pinning is which NOTES come out, and sfx() cannot be called at
    * all without a live graph.
    */
-  coinNotes(pitch = 1) {
+  coinNotes(pitch = 1, key = this.songKey()) {
     let lo = 988 * pitch;
     let hi = 1319 * pitch;
-    const snapped = this.songSnap(lo, COIN_LO_HZ, COIN_HI_HZ);
+    const snapped = this.songSnap(lo, COIN_LO_HZ, COIN_HI_HZ, key);
     if (snapped) {
       lo = snapped;
       // Guard, not arithmetic: a section whose melodic lanes only ever sound
@@ -11018,7 +11152,7 @@ class AudioSys {
       // fourth up, and snapping to the nearest one would squash the blip into a
       // minor second. Degenerate enough that keeping the gesture beats keeping
       // the second note in key.
-      const top = this.songSnap(lo * (1319 / 988), COIN_LO_HZ, COIN_HI_HZ);
+      const top = this.songSnap(lo * (1319 / 988), COIN_LO_HZ, COIN_HI_HZ, key);
       hi = top && top >= lo * 1.15 ? top : lo * (1319 / 988);
     }
     return [lo, hi];

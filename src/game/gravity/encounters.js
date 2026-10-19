@@ -5,7 +5,8 @@ export const VACUUM_LOADED_SECONDS = 0.4;
 export const VACUUM_WARNING_SECONDS = 0.55;
 export const VACUUM_PREP_SECONDS = VACUUM_SUCTION_SECONDS + VACUUM_LOADED_SECONDS + VACUUM_WARNING_SECONDS;
 export const VACUUM_SOURCE_LEAD_SECONDS = 1;
-export const VACUUM_SHOT_SPEED = 32;
+// Landed cubes are fixed world obstacles; only camera travel brings them to the hero.
+export const VACUUM_SHOT_SPEED = 0;
 
 // Smaller sweep batches fill the long spaces between authored cube attacks.
 // Their collection time is fixed, so the rubbish stays attached to the station
@@ -92,7 +93,7 @@ export function validateGravityStageData(data, durationSec) {
     lastVacuumAt = attack.at;
   }
   for (const gate of data.gates || []) {
-    const transferSpike = (data.hazards || []).some((h) => (isGateField(h.type) || h.type === 'maintenanceRollers')
+    const transferSpike = (data.hazards || []).some((h) => (isGateField(h.type) || h.type === 'maintenanceRollers' || h.type === 'railPulse')
       && h.lane === 1 - gate.lane && h.at > gate.at && h.at <= gate.at + 1.8);
     if (!transferSpike) errors.push(`gate at ${gate.at} needs a spike on the rail it leaves`);
   }

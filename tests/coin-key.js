@@ -100,6 +100,18 @@ function songClasses(b) {
   assert(built && Math.abs(built.root - D2) < 1e-9, 'and the lead of the cue being built is the default, so the coin ladder needs no plumbing');
   Audio.songBeat = () => -0.2;
   assert(!!Audio.songKey(), 'the heard clock a hair before the downbeat still yields a key');
+  // The clock's time-bonus tally pins the key it started in (run.js
+  // updateTimeCoins): a section change mid-count must not move its pings.
+  Audio.songBeat = () => 2;
+  const started = Audio.songKey();
+  const before = Audio.coinNotes(1.25, started);
+  Audio.songBeat = () => 8;
+  const after = Audio.coinNotes(1.25, started);
+  assert(before[0] === after[0] && before[1] === after[1],
+    'a coin given the key it started in keeps its notes across a section change');
+  assert(Audio.coinNotes(1.25)[0] !== after[0], 'while an unpinned coin moves with the section');
+  const [rawLo, rawHi] = Audio.coinNotes(1.25, null);
+  assert(rawLo === 988 * 1.25 && rawHi === 1319 * 1.25, 'and a pinned null key is the raw pair');
   Audio.songBeat = oldSongBeat;
 }
 

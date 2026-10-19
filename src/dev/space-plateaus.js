@@ -429,6 +429,7 @@ function butteAt(c, s, r, cx, k, forceStyle = null) {
 // alternating, sometimes a pair of buttes together.
 const OCCASIONAL = [{ kind: 'shelf', at: 0.06 }, { kind: 'butte', at: 0.17 }, { kind: 'shelf', at: 0.3 }, { kind: 'butte', at: 0.41 },
   { kind: 'butte', at: 0.45 }, { kind: 'shelf', at: 0.56 }, { kind: 'butte', at: 0.68 }, { kind: 'shelf', at: 0.8 }, { kind: 'butte', at: 0.92 }];
+const STAGE2_RAID_AT = 0.945;
 const STAGE_NEAR = 4680 * 0.6;
 function occasional(c, s, look, r) {
   polyRidge(c, s, 0.03, -26, 30, 34, r[0][0], r[0][1], 1);
@@ -481,7 +482,8 @@ function loneMartian(c, s, f) {
 // destroys a base on a plateau, not a butte (Peter, 13 Oct).
 function kindOf(s, o, i) { return s.stage === 2 && i === OCCASIONAL.length - 1 ? 'shelf' : o.kind; }
 function formationAt(s, o, i) {
-  const d = (s.progress - o.at) * (s.length ?? 4680), x = s.view * 0.55 - d * 0.6;
+  const at = s.stage === 2 && i === OCCASIONAL.length - 1 ? STAGE2_RAID_AT : o.at;
+  const d = (s.progress - at) * (s.length ?? 4680), x = s.view * 0.55 - d * 0.6;
   if (s.stage === 3 && i === OCCASIONAL.length - 1) {
     // The lone Martian's butte: a single plain column that comes to rest, whole,
     // inside a window when the camera stops at the finish (s.loneRestX).

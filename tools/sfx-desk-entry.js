@@ -54,6 +54,7 @@ const GROUPS = [
       { cue: 'loopRun', what: 'running the loop ring' },
       { cue: 'slideWhistle', what: 'slipping on ice; the finish pole' },
       { cue: 'bananaHop', what: 'the banana peel — launching him up and over it (candidate A; see render-cues.js)' },
+      { cue: 'rollSplat', what: 'a roller flattening him (the squelch, B; render-cues.js splatA…F)' },
       { cue: 'clickHard', what: 'the finish plunger bottoming out' },
       { cue: 'plop', what: 'Ramon scattering; the boss dropping in' },
     ],

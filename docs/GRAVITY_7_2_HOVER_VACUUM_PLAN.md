@@ -20,6 +20,14 @@ The later brief replaces the single canister and full-height discharge pipe with
 - The standalone bakeoff has synchronized playback, quarter/half speed, frame stepping, scrubbing, both gravity directions, enlarged views and a 3840×1200 PNG export. It uses the same debris, brush, hose, chamber and cube painters as the campaign.
 - Build and rendered review evidence for this follow-up is recorded in the bakeoff README. The original test results at the end of this document apply to the earlier implementation, not this revision.
 
+### 19 October: intake and ejector sides swapped
+
+The flexible intake hose and brush now attach on the left of the robot. The side ejector is on the right. The warning path, landing brackets, flying cube, source rubbish coordinates, and sweep animation all use the same new sides. The launch collider now starts 24 world units to the right of the robot center instead of 24 units to the left. In narrow portrait framing this moves the launch from 40 to 88 world units ahead of the runner, adding roughly 0.32 seconds of approach time at the current 120 + 32 units/second closing speed. The launch clock and route beats are unchanged.
+
+### 19 October: ordinary obstacles between cube volleys
+
+Twenty existing jump obstacles now share the active running rail with the vacuum cubes: foil crates, specimen cases, fuel cells, coolant radiators and valve manifolds. They fill intake and recovery stretches on both floor and ceiling, with room around the six gravity gates and paired cube arrivals. The opposite rail still mixes rubbish with short live wires and retains the six transfer rollers. The focused Gravity Grid route check cleared all heroes without damage, and the updated stage rendered in the served game; human difficulty judgment remains open.
+
 ## Intended encounter
 
 Replace the cleaner's moving arm with a free-hovering vacuum that stays ahead of the automatic runner. It takes a loose canister or machine part from one running surface, pulls it through its body, and shoots it **horizontally back toward the runner along the other surface**. The runner jumps over a low shot. The robot is the cause of the hazard, not a collidable enemy or a target that must be shot.

@@ -6744,7 +6744,7 @@ export class AboutState {
     const cabW = cabH * (style.w / style.h);
     const cabX = cx - cabW / 2;
     const cabY = floorY - cabH;
-    const wallBase = floorY - cabH * 0.062;
+    const wallBase = floorY - cabH * 0.059;
     const glint = Math.sin(Math.floor(t * 20) * 12.9898) * 43758.5453;
     const flick = 0.78 + 0.22 * (glint - Math.floor(glint));
     const scr = cabinetScreenRect(cabX, cabY, cabW, cabH);

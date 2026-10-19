@@ -125,7 +125,10 @@ export function cabinetPalette(cab, unlocked = true) {
     deck: lighten(body, 0.16),
     lipC: darken(shade, 0.25),
     hood: lighten(body, 0.08),
-    glass: cab.sky[1],
+    // Rhythm's sky is near-black olive, which left its marquee a dark hole above
+    // a pale LCD-green bezel. Light it in the bezel's own green instead, so the
+    // sign and the screen surround read as one panel colour.
+    glass: cab.id === 'rhythm' ? shade : cab.sky[1],
     well: '#0b0b14',
     plate: '#100c18',
     knob: '#e04848',
@@ -419,27 +422,34 @@ function paintRounded(ctx, w, h, pal, opts = {}) {
 // they read cute. This gives the cabinet the same treatment: an oversized
 // marquee and screen on a short stubby chassis. Wider and shorter than the
 // reference — 44x78 rather than 40x90.
+//
+// Every y below is a fraction of the 90-tall box. The glass was 34x21 (1.62:1),
+// which read as a letterbox; it is now 32.8x24.6, exactly 4:3, the old CRT shape.
+// The casing round the bezel is ~3.4px on all four sides — the same band the hood
+// leaves round the marquee glass — and the bezel rim stays ~1.25px. Holding both
+// at 4:3 needed a taller face, so the cabinet grew from 85 to 90: everything above
+// the glass is where it was in pixels, everything below it moved down 5px.
 const CHIBI_BOX = {
   // The marquee and monitor/control face are separate stacked shells.
-  hood: { x0: 0.06, x1: 0.94, y0: 0, y1: 0.235 },
+  hood: { x0: 0.06, x1: 0.94, y0: 0, y1: 0.222 },
   // Glass stops just short of the hood's bottom edge: the strip it leaves behind
   // carries the plug bulbs (hub/index.js drawPlugLights). It was cut back
   // further than this to fit oversized bulbs; they are small again, so the
   // marquee gets its height back.
-  glass: { x0: 0.13, x1: 0.87, y0: 0.04, y1: 0.193 },
-  upper: { x0: 0.06, x1: 0.94, y0: 0.235, y1: 0.585 },
+  glass: { x0: 0.13, x1: 0.87, y0: 0.038, y1: 0.182 },
+  upper: { x0: 0.06, x1: 0.94, y0: 0.222, y1: 0.608 },
   // The monitor is centered in the face between the marquee and control
   // divider. Leave enough casing inside the bezel outline for its rim to stay
   // visible on every cabinet palette.
-  bezel: { x0: 0.115, x1: 0.885, y0: 0.275, y1: 0.555 },
-  screen: { x0: 0.141, x1: 0.859, y0: 0.29, y1: 0.54 }, screenR: 0.1,
+  bezel: { x0: 0.1323, x1: 0.8677, y0: 0.2692, y1: 0.5703 },
+  screen: { x0: 0.1583, x1: 0.8417, y0: 0.2831, y1: 0.5564 }, screenR: 0.1,
   // This face is deliberately matte. The former diagonal gloss read as a
   // pale patch sitting on top of the small marquee and monitor.
   marqueeReflection: false,
   screenReflection: false,
-  deck: { x0: 0.06, x1: 0.94, y0: 0.585, y1: 0.705 },
-  lip: { x0: 0, x1: 1, y0: 0.705, y1: 0.735 },
-  lower: { x0: 0.1, x1: 0.9, y0: 0.735, y1: 0.945 },
+  deck: { x0: 0.06, x1: 0.94, y0: 0.608, y1: 0.721 },
+  lip: { x0: 0, x1: 1, y0: 0.721, y1: 0.750 },
+  lower: { x0: 0.1, x1: 0.9, y0: 0.750, y1: 0.948 },
 };
 
 function paintChibiFront(ctx, w, h, pal, opts = {}) {
@@ -453,7 +463,7 @@ function paintChibiFront(ctx, w, h, pal, opts = {}) {
     c.lineTo(X(0.915), Y(B.deck.y0));
   });
   shape(ctx, pal.lipC, u, (c) => rr(c, ...bx('lip'), w * 0.07));
-  deckControls(ctx, w, pal, Y(0.625), 1.05, opts.stickLean, opts.buttonPress, opts.stickFwd,
+  deckControls(ctx, w, pal, Y(0.646), 1.05, opts.stickLean, opts.buttonPress, opts.stickFwd,
     [Y(B.deck.y0), Y(B.deck.y1)], opts.glint);
 }
 
@@ -469,9 +479,9 @@ function paintChibi(ctx, w, h, pal, opts = {}) {
   const glassRadius = bodyCornerRadius;
   const lowerBody = pal.lowerBody || pal.body;
 
-  cabFeet(ctx, w, pal, Y(0.925), h * 0.07, 0.14);
+  cabFeet(ctx, w, pal, Y(0.929), h * 0.066, 0.14);
   shape(ctx, lowerBody, u, (c) => rr(c, ...bx('lower'), bodyCornerRadius));
-  sideArt(ctx, pal, X(0.13), Y(0.75), X(0.74), Y(0.17), lowerBody);
+  sideArt(ctx, pal, X(0.13), Y(0.764), X(0.74), Y(0.161), lowerBody);
   // Keep the upper face flat around the inset monitor. The old side strips
   // crossed the bezel edge and looked like pieces of a second frame.
   const rightAccent = opts.monitorAccent === undefined
@@ -479,14 +489,14 @@ function paintChibi(ctx, w, h, pal, opts = {}) {
     : opts.monitorAccent;
   if (rightAccent && rightAccent.width > 0) {
     const accentColor = rightAccent.blend ? mix(pal.shade, pal.body, rightAccent.blend) : pal.shade;
-    plain(ctx, accentColor, (c) => rr(c, X(rightAccent.x), Y(0.26), w * rightAccent.width,
-      h * 0.3, w * Math.min(0.015, rightAccent.width / 2)));
+    plain(ctx, accentColor, (c) => rr(c, X(rightAccent.x), Y(0.246), w * rightAccent.width,
+      h * 0.339, w * Math.min(0.015, rightAccent.width / 2)));
   }
 
   // The monitor and controls share one rounded housing. Its top corners stay
   // visible below the separate marquee, and both boxes share the same center.
-  shape(ctx, pal.body, u, (c) => rr(c, X(B.upper.x0), Y(0.245),
-    X(B.upper.x1 - B.upper.x0), Y(B.deck.y1 - 0.245), bodyCornerRadius));
+  shape(ctx, pal.body, u, (c) => rr(c, X(B.upper.x0), Y(0.231),
+    X(B.upper.x1 - B.upper.x0), Y(B.deck.y1 - 0.231), bodyCornerRadius));
   shape(ctx, pal.hood, u, (c) => rr(c, ...bx('hood'), hoodRadius));
   plain(ctx, pal.glass, (c) => rr(c, ...bx('glass'), glassRadius));
   if (pal.lit) {
@@ -591,8 +601,9 @@ export const CABINET_STYLES = {
   // aspect. At 78 tall these sat 12px lower than the 90-tall upright the hub's
   // ceiling and wall were framed around, which left the top third of the
   // concourse as empty wall. 85 puts the marquees back near that line without
-  // touching the squat proportion that made this the pick.
-  chibi: { w: 48, h: 85, box: CHIBI_BOX, paint: paintChibi },
+  // touching the squat proportion that made this the pick. 90 since the glass
+  // went 4:3: the height it gained came out of nowhere else (see CHIBI_BOX).
+  chibi: { w: 48, h: 90, box: CHIBI_BOX, paint: paintChibi },
   candy: { w: 42, h: 86, box: CANDY_BOX, paint: paintCandy },
 };
 

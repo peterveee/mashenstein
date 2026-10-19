@@ -217,6 +217,8 @@ export class DogBarkSynthesizer {
     rough.connect(shaper);
     lfo.start(t); lfo.stop(stop);
     kept.push(lfo);
+    // wired into a param: unwired when done, or WebKit can crash collecting it (audio.js _unwireWhenDone)
+    if (typeof ctx.startRendering !== 'function') lfo.addEventListener('ended', () => lfoAmt.disconnect(), { once: true });
 
     // ---- envelope: hit, collapse, tail. No sustain anywhere --------------
     const env = ctx.createGain();

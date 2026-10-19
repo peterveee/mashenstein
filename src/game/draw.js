@@ -41,7 +41,7 @@ import { paintAlarmPillar } from '../sprites/officeProps.js';
 import { ZAP_T, drawZapHero } from '../sprites/zap.js';
 import { BLAST_T, drawBlastHero } from '../sprites/blast.js';
 import { drawBananaSlip } from '../sprites/bananaSlip.js';
-import { hitPicLife, hitPicShowing, drawHitPicture, drawHitAfter } from '../sprites/hitPictures.js';
+import { hitPicLife, hitPicShowing, hitPicFace, drawHitPicture, drawHitAfter } from '../sprites/hitPictures.js';
 import { drawPitFall } from '../sprites/pitFall.js';
 import { GROUND_Y } from '../engine/camera.js';
 import { PLAYER_X, SLIP_T } from './player.js';
@@ -561,6 +561,9 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // Persistent cuts are part of the head painter so they follow the character's
   // face and stay clipped to its silhouette through every pose and blink.
   if (catIframes) pose = { ...pose, catClawMarks: true };
+  // A picture that keeps him shocked to the end (the rollers') holds the face on him
+  // through the blink after it, and hands it to the picture as its live pose too.
+  if (hitW >= 0 && hitPicFace(player.hitPic, hitW)) pose = { ...pose, faceSurprised: true, browRaise: true };
   // THE GROUND UNDER EACH FOOT. `groundDelta` already existed for the boost
   // effect's chevrons, which shear to lie along a hill; the rig never got it,
   // so the hero's feet planted on a level line however the terrain ran. Handing
@@ -823,7 +826,8 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     ctx.save();
     ctx.translate(0, 2 * GROUND_Y - e.gravityCeiling);
     ctx.scale(1, -1);
-    drawWorldEntity(ctx, { ...e, alt: e.gravityCeiling - e.alt - e.h, gravityCeiling: null }, camX, t, style, settings, renderOptions);
+    drawWorldEntity(ctx, { ...e, alt: e.gravityCeiling - e.alt - e.h,
+      gravityCeiling: null, gravityMounted: true }, camX, t, style, settings, renderOptions);
     ctx.restore();
     return;
   }

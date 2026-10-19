@@ -57,7 +57,9 @@ const edgeFor = (camX, camZoom, worldXOffset) => {
   // The size of the mistake, stated so a future shift cannot quietly grow it
   // without this number moving too.
   const stale = dx - W / zoom;
-  assert.ok(stale > 30,
+  // 30+ while the landscape hero stood at 55-59; 19 since he moved to 35 (player.js
+  // HERO_ANCHOR, 19 Oct 2026), the portrait anchor having stayed put.
+  assert.ok(stale > 15,
     `the band a VIEW_W cull would wrongly discard is ${stale.toFixed(0)} world units`);
   // The hero has to be inside the picture with the runway on the right side of
   // him, which is the whole point of paying for the shift.

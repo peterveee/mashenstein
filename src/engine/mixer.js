@@ -699,11 +699,19 @@ function makeSectionSwitch(ctx, from, to) {
       // cancelAndHoldAtTime: an offline render queues later bars before processing
       // bar one, and Chromium's future hold can leak backwards through that queue.
       // Four milliseconds is the same click-safe edge rampParam uses for a snap.
+      //
+      // The edge ENDS on the section's time rather than starting there. A note struck on
+      // the very sixteenth a section opens on (a kick entering with its filter sweep:
+      // gravity, bar 10) has its click in the first few milliseconds, and an edge that
+      // began at `at` let that click out through the old route — the first hit bright,
+      // every one after it filtered (19 Oct 2026, measured live; offline never showed it).
+      // A ringing note is crossfaded four milliseconds early instead, which nothing hears.
       const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
+      const edge = Math.max(at - 0.004, ctx.currentTime);
       const switchGain = (param, a, b) => {
-        param.cancelScheduledValues(at);
-        param.setValueAtTime(a, at);
-        param.linearRampToValueAtTime(b, at + 0.004);
+        param.cancelScheduledValues(edge);
+        param.setValueAtTime(a, edge);
+        param.linearRampToValueAtTime(b, Math.max(at, edge + 0.004));
       };
       switchGain(direct.gain, previous ? 0 : 1, signature ? 0 : 1);
       for (const [id, branch] of branches) {

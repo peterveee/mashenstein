@@ -521,6 +521,8 @@ function firstHorn(ctx, out, when, s) {
   const vib = ctx.createGain();
   vib.gain.value = 20;
   lfo.connect(vib);
+  // wired into every blast's detune: unwired after, or WebKit can crash collecting it
+  letGo(ctx, [vib], end + 0.2);
   for (const [at16, len16] of HORN_BLASTS) {
     const t = when + at16 * s, stop = t + len16 * s;
     const env = ctx.createGain();

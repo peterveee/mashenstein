@@ -356,12 +356,47 @@ export class GravityRunState extends RunState {
     this.gravityGates = this.gravityStageData.gates.map((g, index) => ({ ...g, index, x: xAt(g.at) }));
     this.gravityHazards = this.gravityStageData.hazards.map((h) => ({ ...h, x: xAt(h.at) }));
     this.gravityVacuumAttacks = (this.gravityStageData.vacuumAttacks || []).map((a) => ({ ...a, x: xAt(a.at) }));
+    this.gravityVacuumDebrisPatches = (this.gravityStageData.debrisPatches || []).map((a) => ({ ...a, x: xAt(a.at) }));
     this.gravityVacuumSweep = vacuumSweepBatches(this.gravityStageData);
     this.gravityHazards = clearOfFrames(withWrongRailBeds(ceilingJumpsOnly(this.gravityHazards), this.gravityGates,
       this.totalDist, speed, this.gravityStageData.debrisRail,
       this.gravityVacuumAttacks.map(a => ({ lane: a.sourceLane,
-        left: xAt(a.at - VACUUM_PREP_SECONDS + .25) + 80 - 28,
-        right: xAt(a.at - VACUUM_PREP_SECONDS + .25) + 144 + 28 }))), speed);
+        left: xAt(a.at - VACUUM_PREP_SECONDS + .25) + vacuumShotAheadForView(480 / 2.2) - 59 - 28,
+        right: xAt(a.at - VACUUM_PREP_SECONDS + .25) + vacuumShotAheadForView(480) - 59 + 28 }))
+        .concat(this.gravityVacuumDebrisPatches.filter(a => a.id.startsWith('gate-rubbish-')).map(a => ({ lane: a.lane,
+          left: a.x - 28, right: a.x + 28 })))), speed);
+    // A dropped cube group needs its own jump and landing. Keep ordinary deck
+    // props out of that space at both portrait and desktop robot positions.
+    const cubeAhead = [vacuumShotAheadForView(480 / 2.2), vacuumShotAheadForView(480)];
+    this.gravityHazards = this.gravityHazards.filter(h => !h.id.startsWith('cleaner-deck-')
+      || !this.gravityVacuumAttacks.some(a => a.lane === h.lane && cubeAhead.some(ahead => {
+        const first = xAt(a.at) + ahead;
+        const last = first + ((a.count || 1) - 1) * 24 + OBSTACLES.vacuumShot.w;
+        const hazardRight = h.x + (OBSTACLES[h.type]?.w || 16);
+        return h.x < last + 85 && hazardRight > first - 85;
+      })));
+    // Leave the authored short live wires in place and remove only litter
+    // patches whose loose pieces would sit directly on a hazard.
+    this.gravityVacuumDebrisPatches = this.gravityVacuumDebrisPatches.filter(p =>
+      !this.gravityHazards.some(h => h.lane === p.lane && p.x + 28 > h.x
+        && p.x - 28 < h.x + (h.span ? h.span * speed : 16)));
+    // A few coins are mixed into the fixed rubbish. Their eject position is
+    // tied to the source patch, so changing viewport width only changes when
+    // the brush reaches them, not where the reward lands in the room.
+    this.gravityVacuumBonusCoins = this.gravityVacuumDebrisPatches.filter(p => p.bonusCoin)
+      .map(p => ({ id: p.id, sourceX: p.x, sourceLane: p.lane,
+        lane: 1 - p.lane, landingX: p.x + 35 + speed * .65 }))
+      .filter(coin => this.activeLaneAt(coin.landingX) === coin.lane
+        && (coin.landingX - PLAYER_X - vacuumShotAheadForView(480 / 2.2)) / speed
+          < (this.gravityStageData.vacuumDepartAt ?? this.gravityStageData.sequences.at(-1).end) - .5
+        && !this.gravityGates.some(g => Math.abs(g.x - L.arrowLeftOffset - coin.landingX) < speed * 1.25)
+        && !this.gravityHazards.some(h => h.lane === coin.lane
+          && coin.landingX > h.x - 45
+          && coin.landingX < h.x + (h.span ? h.span * speed : OBSTACLES[h.type]?.w || 16) + 45)
+        && !this.gravityVacuumAttacks.some(a => a.lane === coin.lane
+          && cubeAhead.some(ahead => coin.landingX > xAt(a.at) + ahead - 50
+            && coin.landingX < xAt(a.at) + ahead + ((a.count || 1) - 1) * 24
+              + OBSTACLES.vacuumShot.w + 50)));
     this.gravitySpawned = new Set();
     this.obstacles = []; this.pickups = [];
     this.spawner.fill = () => this.fillGravityEntities();
@@ -399,20 +434,31 @@ export class GravityRunState extends RunState {
         }
         if (this.gravityStageData.sequences) {
           const seconds = this.gravityTravelTime();
+          const playerWorld = this.playerWorldX();
+          const pendingGate = this.gravityGates.find(g => g.lane !== this.gravityLane
+            && g.x - L.arrowLeftOffset >= playerWorld
+            && g.x - L.arrowLeftOffset <= playerWorld + speed * .4);
+          const flipPrep = this.gravityTransfer ? 1 : pendingGate
+            ? Math.max(0, Math.min(1, 1 - (pendingGate.x - L.arrowLeftOffset - playerWorld) / (speed * .4))) : 0;
           drawMaintenanceVacuum(c, {
             view, time: t, seconds, corridor: this.corridor,
             playerX: this.playerWorldX() - cam,
-            lane: this.activeLaneAt(this.playerWorldX()),
+            lane: this.gravityLane, flip: this.gravityTransfer, flipPrep,
+            debrisPatches: this.gravityVacuumDebrisPatches.map(a => ({ ...a, x: a.x - cam })),
+            bonusCoins: this.gravityVacuumBonusCoins.map(a => ({ ...a,
+              sourceX: a.sourceX - cam, landingX: a.landingX - cam,
+              ejectAt: (a.landingX - PLAYER_X - this.vacuumShotAhead()) / speed })),
             sweep: this.gravityVacuumSweep.filter(a => {
-              const source = xAt(a.at) + this.vacuumShotAhead() + 59;
+              const source = xAt(a.at) + this.vacuumShotAhead() - 59;
               return !this.gravityHazards.some(h => h.bed && h.lane === a.sourceLane
                 && source + 28 > h.x && source - 28 < h.x + h.span * speed);
             }).map(a=>({ ...a,
-              sourceX: xAt(a.at) + this.vacuumShotAhead() + 59 - cam })),
+              sourceX: xAt(a.at) + this.vacuumShotAhead() - 59 - cam })),
             attacks: (this.gravityVacuumAttacks || []).map((a) => ({ ...a, ...vacuumAttackPhase(a, seconds),
               sourceX: a.sourceX - cam,
               sourceVisible: seconds >= a.at - VACUUM_PREP_SECONDS - VACUUM_SOURCE_LEAD_SECONDS })),
             sequences: this.gravityStageData.sequences,
+            departAt: this.gravityStageData.vacuumDepartAt,
           });
         }
         c.restore();
@@ -433,7 +479,7 @@ export class GravityRunState extends RunState {
       // A fixed patch on the opposite surface passes under the brush early in
       // suction. It moves with the room, never along with the hovering robot.
       attack.sourceX = gravityWorldX(attack.at - VACUUM_PREP_SECONDS + .25, PLAYER_X, this.baseSpeed())
-        + shotAhead + 40;
+        + shotAhead - 59;
     });
   }
   fillGravityEntities() {
@@ -467,6 +513,16 @@ export class GravityRunState extends RunState {
         this.pickups.push(coin);
       }
     });
+    for(const bonus of this.gravityVacuumBonusCoins || []) {
+      const key=`bonus-${bonus.id}`;
+      const ejectAt=(bonus.landingX - PLAYER_X - this.vacuumShotAhead()) / this.baseSpeed();
+      if(this.gravitySpawned.has(key) || this.gravityTravelTime()<ejectAt) continue;
+      this.gravitySpawned.add(key);
+      const coin=makePickup('coin',bonus.landingX,8);
+      coin.gravityVacuumBonus=true;
+      if(bonus.lane) { coin.alt=this.corridor-coin.alt-coin.h; coin.gravityCeiling=this.corridor; }
+      this.pickups.push(coin);
+    }
     (this.gravityStageData.coinArcs || []).forEach((arc, index) => {
       const key = `coin-arc-${index}`;
       if (this.gravitySpawned.has(key)) return;

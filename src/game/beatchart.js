@@ -4,7 +4,7 @@
 import { makeObstacle, makeDroneColumn, makePickup, OBSTACLES, PICKUPS } from './entities.js';
 import { HEROES } from '../data/heroes.js';
 import { worstAirtime } from './spawner.js';
-import { jumpV, gravityFor, PLAYER_W } from './player.js';
+import { jumpV, gravityFor, PLAYER_W, beatLayOff } from './player.js';
 import { BASE_SPEED } from './layout.js';
 
 const REQUIRED_ACTIONS = new Set(['jump', 'slide', 'ability']);
@@ -1350,7 +1350,8 @@ export class BeatSpawner {
             const off = offsets[i];
             const coinBeat = this.cursorBeat + off;
             if (coinBeat < floorBeat - 1e-9) continue;
-            const coin = makePickup('coin', actionX + off * pxPerBeat, COIN_ALT);
+            // Centred on the playhead on its beat (player.js beatLayOff).
+            const coin = makePickup('coin', actionX + off * pxPerBeat + beatLayOff(PICKUPS.coin.w), COIN_ALT);
             coin.chartEventId = n > 1 ? `${id}:${i}` : id;
             coin.chartAction = 'coin';
             coin.chartSlot = event.slot;

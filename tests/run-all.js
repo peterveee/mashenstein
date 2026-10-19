@@ -50,6 +50,7 @@ const suites = [
   'tests/barrel-arrival.js',
   'tests/portal-clear-of-trains.js',
   'tests/beat-chart.js',
+  'tests/beat-contact.js',
   'tests/cue-scheduling.js',
   'tests/beat-ground.js',
   'tests/lane-calls.js',

@@ -2,10 +2,13 @@ import { drawGarbageCube, drawVacuumAssembly, drawVacuumDebris, vacuumBrushPose 
 // Gameplay-owned props and ambience. The station painting remains independent.
 const INK = '#14222b', STEEL = '#526b79', LIGHT = '#d9ece7';
 const GOLD = '#e8b947', PURPLE = '#b072cb', HOT = '#ff8061';
-export const VACUUM_SHOT_AHEAD = 104;
-export const VACUUM_ROBOT_AHEAD = 128;
+export const VACUUM_SHOT_AHEAD = 202;
+export const VACUUM_ROBOT_AHEAD = 202;
 export function vacuumRobotAheadForView(view) {
-  return Math.min(VACUUM_ROBOT_AHEAD, Math.max(64, (Number(view) || 0) * 0.4));
+  const width=Number(view) || 480;
+  // Keep the compact shell inside portrait's right edge (player x=59,
+  // half-width=25), while letting it hover farther ahead on wider screens.
+  return Math.min(VACUUM_ROBOT_AHEAD, Math.max(96, width * 0.6), width - 88);
 }
 export function vacuumShotAheadForView(view) {
   return vacuumRobotAheadForView(view) - (VACUUM_ROBOT_AHEAD - VACUUM_SHOT_AHEAD);
@@ -355,6 +358,9 @@ function railWire(c, e, t, style) {
 export function drawGravityHazard(c, e, x, bottom, t) {
   if (x + e.w < -12 || x > 520) return;
   c.save(); c.translate(x, bottom); c.lineJoin = 'round'; c.lineCap = 'round';
+  // The ceiling entity renderer mirrors floor art before it reaches us. Move
+  // the mirrored wire into the slim pipe so its arc and end clamps seat on it.
+  if(e.type === 'railPulse' && e.gravityMounted) c.translate(0,2);
   if (e.type === 'floatSpikes') {
     box(c, -1, -2, e.w + 2, 3, STEEL, 0.7);
     const n = Math.max(3, Math.round(e.w / 7)), step = e.w / n;
@@ -402,7 +408,7 @@ export function drawGravityHazard(c, e, x, bottom, t) {
     }
     disc(c, 1, -3.5, 2, LIGHT); disc(c, e.w - 1, -3.5, 2, LIGHT);
   } else if (e.type === 'vacuumShot') {
-    drawGarbageCube(c, e.w / 2, -e.h / 2, e.h / 10);
+    drawGarbageCube(c, e.w / 2, -e.h / 2);
   } else if (e.type === 'maintenanceRollers') {
     // Exposed counter-rotating cutter drums. Teeth break the upper silhouette;
     // no protective bar or fan spokes suggest a safe surface to stand on.
@@ -453,20 +459,43 @@ export function drawGravityHazard(c, e, x, bottom, t) {
 
 // Debris belongs to fixed world positions, including before the robot arrives.
 // The brush consumes each batch once; rewind simply draws the earlier phase.
-export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, playerX, attacks, sequences, lane=0, sweep=[] }) {
+function drawVacuumBonusCoin(c, x, y, scale=1) {
+  c.save(); c.translate(x,y); c.scale(scale,scale);
+  c.beginPath();c.ellipse(0,0,3.3,4.2,0,0,Math.PI*2);
+  c.fillStyle='#eab440';c.fill();c.strokeStyle='#51371e';c.lineWidth=.7;c.stroke();
+  c.beginPath();c.ellipse(-.5,-.5,1.8,2.8,0,0,Math.PI*2);
+  c.strokeStyle='#fff0aa';c.lineWidth=.7;c.stroke();c.restore();
+}
+
+export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, playerX, attacks, sequences, departAt=null, lane=0, flip=null, flipPrep=0, sweep=[], debrisPatches=[], bonusCoins=[] }) {
   const last = sequences.at(-1).end;
+  const exitAt = departAt ?? last, exitDuration = 1.25;
   const arrival = clamp((2 - seconds) / 1.5, 0, 1);
-  const departure = clamp((seconds - last) / 2, 0, 1);
+  const departure = clamp((seconds - exitAt) / exitDuration, 0, 1);
   const x = playerX + vacuumRobotAheadForView(view) + (arrival + departure) * (view + 60);
   const y = -corridor * .5;
   const reducedMotion = typeof window !== 'undefined'
     && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const active = attacks.find(a => a.phase !== 'waiting' && a.phase !== 'launched');
-  const attack = active || {phase:'sweep',progress:.5,lane,sourceLane:1-lane,sourceX:x+35};
+  const active = attacks.find(a => a.sourceLane === 1-lane
+    && a.phase !== 'waiting' && a.phase !== 'launched');
+  const attack = active || {phase:'sweep',progress:.5,lane,sourceLane:1-lane};
+  const brush = vacuumBrushPose({ x, y, corridor, attack });
+  const bonusById=new Map(bonusCoins.map(a=>[a.id,a]));
+  for(const patch of debrisPatches) {
+    if(patch.x < -40 || patch.x > view+40) continue;
+    const onRail = brush.sourceLane === patch.lane
+      && Math.abs(brush.y - (patch.lane ? -corridor : 0)) < 18;
+    const progress=onRail ? clamp((brush.x-patch.x+20)/36,0,1) : 0;
+    const railY=patch.lane?-corridor:0;
+    drawVacuumDebris(c, {x:patch.x,railY,lane:patch.lane,progress,brushX:brush.x});
+    if(bonusById.has(patch.id) && progress<1)
+      drawVacuumBonusCoin(c,patch.x+3+(brush.x-patch.x-3)*progress,
+        railY+(patch.lane?5:-7),1-progress*.55);
+  }
   for(const a of sweep) {
     if(a.sourceX < -40 || a.sourceX > view+40) continue;
     drawVacuumDebris(c,{x:a.sourceX,railY:a.sourceLane?-corridor:0,lane:a.sourceLane,
-      progress:clamp((seconds-a.at+.18)/.36,0,1),brushX:x+35});
+      progress:clamp((seconds-a.at+.18)/.36,0,1),brushX:x-35});
   }
   for (const a of attacks) {
     if(a.phase !== 'waiting' && a.phase !== 'suction') continue;
@@ -475,6 +504,13 @@ export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, player
     drawVacuumDebris(c, { x:a.sourceX, railY:a.sourceLane ? -corridor : 0,
       lane:a.sourceLane, progress:a.phase === 'suction' ? a.progress : 0, brushX:brush.x });
   }
-  if(seconds < .5 || seconds > last + 2) return;
-  drawVacuumAssembly(c, { x, y, corridor, attack, time, reducedMotion });
+  if(seconds < .5 || seconds > exitAt + exitDuration) return;
+  drawVacuumAssembly(c, { x, y, corridor, attack, time, lane, flip, flipPrep, reducedMotion });
+  for(const coin of bonusCoins) {
+    if(seconds < coin.ejectAt-.22 || seconds >= coin.ejectAt) continue;
+    const p=clamp((seconds-(coin.ejectAt-.22))/.22,0,1);
+    const surface=coin.lane?-corridor+8:-8;
+    drawVacuumBonusCoin(c,coin.landingX,
+      (y+(coin.lane?-29:29))*(1-p)+surface*p,1);
+  }
 }

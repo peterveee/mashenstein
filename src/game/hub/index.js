@@ -3849,13 +3849,13 @@ export class HubState {
         // stayed true, so "a boss is waiting" and "nothing left here" drew
         // identically. Three states, three marks:
         // All three marks ride the top fifth of the chassis, the lowest of them
-        // the nine plug lights at 0.215 of CAB_H below CAB_Y.
-        if (s.unlocked && !hiddenInMirror(mirror, CAB_Y + CAB_H * 0.215 + CAB_W * 0.2)) {
-          if (bossAvailable(slot, s.cab.id)) drawBossPip(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.06, CAB_W * 0.06, this.t);
-          else if (slot.campaign.bossesDown[s.cab.id]) drawClearedStar(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.05, CAB_W * 0.115);
+        // the nine plug lights at 0.203 of CAB_H below CAB_Y.
+        if (s.unlocked && !hiddenInMirror(mirror, CAB_Y + CAB_H * 0.203 + CAB_W * 0.2)) {
+          if (bossAvailable(slot, s.cab.id)) drawBossPip(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.057, CAB_W * 0.06, this.t);
+          else if (slot.campaign.bossesDown[s.cab.id]) drawClearedStar(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.047, CAB_W * 0.115);
           // ...and the nine lights carry "how much is left", which is the
           // question the star was being asked to answer and could not.
-          drawPlugLights(ctx, slot, s.cab.id, x, CAB_Y + CAB_H * 0.215, CAB_W);
+          drawPlugLights(ctx, slot, s.cab.id, x, CAB_Y + CAB_H * 0.203, CAB_W);
         }
       } else if (s.type === 'socket') {
         drawHubSocket(ctx, x);

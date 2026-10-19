@@ -48,7 +48,7 @@ import { ZAP_T } from '../src/sprites/zap.js';
 import { BLAST_T } from '../src/sprites/blast.js';
 import { SLIP_T } from '../src/sprites/bananaSlip.js';
 import { hitPicLife, HIT_T } from '../src/sprites/hitPictures.js';
-import { HIT_EFFECTS as ROLLER_ROUND2_EFFECTS } from '../src/dev/hit-effect-candidates.js';
+import { HIT_EFFECTS as ROLLER_ROUND2_EFFECTS, drawHitTile } from '../src/dev/hit-effect-candidates.js';
 
 import { UNLOCKS } from '../src/data/stages.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
@@ -202,6 +202,10 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   // alongside faceSurprised; his spec has no brow exclusion). src/dev/
   // hero-candidates.js LORENZO_STARTLE_CANDIDATES stays as the record.
   'lorenzo-startle-mouth-bakeoff',
+  // SHIPPED 19 Oct 2026: F, ROLLED ("ship F"), with stars round his head after the bounce
+  // until the mercy runs out and the shocked face throughout — sprites/hitPictures.js
+  // paintRolled; the production sheet 'hit-reactions' shows it on the cast.
+  'rollers-round2-bakeoff',
   // SETTLED 12 Oct 2026: Peter picked per-floor sets from it ("i like your recos —
   // yes destroy shredders"), and they are in the game — sprites/officeProps.js,
   // OFFICE_FLOORS in data/cabinets.js, and the production sheet 'office-obstacles'.
@@ -1454,7 +1458,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       (p, w) => { p.hitPic = { family: 'spikes', variant: 0 }; p.hitPicT = hitPicLife(p.hitPic) - w; }],
     ['blade / trap', hitPicLife({ family: 'blades', variant: 0 }),
       (p, w) => { p.hitPic = { family: 'blades', variant: 0 }; p.hitPicT = hitPicLife(p.hitPic) - w; }],
-    ['rollers · pancake', hitPicLife({ family: 'rollers', variant: 0 }),
+    ['rollers · rolled', hitPicLife({ family: 'rollers', variant: 0 }),
       (p, w) => { p.hitPic = { family: 'rollers', variant: 0 }; p.hitPicT = hitPicLife(p.hitPic) - w; }],
     ['ice', hitPicLife({ family: 'ice', variant: 0 }),
       (p, w) => { p.hitPic = { family: 'ice', variant: 0 }; p.hitPicT = hitPicLife(p.hitPic) - w; }],
@@ -9148,38 +9152,37 @@ function jadeSky(ctx, w, h, seed = 1) {
     + 'legs thrown out to the sides, src/dev/hit-effect-candidates.js SPLAT_POSE) for far less of the second: '
     + 'C is the clean version of A at that silhouette and half the hold; D adds B\'s own pop-back fix (the '
     + 'tread bands and three-jerk reinflation, read as motivated by something rolling OVER him rather than a '
-    + 'generic bounce) at a tighter timing; E is the snappy extreme, barely any hold at all. Looping: runs in, '
-    + 'hits, the picture, back to running.',
+    + 'generic bounce) at a tighter timing; E is the snappy extreme, barely any hold at all. '
+    + '<br><br>Second pass (Peter: "quick splat is ok", the front leg kicked out in front, "see if they can be '
+    + 'improved"): the splat pose\'s legs pulled in (the front one tucks, only the back one trails); C and E\'s '
+    + 'pop no longer twitches (they lerped to full height and then started their wobble at its peak — a '
+    + 'one-frame 16-18% jump); and F, on E\'s beat, flattens him in a SWEEP front to back — a wedge pressed down '
+    + 'from the front while the hitstop holds the barrel against him — then springs back up. Every tile is now the real Plumber lane with the barrel rolling across him — '
+    + 'the round-1 tiles had no roller in them at all.',
     '19 Oct 2026');
 
   const ROLLERS = ROLLER_ROUND2_EFFECTS.filter((e) => e.family === 'rollers');
   const ROLL_HEROES = ['lorenzo', 'grumpos', 'b33p'];
-  const LOOP = 1.8, LGY = 50, LW = 24 + ROLL_HEROES.length * 70, LH = 62;
+  const LGY = 50, LW = 24 + ROLL_HEROES.length * 70, LH = 62;
   const liveRun = (t) => ({ kind: 'run', phase: (t * 1.7) % 1, time: t, grounded: true, facing: 1 });
 
+  // The real lane: Plumber's own strips, the real barrel rolling in and ACROSS him
+  // (drawn over him), the run's knock burst, shake, hitstop and blink — the harness the
+  // 16 Oct sheet used (drawHitTile). A rolled picture can't be judged without the roller.
+  const LANE_STRIPS = PLUMBER_OBSTACLES.strips.slice(0, 2);
+  const LANE_HEROES = ['lorenzo', 'grumpos', 'kiko', 'b33p'];
   for (const cand of ROLLERS) {
     tile(grid, `${cand.letter} — ${cand.name}${cand.shipped ? ' (SHIPPED)' : ''}`, cand.note,
-      LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
-        ctx.scale(WORLD_Z, WORLD_Z);
-        laneStrip(ctx, LW, LH, LGY);
-        const w = t % LOOP;
-        const T = cand.T ?? HIT_T;
-        ROLL_HEROES.forEach((heroId, i) => {
-          const x = 24 + i * 70;
-          const live = liveRun(t);
-          if (w < T) cand.paint(ctx, heroId, x, LGY, w, t, live);
-          else drawToon(ctx, heroId, live, x, LGY, HERO_DRAW_H);
-          if (cand.after && w >= T) cand.after(ctx, heroId, x, LGY, w, t);
-        });
-      }, { animated: true, wide: true, world: true, hires: 5 });
+      480, laneHeight(LANE_STRIPS),
+      (ctx, t) => drawHitTile(ctx, t, 'rollers', cand.id, LANE_STRIPS, LANE_HEROES), { animated: true, wide: true });
   }
 
-  // The silhouette, held: each candidate at a fixed instant mid-flat (w=0.08s
-  // — before D's first reinflation step at 0.12 and E's pop at 0.16, so every
+  // The silhouette, held: each candidate at a fixed instant mid-flat (w=0.11s
+  // — after F's sweep ends at 0.09, before D's first reinflation step at 0.12 and E's pop at 0.16, so every
   // candidate is caught fully flat, not mid-bounce) — no animation-timing luck
   // needed to see the shape itself, which is the thing A/B's running-stride
   // squash gets wrong.
-  tile(grid, 'the silhouette, held — w=0.08s (mid-flat)',
+  tile(grid, 'the silhouette, held — w=0.11s (mid-flat)',
     'Not animated: one instant from each candidate\'s own flat phase, side by side.',
     LW * WORLD_Z, LH * ROLLERS.length * WORLD_Z, (ctx) => {
       ctx.scale(WORLD_Z, WORLD_Z);
@@ -9189,7 +9192,7 @@ function jadeSky(ctx, w, h, seed = 1) {
         laneStrip(ctx, LW, LH, LGY);
         ROLL_HEROES.forEach((heroId, i) => {
           const x = 24 + i * 70;
-          cand.paint(ctx, heroId, x, LGY, 0.08, 0, liveRun(0));
+          cand.paint(ctx, heroId, x, LGY, 0.11, 0, liveRun(0));
         });
         ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 9px ui-monospace, monospace';
         ctx.fillText(cand.letter, 4, 12);

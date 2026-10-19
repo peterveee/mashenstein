@@ -5890,7 +5890,7 @@ export class VoiceRack {
     if (!ir) return false;
     const { out: busOut, stackIn } = this._jmjr4Bus(v, { laneEffects, laneKey, dry, wet, echo, time, preview, scope, gain, crush: patch.crush });
     const sharedMods = { oscs: [], holds: 0 };
-    const spoken = [];
+    const spoken = [], speakMods = [];
     const flutterSource = this._jmjr4FlutterSource(patch, sharedMods);
     // Phrases that have ended leave the stop-all list, or it grows with every key.
     for (const [k, h] of this._heldNative) if (h.jmjr4Speak && h.jmjr4Speak.end < time) this._heldNative.delete(k);
@@ -5903,6 +5903,8 @@ export class VoiceRack {
       const h = renderIr(ctx, ir, { start: time, destination: stackIn, pitchShiftSt, nasalPlaces: [], flutterSource });
       lastOff = Math.max(lastOff, h.end);
       spoken.push(...h.sources);
+      // flutter, jitter and the bursts' modulators are wired into params: unwired with the note
+      speakMods.push(...h.paramMods);
       // Under its own key rather than the finger's: letting a key go does not cut a phrase
       // off, but stop-all must reach it, and the generic native record is what stop-all
       // reads.
@@ -5914,7 +5916,7 @@ export class VoiceRack {
     }
     for (const m of sharedMods.oscs) { m.start(time); m.stop(lastOff + 0.05); }
     if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
-    this._retireNote(spoken, [busOut]);
+    this._retireNote(spoken, [busOut, ...speakMods]);
     return true;
   }
 

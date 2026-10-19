@@ -52,6 +52,8 @@ const dB = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
 
 // 120 BPM: a sixteenth is 0.125s and a bar is 2s.
 const SPB = 0.125;
+// The switch's crossfade, which ends on a section's own time — see `select` in mixer.js.
+const EDGE = 0.004;
 const SR = 44100;
 
 const { chromium } = require('playwright');
@@ -163,9 +165,33 @@ try {
     assert(Math.abs(drop(10, 0.1, 0.45)) < 0.2 && Math.abs(drop(10, 0.55, 0.95) + 12) < 0.2
       && Math.abs(drop(11) + 12) < 0.2,
       'a section starting on a 1/32 switches halfway through its sixteenth, not at either end of it');
-    const outside = [[0, 4 * SPB], [8 * SPB + 0.005, 10.5 * SPB], [12 * SPB + 0.005, 20 * SPB], [24 * SPB + 0.005, 32 * SPB]];
+    // The switch's edge ENDS on a section's time (see `select` in mixer.js), so the song is
+    // the song up to one edge — 4 ms — before a section starts, and from its end onwards.
+    const outside = [[0, 4 * SPB - EDGE], [8 * SPB + 0.005, 10.5 * SPB - EDGE], [12 * SPB + 0.005, 20 * SPB - EDGE], [24 * SPB + 0.005, 32 * SPB]];
     const worst = Math.max(...outside.map(([a, b]) => maxDiff(plain, arranged, a, b)));
     assert(worst < 1e-6, `outside its sections the song is the same samples (worst ${worst.toExponential(2)})`);
+  }
+
+  // ---- 1b. a hit ON the first sixteenth of a section is wholly in it -----------------
+  //
+  // The switch's crossfade used to begin at the section's time, so the first few
+  // milliseconds of a hit struck right there — a kick's click — went out through the
+  // old route: gravity's kick, entering under its sweeping low-pass, was bright once
+  // and then dull (19 Oct 2026). A hat on the section's first sixteenth and one inside
+  // it, under a 150 Hz low-pass, must lose the same amount over their first 4 ms.
+  {
+    const hats = new Array(32).fill(false);
+    hats[4] = true; hats[8] = true;
+    const bank = { bpm: 120, hats, order: [{ s: 0, bars: 2 }] };
+    const plain = await render('edge:plain', { bank });
+    const arranged = await render('edge', { bank, arrangement: { automation: {
+      hats: { fx: [{ from: [1, 4], to: [1, 12],
+        chain: [{ id: 'filter', params: { type: 'lowpass', frequency: 150, Q: 1 } }] }] },
+    } } });
+    const kept = (step) => dB(rms(arranged, step * SPB, step * SPB + 0.004) / rms(plain, step * SPB, step * SPB + 0.004));
+    const first = kept(4); const inside = kept(8);
+    assert(inside < -12 && Math.abs(first - inside) < 3,
+      `the first 4 ms of a hit on a section's first sixteenth are filtered like one inside it (${first.toFixed(1)} dB against ${inside.toFixed(1)} dB)`);
   }
 
   // ---- 2. a gate on the master -------------------------------------------------------
@@ -184,7 +210,7 @@ try {
       .map((i) => dB(rms(gated, ...inner(i, 0.08, 0.42)) / rms(plain, ...inner(i, 0.08, 0.42))));
     assert(closed.every((d) => d < -60) && open.every((d) => Math.abs(d) < 0.5),
       `a master gate section opens the first half of each sixteenth and shuts the second (open ${open.map((d) => d.toFixed(1)).join(', ')}; shut ${closed.map((d) => d.toFixed(0)).join(', ')})`);
-    assert(maxDiff(plain, gated, 0, 8 * SPB) < 1e-6 && maxDiff(plain, gated, 16 * SPB + 0.01, 32 * SPB) < 1e-6,
+    assert(maxDiff(plain, gated, 0, 8 * SPB - EDGE) < 1e-6 && maxDiff(plain, gated, 16 * SPB + 0.01, 32 * SPB) < 1e-6,
       'and the bars around it are untouched');
   }
 
@@ -272,8 +298,10 @@ try {
   // ---- 4. what a section may hold ---------------------------------------------------------
   {
     const page = await freshPage('latency');
-    const lags = await page.evaluate(async (ids) => {
+    const { lags, onsets } = await page.evaluate(async (ids) => {
       const out = {};
+      // When the output first sounds, which a copy behind a dry leg does not move.
+      const onsets = {};
       for (const id of ids) {
         const N = Math.ceil(0.8 * 44100);
         const ctx = new OfflineAudioContext(1, N, 44100);
@@ -299,12 +327,21 @@ try {
           if (Math.abs(s) > Math.abs(best)) { best = s; lag = l; }
         }
         out[id] = best ? (lag / 44100) * 1000 : 0;
+        let first = 0;
+        while (first < y.length - at && Math.abs(y[at + first]) < 0.003) first++;
+        onsets[id] = (first / 44100) * 1000;
       }
-      return out;
+      return { lags: out, onsets };
     }, EFFECTS.map((d) => d.id));
     await page.close();
-    const late = SECTION_EFFECTS.filter((d) => lags[d.id] > 1);
+    // The Doubler's copy is ~14.5ms behind by design, and the cross-correlation below finds
+    // the copy; its dry leg is the input bit for bit and on time, so a section switching it
+    // in or out moves nothing. Held to that by when it first sounds instead.
+    const COPY_BEHIND_DRY = ['doubler'];
+    const late = SECTION_EFFECTS.filter((d) => !COPY_BEHIND_DRY.includes(d.id) && lags[d.id] > 1);
     assert(!late.length, `every effect a section offers is on time — within a millisecond, which a filter's phase is and a look-ahead is not (late: ${late.map((d) => `${d.id} ${lags[d.id].toFixed(2)}ms`).join(', ') || 'none'})`);
+    assert(COPY_BEHIND_DRY.every((id) => SECTION_EFFECTS.some((d) => d.id === id) && onsets[id] < 0.5),
+      `and a copy behind an on-time dry leg is on time where it first sounds (${COPY_BEHIND_DRY.map((id) => `${id} ${onsets[id]?.toFixed(2)}ms`).join(', ')}; its copy ${lags.doubler?.toFixed(1)}ms)`);
     const wrong = Object.entries(EFFECT_LATENCY_MS)
       .filter(([id, ms]) => !(Math.abs(lags[id] - ms) <= Math.max(0.5, ms * 0.1)));
     assert(!wrong.length, `every effect EFFECT_LATENCY_MS names is as late as it says (wrong: ${wrong.map(([id, ms]) => `${id} listed ${ms}ms, measured ${lags[id]?.toFixed(2)}ms`).join(', ') || 'none'})`);

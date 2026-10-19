@@ -42,10 +42,10 @@ const CAT_SWIPE_SHAPES = Object.fromEntries(Object.keys(CAT_PAW_PITCH)
 import { RAKE_SWING_LEAD } from '../sprites/props.js';
 import { ZAP_T, ZAP_XRAY_CHANCE, zapCanXray } from '../sprites/zap.js';
 import { BLAST_T } from '../sprites/blast.js';
-import { pickHitPicture, hitPicLife } from '../sprites/hitPictures.js';
+import { pickHitPicture, hitPicLife, hitFamilyOf } from '../sprites/hitPictures.js';
 import { CAT_HIT_T, CAT_IFRAMES_T, catSwipeActive, catHitScreenOffset } from './cat-hit.js';
 import { LEDGE_REACH, PIT_WORDS, PIT_HANG_RAN, PIT_HANG_JUMPED, PIT_GRIP, PIT_GRIP_ALT, PIT_GRIP_DX, PIT_MANTLE_T, pitGripSlip, pitMantle, warmPitFall } from '../sprites/pitFall.js';
-import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, LANDED_T } from './player.js';
+import { Player, PLAYER_X, HERO_ANCHOR, setHeroAnchor, beatLayOff, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, LANDED_T } from './player.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
@@ -1242,6 +1242,13 @@ const PAUSE_BUTTONS = [
 // tap test on the briefing is the one that measures.
 const PAUSE_SYNC_Y = 206;
 const PAUSE_SYNC_H = 14;
+// The read-out rows under the BONUS line (drawPaused). They sat at 108 / 132 / 148
+// and the controls at 170 + 18n, which put the third control row ON the sync row at
+// 206 (Peter, 19 Oct 2026: "audio sync is under shift/middle click … a lot of the
+// text can move up after bonus"). Closed up under BONUS, the third control lands at
+// 190 and the sync row keeps its own line.
+const PAUSE_CHIPS_Y = 96;
+const PAUSE_HERO_Y = 118;
 //
 // RESET hangs off the right end of the SYNC ROW, with a gap after +, so a
 // thumb aiming for + cannot find it: it is the one control on the row that
@@ -1380,6 +1387,10 @@ export const __copterTesting = {
 // desktop framing, which is the frame that actually has to hold him.
 const COPTER_ROAM_NEAR = 240 * (0.58 - 0.26);
 const COPTER_ROAM_FAR = 240 * (0.58 + 0.26);
+// The near end is the half the kicks are aimed at, so it keeps its distance from
+// the HERO, not the camera: tuned with him at 55, it moves with him to whatever
+// column this framing stands him at (player.js HERO_ANCHOR).
+const COPTER_ROAM_HERO_X = 55;
 // The rooftop gorilla's building on level 3-3, in frame px — its own scene data
 // in stylePacks puts it at x 359, 36 wide. The villain is cast and the gorilla
 // is the cabinet's art; neither may sit on the other. Below this altitude he is
@@ -1433,7 +1444,8 @@ const COPTER_SHOT_FLIGHT_MIN = 0.25, COPTER_SHOT_FLIGHT_MAX = 0.55;
 // front of the hero's standing hitbox, less half a frame of closing, which is
 // where the collision loop actually finds it. Refined from the real barrel
 // once it is in the air.
-const COPTER_SHOT_X0 = PLAYER_X + (PLAYER_SPRITE_W - PLAYER_W) / 2 + PLAYER_W - 2;
+// A function, not a constant: PLAYER_X is per framing (player.js HERO_ANCHOR).
+const copterShotX0 = () => PLAYER_X + (PLAYER_SPRITE_W - PLAYER_W) / 2 + PLAYER_W - 2;
 // And how far past the barrel's nose his centre sits at the hit: the barrel's
 // own width, half the hull, and one unit inside so the frame the hull is
 // first overlapped is the frame of the line rather than the one after.
@@ -1641,6 +1653,10 @@ export function applyFraming(settings) {
     : t === 'tablet' ? ZOOM_CLOSE
       : (settings && settings.zoomIn) ? ZOOM_CLOSE : ZOOM_NORMAL;
   if (want !== ZOOM) setRestingZoom(want);
+  // The hero's column goes with the framing (player.js HERO_ANCHOR).
+  const key = t === 'desktop' && settings && settings.zoomIn ? 'desktopClose' : t;
+  const anchor = HERO_ANCHOR[key] ?? HERO_ANCHOR.desktop;
+  if (anchor !== PLAYER_X) setHeroAnchor(anchor);
   return want;
 }
 
@@ -5346,20 +5362,20 @@ export class RunState {
     if (Input.pressed('quit')) { Audio.sfx('uiConfirm'); this.endRun(false, 'QUIT'); return; }
     if (Input.pressed('restart')) { Audio.sfx('uiConfirm'); this.restartStage(); return; }
     // Only the full-width plates are arrowable. The nudge plates are a
-    // control, not a destination — left/right work them from the keyboard and a
-    // thumb presses them directly, so putting them in the up/down cycle would
-    // only add two stops on the way to CONTINUE.
+    // control, not a destination, and they are CLICK OR TAP ONLY (Peter, 19 Oct
+    // 2026: "the keyboard is changing the audio sync"). Left/right used to nudge
+    // the offset here, and a player arrowing between the plates — or still
+    // holding a direction from the run — moved a calibrated number without
+    // seeing it happen.
     const n = PAUSE_BUTTONS.length;
     if (this.beatLock) {
-      const step = (Input.pressed('right') || Input.pressed('syncUp') ? 1 : 0)
-        - (Input.pressed('left') || Input.pressed('syncDown') ? 1 : 0);
+      const step = (Input.pressed('syncUp') ? 1 : 0) - (Input.pressed('syncDown') ? 1 : 0);
       if (step) this.nudgeAudioSync(step);
       if (Input.pressed('syncReset')) this.resetAudioSync();
     }
-    // Up/down always works — it is what the stacked plates taught. Left/right
-    // joins it now the pair is a row, wherever the nudge has not claimed it.
-    const back = Input.pressed('up') || (!this.beatLock && Input.pressed('left'));
-    const fwd = Input.pressed('down') || (!this.beatLock && Input.pressed('right'));
+    // Up/down and left/right both walk the plates, on every stage.
+    const back = Input.pressed('up') || Input.pressed('left');
+    const fwd = Input.pressed('down') || Input.pressed('right');
     if (back) { this.pauseIdx = (this.pauseIdx + n - 1) % n; Audio.sfx('ui'); }
     if (fwd) { this.pauseIdx = (this.pauseIdx + 1) % n; Audio.sfx('ui'); }
     if (!Input.pressed('confirm')) return;
@@ -7265,12 +7281,16 @@ export class RunState {
     if (!b || b.left <= 0) return;
     b.t += dt;
     while (b.left > 0 && b.t >= b.delay + (b.total - b.left) * TIME_COIN_STEP) {
+      // The key the tally starts in is the key it ends in: a section change in
+      // the song mid-count would otherwise shift the pings partway through
+      // (Peter, 19 Oct 2026). Null — no song, or no key — pins the raw pair.
+      if (b.key === undefined) b.key = Audio.songKey() ?? null;
       b.left--;
       this.coins += 1;
       this.clockT = Math.min(this.timeLimit, this.clockT + 1);
       // A tick per second, not a scale: the flag's run-up climbs because it is
       // short, and sixty climbing semitones would leave the audible range.
-      Audio.sfx('coin', { pitch: b.left === 0 ? 1.5 : 1.25 });
+      Audio.sfx('coin', { pitch: b.left === 0 ? 1.5 : 1.25, key: b.key });
     }
     if (b.left === 0) this.clockT = this.timeLimit;
   }
@@ -9720,8 +9740,8 @@ export class RunState {
       const hitIn = (shot.hitBeat - chartBeat) * spb;
       let target;
       if (!ob.punted) {
-        const kickIn = Math.max(0, (ob.x - (this.camX + COPTER_SHOT_X0)) / (sp - (ob.def.vx || 0)));
-        target = COPTER_SHOT_X0 + rel * Math.max(0, hitIn - kickIn) + COPTER_SHOT_LEAD_IN;
+        const kickIn = Math.max(0, (ob.x - (this.camX + copterShotX0())) / (sp - (ob.def.vx || 0)));
+        target = copterShotX0() + rel * Math.max(0, hitIn - kickIn) + COPTER_SHOT_LEAD_IN;
       } else {
         // In the air: its own position and the launch it actually got, so the
         // half-frame the boot found it early or late is taken out here.
@@ -9751,7 +9771,7 @@ export class RunState {
     let ob = null, kickIn = Infinity;
     for (const o of this.obstacles) {
       if (!o.live || o.punted || o.hurtPlayer || !o.def?.beatPunt || o.def.punt !== 'heavy') continue;
-      const k = (o.x - (this.camX + COPTER_SHOT_X0)) / (sp - (o.def.vx || 0));
+      const k = (o.x - (this.camX + copterShotX0())) / (sp - (o.def.vx || 0));
       if (k < 0.05 || k > COPTER_SHOT_LEAD_BARS * c.bar) continue;
       if (k < kickIn) { ob = o; kickIn = k; }
     }
@@ -9769,7 +9789,7 @@ export class RunState {
   planCopterShot(c, dx, sp, chartBeat, roam, ob) {
     const spb = 60 / this.laneBpm();
     const rel = (HEAVY_PUNT.launchBoost - 1) * sp;
-    const kickIn = (ob.x - (this.camX + COPTER_SHOT_X0)) / (sp - (ob.def.vx || 0));
+    const kickIn = (ob.x - (this.camX + copterShotX0())) / (sp - (ob.def.vx || 0));
     const plan = { ob, steer: false, hitBeat: null, t0: this.tRun, settleAt: this.tRun + kickIn - 0.25, cued: false };
     const was = c.shot && c.shot.ob === ob ? c.shot : null;
     if (was) { plan.free = was.free; plan.freeDx = was.freeDx; plan.freeAlt = was.freeAlt; }
@@ -9790,7 +9810,7 @@ export class RunState {
     let flight = (hitBeat - beatKick) * spb;
     if (flight < COPTER_SHOT_FLIGHT_MIN) { hitBeat += 1; flight += spb; }
     if (flight > COPTER_SHOT_FLIGHT_MAX) return;
-    const target = COPTER_SHOT_X0 + rel * flight + COPTER_SHOT_LEAD_IN;
+    const target = copterShotX0() + rel * flight + COPTER_SHOT_LEAD_IN;
     // Not yet: he has more road than the flight to the mark needs, so the
     // answer can wait for a truer one. The floor keeps the move a glide over
     // most of a bar rather than a dart in the last half second.
@@ -9924,7 +9944,7 @@ export class RunState {
     for (let tau = 0; tau < 1.2; tau += 1 / 120) {
       const balt = launchVy * tau - 0.5 * gravity * tau * tau;
       if (tau > 0 && balt <= 0) return null;
-      const bx = COPTER_SHOT_X0 + rel * tau;
+      const bx = copterShotX0() + rel * tau;
       const t = this.tRun + kickIn + tau;
       const cdx = dxAt(t);
       const floor = altAt(t) + COPTER_HULL.floor;
@@ -9936,7 +9956,7 @@ export class RunState {
 
   /** Is a live beat barrel going to reach the boot inside `secs`? */
   beatBarrelDue(secs, sp) {
-    const front = this.camX + COPTER_SHOT_X0;
+    const front = this.camX + copterShotX0();
     for (const o of this.obstacles) {
       if (!o.live || o.punted || o.hurtPlayer || !o.def?.beatPunt || o.def.punt !== 'heavy') continue;
       const k = (o.x - front) / (sp - (o.def.vx || 0));
@@ -10406,12 +10426,18 @@ export class RunState {
     // the crossing was a set of platforms floating over ground you could stand
     // on. A thing is behind you when the whole of it is behind you.
     this.obstacles = this.obstacles.filter((ob) => ob.live !== false && ob.x + ob.w > this.camX - 80);
+    this.popTakenCoins();
     // A coin the magnet holds is exempt from the near-edge sweep: it may well
     // BE behind him — that is what being reeled in from behind looks like — and
     // binning it here is exactly the bug updateCoinMagnet's latch undoes. The
     // outer bound is only a leak stop; a held coin closes in well inside it.
+    // The ring's coins are exempt for the same reason while he is riding it: the
+    // lap carries the world back over the top, and with the hero standing near the
+    // left edge (player.js HERO_ANCHOR) the far side of the ring passes behind
+    // camX - 40 before he has come round to its last coin.
     this.pickups = this.pickups.filter((p) => p.live
-      && (p.x > this.camX - 40 || (p.magnetized && p.x > this.camX - 400)));
+      && (p.x > this.camX - 40 || (p.magnetized && p.x > this.camX - 400)
+        || (this.loop && p.loopId === this.loop.obId)));
 
     // CHASE COPTER: he hangs OVER the hero and you bonk him from underneath.
     //
@@ -10522,11 +10548,12 @@ export class RunState {
       // half of the path furthest from the hero, where no kick is aimed.
       const roamFar = hasGorilla
         ? Math.max(COPTER_ROAM_FAR, kongMid + 8) : COPTER_ROAM_FAR;
-      const roamMid = (COPTER_ROAM_NEAR + COPTER_ROAM_FAR) / 2;
+      const roamNear = COPTER_ROAM_NEAR + (PLAYER_X - COPTER_ROAM_HERO_X);
+      const roamMid = (roamNear + COPTER_ROAM_FAR) / 2;
       const roamDxAt = (t) => {
         const wander = wanderAt(t);
         return roamMid + wander * (wander >= 0
-          ? roamFar - roamMid : roamMid - COPTER_ROAM_NEAR);
+          ? roamFar - roamMid : roamMid - roamNear);
       };
       const aheadDx = roamDxAt(this.tRun);
       // HE RIDES HIGH, AND DIPS. HIS HEIGHT IS THE SCOREBOARD: see nudgeCopter,
@@ -10749,7 +10776,7 @@ export class RunState {
             for (const ob of this.obstacles) {
               if (!ob.live || ob.punted || ob.hurtPlayer || !ob.def?.beatPunt
                 || ob.def.punt !== 'heavy' || ob.copterPaper != null) continue;
-              const kickIn = (ob.x - (this.camX + COPTER_SHOT_X0)) / (sp - (ob.def.vx || 0));
+              const kickIn = (ob.x - (this.camX + copterShotX0())) / (sp - (ob.def.vx || 0));
               if (kickIn < 0 || kickIn > horizon) continue;
               // The verdict is recorded whether or not the window was
               // deferred, so a pass that actually flies can be checked
@@ -11316,6 +11343,11 @@ export class RunState {
           // the same precaution since routes landed (see sharesRoute). A shot
           // fired in a tunnel cannot break something on the lane above it.
           if ((ob.route || null) !== (pr.route || null)) continue;
+          // NOR WHAT THE PLAYER CANNOT SEE: the same rule homeRound aims by. A
+          // round still clearing the edge used to find a box standing wholly past
+          // it and light it — a bang from off screen, once the hero stood far
+          // enough left (player.js HERO_ANCHOR) for the frame to end nearer him.
+          if (pr.vx > 0 && ob.x >= this.viewRightX()) continue;
           pr.hitIds ||= new Set();
           if (pr.hitIds.has(ob.id)) continue;
           // WHAT A PLAIN ROUND IS ALLOWED TO TOUCH. A thrown weapon and a
@@ -11456,7 +11488,7 @@ export class RunState {
       if (pr.type === 'fist' && this.modIds.includes('head')) {
         const pbox = { x: pr.x, y: this.entityGroundY(pr) - pr.alt - 4, w: 8, h: 8 };
         for (const pickup of this.pickups) {
-          if (!pickup.live || !pickup.def.coin) continue;
+          if (!pickup.live || pickup.taken || !pickup.def.coin) continue;
           const box = { x: pickup.x, y: this.entityGroundY(pickup) - pickup.alt - pickup.h, w: pickup.w, h: pickup.h };
           if (overlaps(pbox, box)) { pickup.live = false; this.onPickup(pickup); }
         }
@@ -11899,16 +11931,19 @@ export class RunState {
     if (!(pxPerBeat > 0)) return false;
     const playerX = this.playerWorldX();
     const loop = chart.loopBeats || chart.events.length;
-    const near = Math.round(beat + (p.x - playerX) / pxPerBeat);
+    const lay = beatLayOff(p.w);
+    const near = Math.round(beat + (p.x - lay - playerX) / pxPerBeat);
     for (const k of [0, 1, -1, 2, -2, 3, -3]) {
       const n = near + k;
       if (n < beat + 1 || n < OPENING_COIN_BEAT) continue;
       const slot = chart.events[((n % loop) + loop) % loop];
       if (slot && slot.action !== 'coin' && slot.action !== 'ability') continue;
       const x = playerX + (n - beat) * pxPerBeat;
-      if (this.clearOfHazards(x, p.w, p.alt, p.h, x) !== x) continue;
-      p.x = x;
-      if (p._baseX != null) p._baseX = x;
+      // Centred on the playhead on its beat, like a chart coin (player.js beatLayOff).
+      const px = x + lay;
+      if (this.clearOfHazards(px, p.w, p.alt, p.h, px) !== px) continue;
+      p.x = px;
+      if (p._baseX != null) p._baseX = px;
       p.actionX = x;
       p.actionBeat = n;
       return true;
@@ -11933,11 +11968,14 @@ export class RunState {
     if (!Number.isFinite(beat) || !(pxPerBeat > 0)) return;
     const playerX = this.playerWorldX();
     const last = coins[coins.length - 1];
-    const lastBeat = Math.floor((beat + (last.x - playerX) / pxPerBeat) * 8) / 8;
-    const shift = playerX + (lastBeat - beat) * pxPerBeat - last.x;
+    // Centred on the playhead on their 32nds, like a chart coin (player.js beatLayOff);
+    // the 12px the run was laid outside FINISH_CLEAR covers the 2 this adds.
+    const lay = beatLayOff(last.w);
+    const lastBeat = Math.floor((beat + (last.x - lay - playerX) / pxPerBeat) * 8) / 8;
+    const shift = playerX + (lastBeat - beat) * pxPerBeat + lay - last.x;
     coins.forEach((c, i) => {
       c.x += shift;
-      c.actionX = c.x;
+      c.actionX = c.x - lay;
       c.actionBeat = lastBeat - (coins.length - 1 - i) / 8;
     });
     this.finishCoinsPinned = true;
@@ -15829,11 +15867,35 @@ export class RunState {
     // with slides.
     const reachBox = { x: pbox.x, y: pbox.y + pbox.h - PLAYER_H, w: pbox.w, h: PLAYER_H };
     for (const p of this.pickups) {
-      if (!p.live) continue;
+      if (!p.live || p.taken) continue;
       const box = { x: p.x, y: this.entityGroundY(p) - p.alt - p.h, w: p.w, h: p.h };
-      if (!overlaps(ridePbox || reachBox, box)) continue;
-      p.live = false;
+      // A beat-lined pickup is laid beatLayOff past its line, and his reach for it is
+      // carried forward the same, so he still meets it ~10px before its beat.
+      const ahead = Number.isFinite(p.actionBeat) ? Math.max(0, beatLayOff(p.w)) : 0;
+      const reach = ridePbox || reachBox;
+      if (!overlaps(ahead ? { ...reach, w: reach.w + ahead } : reach, box)) continue;
+      // A CHART COIN IS TAKEN EARLY AND SEEN TAKEN ON ITS BEAT (Peter, 19 Oct 2026:
+      // "coins are still not on beat"). His hitbox front meets it ~10px before its
+      // line, and that lead is what lets its ping be PLACED on the beat
+      // (pickupLineInBeats) — so it is counted and pinged now, but stays on screen,
+      // untouchable, until its beat, and pops there (popTakenCoins). The ping, the
+      // pop and the ribbon dot crossing the playhead are then one instant.
+      const lead = p.def.coin ? this.pickupLineInBeats(p) : undefined;
+      if (lead > 0) p.taken = true;
+      else p.live = false;
       this.onPickup(p);
+    }
+  }
+
+  /** The held coins (see collide) go on their beat. */
+  popTakenCoins() {
+    const beat = this.beatLock ? this.rhythmBeatForJudging() : null;
+    for (const p of this.pickups) {
+      if (!p.taken || !p.live) continue;
+      // No clock (a stall, a bank handoff) is no reason to keep one hanging.
+      if (Number.isFinite(beat) && beat < p.actionBeat && this.tRun - (p.takenAt ?? this.tRun) < 0.5) continue;
+      p.live = false;
+      spawn(p.x, this.entityGroundY(p) - p.alt - 8, 0, -40, 0.4, '#f6d33c', 1, 0);
     }
   }
 
@@ -15874,7 +15936,9 @@ export class RunState {
       // (Audio.sfx's inBeats, see pickupLineInBeats).
       const line = this.pickupLineInBeats(p);
       Audio.sfx('coin', { combo: Math.min(12, this.coinCombo), inBeats: line });
-      spawn(p.x, this.entityGroundY(p) - p.alt - 8, 0, -40, 0.4, '#f6d33c', 1, 0);
+      // A held coin sparkles when it pops, on its beat (popTakenCoins).
+      if (p.taken) p.takenAt = this.tRun;
+      else spawn(p.x, this.entityGroundY(p) - p.alt - 8, 0, -40, 0.4, '#f6d33c', 1, 0);
     } else if (p.def.heal) {
       // No floatie: the status pill fills the cell on the same frame and the
       // 'power' sting lands with it. Saying it a third time is noise.
@@ -16194,7 +16258,13 @@ export class RunState {
     } else if (OBSTACLES[src]?.explodes) {
       Audio.sfx('hit');
       if (this.battery > 0) this.player.blastT = BLAST_T;
-    } else if (!trapContact) Audio.sfx('hit');
+    } else if (!trapContact) {
+      // A roller flattening him has its own sound (the squelch, picked 19 Oct 2026) in place
+      // of the ordinary hit's — only when the rolled picture plays, i.e. he survives it.
+      const rolled = !isPit && this.battery > 0 && OBSTACLES[src] && !OBSTACLES[src].slip
+        && hitFamilyOf(src) === 'rollers';
+      Audio.sfx(rolled ? 'rollSplat' : 'hit');
+    }
     // HIT PICTURES (16 Oct 2026, sprites/hitPictures.js): every other obstacle hit is
     // drawn by what it was — fire, spikes, blades, rollers, ice, or the flash and the
     // stars-and-birdies for everything else. A picture only: everything about the hit
@@ -18965,25 +19035,25 @@ export class RunState {
       const CHIP_GAP = 12;
       const total = chips.reduce((a, [t]) => a + textWidth(t), 0) + CHIP_GAP * (chips.length - 1);
       let cx = W / 2 - total / 2;
-      for (const [t, ink] of chips) { drawText(ctx, t, cx, 108, ink); cx += textWidth(t) + CHIP_GAP; }
+      for (const [t, ink] of chips) { drawText(ctx, t, cx, PAUSE_CHIPS_Y, ink); cx += textWidth(t) + CHIP_GAP; }
     }
     // WHO you are, under WHERE you are and what you are doing there. The stage
     // and its three lines are the read-out a pause is for; the hero is standing
     // on the screen behind this one, so his name is a caption on something
     // already visible rather than news. It leads the controls instead: the
     // power line under it is the one status that changes with the hero.
-    drawTextCentered(ctx, pHero.name, W / 2, 132, '#48e0c8');
+    drawTextCentered(ctx, pHero.name, W / 2, PAUSE_HERO_Y, '#48e0c8');
     // The power line reports state rather than teaching a control, so it keeps
     // its gold. The control legend below is the only place that names keys.
     const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
-    drawTextCentered(ctx, `POWER: ${pHero.ability.label}  ${cd}`, W / 2, 148, '#f6d33c');
+    drawTextCentered(ctx, `POWER: ${pHero.ability.label}  ${cd}`, W / 2, PAUSE_HERO_Y + 16, '#f6d33c');
     // The touch line names the broad JUMP surface and the swipe fallbacks. The
     // visible rail can swap sides with the notch after rotation, so this copy
     // describes the action rather than a fixed left/right location.
     const pauseControls = Input.usingTouch
       ? [['TAP ANYWHERE', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['ATTACK / SWIPE RIGHT', 'POWER']]
       : DESKTOP_CONTROL_ROWS;
-    pauseControls.forEach((pair, i) => legend([pair], 170 + i * 18,
+    pauseControls.forEach((pair, i) => legend([pair], PAUSE_HERO_Y + 36 + i * 18,
       { actionInk: '#c8c8d8' }));
     // CONTINUE/BACK are already visible below, so a second P/ESC shortcut row
     // would only compete with the third gameplay line for the same space.
@@ -19001,10 +19071,8 @@ export class RunState {
     if (this.beatLock) {
       const ms = clampAudioSyncMs(this.save.settings.audioSyncMs);
       const value = `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS`;
-      // Chevrons on the keyboard, where the plates either side are a mouse
-      // target rather than an instruction: they are the one mark that says
-      // "the arrows move this" without spending a line saying it, and the row
-      // has no line to spend — CONTINUE starts eighteen pixels below.
+      // The - and + plates either side are the only way to move it: a click or a
+      // tap, never a key (see updatePauseMenu).
       drawTextCentered(ctx, value,
         W / 2, textYForMid(PAUSE_SYNC_Y + PAUSE_SYNC_H / 2), ms ? '#48e0c8' : '#8a8a98');
     }

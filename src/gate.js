@@ -329,7 +329,7 @@ async function loadGame() {
   // blank/black screen with no sign the game was still coming.
   const loading = document.getElementById('font-loading');
   const label = document.getElementById('font-loading-label');
-  if (label) label.textContent = 'WARMING UP…';
+  if (label) label.textContent = 'MASHING…';
   const removeLoadingWhenBooted = () => {
     if (window.__mash_booted || window.__mash_fatal_error) { loading?.remove?.(); return; }
     requestAnimationFrame(removeLoadingWhenBooted);

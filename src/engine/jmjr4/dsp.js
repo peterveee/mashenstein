@@ -478,6 +478,9 @@ export function renderIr(ctx, ir, opts = {}) {
   const lv = ir.levels || {};
   const nodes = [];
   const sources = [];
+  // Every node wired INTO an AudioParam, for the rack to disconnect when the note ends: one
+  // collected still wired crashes WebKit (voices.js _retireNote, webkit-junction-guard.js).
+  const paramMods = [];
   // Every source's booked end. A later stop() REPLACES an earlier one (the spec's rule),
   // so a release that stopped every source at the note's end was un-stopping the burst
   // noise and the voice-bar oscillator booked to end at 70 ms, and they ran the whole
@@ -519,7 +522,7 @@ export function renderIr(ctx, ir, opts = {}) {
       }
     }
     for (const o of mainOscs) amt.connect(o.frequency);
-    nodes.push(amt);
+    nodes.push(amt); paramMods.push(amt);
   }
   // JITTER: the wander flutter is not. Flutter repeats — three fixed sines — so it reads as
   // a voice that cannot hold still; this does not repeat, so it reads as a voice that is not
@@ -536,7 +539,7 @@ export function renderIr(ctx, ir, opts = {}) {
     jn.src.connect(lp); lp.connect(amt);
     for (const o of mainOscs) amt.connect(o.frequency);
     jn.src.start(t0, jn.offset); book(jn.src, t0 + total + 0.05);
-    nodes.push(jn.src, lp, amt); sources.push(jn.src);
+    nodes.push(jn.src, lp, amt); sources.push(jn.src); paramMods.push(amt);
   }
   // The sources sum here, scaled so N detuned sources carry the power of one: the levels
   // compiled into the IR (aspiration, bursts, the bar) are relative to ONE source.
@@ -795,7 +798,7 @@ export function renderIr(ctx, ir, opts = {}) {
       const mg = ctx.createGain();
       mg.gain.value = 0.65; mod.connect(mg); mg.connect(env.gain);
       env.gain.setValueAtTime(0.35 + 0.325, start);
-      mod.start(start); book(mod, start + dur + 0.02); nodes.push(mod, mg); brief.push(mod);
+      mod.start(start); book(mod, start + dur + 0.02); nodes.push(mod, mg); brief.push(mod); paramMods.push(mg);
     }
     sum.connect(env); env.connect(g); g.connect(out);
     en.src.start(start, en.offset); book(en.src, start + dur + 0.005);
@@ -832,6 +835,7 @@ export function renderIr(ctx, ir, opts = {}) {
   return {
     end: t0 + total,
     nodes,
+    paramMods,
     gate: decl.gain,
     sources,
     oscs,

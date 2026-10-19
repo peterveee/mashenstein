@@ -1,7 +1,7 @@
 // Review-only bodies. The brush, rubbish, crusher and cube use campaign art.
 import { VACUUM_INK as INK, vacuumBox as box, vacuumOval as oval, vacuumLine as line,
   drawCompactorWindow, drawVacuumAssembly, drawVacuumDebris, drawGarbageCube, vacuumBrushPose } from '../sprites/vacuum-compactor.js';
-import { vacuumAttackPhase, VACUUM_PREP_SECONDS, VACUUM_SHOT_SPEED } from '../game/gravity/encounters.js';
+import { vacuumAttackPhase, VACUUM_PREP_SECONDS } from '../game/gravity/encounters.js';
 import { SPACE_LOOKS, drawSpaceRoom } from './space-look-candidates.js';
 import { drawGravityHazard } from '../sprites/gravity-encounters.js';
 import { drawToon } from '../sprites/toons.js';
@@ -106,14 +106,14 @@ export function drawVacuumRobotStudy(c,time,candidate,{lane=0,width=640,height=4
   drawSpaceRoom(c,LOOK,{cam:cam/roomK,view:view/roomK+60,top:-floor/zoom/roomK-15,
     bottom:(height-floor)/zoom/roomK+15,time:t,gates:[],length:12000,stage:2,lane,gateLane:lane,speed:20});
   c.restore();
-  const x=view*.56,y=-corridor*.48;
+  const x=view*.68,y=-corridor*.48;
   const attacks=VACUUM_BAKEOFF_LAUNCHES.map(at=>({at,count:at===6.4?2:1,lane,sourceLane:1-lane,...vacuumAttackPhase({at},t),
-    sourceVisible:t>at-VACUUM_PREP_SECONDS-1,sourceX:x+37+(at-2.1-t)*20}));
+    sourceVisible:t>at-VACUUM_PREP_SECONDS-1,sourceX:x-37+(at-2.1-t)*20}));
   const attack=attacks.find(a=>a.phase!=='launched') || attacks.at(-1);
   // Small world-anchored piles continue along the source rail between attacks.
   for(const at of [.3,3.5,8.8,10.2]) {
-    drawVacuumDebris(c,{x:x+35+(at-t)*20,railY:attack.sourceLane?-corridor:0,lane:attack.sourceLane,
-      progress:Math.max(0,Math.min(1,(t-at+.18)/.36)),brushX:x+35});
+    drawVacuumDebris(c,{x:x-35+(at-t)*20,railY:attack.sourceLane?-corridor:0,lane:attack.sourceLane,
+      progress:Math.max(0,Math.min(1,(t-at+.18)/.36)),brushX:x-35});
   }
   for(const a of attacks) {
     const brush=vacuumBrushPose({x,y,corridor,attack:a});
@@ -122,14 +122,15 @@ export function drawVacuumRobotStudy(c,time,candidate,{lane=0,width=640,height=4
   }
   // Short live wires alternate with loose rubbish on the opposite rail.
   c.save();c.translate(0,lane?0:-corridor);if(!lane)c.scale(1,-1);
-  for (const wireX of [10, x+35+6.5*20-18])
+  for (const wireX of [10, x-35+6.5*20-18])
     drawGravityHazard(c,{type:'railPulse',w:36,h:7,def:{}},wireX-t*20,0,t);
   c.restore();
   const rigAttack=attack.phase==='waiting'||attack.phase==='launched'
-    ? {...attack,phase:'sweep',progress:.5,sourceX:x+35} : attack;
-  drawVacuumAssembly(c,{x,y,corridor,attack:rigAttack,time:t,drawBody:candidate.draw,rotorHeight:candidate.id==='C'?50:34});
+    ? {...attack,phase:'sweep',progress:.5,sourceX:x-35} : attack;
+  drawVacuumAssembly(c,{x,y,corridor,attack:rigAttack,time:t,lane,drawBody:candidate.draw});
   for(const at of VACUUM_BAKEOFF_LAUNCHES) if(t>=at){
-    const age=t-at,xx=x-13.5-age*VACUUM_SHOT_SPEED;
+    // Once landed, the cube has no world motion; this gallery camera travels at 20.
+    const age=t-at,xx=x-age*20;
     c.save();if(lane){c.translate(0,-corridor);c.scale(1,-1);}
     for(let i=0;i<(at===6.4?2:1);i++) drawGarbageCube(c,xx+i*24,-7.5);
     if(age<.3){c.globalAlpha=1-age/.3;for(let i=-1;i<=1;i++)oval(c,xx+i*(6+age*20),-2-age*5,1.2,.6,'#b7b899');}
@@ -137,7 +138,7 @@ export function drawVacuumRobotStudy(c,time,candidate,{lane=0,width=640,height=4
   }
   const heroX=view*.19;
   const jump=Math.max(...VACUUM_BAKEOFF_LAUNCHES.map(at=>{
-    const hitAt=at+(x-13.5-heroX)/VACUUM_SHOT_SPEED;
+    const hitAt=at+(x-heroX)/20;
     return Math.max(0,Math.sin(Math.max(0,Math.min(1,(t-hitAt+.5)/1.2))*Math.PI))*31;
   }));
   c.save();c.translate(heroX,lane?-corridor:0);if(lane)c.scale(1,-1);

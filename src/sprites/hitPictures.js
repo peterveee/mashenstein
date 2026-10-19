@@ -5,7 +5,7 @@
 //
 //   FIRE     hot-foot hop OR rocket seat, at random, never the same twice running
 //   SPIKES   ouch hop on one foot, prickles left in him
-//   ROLLERS  pancake — flattened, then pops back up
+//   ROLLERS  rolled — pressed flat front to back, springs up, stars round his head
 //   ICE      frozen in a block of ice that shatters off him
 //   GENERIC  everything else: a white flash, then stars AND birdies round his head
 //            through the ordinary blink ("a cartoon staple")
@@ -308,16 +308,24 @@ function paintOuchHop(c, heroId, cx, fy, w, t, live, { prickles = true } = {}) {
 
 
 // ======================================================================== ROLLERS
-// A — PANCAKE. Flattened under it for a beat, then pops back up with a squash-and-stretch.
-// Flat until the pop, then the pop (0.06s) and the wobble (0.14s) as before.
-const PANCAKE_POP = HIT_LONG_T - 0.2;
-function pancakeScale(w) {
-  if (w < 0.04) { const q = easeOut(w / 0.04); return [lerp(1, 1.55, q), lerp(1, 0.24, q)]; }
-  if (w < PANCAKE_POP) { const k = 0.03 * Math.sin((w - 0.04) * 40) * Math.max(0, 1 - (w - 0.04) / 0.3); return [1.55 + k, 0.24 - k * 0.3]; }
-  if (w < PANCAKE_POP + 0.06) { const q = easeOut((w - PANCAKE_POP) / 0.06); return [lerp(1.55, 0.78, q), lerp(0.24, 1.32, q)]; }
-  const q = clamp01((w - PANCAKE_POP - 0.06) / 0.14), d = Math.exp(-q * 4) * Math.cos(q * Math.PI * 3);
-  return [1 - 0.22 * d, 1 + 0.32 * d];
-}
+// ROLLED (Peter, 19 Oct 2026, round 2 of the lab's rollers bake-off, F: "ship F"). Replaces
+// the 16 Oct PANCAKE — his running stride squashed flat and held for 0.8s of the second,
+// which he found slow, its pop "off" and its shape not a pancake (that painter is now
+// src/dev/hit-effect-candidates.js's own, as the record).
+//  - Flattened in a SWEEP, front to back: the columns the drum has passed pressed flat, the
+//    ones ahead still standing, a wide soft shoulder between — a wedge pressed down from
+//    the front. It plays inside the hit's 0.08s hitstop, while the roller is held against
+//    him, and the roller rolls on over him already flat.
+//  - Flat in SPLAT_POSE, arms wide and the back leg trailing (not a stride frozen
+//    mid-step), spread 1.5x wide for a beat, then a sprung pop — one tall overshoot, one
+//    small dip, settled — straight back into his own stride.
+//  - Then a ring of stars round his head from the bounce until the hit's mercy runs out
+//    (ROLLED_LIFE, the `after`), and the shocked face from the hit to the same moment:
+//    the picture's own poses carry it, and draw.js puts it on his blinking self after the
+//    picture ends (hitPicFace).
+export const HIT_IFRAMES = 1.4;   // run.js takeHit's mercy, restated
+const ROLLED_LIFE = HIT_IFRAMES;
+const SHOCKED = Object.freeze({ faceSurprised: true, browRaise: true });
 function squashed(c, heroId, cx, fy, t, sx, sy, pose, after) {
   return layer(20, c, bigBox(cx, fy), (o) => {
     o.save(); o.translate(cx, fy); o.scale(sx, sy); o.translate(-cx, -fy);
@@ -326,19 +334,76 @@ function squashed(c, heroId, cx, fy, t, sx, sy, pose, after) {
     o.restore();
   });
 }
-// Flattened mid-stride, side-on as he was running: the stride with the legs furthest
-// apart, so the squashed figure still reads as a runner seen from the side.
-const STRIDE = Object.freeze({ kind: 'run', phase: 0, time: 0, grounded: true, facing: 1, faceSurprised: true, browRaise: true });
-function paintPancake(c, heroId, cx, fy, w, t, live) {
-  const [sx, sy] = pancakeScale(w);
-  const L = squashed(c, heroId, cx, fy, t, sx, sy, w < PANCAKE_POP + 0.06 ? STRIDE : runPose(t, live));
-  if (w < 0.03) { flashWhite(c, L); return; }
-  blit(c, L);
-  // a puff from each side as he goes flat, lines as he pops
-  if (w < 0.25) { const q = clamp01((w - 0.03) / 0.22); puff(c, cx - 0.55 * U - 4 * q, fy - 1.5 - 2 * q, 1.2 + 1.5 * q, 1 - q); puff(c, cx + 0.55 * U + 4 * q, fy - 1.5 - 2 * q, 1.2 + 1.5 * q, 1 - q); }
-  if (w > PANCAKE_POP && w < PANCAKE_POP + 0.14) lines(c, cx, fy - 0.6 * U, 0.55 * U, 0.75 * U, [-Math.PI * 0.85, -Math.PI * 0.65, -Math.PI * 0.35, -Math.PI * 0.15], 1 - (w - PANCAKE_POP) / 0.14);
+// Flat on his face, arms thrown wide, the front leg tucked and only the back one trailing.
+// (The first cut's feet sat at 0.8-0.85 out — four times pitFall.js's own sprawl — and read
+// as a kick: "i don't like that the front leg is posed out in front".)
+const SPLAT_POSE = Object.freeze({
+  kind: 'jump', time: 0, vy: 0, grounded: true, facing: 1, ...SHOCKED,
+  dance: { hands: [[0.55, 0.12], [0.5, -0.1]], feet: [[0.08, -0.05], [-0.22, 0.08]], ankles: [0.15, -0.15] },
+});
+const ROLL_SWEEP = 0.09, ROLL_SPREAD = 0.04, ROLL_FLAT = 0.2;
+const ROLL_SX = 1.5, ROLL_SY = 0.2;
+const ROLL_STARS_IN = ROLL_FLAT + 0.12;   // the spring has settled to within a few percent
+const smooth = (q) => q * q * (3 - 2 * q);
+// Underdamped spring off the flat; sx follows sy so he widens flat and narrows tall.
+function rollSpring(e) {
+  const sy = 1 - (1 - ROLL_SY) * Math.exp(-14 * e) * Math.cos(35 * e);
+  const sx = sy < 1 ? 1 + (1 - sy) / (1 - ROLL_SY) * (ROLL_SX - 1) : 1 - (sy - 1) * 0.6;
+  return [sx, sy];
 }
-
+// The sweep: his layer redrawn in ~2 device-px columns, each pressed about his feet by
+// how far the drum has passed it. Edges in device px, so a mirrored run sweeps the right
+// way. A shoulder narrower than half his width tore his head into a staircase.
+function paintRollSweep(c, heroId, cx, fy, w) {
+  const L = layer(20, c, bigBox(cx, fy), (o) => drawToon(o, heroId, SPLAT_POSE, cx, fy, U));
+  if (w < 0.03) tint(L, '#ffffff');
+  const m = c.getTransform();
+  const devX = (x) => m.a * x + m.c * fy + m.e;
+  const front = devX(cx + 0.55 * U), back = devX(cx - 0.55 * U);
+  const footY = m.b * cx + m.d * fy + m.f;
+  const dir = Math.sign(front - back) || 1;
+  const ramp = Math.abs(front - back) * 0.5;
+  const line = lerp(front + dir * ramp, back - dir * ramp, w / ROLL_SWEEP);
+  const N = Math.max(24, Math.ceil(L.w / 2)), sw = L.w / N;
+  c.save();
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  if (w < 0.03) { c.shadowColor = '#ffffff'; c.shadowBlur = 5 * L.scale; }
+  for (let i = 0; i < N; i++) {
+    const x0 = L.x + i * sw;
+    const k = smooth(clamp01(((x0 + sw / 2 - line) * dir + ramp) / (2 * ramp)));
+    const sy = lerp(1, ROLL_SY, k);
+    c.drawImage(L.cv, i * sw, 0, sw + 0.5, L.h, x0, footY - (footY - L.y) * sy, sw + 0.5, L.h * sy);
+  }
+  c.restore();
+}
+function paintRolled(c, heroId, cx, fy, w, t, live) {
+  if (w < ROLL_SWEEP) { paintRollSweep(c, heroId, cx, fy, w); return; }
+  let sx = ROLL_SX, sy = ROLL_SY, pose = SPLAT_POSE;
+  if (w < ROLL_FLAT) sx = lerp(1, ROLL_SX, easeOut(clamp01((w - ROLL_SWEEP) / ROLL_SPREAD)));
+  else {
+    const e = w - ROLL_FLAT;
+    [sx, sy] = rollSpring(e);
+    if (e > 0.02) pose = { ...runPose(t, live), ...SHOCKED };
+  }
+  blit(c, squashed(c, heroId, cx, fy, t, sx, sy, pose));
+  // dust squeezed out of each side as he goes flat; lines off him as he springs
+  if (w < ROLL_FLAT) {
+    const q = clamp01((w - ROLL_SWEEP) / (ROLL_FLAT - ROLL_SWEEP));
+    puff(c, cx - 0.55 * U - 4 * q, fy - 1.5 - 2 * q, 1.1 + 1.3 * q, 1 - q);
+    puff(c, cx + 0.55 * U + 4 * q, fy - 1.5 - 2 * q, 1.1 + 1.3 * q, 1 - q);
+  }
+  if (w > ROLL_FLAT && w < ROLL_FLAT + 0.12) {
+    lines(c, cx, fy - 0.6 * U, 0.5 * U, 0.7 * U,
+      [-Math.PI * 0.85, -Math.PI * 0.65, -Math.PI * 0.35, -Math.PI * 0.15], 1 - (w - ROLL_FLAT) / 0.12);
+  }
+  rolledStars(c, heroId, cx, fy, w, t);
+}
+// Four stars round his head from the bounce to the end of the mercy, fading at each end.
+function rolledStars(c, heroId, cx, fy, w, t) {
+  const a = clamp01((w - ROLL_STARS_IN) / 0.08) * (1 - clamp01((w - (ROLLED_LIFE - 0.15)) / 0.15));
+  if (a <= 0) return;
+  ringAround(c, heroId, cx, fy, w, t, 4, (c2, x, y, front, i) => star(c2, x, y, front ? 2.3 : 1.8, t * 6 + i), a);
+}
 
 // ======================================================================== ICE
 // A — ICE BLOCK. Frozen mid-leap inside a chunk of ice, blue all over, for most of it —
@@ -524,9 +589,10 @@ function paintFlash(c, heroId, cx, fy, w, t, live) {
 }
 // n things on one flat ring over his head, the far side first and the near side over
 // him; paintOne(c, x, y, front, i, t).
-function ringAround(c, heroId, cx, fy, w, t, n, paintOne) {
+// `alpha` overrides the generic hit's own fade (in after the flash, out by GEN_RING_LIFE).
+function ringAround(c, heroId, cx, fy, w, t, n, paintOne, alpha = null) {
   const face = faceOf(heroId);
-  const a = clamp01((w - GEN_FLASH) / 0.05) * (1 - clamp01((w - 0.9) / 0.15));
+  const a = alpha ?? clamp01((w - GEN_FLASH) / 0.05) * (1 - clamp01((w - 0.9) / 0.15));
   if (a <= 0) return;
   const x = cx + face.ex * U, y = fy + (face.top - 0.02) * U;
   c.save(); c.globalAlpha *= a;
@@ -612,10 +678,10 @@ function starsBirdiesAndBees(c, heroId, cx, fy, w, t) {
 
 // ---------------------------------------------------------------- by what hit you
 // The family of every obstacle that has one; anything else that reaches the ordinary
-// hit is GENERIC. The live wire (zap), dynamite (blast), the banana peel (pratfall) and
+// hit is GENERIC. The live wire (zap), dynamite and smudge pot (blast), the banana peel (pratfall) and
 // pits are not asked — run.js takeHit keeps them out.
 const FAMILY_MEMBERS = {
-  fire: ['fireBarrel', 'campfire', 'smudgePot', 'brazier', 'binFire', 'ashUrnFire', 'confidentialBin', 'eternalFlame'],
+  fire: ['fireBarrel', 'campfire', 'brazier', 'binFire', 'ashUrnFire', 'confidentialBin', 'eternalFlame'],
   // Things with individual needles or prickles, and only those.
   spikes: ['popSpikes', 'cactus', 'cactusBig', 'thistle', 'thistleBig', 'crampons', 'caltrops', 'drawingPins',
     'graveRoses', 'pricklyPear', 'barrelCactus', 'spikeStrip'],
@@ -641,7 +707,7 @@ export const HIT_PICTURES = Object.freeze({
   ],
   spikes: [{ id: 'ouch', T: HIT_LONG_T, life: HIT_LONG_T, paint: paintOuchHop }],
   blades: [{ id: 'ouchBare', T: HIT_LONG_T, life: HIT_LONG_T, paint: ouchBare }],
-  rollers: [{ id: 'pancake', T: HIT_LONG_T, life: HIT_LONG_T, paint: paintPancake }],
+  rollers: [{ id: 'rolled', T: HIT_LONG_T, life: ROLLED_LIFE, paint: paintRolled, after: rolledStars, face: true }],
   ice: [{ id: 'block', T: HIT_LONG_T, life: HIT_LONG_T, paint: paintIceBlock, after: iceShards }],
   bees: [{ id: 'beeCloud', T: GEN_FLASH, life: BEE_LIFE, paint: paintFlash, after: starsBirdiesAndBees }],
   generic: [{ id: 'starsAndBirdies', T: GEN_FLASH, life: GEN_RING_LIFE, paint: paintFlash, after: starsAndBirdies }],
@@ -675,6 +741,9 @@ export function hitPicOnJump(pic, hitPicT) {
 }
 // True while the picture itself is up — the i-frame blink waits for it.
 export function hitPicShowing(pic, w) { const e = hitPictureOf(pic); return !!e && w >= 0 && w < e.T; }
+// True while a picture that keeps him shocked to the end (`face`) still has life left —
+// draw.js puts the shocked face on his ordinary, blinking self once the picture is over.
+export function hitPicFace(pic, w) { const e = hitPictureOf(pic); return !!e?.face && w >= 0 && w < Math.max(e.T, e.life); }
 // A context with no transform to read (a test stub) or no DOM gets the plain toon and no
 // dressing, as the zap does.
 const canLayer = (c) => typeof document !== 'undefined' && !!c.getTransform?.();
@@ -694,6 +763,6 @@ export const HIT_KIT = Object.freeze({
   U, INK, SOOT, SCROLL, hash, clamp01, lerp, easeOut, runPose, ouch, standPose, boardPose, bigBox,
   scratchFor, iceTint, flashWhite, puff, star, flame, prickle, lines, hopY, trail, squashed,
   ringAround, bird, faceOf,
-  paintHotFoot, fireATrail, paintRocket, fireBTrail, paintOuchHop, paintPancake, paintIceBlock, iceShards,
+  paintHotFoot, fireATrail, paintRocket, fireBTrail, paintOuchHop, paintRolled, rolledStars, SPLAT_POSE, paintIceBlock, iceShards,
   paintFlash, starsAndBirdies, beeCloud,
 });

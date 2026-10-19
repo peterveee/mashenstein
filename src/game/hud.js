@@ -21,10 +21,9 @@ import { drawProp, drawHudBattery, hudBatteryW } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { bonusHudLine } from '../data/stages.js';
 import { POWER_DEFS } from './powerups.js';
-import { HERO_CENTER_OFF } from './draw.js';
 import { Input } from '../engine/input.js';
 import { ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
-import { PLAYER_X } from './player.js';
+import { PLAYER_X, PLAYHEAD_OFF } from './player.js';
 import { formatCoins } from './progress.js';
 import { Audio } from '../engine/audio.js';
 import {
@@ -228,6 +227,10 @@ export const RIBBON_BEAT_PX = Math.round(26 * RIBBON_SCALE);
 // A mirrored run reverses the whole frame, so it reverses this too: the future
 // has to run off toward the side the world is arriving from, or the strip and
 // the ground disagree about which way time points.
+//
+// On his centre (player.js PLAYHEAD_OFF), where a chart coin's centre is on its
+// beat. The strip times its marks from this x, so a dot crosses it on its beat —
+// the instant the coin pops and its ping is placed on.
 function ribbonAnchor(run, portraitAnchor = false) {
   // Portrait shifts the rendered world left to put the hero on the phone's
   // left runway edge. The live rail is screen-space, so it has to carry that
@@ -235,7 +238,7 @@ function ribbonAnchor(run, portraitAnchor = false) {
   // column. Landscape keeps the authored anchor exactly as it was.
   const portraitOffset = portraitAnchor && typeof run.portraitWorldXOffset === 'function'
     ? Number(run.portraitWorldXOffset()) || 0 : 0;
-  const cx = (PLAYER_X + HERO_CENTER_OFF + portraitOffset) * (run.camZoom || 1);
+  const cx = (PLAYER_X + PLAYHEAD_OFF + portraitOffset) * (run.camZoom || 1);
   return run.mirror ? W - cx : cx;
 }
 // The plate's live geometry in screen px, measured along its own axis: how much
@@ -1284,7 +1287,7 @@ export function bonusPlacement(fold, goalLeft, slot = BONUS_SLOT) {
 // permanent furniture rather than off the temporary plate.
 function leftColumnTop(run) {
   const base = run?.beatLock ? BEAT_RIBBON_BOTTOM + 3 : PILL_Y + PILL_H + 3;
-  return Math.max(base, heroIconBottom() + 3) + (clockBelowPill(run) && clockText(run) ? PILL_H + 3 : 0);
+  return Math.max(base, heroIconBottom() + 3) + (rowBelowPill(run) ? PILL_H + 3 : 0);
 }
 
 // Whether the column's first row is spoken for this frame — the one thing the
@@ -1294,7 +1297,7 @@ function leftColumnTop(run) {
 // toast and the finish plate are passing, so it shows on the hand-offs that do
 // not collide with one.
 function leftColumnBusy(run) {
-  return !!((clockBelowPill(run) && clockText(run)) || run?.oneHit
+  return !!(rowBelowPill(run) || run?.oneHit
     || (run?.goalToasts && run.goalToasts[0])
     || (run?.flipCoins && run.flipCoins.left > 0));
 }
@@ -1315,7 +1318,9 @@ function heroNameTop(run, style = HERO_CHIP) {
 }
 // The meter is drawn at the coin's height so the two readouts in the pill sit
 // on one line rather than reading as a big thing beside a small one.
-const COIN_D = 12, METER_H = COIN_D, PILL_PAD = 6, PILL_SPLIT = 3;
+// The coin a touch under the meter (Peter, 19 Oct 2026: 12 -> 10, with the meter
+// squished, to narrow the pill and buy the hero runway — see player.js PLAYER_X).
+const COIN_D = 10, METER_H = 12, PILL_PAD = 6, PILL_SPLIT = 3;
 // The meter is the one thing in the pill with a rounded outline of its own, so
 // it does not take the pill's PILL_PAD: it takes the SAME gap on the left that
 // centring already gives it above and below, and its shell corner is the pill's
@@ -1363,6 +1368,7 @@ function statusPillW(run, style = HERO_CHIP) {
   // A chip that lives INSIDE the pill replaces the meter's inset with its own
   // lead — it already ends in the gap the cells would have been inset by.
   const lead = heroChipGeom(style, run).lead || meterInset(cells);
+  if (coinsBelowPill(run)) return lead + cellsW + PILL_TUNE.pad;
   return lead + cellsW + splitGap(cells) + COIN_D + 3 + countW + (clockBelowPill(run) ? 0 : clockW(run)) + PILL_TUNE.pad;
 }
 
@@ -1376,6 +1382,18 @@ const CLOCK_D = 11, CLOCK_GAP = 7;
 // Landscape rhythm needs the original narrow status corner beside the playhead.
 function clockBelowPill(run) {
   return !!run?.beatLock && !isPhonePortraitPresentation();
+}
+// AND THE COINS GO DOWN WITH IT (Peter, 19 Oct 2026: "lets add the coins with the
+// time"). On that same landscape rhythm corner the top row is the battery alone, so
+// the pill ends where the meter does and the hero — whose playhead must clear it by
+// a 16th — can stand further left for runway (player.js HERO_ANCHOR). A one-hit run
+// has no meter to keep the pill company, so its coins stay up.
+function coinsBelowPill(run) {
+  return clockBelowPill(run) && !run.oneHit && run.maxBattery() > 0;
+}
+// Whether the second row is drawn at all: the coins, or the clock, or both.
+function rowBelowPill(run) {
+  return coinsBelowPill(run) || (clockBelowPill(run) && !!clockText(run));
 }
 export function clockText(run) {
   const t = typeof run?.timeLeft === 'function' ? run.timeLeft() : null;
@@ -1981,21 +1999,31 @@ export function drawStatusPill(ctx, run, style = HERO_CHIP, reveal = HERO_REVEAL
     }
     x += splitGap(cells);
   }
-  drawProp(ctx, 'hudCoin', x, PILL_CY - COIN_D / 2, COIN_D, COIN_D);
-  drawCoinGlitter(ctx, x, PILL_CY - COIN_D / 2, COIN_D, run);
+  const paying = run.flipCoins && run.flipCoins.left > 0;
+  const clock = clockText(run);
+  const coinsBelow = coinsBelowPill(run);
+  const below = clockBelowPill(run);
+  // The second row's panel: [coin count] then [stopwatch seconds], either half alone.
+  const rowCy = PILL_CY + PILL_H + 3;
+  if (coinsBelow) {
+    const rowW = PILL_TUNE.pad * 2 + COIN_D + 3 + coinCountW(count)
+      + (clock ? CLOCK_GAP + CLOCK_D + 3 + clockSlotW(run) : 0);
+    drawPanel(ctx, PILL_X, rowCy - PILL_H / 2, rowW, PILL_H, PILL_R, undefined, PANEL);
+    x = PILL_X + PILL_TUNE.pad;
+  }
+  const coinCy = coinsBelow ? rowCy : PILL_CY;
+  drawProp(ctx, 'hudCoin', x, coinCy - COIN_D / 2, COIN_D, COIN_D);
+  drawCoinGlitter(ctx, x, coinCy - COIN_D / 2, COIN_D, run);
   // The count goes gold while the finish bonus is walking into it, so the number
   // that is CHANGING is the one that catches the eye — the plate below is the
   // source, this is the destination, and for a second they are the same colour.
-  const paying = run.flipCoins && run.flipCoins.left > 0;
-  drawTabularCount(ctx, count, x + COIN_D + 3, textY(PILL_CY), paying ? '#f6d33c' : '#ffffff');
-  const clock = clockText(run);
+  drawTabularCount(ctx, count, x + COIN_D + 3, textY(coinCy), paying ? '#f6d33c' : '#ffffff');
   if (clock) {
     const inked = coinCountW(count);
-    const below = clockBelowPill(run);
-    const cy = below ? PILL_CY + PILL_H + 3 : PILL_CY;
-    const cx = below ? PILL_X + PILL_TUNE.pad
+    const cy = below ? rowCy : PILL_CY;
+    const cx = below && !coinsBelow ? PILL_X + PILL_TUNE.pad
       : x + COIN_D + 3 + (PILL_TUNE.floor ? Math.max(inked, coinCountW('00')) : inked) + CLOCK_GAP;
-    if (below) {
+    if (below && !coinsBelow) {
       drawPanel(ctx, PILL_X, cy - PILL_H / 2,
         PILL_TUNE.pad * 2 + CLOCK_D + 3 + clockSlotW(run), PILL_H, PILL_R, undefined, PANEL);
     }
@@ -2237,24 +2265,28 @@ function portraitBonusText(run) {
     return ['BONUS', done ? [`${desc} `, '✓', 'OK'] : [desc || 'NO DAMAGE', '', ''],
       done ? '#74c947' : '#f6c945', '#ffffff', done ? ['#74c947'] : null];
   }
+  // ONCE IT IS MET THE SENTENCE GOES: the panel is just BONUS and the tick
+  // (Peter, 19 Oct 2026). The completion notice has already said it in words,
+  // and the narrow column has no room to keep repeating a finished chore.
+  // noDamage is not here — its tick means "still on track", not "done", so it
+  // keeps naming itself until the finish.
+  const met = ['BONUS', ['', '✓', '✓'], '#74c947', '#74c947', ['#74c947']];
   if (c.type === 'finishUnder') {
-    const done = challengeMet(run);
+    if (challengeMet(run)) return met;
     const left = Math.ceil(challengeSecondsLeft(run));
     const seconds = Number(c.seconds) || 0;
-    return ['BONUS', [`${desc} `, done ? '✓' : `${left}s`, `${seconds}s`],
-      done ? '#74c947' : '#f6c945', done ? '#74c947' : '#ffffff', done ? ['#74c947'] : null];
+    return ['BONUS', [`${desc} `, `${left}s`, `${seconds}s`], '#f6c945', '#ffffff'];
   }
   const n = Number(c.n) || 0;
   const count = Math.min(Number(c.count) || 0, n);
-  if (c.type === 'mash' && c.letters && count < n) {
+  if (count >= n) return met;
+  if (c.type === 'mash' && c.letters) {
     const word = c.letters.map((l) => (l.got || l.banked ? l.letter : '_')).join(' ');
     return ['BONUS', [`${desc}  `, word, word], '#f6c945', '#ffffff'];
   }
   const best = c.type === 'combo' ? 'BEST ' : '';
-  const done = count >= n;
-  const tail = done ? '✓' : `${best}${count}/${n}`;
-  return ['BONUS', [`${desc} `, tail, done ? 'OK' : `${best}${widestDigit().repeat(String(n).length)}/${n}`],
-    done ? '#74c947' : '#f6c945', '#ffffff', done ? ['#74c947'] : null];
+  return ['BONUS', [`${desc} `, `${best}${count}/${n}`, `${best}${widestDigit().repeat(String(n).length)}/${n}`],
+    '#f6c945', '#ffffff'];
 }
 
 function drawPortraitActionShelf(ctx, run, layout) {

@@ -7,7 +7,7 @@
 // and everything else (GENERIC).
 //
 // SHIPPED 16 Oct 2026 (sprites/hitPictures.js): FIRE A and B at random, SPIKES A, ROLLERS
-// A, ICE A, and GENERIC C (stars and birdies together). The sheet paints the shipped
+// A (replaced 19 Oct by round 2's F), ICE A, and GENERIC C (stars and birdies together). The sheet paints the shipped
 // painters from there, as blast-candidates.js does with drawBlastHero; the candidates that
 // did not ship are drawn here with the same kit.
 //
@@ -64,6 +64,26 @@ function pincushionPrickles(c, heroId, cx, fy, w) {
 
 
 // ======================================================================== ROLLERS
+// A — PANCAKE. SHIPPED 16-19 Oct 2026, replaced by F (round 2). Kept here as the record:
+// flattened mid-stride for most of the second, then a pop with a squash-and-stretch.
+const PANCAKE_POP = HIT_LONG_T - 0.2;
+function pancakeScale(w) {
+  if (w < 0.04) { const q = easeOut(w / 0.04); return [lerp(1, 1.55, q), lerp(1, 0.24, q)]; }
+  if (w < PANCAKE_POP) { const k = 0.03 * Math.sin((w - 0.04) * 40) * Math.max(0, 1 - (w - 0.04) / 0.3); return [1.55 + k, 0.24 - k * 0.3]; }
+  if (w < PANCAKE_POP + 0.06) { const q = easeOut((w - PANCAKE_POP) / 0.06); return [lerp(1.55, 0.78, q), lerp(0.24, 1.32, q)]; }
+  const q = clamp01((w - PANCAKE_POP - 0.06) / 0.14), d = Math.exp(-q * 4) * Math.cos(q * Math.PI * 3);
+  return [1 - 0.22 * d, 1 + 0.32 * d];
+}
+const STRIDE = Object.freeze({ kind: 'run', phase: 0, time: 0, grounded: true, facing: 1, faceSurprised: true, browRaise: true });
+function paintPancake(c, heroId, cx, fy, w, t, live) {
+  const [sx, sy] = pancakeScale(w);
+  const L = squashed(c, heroId, cx, fy, t, sx, sy, w < PANCAKE_POP + 0.06 ? STRIDE : runPose(t, live));
+  if (w < 0.03) { flashWhite(c, L); return; }
+  blit(c, L);
+  if (w < 0.25) { const q = clamp01((w - 0.03) / 0.22); puff(c, cx - 0.55 * U - 4 * q, fy - 1.5 - 2 * q, 1.2 + 1.5 * q, 1 - q); puff(c, cx + 0.55 * U + 4 * q, fy - 1.5 - 2 * q, 1.2 + 1.5 * q, 1 - q); }
+  if (w > PANCAKE_POP && w < PANCAKE_POP + 0.14) lines(c, cx, fy - 0.6 * U, 0.55 * U, 0.75 * U, [-Math.PI * 0.85, -Math.PI * 0.65, -Math.PI * 0.35, -Math.PI * 0.15], 1 - (w - PANCAKE_POP) / 0.14);
+}
+
 // B — PUMPED BACK UP. Flattened with the barrel's tread rolled across him, then he inflates
 // in three jerks, a little puff of air with each, and runs on.
 function pumpScale(w) {
@@ -103,18 +123,18 @@ function paintPumped(c, heroId, cx, fy, w, t, live) {
 // hold a genuinely splayed pose instead (arms and legs spread to the sides,
 // like he hit the ground spread-eagled) and hold it for far less of the 1s.
 //
-// SPLAT_POSE: flat on his face, arms thrown wide, legs sprawled rather than
-// stepping — the shape a flattening actually makes, not a stride frozen
-// mid-step. Peter (round 2, on the first cut): "i don't like that the front
-// leg is po[s]ed out in front. they all seem to be like this" — that cut used
-// feet `out` values of 0.8-0.85, four times pitFall.js's own sprawled-grip
-// range (-0.2 to 0.22; see hangPose/gripPose there), which read as a deliberate
-// kick rather than a flop. The front leg now tucks in near-neutral; only the
-// back one trails, so the sprawl is asymmetric, not a mirrored kick.
-const SPLAT_POSE = Object.freeze({
-  kind: 'jump', time: 0, vy: 0, grounded: true, facing: 1, faceSurprised: true, browRaise: true,
-  dance: { hands: [[0.55, 0.12], [0.5, -0.1]], feet: [[0.08, -0.05], [-0.22, 0.08]], ankles: [0.15, -0.15] },
-});
+// SPLAT_POSE is the shipped one (sprites/hitPictures.js, with F) — C, D and E share it.
+const SPLAT_POSE = K.SPLAT_POSE;
+
+// THE POP, continuous. Flat -> a tall overshoot over `rise`, then a decaying wobble
+// that STARTS at that overshoot and settles to 1 — A's own shape. The first cut of C
+// and E lerped to exactly 1 and then began the wobble at its peak, so the frame after
+// the rise jumped 16-18% taller: a one-frame twitch right on the pop.
+function popScale(e, sx0, sy0, rise, wobble = 0.12) {
+  if (e < rise) { const q = easeOut(e / rise); return [lerp(sx0, 0.86, q), lerp(sy0, 1.2, q)]; }
+  const q = clamp01((e - rise) / wobble), d = Math.exp(-q * 4) * Math.cos(q * Math.PI * 3);
+  return [1 - 0.14 * d, 1 + 0.2 * d];
+}
 
 // C — SPLAT. Quick squash into SPLAT_POSE, a short flat hold (0.4s, half A's),
 // one clean snap back into his stride.
@@ -125,16 +145,13 @@ function splatScale(w) {
     const k = 0.025 * Math.sin((w - 0.035) * 30) * Math.max(0, 1 - (w - 0.035) / (SPLAT_FLAT - 0.035));
     return [1.7 + k, 0.22 - k * 0.3];
   }
-  if (w < SPLAT_FLAT + SPLAT_POP_T) {
-    const q = easeOut((w - SPLAT_FLAT) / SPLAT_POP_T);
-    return [lerp(1.7, 1, q), lerp(0.22, 1, q)];
-  }
-  const q = clamp01((w - SPLAT_FLAT - SPLAT_POP_T) / 0.1), d = Math.exp(-q * 5) * Math.cos(q * Math.PI * 2.4);
-  return [1 - d * 0.1, 1 + d * 0.16];
+  return popScale(w - SPLAT_FLAT, 1.7, 0.22, SPLAT_POP_T);
 }
 function paintSplat(c, heroId, cx, fy, w, t, live) {
   const [sx, sy] = splatScale(w);
-  const flat = w < SPLAT_FLAT + SPLAT_POP_T * 0.3;
+  // Back to his stride as soon as the pop is under way (sy about half), not partway up:
+  // the splat pose stood upright reads as a scarecrow.
+  const flat = w < SPLAT_FLAT + 0.025;
   const L = squashed(c, heroId, cx, fy, t, sx, sy, flat ? SPLAT_POSE : runPose(t, live));
   if (w < 0.03) { flashWhite(c, L); return; }
   blit(c, L);
@@ -185,16 +202,11 @@ const QUICK_FLAT = 0.16, QUICK_POP_T = 0.16;
 function quickScale(w) {
   if (w < 0.03) { const q = easeOut(w / 0.03); return [lerp(1, 1.75, q), lerp(1, 0.2, q)]; }
   if (w < QUICK_FLAT) return [1.75, 0.2];
-  if (w < QUICK_FLAT + QUICK_POP_T) {
-    const q = easeOut((w - QUICK_FLAT) / QUICK_POP_T);
-    return [lerp(1.75, 1, q), lerp(0.2, 1, q)];
-  }
-  const q = clamp01((w - QUICK_FLAT - QUICK_POP_T) / 0.09), d = Math.exp(-q * 5) * Math.cos(q * Math.PI * 2.6);
-  return [1 - d * 0.12, 1 + d * 0.18];
+  return popScale(w - QUICK_FLAT, 1.75, 0.2, QUICK_POP_T, 0.1);
 }
 function paintQuickSplat(c, heroId, cx, fy, w, t, live) {
   const [sx, sy] = quickScale(w);
-  const flat = w < QUICK_FLAT + QUICK_POP_T * 0.3;
+  const flat = w < QUICK_FLAT + 0.02;   // see paintSplat
   const L = squashed(c, heroId, cx, fy, t, sx, sy, flat ? SPLAT_POSE : runPose(t, live));
   if (w < 0.025) { flashWhite(c, L); return; }
   blit(c, L);
@@ -209,6 +221,8 @@ function paintQuickSplat(c, heroId, cx, fy, w, t, live) {
   }
 }
 
+// F — ROLLED shipped 19 Oct 2026: its painter is sprites/hitPictures.js paintRolled (with
+// its stars, rolledStars), drawn here through the kit like the other shipped pictures.
 
 // ======================================================================== ICE
 // B — FROSTBITTEN. No block: he goes ice-blue, snow on his head and icicles off his chin,
@@ -305,8 +319,8 @@ export const HIT_EFFECTS = [
     note: 'Straight up off the spikes, stiff as a board, arms up — prickles stuck all over his backside and legs — and as he lands they drop out of him onto the road.',
     paint: paintPincushion, after: pincushionPrickles },
   { ...at('rollers'), letter: 'A', id: 'rollers-pancake', name: 'PANCAKE',
-    note: 'SHIPPED. Rolled flat as a pancake mid-stride, side-on (his own figure squashed to a quarter of his height, a puff out of each side), held a beat, then he pops back up with a stretch and a wobble.',
-    T: HIT_LONG_T, paint: K.paintPancake, shipped: true },
+    note: 'SHIPPED 16-19 Oct, replaced by F. Rolled flat as a pancake mid-stride, side-on (his own figure squashed to a quarter of his height, a puff out of each side), held a beat, then he pops back up with a stretch and a wobble.',
+    T: HIT_LONG_T, paint: paintPancake },
   { ...at('rollers'), letter: 'B', id: 'rollers-pumped', name: 'PUMPED BACK UP',
     note: 'Flattened with the tread rolled across him in bands, then he reinflates in three jerks — a puff of air with each — and runs on.',
     paint: paintPumped },
@@ -319,6 +333,9 @@ export const HIT_EFFECTS = [
   { ...at('rollers'), letter: 'E', id: 'rollers-quicksplat', name: 'QUICK SPLAT',
     note: 'ROUND 2. The snappy extreme: SPLAT\'s silhouette with barely any hold at all (0.16s) — how little beat the hit can get away with.',
     T: HIT_LONG_T, paint: paintQuickSplat },
+  { ...at('rollers'), letter: 'F', id: 'rollers-rolled', name: 'ROLLED',
+    note: 'SHIPPED 19 Oct ("ship F"), with stars round his head from the bounce until the mercy runs out and the shocked face throughout. ROUND 2, on E\'s beat. The flatten sweeps across him front to back — a wedge pressed down from the front while the hitstop holds the barrel against him — instead of the whole figure dropping flat in one frame; spread less wide than E so the face smears less; then a sprung pop — one tall overshoot, one small dip, settled.',
+    T: HIT_LONG_T, paint: K.paintRolled, after: K.rolledStars, shipped: true },
   { ...at('ice'), letter: 'A', id: 'ice-block', name: 'ICE BLOCK',
     note: 'SHIPPED. Frozen mid-leap, side-on and startled, inside a flat block of ice, blue all over; a crack runs down it, it shatters off him in shards left behind by the scroll, and the blue drains out of him as he runs on.',
     T: HIT_LONG_T, paint: K.paintIceBlock, after: K.iceShards, shipped: true },
