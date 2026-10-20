@@ -42,6 +42,13 @@ export const PIT_BEATS = 0.625;
 // step per coin off the combo (see RunState.collect), so a run of four is a
 // four-note fill in the song's own time rather than one sound repeated.
 export const COIN_DIV = 4;
+// HOW NEAR A COIN ALREADY ON THE ROAD THE LANE MAY LAY ANOTHER, in beats: just
+// under a 32nd, the tightest figure a chart writes (Peter, 20 Oct 2026: "extra
+// coins … doubling up later in the level, closer than 16th notes"). Two kinds
+// of coin stand on the road that this lane did not lay — the ones a rebuild
+// spares in view (BeatSpawner.coinFloorX) and the parting flourish at the tape
+// (coinStopX) — and each sits on a grid the clock may since have moved off.
+const COIN_CLEAR_BEATS = 0.12;
 // THE FILLS THIS CABINET PLAYS, rarest last. A coin slot is a quarter by
 // default — one coin on the line, which is most of them — and `run`/`div` turn
 // it into a figure. The 32nd is eight coins fourteen world px apart at this
@@ -931,6 +938,14 @@ export class BeatSpawner {
     // stretch of road falls in — and with it whether the box stands there —
     // is the same on every attempt. Zero until a retry has happened.
     this.passOffset = 0;
+    // WHERE COINS THE LANE DID NOT LAY ALREADY OWN THE ROAD (COIN_CLEAR_BEATS).
+    // Up to coinFloorX, the coins a rebuild left in view: resetFromBeat lays
+    // coins again from one beat out, which is inside the view, and the spared
+    // coin and its relay stood a drift's width apart — a flam on every rebuild
+    // (RunState.invalidateRhythmLane). From coinStopX on, the flourish's 32nds
+    // already play every line there is (RunState.pinFinishCoins).
+    this.coinFloorX = -Infinity;
+    this.coinStopX = Infinity;
     this._approachCache = new Map();
     this.eventInstances = [];
     this.onPitAlign = onPitAlign;
@@ -1351,7 +1366,10 @@ export class BeatSpawner {
             const coinBeat = this.cursorBeat + off;
             if (coinBeat < floorBeat - 1e-9) continue;
             // Centred on the playhead on its beat (player.js beatLayOff).
-            const coin = makePickup('coin', actionX + off * pxPerBeat + beatLayOff(PICKUPS.coin.w), COIN_ALT);
+            const coinX = actionX + off * pxPerBeat + beatLayOff(PICKUPS.coin.w);
+            const clear = COIN_CLEAR_BEATS * pxPerBeat;
+            if (coinX <= this.coinFloorX + clear || coinX >= this.coinStopX - clear) continue;
+            const coin = makePickup('coin', coinX, COIN_ALT);
             coin.chartEventId = n > 1 ? `${id}:${i}` : id;
             coin.chartAction = 'coin';
             coin.chartSlot = event.slot;

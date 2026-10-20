@@ -69,6 +69,7 @@ import * as GAME_ALT_GRAVITY_INTRO_CE8 from './imported/gravity-intro-ce8.js';
 import * as GAME_ALT_GRAVITY_INTRO_D from './imported/gravity-intro-d.js';
 import * as GAME_ALT_GRAVITY_INTRO_E from './imported/gravity-intro-e.js';
 import * as GAME_ALT_GRAVITY_INTRO_F from './imported/gravity-intro-f.js';
+import * as GAME_ALT_GRAVITY_LIGHT from './imported/gravity-light.js';
 import * as GAME_ALT_GRAVITY_REMIX_ORBITAL from './imported/gravity-remix-orbital.js';
 import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './imported/gravity-remix-radiophonic-moog-seq.js';
 import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC from './imported/gravity-remix-radiophonic.js';
@@ -92,6 +93,7 @@ import * as GAME_ALT_OFFICE_THEME_6_ALL_IN from './imported/office-theme-6-all-i
 import * as GAME_ALT_PLUMBER_8BIT from './imported/plumber-8bit.js';
 import * as GAME_ALT_PLUMBER_PANIC_ALT from './imported/plumber-panic-alt.js';
 import * as GAME_ALT_RHYTHM_8BIT from './imported/rhythm-8bit.js';
+import * as GAME_ALT_RHYTHM_LIGHT from './imported/rhythm-light.js';
 import * as GAME_ALT_RHYTHM_REMIX_FIRE_SALE from './imported/rhythm-remix-fire-sale.js';
 import * as GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER from './imported/rhythm-remix-hostile-takeover.js';
 import * as GAME_ALT_RHYTHM_REMIX_IN_THE_RED from './imported/rhythm-remix-in-the-red.js';
@@ -183,6 +185,7 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_GRAVITY_INTRO_D,
   GAME_ALT_GRAVITY_INTRO_E,
   GAME_ALT_GRAVITY_INTRO_F,
+  GAME_ALT_GRAVITY_LIGHT,
   GAME_ALT_GRAVITY_REMIX_ORBITAL,
   GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ,
   GAME_ALT_GRAVITY_REMIX_RADIOPHONIC,
@@ -206,6 +209,7 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_PLUMBER_8BIT,
   GAME_ALT_PLUMBER_PANIC_ALT,
   GAME_ALT_RHYTHM_8BIT,
+  GAME_ALT_RHYTHM_LIGHT,
   GAME_ALT_RHYTHM_REMIX_FIRE_SALE,
   GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER,
   GAME_ALT_RHYTHM_REMIX_IN_THE_RED,

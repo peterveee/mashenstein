@@ -34,6 +34,7 @@ import { Audio } from '../engine/audio.js';
 import { TRANSITION_CLOSE_S } from '../engine/states.js';
 import { trackIdOf } from '../data/tracks.js';
 import { CHIP_RESULT_MIXES } from './results-chip-mixes.js';
+import { LIGHT_MIXES } from './light-mixes.js';
 import { laneList } from '../engine/lanes.js';
 import { VOICES, voiceOf, baseLane, PERCUSSION_LANES } from '../data/voices.js';
 import { BANGER_SOUNDS } from '../../tools/lib/banger/sounds.js';
@@ -167,24 +168,132 @@ export function handOver(bank, mix, at) {
 let soundtrackSave = null;
 /** Whether the SOUNDTRACK setting is 8-BIT. */
 export const soundtrack8bit = () => soundtrackSave?.settings?.soundtrack === '8bit';
-/** Whether song `bank` plays its 8-bit version: the setting is on and the song has one. */
-export const playsEightBit = (bank) => soundtrack8bit() && !!(bank && CHIP_RESULT_MIXES[trackIdOf(bank)]);
+// THE AUDIO GUARD'S 8-BIT (engine/audio-guard.js, 20 Oct 2026): the same soundtrack, for
+// this level only and never written to the save, while the audio thread is falling behind.
+// Kept apart from the SETTING, so SETTINGS still shows and changes the player's own choice
+// (Peter: with the two folded together, the setting could not be switched back).
+let relief8bit = false;
+/** Whether the 8-bit soundtrack is what plays: the setting, or the guard's relief. */
+export const eightBitNow = () => soundtrack8bit() || relief8bit;
+/** Switch the guard's 8-bit on or off; a song playing follows on its next beat. */
+export function setRelief8bit(on) {
+  if (relief8bit === !!on) return;
+  const before = eightBitNow();
+  relief8bit = !!on;
+  if (eightBitNow() !== before) retuneOnTheBeat();
+}
+/** Whether song `bank` plays its 8-bit version: it is the soundtrack now and the song has one. */
+export const playsEightBit = (bank) => eightBitNow() && !!(bank && CHIP_RESULT_MIXES[trackIdOf(bank)]);
 /** `entry`, song `bank`'s mix, with the song's 8-bit alternate laid over it — or as it is. */
 export function eightBitOf(bank, entry) {
   const patch = bank ? CHIP_RESULT_MIXES[trackIdOf(bank)] : null;
   return patch ? patchMix(entry, patch) : entry;
 }
+/**
+ * The guard's relief goes further than the 8-bit alternate (Peter, 20 Oct 2026: "Gravity still
+ * stutters continuously" after the switch, where Rhythm came through it). An alternate keeps
+ * JMJR-4 voices — chipRole leaves them alone on purpose, a choir has no 8-bit part — and
+ * Gravity's keeps four: two choir Oohs, the choir Aah and the reggaeton counter. In relief
+ * those go over to the 8-Bit set's pad, their own song presets dropped so they cannot stand
+ * back in. A thinner sound for the rest of the level, which is what relief is for.
+ */
+export function reliefMix(mix) {
+  const row = BANGER_SOUNDS[CHIP_SET];
+  if (!row || !mix?.voice) return mix;
+  let voice = null, params = null;
+  for (const [vk, id] of Object.entries(mix.voice)) {
+    if (VOICES[id]?.synth !== 'JMJR-4') continue;
+    const pad = roleVoice(row, 'style', 'pad', vk.replace(/Voice$/, ''));
+    if (!pad || !VOICES[pad]) continue;
+    (voice ||= { ...mix.voice })[vk] = pad;
+    if (mix.voiceParams?.[vk]) { params ||= { ...mix.voiceParams }; delete params[vk]; }
+  }
+  return voice ? { ...mix, voice, ...(params ? { voiceParams: params } : {}) } : mix;
+}
+// THE GUARD'S DEEP STEP (engine/audio-guard.js, Peter, 20 Oct 2026): when the 8-bit relief has
+// not brought the clock back, every lane but the drums, the bass and the lead is muted — and,
+// muted, not synthesised (a run's silent-lane skip) — until it has.
+let reliefDeep = false;
+/** Switch the deep step on or off; a song playing follows on its next beat. */
+export function setReliefDeep(on) {
+  if (reliefDeep === !!on) return;
+  reliefDeep = !!on;
+  retuneOnTheBeat();
+}
+/** `mix` with every lane of `bank` but the drums, `bass` and `lead` muted. */
+export function deepReliefMix(bank, mix) {
+  const lanes = { ...(mix?.lanes || {}) };
+  for (const { key } of laneList(bank)) {
+    if (key === 'bass' || key === 'lead' || PERCUSSION_LANES.includes(baseLane(key))) continue;
+    lanes[key] = { ...(lanes[key] || {}), mute: true };
+  }
+  return { ...mix, lanes };
+}
+
+// LIGHT MIXES (light-mixes.js, exported from the `<id>-light` desk alternates — tools/lib/light-mixes.js,
+// 20 Oct 2026): the songs as written with less to synthesise —
+// on trial, so only `?lightmix` turns them on. Laid under the 8-bit soundtrack, which goes on
+// top of whichever mix plays.
+let lightMixes = false;
+/** Whether the songs play their light mixes. */
+export const lightMixesNow = () => lightMixes;
+/** Switch the light mixes on or off; a song playing follows on its next beat. */
+export function setLightMixes(on) {
+  if (lightMixes === !!on) return;
+  lightMixes = !!on;
+  retuneOnTheBeat();
+}
+// SOUND TESTS on the iPad (20 Oct 2026): 8-bit gets a level through where the full and light
+// mixes tip over, and the Mac cannot say which half of it matters — so the device is asked.
+//   ?soundtest=noreverb    the song's own sounds, its reverb taken out the way 8-bit does it
+//   ?soundtest=chipvoices  the 8-bit sounds, the song's own reverb kept
+let soundTest = null;
+/** Which sound test plays, if any. */
+export const soundTestNow = () => soundTest;
+export function setSoundTest(name) { soundTest = name === 'noreverb' || name === 'chipvoices' ? name : null; }
+const REVERBS = new Set(['reverb', 'spring']);
+/** `mix` with no reverb: every reverb send at zero and every reverb insert muted (tools/lib/chip-results-mixes.js withoutReverb). */
+function dryMix(mix) {
+  const dry = (chain) => (Array.isArray(chain) && chain.some((e) => REVERBS.has(e?.id))
+    ? chain.map((e) => (REVERBS.has(e?.id) ? { ...e, mute: true } : e)) : chain);
+  const lanes = {};
+  for (const [lane, l] of Object.entries(mix?.lanes || {})) {
+    lanes[lane] = l && (l.send?.reverb || l.effects) ? { ...l, ...(l.send?.reverb ? { send: { ...l.send, reverb: 0 } } : {}), ...(l.effects ? { effects: dry(l.effects) } : {}) } : l;
+  }
+  return { ...mix, lanes, ...(mix?.masterEffects ? { masterEffects: dry(mix.masterEffects) } : {}) };
+}
+/** `chip` (an 8-bit mix) with the reverb sends and inserts of `own`, the mix it came from. */
+function withOwnReverb(chip, own) {
+  const lanes = { ...(chip?.lanes || {}) };
+  for (const [lane, l] of Object.entries(own?.lanes || {})) {
+    if (!lanes[lane] || !l) continue;
+    lanes[lane] = { ...lanes[lane], send: { ...(lanes[lane].send || {}), reverb: l.send?.reverb ?? 0 } };
+    if (l.effects) lanes[lane].effects = l.effects;
+  }
+  return { ...chip, lanes, masterEffects: own?.masterEffects ?? chip?.masterEffects };
+}
+
 /** Boot: the setting read off `save` from now on, through the engine's mix filter. */
 export function installSoundtrack(save) {
   soundtrackSave = save;
-  Audio.setMixFilter((bank, entry) => (soundtrack8bit() ? eightBitOf(bank, entry) : entry));
+  Audio.setMixFilter((bank, entry) => {
+    let mix = lightMixes && bank ? patchMix(entry, LIGHT_MIXES[trackIdOf(bank)]) : entry;
+    if (soundTest === 'noreverb') mix = dryMix(mix);
+    if (soundTest === 'chipvoices' && bank) mix = withOwnReverb(eightBitOf(bank, mix), mix);
+    if (eightBitNow()) {
+      mix = eightBitOf(bank, mix);
+      if (relief8bit) mix = reliefMix(mix);
+    }
+    return reliefDeep && bank ? deepReliefMix(bank, mix) : mix;
+  });
 }
 /** Change the setting; a song playing goes over to the other soundtrack on its next beat. */
 export function setSoundtrack8bit(on) {
   if (!soundtrackSave?.settings || soundtrack8bit() === !!on) return;
+  const before = eightBitNow();
   soundtrackSave.settings.soundtrack = on ? '8bit' : 'original';
   try { soundtrackSave.persist?.(); } catch { /* kept for this session */ }
-  retuneOnTheBeat();
+  if (eightBitNow() !== before) retuneOnTheBeat();
 }
 /**
  * The song playing, sent through the filter again on its next beat — its own mix as it was
@@ -220,7 +329,7 @@ export class ChipResults {
     this.phase = 'off';
     this.target = target;
     // Already on the 8-bit soundtrack: nothing to switch.
-    if (!chipResults.on || soundtrack8bit() || !Audio.ctx || !Audio.bank || !Audio.sourceBank) return;
+    if (!chipResults.on || eightBitNow() || !Audio.ctx || !Audio.bank || !Audio.sourceBank) return;
     this.bank = Audio.sourceBank;
     // The cabinet's 8-bit alternate, as exported; any other song, its lanes onto the set.
     this.patch = CHIP_RESULT_MIXES[trackIdOf(this.bank)] || null;

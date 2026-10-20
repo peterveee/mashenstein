@@ -179,6 +179,7 @@ import * as GRAVITY_INTRO_CE8 from './gravity-intro-ce8.js';
 import * as GRAVITY_INTRO_D from './gravity-intro-d.js';
 import * as GRAVITY_INTRO_E from './gravity-intro-e.js';
 import * as GRAVITY_INTRO_F from './gravity-intro-f.js';
+import * as GRAVITY_LIGHT from './gravity-light.js';
 import * as GRAVITY_REMIX_ORBITAL from './gravity-remix-orbital.js';
 import * as GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './gravity-remix-radiophonic-moog-seq.js';
 import * as GRAVITY_REMIX_RADIOPHONIC from './gravity-remix-radiophonic.js';
@@ -240,6 +241,7 @@ import * as POLARITY_DRIVE from './polarity-drive.js';
 import * as RHYTHM_8BIT from './rhythm-8bit.js';
 import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
 import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
+import * as RHYTHM_LIGHT from './rhythm-light.js';
 import * as RHYTHM_REMIX_FIRE_SALE from './rhythm-remix-fire-sale.js';
 import * as RHYTHM_REMIX_HOSTILE_TAKEOVER from './rhythm-remix-hostile-takeover.js';
 import * as RHYTHM_REMIX_IN_THE_RED from './rhythm-remix-in-the-red.js';
@@ -504,6 +506,7 @@ export const IMPORTED_BY_ID = {
   "gravity-intro-d": { bank: GRAVITY_INTRO_D.bank, title: GRAVITY_INTRO_D.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-intro-e": { bank: GRAVITY_INTRO_E.bank, title: GRAVITY_INTRO_E.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-intro-f": { bank: GRAVITY_INTRO_F.bank, title: GRAVITY_INTRO_F.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-light": { bank: GRAVITY_LIGHT.bank, title: GRAVITY_LIGHT.title, group: "alternate", writable: true, alternateOf: "gravity" },
   "gravity-remix-orbital": { bank: GRAVITY_REMIX_ORBITAL.bank, title: GRAVITY_REMIX_ORBITAL.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-radiophonic-moog-seq": { bank: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.bank, title: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-radiophonic": { bank: GRAVITY_REMIX_RADIOPHONIC.bank, title: GRAVITY_REMIX_RADIOPHONIC.title, group: "alternate", writable: true, alternateOf: "cardboard" },
@@ -565,6 +568,7 @@ export const IMPORTED_BY_ID = {
   "rhythm-8bit": { bank: RHYTHM_8BIT.bank, title: RHYTHM_8BIT.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-bankruptcy-copy-2": { bank: RHYTHM_BANKRUPTCY_COPY_2.bank, title: RHYTHM_BANKRUPTCY_COPY_2.title, group: "copy", writable: true },
   "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },
+  "rhythm-light": { bank: RHYTHM_LIGHT.bank, title: RHYTHM_LIGHT.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-remix-fire-sale": { bank: RHYTHM_REMIX_FIRE_SALE.bank, title: RHYTHM_REMIX_FIRE_SALE.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-remix-hostile-takeover": { bank: RHYTHM_REMIX_HOSTILE_TAKEOVER.bank, title: RHYTHM_REMIX_HOSTILE_TAKEOVER.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-remix-in-the-red": { bank: RHYTHM_REMIX_IN_THE_RED.bank, title: RHYTHM_REMIX_IN_THE_RED.title, group: "alternate", writable: true, alternateOf: "rhythm" },

@@ -1415,13 +1415,14 @@ assert(/Audio\.setSampleRate\(44100\)/.test(entry)
 // lanes and the losers of a channel solo — states whose synthesis reaches no output
 // at all (mute zeroes the fader every send taps below; solo zeroes the gate above
 // everything). The skip nulls lanes AFTER the percussion tally so visualisers keep
-// following the arrangement, and never during a preview. The game never sets the
-// flag, so every game path is untouched.
+// following the arrangement, and never during a preview. The game holds it too (Peter,
+// 20 Oct 2026: muted tracks cost nothing anywhere in the game) — but never while a cabinet
+// handover is pending, when a treatment still has a mute to ramp away.
 assert(/setSilentLaneSkip\(on\)/.test(audio)
   && /this\.silentLaneSkip && this\.mixer && !this\._previewing/.test(audio)
   && /Audio\.setSilentLaneSkip\(true\)/.test(entry)
-  && !/setSilentLaneSkip/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
-  'the desk skips synthesis for lanes the mix has silenced; main.js never does');
+  && /Audio\.setSilentLaneSkip\(!MusicDirector\.pending\)/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
+  'the desk skips synthesis for lanes the mix has silenced; the game does too, outside a handover');
 // The game's own opt-in lives in the RUN and nowhere else, which is what keeps the
 // assertion above true: a level mix is fixed for the length of the run, so once the
 // cabinet's handover has been scheduled there is no treatment left to ramp a muted

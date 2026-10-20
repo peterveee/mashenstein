@@ -4,7 +4,7 @@ import { PerformanceTestState, PERFORMANCE_STAGES } from './game/performance-tes
 import {
   initRenderer, beginRenderFrame, bctx, blit, pushOverlayDraw,
   noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, visualiserFrame, setChromeOverlay,
-  onPresentationRefresh, revealPresentationRefresh,
+  onPresentationRefresh, revealPresentationRefresh, requestDensityRelief, releaseDensityRelief,
 } from './engine/renderer.js';
 import { startLoop, frameRate, frameHealth } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
@@ -58,7 +58,7 @@ import { HERO_BY_ID } from './data/heroes.js';
 import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, SettingsState, AboutState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX, loadBangerModule } from './game/menus.js';
 import { IntroState } from './game/intro.js';
 import { EXIT_CUE } from './game/hub/cabinet-dive.js';
-import { resultsOnTheBeat, installSoundtrack } from './game/results-chip.js';
+import { resultsOnTheBeat, installSoundtrack, setRelief8bit, setReliefDeep, setLightMixes, setSoundTest, soundTestNow } from './game/results-chip.js';
 import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor, releaseTrophyRoomAudio } from './game/hub/index.js';
 import { CalibrateState } from './game/calibrate.js';
 import { SaveFileState } from './game/save-file.js';
@@ -83,7 +83,10 @@ import { setLCDPanelCacheEnabled } from './engine/stylePacks/index.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
 import { consumeBenchDiag, releaseBenchRenderer, readDiag, startCrumbSession, crumb } from './engine/diag.js';
-import { startGlitchSession, noteSecond } from './engine/glitch-log.js';
+import { startGlitchSession, noteSecond, noteEvent, watchAudioSources } from './engine/glitch-log.js';
+import { createAudioGuard } from './engine/audio-guard.js';
+import { setParkMutedEffects } from './engine/mixer.js';
+import { MusicDirector } from './engine/music-director.js';
 import { startTitleProfile, titleProfileActive, titleProfileFrame, titleProfileReportVisible, drawTitleProfile } from './engine/title-profile.js';
 import {
   startGameplayProfile, gameplayProfileActive, gameplayProfileWaiting,
@@ -779,6 +782,8 @@ const Flow = {
 //          profile ASKS for 50ms; this is the only place that says what was granted.
 const audioProbe = { at: 0, ctxAt: 0, ratio: 0, margin: null, late: 0 };
 let audioTxt = '';
+// The audio guard (engine/audio-guard.js), made at boot; fed the same sample.
+let audioGuard = null;
 // Set from ?mrdrbackend=farm, below — read by the readout to tell FARM from AW.
 let farmRequested = false;
 // The same fields split for the chrome box, whose rows are short on purpose so the
@@ -806,6 +811,11 @@ function sampleAudioHealth() {
     const fh = frameHealth();
     noteSecond({ clock: audioProbe.ratio, margin: audioProbe.margin, late: audioProbe.late,
       framesLost: fh.hitches, frameMs: fh.worstMs });
+    // The level being played, so relief lasts until it is left: the run, or the run inside
+    // the attract demo; null on a menu.
+    const st = currentState();
+    const place = st?.stage ? st : (st?.run?.stage ? st.run : null);
+    audioGuard?.tick(audioProbe.ratio, ctx.state === 'running', place);
   }
   if (efficiencyProfile.enabled) {
     efficiencyProfile.audioMarginMin = Math.min(efficiencyProfile.audioMarginMin, h.marginMin);
@@ -893,6 +903,25 @@ function boot() {
         return `${st?.stage?.id || (st?.run?.stage?.id ? `${st.constructor.name}:${st.run.stage.id}` : '') || st?.constructor?.name || '-'}${bar} D${Math.round(rendererDiagnostics().density * 100) / 100}${tier}`;
       },
       first: (line) => crumb('GLITCH', line),
+    });
+    watchAudioSources();
+    let guardLookahead = null;
+    audioGuard = createAudioGuard({
+      // 8-BIT FIRST, and early (Peter, 20 Oct 2026, from the iPad: with the picture alone
+      // "audio still stutters all the way to the end... switching to 8-bit earlier when
+      // successful seemed to help more"). It goes at 0.95, before the thread is choking —
+      // switched at 0.87 once it had already collapsed, the handover itself tipped it over.
+      eightBit: (on) => setRelief8bit(on),
+      // DEEP when 8-bit has not brought the clock back: drums, bass and lead only, until it has.
+      deep: (on) => setReliefDeep(on),
+      densityRelief: (on) => (on ? requestDensityRelief(2) : releaseDensityRelief()),
+      lookahead: (sec) => {
+        if (sec != null) { guardLookahead ??= Audio.sequencerLookahead; Audio.setSequencerLookahead(sec); }
+        else if (guardLookahead != null) { Audio.setSequencerLookahead(guardLookahead); guardLookahead = null; }
+      },
+      // No KICK lever (20 Oct 2026): suspending the context to clear its backlog left the
+      // iPad in complete silence — iOS will not resume a context outside a user gesture.
+      note: (text) => { noteEvent(text); crumb('GUARD', text); },
     });
     const diag = consumeBenchDiag();
     if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
@@ -1048,6 +1077,13 @@ function boot() {
   Audio.setVolumes(save.settings.volumes);
   // SOUNDTRACK: the engine's mixes go through the 8-bit filter from the first song on.
   installSoundtrack(save);
+  // Muted inserts cost nothing in the game (engine/mixer.js, parkMuted).
+  setParkMutedEffects(true);
+  // LIGHT MIXES on trial (game/light-mixes.js): `?lightmix` plays them, to hear and measure.
+  if (new URLSearchParams(window.location.search).has('lightmix')) { setLightMixes(true); crumb('LIGHTMIX', 'on'); }
+  // SOUND TESTS for the iPad (results-chip.js): ?soundtest=noreverb | chipvoices, named on the trail.
+  setSoundTest(new URLSearchParams(window.location.search).get('soundtest'));
+  if (soundTestNow()) crumb('SOUNDTEST', soundTestNow());
   // One portrait predicate, shared by this boot-time seed and the lifecycle
   // controller installed further down, so the two can never disagree about
   // which screens are allowed to stay running sideways. Read the diag switch
@@ -1174,6 +1210,13 @@ function boot() {
       performanceAdd('dev', devAt);
       if (devConsumed) return;
       updateState(dt * Dev.timeScale);
+      // MUTED TRACKS COST NOTHING ANYWHERE IN THE GAME (Peter, 20 Oct 2026, "do 1 for sure"):
+      // the silent-lane skip a run arms (run.js armSilentLaneSkip) held everywhere — the
+      // jukebox, the hub, the title, the results — except while a cabinet handover is
+      // pending, when a treatment still has a mute to ramp away. The trade is the engine's
+      // (Audio.setSilentLaneSkip): a note struck while its lane is muted is not there to be
+      // heard if the lane opens under it.
+      Audio.setSilentLaneSkip(!MusicDirector.pending);
     },
     draw: (renderAlpha) => {
       // TOP THE SEQUENCER UP FROM THE FRAME, before anything is drawn.

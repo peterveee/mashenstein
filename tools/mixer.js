@@ -65,6 +65,7 @@ import {
 import { measureVoiceAt, homeLane } from './lib/measure-voice.js';
 import { saveVoice } from './lib/voice-save.js';
 import { exportChipMixes, touchesChipMixes, CHIP_MIXES_FILE } from './lib/chip-results-mixes.js';
+import { exportLightMixes, touchesLightMixes, LIGHT_MIXES_FILE } from './lib/light-mixes.js';
 import { compactDict } from '../src/engine/jmjr4/text.js';
 import { JMJR4_DATA } from '../src/engine/jmjr4/data.js';
 
@@ -1301,6 +1302,13 @@ const server = createServer(async (req, res) => {
           const chip = await exportChipMixes(ROOT);
           if (chip.changed) console.log(`exported the 8-bit results mixes to ${CHIP_MIXES_FILE}`);
         } catch (err) { console.warn(`could not export the 8-bit results mixes: ${err.message}`); }
+      }
+      // The same for the light versions on trial (tools/lib/light-mixes.js, `?lightmix`).
+      if (touchesLightMixes(written)) {
+        try {
+          const light = await exportLightMixes(ROOT);
+          if (light.changed) console.log(`exported the light mixes to ${LIGHT_MIXES_FILE}`);
+        } catch (err) { console.warn(`could not export the light mixes: ${err.message}`); }
       }
 
       console.log(`saved ${written.map((id) => `src/data/songs/${id}.js`).join(', ')}`

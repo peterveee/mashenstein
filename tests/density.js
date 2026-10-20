@@ -88,26 +88,22 @@ function webglStub() {
   return { gl, calls };
 }
 
-// --- iPad (masquerading as macOS) renders at native, with the ladder armed ----
-// Any rung below native is a fractional upscale, and a fractional upscale is
-// what reads as blocky. An M1 iPad runs M1 silicon; it gets the same 1:1 picture
-// a laptop does, and the ladder is there if it turns out it cannot hold it.
+// --- iPad (masquerading as macOS) renders at its 4x cap, with the ladder armed ----
+// 20 Oct 2026: native (~5x) starved the audio thread on the same chip (Peter's glitch
+// log), so a tablet's ladder tops out at TABLET_DENSITY_MAX (4x). It still seeds at the top of
+// that ladder, never at a soft density inherited from an earlier session.
 {
   installDom({ innerWidth: 1194, innerHeight: 834, devicePixelRatio: 2 });
   const r = await import('../src/engine/renderer.js?d-ipad');
   const platform = detectPlatform({ ua: MAC_UA, maxTouchPoints: 5 });
   assert(platform.isIpad && !platform.isIphone, 'modern iPad UA + touch points detects as iPad');
-  // savedDensity mimics a real device that has played before. A tablet must not
-  // inherit a soft density from an earlier session; that is what kept an iPad
-  // Pro blocky on every screen, menus included, long after the seed was fixed.
   r.initRenderer(platform, { savedDensity: 2.5 });
   const d = r.rendererDiagnostics();
-  assert(d.adaptive && d.rung === 0 && d.density === d.native,
-    'iPad seeds at native density — no resample, nothing to look blocky');
-  // Without the exemption a persisted 2.5 seeds one rung above it, at 3x.
-  assert(d.density > 4, 'a persisted 2.5x from an earlier session does not seed an iPad soft');
-  assert(d.ladder[1] === 4 && d.ladder[2] === 3,
-    'the iPad ladder keeps 4x and 3x below native as graduated fallbacks');
+  assert(d.adaptive && d.rung === 0 && d.density === 4 && d.native > 4,
+    'iPad seeds at the top of its ladder — the 4x cap, below its native ~5x');
+  assert(d.density > 2.5, 'a persisted 2.5x from an earlier session does not seed an iPad soft');
+  assert(d.ladder[0] === 4 && d.ladder[1] === 3 && d.ladder.every((v) => v <= 4),
+    'nothing above the 4x cap on the iPad ladder, and 3x below it to fall back to');
 }
 
 // --- A phone keeps the lower 3x seed, with the 4x rung left above it ---------

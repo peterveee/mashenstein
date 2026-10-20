@@ -257,6 +257,16 @@ function effectSilenceGap(list = [], bpm = 120) {
   return seconds;
 }
 
+// PARKED MUTES, the game only (Peter, 20 Oct 2026: "there are a lot of muted effects too,
+// why don't we ignore these completely in game?"). A muted insert stays in its chain — its
+// place is what lets a treatment ramp it back in at a bar line (setMute) — but once its fade
+// out has finished its output is unhooked, so nothing pulls it and it costs nothing. Unmuting
+// hooks it back before the fade in starts. The desk leaves this off: there a muted effect
+// keeps running exactly as it always has.
+let parkMuted = false;
+/** Park muted inserts from now on (main.js, at boot). */
+export function setParkMutedEffects(on) { parkMuted = !!on; }
+
 function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
   const inGain = ctx.createGain();
   const outGain = ctx.createGain();
@@ -386,7 +396,9 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     for (const link of live) {
       const dst = link.node.input || link.node;
       for (const p of prev) { Tone.connect(p, dst); Tone.connect(p, link.muteDry); }
-      Tone.connect(link.node.output || link.node, link.muteWet);
+      // A muted link is built settled — its wet gain already 0 — so it can park at once.
+      link.parked = parkMuted && link.muted;
+      if (!link.parked) Tone.connect(link.node.output || link.node, link.muteWet);
       prev = [link.muteWet, link.muteDry];
     }
     for (const p of prev) Tone.connect(p, outGain);
@@ -495,6 +507,11 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
       const link = chain[i];
       if (!link) return;
       link.muted = !!on;
+      // Back into the graph before the fade in starts (see parkMuted).
+      if (!link.muted && link.parked) {
+        Tone.connect(link.node.output || link.node, link.muteWet);
+        link.parked = false;
+      }
       const wet = link.muted ? 0 : 1;
       if (when == null) {
         link.muteWet.gain.setTargetAtTime(wet, ctx.currentTime, 0.01);
@@ -511,6 +528,17 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
         holdUntil = Math.max(holdUntil, (when ?? ctx.currentTime) + seconds + EFFECT_SLEEP_SETTLE_S);
         quietSince = null;
         watchForSilence();
+      } else if (parkMuted) {
+        // Parked once the fade out has reached silence on the audio clock, not before:
+        // unhooked mid-fade, the last of it would click off.
+        const quietAt = (when ?? ctx.currentTime) + Math.max(seconds, 0.05) + 0.05;
+        const park = () => {
+          if (disposed || !link.muted || link.parked || !chain.includes(link)) return;
+          if (ctx.currentTime < quietAt) { setTimeout(park, Math.max(20, (quietAt - ctx.currentTime) * 1000)); return; }
+          try { (link.node.output || link.node).disconnect(); } catch { /* not wired */ }
+          link.parked = true;
+        };
+        setTimeout(park, Math.max(20, (quietAt - ctx.currentTime) * 1000));
       }
     },
     /**

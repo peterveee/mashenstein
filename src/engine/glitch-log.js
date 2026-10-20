@@ -14,6 +14,8 @@
 //   M   the sequencer's worst queue margin in ms / passes that found nothing queued
 //       (negative or late: the MAIN thread starved the transport — holes)
 //   F   frames lost in that second / its longest frame in ms
+//   S   audio sources started and not yet ended, game-wide (watchAudioSources) — a count
+//       that climbs through a run is notes or modulators that never finish
 //
 // Read in order: a run of F before the first C or M is graphics dragging the audio
 // down; C first is the synths over budget; M with a clean C is a busy main thread.
@@ -89,6 +91,38 @@ export function startGlitchSession({ build = '', where = null, first = null } = 
   }
 }
 
+// Every AudioScheduledSourceNode the page starts, counted until it ends. Patched once on
+// the prototype at boot, so the count covers the engine, Tone and the SFX alike; a
+// listener per source is the whole cost.
+let liveSources = 0;
+export const audioSourcesLive = () => liveSources;
+export function watchAudioSources() {
+  const P = typeof AudioScheduledSourceNode === 'function' ? AudioScheduledSourceNode.prototype : null;
+  if (!P || P.__glitchWatched) return;
+  const start = P.start;
+  P.start = function (...a) {
+    const r = start.apply(this, a);
+    liveSources++;
+    try { this.addEventListener('ended', () => { liveSources--; }, { once: true }); } catch { /* counted, never discounted */ }
+    return r;
+  };
+  P.__glitchWatched = true;
+}
+
+/** A line of its own: something done about the trouble (engine/audio-guard.js). */
+export function noteEvent(text) {
+  if (!session) return;
+  try {
+    const t = Math.round((Date.now() - session.at) / 100) / 10;
+    let where = '';
+    try { where = String(context() || '').slice(0, 80); } catch (e) { where = ''; }
+    session.rows.push([t, `>> ${String(text).slice(0, 80)}`, where]);
+    if (session.rows.length > ROWS) session.rows.splice(0, session.rows.length - ROWS);
+    dirty = true;
+    save(true);
+  } catch (e) { /* never the reason the game stops */ }
+}
+
 /**
  * One second's health. `clock` is the audio/wall clock ratio, `margin` the worst queue
  * margin in ms (null when nothing played), `late` the starved passes, `framesLost` and
@@ -103,7 +137,7 @@ export function noteSecond({ clock, margin = null, late = 0, framesLost = 0, fra
     const frames = framesLost >= GLITCH.framesLost || frameMs >= GLITCH.frameMs;
     if (!crackle && !holes && !frames) return;
     const t = Math.round((Date.now() - session.at) / 100) / 10;
-    const line = `C${(clock || 0).toFixed(2)} ${margin == null ? 'M-' : `M${margin}/${late}`} F${framesLost}/${Math.round(frameMs)}`
+    const line = `C${(clock || 0).toFixed(2)} ${margin == null ? 'M-' : `M${margin}/${late}`} F${framesLost}/${Math.round(frameMs)} S${liveSources}`
       + `${crackle ? ' CRACKLE' : ''}${holes ? ' HOLES' : ''}${frames ? ' FRAMES' : ''}`;
     let where = '';
     try { where = String(context() || '').slice(0, 80); } catch (e) { where = ''; }

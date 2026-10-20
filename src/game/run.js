@@ -4506,6 +4506,10 @@ export class RunState {
     // to the finish, so the last thing a rhythm stage plays is its fastest
     // figure. Spaced at an eighth of a beat of lane travel and ending just
     // outside FINISH_CLEAR, whose keep-clear rule they must not cross.
+    // Pinned afresh on every enter: a retry from the top re-lays them off the
+    // finish line, and one that kept the last attempt's flag left them off the
+    // grid with no beat to ping on — 4 to 9px beside the chart's own coins there.
+    this.finishCoinsPinned = false;
     if (this.beatLock && Number.isFinite(this.totalDist)) {
       // At the CEILING, not at the opening tempo. Every checkpoint stands before
       // the tape, so the only tempo this run of coins is ever heard at is the top
@@ -6561,7 +6565,7 @@ export class RunState {
           // The parked jump was a forecast of this beat; settle it on the beat
           // actually heard, THEN anchor the lane at the settled camera.
           this.settleRhythmRespawn(beat);
-          if (this.resetRhythmLane()) this.rhythmSyncPending = false;
+          if (this.resetRhythmLane({ coinsInView: true })) this.rhythmSyncPending = false;
         }
       }
       Input.endFrame(); return;
@@ -7653,7 +7657,7 @@ export class RunState {
       // its opening coins are standing on the hero's feet. Re-lay it from the
       // real start: the first coin one beat out, the first action past the
       // runway, exactly as a stage with no run-in gets.
-      if (this.beatLock) this.resetRhythmLane();
+      if (this.beatLock) this.resetRhythmLane({ coinsInView: true });
     }
   }
 
@@ -12001,15 +12005,26 @@ export class RunState {
       c.actionX = c.x - lay;
       c.actionBeat = lastBeat - (coins.length - 1 - i) / 8;
     });
+    // Every line from here to the tape is the flourish's: a chart coin on one
+    // would stand on it, or a drift's width off it (BeatSpawner.coinStopX).
+    if (this.spawner) this.spawner.coinStopX = coins[0].x;
     this.finishCoinsPinned = true;
   }
 
-  resetRhythmLane() {
+  /**
+   * Rebuild the lane on the clock as it stands now. `coinsInView` is for the two
+   * rebuilds that OPEN a lane rather than repair one — the hero reaching his
+   * anchor after the run-in, and the settle after a retry or a checkpoint
+   * restore, which has just emptied the road — where the first coin one beat
+   * out is the point. Every other rebuild happens under a lane the player is
+   * already reading, and lays no coin he can see (invalidateRhythmLane).
+   */
+  resetRhythmLane({ coinsInView = false } = {}) {
     if (!this.beatLock || !this.spawner?.resetFromBeat) return false;
     const beat = this.rhythmBeatNow();
     if (!Number.isFinite(beat)) return false;
     const px = this.playerWorldX();
-    this.invalidateRhythmLane();
+    this.invalidateRhythmLane({ coinsInView });
     this.spawner.resetFromBeat(beat, this.camX);
     this.beatJudgeLastRaw = beat;
     this.beatJudgeEpoch = 0;
@@ -12171,14 +12186,22 @@ export class RunState {
     this.spawner.passOffset = plan.passOffset;
   }
 
-  invalidateRhythmLane() {
+  invalidateRhythmLane({ coinsInView = false } = {}) {
     const px = this.playerWorldX();
     // NOTHING VANISHES IN PLAIN VIEW — the same rule sweepCoinsAroundHole
     // states, applied to a lane rebuild. A coin asks nothing of the judge, so a
     // spared one a few px off the new grid is still an honest pickup, while a
-    // run of them blinking out mid-screen was the whole complaint. New events
-    // start a full runway past the view, so a kept coin is never doubled by its
-    // relay.
+    // run of them blinking out mid-screen was the whole complaint.
+    //
+    // AND NOTHING APPEARS IN PLAIN VIEW EITHER (Peter, 20 Oct 2026: coins
+    // doubling up and popping in). Actions start a full runway past the view,
+    // but coins start one beat out (resetFromBeat), inside it: each spared coin
+    // got its relay a drift's width away — two coins nearer than any figure the
+    // chart writes — and wherever nothing was spared a coin simply appeared in
+    // front of him. So the lane lays no coin before the view's right edge
+    // (BeatSpawner.coinFloorX), unless this rebuild is opening the lane
+    // (resetRhythmLane's coinsInView), and even then none before the last
+    // spared coin.
     const keepTo = this.viewRightX();
     // A HOLE IS GEOMETRY, NOT A PROMISE.
     //
@@ -12199,9 +12222,13 @@ export class RunState {
       ob.live = false;
     }
     this.rhythmSparedHoles = spared;
+    let sparedTo = -Infinity;
     for (const p of this.pickups) {
-      if (p.chartAction && p.x >= px - 20 && p.x > keepTo) p.live = false;
+      if (!p.chartAction || p.x < px - 20) continue;
+      if (p.x > keepTo) p.live = false;
+      else if (p.live) sparedTo = Math.max(sparedTo, p.x);
     }
+    if (this.spawner) this.spawner.coinFloorX = coinsInView ? sparedTo : Math.max(sparedTo, keepTo);
     for (const pit of this.pitPlan || []) {
       // Only the pieces still waiting to be cut are re-armed. A spawned one is
       // standing in the lane above — clearing its flags would cut a second hole

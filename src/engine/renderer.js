@@ -549,6 +549,14 @@ const PHONE_SEED_DENSITY = 3;         // initial rung on iPhone/Android handsets
 // native, and a ?density= pin still wins. This reverses the 13 Sep choice to keep
 // portrait native.
 const PHONE_PORTRAIT_DENSITY_MAX = 2;
+// THE IPAD DRAWS AT 4x, not at its native ~5x (Peter, 20 Oct 2026). Its glitch log showed
+// the game holding native — every frame met, near enough — while the audio thread on the
+// same chip starved: the music fell to a quarter of real time two minutes into Gravity
+// Grid, and came back within seconds of the picture dropping a rung. 3x was tried first
+// and read "a little soft"; 4x is about two-thirds of native's pixels. Everywhere on the
+// iPad, the full-screen visualiser included ("4x all the time"). The ladder still steps
+// down below it when frames or the audio guard need it.
+const TABLET_DENSITY_MAX = 4;
 // Desktops and tablets seed at rung 0 — native, the display's own resolution.
 // Adaptation stays armed underneath: a machine that genuinely cannot hold 60 FPS
 // at native still steps down, it just is not assumed to be that machine before
@@ -572,6 +580,7 @@ const SETTLE_MS = 25000;              // stable this long at a rung => persist i
 const AVG_ALPHA = 0.1;                // EWMA weight for the frame-interval average
 
 let phonePlatform = false;   // iPhone|Android phone — gates density seed and chrome dpr cap
+let tabletPlatform = false;  // iPad — caps the density ladder (TABLET_DENSITY_MAX)
 let desktopPlatform = false; // no touch platform detected — seeds at native density
 let rendererPlatform = null; // the whole platform record, for displayCornerRadius()
 let ladder = [1];
@@ -883,6 +892,7 @@ export function initRenderer(platform = {}, persistence = {}) {
   // lowest seed and caps the touch-chrome dpr; desktopPlatform skips the seed
   // entirely and starts at native.
   phonePlatform = !!(platform.isIphone || platform.isAndroidPhone);
+  tabletPlatform = !!platform.isIpad;
   desktopPlatform = !!platform.isDesktop;
   // Kept whole for displayCornerRadius(): only iPhone has a radius we know.
   rendererPlatform = platform;
@@ -1322,7 +1332,9 @@ function resize(options = {}) {
   // ceiling and hands back the density it found on the way out — the cover crop in
   // landscape, and the portrait phone frame, which is capped for play but not for it.
   const fullPicture = coverFit || (visualiserFullscreen && phonePlatform && !portraitFill && H > W);
-  ladder = buildLadder(phonePortrait ? Math.min(nativeDensity, PHONE_PORTRAIT_DENSITY_MAX) : nativeDensity,
+  const tabletCap = tabletPlatform;
+  ladder = buildLadder(phonePortrait ? Math.min(nativeDensity, PHONE_PORTRAIT_DENSITY_MAX)
+    : tabletCap ? Math.min(nativeDensity, TABLET_DENSITY_MAX) : nativeDensity,
     renderW * renderH);
   adaptationEnabled = pinnedDensity == null && ladder.length > 1 && !frozen;
   if (rung < 0) {
@@ -1512,6 +1524,26 @@ function dropRungs(n, now) {
   densityResizePending = true;
 }
 
+// THE AUDIO GUARD'S RELIEF (engine/audio-guard.js, 20 Oct 2026): one rung down for the
+// audio thread's sake, not the frame's, so no throttle guard is armed (it would judge the
+// drop by frame time, find nothing changed, and put the rung back) and no strike charged;
+// and no climbing back while it is held. Pinned densities are left alone.
+let reliefHeld = false;
+export function requestDensityRelief(rungs = 1) {
+  if (pinnedDensity != null || reliefHeld) return false;
+  reliefHeld = true;
+  if (rung >= ladder.length - 1) return false;
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  rung = Math.min(rung + Math.max(1, rungs), ladder.length - 1);
+  arrivedAt = now;
+  densityCooldown = ADJUST_COOLDOWN_MS;
+  resetAdaptiveSamples();
+  resetSettle();
+  densityResizePending = true;
+  return true;
+}
+export function releaseDensityRelief() { reliefHeld = false; }
+
 // Climb one rung toward native. Never arms a guard and never touches strikes —
 // recovery is a reward, not a probe. (The invariant guard-check 2.5s <
 // cooldown 3s < recovery 8s guarantees any pending guard resolves first.)
@@ -1597,7 +1629,7 @@ export function noteRendererFrame(now) {
   if (densityCooldown > 0) return;
   if (!suspended && slowFor >= MODERATE_DROP_MS && rung < ladder.length - 1) { dropRungs(1, now); return; }
   const nextRungLocked = rung > 0 && lockedRungs.has(ladder[rung - 1]);
-  if (fastFor >= RECOVER_MS && rung > 0 && (!nextRungLocked || fastFor >= LOCKED_RECOVER_MS)) {
+  if (!reliefHeld && fastFor >= RECOVER_MS && rung > 0 && (!nextRungLocked || fastFor >= LOCKED_RECOVER_MS)) {
     climbRung(now);
     return;
   }

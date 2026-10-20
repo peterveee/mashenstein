@@ -3893,6 +3893,8 @@ export class VoiceRack {
       node.connect(dry);
       if (echo && wet) node.connect(wet);
     };
+    // What each note leaves wired to the lane, for `_retireNote` to take off it.
+    const noteOuts = [];
     // `dur` matches `freq`: one length for the whole chord, or one PER NOTE, the way
     // the Tone path reads it — a piano roll drawing a rectangle per chord tone says
     // the tones are different lengths, and this path was reading past that.
@@ -4082,14 +4084,20 @@ export class VoiceRack {
         out.gain.setValueAtTime(gain, t);
         sendTo(out);
         g.connect(driveInto(out));
-      } else sendTo(g);
+        noteOuts.push(out);
+      } else { sendTo(g); noteOuts.push(g); }
       o.start(t); o.stop(off + 0.01);
       lastOff = Math.max(lastOff, off + 0.01);
     });
     // A chord of nothing but rests built no oscillators, so there is nothing to wobble.
     if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); }
     this._perNoteKeyModeEnd(km, hold, rec);
-    if (paramMods.length) this._retireNote(rec.sources, paramMods);
+    // The WHOLE note off the lane once it has ended, not only its vibrato (20 Oct 2026).
+    // Left wired, every note Rhythm's lead had played stayed on the strip's input: in WebKit
+    // the song's load climbed from ~12% to ~55% over two and a half minutes, flat with the
+    // KNDO-5 lanes muted (work/local/_rhythm-climb-webkit-2026-10-20.txt) — and the iPad tips
+    // over at bar 39 of Rhythm Bankruptcy, one of its lightest stretches.
+    this._retireNote(rec.sources, [...noteOuts, ...paramMods]);
     return true;
   }
 
@@ -7669,9 +7677,33 @@ export class VoiceRack {
     // where it is: cutting a note early is worse than keeping a dead one.
     if (!sources.every((src) => typeof src.addEventListener === 'function')) return;
     let left = sources.length;
+    const unwire = () => { for (const out of outs) { try { out.disconnect(); } catch { /* already gone */ } } };
     const ended = () => {
       if (--left > 0) return;
-      for (const out of outs) { try { out.disconnect(); } catch { /* already gone */ } }
+      // THE MODULATORS STOP FIRST (20 Oct 2026). An LFO or vibrato source driving the
+      // note's params is booked to stop a hair AFTER the note (lastOff + 0.01 and the
+      // like), so unwiring here orphaned it a moment before its own stop: a source nothing
+      // pulls never reaches its stop time, never ends, and stays a live source forever.
+      // Measured in the real game (WebKit, work/local/_game-audio-webkit.mjs): 1,000 of them
+      // after two minutes of Gravity Grid, half over a minute old, still there on the results
+      // screen — JMJR-4's flutter and vibrato, MRDR-3's LFO and vibrato oscillators. So any
+      // scheduled source among the outs is stopped now, while it is still wired and pulled,
+      // and the note is unwired once those have ended too (or after a second, if one cannot).
+      // That collects MRDR-3's LFO (224 of them, to none). A modulator wired only into a
+      // carrier's own pitch (vibrato, JMJR-4's flutter) is unpulled the moment that carrier
+      // stops, so it still cannot end — but it costs the audio thread nothing measurable
+      // (the same probe's in-thread meter held flat as they piled up).
+      const mods = typeof AudioScheduledSourceNode === 'function'
+        ? outs.filter((o) => o instanceof AudioScheduledSourceNode) : [];
+      if (!mods.length) { unwire(); return; }
+      let pending = mods.length;
+      let done = false;
+      const finish = () => { if (done) return; done = true; unwire(); };
+      for (const m of mods) {
+        m.addEventListener('ended', () => { if (--pending <= 0) finish(); }, { once: true });
+        try { m.stop(); } catch { if (--pending <= 0) finish(); }
+      }
+      if (typeof setTimeout === 'function') setTimeout(finish, 1000);
     };
     for (const src of sources) src.addEventListener('ended', ended, { once: true });
   }
