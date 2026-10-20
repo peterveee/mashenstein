@@ -482,6 +482,9 @@ const glassAt = (t) => {
   return c0.map((v, j) => v + (c1[j] - v) * k);
 };
 const GLASS = [0, 0.03, 0.06, 0.09, 0.12, 0.15, 0.18, 0.82, 0.85, 0.88, 0.91, 0.94, 0.97, 1].map((t) => [t, over(glassAt(t), TINT)]);
+// Between 0.18 and 0.82 the glass is the tint alone: filled flat there, the gradient only
+// across the two ramps (see the airbrush pane).
+const GLASS_FLAT = over(glassAt(0.5), TINT);
 function skyNebula(c, s, P, nx, tall) {
   if (typeof document === 'undefined' || typeof c.getTransform !== 'function') return false;
   const per = s.view + 120, y0 = tall ? s.top : CEIL, y1 = tall ? s.bottom : 0, h = y1 - y0;
@@ -539,8 +542,40 @@ function hullTiles(c, s, P, r) {
     HULL_TILE.set(key, tile);
   }
   const x0 = -(((s.cam % 48) + 48) % 48);
-  for (let x = x0 - 48; x < s.view + 48; x += 48) c.drawImage(tile, x, s.top, 49, h);
+  for (let x = x0 - 48; x < s.view + 48; x += 48) {
+    if (s.hullHoles) hullColumn(c, tile, x, s.top, h, s.hullHoles);
+    else c.drawImage(tile, x, s.top, 49, h);
+  }
   return true;
+}
+// One 49-wide hull column, less what a window's view will paint over solid (`holes`:
+// [x0, x1, y0, y1] per window, room units — see paneHole). Behind tall glass most of the
+// hull is never seen, and blitting it anyway was 1.3 ms of an 18 ms frame (20 Oct 2026,
+// headless iPhone landscape). The column is cut at the holes' x edges and each piece
+// mapped through the same source scale as the whole-column blit, so what is drawn is
+// pixel for pixel what was drawn.
+function hullColumn(c, tile, x, top, h, holes) {
+  const kx = tile.width / 49, ky = tile.height / h;
+  const cuts = [x, x + 49];
+  for (const [a, b] of holes) {
+    if (a > x && a < x + 49) cuts.push(a);
+    if (b > x && b < x + 49) cuts.push(b);
+  }
+  cuts.sort((p, q) => p - q);
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const a = cuts[i], b = cuts[i + 1];
+    if (!(b > a)) continue;
+    const mid = (a + b) / 2, hole = holes.find(([h0, h1]) => mid > h0 && mid < h1);
+    const piece = (y0, y1) => {
+      if (!(y1 > y0)) return;
+      c.drawImage(tile, (a - x) * kx, (y0 - top) * ky, (b - a) * kx, (y1 - y0) * ky, a, y0, b - a, y1 - y0);
+    };
+    if (!hole) piece(top, top + h);
+    else {
+      piece(top, Math.max(top, hole[2]));
+      piece(Math.min(top + h, hole[3]), top + h);
+    }
+  }
 }
 const airbrush = {
   id: 'airbrush', letter: 'B', name: 'AIRBRUSHED SPACE ART',
@@ -568,6 +603,9 @@ const airbrush = {
     c.fillRect(0, CEIL, s.view, -CEIL);
   },
   paneClip(c, x, w = PANE.w) { const k = frameOf(this), B = paneB(this); c.roundRect(x + 2 * k, B.top + 2 * k, w - 4 * k, B.h - 4 * k, 14); },
+  // The part of paneClip the view paints solid: a unit inside its straight sides and
+  // clear of its corner radius top and bottom. drawSpaceRoom leaves the hull out under it.
+  paneHole(x, w = PANE.w) { const k = frameOf(this), B = paneB(this); return [x + 2 * k + 1, x + w - 2 * k - 1, B.top + 2 * k + 15, B.top + B.h - 2 * k - 15]; },
   vista(c, s) {
     const P = this.pal;
     // Nebula: big soft clouds drifting at a crawl.
@@ -636,8 +674,18 @@ const airbrush = {
     c.save(); c.beginPath(); c.roundRect(x + 2, top + 2, w - 4, h - 4, 14); c.clip();
     // the cool tint and the light-to-shade gradient laid over it, as one fill (GLASS: the two
     // composited stop by stop — source-over is associative, so it is the same glass)
+    // The ramps only at the top and foot: the 64% between is one flat tint, and a
+    // fourteen-stop gradient over the whole tall pane was the dearest fill in the room
+    // (20 Oct 2026: 1.7 ms of an 18 ms frame, headless iPhone landscape). The joins are
+    // snapped to a device row so the three fills neither overlap nor part.
     c.fillStyle = grad(c, 0, top, 0, top + h, GLASS);
-    c.fillRect(x, top, w, h);
+    const m = typeof c.getTransform === 'function' ? c.getTransform() : null;
+    const snapY = (y) => (!m || m.b || m.c || !(m.d > 0) ? y : (Math.round(m.d * y + m.f) - m.f) / m.d);
+    const rampEnd = snapY(top + h * 0.18), footStart = snapY(top + h * 0.82);
+    c.fillRect(x, top, w, rampEnd - top);
+    c.fillRect(x, footStart, w, top + h - footStart);
+    c.fillStyle = GLASS_FLAT;
+    c.fillRect(x, rampEnd, w, footStart - rampEnd);
     const slide = ((s?.cam ?? 0) * 0.08 + x * 0.35) % (w + 80) - 40;
     for (const [off, bw, a] of [[0, 16, 0.22], [24, 6, 0.17]]) {
       const bx = x + slide + off;
@@ -1177,8 +1225,11 @@ export function drawSpaceRoom(c, look, { cam, view, top, bottom, time, gates = G
     // sky"): planets near the top of the glass, ridges and plateaus bigger.
     s.sceneS = 1.3;
   }
-  look.hull(c, s);
   const panes = roomPanes(look, gates, cam, view);
+  // Tall glass runs rail to rail and the view behind it is opaque (the sky tile spans
+  // the room's full height), so the hull need not be painted where it will be covered.
+  if (look.tallGlass && look.paneHole) s.hullHoles = panes.map(([x, w]) => look.paneHole(x, w));
+  look.hull(c, s);
   s.panes = panes;   // screen [x, w] of each window, for things that must sit inside one
   c.save(); c.beginPath(); for (const [x, w] of panes) look.paneClip(c, x, w); c.clip();
   if (s.sceneS > 1) {

@@ -48,6 +48,7 @@ import { getStylePack } from '../../engine/stylePacks/index.js';
 import { makeObstacle, OBSTACLES } from '../entities.js';
 import { drawWorldEntity } from '../draw.js';
 import { drawSelectedCryptEnemy } from '../../sprites/crypt-enemies.js';
+import { drawVacuumMawBody, drawVacuumSpiralHose, vacuumBox } from '../../sprites/vacuum-compactor.js';
 import { USUAL_SUSPECTS } from '../usualSuspects.js';
 import { hashStr } from '../../engine/rng.js';
 import { Player } from '../player.js';
@@ -333,6 +334,22 @@ function enterTrophyRoomAudio() {
   trophyAir = reverbAt < 0 ? null
     : chain.slice(reverbAt + 1).find((l) => l?.def?.id === 'filter') || null;
   trophyDepth = null;
+}
+
+// THE ROOM'S SOUND HOLDS THROUGH ITS PAUSE (Peter, 20 Oct 2026). Settings opened from
+// the trophy room used to take the treatment off with the room (exit) and put it back
+// on the way in, so the song went dry and close for as long as the menu was up. While
+// this is set the treatment stays installed: exit leaves it and the resumed room's
+// enter adopts it as it is. Anything that leaves the pause somewhere other than the
+// room lets go of it (releaseTrophyRoomAudio).
+let trophyAudioHeld = false;
+
+export function holdTrophyRoomAudio() { trophyAudioHeld = true; }
+
+export function releaseTrophyRoomAudio() {
+  if (!trophyAudioHeld) return;
+  trophyAudioHeld = false;
+  leaveTrophyRoomAudio();
 }
 
 function leaveTrophyRoomAudio() {
@@ -2710,8 +2727,12 @@ export class HubState {
     // 'left'/'right' this same frame — every tap on the one pointer surface
     // also presses 'pointer' — and must not ALSO be read as a walk-to-here,
     // which would send him to the arrow's own x and fight the direction.
+    //
+    // The settings cog wins outright (Peter, 20 Oct 2026). It is touch chrome, so the
+    // same tap presses 'back' AND 'pointer' — and a poster or the mural under the cog
+    // used to open its zoom and end the frame, swallowing the settings it was aimed at.
     if (Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y)
-      && !Input.pressed('left') && !Input.pressed('right')) {
+      && !Input.pressed('left') && !Input.pressed('right') && !Input.pressed('back')) {
       // Posters answer first. They hang high on the back wall — screen y 16 to
       // 86, a band that holds nothing else tappable and no floor to walk to —
       // so a tap that lands on one cannot have meant anything else. At 40x54
@@ -4563,7 +4584,9 @@ const TROPHY_CASE_H = 94;
 const TROPHY_BOSSES_X = TROPHY_LEVELS_X + TROPHY_LEVELS_W
   + TROPHY_BOARD_GAP + TROPHY_BOSSES_W / 2;
 const TROPHY_SUSPECTS_X = TROPHY_BOSSES_X + TROPHY_BOSSES_W / 2 + TROPHY_BOARD_GAP;
-const TROPHY_SUSPECTS_W = 1080;
+// One column per pair of monitors at the spacing the wall was laid out with
+// (ten columns in 1080), so a new suspect lengthens the wall, not the squeeze.
+const TROPHY_SUSPECTS_W = 16 + Math.ceil(USUAL_SUSPECTS.length / 2) * 106.4;
 const TROPHY_SUSPECTS_H = 180;
 const TROPHY_TOASTER_ZONE_X = TROPHY_SUSPECTS_X + TROPHY_SUSPECTS_W + TROPHY_BOARD_GAP;
 const TROPHY_TOASTER_TV_H = TROPHY_SUSPECTS_H;
@@ -5068,6 +5091,36 @@ function trophySuspectPropBox(portrait, propName, screen) {
   };
 }
 
+// SCRAPJAW, the Gravity Grid's maintenance robot, as a face-on close-up: the
+// casing fills the tube top to bottom and the hose leaves through the top of
+// the glass, so the brush never makes it into shot. It works through its
+// rounds on a loop — idle, suck, chew — with the same body the run draws.
+const SCRAPJAW_LOOP = [['sweep', 2.4], ['suction', 1.3], ['loaded', 1.6]];
+const SCRAPJAW_LOOP_T = SCRAPJAW_LOOP.reduce((sum, [, d]) => sum + d, 0);
+
+function drawScrapjawCloseUp(ctx, screen, t) {
+  let at = t % SCRAPJAW_LOOP_T, phase = 'sweep', progress = 0;
+  for (const [name, d] of SCRAPJAW_LOOP) {
+    if (at < d) { phase = name; progress = at / d; break; }
+    at -= d;
+  }
+  // Casing top -21 to outlet bottom 24: show those 45 units plus the socket
+  // and the first stretch of hose above, with the outlet a tenth of the tube
+  // up off the glass floor.
+  const scale = screen.h / 64;
+  const bob = Math.sin(t * 2.1) * 0.6;
+  ctx.save();
+  ctx.translate(screen.x + screen.w / 2,
+    screen.y + screen.h * 0.9 - 25 * scale + bob * scale);
+  ctx.scale(scale, scale);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  drawVacuumSpiralHose(ctx, [[0, -24], [0, -44], [-18, -46], [-34, -70]]);
+  vacuumBox(ctx, -3.5, -24, 7, 5, '#75617e', 1.3);
+  vacuumBox(ctx, -8.5, 19, 17, 5, '#75617e', 1);
+  drawVacuumMawBody(ctx, { phase, progress, time: t, targetSign: 1, count: 1, reducedMotion: false });
+  ctx.restore();
+}
+
 function trophySuspectRoleBox(role, screen) {
   const bounds = trophySuspectRoleInkBounds(role);
   const inkW = bounds.right - bounds.left, inkH = bounds.bottom - bounds.top;
@@ -5101,7 +5154,7 @@ export class TrophyRoomState {
     this.resumeState = resume;
     this.toasterParade = resume?.toasterParade || null;
     this.toasterParadeKey = resume?.toasterParadeKey ?? null;
-    this.suspectPortraits = new Map(USUAL_SUSPECTS.filter((s) => !s.role)
+    this.suspectPortraits = new Map(USUAL_SUSPECTS.filter((s) => !s.role && !s.painter)
       .map((s) => [s.id, makeObstacle(s.type, -(OBSTACLES[s.type]?.w || 10) / 2)]));
     this.suspectPropFrameSprites = TROPHY_PROP_FRAME_SPRITES;
     const discovered = this.save?.slot?.hub?.usualSuspects || {};
@@ -5126,7 +5179,8 @@ export class TrophyRoomState {
     Input.setContext('workshop');
     this.setChromeWalkButtons();
     Input.setButtons([]);
-    enterTrophyRoomAudio();
+    if (trophyAudioHeld) trophyAudioHeld = false;   // back from the pause: still on
+    else enterTrophyRoomAudio();
     const resume = this.resumeState;
     this.resumeState = null;
     this.t = resume?.t ?? 0;
@@ -5156,10 +5210,17 @@ export class TrophyRoomState {
   }
 
   exit() {
-    leaveTrophyRoomAudio();
+    if (!trophyAudioHeld) leaveTrophyRoomAudio();
     cancelTrophyBoundsPreparation();
     Input.setButtons([]);
     Input.setChromeButtons([]);
+  }
+
+  // Settings over the room, with the room's sound left on — see trophyAudioHeld.
+  openPause() {
+    if (!this.flow.toTrophyPause) return;
+    holdTrophyRoomAudio();
+    this.flow.toTrophyPause(this);
   }
 
   setChromeWalkButtons() {
@@ -5309,7 +5370,7 @@ export class TrophyRoomState {
     }
     if (this.doorWalk) {
       if (Input.pressed('pause')) {
-        this.flow.toTrophyPause?.(this);
+        this.openPause();
         Input.endFrame?.();
         return;
       }
@@ -5356,7 +5417,7 @@ export class TrophyRoomState {
       return;
     }
 
-    if (Input.pressed('pause')) { this.flow.toTrophyPause?.(this); return; }
+    if (Input.pressed('pause')) { this.openPause(); return; }
     if (Input.pressed('back')) { this.flow.toHub(); return; }
 
     // The room itself is the touch UI. Tapping an exhibit walks over and uses
@@ -5570,7 +5631,9 @@ export class TrophyRoomState {
         ctx.save();
         trophyCrtPath(ctx, screen, 1, glassRadius - 1);
         ctx.clip();
-        if (suspect.role) {
+        if (suspect.painter === 'scrapjaw') {
+          drawScrapjawCloseUp(ctx, screen, this.t);
+        } else if (suspect.role) {
           const box = trophySuspectRoleBox(suspect.role, screen);
           ctx.translate(box.x, box.y);
           ctx.scale(box.scale, box.scale);
@@ -5717,7 +5780,9 @@ export class TrophyRoomState {
     if (unlocked) {
       trophyCrtPath(ctx, screen, 1, radius - 1);
       ctx.clip();
-      if (suspect.role) {
+      if (suspect.painter === 'scrapjaw') {
+        drawScrapjawCloseUp(ctx, screen, this.t);
+      } else if (suspect.role) {
         const box = trophySuspectRoleBox(suspect.role, screen);
         ctx.save();
         ctx.translate(box.x, box.y);

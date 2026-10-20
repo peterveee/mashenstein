@@ -37,6 +37,9 @@ function recorder() {
     measureText: () => ({ width: 10 }),
     fill: () => { counts.fill++; },
     fillRect: () => { counts.fill++; },
+    // A blit paints too: the blizzard, veil and all, lands as one stretched copy of its
+    // half-resolution buffer.
+    drawImage: () => { counts.fill++; },
   };
   const ctx = new Proxy(target, {
     get: (t, k) => (k in t ? t[k] : () => {}),

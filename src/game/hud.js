@@ -1297,6 +1297,11 @@ function leftColumnTop(run) {
 // toast and the finish plate are passing, so it shows on the hand-offs that do
 // not collide with one.
 function leftColumnBusy(run) {
+  // PORTRAIT stacks the BONUS (or the overtime tag, or an objective notice) right
+  // under the status row, exactly where the plate would print, so while one is up
+  // the name stands down rather than draw over it (Peter, 20 Oct 2026).
+  if (isPhonePortraitPresentation()
+    && (run?.portraitObjectiveNotice || run?.overtime || portraitBonusText(run))) return true;
   return !!(rowBelowPill(run) || run?.oneHit
     || (run?.goalToasts && run.goalToasts[0])
     || (run?.flipCoins && run.flipCoins.left > 0));

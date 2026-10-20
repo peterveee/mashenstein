@@ -66,6 +66,10 @@ export function officePack(settings = {}) {
   let frontGaps = [];
   return {
     name: 'office', bgPan: 1,
+    // Every floor's backdrop covers the whole frame, portrait and landscape, mid-jump
+    // included (cover test, 20 Oct 2026), so run.js's fallback sky under it — 3.3 ms
+    // of a portrait frame — is never seen.
+    coversFrame: (portrait, cab) => cab?.id === 'office',
     get lightBg() { return floor !== 'exec'; },
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, bc = null) {
       const facts = bc || {};

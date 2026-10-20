@@ -47,7 +47,7 @@ const BASE = `http://localhost:${PORT}`;
 // Cabinets 1-6 in the registry's order; the rest have nothing of note on them yet.
 const CABINETS = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon'];
 // Asked for by name only (not in the default run).
-const NAMED_ONLY = ['office', 'gravity'];
+const NAMED_ONLY = ['office', 'gravity', 'surge'];
 const PHONE = { w: 393, h: 852, dpr: 3 };
 const DENSITY = { portrait: 2, landscape: 3 };
 const BUDGET = 16.7;
@@ -151,6 +151,14 @@ async function look(browser, run) {
     // frames at the display's rate, reading as a cabinet with nothing to draw.
     await page.waitForFunction(() => /RunState$/.test(window.__mash_cur?.constructor?.name || '') && window.__mash_cur.camX > 0,
       null, { timeout: 60000 });
+    // Plumber-1's arcade intro (the CRT look) ends when the song passes beat 16, and the
+    // headless song clock never gets there — so before 19 Oct 2026 the CRT stayed on for
+    // the whole measurement and plumber-1 read 43 ms where it plays at about 16. Dropped
+    // part way in, the player is long past the intro, so switch it off.
+    await page.evaluate(() => {
+      const run = window.__mash_cur;
+      if (run?.stage?.arcadeIntro) run.arcadeIntroResolve = () => null;
+    });
     await page.waitForTimeout(2500);
     await page.evaluate(() => {
       window.__frameGaps = [];

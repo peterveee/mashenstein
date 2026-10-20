@@ -34,7 +34,6 @@ import { derived, TuneStrip } from './tune-strip.js';
 import { PAN_MAX } from '../engine/camera.js';
 import { resolveLayout } from '../game/layout.js';
 import { proseMenu } from './prose.js';
-import { GravityRunState } from '../game/gravity/state.js';
 import { labRenderMenu } from './lab-render.js';
 import { chipResults } from '../game/results-chip.js';
 
@@ -810,20 +809,6 @@ export function rootMenu(dev) {
     title: 'DEV MENU',
     items: [
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
-      { label: 'GRAVITY GRID — PLAYTEST ▸', submenu: () => ({
-        title: 'GRAVITY GRID',
-        items: stagesForCabinet('gravity').map((stage) => ({
-          label: stageLabel(stage),
-          act: () => {
-            dev.close();
-            const cab = CABINET_BY_ID.gravity;
-            setState(new GravityRunState({ save: dev.ctx.save, cabinet: cab, stage,
-              initialHeroId: dev.ctx.Flow.heroId(), difficulty: dev.ctx.save.slot.difficulty,
-              seed: dev.seedLock ?? undefined, musicSong: dev.ctx.Flow.gameSongFor(cab.id),
-              onEnd: () => dev.ctx.Flow.toHub() }));
-          },
-        })),
-      }) },
       // Keep the saved-song launcher in the first screenful for quick access.
       { label: 'GAME ALTERNATES ▸', submenu: () => gameAlternatesMenu(dev) },
       { label: 'BOSSES ▸', submenu: () => bossesMenu(dev) },

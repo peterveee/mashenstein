@@ -117,6 +117,12 @@ import { resolveCompositionProfile } from '../engine/composition-profile.js';
 import { PORTRAIT_GROUND_ANCHOR_RATIO } from '../engine/portrait-geometry.js';
 import { drawLayoutDiagnostic, layoutDiagnosticEnabled, toggleLayoutDiagnostic } from './layout-diagnostic.js';
 
+// The toaster this stage offers: the SILVER one once its TOASTER plug is banked.
+// Shared by the spawner and the art warm-up, which builds only this one.
+function toasterFor(save, stage) {
+  return stage && (save.slot.campaign.plugs[stage.id] || [])[2] ? 'applianceSilver' : 'appliance';
+}
+
 // THE CLOCK (Peter, 17 Oct 2026). Every mission is the finish line now, so the
 // clock is what a stage can be failed on, in seconds of live running. It stops
 // for a death and its respawn, a pause, the cards and the run past the tape, and
@@ -1299,12 +1305,10 @@ const COPTER_BONK_CAUSES = {
   head: {
     coins: 0,
     progress: () => 'BONKED. IT FILED A COMPLAINT.',
-    over: (coins) => `BONK BONUS +${coins} COINS.`,
   },
   barrel: {
     coins: 50,
     progress: (n, of, coins) => `SPECIAL DELIVERY. +${coins} COINS.`,
-    over: (coins) => `SPECIAL DELIVERY. +${coins} COINS. HE IS UNDERINSURED.`,
   },
 };
 // Past the goal a bonk pays instead of counting — and it is a FLOOR on the
@@ -4456,7 +4460,7 @@ export class RunState {
     // and most of it is built by now; a dev launch that skips the briefing
     // starts it here and drains it across the banner and the run-in instead.
     crumb('run enter', `${this.stage?.id || 'overtime'} act=${act || '-'} hero=${this.player?.heroId || ''}`);
-    beginStageArtWarmup(this.cabinet, this.stage?.index ?? 1);
+    beginStageArtWarmup(this.cabinet, this.stage?.index ?? 1, toasterFor(this.save, this.stage));
     // Off-screen entrance. Armed on the same fresh-entry gate as the card (so a
     // death-restart drops the hero straight onto the anchor), but independent of
     // the card's seen/done fade: it plays on every first entry, card or not. A
@@ -4737,8 +4741,7 @@ export class RunState {
     this.silverGot = false;
     // A stage whose TOASTER plug is already banked offers the SILVER toaster in
     // the gold one's place: same spot, same flight, coins only.
-    this.applianceType = this.stage && (this.save.slot.campaign.plugs[this.stage.id] || [])[2]
-      ? 'applianceSilver' : 'appliance';
+    this.applianceType = toasterFor(this.save, this.stage);
     this.finishDogSpawned = false;
     this.dogSignSpawned = false;
     // WHETHER THIS STAGE HAS A DOG AT ALL. Rolled once, here, from its own
@@ -8129,7 +8132,8 @@ export class RunState {
         // scalars only, because projectiles are pooled through assignInto.
         this.projectiles.push({ type: 'pellet', route: this.route, x: px - i * 16, alt, vx: this.speed + speedAdd, size, contactHero: hero.id, live: true, pierce: this.modIds.includes('charge'), hitIds: new Set() });
       }
-      if (hero.id === 'kiko') this.floatText('WARNED', '#8fe4ff');
+      if (Math.random() >= 1 / 12) { /* PEW and its kin: very rare, one in twelve */ }
+      else if (hero.id === 'kiko') this.floatText('WARNED', '#8fe4ff');
       // Clara's narrator calls her own shots; two pistols means the ordinary
       // pull is already a pair, and the prose keeps count.
       else if (hero.id === 'clara') this.floatText('SHE FIRED. TWICE.', '#ffd27a');
@@ -8137,7 +8141,7 @@ export class RunState {
     } else if (type === 'compress') {
       this.player.compressT = 1;
       Audio.sfx('power');
-      this.floatText('PROBABLY NORMAL PHYSICS', '#ffb7c3');
+      this.quip(0.25, 'PROBABLY NORMAL PHYSICS', '#ffb7c3');
     } else if (type === 'bow') {
       // NOTHING LEAVES ON THE PRESS. He reaches back for the bow and draws,
       // and the arrow goes at BOW_REACH_T + 0.15 — the round is queued with a
@@ -8389,7 +8393,7 @@ export class RunState {
       Audio.sfx('blockBreak');
       this.debris(ob, cx, cy);
       this.tossCoins(cx, 8, Math.max(14, ob.alt));
-      this.floatText(`${ob.def.puntLabel || 'CONE'} CHAIN x${n}: HAZARD RESOLVED`, '#f6d33c');
+      this.quip(0.34, `${ob.def.puntLabel || 'CONE'} CHAIN x${n}: HAZARD RESOLVED`, '#f6d33c');
       shake(1.6, 0.12);
       ob.live = false;
       return;
@@ -8603,9 +8607,12 @@ export class RunState {
         this.tossCoins(cx, ob.def.bonusCoins, alt, silent);
       }
     }
+    // A GOAL MET IS DONE WITH (Peter, 20 Oct 2026): the hit that completes a tally shows
+    // n/n, and nothing after it floats a count — not here, nor for bridges, cord pieces,
+    // copter bonks or a SHOOT challenge. "Once the goal is done we don't care."
     if (ob.def.isTarget && this.bonus.type === 'targets' && (!this.bonus.targetType || this.bonus.targetType === ob.type)) {
       this.bonus.count++;
-      this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
+      if (this.bonus.count <= this.bonus.n) this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
     }
     if (ob.def.isSwitch) this.openGates(ob);
   }
@@ -8705,7 +8712,7 @@ export class RunState {
     this.tossCoins(cx, 3, ob.h * 0.6, true, 'banknote');
     if (this.bonus.type === 'targets' && this.bonus.targetType === ob.type) {
       this.bonus.count++;
-      this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
+      if (this.bonus.count <= this.bonus.n) this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
       if (this.bonus.count === this.bonus.n) this.spawnMissionPayoffPickups();
     }
   }
@@ -8729,7 +8736,7 @@ export class RunState {
     shake(0.5, 0.06);
     if (this.bonus.type === 'targets' && this.bonus.targetType === ob.type) {
       this.bonus.count++;
-      this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
+      if (this.bonus.count <= this.bonus.n) this.floatText(`BONUS ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
       if (this.bonus.count === this.bonus.n) this.raiseFireAlarm();
     }
   }
@@ -9010,7 +9017,7 @@ export class RunState {
     Audio.sfx('bridgeLay');
     if (this.bonus.type === 'bridges') {
       this.bonus.count = (this.bonus.count || 0) + 1;
-      this.floatText(`BRIDGE ${Math.min(this.bonus.count, this.bonus.n)}/${this.bonus.n}`, '#b8e0f8');
+      if (this.bonus.count <= this.bonus.n) this.floatText(`BRIDGE ${this.bonus.count}/${this.bonus.n}`, '#b8e0f8');
     } else this.floatText('BRIDGE. YOU EARNED IT.', '#b8e0f8');
   }
 
@@ -10017,7 +10024,8 @@ export class RunState {
     const past = this.copterBonks > goal;
     const coins = past ? Math.max(spec.coins, COPTER_OVER_COINS) : spec.coins;
     if (coins) this.coins += coins;
-    this.floatText(past ? spec.over(coins) : spec.progress(this.copterBonks, goal, coins), '#f6d33c');
+    // Past the goal the coins still land, quietly — see A GOAL MET IS DONE WITH.
+    if (!past) this.floatText(spec.progress(this.copterBonks, goal, coins), '#f6d33c');
     return true;
   }
 
@@ -10056,6 +10064,17 @@ export class RunState {
   }
 
   // ------------------------------------------------------------------ entities
+  // First sighting of a Trophy Room suspect. Permanent, outside rewind, and
+  // persisted only the first time.
+  noteUsualSuspect(suspectId) {
+    const hub = this.save?.slot?.hub;
+    if (!hub) return;
+    hub.usualSuspects ||= {};
+    if (hub.usualSuspects[suspectId]) return;
+    hub.usualSuspects[suspectId] = true;
+    this.save.persist();
+  }
+
   updateEntities(dt, sp) {
     const beat = Audio.beatPhase();
     // The unwrapped chart beat, for anything quantized rather than merely
@@ -10087,14 +10106,7 @@ export class RunState {
       // is outside rewind snapshots and is written only on first sight.
       const suspectId = usualSuspectIdForObstacle(ob, this.cabinet?.id);
       if (suspectId && ob.x <= sightRight && ob.x + ob.w >= this.camX) {
-        const hub = this.save?.slot?.hub;
-        if (hub) {
-          hub.usualSuspects ||= {};
-          if (!hub.usualSuspects[suspectId]) {
-            hub.usualSuspects[suspectId] = true;
-            this.save.persist();
-          }
-        }
+        this.noteUsualSuspect(suspectId);
       }
       // The snap runs on its own clock, not the prop ring's — see the frame
       // choice in draw.js. It keeps counting past TRAP_SNAP_T harmlessly; the
@@ -11206,7 +11218,6 @@ export class RunState {
           } else {
             this.player.axeThrown = true;
             Audio.sfx('launch', { hero: 'grumpos', pitch: 0.9 });
-            if (this.fxRng.chance(0.25)) this.floatText('BOY.', '#ecc3a1');
           }
         }
         pr.t += dt;
@@ -11282,7 +11293,7 @@ export class RunState {
             if (pr.art === 'wrench') this.player.wrenchThrown = false;
             else if (pr.type === 'axe') {
               this.player.axeThrown = false;
-              if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', '#ecc3a1');
+              if (this.fxRng.chance(0.04)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', '#ecc3a1');
             }
           }
         } else if (!disposable) {
@@ -11451,7 +11462,7 @@ export class RunState {
             // (office-2: SHOOT 4 VENDING MACHINES) — a boot or a ram does not.
             if (this.challenge?.type === 'shoot' && ob.type === this.challenge.targetType) {
               this.challenge.count = (this.challenge.count || 0) + 1;
-              this.floatText(`${Math.min(this.challenge.count, this.challenge.n)}/${this.challenge.n}`, '#f6c945');
+              if (this.challenge.count <= this.challenge.n) this.floatText(`${this.challenge.count}/${this.challenge.n}`, '#f6c945');
             }
             if (pr.art === 'bamboo') { pr.live = false; break; }
             if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0 && !pr.returning) { pr.hover = true; pr.hoverX = pr.x; } }
@@ -11486,7 +11497,7 @@ export class RunState {
           // ONE LINE PER SHIMMER, not per round: Clara fires a pair a few
           // pixels apart, and a floatie each reads as the shield answering the
           // same shot several times.
-          if (!(c.shieldT > 0)) this.floatText(this.fxRng.pick(COPTER_DEFLECT_SHORT), '#a8e6ff');
+          if (!(c.shieldT > 0)) this.fxRng.pick(COPTER_DEFLECT_SHORT);   // drawn, not shown: the shimmer says it
           c.shieldT = COPTER_SHIELD_T;
           // AND SHOOTING HIM EARNS THE SAME LOOK. The forcefield already says
           // the round did nothing; the eyeroll says what he thinks of the
@@ -11517,7 +11528,6 @@ export class RunState {
           this.player.deflectFlashT = 0.25;
           Audio.sfx('shield');
           this.score += 25;
-          this.floatText('DEFLECTED', '#a8e6ff');
         } else if (overlaps(playerBox, pbox) && !this.player.invincible) {
           pr.live = false;
           this.takeHit('SHOT BY A DRONE WITH A GRUDGE');
@@ -15737,7 +15747,7 @@ export class RunState {
         this.breakObstacle(ob);
         this.player.rollT = 0;
         this.player.stumbleT = 0.3;
-        this.floatText('SHIELD BASH. EARS RINGING.', '#a8e6ff');
+        this.quip(0.34, 'SHIELD BASH. EARS RINGING.', '#a8e6ff');
         continue;
       }
       // The power slide is a plow — for BOXES only. A crate is furniture in
@@ -16001,7 +16011,7 @@ export class RunState {
       // capsule that lasts slightly longer.
       if (p.def.power === 'rewind') {
         this.floatText('REWIND ARMED: YOUR NEXT MISTAKE UNDOES ITSELF', '#7ce8a0');
-      } else if (res.overcharged) this.floatText('OVERCHARGED', '#f6d33c');
+      }
     } else if (p.def.silver) {
       // Coins and nothing else: the plug it stands in for is already banked,
       // so no plug sting, no objective toast, no score.
@@ -16014,7 +16024,6 @@ export class RunState {
       Audio.sfx('win', { inBeats: this.pickupLineInBeats(p) });
       this.score += 500;
       this.coins += 20;
-      this.floatText('THE HIGHLY NECESSARY GOLDEN APPLIANCE. IT IS A TOASTER.', '#f6d33c');
       // Quiet: the 'win' jingle above is already this plug's sound. The floatie
       // carries the joke, the toast carries the fact that you banked something.
       this.goalToast('BONUS: THE GOLDEN APPLIANCE', true);
@@ -16024,7 +16033,7 @@ export class RunState {
     } else if (p.def.cord) {
       this.bonus.count++;
       Audio.sfx('checkpoint');
-      this.floatText(`CORD PIECE ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
+      if (this.bonus.count <= this.bonus.n) this.floatText(`CORD PIECE ${this.bonus.count}/${this.bonus.n}`, '#48e0c8');
     }
   }
 
@@ -16063,7 +16072,7 @@ export class RunState {
     // is a pratfall, and the cue the pole ride already uses for "gravity is
     // having its way with him" is exactly the right one, at a third the length.
     Audio.sfx('slideWhistle', { dur: SLIP_T, pitch: 0.7 });
-    this.floatText('BANANA. CLASSIC.', '#f6d33c');
+    this.quip(0.25, 'BANANA. CLASSIC.', '#f6d33c');
     // A few skins scatter where his heel went through it. The peel itself stays
     // — it is not breakable, and a peel that vanished on contact would teach
     // the player that running into it is how you clear it.
@@ -16246,7 +16255,7 @@ export class RunState {
       shake(3, 0.2);
       // the orb shatters into glass shards
       burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 12, 18, 140, 0.5, '#a8e6ff', 1, 120, () => this.fxRng.float());
-      this.floatText('SHIELD BROKE. IT DID ITS JOB.', '#a8e6ff');
+      this.quip(0.34, 'SHIELD BROKE. IT DID ITS JOB.', '#a8e6ff');
       this.player.iframes = 1.2;
       if (this.relay.current === 'fernwick' && this.modIds.includes('prophecyCoupon')) this.coins += 50;
       if (absorb.shockwave) {
@@ -16264,7 +16273,7 @@ export class RunState {
       this.player.headless = 3;
       this.player.iframes = 3;
       Audio.sfx('plop');
-      this.floatText("RAMON SCATTERED. REASSEMBLY IS IN PROGRESS.", '#48e0c8');
+      this.quip(0.34, "RAMON SCATTERED. REASSEMBLY IS IN PROGRESS.", '#48e0c8');
       return;
     }
     // Crash test absorbs the consequence only. Everything below — sfx, shake,
@@ -16633,11 +16642,11 @@ export class RunState {
       d.said |= 1;
       const pool = PIT_WORDS.length > 1 ? PIT_WORDS.filter((x) => x !== this.pitWordLast) : PIT_WORDS;
       this.pitWordLast = this.fxRng.pick(pool);
-      this.floatText(this.pitWordLast, '#ffffff', { hold: 0.7, head: true });
+      this.quip(0.34, this.pitWordLast, '#ffffff', { hold: 0.7, head: true });
     }
     if (!(d.said & 2) && d.in) {
       d.said |= 2;
-      if (d.hard) this.floatText('OUCH!', '#ffe680', { hold: 0.9, head: true });
+      if (d.hard) this.quip(0.25, 'OUCH!', '#ffe680', { hold: 0.9, head: true });
     }
   }
 
@@ -17061,6 +17070,14 @@ export class RunState {
     this.floaties = this.floaties.filter((f) => f.t > 0);
   }
 
+  // COLOUR COMMENTARY IS RARE (Peter, 20 Oct 2026): a joke that fires on every use stops
+  // being one and fills the lane the player is reading. `p` is the chance it shows at all.
+  // Math.random, not fxRng: it is only ever cosmetic, and a draw here must not move the
+  // fx stream the replay and the null tests keep in step.
+  quip(p, text, color, opts) {
+    if (Math.random() < p) this.floatText(text, color, opts);
+  }
+
   floatText(text, color, { solid = false, keep = false, hold = 0, wx = null, base = floatBaseY(), head = false } = {}) {
     if (this.recordBackground) return;
     // BY HIS HEAD: a word he says (the pit's GULP, OUCH!) rides just above his head
@@ -17344,7 +17361,14 @@ export class RunState {
     const paperActive = !!this.style.paperSkyStatic;
     // `coversFrame`: the pack paints every pixel itself (Gravity Grid's room, top to bottom),
     // so the sky under it is never seen — it was a full-screen gradient fill a frame for nothing.
-    const skyHidden = paperActive || !!this.style.coversFrame;
+    // A function answers per frame, given whether this is the portrait frame and the
+    // cabinet: for a backdrop that covers the tall frame but leaves a strip at the top of
+    // a landscape jump.
+    // In portrait that fill was 4-7 ms a frame on Crypt, Frost and Neon (20 Oct 2026,
+    // headless iPhone), every pixel of it painted over.
+    const coversFrame = this.style.coversFrame;
+    const skyHidden = paperActive || (typeof coversFrame === 'function'
+      ? !!coversFrame.call(this.style, portraitFrameActive, this.cabinet) : !!coversFrame);
     if (frameShift > 0) {
       if (!skyHidden) {
         const sky = ctx.createLinearGradient(0, frameShift + bgShift, 0, frameShift + bgShift + H);

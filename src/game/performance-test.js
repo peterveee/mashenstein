@@ -204,6 +204,7 @@ export class PerformanceTestState extends AttractState {
     this.panelEl?.remove();this.panelEl=null;
     const controls=document.createElement('div');controls.style.cssText='position:fixed;right:max(8px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));z-index:10000;background:#101823dd;color:white;padding:6px;font:12px system-ui';
     controls.append(document.createTextNode(`${test.id} · full level · ${this.report.qualityMode==='auto'?'Auto quality':'fixed quality'} `));
+    this.levelEl=document.createElement('span');this.levelEl.style.cssText='margin-right:8px;font-variant-numeric:tabular-nums';controls.append(this.levelEl);this.levelText='';this.nextLevelLabelAt=0;this.updateLevelLabel(performance.now());
     const stop=document.createElement('button');stop.textContent='Stop test';stop.style.cssText='padding:12px';stop.onclick=e=>{e.stopPropagation();this.finish('stopped');};
     controls.append(stop);document.body.append(controls);this.panelEl=controls;
     const at=performance.now();
@@ -223,6 +224,7 @@ export class PerformanceTestState extends AttractState {
         this.run.style?.name==='surge'?this.run.style.phase:null);
     } catch(e) { this.report.error=String(e.stack || e); this.finish('error'); return; }
     const now=performance.now();
+    this.updateLevelLabel(now);
     if(this.measuring && this.report.qualityMode==='auto')this.sampleRendererQuality(now);
     if(!this.measuring && this.run.tRun >= 2 && !this.run.introRunning && !this.run.introFreeze && !this.run.zoneCard)this.beginWindow();
     if(this.done || this.run.tRun>this.limit || now-this.caseStarted>Math.max(180000,this.limit*3000)) {
@@ -237,6 +239,14 @@ export class PerformanceTestState extends AttractState {
     this.startingRenderer=rendererDiagnostics();
     this.rendererQualityPath=this.report.qualityMode==='auto'?[qualityPoint(this.startingRenderer,this.run.tRun)]:null;
     this.nextQualitySampleAt=performance.now()+1000;
+  }
+  // Live readout beside Stop test: one tiny textContent write per second, only on change.
+  updateLevelLabel(now) {
+    if(!this.levelEl || now<this.nextLevelLabelAt)return;
+    this.nextLevelLabelAt=now+1000;
+    const r=rendererDiagnostics();
+    const text=`${r.density.toFixed(2)}x · rung ${r.rung+1}/${r.ladder.length}${r.frozen?' · frozen':''}`;
+    if(text!==this.levelText){this.levelText=text;this.levelEl.textContent=text;}
   }
   sampleRendererQuality(now, force = false) {
     if(!this.run || this.report.qualityMode!=='auto' || !this.measuring)return;

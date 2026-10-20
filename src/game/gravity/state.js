@@ -19,7 +19,9 @@ import { GRAVITY_LEVEL as L, GRAVITY_CABINET } from './model.js';
 import { GRAVITY_STAGE_DATA, isGateField } from '../../data/gravity-stages.js';
 import { STAGE_BY_ID } from '../../data/stages.js';
 import { PLAYER_X } from '../player.js';
+import { SCRAPJAW_ID } from '../usualSuspects.js';
 import { drawFloatingBolts, drawMaintenanceVacuum, vacuumShotAheadForView } from '../../sprites/gravity-encounters.js';
+import { garbageCubeVariant } from '../../sprites/vacuum-compactor.js';
 import { gravityMissionStateFor, gravitySeconds, gravityStageDataFor, gravityWorldX,
   VACUUM_LOADED_SECONDS, VACUUM_PREP_SECONDS, VACUUM_SHOT_SPEED, VACUUM_SOURCE_LEAD_SECONDS,
   VACUUM_WARNING_SECONDS, vacuumAttackPhase, vacuumSweepBatches } from './encounters.js';
@@ -449,7 +451,7 @@ export class GravityRunState extends RunState {
           };
           drawMaintenanceVacuum(c, {
             view, time: seconds, seconds, corridor: this.corridor,
-            playerX: PLAYER_X,
+            playerX: PLAYER_X, heroX: PLAYER_X + this.portraitWorldXOffset(), speed: this.baseSpeed(),
             lane: this.gravityLane, flip, flipPrep,
             debrisPatches: this.gravityVacuumDebrisPatches.map(a => ({ ...a, x: a.x - cam })),
             bonusCoins: this.gravityVacuumBonusCoins.map(a => ({ ...a,
@@ -477,7 +479,7 @@ export class GravityRunState extends RunState {
     this.fillGravityEntities();
     this.resetRenderInterpolation();
   }
-  vacuumShotAhead() { return vacuumShotAheadForView(W / (this.camZoom || 1)); }
+  vacuumShotAhead() { return vacuumShotAheadForView(W / (this.camZoom || 1), PLAYER_X + this.portraitWorldXOffset()); }
   positionVacuumAttackLaunches() {
     const shotAhead = this.vacuumShotAhead();
     (this.gravityVacuumAttacks || []).forEach((attack, index) => {
@@ -566,6 +568,8 @@ export class GravityRunState extends RunState {
         ob.gravityAuthoredId = a.id;
         ob.vacuumLaunchAt = a.at;
         ob.vacuumLaunchX = launchX;
+        ob.vacuumVariant = garbageCubeVariant(a.at, cube);
+        ob.vacuumVisualAge = Math.max(0, this.gravityTravelTime() - a.at);
         ob.vacuumLane = a.lane;
         ob.vacuumSourceLane = a.sourceLane;
         ob.x = launchX - VACUUM_SHOT_SPEED * (this.gravityTravelTime() - a.at);
@@ -601,6 +605,9 @@ export class GravityRunState extends RunState {
   gravityTravelTime() { return gravitySeconds(this.distance, this.baseSpeed()); }
   updateGravityMission() {
     const seconds = this.gravityTravelTime();
+    // The robot slides in from the right over the first two seconds
+    // (drawMaintenanceVacuum); by one it is well into the frame.
+    if (this.gravityStageData.sequences && seconds >= 1) this.noteUsualSuspect(SCRAPJAW_ID);
     this.positionVacuumAttackLaunches();
     for (const attack of this.gravityVacuumAttacks || []) {
       if (seconds >= attack.at - VACUUM_PREP_SECONDS && seconds < attack.at
@@ -614,8 +621,9 @@ export class GravityRunState extends RunState {
         this.gravityVacuumCues.load.push(attack.id);
         Audio.sfx('vacuumLoad');
       }
+      const dischargeAt=attack.at - VACUUM_WARNING_SECONDS * .8;
       const flightSeconds = this.vacuumShotAhead() / (this.baseSpeed() + VACUUM_SHOT_SPEED);
-      if (seconds >= attack.at && seconds <= attack.at + flightSeconds
+      if (seconds >= dischargeAt && seconds <= attack.at + flightSeconds
         && !this.gravityVacuumCues.launch.includes(attack.id)) {
         this.gravityVacuumCues.launch.push(attack.id);
         Audio.sfx('vacuumLaunch');
@@ -642,6 +650,7 @@ export class GravityRunState extends RunState {
     for (const ob of this.gravityVacuumShots || []) {
       const age = seconds - ob.vacuumLaunchAt;
       ob.x = ob.vacuumLaunchX - VACUUM_SHOT_SPEED * Math.max(0, age);
+      ob.vacuumVisualAge = Math.max(0, age);
       // Keep the cube and its trailing dust until they have fully left the camera.
       ob.live = age >= 0 && ob.x + ob.w >= this.camX - 80;
     }

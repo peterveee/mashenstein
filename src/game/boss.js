@@ -192,7 +192,8 @@ export class BossState extends RunState {
         this.bossHp--;
         shake(3, 0.2);
         Audio.sfx('boom');
-        this.floatText(this.rng.chance(BOSS_LONG_CHANCE) ? 'FORM 27-B: DAMAGE DISPUTE. DENIED.' : this.rng.pick(BOSS_HIT_SHORT), '#f6d33c');
+        const line = this.rng.chance(BOSS_LONG_CHANCE) ? 'FORM 27-B: DAMAGE DISPUTE. DENIED.' : this.rng.pick(BOSS_HIT_SHORT);
+        this.quip(0.34, line, '#f6d33c');   // drawn either way: the rng stream is gameplay
       }
     }
 
@@ -220,7 +221,8 @@ export class BossState extends RunState {
       this.bossHp--;
       shake(3, 0.2);
       Audio.sfx('boom');
-      this.floatText(this.rng.chance(BOSS_LONG_CHANCE) ? 'THAT ONE DIDN\'T COUNT. - EGGSHELL' : this.rng.pick(BOSS_DEFLECT_SHORT), '#f6d33c');
+      const line = this.rng.chance(BOSS_LONG_CHANCE) ? 'THAT ONE DIDN\'T COUNT. - EGGSHELL' : this.rng.pick(BOSS_DEFLECT_SHORT);
+      this.quip(0.34, line, '#f6d33c');
     }
   }
 

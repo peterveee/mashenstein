@@ -1,7 +1,8 @@
 // Review-only intake designs. Every option keeps MAW's body, hose endpoints,
 // outlet and gameplay timing; only the flexible tube and pickup head change.
 import { VACUUM_INK as INK, vacuumBox as box, vacuumOval as oval,
-  vacuumLine as line, drawVacuumMawBody } from '../sprites/vacuum-compactor.js';
+  vacuumLine as line, drawVacuumMawBody, drawVacuumSpiralHose,
+  drawVacuumSpiralHead } from '../sprites/vacuum-compactor.js';
 export { drawVacuumRobotStudy, VACUUM_BAKEOFF_LOOP } from './vacuum-robot-candidates.js';
 
 function path(c,p) {
@@ -81,23 +82,6 @@ function glassHead(c,{time=0,active=false}={}) {
   for(const x of [-14,14])oval(c,x,2,1.5,1.5,'#3c585c');
 }
 
-function spiralHose(c,p) {
-  stroke(c,p,INK,7.8);stroke(c,p,'#4c4857',6.2);stroke(c,p,'#84768a',4.9);
-  for(let t=.07;t<.95;t+=.052) {
-    const q=point(p,t),r=point(p,Math.min(.99,t+.022));
-    line(c,q.x-q.nx*2.5,q.y-q.ny*2.5,r.x+r.nx*2.5,r.y+r.ny*2.5,'#c0b59c',.82);
-  }
-  ferrule(c,p,'#d0d89b');
-}
-function spiralHead(c) {
-  oval(c,-2,-3,3.5,2.7,'#756d7c');
-  shape(c,[[-15,-2],[-12,-5],[12,-5],[15,-2],[16,2],[12,5],[-12,5],[-16,2]],'#b6c369');
-  box(c,-12,-2,24,4,'#394a4c',1.2);
-  for(let x=-10;x<=10;x+=3.5)oval(c,x,4.5,1.1,1.1,'#e6dfae');
-  for(let x=-12;x<=12;x+=2.2)line(c,x,5.2,x,7.1,'#5a5b55',.6);
-  line(c,-9,-3,9,-3,'#e5e8b0',.8);
-}
-
 export const VACUUM_HOSE_BAKEOFF = [
   {id:'A',name:'BELLOWS',subtitle:'Pleated industrial tube + wide broom lip',color:'#d5c5a1',
     draw:drawVacuumMawBody,drawHose:bellowsHose,drawBrush:bellowsHead,
@@ -109,6 +93,6 @@ export const VACUUM_HOSE_BAKEOFF = [
     draw:drawVacuumMawBody,drawHose:glassHose,drawBrush:glassHead,
     note:'The hose briefly shows rubbish moving inside it; the head has a visible sweeping chamber.'},
   {id:'D',name:'SPIRAL',subtitle:'Wrapped service hose + double-roller pickup',color:'#d0d89b',
-    draw:drawVacuumMawBody,drawHose:spiralHose,drawBrush:spiralHead,
-    note:'A heavier coiled hose and compact mechanical head, coloured to tie into MAW’s lime jaw.'},
+    draw:drawVacuumMawBody,drawHose:drawVacuumSpiralHose,drawBrush:drawVacuumSpiralHead,
+    note:'Selected for 7-2: a slim wrapped hose and compact pickup head, coloured to tie into MAW’s lime jaw.'},
 ];

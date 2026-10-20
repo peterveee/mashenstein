@@ -26,6 +26,20 @@ import {
   noiseGateSettings, prepareEngineWorklets,
 } from './engine-worklets.js';
 
+// Tone's CrossFade wires the context's shared constant into its own panner and its
+// dispose() never unwires it (Zero, which does the same, does). The constant plays for
+// the life of the page, so every disposed CrossFade — inside every Tone effect's wet/dry
+// — stayed reachable and kept rendering: a few panners per song change, for good
+// (work/local/_jukebox-leak.mjs, 20 Oct 2026). Unwire it on the way out.
+if (Tone.CrossFade && !Tone.CrossFade.prototype.__unwiresConstant) {
+  const dispose = Tone.CrossFade.prototype.dispose;
+  Tone.CrossFade.prototype.dispose = function () {
+    try { this.context.getConstant(1).disconnect(this._panner); } catch { /* already unwired */ }
+    return dispose.call(this);
+  };
+  Tone.CrossFade.prototype.__unwiresConstant = true;
+}
+
 // Note divisions for tempo-synced effects, in beats — eight bars down to a 1/32,
 // with the dotted and triplet values in between. One table for delay times and for
 // modulation rates alike: they read in opposite directions (a delay wants the short

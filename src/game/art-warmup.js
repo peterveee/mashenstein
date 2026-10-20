@@ -67,7 +67,7 @@ function jobsFor(type, def, kind, skin) {
 // Every obstacle type this cabinet's patterns can place, plus the pickups any
 // stage can drip. Cabinet patterns name their cells by type, so the list is
 // exact rather than "warm everything and hope".
-function stageJobs(cabinet) {
+function stageJobs(cabinet, toaster = null) {
   const jobs = [];
   const seen = new Set();
   const add = (type, def, kind, skin) => {
@@ -87,7 +87,13 @@ function stageJobs(cabinet) {
       for (const skin of def.skins || []) add(cell.t, def, 'obstacle', skin);
     }
   }
-  for (const [type, def] of Object.entries(PICKUPS)) add(type, def, 'pickup');
+  // A run offers ONE toaster — gold, or silver once the TOASTER plug is banked — and
+  // each is 96 frames, ~37MB of canvas. Warming both held 74MB on every stage for art
+  // half of which could never spawn (gravity-2 on the iPhone, 19 Oct: killed with
+  // ~100MB of prop canvas resident). Given the run's own, the other is left lazy.
+  const otherToaster = toaster === 'appliance' ? 'applianceSilver'
+    : toaster === 'applianceSilver' ? 'appliance' : null;
+  for (const [type, def] of Object.entries(PICKUPS)) if (type !== otherToaster) add(type, def, 'pickup');
 
   // Frame zero of everything first: an object that appears before its cycle is
   // ready still shows the right art, just not yet moving. The long cycles
@@ -118,14 +124,14 @@ function backdropJobs(cabinet, stageIndex) {
   return [];
 }
 
-export function beginStageArtWarmup(cabinet, stageIndex = 1) {
+export function beginStageArtWarmup(cabinet, stageIndex = 1, toaster = null) {
   const id = cabinet?.id || null;
   if (builtFor === id && queuedStage === stageIndex && cursor < queue.length) return;   // already queued, keep going
   queuedStage = stageIndex;
   const changed = builtFor !== id;
   builtFor = id;
   // The stage's own bank: Corporate Kombat's floors each deal their own furniture.
-  queue = [...backdropJobs(cabinet, stageIndex), ...stageJobs(cabinetForStage(cabinet, stageIndex))];
+  queue = [...backdropJobs(cabinet, stageIndex), ...stageJobs(cabinetForStage(cabinet, stageIndex), toaster)];
   cursor = 0;
   crumb('warmup begin', `${id} ${stageIndex} jobs=${queue.length}`);
   if (changed && propCacheStats().residentBytes > CACHE_BUDGET_BYTES) {
@@ -178,5 +184,5 @@ export function stepArtWarmup(budgetMs = 2) {
 }
 
 // For tests and diagnostics.
-export function artWarmupQueueFor(cabinet) { return stageJobs(cabinet); }
+export function artWarmupQueueFor(cabinet, toaster = null) { return stageJobs(cabinet, toaster); }
 export function resetArtWarmup() { queue = []; cursor = 0; builtFor = null; queuedStage = null; }

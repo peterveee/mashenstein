@@ -1,6 +1,7 @@
 // Review-only bodies. The brush, rubbish, crusher and cube use campaign art.
 import { VACUUM_INK as INK, vacuumBox as box, vacuumOval as oval, vacuumLine as line,
-  drawCompactorWindow, drawVacuumAssembly, drawVacuumDebris, drawGarbageCube, vacuumBrushPose } from '../sprites/vacuum-compactor.js';
+  drawCompactorWindow, drawVacuumAssembly, drawVacuumDebris, drawGarbageCubeImpact,
+  garbageCubeVariant, vacuumBrushPose } from '../sprites/vacuum-compactor.js';
 import { vacuumAttackPhase, VACUUM_PREP_SECONDS } from '../game/gravity/encounters.js';
 import { SPACE_LOOKS, drawSpaceRoom } from './space-look-candidates.js';
 import { drawGravityHazard } from '../sprites/gravity-encounters.js';
@@ -133,8 +134,8 @@ export function drawVacuumRobotStudy(c,time,candidate,{lane=0,width=640,height=4
     // Once landed, the cube has no world motion; this gallery camera travels at 20.
     const age=t-at,xx=x-age*20;
     c.save();if(lane){c.translate(0,-corridor);c.scale(1,-1);}
-    for(let i=0;i<(at===6.4?2:1);i++) drawGarbageCube(c,xx+i*24,-7.5);
-    if(age<.3){c.globalAlpha=1-age/.3;for(let i=-1;i<=1;i++)oval(c,xx+i*(6+age*20),-2-age*5,1.2,.6,'#b7b899');}
+    for(let i=0;i<(at===6.4?2:1);i++)
+      drawGarbageCubeImpact(c,xx+i*24,-7.5,age,garbageCubeVariant(at,i));
     c.restore();
   }
   const heroX=view*.19;

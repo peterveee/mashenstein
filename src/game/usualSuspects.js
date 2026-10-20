@@ -1,6 +1,8 @@
 import { OBSTACLES } from './entities.js';
 import { CRYPT_ZOMBIE_ROLES, cryptZombieRoleInOrder } from '../sprites/crypt-enemies.js';
 
+export const SCRAPJAW_ID = 'scrapjaw';
+
 const ANIMAL_LABELS = {
   goose: 'The Honker', dogSnarler: 'Snarl Barkley',
   rattlesnake: 'The Rattler', bobcat: 'Dust Runner',
@@ -16,12 +18,15 @@ function readableAnimalName(id) {
 }
 
 // Keep the gallery in roughly the order players meet the cast: Field Service,
-// Speed Zone, Frost Fortress, Crypt Shift, then Terminal Velocity.  This list
+// Speed Zone, Rhythm Bankruptcy, Frost Fortress, Crypt Shift, Terminal
+// Velocity, then Gravity Grid. The buzzbird is swapped out of the first two
+// cabinets (bees, the saucer), so Rhythm's shared bank is where it is met.  This list
 // is intentionally explicit so adding a new animal does not silently drop it
 // into an arbitrary registry position.
 const ANIMAL_ORDER = [
   'goose', 'finishDog', 'dogSnarler',
   'rattlesnake', 'bobcat',
+  'buzzbird',
   'snowman',
   'dogFeral', 'cryptPanther', 'catFury',
   'catPythagoras', 'catManeki', 'catMechaNeon', 'catNekoGhost', 'catNeonBright',
@@ -40,7 +45,7 @@ export const USUAL_SUSPECTS = [
   { id: 'beeSwarm', type: 'beeSwarm', label: 'Sting Operation', aliases: ['beeSwarmHigh'] },
   { id: 'scarecrow', type: 'scarecrow', label: 'The Straw Boss' },
   { id: 'saucer', type: 'saucer', label: 'Close Encounter' },
-  ...selectAnimals('rattlesnake', 'bobcat'),
+  ...selectAnimals('rattlesnake', 'bobcat', 'buzzbird'),
   { id: 'snowman', type: 'snowmanBig', label: 'The Cold Shoulder', aliases: ['snowman', 'snowmanBig'] },
   ...selectAnimals('dogFeral', 'cryptPanther', 'catFury'),
   ...CRYPT_ZOMBIE_ROLES.map((role) => ({
@@ -48,6 +53,9 @@ export const USUAL_SUSPECTS = [
     label: ({ usher: 'Last Call', gardener: 'Grave Bloomer', clerk: 'Dead Letter' })[role],
   })),
   ...selectAnimals('catPythagoras', 'catManeki', 'catMechaNeon', 'catNekoGhost', 'catNeonBright'),
+  // Gravity Grid's maintenance robot is a set piece, not an obstacle, so it
+  // has its own painter in the Trophy Room and is logged by the gravity run.
+  { id: SCRAPJAW_ID, label: 'Scrapjaw', painter: 'scrapjaw' },
 ];
 
 export function usualSuspectIdForObstacle(ob, cabinetId) {

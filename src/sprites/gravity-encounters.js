@@ -1,17 +1,22 @@
-import { drawGarbageCube, drawVacuumAssembly, drawVacuumDebris, vacuumBrushPose } from './vacuum-compactor.js';
+import { drawGarbageCubeImpact, drawVacuumAssembly, drawVacuumDebris, vacuumBrushPose, vacuumBrushScrub, VACUUM_INTAKE_LIFE } from './vacuum-compactor.js';
 // Gameplay-owned props and ambience. The station painting remains independent.
 const INK = '#14222b', STEEL = '#526b79', LIGHT = '#d9ece7';
 const GOLD = '#e8b947', PURPLE = '#b072cb', HOT = '#ff8061';
 export const VACUUM_SHOT_AHEAD = 202;
 export const VACUUM_ROBOT_AHEAD = 202;
-export function vacuumRobotAheadForView(view) {
+// `heroX` is where the hero stands across the view (world units from its left edge): 59
+// in landscape, the portrait anchor on a phone held upright, which stands him further
+// left. Measured from 59 there, the shell parked half a screen short of the right edge,
+// right on top of him (Peter, 20 Oct 2026: "move it close to the screen edge on the
+// right to give a bit more runway for the garbage cubes").
+export function vacuumRobotAheadForView(view, heroX = 59) {
   const width=Number(view) || 480;
-  // Keep the compact shell inside portrait's right edge (player x=59,
-  // half-width=25), while letting it hover farther ahead on wider screens.
-  return Math.min(VACUUM_ROBOT_AHEAD, Math.max(96, width * 0.6), width - 88);
+  // Keep the compact shell inside the right edge (half-width 25, 4 to spare), while
+  // letting it hover farther ahead on wider screens.
+  return Math.min(VACUUM_ROBOT_AHEAD, Math.max(96, width * 0.6), width - heroX - 29);
 }
-export function vacuumShotAheadForView(view) {
-  return vacuumRobotAheadForView(view) - (VACUUM_ROBOT_AHEAD - VACUUM_SHOT_AHEAD);
+export function vacuumShotAheadForView(view, heroX = 59) {
+  return vacuumRobotAheadForView(view, heroX) - (VACUUM_ROBOT_AHEAD - VACUUM_SHOT_AHEAD);
 }
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 function box(c, x, y, w, h, fill, r = 1.5) {
@@ -408,7 +413,7 @@ export function drawGravityHazard(c, e, x, bottom, t) {
     }
     disc(c, 1, -3.5, 2, LIGHT); disc(c, e.w - 1, -3.5, 2, LIGHT);
   } else if (e.type === 'vacuumShot') {
-    drawGarbageCube(c, e.w / 2, -e.h / 2);
+    drawGarbageCubeImpact(c, e.w / 2, -e.h / 2, e.vacuumVisualAge ?? 1, e.vacuumVariant);
   } else if (e.type === 'maintenanceRollers') {
     // Exposed counter-rotating cutter drums. Teeth break the upper silhouette;
     // no protective bar or fan spokes suggest a safe surface to stand on.
@@ -467,13 +472,27 @@ function drawVacuumBonusCoin(c, x, y, scale=1) {
   c.strokeStyle='#fff0aa';c.lineWidth=.7;c.stroke();c.restore();
 }
 
-export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, playerX, attacks, sequences, departAt=null, lane=0, flip=null, flipPrep=0, sweep=[], debrisPatches=[], bonusCoins=[] }) {
+// Which piles the head has taken, per stage (keyed by its sequences table): id → { t, p,
+// took } — when it was first touched, the most of it ever taken, when it was mostly in.
+// Entries touched after `seconds` are dropped, so a rewind puts that litter back.
+const VACUUM_LEDGERS = new WeakMap();
+function vacuumLedger(key, seconds) {
+  let ledger = VACUUM_LEDGERS.get(key);
+  if (!ledger) VACUUM_LEDGERS.set(key, ledger = new Map());
+  for (const [id, e] of ledger) if (e.t > seconds) ledger.delete(id);
+  return ledger;
+}
+function intakeSeed(id) {
+  let h=0; for(const ch of String(id)) h=(h*31+ch.charCodeAt(0))>>>0;
+  return h%997;
+}
+export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, playerX, heroX = 59, speed = 0, attacks, sequences, departAt=null, lane=0, flip=null, flipPrep=0, sweep=[], debrisPatches=[], bonusCoins=[] }) {
   const last = sequences.at(-1).end;
   const exitAt = departAt ?? last, exitDuration = 1.25;
   const eased = p => { const u = clamp(p, 0, 1); return u * u * (3 - 2 * u); };
   const arrival = eased((2 - seconds) / 1.5);
   const departure = eased((seconds - exitAt) / exitDuration);
-  const x = playerX + vacuumRobotAheadForView(view) + (arrival + departure) * (view + 60);
+  const x = playerX + vacuumRobotAheadForView(view, heroX) + (arrival + departure) * (view + 60);
   const y = -corridor * .5;
   const reducedMotion = typeof window !== 'undefined'
     && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -482,31 +501,63 @@ export function drawMaintenanceVacuum(c, { view, time, seconds, corridor, player
   const attack = active || {phase:'sweep',progress:.5,lane,sourceLane:1-lane};
   const brush = vacuumBrushPose({ x, y, corridor, attack });
   const bonusById=new Map(bonusCoins.map(a=>[a.id,a]));
+  // Litter flies to the head where it is drawn, stroking (drawVacuumAssembly).
+  // The screen's right edge in these coordinates (portrait stands the hero left of 59).
+  const rightEdge = view + playerX - heroX;
+  const scrub=reducedMotion ? 0 : vacuumBrushScrub(time, true, rightEdge-16-brush.x).dx;
+  // THE HEAD COLLECTS WHAT IT PASSES OVER (Peter, 20 Oct 2026: "as we go left to right
+  // don't forget to suck up all debris on the way"): litter on the working rail is taken
+  // by the head where it is drawn, not by a fixed point behind it. The head is dragged
+  // back slower than the floor runs (vacuumBrushScrub), so its lead over any piece only
+  // ever grows and nothing it has taken comes back.
+  const headX = brush.x + scrub;
+  // ONLY WHAT THE HEAD HAS PASSED OVER GOES (Peter, 20 Oct 2026: "only get rid of debris
+  // that has had the brush head go over it... it is ok if we miss some"). Every pile —
+  // rail litter, sweep batches and a cube's intake — is taken by the head where it is
+  // drawn, on the rail it is working, and nothing else removes it. A pile keeps the most
+  // it was ever taken (so a gravity turn mid-pickup does not put it back), in a ledger
+  // that forgets anything taken after the clock on a rewind.
+  const ledger = vacuumLedger(sequences, seconds);
+  const intake=[];
+  const progressOf = (id, sx, working) => {
+    let e = ledger.get(id);
+    const live = working ? clamp((headX - sx + 20) / 36, 0, 1) : 0;
+    if (live > 0 && (!e || live > e.p)) {
+      e = { t: e?.t ?? seconds, p: live, took: e?.took ?? null };
+      if (e.took == null && live >= .6) e.took = seconds;
+      ledger.set(id, e);
+    }
+    // What the brush has lifted in the last second or so goes to the mouth
+    // (drawMouthIntake): two scraps per pickup, keyed off the pile.
+    if (e?.took != null) {
+      const age = seconds - e.took, key = intakeSeed(id);
+      if (age > 0 && age < VACUUM_INTAKE_LIFE) intake.push({ age, seed: key }, { age: age - .08, seed: key + 3 });
+    }
+    return e ? e.p : 0;
+  };
+  const onRail = (lane) => brush.sourceLane === lane && Math.abs(brush.y - (lane ? -corridor : 0)) < 18;
   for(const patch of debrisPatches) {
     if(patch.x < -40 || patch.x > view+40) continue;
-    const onRail = brush.sourceLane === patch.lane
-      && Math.abs(brush.y - (patch.lane ? -corridor : 0)) < 18;
-    const progress=onRail ? clamp((brush.x-patch.x+20)/36,0,1) : 0;
+    const progress=progressOf(patch.id, patch.x, onRail(patch.lane));
     const railY=patch.lane?-corridor:0;
-    drawVacuumDebris(c, {x:patch.x,railY,lane:patch.lane,progress,brushX:brush.x});
+    drawVacuumDebris(c, {x:patch.x,railY,lane:patch.lane,progress,brushX:headX});
     if(bonusById.has(patch.id) && progress<1)
-      drawVacuumBonusCoin(c,patch.x+3+(brush.x-patch.x-3)*progress,
+      drawVacuumBonusCoin(c,patch.x+3+(headX-patch.x-3)*progress,
         railY+(patch.lane?5:-7),1-progress*.55);
   }
   for(const a of sweep) {
     if(a.sourceX < -40 || a.sourceX > view+40) continue;
     drawVacuumDebris(c,{x:a.sourceX,railY:a.sourceLane?-corridor:0,lane:a.sourceLane,
-      progress:clamp((seconds-a.at+.18)/.36,0,1),brushX:x-35});
+      progress:progressOf(a.id, a.sourceX, onRail(a.sourceLane)),brushX:headX});
   }
   for (const a of attacks) {
-    if(a.phase !== 'waiting' && a.phase !== 'suction') continue;
     if(a.sourceX < -40 || a.sourceX > view+40) continue;
-    const brush = vacuumBrushPose({ x, y, corridor, attack: a });
     drawVacuumDebris(c, { x:a.sourceX, railY:a.sourceLane ? -corridor : 0,
-      lane:a.sourceLane, progress:a.phase === 'suction' ? a.progress : 0, brushX:brush.x });
+      lane:a.sourceLane, progress:progressOf(a.id, a.sourceX, onRail(a.sourceLane)), brushX:headX });
   }
   if(seconds < .5 || seconds > exitAt + exitDuration) return;
-  drawVacuumAssembly(c, { x, y, corridor, attack, time, lane, flip, flipPrep, reducedMotion });
+  drawVacuumAssembly(c, { x, y, corridor, attack, time, lane, flip, flipPrep, reducedMotion,
+    intake: active ? null : intake, rightEdge });
   for(const coin of bonusCoins) {
     if(seconds < coin.ejectAt-.22 || seconds >= coin.ejectAt) continue;
     const p=clamp((seconds-(coin.ejectAt-.22))/.22,0,1);

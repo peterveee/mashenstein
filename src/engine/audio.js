@@ -7616,6 +7616,7 @@ class AudioSys {
       // laneList, not LANES: a layer needs a strip of its own, and it arrives with the
       // mix rather than with the engine, so this is the first moment it can be built.
       for (const { key } of laneList(bank)) this.mixer.ensureLane(key);
+      this._pruneLayerStrips(bank);
       // Delay 1's time, feedback and damping are AudioSys nodes. One call with the
       // defaults under the mix's own, rather than the defaults and then the mix: each
       // glides, and a glide to the default time and back is heard as the echo bending.
@@ -7701,6 +7702,27 @@ class AudioSys {
   }
 
   /** A held mix that will never be wanted: a newer one replaces it, or its context went. */
+  /**
+   * Take down the strips of LAYERS the song now mixed does not have (mixer dropLane).
+   * Every song's layers used to stay built for the rest of the session — a jukebox tour
+   * left ~800 nodes standing, on a phone that was then killed for memory (20 Oct 2026).
+   *
+   * A second late, and checked again then against whatever mix is current: the last
+   * song's tail on those lanes (cut over SONG_FADE) is long gone by then, and a desk
+   * that deletes a layer and undoes it inside the second keeps the strip it had.
+   * Not offline: a render is one song, and its graph goes when it ends.
+   */
+  _pruneLayerStrips(bank) {
+    this._laneKeys = new Set(laneList(bank).map((l) => l.key));
+    if (this.offline || !this.mixer?.dropLane) return;
+    const stale = () => this.mixer.stripKeys.filter((k) => !this._laneKeys.has(k));
+    if (!stale().length || this._pruneTimer != null) return;
+    this._pruneTimer = setTimeout(() => {
+      this._pruneTimer = null;
+      for (const key of stale()) this.mixer.dropLane(key);
+    }, 1000);
+  }
+
   _dropPendingMix() {
     const p = this._pendingMix;
     if (!p) return;

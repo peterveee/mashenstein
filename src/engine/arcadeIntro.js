@@ -24,6 +24,8 @@
 // blitted back on the frame's own transform, which is also what makes portrait's taller
 // frame come out covered.
 
+import { isPhonePortraitPresentation } from './renderer.js';
+
 // ------------------------------------------------------------------ scratch
 function makeCanvas(w, h) {
   const c = document.createElement('canvas');
@@ -210,12 +212,14 @@ export const CRT_FULL = { grille: grilleTile, key: 'grille', lift: 0.30, bloom: 
 export const CRT_SOFT = { grille: grilleSoftTile, key: 'grilleSoft', lift: 0.40, bloom: 0.10, vignette: 0.38 };
 
 // A picture on the tube: phosphor stripes multiplied over it, the picture screened back
-// for brightness, a bloom off the 16px level, and a vignette. `k` is device px per frame px.
+// for brightness, a bloom off the 16px level, and a vignette. `k` is device px per frame px;
+// `o.size` the grille's repeat in frame px (3 unless the look says otherwise).
 export function crtPass(ctx, k, picture, o) {
   picture(ctx);
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';
-  fillPattern(ctx, cellTile(o.key, 3, 3, k, o.grille), 3, 3);
+  const g = o.size || 3;
+  fillPattern(ctx, cellTile(o.key, g, g, k, o.grille), g, g);
   ctx.globalCompositeOperation = 'screen';
   ctx.globalAlpha = o.lift;
   picture(ctx);
@@ -284,8 +288,12 @@ export function arcadeLandingDrop(since) {
 }
 
 // The backdrop as the arcade picture, on a context already in FRAME units (0..w x 0..h).
-export function drawArcadeLook(ctx, s, k) {
-  const screen = () => crtPass(ctx, k, inkScreen(8), CRT_SOFT);
+// `cell` is the pixel size in frame units and `grille` the phosphor stripes' repeat. The
+// run passes 8 and 8, or 16 and 16 on a phone held upright (see PORTRAIT_CELL); the
+// defaults are the bake-off's 8 and 3.
+export function drawArcadeLook(ctx, s, k, cell = 8, grille = 3) {
+  const look = grille === 3 ? CRT_SOFT : { ...CRT_SOFT, size: grille };
+  const screen = () => crtPass(ctx, k, inkScreen(cell), look);
   if (s <= 0) screen(); else switchOff(ctx, s, screen, blackTube(ctx));
 }
 
@@ -341,9 +349,39 @@ export function drawArcadeIntroBackdrop(ctx, { base, w, h, s, paintBg, fill }) {
     g.setTransform(toLocal);
     paintBg(g);
   }, fill, w, h);
+  // THE LOOK IS COMPOSED SMALL, THEN BLITTED ONCE (19 Oct 2026). Composed straight onto
+  // the frame it was five full-screen passes at device resolution, three of them blends
+  // (multiply, screen, lighter) — plumber-1's first bars ran at twice the frame time of
+  // the paper world (17.6 ms against 8.3 in an iPad-sized headless page), and Peter felt
+  // it on the iPad. Nothing in it is finer than a frame px (8px cells, a 3px grille, a
+  // vignette), so it is composed at COMPOSE_SCALE px per frame px and laid on the frame in
+  // one nearest-neighbour drawImage. At 1 it measured 15.0 ms against 14.2 with no CRT at
+  // all (2x: 22.5; straight onto the frame: 28.7), and side by side the grille is the same.
+  const cs = Math.min(COMPOSE_SCALE, deviceScale(ctx));
+  const cw = Math.round(frame.pw * cs), ch = Math.round(frame.ph * cs);
+  if (!composed || composed.w !== cw || composed.h !== ch) composed = makeCanvas(cw, ch);
+  const g = composed.ctx;
+  g.setTransform(cs, 0, 0, cs, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  const upright = isPhonePortraitPresentation();
+  drawArcadeLook(g, s, cs, upright ? PORTRAIT_CELL : 8, upright ? PORTRAIT_GRILLE : LANDSCAPE_GRILLE);
   ctx.save();
   ctx.setTransform(base);
   ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
-  drawArcadeLook(ctx, s, deviceScale(ctx));
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(composed.canvas, 0, 0, cw, ch, 0, 0, frame.pw, frame.ph);
   ctx.restore();
 }
+const COMPOSE_SCALE = 1;
+// THE PHONE HELD UPRIGHT GETS DOUBLE CELLS (Peter, 20 Oct 2026). The cells are frame
+// units, 60 across either way, so on the glass they are less than half landscape's size
+// (the phone's narrow side), and portrait magnifies the backdrop ~1.8x behind them: at 8
+// they read as fine mosaic against the scenery, not an arcade. The grille doubles with
+// them: 16 upright is landscape's 8 at the same size on the glass (Peter, 20 Oct 2026).
+const PORTRAIT_CELL = 16;
+const PORTRAIT_GRILLE = 16;
+// And landscape keeps its 8-unit pixels under a grille of 8, not 3 (Peter, 20 Oct 2026,
+// C of six): the stripes visible as stripes, the screen read as a screen.
+const LANDSCAPE_GRILLE = 8;
+let composed = null;

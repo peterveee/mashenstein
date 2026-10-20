@@ -15,6 +15,7 @@ import { W, clientToLogical } from '../engine/renderer.js';
 import { portraitMenuActive } from '../engine/portrait-menu.js';
 import { formatBuildTime } from '../engine/build-time.js';
 import { crumbReport, lastCrash } from '../engine/diag.js';
+import { glitchReport } from '../engine/glitch-log.js';
 import { PanelScreen, PANEL } from './panel-screen.js';
 import { exportedLabel } from './save-file.js';
 
@@ -122,7 +123,7 @@ export class CrashLogState extends PanelScreen {
     if (this.busy) return;
     let sent;
     try {
-      sent = this.send(crumbReport());
+      sent = this.send(`${crumbReport()}\n\n${glitchReport()}`);
     } catch (e) {
       this.say('bad', 'THIS DEVICE WOULD NOT SEND THE LOG.');
       Audio.sfx('uiBad');

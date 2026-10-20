@@ -360,6 +360,12 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     try { from.disconnect(inGain); } catch { /* not wired */ }
     try { outGain.disconnect(to); } catch { /* not wired */ }
     try { sleeper?.disconnect(to); } catch { /* not wired */ }
+    // inGain feeds the first link (and its dry path), and it outlives every chain. Left
+    // wired, it kept a replaced chain's first effect reachable from a live node, which in
+    // turn held the rest: every song change left the last song's inserts in memory for
+    // good, ~65-100 nodes a song (work/local/_jukebox-leak.mjs, 20 Oct 2026 — the jukebox
+    // session before an iPhone memory kill). It also kept a bypassed link fed.
+    try { inGain.disconnect(); } catch { /* not wired */ }
     for (const link of chain) {
       try { (link.node.output || link.node).disconnect(); } catch { /* fine */ }
       try { link.muteDry.disconnect(); } catch { /* fine */ }
@@ -563,6 +569,7 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
       try { from.disconnect(inGain); } catch { /* not wired */ }
       try { from.disconnect(to); } catch { /* not wired */ }
       try { outGain.disconnect(); } catch { /* not wired */ }
+      try { inGain.disconnect(); } catch { /* not wired */ }
       try { sleeper?.disconnect(); } catch { /* not wired */ }
     },
     get awake() { return !sleeper || awake; },
@@ -888,6 +895,7 @@ export function createMixer(ctx, {
     sink.gain.value = 0;
     Tone.connect(m, sink);
     sink.connect(ctx.destination);
+    m._sink = sink;   // so a strip that is taken down can unwire it (dropLane)
     return m;
   };
 
@@ -1731,6 +1739,27 @@ export function createMixer(ctx, {
       },
       _commitScheduledState: commitState,
       _clearScheduledState: () => pendingState.clear(),
+      /**
+       * Take the whole strip out of the graph, for good. Every way in and out is unwired —
+       * the route to the mix, the sends, the meter's sink to the destination and the
+       * section switch's keep-alive — because a node still wired to a live one stays in
+       * memory however unreferenced it is. Only ever a layer's strip; see dropLane.
+       */
+      _dispose() {
+        if (routeFade) routeFade.finish();
+        for (const t of sendDrop.values()) clearTimeout(t);
+        sendDrop.clear();
+        barSwitch.clear();
+        slot.dispose();
+        if (meter) {
+          try { meter._sink.disconnect(); } catch { /* already gone */ }
+          try { meter.dispose(); } catch { /* already gone */ }
+        }
+        for (const n of [dry, wet, pre, frozen, laneEq.input, laneEq.output, vol, auto, pres,
+          panner, widthNode.input, widthNode.output, monitor, ...sends.values()]) {
+          try { n.disconnect(); } catch { /* not wired */ }
+        }
+      },
     };
     strips.set(key, strip);
     // A strip built while a send is soloed has to arrive already silenced on its dry
@@ -1753,6 +1782,7 @@ export function createMixer(ctx, {
   // benefit and a real regression, the lazy version is gone. See
   // work/local/standing-graph-findings.md.
   for (const { key } of LANES) makeStrip(key);
+  const CANONICAL_LANES = new Set(LANES.map((l) => l.key));
 
   // Master limiter — OFF by default, and deliberately so.
   //
@@ -1958,6 +1988,24 @@ export function createMixer(ctx, {
       if (!key) return null;
       if (!strips.has(key)) makeStrip(key);
       return strips.get(key);
+    },
+    /**
+     * Take a LAYER's strip down — the other half of ensureLane. A layer belongs to the
+     * song that declared it, and its strip (~27 nodes, plus its inserts) used to stay
+     * built and wired for the rest of the session: a jukebox tour left ~800 nodes of other
+     * songs' layers standing (work/local/_jukebox-leak.mjs, 20 Oct 2026). The engine's
+     * own lanes are never dropped — they are built once for every song, see makeStrip.
+     */
+    dropLane: (key) => {
+      if (CANONICAL_LANES.has(key)) return false;
+      const s = strips.get(key);
+      if (!s) return false;
+      s._dispose();
+      strips.delete(key);
+      routes.delete(key);
+      // A soloed layer that leaves must not leave every other channel silenced behind it.
+      if (soloed.delete(key)) applySoloAll();
+      return true;
     },
     /**
      * Is this lane inaudible BY THE MIX — muted, or losing a channel solo?

@@ -1449,7 +1449,8 @@ assert(/MusicDirector\.enterStage\(/.test(runSrc)
 // steps is the one most likely to have eaten the slot the queue needed. The only thing
 // allowed between the top-up and the first draw is the efficiency profile's audio-health
 // sample, which reads the margin the top-up just produced.
-assert(/draw: \(renderAlpha\) => \{[\s\S]{0,900}?Audio\.schedule\(\);\s*(?:if \(efficiencyProfile\.enabled\) sampleAudioHealth\(\);\s*)?beginRenderFrame\(\);/
+// (Since 20 Oct 2026 that sample runs every frame, for the glitch log, under a comment.)
+assert(/draw: \(renderAlpha\) => \{[\s\S]{0,900}?Audio\.schedule\(\);\s*(?:\/\/[^\n]*\s*)*(?:(?:if \(efficiencyProfile\.enabled\) )?sampleAudioHealth\(\);\s*)?beginRenderFrame\(\);/
   .test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
   'the game tops the sequencer queue up from its own frame, before it draws anything');
 // A silenced LAYER comes off the layer list, not merely out of the bank. The canonical

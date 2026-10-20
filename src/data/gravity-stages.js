@@ -138,19 +138,26 @@ export const GRAVITY_STAGE_DATA = deepFreeze({
     vacuumAttacks: [
       vacuumAttack('vacuum-1', 5, 0),
       vacuumAttack('vacuum-2', 11, 0),
+      // MORE CUBES (Peter, 20 Oct 2026): one more in each long gap, each landing clear of
+      // the gate either side of it.
+      vacuumAttack('vacuum-more-1', 14.5, 0),
       vacuumAttack('vacuum-3', 21, 1),
+      vacuumAttack('vacuum-more-2', 24.8, 1),
       // Single cubes leave room for a different station obstacle between
       // drops; the occasional pair remains a distinct jump pattern.
       vacuumAttack('vacuum-extra-3', 31, 0),
       vacuumAttack('vacuum-extra-4', 35, 0),
       vacuumAttack('vacuum-4', 39, 0, 2),
       vacuumAttack('vacuum-5', 43, 0),
+      vacuumAttack('vacuum-more-3', 46.5, 0),
       vacuumAttack('vacuum-6', 52, 1),
       vacuumAttack('vacuum-7', 57, 1, 2),
       vacuumAttack('vacuum-extra-7', 64.5, 0),
       vacuumAttack('vacuum-8', 69, 0),
       vacuumAttack('vacuum-9', 74, 0, 2),
+      vacuumAttack('vacuum-more-4', 77, 0),
       vacuumAttack('vacuum-10', 82, 1),
+      vacuumAttack('vacuum-more-5', 86, 1),
     ],
     hazards: [
       // Ordinary jump obstacles occupy the running rail between cube arrivals.

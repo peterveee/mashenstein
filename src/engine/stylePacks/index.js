@@ -870,18 +870,24 @@ function drawHillStrip(ctx, o) {
 // scaled pattern put them. Same sheet, same place, no resampling. Returns false (the
 // caller fills the pattern live) for a rotated or skewed frame.
 const HILL_GRAIN = new WeakMap();
-function cachedHillGrain(ctx, path, material, alpha, bottom = null) {
-  const m = ctx.getTransform?.();
-  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || typeof document === 'undefined') return false;
-  if (!(alpha > 0)) return true;
+// The material's fibre tile scaled once to `m`'s device resolution, as a pattern for
+// filling at the identity transform; null where that cannot be done (no document, no
+// sheet, no pattern). Shared by the hill grain and the ground apron's.
+function deviceGrainPattern(ctx, material, m) {
+  if (typeof document === 'undefined') return null;
   const src = sharedPaperTextureSource(material);
-  if (!src) return false;
+  if (!src) return null;
   const tw = Math.max(1, Math.round(src.width * PAPER_PATTERN_SCALE * m.a));
   const th = Math.max(1, Math.round(src.height * PAPER_PATTERN_SCALE * m.d));
   let byMaterial = HILL_GRAIN.get(ctx);
   if (!byMaterial) HILL_GRAIN.set(ctx, (byMaterial = new Map()));
-  let c = byMaterial.get(material);
-  if (!c || c.tw !== tw || c.th !== th) {
+  // Keyed by size as well: the hills and the apron are drawn at different scales on
+  // the same canvas (portrait magnifies the backdrop); one slot between them would
+  // rebuild the tile on every call (tried: Frost went to 60 ms a frame).
+  const key = `${material}|${tw}x${th}`;
+  let c = byMaterial.get(key);
+  if (!c) {
+    if (byMaterial.size >= 8) byMaterial.delete(byMaterial.keys().next().value);
     const tile = document.createElement('canvas');
     tile.width = tw;
     tile.height = th;
@@ -889,9 +895,17 @@ function cachedHillGrain(ctx, path, material, alpha, bottom = null) {
     g.imageSmoothingEnabled = true;
     g.drawImage(src, 0, 0, tw, th);
     c = { tw, th, pattern: ctx.createPattern(tile, 'repeat') };
-    byMaterial.set(material, c);
+    byMaterial.set(key, c);
   }
-  if (!c.pattern) return false;
+  return c.pattern || null;
+}
+function cachedHillGrain(ctx, path, material, alpha, bottom = null) {
+  const m = ctx.getTransform?.();
+  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || typeof document === 'undefined') return false;
+  if (!(alpha > 0)) return true;
+  const pattern = deviceGrainPattern(ctx, material, m);
+  if (!pattern) return false;
+  const c = { pattern };
   if (c.pattern.setTransform && typeof DOMMatrix === 'function') {
     c.pattern.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(m.e), Math.round(m.f)]));
   }
@@ -2290,6 +2304,62 @@ export const __testing = {
 // Per-frame gradient construction is surprisingly costly at device res —
 // cache gradients by their color stops (they are reusable frame to frame).
 const gradCache = new Map();
+// A SOFT LAYER, COMPOSED SMALL. Begins a canvas `kc` px per local unit over the visible
+// frame — across, exactly the published coverage; down, to `bottom` — for paint with
+// nothing finer than a unit in it, which softFrameEnd stretches onto the frame in one
+// blit. It carries the frame's coverage and band, so the painters place themselves as
+// they would on the frame. Null (paint on the frame as before) for a rotated or mirrored
+// transform, a frame no finer than `kc`, a context mid-fade or mid-blend, or a coverage
+// that does not reach the canvas's edges.
+const SOFT_FRAME = {};
+function softFrameBegin(ctx, slot, kc, bottom = Infinity) {
+  if (typeof document === 'undefined' || !ctx?.canvas || typeof ctx.getTransform !== 'function') return null;
+  if (ctx.globalAlpha !== 1 || ctx.globalCompositeOperation !== 'source-over') return null;
+  const m = ctx.getTransform();
+  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || m.a <= kc * 1.01) return null;
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+  // Across, exactly the coverage: a layer painted to its edge must meet the canvas's
+  // edge there, not a margin of nothing for the stretch to blend into.
+  const cov = backgroundCoverage(ctx);
+  const visL = -m.e / m.a, visR = (cw - m.e) / m.a;
+  if (cov.left > visL + 0.5 || cov.right < visR - 0.5) return null;
+  const L = Math.max(cov.left, Math.floor(visL - 2)), R = Math.min(cov.right, visR + 2);
+  const T = Math.floor(-m.f / m.d - 2), B = Math.min(bottom, (ch - m.f) / m.d + 2);
+  if (!(R > L) || !(B > T)) return null;
+  const w = Math.ceil((R - L) * kc), h = Math.ceil((B - T) * kc);
+  // Grow-only, so a frame that wobbles by a pixel does not reallocate.
+  let S = SOFT_FRAME[slot];
+  if (!S || S.c.width < w + 2 || S.c.height < h + 2) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(w, S ? S.c.width : 0) + 8;
+    c.height = Math.max(h, S ? S.c.height : 0) + 8;
+    S = SOFT_FRAME[slot] = { c, g: c.getContext('2d') };
+  }
+  const g = S.g;
+  if (!g) return null;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, w + 2, h + 2);
+  g.setTransform(kc, 0, 0, kc, -L * kc, -T * kc);
+  g.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
+  g.imageSmoothingQuality = ctx.imageSmoothingQuality;
+  for (const key of Object.keys(g)) if (key.startsWith('__')) delete g[key];
+  for (const key of Object.keys(ctx)) if (key.startsWith('__')) g[key] = ctx[key];
+  return { g, c: S.c, L, T, w, h, kc };
+}
+function softFrameEnd(ctx, S) {
+  // The stretch reads a texel past the right and bottom edges of what was composed:
+  // repeat the last column and row there, as the canvas's own edge would read.
+  const g = S.g;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.drawImage(S.c, S.w - 1, 0, 1, S.h, S.w, 0, 2, S.h);
+  g.drawImage(S.c, 0, S.h - 1, S.w + 2, 1, 0, S.h, S.w + 2, 2);
+  ctx.drawImage(S.c, 0, 0, S.w, S.h, S.L, S.T, S.w / S.kc, S.h / S.kc);
+}
+
 function skyGrad(ctx, c0, c1) {
   const key = c0 + '|' + c1;
   let g = gradCache.get(key);
@@ -4879,7 +4949,6 @@ function frostAuroraRays(ctx, spec, h, k, phase) {
 }
 
 const frostAuroraSpriteCache = new Map();
-let frostAuroraCacheSS = 0;
 
 // A CURTAIN IS BAKED, NOT REPAINTED.
 //
@@ -4910,19 +4979,29 @@ function frostAuroraBakeScale(ctx) {
   return Math.max(1, Math.min(6, Math.ceil(scale)));
 }
 
+// KEPT BY SCALE, NOT CLEARED BY IT (20 Oct 2026). The cache used to empty whenever the
+// bake scale changed, and the curtains are blurred bakes — a canvas filter, the dearest
+// thing in the pack. In THE SURGE the Frost look comes and goes at more than one scale
+// (moves, tears, the flip), so it emptied and re-blurred all three curtains several times
+// a second, in play: hitches of a third of a second. Now each scale keeps its own sprites,
+// the oldest dropped past FROST_AURORA_SPRITES, and a curtain's height is baked to the
+// nearest unit so a crane's fraction of a pixel cannot re-bake it either.
+const FROST_AURORA_SPRITES = 12;
 function frostAuroraSprite(ctx, spec, h, options) {
   const ss = frostAuroraBakeScale(ctx);
-  if (ss !== frostAuroraCacheSS) {
-    frostAuroraSpriteCache.clear();
-    frostAuroraCacheSS = ss;
-  }
+  h = Math.round(h);
   const material = options.paper ? (options.paperMaterial || 'cardstockClear') : '';
   const strength = Math.max(0, Math.min(1.25, Number(options.paperStrength) || 1));
   const blur = Math.max(0, Number.isFinite(Number(options.blur))
     ? Number(options.blur) : FROST_AURORA_BLUR);
-  const key = `${spec.color}|${spec.tip}|${spec.w}|${spec.rays}|${spec.amp}|${spec.wl}|${spec.phase}|${h.toFixed(2)}|${material}|${strength}|${blur}`;
+  const key = `${ss}|${spec.color}|${spec.tip}|${spec.w}|${spec.rays}|${spec.amp}|${spec.wl}|${spec.phase}|${h}|${material}|${strength}|${blur}`;
   let sprite = frostAuroraSpriteCache.get(key);
-  if (sprite !== undefined) return sprite;
+  if (sprite !== undefined) {
+    // Most recently used last, so the trim below drops the stalest.
+    frostAuroraSpriteCache.delete(key);
+    frostAuroraSpriteCache.set(key, sprite);
+    return sprite;
+  }
   sprite = null;
   if (typeof document !== 'undefined') {
     // The wave swings the baseline by +/- amp, and a Gaussian reaches about
@@ -4965,6 +5044,9 @@ function frostAuroraSprite(ctx, spec, h, options) {
     }
   }
   frostAuroraSpriteCache.set(key, sprite);
+  while (frostAuroraSpriteCache.size > FROST_AURORA_SPRITES) {
+    frostAuroraSpriteCache.delete(frostAuroraSpriteCache.keys().next().value);
+  }
   return sprite;
 }
 
@@ -4990,8 +5072,9 @@ export function drawFrostAurora(ctx, t, camX, options = {}) {
   // one production painter — so a bake-off can never drift from what ships.
   const specs = Array.isArray(options.specs) && options.specs.length
     ? options.specs : FROST_AURORA_CURTAINS;
-  const count = Math.min(specs.length,
-    options.curtains ?? FROST_AURORA_STAGE_CURTAINS[stageIndex]);
+  // Portrait hangs one curtain fewer (20 Oct 2026, for the frame budget: 1.4 ms).
+  const count = Math.max(1, Math.min(specs.length,
+    options.curtains ?? FROST_AURORA_STAGE_CURTAINS[stageIndex]) - (H > W && options.curtains == null ? 1 : 0));
   const rect = frostAuroraRect(options.backgroundContext);
   const blur = Math.max(0, Number.isFinite(Number(options.blur))
     ? Number(options.blur) : FROST_AURORA_BLUR);
@@ -5053,8 +5136,22 @@ const FROST_BLIZZARD_LAYERS = Object.freeze([
 ]);
 // Portrait leaves out the third, nearest layer (Peter, 29 Sep 2026: "drop the 3rd
 // blizzard layer in portrait"): one full-screen sheet fewer on the frame that has three
-// times the pixels. The two farther sheets carry the storm.
-const FROST_BLIZZARD_PORTRAIT_LAYERS = Object.freeze(FROST_BLIZZARD_LAYERS.slice(0, 2));
+// times the pixels. 20 Oct 2026: ONE sheet, drawn at full resolution, to bring the
+// portrait frame inside budget (20.5 -> ~16.5 ms headless) — a sheet of its own rather
+// than either of the two it replaces (Peter: "longer strokes, possibly a little thicker;
+// the one layer doesn't cover the screen that much"): denser than the far layer, with
+// streaks longer and heavier than the middle one's, at the middle one's depth; then "a
+// touch more translucent" (alpha .42 -> .34), and "a little too sharp" — so its streaks
+// are baked with a slight blur (`soft`, in frame units; once, into the tile, free in play).
+const FROST_BLIZZARD_PORTRAIT_LAYERS = Object.freeze([
+  { tile: 160, alpha: 1, depth: 0.3, wind: 58, seed: 4, mix: [
+    // Peter, same day: "recreate the different lengths of snow / opacity in one layer",
+    // then "a little more blur".
+    { n: 110, len: 2.6, wide: 0.7, alpha: 0.30, soft: 0.5 },   // the far layer's fine flakes
+    { n: 70, len: 6.5, wide: 1.1, alpha: 0.38, soft: 0.7 },    // the middle layer's
+    { n: 34, len: 11, wide: 1.5, alpha: 0.34, soft: 0.9 },     // and long, heavy streaks
+  ] },
+]);
 const frostBlizzardLayers = () => (H > W ? FROST_BLIZZARD_PORTRAIT_LAYERS : FROST_BLIZZARD_LAYERS);
 // The wind blows across and slightly down; a streak lies along its own travel.
 const FROST_BLIZZARD_SLOPE = 0.42;
@@ -5173,20 +5270,35 @@ function frostBlizzardTile(ctx, layer, ss) {
     if (g) {
       if (typeof g.setTransform === 'function') g.setTransform(ss, 0, 0, ss, 0, 0);
       else g.scale(ss, ss);
-      g.strokeStyle = '#ffffff';
       g.lineCap = 'round';
-      g.lineWidth = layer.wide;
       const rnd = frostBlizzardRandom(layer.seed);
-      g.beginPath();
-      for (let i = 0; i < layer.n; i++) {
-        const x = rnd() * layer.tile;
-        const y = rnd() * layer.tile;
-        // A little length variation, or the layer reads as one stamped mark.
-        const len = layer.len * (0.6 + 0.8 * rnd());
-        g.moveTo(x, y);
-        g.lineTo(x - len, y + len * FROST_BLIZZARD_SLOPE);
+      // A sheet is one kind of streak, or (`mix`) several kinds in one tile, each with its
+      // own count, length, weight, opacity and softness: the portrait sheet carries the
+      // three landscape sheets' fine, middle and long flakes together.
+      for (const kind of layer.mix || [{ n: layer.n, len: layer.len, wide: layer.wide, alpha: 1, soft: layer.soft }]) {
+        g.strokeStyle = kind.alpha < 1 ? `rgba(255,255,255,${kind.alpha})` : '#ffffff';
+        g.lineWidth = kind.wide;
+        g.filter = 'none';
+        if (kind.soft > 0) { try { g.filter = `blur(${kind.soft * ss}px)`; } catch { /* no filters: sharp */ } }
+        g.beginPath();
+        for (let i = 0; i < kind.n; i++) {
+          const x = rnd() * layer.tile;
+          const y = rnd() * layer.tile;
+          // A little length variation, or the layer reads as one stamped mark.
+          const len = kind.len * (0.6 + 0.8 * rnd());
+          // Each streak again a tile over in every direction, so one crossing the tile's
+          // edge carries on into the next tile instead of being cut: with the long portrait
+          // streaks the cut ends lined up into visible seams down the screen.
+          for (const ox of [-layer.tile, 0, layer.tile]) {
+            for (const oy of [-layer.tile, 0, layer.tile]) {
+              g.moveTo(x + ox, y + oy);
+              g.lineTo(x + ox - len, y + oy + len * FROST_BLIZZARD_SLOPE);
+            }
+          }
+        }
+        g.stroke();
       }
-      g.stroke();
+      g.filter = 'none';
       pattern = ctx.createPattern(canvas, 'repeat');
     }
   }
@@ -5245,29 +5357,29 @@ export function drawFrostBlizzard(ctx, t, camX, options = {}) {
   const rawGroundY = Number(options.groundScreenY);
   const groundY = Number.isFinite(rawGroundY) ? rawGroundY : GROUND_Y;
   const veilFloorY = Math.max(0, Math.min(H, groundY - FROST_BLIZZARD_VEIL_CLEARANCE));
-  if (veilFloorY > 0) {
-    // Flat haze down to the fade, the gradient only across the fade, nothing below
-    // it: the same veil as one full-height gradient, for a fraction of the fill (a
-    // gradient is the dear fill, and below the floor it was painting nothing). The
-    // join is snapped to a device row so the two fills neither overlap nor part.
-    const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  // Flat haze down to the fade, the gradient only across the fade, nothing below
+  // it: the same veil as one full-height gradient, for a fraction of the fill (a
+  // gradient is the dear fill, and below the floor it was painting nothing). The
+  // join is snapped to a row of the surface it lands on (`d`, `f`: that surface's
+  // y scale and offset) so the two fills neither overlap nor part.
+  const paintVeil = veilFloorY > 0 ? (g, d, f) => {
     let fadeTop = Math.max(0, veilFloorY - FROST_BLIZZARD_VEIL_FADE_HEIGHT);
-    if (m && m.d > 0) fadeTop = (Math.round(m.d * fadeTop + m.f) - m.f) / m.d;
-    ctx.save();
-    ctx.globalAlpha = 0.34 * amount;
+    if (d > 0) fadeTop = (Math.round(d * fadeTop + f) - f) / d;
+    g.save();
+    g.globalAlpha = 0.34 * amount;
     if (fadeTop > 0) {
-      ctx.fillStyle = haze;
-      ctx.fillRect(0, 0, W, fadeTop);
+      g.fillStyle = haze;
+      g.fillRect(0, 0, W, fadeTop);
     }
     if (veilFloorY > fadeTop) {
-      const veil = ctx.createLinearGradient(0, fadeTop, 0, veilFloorY);
+      const veil = g.createLinearGradient(0, fadeTop, 0, veilFloorY);
       veil.addColorStop(0, haze);
       veil.addColorStop(1, clear);
-      ctx.fillStyle = veil;
-      ctx.fillRect(0, fadeTop, W, veilFloorY - fadeTop);
+      g.fillStyle = veil;
+      g.fillRect(0, fadeTop, W, veilFloorY - fadeTop);
     }
-    ctx.restore();
-  }
+    g.restore();
+  } : null;
 
   // A PATTERN MUST BE FILLED AT ITS OWN SCALE.
   //
@@ -5296,7 +5408,10 @@ export function drawFrostBlizzard(ctx, t, camX, options = {}) {
   // the device density and that is copied up onto the frame once: a quarter of the
   // pixels for each fill, for one smoothed copy (29 Sep 2026). The streaks come out a
   // touch softer, which falling snow can carry.
-  if (exact && drawBlizzardHalf(ctx, m, ss, camX, clock, amount)) return;
+  // Portrait draws its one sheet straight onto the frame: with a single sheet, stretching
+  // a half-resolution buffer up over the whole tall frame cost more than the sheet itself.
+  if (exact && H <= W && drawBlizzardHalf(ctx, m, ss, camX, clock, amount, paintVeil)) return;
+  if (paintVeil) paintVeil(ctx, m?.d, m?.f);
   ctx.save();
   if (exact) ctx.setTransform(1, 0, 0, 1, Math.round(m.e), Math.round(m.f));
   else ctx.scale(1 / ss, 1 / ss);
@@ -5320,7 +5435,10 @@ export function drawFrostBlizzard(ctx, t, camX, options = {}) {
 }
 
 let blizzardBuffer = null;
-function drawBlizzardHalf(ctx, m, ss, camX, clock, amount) {
+// `veil` (when there is one) goes into the buffer first, under the sheets: it is as
+// soft as they are, and laid on the frame it was two fills over most of the picture
+// (20 Oct 2026: 0.9 ms of a portrait frame). Over then under composes the same.
+function drawBlizzardHalf(ctx, m, ss, camX, clock, amount, veil = null) {
   if (typeof document === 'undefined') return false;
   const hs = ss / 2;
   const bw = Math.max(1, Math.ceil(W * hs));
@@ -5334,6 +5452,11 @@ function drawBlizzardHalf(ctx, m, ss, camX, clock, amount) {
   if (!g) return false;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, bw, bh);
+  if (veil) {
+    g.setTransform(hs, 0, 0, hs, 0, 0);
+    veil(g, hs, 0);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+  }
   for (const layer of frostBlizzardLayers()) {
     const pattern = frostBlizzardTile(ctx, layer, hs);
     if (!pattern) continue;
@@ -6981,10 +7104,30 @@ function drawPlumberApronStrata(ctx, camX, obstacles, overhangs, viewW) {
 function drawPaperApronTexture(ctx, camX, obstacles, overhangs, viewW,
   material = 'cardstockClear', textureSpeed = PAPER_TEXTURE_SPEED_DEFAULT, strength = 1) {
   const patternCamX = paperTextureCameraX(camX, textureSpeed);
+  const runs = apronRuns(camX, obstacles, overhangs, viewW);
+  // THE APRON'S GRAIN IS NOT RE-SCALED EVERY FRAME EITHER (see cachedHillGrain): the
+  // tile at the canvas's device resolution, filled at the identity transform over each
+  // run's device rectangle, the origin snapped to a device pixel. 1.4 ms of a portrait
+  // frame on Frost and Speed Zone (20 Oct 2026, headless iPhone) was this resample.
+  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  const grain = m && !m.b && !m.c && m.a > 0 && m.d > 0 && typeof DOMMatrix === 'function'
+    ? deviceGrainPattern(ctx, material, m) : null;
+  if (grain && typeof grain.setTransform === 'function') {
+    grain.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(m.e - m.a * patternCamX), Math.round(m.f)]));
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
+    ctx.globalAlpha = PAPER_SURFACE_ALPHA * strength;
+    ctx.fillStyle = grain;
+    for (const [a, b] of runs) {
+      if (b > a) ctx.fillRect(m.a * a + m.e, m.d * GROUND_Y + m.f, m.a * (b - a), m.d * (H - GROUND_Y));
+    }
+    ctx.restore();
+    return;
+  }
   const pattern = anchorPaperPattern(sharedPaperPatternFor(ctx, material), patternCamX, 0)
     || anchorPaperPattern(paperPatternFor(ctx), patternCamX, 0);
   if (!pattern) return;
-  const runs = apronRuns(camX, obstacles, overhangs, viewW);
   ctx.save();
   ctx.globalCompositeOperation = PAPER_TEXTURE_BLEND;
   ctx.globalAlpha = PAPER_SURFACE_ALPHA * strength;
@@ -8213,6 +8356,11 @@ function mcmPack(settings) {
   let tint = null;
   return {
     name: 'mcm',
+    // Speed Zone's own backdrop covers every pixel, portrait and landscape, mid-jump
+    // included (cover test, 20 Oct 2026), so run.js's fallback sky — 7.7 ms of a
+    // portrait frame — is never seen. The paper desert this pack lends other cabinets
+    // is not vouched for.
+    coversFrame: (portrait, cab) => cab?.id === 'speed',
     // The bright skies (and the bloom's white clip) — see faux3d.
     lightBg: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, bc = null) {
@@ -9971,6 +10119,11 @@ function neonGoldenPaperSky(ctx, t, context) {
     const a = turn + (i / RAYS) * Math.PI * 2;
     const breathe = 1 + 0.35 * Math.sin(t * 0.35 + i * 1.7);
     const halfA = (i % 2 ? 0.022 : 0.045) * breathe;
+    // A ray pointing down from a sun on the horizon is under the city and the road
+    // from end to end; cutting the half of the fan that is never seen was 2.3 ms of a
+    // portrait frame (20 Oct 2026). The one place it showed was down an open pit,
+    // between the far city's blocks.
+    if (Math.sin(a - halfA) > 0 && Math.sin(a + halfA) > 0) continue;
     const q = strips[i % 2];
     q.moveTo(x + Math.cos(a) * 30, y + Math.sin(a) * 30);
     q.lineTo(x + Math.cos(a - halfA) * reach, y + Math.sin(a - halfA) * reach);
@@ -10354,6 +10507,10 @@ function neonPack(settings) {
   return {
     name: 'neon',
     dark: true,
+    // The tall frame is all city and sky, mid-jump included (cover test, 20 Oct 2026),
+    // so run.js's portrait fallback sky under it — 4.6 ms a frame — is never seen.
+    // Landscape keeps it: a jump there opens a strip at the top.
+    coversFrame: (portrait) => portrait,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       // ground() is handed no scene and no context, and the overtake is a STAGE
       // event — so the frame's progress travels to the lane pass exactly the way
@@ -10373,7 +10530,23 @@ function neonPack(settings) {
       // which is what a gallery card or a run that never sets one paints.
       const mood = backgroundContext?.neonMood ?? scene?.neonMood ?? null;
       const sky = mood?.sky || cab.sky;
-      skyGrad(ctx, sky[0], sky[1]);
+      // THE NIGHT SKY IS COMPOSED SMALL when the aurora is up: the gradient and the
+      // aurora's sheet (itself half a unit a pixel) are laid at a pixel a unit and
+      // stretched onto the frame once, instead of a full-frame gradient and then a
+      // full-frame additive stretch over it. Neither has anything finer than a unit in
+      // it, and 'lighter' over a gradient composes the same at any size (max 3 levels in
+      // 255 against the direct path). 5.6 ms of a 30 ms portrait frame, 1.4 of 19 in
+      // landscape (20 Oct 2026, headless iPhone, neon-2).
+      const softSky = mood?.id === 'night' && mood.skyExtra
+        ? softFrameBegin(ctx, 'neon-night-sky', 1, GROUND_Y) : null;
+      if (softSky) {
+        skyGrad(softSky.g, sky[0], sky[1]);
+        softSky.g.save();
+        softSky.g.translate(0, backgroundY(backgroundContext, mood.skyLayer || 'celestial'));
+        mood.skyExtra(softSky.g, t, camX, backgroundContext);
+        softSky.g.restore();
+        softFrameEnd(ctx, softSky);
+      } else skyGrad(ctx, sky[0], sky[1]);
       // Six layers, back to front, each at its own fraction of the camera. The
       // factor is scaled by ZOOM because the camera magnifies the FOREGROUND:
       // a parallax factor that is not scaled by the same amount leaves the
@@ -10398,7 +10571,7 @@ function neonPack(settings) {
       // band like the moon, so a portrait crane moves it with the sky it is in.
       // The golden sun sits ON the horizon, so it rides the far city's band ('far');
       // the aurora is sky and rides the moon's ('celestial').
-      if (mood?.skyExtra) {
+      if (mood?.skyExtra && !softSky) {
         layer(mood.skyLayer || 'celestial', 0, () => mood.skyExtra(ctx, t, camX, backgroundContext));
       }
       const starAlpha = mood?.stars ?? 1;
@@ -10658,6 +10831,11 @@ function watercolorPack(settings) {
   const paperPreset = paperPresetName(settings?.paperPreset);
   const paperStrengths = paperStrengthsOf(settings);
   return {
+    // Frost's crayon sky and hills cover the whole tall frame, mid-jump included, so
+    // the run's fallback sky under them is never seen in portrait — and it was 7 ms of
+    // a portrait frame (cover test and timing, 20 Oct 2026). Landscape keeps it: a high
+    // jump there opens a strip at the top that only the fallback fills.
+    coversFrame: (portrait, cab) => portrait && cab?.id === 'frost',
     name: 'watercolor',
     lightBg: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
@@ -11114,6 +11292,10 @@ function gouachePack(settings) {
   return {
     name: 'gouache',
     dark: true,
+    // The sky's flat colour runs 40 past every edge of the band (drawCryptGouache), so
+    // run.js's fallback sky under it is never seen, portrait or landscape, mid-jump
+    // included (cover test, 20 Oct 2026: not one pixel of it left, any stage).
+    coversFrame: true,
     bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0, backgroundContext = null) {
       const bc = backgroundContext;
       const cov = backgroundPaintCoverage(ctx);
@@ -17393,7 +17575,6 @@ export function clearPresentationCaches() {
   plumberScenerySpriteCache.clear();
   plumberSceneryCacheSS = 0;
   frostAuroraSpriteCache.clear();
-  frostAuroraCacheSS = 0;
   bakeCache.clear();
   cityBake = null;
   clearLCDPanelCache();
@@ -17777,6 +17958,10 @@ function paintLCDCity(ctx, frame, skyMeter = false, backgroundContext = null,
 function lcdPack(settings) {
   return {
     name: 'lcd',
+    // Rhythm's screen covers the tall frame, mid-jump included (cover test, 20 Oct 2026),
+    // so run.js's portrait fallback sky under it — 3.8 ms a frame — is never seen.
+    // Landscape keeps it: a jump there can open a strip at the top.
+    coversFrame: (portrait, cab) => portrait && cab?.id === 'rhythm',
     // The screen treatment belongs to the scenery. The cast — hero, hazards,
     // pickups — draws on top in its production colours, as the things the
     // player is meant to track.
@@ -18404,6 +18589,14 @@ function surgePack(settings) {
     get ownSurface() { return cur().ownSurface === true; },
     // Whether the screen is upside down this frame (surgeCut.js surgeFlip); run.js turns it.
     get screenFlipped() { return ph.flip === true; },
+    // The look's own answer to whether its backdrop covers the frame (run.js's fallback sky),
+    // asked with its home cabinet — but never mid-move, flipped or in the bare intro, where
+    // the picture is being slid, cut or turned and may open an edge.
+    coversFrame(portrait) {
+      if (intro || ph.move || ph.flip) return false;
+      const p = packs[ph.look], cf = p?.coversFrame;
+      return typeof cf === 'function' ? !!cf.call(p, portrait, homes[ph.look]) : !!cf;
+    },
     // The act this frame — look, move, glitches, other cabinets' weather — for a probe.
     get phase() { return ph; },
     get hudGlitch() { return hudEv; },

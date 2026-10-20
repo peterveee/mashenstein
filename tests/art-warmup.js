@@ -68,6 +68,15 @@ assert(qcrateJobs.length === propFrames('qcrate'),
 assert(new Set(qcrateJobs.map((j) => j.f)).size === qcrateJobs.length,
   'queued frames are distinct, not the same frame repeated');
 
+// A run offers one toaster, so only that one is warmed: both together held 74MB of
+// canvas for art half of which could not spawn (gravity-2 iPhone kill, 19 Oct).
+for (const t of ['appliance', 'applianceSilver']) {
+  const other = t === 'appliance' ? 'applianceSilver' : 'appliance';
+  const tj = artWarmupQueueFor(plumber, t);
+  assert(tj.filter((j) => j.name === t).length === propFrames(t), `the run's ${t} is warmed, every frame`);
+  assert(!tj.some((j) => j.name === other), `the ${other} it cannot offer is not warmed`);
+}
+
 // Frame zero of everything comes before any later frame, so an object that
 // appears while the queue is still draining still shows the right art.
 const firstNonZero = pj.findIndex((j) => j.f !== 0);

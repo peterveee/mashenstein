@@ -1,4 +1,5 @@
 import { performanceMark, performanceAdd } from './performance-capture.js';
+import { glitchReport } from './glitch-log.js';
 let persistenceSuspended = false;
 export function suspendCrumbPersistence(value) { persistenceSuspended = !!value; }
 // Diagnostic overrides that survive a reload.
@@ -163,7 +164,8 @@ export function startCrumbSession(build = '') {
 // a hitch every 3 s of play — the run heartbeat (Peter, 15 Oct 2026). No longer.
 function uploadCrumbs() {
   if (persistenceSuspended || typeof fetch === 'undefined') return;
-  const text = crumbReport();
+  // The glitch log rides along (engine/glitch-log.js): the struggle beside the steps.
+  const text = `${crumbReport()}\n\n${glitchReport()}`;
   fetch('/__dev/crumbs', { method: 'POST', body: text }).then((r) => {
     if (r.ok) return;
     return fetch('/__dev/record?name=crash-trail&ext=webm', { method: 'POST', body: text });

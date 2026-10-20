@@ -927,9 +927,20 @@ function buildFogWisp(k, v) {
   return c;
 }
 
-function fogBand(ctx, band, b, wisps, view) {
+// `kc` is the wisps' bake scale: the band is composed small at it (see SOFT LAYERS),
+// over the gradient's rows and every puff's.
+function fogBand(ctx, band, b, wisps, view, kc) {
   const y0 = band.y - band.h * 0.9;
   const y1 = band.y + band.h * 1.5;
+  let top = y0, bottom = y1;
+  for (const p of band.puffs) {
+    top = Math.min(top, p.y - p.ry * 2.1);
+    bottom = Math.max(bottom, p.y + p.ry * 1.5);
+  }
+  const soft = Number.isFinite(kc)
+    ? softBegin(ctx, `fog${b}`, kc, view.left - 40, top - 1, view.right + 40, bottom + 1, true) : null;
+  const frame = ctx;
+  if (soft) ctx = soft.g;
   const gr = ctx.createLinearGradient(0, y0, 0, y1);
   gr.addColorStop(0, css(C.fog, 0));
   gr.addColorStop(0.5, css(C.fog, 0.04));
@@ -943,6 +954,7 @@ function fogBand(ctx, band, b, wisps, view) {
     ctx.drawImage(w, p.x - p.rx * 1.35, p.y - p.ry * 2.1, p.rx * 2.7, p.ry * 3.6);
   }
   ctx.globalAlpha = 1;
+  if (soft) softEnd(frame, soft);
 }
 
 // ------------------------------------------------------------------ paper
@@ -2075,6 +2087,65 @@ function scaleOf(ctx) {
 // Studies whose painter threw; see the study loop in drawCryptGouache.
 const FAILED = new Set();
 
+// SOFT LAYERS, COMPOSED SMALL (20 Oct 2026). The sky sheet, the moon's glow and the
+// fog are all baked at half the bake scale (bakeSteps), so on the frame each was being
+// stretched three to five times over — and the sky was three full-frame stretches deep
+// (sheet, glow, halo), each paying for every device pixel. They are composed instead at
+// their own bake scale into a small canvas and stretched onto the frame ONCE. The paint
+// is the same paint: a constant-alpha source-over stack composes the same small or
+// large, so what changes is one extra resample of what was already soft (measured
+// against the direct path: max 3-5 levels in 255 on the sky, 11 on a few fog streaks).
+// Headless iPhone landscape, crypt-2: 21.4 -> 17.4 ms a frame for the two together.
+//
+// `slot` keeps each layer its own canvas; `clear` is for a layer laid over the picture
+// (the fog) rather than one that paints every pixel of its rect (the sky). Returns null —
+// draw straight onto the frame as before — for anything this cannot reproduce: a
+// rotated or mirrored transform, a frame no finer than the bake, or a context already
+// mid-fade or mid-blend (each layer drawn at alpha a is not the stack drawn at a).
+const SOFT = {};
+function softBegin(ctx, slot, kc, l, t, r, b, clear) {
+  if (typeof ctx.getTransform !== 'function' || !ctx.canvas || typeof document === 'undefined') return null;
+  if (ctx.globalAlpha !== 1 || ctx.globalCompositeOperation !== 'source-over') return null;
+  const m = ctx.getTransform();
+  if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || m.a <= kc * 1.01) return null;
+  // Only the part of the rect that is on the canvas, plus a margin so the stretch has
+  // real pixels to sample at the frame's edge.
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+  const l0 = Math.max(l, -m.e / m.a - 2), r0 = Math.min(r, (cw - m.e) / m.a + 2);
+  const t0 = Math.max(t, -m.f / m.d - 2), b0 = Math.min(b, (ch - m.f) / m.d + 2);
+  if (!(r0 > l0) || !(b0 > t0)) return null;
+  const L = Math.floor(l0), T = Math.floor(t0);
+  const w = Math.ceil((r0 - L) * kc), h = Math.ceil((b0 - T) * kc);
+  // Grow-only, so a rect that wobbles by a pixel does not reallocate every frame.
+  let S = SOFT[slot];
+  if (!S || S.c.width < w + 2 || S.c.height < h + 2) {
+    const c = canvas(Math.max(w, S ? S.c.width : 0) + 8, Math.max(h, S ? S.c.height : 0) + 8);
+    S = SOFT[slot] = { c, g: c.getContext('2d') };
+  }
+  const g = S.g;
+  if (!g) return null;
+  if (clear) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w + 2, h + 2); }
+  g.setTransform(kc, 0, 0, kc, -L * kc, -T * kc);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
+  g.imageSmoothingQuality = ctx.imageSmoothingQuality;
+  return { g, c: S.c, L, T, w, h, kc };
+}
+function softEnd(ctx, S) {
+  // The stretch reads a texel past the right and bottom edges of what was composed:
+  // repeat the last column and row there, as a canvas's own edge would read.
+  const g = S.g;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(S.w, 0, 2, S.h + 2);
+  g.clearRect(0, S.h, S.w + 2, 2);
+  g.drawImage(S.c, S.w - 1, 0, 1, S.h, S.w, 0, 2, S.h);
+  g.drawImage(S.c, 0, S.h - 1, S.w + 2, 1, 0, S.h, S.w + 2, 2);
+  ctx.drawImage(S.c, 0, 0, S.w, S.h, S.L, S.T, S.w / S.kc, S.h / S.kc);
+}
+
 // ------------------------------------------------------------------ the frame
 // `view` (from gouachePack in stylePacks/index.js):
 //   left/right/top/bottom — the painted coverage and band, in this pass's local units
@@ -2087,10 +2158,14 @@ export function drawCryptGouache(ctx, t, camX, stageIndex, view) {
   const shiftOf = (L) => camX * L.factor * ZOOM + open * L.period;
 
   // Sky: flat top colour behind everything, the painted sheet where the land puts it,
-  // then the moon where the layout hangs it.
-  ctx.fillStyle = css(C.skyTop);
-  ctx.fillRect(view.left - 40, view.top - 40, view.right - view.left + 80, view.bottom - view.top + 80);
-  ctx.drawImage(B.sky, SKY_SHEET.x, SKY_SHEET.y + view.skyOff + view.y.sky, SKY_SHEET.w, SKY_SHEET.h);
+  // then the moon where the layout hangs it. The flat colour, the sheet and the glow
+  // are composed small (see SOFT LAYERS); the disc, the one sharp thing, is not.
+  const soft = softBegin(ctx, 'sky', B.k * 0.5,
+    view.left - 40, view.top - 40, view.right + 40, view.bottom + 40, false);
+  const sg = soft ? soft.g : ctx;
+  sg.fillStyle = css(C.skyTop);
+  sg.fillRect(view.left - 40, view.top - 40, view.right - view.left + 80, view.bottom - view.top + 80);
+  sg.drawImage(B.sky, SKY_SHEET.x, SKY_SHEET.y + view.skyOff + view.y.sky, SKY_SHEET.w, SKY_SHEET.h);
   const night = view.night || { dim: 0, bank: 1, p: 0 };
   // The train is drawn wherever it is on screen — through its entry, the whole dark,
   // and its exit off the left — not only while the night flag is up.
@@ -2146,14 +2221,16 @@ export function drawCryptGouache(ctx, t, camX, stageIndex, view) {
   const breath = 0.5 + 0.5 * Math.sin(t * 0.8) * (0.8 + 0.2 * Math.sin(t * 0.31));
   const halo = 0.5 + 0.5 * Math.sin(t * 0.8 - 1.1);
   const seen = 1 - dim;
-  ctx.globalAlpha = (1 - 0.6 * dim) * (0.86 + 0.14 * breath);
-  ctx.drawImage(B.moonGlow, view.moon.x - MOON_REACH, my - MOON_REACH, MOON_REACH * 2, MOON_REACH * 2);
+  sg.globalAlpha = (1 - 0.6 * dim) * (0.86 + 0.14 * breath);
+  sg.drawImage(B.moonGlow, view.moon.x - MOON_REACH, my - MOON_REACH, MOON_REACH * 2, MOON_REACH * 2);
   if (seen > 0.02) {
     const g = 1.05 + 0.08 * halo;
     const r = MOON_REACH * g;
-    ctx.globalAlpha = 0.22 * halo * seen;
-    ctx.drawImage(B.moonGlow, view.moon.x - r, my - r, r * 2, r * 2);
+    sg.globalAlpha = 0.22 * halo * seen;
+    sg.drawImage(B.moonGlow, view.moon.x - r, my - r, r * 2, r * 2);
   }
+  sg.globalAlpha = 1;
+  if (soft) softEnd(ctx, soft);
   ctx.globalAlpha = 1;
   ctx.drawImage(B.moonDisc, view.moon.x - MOON_DISC, my - MOON_DISC, MOON_DISC * 2, MOON_DISC * 2);
   if (seen > 0.02) {
@@ -2327,7 +2404,7 @@ export function drawCryptGouache(ctx, t, camX, stageIndex, view) {
         puffs.push({ i, x, y: F.y + dy + F.h * 0.5 + ((i * 7) % 5 - 2), rx: 34 + (i * 13) % 22, ry: F.h * 0.55 });
       }
     });
-    fogBand(ctx, { y: F.y + dy, h: F.h, puffs }, b, B.wisps, view);
+    fogBand(ctx, { y: F.y + dy, h: F.h, puffs }, b, B.wisps, view, B.k * 0.5);
   };
   band(0);
   const fgShift = shiftOf(SCENE.fg);

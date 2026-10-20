@@ -59,7 +59,7 @@ import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, 
 import { IntroState } from './game/intro.js';
 import { EXIT_CUE } from './game/hub/cabinet-dive.js';
 import { resultsOnTheBeat, installSoundtrack } from './game/results-chip.js';
-import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
+import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor, releaseTrophyRoomAudio } from './game/hub/index.js';
 import { CalibrateState } from './game/calibrate.js';
 import { SaveFileState } from './game/save-file.js';
 import { CrashLogState } from './game/crash-log.js';
@@ -82,7 +82,8 @@ import { efficiencyProfile } from './engine/render-efficiency.js';
 import { setLCDPanelCacheEnabled } from './engine/stylePacks/index.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
-import { consumeBenchDiag, releaseBenchRenderer, readDiag, startCrumbSession } from './engine/diag.js';
+import { consumeBenchDiag, releaseBenchRenderer, readDiag, startCrumbSession, crumb } from './engine/diag.js';
+import { startGlitchSession, noteSecond } from './engine/glitch-log.js';
 import { startTitleProfile, titleProfileActive, titleProfileFrame, titleProfileReportVisible, drawTitleProfile } from './engine/title-profile.js';
 import {
   startGameplayProfile, gameplayProfileActive, gameplayProfileWaiting,
@@ -546,10 +547,12 @@ const Flow = {
       ? roomOrResume.resumeSnapshot()
       : roomOrResume || null;
     const returnToRoom = () => Flow.openTrophyRoom({ resume });
+    // The room's treatment is still on under this menu (hub trophyAudioHeld); only the
+    // way back into the room keeps it.
     setState(new SettingsState({ save, pause: true,
       onDone: returnToRoom,
-      onExitTitle: () => Flow.toTitle(),
-      onCalibrate: () => Flow.toCalibrate(() => Flow.toTrophyPause(resume)) }));
+      onExitTitle: () => { releaseTrophyRoomAudio(); Flow.toTitle(); },
+      onCalibrate: () => { releaseTrophyRoomAudio(); Flow.toCalibrate(() => Flow.toTrophyPause(resume)); } }));
   },
 
   toCalibrate(onDone) {
@@ -797,6 +800,13 @@ function sampleAudioHealth() {
   const h = Audio.takeSchedulerHealth();
   audioProbe.margin = Number.isFinite(h.marginMin) ? Math.round(h.marginMin * 1000) : null;
   audioProbe.late = h.late;
+  // Into the glitch log beside the frame window it lived through — unless the page was
+  // away (a gap well over the second is a suspension, not a stall) or is hidden now.
+  if (wall < 1.5 && !(typeof document !== 'undefined' && document.hidden)) {
+    const fh = frameHealth();
+    noteSecond({ clock: audioProbe.ratio, margin: audioProbe.margin, late: audioProbe.late,
+      framesLost: fh.hitches, frameMs: fh.worstMs });
+  }
   if (efficiencyProfile.enabled) {
     efficiencyProfile.audioMarginMin = Math.min(efficiencyProfile.audioMarginMin, h.marginMin);
     efficiencyProfile.audioLate += h.late;
@@ -871,6 +881,19 @@ function boot() {
     const p = new URLSearchParams(window.location.search);
     if (p.has('lcdPanelCache')) setLCDPanelCacheEnabled(p.get('lcdPanelCache') !== '0');
     startCrumbSession(typeof window !== 'undefined' ? window.__MASH_BUILT_AT__ : '');
+    // Audio and frame trouble on one timeline (engine/glitch-log.js): where in the game
+    // each bad second fell, and the first of a run goes on the crash trail.
+    startGlitchSession({
+      build: typeof window !== 'undefined' ? window.__MASH_BUILT_AT__ : '',
+      where: () => {
+        const st = currentState();
+        const beat = Audio.bank ? Audio.songBeat() : null;
+        const bar = Number.isFinite(beat) ? ` bar${Math.floor(beat / 4) + 1}` : '';
+        const tier = Audio.mrdrQuality && Audio.mrdrQuality !== 'full' ? ` SYNTH ${Audio.mrdrQuality.toUpperCase()}` : '';
+        return `${st?.stage?.id || (st?.run?.stage?.id ? `${st.constructor.name}:${st.run.stage.id}` : '') || st?.constructor?.name || '-'}${bar} D${Math.round(rendererDiagnostics().density * 100) / 100}${tier}`;
+      },
+      first: (line) => crumb('GLITCH', line),
+    });
     const diag = consumeBenchDiag();
     if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
     // Silence for THIS BOOT, never the player's setting. This used to write
@@ -1164,7 +1187,9 @@ function boot() {
       // All platforms: there is no phone-only reason for it and one path is easier to
       // keep correct than two.
       Audio.schedule();
-      if (efficiencyProfile.enabled) sampleAudioHealth();
+      // Every frame, not only when the readout is up: it measures once a second and feeds
+      // the glitch log (engine/glitch-log.js), which has to run with nobody watching.
+      sampleAudioHealth();
       beginRenderFrame();
       let drawFpsReadout = null;
       const menuState = currentState();
