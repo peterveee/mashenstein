@@ -58,7 +58,9 @@ import { HERO_BY_ID } from './data/heroes.js';
 import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, SettingsState, AboutState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX, loadBangerModule } from './game/menus.js';
 import { IntroState } from './game/intro.js';
 import { EXIT_CUE } from './game/hub/cabinet-dive.js';
-import { resultsOnTheBeat, installSoundtrack, setRelief8bit, setReliefDeep, setLightMixes, setSoundTest, soundTestNow } from './game/results-chip.js';
+import { resultsOnTheBeat, installSoundtrack, setRelief8bit, setReliefDeep, setLightMixes, setSoundTest, soundTestNow, learnLight, setOnLightChosen } from './game/results-chip.js';
+import { runAudioBench, readAudioBench, LIGHT_BENCH_MS } from './engine/device-bench.js';
+import { trackIdOf } from './data/tracks.js';
 import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor, releaseTrophyRoomAudio } from './game/hub/index.js';
 import { CalibrateState } from './game/calibrate.js';
 import { SaveFileState } from './game/save-file.js';
@@ -911,7 +913,16 @@ function boot() {
       // "audio still stutters all the way to the end... switching to 8-bit earlier when
       // successful seemed to help more"). It goes at 0.95, before the thread is choking —
       // switched at 0.87 once it had already collapsed, the handover itself tipped it over.
-      eightBit: (on) => setRelief8bit(on),
+      // The song that made the audio fall behind plays its light version on this device from
+      // its next start, if it has one (results-chip.js learnLight). Not mid-level: the relief
+      // below carries the rest of this run.
+      eightBit: (on) => {
+        if (on) {
+          const id = Audio.sourceBank ? trackIdOf(Audio.sourceBank) : null;
+          if (learnLight(id)) crumb('LIGHT', `${id} learned: its light version from the next start`);
+        }
+        setRelief8bit(on);
+      },
       // DEEP when 8-bit has not brought the clock back: drums, bass and lead only, until it has.
       deep: (on) => setReliefDeep(on),
       densityRelief: (on) => (on ? requestDensityRelief(2) : releaseDensityRelief()),
@@ -1080,7 +1091,28 @@ function boot() {
   // Muted inserts cost nothing in the game (engine/mixer.js, parkMuted).
   setParkMutedEffects(true);
   // LIGHT MIXES on trial (game/light-mixes.js): `?lightmix` plays them, to hear and measure.
-  if (new URLSearchParams(window.location.search).has('lightmix')) { setLightMixes(true); crumb('LIGHTMIX', 'on'); }
+  // LIGHT VERSIONS (results-chip.js lightReason): the device decides; `?lightmix` / `?fullmix`
+  // force either way for a test, and every song that goes light says why on the trail.
+  {
+    const q = new URLSearchParams(window.location.search);
+    if (q.has('lightmix')) { setLightMixes(true); crumb('LIGHTMIX', 'forced on'); }
+    else if (q.has('fullmix')) { setLightMixes(false); crumb('LIGHTMIX', 'forced off'); }
+  }
+  setOnLightChosen((id, why) => crumb('LIGHT', `${id} plays its light version (${why})`));
+  // THE AUDIO BENCH, once per device (engine/device-bench.js): a second of offline rendering,
+  // never the live thread. Off the boot's critical path; a song that starts before it is in
+  // plays full, and the bench is kept for every launch after.
+  {
+    const kept = readAudioBench();
+    if (kept) crumb('AUDIOBENCH', `${kept.ms} ms (kept)${kept.ms > LIGHT_BENCH_MS ? ' — light versions on' : ''}`);
+    else {
+      setTimeout(() => {
+        runAudioBench().then((r) => {
+          if (r) crumb('AUDIOBENCH', `${r.ms} ms (${r.runs.join('/')})${r.ms > LIGHT_BENCH_MS ? ' — light versions on' : ''}`);
+        });
+      }, 1500);
+    }
+  }
   // SOUND TESTS for the iPad (results-chip.js): ?soundtest=noreverb | chipvoices, named on the trail.
   setSoundTest(new URLSearchParams(window.location.search).get('soundtest'));
   if (soundTestNow()) crumb('SOUNDTEST', soundTestNow());

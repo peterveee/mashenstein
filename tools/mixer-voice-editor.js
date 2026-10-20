@@ -31,7 +31,7 @@ import { isMrdrVoice } from '../src/engine/mrdr3/identity.js';
 import { tngr2Defaults, TNGR2_LFO_SHAPES } from '../src/engine/tngr2/schema.js';
 import { JMJR4_SYLLABLES, JMJR4_MORPH_TARGETS, syllablesFromText } from '../src/engine/jmjr4/syll.js';
 import {
-  JMJR4_DEFAULTS, JMJR4_AMP_DEFAULTS, JMJR4_MODES, JMJR4_PER_KEY, JMJR4_PITCH_FOLLOWS,
+  JMJR4_DEFAULTS, JMJR4_AMP_DEFAULTS, JMJR4_MODES, JMJR4_PER_KEY, JMJR4_PITCH_FOLLOWS, JMJR4_QUALITIES,
   compileJmjr4, jmjr4SpeakSource,
 } from '../src/engine/jmjr4/compile.js';
 import { JMJR4_SPEAK_ENDINGS, compilePhrase, compactDict, compactIr } from '../src/engine/jmjr4/text.js';
@@ -2122,6 +2122,12 @@ const SYNTH_GROUPS = {
         tip: 'How narrow the formants are: the same idea as a filter\'s resonance, applied to '
           + 'all four of the tract\'s '
           + 'bandwidths at once. Low is soft and human, high is ringing and robotic.' }),
+      pick('$jmjr4.quality', 'QUALITY', JMJR4_QUALITIES, JMJR4_DEFAULTS.quality, null, {
+        startRow: true, optionLabel: (q) => q.toUpperCase(),
+        tip: 'How much of the throat each singer builds. HIGH is every formant, F1 to F5. '
+          + 'MEDIUM drops F4 and F5, the ring above the vowel: nearly the same voice, cheaper. '
+          + 'LOW sings on F1 and F2 alone — the vowel stays, the brightness goes, and a big chord '
+          + 'costs half as much. LOW is also a sound: muffled, through a wall, an old radio.' }),
     ] },
     // The four stages by name, so the window draws the envelope over them (`ENV_ROWS` in
     // mixer-synth-full.js binds by label). Not `adsr()`: its curve pills would be pots the

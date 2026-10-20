@@ -5908,7 +5908,7 @@ export class VoiceRack {
       // KEY: the contour was compiled at PITCH and the key moves it; FIXED: only TRANSPOSE
       // and FINE move it, the key is a trigger.
       const pitchShiftSt = sp.pitchFollows === 'key' ? 12 * Math.log2(hz / sp.pitchHz) : 12 * Math.log2(shift);
-      const h = renderIr(ctx, ir, { start: time, destination: stackIn, pitchShiftSt, nasalPlaces: [], flutterSource });
+      const h = renderIr(ctx, ir, { start: time, destination: stackIn, pitchShiftSt, nasalPlaces: [], flutterSource, quality: patch.ctl.quality });
       lastOff = Math.max(lastOff, h.end);
       spoken.push(...h.sources);
       // flutter, jitter and the bursts' modulators are wired into params: unwired with the note

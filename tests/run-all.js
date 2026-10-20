@@ -61,6 +61,7 @@ const suites = [
   // Audio and frame trouble logged side by side, for the iPad.
   'tests/glitch-log.js',
   'tests/audio-guard.js',
+  'tests/light-versions.js',
   'tests/performance-test.js',
   'tests/performance-handoff.js',
   // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.

@@ -19,12 +19,19 @@ import { JMJR4_SPEAK_ENDINGS, JMJR4_SPEAK_STEPS } from './text.js';
 
 export const JMJR4_MODES = ['sing', 'speak'];
 export const JMJR4_PER_KEY = ['phrase', 'word'];
+// QUALITY (Peter, 20 Oct 2026): how much of the tract each singer builds. A sound choice, not a
+// device's — "if the desk is used outside the game, it is up to the user … lower quality may even
+// be preferred as an effect". HIGH is every formant, the sound every preset was made with;
+// MEDIUM drops F4 and F5, the fixed ring above the vowel; LOW drops the whole upper branch and
+// sings on F1 and F2 alone, which still say the vowel. Each step is fewer nodes per singer.
+export const JMJR4_QUALITIES = ['high', 'medium', 'low'];
 export const JMJR4_PITCH_FOLLOWS = ['key', 'fixed'];
 
 /** Every `jmjr4.*` key, its default, and its range. The panel and this compiler share it. */
 export const JMJR4_DEFAULTS = Object.freeze({
   mode: 'sing',
   voice: 'announcer',
+  quality: 'high',
   line: 'aah',
   // SPEAK: the phrase and the sentence melody's pots. `phraseIr` is not a pot — it is the
   // compiled phrase the desk writes beside them, see `jmjr4SpeakSource`.
@@ -147,6 +154,8 @@ export function compileJmjr4(voice, data, { forCompile = false } = {}) {
   const bend = val('bend') ?? JMJR4_DEFAULTS.bend;
   const bendTime = val('bendTime') ?? JMJR4_DEFAULTS.bendTime;
   const unison = Math.round(val('unison') ?? JMJR4_DEFAULTS.unison);
+  const quality = j.quality ?? JMJR4_DEFAULTS.quality;
+  if (!JMJR4_QUALITIES.includes(quality)) problems.push(`quality ${JSON.stringify(quality)} is not high, medium or low`);
   const spread = val('spread') ?? JMJR4_DEFAULTS.spread;
   // the reference's chip() arcade stage, a post stage on the key's lane: off at 16 bits and 44.1 kHz
   const bits = Math.round(val('bits') ?? JMJR4_DEFAULTS.bits);
@@ -201,6 +210,7 @@ export function compileJmjr4(voice, data, { forCompile = false } = {}) {
     ctl: {
       src: throat.src, oq: press, fscale: tract, tilt_db: tilt, asp: breath,
       flutter: flutter / 100, jitter: jitter / 100, sibilance: sibilance / 100, nasal_buzz: buzz / 100,
+      quality,
       bw: data.tract.bw.map((b) => b * bandwidthScale(resonance)),
     },
     amp,

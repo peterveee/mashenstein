@@ -700,10 +700,17 @@ export function renderIr(ctx, ir, opts = {}) {
   const out = ctx.createGain();
   low.connect(out);
   let f3node = null;
-  if (c.tract === 'hybrid' || c.tract === 'parallel') {
+  // QUALITY (compile.js JMJR4_QUALITIES): LOW sings on F1 and F2 and builds no upper branch at
+  // all; MEDIUM keeps F3 and drops F4 and F5. `opts.quality` for a phrase compiled before the
+  // pot existed (SPEAK's block), the compiled controls otherwise.
+  const quality = opts.quality ?? c.quality ?? 'high';
+  if ((c.tract === 'hybrid' || c.tract === 'parallel') && quality !== 'low') {
     const upper = ctx.createGain();
-    const highF = [[F.f3, bw[2], c.gains[2]], [F.f3.map(() => c.f4), bw[3], c.gains[3]]];
-    if (c.f5) highF.push([F.f3.map(() => c.f5[0]), c.f5[1], c.hybrid_f5_gain]);
+    const highF = [[F.f3, bw[2], c.gains[2]]];
+    if (quality === 'high') {
+      highF.push([F.f3.map(() => c.f4), bw[3], c.gains[3]]);
+      if (c.f5) highF.push([F.f3.map(() => c.f5[0]), c.f5[1], c.hybrid_f5_gain]);
+    }
     for (const [vals, b, g] of highF) {
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';

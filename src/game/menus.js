@@ -95,7 +95,10 @@ import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
 import { bpmOf } from '../data/arrangements.js';
 import { trackIdOf } from '../data/tracks.js';
 import { setState, setStateNow } from '../engine/states.js';
-import { ChipResults, soundtrack8bit, setSoundtrack8bit, retuneOnTheBeat, playsEightBit } from './results-chip.js';
+import { ChipResults, soundtrack8bit, setSoundtrack8bit, retuneOnTheBeat, playsEightBit, soundtrackMode, cycleSoundtrack } from './results-chip.js';
+// SETTINGS ▸ SOUNDTRACK. LIGHT appears in dev builds only (results-chip.js cycleSoundtrack): in a
+// release a song's light version is the device's call, not the player's.
+const SOUNDTRACK_LABEL = { original: 'ORIGINAL', light: 'LIGHT', '8bit': '8-BIT' };
 import { BangerMakerState, rerollTake } from './banger/maker.js';
 import {
   jukeboxBangerRows, songFor, deleteBanger, bangerTitle, lastPlayedBanger, rememberBanger,
@@ -6964,7 +6967,7 @@ export class SettingsState {
         { label: `MUTE: ${s.muted ? 'ON' : 'OFF'}`, act: () => { s.muted = !s.muted; Audio.setMuted(s.muted); } },
         this.volumeOption('music', 'MUSIC VOLUME'),
         this.volumeOption('sfx', 'SFX VOLUME'),
-        { label: `SOUNDTRACK: ${soundtrack8bit() ? '8-BIT' : 'ORIGINAL'}`, act: () => setSoundtrack8bit(!soundtrack8bit()) },
+        { label: `SOUNDTRACK: ${SOUNDTRACK_LABEL[soundtrackMode()]}`, act: () => cycleSoundtrack() },
         this.audioSyncOption(),
         { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
         { label: 'EXIT TO TITLE', act: () => { this.save.persist(); this.onExitTitle(); } },
@@ -6981,7 +6984,7 @@ export class SettingsState {
       this.volumeOption('music', 'MUSIC VOLUME'),
       this.volumeOption('sfx', 'SFX VOLUME'),
       // Every song in its 8-bit version — the same switch as the jukebox's 8-BIT.
-      { label: `SOUNDTRACK: ${soundtrack8bit() ? '8-BIT' : 'ORIGINAL'}`, act: () => setSoundtrack8bit(!soundtrack8bit()) },
+      { label: `SOUNDTRACK: ${SOUNDTRACK_LABEL[soundtrackMode()]}`, act: () => cycleSoundtrack() },
       this.audioSyncOption(),
       { label: `SHOW FPS: ${s.showFps ? 'ON' : 'OFF'}`, act: () => { s.showFps = !s.showFps; } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },

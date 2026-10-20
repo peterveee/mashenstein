@@ -35,6 +35,7 @@ import { TRANSITION_CLOSE_S } from '../engine/states.js';
 import { trackIdOf } from '../data/tracks.js';
 import { CHIP_RESULT_MIXES } from './results-chip-mixes.js';
 import { LIGHT_MIXES } from './light-mixes.js';
+import { benchSaysLight } from '../engine/device-bench.js';
 import { laneList } from '../engine/lanes.js';
 import { VOICES, voiceOf, baseLane, PERCUSSION_LANES } from '../data/voices.js';
 import { BANGER_SOUNDS } from '../../tools/lib/banger/sounds.js';
@@ -168,6 +169,22 @@ export function handOver(bank, mix, at) {
 let soundtrackSave = null;
 /** Whether the SOUNDTRACK setting is 8-BIT. */
 export const soundtrack8bit = () => soundtrackSave?.settings?.soundtrack === '8bit';
+// SOUNDTRACK: LIGHT is a dev build's (window.__MASH_BUILD__); a release reads it as ORIGINAL.
+const devBuild = () => typeof window !== 'undefined' && !!window.__MASH_BUILD__;
+/** Whether the SOUNDTRACK setting is LIGHT (dev builds only). */
+export const soundtrackLight = () => devBuild() && soundtrackSave?.settings?.soundtrack === 'light';
+/** The setting as the menu shows it: 'original', 'light' (dev) or '8bit'. */
+export const soundtrackMode = () => (soundtrack8bit() ? '8bit' : soundtrackLight() ? 'light' : 'original');
+/** SETTINGS ▸ SOUNDTRACK's next value: ORIGINAL ↔ 8-BIT, and LIGHT between them in a dev build. */
+export function cycleSoundtrack() {
+  const order = devBuild() ? ['original', 'light', '8bit'] : ['original', '8bit'];
+  const next = order[(order.indexOf(soundtrackMode()) + 1) % order.length];
+  if (!soundtrackSave?.settings) return;
+  const before = [eightBitNow(), lightReason(Audio.sourceBank)];
+  soundtrackSave.settings.soundtrack = next;
+  try { soundtrackSave.persist?.(); } catch { /* kept for this session */ }
+  if (eightBitNow() !== before[0] || lightReason(Audio.sourceBank) !== before[1]) retuneOnTheBeat();
+}
 // THE AUDIO GUARD'S 8-BIT (engine/audio-guard.js, 20 Oct 2026): the same soundtrack, for
 // this level only and never written to the save, while the audio thread is falling behind.
 // Kept apart from the SETTING, so SETTINGS still shows and changes the player's own choice
@@ -230,19 +247,61 @@ export function deepReliefMix(bank, mix) {
   return { ...mix, lanes };
 }
 
-// LIGHT MIXES (light-mixes.js, exported from the `<id>-light` desk alternates — tools/lib/light-mixes.js,
-// 20 Oct 2026): the songs as written with less to synthesise —
-// on trial, so only `?lightmix` turns them on. Laid under the 8-bit soundtrack, which goes on
-// top of whichever mix plays.
-let lightMixes = false;
-/** Whether the songs play their light mixes. */
-export const lightMixesNow = () => lightMixes;
-/** Switch the light mixes on or off; a song playing follows on its next beat. */
+// LIGHT VERSIONS (light-mixes.js, exported from the `<id>-light` desk alternates —
+// tools/lib/light-mixes.js). Peter, 20 Oct 2026: "if a device can't handle it shouldn't we
+// just force it to light for tracks that have a light version (since we only build them if
+// needed)". So it is not a choice in a release build: a song with a light version plays it on a
+// device that needs it, and the full mix everywhere else. A device needs it when —
+//   · its audio bench (engine/device-bench.js, once at the first launch) is slower than
+//     LIGHT_BENCH_MS, or
+//   · that SONG has made its audio fall behind here before (the guard's relief, learnLight),
+//     remembered on the device for good.
+// Dev builds add SOUNDTRACK: LIGHT to force it, and `?lightmix` / `?fullmix` force either way
+// for a test. Laid under the 8-bit soundtrack, which goes on top of whichever mix plays.
+let forceLight = null;   // true / false from the URL, null to decide
+/** `?lightmix` (true) or `?fullmix` (false) for this boot; null decides by device. */
 export function setLightMixes(on) {
-  if (lightMixes === !!on) return;
-  lightMixes = !!on;
+  const next = on == null ? null : !!on;
+  if (forceLight === next) return;
+  forceLight = next;
   retuneOnTheBeat();
 }
+const LEARNED_KEY = 'mash_light_learned';
+let learned = null;
+const learnedSet = () => {
+  if (learned) return learned;
+  try { learned = new Set(JSON.parse(localStorage.getItem(LEARNED_KEY) || '[]')); } catch { learned = new Set(); }
+  return learned;
+};
+/**
+ * Song `trackId` has made this device's audio fall behind: from its next start it plays its
+ * light version here. True when that is news (a light version exists and it was not known).
+ */
+export function learnLight(trackId) {
+  if (!trackId || !LIGHT_MIXES[trackId] || learnedSet().has(trackId)) return false;
+  learnedSet().add(trackId);
+  try { localStorage.setItem(LEARNED_KEY, JSON.stringify([...learnedSet()])); } catch { /* this session only */ }
+  return true;
+}
+/** Forget every song this device has learned (dev menu, tests). */
+export function forgetLearnedLight() {
+  learned = new Set();
+  try { localStorage.removeItem(LEARNED_KEY); } catch { /* nothing kept */ }
+}
+let lightSaid = new Set();
+/** Why song `bank` plays its light version here — 'forced', 'setting', 'bench', 'learned' — or null. */
+export function lightReason(bank) {
+  const id = bank ? trackIdOf(bank) : null;
+  if (!id || !LIGHT_MIXES[id] || forceLight === false) return null;
+  if (forceLight) return 'forced';
+  if (soundtrackLight()) return 'setting';
+  if (benchSaysLight()) return 'bench';
+  if (learnedSet().has(id)) return 'learned';
+  return null;
+}
+/** Told once per song per boot that it went light, and why — for the crash trail (main.js). */
+export let onLightChosen = null;
+export function setOnLightChosen(fn) { onLightChosen = fn; }
 // SOUND TESTS on the iPad (20 Oct 2026): 8-bit gets a level through where the full and light
 // mixes tip over, and the Mac cannot say which half of it matters — so the device is asked.
 //   ?soundtest=noreverb    the song's own sounds, its reverb taken out the way 8-bit does it
@@ -277,7 +336,9 @@ function withOwnReverb(chip, own) {
 export function installSoundtrack(save) {
   soundtrackSave = save;
   Audio.setMixFilter((bank, entry) => {
-    let mix = lightMixes && bank ? patchMix(entry, LIGHT_MIXES[trackIdOf(bank)]) : entry;
+    const why = lightReason(bank);
+    if (why && !lightSaid.has(trackIdOf(bank))) { lightSaid.add(trackIdOf(bank)); try { onLightChosen?.(trackIdOf(bank), why); } catch { /* a log */ } }
+    let mix = why ? patchMix(entry, LIGHT_MIXES[trackIdOf(bank)]) : entry;
     if (soundTest === 'noreverb') mix = dryMix(mix);
     if (soundTest === 'chipvoices' && bank) mix = withOwnReverb(eightBitOf(bank, mix), mix);
     if (eightBitNow()) {

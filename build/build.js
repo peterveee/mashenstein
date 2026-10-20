@@ -7,7 +7,7 @@
 // the deployed current build remains split so a browser-only iPhone never
 // downloads or evaluates the game.
 import esbuild from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync, createWriteStream, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync, createWriteStream, unlinkSync, appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync, execFile } from 'node:child_process';
 import { createServer, request as httpRequest } from 'node:http';
@@ -469,6 +469,7 @@ function handleRecordUpload(req, res, url) {
 // anyone opening the diagnostics panel. Whole trail each time: the file is overwritten.
 const CRUMBS_ROUTE = '/__dev/crumbs';
 const CRUMBS_PATH = join(root, 'work', 'local', 'crash-trail.txt');
+const STRESS_PATH = join(root, 'work', 'local', 'audio-stress.txt');
 
 function handleCrumbs(req, res) {
   if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
@@ -478,7 +479,11 @@ function handleCrumbs(req, res) {
   req.on('end', () => {
     try {
       mkdirSync(dirname(CRUMBS_PATH), { recursive: true });
-      writeFileSync(CRUMBS_PATH, body);
+      // A stress page's result (dist/audio-stress.html) is APPENDED to its own file: the
+      // crash trail overwrites this one on every boot, and the first REVERB COST reading
+      // from the iPad was lost under the next game session's trail (20 Oct 2026).
+      if (body.startsWith('== AUDIO STRESS')) appendFileSync(STRESS_PATH, `${body}\n`);
+      else writeFileSync(CRUMBS_PATH, body);
       res.writeHead(204); res.end();
     } catch (err) {
       res.writeHead(500); res.end(String(err.message));

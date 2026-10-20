@@ -38,13 +38,14 @@ export const LIGHT_DROPPED_EFFECTS = ['doubler', 'widener', 'chorus2', 'autopann
 // in the game). Peter's iPad, 20 Oct 2026: Gravity with no reverb got past bar 20 in a level
 // for the first time, and played the whole song in the jukebox.
 export const LIGHT_RECIPES = {
-  // TIME VORTEX. The iPad tipped at bar 20, then — reverb off — at bar 38. Bars 18–21: lead11,
-  // the choir Aah (JMJR-4), sings 12–16 voices a bar; muted, the worst moment there halves on
-  // the Mac (40% → 21%). Bars 38–41: lead4, the sample-and-hold line, plays 32 notes a bar at
-  // −26 dB.
-  gravity: { mute: ['lead4', 'lead11'], dry: true },
-  // bass3 plays bass's notes again, note for note (654 of 656); the bass comes up to cover it.
-  rhythm: { mute: ['bass3'], gain: { bass: 3 }, dry: true },
+  // TIME VORTEX. Remade 20 Oct 2026 (Peter): a plain copy of the song — effects and reverb
+  // kept — for Peter to put cheap sounds in place of the four JMJR-4 choir lanes (lead3,
+  // lead8, lead11, chords5), which are half of the iPad's peak at bars 18–21. Reverb costs the
+  // iPad ~5 % (dist/audio-stress.html); with the choir cheap it should not be needed.
+  gravity: { effects: [] },
+  // (Rhythm had one until the KNDO-5 fix the same evening made the full song play clean on the
+  // iPad. A light version is built only where a device needs one — every song that has one
+  // plays it on every slow device.)
 };
 
 const REVERBS = new Set(['reverb', 'spring']);

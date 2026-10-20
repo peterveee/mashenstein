@@ -241,7 +241,6 @@ import * as POLARITY_DRIVE from './polarity-drive.js';
 import * as RHYTHM_8BIT from './rhythm-8bit.js';
 import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
 import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
-import * as RHYTHM_LIGHT from './rhythm-light.js';
 import * as RHYTHM_REMIX_FIRE_SALE from './rhythm-remix-fire-sale.js';
 import * as RHYTHM_REMIX_HOSTILE_TAKEOVER from './rhythm-remix-hostile-takeover.js';
 import * as RHYTHM_REMIX_IN_THE_RED from './rhythm-remix-in-the-red.js';
@@ -568,7 +567,6 @@ export const IMPORTED_BY_ID = {
   "rhythm-8bit": { bank: RHYTHM_8BIT.bank, title: RHYTHM_8BIT.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-bankruptcy-copy-2": { bank: RHYTHM_BANKRUPTCY_COPY_2.bank, title: RHYTHM_BANKRUPTCY_COPY_2.title, group: "copy", writable: true },
   "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },
-  "rhythm-light": { bank: RHYTHM_LIGHT.bank, title: RHYTHM_LIGHT.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-remix-fire-sale": { bank: RHYTHM_REMIX_FIRE_SALE.bank, title: RHYTHM_REMIX_FIRE_SALE.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-remix-hostile-takeover": { bank: RHYTHM_REMIX_HOSTILE_TAKEOVER.bank, title: RHYTHM_REMIX_HOSTILE_TAKEOVER.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-remix-in-the-red": { bank: RHYTHM_REMIX_IN_THE_RED.bank, title: RHYTHM_REMIX_IN_THE_RED.title, group: "alternate", writable: true, alternateOf: "rhythm" },

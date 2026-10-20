@@ -41,7 +41,7 @@ The budget is **one audio thread**. The game's own share of it, from the trails:
 | Gravity Grid song, typical | ~40 % |
 | Gravity bar 18–21 (the choir) or bar 38 (lead4 32nds + choir) | tips it |
 | Rhythm Bankruptcy, before the KNDO-5 fix, by bar 39 | tips it |
-| Rhythm after the fix (Mac, scaled) | ~24 %, flat |
+| Rhythm after the fix (Mac, scaled; iPad played it clean end to end, 20 Oct evening) | ~24 %, flat |
 | Sound effects, hero overlay, density changes | not measurable against the song |
 
 **What "tips" means on this iPad.** Once the clock falls under ~0.9 it does not fall in
@@ -124,7 +124,7 @@ Eight families, 925 presets. The order is by suspicion, not by catalogue order.
 | MRDR-3 native | `_playLayer`, cache `_playCachedLayer` | 166 | one filter chain per note, 1–3 oscs × unison | PWM delay lines, unison on phone |
 | CRLS-1 / RMND-2 (Tone pooled) | `SYNTHS` classes, pools | 71 + 62 | Tone Synth/MonoSynth/FMSynth per slot | ~1,400 Tone oscillators still running after 100 s of Rhythm |
 | KNDO-5 (chip) | `_playGame` | 10 | osc, gain, optional filter + drive, shared LFO | FIXED 20 Oct — verify it stays fixed |
-| TNGR-2 (wavetable worklet) | `_playTngr2Node` | 82 | one worklet node per lane | silent on the http dev URL; iPad plays the https build |
+| TNGR-2 (wavetable worklet) | `_playTngr2Node` | 82 | one worklet node per lane | NEVER measured on the iPad: every iPad trail so far was the http dev URL, where worklets do not exist and TNGR-2 lanes are silent AND free. Gravity has three (chords4, chords7, lead13), Rhythm one (lead7). The https build is heavier than any trail shows |
 | WNDR-9 (additive) | `_playAdditive` | 12 | partials × oscs | standing cost per partial |
 | Drums | `_playDrum` | 445 | body + click + metal partials per hit | retire fixed 6 Oct; cymbals' six partials |
 | Engine (legacy) | engine voice | 48 | — | which songs still reach it |
@@ -142,6 +142,14 @@ The known heaviest. Facts from today:
   second whole IR for the ending consonant.
 - `chipRole` leaves JMJR-4 out of the 8-bit set on purpose, so 8-bit relief did not touch
   it; `reliefMix` now swaps it for the chip pad.
+
+**Built 20 Oct 2026: QUALITY on the JMJR-4 card** (Peter's design: a sound choice, not a
+device rule). HIGH = F1–F5 (today's sound, the default); MEDIUM drops F4 and F5; LOW sings on
+F1 and F2 alone. Nodes per singer, counted on Gravity's choir presets (flutter excluded —
+it is already ONE set per note-on, shared by every singer of a chord, not per singer as first
+thought): `lead11` 19 → 14 → 10, `chords5` 17 → 13 → 9; biquads 5 → 3 → 2. The game uses it
+through a song's light version (set LOW on the choir lanes there). Not yet heard: renders of
+all three on a Gravity choir passage and a spoken line are the next step.
 
 Measure first, in this order, each as a one-line switch so the A/B is honest:
 
@@ -223,8 +231,14 @@ bypassed / absent, and ranks them. Known questions:
 
 - **Reverb.** One stereo convolution (`makeReverb`), Gravity at 4.5 s. Mac WebKit:
   ~3 % of the budget at 4.5 s, ~12 % at 1.5 s (the edge-search method,
-  `dist/audio-stress.html` REVERB COST dry run). The iPad reading is still to come from
-  the same page; the trails say it is far more than 3 % there. If so: shorter IR on
+  `dist/audio-stress.html` REVERB COST dry run). iPad (20 Oct, 21:05, `work/local/audio-stress.txt`): **~5 % at 4.5 s, ~3 % at
+  1.5 s**, against ±2 % between the two bare readings. Small, but at Gravity's bar 20 it was
+  the margin: reverb off moved the tip to bar 38. The same run overloaded the iPad for 3 s
+  at a time, a dozen times, and it came straight back every time — no latch from a short
+  overload. The LATCH TEST (21:26) held 140 % for 12 s: afterwards the same 30 % load that
+  had run at 1.00 ran at 0.66–0.81 for 40 s, and only ZERO load brought it back (within a
+  second). A suspend + resume inside a tap stopped the clock dead. A sustained overrun
+  latches the iPad; prevention is the point of this audit. If so: shorter IR on
   tablets, or the reverb off on tablets and phones only.
 - **mbCompN** (three compressors and two crossovers per instance, on most masters) and
   any effect with a `ScriptProcessor` fallback on the http URL.
@@ -245,6 +259,10 @@ Each stage's Mac table gets one confirmation on the iPad before anything is acte
   trail), the guard's `>> GUARD` lines. Every claim in `docs/audio/AUDIT.md` carries the
   trail timestamp that confirmed it.
 - The Mac-to-iPad scale (1.9×) is re-read from each confirmation, not assumed.
+- **https for the final word.** The http dev URL has no AudioWorklet, so TNGR-2 is silent
+  and free there and the MRDR-3 farm is unavailable. A song is confirmed on the iPad over
+  https (a Home Screen install of the dev build, or the published Pages site) before it is
+  called done; http trails are for locating, not for signing off.
 
 ## 7. Order, effort, exit
 
@@ -271,9 +289,34 @@ the guard never firing, and the nightly test fails if any synth starts leaking a
 - Nothing is "fixed" until the growth number is flat AND an iPad trail agrees.
 - Every fix lands behind a test or it is not a fix.
 
-## 9. Status
+## 9. After the audit — the guard's one-second silence
+
+Deferred by Peter, 20 Oct 2026, to the end of this plan: the audit and the light versions are
+meant to keep any device from tipping, and this is the net for when they do not.
+
+**Why.** The LATCH TEST (`work/local/audio-stress.txt`, 21:26): after 12 s over its limit the
+iPad ran a 30 % load at 0.66–0.81 for 40 s; only ZERO load released it, within a second. So
+nothing the guard does today works once the tip has happened — 8-bit, density, DEEP all
+leave load — and the old suspend + resume kick stopped the clock dead even inside a tap.
+
+**What.** A new step in `engine/audio-guard.js`, after the 8-bit relief at 0.95:
+
+1. Clock under 0.9 → on the next beat every lane goes silent for ~1 s, and the notes already
+   queued (up to the 1 s lookahead) and still ringing are dropped too — the engine's `panic()`
+   cut, minus what it tears down for good: keep the mixer, the song position and the clock.
+2. The song comes back on a bar line in 8-bit, or in its light version where it has one.
+3. Still under 0.9 → once more, then 8-bit for the rest of the level.
+4. Every step a `>> GUARD` line on the trail; the song is learned (`learnLight`).
+
+**Cost.** About 1–1½ hours plus tests; one iPad run decides whether a second of near-silence
+(the mixer and the picture still running) releases the latch, or whether it needs longer.
+Until it exists, a device the benchmark misjudges crackles to the end of the level once, and
+plays the song light from then on.
+
+## 10. Status
 
 - *20 Oct 2026:* KNDO-5 retire fixed; muted tracks skipped game-wide; muted inserts
   parked; guard DEEP step; `gravity-light` / `rhythm-light` desk alternates and
-  `?lightmix`; `dist/audio-stress.html`; all uncommitted. Stage 1 not started. Open iPad
-  readings: REVERB COST, Rhythm after the KNDO-5 fix, Gravity with `?lightmix`.
+  `?lightmix`; `dist/audio-stress.html`; all uncommitted. Stage 1 not started. Rhythm 1
+  confirmed clean on the iPad after the KNDO-5 fix (no glitch rows). Open iPad readings:
+  REVERB COST, Gravity with `?lightmix`.
