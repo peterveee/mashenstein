@@ -62,6 +62,8 @@ const suites = [
   'tests/glitch-log.js',
   'tests/audio-guard.js',
   'tests/light-versions.js',
+  // Every synth family played long enough for a leak to show, in WebKit (tools/audio-audit.js).
+  'tests/audio-leaks.js',
   'tests/performance-test.js',
   'tests/performance-handoff.js',
   // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.
@@ -742,6 +744,7 @@ const suites = [
 // `npx playwright install chromium` fails all of them at the launch rather than at an
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
+  'tests/audio-leaks.js',
   'tests/character-editor-browser.js',
   'tests/render-culling-browser.js',
   'tests/lcd-cache-browser.js',

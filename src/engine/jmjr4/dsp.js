@@ -493,6 +493,14 @@ export function renderIr(ctx, ir, opts = {}) {
   // cut with the rest here, but NOT on the handle's `sources`, which the rack's held-note
   // record and its panic stop at the note's end — the same later-stop trap.
   const brief = [];
+  // MODULATORS (21 Oct 2026): sources that drive only another source's params — flutter's
+  // sines, jitter's noise. Nothing pulls them once their carrier has stopped, so one booked to
+  // stop at or after the carrier never reaches its stop and never ends: a live source for the
+  // rest of the session (tools/audio-audit.js: 520 flutter sines a second-set of each in 20 s of
+  // choir). They stop a hair BEFORE the carriers, while still pulled — inaudible, the note's
+  // release is over by then — and the rack does not wait on them.
+  const mods = [];
+  const MOD_EARLY = 0.01;
   const ps = Math.pow(2, (opts.pitchShiftSt || 0) / 12);
   const pitchT = ir.pitch.map((p) => p[0]);
   const pitchV = ir.pitch.map((p) => p[1] * ps);
@@ -518,7 +526,7 @@ export function renderIr(ctx, ir, opts = {}) {
     else {
       for (const hz of [12.7, 7.1, 4.7]) {
         const l = ctx.createOscillator(); l.frequency.value = hz; l.connect(amt);
-        l.start(t0); book(l, t0 + total + 0.05); nodes.push(l); sources.push(l);
+        l.start(t0); book(l, t0 + total + 0.05 - MOD_EARLY); nodes.push(l); mods.push(l); paramMods.push(l);
       }
     }
     for (const o of mainOscs) amt.connect(o.frequency);
@@ -538,8 +546,13 @@ export function renderIr(ctx, ir, opts = {}) {
     amt.gain.value = meanF0 * c.jitter / JITTER_RMS;
     jn.src.connect(lp); lp.connect(amt);
     for (const o of mainOscs) amt.connect(o.frequency);
-    jn.src.start(t0, jn.offset); book(jn.src, t0 + total + 0.05);
-    nodes.push(jn.src, lp, amt); sources.push(jn.src); paramMods.push(amt);
+    jn.src.start(t0, jn.offset); book(jn.src, t0 + total + 0.05 - MOD_EARLY);
+    // A MODULATOR (see `mods`), not a source the note waits on (21 Oct 2026). On `sources`
+    // it ended after its carriers, unpulled, never — and the rack unwires a note only when
+    // every source on its list has ended, so one jittered note kept its whole graph on the
+    // lane for good: Crypt Shift's choir (JITTER 0.6) left 5,514 → 17,250 nodes wired over
+    // 40 s (tools/audio-audit.js songs).
+    nodes.push(jn.src, lp, amt); mods.push(jn.src); paramMods.push(jn.src, amt);
   }
   // The sources sum here, scaled so N detuned sources carry the power of one: the levels
   // compiled into the IR (aspiration, bursts, the bar) are relative to ONE source.
@@ -848,7 +861,7 @@ export function renderIr(ctx, ir, opts = {}) {
     oscs,
     f1,
     f2,
-    stop(t) { for (const n of [...sources, ...brief]) cut(n, t ?? ctx.currentTime); },
+    stop(t) { const at = t ?? ctx.currentTime; for (const n of [...sources, ...brief]) cut(n, at); for (const n of mods) cut(n, at - MOD_EARLY); },
     // live vowel morph on a held note: move F1..F3 to a new target (Hz, before fscale).
     // `tc` is an exponential time constant (a pot nudge); `dur` is a linear glide that takes
     // exactly that long (MORPH TIME on a new note)
@@ -895,6 +908,7 @@ export function renderIr(ctx, ir, opts = {}) {
       decl.gain.linearRampToValueAtTime(0, t + rel);
       const end = t + rel + 0.02;
       for (const n of [...sources, ...brief]) cut(n, end);
+      for (const n of mods) cut(n, end - MOD_EARLY);
     },
   };
 }

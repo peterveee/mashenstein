@@ -68,7 +68,9 @@ tier) — the game's own setup, mirrored from `src/main.js`. The in-thread burne
 so every verdict is a median of three interleaved runs with a bare control first).
 
 Served over https via a routed page (worklets need a secure context), as the existing tools
-do. Also runnable against `http://MBP14.local:8001` to reproduce the iPad's no-worklet path
+do. **Silent from line one:** every page gets the `SILENT_SINK` init script (every
+connect to the speakers through one gain-0 node, which still renders), so nothing plays
+through the Mac's speakers — memory `headless-audio-must-be-silent`. Also runnable against `http://MBP14.local:8001` to reproduce the iPad's no-worklet path
 when needed.
 
 ### 2.2 Subjects
@@ -315,8 +317,40 @@ plays the song light from then on.
 
 ## 10. Status
 
-- *20 Oct 2026:* KNDO-5 retire fixed; muted tracks skipped game-wide; muted inserts
-  parked; guard DEEP step; `gravity-light` / `rhythm-light` desk alternates and
-  `?lightmix`; `dist/audio-stress.html`; all uncommitted. Stage 1 not started. Rhythm 1
-  confirmed clean on the iPad after the KNDO-5 fix (no glitch rows). Open iPad readings:
-  REVERB COST, Gravity with `?lightmix`.
+- *20 Oct 2026:* KNDO-5 retire fixed and confirmed on the iPad (Rhythm 1 clean end to end);
+  muted tracks skipped game-wide; muted inserts parked; guard DEEP step; light versions with
+  the device benchmark (600 ms cut-off, assumed — the iPad's own reading still to come) and
+  per-device learning; JMJR-4 QUALITY (HIGH / MEDIUM / LOW: 130 / 105 / 91 ms for 16 singers
+  offline); `dist/audio-stress.html` (REVERB COST, LATCH TEST, OFFLINE BENCH).
+- *21 Oct 2026 — Stage 1 done.* `tools/audio-audit.js` (synth / songs / effect / leaks;
+  silent; `--counts`, `--copies`, `--src` for a before/after) and `tests/audio-leaks.js`
+  (on demand, in the browser set). **The leak signal is a count, not a load:** what the
+  browser still pulls at two silences, walked back from the speakers over every recorded
+  connection. Proven on KNDO-5: the pre-fix engine (a copy of src with the old retire line,
+  `work/local/_lab-kndo-before/`) leaves 1,642 → 5,866 nodes wired over 90 s, the fixed one
+  106 → 106. The load numbers need a page-local baseline (the burner settles 22 s before the
+  phrase) and read ±3 points; load growth alone did not show the KNDO-5 leak on the Mac at
+  all, which is why it does not decide the verdict. All nine `leaks` presets pass.
+- *Stage 2, first sweep (21 Oct):* `node tools/audio-audit.js songs --counts --seconds=40` —
+  every lane sound of every game song as that song sets it (259; results
+  `work/local/_audit-songs-counts-2026-10-21.txt`, `work/audit/2026-10-21/`).
+  - **Wired leaks: 4 lanes, one cause, FIXED.** Crypt Shift's choir (four lanes of
+    jmjrChoirAah with JITTER 0.6): 5,514 → 17,250 nodes wired over 40 s. The jitter noise was
+    on the note's source list but drives only pitch, so it outlived its carriers unpulled,
+    never ended, and the rack never unwired the note. Now a modulator (`dsp.js` `mods`).
+  - **Never-ended sources: 74 lanes.** Unwired (no audio cost on the Mac) but each one held
+    for the session — memory on a phone that the OS kills when it runs out.
+    - JMJR-4 (7 lanes in 6 songs, ~2,800 per 40 s): flutter sines and the vibrato LFO were
+      stopped 0.05–0.08 s AFTER their carriers, unpulled by then. FIXED: they stop 0.01 s
+      before (`voices.js` `modOff`, `dsp.js` `MOD_EARLY`), after the release has reached 0.
+    - **CRLS-1 and RMND-2, the Tone pool (67 lanes): FIXED 21 Oct.** Every note's
+      ToneOscillatorNode: Tone books the native stop for now + its look-ahead, then disposes
+      (disconnects) it on the next idle callback — before the stop arrives, so it never ends
+      (tpTiny: 960 in 32 s of eight lanes). `engine/tone-retire.js` makes Tone's one-shot
+      sources (oscillator and buffer) dispose on their own `ended` (10 s fallback), live
+      contexts only. tpTiny now 763 → 763: what is left is the pool's own Signals, which
+      live as long as the pool. `npm run test:all` note: `tests/note-duration.js` "swing of 50
+      through the preset path" fails on the committed tree too — not this work.
+  - `tests/audio-leaks.js` now also fails ANY family whose never-ended sources grow; all
+    nine pass. A second sweep of all 259 lane sounds with every fix in:
+    `work/local/_audit-songs-counts-2026-10-21-after.txt`.

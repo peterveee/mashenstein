@@ -35,6 +35,9 @@
 // stems-sum-to-the-mix property offline renders rely on — that needs a seeded
 // buffer, the way AudioSys.noiseBuf already is, before NoiseSynth can be offered.
 import * as Tone from 'tone';
+import { installToneSourceRetire } from './tone-retire.js';
+// Tone's per-note sources end before they are unplugged (tone-retire.js): once, at load.
+installToneSourceRetire();
 import * as FAMILY from './synth-families.js';
 import { VOICES } from '../data/voices.js';
 import { isTngr2Table } from './tngr2/families.js';
@@ -5791,7 +5794,12 @@ export class VoiceRack {
           : { from: lastFreq, to: lastFreq, t0: time, t1: time }),
     };
     if (mono && gateKey) fingerDown(record, gateKey, lastFreq);
-    const modOff = hold ? time + HOLD_SECONDS : lastOff + 0.05;
+    // Before the carriers stop, not after (21 Oct 2026): the vibrato LFO and the shared
+    // flutter sines drive only the notes' pitch, so past the carriers' stop nothing pulls them,
+    // they never reach their own stop and never end — 520 of each left running for every 20 s
+    // of an eight-lane choir (tools/audio-audit.js). `lastOff` is a part's end, 0.03 s after
+    // its sources are cut (jmjr4/note.js `end`, dsp.js `release`); this lands 0.01 s before.
+    const modOff = hold ? time + HOLD_SECONDS : lastOff - 0.04;
     for (const m of sharedMods.oscs) { m.start(time); m.stop(modOff); }
 
     record.gateUntil = hold ? time + HOLD_SECONDS : time + Math.max(0.05, Array.isArray(dur) ? Math.max(...dur) : (dur || 0));
