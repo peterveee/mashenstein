@@ -64,6 +64,10 @@ const suites = [
   'tests/light-versions.js',
   // Every synth family played long enough for a leak to show, in WebKit (tools/audio-audit.js).
   'tests/audio-leaks.js',
+  // The harness fails what it must: broken graphs, a slow leak, a silent subject, a kept buffer.
+  'tests/audio-audit-selftest.js',
+  // An idle strip sleeps on WebKit and wakes before its next note.
+  'tests/strip-sleep.js',
   'tests/performance-test.js',
   'tests/performance-handoff.js',
   // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.
@@ -432,6 +436,10 @@ const suites = [
   // Undo uses one snapshot per completed edit, with continuous pot/graph drags coalesced
   // into one step rather than filling the stack with pointermove frames.
   'tests/mixer-undo.js',
+  // Draft checkpoints recover from transient storage failures without an active gesture.
+  'tests/mixer-draft-persistence.js',
+  // Desk saves, including preset pinning, apply in order and retain newer edits.
+  'tests/mixer-save-queue.js',
   // The same shape of claim for gameplay numbers: that the constants the dev
   // strip moves still exist, under those names, as plain numbers, in the files
   // the manifest names — and that the rewrite which makes them movable never
@@ -745,6 +753,8 @@ const suites = [
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
   'tests/audio-leaks.js',
+  'tests/audio-audit-selftest.js',
+  'tests/strip-sleep.js',
   'tests/character-editor-browser.js',
   'tests/render-culling-browser.js',
   'tests/lcd-cache-browser.js',
@@ -852,7 +862,8 @@ const soundSuites = [
   'tests/song-analysis.js', 'tests/beat-detect.js', 'tests/beat-detect-audio.js',
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
-  'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
+  'tests/mixer-undo.js', 'tests/mixer-draft-persistence.js', 'tests/mixer-save-queue.js',
+  'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
   'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-fusion.js', 'tests/banger-mood-pairs.js', 'tests/banger-rolls.js', 'tests/banger-forms.js', 'tests/banger-chords-early.js', 'tests/banger-modify.js',
   'tests/banger-expression.js', 'tests/banger-voice-leading.js',
   'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',

@@ -28,6 +28,31 @@ history.end();
 assert(history.undo() && value === 0, 'a continuous drag is one undo step');
 assert(!history.canUndo(), 'intermediate drag frames are not separate undo steps');
 
+let captures = 0;
+let longValue = 0;
+const longHistory = createUndoHistory({
+  capture: () => { captures++; return { value: longValue }; },
+  restore: (snapshot) => { longValue = snapshot.value; },
+});
+longHistory.reset();
+const beforeDragCaptures = captures;
+longHistory.begin();
+for (let i = 1; i <= 500; i++) { longValue = i; longHistory.touch(); }
+assert(longHistory.canUndo(), 'an active edited gesture can be undone');
+longHistory.end();
+assert(captures - beforeDragCaptures <= 2, 'a long gesture captures its final state once');
+assert(longHistory.undo() && longValue === 0, 'long gesture restores its beginning');
+
+longHistory.reset();
+longHistory.begin(); longValue = 1; longHistory.touch();
+longValue = 0; longHistory.touch(); longHistory.end();
+assert(!longHistory.canUndo(), 'a net-zero gesture adds no undo step');
+
+longHistory.begin(); longValue = 3; longHistory.touch();
+assert(longHistory.undo() && longValue === 0, 'undo finalises an active gesture');
+longHistory.end();
+assert(!longHistory.canUndo(), 'late gesture end adds no stale step');
+
 history.reset();
 history.begin();
 history.touch();

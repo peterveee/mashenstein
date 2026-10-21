@@ -22,26 +22,31 @@ export function createUndoHistory({ capture, restore, limit = 100 }) {
   const sync = () => { current = capture(); };
 
   const begin = () => {
-    if (!transaction) transaction = { before: current ?? capture(), recorded: false };
+    if (!transaction) transaction = { before: current ?? capture(), touched: false };
   };
 
-  const end = () => { transaction = null; };
+  const end = () => {
+    if (!transaction) return;
+    const { before, touched } = transaction;
+    transaction = null;
+    if (!touched) return;
+    const after = capture();
+    if (!equal(before, after)) {
+      undo.push(before);
+      if (undo.length > limit) undo.shift();
+    }
+    current = after;
+  };
 
   /** Call after the live state has been changed. */
   const touch = () => {
     const implicit = !transaction;
     if (implicit) begin();
-    const after = capture();
-    if (!transaction.recorded && !equal(transaction.before, after)) {
-      undo.push(transaction.before);
-      if (undo.length > limit) undo.shift();
-      transaction.recorded = true;
-    }
-    current = after;
+    transaction.touched = true;
     if (implicit) end();
   };
 
-  const canUndo = () => undo.length > 0;
+  const canUndo = () => undo.length > 0 || !!transaction?.touched;
 
   const take = () => {
     if (transaction) end();

@@ -40,6 +40,9 @@ import { watchDeskSelects, syncDeskSelects } from './mixer-select.js';
 import { installTooltips, placeCard } from './mixer-tooltips.js';
 import { createVisualiserPanel } from './mixer-visualiser.js';
 import { createPerfDiag } from './mixer-perf-diag.js';
+import { createDraftPersistence } from './mixer-draft-persistence.js';
+import { createSaveQueue } from './mixer-save-queue.js';
+const enqueueMixSave = createSaveQueue();
 import {
   installDeskLayout, h, scheduleDeskFit, fitStrips, forgetStripMetrics, markClipped,
   syncArrangementLaneSelection, laneRowHeight, laneRowGap, writeWorkRatio,
@@ -419,6 +422,17 @@ const deskLanes = (bank, repeat = 1) =>
 let saved = JSON.parse(JSON.stringify(MIX));
 let draft = {};
 try { draft = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { draft = {}; }
+const draftPersistence = createDraftPersistence({
+  storage: localStorage, key: LS_KEY, value: () => draft,
+  onError: () => toast('This browser could not keep the latest mix draft', 5000),
+});
+function persistDraftNow() { return draftPersistence.writeNow(); }
+// A suspended tab may never run a trailing timer. These are best-effort final checkpoints;
+// explicit Save and song changes flush before crossing their own state boundaries.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') draftPersistence.flush();
+});
+window.addEventListener('pagehide', () => draftPersistence.flush());
 
 // Which songs have a cabinet mix sitting on the faders — `trackId → the condition it was
 // loaded for. "Load cabinet mix onto the desk" deliberately puts a treatment into the
@@ -596,6 +610,8 @@ let arrPlayingCells = [];
 // The sixteenth those marks were set off by, so a second attack on the same mark can be
 // told apart from the first one still being held.
 let arrPlayingAt = null;
+let arrVisualRevision = 0;
+let arrVisualKey = null;
 const arrEchoCells = new Set();
 const arrEchoTimers = new Map();
 const ARR_ECHO_DURATION = 720;
@@ -816,12 +832,35 @@ const isDirty = (id) => (draft[id] != null && mixChanged(draft[id], saved[id]))
 const undoStack = [];
 let lastEditTag = null;
 let lastEditAt = 0;
+let deskGesture = null;
+function beginDeskGesture() {
+  if (deskGesture) endDeskGesture();
+  deskGesture = { trackId, recorded: false };
+}
+function endDeskGesture() {
+  if (!deskGesture) return;
+  deskGesture = null;
+  lastEditTag = null;
+  draftPersistence.flush();
+}
+function attachDeskGesture(input) {
+  input.addEventListener('pointerdown', beginDeskGesture);
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture', 'blur']) {
+    input.addEventListener(event, endDeskGesture);
+  }
+}
+window.addEventListener('blur', endDeskGesture);
 
 function pushUndo(tag) {
   const now = performance.now();
-  const coalesce = tag != null && tag === lastEditTag && now - lastEditAt < 700;
+  // A pointer gesture remains one step even if the browser pauses input for 700 ms.
+  // Keyboard and other unbracketed controls retain the established time coalescing.
+  const coalesce = deskGesture?.trackId === trackId
+    ? deskGesture.recorded
+    : tag != null && tag === lastEditTag && now - lastEditAt < 700;
   lastEditTag = tag; lastEditAt = now;
   if (coalesce) return;
+  if (deskGesture?.trackId === trackId) deskGesture.recorded = true;
   undoStack.push({
     trackId,
     mix: JSON.parse(JSON.stringify(draft[trackId] ?? null)),
@@ -954,14 +993,25 @@ function watchDeskEdges() {
 // one that is not: nothing on this desk writes to a song other than the one on it. See
 // the note over `restoreFrom`.
 
-function editMix(mutate, tag, { undo = true } = {}) {
+function editMix(mutate, tag, { undo = true, affectsFrozen = true } = {}) {
   if (undo) pushUndo(tag);
   const cur = JSON.parse(JSON.stringify(mixFor(trackId)));
   mutate(cur);
   draft[trackId] = cur;
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
-  reconcileFrozen();
-  updateStatus();
+  draftPersistence.markDirty();
+  // Fader, pan, group and send changes are downstream of a frozen source. Their
+  // call sites opt out of recomputing every frozen lane's source fingerprint.
+  if (affectsFrozen) reconcileFrozen();
+  scheduleEditStatus();
+}
+
+let editStatusFrame = 0;
+function scheduleEditStatus() {
+  if (editStatusFrame) return;
+  editStatusFrame = requestAnimationFrame(() => {
+    editStatusFrame = 0;
+    updateStatus();
+  });
 }
 
 // ---- tooltips ---------------------------------------------------------------------
@@ -1019,6 +1069,7 @@ async function fetchMixerAction(input, init) {
 }
 
 function undo() {
+  endDeskGesture();
   // A take that has not been written yet is not on this stack, so undoing past it would
   // step back over the bar BEFORE the one you just played — and then the buffered notes
   // would land on top of what was restored. Writing it first makes ⌘Z mean what it
@@ -1080,7 +1131,7 @@ function undo() {
   // state (a song reverted to its written form) and deleting the key would lose it.
   if (step.hadArr) arrDraft[step.trackId] = step.arr;
   else delete arrDraft[step.trackId];
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   syncUndoButton();
   const arrMoved = JSON.stringify(arrFor(step.trackId) || null) !== arrBefore;
@@ -1514,6 +1565,7 @@ function faderBlock({ value, onInput, onReset, title, stereo }) {
   // arrow keys move by about a twentieth of a dB where the mixing happens.
   fader.min = 0; fader.max = 1; fader.step = 0.002;
   fader.value = dbToPos(value);
+  attachDeskGesture(fader);
   if (title) fader.title = title;
   const meter = document.createElement('div');
   // `stereo` splits the same 7px into a pair down the middle — see .meter.stereo. One
@@ -1561,6 +1613,7 @@ function masterToolbarBlock({ value, onInput, onReset, title }) {
   const fader = document.createElement('input');
   fader.type = 'range'; fader.className = 'master-fader';
   fader.min = 0; fader.max = 1; fader.step = 0.002;
+  attachDeskGesture(fader);
   fader.setAttribute('aria-label', 'Master volume');
   if (title) fader.title = title;
   const meter = document.createElement('div');
@@ -2392,7 +2445,7 @@ function syncMasterControls(value) {
 }
 
 function setMasterControlValue(value, tag = null) {
-  editMix((m) => { m.master = value; }, tag);
+  editMix((m) => { m.master = value; }, tag, { affectsFrozen: false });
   Audio.mixer?.setMasterTrim(value);
   syncMasterControls(value);
 }
@@ -3173,7 +3226,7 @@ function editGroup(id, patch, tag) {
     m.groups = m.groups || {};
     const cur = m.groups[id] || {};
     m.groups[id] = { ...cur, ...patch, ...(patch.eq ? { eq: { ...(cur.eq || {}), ...patch.eq } } : {}) };
-  }, tag);
+  }, tag, { affectsFrozen: false });
   Audio.mixer?.setGroup?.(id, patch);
 }
 
@@ -3274,6 +3327,19 @@ function syncLaneGain(key, { except = null } = {}) {
       el.textContent = `${gain > 0 ? '+' : ''}${gain.toFixed(1)}`;
     }
   }
+}
+const pendingLaneGainSync = new Map();
+let laneGainSyncFrame = 0;
+function scheduleLaneGainSync(key, { except = null } = {}) {
+  pendingLaneGainSync.set(key, { except, song: trackId });
+  if (laneGainSyncFrame) return;
+  laneGainSyncFrame = requestAnimationFrame(() => {
+    laneGainSyncFrame = 0;
+    for (const [lane, pending] of pendingLaneGainSync) {
+      if (pending.song === trackId) syncLaneGain(lane, { except: pending.except });
+    }
+    pendingLaneGainSync.clear();
+  });
 }
 
 /**
@@ -3552,29 +3618,35 @@ async function pinPresetInSongs(voiceId, preset, trackIds) {
   // Into the drafts first, so a failed write leaves the pin visible and undoable on the
   // desk rather than silently lost — the same place every other unsaved edit lives.
   for (const id of ids) draft[id] = entries[id];
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
-  try {
-    const res = await fetchMixerAction('/save', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ids, entries }, null, 2),
-    });
-    const text = await res.text();
-    if (!res.ok) { await tell('Those songs were not pinned', escapeHtml(text)); return false; }
-    for (const id of ids) delete draft[id];
+  persistDraftNow();
+  const snapshots = Object.fromEntries(ids.map(id => [id, JSON.stringify(entries[id])]));
+  const requestBody = JSON.stringify({ ids, entries }, null, 2);
+  return enqueueMixSave(async () => {
     try {
-      const body = JSON.parse(text);
-      if (body?.mix) saved = body.mix;
-      else for (const id of ids) saved[id] = JSON.parse(JSON.stringify(entries[id]));
-    } catch {
-      for (const id of ids) saved[id] = JSON.parse(JSON.stringify(entries[id]));
+      const res = await fetchMixerAction('/save', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: requestBody,
+      });
+      const text = await res.text();
+      if (!res.ok) { await tell('Those songs were not pinned', escapeHtml(text)); return false; }
+      for (const id of ids) {
+        if (JSON.stringify(draft[id] ?? null) === snapshots[id]) delete draft[id];
+      }
+      try {
+        const body = JSON.parse(text);
+        if (body?.mix) saved = body.mix;
+        else for (const id of ids) saved[id] = JSON.parse(snapshots[id]);
+      } catch {
+        for (const id of ids) saved[id] = JSON.parse(snapshots[id]);
+      }
+      persistDraftNow();
+      updateStatus();
+      return true;
+    } catch (err) {
+      await tell('Those songs were not pinned', escapeHtml(String(err.message || err)));
+      return false;
     }
-    localStorage.setItem(LS_KEY, JSON.stringify(draft));
-    updateStatus();
-    return true;
-  } catch (err) {
-    await tell('Those songs were not pinned', escapeHtml(String(err.message || err)));
-    return false;
-  }
+  });
 }
 
 /**
@@ -5073,7 +5145,7 @@ function channelStrip(lane, mix, slotRows, number) {
         editMix((m) => {
           const L = laneOf(m, key);
           L.send = { ...LANE_DEFAULTS.send, ...(L.send || {}), [aux.id]: lin };
-        }, `${aux.id}:${key}`);
+        }, `${aux.id}:${key}`, { affectsFrozen: false });
         Audio.mixer?.lane(key)?.setSend({ [aux.id]: lin });
       },
     });
@@ -5092,7 +5164,7 @@ function channelStrip(lane, mix, slotRows, number) {
   const pan = panKnob({
     value: s.pan,
     onInput: (x) => {
-      editMix((m) => { laneOf(m, key).pan = x; }, `pan:${key}`);
+      editMix((m) => { laneOf(m, key).pan = x; }, `pan:${key}`, { affectsFrozen: false });
       Audio.mixer?.lane(key)?.setPan(x);
     },
   });
@@ -5104,9 +5176,9 @@ function channelStrip(lane, mix, slotRows, number) {
   // fader is what `except` has to point at, and it does not exist yet.
   let fader = null;
   const applyGain = (x) => {
-    editMix((m) => { laneOf(m, key).gain = x; }, `gain:${key}`);
+    editMix((m) => { laneOf(m, key).gain = x; }, `gain:${key}`, { affectsFrozen: false });
     Audio.mixer?.lane(key)?.setGain(x);
-    syncLaneGain(key, { except: fader });
+    scheduleLaneGainSync(key, { except: fader });
   };
   const fb = faderBlock({
     value: s.gain,
@@ -5116,7 +5188,7 @@ function channelStrip(lane, mix, slotRows, number) {
     // than being coalesced into the drag that came before it. Nothing is excepted:
     // a reset has already put the fader on 0 itself, and the readout with it.
     onReset: (x) => {
-      editMix((m) => { laneOf(m, key).gain = x; });
+      editMix((m) => { laneOf(m, key).gain = x; }, null, { affectsFrozen: false });
       Audio.mixer?.lane(key)?.setGain(x);
       syncLaneGain(key);
     },
@@ -5253,7 +5325,7 @@ function masterStrip(mix) {
   const pan = panKnob({
     value: mix.masterPan || 0,
     onInput: (x) => {
-      editMix((m) => { m.masterPan = x; }, 'masterPan');
+      editMix((m) => { m.masterPan = x; }, 'masterPan', { affectsFrozen: false });
       Audio.mixer?.setMasterPan(x);
     },
   });
@@ -5313,6 +5385,7 @@ installDeskLayout({
   forgetArrangementGeometry,
   reserveDevices,
   syncMixerScroll,
+  syncArrangementScroll,
   updateArrangementNoteScale,
   rememberSongLayout,
 });
@@ -8427,6 +8500,7 @@ function closeRearrangePanel() {
   if (takeDeskFitDebt()) {
     scheduleDeskFit(true);
     updateArrangementNoteScale();
+    requestAnimationFrame(() => requestAnimationFrame(syncArrangementScroll));
   }
   // The footer line goes with the panel. The recipe may still be armed and sounding, but
   // the desk's status bar is the desk's, and a closed panel does not get to keep a third
@@ -13662,6 +13736,7 @@ function groupRow(g, barTotal) {
   const gainSlider = document.createElement('input');
   gainSlider.type = 'range';
   gainSlider.className = 'arrgain';
+  attachDeskGesture(gainSlider);
   gainSlider.min = 0; gainSlider.max = 1; gainSlider.step = 0.002;
   gainSlider.title = `${g.name} level`;
   gainSlider.value = dbToPos(settings.gain);
@@ -14245,6 +14320,7 @@ function buildArrangement() {
     const gainSlider = document.createElement('input');
     gainSlider.type = 'range';
     gainSlider.className = 'arrgain';
+    attachDeskGesture(gainSlider);
     gainSlider.min = 0;
     gainSlider.max = 1;
     gainSlider.step = 0.002;
@@ -14277,9 +14353,10 @@ function buildArrangement() {
     // drag must not have its own slider written back to mid-drag.
     const setGain = (db, { except = null, tag } = {}) => {
       showGain(db);
-      editMix((m) => { laneOf(m, row.key).gain = db; }, tag);
+      editMix((m) => { laneOf(m, row.key).gain = db; }, tag, { affectsFrozen: false });
       Audio.mixer?.lane(row.key)?.setGain(db);
-      syncLaneGain(row.key, { except });
+      if (tag) scheduleLaneGainSync(row.key, { except });
+      else syncLaneGain(row.key, { except });
     };
     gainSlider.addEventListener('input', () => {
       setGain(posToDb(+gainSlider.value), { except: gainSlider, tag: `gain:${row.key}` });
@@ -14385,6 +14462,8 @@ function startArrangementEcho(cell) {
 
 /** Remove the active playback cue and any fading echoes. */
 function clearArrangementPlayback() {
+  arrVisualRevision++;
+  arrVisualKey = null;
   for (const cell of arrPlayingCells) cell.classList.remove('playing');
   for (const cell of arrEchoCells) cell.classList.remove('echoing');
   for (const timer of arrEchoTimers.values()) clearTimeout(timer);
@@ -14401,11 +14480,14 @@ function clearArrangementPlayback() {
  * on every animation frame.
  */
 function followArrangementVisual(step) {
+  const totalSteps = step != null && track && arrCells.length ? songShape().totalSteps : 0;
+  const at = totalSteps ? Math.max(0, Math.floor(step)) % Math.max(1, totalSteps) : null;
+  // Most display frames land on the same sixteenth. The row queries below only need
+  // to run when their musical or visual inputs change.
+  const key = `${trackId}|${at}|${selectedLane}|${arrCellsPerBar}|${noteVisualMode}|${noteAnimation}|${arrVisualRevision}`;
+  if (key === arrVisualKey) return;
   const next = [];
-  let at = null;
-  if (step != null && track && arrCells.length) {
-    const totalSteps = songShape().totalSteps;
-    at = Math.max(0, Math.floor(step)) % Math.max(1, totalSteps);
+  if (at != null) {
     const bar = Math.floor(at / 16);
     const within = at % 16;
     // One drawn cell can stand for several sixteenths in a long song. `slot` is which
@@ -14442,7 +14524,7 @@ function followArrangementVisual(step) {
     && next.every((cell, i) => cell === arrPlayingCells[i]);
   // The same marks on a NEW sixteenth are a second attack, not the first one still
   // ringing, so the step has to be part of the comparison as well as the set.
-  if (same && at === arrPlayingAt) return;
+  if (same && at === arrPlayingAt) { arrVisualKey = key; return; }
   const nextSet = new Set(next);
   for (const cell of arrPlayingCells) {
     cell.classList.remove('playing');
@@ -14458,6 +14540,7 @@ function followArrangementVisual(step) {
   for (const cell of next) cell.classList.add('playing');
   arrPlayingCells = next;
   arrPlayingAt = at;
+  arrVisualKey = key;
 }
 
 /** Locate the visible arrangement cell that owns a recorded note's quantised step. */
@@ -14475,6 +14558,7 @@ function arrangementCellFor(lane, bar, step) {
  * replaces this provisional mark with the authoritative arrangement data.
  */
 function markRecordedVisual(lane, bar, step, open) {
+  arrVisualRevision++;
   const cell = arrangementCellFor(lane, bar, step);
   if (!cell) return;
   cell.classList.add('note', 'recording-note');
@@ -14945,21 +15029,15 @@ function tick() {
     lastVisualStep = heardStep;
     const frac = sourceStep / totalSteps;
     $('playhead').style.left = (frac * 100) + '%';
-    $('tnow').textContent = `${fmtTime(outputHeard * spb)}/${fmtTime(loopSecs)}`;
-    $('barnow').textContent = `${Math.floor(outputHeard / 16) + 1}/${totalSteps / 16}`;
+    const timeText = `${fmtTime(outputHeard * spb)}/${fmtTime(loopSecs)}`;
+    const barText = `${Math.floor(outputHeard / 16) + 1}/${totalSteps / 16}`;
+    if ($('tnow').textContent !== timeText) $('tnow').textContent = timeText;
+    if ($('barnow').textContent !== barText) $('barnow').textContent = barText;
     const visualStep = arrangementVisualStep(heardStep);
-    if (playbackVisualsHeld()) {
-      // Keep the transport clock and playhead current, but defer the DOM-heavy follow
-      // passes until layout motion has settled. Audio scheduling is independent of this
-      // picture and continues on its normal look-ahead.
-      $('playhead').style.left = (frac * 100) + '%';
-    } else {
-    // Split so the diagnostics can tell these two apart. 'arrangement' became the
-    // heaviest named section of the frame the moment the meters stopped being it, and
-    // the two halves fail in completely different ways: one queries the DOM per row per
-    // frame, the other READS LAYOUT per frame — six times — immediately after the meters
-    // have written styles, which is a forced synchronous layout every frame. Naming them
-    // separately is what turns "arrangement is expensive" into something to go and fix.
+    if (!playbackVisualsHeld()) {
+    // Follow work waits during layout motion. The arrangement mark runs once per
+    // changed sixteenth; the scroller uses its existing measured geometry cache.
+    // Keep the spans separate so diagnostics can still locate either cost.
     spanAt = frameSpan('arr-lead-in', spanAt);
     followArrangementVisual(visualStep);
     spanAt = frameSpan('arr-visual', spanAt);
@@ -14992,7 +15070,8 @@ function tick() {
   writeGridInfo();
   const peakText = peakSeen > 0
     ? `Master peak ${(20 * Math.log10(peakSeen)).toFixed(1)} dBFS${peakSeen >= 1 ? '  ** CLIPPING **' : ''}` : '';
-  $('peakinfo').textContent = peakText;
+  const peakInfo = $('peakinfo');
+  if (peakInfo.textContent !== peakText) peakInfo.textContent = peakText;
   // The watchdog's verdict lives in its own FIXED footer slot, and it lingers: a
   // message that vanishes the instant the trouble passes is a message nobody finishes
   // reading — the desk glitches, you look down, and the evidence is already gone.
@@ -15005,9 +15084,11 @@ function tick() {
     && nowMs - lastHealthAt < HEALTH_LINGER_MS;
   const ah = $('audiohealth');
   if (ah) {
-    ah.textContent = healthLive ? health.text
+    const healthText = healthLive ? health.text
       : lingering ? `${lastHealthText} · cleared` : '';
-    ah.style.opacity = healthLive ? '1' : '0.55';
+    if (ah.textContent !== healthText) ah.textContent = healthText;
+    const healthOpacity = healthLive ? '1' : '0.55';
+    if (ah.style.opacity !== healthOpacity) ah.style.opacity = healthOpacity;
     ah.classList.toggle('trouble', healthLive);
   }
   requestAnimationFrame(tick);
@@ -16575,6 +16656,7 @@ refreshLoopLogUi();
  * in words, naming the song it would write.
  */
 function updateStatus() {
+  if (editStatusFrame) { cancelAnimationFrame(editStatusFrame); editStatusFrame = 0; }
   updateCpu();
   const d = isDirty(trackId);
   // A library preset carrying unsaved edits is a change to the game that Save song
@@ -19233,6 +19315,8 @@ let allSongStateLoaded = false;
 
 function selectSong(id) {
   if (pendingSongLoad?.id === id) return pendingSongLoad.promise;
+  endDeskGesture();
+  draftPersistence.flush();
   const request = ++songLoadRequest;
   const promise = (async () => {
     cancelStartPreparation();
@@ -19606,7 +19690,7 @@ const bangerDesk = createBangerDesk({
     savedArr[t.id] = arrangement ?? null;
     variantSaved[t.id] = null;
     discardSongDraft(draft, arrDraft, t.id);
-    localStorage.setItem(LS_KEY, JSON.stringify(draft));
+    persistDraftNow();
     localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
     if (local) { persistLocalSongs(); persistLocalSave(); }
   },
@@ -19699,7 +19783,7 @@ async function deleteScratchSong() {
   delete savedArr[id];
   delete songLayouts[id];
   forgetRecent(id);
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   if (STATIC) { persistLocalSongs(); persistLocalSave(); }
   saveSongLayouts();
@@ -20504,7 +20588,7 @@ $('revert').onclick = async () => {
   // discarded too — keeping it would put a discarded edit back on the next Close.
   delete cabOnDesk[trackId];
   delete cabStash[trackId];
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   reloadSongState();
   toast(`Unsaved changes to ${track.title} discarded — ⌘Z to undo`);
@@ -20534,7 +20618,7 @@ $('resetoriginal').onclick = async () => {
   delete cabOnDesk[trackId];
   delete cabStash[trackId];
   persistLocalSave();
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   reloadSongState();
   toast(`${track.title} is back to the original mix`);
@@ -22584,35 +22668,60 @@ function reloadSongState() {
   updateStatus();
 }
 
-async function saveMix(id) {
-  const mixDirty = draft[id] != null && mixChanged(draft[id], saved[id]);
-  const arrangementDirty = arrDirty(id);
+function saveMix(id) {
+  // Capture before waiting: cabinet saves temporarily substitute the desk draft.
+  const copy = (value) => value == null ? null : JSON.parse(JSON.stringify(value));
+  const request = {
+    mix: copy(draft[id]),
+    arrangement: copy(arrDraft[id]), hasArrangement: id in arrDraft,
+    variants: copy(variantDraft[id]), hasVariants: id in variantDraft,
+  };
+  return enqueueMixSave(() => saveMixSnapshot(id, request));
+}
+
+async function saveMixSnapshot(id, request) {
+  draftPersistence.flush();
+  const mixDirty = request.mix != null && mixChanged(request.mix, saved[id]);
+  const arrangementDirty = request.hasArrangement
+    && JSON.stringify(request.arrangement) !== JSON.stringify(savedArr[id] ?? null);
+  const variantsDirty = request.hasVariants
+    && JSON.stringify(request.variants) !== JSON.stringify(variantSaved[id] ?? null);
+  const mixAtRequest = JSON.stringify(request.mix);
+  const arrangementAtRequest = JSON.stringify(request.arrangement);
+  const variantAtRequest = JSON.stringify(request.variants);
   // No file to write and no server to write it: the tester's save is a copy of the
   // three halves, kept in this browser and treated as the file from here on.
   if (STATIC) {
-    if (!mixDirty && !arrDirty(id) && !variantDirty(id)) return true;
+    if (!mixDirty && !arrangementDirty && !variantsDirty) return true;
     if (mixDirty) {
-      const mix = JSON.parse(JSON.stringify(draft[id]));
+      const mix = JSON.parse(JSON.stringify(request.mix));
       freezeVoices(mix, id);
       saved[id] = mix;
-      delete draft[id];
+      if (JSON.stringify(draft[id] ?? null) === mixAtRequest) delete draft[id];
     }
-    if (arrangementDirty) { savedArr[id] = arrDraft[id] ?? null; delete arrDraft[id]; }
-    if (variantDirty(id)) { variantSaved[id] = variantDraft[id] ?? null; delete variantDraft[id]; }
+    if (arrangementDirty) {
+      savedArr[id] = request.arrangement;
+      if (JSON.stringify(arrDraft[id] ?? null) === arrangementAtRequest) delete arrDraft[id];
+    }
+    if (variantsDirty) {
+      variantSaved[id] = request.variants;
+      if (JSON.stringify(variantDraft[id] ?? null) === variantAtRequest) delete variantDraft[id];
+    }
     persistLocalSave();
-    localStorage.setItem(LS_KEY, JSON.stringify(draft));
+    persistDraftNow();
     localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
     updateStatus();
     return true;
   }
   const patch = {};
+  // An edit can arrive while the request is in flight. The reply describes this
+  // snapshot, not any newer draft that the faders have already applied.
   if (mixDirty) {
-    patch.mix = JSON.parse(JSON.stringify(draft[id]));
+    patch.mix = JSON.parse(JSON.stringify(request.mix));
     freezeVoices(patch.mix, id);
   }
-  if (arrangementDirty) patch.arrangement = JSON.parse(JSON.stringify(arrDraft[id] ?? null));
-  const variantsDirty = variantDirty(id);
-  if (variantsDirty) patch.variants = JSON.parse(JSON.stringify(variantDraft[id] ?? null));
+  if (arrangementDirty) patch.arrangement = request.arrangement;
+  if (variantsDirty) patch.variants = request.variants;
   if (!Object.keys(patch).length) return true;
   const res = await fetchMixerAction('/save', {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -22620,7 +22729,7 @@ async function saveMix(id) {
   });
   const text = await res.text();
   if (!res.ok) { await tell('That save did not go through', escapeHtml(text)); return false; }
-  if (mixDirty) delete draft[id];
+  if (mixDirty && JSON.stringify(draft[id] ?? null) === mixAtRequest) delete draft[id];
   // An older server answers 'ok' in plain text and has merged nothing; then the draft
   // we just wrote is the best account of the file we have. A current one sends the
   // file back, which is a better one.
@@ -22631,13 +22740,23 @@ async function saveMix(id) {
     // Same for the arrangement layer. Clear only the half this request actually
     // wrote; an arrangement-only save must not discard a still-unsaved mix draft.
     if (body.arrangements) savedArr = body.arrangements;
-    if (arrangementDirty) delete arrDraft[id];
-    if (variantsDirty) { variantSaved[id] = variantDraft[id] ?? null; delete variantDraft[id]; }
+    if (arrangementDirty && JSON.stringify(arrDraft[id] ?? null) === arrangementAtRequest) delete arrDraft[id];
+    if (variantsDirty) {
+      variantSaved[id] = patch.variants;
+      if (JSON.stringify(variantDraft[id] ?? null) === variantAtRequest) delete variantDraft[id];
+    }
   } catch {
     if (mixDirty) saved[id] = JSON.parse(JSON.stringify(patch.mix));
-    if (arrangementDirty) { savedArr[id] = arrDraft[id] ?? null; delete arrDraft[id]; }
+    if (arrangementDirty) {
+      savedArr[id] = patch.arrangement;
+      if (JSON.stringify(arrDraft[id] ?? null) === arrangementAtRequest) delete arrDraft[id];
+    }
+    if (variantsDirty) {
+      variantSaved[id] = patch.variants;
+      if (JSON.stringify(variantDraft[id] ?? null) === variantAtRequest) delete variantDraft[id];
+    }
   }
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   updateStatus();
   return true;
@@ -22700,7 +22819,7 @@ async function restoreFrom(file) {
   // a historical balance over today's added lanes or painted notes is not a version
   // that ever existed.
   restoreSongDraft(draft, arrDraft, trackId, entry, arrangement);
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   bankCache.sig = null;
   Audio.setArrangement(arrFor(trackId));
@@ -23117,7 +23236,7 @@ $('resetsong').onclick = () => {
     ) } : {}),
   };
   if (draft[trackId].voice && !Object.keys(draft[trackId].voice).length) delete draft[trackId].voice;
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   rebuildForShape(); updateStatus();
   toast(`Every channel in ${track.title} reset — ⌘Z to undo`);
 };
@@ -23339,7 +23458,7 @@ async function cabOpen() {
   // Held aside rather than overwritten. See cabStash.
   if (trackId in draft) cabStash[trackId] = draft[trackId]; else delete cabStash[trackId];
   draft[trackId] = next;
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   if (e.loop) {
     selectedBar = null;
     locA = (e.loop.fromBar - 1) * 16;
@@ -23374,7 +23493,7 @@ async function cabClose({ ask: confirmFirst = true } = {}) {
   if (trackId in cabStash) draft[trackId] = cabStash[trackId]; else delete draft[trackId];
   delete cabStash[trackId];
   delete cabOnDesk[trackId];
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   applyToEngine(mixFor(trackId));
   rebuildForShape();
   cabSyncControls();
@@ -23498,7 +23617,7 @@ async function cabUpdate() {
     // The desk keeps showing what was just captured, which for a promotion means the
     // faders are already right: `cur` is the cabinet mix.
     draft[trackId] = cur;
-    localStorage.setItem(LS_KEY, JSON.stringify(draft));
+    persistDraftNow();
   }
 
   // THE FILE, in the same press — and ONLY the cabinet screen's half of it.
@@ -23534,7 +23653,7 @@ async function cabUpdate() {
   }
   const wrote = await saveMix(trackId);
   draft[trackId] = onDesk;
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
 
   if (!wrote) {
     // Refused by the server. Put the capture back rather than leaving a desk that says
@@ -23558,7 +23677,7 @@ async function cabUpdate() {
   // cabDiff REFUSED is not in the stored mix and therefore goes: that is what refused
   // means, and the dialog above named every one of them before this ran.
   draft[trackId] = cabStoredMix();
-  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  persistDraftNow();
   applyToEngine(mixFor(trackId));
   rebuildForShape();
   cabSyncControls();
@@ -23943,7 +24062,9 @@ void (async () => {
   freezeRestoreReady = true;
   queueFrozenRestorePrompt(trackId);
   tick();
-  if (!STATIC) setTimeout(() => { void refreshSaved(null, true); }, 0);
+  // selectSong already refreshes the active song, and future selections refresh
+  // theirs on demand. Reading every saved mix in the background duplicates that
+  // work and can exhaust the local server's heap on a large song library.
   // First visit gets the tour offered rather than hidden behind a button nobody has a
   // reason to press yet. After `selectSong`, because half the cards anchor to a channel
   // strip and there is no rack before it. Somebody who left the preset library open is

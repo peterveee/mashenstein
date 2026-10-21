@@ -2420,7 +2420,8 @@ assert(/footer \{[^}]*margin-top: auto/s.test(shell)
 assert(!/id="(?:pos|section)"/.test(shell)
   && !/\$\('(?:pos|section)'\)/.test(entry)
   && /id="peakinfo"/.test(shell)
-  && /\$\('peakinfo'\)\.textContent/.test(entry),
+  && /const peakInfo = \$\('peakinfo'\);/.test(entry)
+  && /peakInfo\.textContent = peakText/.test(entry),
   'the footer keeps the master peak but omits live beat and selection readouts');
 
 // ---- one minimum table, not six constants in five functions ----------------------
@@ -2969,18 +2970,13 @@ assert(/c\.dataset\.hits = \(values\.length \? values : \[true\]\)/.test(entry)
   'a note on the second half of a compressed cell is set off when it sounds, not when'
   + ' the playhead reaches the cell it is drawn in');
 
-// Two attacks on the same mark are two events. Without the step in the comparison the
-// second one inherits the first one's flourish and never restarts.
-// The restart used to be bought with a forced reflow — `void $('arrange').offsetWidth`
-// between removing the class and re-adding it. That is the one thing the accent path is
-// now not allowed to do (see 'playback accent animation never forces a synchronous
-// reflow' above), so the two claims were asserting opposite code and this one lost. What
-// carries it instead is the step in the comparison: a second attack on the same mark is
-// a new `at`, so the class comes off for a frame and the next one starts fresh.
+// The semantic key skips repeated frames before querying the rows. A new sixteenth on
+// the same mark is still a distinct attack; no forced reflow restarts its decoration.
 assert(/let arrPlayingAt = null;/.test(entry)
-  && /if \(same && at === arrPlayingAt\) return;/.test(entry)
+  && /if \(key === arrVisualKey\) return;/.test(entry)
+  && /if \(same && at === arrPlayingAt\) \{ arrVisualKey = key; return; \}/.test(entry)
   && /arrPlayingAt = at;/.test(entry),
-  'a re-struck mark restarts its animation rather than holding the previous one');
+  'unchanged frames skip arrangement queries while a new attack updates the cue');
 assert(/const arrEchoCells = new Set\(\)/.test(entry)
   && /function startArrangementEcho\(cell\)/.test(entry)
   && /cell\.classList\.add\('echoing'\)/.test(entry)

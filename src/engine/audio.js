@@ -41,6 +41,7 @@ import {
 } from '../data/automation.js';
 import { warmTngr2Families } from './tngr2/tables.js';
 import { canHostTngr2, tngr2FamiliesOfVoice } from './tngr2/controller.js';
+import { drainSources } from './drain.js';
 import { syncMrdr3LayerSolo } from './mrdr3/controller.js';
 import {
   rearrangementPosition as resolveRearrangementPosition,
@@ -6974,11 +6975,16 @@ class AudioSys {
     // disconnecting a trim is the same edge one node earlier, and doing it at `now`
     // would empty the gate the ramp above is still walking down.
     const buses = [...this._barGainBuses.values()];
+    // The hand-written notes still ringing in them: once the gates are off nothing pulls
+    // them, and a source nothing pulls never reaches its stop (engine/drain.js).
+    const ringing = [...(this._ringingEngineNotes || [])];
+    this._ringingEngineNotes?.clear();
     const cut = () => {
       for (const gate of gates) {
         try { gate.dry.disconnect(); } catch { /* already gone */ }
         try { gate.wet.disconnect(); } catch { /* already gone */ }
       }
+      if (ringing.length) drainSources(ringing);
       for (const bus of buses) {
         try { bus.dry.disconnect(); } catch { /* already gone */ }
         try { bus.wet.disconnect(); } catch { /* already gone */ }
@@ -10122,6 +10128,16 @@ class AudioSys {
         o.connect(g); g.connect(dry);
         if (echo) g.connect(wet);
         o.start(t); o.stop(t + dur + 0.02);
+        // UNWIRED WHEN IT ENDS (21 Oct 2026). Left on the lane, every note stayed pulled until
+        // the song changed: tools/audio-audit.js measured engSquare at +216 nodes wired in
+        // 16 s, and the title theme plays 21 of its 22 lanes this way for as long as the title
+        // screen is up. Live only — an offline render stays exactly as it was.
+        // Kept until it ends, so a song stopped under it can drain it (_cutLaneGates).
+        if (!this.offline) {
+          const ringing = (this._ringingEngineNotes ||= new Set());
+          ringing.add(o);
+          o.addEventListener('ended', () => { ringing.delete(o); try { g.disconnect(); } catch { /* gone */ } }, { once: true });
+        }
       };
       // The echo bus is not touched per bar any more. A section used to push it with
       // its own `echoLevel`, which is why a mix's delay sends were only ever worth

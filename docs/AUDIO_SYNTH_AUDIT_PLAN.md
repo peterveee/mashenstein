@@ -187,7 +187,7 @@ worth far more than relief.
 by the harness and confirmed once per song on the device — *plus* the short-window evidence
 of Stage S (§S), because a tip starts in a second, not over four.
 
-## 2. The harness — Stage 1 DONE (IMPLEMENTED 21 Oct), Stage 1b PROPOSED
+## 2. The harness — Stage 1 DONE (IMPLEMENTED 21 Oct), Stage 1b DONE (IMPLEMENTED 21 Oct; §10)
 
 ### 2.1 What exists (IMPLEMENTED)
 
@@ -214,7 +214,7 @@ points.
 addDrawbar, jmjrChoirAah, tngrSoftStrings, kickEngine, crashEngine), 40 s each, about 9
 minutes, in the browser set (`npm run test:all`). **Not yet run by any scheduler** (§A.8).
 
-### 2.2 Stage 1b — harness correctness (PROPOSED, first priority after Stage 0)
+### 2.2 Stage 1b — harness correctness (IMPLEMENTED 21 Oct — see §10 for what was built)
 
 1. **Edges with indices and parameters.** Record `(source, output) → (destination node or
    AudioParam, input)`; map each AudioParam to its owning node when the param is created
@@ -581,5 +581,149 @@ the song learned (`learnLight`).
   untested (§A.3), no cancellation found in generation/render paths (§A.4), the relief
   lookahead (§A.5), coverage (§A.6), narrowed conclusions (§A.7), and the scheduled CI run
   that cannot launch WebKit (§A.8).
+- *21 Oct — Stage 1b (IMPLEMENTED):* `tools/audio-audit.js` records connections into
+  AudioParams (followed to their owner), output/input indices and every `disconnect()`
+  overload, only after the browser accepts the call; graph and `--memory` modes (memory:
+  FinalizationRegistry counts of nodes, AudioBuffer bytes and PeriodicWaves, Chromium with a
+  forced collection, nothing held); an output meter before the silent sink (no sound =
+  UNAVAILABLE; non-finite samples counted); raw burner samples, levels and every census in
+  the JSON; metadata (revision, dirty files, browser build, OS, CPU, sample rate, latencies,
+  mode, phrase, command); a third census 10 s on when the second is bigger, and any confirmed
+  growth is a leak (the 20-node threshold is gone). Self-test: `tests/audio-audit-selftest.js`
+  with `tools/lib/audio-audit-fixtures.js` — 13 graph fixtures in WebKit, 2 memory fixtures in
+  Chromium, plus the KNDO-5 before/after proof. **Found while building it:** WebKit may drop an
+  AudioParam's JS wrapper and hand out a new one on the next read, so anything keyed weakly by
+  an AudioParam loses it — the owner map had to be strong; every param edge read as unowned
+  until it was. `strip` fixed: it emptied the arrangement (`sections`, `order`) along with the
+  notes, which crashed 9 of 15 songs, and did not pass the arrangement; it now reports the
+  nodes pulled before and after the song (the booted engine already has the standard lanes'
+  strips, so surge and cardboard read 3 "song" nodes over ~345 already standing).
+- *21 Oct — re-measured on the corrected harness (MEASURED, Mac WebKit, counts):*
+  `tests/audio-leaks.js` passes (all nine flat, all sounded); the self-test passes (17 fixtures
+  and the KNDO-5 proof, 746 → 2,026 wired before, 106 → 106 now); all 259 game lane sounds
+  on the phrase: 259 ok, none silent, none with non-finite samples
+  (`work/local/_audit-songs-1b-2026-10-21.txt`). Newly visible with param edges: an 8-lane
+  CRLS-1 preset keeps 1,226 nodes pulled (Tone pool slots and their Signals), RMND-2 426,
+  against 106–130 for the other families — flat, a standing cost (§3.2, §4).
+- *21 Oct — Stage 4 standing costs (MEASURED, Mac WebKit, 3 runs, muted inserts NOT parked —
+  re-run with parking pending; `work/local/_audit-strip-1b-2026-10-21.txt`).* Burner headroom
+  used by each song's mix with no notes, over the booted engine (±3): neon ~20 %, office ~18,
+  gravity ~16, rhythm ~15, speed ~13, frost ~12, crypt ~13, plumber ~12, megamix ~8, hub ~8,
+  shop ~5–7, title ~4.5, surge/cardboard/finale ~2 (noise). Repeatable within ±2 except one
+  shop and one speed run. **The standing mix is most of a song's cost** — Gravity's whole song
+  measured ~17 % without its choir (§3.1) — so Stage 4 moves up: what in a strip, insert,
+  send or aux costs when nothing plays, and what can sleep.
+- *21 Oct — Stage L first check (IMPLEMENTED: `audio-audit.js song <id>`, stop and restart).*
+  Every game song left sources running after each stop: 70–285 per stop (Gravity 219,
+  Office 285, Rhythm 282). Causes and fixes (IMPLEMENTED, measured on Gravity and Title):
+  1. Tone Signals (ToneConstantSource) inside every Tone effect and pool slot — Filter,
+     StereoWidener, Tremolo, AutoPanner — disposed with their chain, so never pulled to their
+     stop. `tone-retire.js` now covers ToneConstantSource and drains what is still running a
+     second after dispose (`engine/drain.js`); it also stopped a second dispose (Tone disposes
+     a Signal's source twice) from unplugging the waiting source.
+  2. Rack notes still ringing at the stop (MRDR-3, JMJR-4, KNDO-5): the rack keeps its
+     ringing notes and drains them after the song-change fade.
+  Gravity 219 → 2 per stop, Title 69 → 12.
+  3. The hand-written engine voices (`audio.js` `play`, 48 `engine` presets — the "Engine
+     (legacy)" row of §3) never unwired a note during the song: engSquare +216 wired in 16 s;
+     the title theme plays 21 of 22 lanes this way. Fixed (unwire on `ended`, live only);
+     engSquare 106 → 106. The other 47 being checked.
+- *22 Oct, overnight (MEASURED):*
+  - **Standing costs with muted inserts parked, as the game runs** (3 runs, Mac WebKit,
+    `work/local/_audit-strip-parked-2026-10-21.txt`): neon 19.2 %, office 17.2, rhythm 15.7,
+    gravity 14.4, crypt 13.1, frost 12.9, speed 12.0, plumber 11.8, megamix 9.6, hub 8.0,
+    shop 7.4, title 4.9; surge/cardboard/finale ~2–3 (noise). Parking moved little
+    (gravity −1.8, speed −1.1, the rest within noise). The standing graph is mostly gains
+    (383–832 per song), filters (62–142), running oscillators — effect LFOs — (21–117) and
+    Tone Signals (up to 128). Ablation by part (effects / sends / EQ / all) queued.
+  - **Memory, first pass** (Chromium, forced collection, `--memory`;
+    `work/local/_audit-memory-*-2026-10-21.txt`): the nine presets flat in nodes, buffer
+    bytes and sources; every game song stopped and restarted twice returns to the engine's
+    own ~517 nodes and the same buffer bytes within 15 s (Rhythm, Gravity, Crypt, Megamix
+    hold ~0.8 MB more buffers than the rest — their reverb IRs and noise, constant). Neon,
+    Gravity and Office leave one source per restart in Chromium. **Bounded in Chromium; WebKit
+    has no forced collection, so the iPad's memory is still UNVERIFIED** — the WebKit
+    never-ended-source counts are the proxy there.
+  - **Song stops after the fixes** (`work/local/_audit-song-restart-after-2026-10-21.txt`):
+    sources left running per stop 70–285 → 1–12. The 9-preset leak test still passes.
+    Browser suites on the changed engine: song-switch, song-change-fade, game-synth-effects,
+    stereo-widener, crls-filter-env, tngr2-audio, jmjr4-lifetimes, sfx-routing,
+    mix-automation pass; `tests/voices.js` fails 7 preset-data checks (placeholder peaks on
+    blastThunder/NoiseCrash/Bolt/Gated and seedUkGarageSnare; kit_pocket_pixel_clap taps)
+    identically on the committed engine — not this work. The hand-written notes still
+    ringing at a stop are now drained too (`_cutLaneGates`); re-check queued.
+- *22 Oct — song stops, third pass (MEASURED, `work/local/_audit-song-restart-after3-2026-10-22.txt`):*
+  with the hand-written notes drained at the gate cut (`audio.js _cutLaneGates`) and the
+  Tone pools' own vibrato LFOs and filter envelopes drained at disposal (`voices.js
+  _disposePool`): 11 of 15 songs leave nothing per stop; Shop, Neon, Gravity and Office one
+  source each (Tone's Transport clock signals and a bar-effect keep-alive) and two wired
+  nodes on Neon/Gravity/Office. From 70–285 per stop on 21 Oct. Leak test and six browser
+  suites pass.
+- *22 Oct — what the standing cost is (MEASURED, Mac WebKit, 3 runs each, ±3;
+  `work/local/_audit-strip-ablation-2026-10-22.txt`).* Each song's no-note mix, then with
+  parts of the mix taken out:
+
+  | song | full | − effects | − sends | − EQ | − all four (incl. master FX) |
+  | --- | --- | --- | --- | --- | --- |
+  | neon | 19.7 % | 14.4 | 16.9 | 19.7 | 10.5 |
+  | office | 17.7 | 11.6 | 16.0 | 18.7 | 8.5 |
+  | gravity | 16.9 | 13.1 | 11.2 | 14.2 | 8.0 |
+  | rhythm | 17.2 | 13.1 | 15.4 | 18.5 | 8.8 |
+
+  Lane effects are the largest single part (−4 to −6 points), sends next (Gravity's reverb
+  send −6), EQ nothing measurable. **Half the standing cost remains with all of those gone**
+  — 850–975 nodes still pulled: ~33 lanes' bare strips (≈13 gains each), and the bank's
+  Spot FX sections, which are built for the whole song when it starts
+  (`prepareBarEffects`: Tone Filters, their Signals and LFO oscillators, running from bar 1
+  whether or not their bars have come). Spot FX share queued. The effects' sleeper does not
+  show in these numbers (the first 10 s and the rest read the same). Candidates (PROPOSED —
+  Peter's call, they change when things are built): build Spot FX a few bars before their
+  section and take them down after; let a lane's strip sleep when it has not played for some
+  bars and its tail is done; find why the effect sleeper saves nothing here.
+- *22 Oct — the effect sleeper never slept (FOUND, FIXED, MEASURED on no-note mixes).*
+  `mixer.js makeChainSlot` put a chain to sleep by unplugging the sleeper analyser's output.
+  An AnalyserNode with input but no output is an automatic pull node in WebKit and Chromium,
+  so the chain behind it was rendered every quantum anyway. Asleep now unplugs it at both
+  ends (the sequencer already wakes a chain before its notes). The harness census missed
+  the same thing and now counts output-less analysers as pulled. Standing cost, the same
+  no-note mixes, before → after (3 runs, `work/local/_audit-strip-sleeper-2026-10-22.txt`):
+  Gravity 16.5 → 4.9 %, Neon 19.2 → 15.0, Office 17.9 → 12.6, Rhythm 15.7 → 11.2; nodes
+  pulled Gravity 1,919 → 937. With no notes every chain sleeps, so this is the ceiling of
+  the saving; what it gives a playing song is being measured. Seven effect/mix browser
+  suites and the leak test pass. **Listening needed:** a chain that was asleep when a
+  note arrives without a wake is now silent rather than late — the same as before in
+  principle (the output was unplugged), but its internal state is frozen while asleep.
+  **Whole songs playing** (90 s each, 3 runs, medians, `work/local/_audit-song-load-sleeper-2026-10-22.txt`):
+  Gravity 24.3 → 18.3 %, Neon 21.3 → 15.1, Office 26.1 → 23.6, Rhythm 19.3 → 16.3 of the
+  Mac's WebKit headroom; output RMS unchanged within 2 % on all four (a coarse check that
+  nothing went missing, not a listening test). At ~1.8× that is roughly 11 points of the
+  iPad's thread back on Gravity and Neon (an estimate until the iPad says so).
+  Spot FX sections, by contrast, are not a measurable standing cost (removing them moved
+  nothing beyond noise, `work/local/_audit-strip-spotfx-2026-10-22.txt`).
+- *22 Oct — idle strips sleep (IMPLEMENTED; Peter: "worth the saving to sleep inactive
+  channel strips").* `mixer.js makeStrip`: a strip silent for 2 s past its last wake is
+  unplugged from the mix, its linked sends and its own probe analyser; `wakeEffects` (called
+  before every note and frozen bar) plugs it back first. One switch, `setDeepSleep`, covers
+  this and the effect chains' input unplug, and the game turns it on **on WebKit only**
+  (`deepSleepSuits`, main.js): Chromium loses a Spot FX switch that falls due while a chain
+  is idle and unplugged, keep-alive or not; WebKit lands it
+  (`work/local/_param-switch-sleep-probe.mjs`). The desk (metered strips) never sleeps.
+  `tests/strip-sleep.js` (WebKit, live): a never-played lane is asleep within 4 s; a lane
+  with one note every 4 s sleeps between notes and every note is heard at the level it has
+  with sleep off. Risk to listen for: any path that plays into a lane without going
+  through the sequencer's wake (Lab live play, held keys) — none found in the game's note
+  paths, but not proven. Checks with strip sleep on: song stops unchanged; leak test passes;
+  game-synth-effects, fx-sections, stereo-widener, mix-automation, chain-reapply,
+  song-switch, song-change-fade, sidechain-duck, bar-gain, bar-pan pass; `tests/group-buses.js`
+  fails one check ("and nowhere else", Spot FX on a group) identically on the committed
+  engine — not this work.
+  **Whole songs playing, engine before 21 Oct → now (chains + strips sleeping)** — 90 s,
+  3 runs, medians, Mac WebKit, machine NOT quiet (VS Code busy; spreads 1–6 points;
+  `work/local/_audit-song-load-stripsleep-2026-10-22.txt`): Gravity 22.6 → 18.1 %, Neon
+  19.3 → 13.0, Rhythm 19.5 → 14.0, Office 24.7 → 25.2 (no gain shown). Against the
+  chains-only result the night before, strip sleep adds about 0–2.5 points while a song
+  plays — most lanes play often enough that their strips rarely reach two silent seconds.
+  Its larger saving is where lanes sit out: intros, breakdowns, menus, and the no-note
+  standing measure. Office to be re-run on a quiet machine.
 - *21 Oct — Stage 0 (IMPLEMENTED, unverified until a scheduled run):* the workflow installs
   `chromium webkit` (Peter's pick over skipping; adds ~10 min to the weekly run).

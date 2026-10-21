@@ -32,7 +32,8 @@ const $ = (id) => document.getElementById(id);
 let notesOpen, selectedLane, isPartHidden, rearrangePanelOpen, autoDevH, STRIP_PARTS,
   clamp, toast, deferRollResize, setNotesFolded, setDevicesFolded, setMixerFolded,
   setArrangeCollapsed, beginPlaybackVisualHold, endPlaybackVisualHold,
-  forgetArrangementGeometry, reserveDevices, syncMixerScroll, updateArrangementNoteScale,
+  forgetArrangementGeometry, reserveDevices, syncMixerScroll, syncArrangementScroll,
+  updateArrangementNoteScale,
   rememberSongLayout;
 
 /**
@@ -45,7 +46,8 @@ export function installDeskLayout(deps) {
     notesOpen, selectedLane, isPartHidden, rearrangePanelOpen, autoDevH, STRIP_PARTS,
     clamp, toast, deferRollResize, setNotesFolded, setDevicesFolded, setMixerFolded,
     setArrangeCollapsed, beginPlaybackVisualHold, endPlaybackVisualHold,
-    forgetArrangementGeometry, reserveDevices, syncMixerScroll, updateArrangementNoteScale,
+    forgetArrangementGeometry, reserveDevices, syncMixerScroll, syncArrangementScroll,
+    updateArrangementNoteScale,
     rememberSongLayout,
   } = deps);
   // Deferred to here for the same reason the seam exists: it wants applyWorkRatio and
@@ -1175,6 +1177,7 @@ const scheduleDeskResize = () => {
       // scheduler is not competing with the final layout write or deferred row pass.
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (!deskResizeVisualHeld) return;
+        if (!rearrangePanelOpen()) syncArrangementScroll();
         deskResizeVisualHeld = false;
         endPlaybackVisualHold();
       }));

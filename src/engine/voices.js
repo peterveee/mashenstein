@@ -36,6 +36,7 @@
 // buffer, the way AudioSys.noiseBuf already is, before NoiseSynth can be offered.
 import * as Tone from 'tone';
 import { installToneSourceRetire } from './tone-retire.js';
+import { drainSources } from './drain.js';
 // Tone's per-note sources end before they are unplugged (tone-retire.js): once, at load.
 installToneSourceRetire();
 // A MODULATOR STOPS BEFORE ITS CARRIER (21 Oct 2026). An LFO, a vibrato or an FM source drives
@@ -7709,10 +7710,15 @@ export class VoiceRack {
     // A source that cannot say when it has ended (a test's stand-in node) leaves the note
     // where it is: cutting a note early is worse than keeping a dead one.
     if (!sources.every((src) => typeof src.addEventListener === 'function')) return;
+    // Kept until its sources end, so a rack taken down under it can stop what is left
+    // (`dispose`, engine/drain.js).
+    const note = { sources, outs };
+    (this._ringingNotes ||= new Set()).add(note);
     let left = sources.length;
     const unwire = () => { for (const out of outs) { try { out.disconnect(); } catch { /* already gone */ } } };
     const ended = () => {
       if (--left > 0) return;
+      this._ringingNotes.delete(note);
       // THE MODULATORS STOP FIRST (20 Oct 2026). An LFO or vibrato source driving the
       // note's params is booked to stop a hair AFTER the note (lastOff + 0.01 and the
       // like), so unwiring here orphaned it a moment before its own stop: a source nothing
@@ -8030,14 +8036,17 @@ export class VoiceRack {
     for (const { synth, out, vib, fenv } of pool.slots) {
       try { synth.dispose(); } catch { /* already gone with its context */ }
       // The vibrato runs an LFO of its own, which goes on running after the synth
-      // it detunes is gone unless it is stopped too.
+      // it detunes is gone unless it is stopped too — and, unplugged straight after, it
+      // never reaches that stop (engine/drain.js; `audio-audit.js song`, 22 Oct 2026).
       if (vib) {
         try { vib.lfo.stop(); } catch { /* ditto */ }
+        drainSources([vib.lfo]);
         try { vib.cents.disconnect(); } catch { /* ditto */ }
         try { vib.sink.disconnect(); } catch { /* ditto */ }
       }
       if (fenv) {
         try { fenv.src.stop(); } catch { /* ditto */ }
+        drainSources([fenv.src]);
         try { fenv.gain.disconnect(); } catch { /* ditto */ }
         try { fenv.sink.disconnect(); } catch { /* ditto */ }
       }
@@ -8914,6 +8923,17 @@ export class VoiceRack {
       if (fading) this._fadeAndDispose(pool); else this._disposePool(pool);
     }
     this.pools.clear();
+    // NOTES STILL RINGING WHEN THE RACK GOES (21 Oct 2026). setBank cuts the lane gates over
+    // the same fade, and a source nothing pulls never reaches its stop and never ends —
+    // `audio-audit.js song` found MRDR-3, JMJR-4 and KNDO-5 notes left running by every stop
+    // of a song. Once the fade is over and they cannot be heard, they go to the drain.
+    if (this._ringingNotes?.size) {
+      const left = [...this._ringingNotes];
+      this._ringingNotes.clear();
+      const isSource = (n) => typeof AudioScheduledSourceNode === 'function' && n instanceof AudioScheduledSourceNode;
+      const sources = left.flatMap((n) => [...n.sources, ...n.outs.filter(isSource)]);
+      if (typeof setTimeout === 'function') setTimeout(() => drainSources(sources), (fade + 1) * 1000);
+    }
     this._monoGroups.clear();
     this._activePreviews.clear();
     this._laneHeld?.clear();

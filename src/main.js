@@ -87,7 +87,7 @@ import { startBench, benchFrame, drawBench } from './engine/bench.js';
 import { consumeBenchDiag, releaseBenchRenderer, readDiag, startCrumbSession, crumb } from './engine/diag.js';
 import { startGlitchSession, noteSecond, noteEvent, watchAudioSources } from './engine/glitch-log.js';
 import { createAudioGuard } from './engine/audio-guard.js';
-import { setParkMutedEffects } from './engine/mixer.js';
+import { setParkMutedEffects, setDeepSleep, deepSleepSuits } from './engine/mixer.js';
 import { MusicDirector } from './engine/music-director.js';
 import { startTitleProfile, titleProfileActive, titleProfileFrame, titleProfileReportVisible, drawTitleProfile } from './engine/title-profile.js';
 import {
@@ -1090,6 +1090,9 @@ function boot() {
   installSoundtrack(save);
   // Muted inserts cost nothing in the game (engine/mixer.js, parkMuted).
   setParkMutedEffects(true);
+  // Quiet effect chains and idle channel strips come out of the graph entirely — on WebKit
+  // only, where automation booked across a sleep still lands (engine/mixer.js, deepSleep).
+  setDeepSleep(deepSleepSuits());
   // LIGHT MIXES on trial (game/light-mixes.js): `?lightmix` plays them, to hear and measure.
   // LIGHT VERSIONS (results-chip.js lightReason): the device decides; `?lightmix` / `?fullmix`
   // force either way for a test, and every song that goes light says why on the trail.

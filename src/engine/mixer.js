@@ -267,6 +267,26 @@ let parkMuted = false;
 /** Park muted inserts from now on (main.js, at boot). */
 export function setParkMutedEffects(on) { parkMuted = !!on; }
 
+// DEEP SLEEP, the game on WebKit only (22 Oct 2026). Asleep means unplugged from everything
+// that pulls it, so the browser renders none of it: an effect chain that has gone quiet (its
+// sleeper analyser's input too — see connectOutput), and a whole channel strip that has not
+// played for a while (makeStrip, `stripSleep`). Measured on the Mac's WebKit
+// (tools/audio-audit.js): Gravity playing 24 → 18 % from the chains alone.
+//
+// WebKit only, because Chromium loses automation that falls due while a node is both idle
+// and unplugged: a Spot FX switch booked before a sleep stays at its old value after the
+// wake, keep-alive or not (work/local/_param-switch-sleep-probe.mjs). WebKit lands it. Off
+// on the desk, which keeps its chains exactly as they always ran.
+let deepSleep = false;
+/** Let quiet chains and idle strips come out of the graph entirely (main.js, on WebKit). */
+export function setDeepSleep(on) { deepSleep = !!on; }
+/** Whether this browser's audio engine is WebKit (Safari, and every browser on iOS). */
+export function deepSleepSuits(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  return (/AppleWebKit/.test(ua) && !/(Chrome|Chromium|Edg|OPR)\//.test(ua)) || /(CriOS|FxiOS|EdgiOS)\//.test(ua);
+}
+const STRIP_SLEEP_POLL_MS = 250;
+const STRIP_SLEEP_GAP = 2;   // seconds of silence past the last wake before a strip sleeps
+
 function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
   const inGain = ctx.createGain();
   const outGain = ctx.createGain();
@@ -297,14 +317,26 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     if (sleepTimer != null) clearTimeout(sleepTimer);
     sleepTimer = null;
   };
+  // ASLEEP MEANS UNPLUGGED AT BOTH ENDS (22 Oct 2026). An AnalyserNode with nothing
+  // downstream but something upstream is an AUTOMATIC PULL node in WebKit and Chromium: the
+  // browser renders it, and everything feeding it, every quantum anyway. So taking only the
+  // sleeper's output away left the whole chain running — the effects' standing cost read the
+  // same asleep as awake (tools/audio-audit.js strip). Its input goes too; the sequencer
+  // wakes the chain before any note (`wake`), so nothing needs to be heard while asleep.
+  // (setDeepSleep: WebKit only; elsewhere the input stays and the chain keeps rendering.)
+  let inputUnplugged = false;
   const connectOutput = () => {
     if (!sleeper || awake || !liveLinks().length) return;
+    if (inputUnplugged) { outGain.connect(sleeper); inputUnplugged = false; }
     sleeper.connect(to);
     awake = true;
   };
   const disconnectOutput = () => {
     if (!sleeper || !awake) return;
     try { sleeper.disconnect(to); } catch { /* already asleep */ }
+    if (deepSleep) {
+      try { outGain.disconnect(sleeper); inputUnplugged = true; } catch { /* already asleep */ }
+    }
     awake = false;
   };
   const pollForSilence = () => {
@@ -1301,16 +1333,19 @@ export function createMixer(ctx, {
     const sends = new Map();
     const sendLinked = new Map();
     const sendDrop = new Map();
+    // A sleeping strip (see stripSleep below) keeps its sends' linked state but not their
+    // connections: they are made again when it wakes.
+    let stripAwake = true;
     const linkSend = (id) => {
       const t = sendDrop.get(id);
       if (t != null) { clearTimeout(t); sendDrop.delete(id); }
       if (sendLinked.get(id)) return;
-      sends.get(id).connect(auxes.get(id).input);
+      if (stripAwake) sends.get(id).connect(auxes.get(id).input);
       sendLinked.set(id, true);
     };
     const unlinkSend = (id) => {
       if (!sendLinked.get(id)) return;
-      try { sends.get(id).disconnect(auxes.get(id).input); } catch { /* not wired */ }
+      if (stripAwake) try { sends.get(id).disconnect(auxes.get(id).input); } catch { /* not wired */ }
       sendLinked.set(id, false);
     };
     const unlinkSendAfter = (id, seconds) => {
@@ -1340,6 +1375,71 @@ export function createMixer(ctx, {
     // and a meter that only sometimes moves is worse than none.
 
     const meter = makeMeter(widthNode.output);
+
+    // IDLE STRIPS SLEEP (setDeepSleep — the game on WebKit; Peter, 22 Oct 2026: "worth the
+    // saving to sleep inactive channel strips"). Half a song's standing cost was its bare
+    // strips (tools/audio-audit.js strip --without=effects,sends,eq,master). A strip silent
+    // for STRIP_SLEEP_GAP past its last wake is unplugged from everything downstream — the
+    // mix (`routeTo`), its linked sends and its own probe, an analyser that would otherwise
+    // pull it (an output-less analyser is an automatic pull node) — so the browser renders
+    // none of it and nothing feeding it. `wakeEffects`, which the sequencer calls before every
+    // note and every frozen bar, plugs it back in first. A metered strip (the desk) never
+    // sleeps; nor does one offline.
+    const stripProbe = typeof ctx.startRendering !== 'function' && !meter ? ctx.createAnalyser() : null;
+    const stripSamples = stripProbe ? new Float32Array(256) : null;
+    if (stripProbe) {
+      stripProbe.fftSize = 256;
+      stripProbe.smoothingTimeConstant = 0;
+      monitor.connect(stripProbe);
+    }
+    let stripHold = 0;
+    let stripQuietSince = null;
+    let stripTimer = null;
+    let stripGone = false;
+    const sleepStrip = () => {
+      if (!stripAwake) return;
+      stripAwake = false;
+      try { monitor.disconnect(routeTo); } catch { /* not wired */ }
+      for (const [id, linked] of sendLinked) {
+        if (linked) try { sends.get(id).disconnect(auxes.get(id).input); } catch { /* not wired */ }
+      }
+      try { monitor.disconnect(stripProbe); } catch { /* not wired */ }
+    };
+    const wakeStrip = () => {
+      if (stripAwake || stripGone) return;
+      stripAwake = true;
+      monitor.connect(routeTo);
+      for (const [id, linked] of sendLinked) if (linked) sends.get(id).connect(auxes.get(id).input);
+      monitor.connect(stripProbe);
+    };
+    const pollStrip = () => {
+      stripTimer = null;
+      if (stripGone || !stripAwake || !deepSleep) return;
+      const now = ctx.currentTime;
+      if (ctx.state !== 'running' || now < stripHold || routeFade) {
+        stripTimer = setTimeout(pollStrip, STRIP_SLEEP_POLL_MS);
+        return;
+      }
+      stripProbe.getFloatTimeDomainData(stripSamples);
+      let peak = 0;
+      for (let i = 0; i < stripSamples.length; i++) peak = Math.max(peak, Math.abs(stripSamples[i]));
+      if (peak > EFFECT_SLEEP_FLOOR) stripQuietSince = null;
+      else if (stripQuietSince == null) stripQuietSince = now;
+      if (stripQuietSince != null && now - stripQuietSince >= STRIP_SLEEP_GAP) { sleepStrip(); return; }
+      stripTimer = setTimeout(pollStrip, STRIP_SLEEP_POLL_MS);
+    };
+    const watchStrip = () => {
+      if (!stripProbe || !deepSleep || stripGone || !stripAwake || stripTimer != null) return;
+      stripTimer = setTimeout(pollStrip, STRIP_SLEEP_POLL_MS);
+    };
+    const holdStrip = (until) => {
+      if (!stripProbe) return;
+      stripHold = Math.max(stripHold, until === Infinity ? Infinity : (Number.isFinite(until) ? until : ctx.currentTime));
+      stripQuietSince = null;
+      wakeStrip();
+      watchStrip();
+    };
+    watchStrip();
 
     const state = {
       ...DEFAULTS,
@@ -1623,7 +1723,8 @@ export function createMixer(ctx, {
        */
       setEffects(list = [], bpm = 120) { state.effects = list; return slot.set(list, bpm); },
       get effects() { return slot.chain; },
-      wakeEffects(until = ctx.currentTime) { slot.wake(until); },
+      wakeEffects(until = ctx.currentTime) { holdStrip(until); slot.wake(until); },
+      get _asleep() { return !stripAwake; },
       get effectsAwake() { return slot.awake; },
       /** Temporarily take one effect out of the chain, without losing its settings. */
       setEffectBypass(index, on) { slot.setBypass(index, on); },
@@ -1726,6 +1827,8 @@ export function createMixer(ctx, {
        */
       _route(dest, { seconds = 0, when = ctx.currentTime } = {}) {
         if (!dest) return;
+        // Asleep, nothing is wired to move: the wake plugs into wherever it is now.
+        if (!stripAwake) { routeTo = dest; return; }
         if (routeFade) routeFade.finish();
         if (dest === routeTo) return;
         const old = routeTo;
@@ -1774,6 +1877,9 @@ export function createMixer(ctx, {
        * memory however unreferenced it is. Only ever a layer's strip; see dropLane.
        */
       _dispose() {
+        stripGone = true;
+        if (stripTimer != null) clearTimeout(stripTimer);
+        try { stripProbe?.disconnect(); } catch { /* not wired */ }
         if (routeFade) routeFade.finish();
         for (const t of sendDrop.values()) clearTimeout(t);
         sendDrop.clear();
