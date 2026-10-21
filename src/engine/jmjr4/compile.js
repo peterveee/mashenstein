@@ -24,14 +24,32 @@ export const JMJR4_PER_KEY = ['phrase', 'word'];
 // be preferred as an effect". HIGH is every formant, the sound every preset was made with;
 // MEDIUM drops F4 and F5, the fixed ring above the vowel; LOW drops the whole upper branch and
 // sings on F1 and F2 alone, which still say the vowel. Each step is fewer nodes per singer.
+// MEDIUM is the DEFAULT since 21 Oct 2026 (Peter: "make medium the default for all presets and
+// the game" — "very close" to HIGH on the aah; 11 % off a sung line, ~5 more points off a
+// shared chord). HIGH is one click away for a solo or a spoken line.
 export const JMJR4_QUALITIES = ['high', 'medium', 'low'];
+/**
+ * The QUALITY a voice has when it names none: MEDIUM for singing, HIGH for SPEAK (Peter, 21 Oct
+ * 2026 — a spoken word lives in F3 and above, where its consonants are told apart, and is
+ * usually one exposed voice, where the saving is small).
+ */
+export const jmjr4DefaultQuality = (mode) => (mode === 'speak' ? 'high' : 'medium');
+// CHORDS (21 Oct 2026): SHARED, the default, sings a struck chord through one tract, its notes
+// as more sources into it (note.js `chord`) — 58 % cheaper on Gravity's choir, the same
+// spectrum (centroid 770 → 769 Hz), one breath and one set of consonants for the chord and the
+// tract tuned for its lowest note. SEPARATE gives every note its own tract, as the presets
+// were first made. Peter, after the renders: "on by default … user can turn it off". Only a
+// chord changes: one key, MONO, LEGATO, a glide, a held key or notes of different lengths are
+// sung as before.
+export const JMJR4_CHORD_TRACTS = ['shared', 'separate'];
 export const JMJR4_PITCH_FOLLOWS = ['key', 'fixed'];
 
 /** Every `jmjr4.*` key, its default, and its range. The panel and this compiler share it. */
 export const JMJR4_DEFAULTS = Object.freeze({
   mode: 'sing',
   voice: 'announcer',
-  quality: 'high',
+  quality: 'medium',
+  chordTract: 'shared',
   line: 'aah',
   // SPEAK: the phrase and the sentence melody's pots. `phraseIr` is not a pot — it is the
   // compiled phrase the desk writes beside them, see `jmjr4SpeakSource`.
@@ -154,7 +172,9 @@ export function compileJmjr4(voice, data, { forCompile = false } = {}) {
   const bend = val('bend') ?? JMJR4_DEFAULTS.bend;
   const bendTime = val('bendTime') ?? JMJR4_DEFAULTS.bendTime;
   const unison = Math.round(val('unison') ?? JMJR4_DEFAULTS.unison);
-  const quality = j.quality ?? JMJR4_DEFAULTS.quality;
+  const quality = j.quality ?? jmjr4DefaultQuality(mode);
+  const chordTract = j.chordTract ?? JMJR4_DEFAULTS.chordTract;
+  if (!JMJR4_CHORD_TRACTS.includes(chordTract)) problems.push(`chordTract ${JSON.stringify(chordTract)} is not shared or separate`);
   if (!JMJR4_QUALITIES.includes(quality)) problems.push(`quality ${JSON.stringify(quality)} is not high, medium or low`);
   const spread = val('spread') ?? JMJR4_DEFAULTS.spread;
   // the reference's chip() arcade stage, a post stage on the key's lane: off at 16 bits and 44.1 kHz
@@ -216,7 +236,7 @@ export function compileJmjr4(voice, data, { forCompile = false } = {}) {
     amp,
     nasal: nasal / 100,
     morph: target ? { target, time: morphTime, nasal: morphNasal(data, baseVowel, morphTo, amount, nasal / 100), to: morphTo, amount } : null,
-    bend, bendTime, unison, spread,
+    bend, bendTime, unison, spread, chordTract,
     crush,
     voice: voiceName,
     throat,

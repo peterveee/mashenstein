@@ -22,6 +22,7 @@
 //
 //   node tools/audio-audit.js synth <presetId|family:<SYNTH>> [--limit=N]
 //   node tools/audio-audit.js effect <effectId>            on a plain MRDR-3 phrase, vs absent
+//   node tools/audio-audit.js strip <songId>               the song's whole mix, no notes: the standing cost
 //   node tools/audio-audit.js leaks                        one preset per family, counts only
 //   node tools/audio-audit.js songs [songId]               every lane sound of the game's songs, as each song sets it
 //     --seconds=N     the phrase's length (150; `leaks` 60)
@@ -48,6 +49,8 @@ const COUNTS = !!flag('counts') || command === 'leaks';
 const SECONDS = Number(flag('seconds') || (command === 'leaks' ? 60 : 150));
 const SRC = resolve(flag('src') || join(ROOT, 'src'));
 const JSON_OUT = !!flag('json');
+// --only=song:lane,song:lane — `songs` measures just these (a recheck of what a sweep flagged).
+const ONLY = flag('only') ? new Set(String(flag('only')).split(',')) : null;
 const log = (...a) => { if (!JSON_OUT) console.log(...a); };
 
 // One preset per family for `leaks`: a plain sound of each synth, and two drums (a hit that
@@ -319,7 +322,9 @@ async function songSubjects(only = null) {
     for (const [vk, id] of Object.entries(g.mix?.voice || {})) {
       if (!VOICES[id]) continue;
       const v = VOICES[id];
-      out.push({ id, params: g.mix.voiceParams?.[vk] || null, name: `${song}:${vk.replace(/Voice$/, '')} ${id} (${v.synth || v.kind})` });
+      const key = `${song}:${vk.replace(/Voice$/, '')}`;
+      if (ONLY && !ONLY.has(key)) continue;
+      out.push({ id, params: g.mix.voiceParams?.[vk] || null, name: `${key} ${id} (${v.synth || v.kind})` });
     }
   }
   return out;
@@ -351,6 +356,24 @@ try {
         browser = await webkit.launch({ headless: true });
       }
     }
+  } else if (command === 'strip' && target) {
+    // STANDING COST (Stage 4): song `target`'s whole mix — every strip, insert, send and aux —
+    // with not one note in it, for SECONDS, against this page's own empty context.
+    const file = [join(SRC, 'data/songs', `${target}.js`), join(SRC, 'data/imported', `${target}.js`)].find(existsSync);
+    const g = await import(file);
+    const empty = Object.fromEntries(Object.entries(g.bank).map(([k, v]) => [k, Array.isArray(v) ? v.map(() => null) : v]));
+    const { page, errors } = await openPage(true, Math.round((EMPTY || 400000) * 0.95));
+    await sleep(22000);
+    const t0 = await page.evaluate((a) => window.__play(a.bank, a.mix), { bank: empty, mix: g.mix });
+    await sleep(SECONDS * 1000);
+    const census = await page.evaluate(() => window.__census());
+    const raw = await page.evaluate(() => window.__samples);
+    await page.close();
+    const base = median(raw.filter((x) => x.at < t0 - 1 && x.at > t0 - 13).map((x) => x.iters));
+    const at = (a, b) => median(raw.filter((x) => x.at - t0 >= a && x.at - t0 < b).map((x) => 1 - x.iters / base));
+    const r = { subject: `strip ${target}`, errors: errors.slice(0, 3), first: at(2, 12), standing: at(12, SECONDS), pulled: census.pulled, wired: census.wired };
+    log(`strip ${target}: standing ${pct(r.standing)} (first 10 s ${pct(r.first)}, before the effects sleep); ${r.wired} nodes built and pulled`);
+    results.push({ ...r, wiredA: 0, wiredB: 0, wiredGrowth: 0, liveA: 0, live: 0 });
   } else if (command === 'effect' && target) {
     const p = phraseBank('lead', false);
     const voice = Object.fromEntries(p.keys.map((k) => [`${k}Voice`, EFFECT_CARRIER]));

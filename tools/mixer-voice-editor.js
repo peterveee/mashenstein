@@ -31,7 +31,7 @@ import { isMrdrVoice } from '../src/engine/mrdr3/identity.js';
 import { tngr2Defaults, TNGR2_LFO_SHAPES } from '../src/engine/tngr2/schema.js';
 import { JMJR4_SYLLABLES, JMJR4_MORPH_TARGETS, syllablesFromText } from '../src/engine/jmjr4/syll.js';
 import {
-  JMJR4_DEFAULTS, JMJR4_AMP_DEFAULTS, JMJR4_MODES, JMJR4_PER_KEY, JMJR4_PITCH_FOLLOWS, JMJR4_QUALITIES,
+  JMJR4_DEFAULTS, JMJR4_AMP_DEFAULTS, JMJR4_MODES, JMJR4_PER_KEY, JMJR4_PITCH_FOLLOWS, JMJR4_QUALITIES, JMJR4_CHORD_TRACTS, jmjr4DefaultQuality,
   compileJmjr4, jmjr4SpeakSource,
 } from '../src/engine/jmjr4/compile.js';
 import { JMJR4_SPEAK_ENDINGS, compilePhrase, compactDict, compactIr } from '../src/engine/jmjr4/text.js';
@@ -2124,10 +2124,20 @@ const SYNTH_GROUPS = {
           + 'bandwidths at once. Low is soft and human, high is ringing and robotic.' }),
       pick('$jmjr4.quality', 'QUALITY', JMJR4_QUALITIES, JMJR4_DEFAULTS.quality, null, {
         startRow: true, optionLabel: (q) => q.toUpperCase(),
-        tip: 'How much of the throat each singer builds. HIGH is every formant, F1 to F5. '
-          + 'MEDIUM drops F4 and F5, the ring above the vowel: nearly the same voice, cheaper. '
+        // What the engine plays when the voice names none: HIGH in SPEAK, MEDIUM singing.
+        // (A pick row calls read(voice), the value refresh read(raw, voice): read the voice either way.)
+        read: (...a) => { const v = a.length > 1 ? a[1] : a[0]; return v?.jmjr4?.quality ?? jmjr4DefaultQuality(v?.jmjr4?.mode ?? JMJR4_DEFAULTS.mode); },
+        tip: 'How much of the throat each singer builds. HIGH is every formant, F1 to F5 — for a '
+          + 'solo, and the default for a spoken line. MEDIUM, the default for singing, drops F4 and F5, the ring above the vowel: '
+          + 'nearly the same voice, cheaper. '
           + 'LOW sings on F1 and F2 alone — the vowel stays, the brightness goes, and a big chord '
           + 'costs half as much. LOW is also a sound: muffled, through a wall, an old radio.' }),
+      pick('$jmjr4.chordTract', 'CHORDS', JMJR4_CHORD_TRACTS, JMJR4_DEFAULTS.chordTract, null, {
+        optionLabel: (c) => c.toUpperCase(),
+        tip: 'SHARED: a chord is sung through one throat, its notes as more voices into it — about '
+          + 'half the cost of a chord, the same tone; one breath and one set of consonants for the '
+          + 'chord, tuned for its lowest note. SEPARATE: every note of a chord is its own singer, '
+          + 'its own throat. Single notes, MONO, LEGATO, glides and held keys are the same either way.' }),
     ] },
     // The four stages by name, so the window draws the envelope over them (`ENV_ROWS` in
     // mixer-synth-full.js binds by label). Not `adsr()`: its curve pills would be pots the

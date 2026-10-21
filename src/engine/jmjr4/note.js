@@ -77,6 +77,7 @@ export function morphNasal(data, baseVowel, morphTo, amount, voiceNasal = 0) {
 export function buildJmjr4Note(ctx, {
   data, at, hz, dur = null, velocity = 0.8, syl, patch, variants = null, dest,
   flutterSource = null, glideFrom = null, glideTime = 0, onsetSilent = false, noAttack = false,
+  chord = null,
 }) {
   const amp = patch.amp;
   const sources = variants?.length ? variants : singerVariants(1);
@@ -86,7 +87,12 @@ export function buildJmjr4Note(ctx, {
     oq: oqAt(variant.oqd),
     seed: (variant.seed || 7) + (Math.round(hz * 31) % 997),
   });
-  const unison = sources.map((s) => ({ ratio: Math.pow(2, (s.cents || 0) / 1200), oq: oqAt(s.oqd) }));
+  // CHORD (21 Oct 2026, on trial): every note of a chord as more sources into this note's ONE
+  // tract — `chord` the notes' ratios to `hz` — instead of a tract each. The tract is linear,
+  // so a chord on one vowel sung at one moment is, to within its pitch-dependent tuning, the
+  // same sum of filters for a quarter of the tract nodes.
+  const unison = (chord?.length ? chord : [1]).flatMap((r) => sources.map((s) => ({ ratio: r * Math.pow(2, (s.cents || 0) / 1200), oq: oqAt(s.oqd) })));
+  const chordOpts = chord?.length > 1 ? { sourceScale: 1 / Math.sqrt(sources.length), noiseScale: Math.sqrt(chord.length) } : {};
   const rel = Math.max(0.003, amp.release);
   const hold = dur != null ? Math.max(0.05, dur) + rel + 0.05 : HOLD_SECONDS;
   const onset = onsetSilent ? [] : syl.onset;
@@ -127,7 +133,7 @@ export function buildJmjr4Note(ctx, {
   // main-thread build per note-on when built unconditionally.
   const needsNasal = baseNasal > 0 || targetNasal > 0 || isNasalVowel;
   const handle = renderIr(ctx, ir, {
-    start: at, destination: env, nasalPlaces: needsNasal ? [HUM_PLACE] : [], flutterSource, unison,
+    start: at, destination: env, nasalPlaces: needsNasal ? [HUM_PLACE] : [], flutterSource, unison, ...chordOpts,
   });
   const compiledNasal = isNasalVowel ? 1 : 0;
   if (!sweep && targetNasal !== compiledNasal) handle.nasalise(HUM_PLACE, targetNasal, at + 0.001, 0.002);

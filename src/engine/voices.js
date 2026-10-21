@@ -38,6 +38,13 @@ import * as Tone from 'tone';
 import { installToneSourceRetire } from './tone-retire.js';
 // Tone's per-note sources end before they are unplugged (tone-retire.js): once, at load.
 installToneSourceRetire();
+// A MODULATOR STOPS BEFORE ITS CARRIER (21 Oct 2026). An LFO, a vibrato or an FM source drives
+// only another source's params; once that source has stopped nothing pulls it, so a modulator
+// booked to stop at the same moment or later never reaches its stop and never ends — a live
+// source for the rest of the session (tools/audio-audit.js: 1,040 of MRDR-3's vibrato in
+// 40 s of eight lanes, KNDO-5's, WNDR-9's, JMJR-4's flutter). This much earlier, the note's
+// envelope has already reached silence.
+const MOD_EARLY = 0.008;
 import * as FAMILY from './synth-families.js';
 import { VOICES } from '../data/voices.js';
 import { isTngr2Table } from './tngr2/families.js';
@@ -4093,7 +4100,7 @@ export class VoiceRack {
       lastOff = Math.max(lastOff, off + 0.01);
     });
     // A chord of nothing but rests built no oscillators, so there is nothing to wobble.
-    if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); }
+    if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff - MOD_EARLY); }
     this._perNoteKeyModeEnd(km, hold, rec);
     // The WHOLE note off the lane once it has ended, not only its vibrato (20 Oct 2026).
     // Left wired, every note Rhythm's lead had played stayed on the strip's input: in WebKit
@@ -5740,12 +5747,21 @@ export class VoiceRack {
     let lastFreq = 0;
     let gateKey = null;
     const velocity = Math.min(1, gain);
-    notes.forEach((f, n) => {
+    // CHORDS: SHARED, the default (compile.js JMJR4_CHORD_TRACTS): a struck poly chord with one length
+    // is one note on its lowest key, the others as sources into its tract. Anything that
+    // treats the keys one by one — a held key, a glide, MONO or LEGATO, lengths per note —
+    // stays separate.
+    const sameLength = !Array.isArray(dur) || dur.every((d) => d === dur[0]);
+    const oneThroat = patch.chordTract === 'shared' && notes.length > 1 && !hold && !mono && !glide && sameLength;
+    const lowest = oneThroat ? Math.min(...notes) : 0;
+    const keys = oneThroat ? [lowest] : notes;
+    keys.forEach((f, n) => {
       const noteDur = Array.isArray(dur) ? (dur[n] ?? dur[0]) : dur;
       const base = f * shift;
       lastFreq = base;
       const part = buildJmjr4Note(ctx, {
         data, at: time, hz: base, dur: hold ? null : noteDur, velocity, syl, patch, variants, dest: stackIn,
+        chord: oneThroat ? notes.map((x) => x / lowest) : null,
         flutterSource,
         glideFrom: sounding && glide > 0 ? prev.freq : null,
         glideTime: glide,
@@ -5930,7 +5946,8 @@ export class VoiceRack {
         jmjr4Speak: { end: h.end + 0.1 },
       });
     }
-    for (const m of sharedMods.oscs) { m.start(time); m.stop(lastOff + 0.05); }
+    // The phrase's carriers stop at its end + 0.05 (dsp.js): the shared flutter just before.
+    for (const m of sharedMods.oscs) { m.start(time); m.stop(lastOff + 0.05 - MOD_EARLY); }
     if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
     this._retireNote(spoken, [busOut, ...speakMods]);
     return true;
@@ -6238,7 +6255,7 @@ export class VoiceRack {
     }
     // Started once the last partial has said when it ends. An LFO left running past the
     // note it belongs to is a node nothing disposes.
-    if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); sharedMods.oscs.push(lfo); }
+    if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff - MOD_EARLY); sharedMods.oscs.push(lfo); }
     this._perNoteKeyModeEnd(km, hold, rec);
     this._retireNote([...rec.sources, ...pips], [...rec.outs, ...vibMods]);
     return true;
@@ -6832,6 +6849,8 @@ export class VoiceRack {
     const legatoSources = [];
     // Every audible source this note starts — what `_retireNote` waits on.
     const noteSources = [];
+    // When the last of this note's oscillators stops: its pitch modulators stop before it.
+    let carriersEnd = 0;
     const activeLayerMonitors = [];
     const activeLayerWaves = [];
     let lastBase = 0;
@@ -7296,7 +7315,7 @@ export class VoiceRack {
               pwmSecs.gain.exponentialRampToValueAtTime(swing / Math.max(1, target), glideEnd);
             }
             lfo.connect(env); env.connect(pwmSecs);
-            lfo.start(lt); lfo.stop(off + 0.01);
+            lfo.start(lt); lfo.stop((tailPlan ? Math.min(off + 0.01, tailPlan.cullAt + STOP_FADE) : off + 0.01) - MOD_EARLY);
             layerMods.push(lfo);
             paramMods.push(lfo, env, pwmSecs);
           }
@@ -7509,7 +7528,7 @@ export class VoiceRack {
                   attack: spec.fm.attack, decay: spec.fm.decay, sustain: 0, release: 0,
                 });
                 mod.connect(fmSpread);
-                mod.start(lt); mod.stop(off + 0.01);
+                mod.start(lt); mod.stop((tailPlan ? Math.min(off + 0.01, tailPlan.cullAt + STOP_FADE) : off + 0.01) - MOD_EARLY);
                 layerMods.push(mod);
                 paramMods.push(mod, fmSpread);
               }
@@ -7555,7 +7574,9 @@ export class VoiceRack {
               src.start(lt + late);
               const ownEnd = sourceEnds.get(src);
               const naturalStop = ownEnd ?? (off + 0.01);
-              src.stop(tailPlan ? Math.min(naturalStop, tailPlan.cullAt + STOP_FADE) : naturalStop);
+              const stopAt = tailPlan ? Math.min(naturalStop, tailPlan.cullAt + STOP_FADE) : naturalStop;
+              src.stop(stopAt);
+              carriersEnd = Math.max(carriersEnd, stopAt);
             }
             noteSources.push(...sources);
             // A bypassed layer is held by the GLOBAL VCA, so its sources have to be let go
@@ -7605,7 +7626,9 @@ export class VoiceRack {
       if (hold && gateKey) fingerDown(record, gateKey, lastBase);
       this._last.set(glideKey, record);
     }
-    if (lastOff) for (const l of vibOscs) { l.start(time); l.stop(lastOff + 0.01); }
+    // Vibrato drives only the oscillators' pitch: it stops before the last of them does.
+    const pitchModsEnd = carriersEnd > time ? carriersEnd - MOD_EARLY : lastOff + 0.01;
+    if (lastOff) for (const l of vibOscs) { l.start(time); l.stop(pitchModsEnd); }
     if (lfoOsc && lastOff) {
       if (lfoSampleHold) {
         const freeRate = Math.max(0.01, lfoSpec.rate ?? 4);
@@ -7624,7 +7647,9 @@ export class VoiceRack {
           held = next;
         }
       }
-      lfoOsc.start(time); lfoOsc.stop(lastOff + 0.01);
+      // An LFO on the filter or the level is pulled through them until the note is unwired;
+      // one on the pitch only through the oscillators, so it stops with the vibrato.
+      lfoOsc.start(time); lfoOsc.stop(lfoSpec.target === 'pitch' ? pitchModsEnd : lastOff + 0.01);
     }
     if (lastOff) {
       sharedMods.oscs.push(...vibOscs);

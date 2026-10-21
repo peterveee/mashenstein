@@ -59,12 +59,12 @@ jobs:
           # is the cache key: bumping playwright fetches a matching browser.
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-      # Chromium alone — the renderer never asks for the other two. Re-run even on a
-      # cache hit: the download no-ops, and the system libraries it pulls in are not
-      # part of the cached directory.
-      - name: Install Chromium
+      # Chromium for the renderer, WebKit for tests/audio-leaks.js — the audio audit
+      # measures in the engine the iPad runs. Re-run even on a cache hit: the download
+      # no-ops, and the system libraries it pulls in are not part of the cached directory.
+      - name: Install Chromium and WebKit
         if: env.FULL_TESTS == 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Test
         if: env.FULL_TESTS != 'true'

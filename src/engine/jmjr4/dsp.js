@@ -558,7 +558,9 @@ export function renderIr(ctx, ir, opts = {}) {
   // compiled into the IR (aspiration, bursts, the bar) are relative to ONE source.
   const voicing = ctx.createGain();
   voicing.gain.value = 0;
-  const unisonScale = 1 / Math.sqrt(mainOscs.length);
+  // `opts.sourceScale`: a chord sung through one tract (note.js `chord`) keeps each NOTE at
+  // the power of one — its own unison power-summed — rather than the whole chord.
+  const unisonScale = opts.sourceScale ?? 1 / Math.sqrt(mainOscs.length);
   automate(voicing.gain, ir.voicing.t, ir.voicing.v, t0, (v) => v * unisonScale);
   for (const o of mainOscs) o.connect(voicing);
 
@@ -573,7 +575,10 @@ export function renderIr(ctx, ir, opts = {}) {
   // `nasalise` (the wet/dry pair), `release` (the phrase gate) and `stop`, and the rack's
   // vibrato reaches `oscs`, which a BufferSource is not. So a branch that is zero at build is
   // zero for the note's life.
-  const aspGain = (v) => v * (lv.asp_gain ?? 0.25 * 0.35);
+  // `opts.noiseScale`: the same chord's breath and consonants, once for the chord, at the
+  // power its notes' uncorrelated noises would have summed to.
+  const noiseScale = opts.noiseScale ?? 1;
+  const aspGain = (v) => v * (lv.asp_gain ?? 0.25 * 0.35) * noiseScale;
   const hasAsp = !alwaysZero(ir.aspiration.v, aspGain);
   const noiseN = hasAsp ? noiseSource(ctx, ir.seed) : null;
   let asp = null;
@@ -716,6 +721,8 @@ export function renderIr(ctx, ir, opts = {}) {
   // QUALITY (compile.js JMJR4_QUALITIES): LOW sings on F1 and F2 and builds no upper branch at
   // all; MEDIUM keeps F3 and drops F4 and F5. `opts.quality` for a phrase compiled before the
   // pot existed (SPEAK's block), the compiled controls otherwise.
+  // A compiled IR always carries its quality; an IR from before the pot (a phrase block) plays
+  // as it was made, at HIGH.
   const quality = opts.quality ?? c.quality ?? 'high';
   if ((c.tract === 'hybrid' || c.tract === 'parallel') && quality !== 'low') {
     const upper = ctx.createGain();
@@ -810,7 +817,7 @@ export function renderIr(ctx, ir, opts = {}) {
       env.gain.setTargetAtTime(0.0, start + a, Math.max(1e-3, p2) / Math.log(100));
     }
     const g = ctx.createGain();
-    g.gain.value = eg;
+    g.gain.value = eg * noiseScale;
     if (e.voiced) {
       const mod = ctx.createOscillator();
       mod.setPeriodicWave(glottalWave(ctx, c.oq, 0, meanF0, true));
