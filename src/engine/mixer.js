@@ -29,9 +29,11 @@
 //     (the biquad coefficients collapse to a pass-through), and it is the topology
 //     a console EQ actually uses. So the EQ is native BiquadFilters, not EQ3.
 import * as Tone from 'tone';
+import { useToneContext } from './tone-context.js';
 import { LANES } from './lanes.js';
 import {
   createEffect, makeReverb, rampParam, TEMPO_DIVISIONS, MAX_DELAY_SECONDS, delaySeconds,
+  EFFECT_BY_ID,
 } from './effects.js';
 import { prepareEngineWorklets } from './engine-worklets.js';
 import { EFFECT_PRESETS } from '../data/effect-presets.js';
@@ -280,6 +282,11 @@ export function setParkMutedEffects(on) { parkMuted = !!on; }
 let deepSleep = false;
 /** Let quiet chains and idle strips come out of the graph entirely (main.js, on WebKit). */
 export function setDeepSleep(on) { deepSleep = !!on; }
+// The strips' half of it can be told apart, for a test that needs to know which half did what.
+let stripSleepOverride = null;
+/** Strips sleep or not regardless of setDeepSleep (null: follow it). Tests only. */
+export function setStripSleep(on) { stripSleepOverride = on == null ? null : !!on; }
+const stripsSleep = () => stripSleepOverride ?? deepSleep;
 /** Whether this browser's audio engine is WebKit (Safari, and every browser on iOS). */
 export function deepSleepSuits(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
   return (/AppleWebKit/.test(ua) && !/(Chrome|Chromium|Edg|OPR)\//.test(ua)) || /(CriOS|FxiOS|EdgiOS)\//.test(ua);
@@ -287,7 +294,27 @@ export function deepSleepSuits(ua = typeof navigator !== 'undefined' ? navigator
 const STRIP_SLEEP_POLL_MS = 250;
 const STRIP_SLEEP_GAP = 2;   // seconds of silence past the last wake before a strip sleeps
 
-function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
+// ANALYSERS ARE POOLED, PER CONTEXT (23 Oct 2026). WebKit never gives an AnalyserNode's memory
+// back — ~275 KB each, kept after disconnect, after every reference is gone, after collection
+// (work/local/_probe-webkit-node-churn.mjs; the same is true of a PeriodicWave, ~580 KB, and a
+// DelayNode, its line). Every chain slot has a sleeper analyser and every song rebuilt every
+// slot, so a jukebox tour grew by a dozen MB a song for good. A slot that is disposed parks its
+// analyser here; the next slot takes it.
+const ANALYSER_POOL = new WeakMap();   // ctx → AnalyserNode[]
+function takeAnalyser(ctx) {
+  const free = ANALYSER_POOL.get(ctx);
+  const an = free?.pop();
+  return an || ctx.createAnalyser();
+}
+function parkAnalyser(ctx, an) {
+  if (!an || typeof ctx.startRendering === 'function') return;
+  try { an.disconnect(); } catch { /* fine */ }
+  let free = ANALYSER_POOL.get(ctx);
+  if (!free) { free = []; ANALYSER_POOL.set(ctx, free); }
+  free.push(an);
+}
+
+function makeChainSlot(ctx, from, to, { sleepWhenSilent = false, spotRoom = null } = {}) {
   const inGain = ctx.createGain();
   const outGain = ctx.createGain();
   let chain = [];
@@ -298,7 +325,7 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
   // sleeping cannot follow that virtual clock, and an offline graph disappears as soon as
   // its render finishes anyway, so this optimisation is live-context only.
   const canSleep = sleepWhenSilent && typeof ctx.startRendering !== 'function';
-  const sleeper = canSleep ? ctx.createAnalyser() : null;
+  const sleeper = canSleep ? takeAnalyser(ctx) : null;
   const sleepSamples = sleeper ? new Float32Array(256) : null;
   let awake = true;
   let pinned = false;
@@ -435,7 +462,15 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     }
     for (const p of prev) Tone.connect(p, outGain);
     if (!sleeper) outGain.connect(to);
-    else if (awake) sleeper.connect(to);
+    else if (awake) {
+      // Woken by a rebuild (set(), a pending chain kept or let go) rather than by `wake`: the
+      // sleeper's input has to come back too, or the new chain plays into nothing until its
+      // next sleep and wake — the first notes of a song after a song change, lost on every
+      // lane whose chain had slept through the last one (Peter, 22 Oct 2026: Crypt's theremin
+      // and Neon's opening after one another in the jukebox).
+      if (inputUnplugged) { outGain.connect(sleeper); inputUnplugged = false; }
+      sleeper.connect(to);
+    }
   };
   rewire();
 
@@ -487,7 +522,8 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
       sourceList = list;
       sourceBpm = bpm;
       chain = list.map((e) => {
-        const link = createEffect(e.id, e.params, ctx, bpm);
+        if (EFFECT_BY_ID[e?.id]?.virtual) return null;   // the Channel card is the strip's, not the chain's
+        const link = e.id === 'reverb' && spotRoom ? makeRoomSend(ctx, e.params, spotRoom) : createEffect(e.id, e.params, ctx, bpm);
         if (link) {
           // What it is set to now — so a transition can tell an effect it would have to
           // MOVE from one it merely has to leave alone (see Audio.rampMix).
@@ -611,6 +647,13 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
       connectOutput();
       watchForSilence();
     },
+    /** Asleep now, pinned or not — its strip has gone to sleep (makeStrip). `wake` brings it back. */
+    sleepNow() {
+      if (!sleeper) return;
+      clearSleepTimer();
+      quietSince = null;
+      disconnectOutput();
+    },
     /** The input has closed; keep measuring until every delayed/reverberant sample is gone. */
     release(when = ctx.currentTime) {
       if (!sleeper || !liveLinks().length) return;
@@ -630,7 +673,7 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
       try { from.disconnect(to); } catch { /* not wired */ }
       try { outGain.disconnect(); } catch { /* not wired */ }
       try { inGain.disconnect(); } catch { /* not wired */ }
-      try { sleeper?.disconnect(); } catch { /* not wired */ }
+      parkAnalyser(ctx, sleeper);
     },
     get awake() { return !sleeper || awake; },
   };
@@ -702,21 +745,94 @@ function sweepWindow(link, sixteenth, until, since) {
   if (!run || !(Number(sixteenth) > 0) || !Number.isFinite(until) || !Number.isFinite(since)) return [until, since];
   return [until + (Number(run[1]) || 0) * sixteenth, since - (Number(run[0]) || 0) * sixteenth];
 }
+/**
+ * THE SPOT FX ROOM (23 Oct 2026): one reverb for every Spot FX reverb on every lane.
+ *
+ * A Spot FX section asking for a reverb on a lane used to build that lane its own convolution
+ * reverb for that section — ~20 MB of kernels and three-quarters of a percent of a core each,
+ * for as long as the song was loaded. The canary's load song is 64 of them: 1.4 GB in WebKit,
+ * and in Chrome (where an idle branch is never unplugged) 80–90 % of the audio thread from
+ * bar one. The Lab's styles lean on Spot FX the same way. So a lane's Spot FX reverb is now
+ * a SEND into a room the mixer keeps per reverb setting (`createMixer` spotRoomFor), returned
+ * to songTrim as the aux reverbs are: this link passes the dry signal on through the rest of
+ * the chain at cos(wet) and sends sin(wet) to the room — makeReverb's own equal-power mix,
+ * split in two. Sections asking for the same reverb share a room; a different one gets its
+ * own, so two deliberately different Spot FX reverbs are still two. What changes in the
+ * sound: the room's tail no longer runs through the links after the reverb in the same chain
+ * (a chorus after it chorused the tail too). Peter's call, 23 Oct 2026.
+ *
+ * The master's own Spot FX reverb is still its own: there is only ever one.
+ */
+function makeRoomSend(ctx, params, getRoom) {
+  const def = EFFECT_BY_ID.reverb;
+  const state = { ...def.defaults, ...(params || {}) };
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const send = ctx.createGain();
+  input.connect(output);
+  input.connect(send);
+  const mix = () => {
+    const w = Math.max(0, Math.min(1, Number(state.wet) || 0));
+    send.gain.value = Math.sin((w * Math.PI) / 2);
+    output.gain.value = Math.cos((w * Math.PI) / 2);
+  };
+  mix();
+  const room = getRoom(state);
+  send.connect(room.input);
+  const node = {
+    input, output, _custom: true, ready: Promise.resolve(),
+    applyState: () => mix(),
+    setState: (patch) => { Object.assign(state, patch || {}); mix(); },
+    connect: (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest)),
+    disconnect: () => { try { output.disconnect(); } catch { /* fine */ } },
+    dispose: () => {
+      for (const n of [output, send, input]) { try { n.disconnect(); } catch { /* fine */ } }
+    },
+  };
+  return {
+    def, node,
+    set: (patch) => node.setState(patch),
+    setAt: () => { throw new Error('effects: "reverb" applies immediately and cannot be moved at an audio time'); },
+    scheduleRhythm: null, keyedTo: null, keyHit: null, flush: null,
+    // The room is pulled while any section that sends to it is on, and measured for silence after.
+    engage: () => room.wake(),
+    disengage: (at, seconds = 0) => room.release((Number.isFinite(at) ? at : ctx.currentTime) + seconds + 0.05),
+  };
+}
+
 const engageLink = (link, at, sixteenth, until, since) => {
   const [u, s] = sweepWindow(link, sixteenth, until, since);
   link.engage?.(at, sixteenth, u, s);
 };
 
-function makeSectionSwitch(ctx, from, to) {
+// The effects on the sequencer's clock (effects.js scheduleRhythm): see prepare below.
+const RHYTHM_FX = new Set(['rhythmgate', 'stutter', 'vowel', 'duck']);
+
+function makeSectionSwitch(ctx, from, to, { spotRoom = null, onStrip = null } = {}) {
   const direct = ctx.createGain();
   direct.gain.value = 1;
   from.connect(direct);
   direct.connect(to);
   const branches = new Map();
+  // BUILT WHEN SELECTED, DROPPED AFTER THEIR TAIL (23 Oct 2026). Every route used to be built
+  // at prepare and kept for the song — and in Chrome, where an idle branch is never unplugged
+  // (deep sleep is WebKit's), every one of them rendered from bar one: the canary's load song,
+  // 64 branches of chorus and phaser, was 86–97 % of the audio thread before its first chord.
+  // So `prepare` only remembers what a section will want; `select` builds the branch the
+  // moment it is chosen (microseconds, a lookahead ahead of the audio), and a deselected
+  // branch is disposed once its tail has had time to die — a fresh branch has no stale
+  // automation to lose, which is what kept unplugging out of Chrome. Offline renders build
+  // the same way and drop nothing: their clock is not the wall's.
+  const known = new Map();      // signature → { list, bpm }
+  const drops = new Map();      // signature → timer
+  const liveCtx = typeof ctx.startRendering !== 'function';
   let heldAwake = false;
   const holdAwake = (on) => {
-    const source = keepAlive(ctx);
-    if (!source || on === heldAwake) return;
+    if (on === heldAwake) return;
+    // Off never makes the keep-alive source: clear() on a song's stop was making one just to
+    // not use it, and it read as a source started and never ended (the Lab audit, 23 Oct 2026).
+    const source = on ? keepAlive(ctx) : KEEP_ALIVE.get(ctx);
+    if (!source) return;
     heldAwake = on;
     if (on) source.connect(from);
     else try { source.disconnect(from); } catch { /* not wired */ }
@@ -727,21 +843,58 @@ function makeSectionSwitch(ctx, from, to) {
   // first event, attenuating the opening direct bar. This also avoids touching the
   // graph between adjacent bars that use the same snapshot.
   let selected = '';
+  // The strip is asleep (sleep/wake below): the selected branch is not pulled until it wakes.
+  let dormant = false;
   const live = (signature) => (branches.get(signature)?.slot.chain || []).filter((link) => !link.bypassed);
+  const build = (signature, list, bpm = 120) => {
+    const have = branches.get(signature);
+    if (have) return have;
+    const k = known.get(signature);
+    const input = ctx.createGain(); input.gain.value = 0;
+    from.connect(input);
+    const slot = makeChainSlot(ctx, input, to, { sleepWhenSilent: true, spotRoom });
+    slot.set(k?.list || list, k?.bpm ?? bpm);
+    const branch = { input, slot, list: k?.list || list };
+    branches.set(signature, branch);
+    holdAwake(true);
+    return branch;
+  };
+  const dropBranch = (signature) => {
+    const branch = branches.get(signature);
+    if (!branch || signature === selected) return;
+    branches.delete(signature);
+    branch.slot.dispose();
+    try { from.disconnect(branch.input); } catch { /* already gone */ }
+    try { branch.input.disconnect(); } catch { /* already gone */ }
+    if (!branches.size) holdAwake(false);
+  };
+  const dropAfterTail = (signature, at) => {
+    // Chrome's lever only: with deep sleep (WebKit) an idle branch is unplugged instead, and
+    // WebKit keeps a dropped branch's delays and analyser for good — see the pools above.
+    if (!liveCtx || deepSleep) return;
+    const branch = branches.get(signature);
+    if (!branch || branch.list.some((e) => RHYTHM_FX.has(e?.id))) return;
+    const t = drops.get(signature);
+    if (t) clearTimeout(t);
+    const gap = effectSilenceGap(branch.list, known.get(signature)?.bpm ?? 120);
+    drops.set(signature, setTimeout(() => { drops.delete(signature); dropBranch(signature); },
+      Math.max(0, (at - ctx.currentTime + gap + 1) * 1000)));
+  };
   const sw = {
-    /** Pre-create every route before the scheduler needs to select it. */
+    /**
+     * Remember every route the scheduler may select; each is built when it is — except a
+     * chain with an effect on the sequencer's clock (scheduleRhythm: the Rhythmic Gate, the
+     * Stutter, the Vowel Filter, the Sidechain Duck), which is built here and kept: its
+     * pulses for a step are scheduled before that step's section is selected, and a gate
+     * built at the select missed its first sixteenth (tests/fx-sections.js).
+     */
     prepare(chains = [], bpm = 120) {
       for (const list of chains) {
         if (!Array.isArray(list) || !list.length) continue;
         const signature = JSON.stringify(list);
-        if (branches.has(signature)) continue;
-        const input = ctx.createGain(); input.gain.value = 0;
-        from.connect(input);
-        const slot = makeChainSlot(ctx, input, to, { sleepWhenSilent: true });
-        slot.set(list, bpm);
-        branches.set(signature, { input, slot, list });
+        known.set(signature, { list, bpm });
+        if (list.some((e) => RHYTHM_FX.has(e?.id))) build(signature, list, bpm);
       }
-      if (branches.size) holdAwake(true);
     },
     /**
      * Select a prepared route at an audio time; deselected routes keep ringing out.
@@ -751,7 +904,14 @@ function makeSectionSwitch(ctx, from, to) {
      */
     select(list = [], when = ctx.currentTime, { fresh = false, sixteenth = null, until = null, since = null } = {}) {
       const signature = Array.isArray(list) && list.length ? JSON.stringify(list) : '';
-      if (signature && !branches.has(signature)) sw.prepare([list]);
+      // A section of Channel cards alone has no nodes: the direct path stays, and the strip
+      // does the work (onStrip below). A branch with an empty chain would double the signal.
+      const needsBranch = signature && list.some((e) => !EFFECT_BY_ID[e?.id]?.virtual);
+      if (needsBranch) {
+        const t = drops.get(signature);
+        if (t) { clearTimeout(t); drops.delete(signature); }
+        if (!branches.has(signature)) build(signature, list);
+      }
       if (signature === selected) {
         if (fresh && signature) {
           const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
@@ -761,7 +921,12 @@ function makeSectionSwitch(ctx, from, to) {
       }
       const previous = selected;
       selected = signature;
-      if (signature) branches.get(signature)?.slot.wake(Infinity);
+      if (signature && !dormant) branches.get(signature)?.slot.wake(Infinity);
+      // The Channel card (effects.js 'strip'): the strip's own EQ and sends for this section.
+      if (onStrip) {
+        const card = Array.isArray(list) ? list.find((e) => e?.id === 'strip') : null;
+        onStrip(card ? card.params || {} : null, Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime));
+      }
       // We know both sides of this switch. Anchor them explicitly instead of using
       // cancelAndHoldAtTime: an offline render queues later bars before processing
       // bar one, and Chromium's future hold can leak backwards through that queue.
@@ -780,13 +945,14 @@ function makeSectionSwitch(ctx, from, to) {
         param.setValueAtTime(a, edge);
         param.linearRampToValueAtTime(b, Math.max(at, edge + 0.004));
       };
-      switchGain(direct.gain, previous ? 0 : 1, signature ? 0 : 1);
+      switchGain(direct.gain, previous && branches.has(previous) ? 0 : 1, needsBranch ? 0 : 1);
       for (const [id, branch] of branches) {
         switchGain(branch.input.gain, id === previous ? 1 : 0, id === signature ? 1 : 0);
       }
       if (previous) {
         for (const link of live(previous)) link.disengage?.(at);
         branches.get(previous)?.slot.release(at + 0.004);
+        dropAfterTail(previous, at + 0.004);
       }
       if (signature) for (const link of live(signature)) engageLink(link, at, sixteenth, until, since);
     },
@@ -822,11 +988,32 @@ function makeSectionSwitch(ctx, from, to) {
       for (const link of live(selected)) link.disengage?.(t, seconds);
       sw.select([], t + seconds);
     },
+    /**
+     * The strip has gone to sleep: every branch with it, the selected one too. A selected
+     * branch is pinned awake for its whole section, and its sleeper — an analyser — pulls the
+     * lane's voices whatever the strip feeds; so on the iPad (22 Oct 2026) a lane in a Spot FX
+     * section went on rendering muted, asleep and hushed alike, and the canary's load song
+     * held the clock at 0.30 through DEEP and two STOPs until its Spot FX bars ended.
+     */
+    sleep() {
+      dormant = true;
+      for (const branch of branches.values()) branch.slot.sleepNow();
+    },
+    /** The strip is awake again: the selected branch back in, pinned for its section. */
+    wake() {
+      if (!dormant) return;
+      dormant = false;
+      if (selected) branches.get(selected)?.slot.wake(Infinity);
+    },
     get slots() { return [...branches.values()].map((branch) => branch.slot); },
     get links() { return [...branches.values()].flatMap((branch) => branch.slot.chain || []); },
     /** A new song owns a new set of chains; do not accumulate the last song's graphs. */
     clear() {
+      if (selected && onStrip) onStrip(null, ctx.currentTime);
       selected = '';
+      for (const t of drops.values()) clearTimeout(t);
+      drops.clear();
+      known.clear();
       direct.gain.cancelScheduledValues(ctx.currentTime);
       direct.gain.value = 1;
       for (const branch of branches.values()) {
@@ -859,6 +1046,7 @@ function makeEq(ctx) {
       if (h != null) high.gain.value = h;
     },
     /** The same move at an audio time — see rampParam. */
+    now() { return { low: low.gain.value, mid: mid.gain.value, high: high.gain.value }; },
     ramp({ low: l, mid: m, high: h } = {}, when, seconds) {
       if (l != null) rampParam(ctx, low.gain, l, when, seconds);
       if (m != null) rampParam(ctx, mid.gain, m, when, seconds);
@@ -930,7 +1118,7 @@ export const DELAY_DIVISIONS = TEMPO_DIVISIONS;
 export function createMixer(ctx, {
   musicBus, echoBus, master, destination = ctx.destination, songTrim, delayLp, metered = true,
 }) {
-  Tone.setContext(ctx);
+  useToneContext(ctx);   // the one Tone wrapper this context has — see tone-context.js
 
   /*
    * Display meters serve the desk. Gameplay opts out; offline always opts out.
@@ -1031,6 +1219,32 @@ export function createMixer(ctx, {
     });
   }
 
+  // THE SPOT FX ROOMS: one reverb per distinct reverb SETTING (decay, pre-delay, EQ, width) that
+  // any lane's Spot FX reverb sends to (makeRoomSend). Two sections asking for the same room
+  // share it; a section asking for a different one gets its own — so an author with the budget
+  // for two different Spot FX reverbs still has two (Peter, 23 Oct 2026). Each is a chain slot
+  // of its own so it sleeps — unplugged — when nothing is sending, and returns to songTrim like
+  // the aux reverbs. Wet is the link's business, not the room's.
+  const spotRooms = new Map();
+  const spotRoomFor = (state) => {
+    const d = EFFECT_BY_ID.reverb.defaults;
+    const key = ['decay', 'preDelay', 'low', 'mid', 'high', 'width'].map((k) => `${k}=${Number(state?.[k] ?? d[k])}`).join('|');
+    let room = spotRooms.get(key);
+    if (room) return room;
+    const input = ctx.createGain();
+    const slot = makeChainSlot(ctx, input, songTrim, { sleepWhenSilent: true });
+    const { decay, preDelay, low, mid, high, width } = { ...d, ...(state || {}) };
+    slot.set([{ id: 'reverb', params: { decay, preDelay, low, mid, high, width, wet: 1 } }]);
+    room = {
+      input, slot,
+      wake: () => slot.wake(Infinity),
+      release: (at) => slot.release(at),
+      dispose: () => { slot.dispose(); try { input.disconnect(); } catch { /* fine */ } },
+    };
+    spotRooms.set(key, room);
+    return room;
+  };
+
   const strips = new Map();
   const soloed = new Set();
   // Soloing a BUS is a different question from soloing a channel: it asks to hear
@@ -1104,7 +1318,7 @@ export function createMixer(ctx, {
     const panner = ctx.createStereoPanner();
     const monitor = ctx.createGain();
     const slot = makeChainSlot(ctx, eq.output, sectionIn);
-    const sections = makeSectionSwitch(ctx, sectionIn, fader);
+    const sections = makeSectionSwitch(ctx, sectionIn, fader, { spotRoom: spotRoomFor });
     fader.connect(panner);
     panner.connect(monitor);
     monitor.connect(musicBus);
@@ -1289,7 +1503,36 @@ export function createMixer(ctx, {
     // at a bar edge only one receives new audio. Turning a branch off therefore stops
     // later notes entering it while delay/reverb already inside keeps its natural tail.
     const pre = ctx.createGain();
-    const barSwitch = makeSectionSwitch(ctx, dry, pre);
+    // THE CHANNEL CARD on this lane (effects.js 'strip'): for its section the EQ moves by the
+    // card's dB and the delay and reverb sends rise by its amounts, on top of what the mix
+    // says — an offset, like panOffset, so the authored state the desk draws is untouched —
+    // and go back at the section's end. Every setter below adds the offset in, so a knob
+    // moved on the desk while a section is on still lands where it should.
+    let stripFx = null;
+    const eqWithFx = (eq = state.eq) => ({
+      low: (eq.low ?? state.eq.low) + (stripFx?.low || 0),
+      mid: (eq.mid ?? state.eq.mid) + (stripFx?.mid || 0),
+      high: (eq.high ?? state.eq.high) + (stripFx?.high || 0),
+    });
+    const sendWithFx = (id, v = state.send[id]) => Math.max(0, Math.min(1, (Number(v) || 0) + (Number(stripFx?.[id]) || 0)));
+    const levelWithFx = (db = state.gain) => (Number(db) || 0) + (Number(stripFx?.level) || 0);
+    const applyStripFx = (params, at, seconds = 0.004) => {
+      const next = params ? { ...params } : null;
+      if (!next && !stripFx) return;
+      stripFx = next;
+      laneEq.ramp(eqWithFx(), at, seconds);
+      if (!(state.mute || groupMuted)) rampParam(ctx, pres.gain, dbToGain(levelWithFx()), at, seconds);
+      panWritten = panTarget();
+      rampParam(ctx, panner.pan, panWritten, at, seconds);
+      for (const id of ['delay', 'reverb']) {
+        if (!sends.has(id)) continue;
+        const v = sendWithFx(id);
+        if (v > 0) { linkSend(id); wakeAux(id); }
+        rampParam(ctx, sends.get(id).gain, v, at, seconds);
+        if (v === 0) unlinkSendAfter(id, Math.max(0, at - ctx.currentTime) + seconds);
+      }
+    };
+    const barSwitch = makeSectionSwitch(ctx, dry, pre, { spotRoom: spotRoomFor, onStrip: applyStripFx });
     // Frozen PCM has already passed through its bar-effect snapshots, but nothing on
     // the live channel. It enters after those branches and before EQ/inserts/fader/pan.
     const frozen = ctx.createGain();
@@ -1385,7 +1628,7 @@ export function createMixer(ctx, {
     // none of it and nothing feeding it. `wakeEffects`, which the sequencer calls before every
     // note and every frozen bar, plugs it back in first. A metered strip (the desk) never
     // sleeps; nor does one offline.
-    const stripProbe = typeof ctx.startRendering !== 'function' && !meter ? ctx.createAnalyser() : null;
+    const stripProbe = typeof ctx.startRendering !== 'function' && !meter ? takeAnalyser(ctx) : null;
     const stripSamples = stripProbe ? new Float32Array(256) : null;
     if (stripProbe) {
       stripProbe.fftSize = 256;
@@ -1404,6 +1647,10 @@ export function createMixer(ctx, {
         if (linked) try { sends.get(id).disconnect(auxes.get(id).input); } catch { /* not wired */ }
       }
       try { monitor.disconnect(stripProbe); } catch { /* not wired */ }
+      // And its own chains: each one's sleeper is an analyser that would pull the voices
+      // whatever the strip feeds — a Spot FX branch pinned for its section above all.
+      barSwitch.sleep();
+      slot.sleepNow();
     };
     const wakeStrip = () => {
       if (stripAwake || stripGone) return;
@@ -1411,10 +1658,11 @@ export function createMixer(ctx, {
       monitor.connect(routeTo);
       for (const [id, linked] of sendLinked) if (linked) sends.get(id).connect(auxes.get(id).input);
       monitor.connect(stripProbe);
+      barSwitch.wake();
     };
     const pollStrip = () => {
       stripTimer = null;
-      if (stripGone || !stripAwake || !deepSleep) return;
+      if (stripGone || !stripAwake || !stripsSleep()) return;
       const now = ctx.currentTime;
       if (ctx.state !== 'running' || now < stripHold || routeFade) {
         stripTimer = setTimeout(pollStrip, STRIP_SLEEP_POLL_MS);
@@ -1429,7 +1677,7 @@ export function createMixer(ctx, {
       stripTimer = setTimeout(pollStrip, STRIP_SLEEP_POLL_MS);
     };
     const watchStrip = () => {
-      if (!stripProbe || !deepSleep || stripGone || !stripAwake || stripTimer != null) return;
+      if (!stripProbe || !stripsSleep() || stripGone || !stripAwake || stripTimer != null) return;
       stripTimer = setTimeout(pollStrip, STRIP_SLEEP_POLL_MS);
     };
     const holdStrip = (until) => {
@@ -1496,7 +1744,7 @@ export function createMixer(ctx, {
     // lane's level through the same door whichever of the two things they are changing.
     const applyLevel = () => {
       pres.gain.cancelScheduledValues(ctx.currentTime);
-      pres.gain.value = (state.mute || groupMuted) ? 0 : dbToGain(state.gain);
+      pres.gain.value = (state.mute || groupMuted) ? 0 : dbToGain(levelWithFx());
     };
 
     // The ARRANGEMENT's pan, held apart from the MIX's, and added to it.
@@ -1513,7 +1761,7 @@ export function createMixer(ctx, {
     // the pot — if one panner ends up holding the sum. The cost of that is the honest one
     // a DAW's pan automation has: a note still ringing from the bar before moves with it.
     let panOffset = 0;
-    const panTarget = () => Math.max(-1, Math.min(1, state.pan + panOffset));
+    const panTarget = () => Math.max(-1, Math.min(1, state.pan + panOffset + (Number(stripFx?.pan) || 0)));
     // The last value this panner was told to arrive at, kept because a ramp needs
     // somewhere to start FROM and the param cannot be asked. `.value` on an untouched
     // AudioParam is not an automation event in Chromium, so a lone
@@ -1698,7 +1946,7 @@ export function createMixer(ctx, {
       setEQ(patch = {}) {
         cancelState('eq');
         Object.assign(state.eq, patch);
-        laneEq.set(patch);
+        laneEq.set(stripFx ? eqWithFx() : patch);
       },
       /** Accepts any subset of aux ids, e.g. { delay: 1, reverb2: 0.3 }. */
       setSend(patch = {}) {
@@ -1708,7 +1956,7 @@ export function createMixer(ctx, {
           state.send[id] = v;
           const g = sends.get(id).gain;
           g.cancelScheduledValues(ctx.currentTime);
-          g.value = v;
+          g.value = stripFx ? sendWithFx(id, v) : v;
           // A send raised off zero has to have somewhere to arrive — see wakeAux.
           // Only ever upwards here: dropping the last send to zero leaves the return
           // wired and silent until the next applyMix prunes it, which costs a little
@@ -1725,6 +1973,17 @@ export function createMixer(ctx, {
       get effects() { return slot.chain; },
       wakeEffects(until = ctx.currentTime) { holdStrip(until); slot.wake(until); },
       get _asleep() { return !stripAwake; },
+      /** The Channel card on now, and the EQ bands as the nodes have them — for tests. */
+      get _stripFx() { return stripFx ? { ...stripFx } : null; },
+      get _eqNow() { return laneEq.now(); },
+      /** Asleep now, not after its quiet gap (sleepStripsNow). Its next note wakes it as ever. */
+      sleepNow() {
+        if (!stripProbe || !stripsSleep() || stripGone) return;
+        if (stripTimer != null) { clearTimeout(stripTimer); stripTimer = null; }
+        stripHold = 0;
+        stripQuietSince = null;
+        sleepStrip();
+      },
       get effectsAwake() { return slot.awake; },
       /** Temporarily take one effect out of the chain, without losing its settings. */
       setEffectBypass(index, on) { slot.setBypass(index, on); },
@@ -1763,7 +2022,7 @@ export function createMixer(ctx, {
       rampTo({ gain, mute, pan, width, eq, send } = {}, when, seconds = 0) {
         const at = Math.max(when, ctx.currentTime);
         if (gain != null || mute != null) {
-          rampParam(ctx, pres.gain, (mute || groupMuted) ? 0 : dbToGain(gain ?? state.gain), when, seconds);
+          rampParam(ctx, pres.gain, (mute || groupMuted) ? 0 : dbToGain(levelWithFx(gain ?? state.gain)), when, seconds);
           queueState(at, 'gain', gain ?? state.gain);
           queueState(at, 'mute', !!mute);
         }
@@ -1785,14 +2044,14 @@ export function createMixer(ctx, {
           queueState(at, 'width', width);
         }
         if (eq) {
-          laneEq.ramp(eq, when, seconds);
+          laneEq.ramp(stripFx ? eqWithFx({ ...state.eq, ...eq }) : eq, when, seconds);
           queueState(at, 'eq', { ...eq });
         }
         for (const [id, v] of Object.entries(send || {})) {
           if (v == null || !sends.has(id)) continue;
           // Wired NOW, before the ramp is scheduled, or its opening would be lost.
           if (v > 0) { linkSend(id); wakeAux(id); }
-          rampParam(ctx, sends.get(id).gain, v, when, seconds);
+          rampParam(ctx, sends.get(id).gain, stripFx ? sendWithFx(id, v) : v, when, seconds);
           if (v === 0) unlinkSendAfter(id, Math.max(0, (when ?? ctx.currentTime) - ctx.currentTime) + (seconds || 0));
           queueState(at, `send:${id}`, v);
         }
@@ -1879,7 +2138,7 @@ export function createMixer(ctx, {
       _dispose() {
         stripGone = true;
         if (stripTimer != null) clearTimeout(stripTimer);
-        try { stripProbe?.disconnect(); } catch { /* not wired */ }
+        parkAnalyser(ctx, stripProbe);
         if (routeFade) routeFade.finish();
         for (const t of sendDrop.values()) clearTimeout(t);
         sendDrop.clear();
@@ -2107,6 +2366,40 @@ export function createMixer(ctx, {
   return {
     lanes: LANES.map((l) => l.key),
     lane: (key) => strips.get(key),
+    /**
+     * The whole graph taken down, for good — before its context is closed and a new one built
+     * (Audio.rebuildRealtimeContext, the audio guard's RESTART; 23 Oct 2026). Closing a context
+     * does not hand its memory back while JavaScript still holds the nodes, and a new graph
+     * built on top of the old one doubled it: the canary's load song, 2.2 GB in WebKit, went
+     * to 3.4 GB at a restart, and on the iPhone the page was killed. Every strip (its Spot FX
+     * branches and inserts with it), the master's chains, the auxes and the group buses are
+     * unwired and their effects disposed — a reverb lets its convolver's kernels go at once.
+     */
+    dispose() {
+      for (const s of strips.values()) { try { s._dispose(); } catch { /* going anyway */ } }
+      strips.clear();
+      try { masterSlot?.dispose(); } catch { /* going anyway */ }
+      try { masterSections?.clear(); } catch { /* going anyway */ }
+      for (const a of auxes.values()) {
+        try { a.slot?.dispose(); } catch { /* going anyway */ }
+        try { a.reverb?.dispose?.(); } catch { /* going anyway */ }
+        try { a.engine?.dispose?.(); } catch { /* going anyway */ }
+        for (const n of [a.input, a.eq?.input, a.eq?.output, a.level, a.panner, a.monitor]) {
+          try { n?.disconnect(); } catch { /* not wired */ }
+        }
+      }
+      auxes.clear();
+      for (const bus of groupBuses.values()) {
+        try { bus.slot.dispose(); } catch { /* going anyway */ }
+        try { bus.sections.clear(); } catch { /* going anyway */ }
+        for (const n of [bus.input, bus.fader, bus.panner, bus.monitor]) {
+          try { n?.disconnect(); } catch { /* not wired */ }
+        }
+      }
+      groupBuses.clear();
+      for (const room of spotRooms.values()) { try { room.dispose(); } catch { /* going anyway */ } }
+      spotRooms.clear();
+    },
     /** Every strip built so far — the canonical lanes and any layer a mix has added. */
     get stripKeys() { return [...strips.keys()]; },
     /**
@@ -2613,6 +2906,15 @@ export function createMixer(ctx, {
      * that lies about itself the moment the next song starts.
      */
     clearPanOffsets() { for (const s of strips.values()) s.setPanOffset(0, ctx.currentTime, 0); },
+    /**
+     * Every strip asleep at once, held notes and tails with it — the guard's STOP
+     * (Audio.hushMusic), whose music path is already off the master. Taking the mix off the
+     * master is not enough on its own: each strip's sleep probe is an analyser, which pulls
+     * the strip whatever it feeds, so a hushed song went on rendering in full (the iPad, 22 Oct
+     * 2026: the clock stayed at 0.38–0.45 through a hush). Deep sleep only (stripsSleep); the
+     * next note on a lane wakes its strip.
+     */
+    sleepStripsNow() { for (const s of strips.values()) s.sleepNow(); },
     /**
      * Every channel's automation line back to unity — a song change. With `at`, walked
      * there at that time (the old song's fade-out is still running until then); without

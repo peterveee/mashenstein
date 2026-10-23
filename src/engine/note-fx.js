@@ -1,3 +1,5 @@
+import { guitarVoicing } from './guitar-voicing.js';
+
 // Nondestructive note effects shared by live playback, game playback and offline render.
 // Source notes stay untouched; this turns one sequencer event into scheduled tone events.
 
@@ -234,7 +236,7 @@ export function orderedTones(value, direction = 'up', seed = '') {
  * narrower question and this is deliberately not what they call.
  */
 export const hasEnabledNoteFx = (noteFx) => !!(noteFx?.strum?.enabled
-  || noteFx?.arp?.enabled || noteFx?.portamento?.enabled === true);
+  || noteFx?.guitar?.enabled || noteFx?.arp?.enabled || noteFx?.portamento?.enabled === true);
 
 export function resolveNoteFx(track = null, bar = null, laneKey = '') {
   const base = track || {};
@@ -245,16 +247,24 @@ export function resolveNoteFx(track = null, bar = null, laneKey = '') {
     ...base,
     ...override,
     strum: { ...(base.strum || {}), ...(override.strum || {}) },
+    guitar: { ...(base.guitar || {}), ...(override.guitar || {}) },
     arp: { ...(base.arp || {}), ...(override.arp || {}) },
   };
 }
 
 export function createNoteFxProcessor() {
   const arpState = new Map();
-  const reset = () => arpState.clear();
+  const strumState = new Map();
+  const reset = () => { arpState.clear(); strumState.clear(); };
 
   function process({ laneKey, value, len = null, step, spb, config = {}, barIndex = 0 }) {
-    const source = tones(value);
+    let source = tones(value);
+    // Unequal source gates are a part, not one chord strike: leave those untouched.
+    if (config.guitar?.enabled && (!Array.isArray(len) || len.every(n => n === len[0]))) {
+      const voiced = guitarVoicing(source, config.guitar);
+      if (voiced !== source && Array.isArray(len)) len = len[0] ?? null;
+      source = voiced;
+    }
     const arp = config.arp || {};
     let events = [];
     if (arp.enabled) {
@@ -324,8 +334,21 @@ export function createNoteFxProcessor() {
 
     const strum = config.strum || {};
     if (strum.enabled && events.length > 1) {
-      const direction = strum.direction === 'down' ? 'down'
+      let direction = strum.direction === 'down' ? 'down'
         : strum.direction === 'random' ? 'random' : 'up';
+      if (strum.direction === 'alternate-up' || strum.direction === 'alternate-down') {
+        let state = strumState.get(laneKey);
+        // Count chord strikes, not grid ticks: rests and single notes do not flip the
+        // stroke. Reset on each bar, a style change, or a transport wrap/rewind.
+        if (!state || state.barIndex !== barIndex || state.style !== strum.direction
+          || step < state.step) {
+          state = { barIndex, style: strum.direction, step, down: strum.direction === 'alternate-down' };
+          strumState.set(laneKey, state);
+        }
+        direction = state.down ? 'down' : 'up';
+        state.down = !state.down;
+        state.step = step;
+      } else strumState.delete(laneKey);
       const order = orderedTones(events.map((e) => e.freq), direction,
         `${laneKey}:${step}:${barIndex}`);
       const byFreq = new Map(events.map((event) => [event.freq, event]));

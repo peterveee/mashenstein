@@ -35,6 +35,7 @@
 // stems-sum-to-the-mix property offline renders rely on — that needs a seeded
 // buffer, the way AudioSys.noiseBuf already is, before NoiseSynth can be offered.
 import * as Tone from 'tone';
+import { useToneContext } from './tone-context.js';
 import { installToneSourceRetire } from './tone-retire.js';
 import { drainSources } from './drain.js';
 // Tone's per-note sources end before they are unplugged (tone-retire.js): once, at load.
@@ -69,10 +70,69 @@ import { buildJmjr4Note, singerVariants } from './jmjr4/note.js';
 import { JMJR4_DATA } from './jmjr4/data.js';
 import { advanceLine, newLineState } from './jmjr4/line.js';
 import {
-  tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, tngr2Choke, releaseTngr2Context,
+  tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, tngr2Choke, releaseTngr2Context, tngr2LanesOf,
   tngr2ControllerHealth, canHostTngr2, renderTngr2Lane, tngr2PatchForVoice, tngr2VibratoOf,
   syncTngr2Patch, tngr2EffectsOf, postTngr2Events,
 } from './tngr2/controller.js';
+import {
+  fzpp6Lane, fzpp6LaneNow, fzpp6NoteOn, fzpp6Choke, fzpp6LanesOf, fzpp6ControllerHealth,
+  canHostFzpp6, renderFzpp6Lane, syncFzpp6Patch,
+} from './fzpp6/controller.js';
+
+/**
+ * THE WORKLET LANE SYNTHS, and the one place that knows which controller each one has.
+ *
+ * TNGR-2 and FZPP-6 are both one persistent AudioWorkletNode per lane that notes are
+ * posted to, booked offline and handed over a stretch at a time. The rack's machinery for
+ * that — the queue while a lane builds, the chorus stage, held previews, cuts, the offline
+ * bookings — was written for TNGR-2 and is the same for any such engine, so it takes its
+ * engine from here rather than being written out twice. What differs is behind these
+ * entries: how a lane is built and kept on the voice's patch, how a note-on is spelled,
+ * and whether the note's VELOCITY travels on its own (`velocity`) or is already folded
+ * into its gain. FZPP-6 needs it whole, because its velocity also picks MUTED BELOW's
+ * chucks and how bright the pluck is.
+ */
+const WORKLET_LANES = {
+  'TNGR-2': {
+    name: 'TNGR-2',
+    velocity: false,
+    canHost: canHostTngr2,
+    lane: (ctx, laneKey, v) => tngr2Lane(ctx, laneKey, {
+      // The VOICE's patch, not just its tngr2 block: key mode, glide and vibrato are
+      // shared controls stored on the voice. See `tngr2PatchForVoice`.
+      stored: tngr2PatchForVoice(v), seed: hashSeed(v.id || laneKey),
+      vibrato: tngr2VibratoOf(v), effects: tngr2EffectsOf(v),
+    }),
+    laneNow: tngr2LaneNow,
+    sync: (lane, v, laneKey) => syncTngr2Patch(lane, tngr2PatchForVoice(v), {
+      seed: hashSeed(v.id || laneKey), vibrato: tngr2VibratoOf(v), effects: tngr2EffectsOf(v),
+    }),
+    // The note's whole level, boosts included — the core used to cap it at 1. See
+    // TNGR2_MAX_LEVEL in src/engine/tngr2/dsp.js.
+    noteOn: (lane, { at, hz, level, eventId }) => tngr2NoteOn(lane, { at, hz, velocity: level, eventId }),
+    offlineOn: ({ frame, hz, level, eventId }) => ({ type: 'noteOn', frame, eventId, hz, velocity: level }),
+    render: (ctx, booking) => renderTngr2Lane(ctx, {
+      stored: tngr2PatchForVoice(booking.voice), vibrato: tngr2VibratoOf(booking.voice),
+      effects: tngr2EffectsOf(booking.voice), events: booking.events,
+      seed: hashSeed(booking.voice.id || booking.laneKey),
+      destination: booking.dry || ctx.destination,
+    }),
+  },
+  [FAMILY.FZPP6]: {
+    name: 'FZPP-6',
+    velocity: true,
+    canHost: canHostFzpp6,
+    lane: (ctx, laneKey, v) => fzpp6Lane(ctx, laneKey, { voice: v }),
+    laneNow: fzpp6LaneNow,
+    sync: (lane, v) => syncFzpp6Patch(lane, v),
+    noteOn: (lane, { at, hz, level, velocity, eventId }) => fzpp6NoteOn(lane, { at, hz, level, velocity, eventId }),
+    offlineOn: ({ frame, hz, level, velocity, eventId }) => ({ type: 'noteOn', frame, eventId, hz, level, velocity }),
+    render: (ctx, booking) => renderFzpp6Lane(ctx, {
+      voice: booking.voice, events: booking.events, destination: booking.dry || ctx.destination,
+    }),
+  },
+};
+const workletLaneOf = (v) => (v ? WORKLET_LANES[v.synth] || null : null);
 
 /**
  * The allowlist. A catalogue entry's `synth` is looked up here and nowhere else, so
@@ -245,6 +305,34 @@ export const DRAWBAR_RATIOS = [0.5, 1.5, 1, 2, 3, 4, 5, 6, 8];
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 const nativeWave = (type, fallback = 'sine') => (NATIVE_WAVES.includes(type) ? type : fallback);
 
+/**
+ * MRDR-3's FM PULSE: a fixed 25% pulse as a PeriodicWave, built once per context.
+ *
+ * A pulse of duty d with its DC taken out is Σ (2/πn)·[sin(2πnd)·cos + (1 − cos(2πnd))·sin]
+ * per harmonic n; 32 harmonics, which is plenty for a MODULATOR — every one of them is a
+ * family of sidebands — and fewer to alias. Normalised by Web Audio to a peak of 1, like the
+ * built-in waves, so FM DEPTH means the same on it as on a square. Fixed width on purpose:
+ * a MOVING width is the delay-line PWM, the dearest thing on this path (see `pwm`).
+ */
+const FM_PULSE_DUTY = 0.25;
+const FM_PULSE_HARMONICS = 32;
+const fmPulseWaves = new WeakMap();
+function fmPulseWave(ctx) {
+  let wave = fmPulseWaves.get(ctx);
+  if (!wave) {
+    const real = new Float32Array(FM_PULSE_HARMONICS + 1);
+    const imag = new Float32Array(FM_PULSE_HARMONICS + 1);
+    for (let n = 1; n <= FM_PULSE_HARMONICS; n++) {
+      const a = 2 * Math.PI * n * FM_PULSE_DUTY;
+      real[n] = (2 / (Math.PI * n)) * Math.sin(a);
+      imag[n] = (2 / (Math.PI * n)) * (1 - Math.cos(a));
+    }
+    wave = ctx.createPeriodicWave(real, imag);
+    fmPulseWaves.set(ctx, wave);
+  }
+  return wave;
+}
+
 // Musical lengths are measured in sixteenths because the sequencer's `spb` is the
 // seconds-per-sixteenth clock. The stored keys stay readable in the preset file while
 // the native path gets one exact period at the current song tempo.
@@ -356,27 +444,39 @@ export function pulseTable(ctx, duty = 0.5, { harmonics = PULSE_HARMONICS, sine 
  * the first note rather than on every note in a song.
  */
 const syncTables = new WeakMap();
-// Bounded like the phase-wave cache further down, but larger: each of these costs 1024
-// samples by 96 harmonics to rebuild, so a miss here is worth avoiding in a way a phase
-// rotation is not. Oldest out first, which is insertion order because that is what a Map
-// keeps. The cap bounds memory only — the same key rebuilds the same wave.
-const SYNC_TABLE_CACHE = 512;
+// FINITE, NEVER EVICTED (23 Oct 2026). WebKit never gives a PeriodicWave's memory back while
+// its context lives (~580 KB each; work/local/_probe-webkit-node-churn.mjs), so a cache that
+// evicts is a leak with extra steps: this one used to drop its oldest past 512 and build again,
+// for good, on every sync bend. So the RATIO is quantised — to an eighth of a semitone, 12.5
+// cents, finer than a sync sweep's own steps and inaudible as a tuning in a torn spectrum —
+// which makes the key space a preset's own, and past SYNC_TABLE_CACHE a miss is served by the
+// nearest table of the same shape and width rather than a new one.
+const SYNC_TABLE_CACHE = 192;
+const SYNC_RATIO_STEPS = 96;   // per octave
 export function hardSyncTable(ctx, type, ratio, width = 0.5, harmonics = 96) {
   // The series itself lives in mrdr3/tables.js, because the worklet builds its sync
   // pyramid from the very same numbers — one definition, so the two cannot drift.
   const kind = mrdr3SyncKind(type);
   let perCtx = syncTables.get(ctx);
   if (!perCtx) { perCtx = new Map(); syncTables.set(ctx, perCtx); }
-  const key = mrdr3SyncKey(kind, ratio, width, harmonics);
+  // Live only (an offline render's context ends with it, and keeps its exact ratios).
+  const live = typeof ctx.startRendering !== 'function';
+  const r = live ? 2 ** (Math.round(Math.log2(Math.max(0.01, ratio)) * SYNC_RATIO_STEPS) / SYNC_RATIO_STEPS) : ratio;
+  const key = mrdr3SyncKey(kind, r, width, harmonics);
   const hit = perCtx.get(key);
-  if (hit) return hit;
-  const { real, imag } = hardSyncPartials(kind, ratio, width, harmonics);
+  if (hit) return hit.wave;
+  if (live && perCtx.size >= SYNC_TABLE_CACHE) {
+    let best = null, bestD = Infinity;
+    for (const e of perCtx.values()) {
+      if (e.kind !== kind || e.width !== width || e.harmonics !== harmonics) continue;
+      const d = Math.abs(Math.log2(e.r / r));
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    if (best) return best.wave;
+  }
+  const { real, imag } = hardSyncPartials(kind, r, width, harmonics);
   const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
-  // Bounded like the phase-wave cache below, and for a sharper reason: a syncBend note
-  // asks for a new ratio every 32 ms grain, so a single held bend mints dozens of these
-  // and every distinct note LENGTH mints a fresh set. Uncapped, the map only ever grew.
-  if (perCtx.size >= SYNC_TABLE_CACHE) perCtx.delete(perCtx.keys().next().value);
-  perCtx.set(key, wave);
+  perCtx.set(key, { wave, kind, r, width, harmonics });
   return wave;
 }
 
@@ -392,16 +492,16 @@ export function hardSyncTable(ctx, type, ratio, width = 0.5, harmonics = 96) {
  * The series are the textbook ones. Thirty-two harmonics is far more than a modulator at
  * a few hertz can use, and the waves are cached per context beside the pulse tables.
  *
- * The cache is CAPPED, unlike the pulse tables beside it. A pulse table is keyed on a
- * duty a preset wrote down, so there are as many as the library has; a phase is drawn
- * fresh from the note's own start time for every note-on and every unison voice, so the
- * key space is the four decimals it is rounded to — tens of thousands of `PeriodicWave`s
- * per waveform over a long session, none of which is ever asked for twice. Oldest out
- * when the cap is reached, which is insertion order because that is what a `Map` keeps.
- * The cap only bounds memory: the wave built for a given phase is the same wave either
- * way, so nothing renders differently for having been evicted.
+ * A phase is drawn fresh from the note's own start time for every note-on and every unison
+ * voice, so it is QUANTISED (PHASE_STEPS, below): rounded to four decimals, as it was until
+ * 23 Oct 2026, it was tens of thousands of waves a session, evicted and rebuilt — and WebKit
+ * keeps every one it ever built.
  */
-const PHASE_WAVE_CACHE = 256;
+// SIXTEEN PHASES A WAVEFORM, NEVER EVICTED (23 Oct 2026): a PeriodicWave's memory is the
+// context's for good in WebKit (see hardSyncTable), so the phase is quantised to a sixteenth
+// of a cycle — 22.5°, plenty to keep five vibrato LFOs apart, which is all a phase is for here
+// — and the cache is the whole key space: 4 waveforms × 16 phases, built once each.
+const PHASE_STEPS = 16;
 // Drive transfer curves, keyed by shape and the pot rounded to a percent. A hundred per
 // shape is the whole dial, so this only ever bites when several shapes have been swept.
 const DRIVE_CURVE_CACHE = 64;
@@ -410,7 +510,13 @@ function phasedWave(ctx, type, phase) {
   const kind = nativeWave(type, 'sine');
   let perCtx = phaseWaves.get(ctx);
   if (!perCtx) { perCtx = new Map(); phaseWaves.set(ctx, perCtx); }
-  const key = `${kind}|${phase.toFixed(4)}`;
+  // Live only: an offline render's context ends with it, so it keeps its exact phases (and
+  // its sound to the sample — tests/null-test.js).
+  const live = typeof ctx.startRendering !== 'function';
+  const TWO_PI = 2 * Math.PI;
+  const q = ((Math.round(((phase % TWO_PI) + TWO_PI) % TWO_PI / TWO_PI * PHASE_STEPS)) % PHASE_STEPS);
+  if (live) phase = (q / PHASE_STEPS) * TWO_PI;
+  const key = live ? `${kind}|${q}` : `${kind}|${phase.toFixed(4)}`;
   const hit = perCtx.get(key);
   if (hit) return hit;
   const H = 32;
@@ -428,10 +534,10 @@ function phasedWave(ctx, type, phase) {
     imag[n] = b * Math.cos(n * phase);
   }
   const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
-  if (perCtx.size >= PHASE_WAVE_CACHE) perCtx.delete(perCtx.keys().next().value);
   perCtx.set(key, wave);
   return wave;
 }
+export { phasedWave };
 
 /** A stable integer seed from a preset id — for TNGR-2's per-patch phase seeding. */
 function hashSeed(text) {
@@ -503,6 +609,19 @@ const vary = (amount, time, salt) => (amount > 0 ? 1 + (hitRandom(time, salt) - 
  */
 let MRDR_ENSEMBLE_JITTER = false;
 export function setMrdrEnsembleJitter(on) { MRDR_ENSEMBLE_JITTER = !!on; }
+
+// IDLE POOL SLOTS GO (Peter, 22 Oct 2026). A Tone pool (CRLS-1, RMND-7) grows to the widest
+// chord it is ever handed and kept every slot for the rest of the song — each one a synth of
+// ~28 nodes rendered every quantum whether or not it plays (work/local/_probe-pool-slots.mjs:
+// Rhythm built 21 slots against ~15 needed in any ten seconds). With this on, a pool keeps
+// the slots its last SLOT_KEEP_S seconds of notes asked for (one, once the lane goes quiet),
+// and a slot beyond that whose last note and tail are over is disposed. The round robin is
+// untouched, so while a song keeps asking for five slots it has five, exactly as before.
+// The game only (main.js); the desk and every offline render keep their pools whole.
+let TRIM_IDLE_SLOTS = false;
+export function setTrimIdleSlots(on) { TRIM_IDLE_SLOTS = !!on; }
+const SLOT_KEEP_S = 8;
+const SLOT_TRIM_EVERY_MS = 2000;
 /** `vary`, but exactly 1 while the ensemble jitter is off. */
 const ensembleVary = (amount, time, salt) => (MRDR_ENSEMBLE_JITTER ? vary(amount, time, salt) : 1);
 // The seed the frozen ensemble draws from: any fixed value works; zero reads best.
@@ -1768,7 +1887,7 @@ function liftSmoothParams(synth, bag) {
  * The pooled Tone classes, keyed by the name a preset can still be stored under.
  *
  * Nothing here is reached by NAME any more. All four are the two halves of two merged
- * engines — `CRLS-1` picks between `Synth` and `MonoSynth`, `RMND-2` between `FMSynth`
+ * engines — `CRLS-1` picks between `Synth` and `MonoSynth`, `RMND-7` between `FMSynth`
  * and `AMSynth` — and `synthClassFor` chooses from the preset's own structure before this
  * table is consulted. They stay listed because this is the allowlist: a class that is not
  * here is one the offline render was never swept for. See the note at the top of this
@@ -1825,15 +1944,16 @@ export const CRLS1 = FAMILY.CRLS1;
 export const KNDO5 = FAMILY.KNDO5;
 
 /**
- * RMND-2 — the modulation engine, named for Raymond Scott.
+ * RMND-7 — the modulation engine, named for Raymond Scott.
  *
  * A carrier and one modulator, differing only in WHICH parameter of the carrier the
  * modulator reaches: its frequency (`Tone.FMSynth`) or its amplitude (`Tone.AMSynth`).
  * Everything else is the same object — the same two oscillators, the same amplitude
  * envelope, the same modulation envelope shaping the modulator on its way in. So this is
- * the `CRLS-1` argument again with the destination as the switch rather than the filter,
- * and the `-2` survives it untouched: a carrier plus a modulator is two whichever
- * parameter it lands on. See docs/synth-naming.md.
+ * the `CRLS-1` argument again with the destination as the switch rather than the filter.
+ * It shipped as RMND-2, a carrier plus a modulator; the -7 (23 Oct 2026) echoes the DX7,
+ * and the board now has seven stages: Osc, Mod, Mod Env, Pitch Env, Filter, Filter Env,
+ * Amp. `RMND-2` stays readable through RENAMED. See docs/synth-naming.md.
  *
  * ---- the switch is the preset's own STRUCTURE, not a flag beside it ---------
  *
@@ -1854,7 +1974,7 @@ export const KNDO5 = FAMILY.KNDO5;
  * `GameSynth` do: song files carry them inside serialised `voiceParams` and user presets
  * carry them in local storage. A name is not worth a migration.
  */
-export const RMND2 = FAMILY.RMND2;
+export const RMND7 = FAMILY.RMND7;
 
 /**
  * WNDR-9 — the drawbar organ, named for Klaus Wunderlich.
@@ -1877,7 +1997,7 @@ export const WNDR9 = FAMILY.WNDR9;
  * load the rack to get it: this file builds Tone classes from it, src/data/voices-in-play
  * filters the preset picker by it, and tools/lib/synth-display prints from it. Written
  * out three times, the copies drifted — the picker's knew about CRLS-1 and not about
- * KNDO-5 or RMND-2, so a lane still carrying `GameSynth` or `FMSynth` was offered no
+ * KNDO-5 or RMND-7, so a lane still carrying `GameSynth` or `FMSynth` was offered no
  * preset to switch to, because every preset in the catalogue had been renamed out from
  * under a comparison made on the raw string.
  *
@@ -1903,8 +2023,8 @@ const synthClassFor = (synth, options) => {
     return options && (options.filter || options.filterEnvelope) ? Tone.MonoSynth : Tone.Synth;
   }
   // Top-level only — `oscillator.modulationIndex` is Tone's oscillator-level number and
-  // means something else entirely. See the note on RMND-2.
-  if (family === RMND2) {
+  // means something else entirely. See the note on RMND-7.
+  if (family === RMND7) {
     return options && options.modulationIndex !== undefined ? Tone.FMSynth : Tone.AMSynth;
   }
   return SYNTHS[synth];
@@ -2000,20 +2120,114 @@ const fingerUp = (host, key) => {
 const FENV_CURVE = (c, dflt) => (c === 'linear' || c === 'lin' ? 'lin'
   : c === 'exponential' || c === 'exp' ? 'exp' : dflt);
 
+/**
+ * A per-slot envelope in CENTS — the span it moves across and the native ADSR shape —
+ * from whichever card describes it. CRLS-1's filter envelope, RMND-7's filter and pitch
+ * envelopes; `fenvStrike` and friends draw all three.
+ */
+function slotEnv(e, cents, d = {}) {
+  return {
+    cents,
+    attack: Math.max(0, e.attack ?? d.attack ?? 0.01),
+    decay: Math.max(0, e.decay ?? d.decay ?? 0.2),
+    sustain: Math.min(1, Math.max(0, e.sustain ?? d.sustain ?? 0.5)),
+    release: Math.max(0.001, e.release ?? d.release ?? 0.3),
+    attackCurve: FENV_CURVE(e.attackCurve, 'lin'),
+    decayCurve: FENV_CURVE(e.decayCurve, d.decayCurve || 'lin'),
+    releaseCurve: FENV_CURVE(e.releaseCurve, d.releaseCurve || 'lin'),
+  };
+}
+
 /** The native envelope a CRLS-1 preset's `filterEnvelope` describes, or null when it has none. */
 function crlsFilterEnv(fe) {
   if (!fe || fe.style === 'classic') return null;
-  return {
-    octaves: Number(fe.octaves) || 0,
-    attack: Math.max(0, fe.attack ?? 0.01),
-    decay: Math.max(0, fe.decay ?? 0.2),
-    sustain: Math.min(1, Math.max(0, fe.sustain ?? 0.5)),
-    release: Math.max(0.001, fe.release ?? 0.3),
-    attackCurve: FENV_CURVE(fe.attackCurve, 'lin'),
-    decayCurve: FENV_CURVE(fe.decayCurve, 'exp'),
-    releaseCurve: FENV_CURVE(fe.releaseCurve, 'exp'),
-  };
+  const octaves = Number(fe.octaves) || 0;
+  return { octaves, ...slotEnv(fe, octaves * 1200, { decayCurve: 'exp', releaseCurve: 'exp' }) };
 }
+
+/**
+ * AM DEPTH, and what Tone's AMSynth was doing before there was one.
+ *
+ * Tone wires modulator → AudioToGain (−1..1 onto 0..1) → the carrier gain's param, whose
+ * base is 0 — so the carrier's level IS the scaled modulator. But the modulator is a Synth
+ * at −10 dB, so it only ever reaches ±0.316, the carrier swings between 0.34 and 0.66 of
+ * itself and never anywhere near silence, and there is no number to turn that up with.
+ *
+ * `_addSlot` rewires it: modulator (raw, bipolar) → a scale → the same param, with a base
+ * of its own, so the carrier swings between (1 − d) and 1 of a fixed crest K. Past d = 1
+ * the base goes under zero and the carrier inverts on part of the cycle; at d = 2 the base
+ * is 0 and the carrier is multiplied by the modulator outright — ring modulation, the
+ * carrier gone and the sidebands left — still peaking at K. K is Tone's
+ * own crest, 0.5 + A/2 = 0.658 for A = 0.316, so nothing gets louder than it was — and
+ * `AM_DEPTH_TONE` is the depth at which the new wiring is sample-identical to the old:
+ * K·(1 − d/2) = 0.5 and K·d/(2A) = 0.5 both hold at d = 2A/(1 + A) = 0.48. That is what a
+ * preset without the key gets, which is every preset written before the pot.
+ */
+const AM_MOD_GAIN = Math.pow(10, -10 / 20);
+export const AM_DEPTH_TONE = 2 * AM_MOD_GAIN / (1 + AM_MOD_GAIN);
+const amDepthLaw = (d, A = AM_MOD_GAIN) => {
+  const crest = 0.5 + A / 2;
+  return { base: crest * (1 - d / 2), scale: crest * d / (2 * A) };
+};
+
+/** The envelopes a slot carries — its filter's, its pitch's — struck and let go together. */
+const slotEnvs = (slot) => {
+  const list = [];
+  if (slot.fenv) list.push(slot.fenv);
+  if (slot.penv) list.push(slot.penv);
+  return list;
+};
+
+/**
+ * KEY FOLLOW on an RMND-7 slot's cascade: the cutoff moves with the note, in octaves from
+ * A2 (110 Hz) scaled by the pot, as KNDO-5's does — in cents on the stages' detune, so
+ * CUTOFF stays where the pot says and a live edit of it does not have to know the note.
+ *
+ * SCHEDULED, not a signal (23 Oct 2026). It was a ConstantSource into every stage's detune,
+ * and a biquad with anything CONNECTED to a param recomputes its coefficients on every
+ * sample, for as long as the slot lives — so the filter cost as much at KEY FOLLOW 0 as at 1.
+ * Now it is one value set at the strike, and the filter envelope is drawn on the same detunes
+ * on top of it (`slotDetunes`): coefficients move per sample only while something is moving.
+ * Undefined is "nothing to say" — no filter, or KEY FOLLOW 0, which writes nothing at all.
+ */
+const keyCentsFor = (slot, hz) => {
+  const f = slot.filter;
+  if (!f || !(f.track > 0) || !(hz > 0)) return undefined;
+  return f.track * 1200 * Math.log2(hz / 110);
+};
+const keyOnly = (slot, key, t) => {
+  if (key === undefined || slot.fenv) return;
+  slot.filter.keyCents = key;
+  for (const st of slot.filter.stages) st.detune.setValueAtTime(key, t);
+};
+const envsStrike = (slot, t, hz) => {
+  const key = keyCentsFor(slot, hz);
+  keyOnly(slot, key, t);
+  for (const e of slotEnvs(slot)) fenvStrike(e, t, e === slot.fenv && slot.filter ? key : undefined);
+};
+const envsFreeze = (slot, t, hz) => {
+  const key = keyCentsFor(slot, hz);
+  keyOnly(slot, key, t);
+  for (const e of slotEnvs(slot)) fenvFreeze(e, t, e === slot.fenv && slot.filter ? key : undefined);
+};
+
+/**
+ * Every stage's detune of an RMND-7 cascade, as ONE param the filter envelope can draw on —
+ * the methods `fenvStrike` and friends call, fanned out, each value lifted by the note's KEY
+ * FOLLOW. `rebase` moves that lift at a strike, after the cut has been said at the old one.
+ */
+const slotDetunes = (filter) => {
+  const ps = filter.stages.map((st) => st.detune);
+  const at = (v) => v + filter.keyCents;
+  return {
+    rebase: (k) => { filter.keyCents = k; },
+    cancelScheduledValues: (t) => { for (const p of ps) p.cancelScheduledValues(t); },
+    setValueAtTime: (v, t) => { for (const p of ps) p.setValueAtTime(at(v), t); },
+    linearRampToValueAtTime: (v, t) => { for (const p of ps) p.linearRampToValueAtTime(at(v), t); },
+    setTargetAtTime: (v, t, c) => { for (const p of ps) p.setTargetAtTime(at(v), t, c); },
+  };
+};
+const envsRelease = (slot, at) => { for (const e of slotEnvs(slot)) fenvRelease(e, at); };
 
 /** One stage of the envelope, 0–1, `t` into a stage of length `span`. */
 const fenvRamp = (from, to, t, span, curve) => {
@@ -2062,11 +2276,13 @@ function fenvStage(p, from, to, t0, t1, curve) {
 }
 
 /** A note-on on a slot's filter envelope: attack from where it stands, decay, hold. */
-function fenvStrike(f, t) {
+function fenvStrike(f, t, keyCents) {
   const sp = f.spec;
   const v0 = f.plan ? fenvCut(f, t) : 0;
-  const cents = (f.cents = sp.octaves * 1200);
+  const cents = (f.cents = sp.cents);
   const p = f.gain.gain;
+  // RMND-7: the new note's KEY FOLLOW, from here on — the cut above was said at the old one.
+  if (keyCents !== undefined) p.rebase?.(keyCents);
   if (!f.plan) p.setValueAtTime(0, t);
   // What is left of the rise, at the rise's own rate — Tone's partial attack.
   const aEnd = t + Math.max(0, (1 - v0) * sp.attack);
@@ -2086,9 +2302,13 @@ function fenvRelease(f, at) {
 }
 
 /** A LEGATO takeover: hold the cutoff where it is from `t`, as Tone's cancelled envelope does. */
-function fenvFreeze(f, t) {
+function fenvFreeze(f, t, keyCents) {
   if (!f.plan) return;
   const v = fenvCut(f, t);
+  if (keyCents !== undefined && f.gain.gain.rebase) {
+    f.gain.gain.rebase(keyCents);
+    f.gain.gain.setValueAtTime(v * f.cents, t);
+  }
   f.plan = { t0: t, v0: v, aEnd: t, aCurve: 'lin', dEnd: t, s: v, dCurve: 'lin', relAt: Infinity };
 }
 
@@ -2192,6 +2412,26 @@ const sectionBypassed = (voice, key, section = null) => {
  * whatever was ringing on them has ended. See `_retire` — the desk edits presets over
  * a playing song, and a cache that is dropped mid-note is a note that stops.
  */
+// Tone recursively sets every supplied option, including unchanged CRLS-1 filter
+// envelope bounds. Keep envelope drags from rescheduling those unrelated params.
+function crlsLiveOptionChanges(before, after, topLevel = true) {
+  const result = {};
+  for (const key of Object.keys(before || {})) {
+    // _applyLive resets omitted zero glide explicitly after calling Tone.set.
+    if (!(key in (after || {})) && !(topLevel && key === 'portamento')) return null;
+  }
+  for (const [key, value] of Object.entries(after || {})) {
+    const old = before?.[key];
+    if (JSON.stringify(old) === JSON.stringify(value)) continue;
+    if (old && value && typeof old === 'object' && typeof value === 'object'
+      && !Array.isArray(old) && !Array.isArray(value)) {
+      const nested = crlsLiveOptionChanges(old, value, false);
+      if (nested === null) return null;
+      result[key] = nested;
+    } else result[key] = value;
+  }
+  return result;
+}
 export class VoiceRack {
   constructor(ctx, noiseBuf = null, longBuf = null, noteCacheState = null) {
     this.ctx = ctx;
@@ -2221,8 +2461,9 @@ export class VoiceRack {
     this.longBuf = longBuf;
     // Tone routes everything it builds through its own context. createMixer already
     // sets it, but a rack used on its own (a test, a future audition tool) has to be
-    // able to stand up without one.
-    Tone.setContext(ctx);
+    // able to stand up without one. Through the one wrapper the context has (tone-context.js):
+    // a new one per rack was a Web Worker per song, never collected.
+    useToneContext(ctx);
     this.pools = new Map();
     // Rendered notes, and the revision counter that lets an edited preset invalidate
     // them — see the note cache above `_cacheablePool`. Desk racks share this state so
@@ -2302,6 +2543,48 @@ export class VoiceRack {
   }
 
   /**
+   * RMND-7's own sections — the filter cascade, its envelope and the pitch envelope — read
+   * from the top of the voice. Its own method so tests/pot-coverage.js can see that only
+   * RMND-7 reads `filter` and `pitch` on the pooled path; CRLS-1 keeps Tone's filter.
+   */
+  static rmnd7Native(v) {
+    let fenv = null;
+    let nativeFilter = null;
+    let penv = null;
+    // AM DEPTH: how far the modulator swings the carrier's level, 0–2 — 1 reaches silence,
+    // past it the carrier inverts on part of the cycle and 2 is ring modulation. Tone's AMSynth has
+    // no such number, and what it does have is shallow: see `AM_DEPTH_TONE`, which is the
+    // default so every preset written before the pot sounds as it did. Read in FM too (the
+    // pot is greyed there, not gone), and ignored by the FM class.
+    let amDepth = AM_DEPTH_TONE;
+    if (synthFamily(v.synth) === RMND7) {
+      const d = Number(v.amDepth);
+      if (Number.isFinite(d)) amDepth = Math.min(2, Math.max(0, d));
+      const fs = v.filter;
+      if (fs) {
+        const freq = Number(fs.freq);
+        const Q = Number(fs.Q);
+        const track = Number(fs.track);
+        nativeFilter = {
+          type: fs.type || 'lowpass',
+          stages: fs.slope === -48 ? 4 : fs.slope === -24 ? 2 : 1,
+          freq: Number.isFinite(freq) ? Math.max(20, freq) : 4000,
+          Q: Number.isFinite(Q) ? Q : 0.7,
+          track: Number.isFinite(track) ? Math.min(1, Math.max(0, track)) : 0,
+        };
+        // KNDO-5's defaults for the same card: a decay of nothing and no sustain, so a
+        // pot left alone says what happens.
+        // ENV AMOUNT 0 is no envelope at all — nothing scheduled, so nothing per sample.
+        if (fs.env && Number(fs.env.octaves)) fenv = slotEnv(fs.env, (Number(fs.env.octaves) || 0) * 1200, { decay: 0, sustain: 0, release: 0.015 });
+      }
+      // The pitch envelope's attack defaults to ZERO, as on every native path: the arcade
+      // shape is a note that starts away and arrives, not one that scoops out first.
+      if (v.pitch) penv = slotEnv(v.pitch, (Number(v.pitch.semitones) || 0) * 100, { attack: 0, decay: 0.06, sustain: 0, release: 0.015 });
+    }
+    return { fenv, nativeFilter, penv, amDepth };
+  }
+
+  /**
    * Everything about a preset that is BUILT INTO a slot, as opposed to read per note.
    *
    * This is the line the desk's preset editor lives on. LENGTH, TRANSPOSE,
@@ -2327,11 +2610,18 @@ export class VoiceRack {
     // Glide is a constructor option on every Tone synth. It only becomes audible in a
     // non-poly key mode because those modes keep one note on one instance.
     if (v.portamento) opts.portamento = v.portamento;
+    // RMND-7's filter and pitch envelope are the ENGINE's, not Tone's. FMSynth and AMSynth
+    // carry no filter, so the preset keeps one on KNDO-5's keys — `filter` (TYPE, SLOPE,
+    // CUTOFF, RESONANCE, KEY FOLLOW, `env` with ENV AMOUNT, the four times and three
+    // curves) and `pitch` (AMOUNT, the four times, three curves) at the top level of the
+    // voice, never inside `options` — and `_addSlot` builds a native biquad cascade behind
+    // the synth, swept by the same per-slot envelope CRLS-1's filter is. Absent by default,
+    // so every preset written before the cards is untouched and builds no node for them.
+    let { fenv, nativeFilter, penv, amDepth } = VoiceRack.rmnd7Native(v);
     // A filtered CRLS-1 moves its cutoff on the native envelope (see `crlsFilterEnv`):
     // Tone's own is parked at zero octaves, so the filter sits at CUTOFF and the slot's
     // detune source does the moving. CLASSIC keeps Tone's, and the STYLE key is the
     // engine's, not Tone's, so it never reaches the class.
-    let fenv = null;
     if (opts.filter && opts.filterEnvelope) {
       fenv = crlsFilterEnv(opts.filterEnvelope);
       const { style, ...toneFe } = opts.filterEnvelope;
@@ -2342,6 +2632,9 @@ export class VoiceRack {
       synth: v.synth,
       opts,
       fenv,
+      nativeFilter,
+      penv,
+      amDepth,
       // The same key, on the same scale, as every native path: DEPTH in semitones
       // (×100 cents onto the synth's own detune, uncapped), RATE in hertz, DELAY a fade
       // from each note-on. See `_addSlot`. This path used to hand the key to
@@ -2647,7 +2940,9 @@ export class VoiceRack {
     // which is what lets one 303 voice both accent and slide. Every other instrument hears
     // it as level, the note's gain scaled by it — all a ghost note or a softer hit needs.
     const strength = velocity == null ? null : Math.max(0, Math.min(1, Number(velocity) || 0));
-    if (strength != null && !(v && v.synth === MRDR3_NATIVE)) gain *= strength;
+    if (strength != null && !(v && (v.synth === MRDR3_NATIVE || workletLaneOf(v)?.velocity))) {
+      gain *= strength;
+    }
     if (v && v.kind === 'drum') {
       return this._playDrum(v, {
         time, gain, dry, wet, echo, monoGroup, laneKey, voiceId, preview,
@@ -2668,8 +2963,9 @@ export class VoiceRack {
         freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, laneEffects,
       });
     }
-    if (v && v.synth === 'TNGR-2') {
-      // TNGR-2 is its AudioWorklet and nothing else. Live, notes go to the lane's
+    if (workletLaneOf(v)) {
+      // TNGR-2 (and FZPP-6, through the same machinery — see WORKLET_LANES) is its
+      // AudioWorklet and nothing else. Live, notes go to the lane's
       // persistent node; offline, they are collected for `flushTngr2Offline`. There is no
       // second synthesis path to fall back to — see `_playTngr2Node` for what happens
       // when a lane has no node, and `warmTngr2Lane` for the warning when it cannot.
@@ -2681,6 +2977,7 @@ export class VoiceRack {
       const route = laneRoute || { dry, wet };
       return this._playTngr2Node(v, {
         freq, time, dur, gain, detune, dry: route.dry, wet: route.wet, echo, laneKey, preview, hold, spb,
+        velocity: strength,
       });
     }
     // RENDERER DISPATCH — the one deliberate exact-identity branch (§9.1). Which
@@ -2807,6 +3104,8 @@ export class VoiceRack {
         // sounding voice.
         const slot = owner ? owner.slot : (mono ? pool.slots[0] : this._slotFor(pool, hold));
         const t = time;
+        // How far ahead this slot is committed — what `_trimIdleSlots` waits out.
+        slot.busyUntil = Math.max(slot.busyUntil || 0, t + Math.max(0.001, noteDur || 0.001));
         const monoGroup = v?.monoGroup
           ? `${v.monoGroup}|${preview ? 'preview' : 'live'}` : null;
         if (monoGroup) {
@@ -2818,7 +3117,7 @@ export class VoiceRack {
             if (previous.release) previous.release(t);
             else if (previous.pool && !previous.pool.gone) {
               try { previous.slot.synth.triggerRelease(t); } catch { /* already quiet */ }
-              if (previous.slot.fenv) fenvRelease(previous.slot.fenv, t);
+              envsRelease(previous.slot, t);
             }
           }
           this._monoGroups.set(monoGroup, { pool, slot });
@@ -2906,12 +3205,12 @@ export class VoiceRack {
             // place a player can actually hear the difference between them.
             if (legato && slot.fingers?.length) {
               cancelToneEnvelopes(slot.synth, t);
-              if (slot.fenv) fenvFreeze(slot.fenv, t);
+              envsFreeze(slot, t, hz);
               slot.synth.setNote(hz, t);
               tookOver = true;
             } else {
               slot.synth.triggerAttack(hz, t, 1);
-              if (slot.fenv) fenvStrike(slot.fenv, t);
+              envsStrike(slot, t, hz);
             }
             this._activePreviews.set(noteKey, { slot, at: t });
             // Which keys are down on this one instrument, so that a note-off can tell
@@ -2929,11 +3228,11 @@ export class VoiceRack {
             cancelToneEnvelopes(slot.synth, t);
             slot.synth.setNote(hz, t);
             slot.synth.triggerRelease(t + noteDur);
-            if (slot.fenv) { fenvFreeze(slot.fenv, t); fenvRelease(slot.fenv, t + noteDur); }
+            envsFreeze(slot, t, hz); envsRelease(slot, t + noteDur);
             tookOver = true;
           } else {
             slot.synth.triggerAttackRelease(hz, noteDur, t);
-            if (slot.fenv) { fenvStrike(slot.fenv, t); fenvRelease(slot.fenv, t + noteDur); }
+            envsStrike(slot, t, hz); envsRelease(slot, t + noteDur);
           }
           // VIB DELAY, from this note-on: the slot's vibrato fades in again over it, as
           // every native path's does. A LEGATO takeover is the same note continuing, so
@@ -3026,7 +3325,7 @@ export class VoiceRack {
       try {
         cancelToneEnvelopes(link.slot.synth, link.release);
         link.slot.synth.triggerRelease(link.release);
-        if (link.slot.fenv) fenvRelease(link.slot.fenv, link.release);
+        envsRelease(link.slot, link.release);
         link.slot.activeUntil = link.release;
       } catch { /* the note had already ended */ }
     }
@@ -3064,31 +3363,34 @@ export class VoiceRack {
    * be found as a missing part in a mix.
    */
   async warmTngr2Lane(v, laneKey) {
-    if (!v || v.synth !== 'TNGR-2') return false;
-    if (!canHostTngr2(this.ctx)) {
+    const api = workletLaneOf(v);
+    if (!api) return false;
+    if (!api.canHost(this.ctx)) {
       // The cause is almost always an insecure origin: AudioWorklet needs https or
       // localhost, so the LAN dev URL (http://MBP14.local:8001) and file:// have no
       // `audioWorklet` at all. The deployed game is https and unaffected.
-      if (!this._tngr2Warned) {
-        this._tngr2Warned = true;
-        console.error('TNGR-2 cannot play: AudioWorklet needs a secure context '
+      this._workletWarned ||= new Set();
+      if (!this._workletWarned.has(api.name)) {
+        this._workletWarned.add(api.name);
+        console.error(`${api.name} cannot play: AudioWorklet needs a secure context `
           + '(https or localhost). This page is ' + (globalThis.location?.origin || '?')
-          + ' — TNGR-2 lanes will be silent here.');
+          + ` — ${api.name} lanes will be silent here.`);
       }
       return false;
     }
     try {
-      const lane = await tngr2Lane(this.ctx, laneKey, {
-        // The VOICE's patch, not just its tngr2 block: key mode, glide and vibrato are
-        // shared controls stored on the voice. See `tngr2PatchForVoice`.
-        stored: tngr2PatchForVoice(v), seed: hashSeed(v.id || laneKey),
-        vibrato: tngr2VibratoOf(v), effects: tngr2EffectsOf(v),
-      });
+      const lane = await api.lane(this.ctx, laneKey, v);
+      // Its chorus stage too — one LFO and two delays, built here with the lane rather than
+      // on the first note (the Lab audit read that late build as growth, 23 Oct 2026).
+      if (lane && v.chorus && typeof v.chorus === 'object' && !lane.stage && this.ctx) {
+        lane.out = this._workletChorusOutput(lane, v, this.ctx.currentTime);
+        lane.chorusKey = JSON.stringify(v.chorus || null);
+      }
       // Routing happens at the first note, not here: the dry/wet buses belong to the
       // scheduling call, not to the lane. See `_playTngr2Node`.
       return !!lane;
     } catch (err) {
-      console.error(`TNGR-2: lane ${laneKey} failed to build — ${err?.message || err}`);
+      console.error(`${api.name}: lane ${laneKey} failed to build — ${err?.message || err}`);
       return false;
     }
   }
@@ -3101,7 +3403,8 @@ export class VoiceRack {
    * cannot do. Notes are gathered per lane here, and `flushTngr2Offline` builds one node
    * per lane with the schedule in `processorOptions` just before `startRendering()`.
    */
-  _collectTngr2(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false }) {
+  _collectTngr2(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false, velocity = null }) {
+    const api = workletLaneOf(v);
     const notes = Array.isArray(freq) ? freq : [freq];
     const shift = VoiceRack.pitchShift(v) * detune;
     const amp = Math.max(0, Number(gain) || 0);
@@ -3136,10 +3439,10 @@ export class VoiceRack {
       const hz = note * shift;
       if (!Number.isFinite(hz) || !(hz > 0)) return;
       const eventId = booking.next++;
-      booking.events.push({
-        type: 'noteOn', frame: Math.max(0, Math.round(time * rate)), eventId,
-        hz, velocity: amp,
-      });
+      booking.events.push(api.offlineOn({
+        frame: Math.max(0, Math.round(time * rate)), eventId, hz, level: amp,
+        velocity: velocity == null ? 1 : velocity,
+      }));
       if (!hold) {
         booking.events.push({
           type: 'noteOff', eventId,
@@ -3200,38 +3503,34 @@ export class VoiceRack {
     const receipted = new Set();
     for (const booking of booked?.values() || []) {
       try {
-        const already = this._tngr2OfflineLanes.get(booking.laneKey);
+        const api = workletLaneOf(booking.voice);
+        // Per engine as well as per lane: a TNGR-2 node cannot take an FZPP-6 lane's notes.
+        const laneId = `${api.name}|${booking.laneKey}`;
+        const already = this._tngr2OfflineLanes.get(laneId);
         if (already) {
           // Posted as collected: these events already carry absolute FRAMES, which is what
           // the processor reads. Routing them through `tngr2NoteOn` would convert a frame
           // number as though it were seconds and land every note hours into the render.
           receipts.push(postTngr2Events(already.node, booking.events));
-          receipted.add(booking.laneKey);
+          receipted.add(laneId);
           continue;
         }
-        const node = await renderTngr2Lane(this.ctx, {
-          stored: tngr2PatchForVoice(booking.voice),
-          vibrato: tngr2VibratoOf(booking.voice),
-          effects: tngr2EffectsOf(booking.voice),
-          events: booking.events,
-          seed: hashSeed(booking.voice.id || booking.laneKey),
-          destination: booking.dry || this.ctx.destination,
-        });
+        const node = await api.render(this.ctx, booking);
         if (booking.wet) node.connect(booking.wet);
-        this._tngr2OfflineLanes.set(booking.laneKey, { node, context: this.ctx });
+        this._tngr2OfflineLanes.set(laneId, { node, context: this.ctx, laneKey: booking.laneKey });
         // Its schedule came with it; the receipt says the processor holding it exists.
         receipts.push(postTngr2Events(node, null));
         built++;
       } catch (err) {
         // A lane that cannot be built is a lane that renders silence. Say so rather than
         // leaving a gap in the mix that looks like an arrangement decision.
-        console.warn(`TNGR-2: offline lane ${booking.laneKey} failed — ${err?.message || err}`);
+        console.warn(`${workletLaneOf(booking.voice)?.name || 'worklet'}: offline lane ${booking.laneKey} failed — ${err?.message || err}`);
       }
     }
     // A port delivers in order, so a receipt posted after a cut says the cut is in too.
-    for (const laneKey of told || []) {
-      const lane = this._tngr2OfflineLanes.get(laneKey);
-      if (lane && !receipted.has(laneKey)) receipts.push(postTngr2Events(lane.node, null));
+    for (const laneId of told || []) {
+      const lane = this._tngr2OfflineLanes.get(laneId);
+      if (lane && !receipted.has(laneId)) receipts.push(postTngr2Events(lane.node, null));
     }
     const confirmed = await Promise.all(receipts);
     if (confirmed.includes(false)) {
@@ -3325,7 +3624,9 @@ export class VoiceRack {
    * said why.
    */
   _queueTngr2(v, laneKey, note) {
-    const key = laneKey;
+    // Per engine as well as per lane, so a lane switched between TNGR-2 and FZPP-6 while it
+    // builds does not hand one engine's notes to the other's node.
+    const key = `${v.synth}|${laneKey}`;
     this._tngr2Pending ||= new Map();
     let pending = this._tngr2Pending.get(key);
     if (!pending) {
@@ -3357,7 +3658,9 @@ export class VoiceRack {
     this.warmTngr2Lane(v, laneKey).then((ok) => {
       const waiting = pending.notes.splice(0);
       this._tngr2Pending.delete(key);
-      if (!ok) return;
+      // A rack taken down while the lane was building is a song that has stopped: its
+      // queued notes are not the next song's to play (22 Oct 2026, Stage G).
+      if (!ok || this._disposed) return;
       // A cancelled note is one whose key came up before the lane arrived. Playing it now
       // would be a note nobody is holding, at a time that has already passed.
       for (const held of waiting) {
@@ -3376,16 +3679,17 @@ export class VoiceRack {
    * delivery is not ordered against `startRendering()`, so posting here would render
    * silence about as often as not (docs/TNGR-2-completion-spec.md §3, finding b).
    */
-  _playTngr2Node(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false }) {
+  _playTngr2Node(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false, velocity = null }) {
     if (typeof this.ctx?.startRendering === 'function') {
       return this._collectTngr2(v, {
-        freq, time, dur, gain, detune, dry, wet, echo, laneKey, hold,
+        freq, time, dur, gain, detune, dry, wet, echo, laneKey, hold, velocity,
       });
     }
+    const api = workletLaneOf(v);
     // Keyed on the LANE alone. A lane is a lane whatever preset is sitting on it, which
     // is what §5 means by one node per {context, lane} — and keying on the preset as well
     // would strand the old node, still connected, every time the sound changed.
-    const lane = tngr2LaneNow(this.ctx, laneKey);
+    const lane = api.laneNow(this.ctx, laneKey);
     // A lane that has not been built yet builds itself, and this note waits for it.
     //
     // Registering a worklet module is asynchronous and a scheduling pass is not, so the
@@ -3395,12 +3699,10 @@ export class VoiceRack {
     // times, so arriving late costs nothing. Without this the first note of every lane
     // would be silent, and with no lane ever warmed, EVERY note would be.
     if (!lane) return this._queueTngr2(v, laneKey, {
-      freq, time, dur, gain, detune, dry, wet, echo, hold,
+      freq, time, dur, gain, detune, dry, wet, echo, hold, velocity,
     }, v);
     // The preset as it is NOW — an edit or a preset change since the node was built.
-    syncTngr2Patch(lane, tngr2PatchForVoice(v), {
-      seed: hashSeed(v.id || laneKey), vibrato: tngr2VibratoOf(v), effects: tngr2EffectsOf(v),
-    });
+    api.sync(lane, v, laneKey);
     const notes = Array.isArray(freq) ? freq : [freq];
     const shift = VoiceRack.pitchShift(v) * detune;
     const amp = Math.max(0, Number(gain) || 0);
@@ -3413,13 +3715,25 @@ export class VoiceRack {
     // lane below. A worklet node connected to nothing is not rendered at all, and marking
     // the lane connected anyway is what makes that permanent.
     const canAttach = !!dry || !!(echo && wet);
-    if (canAttach && !lane.connected) {
-      const out = this._workletChorusOutput(lane, v, time);
-      if (dry) out.connect(dry);
-      if (echo && wet) out.connect(wet);
+    const dryDest = dry || null, wetDest = echo && wet ? wet : null;
+    // LANES OUTLIVE THE RACK (23 Oct 2026): a song change no longer releases a TNGR-2 lane
+    // (the rack's dispose chokes it instead), so the gate it was wired to may be the last
+    // song's — "connected" says to WHAT, as the held-note path below already does, and a
+    // moved destination is re-pointed rather than rebuilt.
+    const moved = lane.connected && (lane.dryDest !== dryDest || lane.wetDest !== wetDest);
+    if (canAttach && (!lane.connected || moved)) {
+      if (moved) {
+        try { (lane.out || lane.node).disconnect(); } catch { /* nothing attached */ }
+      }
+      // The chorus stage may already stand from the lane's warm-up (warmTngr2Lane).
+      const out = lane.stage && lane.out && lane.chorusKey === chorusKey ? lane.out : this._workletChorusOutput(lane, v, time);
+      if (dryDest) out.connect(dryDest);
+      if (wetDest) out.connect(wetDest);
       lane.out = out;
       lane.chorusKey = chorusKey;
       lane.connected = true;
+      lane.dryDest = dryDest;
+      lane.wetDest = wetDest;
     } else if (lane.connected && lane.chorusKey !== chorusKey) {
       if (lane.stage) {
         // Values, ramped where they stand — see _updateTngr2Chorus.
@@ -3464,9 +3778,7 @@ export class VoiceRack {
       // counter keeps that too, because soloing a lane does not change which notes that
       // lane plays or the order it plays them in.
       const eventId = (lane.nextEventId = (lane.nextEventId || 0) + 1);
-      // The note's whole level, boosts included — the core used to cap it at 1. See
-      // TNGR2_MAX_LEVEL in src/engine/tngr2/dsp.js.
-      tngr2NoteOn(lane, { at: time, hz, velocity: amp, eventId });
+      api.noteOn(lane, { at: time, hz, level: amp, velocity: velocity == null ? 1 : velocity, eventId });
       if (!hold) {
         tngr2NoteOff(lane, { at: time + durationAt(index), eventId });
       } else {
@@ -3674,7 +3986,7 @@ export class VoiceRack {
    */
   warmWorkletLane(voice, laneKey) {
     const v = mrdrComparisonVoice(voice);
-    if (v?.synth === 'TNGR-2') return this.warmTngr2Lane(v, laneKey);
+    if (workletLaneOf(v)) return this.warmTngr2Lane(v, laneKey);
     if (v?.synth === MRDR3_AW) {
       // INLINE, before the await. The pyramid is rate-independent and `mrdr3Lane` would
       // otherwise build it inside `assetsFor`, which runs in a microtask AFTER
@@ -3737,7 +4049,7 @@ export class VoiceRack {
     queue.building = true;
     this.warmMrdr3Lane(v, laneKey).then((ok) => {
       this._mrdrAwQueue.delete(laneKey);
-      if (!ok) return;                      // warmMrdr3Lane has already said why
+      if (!ok || this._disposed) return;    // warmMrdr3Lane has already said why; or the song stopped
       for (const queued of queue.notes) {
         // A cancelled note is one whose key came up before the lane arrived. Playing it
         // now would be a note nobody is holding, at a time that has already passed.
@@ -4820,9 +5132,14 @@ export class VoiceRack {
       this.pools.set(key, pool);
     }
 
-    // Grown, never shrunk. A chord that is five notes wide once is likely to be
-    // again, and tearing slots down mid-song would cut whatever is ringing on them.
+    // Grown, never shrunk — unless TRIM_IDLE_SLOTS, which shrinks only what the last
+    // SLOT_KEEP_S seconds have not asked for, and only once it is silent (`_trimIdleSlots`).
     while (pool.slots.length < Math.max(1, want)) this._addSlot(pool, dry, wet, echo);
+    if (TRIM_IDLE_SLOTS && !preview && typeof this.ctx.startRendering !== 'function') {
+      const now = this.ctx.currentTime;
+      if (want >= (pool.peak || 0) || now - (pool.peakAt || 0) > SLOT_KEEP_S) { pool.peak = want; pool.peakAt = now; }
+      this._trimTimer ??= setInterval(() => this._trimIdleSlots(), SLOT_TRIM_EVERY_MS);
+    }
     return pool;
   }
 
@@ -4838,7 +5155,7 @@ export class VoiceRack {
    */
   prepareRealtimeVoice(laneKey, voiceId, dry, wet, echo = true, want = 1) {
     const v = mrdrComparisonVoice(VOICES[voiceId]);
-    if (!v || v.kind === 'drum' || v.synth === 'TNGR-2'
+    if (!v || v.kind === 'drum' || workletLaneOf(v)
       || isMrdrVoice(v) || synthFamily(v.synth) === KNDO5
       || synthFamily(v.synth) === WNDR9) return false;
     if (!synthClassFor(v.synth, v.options)) return false;
@@ -4864,9 +5181,38 @@ export class VoiceRack {
       const free = pool.slots.find((s) => !s.fingers?.length);
       if (free) return free;
     }
-    const slot = pool.slots[pool.next % pool.slots.length];
+    // Trimming: round the slots recent notes have asked for, so the rest fall idle and go.
+    const span = TRIM_IDLE_SLOTS && pool.peak > 0 ? Math.min(pool.slots.length, pool.peak) : pool.slots.length;
+    const slot = pool.slots[pool.next % span];
     pool.next++;
     return slot;
+  }
+
+  /**
+   * Dispose the slots no recent note has asked for — from the end of each pool, so the
+   * round robin over the rest is undisturbed, and only a slot that is truly silent: no
+   * finger on it, no gate, no note or tail still to come, and not the voice a mono group
+   * or a slide is holding on to.
+   */
+  _trimIdleSlots() {
+    const now = this.ctx.currentTime;
+    const held = new Set();
+    for (const g of this._monoGroups.values()) if (g?.slot) held.add(g.slot);
+    for (const l of this._links?.values() || []) if (l?.slot) held.add(l.slot);
+    for (const pool of this.pools.values()) {
+      if (pool.preview || pool.gone || pool.slots.length <= 1) continue;
+      const target = Math.max(1, now - (pool.peakAt || 0) <= SLOT_KEEP_S ? (pool.peak || 1) : 1);
+      const tail = pool.tail ??= VoiceRack.tailOf(pool.spec);
+      while (pool.slots.length > target) {
+        const slot = pool.slots[pool.slots.length - 1];
+        const idle = !slot.fingers?.length && slot.gateKey == null && !held.has(slot)
+          && (slot.busyUntil || 0) + tail < now;
+        if (!idle) break;
+        pool.slots.pop();
+        this._disposeSlot(slot);
+        this._slotsTrimmed = (this._slotsTrimmed || 0) + 1;
+      }
+    }
   }
 
   /** One more instance of this pool's preset, wired to the same strip. */
@@ -4884,6 +5230,25 @@ export class VoiceRack {
       // never played must not pass the synth's own idle output — a modulator that
       // free-runs in the pool does so whether or not anything triggered it.
       out.gain.value = 0;
+      // AM DEPTH on an AMSynth — see `amDepthLaw` for the wiring and the numbers. The raw
+      // modulator replaces Tone's AudioToGain on the carrier gain's param; the param's own
+      // value is the base. Built on every AM slot, so the pot is live rather than a rebuild.
+      let am = null;
+      if (Ctor === Tone.AMSynth && synth._modulator && synth._modulationNode) {
+        const A = Math.pow(10, (synth._modulator.volume?.value ?? -10) / 20);
+        const law = amDepthLaw(pool.spec.amDepth ?? AM_DEPTH_TONE, A);
+        const scale = this.ctx.createGain();
+        scale.gain.value = law.scale;
+        synth._modulator.disconnect();
+        // The orphaned AudioToGain too: a WaveShaper with nothing on its input shapes
+        // SILENCE, and this curve maps 0 to 0.5 — left connected, it would go on adding
+        // half to the param for ever (measured: the trough sat at 0.44 of the crest).
+        synth._modulationScale?.disconnect();
+        Tone.connect(synth._modulator, scale);
+        Tone.connect(scale, synth._modulationNode.gain);
+        synth._modulationNode.gain.value = law.base;
+        am = { scale, base: synth._modulationNode.gain, A };
+      }
       // Per-voice vibrato, when the preset asks for one. The desk already has a
       // vibrato INSERT, and that is the right tool for "this channel wobbles" — this
       // is for when the wobble belongs to the sound itself and should follow the
@@ -4913,25 +5278,61 @@ export class VoiceRack {
         lfo.start();
         vib = { lfo, fade, cents, sink, depth: cents.gain, frequency: lfo.frequency };
       }
-      Tone.connect(synth, out);
-      // The filter envelope's own source: a constant 1 through a gain the note-ons draw the
-      // envelope on, in cents, into the filter's detune. One per slot, like the vibrato.
-      let fenv = null;
-      if (pool.spec.fenv && synth.filter?.detune) {
+      // RMND-7's filter: a native cascade between the synth and the slot's output, the
+      // shape `_filterChain` builds — resonance on the first stage, Butterworth followers
+      // behind it — kept for the life of the slot rather than per note, because a slot is
+      // an instrument. Nothing is CONNECTED to its params: KEY FOLLOW and the filter
+      // envelope are scheduled on the stages' detune (`keyCentsFor`, `slotDetunes`), so a
+      // filter sitting still costs two plain biquads. See `buildSpec`. CRLS-1 keeps Tone's.
+      let filter = null;
+      if (pool.spec.nativeFilter) {
+        const nf = pool.spec.nativeFilter;
+        const followerQ = nf.type === 'lowpass' || nf.type === 'highpass' ? BUTTERWORTH_Q_DB : 0.7071;
+        const stages = [];
+        for (let k = 0; k < nf.stages; k++) {
+          const f = this.ctx.createBiquadFilter();
+          f.type = nf.type;
+          f.frequency.value = nf.freq;
+          f.Q.value = k === 0 ? nf.Q : followerQ;
+          if (k) stages[k - 1].connect(f);
+          stages.push(f);
+        }
+        Tone.connect(synth, stages[0]);
+        stages[stages.length - 1].connect(out);
+        filter = { stages, track: nf.track, keyCents: 0 };
+      } else {
+        Tone.connect(synth, out);
+      }
+      // A per-slot envelope's own source: a constant 1 through a gain the note-ons draw
+      // the envelope on, in cents, into the param it moves. One per envelope, like the
+      // vibrato. Rendered between notes as well (`keepTurning`), so a release still
+      // travelling when the slot goes quiet finishes on time rather than holding where the
+      // slot stopped being pulled.
+      const centsEnvInto = (spec, params) => {
         const src = this.ctx.createConstantSource();
         const gain = this.ctx.createGain();
         gain.gain.value = 0;
         src.connect(gain);
-        Tone.connect(gain, synth.filter.detune);
-        // Rendered between notes as well, so a release still travelling when the slot goes
-        // quiet finishes on time rather than holding where the slot stopped being pulled.
+        for (const param of params) Tone.connect(gain, param);
         const sink = keepTurning(this.ctx, gain);
         src.start();
-        fenv = { src, gain, sink, spec: pool.spec.fenv, plan: null, cents: pool.spec.fenv.octaves * 1200 };
+        return { src, gain, sink, spec, plan: null, cents: spec.cents };
+      };
+      // The filter envelope, into the filter's detune — every stage of a native cascade
+      // together, as `filterEnv` moves MRDR-3's, or Tone's one filter on a CRLS-1.
+      let fenv = null;
+      if (pool.spec.fenv && filter) {
+        fenv = { gain: { gain: slotDetunes(filter) }, spec: pool.spec.fenv, plan: null, cents: pool.spec.fenv.cents };
+      } else if (pool.spec.fenv && synth.filter?.detune) {
+        fenv = centsEnvInto(pool.spec.fenv, [synth.filter.detune]);
       }
+      // The pitch envelope, into the synth's own detune — which every pooled class carries
+      // and which sums with the vibrato and whatever else writes the pitch.
+      let penv = null;
+      if (pool.spec.penv && synth.detune) penv = centsEnvInto(pool.spec.penv, [synth.detune]);
       out.connect(dry);
       if (echo && wet) out.connect(wet);
-      const slot = { synth, out, vib, fenv };
+      const slot = { synth, out, vib, fenv, penv, filter, am };
       pool.slots.push(slot);
       return slot;
     }
@@ -5177,7 +5578,7 @@ export class VoiceRack {
       if (previous.release) previous.release(time);
       else if (previous.slot && previous.pool && !previous.pool.gone) {
         try { previous.slot.synth.triggerRelease(time); } catch { /* already quiet */ }
-        if (previous.slot?.fenv) fenvRelease(previous.slot.fenv, time);
+        if (previous.slot) envsRelease(previous.slot, time);
       }
     }
     // What a later hit in this group will fade and stop. `outs` is the per-tap SUMMING
@@ -6588,7 +6989,7 @@ export class VoiceRack {
     // section switch that used to seed the whole block went away: a pot that moved and
     // did nothing. `filter` is what the panel offers first and what `SECTION_DEFAULTS`
     // seeded, so it is what an unstated target means.
-    const lfoTarget = ['filter', 'level', 'pitch'].includes(L.lfo?.target)
+    const lfoTarget = ['filter', 'level', 'pitch', 'fm'].includes(L.lfo?.target)
       ? L.lfo.target : 'filter';
     const lfoSpec = L.lfo && (L.lfo.depth ?? 0) > 0 ? { ...L.lfo, target: lfoTarget } : null;
     // The global stage: one filter and one VCA the whole stack passes through, after
@@ -7240,6 +7641,9 @@ export class VoiceRack {
           const makeup = isNoise
             ? Math.sqrt(nyquist / Math.max(20, target / NOISE_Q)) : 1;
           let fmSpread = null;
+          // What the modulator reaches the pitches through: `fmSpread` itself, or — with the
+          // Mod LFO on FM — a gain the LFO swings around 1, so FM DEPTH breathes.
+          let fmSend = null;
           // This layer's own modulators. They are not in `sources` — nothing downstream
           // of them is audible on its own — but a HELD preview note has to be able to
           // pull their stops back with everything else, or a released key leaves them
@@ -7520,20 +7924,41 @@ export class VoiceRack {
             if (!hardSynced && spec.fm && (spec.fm.index ?? 1) > 0) {
               if (!fmSpread) {
                 const mod = ctx.createOscillator();
-                mod.type = nativeWave(spec.fm.type, 'sine');
+                // PULSE is a fixed 25% pulse, as a PeriodicWave — the cost of any other wave.
+                if (spec.fm.type === 'pulse') mod.setPeriodicWave(fmPulseWave(ctx));
+                else mod.type = nativeWave(spec.fm.type, 'sine');
                 mod.frequency.setValueAtTime(target * (spec.fm.ratio ?? 1.4), lt);
                 fmSpread = ctx.createGain();
                 // Its own envelope through the same helper — a long decay is the
                 // modulation swelling across the note, which is what brass is.
-                adsr(fmSpread.gain, lt, end, target * (spec.fm.index ?? 1), {
-                  attack: spec.fm.attack, decay: spec.fm.decay, sustain: 0, release: 0,
-                });
+                // A full ADSR (23 Oct 2026): SUSTAIN holds the FM edge through the note and
+                // RELEASE lets it go after. Both default to 0, the strike-only shape every
+                // preset before them had. A held key with a sustain holds it like the layer.
+                const fmEnv = { attack: spec.fm.attack, decay: spec.fm.decay,
+                  sustain: spec.fm.sustain ?? 0, release: spec.fm.release ?? 0,
+                  attackCurve: spec.fm.attackCurve, curve: spec.fm.curve, releaseCurve: spec.fm.releaseCurve };
+                const fmHolds = layerHolds && fmEnv.sustain > 0;
+                adsr(fmSpread.gain, lt, fmHolds ? holdEnd : end, target * (spec.fm.index ?? 1), fmEnv, fmHolds);
+                if (fmHolds) heldParams.push({ param: fmSpread.gain, e: fmEnv });
                 mod.connect(fmSpread);
                 mod.start(lt); mod.stop((tailPlan ? Math.min(off + 0.01, tailPlan.cullAt + STOP_FADE) : off + 0.01) - MOD_EARLY);
                 layerMods.push(mod);
                 paramMods.push(mod, fmSpread);
+                fmSend = fmSpread;
+                // TARGET FM (23 Oct 2026): the LFO multiplies this layer's FM depth around
+                // where it is set — DEPTH 1 swings it from none to double — on top of the FM
+                // envelope, so a plucked FM note whose envelope has died stays still and a
+                // sustained one keeps moving. LEVEL's tremolo, aimed at the modulator.
+                if (lfoSpec?.target === 'fm' && lfoOut) {
+                  const fmLfo = ctx.createGain();
+                  fmLfo.gain.setValueAtTime(1, lt);
+                  lfoOut.connect(fmLfo.gain);
+                  fmSpread.connect(fmLfo);
+                  fmSend = fmLfo;
+                  paramMods.push(fmLfo);
+                }
               }
-              for (const pitch of pitches) fmSpread.connect(pitch);
+              for (const pitch of pitches) fmSend.connect(pitch);
             }
 
             // ---- where in the field this voice stands ---------------------
@@ -7920,7 +8345,8 @@ export class VoiceRack {
     // 12 ms of silence and 18 ms back up. Only for shape changes: a drag of a numeric pot
     // takes the direct path and stays perfectly smooth, or every drag would stutter through
     // thirty dips a second.
-    const shifted = shapeChanged(pool.spec?.opts, spec.opts);
+    const shifted = shapeChanged(pool.spec?.opts, spec.opts)
+      || shapeChanged(pool.spec?.nativeFilter, spec.nativeFilter);
     // A render has nobody listening and every ramp in it would be baked into the file,
     // so offline takes the plain path: the value it is given, at the sample it is given.
     const offline = typeof this.ctx.startRendering === 'function';
@@ -7934,10 +8360,23 @@ export class VoiceRack {
       // stopped. This is the clock the dip below uses, for the same reason.
       param.rampTo(value, SMOOTH_SECONDS, this.ctx.currentTime);
     };
+    // A native param heard while it moves: a step is a jump the size of the change, so it
+    // is ramped from wherever it stands. For the vibrato's LFO and RMND-7's filter stages.
+    const nativeGlide = (param, value) => {
+      if (offline) { param.value = value; return; }
+      if (param.value === value) return;
+      const now = this.ctx.currentTime;
+      param.cancelScheduledValues(now);
+      param.setValueAtTime(param.value, now);
+      param.linearRampToValueAtTime(value, now + SMOOTH_SECONDS);
+    };
+    const changedOpts = synthFamily(spec.synth) === CRLS1
+      ? crlsLiveOptionChanges(pool.spec?.opts, spec.opts) : spec.opts;
+    if (changedOpts === null) return false;
     const write = () => {
       for (const slot of pool.slots) {
-        const { synth, vib } = slot;
-        const bag = JSON.parse(JSON.stringify(spec.opts));
+        const { synth, vib, filter, am } = slot;
+        const bag = JSON.parse(JSON.stringify(changedOpts));
         // Every live AudioParam comes out of the bag first and is glided below — see
         // SMOOTH_PARAMS. What is left is the numbers and strings nothing is reading
         // until the next note, which `set` may write as hard as it likes.
@@ -7951,19 +8390,32 @@ export class VoiceRack {
         // The filter envelope is booked per note-on, so a new one simply takes effect on
         // the next note — the one sounding finishes the curve it was struck with.
         if (slot.fenv && spec.fenv) slot.fenv.spec = spec.fenv;
+        if (slot.penv && spec.penv) slot.penv.spec = spec.penv;
+        // AM DEPTH, heard while it moves: both halves glide together so their sum stays 1
+        // at the modulator's rest and the level never steps.
+        if (am) {
+          const law = amDepthLaw(spec.amDepth ?? AM_DEPTH_TONE, am.A);
+          nativeGlide(am.scale.gain, law.scale);
+          glide(am.base, law.base);
+        }
+        // RMND-7's cascade: CUTOFF and RESONANCE glide, TYPE is a shape change and dips,
+        // KEY FOLLOW is read at the next strike. A different SLOPE is a different number
+        // of nodes, which `refresh` rewires.
+        if (filter && spec.nativeFilter) {
+          const nf = spec.nativeFilter;
+          filter.track = nf.track;
+          const followerQ = nf.type === 'lowpass' || nf.type === 'highpass' ? BUTTERWORTH_Q_DB : 0.7071;
+          filter.stages.forEach((f, k) => {
+            f.type = nf.type;
+            nativeGlide(f.frequency, nf.freq);
+            nativeGlide(f.Q, k === 0 ? nf.Q : followerQ);
+          });
+        }
         if (vib && spec.vibrato) {
           // The two that are heard while they move: a rate step is a wobble that jumps
           // phase-rate mid-cycle, and a depth step is a pitch jump the size of the
           // change. Native params, so the glide is said natively. `type` is a waveform,
           // which is a shape change and dips instead.
-          const nativeGlide = (param, value) => {
-            if (offline) { param.value = value; return; }
-            if (param.value === value) return;
-            const now = this.ctx.currentTime;
-            param.cancelScheduledValues(now);
-            param.setValueAtTime(param.value, now);
-            param.linearRampToValueAtTime(value, now + SMOOTH_SECONDS);
-          };
           nativeGlide(vib.frequency, Math.max(0.01, spec.vibrato.rate));
           nativeGlide(vib.depth, spec.vibrato.depth * 100);
           vib.lfo.type = nativeWave(spec.vibrato.type, 'sine');
@@ -8033,8 +8485,19 @@ export class VoiceRack {
   _disposePool(pool) {
     if (pool.gone) return;   // retired then disposed again by dispose(): once is enough
     pool.gone = true;
-    for (const { synth, out, vib, fenv } of pool.slots) {
+    for (const slot of pool.slots) this._disposeSlot(slot);
+  }
+
+  /** Take one pool slot down: its synth, its vibrato and filter-envelope sources, its gain. */
+  _disposeSlot({ synth, out, vib, fenv, penv, filter, am }) {
+    {
       try { synth.dispose(); } catch { /* already gone with its context */ }
+      if (am) { try { am.scale.disconnect(); } catch { /* ditto */ } }
+      if (filter) {
+        for (const f of filter.stages) {
+          try { f.disconnect(); } catch { /* ditto */ }
+        }
+      }
       // The vibrato runs an LFO of its own, which goes on running after the synth
       // it detunes is gone unless it is stopped too — and, unplugged straight after, it
       // never reaches that stop (engine/drain.js; `audio-audit.js song`, 22 Oct 2026).
@@ -8044,11 +8507,12 @@ export class VoiceRack {
         try { vib.cents.disconnect(); } catch { /* ditto */ }
         try { vib.sink.disconnect(); } catch { /* ditto */ }
       }
-      if (fenv) {
-        try { fenv.src.stop(); } catch { /* ditto */ }
-        drainSources([fenv.src]);
-        try { fenv.gain.disconnect(); } catch { /* ditto */ }
-        try { fenv.sink.disconnect(); } catch { /* ditto */ }
+      for (const env of [fenv, penv]) {
+        if (!env?.src) continue;
+        try { env.src.stop(); } catch { /* ditto */ }
+        drainSources([env.src]);
+        try { env.gain.disconnect(); } catch { /* ditto */ }
+        try { env.sink.disconnect(); } catch { /* ditto */ }
       }
       try { out.disconnect(); } catch { /* ditto */ }
     }
@@ -8252,7 +8716,12 @@ export class VoiceRack {
         || synthClassFor(pool.spec.synth, pool.spec.opts)
           !== synthClassFor(spec.synth, spec.opts)
         || !pool.spec.vibrato !== !spec.vibrato
-        || !pool.spec.fenv !== !spec.fenv;
+        || !pool.spec.fenv !== !spec.fenv
+        // RMND-7's filter is nodes behind the synth: switching it on or off, or changing
+        // how many stages its SLOPE is, is a different graph. Its numbers go live above.
+        || !pool.spec.nativeFilter !== !spec.nativeFilter
+        || pool.spec.nativeFilter?.stages !== spec.nativeFilter?.stages
+        || !pool.spec.penv !== !spec.penv;
       if (!rewires && this._applyLive(pool, spec)) { pool.spec = spec; continue; }
       this._retire(key, pool);
     }
@@ -8387,6 +8856,7 @@ export class VoiceRack {
       editMsMax: Math.round(this._editMsMax || 0),
       edits: this._editCount || 0,
       tngr2: this._tngr2Health(),
+      fzpp6: this.ctx ? fzpp6ControllerHealth(this.ctx) : { lanes: 0 },
       activePreviews: this._activePreviews.size,
       cachedSources: this._cachedPlayback.size,
       mrdrTail: {
@@ -8442,6 +8912,7 @@ export class VoiceRack {
     const offline = typeof this.ctx?.startRendering === 'function';
     if (!offline) {
       tngr2Choke(tngr2LaneNow(this.ctx, laneKey), { at });
+      fzpp6Choke(fzpp6LaneNow(this.ctx, laneKey), { at });
       mrdr3Choke(mrdr3LaneNow(this.ctx, laneKey), { at });
       return;
     }
@@ -8455,10 +8926,11 @@ export class VoiceRack {
       booking.events.push({ type: 'choke', frame });
       booked = true;
     }
-    const built = this._tngr2OfflineLanes?.get(laneKey);
-    if (!booked && built && built.context === this.ctx) {
+    if (booked) return;
+    for (const [laneId, built] of this._tngr2OfflineLanes || []) {
+      if (built.laneKey !== laneKey || built.context !== this.ctx) continue;
       try { built.node.port.postMessage({ type: 'choke', frame }); } catch { /* gone */ }
-      (this._tngr2OfflineTold ||= new Set()).add(laneKey);
+      (this._tngr2OfflineTold ||= new Set()).add(laneId);
     }
   }
 
@@ -8732,7 +9204,7 @@ export class VoiceRack {
         }
       } else {
         try { slot.synth.triggerRelease(at); } catch { /* ignore */ }
-        if (slot.fenv) fenvRelease(slot.fenv, at);
+        envsRelease(slot, at);
         // A KEY COMING UP ENDS THE GATE, which is the whole of what the fingered glide test
         // reads: press C, let go, press E after a pause, and the E starts on its own pitch
         // rather than sliding out of a note nobody is holding. Without this a held note's
@@ -8911,6 +9383,8 @@ export class VoiceRack {
    * teardown, and stays where it is — a rack half torn down is far worse than a click.
    */
   dispose({ fade = 0 } = {}) {
+    this._disposed = true;
+    if (this._trimTimer != null) { clearInterval(this._trimTimer); this._trimTimer = null; }
     const fading = fade > 0 && typeof this.ctx?.startRendering !== 'function';
     for (const [timer, pool] of this._retired) { clearTimeout(timer); this._disposePool(pool); }
     this._retired.clear();
@@ -8983,7 +9457,17 @@ export class VoiceRack {
     // messages. Only lanes nothing has played for a while are really released —
     // `releaseIdleMrdr3Lanes` — so an abandoned lane cannot accumulate either.
     if (this.ctx) {
-      try { releaseTngr2Context(this.ctx); } catch { /* context already gone */ }
+      // TNGR-2 keeps its nodes too (23 Oct 2026), for MRDR-3's reasons and one more: a
+      // released processor's memory stays in the worklet heap until that heap collects,
+      // which it was not doing — ~27 MB more for every song in the jukebox, for good
+      // (work/local/_probe-ensure-memory.mjs). The lanes are choked at the end of the fade
+      // and re-patched by message on the next song's first note (tngr2Lane's `existing`).
+      // The lane objects, keyed by context, go with the context.
+      try {
+        const at = fading ? this.ctx.currentTime + fade : this.ctx.currentTime;
+        for (const lane of tngr2LanesOf(this.ctx)) tngr2Choke(lane, { at });
+        for (const lane of fzpp6LanesOf(this.ctx)) fzpp6Choke(lane, { at });
+      } catch { /* context already gone */ }
       try {
         // STAMPED AT THE END OF THE FADE, not at frame 0. A panic drops every sounding
         // group where it stands (`groups[i].active = false` in dsp.js) — it is a kill,

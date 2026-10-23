@@ -229,7 +229,7 @@ visitor already had one open.*
 > belong to the song and ride its undo stack.
 >
 > SYNTH at the top names which of six instruments builds a pitched preset — KNDO-5,
-> WNDR-9, MRDR-3, TNGR-2, CRLS-1, RMND-2 — and changing it rebuilds the patch from the new
+> WNDR-9, MRDR-3, TNGR-2, CRLS-1, RMND-7 — and changing it rebuilds the patch from the new
 > one's defaults rather than converting it. A drum preset names none: it is the sections
 > themselves, and each one switches off as a bypass rather than a delete.
 

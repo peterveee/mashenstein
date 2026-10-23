@@ -261,7 +261,7 @@ Eight families, 925 presets. Status per family (21 Oct):
 | --- | --- | --- | --- | --- |
 | JMJR-4 (formant) | `_playJmjr4` → `jmjr4/note.js` → `dsp.js renderIr` | 29 | FIXED 21 Oct: jitter left whole notes wired; flutter/vibrato never ended | speech and consonant chords with SHARED unheard; per-component cost (§3.1) |
 | MRDR-3 native | `_playLayer`, cache `_playCachedLayer` | 166 | FIXED 21 Oct: vibrato, PWM, FM and pitch-LFO modulators now stop before carriers | per-preset cost at PHONE; slides and held notes (retire skips them by design) |
-| CRLS-1 / RMND-2 (Tone pool) | `SYNTHS` classes, pools | 71 + 62 | FIXED 21 Oct: `engine/tone-retire.js` — Tone disposed each note's oscillator before its stop | the pool's standing Signals; pools only grow (§3.2) |
+| CRLS-1 / RMND-7 (Tone pool) | `SYNTHS` classes, pools | 71 + 62 | FIXED 21 Oct: `engine/tone-retire.js` — Tone disposed each note's oscillator before its stop | the pool's standing Signals; pools only grow (§3.2) |
 | KNDO-5 (chip) | `_playGame` | 10 | FIXED 20 Oct (notes unwired), 21 Oct (vibrato LFO) | — |
 | TNGR-2 (wavetable worklet) | `_playTngr2Node` | 82 | passes on https | never measured on the iPad over https; silent and free on the http dev URL |
 | WNDR-9 (additive) | `_playAdditive` | 12 | FIXED 21 Oct (vibrato LFO) | partial count on phones |
@@ -293,10 +293,10 @@ Still to measure (PROPOSED): what a singer costs at LOW that remains per singer 
 F1/F2, envelope gains) and whether any of it can be shared; the ending-consonant tract's share
 on consonant presets; a voice cap per lane as a last resort (audible — Peter's call).
 
-### 3.2 The Tone pool — CRLS-1, RMND-2
+### 3.2 The Tone pool — CRLS-1, RMND-7
 
 FIXED 21 Oct: each note's ToneOscillatorNode was disposed (disconnected) before its own
-native stop arrived and never ended — 960 in 32 s of one RMND-2 preset on eight lanes; 67 game
+native stop arrived and never ended — 960 in 32 s of one RMND-7 preset on eight lanes; 67 game
 lanes. `tone-retire.js` defers the dispose to `ended` (10 s fallback, live contexts only).
 Remaining by design and UNMEASURED: each slot's Signals (ConstantSourceNodes) live as long as
 the pool, and pools add slots to their busiest polyphony and never shrink. Proposed: retire
@@ -603,7 +603,7 @@ the song learned (`learnLight`).
   and the KNDO-5 proof, 746 → 2,026 wired before, 106 → 106 now); all 259 game lane sounds
   on the phrase: 259 ok, none silent, none with non-finite samples
   (`work/local/_audit-songs-1b-2026-10-21.txt`). Newly visible with param edges: an 8-lane
-  CRLS-1 preset keeps 1,226 nodes pulled (Tone pool slots and their Signals), RMND-2 426,
+  CRLS-1 preset keeps 1,226 nodes pulled (Tone pool slots and their Signals), RMND-7 426,
   against 106–130 for the other families — flat, a standing cost (§3.2, §4).
 - *21 Oct — Stage 4 standing costs (MEASURED, Mac WebKit, 3 runs, muted inserts NOT parked —
   re-run with parking pending; `work/local/_audit-strip-1b-2026-10-21.txt`).* Burner headroom
@@ -724,6 +724,362 @@ the song learned (`learnLight`).
   chains-only result the night before, strip sleep adds about 0–2.5 points while a song
   plays — most lanes play often enough that their strips rarely reach two silent seconds.
   Its larger saving is where lanes sit out: intros, breakdowns, menus, and the no-note
-  standing measure. Office to be re-run on a quiet machine.
+  standing measure. Office re-run, 5 interleaved pairs (machine moderately busy,
+  `work/local/_audit-office-load-2026-10-22.txt`): 24.7 → 23.4 % median, every pair lower
+  (−0.2 to −5.4, median −1.3) — a small gain: Office's lanes and effects are busy almost
+  throughout, so little gets the chance to sleep.
+- *22 Oct — Tone pool idle slots (MEASURED, then IMPLEMENTED at Peter's ask).*
+  `work/local/_probe-pool-slots.mjs`, 2 min of each song in WebKit: Rhythm builds 21 slots
+  against ~15 needed in any 10 s window, Office 19 against ~16 (~28 nodes a slot). Built
+  anyway (Peter: "Can we do trim"): `voices.js setTrimIdleSlots` (the game, all browsers;
+  never the desk or offline). A pool remembers the most slots its notes asked for over the
+  last 8 s (one, once the lane goes quiet); the round robin runs over that many, so the rest
+  fall idle, and a 2 s sweep disposes from the end any slot with no finger, no gate, no note
+  or tail to come and no mono group or slide holding it. `tests/pool-trim.js` (WebKit,
+  live): a chord builds the pool to five, single notes after it bring it back to two within
+  ~10 s and sound the same as untrimmed, the chord's return rebuilds five and is heard (0.26
+  against 0.29 untrimmed — a rebuilt slot's first chord a little quieter; listen for it).
+  Expected gain small (~1–2 points on Rhythm); measured in the quiet run. **To listen for:**
+  with the round robin over only the slots the last 8 s needed, a new note can land on a slot
+  whose last note is still releasing and cut its tail — thinner sustained keys or pads where
+  a pool had grown wider than the passage needs. Pools rebuild slots only at Crypt bar 7
+  (chords) and Office bar 27 (chords, chords3) (`work/local/_pool-rebuild-bars.mjs`). If it
+  is heard: round over every slot that exists and trim only those silent past their tail. A busy CRLS-1 lane
+  keeps its slots busy, so this does not make CRLS-1 cheap on dense lanes.
+- *22 Oct — Stage S begun (IMPLEMENTED: the guard's levers by cause, the worst quarter, the
+  probe).*
+  - `audio-guard.js`: relief (crackle) no longer raises the lookahead; a separate AHEAD
+    lever raises it to 1 s after 2 s of HOLES (margin under zero or late passes), and puts
+    it back when the level is left. main.js passes the sequencer's health into the guard.
+    `tests/audio-guard.js` covers both.
+  - The glitch log adds **Q**, the worst 250 ms of the audio clock inside each second, read
+    off `getOutputTimestamp` (falls back to currentTime); a second whose average is fine but
+    one quarter is under 0.8 is logged as **DIP**.
+  - `tools/audio-glitch-probe.js` makes each kind of trouble on purpose in headless WebKit
+    and classifies the seconds with the glitch log's own thresholds. First run (Mac, not
+    quiet, 12 s per mode, Gravity): clean — nothing (Q lowest 0.989: getOutputTimestamp is
+    quiet enough for a 0.8 threshold on the Mac); a burner over the thread's budget —
+    CRACKLE every second, no HOLES (C 0.68); main thread busy 400 ms a second — HOLES every
+    second, no CRACKLE (M −98 ms); both — CRACKLE, holes 10 % (an overloaded audio clock
+    runs slow, so the queue stays ahead of it). The classes come apart as named.
+  - The 20 Oct phone trail (`work/local/crash-trail.txt`, iPhone): its sessions are almost
+    all FRAMES; audio rows are a handful of boot-time CRACKLE (context starting) and two
+    HOLES with a 53–63 ms frame — nothing for the lookahead change to have helped or hurt.
+  - Queued for a quiet machine (`work/local/_stage-s-quiet-2026-10-22.sh`, starts itself when
+    the load has been low for five minutes): the probe at lookahead 0.25 and 1 on Gravity
+    and Rhythm; whole-song load at lookahead 0.25 vs 1 (does queueing further ahead cost the
+    audio thread?); and the sleep fixes' before/after again, quiet.
+  - **Results (22 Oct 10:29–12:21; `work/local/_stage-s-*-2026-10-22.txt`):** the probe
+    separates the classes on Gravity and Rhythm at both lookaheads — a DSP overload is
+    CRACKLE every second and never HOLES; a starved main thread is HOLES every second at
+    0.25 s and **none at 1 s** (lookahead cures holes), never CRACKLE; the overload reads the
+    same at 0.25 s and 1 s (C 0.67 / 0.66 — lookahead does nothing for crackle). Clean Q never
+    went under 0.985, so the 0.8 DIP threshold has no false alarms here. **Lookahead's own
+    cost:** whole songs at 0.25 s vs 1 s, 3 runs — Gravity 24.7 vs 26.5 %, Rhythm 21.7 vs
+    21.7: under 2 points, inside the noise; it is not a load lever either way. The quiet
+    before/after re-run was not quiet (Office "after" 34–57 %, "before" Gravity 35–64 %:
+    the machine was in use) and is discarded.
+  - Trim checks: leak test passes, song stops unchanged, six suites pass; `held-keys` throws
+    in MRDR-3 AW (`mrdr3NoteOn`, an undefined lane port) and `voices` fails its 7 preset-data
+    checks — both identically on the engine from before 21 Oct, not this work.
+- *22 Oct — Stage G (generation, preparation, rendering): mapped, measured, races fixed.*
+  Every path outside steady playback was mapped (Lab, club, cues, warm-ups, bench, swaps,
+  MusicDirector, calibration, desk). Findings:
+  - **The Lab's own generation is cheap and cannot install a stale song.** `makeBanger`
+    takes median 6 ms, p90 9, max 29 (cold) on the Mac across 72 songs in 24 styles
+    (`work/local/_banger-make-cost.mjs`; an iPad perhaps 2–3× that), synchronously, behind
+    the CHARGING frame; every install (BRING TO LIFE, BOLT, kept songs, club swaps) is
+    frame-scoped inside the state that asked, so leaving the state stops it. Not a problem.
+  - **FIXED — TNGR-2 lane builds orphaned worklet nodes.** `tngr2Lane` awaited the DSP and
+    then built a node without looking again: two builds of one lane (the Lab warms on every
+    style or mood change, the club on every DICE, the scheduler on its first note) made two
+    nodes and orphaned one; a build caught by a song change put its node into the released
+    state, where nothing would stop it. `tests/worklet-lane-races.js` (WebKit, https): the
+    committed controller made 2 nodes for one lane, and 6 builds under song changes left 7
+    live nodes the controller did not own — each with its own copy of the tables. Now 1
+    and 0. MRDR-3 AW's race loser is stopped and unhooked rather than dropped, and a build
+    caught by a context release is abandoned (only reachable under `?mrdrbackend`).
+  - **FIXED — queued worklet notes flushed into a disposed rack** (`voices.js`): the old
+    song's queued TNGR-2 / MRDR-3 AW notes no longer play after the song has stopped.
+  - **FIXED — treatment teardown timers cleared other people's treatments.** MusicDirector's
+    exit (`music-director.js`) and a club's 4-BIT off (`club-voices.js`) each cleared the
+    treatment leg seconds later without checking it was still theirs: the results screen's
+    8-bit crusher, or the next club's 4-BIT, put on in that window, came off. Each now clears
+    only the treatment it faded.
+  - **FIXED — `retuneOnTheBeat` (results-chip.js):** overlapping retunes raced, and one that
+    waited put back the mix it captured over a club swap made meanwhile; only the latest now
+    lands, with the mix the song has when it does.
+  - **FIXED — the Lab's module load** (`main.js openLabWhenLoaded`): a slow bangerLab.js
+    pulled the player into the Lab from wherever they had gone since; it now opens only if
+    they are still on the screen that asked, and a failed load goes on the trail.
+  - **FIXED — failed cue renders stayed silent for the session** (`audio.js` reversed voice
+    cues, coyote howl): a rejected render is now forgotten and retried.
+  - **Noted, not changed:** the coyote howl is cached per tempo, so a tempo change in Speed
+    Zone renders a new one mid-run (a quiet howl that once, then cached); the device bench
+    renders four offline contexts 1.5 s after a first launch, whatever screen is up (first
+    launch only); a cold TNGR-2 table set expands synchronously on a Lab style change (up
+    to ~230 ms by the code's own comment); session caches with no LRU (kept Lab songs,
+    TNGR-2 families, cue buffers) are bounded by what a session can ask for.
+  - Not in the game, so out of scope here: the desk's note cache (well guarded: generation
+    and revision checked at dequeue and keep) and the dev LAB WAV RENDER (no abort passed).
+- *22 Oct — Stages W and Q begun (IMPLEMENTED: the tools; results below as they land).*
+  - **W, coverage switches** in `tools/audio-audit.js`: `--phrase=dense|retrigger|held`
+    (eight-note chords with overlapping releases; a note on every step; four-bar holds),
+    `--quality=full|performance` (MRDR-3's desktop tiers), `--insecure` (an http page with
+    no AudioWorklet, the LAN dev URL), `--fail-worklets` (every engine worklet module fails to
+    load), `--sfx` (the game's cues fired over a song, three a second), `effect <id>
+    --extreme` (every ranged parameter at its maximum), and `banger <style|all>` (generated
+    Lab songs, stopped and restarted twice). First tries: a generated trance song clean; Neon
+    with every worklet failing plays its other lanes, no errors; a TNGR-2 preset on an http
+    page reads UNAVAILABLE, not cheap; the delay at its extremes leaves nothing.
+  - **Found while adding them — the harness's counts and deep sleep.** Since the strips learnt
+    to sleep, a census taken in a silence finds them unplugged: anything a note left wired
+    on a lane reads as gone, and is pulled again when the lane wakes. Counts now run with
+    every strip awake (`--deep` to override); load still runs as the game does. Counts taken
+    with deep sleep on (22 Oct morning to afternoon: song stops after strip sleep, the trim
+    and Stage G checks) are re-run.
+  - **Q, `tools/audio-sound-check.js`:** the same song played live twice in WebKit — once on
+    an engine copy from before (`--before=<src dir>`), once on this tree (`--deep` for the
+    game's sleep and trim) — recorded by a worklet before the silent sink, compared on aligned
+    50 ms envelopes: invalid samples, dropouts (after 6 dB under before while before is
+    above −50 dBFS), bursts, clicks (steps over twice the before's largest), and timing drift
+    per 2 s block. Proven on itself: Gravity with its lead muted in the after run reads LOOK,
+    50 dropout windows from 12 s, where the theremin comes in; Gravity before vs now (sleep +
+    trim) reads ok — no invalid samples, no dropouts, no bursts, no clicks, 50 ms drift. A
+    clean report is evidence, not a listening approval.
+- *22 Oct, evening — first notes lost after a song change (FOUND by Peter on the iPad, FIXED).*
+  Neon → Crypt → Neon in the jukebox (and into levels) lost each song's opening — Crypt's
+  theremin, Neon's arpeggio — in 8-bit too, so a channel's, not a synth's. Reproduced on
+  the Mac (`work/local/_probe-first-notes.mjs`, the jukebox's own sequence, game settings):
+  only with deep sleep on, and not with strip sleep alone — the insert chain. A chain that
+  slept through the last song is unplugged at both ends; the next song's mix rebuilt it and
+  marked it awake, but only `wake` put the sleeper's input back, so the new chain played
+  into nothing until its next sleep and wake. `rewire` now restores the input whenever it
+  wires a chain awake. `tests/chain-sleep-rebuild.js` fails without the line and passes with
+  it. Also from this iPad session: the guard's 8-bit in the jukebox stuck for every song
+  after Neon, and SETTINGS showed ORIGINAL and could not be switched back — now relief
+  outside a level lasts one song, SETTINGS shows **8-BIT (AUTO)**, and any soundtrack
+  choice by the player takes the guard's 8-bit off (it goes again if the device needs it);
+  jukebox songs build their pools and worklet lanes when chosen, as levels do.
+- *22 Oct — §9, the guard's STOP (IMPLEMENTED behind `?guardstop`; Mac test pending, iPad
+  untested).* `Audio.hushMusic(seconds)`: the transport runs on and books nothing (the
+  rearrangement mute's path in scheduleStep), what was booked plays out (lookahead + 0.2 s),
+  the music path comes off the master through a unity `_hushGain` — nothing pulls the song's
+  graph, so nothing renders it — and goes back on at the first bar line after, faded in over
+  30 ms; a song change ends it. The guard's STOP lever takes the KICK's place (clock under
+  0.6 for 3 s with relief on), twice a level at most, never within 6 s of the last
+  (`tests/audio-guard.js`). Acceptance (§9) to check: queued notes cancelled, load near zero
+  (unplugged — the Mac test counts the graph), timing kept (the transport never stops),
+  correct resumption, no loops (two a level), lookahead never raised; `tests/music-hush.js`
+  covers the first four on the Mac. **Device:** an iPad run that tips and recovers.
+- *22 Oct, evening — STOP and DEEP on by default (IMPLEMENTED; Mac test passes; iPad
+  pending).* Peter's `?guardstop` run of the canary's load song: relief at 35 s (C 0.87),
+  STOP at 45 s (0.38) and 51 s (0.30), and the clock never moved (0.38–0.45 through the first
+  hush). Two faults, both now fixed: (1) the hush gain hung off `musicGain`, which with the
+  mixer feeds the song's master chain — so it hushed nothing, and after the first hush a
+  second, unmastered copy of the music ran beside the first; it now sits between `songOut`
+  and the master (`tests/music-hush.js` failed on "silent through it" before, passes now);
+  (2) each strip's sleep probe pulls the strip whatever it feeds, so the hush now also puts
+  every strip to sleep at once (`mixer.sleepStripsNow`, deep sleep only; the next note wakes
+  each). Peter: "turn on stop and deep" — STOP is wired always (`?noguardstop` leaves it
+  out), and DEEP fires outside a level too (jukebox, Lab): a song with no 8-bit version gets
+  nothing from relief, and DEEP is the lever that takes lanes away.
+- *22 Oct, evening — a Spot FX branch pinned the voices (IMPLEMENTED; Mac tests pass; iPad
+  pending).* The next iPad run with both on: DEEP at 39 s, STOPs at 43 s and 50 s, and the
+  clock still 0.30 — until bar 19, where the load song's Spot FX sections end; after the loop
+  it tipped again and held there. A selected Spot FX branch is pinned awake for its whole
+  section, and its sleeper analyser pulls the lane's voices whatever the strip feeds — so 32
+  lanes of reverb + chorus (+ phaser) rendered muted, asleep or hushed. Now a sleeping strip
+  takes its branches and insert chain with it (`makeSectionSwitch.sleep/wake`,
+  `slot.sleepNow`), and a section selected while the strip sleeps waits for its wake
+  (`tests/strip-sleep.js`: the branch sleeps with the strip, and the notes after a sleep
+  come through it at full level).
+- *22 Oct, late — STOP/DEEP re-examined (MEASURED on the Mac's WebKit; IMPLEMENTED; iPad
+  pending).* Four iPad runs of the load song, read together: (1) the second after each STOP
+  read C 2.2–4.8 — WebKit renders every second it fell behind on, at once, when the load drops,
+  and each burst matched the debt Σ(1 − C) built before it (≈3.4 s → C 3.37, ≈4.8 s → C 4.78);
+  after a 3.3 s burst everything played late, after a 4.8 s one nothing played until a reload.
+  `getOutputTimestamp` cannot see that delay (L read 0 throughout). (2) DEEP did nothing to the
+  load song: `work/local/_probe-guard-levers.mjs` (live, WebKit, the game's settings, per second:
+  burn load, sources started, worklet posts, strips asleep, lanes silent, Spot FX branches awake)
+  showed DEEP muting 1 lane of 32 — `deepReliefMix` walked the song bank's lanes, and a mix's
+  LAYERS are not in it (ten game songs have layers). Fixed: layers muted too. With that, DEEP
+  silences all 32 within a second, every strip and branch sleeps, and the clock holds 1.00.
+  (3) STOP fired a second after DEEP every time — its count ran through relief — so DEEP never
+  showed, and the STOP's own release of the debt was the burst. Now: DEEP also goes on the DEBT
+  (`GUARD.deepDebt` 0.6 s behind, seconds under 0.97 adding, catch-up seconds paying off, five
+  healthy seconds clearing it), and STOP only after DEEP has been on `stopAfterDeep` (5) s. The
+  real guard against the load song on the Mac: relief at 0.77, DEEP two seconds later at 0.9 s
+  behind, a 1.16 catch-up, then 1.00 to the end. Glitch log: CATCHUP marks a second at 1.5+.
+  Open: repairing the output after a big burst — `rebuildRealtimeContext` makes a new context,
+  but it starts suspended (WebKit, even headless) until a gesture; not wired.
+- *22 Oct, night — the guard is RELIEF → RESTART (IMPLEMENTED; Mac tests pass; iPad pending).*
+  Two more iPad runs with STOP and DEEP on: a DEEP at 0.90 did release the thread (the clock held
+  0.98 for 5 s), the lift walked the lanes back into the heaviest bars and latched it at 0.40 in
+  two seconds, where a second DEEP did nothing; then STOP → C 5.60 CATCHUP → silence for good
+  (the song path rendered — O 9e-2 — and nothing was heard: WebKit's output side, not our
+  graph). Peter: "I just want silence once the sound starts to sound bad… and then for audio to
+  restart after; if a click is required, then perhaps pause things and tell user to click a
+  button"; "the 8-bit switch seems to be reliable enough". So: `engine/audio-guard.js` is
+  rewritten — RELIEF (8-bit, unchanged) → RESTART when still under 0.9 for 3 s, a second under
+  0.7, or 1 s of DEBT; 8 s settle; from the second restart in a level the lanes stay muted
+  (`hooks.deep`). DEEP and STOP are no longer levers (the engine keeps `hushMusic` and
+  `sleepStripsNow`; `tests/music-hush.js` still passes). `main.js audioRestart` →
+  `Audio.rebuildRealtimeContext()` (the context closed, backlog and all; the song where its
+  clock was); if the new context is not running within 1.5 s the game freezes under a TAP TO
+  CONTINUE prompt and the tap's own `ensure()` resumes it; three taps without sound and it goes
+  on silent rather than hold the player. `?audiorestart=N` (dev) forces one after N s.
+  **Found on the way:** `rebuildRealtimeContext` raced `close()` against 500 ms and built the
+  new context regardless — and in WebKit a context made while an old one still holds its place
+  never starts (two run at once in headless WebKit without a gesture;
+  `work/local/_probe-ctx-variants.mjs`); it now awaits suspend, then close. One restart mid-song
+  works end to end in headless WebKit (`tests/audio-restart.js`: closed, running, mixer ready,
+  heard, step kept, SFX); a SECOND restart in the same page leaves the third context suspended
+  there — the tap path's case. In the real game in headless WebKit (`?audiorestart=3,7`,
+  `work/local/_smoke3.mjs`): the first restart gives a new running context with no prompt; the
+  second leaves it suspended, the game freezes under the prompt, and the first tap brings it to
+  running and the game on (screenshots `work/local/_smoke-tap-prompt.png`, `_smoke-after-taps.png`).
+  **Device:** the load song on the iPad, and `?audiorestart=20` on any song to see the prompt.
+- *23 Oct — the iPhone's restart was a memory kill; Spot FX reverbs and branches (IMPLEMENTED;
+  MEASURED on the Mac; device pending).* The iPhone's load-song run: relief at 38.6 s, the
+  restart at 39.6 s (clock 0.21, 1.6 s behind), then NO CLEAN EXIT — iOS killed the page.
+  Measured in headless WebKit (`work/local/_probe-ensure-memory.mjs`): the load song took
+  WebKit from ~700 MB to 2.2 GB, and a restart to 3.4 GB — a new graph built before the old
+  one's memory went (and in WebKit a convolver's kernels are never given back while the
+  context lives: `buffer = null` or a one-sample buffer changed nothing). The song without its
+  Spot FX: +50 MB. Each Spot FX reverb on each lane was its own convolution — 64 of them,
+  ~20 MB each. Three changes: (1) `mixer.dispose()` takes the old graph down before the
+  rebuild closes its context; (2) THE SPOT FX ROOM — one reverb per mixer that every lane's
+  Spot FX reverb SENDS to (`makeRoomSend`; equal-power dry/send as makeReverb's own mix;
+  returned to songTrim like the auxes; the first section's decay; asleep when nothing sends).
+  The tail no longer passes through later links in the same chain, and lanes share one decay
+  — Peter: "do". Load song: 2.2 GB → 870 MB, a restart +220 MB instead of +1.2 GB. (3) Spot
+  FX branches are BUILT WHEN SELECTED and dropped after their tail (live contexts only;
+  chains with a rhythm effect — gate, stutter, vowel, duck — are built at prepare and kept,
+  since their pulses for a step are scheduled before the select). Chrome, where an idle branch
+  never slept, read the load song at 86–97 % of the audio thread from bar one — the reason it
+  "won't play at all on the Mac" (Peter's Chrome trail, restarting every 10 s) — and reads
+  10–32 % now. The guard restarts twice a level at most. fx-sections, strip-sleep,
+  audio-canary, sidechain-duck, banger-section-effects, automation, music-hush (modulator
+  starts no longer counted), audio-restart pass. **Open:** stems/null baselines with Spot FX
+  reverbs now differ by design; a second restart still adds ~200 MB.
+- *23 Oct, later — the restart's gap, the tap that makes the context, THE CHANNEL CARD
+  (IMPLEMENTED; Mac tests pass; iPhone pending).* iPhone runs on the new build: once "no sound
+  after 3 taps" (a context made outside a tap never ran), once running after two taps — with
+  the context reporting 12 ms output latency and our lag reading 0, yet every sound a second
+  late (Peter: "the jump sound no longer synchronises with the jump"). On the Mac a cue is heard
+  5–8 ms after the call before and after a rebuild (`work/local/_probe-sfx-delay.mjs`), so the
+  delay is below the context. `Audio.haltAudio()` / `_reviveHalted()` split the rebuild;
+  `main.js audioRestart` halts, leaves the page with NO context for 1.5 s (iOS's one output
+  torn down, queue and all), then tries a context; if it is not running in 1.5 s it is halted
+  too and the TAP's own `ensure()` makes the next one synchronously inside the gesture.
+  Restarts: twice a level. `audioResponseProbe` writes to the trail, at the start and after
+  each restart: cue→render ms, output lag ms, base/output latency. Peter then reports the
+  delay is still there, smaller than a second; Chrome untested. **Spot FX:** rooms keyed by
+  reverb settings (two different reverbs stay two), and THE CHANNEL CARD (`effects.js
+  'strip'`, virtual, sections only: bass/mid/treble dB and delay/reverb send amounts, applied
+  to the lane's strip as offsets for the section — `applyStripFx`; no node; a node-less
+  section keeps the direct path). The Lab's lane reverbs (room, trance breakdown space, disco
+  short room, the quiet wash) are the card now; the master keeps real reverbs.
+  `tests/channel-card.js`; fx-sections, banger-section-effects, jukebox-banger, banger-forms,
+  audio-restart, music-hush, audio-canary pass.
+- *23 Oct — the restart that works on the iPhone: KICK (IMPLEMENTED in another session; device
+  CONFIRMED).* `main.js audioRestartMode = 'kick'` (`Audio.kickContext`): no new context at all
+  — the same one is suspended, left quiet for `AUDIO_RESTART_QUIET_MS`, resumed. iOS drops the
+  backlog on the suspend, the jump sound is on the jump again, and no tap is needed because it
+  is the context the first tap unlocked. Peter: "with restartmode=kick it is fine". The two
+  new-context modes stay behind `?restartmode=warm|cold` for comparison; both left every sound
+  late by a few hundred ms on the iPhone. The Channel card later gained LEVEL and PAN, the
+  strip's order (treble first), ± sends, and is held last in the Spot FX editor.
+- *23 Oct — every song change leaked ~48 MB in WebKit (MEASURED; FIXED to ~5 MB; device
+  pending).* Found by the per-lane cost probe: its 35 restarts of Neon made the load creep from
+  29 % to 100 %, and WebKit's memory from 965 MB to 1.2 GB. Pure Web Audio in WebKit
+  (`work/local/_probe-webkit-node-churn.mjs`): the memory of a ConvolverNode (~20 MB), a
+  PeriodicWave (~580 KB), an AnalyserNode (~275 KB) and a DelayNode (its line) is never given
+  back while the context lives — not on disconnect, not when every reference is gone, not under
+  GC pressure; gains, filters, oscillators and sources are fine. And `Tone.setContext(rawCtx)`
+  makes a new Tone.Context each call — a Transport, a Destination and a Ticker Web Worker —
+  which the rack did every song. Fixes: convolvers pooled and impulses cached per context
+  (effects.js); analysers pooled (chain sleepers and strip probes, mixer.js); one Tone wrapper
+  per context (`src/engine/tone-context.js useToneContext`); TNGR-2 lanes kept across racks
+  (choked at the fade, re-patched by message; the main play path re-points a moved gate as the
+  held path did); Spot FX branches dropped after their tail only without deep sleep (Chrome).
+  Neon restarts in WebKit: +48 → +3–14 MB, reclaimed later. The Lab's "leftover sources" were
+  the chorus LFO built on a lane's first note (now built at warm-up), Tone's lazy transport and a
+  keep-alive source `clear()` made to turn off — all audit artefacts, all gone. Open: PeriodicWave
+  caches that evict (sync/phase waves) leak each eviction on WebKit; Tone effects' own delays.
+- *23 Oct — the PeriodicWave caches are finite and never evict (IMPLEMENTED; tested).* On a
+  live context: vibrato phase waves quantised to 16 phases a waveform (was 4 decimals, capped
+  at 256 and evicted — tens of thousands a session, each kept by WebKit); hard-sync tables
+  quantised to an eighth of a semitone, and past 192 the nearest table of the same shape and
+  width serves (was capped at 512 and evicted); JMJR-4's spoken glottal waves keyed to the
+  semitone (was the hertz, never evicted — a wave per pitch). Offline renders keep their exact
+  keys, so renders are unchanged (null test: the same two warnings, plumber and megamix, as on
+  22 Oct). `tests/wave-caches-finite.js`: 80 000 phase asks → 64 waves, 25 000 sync asks → 192,
+  5000 spoken pitches → 33.
+- *22 Oct — the Lab on the iPad (MEASURED, device, https, 17:38).* Full Gravity over https:
+  bars 1–50 at C 1.00. The Lab crackled: a Big Room House club song at bar 13 (C 0.92, Q 0.84,
+  no frame trouble — DSP) and bar 27 (C 0.94, after the guard's 8-bit), and the next club song
+  on its downbeat (C 0.93, Q 0.73, a 238 ms frame — a start-up spike); Peter also heard a few
+  on Rave. Start-up: a cold TNGR-2 table set expanded in one block when the club's first
+  notes asked; now `openPendingClub` warms the song's tables in idle slices during IT'S
+  ALIVE! / the BOLT, and the club builds its worklet lanes when it starts the song, not on
+  the downbeat. The styles' own cost: a sweep of one generated song per style, plus Big Room
+  and Rave ×3, queued for the quiet machine.
+- *22 Oct, 17:24 — the iPad on the dev build with every fix in (MEASURED, device, http;
+  `work/local/crash-trail.txt`).* Peter played Gravity and Rhythm (the attract demo's
+  gravity-2, rhythm-1 and plumber-1, about five minutes): **no audio trouble at all** — every
+  second the glitch log kept reads C 1.00 and Q 0.99–1.00, no CRACKLE, DIP or HOLES, the
+  guard never fired. The only rows are FRAMES (6–20 frames lost a second, worst frames
+  70–232 ms at density 3–4): on the iPad the picture is now the limit, not the audio. Live
+  sources held at 1,100–1,350 without climbing (20 Oct: climbing to 2,833). The device bench
+  read **1,339 ms** — the iPad's first reading, well over the 600 ms cut-off — so light
+  versions are on: Gravity played its light mix; Rhythm has none. Caveats: http (TNGR-2
+  silent), the light Gravity, one session. Next: the full Gravity over https (`?fullmix`).
+- *22 Oct — Stage W and Q results (Mac WebKit, counts and sound checks;
+  `work/local/_stage-w-coverage.txt`, `_stage-q-sound.txt`).* **Coverage: 104 subjects ok.**
+  Eight-note chords, every-step retriggers and four-bar holds on every family — clean; MRDR-3
+  at desktop quality — clean; an http page — every family plays except TNGR-2, which reads
+  UNAVAILABLE (as it should: no worklet), with no page errors; every worklet failing to load
+  — the songs play their other lanes, no errors; 24 generated Lab songs, one per style,
+  stopped and restarted — clean but for the known one-source residue (downtempo); all 38
+  effects at the top of every range — clean (the noise gate at its maximum threshold shuts
+  everything, so it reads UNAVAILABLE: the setting, not a fault). Flagged and since dealt
+  with: songs with the game's cues over them (the SFX leak below); fmKeys at full quality
+  and on http read "LEAK" from a pool trim landing between two counts (counts now run
+  untrimmed). **Sound checks, the sleep and trim changes against the engine before them:
+  Gravity, Rhythm, Neon, Office, Crypt, Title, Plumber ok; Hub flagged** — bursts every 4 s.
+  The tool's first alignment (on the first loud window) was off by a beat there; it now
+  aligns on the best agreement over the whole run, and a control (the old engine against
+  itself) reads the same handful of 6 dB windows Hub's own variation produces. Hub: ok,
+  ok and ok — control, this tree without deep sleep, with it.
+- *22 Oct — Stage W found two more leaks of the KNDO-5 kind (FIXED).*
+  - **Every sound effect left its graph on the SFX bus for the session.** New subject
+    `audio-audit.js sfx <name|all>` fires a cue three times a second and counts: 14 of 15
+    cues left their nodes wired, from 2 (ui) to 51 (thunder) per firing, and a level fires
+    hundreds (`--sfx` over Gravity: 258 → 746 wired in 40 s). The cue helpers `osc()` and
+    `noise()` — most cues are built from them — now unwire when their source ends
+    (`_unwireOnEnd`), as do the inline builders: the explosions (boom, thunder's body),
+    impact crash, box kick, contact and launch samples, jump, girder boing, comet swoop,
+    neon buzz, zap, roll splat, the reversed voice cues, the coyote howl, the sleigh carol,
+    and — by the clock, past their longest source (`_unwireAfter`) — the cat and dog voices.
+    After the helpers alone: 15 of 18 cues clean; with the builders, **all 18 clean**
+    (thunder holds 12 nodes flat — a room built on first use, kept by design). All 48
+    hand-written engine voices clean, the leak test and sfx-routing, song-switch,
+    song-change-fade and mix-automation pass, and sound checks on Title, Hub, Megamix and
+    Plumber — the songs with hand-written lanes — read ok: nothing missing, cut or louder
+    (`work/local/_stage-w2.txt`, `_stage-q2.txt`).
+    A first, generic attempt (record every node a cue creates and unwire it all) was
+    abandoned unrun: cues build shared rooms, taps and rack pools on first use, and those
+    must stay.
+  - **The hand-written song voices kept every note on its lane for the whole song.** Only
+    `play` had been fixed on 21 Oct; the other 23 note builders in `scheduleStep` (chords,
+    bass, drums, toms, rim, gliss, star, …) never unwired: `song title --during` (new:
+    counts while playing, never silenced) found 72 oscillators and their gains piled up in a
+    minute of the title theme, which loops for as long as the title screen is up. Each now
+    unwires on its source's end and is drained at a song stop (`_engineNote`); the gliss's
+    echo taps and the rim's ring by the clock. Title: 257 → 444 wired before, 245 → 244 now.
+    `--during` is noisy on songs whose sections bring lanes in and out (hub, megamix read
+    in-flight notes and pools as growth); it locates, the stop-and-restart count verdicts.
 - *21 Oct — Stage 0 (IMPLEMENTED, unverified until a scheduled run):* the workflow installs
   `chromium webkit` (Peter's pick over skipping; adds ~10 min to the weekly run).

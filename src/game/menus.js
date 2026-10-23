@@ -90,6 +90,7 @@ import { bonusSentence, stageCode } from '../data/stages.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from '../data/shop-themes.js';
 import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
+import * as CANARY from '../data/audio-canary.js';
 // The jukebox lists a tempo per song, and the desk can now save one onto a song's
 // arrangement — see bpmOf.
 import { bpmOf } from '../data/arrangements.js';
@@ -98,7 +99,7 @@ import { setState, setStateNow } from '../engine/states.js';
 import { ChipResults, soundtrack8bit, setSoundtrack8bit, retuneOnTheBeat, playsEightBit, soundtrackMode, cycleSoundtrack } from './results-chip.js';
 // SETTINGS ▸ SOUNDTRACK. LIGHT appears in dev builds only (results-chip.js cycleSoundtrack): in a
 // release a song's light version is the device's call, not the player's.
-const SOUNDTRACK_LABEL = { original: 'ORIGINAL', light: 'LIGHT', '8bit': '8-BIT' };
+const SOUNDTRACK_LABEL = { original: 'ORIGINAL', light: 'LIGHT', '8bit': '8-BIT', auto8bit: '8-BIT (AUTO)' };
 import { BangerMakerState, rerollTake } from './banger/maker.js';
 import {
   jukeboxBangerRows, songFor, deleteBanger, bangerTitle, lastPlayedBanger, rememberBanger,
@@ -4999,6 +5000,10 @@ export class FieldGuideState {
 export const JUKEBOX = [
   ...JUKEBOX_TRACKS,
   { name: 'MASHENSTEIN: THE MONSTER MIX', bank: MEGAMIX_THEME },
+  // A dev build's test song for the engine's sleep, trim and warm-up (data/audio-canary.js).
+  ...(typeof window !== 'undefined' && window.__MASH_BUILD__
+    ? [{ name: 'AUDIO CANARY (DEV)', bank: CANARY.bank, mix: CANARY.mix, arrangement: CANARY.arrangement },
+      { name: 'AUDIO CANARY: LOAD (DEV)', bank: CANARY.load.bank, mix: CANARY.load.mix, arrangement: CANARY.load.arrangement }] : []),
 ];
 // The tempo a row reports is the one the song PLAYS at: the arrangement's when the
 // mixing desk has retuned it, else the tempo it was written at. Read through the same
@@ -5476,6 +5481,11 @@ export class SoundTestState {
     // VIEW) has no once to play: it goes round to sixteen bars first.
     const once = !this.lab && !this.repeatOn ? { minBars: 16 } : false;
     Audio.setBank(tr.bank, tr.mix, tr.arrangement, { startAtBeginning: true, once });
+    // Its synths built now, as a level builds them before its count-in, and not by each lane's
+    // first note (22 Oct 2026: on the iPad a jukebox song's first sounds came in late or not at
+    // all — a pooled voice constructed, or a worklet lane loaded, on the beat it was wanted).
+    Audio.prepareRealtimeVoices?.({ startStep: 0, windowSteps: 256 });
+    Audio.warmWorkletLanes?.()?.catch?.(() => {});
   }
   /** 8-BIT on or off — SETTINGS ▸ SOUNDTRACK; a song playing goes over on its next beat. */
   toggleEightBit() {
@@ -5700,6 +5710,12 @@ export class SoundTestState {
    */
   openPendingClub({ rec, song, from, birth = false, room = null }) {
     this.pending = { from, rec, song };
+    // ITS TABLES NOW, in idle slices, while IT'S ALIVE! plays or the BOLT discharges (22 Oct
+    // 2026, docs/AUDIO_SYNTH_AUDIT_PLAN.md): a cold TNGR-2 table set expanded in one block when
+    // the club's first notes asked for it — up to ~230 ms on the downbeat, and the iPad
+    // crackled there (a 238 ms frame and a 0.73 quarter as a club song started).
+    Audio.warmSongTables?.(song?.bank, song?.mix, { idle: true })?.catch?.(() => {});
+    Audio.warmBakedCues?.()?.catch?.(() => {});   // IT'S ALIVE!'s thunder, as a buffer
     if (birth) setState(new BangerBirthState({ rec, lever: pickBirthSwitch(), subject: pickBirthFace().paint, onDone: () => this.openClub(rec, this.pending) }));
     else this.openClub(rec, this.pending, room);
   }

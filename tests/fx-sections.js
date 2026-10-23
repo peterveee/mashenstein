@@ -332,7 +332,7 @@ try {
         onsets[id] = (first / 44100) * 1000;
       }
       return { lags: out, onsets };
-    }, EFFECTS.map((d) => d.id));
+    }, EFFECTS.filter((d) => !d.virtual).map((d) => d.id));   // the Channel card is no node
     await page.close();
     // The Doubler's copy is ~14.5ms behind by design, and the cross-correlation below finds
     // the copy; its dry leg is the input bit for bit and on time, so a section switching it

@@ -68,6 +68,20 @@ const suites = [
   'tests/audio-audit-selftest.js',
   // An idle strip sleeps on WebKit and wakes before its next note.
   'tests/strip-sleep.js',
+  // A Tone pool keeps only the slots its recent notes asked for.
+  'tests/pool-trim.js',
+  // A worklet lane built twice, or under a song change, leaves no node behind.
+  'tests/worklet-lane-races.js',
+  // A song's first note through an insert chain that slept through the last song.
+  'tests/chain-sleep-rebuild.js',
+  // The guard's STOP: a second of no music that keeps the song's clock.
+  'tests/music-hush.js',
+  'tests/audio-restart.js',
+  'tests/channel-card.js',
+  // The thunder and the boom, rendered once and played from a buffer.
+  'tests/baked-cues.js',
+  // The canary song: every sleep, trim and warm-up path, lane by lane.
+  'tests/audio-canary.js',
   'tests/performance-test.js',
   'tests/performance-handoff.js',
   // The Surge cycles every cabinet's shipped backdrop, not the ones they replaced.
@@ -131,6 +145,7 @@ const suites = [
   'tests/group-buses-desk.js',
   'tests/stem-linearity.js',
   'tests/mixer-layout.js',
+  'tests/preset-browser.js',
   // The desk's watchdog decides whether to reduce its own drawing. Beside the layout
   // suite because it is the same kind of claim — a contract about the desk, provable
   // without a browser — and browserless for a sharper reason: a threshold machine
@@ -259,6 +274,7 @@ const suites = [
   // Musical note processors are nondestructive and shared by live game playback and
   // offline export. Keep their ordering and duration arithmetic browserless and exact.
   'tests/note-fx.js',
+  'tests/guitar-voicing.js',
   'tests/note-fx-render.js',
   // Auto Portamento: which neighbouring melody notes slide, as MUSIC — the policy, the saved
   // settings that fail closed, the presets that can take a slide, and the lane view that
@@ -316,6 +332,9 @@ const suites = [
   // an AudioWorkletProcessor live AND in the OfflineAudioContext its stems come out of.
   // Kept as a permanent regression now that it passes — see docs/TNGR-2-completion-spec.md §3.
   'tests/tngr2-worklet-proof.js',
+  // FZPP-6's proof, through its real controller, in Chromium and WebKit: the worklet renders
+  // the same samples as the Node reference the auditions were measured on.
+  'tests/fzpp6-worklet-proof.js',
   // The same gate, asked again for MRDR-3 — and worth asking twice rather than inheriting,
   // because MRDR-3 puts one thing in front of the mechanism that TNGR-2 never did: a CHORD
   // is ONE event whose tones sum into one shaper (docs/MRDR-3-worklet-spec.md §5.1), so the
@@ -379,6 +398,9 @@ const suites = [
   // takes its rate as an argument and is handed its frame, so it reaches for no worklet
   // global and the same source runs in both hosts.
   'tests/tngr2-dsp.js',
+  // FZPP-6's core in Node: tuning to the cent, decay, determinism, string assignment, the
+  // commuted body against the lane body, and an even level up the neck.
+  'tests/fzpp6-dsp.js',
   // The wavetable assets: finite, zero-DC, cyclic, band-limited per mip level, and —
   // the one that rots quietly — still matching the authoring they were generated from.
   'tests/tngr2-tables.js',
@@ -421,6 +443,7 @@ const suites = [
   'tests/key-mode-render.js',
   'tests/lfo.js',
   'tests/osc-sync.js',
+  'tests/wave-caches-finite.js',
   // And the half of that claim pot-coverage cannot make. It agrees at ROOT-key
   // granularity, so a leaf the full-window editor forgot to place hides behind the
   // hundred siblings sharing its root. This one is leaf-exact: every control the panel
@@ -485,6 +508,9 @@ const suites = [
   // CRLS-1's filter envelope on the native shape: the same sweep as KNDO-5 for the same
   // numbers, and STYLE: CLASSIC still Tone's own. Five renders.
   'tests/crls-filter-env.js',
+  // RMND-7's optional filter: a native cascade behind Tone's FM/AM classes, swept on the
+  // same envelope as CRLS-1, and absent from the preset until switched on. Four renders.
+  'tests/rmnd7-filter.js',
   // A native vibrato starts at the same point in its wobble wherever in a render quantum
   // its note lands. Twelve renders.
   'tests/vibrato-start.js',
@@ -755,6 +781,14 @@ const browserSuites = new Set([
   'tests/audio-leaks.js',
   'tests/audio-audit-selftest.js',
   'tests/strip-sleep.js',
+  'tests/pool-trim.js',
+  'tests/worklet-lane-races.js',
+  'tests/chain-sleep-rebuild.js',
+  'tests/music-hush.js',
+  'tests/audio-restart.js',
+  'tests/channel-card.js',
+  'tests/baked-cues.js',
+  'tests/audio-canary.js',
   'tests/character-editor-browser.js',
   'tests/render-culling-browser.js',
   'tests/lcd-cache-browser.js',
@@ -765,6 +799,7 @@ const browserSuites = new Set([
   'tests/tngr2-audio.js',
   'tests/tngr2-jit-bounce.js',
   'tests/tngr2-worklet-proof.js',
+  'tests/fzpp6-worklet-proof.js',
   'tests/mrdr3-worklet-proof.js',
   'tests/wasm-worklet-proof.js',
   'tests/mrdr3-farm.js',
@@ -783,6 +818,8 @@ const browserSuites = new Set([
   'tests/wndr9-drive.js',
   'tests/drive-ref.js',
   'tests/crls-filter-env.js',
+  'tests/rmnd7-filter.js',
+  'tests/mrdr3-fm-adsr.js',
   'tests/vibrato-start.js',
   'tests/sfx-routing.js',
   'tests/note-duration.js',
@@ -873,8 +910,8 @@ const soundSuites = [
   'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/key-mode-render.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js', 'tests/tngr2-audio.js',
-  'tests/tngr2-worklet-proof.js', 'tests/mrdr3-worklet-proof.js', 'tests/wasm-worklet-proof.js', 'tests/mrdr3-farm.js', 'tests/mrdr3-primitives.js', 'tests/mrdr3-params.js', 'tests/mrdr3-dsp-parity.js', 'tests/mrdr3-controller.js',
-  'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js',
+  'tests/tngr2-worklet-proof.js', 'tests/fzpp6-worklet-proof.js', 'tests/mrdr3-worklet-proof.js', 'tests/wasm-worklet-proof.js', 'tests/mrdr3-farm.js', 'tests/mrdr3-primitives.js', 'tests/mrdr3-params.js', 'tests/mrdr3-dsp-parity.js', 'tests/mrdr3-controller.js',
+  'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js', 'tests/fzpp6-dsp.js',
   'tests/tngr2-tables.js', 'tests/tngr2-schema.js', 'tests/tngr2-controller.js',
   // The preset schema: defaults, validation, and the migration that has to carry all 43
   // prototype-shaped presets into v1 without changing what any of them was measured at.
@@ -885,7 +922,7 @@ const soundSuites = [
   'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/synth-dropdown.js',
   'tests/pot-coverage.js',
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
-  'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js', 'tests/wndr9-drive.js', 'tests/drive-ref.js', 'tests/crls-filter-env.js', 'tests/vibrato-start.js',
+  'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js', 'tests/wndr9-drive.js', 'tests/drive-ref.js', 'tests/crls-filter-env.js', 'tests/rmnd7-filter.js', 'tests/vibrato-start.js',
   'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/mix-automation.js',
   'tests/fx-sections.js', 'tests/stereo-widener.js',
   'tests/group-buses.js', 'tests/group-buses-data.js', 'tests/group-buses-desk.js', 'tests/sidechain-duck.js', 'tests/chain-reapply.js',

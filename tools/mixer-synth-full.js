@@ -25,7 +25,11 @@
 // tests/synth-full-layout.js makes the same assertion in CI, because pot-coverage.js
 // works at root-key granularity and cannot see a missing leaf.
 
-import { envelopeGraph, responseGraph, filterModelOf } from './mixer-synth-graphs.js';
+import { registerPresetWindow, bringPresetWindowToFront } from './lib/preset-window-stack.js';
+import {
+  envelopeGraph, responseGraph, decayGraph, pluckGraph, stringsGraph, bodyGraph, handGraph, filterModelOf,
+} from './mixer-synth-graphs.js';
+import { fzpp6BodyModes } from '../src/engine/fzpp6/tables.js';
 import { isMrdrSynth } from '../src/engine/mrdr3/identity.js';
 import { createSynthKeyboard } from './mixer-synth-keyboard.js';
 import { WAVE_GLYPHS } from './lib/wave-glyphs.js';
@@ -36,7 +40,7 @@ import { synthDisplayName } from './lib/synth-display.js';
  * layout selector while this list names the family itself. */
 export const FULL_EDITORS = [
   'MRDR-3', 'TNGR-2', 'JMJR-4', 'drum', 'CRLS-1',
-  'KNDO-5', 'WNDR-9', 'RMND-2',
+  'KNDO-5', 'WNDR-9', 'RMND-7', 'FZPP-6',
 ];
 
 /**
@@ -61,6 +65,11 @@ const ENV_ROWS = { attack: 'ATTACK', decay: 'DECAY', sustain: 'SUSTAIN', release
 const FILTER_ROWS = { freq: 'CUTOFF', Q: 'RESONANCE', type: 'TYPE', slope: 'SLOPE' };
 const ENV_OPTIONAL = ['release'];
 const FILTER_OPTIONAL = ['slope'];
+// FZPP-6's RING card: how long the note rings, and how long its highs last.
+const RING_ROWS = { ring: 'RING', highs: 'HIGHS' };
+// ...and its PLUCK and BODY cards.
+const PLUCK_ROWS = { where: 'WHERE', hard: 'HARD' };
+const BODY_ROWS = { mix: 'MIX', size: 'SIZE' };
 
 /**
  * A waveform, drawn.
@@ -79,6 +88,8 @@ const GLYPH = {
   filter: 'M1,4 L10,4 C15,4 16,11 22,11',
   level: 'M1,11 C5,11 6,4 11,4 C16,4 17,11 22,11',
   pitch: 'M1,10 C5,10 7,3 11,3 S17,11 22,5',
+  // FM: a wave whose cycles crowd together and spread apart — the sidebands breathing.
+  fm: 'M1,7 C2,2 3,2 4,7 S5,12 6,7 S8,2 9,7 S12,12 14,7 S18,2 22,7',
 };
 
 /** `osc2` → `LAYER 2`, for the solo readout and the mixer cells. */
@@ -97,6 +108,7 @@ export function createSynthFull({
   // Guards are per-surface: the strip clears its own on every repaint, and one shared
   // list would mean its next build wiped ours and left half this window stuck at
   // whatever it last looked like. See `guardSet` in the editor.
+  registerPresetWindow(el);
   const guards = kit.guards();
 
   let showing = false;
@@ -307,7 +319,7 @@ export function createSynthFull({
     // only wants the door HERE — the KLNG-8's CURVE and RATE CURVE, which are one and
     // two per card rather than a trio, and have no business being a trio anywhere.
     const behindDoor = (r) => r.trio === 'curve' || r.door === 'curve';
-    const curveRows = curves ? spec.rows.filter(behindDoor) : [];
+    const curveRows = curves ? [...spec.rows, ...(spec.foot || [])].filter(behindDoor) : [];
     // AMP is env-or-through: whether this layer has an envelope of its own, or hands its
     // shaping to the Global Amp. That is an ON/OFF, and it belongs in the header with the
     // other on/offs rather than as a pair of words inside the card — it is the control
@@ -340,7 +352,7 @@ export function createSynthFull({
     // label fit and the pairing pass, so it goes through both with everything else.
     if (spec.foot?.length) {
       const grid = div('devgrid sfenv');
-      for (const row of spec.foot) grid.append(rowEl(row));
+      for (const row of spec.foot) if (!(curves && behindDoor(row))) grid.append(rowEl(row));
       c.append(grid);
     }
     // A card may ask for a denser grid than the window's default — see `grid` in
@@ -412,7 +424,15 @@ export function createSynthFull({
           onClick: () => { kit.pickWrite(ampRow, on ? 'through' : 'env'); kit.repaint(); },
         }));
       }
-      if (tabs) bar.append(tabs); else bar.append(span('sftitle', spec.title));
+      if (tabs) bar.append(tabs);
+      else {
+        // A card that is the engine's own idea — FZPP-6's PLUCK, RING and the rest — says
+        // what it is on its title: the hover is where a section nobody has met before gets
+        // explained, without a caption sitting on the board for ever.
+        const t = span('sftitle', spec.title);
+        if (spec.group?.tip) { t.title = spec.group.tip; t.style.cursor = 'help'; }
+        bar.append(t);
+      }
       // No solo here, and no COPY. Both belong to the LAYER, and the layer has a cell of
       // its own at the top of the window with the switch and the level already on it — a
       // second S on the oscillator card would be the same monitoring state offered twice,
@@ -734,7 +754,11 @@ export function createSynthFull({
   const sectionPanel = (host, p) => panelButton({
     card: host,
     label: p.label,
-    title: p.title || p.label,
+    // The door's tooltip explains what is behind it when the section says (FZPP-6's two
+    // ADVANCED doors); otherwise it is the section's name.
+    title: p.group?.tip || p.title || p.label,
+    // Two columns wide when asked.
+    ...(p.wide ? { wide: true } : {}),
     lit: !!(p.group?.optional && kit.sectionOn(p.group.optional)),
     build: (pop) => {
       if (p.group?.optional) {
@@ -806,7 +830,7 @@ export function createSynthFull({
       // carry "these are exclusive" on a channel other than colour, but it doubled the
       // width of every option and made a four-word row read as a form.
       else b.append(span('t', kit.short[o] ?? String(o).toUpperCase()));
-      b.title = String(o);
+      b.title = row.optionTips?.[o] ?? String(o);
       b.onclick = () => { kit.pickWrite(row, o); kit.repaint(); };
       opts.append(b);
     }
@@ -952,6 +976,7 @@ export function createSynthFull({
     RESONANCE: 'RES',
     'ENV AMOUNT': 'ENV AMT',
     'KEY FOLLOW': 'KEY FLW',
+    'RING FOLLOW': 'RING FLW',
     'PLS WIDTH': 'PLS WID',
     'PARTIAL SPREAD': 'PART SPRD',
     PARTIALS: 'PRTLS',
@@ -1062,14 +1087,18 @@ export function createSynthFull({
    * card. Without both directions the graph and pots would disagree during a gesture.
    */
   const addGraph = (c, spec, kind, pots, height) => {
-    const want = kind === 'filter' ? FILTER_ROWS : ENV_ROWS;
-    const rows = byLabel(spec.rows, want, kind === 'filter' ? FILTER_OPTIONAL : ENV_OPTIONAL);
+    const want = kind === 'filter' ? FILTER_ROWS : kind === 'ring' ? RING_ROWS
+      : kind === 'pluck' ? PLUCK_ROWS : kind === 'body' ? BODY_ROWS
+        : kind === 'strings' || kind === 'hand' ? {} : ENV_ROWS;
+    // The foot too: a seamed card (`splitCard`) keeps its envelope pots below the seam.
+    const rows = byLabel([...spec.rows, ...(spec.foot || [])], want,
+      kind === 'filter' ? FILTER_OPTIONAL : ENV_ROWS === want ? ENV_OPTIONAL : []);
     if (!rows) return;
     const onLive = (pairs) => {
       for (const [row, x] of pairs) pots.get(row.path)?.(x);
     };
     const graphOptions = {
-      rows, read: kit.read, writeMany: kit.writeMany, onLive,
+      rows, read: kit.read, writeMany: kit.writeMany, onLive, voice: () => kit.voice(),
       onStart: kit.beginUndo, onEnd: kit.endUndo,
       ...(height ? { h: height } : {}),
     };
@@ -1078,7 +1107,12 @@ export function createSynthFull({
     // because the window can change preset under the graph.
     const g = kind === 'filter'
       ? responseGraph({ ...graphOptions, model: () => filterModelOf(kit.voice()?.synth) })
-      : envelopeGraph(graphOptions);
+      : kind === 'ring' ? decayGraph(graphOptions)
+        : kind === 'pluck' ? pluckGraph(graphOptions)
+          : kind === 'strings' ? stringsGraph(graphOptions)
+            : kind === 'hand' ? handGraph(graphOptions)
+              : kind === 'body' ? bodyGraph({ ...graphOptions, modesOf: (b) => fzpp6BodyModes(b, 44100) })
+                : envelopeGraph(graphOptions);
     // Before the grid, after the header. The grid then takes `margin-top: auto`, so the
     // knob rows across a band land on one baseline whatever height the graph came out.
     c.classList.add('sfhasgraph');
@@ -1499,6 +1533,7 @@ export function createSynthFull({
     pendingFrame = requestAnimationFrame(() => {
       if (!showing) return;
       el.classList.add('show');
+      bringPresetWindowToFront(el);
       // One placement, from a point: an anchor element is reduced to its right edge and
       // its top, which is exactly what the element branch used to compute for itself.
       const ar = anchor?.getBoundingClientRect();

@@ -25,7 +25,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import {
   checkFullLayout, fullLayout, panelSpec, quickRows, stripPanelSpec,
-  copyLayerData, setCrls1Filter, setRmnd2Mode,
+  copyLayerData, setCrls1Filter, setRmnd7Mode,
 } from '../tools/mixer-voice-editor.js';
 import { VOICES } from '../src/data/voices.js';
 import { VoiceRack } from '../src/engine/voices.js';
@@ -36,7 +36,8 @@ let failed = 0;
 const fail = (msg) => { failed++; console.log(`FAIL: ${msg}`); };
 const ok = (msg) => console.log(`ok: ${msg}`);
 
-for (const [stored, branded] of [['Synth', 'CRLS-1'], ['MonoSynth', 'CRLS-1'], ['drum', 'KLNG-8']]) {
+for (const [stored, branded] of [['Synth', 'CRLS-1'], ['MonoSynth', 'CRLS-1'], ['drum', 'KLNG-8'],
+  ['RMND-2', 'RMND-7'], ['FMSynth', 'RMND-7'], ['AMSynth', 'RMND-7']]) {
   if (synthDisplayName(stored) !== branded) fail(`${stored} is branded ${synthDisplayName(stored)}, not ${branded}`);
 }
 if (!failed) ok('legacy CRLS-1 aliases and the drum kind use their public UI brands');
@@ -84,8 +85,9 @@ const SIMPLE_LABELS = {
   'WNDR-9': ['LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'BRIGHTNESS', 'PERCUSSION'],
   'CRLS-1': ['WAVE', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO'],
   // The bare fixture carries no `modulationIndex`, which IS how a preset says amplitude
-  // modulation — so this is RMND-2's AM surface. The FM one is asserted just below.
-  'RMND-2': ['CARRIER', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'RATIO'],
+  // modulation — so this is RMND-7's AM surface. The FM one is asserted just below.
+  'RMND-7': ['CARRIER', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'RATIO', 'AM DEPTH'],
+  'FZPP-6': ['LEVEL', 'TRANSPOSE', 'HARD', 'WHERE', 'RING', 'HIGHS', 'RELEASE', 'BODY', 'VIBRATO'],
 };
 for (const [synth, labels] of Object.entries(SIMPLE_LABELS)) {
   const surface = stripPanelSpec({ kind: 'tone', synth });
@@ -95,9 +97,9 @@ for (const [synth, labels] of Object.entries(SIMPLE_LABELS)) {
     fail(`${synth} Simple surface is ${JSON.stringify(actual)}, not ${JSON.stringify(labels)}`);
   } else if (actual.includes('FINE')) {
     fail(`${synth} Simple surface exposes FINE`);
-  } else if (['KNDO-5', 'CRLS-1', 'RMND-2'].includes(synth)) {
+  } else if (['KNDO-5', 'CRLS-1', 'RMND-7'].includes(synth)) {
     const graphical = surface.groups[0]?.rows.find((row) => row.graphical === 'wave');
-    const expectedLabel = synth === 'RMND-2' ? 'CARRIER' : 'WAVE';
+    const expectedLabel = synth === 'RMND-7' ? 'CARRIER' : 'WAVE';
     if (actual[0] !== expectedLabel || !graphical
       || !graphical.options.every((option) => WAVE_GLYPHS[option])) {
       fail(`${synth} Simple waveform selector is not first and graphical`);
@@ -174,15 +176,15 @@ if (crls1ToggleVoice.options.filter !== undefined
   } else ok('CRLS-1 Filter Off/On switches engines and restores the authored filter');
 }
 
-// ---- RMND-2: one synth, two destinations ------------------------------------
+// ---- RMND-7: one synth, two destinations ------------------------------------
 //
 // The merge's whole claim is that a player sees ONE instrument. So the two things that
 // could give it away are asserted here: Simple grows exactly one row in FM and nothing
 // else moves, and the MODE switch is lossless in both directions.
 
-const rmnd2Fm = {
+const rmnd7Fm = {
   kind: 'tone',
-  synth: 'RMND-2',
+  synth: 'RMND-7',
   options: {
     harmonicity: 3, modulationIndex: 8,
     oscillator: { type: 'sine' }, modulation: { type: 'sine' },
@@ -190,66 +192,68 @@ const rmnd2Fm = {
     modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0.02, release: 0.4 },
   },
 };
-const rmnd2FmSimple = stripPanelSpec(rmnd2Fm).groups[0]?.rows.map((row) => row.label);
-const rmnd2FmRows = stripPanelSpec(rmnd2Fm).groups[0]?.rows || [];
-if (!isDeepStrictEqual(rmnd2FmSimple, [
+const rmnd7FmSimple = stripPanelSpec(rmnd7Fm).groups[0]?.rows.map((row) => row.label);
+const rmnd7FmRows = stripPanelSpec(rmnd7Fm).groups[0]?.rows || [];
+if (!isDeepStrictEqual(rmnd7FmSimple, [
   'CARRIER', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'RATIO', 'FM DEPTH',
-]) || !isDeepStrictEqual(rmnd2FmSimple.slice(0, 7), SIMPLE_LABELS['RMND-2'])
-  || rmnd2FmRows.find((row) => row.label === 'ATTACK')?.startRow) {
-  fail(`RMND-2 FM Simple surface is ${JSON.stringify(rmnd2FmSimple)}`);
-} else ok('RMND-2 Simple adds FM DEPTH for a frequency-modulated preset and nothing else');
+]) || !isDeepStrictEqual(rmnd7FmSimple.slice(0, 7), SIMPLE_LABELS['RMND-7'].slice(0, 7))
+  || rmnd7FmRows.find((row) => row.label === 'ATTACK')?.startRow) {
+  fail(`RMND-7 FM Simple surface is ${JSON.stringify(rmnd7FmSimple)}`);
+} else ok('RMND-7 Simple adds FM DEPTH for a frequency-modulated preset and nothing else');
 
-// FM DEPTH is GREYED in Advanced rather than dropped, so the board never changes width —
-// the opposite policy to Simple, and deliberate: Advanced is where the switch lives, so
-// it is where a disabled control still has something to explain it.
-const rmnd2DepthRow = panelSpec(rmnd2Fm).groups
-  .find((group) => group.key === 'mod')?.rows.find((row) => row.label === 'FM DEPTH');
-const rmnd2ModeRowSpec = panelSpec(rmnd2Fm).groups
-  .find((group) => group.key === 'mod')?.rows.find((row) => row.label === 'MODE');
-if (typeof rmnd2DepthRow?.when !== 'function'
-  || rmnd2DepthRow.when(rmnd2Fm) !== true
-  || rmnd2DepthRow.when({ kind: 'tone', synth: 'RMND-2', options: {} }) !== false) {
-  fail('RMND-2 FM DEPTH is not guarded by the modulation destination');
-} else if (!rmnd2ModeRowSpec?.derived || rmnd2ModeRowSpec.path !== 'modulationIndex'
-  || !rmnd2ModeRowSpec.section) {
-  fail('RMND-2 MODE does not own the modulationIndex key as a derived, class-changing row');
-} else if (fullLayout(rmnd2Fm).bands[0].cols
-  !== fullLayout({ kind: 'tone', synth: 'RMND-2', options: {} }).bands[0].cols) {
-  fail('RMND-2 MODE changes the Advanced board width');
-} else ok('RMND-2 FM DEPTH greys with MODE and the Advanced board keeps its width');
+// ONE depth pot is visible at a time — FM DEPTH in FM, AM DEPTH in AM — through the
+// `hideWhen` "shown while" guard, so the pot under MODE is always "how much". Both rows
+// stay defined, so the board never changes width and each mode's number survives a switch.
+const rmnd7Am = { kind: 'tone', synth: 'RMND-7', options: {} };
+const rmnd7ModRows = panelSpec(rmnd7Fm).groups.find((group) => group.key === 'mod')?.rows || [];
+const rmnd7DepthRow = rmnd7ModRows.find((row) => row.label === 'FM DEPTH');
+const rmnd7AmDepthRow = rmnd7ModRows.find((row) => row.label === 'AM DEPTH');
+const rmnd7ModeRowSpec = rmnd7ModRows.find((row) => row.label === 'MODE');
+if (typeof rmnd7DepthRow?.hideWhen !== 'function' || typeof rmnd7AmDepthRow?.hideWhen !== 'function'
+  || rmnd7DepthRow.hideWhen(rmnd7Fm) !== true || rmnd7DepthRow.hideWhen(rmnd7Am) !== false
+  || rmnd7AmDepthRow.hideWhen(rmnd7Fm) !== false || rmnd7AmDepthRow.hideWhen(rmnd7Am) !== true
+  || rmnd7DepthRow.when || rmnd7AmDepthRow.when) {
+  fail('RMND-7 shows exactly one depth pot, the one its MODE uses');
+} else if (!rmnd7ModeRowSpec?.derived || rmnd7ModeRowSpec.path !== 'modulationIndex'
+  || !rmnd7ModeRowSpec.section) {
+  fail('RMND-7 MODE does not own the modulationIndex key as a derived, class-changing row');
+} else if (fullLayout(rmnd7Fm).bands[0].cols
+  !== fullLayout({ kind: 'tone', synth: 'RMND-7', options: {} }).bands[0].cols) {
+  fail('RMND-7 MODE changes the Advanced board width');
+} else ok('RMND-7 shows FM DEPTH in FM and AM DEPTH in AM, and the Advanced board keeps its width');
 
 // Lossless both ways: AM has nowhere to keep a depth, so the switch has to, and a preset
 // that has never been FM must still open somewhere Tone would have put it.
-const rmnd2Toggle = structuredClone(rmnd2Fm);
-rmnd2Toggle.options.modulationIndex = 25;
-setRmnd2Mode(rmnd2Toggle, 'am');
-if (rmnd2Toggle.options.modulationIndex !== undefined
-  || rmnd2Toggle.bypassed?.['options.modulationIndex'] !== 25) {
-  fail('RMND-2 AM did not remove the modulation index and hold it');
+const rmnd7Toggle = structuredClone(rmnd7Fm);
+rmnd7Toggle.options.modulationIndex = 25;
+setRmnd7Mode(rmnd7Toggle, 'am');
+if (rmnd7Toggle.options.modulationIndex !== undefined
+  || rmnd7Toggle.bypassed?.['options.modulationIndex'] !== 25) {
+  fail('RMND-7 AM did not remove the modulation index and hold it');
 } else {
-  setRmnd2Mode(rmnd2Toggle, 'fm');
-  const restored = structuredClone(rmnd2Toggle);
+  setRmnd7Mode(rmnd7Toggle, 'fm');
+  const restored = structuredClone(rmnd7Toggle);
   delete restored.bypassed;
-  if (rmnd2Toggle.options.modulationIndex !== 25
-    || !isDeepStrictEqual(restored.options, { ...rmnd2Fm.options, modulationIndex: 25 })) {
-    fail('RMND-2 FM did not restore the authored modulation index exactly');
-  } else ok('RMND-2 MODE round-trips the authored FM depth through AM and back');
+  if (rmnd7Toggle.options.modulationIndex !== 25
+    || !isDeepStrictEqual(restored.options, { ...rmnd7Fm.options, modulationIndex: 25 })) {
+    fail('RMND-7 FM did not restore the authored modulation index exactly');
+  } else ok('RMND-7 MODE round-trips the authored FM depth through AM and back');
 }
-const rmnd2NeverFm = { kind: 'tone', synth: 'RMND-2', options: { harmonicity: 1 } };
-setRmnd2Mode(rmnd2NeverFm, 'fm');
-if (rmnd2NeverFm.options.modulationIndex !== 10) {
-  fail(`RMND-2 first switch to FM opened at ${rmnd2NeverFm.options.modulationIndex}, not Tone's 10`);
-} else ok('RMND-2 first switch to FM opens at Tone\u2019s own modulation index');
+const rmnd7NeverFm = { kind: 'tone', synth: 'RMND-7', options: { harmonicity: 1 } };
+setRmnd7Mode(rmnd7NeverFm, 'fm');
+if (rmnd7NeverFm.options.modulationIndex !== 10) {
+  fail(`RMND-7 first switch to FM opened at ${rmnd7NeverFm.options.modulationIndex}, not Tone's 10`);
+} else ok('RMND-7 first switch to FM opens at Tone\u2019s own modulation index');
 
 // The engine picks the Tone class from that same structure, so the panel and the rack
 // cannot drift about which instrument a preset actually is.
-const rmnd2Class = (voice) => VoiceRack.buildSpec(voice);
-if (rmnd2Class(rmnd2Fm) && rmnd2Class({ kind: 'tone', synth: 'RMND-2', options: {} })) {
-  ok('RMND-2 builds a spec in both modes');
+const rmnd7Class = (voice) => VoiceRack.buildSpec(voice);
+if (rmnd7Class(rmnd7Fm) && rmnd7Class({ kind: 'tone', synth: 'RMND-7', options: {} })) {
+  ok('RMND-7 builds a spec in both modes');
 }
 
 for (const [synth, isFm] of [['FMSynth', true], ['AMSynth', false]]) {
-  const voice = isFm ? { ...rmnd2Fm, synth } : {
+  const voice = isFm ? { ...rmnd7Fm, synth } : {
     kind: 'tone', synth,
     options: {
       harmonicity: 2,
@@ -259,12 +263,12 @@ for (const [synth, isFm] of [['FMSynth', true], ['AMSynth', false]]) {
     },
   };
   const labels = stripPanelSpec(voice).groups[0]?.rows.map((row) => row.label);
-  const expected = isFm ? rmnd2FmSimple : SIMPLE_LABELS['RMND-2'];
+  const expected = isFm ? rmnd7FmSimple : SIMPLE_LABELS['RMND-7'];
   if (stripPanelSpec(voice).mode !== 'quick' || !isDeepStrictEqual(labels, expected)
     || !fullLayout(voice) || checkFullLayout(voice).length
-    || synthDisplayName(synth) !== 'RMND-2') {
-    fail(`${synth} legacy alias did not resolve to the matching RMND-2 editor`);
-  } else ok(`${synth} legacy alias resolves to the RMND-2 Simple/Advanced editor`);
+    || synthDisplayName(synth) !== 'RMND-7') {
+    fail(`${synth} legacy alias did not resolve to the matching RMND-7 editor`);
+  } else ok(`${synth} legacy alias resolves to the RMND-7 Simple/Advanced editor`);
 }
 
 for (const [synth, filtered] of [['Synth', false], ['MonoSynth', true]]) {
@@ -837,8 +841,8 @@ const aliasVoices = [
   { synth: 'JMJR-4' },
   { synth: 'KNDO-5' },
   { synth: 'WNDR-9' },
-  { synth: 'RMND-2' },
-  { synth: 'RMND-2', options: { modulationIndex: 8 } },
+  { synth: 'RMND-7' },
+  { synth: 'RMND-7', options: { modulationIndex: 8 } },
 ];
 let checkedAliases = 0;
 let taperDrift = 0;
@@ -876,7 +880,7 @@ else if (!taperDrift) {
 // The per-card badges and the title bar's total are the invariant rendered. If they are
 // ever typed rather than derived, this is what catches it.
 const L = fullLayout(VOICE, { layer: 1 });
-const cardRows = (c) => (c.rows?.length || 0)
+const cardRows = (c) => (c.rows?.length || 0) + (c.foot?.length || 0)
   + (c.sub || []).reduce((n, s) => n + s.rows.length, 0)
   + (c.panels || []).reduce((n, p) => n + p.rows.length, 0);
 let onScreen = 0;
@@ -904,7 +908,7 @@ if (!Number.isInteger(perLayer)) {
 // KNDO-5 is 3: its Pitch Env, its filter response, and the Filter Env card that
 // replaced the SWEEP TO / SWEEP TIME pair when this panel took MRDR-3's filter model.
 const GRAPH_COUNTS = {
-  'KNDO-5': 3, 'WNDR-9': 1, 'CRLS-1': 3, 'RMND-2': 2,
+  'KNDO-5': 3, 'WNDR-9': 1, 'CRLS-1': 3, 'RMND-7': 5,
 };
 for (const [synth, graphCount] of Object.entries(GRAPH_COUNTS)) {
   const voice = { kind: 'tone', synth };
@@ -958,7 +962,7 @@ const settingsBands = {
   'KNDO-5': 'kndo-5',
   'WNDR-9': 'wndr-9',
   'CRLS-1': 'crls-1',
-  'RMND-2': 'rmnd-2',
+  'RMND-7': 'rmnd-7',
 };
 const cellHasSettings = (cell) => cell?.kind === 'card'
   ? cell.card?.title === 'Settings'
@@ -992,24 +996,25 @@ if (additiveBand.cells.some((cell) => cell.kind !== 'stack' || cell.cards.length
   fail('WNDR-9 Advanced leaves a column unpaired');
 } else ok('WNDR-9 Advanced pairs all four columns');
 
-// RMND-2's board is the SAME BOARD in both modes — same cards, same order, same width.
+// RMND-7's board is the SAME BOARD in both modes — same cards, same order, same width.
 // That is the point of the merge: MODE greys one pot rather than rebuilding the window,
 // so a preset does not move under you when you change what its modulator reaches.
 for (const [mode, options] of [['am', {}], ['fm', { modulationIndex: 8 }]]) {
-  const voice = { synth: 'RMND-2', options };
+  const voice = { synth: 'RMND-7', options };
   const band = fullLayout(voice).bands[0];
-  const firstStack = band.cells[0]?.kind === 'stack'
-    ? band.cells[0].cards.map((item) => item.card?.title) : [];
+  const firstStack = band.cells.filter((cell) => cell.kind === 'stack')
+    .map((cell) => cell.cards.map((item) => item.card?.title));
   const cardTitles = band.cells.filter((cell) => cell.kind === 'card')
     .map((cell) => cell.card?.title);
-  const expectedStack = ['Osc', 'Mod'];
-  const expectedCards = ['Mod Env', 'Amp', 'Settings'];
+  // The pitch envelope under the modulator's, the filter pair after them: the signal.
+  const expectedStack = [['Osc', 'Mod'], ['Mod Env', 'Pitch Env'], ['Filter', 'Filter Env']];
+  const expectedCards = ['Amp', 'Settings'];
   if (JSON.stringify(firstStack) !== JSON.stringify(expectedStack)
     || JSON.stringify(cardTitles) !== JSON.stringify(expectedCards)) {
-    fail(`RMND-2 ${mode} Advanced order is not OSC, MOD ENV, AMP, SETTINGS: `
+    fail(`RMND-7 ${mode} Advanced order is not OSC, MOD ENV/PITCH ENV, FILTER/FILTER ENV, AMP, SETTINGS: `
       + `${JSON.stringify({ firstStack, cardTitles })}`);
   } else {
-    ok(`RMND-2 ${mode} Advanced puts OSCILLATORS on top and VCA after MODULATION ENV`);
+    ok(`RMND-7 ${mode} Advanced puts OSCILLATORS on top and VCA after MODULATION ENV`);
   }
 }
 
@@ -1042,7 +1047,7 @@ const SEAMS = [
   ['WNDR-9', 'wndr-9', 'Settings', 'VIB DEPTH'],
   ['WNDR-9', 'wndr-9', 'Effects', 'CHORUS'],
   ['WNDR-9', 'wndr-9', 'Percussion', 'ATTACK'],
-  ['RMND-2', 'rmnd-2', 'Settings', 'VIB DEPTH'],
+  ['RMND-7', 'rmnd-7', 'Settings', 'VIB DEPTH'],
 ];
 const findCard = (band, title) => {
   for (const cell of band?.cells || []) {

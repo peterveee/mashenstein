@@ -173,10 +173,32 @@ export const soundtrack8bit = () => soundtrackSave?.settings?.soundtrack === '8b
 const devBuild = () => typeof window !== 'undefined' && !!window.__MASH_BUILD__;
 /** Whether the SOUNDTRACK setting is LIGHT (dev builds only). */
 export const soundtrackLight = () => devBuild() && soundtrackSave?.settings?.soundtrack === 'light';
-/** The setting as the menu shows it: 'original', 'light' (dev) or '8bit'. */
-export const soundtrackMode = () => (soundtrack8bit() ? '8bit' : soundtrackLight() ? 'light' : 'original');
+/** The setting as the menu shows it: 'original', 'light' (dev) or '8bit' — or 'auto8bit' while
+ *  the guard's 8-bit is playing over an ORIGINAL or LIGHT setting. */
+export const soundtrackMode = () => (soundtrack8bit() ? '8bit' : relief8bit ? 'auto8bit' : soundtrackLight() ? 'light' : 'original');
+// THE PLAYER OVERRULES THE GUARD (Peter, 22 Oct 2026, from the iPad: Neon tipped in the jukebox,
+// the guard went 8-bit — smoothly — and stayed 8-bit for every song after, while SETTINGS said
+// ORIGINAL and could not be switched back: "someone's using it on an iPhone that's in low power
+// mode, and then all of a sudden it's not ... they shouldn't have to get out and back in"). Any
+// choice the player makes about the soundtrack takes the guard's 8-bit off; if the device still
+// cannot carry the song, the guard simply goes again.
+let onPlayerSoundtrack = null;
+/** main.js: told when the player has taken the soundtrack back from the guard. */
+export function setPlayerSoundtrackListener(fn) { onPlayerSoundtrack = fn; }
+function playerTakesSoundtrack() {
+  if (!relief8bit && !reliefDeep) return false;
+  relief8bit = false;
+  reliefDeep = false;
+  try { onPlayerSoundtrack?.(); } catch { /* a log */ }
+  return true;
+}
 /** SETTINGS ▸ SOUNDTRACK's next value: ORIGINAL ↔ 8-BIT, and LIGHT between them in a dev build. */
 export function cycleSoundtrack() {
+  // Showing AUTO 8-BIT: the press takes it back to the player's own setting, unchanged.
+  if (soundtrackMode() === 'auto8bit') {
+    if (playerTakesSoundtrack()) retuneOnTheBeat();
+    return;
+  }
   const order = devBuild() ? ['original', 'light', '8bit'] : ['original', '8bit'];
   const next = order[(order.indexOf(soundtrackMode()) + 1) % order.length];
   if (!soundtrackSave?.settings) return;
@@ -237,12 +259,23 @@ export function setReliefDeep(on) {
   reliefDeep = !!on;
   retuneOnTheBeat();
 }
-/** `mix` with every lane of `bank` but the drums, `bass` and `lead` muted. */
+/**
+ * `mix` with every lane of `bank` but the drums, `bass` and `lead` muted — the mix's LAYERS
+ * too (its Duplicate-track copies, `mix.layers`), a drum layer apart. Those are not in the song
+ * bank's lane list, and until 22 Oct 2026 DEEP left every one of them playing: the canary's load
+ * song is 31 layers, and DEEP muted one lane of 32 (work/local/_probe-guard-levers.mjs); ten of
+ * the game's songs have layers.
+ */
 export function deepReliefMix(bank, mix) {
   const lanes = { ...(mix?.lanes || {}) };
+  const mute = (key) => { lanes[key] = { ...(lanes[key] || {}), mute: true }; };
   for (const { key } of laneList(bank)) {
     if (key === 'bass' || key === 'lead' || PERCUSSION_LANES.includes(baseLane(key))) continue;
-    lanes[key] = { ...(lanes[key] || {}), mute: true };
+    mute(key);
+  }
+  for (const layer of mix?.layers || []) {
+    if (!layer?.key || PERCUSSION_LANES.includes(baseLane(layer.from || layer.key))) continue;
+    mute(layer.key);
   }
   return { ...mix, lanes };
 }
@@ -350,7 +383,13 @@ export function installSoundtrack(save) {
 }
 /** Change the setting; a song playing goes over to the other soundtrack on its next beat. */
 export function setSoundtrack8bit(on) {
-  if (!soundtrackSave?.settings || soundtrack8bit() === !!on) return;
+  if (!soundtrackSave?.settings) return;
+  // The jukebox's 8-BIT pressed off while the guard's 8-bit plays: that is the player's say.
+  if (!on && !soundtrack8bit() && relief8bit) {
+    if (playerTakesSoundtrack()) retuneOnTheBeat();
+    return;
+  }
+  if (soundtrack8bit() === !!on) return;
   const before = eightBitNow();
   soundtrackSave.settings.soundtrack = on ? '8bit' : 'original';
   try { soundtrackSave.persist?.(); } catch { /* kept for this session */ }
@@ -360,19 +399,23 @@ export function setSoundtrack8bit(on) {
  * The song playing, sent through the filter again on its next beat — its own mix as it was
  * handed in (Audio.mixSource), so the filter decides afresh which soundtrack it is.
  */
+// Only the latest retune lands, and with the mix the song has WHEN it lands (22 Oct 2026, Stage
+// G): two quick toggles used to race their beats, and a club swap made while one waited was
+// put back by the mix it had captured.
+let retuneSeq = 0;
 export function retuneOnTheBeat() {
   const bank = Audio.sourceBank;
   if (!bank || !Audio.bank || !Audio.ctx) return;
-  const mix = Audio.mixSource;
+  const token = ++retuneSeq;
   const giveUp = performance.now() + 3000;
   const poll = () => {
-    if (Audio.sourceBank !== bank || !Audio.bank) return;
+    if (token !== retuneSeq || Audio.sourceBank !== bank || !Audio.bank) return;
     if (Number.isFinite(Audio.nextTime) && Audio.step % 4 === 0) {
-      try { handOver(bank, mix, Audio.nextTime); } catch { /* plays on as it was */ }
+      try { handOver(bank, Audio.mixSource, Audio.nextTime); } catch { /* plays on as it was */ }
       return;
     }
     if (performance.now() < giveUp) requestAnimationFrame(poll);
-    else { try { handOver(bank, mix, Audio.ctx.currentTime); } catch { /* as it was */ } }
+    else { try { handOver(bank, Audio.mixSource, Audio.ctx.currentTime); } catch { /* as it was */ } }
   };
   requestAnimationFrame(poll);
 }

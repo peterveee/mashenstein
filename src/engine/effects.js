@@ -370,14 +370,48 @@ function reverbImpulse(ctx, decay, preDelay) {
  * generated here, in a loop, so a decay change is immediate rather than a promise the
  * desk has to await mid-note. `ready` is kept, resolved, for the callers that do.
  */
+// CONVOLVERS ARE POOLED, PER CONTEXT (23 Oct 2026). WebKit never gives a convolver's kernels
+// back while its context lives — not on `buffer = null`, not on disconnect, not on collection
+// (work/local/_probe-ensure-memory.mjs) — and every song change rebuilt each reverb insert
+// from a new ConvolverNode: ~48 MB more for every song in the jukebox, until the page was
+// killed. A reverb that is disposed parks its convolver here under the impulse it holds, and
+// the next reverb wanting that impulse takes it back, kernels and all. The impulse buffers are
+// cached the same way (2 MB each, immutable, shareable).
+const CONV_POOL = new WeakMap();   // ctx → Map(sig → ConvolverNode[])
+const IR_CACHE = new WeakMap();    // ctx → Map(sig → AudioBuffer)
+const poolOf = (map, ctx) => { let m = map.get(ctx); if (!m) { m = new Map(); map.set(ctx, m); } return m; };
+const irSig = (decay, preDelay) => `${decay}|${preDelay}`;
+function impulseFor(ctx, decay, preDelay) {
+  const cache = poolOf(IR_CACHE, ctx);
+  const sig = irSig(decay, preDelay);
+  let buf = cache.get(sig);
+  if (!buf) { buf = reverbImpulse(ctx, decay, preDelay); cache.set(sig, buf); }
+  return buf;
+}
+function takeConvolver(ctx, sig) {
+  const pool = poolOf(CONV_POOL, ctx);
+  const free = pool.get(sig);
+  const conv = free?.pop();
+  if (conv) return { conv, ready: true };
+  const fresh = ctx.createConvolver();
+  // Left on, as Tone leaves it: the tail then holds its level as the decay changes,
+  // instead of a longer room being a louder one.
+  fresh.normalize = true;
+  return { conv: fresh, ready: false };
+}
+function parkConvolver(ctx, sig, conv) {
+  if (!sig || typeof ctx.startRendering === 'function') return;   // an offline render ends with its context
+  const pool = poolOf(CONV_POOL, ctx);
+  if (!pool.has(sig)) pool.set(sig, []);
+  pool.get(sig).push(conv);
+}
+
 export function makeReverb(ctx, params) {
   const state = { decay: 2, preDelay: 0.01, low: 0, mid: 0, high: 0, width: 1, wet: 0.4, ...params };
   const input = ctx.createGain();
   const output = ctx.createGain();
-  const conv = ctx.createConvolver();
-  // Left on, as Tone leaves it: the tail then holds its level as the decay changes,
-  // instead of a longer room being a louder one.
-  conv.normalize = true;
+  const taken = takeConvolver(ctx, irSig(Math.max(0.05, state.decay), Math.max(0, state.preDelay)));
+  const conv = taken.conv;
   const wetGain = ctx.createGain();
   const dryGain = ctx.createGain();
   // EQ the tail, not the dry input. This is deliberately the same broad three-band
@@ -420,12 +454,12 @@ export function makeReverb(ctx, params) {
   input.connect(dryGain); dryGain.connect(output); wetGain.connect(output);
   input.connect(conv); conv.connect(low);
 
-  let built = null;                       // what the current buffer was built for
+  let built = taken.ready ? irSig(Math.max(0.05, state.decay), Math.max(0, state.preDelay)) : null;   // what the buffer holds
   const rebuild = () => {
-    const sig = `${state.decay}|${state.preDelay}`;
+    const sig = irSig(Math.max(0.05, state.decay), Math.max(0, state.preDelay));
     if (sig === built) return;
     built = sig;
-    conv.buffer = reverbImpulse(ctx, state.decay, state.preDelay);
+    conv.buffer = impulseFor(ctx, Math.max(0.05, state.decay), Math.max(0, state.preDelay));
   };
   const mix = () => {
     // Equal power, which is what Tone crossfades a wet/dry with: a send sitting at
@@ -469,6 +503,8 @@ export function makeReverb(ctx, params) {
   node.dispose = () => {
     node.disconnect();
     try { conv.disconnect(); } catch { /* fine */ }
+    // Back to the pool with the impulse it holds, for the next reverb that wants it.
+    parkConvolver(ctx, built, conv);
     try {
       low.disconnect(); mid.disconnect(); high.disconnect(); widthInput.disconnect();
       widthSplit.disconnect(); widthMerge.disconnect(); widthMid.disconnect(); widthSide.disconnect();
@@ -4268,6 +4304,29 @@ export const EFFECTS = [
     labels: { tension: 'TENSION', damping: 'DAMPING', drip: 'DRIP', wet: 'MIX' } },
   // Ours, not Tone's — Tone.Reverb fills its impulse response from Math.random, so
   // every render of every song carrying one was a different file. See makeReverb.
+  // THE CHANNEL CARD (23 Oct 2026; Peter: "what if the special effect was a recreation of the
+  // entire channel strip so we could adjust bass/treble, mid/delay/reverb as a single faux
+  // effect?"). Not a node: for its section the lane's own EQ moves by these dB and its delay
+  // and reverb SENDS go up by these amounts — the aux delay and reverb the song already has —
+  // then back. Costs nothing on the audio thread, where a Spot FX reverb was a convolution
+  // per lane per section. Sections only; the mixer applies it (makeStrip applyStripFx).
+  // In the channel strip's order — treble at the top — then the sends, then LEVEL (dB on the
+  // fader) and PAN, so a section can be a volume or pan move without a Gain card. Every one is
+  // an OFFSET on what the channel is set to, ± (the sends' sum is held to 0…1), so a section
+  // can take a lane's reverb away as well as add some.
+  { id: 'strip', name: 'Channel', short: 'Chan', cost: 0, virtual: true, sectionOnly: true,
+    params: ['high', 'mid', 'low', 'delay', 'reverb', 'level', 'pan'],
+    defaults: { high: 0, mid: 0, low: 0, delay: 0, reverb: 0, level: 0, pan: 0 },
+    ranges: {
+      high: { min: -18, max: 18, step: 0.5, unit: 'dB' },
+      mid: { min: -18, max: 18, step: 0.5, unit: 'dB' },
+      low: { min: -18, max: 18, step: 0.5, unit: 'dB' },
+      delay: { min: -1, max: 1, step: 0.01 },
+      reverb: { min: -1, max: 1, step: 0.01 },
+      level: { min: -24, max: 12, step: 0.5, unit: 'dB' },
+      pan: { min: -1, max: 1, step: 0.05 },
+    },
+    labels: { high: 'TREBLE', mid: 'MID', low: 'BASS', delay: 'DELAY SEND', reverb: 'REVERB SEND', level: 'LEVEL', pan: 'PAN' } },
   { id: 'reverb', name: 'Reverb', cost: 0.75, custom: makeReverb,
     params: ['decay', 'preDelay', 'low', 'mid', 'high', 'width', 'wet'],
     defaults: { decay: 2, preDelay: 0.01, low: 0, mid: 0, high: 0, width: 1, wet: 0.4 },
@@ -4871,6 +4930,7 @@ function makeMidSideCompressor(ctx, def, params = {}) {
 export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   const def = EFFECT_BY_ID[id];
   if (!def) return null;
+  if (def.virtual) return null;   // the Channel card: no node; the strip applies it
   if (def.id === 'compressor') {
     if (!ctx) return null;
     try {

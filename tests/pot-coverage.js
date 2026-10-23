@@ -112,7 +112,7 @@ const clean = (keys) => new Set([...keys].filter((k) => !BUILTIN.has(k) && !STRU
 const SHARED = clean(readsIn(read('src/engine/audio.js')));
 
 const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'KNDO-5' && s !== 'WNDR-9'
-  && s !== 'MRDR-3' && s !== 'TNGR-2' && s !== 'JMJR-4');
+  && s !== 'MRDR-3' && s !== 'TNGR-2' && s !== 'JMJR-4' && s !== 'FZPP-6');
 
 /**
  * One case per play path. `methods` is what `play` dispatches to for that voice — plus,
@@ -142,14 +142,23 @@ const CASES = [
     methods: ['_playTngr2Node', 'warmTngr2Lane', '_collectTngr2', 'flushTngr2Offline',
       '_tngr2Output'],
     also: ['src/engine/tngr2/controller.js'] },
+  // FZPP-6 goes through TNGR-2's rack machinery (WORKLET_LANES in voices.js), and its
+  // controller and compiler read the voice: the `fzpp6` block, the shared key mode, glide
+  // and vibrato (schema.js), and the Effects card's drive keys (tables.js).
+  { name: 'FZPP-6', voice: { synth: 'FZPP-6', fzpp6: { filter: {} } },
+    methods: ['_playTngr2Node', 'warmTngr2Lane', '_collectTngr2', 'flushTngr2Offline',
+      '_tngr2Output'],
+    also: ['src/engine/fzpp6/controller.js', 'src/engine/fzpp6/schema.js', 'src/engine/fzpp6/tables.js'] },
   // JMJR-4 reads its own block through its compiler and the shared keys in the play path.
   { name: 'JMJR-4', voice: { synth: 'JMJR-4', jmjr4: { amp: {} } },
     methods: ['_playJmjr4', '_speakJmjr4', '_jmjr4Bus', '_jmjr4FlutterSource', '_jmjr4Line', '_jmjr4Patch'],
     also: ['src/engine/jmjr4/compile.js'] },
+  // RMND-7 alone reads `filter` and `pitch` on this path — its native cascade and pitch
+  // envelope, built in a helper of its own so CRLS-1 is not charged with the keys.
   ...POOLED.map((synth) => ({
     name: synth,
-    voice: { synth },
-    methods: ['play', '_pool', 'buildSpec', 'refresh'],
+    voice: { synth, ...(synth === 'RMND-7' ? { filter: {} } : {}) },
+    methods: ['play', '_pool', 'buildSpec', 'refresh', ...(synth === 'RMND-7' ? ['rmnd7Native'] : [])],
   })),
 ];
 

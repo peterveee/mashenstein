@@ -27,7 +27,7 @@ for (const r of results) {
   // audio cost, but each one held for the rest of the session, which on a phone is memory.
   // Until 21 Oct 2026: JMJR-4's flutter, vibrato and jitter (2,784 more in 40 s of an
   // eight-lane choir — stopped after their carriers), and every note of the Tone pool, CRLS-1
-  // and RMND-2 (Tone disposed each note's oscillator before its own stop; engine/tone-retire.js).
+  // and RMND-7 (Tone disposed each note's oscillator before its own stop; engine/tone-retire.js).
   // Any growth confirmed by a third census fails: every clean lane reads exactly flat.
   assert.ok(!r.leak, `${r.subject}: grew in ${r.leakIn.join(', ')} — wired ${r.wiredA} → ${r.wiredB} → ${r.wiredC}, live ${r.liveA} → ${r.live}: ${JSON.stringify(r.openSources)}`);
   console.log(`ok: ${r.subject} leaves ${r.wiredB} wired both times (${r.wiredGrowth >= 0 ? '+' : ''}${r.wiredGrowth})`);

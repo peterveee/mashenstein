@@ -13,7 +13,7 @@
 //   MRDR-3  a hammer: a noise layer gone in 40 ms, and a keytracked filter envelope that
 //           opens on the strike and closes over the note.
 //   TNGR-2  wavetable position swept by the envelope, bright into dark.
-//   RMND-2  two-operator FM with a decaying index — the DX-era answer.
+//   RMND-7  two-operator FM with a decaying index — the DX-era answer.
 //
 // Usage: node tools/render-piano-auditions.js [id ...]
 // Writes work/auditions/pianos/<nn>-<id>.wav

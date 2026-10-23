@@ -201,6 +201,15 @@ export async function tngr2Lane(ctx, laneKey, { stored, seed = 0, maxVoices = 16
     return existing;
   }
   await ensureTngr2Dsp(ctx);
+  // WHAT CHANGED WHILE THE DSP LOADED (22 Oct 2026, Stage G; tests/worklet-lane-races.js).
+  // The context's lanes released — a song change — and this build is for a lane nobody is
+  // playing now: build nothing. Before this, the node went into the released state, where
+  // nothing would ever stop it. Or another build of the same lane got there first — the Lab
+  // warms on every style change, the club on every DICE, the scheduler on its first note —
+  // and that lane is the lane: take it, as a patch change, rather than build a second node
+  // and orphan one of them. Both used to leave a node holding its own copy of the tables.
+  if (contexts.get(ctx) !== state) return null;
+  if (state.lanes.has(laneKey)) return tngr2Lane(ctx, laneKey, { stored, seed, maxVoices, vibrato, effects });
   const tables = tablesFor(ctx, familiesOf(patch));
   const node = createTngr2Node(ctx, {
     tables, compiledPatch: compileTngr2Patch(params), maxVoices,
@@ -325,7 +334,13 @@ export function releaseTngr2Lane(ctx, laneKey) {
   return true;
 }
 
-/** Release every lane on a context — a song switch, a context replacement, a teardown. */
+/** The lanes a context has, for a rack that wants to choke them all (its dispose). */
+export function tngr2LanesOf(ctx) {
+  const state = contexts.get(ctx);
+  return state ? [...state.lanes.values()] : [];
+}
+
+/** Release every lane on a context — a context replacement, a teardown. */
 export function releaseTngr2Context(ctx) {
   const state = contexts.get(ctx);
   if (!state) return 0;

@@ -83,6 +83,9 @@ export const INTO_DROP_RUNUPS = Object.freeze([
 export const ROLL_SWELL = Object.freeze({ from: -12, shape: 'even' });
 
 export const REVERB_WASH = { id: 'reverb', params: { decay: 4.5, preDelay: 0.02, low: 0, mid: 0, high: -3, width: 1, wet: 0.55 } };
+// On a LANE, the wash is the Channel card's reverb send (effects.js 'strip'; 23 Oct 2026) —
+// the master keeps the real room, there is only ever one of it.
+export const LANE_WASH = { id: 'strip', params: { reverb: 0.55, high: -3 } };
 export const BAND_PASS = { id: 'filter', params: { type: 'bandpass', frequency: 1400, Q: 1.3 } };
 export const ECHO_OUT = { id: 'delay', params: { sync: 1, division: 0.75, feedback: 0.65, wet: 0.55 } };
 
@@ -222,7 +225,7 @@ export function buildFx({ options, events, laneOf, total, lanesSounding, form = 
       const a = bar(s.from); const z = bar(s.to + 1);
       if (spot.quiet === 'underwater') master(a, z, SWEEP(700, 16000));
       else if (spot.quiet === 'echo') { for (const role of ['hook', 'piano']) if (lane(role)) auto = addSections(auto, lane(role), [section(a, z, PING_PONG)]); }
-      else if (spot.quiet === 'reverb') { for (const role of ['hook', 'piano', 'pad', 'choir']) if (lane(role)) auto = addSections(auto, lane(role), [section(a, z, REVERB_WASH)]); }
+      else if (spot.quiet === 'reverb') { for (const role of ['hook', 'piano', 'pad', 'choir']) if (lane(role)) auto = addSections(auto, lane(role), [section(a, z, LANE_WASH)]); }
     }
   }
   // The intro, its own way.

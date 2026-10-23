@@ -55,7 +55,7 @@ export function freezeRenderSpan(bank, lane, trackNoteFx = null, {
       const len = effectiveStepLen(songBar.b, lane, sourceIndex, resolution);
       const config = resolveNoteFx(trackNoteFx, bar, lane);
       let events;
-      if (config?.strum?.enabled || config?.arp?.enabled) {
+      if (config?.strum?.enabled || config?.arp?.enabled || config?.guitar?.enabled) {
         events = processor.process({ laneKey: lane, value, len, step, spb, config, barIndex });
       } else if (audible(value)) {
         events = [{ delay: 0, len: longest(len) }];

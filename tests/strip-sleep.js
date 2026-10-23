@@ -10,6 +10,11 @@
 //   2. A lane that plays one short note every four seconds goes to sleep between its notes …
 //   3. … and every one of those notes is heard at full level — the wake comes first.
 //   4. With deep sleep off (the desk, Chromium) nothing sleeps.
+//
+// Both lanes sit in a Spot FX section the whole time, which pins its branch
+// awake; a sleeping strip takes that branch with it — its sleeper is an analyser that would
+// pull the voices anyway (the iPad's canary load song, 22 Oct 2026: 0.30 through DEEP and two
+// STOPs) — and the notes after a sleep come through the branch at full level.
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,10 +59,15 @@ window.run = async (deep) => {
   const lead = new Array(32).fill(null); lead[0] = 261.63;
   const leadLen = new Array(32).fill(null); leadLen[0] = 2;
   const bank = { bpm: 120, lead, leadLen, bass: new Array(32).fill(null) };
-  Audio.setBank(bank, { voice: { leadVoice: 'bestClassicMono', bassVoice: 'bestClassicMono' } });
+  // The lead's is a chorus alone: a reverb's tail would outlast the gap between its notes.
+  const fx = (chain) => [{ from: [0, 0], to: [64, 0], chain }];
+  Audio.setBank(bank, { voice: { leadVoice: 'bestClassicMono', bassVoice: 'bestClassicMono' } },
+    { automation: { lead: { fx: fx([{ id: 'chorus' }]) }, bass: { fx: fx([{ id: 'reverb' }, { id: 'chorus' }]) } } });
   const t0 = Audio.ctx.currentTime;
   const states = [];
-  const iv = setInterval(() => states.push([Audio.ctx.currentTime - t0, !!Audio.mixer.lane('lead')._asleep, !!Audio.mixer.lane('bass')._asleep]), 100);
+  const branchAwake = (k) => (Audio.mixer.lane(k)._barFxSlots || []).some((s) => s.awake);
+  const iv = setInterval(() => states.push([Audio.ctx.currentTime - t0, !!Audio.mixer.lane('lead')._asleep, !!Audio.mixer.lane('bass')._asleep,
+    branchAwake('bass'), (Audio.mixer.lane('bass')._barFxSlots || []).length]), 100);
   await new Promise((r) => setTimeout(r, 13500));
   clearInterval(iv);
   return { t0, states, peaks: peaks.map(([t, p]) => [t - t0, p]) };
@@ -80,6 +90,8 @@ try {
   const on = out.true;
   const bassAsleep = on.states.filter(([t]) => t > 4).every(([, , b]) => b);
   assert(bassAsleep, 'a lane that never plays is asleep from four seconds on');
+  assert(on.states.some(([, , , , n]) => n > 0), 'its Spot FX section has a branch');
+  assert(on.states.filter(([t]) => t > 4).every(([, , , awake]) => !awake), 'and the branch, pinned for its section, sleeps with the strip');
   const leadSlept = on.states.some(([t, l]) => t > 1 && l);
   assert(leadSlept, 'a lane with one note every four seconds sleeps between its notes');
   // Each loop's note: the loudest moment in each four-second window after the first note.

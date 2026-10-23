@@ -149,6 +149,8 @@ export function makeEditRecovery({
 }
 
 const SEQUENCER_LOOKAHEAD = 0.25;
+/** The coyote howl's render tempo: the nearest 2 BPM (coyoteHowl). */
+const howlBpm = (bpm) => Math.round(bpm / 2) * 2;
 const SEQUENCER_LOOKAHEAD_OPTIONS = Object.freeze([0.25, 0.5, 1]);
 /**
  * The same window, for a page the machine has stopped paying attention to.
@@ -1652,7 +1654,9 @@ class AudioSys {
     // and require an explicit resume request. Try immediately; browsers with
     // a gesture requirement reject/hold it harmlessly, then the existing
     // gesture path calls ensure() again and resumes for real.
-    if (!this.offline && !this.lifecyclePaused && this.ctx.state === 'suspended') {
+    // Not while a halted context is being rebuilt warm (buildHaltedContext): that one is
+    // started only once its graph is made, by resumeContext() or the tap's ensure().
+    if (!this.offline && !this.lifecyclePaused && !this._holdResume && this.ctx.state === 'suspended') {
       const resumed = this.ctx.resume();
       if (resumed && typeof resumed.catch === 'function') resumed.catch(() => {});
     }
@@ -1673,6 +1677,7 @@ class AudioSys {
     this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = this.levels.sfx; this.sfxGain.connect(this.master);
     this.portalSend = null; this.portalVerb = null;   // belong to the old ctx
     this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = this.levels.music;
+    this._hushGain = null; this._hush = null;   // a new graph: no hush gain in it yet (hushMusic)
     // songOut: the whole song, mixed and mastered, on its way to `master`. Live only, like
     // exitGain — a render never changes song under itself. A mix held back for a song change
     // belongs to the context it was built against, so a new graph starts with none.
@@ -1794,6 +1799,7 @@ class AudioSys {
     this.renderWeaponBuffers();
     if (this.offline) return; // the caller drives scheduleStep() and startRendering()
     this.startSequencer();
+    if (this._halted) this._reviveHalted();
     if (this.captureEnabled) this._startCapture();
     // Separate output for reversed audio — bypasses the capture node to
     // prevent a feedback loop (reversed audio → capture → reversed again).
@@ -2710,6 +2716,27 @@ class AudioSys {
   }
 
   /**
+   * Whether the context is running, waiting up to `ms` for it to get there — the question
+   * after a rebuild on iOS, where a context made outside a tap may sit suspended until one
+   * (main.js audioRestart, 22 Oct 2026). True at once when it already is.
+   */
+  contextRunning(ms = 1500) {
+    const ctx = this.ctx;
+    if (!ctx) return Promise.resolve(false);
+    if (ctx.state === 'running') return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const end = Date.now() + ms;
+      const poll = () => {
+        if (this.ctx !== ctx) return resolve(false);
+        if (ctx.state === 'running') return resolve(true);
+        if (Date.now() >= end) return resolve(false);
+        setTimeout(poll, 50);
+      };
+      poll();
+    });
+  }
+
+  /**
    * Replace a failed realtime AudioContext without turning recovery into a song load.
    *
    * Context-owned nodes cannot be moved, so the graph and VoiceRack are rebuilt. The
@@ -2717,7 +2744,7 @@ class AudioSys {
    * exact transport step, working loop, pending seek/swing, note-cache buffers and
    * session-only frozen PCM. A short new lookahead is the only audible discontinuity.
    */
-  async rebuildRealtimeContext() {
+  async haltAudio() {
     if (!this.ctx || this.offline || this._contextRestarting) return false;
     this._contextRestarting = true;
     const oldCtx = this.ctx;
@@ -2748,19 +2775,26 @@ class AudioSys {
       if (this._revTimer) { clearInterval(this._revTimer); this._revTimer = null; }
       this._revSources = [];
       if (this.voices) { this.voices.dispose(); this.voices = null; }
+      // The old graph taken down before the new one goes up (mixer.dispose): a closed context
+      // keeps its memory while its nodes are held, and two graphs at once got the iPhone's
+      // page killed at a restart (23 Oct 2026).
+      try { this.mixer?.dispose?.(); } catch { /* the close still goes ahead */ }
       setNoteCachePlaybackActive(this.noteCacheState,
         !!snapshot.bank || this.noteCachePreparationHeld);
 
-      // Do not let a platform close that never settles prevent the replacement from
-      // being built. Closing is best-effort once every reference to the old graph has
-      // been dropped; the browser owns final device teardown.
+      // CLOSE THE OLD ONE AND WAIT FOR IT (22 Oct 2026). WebKit runs only a few realtime
+      // contexts at once (two, in headless WebKit without a gesture —
+      // work/local/_probe-ctx-variants.mjs), and a context made while the old one still
+      // holds its place never starts: it sits suspended with its resume pending for good,
+      // and so does every context made after it. That is the one thing a repair must not
+      // do, so the close is waited for — with a deadline, because a platform close that
+      // never settles must not stop the replacement either (then it is built anyway, and
+      // the gesture path's ensure() gets it going if it can). Suspend first: that settles
+      // even when a close drags, and a suspended context gives its place up.
       if (typeof oldCtx.close === 'function') {
-        try {
-          await Promise.race([
-            Promise.resolve(oldCtx.close()).catch(() => {}),
-            new Promise((resolve) => setTimeout(resolve, 500)),
-          ]);
-        } catch { /* a replacement is still the useful recovery */ }
+        const within = (p, ms) => Promise.race([Promise.resolve(p).catch(() => {}), new Promise((resolve) => setTimeout(resolve, ms))]);
+        try { await within(typeof oldCtx.suspend === 'function' ? oldCtx.suspend() : null, 1000); } catch { /* closing anyway */ }
+        try { await within(oldCtx.close(), 2500); } catch { /* a replacement is still the useful recovery */ }
       }
 
       this.ctx = null;
@@ -2770,46 +2804,130 @@ class AudioSys {
       this.mixer = null;
       this.master = null;
       this.outputExpectedUntil = 0;
-      this.ensure();
-      if (!this.ctx || this.ctx === oldCtx) throw new Error('AudioContext replacement was not created');
-
-      this.sourceBank = snapshot.sourceBank;
-      this.arrangement = snapshot.arrangement;
-      this.bank = snapshot.sourceBank
-        ? this.applyMix(snapshot.sourceBank, snapshot.mixEntry)
-        : snapshot.bank;
-      this.mixEntry = snapshot.mixEntry;
-      this.musicTrim = this.bank?.musicTrim ?? snapshot.musicTrim ?? 1;
-      this.bpm = this.bank?.bpm || snapshot.bpm;
-      this.swing = snapshot.swing;
-      this.pendingSwing = snapshot.pendingSwing;
-      this.step = snapshot.step;
-      this.loopStart = snapshot.loopStart;
-      this.loopEnd = snapshot.loopEnd;
-      this.pendingLoop = snapshot.pendingLoop;
-      this.pendingStep = snapshot.pendingStep;
-      this.pendingRearrangement = snapshot.pendingRearrangement;
-      // The bank is a new object after applyMix, so the memoised output bar for
-      // song-groove drums belongs to a song that no longer exists.
-      this._rearrangeOutputBar = null;
-      this.loopHasWrapped = snapshot.loopHasWrapped;
-      this.formLoopArmed = snapshot.formLoopArmed;
-      this.pendingStartDelay = 0;
-      this.nextTime = this.ctx.currentTime + 0.1;
-      if (this.songTrim) {
-        this.songTrim.gain.cancelScheduledValues(this.ctx.currentTime);
-        this.songTrim.gain.setValueAtTime(this.bank ? this.musicTrim : 0.0001,
-          this.ctx.currentTime);
-      }
-      setNoteCachePlaybackActive(this.noteCacheState,
-        !!this.bank || this.noteCachePreparationHeld);
+      // The song and transport, kept for the next ensure() — whichever makes the new context:
+      // the automatic try, or the tap (main.js audioRestart).
+      this._halted = snapshot;
       return true;
     } catch (error) {
-      console.error('[audio] fresh AudioContext recovery failed:', error);
+      console.error('[audio] halt failed:', error);
       return false;
     } finally {
       this._contextRestarting = false;
     }
+  }
+
+  /** Whether the audio is halted (haltAudio) — no context, the song kept for the next ensure(). */
+  get halted() { return !!this._halted; }
+
+  /** ensure() has just built a context after a halt: the song and transport back where they were. */
+  _reviveHalted() {
+    const snapshot = this._halted;
+    if (!snapshot || !this.ctx) return;
+    this._halted = null;
+    try {
+        this.sourceBank = snapshot.sourceBank;
+        this.arrangement = snapshot.arrangement;
+        this.bank = snapshot.sourceBank
+          ? this.applyMix(snapshot.sourceBank, snapshot.mixEntry)
+          : snapshot.bank;
+        this.mixEntry = snapshot.mixEntry;
+        this.musicTrim = this.bank?.musicTrim ?? snapshot.musicTrim ?? 1;
+        this.bpm = this.bank?.bpm || snapshot.bpm;
+        this.swing = snapshot.swing;
+        this.pendingSwing = snapshot.pendingSwing;
+        this.step = snapshot.step;
+        this.loopStart = snapshot.loopStart;
+        this.loopEnd = snapshot.loopEnd;
+        this.pendingLoop = snapshot.pendingLoop;
+        this.pendingStep = snapshot.pendingStep;
+        this.pendingRearrangement = snapshot.pendingRearrangement;
+        // The bank is a new object after applyMix, so the memoised output bar for
+        // song-groove drums belongs to a song that no longer exists.
+        this._rearrangeOutputBar = null;
+        this.loopHasWrapped = snapshot.loopHasWrapped;
+        this.formLoopArmed = snapshot.formLoopArmed;
+        this.pendingStartDelay = 0;
+        this.nextTime = this.ctx.currentTime + 0.1;
+        if (this.songTrim) {
+          this.songTrim.gain.cancelScheduledValues(this.ctx.currentTime);
+          this.songTrim.gain.setValueAtTime(this.bank ? this.musicTrim : 0.0001,
+            this.ctx.currentTime);
+        }
+        setNoteCachePlaybackActive(this.noteCacheState,
+          !!this.bank || this.noteCachePreparationHeld);
+    } catch (error) {
+      console.error('[audio] reviving the song after a halt failed:', error);
+    }
+  }
+
+  /**
+   * Replace a failed realtime AudioContext without turning recovery into a song load:
+   * haltAudio, then a new context at once (the desk's watchdog, tests). The game's RESTART
+   * leaves a gap between the two — see main.js audioRestart.
+   */
+  async rebuildRealtimeContext() {
+    if (!(await this.haltAudio())) return false;
+    this.ensure();
+    return !!this.ctx;
+  }
+
+  /**
+   * THE WARM REBUILD (23 Oct 2026). After haltAudio: the new context built but NOT started,
+   * and its graph made while it stands still — the mixer's worklets, the song's pooled voices
+   * and every worklet lane the bank plays — before anything asks it to render.
+   *
+   * Why standing still matters: on iOS a quantum the render thread fails to deliver is not
+   * skipped but waited for, and every one of them is a permanent step of delay for that
+   * context — the latch the restart exists to shed (audio-guard.js). A context started the
+   * moment it is made spends its first second compiling worklet modules and constructing
+   * processors ON its render thread, and on the iPhone every sound after a restart arrived
+   * late by about that much (Peter, 23 Oct 2026: "the jump sound no longer synchronises with
+   * the jump itself"). At boot the same work happens while the context waits for its first
+   * tap, which is why the first context never had the problem. So the rebuilt context waits
+   * the same way: built here, warmed here, and started by resumeContext() — or by the tap's
+   * ensure() on a device that will not start one outside a gesture.
+   *
+   * Resolves true with the context built and warmed (or the deadline passed with it still
+   * being warmed — a late lane is a small stall, no context is none), false when there was
+   * nothing to rebuild or the context went away under it.
+   */
+  async buildHaltedContext({ deadlineMs = 4000 } = {}) {
+    if (this.ctx || !this._halted || this.offline) return false;
+    this._holdResume = true;
+    try { this.ensure(); } finally { this._holdResume = false; }
+    const ctx = this.ctx;
+    if (!ctx) return false;
+    const within = (p, ms) => Promise.race([Promise.resolve(p).catch(() => null), new Promise((resolve) => setTimeout(resolve, ms))]);
+    const t0 = Date.now();
+    const warm = [this.mixer?.ready];
+    let voices = 0;
+    if (this.bank) {
+      try { voices = this.prepareRealtimeVoices({ startStep: this.step, windowSteps: 128 }) || 0; } catch { /* the notes build them */ }
+      warm.push(this.warmWorkletLanes());
+    }
+    const done = await within(Promise.all(warm), deadlineMs);
+    // What the warm-up did, for the crash trail (main.js audioRestart).
+    this.lastWarm = { voices, lanes: done ? (done[1] ?? 0) : null, ms: Date.now() - t0, complete: !!done };
+    return this.ctx === ctx;
+  }
+
+  /**
+   * THE KICK — the game's RESTART (23 Oct 2026; main.js audioRestart): the same context
+   * suspended, left alone for `quietMs`, and resumed. No new context, so no tap is needed on
+   * iOS once the first one has been given. iOS drops the backlog on the suspend: on the
+   * iPhone every sound was on time again afterwards, where closing the context and building
+   * a new one — warm (buildHaltedContext) or not — left every sound late. Resolves to the
+   * state after.
+   */
+  async kickContext(quietMs = 1500) {
+    const ctx = this.ctx;
+    if (!ctx || this.offline || typeof ctx.suspend !== 'function') return null;
+    const within = (p, ms) => Promise.race([Promise.resolve(p).catch(() => null), new Promise((resolve) => setTimeout(resolve, ms))]);
+    await within(ctx.suspend(), 1000);
+    await new Promise((resolve) => setTimeout(resolve, quietMs));
+    if (this.ctx !== ctx) return null;
+    await within(ctx.resume(), 1500);
+    return ctx.state;
   }
 
   /**
@@ -3443,6 +3561,212 @@ class AudioSys {
   // so a one-second tone asked to hold is inaudible for most of its own
   // duration. The slide whistle is the first cue that has to last as long as
   // the thing it describes, and this is what lets it.
+  /**
+   * A CUE'S NODES COME OFF WHEN IT HAS ENDED (22 Oct 2026, docs/AUDIO_SYNTH_AUDIT_PLAN.md
+   * Stage W). A cue builds its own little graph into sfxGain — an oscillator through a gain, a
+   * noise through a filter — and none was ever unwired: the source ended and the rest stayed
+   * connected to a bus that lives for the session, pulled every quantum. tools/audio-audit.js
+   * `sfx all` counted 2 to 51 nodes left wired per firing, cue by cue (the KNDO-5 leak, in the
+   * sound effects), and a level fires hundreds. Once `src` has ended, `nodes` are taken off
+   * whatever they feed. Live only: an offline render keeps its graph exactly as it was.
+   */
+  _unwireOnEnd(src, ...nodes) {
+    if (this.offline || !src?.addEventListener) return;
+    src.addEventListener('ended', () => {
+      for (const n of nodes) { try { n?.disconnect(); } catch { /* already gone */ } }
+    }, { once: true });
+  }
+
+  /**
+   * A hand-written song note (scheduleStep): unwired when it ends, as `play` is, and kept
+   * until then so a song stopped under it can drain it (_cutLaneGates). Every one of these
+   * stayed on its lane for the whole song before 22 Oct 2026 — `audio-audit.js song title
+   * --during` counted 72 oscillators and their gains piled up in a minute of the title theme.
+   */
+  _engineNote(src, ...nodes) {
+    if (this.offline || !src?.addEventListener) return;
+    const ringing = (this._ringingEngineNotes ||= new Set());
+    ringing.add(src);
+    src.addEventListener('ended', () => {
+      ringing.delete(src);
+      for (const n of nodes) { try { n?.disconnect(); } catch { /* already gone */ } }
+    }, { once: true });
+  }
+
+  /**
+   * THE HUSH: a second of no music, to let a tipped audio thread come back
+   * (docs/AUDIO_SYNTH_AUDIT_PLAN.md §9, 22 Oct 2026; the guard's STOP lever, on by default
+   * from 22 Oct — Peter: "turn on stop and deep").
+   *
+   * The iPad's LATCH TEST: after a sustained overload the device holds its audio thread slow
+   * — a 30 % load ran at 0.66–0.81 — and only a moment of near-ZERO load releases it; a
+   * lighter one does not, and suspending the context kills the clock. So this takes the music
+   * away entirely and keeps the clock: the transport runs on and books no notes
+   * (scheduleStep), what was already booked plays out, then the whole music path comes off
+   * the master and every strip is put to sleep (mixer.sleepStripsNow; their probes would
+   * pull them otherwise) — a pull-rendered graph nobody pulls costs nothing — for `seconds`, and goes
+   * back on at the first bar line after, faded in. The song resumes where its own clock is,
+   * so everything locked to it stays locked. Returns the time the music comes back, or null.
+   */
+  hushMusic(seconds = 1) {
+    if (!this.ctx || this.offline || this._hush || !this.bank || !this.songOut) return null;
+    const ctx = this.ctx, now = ctx.currentTime;
+    const spb = (60 / (this.bpm * this.tempo)) / 4;
+    // What is booked already is up to a lookahead ahead; it plays out, and its release with it.
+    const lead = (this.sequencerLookahead || 0.25) + 0.2;
+    let until = this.nextTime + (((16 - (this.step % 16)) % 16) * spb);
+    while (until < now + lead + seconds) until += 16 * spb;
+    const out = this.master;
+    // One unity gain between the finished song and the master, put in on the first hush: x * 1.
+    // songOut, not musicGain: with the mixer, musicGain feeds the song's master chain and only
+    // that reaches songOut — a hush gain hung off musicGain (until 22 Oct 2026) hushed nothing
+    // and left a second, unmastered copy of the music running beside the first.
+    if (!this._hushGain) {
+      this._hushGain = ctx.createGain();
+      try { this.songOut.disconnect(out); } catch { /* not wired */ }
+      this.songOut.connect(this._hushGain);
+      this._hushGain.connect(out);
+    }
+    const h = this._hushGain, g = h.gain;
+    const off = now + lead;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(1, off);
+    g.linearRampToValueAtTime(0, off + 0.05);
+    g.setValueAtTime(0, until - 0.001);
+    g.linearRampToValueAtTime(1, until + 0.03);
+    const hush = this._hush = { until, out, timers: [] };
+    const at = (time, fn) => hush.timers.push(setTimeout(fn, Math.max(0, time - ctx.currentTime) * 1000));
+    // Off the master, and every strip asleep: their sleep probes would pull them regardless.
+    at(off + 0.07, () => {
+      if (this._hush !== hush) return;
+      try { h.disconnect(out); } catch { /* gone */ }
+      hush.unplugged = true;
+      this.mixer?.sleepStripsNow?.();
+    });
+    // Back on a little before the bar, so the fade in lands on it.
+    at(until - 0.12, () => { if (this._hush === hush && hush.unplugged) { h.connect(out); hush.unplugged = false; } });
+    at(until + 0.1, () => { if (this._hush === hush) this._hush = null; });
+    return until;
+  }
+
+  /** End a hush now (a song change, a context going away): the music path back as it was. */
+  _endHush() {
+    const hush = this._hush;
+    if (!hush) return;
+    this._hush = null;
+    for (const t of hush.timers) clearTimeout(t);
+    if (hush.unplugged) { try { this._hushGain.connect(hush.out); } catch { /* gone */ } }
+    try {
+      const g = this._hushGain.gain, now = this.ctx.currentTime;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(1, now);
+    } catch { /* gone */ }
+  }
+
+  /**
+   * BAKED CUES (22 Oct 2026). The thunder is the heaviest sound in the game: fifteen sources and
+   * some fifty nodes rendering for six seconds, every strike, on top of whatever the song is
+   * doing — and on the iPad each of Neon's strikes was a crackling second (bars 30, 37, 45; the
+   * third tipped it into 8-bit). It is the same sound every time, so it is rendered once, offline,
+   * the first time it is asked for (or warmed: warmBakedCues) and played from then on as a
+   * buffer through one gain: three nodes. `boom` likewise, which is the thunder's body. The
+   * first firing, before the bake has landed, is built live exactly as before. Every builder
+   * scales by `cueGain`, so the bake renders at unity and the playback carries the firing's own
+   * gain, room (cueDest) and time (cueAt); the explosion's echo send is re-sent from the buffer.
+   */
+  _cueBuilders() {
+    return {
+      thunder: () => {
+        this.noise(0.18, 0.42, 'highpass', 2600);               // the crack
+        this.osc('sawtooth', 2200, 180, 0.26, 0.1);              // the neon zap
+        this.osc('square', 1100, 90, 0.2, 0.06, 0.01);           // ...an octave under it
+        this.explosion();                                        // the body of the boom
+        this.osc('sine', 62, 26, 2.4, 0.5, 0.02);                // the sub, falling
+        this.noise(2.8, 0.36, 'lowpass', 170, 0.08);             // the roll...
+        this.noise(2.4, 0.28, 'lowpass', 230, 0.9);
+        this.noise(2.8, 0.22, 'lowpass', 140, 1.8);
+        this.noise(3.2, 0.15, 'lowpass', 105, 2.9);              // ...dying away
+        this.noise(1.8, 0.12, 'bandpass', 420, 0.3);             // the rumble's grain
+      },
+      boom: () => this.explosion(),
+    };
+  }
+
+  _bakedCue(name) {
+    const build = this._cueBuilders()[name];
+    const ready = this._bakedReady?.get(`${name}|${this.ctx?.sampleRate}`);
+    if (ready && this.ctx && !this.offline) {
+      const t = this.cueAt();
+      const src = this.ctx.createBufferSource();
+      src.buffer = ready;
+      const g = this.ctx.createGain();
+      g.gain.value = this.cueGain;
+      src.connect(g);
+      g.connect(this.cueDest || this.sfxGain);
+      // The explosion inside sends 0.039 of itself to the echo; the bake has the whole cue, so a
+      // little less of that goes.
+      const echo = this.ctx.createGain();
+      echo.gain.value = 0.03;
+      g.connect(echo);
+      echo.connect(this.echoBus);
+      src.start(t);
+      this._unwireOnEnd(src, g, echo);
+      return;
+    }
+    build();
+    this._bakeCue(name).catch(() => {});
+  }
+
+  /** Render the heavy cues now, off the audio thread, so even their first firing is a buffer. */
+  warmBakedCues() {
+    return Promise.all(Object.keys(this._cueBuilders()).map((n) => this._bakeCue(n).catch(() => null)));
+  }
+
+  _bakeCue(name) {
+    const OC = typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
+    if (!OC || !this.ctx || this.offline || !this.sfxGain) return Promise.resolve(null);
+    const sr = this.ctx.sampleRate;
+    const key = `${name}|${sr}`;
+    this._bakedJobs ||= new Map();
+    this._bakedReady ||= new Map();
+    if (this._bakedJobs.has(key)) return this._bakedJobs.get(key);
+    const build = this._cueBuilders()[name];
+    const job = (async () => {
+      const octx = new OC(2, Math.ceil(sr * 7), sr);    // the thunder's last roll ends at 6.1 s
+      const saved = { ctx: this.ctx, sfxGain: this.sfxGain, echoBus: this.echoBus, cueDest: this.cueDest,
+        cueStart: this.cueStart, cueGain: this.cueGain, offline: this.offline };
+      let rendering;
+      try {
+        this.ctx = octx;
+        this.offline = true;
+        this.sfxGain = octx.createGain();
+        this.sfxGain.connect(octx.destination);
+        this.echoBus = octx.createGain();       // the bake's echo goes nowhere: playback sends its own
+        this.cueDest = null;
+        this.cueStart = 0.005;
+        this.cueGain = 1;
+        build();
+        rendering = octx.startRendering();
+      } finally {
+        Object.assign(this, saved);
+      }
+      const out = await rendering;
+      this._bakedReady.set(key, out);
+      return out;
+    })();
+    this._bakedJobs.set(key, job);
+    job.catch(() => { if (this._bakedJobs.get(key) === job) this._bakedJobs.delete(key); });
+    return job;
+  }
+
+  /** The same, by the clock, for a cue with many sources: `nodes` come off once `at` has passed. */
+  _unwireAfter(at, ...nodes) {
+    if (this.offline || !this.ctx || typeof setTimeout !== 'function') return;
+    setTimeout(() => {
+      for (const n of nodes) { try { n?.disconnect(); } catch { /* already gone */ } }
+    }, Math.max(0, at - this.ctx.currentTime) * 1000 + 250);
+  }
+
   osc(type, f0, f1, dur, gain = 0.2, when = 0, dest = null, hold = 0) {
     if (!this.ctx) return;
     const t = this.cueAt() + when;
@@ -3460,6 +3784,7 @@ class AudioSys {
     g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
     o.connect(g); g.connect(dest || this.cueDest || this.sfxGain);
     o.start(t); o.stop(t + dur + 0.02);
+    this._unwireOnEnd(o, g);
   }
 
   // Same `hold` as osc() above, for the same reason: a breath layer under a
@@ -3481,6 +3806,7 @@ class AudioSys {
     g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
     src.connect(f); f.connect(g); g.connect(this.cueDest || this.sfxGain);
     src.start(t); src.stop(t + dur + 0.02);
+    this._unwireOnEnd(src, g);
   }
 
   // THE FROST SLEIGH'S CAROL (SLEIGH_CAROLS): a phrase on a vibraphone, placed by the run
@@ -3532,6 +3858,7 @@ class AudioSys {
     out.gain.value = this.cueGain;
     motor.connect(panner); panner.connect(out); out.connect(this.cueDest || this.sfxGain);
     lfo.start(t0); lfo.stop(end);
+    this._unwireOnEnd(lfo, out);
     this._unwireWhenDone(lfo, depth);
     this._sleighCarolOut = { out, end };
 
@@ -3613,7 +3940,11 @@ class AudioSys {
   // baked yet (a cold first call) is a quiet coyote, never a late one.
   coyoteHowl(kind = 'howl') {
     if (!this.ctx) return;
-    const bpm = (this.bpm || 128) * (this.tempo || 1);
+    // To the nearest 2 BPM (22 Oct 2026, Stage G): Speed Zone's tempo moves in small steps
+    // through a run, and keyed to a tenth of a BPM every step was a fresh offline render
+    // mid-level — and a silent howl the first time. A 1 % tempo difference in a howl is not
+    // one anybody hears.
+    const bpm = howlBpm((this.bpm || 128) * (this.tempo || 1));
     const buf = this._howlReady.get(`${kind}|${Math.round(bpm * 10)}`);
     if (!buf) { this._coyoteHowlBuffer(bpm, kind).catch(() => {}); return; }
     const src = this.ctx.createBufferSource();
@@ -3625,6 +3956,7 @@ class AudioSys {
     this._liveVoiceCues.add(src);
     src.addEventListener('ended', () => this._liveVoiceCues.delete(src));
     src.start(this.cueAt());
+    this._unwireOnEnd(src, g);
   }
 
   // THE COYOTE'S WINK (speed-3's finish, speedMcmCoyote.js winkShow): the cartoon "ting!"
@@ -3643,7 +3975,7 @@ class AudioSys {
 
   /** Bake the solo, duet and legacy yip for a tempo ahead of needing them (RunState.enter). */
   warmCoyoteHowl(bpm = (this.bpm || 128) * (this.tempo || 1)) {
-    for (const kind of Object.keys(COYOTE_NOTES)) this._coyoteHowlBuffer(bpm, kind).catch(() => {});
+    for (const kind of Object.keys(COYOTE_NOTES)) this._coyoteHowlBuffer(howlBpm(bpm), kind).catch(() => {});
   }
 
   async _coyoteHowlBuffer(bpm, kind = 'howl') {
@@ -3684,6 +4016,8 @@ class AudioSys {
       return out;
     })();
     this._howlBufs.set(key, job);
+    // As the reversed cues: a failed render is retried next time, not kept as silence.
+    job.catch(() => { if (this._howlBufs.get(key) === job) this._howlBufs.delete(key); });
     return job;
   }
 
@@ -3708,6 +4042,7 @@ class AudioSys {
     const echo = this.ctx.createGain(); echo.gain.value = 0.03;
     g.connect(echo); echo.connect(this.echoBus);
     src.start(t); src.stop(t + dur + 0.03);
+    this._unwireOnEnd(src, g, echo);
     this.noise(0.05, 0.12, 'bandpass', 1500);
     this.noise(0.35, 0.08, 'lowpass', 300, 0.02);
     for (const [when, freq, gain] of [[0.09, 1300, 0.05], [0.2, 900, 0.04], [0.33, 650, 0.03]]) this.noise(0.07, gain, 'bandpass', freq * p, when);
@@ -3740,6 +4075,7 @@ class AudioSys {
     const echo = this.ctx.createGain(); echo.gain.value = 0.039;
     g.connect(echo); echo.connect(this.echoBus);
     src.start(t); src.stop(t + 1.55);
+    this._unwireOnEnd(src, g, echo);
 
     // The front edge is bright and sharp; the long filtered buffer carries the
     // expanding cloud while these layers provide the punch and falling rumble.
@@ -3771,6 +4107,7 @@ class AudioSys {
     g.gain.linearRampToValueAtTime(0, t + 0.78 - 0.005);
     src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.sfxGain);
     src.start(t); src.stop(t + 0.78);
+    this._unwireOnEnd(src, g);
 
     // The noise is the body; these two layers make its front edge read on
     // laptop speakers without turning the whole cue back into a beep.
@@ -3815,6 +4152,7 @@ class AudioSys {
       g.gain.linearRampToValueAtTime(0, t + 0.6 - 0.005);
       src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.sfxGain);
       src.start(t); src.stop(t + 0.6);
+      this._unwireOnEnd(src, g);
     }
     // The crack of the slat itself, on the same frame as the boot. Bright and
     // gone in three frames — this is the layer that survives a phone speaker.
@@ -3835,6 +4173,7 @@ class AudioSys {
     const g = this.ctx.createGain(); g.gain.value = this.cueGain * trim;
     src.connect(g); g.connect(this.sfxGain);
     src.start(t);
+    this._unwireOnEnd(src, g);
   }
 
   playLaunch(hero, pitch = 1) {
@@ -3855,6 +4194,7 @@ class AudioSys {
     const g = this.ctx.createGain(); g.gain.value = this.cueGain * trim;
     src.connect(g); g.connect(this.sfxGain);
     src.start(t);
+    this._unwireOnEnd(src, g);
   }
 
   // The title sign shorting out.
@@ -3926,6 +4266,7 @@ class AudioSys {
     o.start(t); o.stop(t + DUR + 0.02);
     o2.start(t); o2.stop(t + DUR + 0.02);
     lfo.start(t); lfo.stop(t + DUR + 0.02);
+    this._unwireOnEnd(o, gate);
     this._unwireWhenDone(lfo, lfoDepth);
 
     // The arc itself: a thin band of noise up where the spark lives, riding on
@@ -3974,6 +4315,7 @@ class AudioSys {
       const d = ctx.createGain(); d.gain.value = depth;
       lfo.connect(d); d.connect(gate.gain);
       lfo.start(t); lfo.stop(t + dur + 0.03);
+      this._unwireOnEnd(lfo, gate);
       this._unwireWhenDone(lfo, d);
       gate.connect(out);
       return gate;
@@ -3988,6 +4330,7 @@ class AudioSys {
       const g = ctx.createGain(); env(g, peak, dur, hold, 0.005, at);
       node.connect(g); g.connect(dest);
       o.start(at); o.stop(at + dur + 0.03);
+      this._unwireOnEnd(o, g);
       return o;
     };
     const hiss = (dest, type, freq, dur, peak, { hold = 0, at = t, Q = 0.8 } = {}) => {
@@ -3996,6 +4339,7 @@ class AudioSys {
       const g = ctx.createGain(); env(g, peak, dur, hold, 0.003, at);
       src.connect(f); f.connect(g); g.connect(dest);
       src.start(at); src.stop(at + dur + 0.03);
+      this._unwireOnEnd(src, g);
     };
     if (v === 'A') {
       const DUR = 0.45, gate = chatter(38, 22, DUR, 0.5);
@@ -4028,6 +4372,7 @@ class AudioSys {
       for (let s = 0; s < DUR; s += 0.022) o.frequency.setValueAtTime(220 + rnd() * 1300, t + s);
       const g = ctx.createGain(); env(g, 0.08, DUR, 0.26);
       o.connect(g); g.connect(out); o.start(t); o.stop(t + DUR + 0.03);
+      this._unwireOnEnd(o, g);
       const gate = chatter(45, 45, DUR, 0.7);
       hiss(gate, 'highpass', 4000, DUR, 0.12, { hold: 0.26 });
     } else {
@@ -4080,6 +4425,7 @@ class AudioSys {
       const g = ctx.createGain(); env(g, peak, dur, hold * dur, 0.004, s0);
       node.connect(g); g.connect(out);
       o.start(s0); o.stop(s0 + dur + 0.03);
+      this._unwireOnEnd(o, g);
     };
     const hiss = (type, f0, f1, dur, peak, { hold = 0, at = 0, Q = 0.8 } = {}) => {
       const s0 = t + at, src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
@@ -4089,6 +4435,7 @@ class AudioSys {
       const g = ctx.createGain(); env(g, peak, dur, hold * dur, 0.002, s0);
       src.connect(f); f.connect(g); g.connect(out);
       src.start(s0); src.stop(s0 + dur + 0.03);
+      this._unwireOnEnd(src, g);
     };
     const slap = () => {
       hiss('lowpass', 3200, 260, 0.16, 0.5, { Q: 1.2 });
@@ -4146,8 +4493,10 @@ class AudioSys {
       const pan = this.ctx.createStereoPanner();
       pan.pan.setValueAtTime(-0.65, t); pan.pan.linearRampToValueAtTime(0.55, t + 1.2);
       g.connect(pan); pan.connect(this.musicBus);
+      this._unwireOnEnd(o, pan);
     } else g.connect(this.musicBus);
     o.start(t); o.stop(t + 1.34);
+    this._unwireOnEnd(o, g);
   }
 
   // A jump you can actually hear rising: one square wave gliding up over two
@@ -4179,6 +4528,7 @@ class AudioSys {
     g.gain.linearRampToValueAtTime(0, t + dur + 0.05 - 0.005);
     o.connect(f); f.connect(g); g.connect(this.sfxGain);
     o.start(t); o.stop(t + dur + 0.05);
+    this._unwireOnEnd(o, g);
   }
 
   // The chase-copter bonk: a short comic impact followed by the upward elastic
@@ -4266,6 +4616,7 @@ class AudioSys {
     o.connect(g); g.connect(this.sfxGain);
     o.start(t); o.stop(t + dur + 0.02);
     lfo.start(t); lfo.stop(t + dur + 0.02);
+    this._unwireOnEnd(o, g);
     this._unwireWhenDone(lfo, depth);
     for (const [ratio, amp] of [[2.76, 0.045], [5.40, 0.025]]) {
       this.osc('sine', f0 * ratio, f0 * ratio * 0.9, 0.1, amp);
@@ -4340,6 +4691,8 @@ class AudioSys {
     const level = ctx.createGain();
     level.gain.value = gain * this.cueGain;
     level.connect(this.sfxGain);
+    // Every layer below has ended by then: the hiss, the voice and its tail (22 Oct 2026).
+    this._unwireAfter(Math.max(end, t + hiss) + 1, level);
 
     if (hiss > 0) {
       // The hiss: air forced through bared teeth — white noise (pink is a throat;
@@ -4488,6 +4841,7 @@ class AudioSys {
       pan.pan.linearRampToValueAtTime(-S.pan, end);
       level.connect(pan); pan.connect(this.sfxGain);
     } else level.connect(this.sfxGain);
+    this._unwireAfter(end + 1, level, pan);
     const noise = this.noiseBuf || this.barkNoise();
 
     // The whoosh.
@@ -4592,6 +4946,8 @@ class AudioSys {
     const level = ctx.createGain();
     level.gain.value = peak;
     level.connect(this.sfxGain);
+    // Past the stop and its echo's feedback tail (22 Oct 2026).
+    this._unwireAfter(stop + 3, level);
 
     const shaper = ctx.createWaveShaper();
     shaper.curve = this.softClipCurve(S.distortion);
@@ -6324,7 +6680,7 @@ class AudioSys {
         this.noise(0.014, 0.3, 'highpass', 2200, w + 0.002);
         break;
       }
-      case 'boom': this.explosion(); break;
+      case 'boom': this._bakedCue('boom'); break;
       // A small, distant explosion for a piece of a base going up in level 2's
       // raid: the big blast's recipe scaled down — a noise body whose lowpass
       // sweeps down as the cloud spreads, a bright crack on the front, and a few
@@ -6340,18 +6696,7 @@ class AudioSys {
       // seconds, and the roll arriving in four waves over five — thunder rolls because
       // it reaches you from further and further along the bolt, so each wave is later,
       // lower and quieter than the one before.
-      case 'thunder':
-        this.noise(0.18, 0.42, 'highpass', 2600);               // the crack
-        this.osc('sawtooth', 2200, 180, 0.26, 0.1);              // the neon zap
-        this.osc('square', 1100, 90, 0.2, 0.06, 0.01);           // ...an octave under it
-        this.explosion();                                        // the body of the boom
-        this.osc('sine', 62, 26, 2.4, 0.5, 0.02);                // the sub, falling
-        this.noise(2.8, 0.36, 'lowpass', 170, 0.08);             // the roll...
-        this.noise(2.4, 0.28, 'lowpass', 230, 0.9);
-        this.noise(2.8, 0.22, 'lowpass', 140, 1.8);
-        this.noise(3.2, 0.15, 'lowpass', 105, 2.9);              // ...dying away
-        this.noise(1.8, 0.12, 'bandpass', 420, 0.3);             // the rumble's grain
-        break;
+      case 'thunder': this._bakedCue('thunder'); break;   // built in BAKED_CUE_BUILDERS
       // THE BOOT CONNECTING. A punt had no sound at all until this: the call
       // site asked for 'launch' without naming a hero, and playLaunch keys its
       // buffer off exactly that — so it looked up `undefined`, missed all three
@@ -7109,6 +7454,8 @@ class AudioSys {
     // after it played about 4% fast, forever. A cabinet screen plays its song at the
     // song's tempo. Reset before the early return below, because arriving back at the
     // song already up is exactly the case that was wrong.
+    // A hush belongs to the song it was called on.
+    this._endHush();
     const diagnosticBank = bank
       ? String(trackIdOf(bank) || bank.id || bank.name || bank.title || 'unregistered').slice(0, 40)
       : 'stopped';
@@ -7835,11 +8182,11 @@ class AudioSys {
     // against the thirty the fast path takes out.
     const fineTickLanes = new Set();
     for (const [key, laneMix] of Object.entries(laneFx)) {
-      if (laneMix?.noteFx?.arp?.enabled || laneMix?.noteFx?.strum?.enabled) fineTickLanes.add(key);
+      if (laneMix?.noteFx?.arp?.enabled || laneMix?.noteFx?.strum?.enabled || laneMix?.noteFx?.guitar?.enabled) fineTickLanes.add(key);
     }
     for (const bar of plan) {
       for (const [key, override] of Object.entries(bar.noteFx || {})) {
-        if (override?.arp?.enabled || override?.strum?.enabled) fineTickLanes.add(key);
+        if (override?.arp?.enabled || override?.strum?.enabled || override?.guitar?.enabled) fineTickLanes.add(key);
       }
     }
     this._fineTickLanes = [...fineTickLanes];
@@ -9164,6 +9511,10 @@ class AudioSys {
       return out;
     })();
     this._revBufs.set(key, job);
+    // A render that FAILED is forgotten, so the next firing tries again; kept, the cue was
+    // silent for the rest of the session (22 Oct 2026, Stage G). A null — no offline context
+    // on this browser — is an answer, and stays.
+    job.catch(() => { if (this._revBufs.get(key) === job) this._revBufs.delete(key); });
     return job;
   }
 
@@ -9283,6 +9634,7 @@ class AudioSys {
       t = Math.max(floor, want);
     }
     src.start(t);
+    this._unwireOnEnd(src, g);
     return slip > 0 ? { late: slip } : true;
   }
 
@@ -9472,7 +9824,10 @@ class AudioSys {
       // kit, no frozen stem — while the transport, the groove and the wrap machinery all
       // keep running underneath, because the slice still takes its time. Gated here rather
       // than per lane so there is one answer to "does this tick make a sound".
-      const rearrangeMute = !!rearranged?.operation?.mute;
+      // Hushed (hushMusic): the transport runs on and books nothing, exactly as a
+      // rearrangement's mute — so the song comes back where its clock says, not where it left.
+      const rearrangeMute = !!rearranged?.operation?.mute
+        || (!!this._hush && this.nextTime < this._hush.until);
       const songRearrangeDrums = rearrangeDrumMode === 'song' && !rearrangeFill;
       const sourceBarIndex = Math.floor(sourceStep / 16);
       const sourceBarChanged = rearranged
@@ -9626,7 +9981,7 @@ class AudioSys {
         // guarantees; with no source tones `len` is never read.
         for (const key of this._fineTickLanes) {
           const config = resolveNoteFx(this.mixEntry?.lanes?.[key]?.noteFx, bar, key);
-          if (!config?.strum?.enabled && !config?.arp?.enabled) continue;
+          if (!config?.strum?.enabled && !config?.arp?.enabled && !config?.guitar?.enabled) continue;
           work.notePlans++;
           work.fineNotePlans++;
           this.noteFx.process({ laneKey: key, value: null, len: null, step: this.step,
@@ -9800,7 +10155,7 @@ class AudioSys {
         const onOutputClock = songRearrangeDrums && PERCUSSION_LANES.includes(baseLane(key));
         const config = resolveNoteFx(this.mixEntry?.lanes?.[key]?.noteFx,
           onOutputClock ? outputBar : bar, key);
-        if (!config?.strum?.enabled && !config?.arp?.enabled) {
+        if (!config?.strum?.enabled && !config?.arp?.enabled && !config?.guitar?.enabled) {
           fxPlans.set(key, null);
           return null;
         }
@@ -10128,6 +10483,7 @@ class AudioSys {
         o.connect(g); g.connect(dry);
         if (echo) g.connect(wet);
         o.start(t); o.stop(t + dur + 0.02);
+        this._engineNote(o, g);
         // UNWIRED WHEN IT ENDS (21 Oct 2026). Left on the lane, every note stayed pulled until
         // the song changed: tools/audio-audit.js measured engSquare at +216 nodes wired in
         // 16 s, and the title theme plays 21 of its 22 lanes this way for as long as the title
@@ -10192,6 +10548,7 @@ class AudioSys {
             o.connect(filter); filter.connect(g); g.connect(dry);
             if (bassEcho) g.connect(wet);
             o.start(t); o.stop(t + noteDur + 0.02);
+            this._engineNote(o, g);
             play(note * 0.5, 'sine', noteDur * 1.05,
               bassGain * (b.bassFilteredSawSubGain ?? 0.22), 0.008, false);
           }
@@ -10315,6 +10672,7 @@ class AudioSys {
           g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
           o.connect(g); g.connect(dry); g.connect(wet);
           o.start(t); o.stop(t + dur + 0.02);
+          this._engineNote(o, g);
         }
       }
       // `sweeps` holds a marker rather than a pitch, so the seam supplies the note a
@@ -10347,6 +10705,7 @@ class AudioSys {
           g.connect(pan); pan.connect(dry);
         } else g.connect(dry);
         src.start(t); src.stop(t + dur + 0.03);
+        this._engineNote(src, g);
       }
       const keyGlissNote = at('keyGliss');
       if (keyGlissNote) {
@@ -10382,6 +10741,7 @@ class AudioSys {
           g.gain.linearRampToValueAtTime(0, t + dt * 1.7 + 0.02 - 0.005);
           o.connect(g); g.connect(dry);
           o.start(t); o.stop(t + dt * 1.7 + 0.02);
+          this._engineNote(o, g);
         });
       }
       // Echo left at the default rather than off: the hand-written body builds its own
@@ -10406,6 +10766,7 @@ class AudioSys {
         g.gain.exponentialRampToValueAtTime(0.0001, t + spb * 4);
         o.connect(g); g.connect(dry);
         const pans = [-0.8, 0.1, 0.8];
+        const taps = [];
         pans.forEach((pv, e) => {
           const d = this.ctx.createDelay(2); d.delayTime.value = spb * 2 * (e + 1);
           const eg = this.ctx.createGain(); eg.gain.value = 0.5 * Math.pow(0.6, e);
@@ -10413,11 +10774,16 @@ class AudioSys {
           if (this.ctx.createStereoPanner) {
             const p = this.ctx.createStereoPanner(); p.pan.value = pv;
             eg.connect(p); p.connect(dry);
+            taps.push(p);
           } else {
             eg.connect(dry);
+            taps.push(eg);
           }
         });
         o.start(t); o.stop(t + spb * 4 + 0.02);
+        this._engineNote(o, g);
+        // The taps once their last echo — six steps behind the note — has played out.
+        this._unwireAfter(t + spb * 10 + 0.1, ...taps);
       }
       const chordNotes = at('chords');
       if (chordNotes) {
@@ -10513,6 +10879,7 @@ class AudioSys {
           g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
           o.connect(g); g.connect(dry); g.connect(wet);
           o.start(t); o.stop(t + dur + 0.02);
+          this._engineNote(o, g);
         }
       }
       const kickHit = at('kick');
@@ -10541,6 +10908,7 @@ class AudioSys {
         o.connect(g); g.connect(dry);
         if (b.echoEverything) g.connect(wet);
         o.start(t); o.stop(t + tail + 0.04);
+        this._engineNote(o, g);
         // Click: a couple of ms of high-passed noise — the beater attack. Kept
         // very short and quiet so it's a transient "tk", not a hat on top.
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
@@ -10551,6 +10919,7 @@ class AudioSys {
         src.connect(cf); cf.connect(cg); cg.connect(dry);
         if (b.echoEverything) cg.connect(wet);
         src.start(t); src.stop(t + 0.03);
+        this._engineNote(src, cg);
         // Knock: a short mid punch (~200-300Hz) between the click and the sub.
         // The bass owns the low fundamentals and the sub boom competes with it
         // there; this transient lives in a band the bass mostly leaves open, so
@@ -10568,6 +10937,7 @@ class AudioSys {
           k.connect(kgn); kgn.connect(dry);
           if (b.echoEverything) kgn.connect(wet);
           k.start(t); k.stop(t + 0.07);
+          this._engineNote(k, kgn);
         }
       }
       const hatsHit = at('hats');
@@ -10582,6 +10952,7 @@ class AudioSys {
         src.connect(f); f.connect(g); g.connect(dry);
         if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.07);
+        this._engineNote(src, g);
       }
       const voxNote = at('vox');
       if (voxNote && !voiced('vox', voxNote)) {
@@ -10607,6 +10978,7 @@ class AudioSys {
         fa.connect(mix); fb2.connect(mix); mix.connect(dry);
         if (b.echoEverything) mix.connect(wet);
         o.start(t); o.stop(t + 0.2);
+        this._engineNote(o, mix);
       }
       const shoutNote = at('shout');
       if (shoutNote && !voiced('shout', shoutNote)) {
@@ -10652,6 +11024,7 @@ class AudioSys {
         fa.connect(mix); fb2.connect(mix); mix.connect(dry);
         if (b.echoEverything) mix.connect(wet);
         o.start(t); o.stop(t + dur + 0.02);
+        this._engineNote(o, mix);
       }
       const ohatsHit = at('ohats');
       if (ohatsHit && !voiced('ohats', ohatsHit, { echo: !!b.echoEverything })) {
@@ -10666,6 +11039,7 @@ class AudioSys {
         src.connect(f); f.connect(g); g.connect(dry);
         if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.24);
+        this._engineNote(src, g);
       }
       const snareHit = at('snare');
       if (snareHit && !voiced('snare', snareHit, { echo: !!b.echoEverything })) {
@@ -10680,6 +11054,7 @@ class AudioSys {
         src.connect(f); f.connect(g); g.connect(dry);
         if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.11);
+        this._engineNote(src, g);
         const o = this.ctx.createOscillator(); const og = this.ctx.createGain();
         o.type = 'triangle';
         o.frequency.setValueAtTime(210, t);
@@ -10687,6 +11062,7 @@ class AudioSys {
         og.gain.setValueAtTime(0.12 * (b.drumGain ?? 1), t);
         og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
         o.connect(og); og.connect(dry); if (b.echoEverything) og.connect(wet); o.start(t); o.stop(t + 0.08);
+        this._engineNote(o, og);
       }
       const crashHit = at('crash');
       if (crashHit && !voiced('crash', crashHit, { echo: !!b.crashEcho || !!b.echoEverything })) {
@@ -10716,6 +11092,7 @@ class AudioSys {
         // dragging the rest of the kit in with it.
         if (b.crashEcho || b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + dur + 0.03);
+        this._engineNote(src, g);
       }
       const tomHit = at('tom');
       if (tomHit && !voiced('tom', tomHit, { echo: !!b.echoEverything })) {
@@ -10737,6 +11114,7 @@ class AudioSys {
         o.connect(g); g.connect(dry);
         if (b.echoEverything) g.connect(wet);
         o.start(t); o.stop(t + dur + 0.03);
+        this._engineNote(o, g);
       }
       const rimHit = at('rim');
       if (rimHit && !voiced('rim', rimHit)) {
@@ -10771,6 +11149,7 @@ class AudioSys {
         // stay dry so the echo doesn't smear their transients.
         const re = this.ctx.createGain(); re.gain.value = b.rimEcho ?? 0.3;
         g.connect(re); re.connect(wet);
+        this._unwireAfter(t + 0.09, g, re);   // when the ring's three partials have stopped
         // Stick snap: a few ms of high-passed noise — the attack transient that
         // gives the click its bite before the ring takes over.
         const sn = this.ctx.createBufferSource(); sn.buffer = this.noiseBuf;
@@ -10781,6 +11160,7 @@ class AudioSys {
         sn.connect(nf); nf.connect(ng); ng.connect(dry);
         if (b.echoEverything) ng.connect(wet);
         sn.start(t); sn.stop(t + 0.03);
+        this._engineNote(sn, ng);
         // Woody body: a low resonant "tonk" the click sits on, so the rimshot
         // has some weight instead of being pure top end.
         const bo = this.ctx.createOscillator(); const bg = this.ctx.createGain();
@@ -10792,6 +11172,7 @@ class AudioSys {
         bo.connect(bg); bg.connect(dry);
         if (b.echoEverything) bg.connect(wet);
         bo.start(t); bo.stop(t + 0.08);
+        this._engineNote(bo, bg);
       }
       const clapHit = at('clap');
       if (clapHit && !voiced('clap', clapHit, { echo: !!b.echoEverything })) {
@@ -10808,6 +11189,7 @@ class AudioSys {
           src.connect(f); f.connect(g); g.connect(dry);
           if (b.echoEverything) g.connect(wet);
           src.start(t); src.stop(t + 0.15);
+          this._engineNote(src, g);
         }
       }
       // Layers — a track duplicated on the mixing desk. The same steps as the lane it
@@ -10844,6 +11226,7 @@ class AudioSys {
         g.gain.linearRampToValueAtTime(0, t + spb + 0.02 - 0.005);
         o.connect(g); g.connect(this.starBus);
         o.start(t); o.stop(t + spb + 0.02);
+        this._engineNote(o, g);
         if (pulse % 2 === 1) {
           const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
           const hf = this.ctx.createBiquadFilter(); hf.type = 'highpass'; hf.frequency.value = 7000;
@@ -10852,6 +11235,7 @@ class AudioSys {
           hg.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
           src.connect(hf); hf.connect(hg); hg.connect(this.starBus);
           src.start(t); src.stop(t + 0.06);
+          this._engineNote(src, hg);
         }
       }
       this._advanceTransport(spb, tick, plan);

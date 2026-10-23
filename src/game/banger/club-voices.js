@@ -672,8 +672,10 @@ export class ClubVoices {
         return;
       }
       mixer.rampTreatment(0, when);
+      // This crusher, on this mixer — not one the next club put on the leg meanwhile.
+      const leg = mixer.treatment;
       setTimeout(() => Audio.afterMix(() => {
-        if (token === this.crushToken && isCrush(Audio.mixer?.treatment)) Audio.mixer.clearTreatment();
+        if (token === this.crushToken && Audio.mixer === mixer && mixer.treatment === leg && isCrush(leg)) mixer.clearTreatment();
       }), Math.ceil((when - ctx.currentTime) * 1000) + 60);
     });
   }

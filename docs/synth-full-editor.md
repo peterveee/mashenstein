@@ -254,7 +254,7 @@ which asserts `top`, `spread`, and the control at the head of `foot` for every o
 | TNGR-2 | SETTINGS, Effects, Motion | VIB DEPTH, CHORUS, LFO WAVE |
 | KNDO-5 | SETTINGS, Effects, Game Synth | VIB DEPTH, CHORUS, ATTACK |
 | WNDR-9 | SETTINGS, Effects, Percussion | VIB DEPTH, CHORUS, ATTACK |
-| RMND-2 | SETTINGS | VIB DEPTH |
+| RMND-7 | SETTINGS | VIB DEPTH |
 | KLNG8 | Osc 1, FM 1, Osc 2, FM 2, Noise, Ring, Metal | ATTACK (per-row `foot`, see below) |
 
 One of these is composed by hand rather than through `splitCard`, because the rows to pin

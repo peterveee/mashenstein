@@ -48,6 +48,13 @@ const waveMemo = new WeakMap();
 export function glottalWave(ctx, oq, tiltDb, f0, useFlow = false) {
   let m = waveMemo.get(ctx);
   if (!m) { m = new Map(); waveMemo.set(ctx, m); }
+  // LIVE, THE PITCH IS A SEMITONE (23 Oct 2026). WebKit keeps every PeriodicWave a context ever
+  // built (~580 KB each; work/local/_probe-webkit-node-churn.mjs), and keyed by the hertz a
+  // spoken phrase's every pitch made its own wave, for good. The wave is only the glottal
+  // SHAPE — the oscillator plays the real pitch — and its tilt and band limit move with pitch
+  // too slowly for half a semitone to matter, so a live context builds one per semitone. An
+  // offline render keeps the hertz (and its sound to the sample): its context goes when it ends.
+  if (typeof ctx.startRendering !== 'function' && f0 > 0) f0 = 440 * 2 ** (Math.round(12 * Math.log2(f0 / 440)) / 12);
   const key = `${oq.toFixed(3)}|${(tiltDb || 0).toFixed(2)}|${Math.round(f0)}|${useFlow ? 1 : 0}`;
   let w = m.get(key);
   if (!w) {

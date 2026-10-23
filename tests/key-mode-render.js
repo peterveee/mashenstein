@@ -167,7 +167,7 @@ async function claims(name, render) {
 // ---- every other synth, through the rack, in Chromium -------------------------------
 const PRESETS = {
   'CRLS-1': { synth: 'CRLS-1', options: { oscillator: { type: 'square' }, envelope: { ...ENV } } },
-  'RMND-2': { synth: 'RMND-2', options: { harmonicity: 2, modulationIndex: 2,
+  'RMND-7': { synth: 'RMND-7', options: { harmonicity: 2, modulationIndex: 2,
     oscillator: { type: 'sine' }, modulation: { type: 'sine' }, envelope: { ...ENV },
     modulationEnvelope: { ...ENV } } },
   'MRDR-3': { synth: 'MRDR-3', layer: { osc1: { type: 'square', ratio: 1, detune: 0, gain: 0.6, ...ENV } } },

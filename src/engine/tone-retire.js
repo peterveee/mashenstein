@@ -1,12 +1,12 @@
 // TONE'S SOURCES, LET END BEFORE THEY ARE UNPLUGGED (21 Oct 2026).
 //
-// Every note a pooled Tone voice plays (CRLS-1, RMND-2) starts a fresh ToneOscillatorNode,
+// Every note a pooled Tone voice plays (CRLS-1, RMND-7) starts a fresh ToneOscillatorNode,
 // and Tone retires it like this (tone/build/esm/source/OneShotSource.js, `_stopGain`): at the
 // stop time it books the native oscillator's stop for `now()` — the current time PLUS Tone's
 // look-ahead — then disposes it on the next idle callback or 10 ms later. Disposing
 // disconnects it. A source nothing pulls never reaches its stop time and never fires
 // `ended`, so the oscillator disconnected before its own stop runs on, unheard, for the rest
-// of the session: tools/audio-audit.js counted 960 of them after 32 s of one RMND-2 preset on
+// of the session: tools/audio-audit.js counted 960 of them after 32 s of one RMND-7 preset on
 // eight lanes, and 67 lanes of the game's songs did it (the "1,400 Tone oscillators" of
 // Rhythm Bankruptcy). Unpulled, they cost the audio thread little; held, they cost memory on
 // a phone, and a phone kills the page when that runs out.

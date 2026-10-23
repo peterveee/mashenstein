@@ -23,7 +23,8 @@ const SYNTH_STYLE = Object.freeze({
   'WNDR-9': 'Additive',
   'KNDO-5': 'Chiptune',
   'KLNG-8': 'Drums',
-  'RMND-2': 'FM & AM',
+  'RMND-7': 'FM & AM',
+  'FZPP-6': 'Physical string',
 });
 
 // Exported as well as joined below: the engine pickers draw the name and the style in
@@ -37,7 +38,7 @@ export const synthShortName = (name) => {
   return short.charAt(0).toUpperCase() + short.slice(1);
 };
 
-/** `RMND-2 · FM & AM` — the name, and what it is, where an engine is being chosen. */
+/** `RMND-7 · FM & AM` — the name, and what it is, where an engine is being chosen. */
 export const synthChoiceLabel = (name) => {
   const shown = synthShortName(name);
   const style = synthStyleName(name);

@@ -422,7 +422,7 @@ export function presetHolds(id) {
   }
   if (family === TNGR2) return (v.tngr2?.amp?.sustain ?? 0.7) >= HELD_SUSTAIN;
   if (family === WNDR9) return (v.additive?.sustain ?? 0) >= HELD_SUSTAIN;
-  // KNDO-5 is a gate unless it says otherwise; CRLS-1 and RMND-2 state theirs.
+  // KNDO-5 is a gate unless it says otherwise; CRLS-1 and RMND-7 state theirs.
   return (v.options?.envelope?.sustain ?? (family === KNDO5 ? 1 : 0)) >= HELD_SUSTAIN;
 }
 

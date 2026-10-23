@@ -103,7 +103,7 @@ export function createLaneView({
     if (tones.length > 1) return { kind: 'chord', slice };
     // Note FX that generate events own this bar's notes; what they play is theirs to say.
     const fx = resolveNoteFx(mix?.lanes?.[key]?.noteFx, entry.bar, key);
-    if (fx?.arp?.enabled || fx?.strum?.enabled) return { kind: 'barrier', reason: 'fx', slice };
+    if (fx?.arp?.enabled || fx?.strum?.enabled || fx?.guitar?.enabled) return { kind: 'barrier', reason: 'fx', slice };
     const voice = voiceFor(entry.b, key);
     if (!supportOf(voice).supported) return { kind: 'barrier', reason: 'unsupported', slice };
     // The bar's transposition, the way the scheduler applies it: whole-number maps reach

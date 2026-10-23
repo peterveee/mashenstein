@@ -67,7 +67,8 @@ const restored = applySectionEffects(rescaled);
 assert.deepEqual(laneFx(restored.automation, 'lead2').map(s => [s.from, s.to]), [[32, 64], [96, 128]], 'relative second halves follow resized and repeated drops');
 rescaled.options.sectionFx = { mode: 'style', firstEffect: 'room', firstPart: 'arp', firstSection: 'drop' };
 const manual = applySectionEffects(rescaled);
-assert.ok(laneFx(manual.automation, 'lead2').some(s => s.chain.some(e => e.id === 'reverb')));
+// The room is the Channel card's reverb send since 23 Oct 2026 (effects.js 'strip').
+assert.ok(laneFx(manual.automation, 'lead2').some(s => s.chain.some(e => e.id === 'strip' && e.params?.reverb > 0)));
 rescaled.options.sectionFx.firstEffect = 'pingpong';
 assert.ok(applySectionEffects(rescaled).report.decisions.some(e => e.status === 'Overridden'), 'manual echo precedence is visible in the report');
 const silent = fixture(); silent.bars = silent.bars.map(() => ({}));
@@ -128,8 +129,9 @@ assert.equal(sweep.chain[0].params.sweep, 1);
 assert.ok(sweep.chain[0].params.sweepTo > sweep.chain[0].params.frequency);
 const space = laneFx(tranceResult.automation, 'pad')[0];
 assert.equal(space.from, 128); assert.equal(space.to, 192);
-assert.ok(space.chain[0].params.decay > 2);
-assert.ok(space.chain[0].params.wet < 0.07);
+// The breakdown space is the Channel card's reverb send since 23 Oct 2026, scaled like a wet.
+assert.equal(space.chain[0].id, 'strip');
+assert.ok(space.chain[0].params.reverb > 0 && space.chain[0].params.reverb < 0.1, `scaled send (${space.chain[0].params.reverb})`);
 assert.deepEqual(tranceResult, applySectionEffects(tranceFixture), 'Trance region choices regenerate exactly');
 const manualTrance = structuredClone(tranceFixture);
 manualTrance.options.sectionFx.mode = 'off';

@@ -824,6 +824,8 @@ function mrdr3StepMods(grp, patch, rate, pwmAny) {
     grp.lfoFilterRatio = patch.lfoTarget === 0 ? Math.pow(2, v / 1200) : 1;
     grp.lfoTrem = patch.lfoTarget === 1 ? 1 + v : 1;
     grp.lfoPitch = patch.lfoTarget === 2 ? v : 0;
+    // FM: every layer's FM depth multiplied around 1, as the tremolo is the level.
+    grp.lfoFm = patch.lfoTarget === 3 ? 1 + v : 1;
   }
 }
 
@@ -1004,6 +1006,7 @@ function Mrdr3Group(rate, maxTones) {
   this.lfoFilterRatio = 1;
   this.lfoTrem = 1;
   this.lfoPitch = 0;
+  this.lfoFm = 1;
   // The drive's TONE filter — one per group, because the drive is one shaper the whole
   // note-on passes through (§5.1).
   this.tone = new Mrdr3Biquad(rate);
@@ -1035,7 +1038,7 @@ Mrdr3Group.prototype.start = function (patch, event, frame, rate, noise, glide, 
   this.lfoOnsetStep = patch.lfoDelay > 0 ? 1 / (patch.lfoDelay * rate) : 1;
   this.lfoDepthScaled = patch.lfoTarget === 0 ? patch.lfoDepth * 3600
     : (patch.lfoTarget === 2 ? patch.lfoDepth * 1200 : patch.lfoDepth);
-  this.lfoFilter = 0; this.lfoFilterRatio = 1; this.lfoTrem = 1; this.lfoPitch = 0;
+  this.lfoFilter = 0; this.lfoFilterRatio = 1; this.lfoTrem = 1; this.lfoPitch = 0; this.lfoFm = 1;
   for (var w = 0; w < 3; w++) {
     var ls = patch.layers[w];
     this.pwmPhase[w] = 0;
@@ -1610,7 +1613,7 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
           if (lay.fmOn) {
             lay.fmPhase += lay.fmInc;
             if (lay.fmPhase >= 1) lay.fmPhase -= 1;
-            fmHz = Math.sin(MRDR3_TAU * lay.fmPhase) * lay.fmDepth * lay.fmParam.valueAt(f);
+            fmHz = Math.sin(MRDR3_TAU * lay.fmPhase) * lay.fmDepth * lay.fmParam.valueAt(f) * grp.lfoFm;
           }
           // A synced slave has no pulse-width modulation — the native path turns it off
           // for a hard-synced layer — and reads its own table per unison voice below.

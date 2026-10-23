@@ -4,7 +4,7 @@
 // them can afford to load the engine: the rack builds Tone classes from it, the preset
 // library filters by it, and the desk prints names from it. It used to be written out
 // three times, and the copies had already drifted — `engineFamily` in
-// src/data/voices-in-play.js knew about CRLS-1 and not about KNDO-5 or RMND-2, so a song
+// src/data/voices-in-play.js knew about CRLS-1 and not about KNDO-5 or RMND-7, so a song
 // whose lane still said `FMSynth` was offered no presets to switch to: every preset in
 // the catalogue had been renamed out from under a comparison made on the raw string.
 //
@@ -20,12 +20,20 @@ export const CRLS1 = 'CRLS-1';
 export const TNGR2 = 'TNGR-2';
 /** KNDO-5 — Koji Kondo. Four waveforms plus the noise channel. */
 export const KNDO5 = 'KNDO-5';
-/** RMND-2 — Raymond Scott. A carrier and a modulator, reaching pitch or level. */
-export const RMND2 = 'RMND-2';
+/**
+ * RMND-7 — Raymond Scott. A carrier and a modulator, reaching pitch or level, with a filter
+ * and a pitch envelope. Was RMND-2 until 23 Oct 2026; the -7 echoes the DX7.
+ */
+export const RMND7 = 'RMND-7';
 /** WNDR-9 — Klaus Wunderlich. Nine drawbars, and `stretch` to take them off the series. */
 export const WNDR9 = 'WNDR-9';
 /** JMJR-4 — Jean-Michel Jarre. A formant voice; up to four singers to a key. */
 export const JMJR4 = 'JMJR-4';
+/**
+ * FZPP-6 — Peter's name (23 Oct 2026). A waveguide string: a pluck into a delay loop one
+ * period long, six string slots to a lane. See src/engine/fzpp6/.
+ */
+export const FZPP6 = 'FZPP-6';
 
 /**
  * The retired names. Old spellings stay readable forever — song files carry them inside
@@ -36,8 +44,11 @@ export const RENAMED = Object.freeze({
   Synth: CRLS1,
   MonoSynth: CRLS1,
   GameSynth: KNDO5,
-  FMSynth: RMND2,
-  AMSynth: RMND2,
+  FMSynth: RMND7,
+  AMSynth: RMND7,
+  // Its own name until 23 Oct 2026, and what every song and user preset saved before then
+  // says. Renamed for the DX7 echo — see docs/synth-naming.md.
+  'RMND-2': RMND7,
   AdditiveSynth: WNDR9,
   // The one rename that is also a rebuild. DuoSynth's two Tone MonoSynths are two MRDR-3
   // layers and its parameters do not carry across on the name alone, so this alias is

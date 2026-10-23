@@ -26,7 +26,7 @@ must be accounted for before claiming an additional improvement.
 | 2 | TNGR-2 immutable table sharing | Memory and lane startup |
 | 2 | MRDR-3 / WNDR-9 static patch specialisation | Redundant graph stages and automation |
 | 2 | Selective drum-component rendering | Repeated synthesis cost with bounded memory |
-| 2 | CRLS-1 / RMND-2 pool shrinkage | Retained resources after polyphony bursts |
+| 2 | CRLS-1 / RMND-7 pool shrinkage | Retained resources after polyphony bursts |
 
 The ordering is a starting point, not a performance finding. Use the audit measurements
 to select representative patches and change the order if the evidence warrants it.
@@ -182,7 +182,7 @@ invalidation for preset edits and sample-rate changes.
 variation, choke correctness, or sound quality. Avoid expanding this into whole-kit caching
 before the first component demonstrates a worthwhile trade-off.
 
-## 7. CRLS-1 / RMND-2: shrink excess pool capacity after bursts
+## 7. CRLS-1 / RMND-7: shrink excess pool capacity after bursts
 
 **Source:** `src/engine/voices.js`, Tone pool ownership, allocation, and retirement.
 

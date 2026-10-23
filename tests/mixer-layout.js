@@ -1260,7 +1260,7 @@ assert(/const tapsGroup = \(repaint = build\) => \{/.test(editor)
 
 assert(/const SOURCES = \[[\s\S]*?label: 'Library'[\s\S]*?label: 'My presets'/.test(
   librarySource)
-  && /const keepSource = SOURCES\.find/.test(
+  && /SOURCES\.find\(\(s\) => s\.id === source\)\.keep\(v\)/.test(
     librarySource)
   && /className = 'vsource'/.test(
     librarySource),
@@ -1274,18 +1274,13 @@ assert(/head\.append\(title, sources,[^)]*search, close\)/.test(
   && !/const searchRow = document\.createElement\('div'\)/.test(
     librarySource),
   'the preset search sits in the top header immediately before the far-right close');
-assert(/let voicePickerQuery = '';[\s\S]*?search\.value = voicePickerQuery[\s\S]*?voicePickerQuery = search\.value[\s\S]*?draw\(search\.value\)/.test(voicePicker),
+assert(/let voicePickerQuery = '';[\s\S]*?search\.value = voicePickerQuery[\s\S]*?voicePickerQuery = search\.value[\s\S]*?browser\.refresh\(\)/.test(voicePicker),
   'the strip preset picker keeps its search when it is reopened');
-assert(/const engineOf = \(v\) => v\?\.kind === 'drum' \? 'drum' : v\?\.synth \|\| null/.test(voicePicker)
-  && /const enginesForKind = \(kindId\) =>[\s\S]*?filter\(keepOf\(kindId\)\)/.test(voicePicker)
-  && /if \(!pending && selectedEngine && initialEngines\.includes\(selectedEngine\)\) engine = selectedEngine/.test(voicePicker)
-  && /next\.classList\.add\('voiceengine'\)/.test(voicePicker)
-  && /keepEngine = \(v\) => engine === 'all' \|\| engineOf\(v\) === engine/.test(voicePicker)
-  && /if \(q && !shown && engine !== 'all'\)[\s\S]*?engine = 'all';[\s\S]*?refreshEngineOptions\(\);[\s\S]*?draw\(query\);/.test(voicePicker)
-  && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(voicePicker)
-  && !/entry\(null, 'Engine default'/.test(entry)
-  && /#voicepicker \.voiceengine \{[^}]*width: 132px[^}]*flex: 0 0 132px/s.test(shell),
-  'the compact picker shows the selected engine, hides kind filters on existing tracks, and has no Engine default row');
+assert(voicePicker.includes('createPresetBrowser({')
+  && voicePicker.includes('presetEngine(selectedPreset)')
+  && !voicePicker.includes("engine = selectedEngine")
+  && !voicePicker.includes("entry(null, 'Engine default'"),
+  'the picker shares the faceted browser, shows the current engine, and starts across all engines');
 assert(/searchInput = search/.test(librarySource)
   && /searchInput\?\.focus\(\{ preventScroll: true \}\)/.test(librarySource),
   'opening the preset library focuses the Search presets field');
@@ -2048,14 +2043,14 @@ assert(/header #fxbtn \{[^}]*width:\s*var\(--ctlh\)[^}]*min-width:\s*var\(--ctlh
   && /<button id="fxbtn"[^>]*>\s*<span aria-hidden="true">FX<\/span>/.test(shell)
   && !/<button id="fxbtn"[\s\S]*?<\/button>/.exec(shell)?.[0].includes('<svg'),
   'the toolbar effects action is a bold text FX control rather than an icon');
-assert(/v\.kind === 'engine' \|\| v\.songLocal \|\| v\.draft/.test(
+assert(/v\.kind !== 'engine' && !v\.songLocal && !v\.draft/.test(
   readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
   && /!v\.songLocal && !v\.draft/.test(
     readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
   && /voiceEditor\.librarySource === id/.test(entry)
-  && /const scrollTop = el\.querySelector\('\.vlresults'\)\?\.scrollTop/.test(
+  && /const scrollTop = el\.querySelector\('\.preset-list'\)\?\.scrollTop/.test(
     readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
-  && /if \(results\) results\.scrollTop = scrollTop/.test(
+  && /if \(results\) \{\s*results\.scrollTop = scrollTop/.test(
     readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
   && /ev\.detail >= 2 && collapsed\.edit/.test(
     readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
@@ -2814,7 +2809,7 @@ assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\)/.
   'the plus opens one new track and its preset selector without a choice menu — which'
   + ' sound it is IS the choice, and the library is where that is made');
 assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*?closeMenu\(\)/.test(voicePicker)
-  && /function openVoicePicker[\s\S]*?draw\(''\);[\s\S]*?el\.classList\.add\('show'\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(voicePicker)
+  && /function openVoicePicker[\s\S]*?el\.append\(head, results\);[\s\S]*?el\.classList\.add\('show'\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(voicePicker)
   && /#voicepicker button\.voiceclose \{[^}]*width:\s*34px[^}]*height:\s*34px[^}]*font-size:\s*23px/s.test(shell),
   'the preset selector has the large close button and focuses Search presets');
 // The panel opens filtered, keeps the last search and wraps a hundred presets over
@@ -2822,16 +2817,12 @@ assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*
 // happens to be on screen — and on a generated song, which names its sound in the bank
 // rather than in the mix, nothing is highlighted at all. The header says it in words,
 // and clicking it drops whatever filter is hiding the row and scrolls to it.
-assert(/const nowPreset = pending \? null : selectedPreset;/.test(voicePicker)
-  && /const nowInList = !!nowPreset && offeredVoices\(laneKey, offer\)\.some\(\(v\) => v\.id === nowPreset\.id\)/.test(voicePicker)
-  && /const now = pending \? null : document\.createElement\(nowInList \? 'button' : 'span'\)/.test(voicePicker)
-  && /nowName\.textContent = nowPreset\?\.label \|\| 'the engine’s own voice'/.test(voicePicker)
-  && /head\.append\(who\);\s*\n\s*if \(now\) head\.append\(now\);/.test(voicePicker)
-  && /if \(id\) btn\.dataset\.voice = id;/.test(voicePicker)
-  && /const currentRow = \(\)[\s\S]*?querySelector\(`button\[data-voice="\$\{CSS\.escape\(nowPreset\.id\)\}"\]`\)/.test(voicePicker)
-  && /if \(now && nowInList\) now\.onclick = \(ev\) => \{ ev\.stopPropagation\(\); revealCurrent\(\); \}/.test(voicePicker)
+assert(voicePicker.includes('if (!pending && selectedPreset)')
+  && voicePicker.includes("document.createElement(available ? 'button' : 'span')")
+  && voicePicker.includes('presetEngine(selectedPreset)')
+  && voicePicker.includes('browser.reveal(selectedPreset.id)')
   && /#voicepicker \.voicenow \{[^}]*color: var\(--ink\)/s.test(shell),
-  'the preset selector names the preset the lane is on now, and clicking it reveals that row');
+  'the preset selector names the current sound and engine and reveals its row on request');
 // Sticky rather than scrolling away with the columns: the negative margin cancels the
 // panel's own padding so the band covers its full width, and the padding it takes in
 // exchange puts the row back where it sat.
@@ -3076,14 +3067,9 @@ assert(/const CATEGORY_LANE = \{[\s\S]*?Kick: 'kick'/.test(entry)
 // — a channel the grid it was added from cannot show a single note of.
 assert((entry.match(/addInstrument: \(anchor\) => addBlankTrack\(anchor, \{ drumsOnly: true \}\)/g) || []).length === 2
   && /\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\);/.test(entry)
-  && /const drumsOnly = pending\s*\n\s*\? !!pendingAddTrack\(\)\?\.drumsOnly\s*\n\s*: PERCUSSION_LANES\.includes\(baseLane\(laneKey\)\)/.test(voicePicker)
-  && /const KINDS = drumsOnly \? \[\{ id: 'drums', label: 'Drums', keep: isDrumChoice \}\]/.test(voicePicker)
-  // A drum lane is booleans: a step says a hit happens and carries no pitch, so a melodic
-  // preset there is a synth struck at one note over and over. Every route into the picker
-  // — the strip, the row menu, the drum editor — refuses it, in both directions of the
-  // rule: the lane's own preset is still shown, or a drum would have no entry to be on.
-  && /const isDrumChoice = \(v\) => isKitVoice\(v\) \|\| \(chosen && v\?\.id === chosen\)/.test(voicePicker)
-  && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(voicePicker)
+  && voicePicker.includes('const drumsOnly = pending ? !!pendingAddTrack()?.drumsOnly')
+  && voicePicker.includes(': PERCUSSION_LANES.includes(baseLane(laneKey))')
+  && voicePicker.includes('.filter((v) => !drumsOnly || isKitVoice(v) || v.id === chosen)')
   && /const blocked = home === 'lead' && pendingAddTrack\(\)\.drumsOnly;/.test(voicePicker),
   'both pattern editors can only add drums — the picker holds nothing but the kit and the'
   + ' re-key to a melodic lane is refused, while the arrangement plus stays neutral');
@@ -3096,7 +3082,10 @@ assert(/const isIndependentLane = \(key\)/.test(entry)
   'independent tracks are not presented as duplicates of Tom in the voice picker');
 assert(/function duplicateLane\(key\)[\s\S]*?duplicateLaneContent\(editBank\(\), arr, key, newKey\)[\s\S]*?\{ key: newKey, from, independent: true/.test(entry),
   'Duplicate snapshots the source pattern and declares the new track independent');
-assert(/function openVoicePicker[\s\S]*?const pending = pendingAddTrack\(\)\?\.key === laneKey[\s\S]*?let kind = drumsOnly \? 'drums' : pending \? 'all'[\s\S]*?else if \(pending\)[\s\S]*?Choose a preset for this new track/.test(voicePicker),
+assert(voicePicker.includes('const pending = pendingAddTrack()?.key === laneKey')
+  && voicePicker.includes('createPresetBrowser({')
+  && voicePicker.includes("pending ? 'Choose a preset for this new track'")
+  && voicePicker.includes('if (!pending && selectedPreset)'),
   'the plus picker starts on All without presenting the Tom engine default');
 assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStorage\.removeItem\(LANE_KEY\)[\s\S]*?rebuildForShape\(\)/.test(entry)
   // Two words on the button, the track named in the confirmation — which is the step you
@@ -3905,6 +3894,11 @@ assert(/#devices \{[^}]*z-index: 28;/.test(shell)
   && /#navdrawer \{ position: fixed;[^}]*z-index: 70;/.test(shell)
   && /#perfdiag \{ position: fixed; z-index: 70;/.test(shell),
   'preset editors, preset selectors and other task windows all float above the rear workspace');
+// The desk's dialog is asked FROM those windows — "Discard preset edits?" comes out of the
+// synth editor — so it has to clear them. At 70 it tied and lost on DOM order. Its own
+// dropdowns (72) still open in front of it; that side is pinned with the custom select.
+assert(Number(shell.match(/#ask \{ position: fixed;[^}]*z-index: (\d+);/)?.[1]) > 70,
+  'the ask dialog sits above the task windows that raise it, the synth editor among them');
 // The offer reads the LANE LIST, so it is re-asked where the lane list is reported changed —
 // the choke point the note editors already sit in, not the kit menu's own handler. Anything
 // that adds or removes drums clears it: the offer itself, the arrangement's +, a delete, an
@@ -4626,7 +4620,7 @@ assert(channelStrip.includes('label: customTrackLabel(key) || preset?.label || l
 assert(/function fillEffectControls\(\{[\s\S]*?visibleParams\(def, entryParams, \{ section \}\)[\s\S]*?paramRange\(pname, def\)/.test(effectCards)
   && /function buildDevices\(\)[\s\S]*?fillEffectControls\(\{[\s\S]*?grid, def, entry, patch, replaceParams/.test(entry)
   && /const drawCard = \(\) => \{[\s\S]*?const effect = chain\[index\];[\s\S]*?card\.className = `device barfxdevice[\s\S]*?bar\.append\(bypass, heading, remove\);[\s\S]*?fillEffectControls\(\{[\s\S]*?rebuild: drawCard,[\s\S]*?patch: \(params, tag\)[\s\S]*?commitSoon\(tag\)[\s\S]*?replaceParams: \(params, tag\)[\s\S]*?tag: \(part\) => \(part \? `spotfx:/.test(noteFxEditors)
-  && /const drawSlots = \(\) => \{[\s\S]*?slot\.className = `barfxslot[\s\S]*?power\.className = 'pwrhit'[\s\S]*?cross\.className = 'rmhit'[\s\S]*?slot\.onclick = \(\) => selectSlot\(index\);[\s\S]*?slot\.draggable = true;[\s\S]*?move\(src, index\)/.test(noteFxEditors)
+  && /const drawSlots = \(\) => \{[\s\S]*?slot\.className = `barfxslot[\s\S]*?power\.className = 'pwrhit'[\s\S]*?cross\.className = 'rmhit'[\s\S]*?slot\.onclick = \(\) => selectSlot\(index\);[\s\S]*?slot\.draggable = effect\.id !== 'strip';[\s\S]*?move\(src, index\)/.test(noteFxEditors)
   && /let dragFrom = null;/.test(noteFxEditors.slice(noteFxEditors.indexOf('function buildBarEffectsEditor')))
   && /const toggleBypass = \(i\) => \{ chain\[i\] = \{ \.\.\.chain\[i\], bypass: !chain\[i\]\.bypass \}; draw\(\); commit\(\); \};/.test(noteFxEditors)
   && /const \[moved\] = chain\.splice\(src, 1\);\s*chain\.splice\(dst, 0, moved\);\s*const \[steps\] = masks\.splice\(src, 1\);\s*masks\.splice\(dst, 0, steps\);\s*selected = chain\.indexOf\(keep\);\s*draw\(\); commit\(\);/.test(noteFxEditors)

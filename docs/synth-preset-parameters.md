@@ -153,7 +153,7 @@ has a stage for the shaper to sit before or after: its tone filter and its AR ga
 
 ---
 
-### RMND-2 (Tone.FMSynth / Tone.AMSynth)
+### RMND-7 (Tone.FMSynth / Tone.AMSynth)
 
 One engine over both of Tone's modulation classes, the way CRLS-1 is one engine over
 `Tone.Synth` and `Tone.MonoSynth`. `MODE` chooses which parameter of the carrier the
@@ -176,7 +176,7 @@ authored number in `bypassed` so a trip through AM and back returns the same dep
 AM the pot greys rather than disappearing, and the board keeps its width. `FM DEPTH` is
 the same control MRDR-3's `Osc N · FM` and KLNG-8's `FM` card carry under the same name.
 
-Legacy `FMSynth` and `AMSynth` stay readable forever and resolve onto `RMND-2` through
+Legacy `FMSynth` and `AMSynth` stay readable forever and resolve onto `RMND-7` through
 `synthFamily` (`src/engine/synth-families.js`).
 
 ---
@@ -473,9 +473,9 @@ humanize: { gain, pitch, filter }
 
 ### Tone preset data shape (`TONE` table)
 ```
-synth: 'CRLS-1'|'RMND-2'                 // legacy spellings still load:
+synth: 'CRLS-1'|'RMND-7'                 // legacy spellings still load:
                                          // Synth, MonoSynth -> CRLS-1
-                                         // FMSynth, AMSynth -> RMND-2
+                                         // FMSynth, AMSynth -> RMND-7
                                          // GameSynth        -> KNDO-5
                                          // AdditiveSynth    -> WNDR-9
                                          // DuoSynth         -> MRDR-3 (params too)

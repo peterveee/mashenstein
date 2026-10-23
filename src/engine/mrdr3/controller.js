@@ -40,7 +40,7 @@ const contexts = new WeakMap();
 const stateFor = (ctx) => {
   let state = contexts.get(ctx);
   if (!state) {
-    state = { lanes: new Map() };
+    state = { lanes: new Map(), released: 0 };
     contexts.set(ctx, state);
   }
   return state;
@@ -124,6 +124,8 @@ export async function mrdr3Lane(ctx, laneKey, { voice, voices, maxGroups = 12, m
     return existing;
   }
   const assets = assetsFor(ctx, voices);
+  // Which release this build belongs to: a song change mid-build means nobody wants it.
+  const released = state.released;
   // ON THE FARM when it is turned on and this context can host it (docs/WASM-audio-
   // engine-plan.md §6): the core renders in a worker and `node` only reads its ring. The
   // rest of this file cannot tell — it talks to `lane.port` either way.
@@ -142,11 +144,16 @@ export async function mrdr3Lane(ctx, laneKey, { voice, voices, maxGroups = 12, m
     });
     port = node.port;
   }
-  // Built while this call was awaiting? Then that lane is the lane, and this one goes.
+  // Built while this call was awaiting? Then that lane is the lane, and this one goes —
+  // stopped and unhooked, as a released lane is, not just dropped (22 Oct 2026, Stage G).
+  // Likewise when the context's lanes were released while it waited: nobody wants it now.
   const raced = state.lanes.get(laneKey);
-  if (raced) {
-    if (farm) farm.release();
-    return raced;
+  if (raced || state.released !== released) {
+    try { port.postMessage({ type: 'stop' }); } catch { /* already gone */ }
+    farm?.release();
+    try { node.disconnect(); } catch { /* never connected */ }
+    node.port.onmessage = null;
+    return raced || null;
   }
   const lane = {
     key: laneKey, node, port, farm, ctx, patch, problems,
@@ -418,6 +425,7 @@ export function releaseMrdr3Context(ctx) {
   const n = state.lanes.size;
   for (const key of [...state.lanes.keys()]) releaseMrdr3Lane(ctx, key);
   state.lanes.clear();
+  state.released++;
   return n;
 }
 

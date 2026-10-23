@@ -17,20 +17,21 @@ const requests = [];
 const draft = { a: { gain: 1 }, b: { gain: 2 } };
 const arrDraft = { a: { bars: 4 } };
 const variantDraft = { a: { variant: 1 } };
-const desk = new Function('env', `
+const createDesk = new Function('env', `
   let { draft, arrDraft, variantDraft, fetchMixerAction, enqueueMixSave } = env;
   let saved = { a: { gain: 0 }, b: { gain: 0 } }, savedArr = {}, variantSaved = {};
-  const STATIC = false, ARRANGE_KEY = 'arr';
+  const STATIC = !!env.STATIC, ARRANGE_KEY = 'arr';
   const draftPersistence = { flush() {} }, localStorage = { setItem() {} };
   const mixChanged = (a,b) => JSON.stringify(a) !== JSON.stringify(b);
-  const freezeVoices = () => {}, persistDraftNow = () => {}, updateStatus = () => {};
+  const freezeVoices = () => {}, persistDraftNow = () => {}, persistLocalSave = () => {}, updateStatus = () => {};
   const tell = async () => {}, escapeHtml = x => x;
   const voiceKeysUsing = () => ['leadVoice'];
   const mixFor = id => draft[id] ?? saved[id];
   ${code}
   ${pinCode}
   return { saveMix, pinPresetInSongs, state: () => ({ saved, savedArr, variantSaved }) };
-`)({ draft, arrDraft, variantDraft, enqueueMixSave: createSaveQueue(),
+`);
+const desk = createDesk({ draft, arrDraft, variantDraft, enqueueMixSave: createSaveQueue(),
   fetchMixerAction: async (url, options) => {
     const wait = deferred(); requests.push({ ...wait, body: JSON.parse(options.body) });
     return wait.promise;
@@ -85,3 +86,28 @@ requests[7].resolve({ ok: true, text: async () => 'ok' }); await pin;
 assert.equal(draft.b.gain, 10);
 assert.equal(desk.state().saved.b.gain, 6, 'legacy acknowledgement uses immutable pin snapshot');
 console.log('MIXER PRESET SAVE ORDER: PASSED');
+
+// The browser-only Desk uses the same queue without a server. Its saved copy is
+// the click-time value, while a later edit remains in the local draft.
+const localDraft = { a: { gain: 1 } };
+const localArr = { a: { bars: 4 } };
+const localVariants = { a: { variant: 1 } };
+const local = createDesk({ STATIC: true, draft: localDraft, arrDraft: localArr,
+  variantDraft: localVariants, enqueueMixSave: createSaveQueue(),
+  fetchMixerAction: () => { throw Error('static Desk must not fetch'); },
+});
+const keep = local.saveMix('a');
+localDraft.a = { gain: 2 }; localArr.a = { bars: 8 }; localVariants.a = { variant: 2 };
+await keep;
+assert.deepEqual(local.state().saved.a, { gain: 1 });
+assert.deepEqual(local.state().savedArr.a, { bars: 4 });
+assert.deepEqual(local.state().variantSaved.a, { variant: 1 });
+assert.deepEqual(localDraft.a, { gain: 2 });
+assert.deepEqual(localArr.a, { bars: 8 });
+assert.deepEqual(localVariants.a, { variant: 2 });
+await local.saveMix('a');
+assert.deepEqual(local.state().saved.a, { gain: 2 });
+assert.equal(localDraft.a, undefined);
+assert.equal(localArr.a, undefined);
+assert.equal(localVariants.a, undefined);
+console.log('MIXER BROWSER-ONLY SAVE: PASSED');

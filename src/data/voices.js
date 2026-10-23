@@ -3126,7 +3126,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 2.9, rolloff: -24 },
       filterEnvelope: { attack: 0.0016, decay: 0.7207, sustain: 0.0782, release: 0.1477, baseFrequency: 110, octaves: 3.9, attackCurve: 'exponential', decayCurve: 'exponential', releaseCurve: 'exponential' },
     } },
-  fmGrowl: { label: 'FM Growl', category: 'Bass', synth: 'RMND-2', dur: 1.8,
+  fmGrowl: { label: 'FM Growl', category: 'Bass', synth: 'RMND-7', dur: 1.8,
     note: 'Modulated sine with a hard edge on the attack. Cuts through a busy kit.',
     options: {
       harmonicity: 1.5, modulationIndex: 6,
@@ -3151,7 +3151,7 @@ const TONE = {
       filterEnvelope: { attack: 0.0175, decay: 0.1972, sustain: 0.3541, release: 0.1333, baseFrequency: 100, octaves: 4.6, attackCurve: 'exponential', decayCurve: 'exponential', releaseCurve: 'exponential' },
     },
     transpose: -12 },
-  clangBass: { label: 'Clang', category: 'Bass', synth: 'RMND-2', dur: 1.4,
+  clangBass: { label: 'Clang', category: 'Bass', synth: 'RMND-7', dur: 1.4,
     note: 'Inharmonic FM — metal in the attack, pitch underneath. Reads as industrial.',
     options: {
       harmonicity: 3.01, modulationIndex: 12,
@@ -3223,7 +3223,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 2, rolloff: -12 },
       filterEnvelope: { attack: 0.002, decay: 0.0975, sustain: 0.3775, release: 0.1063, baseFrequency: 600, octaves: 3.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' },
     } },
-  amHollow: { label: 'AM Hollow', category: 'Lead', synth: 'RMND-2', dur: 1.2,
+  amHollow: { label: 'AM Hollow', category: 'Lead', synth: 'RMND-7', dur: 1.2,
     note: 'Ring-modulated and slightly out of tune with itself. Reads as a voice rather than a synth.',
     options: {
       harmonicity: 2,
@@ -3244,7 +3244,7 @@ const TONE = {
         env: { octaves: 3, attack: 0.01, decay: 0.001, sustain: 1, release: 0.5 } },
     },
     vibrato: { depth: 0.06, rate: 5 } },
-  glassLead: { label: 'Glass', category: 'Lead', synth: 'RMND-2', dur: 1.2,
+  glassLead: { label: 'Glass', category: 'Lead', synth: 'RMND-7', dur: 1.2,
     note: 'High harmonicity, short modulation — thin and clear, sits over a dense mix.',
     options: {
       harmonicity: 5, modulationIndex: 3,
@@ -3283,7 +3283,7 @@ const TONE = {
     vibrato: { depth: 0.175, rate: 5.5 } },
 
   // ---- Keys ---------------------------------------------------------------
-  fmKeys: { label: 'FM Keys', category: 'Keys', synth: 'RMND-2', dur: 2.6,
+  fmKeys: { label: 'FM Keys', category: 'Keys', synth: 'RMND-7', dur: 2.6,
     note: 'Struck keys, percussive enough to keep a stab from smearing into the next bar.',
     options: {
       harmonicity: 2, modulationIndex: 4,
@@ -3291,7 +3291,7 @@ const TONE = {
       envelope: { attack: 0.005, decay: 0.8, sustain: 0.1, release: 0.8 },
       modulationEnvelope: { attack: 0.004, decay: 0.4, sustain: 0.05, release: 0.5 },
     } },
-  epiano: { label: 'Electric Piano', category: 'Keys', synth: 'RMND-2', dur: 3,
+  epiano: { label: 'Electric Piano', category: 'Keys', synth: 'RMND-7', dur: 3,
     note: 'The Rhodes shape: bell in the attack, sine underneath, long decay.',
     options: {
       harmonicity: 3, modulationIndex: 10,
@@ -3307,7 +3307,7 @@ const TONE = {
       filter: { type: 'bandpass', Q: 3, rolloff: -12 },
       filterEnvelope: { attack: 0.0013, decay: 0.0574, sustain: 0.0986, release: 0.0376, baseFrequency: 700, octaves: 2.5, attackCurve: 'exponential', decayCurve: 'exponential', releaseCurve: 'exponential' },
     } },
-  toyPiano: { label: 'Toy Piano', category: 'Bells', synth: 'RMND-2', dur: 2,
+  toyPiano: { label: 'Toy Piano', category: 'Bells', synth: 'RMND-7', dur: 2,
     note: 'Inharmonic and small, with a knock in the attack. Cardboard Kingdom material.',
     options: {
       harmonicity: 4.02, modulationIndex: 6,
@@ -3331,7 +3331,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 1, rolloff: -12 },
       filterEnvelope: { attack: 0.5313, decay: 0.211, sustain: 0.6921, release: 0.3506, baseFrequency: 200, octaves: 2.6, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' },
     } },
-  glassPad: { label: 'Glass Pad', category: 'Pad', synth: 'RMND-2', dur: 4,
+  glassPad: { label: 'Glass Pad', category: 'Pad', synth: 'RMND-7', dur: 4,
     note: 'Ring modulation over a long swell — shimmering rather than warm.',
     options: {
       harmonicity: 3.01,
@@ -3354,7 +3354,7 @@ const TONE = {
     vibrato: { depth: 0.04, rate: 2.5 } },
 
   // ---- Organ --------------------------------------------------------------
-  amOrgan: { label: 'AM Organ', category: 'Organ', synth: 'RMND-2', dur: 2.6,
+  amOrgan: { label: 'AM Organ', category: 'Organ', synth: 'RMND-7', dur: 2.6,
     note: 'Held and slightly beating, the way an organ with two drawbars out is.',
     options: {
       harmonicity: 1,
@@ -3362,7 +3362,7 @@ const TONE = {
       envelope: { attack: 0.02, decay: 0.1, sustain: 0.9, release: 0.35 },
       modulationEnvelope: { attack: 0.1, decay: 0.1, sustain: 0.8, release: 0.3 },
     } },
-  fullOrgan: { label: 'Full Organ', category: 'Organ', synth: 'RMND-2', dur: 3,
+  fullOrgan: { label: 'Full Organ', category: 'Organ', synth: 'RMND-7', dur: 3,
     note: 'All stops out: harmonically dense and completely flat in level, like a key held down.',
     options: {
       harmonicity: 2, modulationIndex: 2,
@@ -3380,7 +3380,7 @@ const TONE = {
     } },
 
   // ---- Bells --------------------------------------------------------------
-  fmBell: { label: 'FM Bell', category: 'Bells', synth: 'RMND-2', dur: 1.2,
+  fmBell: { label: 'FM Bell', category: 'Bells', synth: 'RMND-7', dur: 1.2,
     note: 'Struck and metallic, decaying rather than held — a bell at long lengths.',
     options: {
       harmonicity: 3,
@@ -3390,7 +3390,7 @@ const TONE = {
       envelope: { attack: 0.003, decay: 0.6, sustain: 0.05, release: 0.6 },
       modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0.02, release: 0.4 },
     } },
-  celeste: { label: 'Celeste', category: 'Bells', synth: 'RMND-2', dur: 4,
+  celeste: { label: 'Celeste', category: 'Bells', synth: 'RMND-7', dur: 4,
     note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
     options: {
       harmonicity: 7, modulationIndex: 4,
@@ -3398,7 +3398,7 @@ const TONE = {
       envelope: { attack: 0.001, decay: 1.6, sustain: 0.01, release: 1.6 },
       modulationEnvelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.4 },
     } },
-  marimba: { label: 'Marimba', category: 'Bells', synth: 'RMND-2', dur: 1.4,
+  marimba: { label: 'Marimba', category: 'Bells', synth: 'RMND-7', dur: 1.4,
     note: 'Wooden and short. The mallet is the whole sound; there is no sustain to speak of.',
     options: {
       harmonicity: 4, modulationIndex: 3,
@@ -3406,7 +3406,7 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.35, sustain: 0, release: 0.35 },
       modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
     } },
-  musicBox: { label: 'Music Box', category: 'Bells', synth: 'RMND-2', dur: 3,
+  musicBox: { label: 'Music Box', category: 'Bells', synth: 'RMND-7', dur: 3,
     note: 'Thin, high and slightly sour, with the click of the comb in the attack.',
     options: {
       harmonicity: 6.03, modulationIndex: 7,
@@ -3427,7 +3427,7 @@ const TONE = {
   harpPluck: { label: 'Harp', category: 'Pluck', synth: 'CRLS-1', dur: 2,
     note: 'A triangle with no sustain at all — the string is let go the moment it is struck.',
     options: { oscillator: { type: 'triangle' }, envelope: { attack: 0.002, decay: 0.7, sustain: 0, release: 0.7 } } },
-  koto: { label: 'Koto', category: 'Pluck', synth: 'RMND-2', dur: 1.6,
+  koto: { label: 'Koto', category: 'Pluck', synth: 'RMND-7', dur: 1.6,
     note: 'Bright inharmonic pluck with a fast decay. Reads as a struck string.',
     options: {
       harmonicity: 2.51, modulationIndex: 9,
@@ -3458,7 +3458,7 @@ const TONE = {
         env: { octaves: 3, attack: 0.01, decay: 0.001, sustain: 1, release: 0.5 } },
     },
     vibrato: { depth: 0.025, rate: 4 } },
-  hornSwell: { label: 'Horn Swell', category: 'Orch', synth: 'RMND-2', dur: 3,
+  hornSwell: { label: 'Horn Swell', category: 'Orch', synth: 'RMND-7', dur: 3,
     note: 'Slow crescendo with the harmonics arriving after the fundamental, as a brass note does.',
     options: {
       harmonicity: 1, modulationIndex: 5,
@@ -3476,7 +3476,7 @@ const TONE = {
       filter: { type: 'highpass', Q: 1, rolloff: -12 },
       filterEnvelope: { attack: 0.001, decay: 0.03, sustain: 1, release: 0.0372, baseFrequency: 80, octaves: 0.2, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' },
     } },
-  ringMod: { label: 'Ring Mod', category: 'FX', synth: 'RMND-2', dur: 1.4,
+  ringMod: { label: 'Ring Mod', category: 'FX', synth: 'RMND-7', dur: 1.4,
     note: 'Inharmonic ring modulation — the pitch is in there but so is a second one.',
     options: {
       harmonicity: 2.47,
@@ -3484,7 +3484,7 @@ const TONE = {
       envelope: { attack: 0.004, decay: 0.2, sustain: 0.6, release: 0.3 },
       modulationEnvelope: { attack: 0.004, decay: 0.2, sustain: 0.6, release: 0.3 },
     } },
-  hardFm: { label: 'Gritty FM Lead', category: 'FX', synth: 'RMND-2', dur: 1.2,
+  hardFm: { label: 'Gritty FM Lead', category: 'FX', synth: 'RMND-7', dur: 1.2,
     note: 'Modulation index high enough to be noise with a pitch in it.',
     options: {
       harmonicity: 1.585,
@@ -3512,7 +3512,7 @@ const TONE = {
   // both the claves and the drums, and measuring a taiko at the rim lane's 420 Hz
   // levels it against a pitch nobody strikes it at. Everything without one is measured
   // where its category says — see HOME_LANES in the tool.
-  clave: { label: 'Clave', category: 'Perc', synth: 'RMND-2', dur: 0.6,
+  clave: { label: 'Clave', category: 'Perc', synth: 'RMND-7', dur: 0.6,
     note: 'A hard, high, completely dry click with a pitch to it. Cuts through '
       + 'anything at almost no level.',
     options: { harmonicity: 3.02, modulationIndex: 8,
@@ -3530,7 +3530,7 @@ const TONE = {
   // stick on metal. Both halves carry identical partials — only the envelope differs,
   // which is what a pedal does to a real hat.
 
-  woodBlock: { label: 'Wood Block', category: 'Perc', synth: 'RMND-2', dur: 0.6,
+  woodBlock: { label: 'Wood Block', category: 'Perc', synth: 'RMND-7', dur: 0.6,
     note: 'A short knock with almost no tail. Good for rim, and for a tick that '
       + 'keeps time without taking up room.',
     options: {
@@ -3622,23 +3622,23 @@ const TONE = {
     note: "A short sine knock with a little sustain behind it. Hollow and wooden.",
     origin: "Tonejs/Presets Synth/TreeTrunk",
     options: {"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.1,"sustain":0.1,"release":1.2}} },
-  tpElectricCello: { label: 'Electric Cello', category: 'Orch', synth: 'RMND-2', dur: 3,
+  tpElectricCello: { label: 'Electric Cello', category: 'Orch', synth: 'RMND-7', dur: 3,
     note: "High modulation index over a triangle: bowed rather than struck, with a bite on the attack.",
     origin: "Tonejs/Presets FMSynth/ElectricCello",
     options: {"harmonicity":3.01,"modulationIndex":14,"oscillator":{"type":"triangle"},"envelope":{"attack":0.2,"decay":0.3,"sustain":0.1,"release":1.2},"modulation":{"type":"square"},"modulationEnvelope":{"attack":0.01,"decay":0.5,"sustain":0.2,"release":0.1}} },
-  tpKalimba: { label: 'Kalimba', category: 'Bells', synth: 'RMND-2', dur: 2.4,
+  tpKalimba: { label: 'Kalimba', category: 'Bells', synth: 'RMND-7', dur: 2.4,
     note: "Harmonicity 8 and almost no modulation — a thumb piano’s clean, high, quick ring.",
     origin: "Tonejs/Presets FMSynth/Kalimba",
     options: {"harmonicity":8,"modulationIndex":2,"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":2,"sustain":0.1,"release":2},"modulation":{"type":"square"},"modulationEnvelope":{"attack":0.002,"decay":0.2,"sustain":0,"release":0.2}} },
-  tpThinSaws: { label: 'Thin Saws', category: 'Lead', synth: 'RMND-2', dur: 1.4,
+  tpThinSaws: { label: 'Thin Saws', category: 'Lead', synth: 'RMND-7', dur: 1.4,
     note: "Harmonicity below 1, so the modulator sits under the carrier. Reedy and narrow.",
     origin: "Tonejs/Presets FMSynth/ThinSaws",
     options: {"harmonicity":0.5,"modulationIndex":1.2,"oscillator":{"type":"fmsawtooth","modulationType":"sine","modulationIndex":20,"harmonicity":3},"envelope":{"attack":0.05,"decay":0.3,"sustain":0.1,"release":1.2},"modulation":{"volume":0,"type":"triangle"},"modulationEnvelope":{"attack":0.35,"decay":0.1,"sustain":1,"release":0.01}} },
-  tpHarmonics: { label: 'Harmonics', category: 'Organ', synth: 'RMND-2', dur: 2.6,
+  tpHarmonics: { label: 'Harmonics', category: 'Organ', synth: 'RMND-7', dur: 2.6,
     note: "Ring modulation at almost exactly four times the carrier — the partials line up, so it reads as an organ stop.",
     origin: "Tonejs/Presets AMSynth/Harmonics",
     options: {"harmonicity":3.999,"oscillator":{"type":"square"},"envelope":{"attack":0.03,"decay":0.3,"sustain":0.7,"release":0.8},"modulation":{"volume":12,"type":"square6"},"modulationEnvelope":{"attack":2,"decay":3,"sustain":0.8,"release":0.1}} },
-  tpTiny: { label: 'Tiny', category: 'Keys', synth: 'RMND-2', dur: 1.6,
+  tpTiny: { label: 'Tiny', category: 'Keys', synth: 'RMND-7', dur: 1.6,
     note: "A tiny detuned AM sine. Small, clean and easy to place under anything.",
     origin: "Tonejs/Presets AMSynth/Tiny",
     options: {"harmonicity":2,"oscillator":{"type":"amsine2","modulationType":"sine","harmonicity":1.01},"envelope":{"attack":0.006,"decay":4,"sustain":0.04,"release":1.2},"modulation":{"volume":13,"type":"amsine2","modulationType":"sine","harmonicity":12},"modulationEnvelope":{"attack":0.006,"decay":0.2,"sustain":0.2,"release":0.4}} },
@@ -3685,7 +3685,7 @@ const TONE = {
     portamento: 0,
     starter: false,
     transpose: 0 },
-  fmGrowl2: { label: 'FM Growl', category: 'Bass', synth: 'RMND-2', dur: 1.8,
+  fmGrowl2: { label: 'FM Growl', category: 'Bass', synth: 'RMND-7', dur: 1.8,
     note: 'Modulated sine with a hard edge on the attack. Cuts through a busy kit.',
     options: {
       harmonicity: 1.5, modulationIndex: 6,
@@ -3803,7 +3803,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 2.4, rolloff: -24 },
       filterEnvelope: { attack: 0.0041, decay: 0.2142, sustain: 0.1328, release: 0.0765, baseFrequency: 110, octaves: 3.8, attackCurve: 'exponential', decayCurve: 'exponential', releaseCurve: 'exponential' },
     } },
-  bass80sFM: { label: '=80s FM Bass', category: 'Bass', synth: 'RMND-2', dur: 1.8,
+  bass80sFM: { label: '=80s FM Bass', category: 'Bass', synth: 'RMND-7', dur: 1.8,
     note: 'A bright digital 80s bass: a sine body with a square modulator, tuned for '
       + 'the glassy attack of an FM workstation under a pop groove.',
     options: {
@@ -5371,7 +5371,7 @@ const TONE = {
   // synth brings: WNDR-9 real partials, with `stretch` as the piano string's own
   // inharmonicity law and `damp` decaying the top of the stack first; MRDR-3 a hammer (a
   // noise layer gone in 40 ms) and a keytracked filter envelope; TNGR-2 a table swept
-  // bright to dark; RMND-2 a falling FM index.
+  // bright to dark; RMND-7 a falling FM index.
   //
   // The WNDR-9 three sit on the ordinary drawbar series, so every bar is the footage its
   // pot says it is: the 8′ is the fundamental and the 2⅔′, 1⅗′ and 1′ carry the 3rd, 5th
@@ -5453,7 +5453,7 @@ const TONE = {
       filterEnv: { amount: 0.8, attack: 0.001, decay: 0.4, sustain: 0 },
       master: { gain: 0.66 } } },
 
-  rmndDxPiano: { label: 'FM Piano', category: 'Keys', synth: 'RMND-2', dur: 2.4,
+  rmndDxPiano: { label: 'FM Piano', category: 'Keys', synth: 'RMND-7', dur: 2.4,
     note: 'Harmonicity 1 is a full harmonic series; the index falls from bright to nearly '
       + 'a sine across the first second. The DX7 piano everybody has heard.',
     options: {
@@ -5462,7 +5462,7 @@ const TONE = {
       envelope: { attack: 0.002, decay: 2.4, sustain: 0.02, release: 0.6 },
       modulationEnvelope: { attack: 0.001, decay: 0.9, sustain: 0.06, release: 0.5 },
     } },
-  rmndTineEP: { label: 'Tine Electric Piano', category: 'Keys', synth: 'RMND-2', dur: 2.8,
+  rmndTineEP: { label: 'Tine Electric Piano', category: 'Keys', synth: 'RMND-7', dur: 2.8,
     note: 'A 7:1 operator for the tine\'s ping, gone in an eighth of a second, over a sine '
       + 'that holds a little. The Rhodes end of "piano".',
     options: {
@@ -5480,7 +5480,7 @@ const TONE = {
   // the fret click (high noise) and the POP's pitch, which starts sharp because the
   // string is stretched as it is pulled. The pops carry no drive: MRDR-3's shaper is
   // normalised to full scale, so it levels the strike with the note behind it.
-  rmndDxSlap: { label: 'FM Slap Bass', category: 'Bass', synth: 'RMND-2', dur: 1,
+  rmndDxSlap: { label: 'FM Slap Bass', category: 'Bass', synth: 'RMND-7', dur: 1,
     note: 'The DX7 bass: a 1:1 modulator at index 12, gone in an eighth of a second, so '
       + 'the note starts as a buzz-saw and settles to a round sine.',
     options: {
@@ -5489,7 +5489,7 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.9, sustain: 0.35, release: 0.08 },
       modulationEnvelope: { attack: 0.001, decay: 0.12, sustain: 0.06, release: 0.1 },
     } },
-  rmndDxPop: { label: 'FM Pop Bass', category: 'Bass', synth: 'RMND-2', dur: 1,
+  rmndDxPop: { label: 'FM Pop Bass', category: 'Bass', synth: 'RMND-7', dur: 1,
     note: 'Harder and shorter: index 14 collapsing in 60 ms, and a body that lets go '
       + 'quickly. All snap — the pulled note on its own.',
     options: {
@@ -5498,7 +5498,7 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.35, sustain: 0.15, release: 0.06 },
       modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0.02, release: 0.05 },
     } },
-  rmndDigitalSlap: { label: 'Digital Slap', category: 'Bass', synth: 'RMND-2', dur: 1,
+  rmndDigitalSlap: { label: 'Digital Slap', category: 'Bass', synth: 'RMND-7', dur: 1,
     note: 'A square modulator: odd harmonics only in the strike, so it barks rather than '
       + 'buzzes. The hollow, glassy Level 42 end.',
     options: {
@@ -5590,7 +5590,7 @@ const TONE = {
     global: { filter: { type: 'lowpass', slope: -24, freq: 150, Q: 9, track: 0.7, env: { octaves: 6, attack: 0.001, decay: 0.06, sustain: 0.04, release: 0.05 } } },
     drive: 0.168392, shape: 'soft',
     humanize: { entry: 0.003, gain: 0.06 } },
-  rmndMaxPop: { label: 'Hard FM Pop Bass', category: 'Bass', synth: 'RMND-2', dur: 1,
+  rmndMaxPop: { label: 'Hard FM Pop Bass', category: 'Bass', synth: 'RMND-7', dur: 1,
     note: 'The DX slap with the index at 22 and gone in 35 ms. Nearly a click with a bass '
       + 'note hanging off it.',
     options: {
@@ -5599,7 +5599,7 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.5, sustain: 0.25, release: 0.06 },
       modulationEnvelope: { attack: 0.001, decay: 0.035, sustain: 0.03, release: 0.04 },
     } },
-  rmndClangPop: { label: 'DX Clang Pop', category: 'Bass', synth: 'RMND-2', dur: 1,
+  rmndClangPop: { label: 'DX Clang Pop', category: 'Bass', synth: 'RMND-7', dur: 1,
     note: 'A 3:1 modulator at index 10: the strike rings like struck metal before it '
       + 'settles. The DX7 pop that sounds like a DX7 on purpose.',
     options: {
@@ -5608,7 +5608,7 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.6, sustain: 0.3, release: 0.06 },
       modulationEnvelope: { attack: 0.001, decay: 0.045, sustain: 0.02, release: 0.04 },
     } },
-  rmndSquarePop: { label: 'Square FM Pop Bass', category: 'Bass', synth: 'RMND-2', dur: 1,
+  rmndSquarePop: { label: 'Square FM Pop Bass', category: 'Bass', synth: 'RMND-7', dur: 1,
     note: 'Square modulator at index 12 for 40 ms: a hard, hollow bark at the front of '
       + 'every note.',
     options: {
@@ -6188,6 +6188,1007 @@ const TONE = {
     tngr2: { oscA: { table: 'alloy', position: 0.55, envAmount: -0.3, level: 0.93, unison: 2, spread: 5 }, oscB: { table: 'bellFold', position: 0.38, level: 0.25, interval: -12, detune: 7 }, amp: { attack: 0.001, decay: 0.373, sustain: 0.18, release: 0.684 }, positionEnv: { attack: 0, decay: 0.9, sustain: 0.55 }, filter: { type: 'lowpass', slope: -24, cutoff: 2970, resonance: 2.75 }, master: { gain: 0.5 }, filterEnv: { amount: 0.2 } },
     chorus: { mix: 0.03 },
     trim: 0 },
+  // ---- RMND-7: the filter, the pitch envelope and AM DEPTH (23 Oct 2026) ---------
+  //
+  // Fifty-eight sounds the engine could not make before that day. Every one leans on at least
+  // one of the new controls: the Filter card (TYPE, SLOPE, CUTOFF, RESONANCE, ENV AMOUNT,
+  // KEY FOLLOW) with its curved Filter Env, the Pitch Env, FM DEPTH past the old 40, or
+  // AM DEPTH, which reaches ring modulation at 200%. FM first, then AM. Unheard on
+  // anything but a render when written.
+  rm7WahBass: { label: 'FM Wah Bass', category: 'Bass', synth: 'RMND-7', dur: 1.2,
+    note: 'A round 1:1 FM bass through a resonant 24 dB lowpass that the filter envelope '
+      + 'kicks open three and a half octaves and lets fall — the envelope-filter funk bass.',
+    options: {
+      harmonicity: 1, modulationIndex: 5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 0.6, sustain: 0.7, release: 0.15 },
+      modulationEnvelope: { attack: 0.001, decay: 0.25, sustain: 0.3, release: 0.15 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 180, Q: 7, track: 0.4,
+      env: { octaves: 3.5, attack: 0.005, decay: 0.28, sustain: 0.15, release: 0.1, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7LaserBass: { label: 'Laser Bass', category: 'Bass', synth: 'RMND-7', dur: 1,
+    note: 'Every note starts an octave up and drops onto its pitch in 45 ms — the zap at '
+      + 'the front of an electro bass, from the pitch envelope rather than the filter.',
+    options: {
+      harmonicity: 1, modulationIndex: 8,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.5, sustain: 0.6, release: 0.1 },
+      modulationEnvelope: { attack: 0.001, decay: 0.15, sustain: 0.2, release: 0.1 },
+    },
+    pitch: { semitones: 12, attack: 0, decay: 0.045, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'lowpass', slope: -12, freq: 900, Q: 1, track: 0.5 } },
+  rm7MonsterGrowl: { label: 'Monster FM Growl', category: 'Bass', synth: 'RMND-7', dur: 1.6,
+    note: 'FM DEPTH 70 on a sub-octave modulator: past the old ceiling, where a low note '
+      + 'still has room to tear. A 24 dB lowpass keeps the top from fizzing. Play it low.',
+    options: {
+      harmonicity: 0.5, modulationIndex: 70,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.003, decay: 1, sustain: 0.85, release: 0.15 },
+      modulationEnvelope: { attack: 0.001, decay: 0.8, sustain: 0.5, release: 0.2 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 400, Q: 4, track: 0.3,
+      env: { octaves: 2.5, attack: 0.01, decay: 0.4, sustain: 0.3, release: 0.15, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'mono', portamento: 0.04 },
+  rm7AcidFm: { label: 'FM Acid', category: 'Bass', synth: 'RMND-7', dur: 0.8,
+    note: 'The 303 move on an FM voice: a square-modulated strike into a lowpass at '
+      + 'resonance 14 that snaps four octaves open and shuts in 140 ms. Mono, with a slide.',
+    options: {
+      harmonicity: 1, modulationIndex: 6,
+      oscillator: { type: 'sine' }, modulation: { type: 'square' },
+      envelope: { attack: 0.001, decay: 0.3, sustain: 0.4, release: 0.06 },
+      modulationEnvelope: { attack: 0.001, decay: 0.12, sustain: 0.15, release: 0.05 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 220, Q: 14, track: 0.3,
+      env: { octaves: 4, attack: 0.001, decay: 0.14, sustain: 0.05, release: 0.05, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'mono', portamento: 0.06 },
+  rm7ReeseFm: { label: 'FM Reese', category: 'Bass', synth: 'RMND-7', dur: 1.8,
+    note: 'RATIO 1 and FINE 4: the modulator four thousandths off the carrier, so the tone '
+      + 'turns slowly inside itself — a Reese bass from one voice — under a 24 dB lowpass.',
+    options: {
+      harmonicity: 1.004, modulationIndex: 3,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.005, decay: 1, sustain: 0.9, release: 0.2 },
+      modulationEnvelope: { attack: 0.005, decay: 1, sustain: 0.8, release: 0.2 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 500, Q: 2, track: 0.3,
+      env: { octaves: 1, attack: 0.01, decay: 0.3, sustain: 0.5, release: 0.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'mono', portamento: 0.03 },
+  rm7DxBrass: { label: 'DX Brass', category: 'Orch', synth: 'RMND-7', dur: 2.4,
+    note: 'The brightness arrives after the note: the modulator and the lowpass both swell '
+      + 'in over 80–90 ms, the way a brass player\'s lip opens up, with a late vibrato.',
+    options: {
+      harmonicity: 1, modulationIndex: 4,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.06, decay: 0.4, sustain: 0.8, release: 0.25 },
+      modulationEnvelope: { attack: 0.09, decay: 0.5, sustain: 0.6, release: 0.25 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 700, Q: 1.2, track: 0.6,
+      env: { octaves: 2, attack: 0.08, decay: 0.5, sustain: 0.4, release: 0.25, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    vibrato: { depth: 0.12, rate: 5.2, delay: 0.35 } },
+  rm7ScreamLead: { label: 'FM Screamer', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'FM DEPTH 30 off a saw modulator, reined in by a resonant lowpass that follows '
+      + 'the keyboard. Legato with a glide, and a vibrato that waits a quarter second.',
+    options: {
+      harmonicity: 1, modulationIndex: 30,
+      oscillator: { type: 'sine' }, modulation: { type: 'sawtooth' },
+      envelope: { attack: 0.004, decay: 0.3, sustain: 0.85, release: 0.2 },
+      modulationEnvelope: { attack: 0.004, decay: 0.6, sustain: 0.7, release: 0.2 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 2600, Q: 6, track: 0.7,
+      env: { octaves: 1.5, attack: 0.01, decay: 0.35, sustain: 0.3, release: 0.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'legato', portamento: 0.08,
+    vibrato: { depth: 0.2, rate: 5.5, delay: 0.25 } },
+  rm7TempleGong: { label: 'Temple Gong', category: 'Bells', synth: 'RMND-7', dur: 6,
+    note: 'An inharmonic 1.4 ratio struck hard, whose lowpass closes over three seconds so '
+      + 'the clang darkens into a hum — and a pitch that starts a semitone flat and settles.',
+    options: {
+      harmonicity: 1.4, modulationIndex: 25,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 6, sustain: 0, release: 3 },
+      modulationEnvelope: { attack: 0.002, decay: 4, sustain: 0, release: 3 },
+    },
+    pitch: { semitones: -1, attack: 0, decay: 1.5, sustain: 0, release: 0.5, decayCurve: 'exp' },
+    filter: { type: 'lowpass', slope: -12, freq: 1200, Q: 0.7, track: 0.5,
+      env: { octaves: 3, attack: 0.002, decay: 3, sustain: 0, release: 2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7FmTom: { label: 'FM Tom', category: 'Perc', synth: 'RMND-7', dur: 0.6,
+    note: 'A pitch envelope fourteen semitones deep falling in 120 ms over a 3:2 strike — '
+      + 'a synth tom you can play as a melody.',
+    options: {
+      harmonicity: 1.5, modulationIndex: 3,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.45, sustain: 0, release: 0.2 },
+      modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.05 },
+    },
+    pitch: { semitones: 14, attack: 0, decay: 0.12, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'lowpass', slope: -12, freq: 1800, Q: 0.8, track: 0.3 } },
+  rm7SteelPluck: { label: 'Steel Pluck', category: 'Pluck', synth: 'RMND-7', dur: 1.2,
+    note: 'A 3:1 strike through a lowpass that follows the keyboard all the way and falls '
+      + 'three octaves in a quarter second: bright pick, dark tail, the same on every string.',
+    options: {
+      harmonicity: 3, modulationIndex: 6,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 1.1, sustain: 0, release: 0.3 },
+      modulationEnvelope: { attack: 0.001, decay: 0.2, sustain: 0.05, release: 0.2 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 900, Q: 2, track: 1,
+      env: { octaves: 3, attack: 0.001, decay: 0.25, sustain: 0, release: 0.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7CrystalPad: { label: 'Crystal Pad', category: 'Pad', synth: 'RMND-7', dur: 8,
+    note: 'RATIO 2, FINE 3 — an octave modulator just off true, so the pad shimmers — with '
+      + 'the modulator and a lowpass both opening over two seconds.',
+    options: {
+      harmonicity: 2.003, modulationIndex: 3,
+      oscillator: { type: 'sine' }, modulation: { type: 'triangle' },
+      envelope: { attack: 1.2, decay: 2, sustain: 0.8, release: 2.5 },
+      modulationEnvelope: { attack: 2, decay: 3, sustain: 0.5, release: 2.5 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 900, Q: 1.5, track: 0.5,
+      env: { octaves: 2.5, attack: 2.5, decay: 3, sustain: 0.6, release: 2.5, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } },
+    vibrato: { depth: 0.06, rate: 4.5, delay: 0.8 } },
+  rm7VowelPad: { label: 'Vowel Pad', category: 'Pad', synth: 'RMND-7', dur: 8,
+    note: 'A bright FM tone through a narrow bandpass that drifts up an octave over two '
+      + 'seconds — a choir moving from "oo" towards "ah".',
+    options: {
+      harmonicity: 1, modulationIndex: 2.5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.8, decay: 1.5, sustain: 0.85, release: 2 },
+      modulationEnvelope: { attack: 0.8, decay: 1.5, sustain: 0.8, release: 2 },
+    },
+    filter: { type: 'bandpass', slope: -12, freq: 800, Q: 4, track: 0.85,
+      env: { octaves: 1, attack: 1.5, decay: 2, sustain: 0.5, release: 2, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'linear' } },
+    vibrato: { depth: 0.05, rate: 4.8, delay: 0.6 } },
+  rm7LaserZap: { label: 'Laser Zap', category: 'FX', synth: 'RMND-7', dur: 0.6,
+    note: 'Three octaves of pitch envelope collapsing in a quarter second on a square-'
+      + 'modulated strike, highpassed so it stays a zap rather than a thump.',
+    options: {
+      harmonicity: 1, modulationIndex: 15,
+      oscillator: { type: 'sine' }, modulation: { type: 'square' },
+      envelope: { attack: 0.001, decay: 0.35, sustain: 0, release: 0.1 },
+      modulationEnvelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.1 },
+    },
+    pitch: { semitones: 36, attack: 0, decay: 0.25, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'highpass', slope: -12, freq: 300, Q: 1, track: 0 } },
+  rm7Riser: { label: 'FM Riser', category: 'Sweep', synth: 'RMND-7', dur: 16,
+    note: 'Starts two octaves down and climbs onto the note over three seconds while the '
+      + 'modulator and a resonant lowpass both open — hold it into a drop.',
+    options: {
+      harmonicity: 2, modulationIndex: 4,
+      oscillator: { type: 'sine' }, modulation: { type: 'sawtooth' },
+      envelope: { attack: 1.5, decay: 0.5, sustain: 1, release: 0.4 },
+      modulationEnvelope: { attack: 2.5, decay: 0.5, sustain: 1, release: 0.4 },
+    },
+    pitch: { semitones: -24, attack: 0, decay: 3, sustain: 0, release: 0.1, decayCurve: 'lin' },
+    filter: { type: 'lowpass', slope: -24, freq: 300, Q: 5, track: 0.2,
+      env: { octaves: 5, attack: 3, decay: 0.5, sustain: 1, release: 0.4, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'linear' } } },
+  rm7PhasedEp: { label: 'Phased E-Piano', category: 'Keys', synth: 'RMND-7', dur: 2.8,
+    note: 'The tine electric piano through a notch that sweeps up through the tone as the '
+      + 'note rings — the phaser pedal every one of them was played through.',
+    options: {
+      harmonicity: 7, modulationIndex: 2.4,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 2.8, sustain: 0.1, release: 0.7 },
+      modulationEnvelope: { attack: 0.001, decay: 0.12, sustain: 0.08, release: 0.3 },
+    },
+    filter: { type: 'notch', slope: -12, freq: 600, Q: 1.5, track: 0.5,
+      env: { octaves: 3, attack: 1.2, decay: 1.5, sustain: 0.3, release: 0.6, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'linear' } } },
+
+  // AM. No `modulationIndex`, which is how a preset says amplitude modulation, and an
+  // `amDepth` in place of it: 0.48 is what Tone's AMSynth always did, 1 swings the
+  // carrier to silence every cycle, 2 is ring modulation — the carrier gone and only the
+  // sum and difference left. The modulator's frequency is RATIO × the note, so a low
+  // ratio is a tremolo whose speed follows the key.
+  rm7RingBell: { label: 'Ring Bell', category: 'Bells', synth: 'RMND-7', dur: 3.5,
+    note: 'Ring modulation at a ratio of √2: two sidebands that share no harmonic series, '
+      + 'which is what a bell is. A lowpass that follows the keyboard takes the strike down.',
+    options: {
+      harmonicity: 1.414,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 3.5, sustain: 0, release: 2 },
+      modulationEnvelope: { attack: 0.002, decay: 1, sustain: 1, release: 2 },
+    },
+    amDepth: 2,
+    filter: { type: 'lowpass', slope: -12, freq: 3000, Q: 0.7, track: 0.6,
+      env: { octaves: 1.5, attack: 0.001, decay: 1.5, sustain: 0, release: 1, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7RingRobot: { label: 'Ring Robot', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'A saw ring-modulated by a sine at 0.15 of the note, through a bandpass at a vowel '
+      + 'formant — the sci-fi robot voice. Legato, so a phrase stays one machine talking.',
+    options: {
+      harmonicity: 0.15,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.01, decay: 0.3, sustain: 0.9, release: 0.15 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.15 },
+    },
+    amDepth: 2,
+    filter: { type: 'bandpass', slope: -12, freq: 1100, Q: 3, track: 0.6 },
+    mode: 'legato', portamento: 0.05 },
+  rm7TremoloKeys: { label: 'Tremolo Keys', category: 'Keys', synth: 'RMND-7', dur: 2.6,
+    note: 'A triangle with a tremolo that fades in over 400 ms — RATIO 0, FINE 25, so it '
+      + 'pulses at about 6.5 Hz round middle C and quickens up the keyboard.',
+    options: {
+      harmonicity: 0.025,
+      oscillator: { type: 'triangle' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.003, decay: 2.5, sustain: 0.3, release: 0.5 },
+      modulationEnvelope: { attack: 0.4, decay: 0.1, sustain: 1, release: 0.5 },
+    },
+    amDepth: 0.7,
+    filter: { type: 'lowpass', slope: -12, freq: 2200, Q: 0.7, track: 0.5 } },
+  rm7OctaverBass: { label: 'Octaver Bass', category: 'Bass', synth: 'RMND-7', dur: 1.2,
+    note: 'AM at half the note adds a sideband an octave under the saw — the octave pedal — '
+      + 'and a filter envelope gives each note a pluck.',
+    options: {
+      harmonicity: 0.5,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.003, decay: 0.6, sustain: 0.8, release: 0.12 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.12 },
+    },
+    amDepth: 1,
+    filter: { type: 'lowpass', slope: -24, freq: 260, Q: 3, track: 0.3,
+      env: { octaves: 2.5, attack: 0.003, decay: 0.25, sustain: 0.2, release: 0.1, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'mono' },
+  rm7RingSub: { label: 'Ring Sub Bass', category: 'Bass', synth: 'RMND-7', dur: 1.2,
+    note: 'Ring modulation at half the note leaves only the half and the one-and-a-half: a '
+      + 'hollow square an octave down, transposed back up so it sounds as written.',
+    options: {
+      harmonicity: 0.5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.004, decay: 0.8, sustain: 0.8, release: 0.15 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.15 },
+    },
+    amDepth: 2,
+    pitch: { semitones: 7, attack: 0, decay: 0.03, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'lowpass', slope: -12, freq: 600, Q: 0.7, track: 0.4 },
+    mode: 'mono', transpose: 12 },
+  rm7AmClav: { label: 'AM Clav', category: 'Keys', synth: 'RMND-7', dur: 0.8,
+    note: 'A square modulated at twice its pitch, through a bandpass that follows the key '
+      + 'and snaps shut — a funk clavinet with nothing to sustain.',
+    options: {
+      harmonicity: 2,
+      oscillator: { type: 'square' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.5, sustain: 0, release: 0.08 },
+      modulationEnvelope: { attack: 0.001, decay: 0.3, sustain: 0.5, release: 0.08 },
+    },
+    amDepth: 1,
+    filter: { type: 'bandpass', slope: -12, freq: 1400, Q: 2, track: 0.8,
+      env: { octaves: 1.5, attack: 0.001, decay: 0.12, sustain: 0, release: 0.05, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } } },
+  rm7RingTin: { label: 'Ring Tin', category: 'Perc', synth: 'RMND-7', dur: 0.5,
+    note: 'A triangle ring-modulated by a square at 2.71 of it: a short, clattering, '
+      + 'tuned piece of metal, highpassed clear of the kit\'s low end.',
+    options: {
+      harmonicity: 2.71,
+      oscillator: { type: 'triangle' }, modulation: { type: 'square' },
+      envelope: { attack: 0.001, decay: 0.18, sustain: 0, release: 0.08 },
+      modulationEnvelope: { attack: 0.001, decay: 0.5, sustain: 1, release: 0.1 },
+    },
+    amDepth: 2,
+    filter: { type: 'highpass', slope: -12, freq: 500, Q: 1.5, track: 0.3 } },
+  rm7OvermodLead: { label: 'Overmod Lead', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'AM DEPTH 140: past full modulation, so the saw folds through zero every cycle '
+      + 'and comes out snarling. A resonant lowpass with its own envelope tames the edge.',
+    options: {
+      harmonicity: 1.5,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.005, decay: 0.4, sustain: 0.8, release: 0.2 },
+      modulationEnvelope: { attack: 0.005, decay: 0.3, sustain: 0.9, release: 0.2 },
+    },
+    amDepth: 1.4,
+    filter: { type: 'lowpass', slope: -24, freq: 1800, Q: 5, track: 0.6,
+      env: { octaves: 2, attack: 0.005, decay: 0.3, sustain: 0.3, release: 0.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'legato', portamento: 0.06,
+    vibrato: { depth: 0.15, rate: 5.5, delay: 0.3 } },
+  rm7ShimmerPad: { label: 'Shimmer Pad', category: 'Pad', synth: 'RMND-7', dur: 8,
+    note: 'A triangle with a gentle 3:1 AM that swells in over two and a half seconds, so '
+      + 'the upper partials arrive after the note, under a slowly opening lowpass.',
+    options: {
+      harmonicity: 3,
+      oscillator: { type: 'triangle' }, modulation: { type: 'sine' },
+      envelope: { attack: 1, decay: 2, sustain: 0.85, release: 2.5 },
+      modulationEnvelope: { attack: 2.5, decay: 1, sustain: 0.9, release: 2.5 },
+    },
+    amDepth: 0.5,
+    filter: { type: 'lowpass', slope: -12, freq: 1500, Q: 1, track: 0.5,
+      env: { octaves: 1.5, attack: 2, decay: 2, sustain: 0.7, release: 2.5, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } },
+    vibrato: { depth: 0.05, rate: 4, delay: 1 } },
+  rm7Chopper: { label: 'Chopper', category: 'FX', synth: 'RMND-7', dur: 2,
+    note: 'A square modulator at full depth gates the saw on and off — a helicopter, or a '
+      + 'trance gate — while a resonant lowpass opens over a second.',
+    options: {
+      harmonicity: 0.03,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'square' },
+      envelope: { attack: 0.01, decay: 1.5, sustain: 0.8, release: 0.3 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.3 },
+    },
+    amDepth: 1,
+    filter: { type: 'lowpass', slope: -12, freq: 600, Q: 4, track: 0.2,
+      env: { octaves: 3, attack: 1.2, decay: 0.5, sustain: 0.8, release: 0.3, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'linear' } } },
+  rm7GlassRing: { label: 'Glass Ring', category: 'Bells', synth: 'RMND-7', dur: 2.4,
+    note: 'A triangle ring-modulated at 3.5 of itself: sidebands at two and a half and four '
+      + 'and a half, a glass struck rather than a bell, with the brightness falling first.',
+    options: {
+      harmonicity: 3.5,
+      oscillator: { type: 'triangle' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 2.4, sustain: 0, release: 1.5 },
+      modulationEnvelope: { attack: 0.001, decay: 1, sustain: 1, release: 1.5 },
+    },
+    amDepth: 2,
+    filter: { type: 'lowpass', slope: -12, freq: 5000, Q: 0.7, track: 0.5,
+      env: { octaves: 1, attack: 0.001, decay: 0.6, sustain: 0, release: 0.5, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7BeatingStrings: { label: 'Beating Strings', category: 'Orch', synth: 'RMND-7', dur: 8,
+    note: 'RATIO 1, FINE 3: an octave sideband that drifts slowly against the saw, so a '
+      + 'single voice beats like a section, under a 24 dB lowpass and a late vibrato.',
+    options: {
+      harmonicity: 1.003,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.35, decay: 1, sustain: 0.85, release: 1.2 },
+      modulationEnvelope: { attack: 0.5, decay: 1, sustain: 0.9, release: 1.2 },
+    },
+    amDepth: 0.8,
+    filter: { type: 'lowpass', slope: -24, freq: 1400, Q: 1, track: 0.5,
+      env: { octaves: 1, attack: 0.6, decay: 1, sustain: 0.5, release: 1, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } },
+    vibrato: { depth: 0.08, rate: 5, delay: 0.5 } },
+  rm7RadioRing: { label: 'Radio Ring', category: 'Lead', synth: 'RMND-7', dur: 1.4,
+    note: 'A square nearly ring-modulated at half its pitch, squeezed through a 24 dB '
+      + 'bandpass that half follows the key: a lead heard down a shortwave radio.',
+    options: {
+      harmonicity: 0.5,
+      oscillator: { type: 'square' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.005, decay: 0.3, sustain: 0.8, release: 0.15 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.15 },
+    },
+    amDepth: 1.8,
+    filter: { type: 'bandpass', slope: -24, freq: 1500, Q: 2, track: 0.6 },
+    transpose: 12 },
+  rm7StutterStab: { label: 'Stutter Stab', category: 'Keys', synth: 'RMND-7', dur: 0.8,
+    note: 'A chord stab chopped by a square at RATIO 0, FINE 63 — about sixteen chops a '
+      + 'second round middle C — under a lowpass that snaps shut with the note.',
+    options: {
+      harmonicity: 0.063,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'square' },
+      envelope: { attack: 0.002, decay: 0.45, sustain: 0, release: 0.1 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.1 },
+    },
+    amDepth: 1,
+    filter: { type: 'lowpass', slope: -12, freq: 2500, Q: 2, track: 0.4,
+      env: { octaves: 1.5, attack: 0.001, decay: 0.2, sustain: 0, release: 0.1, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } } },
+  rm7RingZap: { label: 'Ring Zap', category: 'FX', synth: 'RMND-7', dur: 0.6,
+    note: 'Two octaves of pitch envelope falling in 200 ms on a ring-modulated sine — the '
+      + 'sideband pair sweeps down with it, which is what makes it sound like a ray gun.',
+    options: {
+      harmonicity: 1.5,
+      oscillator: { type: 'sine' }, modulation: { type: 'square' },
+      envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.1 },
+      modulationEnvelope: { attack: 0.001, decay: 0.5, sustain: 1, release: 0.1 },
+    },
+    amDepth: 2,
+    pitch: { semitones: 24, attack: 0, decay: 0.2, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'highpass', slope: -12, freq: 400, Q: 1, track: 0 } },
+  // More leads and pads (23 Oct 2026, Peter: "more pads and leads for fm and am").
+  // FM leads, FM pads, AM leads, AM pads — five of each.
+  rm7SyncLead: { label: 'FM Sync Lead', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'A saw modulator at twice the pitch, its depth falling from 18 over a third of a '
+      + 'second: the tearing sweep of an oscillator-sync lead, from FM. Legato, with a glide.',
+    options: {
+      harmonicity: 2, modulationIndex: 18,
+      oscillator: { type: 'sine' }, modulation: { type: 'sawtooth' },
+      envelope: { attack: 0.003, decay: 0.4, sustain: 0.85, release: 0.2 },
+      modulationEnvelope: { attack: 0.001, decay: 0.35, sustain: 0.25, release: 0.2 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 3500, Q: 1, track: 0.8 },
+    mode: 'legato', portamento: 0.05,
+    vibrato: { depth: 0.15, rate: 5.8, delay: 0.3 } },
+  rm7FluteLead: { label: 'FM Flute', category: 'Lead', synth: 'RMND-7', dur: 1.8,
+    note: 'Nearly a sine — FM DEPTH 1.2 — with the breath\'s chiff in a quick filter blip '
+      + 'and a third of a semitone scoop into each note. A slow vibrato arrives late.',
+    options: {
+      harmonicity: 1, modulationIndex: 1.2,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.06, decay: 0.3, sustain: 0.9, release: 0.25 },
+      modulationEnvelope: { attack: 0.04, decay: 0.2, sustain: 0.5, release: 0.2 },
+    },
+    pitch: { semitones: -0.3, attack: 0, decay: 0.08, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'lowpass', slope: -12, freq: 2000, Q: 0.7, track: 1,
+      env: { octaves: 1, attack: 0.01, decay: 0.08, sustain: 0, release: 0.1, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'legato', portamento: 0.04,
+    vibrato: { depth: 0.1, rate: 5, delay: 0.4 } },
+  rm7BellLead: { label: 'Bell Lead', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'A 4:1 modulator that rings glassy on the strike and falls to a near-pure tone '
+      + 'that holds — a bell you can sustain a melody on.',
+    options: {
+      harmonicity: 4, modulationIndex: 5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 0.5, sustain: 0.8, release: 0.3 },
+      modulationEnvelope: { attack: 0.001, decay: 0.3, sustain: 0.2, release: 0.3 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 6000, Q: 0.7, track: 0.5 },
+    vibrato: { depth: 0.08, rate: 5.2, delay: 0.35 } },
+  rm7ReedLead: { label: 'Reed Lead', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'RATIO 2 puts the sidebands on the odd harmonics only — the clarinet\'s hollow — '
+      + 'with a semitone scoop into the note and a filter that opens on the breath.',
+    options: {
+      harmonicity: 2, modulationIndex: 3.5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.03, decay: 0.3, sustain: 0.85, release: 0.2 },
+      modulationEnvelope: { attack: 0.03, decay: 0.3, sustain: 0.7, release: 0.2 },
+    },
+    pitch: { semitones: -1, attack: 0, decay: 0.06, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'lowpass', slope: -12, freq: 2500, Q: 2, track: 0.7,
+      env: { octaves: 1, attack: 0.03, decay: 0.2, sustain: 0.5, release: 0.15, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'legato', portamento: 0.06,
+    vibrato: { depth: 0.12, rate: 5.3, delay: 0.3 } },
+  rm7GlideLead: { label: 'Gliding Saw Lead', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'A 1:1 pair at depth 8 is a saw in all but name; through a resonant lowpass with '
+      + 'its own envelope and a long glide, it is the classic mono portamento lead.',
+    options: {
+      harmonicity: 1, modulationIndex: 8,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.004, decay: 0.4, sustain: 0.85, release: 0.2 },
+      modulationEnvelope: { attack: 0.004, decay: 0.5, sustain: 0.8, release: 0.2 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 1500, Q: 5, track: 0.7,
+      env: { octaves: 1.5, attack: 0.005, decay: 0.3, sustain: 0.3, release: 0.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'mono', portamento: 0.15,
+    vibrato: { depth: 0.15, rate: 5.5, delay: 0.4 } },
+
+  rm7WarmPad: { label: 'Warm FM Pad', category: 'Pad', synth: 'RMND-7', dur: 16,
+    note: 'Low FM depth under a 24 dB lowpass that follows the keyboard and opens over two '
+      + 'and a half seconds: soft, round, and out of the way of a vocal.',
+    options: {
+      harmonicity: 1, modulationIndex: 1.8,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 1.5, decay: 2, sustain: 0.9, release: 3 },
+      modulationEnvelope: { attack: 2, decay: 2, sustain: 0.7, release: 3 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 600, Q: 0.8, track: 0.6,
+      env: { octaves: 1.5, attack: 2.5, decay: 3, sustain: 0.5, release: 3, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } },
+    vibrato: { depth: 0.04, rate: 4, delay: 1 } },
+  rm7DxStrings: { label: 'DX Strings', category: 'Pad', synth: 'RMND-7', dur: 8,
+    note: 'A saw modulator for the bow\'s edge, RATIO FINE 2 for a section\'s slow drift, '
+      + 'a bowed attack and a vibrato that waits until the note has settled.',
+    options: {
+      harmonicity: 1.002, modulationIndex: 2.4,
+      oscillator: { type: 'sine' }, modulation: { type: 'sawtooth' },
+      envelope: { attack: 0.6, decay: 1.5, sustain: 0.85, release: 1.5 },
+      modulationEnvelope: { attack: 0.8, decay: 2, sustain: 0.7, release: 1.5 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 2200, Q: 0.7, track: 0.5 },
+    vibrato: { depth: 0.1, rate: 5.5, delay: 0.4 } },
+  rm7GlassChoir: { label: 'Glass Choir', category: 'Pad', synth: 'RMND-7', dur: 8,
+    note: 'RATIO 4, FINE 1: a high, slowly beating shimmer over the note, highpassed thin '
+      + 'so it floats above a mix rather than filling it.',
+    options: {
+      harmonicity: 4.001, modulationIndex: 1.5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 1, decay: 2, sustain: 0.8, release: 3 },
+      modulationEnvelope: { attack: 1.5, decay: 2, sustain: 0.8, release: 3 },
+    },
+    filter: { type: 'highpass', slope: -12, freq: 200, Q: 0.7, track: 1 },
+    vibrato: { depth: 0.05, rate: 4.5, delay: 0.8 } },
+  rm7DarkDrone: { label: 'Dark Drone', category: 'Pad', synth: 'RMND-7', dur: 16,
+    note: 'A sub-octave modulator at depth 6 under a resonant lowpass that takes four '
+      + 'seconds to open and four more to settle: a drone that breathes once per note.',
+    options: {
+      harmonicity: 0.5, modulationIndex: 6,
+      oscillator: { type: 'sine' }, modulation: { type: 'triangle' },
+      envelope: { attack: 2, decay: 3, sustain: 1, release: 4 },
+      modulationEnvelope: { attack: 2, decay: 3, sustain: 0.8, release: 4 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 250, Q: 3, track: 0.3,
+      env: { octaves: 2, attack: 4, decay: 4, sustain: 0.4, release: 4, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } } },
+  rm7SweepPad: { label: 'Sweep Pad', category: 'Pad', synth: 'RMND-7', dur: 8,
+    note: 'A bright FM tone under a resonant 24 dB lowpass that sweeps three and a half '
+      + 'octaves up over three seconds and back down over four — the pad that moves.',
+    options: {
+      harmonicity: 1, modulationIndex: 3,
+      oscillator: { type: 'sine' }, modulation: { type: 'sawtooth' },
+      envelope: { attack: 1, decay: 2, sustain: 0.9, release: 2.5 },
+      modulationEnvelope: { attack: 1, decay: 2, sustain: 0.8, release: 2.5 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 300, Q: 6, track: 0.5,
+      env: { octaves: 3.5, attack: 3, decay: 4, sustain: 0.2, release: 2.5, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } } },
+
+  rm7AmReed: { label: 'AM Reed', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'A saw modulated at twice its pitch through a bandpass at the reed\'s formant that '
+      + 'follows the key: nasal, oboe-ish, with a scoop into each note.',
+    options: {
+      harmonicity: 2,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.03, decay: 0.3, sustain: 0.85, release: 0.2 },
+      modulationEnvelope: { attack: 0.02, decay: 0.2, sustain: 0.9, release: 0.2 },
+    },
+    amDepth: 0.9,
+    pitch: { semitones: -0.5, attack: 0, decay: 0.05, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'bandpass', slope: -12, freq: 1200, Q: 1.5, track: 0.7 },
+    mode: 'legato', portamento: 0.05,
+    vibrato: { depth: 0.1, rate: 5, delay: 0.3 } },
+  rm7AmTheremin: { label: 'AM Theremin', category: 'Lead', synth: 'RMND-7', dur: 2,
+    note: 'A sine with a faint octave sheen from light AM, a fifth of a second of glide '
+      + 'between every note and a wide, fast vibrato — the wavering sci-fi lead.',
+    options: {
+      harmonicity: 1,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.08, decay: 0.3, sustain: 0.95, release: 0.4 },
+      modulationEnvelope: { attack: 0.1, decay: 0.3, sustain: 1, release: 0.4 },
+    },
+    amDepth: 0.3,
+    filter: { type: 'lowpass', slope: -12, freq: 3000, Q: 0.7, track: 0.6 },
+    mode: 'legato', portamento: 0.2,
+    vibrato: { depth: 0.35, rate: 6, delay: 0.15 } },
+  rm7RingSawLead: { label: 'Ring Saw Lead', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'A saw ring-modulated at twice its pitch: every harmonic moves two places, so the '
+      + 'pitch holds but the tone turns buzzy and hollow. A resonant filter envelope bites.',
+    options: {
+      harmonicity: 2,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.004, decay: 0.4, sustain: 0.8, release: 0.2 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.2 },
+    },
+    amDepth: 2,
+    filter: { type: 'lowpass', slope: -24, freq: 1600, Q: 4, track: 0.7,
+      env: { octaves: 2, attack: 0.004, decay: 0.25, sustain: 0.3, release: 0.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'legato', portamento: 0.05,
+    vibrato: { depth: 0.12, rate: 5.6, delay: 0.3 } },
+  rm7OctaveLead: { label: 'Octave Square Lead', category: 'Lead', synth: 'RMND-7', dur: 1.6,
+    note: 'A square with AM at half its pitch adding a sideband an octave down: a lead that '
+      + 'sounds doubled at the octave from one voice.',
+    options: {
+      harmonicity: 0.5,
+      oscillator: { type: 'square' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.005, decay: 0.3, sustain: 0.85, release: 0.2 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.2 },
+    },
+    amDepth: 1,
+    filter: { type: 'lowpass', slope: -12, freq: 2200, Q: 2, track: 0.7 },
+    mode: 'legato', portamento: 0.07,
+    vibrato: { depth: 0.12, rate: 5.4, delay: 0.3 } },
+  rm7AmBrassLead: { label: 'AM Brass Lead', category: 'Lead', synth: 'RMND-7', dur: 1.8,
+    note: 'The octave sideband swells in over 80 ms behind the saw while a lowpass opens, '
+      + 'so each note blooms like a horn. A vibrato arrives late.',
+    options: {
+      harmonicity: 1,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.04, decay: 0.4, sustain: 0.85, release: 0.25 },
+      modulationEnvelope: { attack: 0.08, decay: 0.4, sustain: 0.8, release: 0.25 },
+    },
+    amDepth: 1,
+    filter: { type: 'lowpass', slope: -12, freq: 900, Q: 1.5, track: 0.7,
+      env: { octaves: 2, attack: 0.07, decay: 0.4, sustain: 0.5, release: 0.25, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } },
+    mode: 'legato', portamento: 0.04,
+    vibrato: { depth: 0.12, rate: 5.2, delay: 0.4 } },
+
+  rm7AmChoir: { label: 'AM Choir Pad', category: 'Pad', synth: 'RMND-7', dur: 8,
+    note: 'A triangle with an octave sideband drifting a few thousandths off, through a vowel '
+      + 'bandpass that follows the key and opens slowly: a soft, wordless choir.',
+    options: {
+      harmonicity: 1.002,
+      oscillator: { type: 'triangle' }, modulation: { type: 'sine' },
+      envelope: { attack: 1, decay: 2, sustain: 0.85, release: 2.5 },
+      modulationEnvelope: { attack: 1, decay: 2, sustain: 0.9, release: 2.5 },
+    },
+    amDepth: 0.6,
+    filter: { type: 'bandpass', slope: -12, freq: 900, Q: 2, track: 0.8,
+      env: { octaves: 0.5, attack: 2, decay: 2, sustain: 0.5, release: 2, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'linear' } },
+    vibrato: { depth: 0.06, rate: 5, delay: 0.6 } },
+  rm7RingPad: { label: 'Ring Pad', category: 'Pad', synth: 'RMND-7', dur: 16,
+    note: 'A triangle ring-modulated at RATIO 2, FINE 5: the harmonics shift and beat '
+      + 'slowly against each other, so the pad keeps turning while you hold it.',
+    options: {
+      harmonicity: 2.005,
+      oscillator: { type: 'triangle' }, modulation: { type: 'sine' },
+      envelope: { attack: 1.5, decay: 2, sustain: 0.9, release: 3 },
+      modulationEnvelope: { attack: 0.01, decay: 0.5, sustain: 1, release: 3 },
+    },
+    amDepth: 2,
+    filter: { type: 'lowpass', slope: -12, freq: 2000, Q: 0.7, track: 0.5,
+      env: { octaves: 1, attack: 3, decay: 3, sustain: 0.6, release: 3, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } } },
+  rm7PulsingPad: { label: 'Pulsing Pad', category: 'Pad', synth: 'RMND-7', dur: 8,
+    note: 'A saw pad with a slow tremolo — RATIO 0, FINE 20, about five pulses a second '
+      + 'round middle C — under a resonant lowpass that opens as the note goes on.',
+    options: {
+      harmonicity: 0.02,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 1, decay: 2, sustain: 0.9, release: 2.5 },
+      modulationEnvelope: { attack: 0.8, decay: 1, sustain: 1, release: 2.5 },
+    },
+    amDepth: 0.6,
+    filter: { type: 'lowpass', slope: -24, freq: 900, Q: 2, track: 0.5,
+      env: { octaves: 1, attack: 2, decay: 2, sustain: 0.6, release: 2.5, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } } },
+  rm7HaloPad: { label: 'Halo Pad', category: 'Pad', synth: 'RMND-7', dur: 16,
+    note: 'A sine whose AM at four times its pitch fades in over three seconds, so a ring of '
+      + 'third and fifth harmonics gathers round the note after it starts.',
+    options: {
+      harmonicity: 4,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 1.5, decay: 2, sustain: 0.9, release: 3.5 },
+      modulationEnvelope: { attack: 3, decay: 2, sustain: 0.8, release: 3.5 },
+    },
+    amDepth: 0.4,
+    filter: { type: 'lowpass', slope: -12, freq: 4000, Q: 0.7, track: 0.5 },
+    vibrato: { depth: 0.05, rate: 4.5, delay: 1 } },
+  rm7UnderwaterPad: { label: 'Underwater Pad', category: 'Pad', synth: 'RMND-7', dur: 16,
+    note: 'Full AM at a hair over half the pitch puts a slowly beating sub under the saw, '
+      + 'and a resonant lowpass swells and sinks over six seconds. Murky on purpose.',
+    options: {
+      harmonicity: 0.501,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 2, decay: 3, sustain: 0.9, release: 3 },
+      modulationEnvelope: { attack: 0.5, decay: 1, sustain: 1, release: 3 },
+    },
+    amDepth: 1,
+    filter: { type: 'lowpass', slope: -24, freq: 350, Q: 5, track: 0.4,
+      env: { octaves: 1.5, attack: 3, decay: 3, sustain: 0.3, release: 3, attackCurve: 'linear', decayCurve: 'linear', releaseCurve: 'exponential' } } },
+  // Clean guitars (23 Oct 2026). A pick is a bright strike that darkens fast, and darkens
+  // relative to the string's own pitch: the modulator's depth falling inside the first
+  // few hundred milliseconds, under a lowpass that follows the keyboard and closes on its
+  // own envelope. A few start a hair sharp — the string stretched by the pluck.
+  rm7NylonGuitar: { label: 'FM Nylon Guitar', category: 'Pluck', synth: 'RMND-7', dur: 2.2,
+    note: 'Soft and round: a 1:1 pluck that falls to nearly a sine in a quarter second, '
+      + 'under a warm lowpass that follows the string. The classical guitar.',
+    options: {
+      harmonicity: 1, modulationIndex: 3.5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 2, sustain: 0, release: 0.35 },
+      modulationEnvelope: { attack: 0.001, decay: 0.25, sustain: 0.05, release: 0.2 },
+    },
+    pitch: { semitones: 0.15, attack: 0, decay: 0.03, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'lowpass', slope: -12, freq: 1200, Q: 0.8, track: 0.8,
+      env: { octaves: 1.5, attack: 0.001, decay: 0.3, sustain: 0, release: 0.2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7SteelAcoustic: { label: 'FM Steel Acoustic', category: 'Pluck', synth: 'RMND-7', dur: 2.4,
+    note: 'Brighter strings: a saw modulator for the steel\'s edge, a strike that opens '
+      + 'the lowpass two octaves and lets it fall, and a long ring underneath.',
+    options: {
+      harmonicity: 1, modulationIndex: 4,
+      oscillator: { type: 'sine' }, modulation: { type: 'sawtooth' },
+      envelope: { attack: 0.001, decay: 2.2, sustain: 0, release: 0.4 },
+      modulationEnvelope: { attack: 0.001, decay: 0.35, sustain: 0.08, release: 0.3 },
+    },
+    pitch: { semitones: 0.15, attack: 0, decay: 0.03, sustain: 0, release: 0.02, decayCurve: 'exp' },
+    filter: { type: 'lowpass', slope: -12, freq: 2200, Q: 0.8, track: 0.8,
+      env: { octaves: 2, attack: 0.001, decay: 0.35, sustain: 0, release: 0.25, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7JazzGuitar: { label: 'FM Jazz Guitar', category: 'Pluck', synth: 'RMND-7', dur: 2,
+    note: 'An archtop on the neck pickup: barely any pick, a dark 24 dB lowpass and a note '
+      + 'that holds a little, for chord melodies and walking lines.',
+    options: {
+      harmonicity: 1, modulationIndex: 2,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.003, decay: 1.8, sustain: 0.25, release: 0.3 },
+      modulationEnvelope: { attack: 0.002, decay: 0.4, sustain: 0.15, release: 0.3 },
+    },
+    filter: { type: 'lowpass', slope: -24, freq: 700, Q: 1, track: 0.7,
+      env: { octaves: 1, attack: 0.002, decay: 0.4, sustain: 0.2, release: 0.25, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7CleanElectric: { label: 'Clean Electric', category: 'Pluck', synth: 'RMND-7', dur: 2.4,
+    note: 'RATIO 2 for the hollow, glassy single-coil tone, and a lowpass with a little '
+      + 'resonance where a pickup peaks. Clean amp, nothing on the pedalboard.',
+    options: {
+      harmonicity: 2, modulationIndex: 3,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.002, decay: 2.4, sustain: 0.2, release: 0.4 },
+      modulationEnvelope: { attack: 0.001, decay: 0.3, sustain: 0.25, release: 0.3 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 3500, Q: 1.5, track: 0.6 } },
+  rm7FunkChop: { label: 'FM Funk Chop', category: 'Pluck', synth: 'RMND-7', dur: 0.4,
+    note: 'Muted sixteenths: a strike gone in 60 ms through a bandpass that quacks open and '
+      + 'shut with it. Write it short and busy.',
+    options: {
+      harmonicity: 1, modulationIndex: 5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.04 },
+      modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.04 },
+    },
+    filter: { type: 'bandpass', slope: -12, freq: 1200, Q: 1.5, track: 0.85,
+      env: { octaves: 1, attack: 0.001, decay: 0.06, sustain: 0, release: 0.04, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'linear' } } },
+  rm7TwelveString: { label: 'FM 12-String', category: 'Pluck', synth: 'RMND-7', dur: 2.6,
+    note: 'RATIO 2, FINE 4: the octave string sounding a few thousandths off its partner, so '
+      + 'every note shimmers like a doubled course. Jangly, for arpeggios.',
+    options: {
+      harmonicity: 2.004, modulationIndex: 3,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 2.4, sustain: 0, release: 0.4 },
+      modulationEnvelope: { attack: 0.001, decay: 0.5, sustain: 0.2, release: 0.4 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 3000, Q: 0.7, track: 0.7,
+      env: { octaves: 1.5, attack: 0.001, decay: 0.4, sustain: 0, release: 0.3, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  rm7GuitarHarmonics: { label: 'Guitar Harmonics', category: 'Pluck', synth: 'RMND-7', dur: 2.6,
+    note: 'Touched harmonics: a 4:1 ping that rings off a near-sine an octave up. '
+      + 'Bell-like and quiet; leave space round it.',
+    options: {
+      harmonicity: 4, modulationIndex: 1.5,
+      oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 2.5, sustain: 0, release: 1 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
+    },
+    filter: { type: 'lowpass', slope: -12, freq: 5000, Q: 0.7, track: 0.5 },
+    transpose: 12 },
+  rm7TremoloGuitar: { label: 'Tremolo Guitar', category: 'Pluck', synth: 'RMND-7', dur: 2.6,
+    note: 'Surf amp: a plucked saw under a closing lowpass, through an AM tremolo — RATIO 0, '
+      + 'FINE 22, about six pulses a second round middle C — at AM DEPTH 50.',
+    options: {
+      harmonicity: 0.022,
+      oscillator: { type: 'sawtooth' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 2.5, sustain: 0.1, release: 0.4 },
+      modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 1, release: 0.4 },
+    },
+    amDepth: 0.5,
+    filter: { type: 'lowpass', slope: -12, freq: 900, Q: 1, track: 0.8,
+      env: { octaves: 2.5, attack: 0.001, decay: 0.3, sustain: 0.1, release: 0.25, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' } } },
+  // ---- FZPP-6 (23 Oct 2026) -------------------------------------------------------------
+  //
+  // The waveguide string synth — src/engine/fzpp6/. These are the Gate A candidates, every
+  // one kept (Peter, 23 Oct 2026), from tools/lib/fzpp6-candidates.js and heard in
+  // work/auditions/fzpp6/. The "· Shimmer" alternatives add COURSE: a second loop a few
+  // cents off each string, the slow shimmer of a real string's second polarisation, at
+  // twice the string's cost — which is why it is a choice rather than the default.
+  fzppSteelAcoustic: { label: 'Steel acoustic', category: 'Pluck', synth: 'FZPP-6', dur: 3,
+    note: 'A steel-string dreadnought, picked: a waveguide string with the box folded into the pluck, so every note rings through twenty-one body resonances.',
+    fzpp6: {} },
+  fzppSteelAcousticShimmer: { label: 'Steel acoustic · Shimmer', category: 'Pluck', synth: 'FZPP-6', dur: 3,
+    note: 'A steel-string dreadnought, picked: a waveguide string with the box folded into the pluck, so every note rings through twenty-one body resonances. With a second loop four cents off each string: the slow shimmer and two-stage decay of a real string.',
+    fzpp6: { string: { double: 'shimmer' } } },
+  fzppNylon: { label: 'Nylon classical', category: 'Pluck', synth: 'FZPP-6', dur: 3,
+    note: 'A classical guitar under the fingertip: a soft, round pluck on nylon strings, darker at the top and warmer in the box.',
+    fzpp6: { exciter: { hardness: 0.25, position: 0.15, mix: 0.1 }, string: { decay: 3, damp: 0.15, stiffness: 0.05 }, body: { type: 'nylon', mix: 0.85 } } },
+  fzppNylonShimmer: { label: 'Nylon classical · Shimmer', category: 'Pluck', synth: 'FZPP-6', dur: 3,
+    note: 'A classical guitar under the fingertip: a soft, round pluck on nylon strings, darker at the top and warmer in the box. With a second loop four cents off each string: the slow shimmer and two-stage decay of a real string.',
+    fzpp6: { exciter: { hardness: 0.25, position: 0.15, mix: 0.1 }, string: { decay: 3, damp: 0.15, stiffness: 0.05, double: 'shimmer' }, body: { type: 'nylon', mix: 0.85 } } },
+  fzppPalmMuted: { label: 'Palm-muted electric', category: 'Pluck', synth: 'FZPP-6', dur: 1,
+    note: 'An electric with the palm on the strings: short, thick and percussive, for chugging eighths.',
+    fzpp6: { exciter: { hardness: 0.9 }, string: { decay: 3, damp: 0.25, pickup: 'middleBridge' }, damping: { mute: 0.75 }, body: { type: 'none', mix: 0 } } },
+  fzppCleanElectric: { label: 'Clean electric', category: 'Pluck', synth: 'FZPP-6', dur: 3,
+    note: 'A clean electric with no box, heard between its two pickups — bright, glassy, for strums and chords.',
+    fzpp6: { exciter: { hardness: 0.8 }, string: { decay: 4, damp: 0.3, stiffness: 0.1, pickup: 'neckMiddle' }, body: { type: 'none', mix: 0 } } },
+  fzppCleanElectricShimmer: { label: 'Clean electric · Shimmer', category: 'Pluck', synth: 'FZPP-6', dur: 3,
+    note: 'A clean electric with no box, heard between its two pickups — bright, glassy, for strums and chords. With a second loop four cents off each string: the slow shimmer and two-stage decay of a real string.',
+    fzpp6: { exciter: { hardness: 0.8 }, string: { decay: 4, damp: 0.3, stiffness: 0.1, pickup: 'neckMiddle', double: 'shimmer' }, body: { type: 'none', mix: 0 } } },
+  fzppBanjo: { label: 'Banjo', category: 'Pluck', synth: 'FZPP-6', dur: 2,
+    note: 'A banjo: a hard pick near the bridge, a bright drum-head body and a little rattle at the bridge.',
+    fzpp6: { exciter: { hardness: 0.9, position: 0.1 }, string: { decay: 1.6, damp: 0.3, buzz: 0.1 }, body: { type: 'banjo', mix: 0.85 } } },
+  fzppHarp: { label: 'Harp', category: 'Pluck', synth: 'FZPP-6', dur: 4,
+    note: 'A concert harp: soft fingers, free strings and a soundboard, ringing on after each note is let go.',
+    fzpp6: { exciter: { hardness: 0.3, position: 0.3, mix: 0 }, string: { decay: 5, damp: 0.25, stiffness: 0.1, detune: 0 }, amp: { release: 3 }, body: { type: 'harp', mix: 0.8 }, strings: { tuning: 'free', tension: 3 } } },
+  fzppHarpShimmer: { label: 'Harp · Shimmer', category: 'Pluck', synth: 'FZPP-6', dur: 4,
+    note: 'A concert harp: soft fingers, free strings and a soundboard, ringing on after each note is let go. With a second loop four cents off each string: the slow shimmer and two-stage decay of a real string.',
+    fzpp6: { exciter: { hardness: 0.3, position: 0.3, mix: 0 }, string: { decay: 5, damp: 0.25, stiffness: 0.1, double: 'shimmer' }, amp: { release: 3 }, body: { type: 'harp', mix: 0.8 }, strings: { tuning: 'free', tension: 3 } } },
+  fzppKoto: { label: 'Koto', category: 'Pluck', synth: 'FZPP-6', dur: 3,
+    note: 'A koto: a hard pluck near the bridge whose pitch settles as the note fades, the way a tight silk string does.',
+    fzpp6: { exciter: { hardness: 0.9, position: 0.08 }, string: { decay: 2.5, damp: 0.35, buzz: 0.05 }, amp: { release: 1.5 }, body: { type: 'nylon', mix: 0.7, size: 1.3 }, strings: { tuning: 'free', tension: 25 } } },
+  fzppDulcimer: { label: 'Hammered dulcimer', category: 'Keys', synth: 'FZPP-6', dur: 3,
+    note: 'A hammered dulcimer: paired strings struck rather than plucked, slightly stiff, a little out of tune with each other.',
+    fzpp6: { exciter: { type: 'impulse', hardness: 0.8, position: 0.12 }, string: { decay: 3, damp: 0.35, stiffness: 0.3, double: 'shimmer' }, amp: { release: 2 }, body: { type: 'steel', mix: 0.7, size: 0.8 }, strings: { tuning: 'free' } } },
+  fzppSynthBass: { label: 'Plucked synth bass', category: 'Bass', synth: 'FZPP-6', dur: 1.2,
+    note: 'A plucked synth bass: a real string, then a lowpass whose envelope snaps shut, darker up the neck.',
+    fzpp6: { exciter: { hardness: 0.7, mix: 0.1 }, string: { decay: 1.2, damp: 0.15, keyFollow: 0.2 }, filter: { type: 'lowpass', cutoff: 600, resonance: 2, keyTrack: 0.5 }, filterEnv: { amount: 2.5, attack: 0.001, decay: 0.25, sustain: 0 }, amp: { release: 0.12 }, body: { type: 'none', mix: 0 }, strings: { tuning: 'free', tension: 2, spread: 0 } } },
+  fzppKalimba: { label: 'Kalimba', category: 'Bells', synth: 'FZPP-6', dur: 1.5,
+    note: 'A thumb piano: a struck tine so stiff its overtones are stretched off the harmonic series.',
+    fzpp6: { exciter: { type: 'impulse', hardness: 0.6, position: 0.3 }, string: { decay: 1.5, damp: 0.4, stiffness: 0.9, detune: 0 }, amp: { release: 1.2 }, body: { type: 'harp', mix: 0.6, size: 0.6 }, strings: { tuning: 'free', tension: 0 } } },
+  fzppFilterSlam: { label: 'Filter-slam synth pluck', category: 'Pluck', synth: 'FZPP-6', dur: 1,
+    note: 'A synth pluck from a burst of noise on a string, under a filter envelope that slams open and shut.',
+    fzpp6: { exciter: { type: 'noise', length: 0.01 }, string: { decay: 2, damp: 0.4 }, filter: { type: 'lowpass', cutoff: 300, resonance: 3 }, filterEnv: { amount: 5, attack: 0.001, decay: 0.18, sustain: 0 }, amp: { release: 0.2 }, body: { type: 'none', mix: 0 }, strings: { tuning: 'free', spread: 0.5 } } },
+  fzppAcidPluck: { label: 'Resonant acid pluck', category: 'Bass', synth: 'FZPP-6', dur: 1,
+    note: 'A resonant acid pluck: a plucked string through a high-resonance lowpass that squelches on every note.',
+    fzpp6: { string: { decay: 1.5, damp: 0.3 }, filter: { type: 'lowpass', cutoff: 400, resonance: 9 }, filterEnv: { amount: 4, attack: 0.001, decay: 0.3, sustain: 0.1 }, amp: { release: 0.1 }, body: { type: 'none', mix: 0 }, strings: { tuning: 'free', spread: 0 } } },
+  fzppSwelledString: { label: 'Swelled string pad', category: 'Pad', synth: 'FZPP-6', dur: 4,
+    note: 'A bowed-sounding pad: a long burst of noise on the string, swelled in slowly, with a delayed vibrato.',
+    vibrato: { depth: 0.12, rate: 5, delay: 0.4 },
+    fzpp6: { exciter: { type: 'noise', length: 0.4, position: 0.12 }, string: { decay: 6, damp: 0.4 }, amp: { attack: 0.6, decay: 1, sustain: 0.8, release: 1.2 }, body: { type: 'nylon', mix: 0.75 }, strings: { tuning: 'free' } } },
+  fzppSitar: { label: 'Sitar', category: 'Lead', synth: 'FZPP-6', dur: 3,
+    note: 'A sitar: the jawari bridge buzz on every note, with legato slides between them.',
+    mode: 'legato',
+    portamento: 0.12,
+    fzpp6: { exciter: { hardness: 0.9, position: 0.12 }, string: { decay: 4, damp: 0.5, buzz: 0.7 }, amp: { release: 2 }, body: { type: 'archtop', mix: 0.75, size: 1.4 }, strings: { tuning: 'free', tension: 10 } } },
+  fzppTanpura: { label: 'Tanpura drone', category: 'Pad', synth: 'FZPP-6', dur: 6,
+    note: 'A tanpura drone: long, buzzing strings that bloom and keep blooming.',
+    fzpp6: { exciter: { hardness: 0.4, position: 0.2 }, string: { decay: 8, damp: 0.6, buzz: 0.8 }, amp: { release: 6 }, body: { type: 'archtop', mix: 0.7, size: 1.6 }, strings: { tuning: 'free', tension: 4 } } },
+  fzppTwelveString: { label: '12-string', category: 'Pluck', synth: 'FZPP-6', dur: 3,
+    note: 'A 12-string: each string paired with its octave, plucked a millisecond apart.',
+    fzpp6: { string: { double: 'octave' } } },
+  fzppMandolin: { label: 'Mandolin', category: 'Pluck', synth: 'FZPP-6', dur: 1.5,
+    note: 'A mandolin: bright paired strings a few cents apart, for tremolo and fast picking.',
+    fzpp6: { exciter: { hardness: 0.95, position: 0.12 }, string: { decay: 1.5, damp: 0.35, double: 'shimmer', shimmer: 5 }, body: { type: 'archtop', mix: 0.8, size: 0.7 }, strings: { tuning: 'free' } } },
+  fzppElectricNeck: { label: 'Electric, neck pickup', category: 'Lead', synth: 'FZPP-6', dur: 3,
+    note: 'An electric on its neck pickup: warm and round, for single-note lines.',
+    fzpp6: { exciter: { hardness: 0.85 }, string: { decay: 4, damp: 0.3, pickup: 'neck' }, body: { type: 'none', mix: 0 } } },
+  fzppElectricBridge: { label: 'Electric, bridge pickup', category: 'Lead', synth: 'FZPP-6', dur: 3,
+    note: 'An electric on its bridge pickup: thin, bright and cutting, the same strings as the neck version.',
+    fzpp6: { exciter: { hardness: 0.85 }, string: { decay: 4, damp: 0.3, pickup: 'bridge' }, body: { type: 'none', mix: 0 } } },
+  fzppBassNeck: { label: 'Bass, neck pickup', category: 'Bass', synth: 'FZPP-6', dur: 2,
+    note: 'An electric bass on its neck pickup: deep, round, a slightly stiff wound string.',
+    fzpp6: { exciter: { hardness: 0.5, position: 0.15 }, string: { decay: 4, damp: 0.2, stiffness: 0.3, pickup: 'neck' }, amp: { release: 0.15 }, body: { type: 'none', mix: 0 }, strings: { tuning: 'free', spread: 0 } } },
+  fzppBassBridge: { label: 'Bass, bridge pickup', category: 'Bass', synth: 'FZPP-6', dur: 2,
+    note: 'An electric bass on its bridge pickup: tight and growly, all mid and attack.',
+    fzpp6: { exciter: { hardness: 0.5, position: 0.15 }, string: { decay: 4, damp: 0.2, stiffness: 0.3, pickup: 'bridge' }, amp: { release: 0.15 }, body: { type: 'none', mix: 0 }, strings: { tuning: 'free', spread: 0 } } },
+  fzppFunkRhythm: { label: 'Funk rhythm guitar', category: 'Pluck', synth: 'FZPP-6', dur: 0.5,
+    note: 'Funk rhythm guitar: soft strokes are muted chucks, hard ones ring out and are chopped, with fret ticks and finger squeaks from the hand.',
+    fzpp6: { exciter: { hardness: 0.95, mix: 0.35, position: 0.14 }, string: { decay: 2.5, damp: 0.3, pickup: 'middleBridge' }, damping: { mutedBelow: 0.45, lift: 0.5, fret: 0.8, squeak: 0.7 }, amp: { release: 0.05 }, body: { type: 'none', mix: 0 }, strings: { tension: 4, spread: 0.35 } } },
+  fzppFunkBright: { label: 'Funk rhythm guitar — bright', category: 'Pluck', synth: 'FZPP-6', dur: 0.5,
+    note: 'Funk rhythm guitar, brighter: the bridge pickup, the hardest pick, and highs that ring on.',
+    fzpp6: { exciter: { hardness: 1, mix: 0.4, position: 0.1 }, string: { decay: 2.5, damp: 0.5, pickup: 'bridge' }, damping: { mutedBelow: 0.45, lift: 0.5, fret: 0.8, squeak: 0.7 }, amp: { release: 0.05 }, body: { type: 'none', mix: 0 }, strings: { tension: 4, spread: 0.35 } } },
+  fzppFunkMuted: { label: 'Funk rhythm guitar — muted', category: 'Pluck', synth: 'FZPP-6', dur: 0.5,
+    note: 'Funk rhythm guitar, palm-muted throughout: short, thick accents and a rounder chk.',
+    fzpp6: { exciter: { hardness: 0.8, mix: 0.45, position: 0.16 }, string: { decay: 2.5, damp: 0.25, pickup: 'neckMiddle' }, damping: { mute: 0.6, mutedBelow: 0.45, lift: 0.6, fret: 0.8, squeak: 0.5 }, amp: { release: 0.04 }, body: { type: 'none', mix: 0 }, strings: { tension: 3, spread: 0.35 } } },
+  fzppSlideGuitar: { label: 'Slide guitar', category: 'Lead', synth: 'FZPP-6', dur: 3,
+    note: 'Slide guitar: every note slides into the next, with a vibrato that arrives once the note is sounding.',
+    mode: 'legato',
+    portamento: 0.15,
+    vibrato: { depth: 0.15, rate: 5.5, delay: 0.2 },
+    fzpp6: { exciter: { hardness: 0.8 }, string: { decay: 5, damp: 0.3, pickup: 'middle' }, amp: { release: 0.6 }, body: { type: 'none', mix: 0 }, strings: { tuning: 'free' } } },
+  // ---- MRDR-3 with the full FM section (23 Oct 2026) ------------------------------
+  //
+  // The layer FM grew SUSTAIN and RELEASE, RMND-7's RATIO + FINE and depth scale, a fixed
+  // PULSE modulator and the Mod LFO's FM target. The first four are held-FM versions of
+  // presets whose FM edge used to die inside a quarter second — new entries, because the
+  // originals are in songs — and the last three are sounds the old section could not make.
+  // FM `index` is stored in MRDR-3's own unit: the desk shows it ×3.16, on RMND-7's scale.
+  mrdrFmScreamerHeld: { label: 'Screamer Lead · Held FM', category: 'Lead', synth: 'MRDR-3', dur: 1.4,
+    note: 'Screamer Lead with its inharmonic square operator HELD at half depth through the '
+      + 'note instead of gone in 120 ms, so a long note keeps its metal.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.95, attack: 0.011, decay: 0.35, sustain: 0.72, release: 1.379, unison: 4, spread: 20, fm: { type: 'square', ratio: 2.47, index: 1.4, attack: 0.001, decay: 0.12, sustain: 0.5, release: 0.3 } },
+      osc2: { type: 'square', ratio: 1, gain: 0.01, detune: 12, attack: 0.004, decay: 0.3, sustain: 0.6, release: 0.409 },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.137, attack: 0.003, decay: 0.4, sustain: 0.8, release: 1.086 },
+      lfo: { type: 'sine', rate: 6.2, depth: 0.18, target: 'filter', delay: 0.25 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 900, Q: 3.4, track: 0.45, env: { octaves: 3.2, attack: 0.004, decay: 0.28, sustain: 0.3, release: 0.16 } },
+      vca: { attack: 0.015, decay: 0.586, sustain: 0.78, release: 0.343 },
+    },
+    drive: 0.266124, shape: 'fold',
+    tone: { freq: 9000 },
+    vibrato: { depth: 0.2, rate: 6.4, delay: 0.3 } },
+  mrdrFmHeroHeld: { label: 'Hero Lead · Held FM', category: 'Lead', synth: 'MRDR-3', dur: 2.4,
+    note: 'Hero Lead with its bell layer\'s FM on RATIO 3 exactly and held at 30%, so the '
+      + 'sparkle stays on the theme rather than only on each note\'s first breath.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.9, attack: 0.02, decay: 0.6, sustain: 0.85, release: 1.013, unison: 3, spread: 14, pitch: { semitones: 2, decay: 0.055 } },
+      osc2: { type: 'triangle', ratio: 2, gain: 0.154, len: 0.85, attack: 0.03, decay: 0.5, sustain: 0.6, release: 0.802, fm: { type: 'sine', ratio: 3, index: 0.9, attack: 0.004, decay: 0.18, sustain: 0.3, release: 0.4 } },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.45, detune: -4, attack: 0.02, decay: 0.7, sustain: 0.9, release: 0.77 },
+      lfo: { type: 'sine', rate: 0.35, depth: 0.25, target: 'filter', delay: 0.6 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 620, Q: 1.9, track: 0.55, env: { octaves: 3.8, attack: 0.05, decay: 0.9, sustain: 0.5, release: 0.644 } },
+      vca: { attack: 0.02, decay: 0.8, sustain: 0.9, release: 0.739, attackCurve: 'lin' },
+    },
+    drive: 0.138363, shape: 'soft',
+    tone: { freq: 11000 },
+    vibrato: { depth: 0.16, rate: 5.1, delay: 0.45 },
+    mono: true,
+    portamento: 0.07 },
+  mrdrFmRobotHeld: { label: 'Robot Vox · Held FM', category: 'FX', synth: 'MRDR-3', dur: 2,
+    note: 'Robot Vox with the square operator held at full depth, so the formants keep '
+      + 'buzzing for as long as the machine is talking instead of settling to a plain tone.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, gain: 0.9, attack: 0.004, decay: 0.3, sustain: 0.9,
+        release: 0.08,
+        pitch: { semitones: -1, decay: 0.05 },
+        filter: { type: 'bandpass', slope: -12, freq: 500, Q: 10, track: 0 },
+        fm: { type: 'square', ratio: 2.01, index: 0.6, attack: 0.002, decay: 0.25, sustain: 1, release: 0.08 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.6, detune: 8, attack: 0.005, decay: 0.35,
+        sustain: 0.85, release: 0.08,
+        filter: { type: 'bandpass', slope: -12, freq: 1000, Q: 12, track: 0 } },
+      osc3: { type: 'sawtooth', ratio: 1, gain: 0.35, detune: -6, attack: 0.006, decay: 0.4,
+        sustain: 0.75, release: 0.08,
+        filter: { type: 'bandpass', slope: -12, freq: 2450, Q: 14, track: 0 } },
+      lfo: { type: 'square', rate: 7.5, depth: 0.3, target: 'level', delay: 0.05 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 3000, Q: 1.2, track: 0.35,
+        env: { octaves: 1.2, attack: 0.01, decay: 0.3, sustain: 0.5, release: 0.1 } },
+      vca: { attack: 0.004, decay: 0.3, sustain: 0.88, release: 0.1 },
+    },
+    drive: 0.522562, shape: 'fold', tone: { freq: 6400 },
+    trim: -0.383376 },
+  mrdrFmWub: { label: 'FM Wub', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
+    note: 'The wub made from FM alone: the Mod LFO aimed at FM DEPTH on the eighth, over a '
+      + 'held operator, so the saw tears open and shuts with no filter sweep at all.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.003, decay: 0.3, sustain: 0.9, release: 0.1,
+        fm: { type: 'sine', ratio: 1, index: 3, attack: 0.005, decay: 0.3, sustain: 1, release: 0.1 } },
+      osc2: { type: 'sine', ratio: 0.5, gain: 0.5, attack: 0.003, decay: 0.3, sustain: 1, release: 0.1 },
+      lfo: { type: 'sine', rate: 4.667, depth: 0.9, target: 'fm' },
+    },
+    global: { filter: { type: 'lowpass', slope: -24, freq: 1400, Q: 2, track: 0.4 } },
+    drive: 0.581378, shape: 'fold', tone: { freq: 6000 }, mode: 'mono', portamento: 0.03,
+    trim: -1.309777 },
+  mrdrFmShimmerPad: { label: 'FM Shimmer Pad', category: 'Pad', synth: 'MRDR-3', dur: 8,
+    note: 'A sine whose octave operator (RATIO 2, FINE 3) swells in and holds, breathed by a '
+      + 'slow Mod LFO on FM, over a detuned triangle: a pad whose shimmer comes and goes.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.8, attack: 1.2, decay: 2, sustain: 0.85, release: 2.5, attackCurve: 'lin',
+        fm: { type: 'sine', ratio: 2.003, index: 1.2, attack: 1.5, decay: 2, sustain: 0.8, release: 2.5, attackCurve: 'lin' } },
+      osc2: { type: 'triangle', ratio: 1, gain: 0.5, detune: 7, attack: 1.4, decay: 2, sustain: 0.9, release: 2.5, attackCurve: 'lin' },
+      lfo: { type: 'sine', rate: 0.4, depth: 0.6, target: 'fm', delay: 1 },
+    },
+    global: { filter: { type: 'lowpass', slope: -12, freq: 2500, Q: 0.7, track: 0.5 } },
+    vibrato: { depth: 0.05, rate: 4.5, delay: 1 } },
+  mrdrFmPulseLead: { label: 'Pulse FM Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.6,
+    note: 'A sine bent by the fixed 25% PULSE modulator and held at 60%: a thin, nasal, '
+      + 'reedy buzz no other wave gives, over a square sub, through a resonant lowpass.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.9, attack: 0.005, decay: 0.3, sustain: 0.85, release: 0.2,
+        fm: { type: 'pulse', ratio: 1, index: 2.5, attack: 0.002, decay: 0.3, sustain: 0.6, release: 0.2 } },
+      osc2: { type: 'square', ratio: 0.5, gain: 0.3, attack: 0.005, decay: 0.3, sustain: 0.9, release: 0.2 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 1800, Q: 2, track: 0.6, env: { octaves: 1.5, attack: 0.005, decay: 0.3, sustain: 0.3, release: 0.2 } },
+    },
+    vibrato: { depth: 0.12, rate: 5.4, delay: 0.3 },
+    mode: 'legato', portamento: 0.05 },
+  mrdrFmOrgan: { label: 'FM Organ', category: 'Organ', synth: 'MRDR-3', dur: 2.6,
+    note: 'Three sine drawbars, the first two with their FM held at full depth — the steady '
+      + 'reedy edge of a DX organ — and a gentle level LFO for the rotating speaker.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.8, attack: 0.005, decay: 0.1, sustain: 1, release: 0.08,
+        fm: { type: 'sine', ratio: 2, index: 1, attack: 0.005, decay: 0.1, sustain: 1, release: 0.08 } },
+      osc2: { type: 'sine', ratio: 2, gain: 0.4, attack: 0.005, decay: 0.1, sustain: 1, release: 0.08,
+        fm: { type: 'sine', ratio: 1, index: 0.5, attack: 0.005, decay: 0.1, sustain: 1, release: 0.08 } },
+      osc3: { type: 'sine', ratio: 4, gain: 0.2, attack: 0.005, decay: 0.1, sustain: 1, release: 0.08 },
+      lfo: { type: 'sine', rate: 6, depth: 0.15, target: 'level' },
+    } },
+  mrdrFmHollowLead: { label: 'Hollow FM Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.8,
+    note: 'PWM Hollow Lead rebuilt without its moving pulse width — the dearest thing MRDR-3 '
+      + 'does — as two sines bent by the fixed PULSE modulator, a slow Mod LFO on FM for '
+      + 'the shimmer, and the same filter, drive, sub, glide and vibrato. Office\'s lead.',
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.9, attack: 0.012, decay: 0.6, sustain: 0.82, release: 0.2, unison: 2, spread: 10,
+        fm: { type: 'pulse', ratio: 1, index: 1.8, attack: 0.002, decay: 0.3, sustain: 1, release: 0.2 } },
+      osc2: { type: 'sine', ratio: 1, detune: -8, gain: 0.6, attack: 0.015, decay: 0.6, sustain: 0.78, release: 0.2,
+        fm: { type: 'pulse', ratio: 1, index: 1.6, attack: 0.002, decay: 0.3, sustain: 1, release: 0.2 } },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.4, attack: 0.01, decay: 0.7, sustain: 0.85, release: 0.2 },
+      lfo: { type: 'sine', rate: 1.2, depth: 0.2, target: 'fm', delay: 0.15 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 800, Q: 2.4, track: 0.5, env: { octaves: 3, attack: 0.02, decay: 0.6, sustain: 0.5, release: 0.25 } },
+      vca: { attack: 0.012, decay: 0.7, sustain: 0.88, release: 0.28 },
+    },
+    drive: 0.325153, shape: 'soft',
+    tone: { freq: 10000 },
+    vibrato: { depth: 0.15, rate: 5.4, delay: 0.4 },
+    mono: true,
+    portamento: 0.06,
+    trim: -0.638108 },
+  // Stage 3 (23 Oct 2026): the sustained exciters — BOW, REED and JET — and a fretless bass
+  // on the glide the bowed presets use.
+  fzppViolin: { label: 'Violin', category: 'Orch', synth: 'FZPP-6', dur: 3,
+    note: 'A bowed violin: the bow drives the string for as long as the key is down, a delayed vibrato, legato slides between notes, and a small bright box.',
+    mode: 'legato',
+    portamento: 0.06,
+    vibrato: { depth: 0.2, rate: 5.5, delay: 0.3 },
+    fzpp6: { exciter: { type: 'bow', pressure: 0.55, speed: 0.6, noise: 0.12, position: 0.12 }, string: { decay: 0.6, damp: 0.5 }, amp: { attack: 0.08, release: 0.15 }, strings: { tuning: 'free', tension: 0 }, body: { type: 'violin', mix: 0.7 } } },
+  fzppCello: { label: 'Cello', category: 'Orch', synth: 'FZPP-6', dur: 3,
+    note: 'A bowed cello: slower bow, a deep box, and the same legato and vibrato as the violin.',
+    mode: 'legato',
+    portamento: 0.08,
+    vibrato: { depth: 0.18, rate: 5, delay: 0.35 },
+    fzpp6: { exciter: { type: 'bow', pressure: 0.6, speed: 0.45, noise: 0.15, position: 0.1 }, string: { decay: 0.8, damp: 0.4 }, amp: { attack: 0.12, release: 0.2 }, strings: { tuning: 'free', tension: 0 }, body: { type: 'cello', mix: 0.75 } } },
+  fzppErhu: { label: 'Erhu', category: 'Lead', synth: 'FZPP-6', dur: 3,
+    note: 'An erhu: a thin, nasal bowed string with wide, fast vibrato and long slides.',
+    mode: 'legato',
+    portamento: 0.15,
+    vibrato: { depth: 0.3, rate: 6, delay: 0.15 },
+    fzpp6: { exciter: { type: 'bow', pressure: 0.7, speed: 0.5, noise: 0.2, position: 0.08 }, string: { decay: 0.4, damp: 0.6 }, amp: { attack: 0.05, release: 0.12 }, strings: { tuning: 'free', tension: 0 }, body: { type: 'violin', mix: 0.6, size: 0.8 } } },
+  fzppStringSection: { label: 'String section', category: 'Orch', synth: 'FZPP-6', dur: 4,
+    note: 'A bowed string section: slow bows swelling in, spread across the stereo field, for held chords.',
+    vibrato: { depth: 0.15, rate: 5, delay: 0.4 },
+    fzpp6: { exciter: { type: 'bow', pressure: 0.5, speed: 0.55, noise: 0.1, position: 0.12 }, string: { decay: 0.7, damp: 0.45 }, amp: { attack: 0.25, release: 0.4 }, strings: { tuning: 'free', tension: 0, spread: 0.7 }, body: { type: 'cello', mix: 0.6, size: 1.2 } } },
+  fzppClarinet: { label: 'Clarinet', category: 'Orch', synth: 'FZPP-6', dur: 3,
+    note: 'A clarinet: a reed on a closed bore, so its low register is almost all odd harmonics — hollow and woody.',
+    mode: 'legato',
+    fzpp6: { exciter: { type: 'reed', pressure: 0.55, reed: 0.5, bell: 0.5, noise: 0.08 }, amp: { attack: 0.04, release: 0.08 }, strings: { tuning: 'free', tension: 0 }, body: { type: 'none', mix: 0 } } },
+  fzppSaxLike: { label: 'Saxophone', category: 'Lead', synth: 'FZPP-6', dur: 3,
+    note: 'A saxophone: the reed part-way along an open bore, so every harmonic sounds, with a little breath and a slide into each note.',
+    mode: 'legato',
+    portamento: 0.05,
+    vibrato: { depth: 0.15, rate: 5.5, delay: 0.3 },
+    fzpp6: { exciter: { type: 'sax', pressure: 0.6, reed: 0.5, bell: 0.8, noise: 0.15 }, amp: { attack: 0.03, release: 0.1 }, strings: { tuning: 'free', tension: 0 }, body: { type: 'none', mix: 0 } } },
+  fzppFlute: { label: 'Flute', category: 'Orch', synth: 'FZPP-6', dur: 3,
+    note: 'A flute: a jet of breath across a bore, breathy and pure, with a late vibrato.',
+    mode: 'legato',
+    vibrato: { depth: 0.12, rate: 5.2, delay: 0.4 },
+    fzpp6: { exciter: { type: 'jet', pressure: 0.6, noise: 0.25 }, amp: { attack: 0.06, release: 0.1 }, strings: { tuning: 'free', tension: 0 }, body: { type: 'none', mix: 0 } } },
+  fzppPanPipes: { label: 'Pan pipes', category: 'Orch', synth: 'FZPP-6', dur: 2,
+    note: 'Pan pipes: a short, breathy jet with a quick attack, more air than tone.',
+    fzpp6: { exciter: { type: 'jet', pressure: 0.45, noise: 0.6 }, amp: { attack: 0.03, release: 0.06 }, strings: { tuning: 'free', tension: 0 }, body: { type: 'none', mix: 0 } } },
+  fzppFretlessBass: { label: 'Fretless bass', category: 'Bass', synth: 'FZPP-6', dur: 2,
+    note: 'A fretless bass: a plucked string on the neck pickup, sliding into every note.',
+    mode: 'legato',
+    portamento: 0.12,
+    fzpp6: { exciter: { hardness: 0.45, position: 0.2 }, string: { decay: 4, damp: 0.2, stiffness: 0.3, pickup: 'neck' }, amp: { release: 0.2 }, strings: { tuning: 'free', spread: 0 }, body: { type: 'none', mix: 0 } } },
 };
 
 // User presets live in their own tables rather than beside the built-in library.
@@ -6197,7 +7198,7 @@ const TONE = {
 // a new sound. Keeping the kind in the table name means loading remains as simple as
 // the library tables above and the source writer can preserve the same readable shape.
 const USER_TONE = {
-  amHollow2: { label: 'AM Hollow 2', category: 'Lead', synth: 'RMND-2', dur: 1.2,
+  amHollow2: { label: 'AM Hollow 2', category: 'Lead', synth: 'RMND-7', dur: 1.2,
     note: 'Ring-modulated and slightly out of tune with itself. Reads as a voice rather than a '
       + 'synth.',
     options: {
@@ -6246,7 +7247,7 @@ const USER_TONE = {
     starter: false,
     transpose: 0,
     mono: true },
-  celeste2: { label: 'Tiny Celeste', category: 'Bells', synth: 'RMND-2', dur: 4,
+  celeste2: { label: 'Tiny Celeste', category: 'Bells', synth: 'RMND-7', dur: 4,
     note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
     options: {
       harmonicity: 3.765,
@@ -6518,7 +7519,7 @@ const USER_TONE = {
     jmjr4: { voice: 'chorister', line: 'aah eeh ooh eh oh', morphTo: 'AH', unison: 2, spread: 16, tilt: 2, amp: { attack: 0.06, decay: 0.3, sustain: 1, release: 0.45 } },
     vibrato: { depth: 0.21, rate: 5, delay: 0.25 },
     starter: false },
-  seedFutureBassBell: { label: 'Music Box · Future Bass', category: 'Bells', synth: 'RMND-2', dur: 3,
+  seedFutureBassBell: { label: 'Music Box · Future Bass', category: 'Bells', synth: 'RMND-7', dur: 3,
     note: 'Thin, high and slightly sour, with the click of the comb in the attack.',
     options: {
       harmonicity: 6.03,
@@ -6584,7 +7585,7 @@ const USER_TONE = {
     },
     humanize: { entry: 0.005, gain: 0.07 },
     starter: false },
-  seedFutureBassCounter: { label: 'Steady Celeste · Future Bass', category: 'Bells', synth: 'RMND-2', dur: 4,
+  seedFutureBassCounter: { label: 'Steady Celeste · Future Bass', category: 'Bells', synth: 'RMND-7', dur: 4,
     note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
     options: {
       harmonicity: 3.765,
@@ -6638,7 +7639,7 @@ const USER_TONE = {
     note: 'An unmistakable evolving digital pad with musical rather than noisy motion.',
     tngr2: { oscA: { table: 'digitalSteps', position: 0.08, envAmount: 0.92, level: 0.7, unison: 2, spread: 12 }, oscB: { table: 'spectralPWM', position: 0.7, envAmount: -0.65, level: 0.28, unison: 2, spread: 10, interval: -12 }, amp: { attack: 0.015, decay: 2, sustain: 0.78, release: 0.707 }, positionEnv: { attack: 1.6, decay: 3.8, sustain: 0.52 }, filter: { type: 'lowpass', slope: -24, cutoff: 4800, resonance: 2.88 }, lfo1: { shape: 'triangle', sync: true, division: '1/2', amount: 0.24 }, master: { gain: 0.5 } },
     starter: false },
-  seedReggaetonSquare: { label: 'Marimba · Reggaeton', category: 'Bells', synth: 'RMND-2', dur: 1.4,
+  seedReggaetonSquare: { label: 'Marimba · Reggaeton', category: 'Bells', synth: 'RMND-7', dur: 1.4,
     note: 'Wooden and short. The mallet is the whole sound; there is no sustain to speak of.',
     options: {
       harmonicity: 4,
@@ -6649,7 +7650,7 @@ const USER_TONE = {
       modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
     },
     starter: false },
-  seedReggaetonBell: { label: 'Kalimba · Reggaeton', category: 'Bells', synth: 'RMND-2', dur: 2.4,
+  seedReggaetonBell: { label: 'Kalimba · Reggaeton', category: 'Bells', synth: 'RMND-7', dur: 2.4,
     note: 'Harmonicity 8 and almost no modulation — a thumb piano’s clean, high, quick ring.',
     origin: 'Tonejs/Presets FMSynth/Kalimba',
     options: {
@@ -6927,7 +7928,7 @@ const USER_TONE = {
     note: 'A sparkling high-partial attack with a clean short body.',
     tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', slope: -24, cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
-  seedItaloDiscoBass: { label: '=80s FM Bass · Italo Disco', category: 'Bass', synth: 'RMND-2', dur: 1.8,
+  seedItaloDiscoBass: { label: '=80s FM Bass · Italo Disco', category: 'Bass', synth: 'RMND-7', dur: 1.8,
     note: 'A bright digital 80s bass: a sine body with a square modulator, tuned for the '
       + 'glassy attack of an FM workstation under a pop groove.',
     options: {
@@ -7096,7 +8097,7 @@ const USER_TONE = {
     note: 'A sparkling high-partial attack with a clean short body.',
     tngr2: { oscA: { table: 'crystal', position: 0.8, envAmount: -0.68, level: 0.78 }, oscB: { table: 'bellFold', position: 0.72, level: 0.14, interval: 12 }, amp: { attack: 0.001, decay: 0.45, sustain: 0.04, release: 0.16 }, positionEnv: { attack: 0, decay: 0.32, sustain: 0 }, filter: { type: 'lowpass', slope: -24, cutoff: 8500, resonance: 2.4 }, master: { gain: 0.52 } },
     starter: false },
-  seedMegadriveBass: { label: 'FM Slap Bass · 16-Bit', category: 'Bass', synth: 'RMND-2', dur: 1,
+  seedMegadriveBass: { label: 'FM Slap Bass · 16-Bit', category: 'Bass', synth: 'RMND-7', dur: 1,
     note: 'The DX7 bass: a 1:1 modulator at index 12, gone in an eighth of a second, so the '
       + 'note starts as a buzz-saw and settles to a round sine.',
     options: {
@@ -7115,7 +8116,7 @@ const USER_TONE = {
       envelope: { attack: 0.012, decay: 0.3, sustain: 0.8, release: 0.4 },
     },
     starter: false },
-  seedMegadrivePiano: { label: 'FM Keys · 16-Bit', category: 'Keys', synth: 'RMND-2', dur: 2.6,
+  seedMegadrivePiano: { label: 'FM Keys · 16-Bit', category: 'Keys', synth: 'RMND-7', dur: 2.6,
     note: 'Struck keys, percussive enough to keep a stab from smearing into the next bar.',
     options: {
       harmonicity: 2,
@@ -7144,7 +8145,7 @@ const USER_TONE = {
       osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.008, decay: 1.25 },
     },
     starter: false },
-  seedMegadriveBell: { label: 'Soft FM Bell · 16-Bit', category: 'Bells', synth: 'RMND-2', dur: 1.2,
+  seedMegadriveBell: { label: 'Soft FM Bell · 16-Bit', category: 'Bells', synth: 'RMND-7', dur: 1.2,
     note: 'Struck and metallic, decaying rather than held — a bell at long lengths.',
     options: {
       harmonicity: 3,
@@ -7155,7 +8156,7 @@ const USER_TONE = {
       modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0.02, release: 0.4 },
     },
     starter: false },
-  seedMegadriveMegaSaw: { label: 'Harsh FM Lead · 16-Bit', category: 'FX', synth: 'RMND-2', dur: 1.2,
+  seedMegadriveMegaSaw: { label: 'Harsh FM Lead · 16-Bit', category: 'FX', synth: 'RMND-7', dur: 1.2,
     note: 'Modulation index high enough to be noise with a pitch in it.',
     options: {
       harmonicity: 1.41,
@@ -7166,7 +8167,7 @@ const USER_TONE = {
       modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0.3, release: 0.2 },
     },
     starter: false },
-  seedMegadriveArp: { label: 'Soft FM Bell · 16-Bit', category: 'Bells', synth: 'RMND-2', dur: 1.2,
+  seedMegadriveArp: { label: 'Soft FM Bell · 16-Bit', category: 'Bells', synth: 'RMND-7', dur: 1.2,
     note: 'Struck and metallic, decaying rather than held — a bell at long lengths.',
     options: {
       harmonicity: 3,
@@ -7195,7 +8196,7 @@ const USER_TONE = {
     vibrato: { depth: 0.16, rate: 5, delay: 0.7, spread: 0 },
     chorus: { mix: 0.37 },
     starter: false },
-  seedMegadriveThird: { label: 'FM Piano · 16-Bit', category: 'Keys', synth: 'RMND-2', dur: 2.4,
+  seedMegadriveThird: { label: 'FM Piano · 16-Bit', category: 'Keys', synth: 'RMND-7', dur: 2.4,
     note: 'Harmonicity 1 is a full harmonic series; the index falls from bright to nearly a '
       + 'sine across the first second. The DX7 piano everybody has heard.',
     options: {
@@ -7207,7 +8208,7 @@ const USER_TONE = {
       modulationEnvelope: { attack: 0.001, decay: 0.9, sustain: 0.06, release: 0.5 },
     },
     starter: false },
-  seedMegadriveCounter: { label: 'FM Keys · 16-Bit', category: 'Keys', synth: 'RMND-2', dur: 2.6,
+  seedMegadriveCounter: { label: 'FM Keys · 16-Bit', category: 'Keys', synth: 'RMND-7', dur: 2.6,
     note: 'Struck keys, percussive enough to keep a stab from smearing into the next bar.',
     options: {
       harmonicity: 2,
@@ -7305,7 +8306,7 @@ const USER_TONE = {
     jmjr4: { voice: 'announcer', line: 'ooh', unison: 2, spread: 20, amp: { attack: 0.09, decay: 0.2, sustain: 1, release: 0.5 } },
     vibrato: { depth: 0.21, rate: 5, delay: 0.15 },
     starter: false },
-  seedUkGarageThird: { label: 'Tine Electric Piano · UK Garage', category: 'Keys', synth: 'RMND-2', dur: 2.8,
+  seedUkGarageThird: { label: 'Tine Electric Piano · UK Garage', category: 'Keys', synth: 'RMND-7', dur: 2.8,
     note: 'A 7:1 operator for the tine\'s ping, gone in an eighth of a second, over a sine that '
       + 'holds a little. The Rhodes end of "piano".',
     options: {
@@ -8486,7 +9487,43 @@ const LEVELS = {
   snareSimmonsPew: 0.043719, snareSimmonsCrack: 0.050285,
   snare80sGated: 0.080274, snare80sLinn: 0.047594, snareCR78Bright: 0.052835,
   snareCR78Accent: 0.062008, snareBrightCrack: 0.100052,
-  snareWiresTight: 0.042769
+  snareWiresTight: 0.042769, rm7WahBass: 0.026034, rm7LaserBass: 0.02182,
+  rm7MonsterGrowl: 0.037939, rm7AcidFm: 0.01716, rm7ReeseFm: 0.025925,
+  rm7DxBrass: 0.037016, rm7ScreamLead: 0.034396, rm7TempleGong: 0.036211,
+  rm7FmTom: 0.017329, rm7SteelPluck: 0.020802, rm7CrystalPad: 0.048122,
+  rm7VowelPad: 0.001681, rm7LaserZap: 0.018014, rm7Riser: 0.067275,
+  rm7PhasedEp: 0.02988, rm7RingBell: 0.01265, rm7RingRobot: 0.00233,
+  rm7TremoloKeys: 0.011477, rm7OctaverBass: 0.009468, rm7RingSub: 0.015012,
+  rm7AmClav: 0.001094, rm7RingTin: 0.006721, rm7OvermodLead: 0.009203,
+  rm7ShimmerPad: 0.022007, rm7Chopper: 0.013742, rm7GlassRing: 0.011292,
+  rm7BeatingStrings: 0.014142, rm7RadioRing: 0.003423, rm7StutterStab: 0.006584,
+  rm7RingZap: 0.007482, rm7SyncLead: 0.028166, rm7FluteLead: 0.034297,
+  rm7BellLead: 0.03312, rm7ReedLead: 0.0321, rm7GlideLead: 0.028979,
+  rm7WarmPad: 0.083429, rm7DxStrings: 0.059654, rm7GlassChoir: 0.019484,
+  rm7DarkDrone: 0.070405, rm7SweepPad: 0.057223, rm7AmReed: 0.002421,
+  rm7AmTheremin: 0.020949, rm7RingSawLead: 0.009573, rm7OctaveLead: 0.016393,
+  rm7AmBrassLead: 0.008665, rm7AmChoir: 0.001355, rm7RingPad: 0.03224,
+  rm7PulsingPad: 0.019201, rm7HaloPad: 0.043906, rm7UnderwaterPad: 0.020139,
+  rm7NylonGuitar: 0.024663, rm7SteelAcoustic: 0.026776, rm7JazzGuitar: 0.028531,
+  rm7CleanElectric: 0.028174, rm7FunkChop: 0.00048, rm7TwelveString: 0.025311,
+  rm7GuitarHarmonics: 0.029748, rm7TremoloGuitar: 0.012099,
+  fzppSteelAcoustic: 0.019166, fzppSteelAcousticShimmer: 0.024423,
+  fzppNylon: 0.040023, fzppNylonShimmer: 0.053334, fzppPalmMuted: 0.011327,
+  fzppCleanElectric: 0.025313, fzppCleanElectricShimmer: 0.0317,
+  fzppBanjo: 0.014655, fzppHarp: 0.028807, fzppHarpShimmer: 0.034979,
+  fzppKoto: 0.015107, fzppDulcimer: 0.02549, fzppSynthBass: 0.011092,
+  fzppKalimba: 0.016372, fzppFilterSlam: 0.010065, fzppAcidPluck: 0.013868,
+  fzppSwelledString: 0.027828, fzppSitar: 0.017115, fzppTanpura: 0.021715,
+  fzppTwelveString: 0.021451, fzppMandolin: 0.015552,
+  fzppElectricNeck: 0.023741, fzppElectricBridge: 0.018485,
+  fzppBassNeck: 0.018962, fzppBassBridge: 0.015178, fzppFunkRhythm: 0.021967,
+  fzppFunkBright: 0.021622, fzppFunkMuted: 0.021029, fzppSlideGuitar: 0.026693,
+  mrdrFmScreamerHeld: 0.147595, mrdrFmHeroHeld: 0.143469,
+  mrdrFmRobotHeld: 0.082925, mrdrFmWub: 0.187383, mrdrFmShimmerPad: 0.121149,
+  mrdrFmPulseLead: 0.092002, mrdrFmOrgan: 0.121473, mrdrFmHollowLead: 0.176129,
+  fzppViolin: 0.016847, fzppCello: 0.008561, fzppErhu: 0.011214,
+  fzppStringSection: 0.016933, fzppClarinet: 0.027462, fzppSaxLike: 0.01687,
+  fzppFlute: 0.024642, fzppPanPipes: 0.019123, fzppFretlessBass: 0.021263
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -8803,7 +9840,42 @@ const PEAKS = {
   snare808Bright: 1.7541, snare808Snappy: 1.7509, snare909Bright: 2.2094,
   snare909Punch: 1.9711, snareSimmonsPew: 1.1919, snareSimmonsCrack: 1.6922,
   snare80sGated: 1.7098, snare80sLinn: 1.7452, snareCR78Bright: 1.6188,
-  snareCR78Accent: 1.8041, snareBrightCrack: 1.9311, snareWiresTight: 1.7364
+  snareCR78Accent: 1.8041, snareBrightCrack: 1.9311, snareWiresTight: 1.7364,
+  rm7WahBass: 0.2709, rm7LaserBass: 0.2632, rm7MonsterGrowl: 0.3155,
+  rm7AcidFm: 0.2257, rm7ReeseFm: 0.237, rm7DxBrass: 0.2205, rm7ScreamLead: 0.23,
+  rm7TempleGong: 0.2212, rm7FmTom: 0.2628, rm7SteelPluck: 0.2209,
+  rm7CrystalPad: 0.1843, rm7VowelPad: 0.0082, rm7LaserZap: 0.2634,
+  rm7Riser: 0.2219, rm7PhasedEp: 0.2259, rm7RingBell: 0.1404,
+  rm7RingRobot: 0.0621, rm7TremoloKeys: 0.0931, rm7OctaverBass: 0.1742,
+  rm7RingSub: 0.1238, rm7AmClav: 0.0409, rm7RingTin: 0.2213,
+  rm7OvermodLead: 0.1903, rm7ShimmerPad: 0.1232, rm7Chopper: 0.1766,
+  rm7GlassRing: 0.1268, rm7BeatingStrings: 0.0641, rm7RadioRing: 0.0581,
+  rm7StutterStab: 0.1667, rm7RingZap: 0.2016, rm7SyncLead: 0.2223,
+  rm7FluteLead: 0.2208, rm7BellLead: 0.2207, rm7ReedLead: 0.2195,
+  rm7GlideLead: 0.2195, rm7WarmPad: 0.2236, rm7DxStrings: 0.2215,
+  rm7GlassChoir: 0.0844, rm7DarkDrone: 0.272, rm7SweepPad: 0.2293,
+  rm7AmReed: 0.0579, rm7AmTheremin: 0.1432, rm7RingSawLead: 0.0941,
+  rm7OctaveLead: 0.1785, rm7AmBrassLead: 0.0841, rm7AmChoir: 0.0084,
+  rm7RingPad: 0.1351, rm7PulsingPad: 0.1617, rm7HaloPad: 0.1248,
+  rm7UnderwaterPad: 0.0983, rm7NylonGuitar: 0.2191, rm7SteelAcoustic: 0.22,
+  rm7JazzGuitar: 0.2193, rm7CleanElectric: 0.2182, rm7FunkChop: 0.0162,
+  rm7TwelveString: 0.2205, rm7GuitarHarmonics: 0.2208, rm7TremoloGuitar: 0.1324,
+  fzppSteelAcoustic: 0.2991, fzppSteelAcousticShimmer: 0.4167,
+  fzppNylon: 0.4389, fzppNylonShimmer: 0.6128, fzppPalmMuted: 0.2566,
+  fzppCleanElectric: 0.3465, fzppCleanElectricShimmer: 0.4832,
+  fzppBanjo: 0.3084, fzppHarp: 0.3246, fzppHarpShimmer: 0.4523,
+  fzppKoto: 0.2607, fzppDulcimer: 0.8039, fzppSynthBass: 0.2553,
+  fzppKalimba: 0.4877, fzppFilterSlam: 0.2826, fzppAcidPluck: 0.2991,
+  fzppSwelledString: 0.2346, fzppSitar: 0.308, fzppTanpura: 0.252,
+  fzppTwelveString: 0.2904, fzppMandolin: 0.4121, fzppElectricNeck: 0.2969,
+  fzppElectricBridge: 0.2329, fzppBassNeck: 0.2307, fzppBassBridge: 0.1896,
+  fzppFunkRhythm: 1.3192, fzppFunkBright: 1.3118, fzppFunkMuted: 1.2869,
+  fzppSlideGuitar: 0.3577, mrdrFmScreamerHeld: 1.5301, mrdrFmHeroHeld: 1.3401,
+  mrdrFmRobotHeld: 0.7646, mrdrFmWub: 0.9464, mrdrFmShimmerPad: 0.4669,
+  mrdrFmPulseLead: 0.8084, mrdrFmOrgan: 0.9305, mrdrFmHollowLead: 0.8223,
+  fzppViolin: 0.1645, fzppCello: 0.0955, fzppErhu: 0.1046,
+  fzppStringSection: 0.1547, fzppClarinet: 0.2707, fzppSaxLike: 0.1251,
+  fzppFlute: 0.1262, fzppPanPipes: 0.1195, fzppFretlessBass: 0.2594
 };
 
 /**
@@ -8845,7 +9917,7 @@ const STARTER = {
       filter: { type: 'lowpass', Q: 2.9, rolloff: -24 },
       filterEnvelope: { attack: 0.0016, decay: 0.7207, sustain: 0.0782, release: 0.1477, baseFrequency: 110, octaves: 3.9, attackCurve: 'exponential', decayCurve: 'exponential', releaseCurve: 'exponential' },
     } },
-  stFmKeys: { label: 'FM Keys (starter)', category: 'Keys', kind: 'tone', synth: 'RMND-2', dur: 2.6,
+  stFmKeys: { label: 'FM Keys (starter)', category: 'Keys', kind: 'tone', synth: 'RMND-7', dur: 2.6,
     note: 'Struck keys, percussive enough to keep a stab from smearing into the next bar.',
     options: {
       harmonicity: 2, modulationIndex: 4,
@@ -8898,7 +9970,7 @@ const STARTER = {
     note: 'Narrow, high and instant, with a hard pitched knock. The stick rather than the skin.',
     osc: { type: 'square', from: 420, to: 320, sweep: 0.02, decay: 0.02, gain: 0.5 },
     noise: { type: 'bandpass', freq: 5000, Q: 3, decay: 0.03 } },
-  stClave: { label: 'Clave (starter)', category: 'Perc', kind: 'tone', synth: 'RMND-2', dur: 0.6,
+  stClave: { label: 'Clave (starter)', category: 'Perc', kind: 'tone', synth: 'RMND-7', dur: 0.6,
     note: 'A hard, high, completely dry click with a pitch to it. Cuts through anything at '
       + 'almost no level.',
     options: {
@@ -8956,7 +10028,7 @@ const STARTER = {
       filterEnvelope: { attack: 0.0175, decay: 0.1972, sustain: 0.3541, release: 0.1333, baseFrequency: 100, octaves: 4.6, attackCurve: 'exponential', decayCurve: 'exponential', releaseCurve: 'exponential' },
     },
     transpose: -12 },
-  stEpiano: { label: 'Electric Piano (starter)', category: 'Keys', kind: 'tone', synth: 'RMND-2', dur: 3,
+  stEpiano: { label: 'Electric Piano (starter)', category: 'Keys', kind: 'tone', synth: 'RMND-7', dur: 3,
     note: 'The Rhodes shape: bell in the attack, sine underneath, long decay.',
     options: {
       harmonicity: 3, modulationIndex: 10,
@@ -8965,7 +10037,7 @@ const STARTER = {
       envelope: { attack: 0.002, decay: 1.2, sustain: 0.06, release: 1 },
       modulationEnvelope: { attack: 0.001, decay: 0.25, sustain: 0.01, release: 0.3 },
     } },
-  stCeleste: { label: 'Celeste (starter)', category: 'Bells', kind: 'tone', synth: 'RMND-2', dur: 4,
+  stCeleste: { label: 'Celeste (starter)', category: 'Bells', kind: 'tone', synth: 'RMND-7', dur: 4,
     note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
     options: {
       harmonicity: 7, modulationIndex: 4,
@@ -9015,7 +10087,7 @@ const STARTER = {
         env: { octaves: 3, attack: 0.01, decay: 0.001, sustain: 1, release: 0.5 } },
     },
     vibrato: { depth: 0.06, rate: 5 } },
-  stWoodBlock: { label: 'Wood Block (starter)', category: 'Perc', kind: 'tone', synth: 'RMND-2', dur: 0.6,
+  stWoodBlock: { label: 'Wood Block (starter)', category: 'Perc', kind: 'tone', synth: 'RMND-7', dur: 0.6,
     note: 'A short knock with almost no tail. Good for rim, and for a tick that keeps time '
       + 'without taking up room.',
     options: {
@@ -9025,7 +10097,7 @@ const STARTER = {
       envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.06 },
       modulationEnvelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.03 },
     } },
-  stGlassPad: { label: 'Glass Pad (starter)', category: 'Pad', kind: 'tone', synth: 'RMND-2', dur: 4,
+  stGlassPad: { label: 'Glass Pad (starter)', category: 'Pad', kind: 'tone', synth: 'RMND-7', dur: 4,
     note: 'Ring modulation over a long swell — shimmering rather than warm.',
     options: {
       harmonicity: 3.01,
@@ -9034,7 +10106,7 @@ const STARTER = {
       envelope: { attack: 0.3, decay: 0.5, sustain: 0.7, release: 1.4 },
       modulationEnvelope: { attack: 0.6, decay: 0.4, sustain: 0.6, release: 1 },
     } },
-  stMusicBox: { label: 'Music Box (starter)', category: 'Bells', kind: 'tone', synth: 'RMND-2', dur: 3,
+  stMusicBox: { label: 'Music Box (starter)', category: 'Bells', kind: 'tone', synth: 'RMND-7', dur: 3,
     note: 'Thin, high and slightly sour, with the click of the comb in the attack.',
     options: {
       harmonicity: 6.03, modulationIndex: 7,
@@ -9070,7 +10142,7 @@ const STARTER = {
       filter: { type: 'lowpass', Q: 1, rolloff: -12 },
       filterEnvelope: { attack: 0.085, decay: 0.1251, sustain: 0.5283, release: 0.1236, baseFrequency: 400, octaves: 2, attackCurve: 'linear', decayCurve: 'exponential', releaseCurve: 'exponential' },
     } },
-  stFmGrowl: { label: 'FM Growl (starter)', category: 'Bass', kind: 'tone', synth: 'RMND-2', dur: 1.8,
+  stFmGrowl: { label: 'FM Growl (starter)', category: 'Bass', kind: 'tone', synth: 'RMND-7', dur: 1.8,
     note: 'Modulated sine with a hard edge on the attack. Cuts through a busy kit.',
     options: {
       harmonicity: 1.5, modulationIndex: 6,
@@ -9079,7 +10151,7 @@ const STARTER = {
       envelope: { attack: 0.005, decay: 0.25, sustain: 0.5, release: 0.3 },
       modulationEnvelope: { attack: 0.002, decay: 0.18, sustain: 0.1, release: 0.2 },
     } },
-  stAmOrgan: { label: 'AM Organ (starter)', category: 'Organ', kind: 'tone', synth: 'RMND-2', dur: 2.6,
+  stAmOrgan: { label: 'AM Organ (starter)', category: 'Organ', kind: 'tone', synth: 'RMND-7', dur: 2.6,
     note: 'Held and slightly beating, the way an organ with two drawbars out is.',
     options: {
       harmonicity: 1,
@@ -9088,7 +10160,7 @@ const STARTER = {
       envelope: { attack: 0.02, decay: 0.1, sustain: 0.9, release: 0.35 },
       modulationEnvelope: { attack: 0.1, decay: 0.1, sustain: 0.8, release: 0.3 },
     } },
-  stGlassLead: { label: 'Glass (starter)', category: 'Lead', kind: 'tone', synth: 'RMND-2', dur: 1.2,
+  stGlassLead: { label: 'Glass (starter)', category: 'Lead', kind: 'tone', synth: 'RMND-7', dur: 1.2,
     note: 'High harmonicity, short modulation — thin and clear, sits over a dense mix.',
     options: {
       harmonicity: 5, modulationIndex: 3,
@@ -9182,7 +10254,7 @@ const STARTER = {
       oscillator: { type: 'triangle' },
       envelope: { attack: 0.12, decay: 0.4, sustain: 0.7, release: 0.9 },
     } },
-  stFmBell: { label: 'FM Bell (starter)', category: 'Bells', kind: 'tone', synth: 'RMND-2', dur: 1.2,
+  stFmBell: { label: 'FM Bell (starter)', category: 'Bells', kind: 'tone', synth: 'RMND-7', dur: 1.2,
     note: 'Struck and metallic, decaying rather than held — a bell at long lengths.',
     options: {
       harmonicity: 3, modulationIndex: 8,
@@ -9191,7 +10263,7 @@ const STARTER = {
       envelope: { attack: 0.003, decay: 0.6, sustain: 0.05, release: 0.6 },
       modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0.02, release: 0.4 },
     } },
-  stAmHollow: { label: 'AM Hollow (starter)', category: 'Lead', kind: 'tone', synth: 'RMND-2', dur: 1.2,
+  stAmHollow: { label: 'AM Hollow (starter)', category: 'Lead', kind: 'tone', synth: 'RMND-7', dur: 1.2,
     note: 'Ring-modulated and slightly out of tune with itself. Reads as a voice rather than a '
       + 'synth.',
     options: {

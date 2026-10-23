@@ -509,8 +509,12 @@ export const MusicDirector = {
       Audio.mixer.rampTreatment(0, at, treatSecs);
       const done = Math.max(0, (at + treatSecs) - Audio.ctx.currentTime) + 0.25;
       this.treated = false;
+      // Only THIS treatment (22 Oct 2026, Stage G): in the seconds this waits, something else
+      // may have put its own on the leg — the results screen's 8-bit crusher, a club's 4-BIT —
+      // and clearing the leg by then would take that one off instead.
+      const mixer = Audio.mixer, leg = mixer.treatment;
       setTimeout(() => {
-        if (!this.treated && Audio.mixer) Audio.mixer.clearTreatment();
+        if (!this.treated && Audio.mixer === mixer && mixer.treatment === leg) mixer.clearTreatment();
       }, done * 1000);
     }
     if (!released) this.releaseLoop();

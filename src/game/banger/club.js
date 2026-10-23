@@ -723,6 +723,10 @@ export class BangerClubState {
     // after THE BOLT the new take starts on the bar line the old one was heading for (strikePlan)
     const downbeat = this.room?.strike?.downbeat;
     Audio.setBank(this.song.bank, this.song.mix, this.song.arrangement, { startAtBeginning: true, at: downbeat ?? null });
+    // Its worklet lanes built now, before the downbeat, not by the first note on each (22 Oct
+    // 2026): a lane built on the beat is a node — and its tables — arriving on an audio thread
+    // that is already playing the song.
+    Audio.warmWorkletLanes?.()?.catch?.(() => {});
     this.mixerDirty = false;
     this.restoreMixer();
     Input.setMenuButtons();

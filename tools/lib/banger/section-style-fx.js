@@ -42,7 +42,7 @@ export function styleSectionRequests({ id, form, kindOf, start, end, active, mod
       if (['outro', 'verse', 'breakdown'].includes(kind)) add(f, ['hook', 'piano', 'bell'], 'Lo-Fi last-phrase echo', [echo()], 8);
     } else {
       if (['verse', 'intro'].includes(kind)) add(f, ['saws', 'piano', 'hook'], 'Disco short room', [
-        { id: 'reverb', params: { decay: 0.65, preDelay: 0.012, wet: 0.12 } }]);
+        { id: 'strip', params: { reverb: 0.12 } }]);
       if (['chorus', 'drop'].includes(kind)) add(f, ['saws', 'piano'], 'Disco chord phaser', [{ id: 'phaser', params: {
         rateSync: 1, rateDivision: 8, octaves: 2, baseFrequency: 450, feedback: 0.12, wet: 0.18 } }], 32);
       if (['build', 'verse', 'outro'].includes(kind)) add(f, ['hook', 'piano', 'bell'], 'Disco phrase throw', [echo()], 4);

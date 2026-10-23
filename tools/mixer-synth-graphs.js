@@ -176,6 +176,382 @@ export function envelopeGraph({ rows, read, writeMany, onLive, onStart, onEnd, h
   return { box, draw };
 }
 
+// ---- a string's ring --------------------------------------------------------
+
+/**
+ * FZPP-6's RING card, drawn: how the note dies away. The solid line is the body of the
+ * note, reaching silence (−60 dB) at RING; the dashed one is its top end, which goes at
+ * RING × HIGHS. One look says whether the string is long or short, mellow or bright —
+ * which is what the two pots under it mean, and the reason they are drawn at all
+ * (Peter, 23 Oct 2026: "it is not easy to work out what is going to change").
+ *
+ * Time runs on the square root, as the envelope graph's does, so a short pluck and a
+ * long harp note both have room. Drag either end to set it; the pots move with it.
+ */
+export function decayGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 94 }) {
+  const box = document.createElement('div');
+  box.className = 'sfgraph';
+  box.style.height = `${h}px`;
+  box.title = 'Solid: how long the note rings. Dashed: how long its highs last. Drag either end.';
+  const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
+  const grid = el('path', { class: 'sfgrid', d: '' });
+  const fill = el('path', { class: 'sffill', d: '' });
+  const lows = el('path', { class: 'sfline', d: '' });
+  const highs = el('path', { class: 'sfline', d: '', 'stroke-dasharray': '4 3', opacity: 0.75 });
+  svg.append(grid, fill, lows, highs);
+  const dots = [0, 1].map(() => {
+    const c = el('circle', { class: 'sfhandle', r: 4.5, cx: -10, cy: -10 });
+    svg.append(c);
+    return c;
+  });
+  box.append(svg);
+  const top = 6;
+  let w = 200;
+  const bot = () => h - 6;
+  const max = () => rows.ring.max;
+  const xOf = (t) => Math.sqrt(clamp(t / max(), 0, 1)) * (w - 8) + 4;
+  const tOf = (x) => ((clamp((x - 4) / (w - 8), 0, 1)) ** 2) * max();
+  const draw = () => {
+    w = svg.clientWidth || box.clientWidth || 200;
+    const ring = Number(read(rows.ring)) || rows.ring.def;
+    const frac = Number(read(rows.highs)) || rows.highs.def;
+    const xl = xOf(ring);
+    const xh = xOf(ring * frac);
+    const b = bot();
+    let g = '';
+    for (const s of [0.1, 1, 5]) g += `M${xOf(s).toFixed(1)},0 V${h} `;
+    grid.setAttribute('d', g + `M0,${((top + b) / 2).toFixed(1)} H${w}`);
+    lows.setAttribute('d', `M4,${top} L${xl.toFixed(1)},${b}`);
+    fill.setAttribute('d', `M4,${top} L${xl.toFixed(1)},${b} L4,${b} Z`);
+    highs.setAttribute('d', `M4,${top} L${xh.toFixed(1)},${b}`);
+    dots[0].setAttribute('cx', xl.toFixed(1)); dots[0].setAttribute('cy', b);
+    dots[1].setAttribute('cx', xh.toFixed(1)); dots[1].setAttribute('cy', b);
+  };
+  const grab = (i) => (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    onStart?.();
+    const rect = svg.getBoundingClientRect();
+    const move = (e) => {
+      const t = tOf(e.clientX - rect.left);
+      const ring = Number(read(rows.ring)) || rows.ring.def;
+      const pairs = i === 0
+        ? [[rows.ring, quantise(rows.ring, clamp(t, rows.ring.min, rows.ring.max))]]
+        : [[rows.highs, quantise(rows.highs, clamp(t / ring, rows.highs.min, rows.highs.max))]];
+      writeMany(pairs);
+      onLive?.(pairs);
+      draw();
+    };
+    move(ev);
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      onEnd?.();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+  dots.forEach((d, i) => { d.onpointerdown = grab(i); });
+  return { box, draw };
+}
+
+// ---- FZPP-6's other three pictures, and the hand's timeline ---------------------
+//
+// Peter, 23 Oct 2026: "is there a simpler way to do any of the other controls like we did
+// for the ring graph which makes it super easy to understand?" Each card of FZPP-6's own
+// draws what its pots DO: where the string is plucked, which strings there are, what the
+// box sounds like, and when the hand's noises happen. They read the voice as it is now, so
+// any pot move — on this card or another — redraws them (`redrawGraphs`).
+
+const txt = (x, y, text, anchor = 'start') => {
+  const t = el('text', { x, y, class: 'sfgraphtxt', 'text-anchor': anchor });
+  t.textContent = text;
+  return t;
+};
+const fz = (voice) => voice?.fzpp6 || {};
+// The pickup pills, as the fraction of the string from the bridge each one sits at — the
+// same numbers as the engine (schema PICKUP_AT, then dsp's 0.28 − 0.22 × value).
+const PICKUP_VALUE = { acoustic: 0, neck: 0.15, neckMiddle: 0.35, middle: 0.55, middleBridge: 0.75, bridge: 0.95 };
+const pickupAt = (voice) => {
+  const v = PICKUP_VALUE[fz(voice).string?.pickup] ?? 0;
+  return v > 0 ? 0.28 - 0.22 * v : 0;
+};
+
+/**
+ * PLUCK: the string from the bridge (left) to the neck, pulled out where it is plucked.
+ * The corner is sharp for a hard pick and rounded for a fingertip (HARD); drag along the
+ * string to move the pluck (WHERE). An electric pickup, when there is one, stands on the
+ * string where it sits — so the pluck point and the pickup can be read against each other.
+ */
+export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voice, h = 94 }) {
+  const box = document.createElement('div');
+  box.className = 'sfgraph';
+  box.style.height = `${h}px`;
+  box.title = 'The string, bridge to neck, pulled out where it is plucked or bowed. Drag to move WHERE. '
+    + 'A sharp corner is a hard pick, a rounded one a fingertip (HARD). For REED and JET: the bore and its bell.';
+  const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
+  const ends = el('path', { class: 'sfgrid', d: '' });
+  const line = el('path', { class: 'sfline', d: '' });
+  const pick = el('path', { class: 'sfgrid', d: '', 'stroke-dasharray': '2 3' });
+  const pu = el('rect', { class: 'sffill', x: -10, y: 0, width: 6, height: 0 });
+  const handle = el('circle', { class: 'sfhandle', r: 4.5, cx: -10, cy: -10 });
+  const lb = txt(6, h - 5, 'BRIDGE');
+  const ln = txt(0, h - 5, 'NECK', 'end');
+  const lp = txt(-50, 10, 'PICKUP', 'middle');
+  svg.append(ends, pu, pick, line, handle, lb, ln, lp);
+  box.append(svg);
+  let w = 200;
+  const x0 = 10;
+  const x1 = () => w - 10;
+  const rest = () => h * 0.62;
+  const draw = () => {
+    w = svg.clientWidth || box.clientWidth || 200;
+    const type = fz(voice?.()).exciter?.type ?? 'pick';
+    if (type === 'reed' || type === 'sax' || type === 'jet') {
+      // A bore with its bell: no string to pluck. The reed or the jet sits at the left.
+      const y0 = rest();
+      const x1b = x1();
+      line.setAttribute('d', `M${x0},${y0 - 9} H${x1b - 30} Q${x1b - 10},${y0 - 9} ${x1b},${y0 - 22} `
+        + `M${x0},${y0 + 9} H${x1b - 30} Q${x1b - 10},${y0 + 9} ${x1b},${y0 + 22}`);
+      ends.setAttribute('d', `M${x0},${y0 - 9} V${y0 + 9}`);
+      pick.setAttribute('d', '');
+      handle.setAttribute('cx', -10);
+      pu.setAttribute('x', -10); lp.setAttribute('x', -50);
+      lb.textContent = type === 'jet' ? 'JET' : 'REED';
+      ln.textContent = 'BELL';
+      ln.setAttribute('x', x1b);
+      return;
+    }
+    lb.textContent = 'BRIDGE';
+    ln.textContent = 'NECK';
+    const where = Number(read(rows.where)) || rows.where.def;
+    const hard = Number(read(rows.hard));
+    const L = x1() - x0;
+    const ax = x0 + where * L;
+    const ay = h * 0.2;
+    const y0 = rest();
+    // Round the corner by up to a fifth of the string for the softest finger.
+    const r = (1 - (Number.isFinite(hard) ? hard : 0.6)) * 0.2 * L;
+    const t1 = Math.min(1, r / Math.hypot(ax - x0, y0 - ay));
+    const t2 = Math.min(1, r / Math.hypot(x1() - ax, y0 - ay));
+    const p1x = ax - (ax - x0) * t1, p1y = ay + (y0 - ay) * t1;
+    const p2x = ax + (x1() - ax) * t2, p2y = ay + (y0 - ay) * t2;
+    line.setAttribute('d', `M${x0},${y0} L${p1x.toFixed(1)},${p1y.toFixed(1)} `
+      + `Q${ax.toFixed(1)},${ay} ${p2x.toFixed(1)},${p2y.toFixed(1)} L${x1()},${y0}`);
+    ends.setAttribute('d', `M${x0},${y0 - 14} V${y0 + 10} M${x1()},${y0 - 14} V${y0 + 10}`);
+    pick.setAttribute('d', `M${ax.toFixed(1)},${ay} V${y0 + 10}`);
+    handle.setAttribute('cx', ax.toFixed(1)); handle.setAttribute('cy', ay);
+    ln.setAttribute('x', x1());
+    const p = pickupAt(voice?.());
+    if (p > 0) {
+      const px = x0 + p * L;
+      pu.setAttribute('x', (px - 3).toFixed(1)); pu.setAttribute('y', y0 - 8); pu.setAttribute('height', 16);
+      pu.setAttribute('opacity', '0.5');
+      lp.setAttribute('x', px.toFixed(1)); lp.setAttribute('y', 10);
+    } else {
+      pu.setAttribute('x', -10); lp.setAttribute('x', -50);
+    }
+  };
+  const grab = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    onStart?.();
+    const rect = svg.getBoundingClientRect();
+    const move = (e) => {
+      const frac = clamp((e.clientX - rect.left - x0) / (x1() - x0), rows.where.min, rows.where.max);
+      const pairs = [[rows.where, quantise(rows.where, frac)]];
+      writeMany(pairs);
+      onLive?.(pairs);
+      draw();
+    };
+    move(ev);
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      onEnd?.();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+  svg.onpointerdown = grab;
+  return { box, draw };
+}
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const noteName = (m) => `${NOTE_NAMES[m % 12]}${Math.floor(m / 12) - 1}`;
+const TUNING_NOTES = {
+  standard: [40, 45, 50, 55, 59, 64], dropD: [38, 45, 50, 55, 59, 64],
+  openG: [38, 43, 50, 55, 59, 62], dadgad: [38, 45, 50, 55, 57, 62],
+};
+
+/**
+ * CHARACTER: the six strings, low at the bottom, each with its open note — so TUNING is
+ * read off the drawing. The three wound strings are thicker. DOUBLE draws each string's
+ * partner beside it, BUZZ a rattle at the bridge end, and an electric PICKUP stands across
+ * all six where it sits. FREE has no open notes: any pitch goes on any string.
+ */
+export function stringsGraph({ voice, h = 94 }) {
+  const box = document.createElement('div');
+  box.className = 'sfgraph';
+  box.style.height = `${h}px`;
+  box.title = 'The six strings and their open notes (TUNING). Doubled lines are DOUBLE, a '
+    + 'rattle at the bridge end is BUZZ, the bar across them is an electric PICKUP.';
+  const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
+  box.append(svg);
+  const draw = () => {
+    const w = svg.clientWidth || box.clientWidth || 200;
+    svg.replaceChildren();
+    const v = fz(voice?.());
+    const tuning = TUNING_NOTES[v.strings?.tuning ?? 'standard'];
+    const double = v.string?.double ?? 'off';
+    const buzz = Number(v.string?.buzz ?? 0);
+    const left = 26;
+    const right = w - 26;
+    for (let i = 0; i < 6; i++) {
+      const y = h - 10 - i * ((h - 20) / 5);
+      // Alternate sides, low string on the left: at this height six names in one column
+      // would sit on top of each other.
+      if (tuning) svg.append(i % 2 ? txt(w - 4, y + 3, noteName(tuning[i]), 'end') : txt(4, y + 3, noteName(tuning[i])));
+      const wound = i < 3;
+      const s = el('path', { class: 'sfline', d: `M${left},${y.toFixed(1)} H${right}`,
+        'stroke-width': wound ? 2.4 : 1.2, opacity: wound ? 0.95 : 0.8 });
+      svg.append(s);
+      if (double !== 'off') {
+        svg.append(el('path', { class: 'sfline', d: `M${left},${(y - 3).toFixed(1)} H${right}`,
+          'stroke-width': double === 'octave' ? 0.7 : 1, opacity: 0.55 }));
+      }
+      if (buzz > 0) {
+        let d = `M${left},${y}`;
+        const len = 10 + buzz * 30;
+        for (let k = 1; k <= 8; k++) d += ` L${(left + (len * k) / 8).toFixed(1)},${(y + (k % 2 ? -1 : 1) * buzz * 3).toFixed(1)}`;
+        svg.append(el('path', { class: 'sfline', d, 'stroke-width': 1 }));
+      }
+    }
+    const p = pickupAt(voice?.());
+    if (p > 0) {
+      const px = left + p * (right - left);
+      svg.append(el('rect', { class: 'sffill', x: (px - 4).toFixed(1), y: 4, width: 8, height: h - 8, opacity: 0.5 }));
+    }
+    if (!tuning) svg.append(txt(w / 2, 12, 'FREE — any note on any string', 'middle'));
+  };
+  return { box, draw };
+}
+
+/**
+ * BODY: the box's tone, low to high, the way the FILTER card draws its filter. The peaks
+ * are its resonances — the air, the top, and the dense rest of the wood. SIZE slides them
+ * all down or up together; MIX lifts the curve off the flat line of the bare string.
+ */
+export function bodyGraph({ rows, read, voice, modesOf, h = 94 }) {
+  const box = document.createElement('div');
+  box.className = 'sfgraph';
+  box.style.height = `${h}px`;
+  box.title = 'The tone of the box, low notes left, high right. Each peak is a resonance. '
+    + 'SIZE slides them all, MIX is how much of it you hear.';
+  const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
+  const grid = el('path', { class: 'sfgrid', d: '' });
+  const fill = el('path', { class: 'sffill', d: '' });
+  const line = el('path', { class: 'sfline', d: '' });
+  svg.append(grid, fill, line, txt(4, h - 4, '100'), txt(0, h - 4, '1k', 'middle'), txt(0, h - 4, '10k', 'end'));
+  box.append(svg);
+  const draw = () => {
+    const w = svg.clientWidth || box.clientWidth || 200;
+    const v = fz(voice?.());
+    const type = v.body?.type ?? 'steel';
+    const mix = type === 'none' ? 0 : Number(read(rows.mix) ?? 0.8);
+    const modes = type === 'none' ? [] : modesOf({ type, size: Number(read(rows.size) ?? 1), modes: null });
+    const xs = (f) => (Math.log(f / 50) / Math.log(12000 / 50)) * w;
+    const pts = [];
+    let top = -Infinity;
+    for (let i = 0; i <= 120; i++) {
+      const f = 50 * (12000 / 50) ** (i / 120);
+      let re = 0, im = 0;
+      for (let m = 0; m < modes.length; m += 3) {
+        const x = f / modes[m];
+        const q = modes[m + 1];
+        const a = 1 - x * x, b = x / q;
+        const d = a * a + b * b;
+        re += modes[m + 2] * (b * b) / d;
+        im += modes[m + 2] * (b * a) / d;
+      }
+      re = (1 - mix) + mix * re;
+      im *= mix;
+      const db = 20 * Math.log10(Math.max(1e-4, Math.hypot(re, im)));
+      top = Math.max(top, db);
+      pts.push([xs(f), db]);
+    }
+    const span = 36;
+    const y = (db) => 6 + (Math.max(0, (top - db)) / span) * (h - 20);
+    const d = pts.map(([x, db], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${Math.min(h - 14, y(db)).toFixed(1)}`).join(' ');
+    line.setAttribute('d', d);
+    fill.setAttribute('d', `${d} L${w},${h - 14} L0,${h - 14} Z`);
+    grid.setAttribute('d', `M${xs(100).toFixed(1)},0 V${h - 14} M${xs(1000).toFixed(1)},0 V${h - 14} M${xs(10000).toFixed(1)},0 V${h - 14}`);
+    const labels = svg.querySelectorAll('.sfgraphtxt');
+    labels[0].setAttribute('x', (xs(100) + 2).toFixed(1));
+    labels[1].setAttribute('x', xs(1000).toFixed(1));
+    labels[2].setAttribute('x', (xs(10000) - 2).toFixed(1));
+  };
+  return { box, draw };
+}
+
+/**
+ * HAND NOISES: one note, left to right, and where each noise falls on it. FRET ticks as
+ * the string lands, SQUEAK is the slide to the next fret, LIFT the scratch as the hand
+ * lets go; MUTE shortens the note itself, and CHUCK is the short, choked stroke a soft note
+ * becomes. Each mark is as big as its pot — at zero it is not drawn.
+ */
+export function handGraph({ voice, h = 94 }) {
+  const box = document.createElement('div');
+  box.className = 'sfgraph';
+  box.style.height = `${h}px`;
+  box.title = 'One note and where each hand noise falls on it: FRET at the start, SQUEAK on a '
+    + 'slide, LIFT at the end. MUTE shortens the note; CHUCK is the short muted stroke.';
+  const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
+  box.append(svg);
+  const draw = () => {
+    const w = svg.clientWidth || box.clientWidth || 200;
+    svg.replaceChildren();
+    const d = fz(voice?.()).damping || {};
+    const mute = Number(d.mute ?? 0), fret = Number(d.fret ?? 0), squeak = Number(d.squeak ?? 0);
+    const lift = Number(d.lift ?? 0), chuck = Number(d.mutedBelow ?? 0);
+    const base = h - 22;
+    const x0 = 10;
+    const end = x0 + (w * 0.68 - x0) * (1 - 0.75 * mute);
+    // The note: loud at the strike, falling away.
+    svg.append(el('path', { class: 'sffill', d: `M${x0},${base} L${x0},${base - 30} L${end.toFixed(1)},${base - 6} L${end.toFixed(1)},${base} Z` }));
+    svg.append(el('path', { class: 'sfline', d: `M${x0},${base - 30} L${end.toFixed(1)},${base - 6}` }));
+    svg.append(txt(x0, h - 6, 'NOTE'));
+    if (fret > 0) {
+      svg.append(el('path', { class: 'sfline', d: `M${x0},${base} V${(base - 30 - 26 * fret).toFixed(1)}`, 'stroke-width': 2 }));
+      svg.append(txt(x0 + 4, 10, 'FRET'));
+    }
+    if (squeak > 0) {
+      const sx = x0 + (end - x0) * 0.45;
+      let p = `M${sx},${base - 18}`;
+      for (let k = 1; k <= 10; k++) p += ` L${(sx + k * 3).toFixed(1)},${(base - 18 - (k % 2 ? 1 : -1) * 6 * squeak - k * 1.2 * squeak).toFixed(1)}`;
+      svg.append(el('path', { class: 'sfline', d: p, 'stroke-width': 1.2 }));
+      svg.append(txt(sx, 10, 'SQUEAK'));
+    }
+    if (lift > 0) {
+      let p = `M${end.toFixed(1)},${base}`;
+      for (let k = 1; k <= 6; k++) p += ` L${(end + k * 2.5).toFixed(1)},${(base - (k % 2 ? 1 : 0.3) * 18 * lift).toFixed(1)}`;
+      svg.append(el('path', { class: 'sfline', d: p, 'stroke-width': 1.2 }));
+      svg.append(txt(end, h - 6, 'LIFT', 'middle'));
+    }
+    if (chuck > 0) {
+      const cx = w * 0.84;
+      svg.append(el('path', { class: 'sffill', d: `M${cx},${base} L${cx},${base - 22} L${cx + 9},${base} Z` }));
+      svg.append(el('path', { class: 'sfline', d: `M${cx},${base} L${cx},${base - 22} L${cx + 9},${base}` }));
+      svg.append(txt(cx + 4, h - 6, 'CHUCK', 'middle'));
+    }
+  };
+  return { box, draw };
+}
+
 // ---- the filter response ----------------------------------------------------
 
 /** Where a frequency sits across a log axis from 20 Hz to 20 kHz. */

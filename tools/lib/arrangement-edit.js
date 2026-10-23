@@ -1612,7 +1612,8 @@ export function writeBarNotes(bank, draft, barIndex, lane, steps16, lengths16 = 
 }
 
 /**
- * Materialise an arpeggiator into ordinary 1/32-capable notes.
+ * Materialise Guitar Voicing and/or an arpeggiator into ordinary editable notes.
+ * Strum remains a live effect; its millisecond offsets are not quantised into the grid.
  *
  * The processor is walked from the beginning of the song so continuous/latching
  * patterns arrive in the selected range in the same state as live playback. Only the
@@ -1627,7 +1628,7 @@ export function writeBarNotes(bank, draft, barIndex, lane, steps16, lengths16 = 
  * inherit clean.
  */
 export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
-  { trackArpCleared = false } = {}) {
+  { trackArpCleared = false, trackGuitarCleared = false } = {}) {
   if (!bank || !draft || !lane) return draft;
   const [a, b] = range(draft, from, to);
   let source = copy(draft);
@@ -1659,10 +1660,10 @@ export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
       outNotes[slot] = freqs.length === 1 ? freqs[0] : freqs;
       outLengths[slot] = lens.length === 1 ? lens[0] : lens;
     }
-    // A bar whose arp is off — inherited off, or an explicit `mode: 'off'` — renders
+    // A bar whose voicing and arp are off — including `mode: 'off'` — renders
     // to the notes it already had, so writing it back would fork the section to say
     // nothing. The processor still walked it above; only the write is skipped.
-    if (barIndex >= a && config.arp?.enabled) {
+    if (barIndex >= a && (config.arp?.enabled || config.guitar?.enabled)) {
       rendered.set(barIndex, { notes: outNotes, lengths: outLengths, config });
     }
   }
@@ -1670,23 +1671,25 @@ export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
   // the processor will actually use — see `process`, which floors a missing gap to 0
   // and reads anything but down/random as up.
   const strumSig = (fx) => (fx?.strum?.enabled
-    ? `${['down', 'random'].includes(fx.strum.direction) ? fx.strum.direction : 'up'}`
+    ? `${['down', 'random', 'alternate-up', 'alternate-down'].includes(fx.strum.direction) ? fx.strum.direction : 'up'}`
       + `/${Math.max(0, Math.min(250, Number(fx.strum.gapMs) || 0))}`
     : 'off');
-  const trackAfter = trackArpCleared
-    ? { ...trackNoteFx, arp: { ...(trackNoteFx?.arp || {}), enabled: false } }
-    : (trackNoteFx || {});
+  const trackAfter = { ...trackNoteFx,
+    ...(trackArpCleared ? { arp: { ...trackNoteFx.arp, enabled: false } } : {}),
+    ...(trackGuitarCleared ? { guitar: { ...trackNoteFx.guitar, enabled: false } } : {}),
+  };
   let out = source;
   for (const [barIndex, material] of rendered) {
     out = writeBarNotes(bank, out, barIndex, lane, material.notes, material.lengths);
     const strum = material.config.strum || {};
     // Inheriting the track already leaves the arp off and the same strum on, so the
     // override has nothing to say. Clear it rather than stamp it.
-    const inherits = !trackAfter.arp?.enabled
+    const inherits = !trackAfter.arp?.enabled && !trackAfter.guitar?.enabled
       && strumSig(trackAfter) === strumSig(material.config);
     out = setBarNoteFx(out, barIndex, barIndex, lane, inherits ? null : {
       mode: 'on',
       ...(strum.enabled ? { strum } : {}),
+      guitar: { enabled: false }, // Guitar voicing is already in the baked arp notes.
       arp: { enabled: false },
     });
   }

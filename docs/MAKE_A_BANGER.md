@@ -406,9 +406,9 @@ sounds. Built 5 Oct 2026:
 
 | Style | Set | What it is |
 | --- | --- | --- |
-| Chipstep | Light | the cheap synths only — KNDO-5, TNGR-2, RMND-2 — light enough for a phone |
+| Chipstep | Light | the cheap synths only — KNDO-5, TNGR-2, RMND-7 — light enough for a phone |
 | Chipstep | 8-Bit | KNDO-5 alone (square, saw, triangle, sine), every tuned note cut to a sixteenth, pumping supersaws played as stabs; a console kit in every Kit slot — Simmons triangle kick, Game Boy snare, the game's own noise hats, clap, crash and triangle toms — and blip percussion |
-| Synthwave | Light | wavetable (TNGR-2) and FM (RMND-2) voices in place of every MRDR-3 one |
+| Synthwave | Light | wavetable (TNGR-2) and FM (RMND-7) voices in place of every MRDR-3 one |
 
 A style without the set asked for is made with its own sounds, and says so. A Sound Combo
 does not go over a Sound Set: its sounds would undo the set's budget.

@@ -213,7 +213,7 @@ this window, measured as noise.
 | Synth | Lanes |
 | --- | --- |
 | TNGR-2 (7) | lead (Alloy Chime), lead7 (Alloy Chime), chords (Warm Strings), lead4 (Crystal Trigger), lead6 (Neon Reed), bass2 (Night Sequence), chords2 (Burnt Horizon) |
-| RMND-2 | twinkle, lead2 |
+| RMND-7 | twinkle, lead2 |
 | CRLS-1 | bass, lead3, lead8, lead10 |
 | JMJR-4 | lead5 |
 | MRDR-3 | lead9 (WUB Sync Screech, added on the desk tonight) |

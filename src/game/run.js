@@ -5039,6 +5039,8 @@ export class RunState {
     //
     // After enterStage too, because its setBank fallback releases every lane.
     Audio.warmWorkletLanes?.();
+    // The heavy cues (thunder, boom) as buffers before the level needs them (Audio._bakedCue).
+    Audio.warmBakedCues?.()?.catch?.(() => {});
     // And the arcade intro's first frames — see warmArcadeIntro. After the prefill for the
     // same reason as the line above: it is a block of main thread, and the queue has to be
     // full past it first. Behind the shutter, where a block costs nothing anyone sees.

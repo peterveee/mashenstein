@@ -11,8 +11,10 @@ worth reading, but it is closed: a lineup that is half lore quiz and half horror
 reads as neither, and the half already shipped is the lore quiz.
 
 Settled 2026-08-21: **`KNDO-5`** for `GameSynth` — Koji Kondo. See *The gaming-legend
-lane*. Settled the same day: **`RMND-2`** for the merged `FMSynth`/`AMSynth` — Raymond
-Scott. See *The AM/FM merge*.
+lane*. Settled 2026-10-23: **`FZPP-6`** for the waveguide string synth — Peter's name. The 6 is
+the six string slots a lane has, which is also the ceiling on what a lane can cost; see
+*The waveguide string* below. Settled the same day as KNDO-5: **`RMND-2`** for the merged `FMSynth`/`AMSynth` — Raymond
+Scott, renamed **`RMND-7`** on 2026-10-23. See *The AM/FM merge*.
 
 ---
 
@@ -52,10 +54,10 @@ consolidation removed engines rather than renaming them:
   its `osc` section and six inharmonic squares are its `metal` section — the same two
   circuits with their numbers exposed instead of welded shut
   (`src/data/voices.js:1070`).
-- `FMSynth` and `AMSynth` merged into **`RMND-2`**. Same carrier, same modulator, same
+- `FMSynth` and `AMSynth` merged into **`RMND-7`**. Same carrier, same modulator, same
   two envelopes, differing only in which parameter of the carrier the modulator reaches —
   so one engine with a destination switch is an honest description rather than a
-  simplification (`src/engine/voices.js`, `RMND2`).
+  simplification (`src/engine/voices.js`, `RMND7`).
 - `DuoSynth` retired into **`MRDR-3`**. Two Tone MonoSynths under a shared vibrato is
   two MRDR-3 layers, and the eleven presets are now two-layer patches measured against the
   originals. The only rename whose PARAMETERS had to move as well as its name — see
@@ -73,13 +75,14 @@ auditable when the engine changes.
 | `CRLS-1` (`Tone.Synth` / `Tone.MonoSynth`) | 59 | **1** | settled | 1 osc + envelope, filter optional |
 | `TNGR-2` (`_playTngr2Node`) | 43 | **2** | settled | 2 wavetable oscillators |
 | `kind: 'drum'` (`_playDrum`) | 29 | **8** † | settled, number open | 5 generators — osc, noise, ring, metal, knock |
-| `RMND-2` (`Tone.FMSynth` / `Tone.AMSynth`) | 42 | **2** | settled | carrier + modulator, reaching pitch or level |
+| `RMND-7` (`Tone.FMSynth` / `Tone.AMSynth`) | 42 | **7** ‡ | settled | carrier + modulator, reaching pitch or level; filter + pitch envelope |
 | `KNDO-5` (`_playGame`) | 8 | **5** | settled | 4 waveforms + the noise channel |
 | `WNDR-9` (`_playAdditive`) | 8 | **9** | settled | 9 drawbars |
+| `FZPP-6` (`src/engine/fzpp6/`, a worklet lane) | 29 | **6** | settled | 6 string slots — a waveguide string per slot |
 
 Where the numbers come from:
 
-- `SYNTHS` in `src/engine/voices.js`, the allowlist. `RMND-2`'s two classes are
+- `SYNTHS` in `src/engine/voices.js`, the allowlist. `RMND-7`'s two classes are
   literal Tone classes, so Tone's architecture is ours, and Tone's
   `FMSynth` is a carrier and one modulator: **FM here is 2-operator.** Amplitude
   modulation is the same two oscillators, so the `-2` reads the same either way — which
@@ -142,7 +145,7 @@ beside `MR3`, `TN2`, `KL8` and `CR1`. The method is still `_playGame`, and
 
 ## Settled: the AM/FM merge
 
-**`RMND-2` — Raymond Scott.** `FMSynth` and `AMSynth` are **one engine**, shipped
+**`RMND-7` — Raymond Scott.** `FMSynth` and `AMSynth` are **one engine**, shipped
 2026-08-21. They were already the same shape — a carrier and a modulator, differing in
 which parameter the modulator reaches — so the merge is the `CRLS-1` argument again, with
 the modulation destination as the switch rather than the filter.
@@ -157,12 +160,22 @@ homages are close, the live-brand screen decides.*
 plus a modulator is `-2` whichever parameter it lands on. The merge also drops the
 three-way `-2` collision to a two-way one.
 
+**Renamed `RMND-7`, 2026-10-23 — Peter's call, and an exception to the rule.** The `-7`
+echoes the Yamaha DX7, the instrument everybody hears when they hear FM. That is a number
+chosen because it reads well, which *The formula* says turns every number into decoration,
+so it is recorded here as the one deliberate exception rather than a precedent: the other
+six still count something. It is not quite empty either. The same day the engine grew a
+filter, a filter envelope and a pitch envelope, so its board now reads seven stages in
+signal order: Osc, Mod, Mod Env, Pitch Env, Filter, Filter Env, Amp. `RMND-2` joins
+`FMSynth` and `AMSynth` in `RENAMED`, so songs and user presets saved under it play the same
+instrument; the song files were not rewritten (a name is not worth a migration).
+
 Peter's constraint on the name: **pre-1980 legends, nobody recent.**
 
 | Candidate | Who | Why | Against |
 | --- | --- | --- | --- |
 | **BODE-2** | Harald Bode (1909–1987) | The one workbench that holds **both halves**: Bode built the Bode Ring Modulator *and* the Bode Frequency Shifter, plus the Melochord (1947) and the modular thinking Moog credited. Four letters with no stripping needed, and it lands on a word that **bodes ill** — a System C pass | **Bode Sound Company still trades on the name.** Smaller exposure than Aphex Systems, but the trademark rule as written excludes live audio brands, and this is one |
-| **RMND-2** | Raymond Scott (1908–1994) | The other finalist, and the **lore** answer. Manhattan Research Inc. — a one-man lab of homemade machines, which is MASHENSTEIN's own premise. The Clavivox (1952), the Electronium, the Circle Machine, proto-ambient records in 1962. A pure consonant strip of a name he **constructed for himself**: he was born Harry Warnow, so compressing it is a continuation rather than a liberty. And the young **Bob Moog** built theremin subassemblies for the Clavivox — this is how the suite nods at Moog without using the trademark. No live gear brand on the name | Scott defined electronic music *production*, not carrier-and-modulator synthesis. The same objection that killed `TMT-9`: right pioneer, adjacent lineage. `SCTT-2` is the alternative strip and is worse — it takes the half of his name that reads as a common first name |
+| **RMND-7** | Raymond Scott (1908–1994) | The other finalist, and the **lore** answer. Manhattan Research Inc. — a one-man lab of homemade machines, which is MASHENSTEIN's own premise. The Clavivox (1952), the Electronium, the Circle Machine, proto-ambient records in 1962. A pure consonant strip of a name he **constructed for himself**: he was born Harry Warnow, so compressing it is a continuation rather than a liberty. And the young **Bob Moog** built theremin subassemblies for the Clavivox — this is how the suite nods at Moog without using the trademark. No live gear brand on the name | Scott defined electronic music *production*, not carrier-and-modulator synthesis. The same objection that killed `TMT-9`: right pioneer, adjacent lineage. `SCTT-2` is the alternative strip and is worse — it takes the half of his name that reads as a common first name |
 | `CHWN-2` | John Chowning | Invented FM at Stanford (1967) and licensed it to Yamaha. The preset weight is on the FM side, 32 against 10 | Silent on the AM half of a merged engine, and hard to say out loud |
 | `CHOW-2` | John Chowning | The same homage, actually pronounceable, and a word | The word is *chow*; comic rather than menacing |
 | `BRRN-2` | Louis & Bebe Barron | *Forbidden Planet* (1956), the first fully electronic film score, built from ring-modulated circuits that they let burn out. *Barren* — a System C pass | Silent on the FM half |
@@ -178,10 +191,10 @@ because it reads better, every other number in the suite becomes decoration too.
 
 **Option 1 is what happened.** The merge took the count from four to three, and
 retiring `DuoSynth` into MRDR-3 took it to **two**: `TNGR-2` and `RMND-2`. The suite
-reads `1 · 2 · 2 · 3 · 5 · 8 · 9` — one duplicate, which is
+read `1 · 2 · 2 · 3 · 5 · 8 · 9` — one duplicate, which is
 Juno-6-and-Juno-60 territory and well inside what this document already accepts. The
-other two routes are kept because they are the only ways `RMND-2` ever becomes something
-else:
+rename to `RMND-7` (2026-10-23) took it to none: `1 · 2 · 3 · 5 · 7 · 8 · 9`. The
+other two routes were the only ways `RMND-2` could have become something else:
 
 1. **Let the retirements do it.** Done.
 2. **Earn a different number by building one.** A merged modulation engine is the natural
@@ -218,7 +231,7 @@ number the preset was authored with. Simple omits that row instead of greying it
 same split a filterless `CRLS-1` preset already makes with CUTOFF: Advanced is where a
 disabled control still has the switch beside it to explain itself.
 
-`FM DEPTH` is the name on **all three** FM cards — RMND-2's, MRDR-3's `Osc N · FM` and
+`FM DEPTH` is the name on **all three** FM cards — RMND-7's, MRDR-3's `Osc N · FM` and
 KLNG-8's `FM` — because they are one control. `ENV AMT` was the first choice and was
 struck: MRDR-3's filter card already carries `ENV AMOUNT` two cards away and KLNG-8's
 oscillator carries `AMOUNT`, so it would have put a near-identical name for an unrelated
@@ -371,7 +384,8 @@ there is no `-0` left to name and no argument that cheap again.
 
 **Four letters, enforced.** Either the rule holds or it is decoration.
 
-**Spec numbers collide, and that is correct.** `RMND-2` and `TNGR-2` both want `-2`.
+**Spec numbers collide, and that is correct.** `RMND-2` and `TNGR-2` both wanted `-2`
+until the DX7 rename.
 The number cannot be a unique identifier and should not
 try to be: **the code is the identity, the number is a spec.** Roland shipped a Juno-6
 and a Juno-60. Forcing uniqueness would mean lying about at least one architecture, which
@@ -383,7 +397,7 @@ Exciter. That last one is the non-obvious hazard and the reason `APX` cannot shi
 audio product; Richard D. James named himself after them, and we don't get to. **Bode
 Sound Company** is the one that decided the AM/FM slot — smaller than any of the above,
 and the only mark standing between `BODE-2` and the merged modulation engine, which is
-why that engine ships as `RMND-2`.
+why that engine ships as `RMND-7`.
 
 **Living artists.** Kondo, Numan, Clarke, Jarre and James are alive; the Tangerine Dream
 and Kling Klang marks are administered estates and companies rather than dormant.
@@ -400,13 +414,28 @@ settled
   CRLS-1   Wendy Carlos       1 osc, filter optional     59 presets
   TNGR-2   Tangerine Dream    2 wavetable oscillators    43 presets
   KLNG8    Kling Klang        5 generators — number open 29 presets
-  RMND-2   Raymond Scott      carrier + modulator        42 presets
+  RMND-7   Raymond Scott      carrier + modulator        42 presets
   KNDO-5   Koji Kondo         4 waveforms + noise         8 presets
   WNDR-9   Klaus Wunderlich   9 drawbars                  8 presets
 
 retired, and readable forever through RENAMED
-  Synth · MonoSynth -> CRLS-1     FMSynth · AMSynth -> RMND-2
+  Synth · MonoSynth -> CRLS-1     FMSynth · AMSynth -> RMND-7
   GameSynth -> KNDO-5             AdditiveSynth -> WNDR-9
   MembraneSynth · MetalSynth · kind:'noise' -> KLNG8
   DuoSynth -> MRDR-3              (the one that moved its parameters too)
 ```
+
+
+---
+
+## The waveguide string
+
+**`FZPP-6`**, 2026-10-23 — Peter's name, chosen directly rather than read off the pioneer
+formula, and recorded here as that.
+
+The number keeps the rule that it counts something real: **six string slots** per lane,
+the six strings of the guitar it models (`FZPP6_STRING_COUNT` in
+`src/engine/fzpp6/dsp.js`). A note goes to the string a player would put it on, a chord
+takes one string per note, and a seventh note re-plucks or steals — so the six is both the
+instrument and the hard ceiling on what one lane can cost. It was also the one digit the
+roster had not used.

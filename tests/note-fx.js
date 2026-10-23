@@ -242,5 +242,30 @@ assert(json(rangedEvents.map((e) => midiOf(e.freq))) === '[64,67,72,64]',
 assert(rangedEvents.every((e) => midiOf(e.freq) >= 48 && midiOf(e.freq) <= 72),
   'no arpeggiated note sounds outside the window');
 
+// Alternate strokes follow chord strikes and restart at each bar independently per lane.
+for (const style of ['alternate-up', 'alternate-down']) {
+  const alternating = createNoteFxProcessor();
+  const config = { strum: { enabled: true, direction: style, gapMs: 20 } };
+  const hit = (step, barIndex = 0, value = chord, laneKey = 'chords') => alternating.process({
+    laneKey, value, len: [2, 3, 4], step, barIndex, spb: 0.1, config,
+  });
+  const first = style === 'alternate-up' ? 220 : 440;
+  const second = style === 'alternate-up' ? 440 : 220;
+  assert(hit(0)[0].freq === first, `${style} begins in its named direction`);
+  hit(1, 0, null);
+  hit(2, 0, 330);
+  assert(hit(3)[0].freq === second, `${style} ignores rests and single notes`);
+  assert(hit(4, 0, chord, 'lead')[0].freq === first, `${style} keeps lanes independent`);
+  const third = hit(6);
+  assert(third[0].freq === first && json(third.map(e => e.delay)) === '[0,0.02,0.04]'
+    && json(third.map(e => e.len).sort()) === '[2,3,4]', `${style} alternates while preserving gaps and lengths`);
+  assert(hit(16, 1)[0].freq === first, `${style} resets after an odd number of chords at the new bar`);
+  assert(hit(20, 1)[0].freq === second, `${style} alternates within the new bar`);
+  hit(24, 1);
+  assert(hit(16, 1)[0].freq === first, `${style} resets when transport rewinds within a bar`);
+  alternating.reset();
+  assert(hit(18, 1)[0].freq === first, `${style} resets with the processor`);
+}
+
 console.log(failed ? '\nNOTE FX: FAILED' : '\nNOTE FX: PASSED');
 process.exit(failed ? 1 : 0);

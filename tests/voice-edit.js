@@ -155,6 +155,33 @@ async function main() {
       say(poolOf('bass', id) === pool, 'a second refresh with nothing changed does nothing');
     }
 
+    // ---- 2b. CRLS-1 envelope drags leave unrelated filter bounds alone ----------
+    {
+      const id = install(VOICES.acidSquelch);
+      hit('bass', id);
+      const pool = poolOf('bass', id);
+      const synth = pool.slots[0].synth;
+      const fenv = synth.filterEnvelope;
+      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(fenv), 'baseFrequency');
+      let writes = 0;
+      Object.defineProperty(fenv, 'baseFrequency', {
+        configurable: true,
+        get: () => descriptor.get.call(fenv),
+        set: (value) => { writes++; descriptor.set.call(fenv, value); },
+      });
+      VOICES[id].options.envelope.release += 0.1;
+      rack.refresh(id);
+      say(writes === 0, 'CRLS-1 amp envelope edit leaves filter envelope bounds alone');
+      VOICES[id].options.filterEnvelope.attack += 0.01;
+      rack.refresh(id);
+      say(writes === 0, 'CRLS-1 filter envelope timing edit leaves its bounds alone');
+      VOICES[id].options.filterEnvelope.baseFrequency += 50;
+      rack.refresh(id);
+      say(writes === 1, 'CRLS-1 filter envelope cutoff edit still updates its bound');
+      say(poolOf('bass', id) === pool && pool.slots[0].synth === synth,
+        'CRLS-1 envelope edits keep the sounding synth');
+    }
+
     // ---- 3. glide back to zero is said out loud ---------------------------------
     {
       const id = install(VOICES.acidSquelch);

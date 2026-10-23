@@ -9,7 +9,7 @@
 //
 // What a slap is, in synth terms: a transient much brighter than the note that follows
 // it, gone in well under a tenth of a second, over a round body. The DX7 got there with
-// an FM index that falls off a cliff — which is why the DX answers here are RMND-2, the
+// an FM index that falls off a cliff — which is why the DX answers here are RMND-7, the
 // two-operator FM engine — and a hybrid adds what FM alone lacks: the fret click (a
 // burst of high noise) and the pop's pitch, which starts a few cents sharp because the
 // string is stretched as it is pulled.

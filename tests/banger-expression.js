@@ -476,8 +476,8 @@ const plannedAt = (fixture, lane, set) => createLaneView({
     families[f] = (families[f] || 0) + (has ? 1 : 0);
   }
   assert(!wrong.length, `across all ${n} pitched presets as the hook, the setting is there exactly where the preset takes a slide (${got} do)${wrong.length ? `: ${wrong.slice(0, 5)}` : ''}`);
-  assert(['TNGR-2', 'KNDO-5', 'RMND-2', 'WNDR-9', 'JMJR-4', 'engine'].every((f) => !families[f]),
-    `and never on TNGR-2, KNDO-5, RMND-2, WNDR-9, JMJR-4 or an engine preset (${JSON.stringify(families)})`);
+  assert(['TNGR-2', 'KNDO-5', 'RMND-7', 'WNDR-9', 'JMJR-4', 'engine'].every((f) => !families[f]),
+    `and never on TNGR-2, KNDO-5, RMND-7, WNDR-9, JMJR-4 or an engine preset (${JSON.stringify(families)})`);
 }
 
 // ---------------------------------------------------------------- Modify This Take

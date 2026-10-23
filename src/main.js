@@ -58,7 +58,7 @@ import { HERO_BY_ID } from './data/heroes.js';
 import { TitleState, DifficultyState, BriefingState, ResultsState, FinaleState, SettingsState, AboutState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX, loadBangerModule } from './game/menus.js';
 import { IntroState } from './game/intro.js';
 import { EXIT_CUE } from './game/hub/cabinet-dive.js';
-import { resultsOnTheBeat, installSoundtrack, setRelief8bit, setReliefDeep, setLightMixes, setSoundTest, soundTestNow, learnLight, setOnLightChosen } from './game/results-chip.js';
+import { resultsOnTheBeat, installSoundtrack, setRelief8bit, setReliefDeep, setLightMixes, setSoundTest, soundTestNow, learnLight, setOnLightChosen, setPlayerSoundtrackListener } from './game/results-chip.js';
 import { runAudioBench, readAudioBench, LIGHT_BENCH_MS } from './engine/device-bench.js';
 import { trackIdOf } from './data/tracks.js';
 import { HubState, queueCabinetDiveOut, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor, releaseTrophyRoomAudio } from './game/hub/index.js';
@@ -88,6 +88,7 @@ import { consumeBenchDiag, releaseBenchRenderer, readDiag, startCrumbSession, cr
 import { startGlitchSession, noteSecond, noteEvent, watchAudioSources } from './engine/glitch-log.js';
 import { createAudioGuard } from './engine/audio-guard.js';
 import { setParkMutedEffects, setDeepSleep, deepSleepSuits } from './engine/mixer.js';
+import { setTrimIdleSlots } from './engine/voices.js';
 import { MusicDirector } from './engine/music-director.js';
 import { startTitleProfile, titleProfileActive, titleProfileFrame, titleProfileReportVisible, drawTitleProfile } from './engine/title-profile.js';
 import {
@@ -456,7 +457,7 @@ const Flow = {
     onTutorial: () => Flow.toTutorial(true),
     onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toExtras('guide') })),
     onSoundTest: () => setState(new SoundTestState({ onDone: () => Flow.toExtras('soundtest') })),
-    onLab: () => loadBangerModule().then(() => setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') }))),
+    onLab: () => openLabWhenLoaded(() => Flow.toExtras('lab')),
     // A replay, not the real thing: this onDone only walks back to the title.
     // The new-file path above is the one that sets sawIntro and persists.
     onIntro: () => setState(new IntroState({ onDone: () => Flow.toExtras('intro') })),
@@ -782,22 +783,226 @@ const Flow = {
 //          as holes. Positive and quiet means the frame is feeding it fine.
 //   L48ms  what the output buffer actually came out at, next to the rate. The phone
 //          profile ASKS for 50ms; this is the only place that says what was granted.
-const audioProbe = { at: 0, ctxAt: 0, ratio: 0, margin: null, late: 0 };
+const audioProbe = { at: 0, ctxAt: 0, ratio: 0, margin: null, late: 0, clockMin: null };
+// When the page last came back into view: iOS restarts the audio as it does, and the first
+// seconds read slow (0.55 on the iPad, 22 Oct 2026) with nothing overloaded — the guard switched
+// the title screen to 8-bit on that. It does not judge the clock for a few seconds after.
+let audioVisibleAt = 0;
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) audioVisibleAt = performance.now(); });
+}
+const AUDIO_RESUME_GRACE_MS = 4000;
+// THE WORST QUARTER-SECOND (22 Oct 2026, docs/AUDIO_SYNTH_AUDIT_PLAN.md Stage S): the same
+// audio/wall ratio over 250 ms windows inside each second, read off getOutputTimestamp —
+// the context time being heard and the performance time it is heard at, one pair from the
+// audio side — so the main thread's own lateness in sampling is not in the number. Falls
+// back to currentTime against now where a browser has no timestamp yet.
+const quarterProbe = { at: 0, ctxAt: 0, min: Infinity };
+function outputStamp(ctx, now) {
+  const t = typeof ctx.getOutputTimestamp === 'function' ? ctx.getOutputTimestamp() : null;
+  if (t && t.performanceTime > 0 && Number.isFinite(t.contextTime)) return { ctx: t.contextTime, wall: t.performanceTime / 1000, heard: true };
+  return { ctx: ctx.currentTime, wall: now };
+}
 let audioTxt = '';
 // The audio guard (engine/audio-guard.js), made at boot; fed the same sample.
 let audioGuard = null;
+// THE RESTART, AND ITS TAP (22 Oct 2026). The guard's last lever stops the audio and starts it
+// again: Audio.rebuildRealtimeContext closes the context — on the iPad the only thing that
+// drops a backlog without WebKit bursting it into the speakers — and builds a new one with the
+// song where its clock was. A context made outside a tap may not run on iOS; then the game
+// freezes where it is and asks for one (drawAudioTapPrompt), and the tap's own ensure() —
+// Input.onAnyGesture, inside the gesture — gets it going. Peter: "if a click is required, then
+// perhaps pause things and tell user to click a button, this is completely preferable to just
+// silence which can only be solved by killing the app". Three taps with no sound and the game
+// goes on without it rather than hold the player hostage.
+let audioTapNeeded = false;
+let audioTaps = 0;
+let audioTapAt = 0;
+let audioTapHalting = false;
+const AUDIO_TAP_GIVE_UP = 3;
+// How long a tap's resume gets before the context it was meant for is given up on.
+const AUDIO_TAP_RESUME_MS = 1200;
+const AUDIO_RESTART_QUIET_MS = 1500;
+// HOW THE RESTART COMES BACK (23 Oct 2026). 'kick' (the game — Peter, from the iPhone: "with
+// restartmode=kick it is fine"): no new context at all. The same one is suspended, left quiet
+// for AUDIO_RESTART_QUIET_MS and resumed (Audio.kickContext). iOS drops the backlog on the
+// suspend, the jump sound is on the jump again afterwards, and because the context is the one
+// the first tap unlocked, no tap is asked for. The two it replaced, kept for the comparison on
+// a device (?restartmode=): 'warm' — a new context built and warmed standing still, then
+// started (Audio.buildHaltedContext); 'cold' — a new context built and started at once. Both
+// closed the context, and on the iPhone every sound after them played late by a few hundred
+// milliseconds, warm or not.
+let audioRestartMode = 'kick';
+async function audioRestart(why) {
+  if (!Audio.ctx || Audio._contextRestarting || audioTapNeeded) return;
+  crumb('AUDIO', `restart (${audioRestartMode}): ${why}`);
+  console.info('[audio] restart:', why);
+  const latencies = () => { const c = Audio.ctx; return c ? `base ${Math.round((c.baseLatency || 0) * 1000)} ms, output ${Math.round((c.outputLatency || 0) * 1000)} ms, ${c.sampleRate} Hz` : '-'; };
+  if (audioRestartMode === 'kick') {
+    let state = null;
+    try { state = await Audio.kickContext(AUDIO_RESTART_QUIET_MS); } catch (e) { crumb('AUDIO', `kick failed: ${e?.message || e}`); return; }
+    if (state === 'running') { crumb('AUDIO', `kick: the context runs again (${latencies()})`); setTimeout(() => audioResponseProbe('after the kick'), 3000); return; }
+    // Not running without a gesture after all (never seen on the phone): the tap's ensure()
+    // resumes it, and a second tap that does not start it either replaces it (audioTapSettled).
+    crumb('AUDIO', `kick: the context is ${state}; the tap will resume it`);
+    audioTapNeeded = true; audioTaps = 0; audioTapAt = 0;
+    return;
+  }
+  let halted = false;
+  try { halted = await Audio.haltAudio(); } catch (e) { crumb('AUDIO', `restart failed: ${e?.message || e}`); return; }
+  if (!halted) { crumb('AUDIO', 'restart failed: could not halt'); return; }
+  // A MOMENT WITH NO CONTEXT AT ALL (23 Oct 2026): what the old one had rendered ahead may
+  // still be queued in the one output iOS keeps for the page; with no context for a moment,
+  // that output is torn down, queue and all.
+  await new Promise((r) => setTimeout(r, AUDIO_RESTART_QUIET_MS));
+  if (audioRestartMode === 'cold') {
+    Audio.ensure();
+  } else {
+    const t0 = performance.now();
+    let built = false;
+    try { built = await Audio.buildHaltedContext(); } catch (e) { crumb('AUDIO', `restart: warm build failed (${e?.message || e})`); }
+    if (!built && !Audio.ctx) Audio.ensure();
+    const w = Audio.lastWarm;
+    crumb('AUDIO', `restart: the new context built and warmed in ${Math.round(performance.now() - t0)} ms (${Audio.ctx?.state}${w ? `; ${w.voices} voices, ${w.lanes ?? '?'} worklet lanes${w.complete ? '' : ', warm-up cut short'}` : ''})`);
+    Audio.resumeContext();
+  }
+  if (await Audio.contextRunning(1500)) { crumb('AUDIO', `restart: the new context runs (${latencies()})`); setTimeout(() => audioResponseProbe('after the restart'), 3000); return; }
+  // Not running: on iOS a context made outside a tap starts only inside one. The game freezes
+  // and asks; the tap's own ensure() (Input.onAnyGesture) resumes THIS context — warm, its
+  // graph already made. If that tap does not start it either, the context goes and the next
+  // tap makes a new one inside the gesture itself (audioTapSettled), as proved on the device.
+  crumb('AUDIO', `restart: the new context is ${Audio.ctx?.state} (${latencies()}); a tap is asked for`);
+  audioTapNeeded = true;
+  audioTaps = 0;
+  audioTapAt = 0;
+}
+/**
+ * THE RESPONSE PROBE (23 Oct 2026; Peter, from the iPhone after a restart: "the jump sound no
+ * longer synchronises with the jump itself… can you not measure this?"). What the engine can
+ * measure of its own delay, on the device, written to the trail: a near-silent cue is fired and
+ * timed until its samples reach the SFX bus (the render path); the gap between the context's
+ * clock and the sample being heard (getOutputTimestamp, the output queue); and what the context
+ * says its latencies are. Once a few seconds after the first tap, as the reference, and again
+ * after every restart. What it cannot see — anything below WebKit — is what is left when these
+ * read the same before and after.
+ */
+async function audioResponseProbe(label) {
+  const ctx = Audio.ctx;
+  if (!ctx || ctx.state !== 'running' || !Audio.sfxGain) return;
+  try {
+    const an = ctx.createAnalyser(); an.fftSize = 256;
+    Audio.sfxGain.connect(an);
+    const buf = new Float32Array(256);
+    const stampBefore = outputStamp(ctx, performance.now() / 1000);
+    const t0 = performance.now();
+    Audio.sfx('jump', { gain: 0.0003 });
+    let heard = null;
+    while (performance.now() - t0 < 1500) {
+      await new Promise((r) => setTimeout(r, 4));
+      an.getFloatTimeDomainData(buf);
+      let p = 0; for (let i = 0; i < buf.length; i++) p = Math.max(p, Math.abs(buf[i]));
+      if (p > 1e-6) { heard = performance.now() - t0; break; }
+    }
+    try { Audio.sfxGain.disconnect(an); } catch { /* fine */ }
+    const now = performance.now() / 1000;
+    const stamp = outputStamp(ctx, now);
+    const lag = stamp.heard ? Math.round((ctx.currentTime - (stamp.ctx + (now - stamp.wall))) * 1000) : null;
+    void stampBefore;
+    crumb('AUDIO', `probe ${label}: cue rendered in ${heard == null ? '>1500' : Math.round(heard)} ms, output lag ${lag == null ? '-' : lag} ms, base ${Math.round((ctx.baseLatency || 0) * 1000)} ms, output ${Math.round((ctx.outputLatency || 0) * 1000)} ms`);
+  } catch (e) { crumb('AUDIO', `probe ${label} failed: ${e?.message || e}`); }
+}
+let bootProbeDone = false;
+/** Each frame while a tap is wanted: true once the game may go on. */
+function audioTapSettled() {
+  if (!audioTapNeeded) return true;
+  if (Audio.ctx?.state === 'running') {
+    audioTapNeeded = false;
+    const c = Audio.ctx;
+    crumb('AUDIO', `restart: running after ${audioTaps} tap${audioTaps === 1 ? '' : 's'} (base ${Math.round((c.baseLatency || 0) * 1000)} ms, output ${Math.round((c.outputLatency || 0) * 1000)} ms)`);
+    setTimeout(() => audioResponseProbe('after the tap'), 3000);
+    return true;
+  }
+  if (audioTaps >= AUDIO_TAP_GIVE_UP) { audioTapNeeded = false; crumb('AUDIO', `restart: no sound after ${audioTaps} taps; going on without it`); return true; }
+  // A tap has been and the context it resumed still does not run: that context goes, and the
+  // next tap builds one inside the gesture itself (ensure() with no context) — cold, but the
+  // way that started on the iPhone (23 Oct 2026) when a context made outside a tap would not.
+  if (audioTaps >= 1 && Audio.ctx && !audioTapHalting && performance.now() - audioTapAt > AUDIO_TAP_RESUME_MS) {
+    audioTapHalting = true;
+    crumb('AUDIO', `restart: still ${Audio.ctx.state} after tap ${audioTaps}; the next tap will make a new context`);
+    Audio.haltAudio().catch(() => {}).finally(() => { audioTapHalting = false; });
+  }
+  return false;
+}
+function drawAudioTapPrompt(ctx) {
+  // Logical units, as every overlay here draws in (W is the renderer's logical width).
+  const H = W * ctx.canvas.height / ctx.canvas.width;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(0, 0, W, H);
+  // Big — it is the only thing on screen and the player has to read it on a phone (Peter,
+  // 23 Oct 2026: "TINY"): each line as wide as the screen allows, capped.
+  const lines = [['THE SOUND COULD NOT KEEP UP', '#f6d33c', 2.2], ['IT HAS BEEN STOPPED AND RESTARTED', '#d8d8e0', 1.4],
+    [Input.isTouchDevice() ? 'TAP TO CONTINUE' : 'PRESS ANY KEY OR CLICK TO CONTINUE', '#ffffff', 1.9]];
+  const fitted = lines.map(([text, color, scale]) => [text, color, Math.min(scale, (W * 0.92) / textWidth(text, 1, 'bold'))]);
+  const lineH = (sc) => 18 * sc + 10;
+  const total = fitted.reduce((a, [, , sc]) => a + lineH(sc), 0);
+  // A band behind the words, so they read over whatever screen was up.
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillRect(0, H / 2 - total / 2 - 16, W, total + 32);
+  let y = H / 2 - total / 2;
+  for (const [text, color, scale] of fitted) {
+    drawText(ctx, text, (W - textWidth(text, scale, 'bold')) / 2, y, color, scale, 'bold');
+    y += lineH(scale);
+  }
+  ctx.restore();
+}
 // Set from ?mrdrbackend=farm, below — read by the readout to tell FARM from AW.
 let farmRequested = false;
 // The same fields split for the chrome box, whose rows are short on purpose so the
 // lettering can grow in a phone's narrow side pillar rather than shrinking to fit.
 let audioRows = [];
+// THE LAB, ONCE ITS TABLE HAS LOADED — and only if the player is still where they asked for
+// it (22 Oct 2026, docs/AUDIO_SYNTH_AUDIT_PLAN.md Stage G). bangerLab.js is megabytes; on a
+// slow connection the player can back out of EXTRAS before it arrives, and the load used to
+// pull them into the Lab from wherever they had got to. A load that fails says so on the
+// trail instead of vanishing into an unhandled rejection. `anywhere` is the boot route
+// (?goto=thelab), where there is no screen yet to have left.
+function openLabWhenLoaded(onDone, { anywhere = false } = {}) {
+  const from = currentState();
+  loadBangerModule().then(() => {
+    if (!anywhere && currentState() !== from) return;
+    setState(new SoundTestState({ lab: true, onDone }));
+  }).catch((e) => crumb('LAB', `bangerLab.js did not load: ${e?.message || e}`));
+}
+
 function sampleAudioHealth() {
   const ctx = Audio.ctx;
   if (!ctx) { audioTxt = ''; audioRows = []; audioProbe.at = 0; return; }
   const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+  const stamp = outputStamp(ctx, now);
+  // THE LAG (22 Oct 2026; Peter, from the iPad: "it recovers eventually but ALL audio is
+  // delayed everywhere after it goes silent"): how far the context's clock — where new
+  // sounds are booked — runs ahead of the sample being heard now. A device that renders a
+  // backlog in a burst after a stall (C 3.27 the second after a STOP) can keep that burst
+  // queued between the renderer and the speaker, and every sound after it plays late.
+  // Running only, and never below zero: a stalled or suspended render leaves a stale stamp,
+  // which reads as the clock running BEHIND what is heard.
+  if (stamp.heard && ctx.state === 'running') {
+    const lag = ctx.currentTime - (stamp.ctx + (now - stamp.wall));
+    if (Number.isFinite(lag) && lag >= 0) audioProbe.lagMax = Math.max(audioProbe.lagMax ?? -Infinity, lag);
+  }
+  const qWall = stamp.wall - quarterProbe.at;
+  if (!quarterProbe.at || qWall > 0.6 || qWall < 0) { quarterProbe.at = stamp.wall; quarterProbe.ctxAt = stamp.ctx; }
+  else if (qWall >= 0.25) {
+    quarterProbe.min = Math.min(quarterProbe.min, (stamp.ctx - quarterProbe.ctxAt) / qWall);
+    quarterProbe.at = stamp.wall;
+    quarterProbe.ctxAt = stamp.ctx;
+  }
   if (!audioProbe.at) { audioProbe.at = now; audioProbe.ctxAt = ctx.currentTime; return; }
   const wall = now - audioProbe.at;
   if (wall < 1) return;
+  audioProbe.clockMin = Number.isFinite(quarterProbe.min) ? quarterProbe.min : null;
+  quarterProbe.min = Infinity;
   audioProbe.ratio = (ctx.currentTime - audioProbe.ctxAt) / wall;
   audioProbe.at = now;
   audioProbe.ctxAt = ctx.currentTime;
@@ -811,13 +1016,37 @@ function sampleAudioHealth() {
   // away (a gap well over the second is a suspension, not a stall) or is hidden now.
   if (wall < 1.5 && !(typeof document !== 'undefined' && document.hidden)) {
     const fh = frameHealth();
-    noteSecond({ clock: audioProbe.ratio, margin: audioProbe.margin, late: audioProbe.late,
-      framesLost: fh.hitches, frameMs: fh.worstMs });
+    // THE MUSIC'S OWN OUTPUT (22 Oct 2026): the iPad went silent for good after a sustained
+    // overload — clicks and all — with the clock reading fine. The song path's analyser, once a
+    // second: its peak, and whether its buffer has stopped changing (a render thread that no
+    // longer runs leaves the last block there). Logged beside the clock, so the next time says
+    // which it was.
+    const an = Audio.songAnalyser;
+    let out = null;
+    if (an && Audio.bank) {
+      const buf = audioProbe.outBuf ||= new Float32Array(an.fftSize);
+      an.getFloatTimeDomainData(buf);
+      let peak = 0, sig = 0;
+      for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > peak) peak = a; sig += buf[i] * (i + 1); }
+      const same = audioProbe.outSig === sig && peak > 0;
+      audioProbe.outSig = sig;
+      audioProbe.quietFor = peak < 1e-6 ? (audioProbe.quietFor || 0) + 1 : 0;
+      audioProbe.frozenFor = same ? (audioProbe.frozenFor || 0) + 1 : 0;
+      out = { level: peak, mute: audioProbe.quietFor >= 3, frozen: audioProbe.frozenFor >= 2, state: ctx.state };
+    }
+    const lag = Number.isFinite(audioProbe.lagMax) ? Math.round(audioProbe.lagMax * 1000) : null;
+    audioProbe.lagMax = null;
+    noteSecond({ clock: audioProbe.ratio, clockMin: audioProbe.clockMin, margin: audioProbe.margin, late: audioProbe.late, out,
+      lag, framesLost: fh.hitches, frameMs: fh.worstMs });
     // The level being played, so relief lasts until it is left: the run, or the run inside
-    // the attract demo; null on a menu.
+    // the attract demo. Outside a level, the SONG (22 Oct 2026): relief that came on in the
+    // jukebox stayed on for every song after it, which is not what a jukebox is.
     const st = currentState();
-    const place = st?.stage ? st : (st?.run?.stage ? st.run : null);
-    audioGuard?.tick(audioProbe.ratio, ctx.state === 'running', place);
+    const run = st?.stage ? st : (st?.run?.stage ? st.run : null);
+    const place = run || Audio.sourceBank || null;
+    const settling = performance.now() - audioVisibleAt < AUDIO_RESUME_GRACE_MS;
+    audioGuard?.tick(audioProbe.ratio, ctx.state === 'running' && !settling, place,
+      { margin: audioProbe.margin, late: audioProbe.late }, !!run);
   }
   if (efficiencyProfile.enabled) {
     efficiencyProfile.audioMarginMin = Math.min(efficiencyProfile.audioMarginMin, h.marginMin);
@@ -923,17 +1152,32 @@ function boot() {
         }
         setRelief8bit(on);
       },
-      // DEEP when 8-bit has not brought the clock back: drums, bass and lead only, until it has.
+      // From the second RESTART in a level: drums, bass and lead only, for the rest of it.
       deep: (on) => setReliefDeep(on),
+      // RESTART (22 Oct 2026; Peter: "I just want silence once the sound starts to sound bad…
+      // and then for audio to restart after"): the context closed, backlog and all, a new one
+      // built with the song where its clock was — and a tap asked for if it will not run
+      // without one (audioRestart below).
+      restart: (clock, debt) => { audioRestart(`clock ${clock.toFixed(2)}, ${debt.toFixed(1)} s behind`); },
       densityRelief: (on) => (on ? requestDensityRelief(2) : releaseDensityRelief()),
       lookahead: (sec) => {
         if (sec != null) { guardLookahead ??= Audio.sequencerLookahead; Audio.setSequencerLookahead(sec); }
         else if (guardLookahead != null) { Audio.setSequencerLookahead(guardLookahead); guardLookahead = null; }
       },
-      // No KICK lever (20 Oct 2026): suspending the context to clear its backlog left the
-      // iPad in complete silence — iOS will not resume a context outside a user gesture.
       note: (text) => { noteEvent(text); crumb('GUARD', text); },
     });
+    // The player taking the soundtrack back from the guard stands it down (results-chip.js).
+    setPlayerSoundtrackListener(() => audioGuard?.release());
+    // ?audiorestart=20: a RESTART twenty seconds in, whatever the clock says — to see the restart
+    // and its tap prompt on a device without waiting for a song to tip it; `=20,40` for two (the
+    // second is the one that asks for a tap in headless WebKit). Dev builds only.
+    if (window.__MASH_BUILD__ && ['warm', 'cold', 'kick'].includes(p.get('restartmode'))) audioRestartMode = p.get('restartmode');
+    if (window.__MASH_BUILD__ && p.has('audiorestart')) {
+      for (const part of String(p.get('audiorestart') || '10').split(',')) {
+        const after = Math.max(1, Number(part) || 10);
+        setTimeout(() => audioRestart(`?audiorestart after ${after} s`), after * 1000);
+      }
+    }
     const diag = consumeBenchDiag();
     if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
     // Silence for THIS BOOT, never the player's setting. This used to write
@@ -1093,6 +1337,8 @@ function boot() {
   // Quiet effect chains and idle channel strips come out of the graph entirely — on WebKit
   // only, where automation booked across a sleep still lands (engine/mixer.js, deepSleep).
   setDeepSleep(deepSleepSuits());
+  // A Tone pool keeps only the slots its recent notes asked for (engine/voices.js).
+  setTrimIdleSlots(true);
   // LIGHT MIXES on trial (game/light-mixes.js): `?lightmix` plays them, to hear and measure.
   // LIGHT VERSIONS (results-chip.js lightReason): the device decides; `?lightmix` / `?fullmix`
   // force either way for a test, and every song that goes light says why on the trail.
@@ -1173,7 +1419,9 @@ function boot() {
     } catch (e) { /* not available: play windowed */ }
   };
   Input.onAnyGesture = () => {
+    if (audioTapNeeded) { audioTaps++; audioTapAt = performance.now(); }
     Audio.ensure();
+    if (!bootProbeDone) { bootProbeDone = true; setTimeout(() => audioResponseProbe('at the start'), 4000); }
     // A music screen's tap starts the lock screen's stand-in (lifecycle.js primeAnchor).
     if (typeof currentState()?.nowPlaying === 'function') window.__mash_lifecycle?.primeAnchor();
     Audio.setVolumes(save.settings.volumes);
@@ -1211,7 +1459,7 @@ function boot() {
   if (!returnToAbout && !window.__mash_routed && typeof window !== 'undefined'
       && new URLSearchParams(window.location.search).get('goto') === 'thelab') {
     window.__mash_routed = true;
-    loadBangerModule().then(() => setState(new SoundTestState({ lab: true, onDone: () => Flow.toExtras('lab') })));
+    openLabWhenLoaded(() => Flow.toExtras('lab'), { anywhere: true });
   }
 
   // Explicit user-requested benchmark: a fresh page isolates level resources.
@@ -1244,6 +1492,9 @@ function boot() {
       const devConsumed = Dev.update(dt);
       performanceAdd('dev', devAt);
       if (devConsumed) return;
+      // Frozen while the restarted audio waits for a tap (audioRestart): the world holds, the
+      // prompt is drawn over it, and input still reaches Input.onAnyGesture.
+      if (!audioTapSettled()) return;
       updateState(dt * Dev.timeScale);
       // MUTED TRACKS COST NOTHING ANYWHERE IN THE GAME (Peter, 20 Oct 2026, "do 1 for sure"):
       // the silent-lane skip a run arms (run.js armSilentLaneSkip) held everywhere — the
@@ -1466,6 +1717,7 @@ function boot() {
       performanceAdd('dev', devDrawAt);
       if (drawFpsReadout) pushOverlayDraw(drawFpsReadout);
       if (benchRequested) pushOverlayDraw(drawBench);
+      if (audioTapNeeded) pushOverlayDraw(drawAudioTapPrompt);
       if (titleProfileReportVisible()) pushOverlayDraw(drawTitleProfile);
       if (gameplayProfileWaiting()) pushOverlayDraw(drawGameplayProfileWaiting);
       if (gameplayProfileReportVisible()) pushOverlayDraw(drawGameplayProfile);

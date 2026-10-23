@@ -2,7 +2,7 @@
 //
 // Not a style of its own: what Sound Set = Light makes a synthwave banger (index.js
 // soundSetOf). The same music as synthwave.js, played only on the cheap synths — TNGR-2,
-// RMND-2 and KNDO-5 — with no MRDR-3 and no JMJR-4, which `phone` makes a hard rule in
+// RMND-7 and KNDO-5 — with no MRDR-3 and no JMJR-4, which `phone` makes a hard rule in
 // sound-rules.js. Its sounds are its own entry in sounds.js, edited on the Banger Sounds page.
 //
 // Why, measured in WebKit (work/local/_banger-lanes-webkit-2026-10-04.txt): synthwave ran at

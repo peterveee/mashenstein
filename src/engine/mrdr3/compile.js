@@ -41,7 +41,7 @@ function fixedRandom(salt) {
 }
 const fixedVary = (amount, salt) => (amount > 0 ? 1 + (fixedRandom(salt) - 0.5) * 2 * amount : 1);
 
-const LFO_TARGET = { filter: 0, level: 1, pitch: 2 };
+const LFO_TARGET = { filter: 0, level: 1, pitch: 2, fm: 3 };
 
 const CLASSIC = ['sine', 'square', 'sawtooth', 'triangle'];
 const FILTER_KIND = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3 };
@@ -203,7 +203,9 @@ export function compileMrdr3(voice) {
       fmRatio: s.fm && (s.fm.index ?? 1) > 0 ? (s.fm.ratio ?? 1.4) : 0,
       fmIndex: s.fm && (s.fm.index ?? 1) > 0 ? (s.fm.index ?? 1) : 0,
       fmEnv: s.fm ? {
-        attack: s.fm.attack ?? 0.01, decay: s.fm.decay ?? 0, sustain: 0, release: 0,
+        attack: s.fm.attack ?? 0.01, decay: s.fm.decay ?? 0,
+        sustain: s.fm.sustain ?? 0, release: s.fm.release ?? 0,
+        attackCurve: s.fm.attackCurve, curve: s.fm.curve, releaseCurve: s.fm.releaseCurve,
       } : null,
       ratio: s.ratio ?? 1,
       detune: s.detune ?? 0,
@@ -258,7 +260,7 @@ export function compileMrdr3(voice) {
   // that moves and does nothing.
   const rawLfo = (L.lfo?.depth ?? 0) > 0 ? L.lfo : null;
   const lfoTarget = rawLfo
-    ? (['filter', 'level', 'pitch'].includes(rawLfo.target) ? rawLfo.target : 'filter') : 'filter';
+    ? (['filter', 'level', 'pitch', 'fm'].includes(rawLfo.target) ? rawLfo.target : 'filter') : 'filter';
   // Sample-and-hold draws a new value per period from the note's own time, so it is the
   // one shape that is not a compile-time constant. Five presets use it; it waits.
   if (rawLfo && rawLfo.sync === 'tempo') problems.push('a tempo-synced LFO (Phase 4)');

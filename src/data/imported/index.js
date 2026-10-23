@@ -187,6 +187,7 @@ import * as GRAVITY_REMIX_STARDUST_DISCO from './gravity-remix-stardust-disco.js
 import * as HUB_8BIT from './hub-8bit.js';
 import * as MEGAMIX_8BIT from './megamix-8bit.js';
 import * as MIN_NEW from './min-new.js';
+import * as MIN3_BANGER_3_GOOD from './min3-banger-3-good.js';
 import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
 import * as NEON_8BIT from './neon-8bit.js';
@@ -513,6 +514,7 @@ export const IMPORTED_BY_ID = {
   "hub-8bit": { bank: HUB_8BIT.bank, title: HUB_8BIT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "megamix-8bit": { bank: MEGAMIX_8BIT.bank, title: MEGAMIX_8BIT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },
+  "min3-banger-3-good": { bank: MIN3_BANGER_3_GOOD.bank, title: MIN3_BANGER_3_GOOD.title, group: "copy", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "neon-8bit": { bank: NEON_8BIT.bank, title: NEON_8BIT.title, group: "alternate", writable: true, alternateOf: "neon" },

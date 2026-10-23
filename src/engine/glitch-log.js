@@ -11,11 +11,19 @@
 //
 //   C   the audio clock against the wall clock (below ~0.95: the audio thread is not
 //       finishing its work in time — crackle)
+//   Q   the worst QUARTER-second of the same clock inside that second (22 Oct 2026). A tip
+//       starts inside a second — a chord entry, an effect waking — and a one-second
+//       average can read 0.96 over a quarter at 0.7. Below 0.8: DIP.
 //   M   the sequencer's worst queue margin in ms / passes that found nothing queued
 //       (negative or late: the MAIN thread starved the transport — holes)
 //   F   frames lost in that second / its longest frame in ms
 //   S   audio sources started and not yet ended, game-wide (watchAudioSources) — a count
 //       that climbs through a run is notes or modulators that never finish
+//   CATCHUP  a second with the clock at 1.5 or more: the thread rendering, all at once, the audio
+//       it fell behind on (22 Oct 2026). On the iPad what follows one can be late, or silent.
+//   L   the LAG in ms: how far the context's clock runs ahead of the sample being heard
+//       (getOutputTimestamp; 22 Oct 2026). Every sound is booked on that clock, so this is
+//       how late everything plays. LAG when it stands GLITCH.lagMs over the session's best.
 //
 // Read in order: a run of F before the first C or M is graphics dragging the audio
 // down; C first is the synths over budget; M with a clean C is a busy main thread.
@@ -29,7 +37,7 @@ const SESSIONS = 4;
 const ROWS = 600;   // ten minutes of a struggling run, about 40 KB
 const WRITE_EVERY_MS = 8000;
 // What counts as a bad second.
-export const GLITCH = Object.freeze({ clock: 0.95, framesLost: 6, frameMs: 100 });
+export const GLITCH = Object.freeze({ clock: 0.95, clockQuarter: 0.8, framesLost: 6, frameMs: 100, lagMs: 100, catchup: 1.5 });
 
 let store = null;
 let session = null;
@@ -128,17 +136,28 @@ export function noteEvent(text) {
  * margin in ms (null when nothing played), `late` the starved passes, `framesLost` and
  * `frameMs` the frame window's. Logs the second only when something in it went wrong.
  */
-export function noteSecond({ clock, margin = null, late = 0, framesLost = 0, frameMs = 0 }) {
+export function noteSecond({ clock, clockMin = null, margin = null, late = 0, framesLost = 0, frameMs = 0, out = null, lag = null }) {
   if (!session) return;
   try {
     session.seconds++;
     const crackle = Number.isFinite(clock) && clock > 0 && clock < GLITCH.clock;
+    const catchup = Number.isFinite(clock) && clock >= GLITCH.catchup;
+    const dip = !crackle && !catchup && Number.isFinite(clockMin) && clockMin > 0 && clockMin < GLITCH.clockQuarter;
     const holes = late > 0 || (Number.isFinite(margin) && margin < 0);
     const frames = framesLost >= GLITCH.framesLost || frameMs >= GLITCH.frameMs;
-    if (!crackle && !holes && !frames) return;
+    // The song's output: MUTE when a song is playing and nothing has come out of it for three
+    // seconds; FROZEN when the output has not changed for two (a render thread that stopped).
+    const mute = !!out?.mute, frozen = !!out?.frozen;
+    const stateOdd = out?.state && out.state !== 'running';
+    // The lag against the best this session has seen: what the device's output path adds by
+    // itself is in both, so only what has piled up on top counts.
+    if (Number.isFinite(lag) && (session.lagBest == null || lag < session.lagBest)) session.lagBest = lag;
+    const lagging = Number.isFinite(lag) && session.lagBest != null && lag - session.lagBest >= GLITCH.lagMs;
+    if (!crackle && !dip && !catchup && !holes && !frames && !mute && !frozen && !stateOdd && !lagging) return;
     const t = Math.round((Date.now() - session.at) / 100) / 10;
-    const line = `C${(clock || 0).toFixed(2)} ${margin == null ? 'M-' : `M${margin}/${late}`} F${framesLost}/${Math.round(frameMs)} S${liveSources}`
-      + `${crackle ? ' CRACKLE' : ''}${holes ? ' HOLES' : ''}${frames ? ' FRAMES' : ''}`;
+    const line = `C${(clock || 0).toFixed(2)}${Number.isFinite(clockMin) ? ` Q${clockMin.toFixed(2)}` : ''} ${margin == null ? 'M-' : `M${margin}/${late}`} F${framesLost}/${Math.round(frameMs)} S${liveSources}`
+      + `${out ? ` O${out.level.toExponential(0)}` : ''}${Number.isFinite(lag) ? ` L${lag}` : ''}${stateOdd ? ` ${String(out.state).toUpperCase()}` : ''}`
+      + `${crackle ? ' CRACKLE' : ''}${catchup ? ' CATCHUP' : ''}${dip ? ' DIP' : ''}${holes ? ' HOLES' : ''}${frames ? ' FRAMES' : ''}${mute ? ' MUTE' : ''}${frozen ? ' FROZEN' : ''}${lagging ? ' LAG' : ''}`;
     let where = '';
     try { where = String(context() || '').slice(0, 80); } catch (e) { where = ''; }
     session.rows.push([t, line, where]);

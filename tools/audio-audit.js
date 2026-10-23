@@ -47,6 +47,17 @@
 //     --src=<dir>     bundle the engine from another tree (a before/after: a copy of src/ beside a tools symlink)
 //     --json          print the results as JSON (tests/audio-leaks.js reads it)
 //     --stacks        print who started the sources still running at the end (graph mode)
+//     --lookahead=S   the sequencer's lookahead, 0.25 / 0.5 / 1 (the engine's own default otherwise)
+//   Stage W coverage (22 Oct 2026):
+//     --phrase=dense|retrigger|held   eight-note chords / every-step retriggers / overlapping holds
+//     --quality=full|performance      MRDR-3's tier (PHONE otherwise, as on a phone)
+//     --insecure      an http page: no AudioWorklet, as on the LAN dev URL
+//     --fail-worklets every worklet module the engine asks for fails to load
+//     --sfx           (song) the game's cues fired over the song, three a second
+//     --extreme       (effect) every ranged parameter at its maximum
+//     --during        count while playing, never silenced (what a song piles up within itself)
+//   node tools/audio-audit.js banger <style|all> [--seed=N]   generated Lab songs, stopped and restarted
+//   node tools/audio-audit.js soak [--minutes=30] [--each=30]  every song in turn with cues, a count after each stop
 //
 // Writes work/audit/<date>/<subject>.json — the result, its raw samples, every census and the
 // run's metadata — and appends work/audit/<date>/REPORT.md.
@@ -87,7 +98,8 @@ const EFFECT_CARRIER = 'bestClassicMono';
 // one lane of one preset is a percent or two of the thread, inside the burner's noise, and
 // eight are not. The same for every subject, so the numbers compare.
 const COPIES = Number(flag('copies') || 8);
-const PHRASE = 'two bars at 120 BPM: eighths C3–C5, a held Cmaj7, eighths; 16 note-ons / 4 s per lane';
+const PHRASE = flag('phrase') && flag('phrase') !== 'standard' ? `phrase ${flag('phrase')}`
+  : 'two bars at 120 BPM: eighths C3–C5, a held Cmaj7, eighths; 16 note-ons / 4 s per lane';
 const hz = (m) => 440 * 2 ** ((m - 69) / 12);
 function phraseBank(lane, drum) {
   const one = phraseLane(lane, drum);
@@ -96,13 +108,32 @@ function phraseBank(lane, drum) {
   for (const k of keys) { bank[k] = one.notes; if (one.lens) bank[`${k}Len`] = one.lens; }
   return { bank, keys, layers: keys.slice(1).map((key) => ({ key, from: lane, independent: true })), notesPerSec: 4 * COPIES };
 }
+// --phrase (Stage W, 22 Oct 2026): `standard` above; `dense` an eight-note chord on every beat
+// with overlapping releases; `retrigger` thirty-seconds — every step — on one pitch, then a
+// run; `held` four-bar chords that overlap the next.
+const PHRASE_KIND = flag('phrase') || 'standard';
 function phraseLane(lane, drum) {
   const notes = new Array(32).fill(null);
   const lens = new Array(32).fill(null);
   const run = [48, 52, 55, 60, 64, 67, 72, 67];
   if (drum) {
-    for (let s = 0; s < 32; s += 2) notes[s] = true;
+    const every = PHRASE_KIND === 'retrigger' ? 1 : 2;
+    for (let s = 0; s < 32; s += every) notes[s] = true;
     return { notes };
+  }
+  if (PHRASE_KIND === 'dense') {
+    for (let s = 0; s < 32; s += 4) { notes[s] = [36, 43, 48, 52, 55, 59, 62, 67].map((m) => hz(m + (s % 8 ? 2 : 0))); lens[s] = 6; }
+    return { notes, lens };
+  }
+  if (PHRASE_KIND === 'retrigger') {
+    for (let s = 0; s < 16; s++) { notes[s] = hz(60); lens[s] = 1; }
+    run.forEach((m, i) => { notes[16 + i * 2] = hz(m); lens[16 + i * 2] = 1; });
+    return { notes, lens };
+  }
+  if (PHRASE_KIND === 'held') {
+    notes[0] = [48, 52, 55, 59].map(hz); lens[0] = 64;
+    notes[16] = [50, 53, 57, 60].map(hz); lens[16] = 64;
+    return { notes, lens };
   }
   run.forEach((m, i) => { notes[i * 2] = hz(m); lens[i * 2] = 2; });
   notes[16] = [48, 52, 55, 59].map(hz); lens[16] = 8;
@@ -124,9 +155,13 @@ class Burn extends AudioWorkletProcessor {
     if (frames >= sampleRate / 2) {
       const ratio = (frames / sampleRate * 1000) / Math.max(1, now - this.winWall);
       const behind = ratio < 0.985;
-      if (behind) { this.iters = Math.max(1, this.iters * 0.8); this.cool = 2; }
+      // Six seconds without falling behind is a thread coming back from an overload, not one
+      // hovering at its limit (a fall of 0.8 is made good in ~6 windows of 1.04): climb faster.
+      // At 4 % a window, the canary's load song read an idle thread as 94 % busy for twenty
+      // seconds after it stopped (22 Oct 2026).
+      if (behind) { this.iters = Math.max(1, this.iters * 0.8); this.cool = 2; this.streak = 0; }
       else if (this.cool > 0) this.cool--;
-      else this.iters = this.iters * 1.04;
+      else { this.streak = (this.streak || 0) + 1; this.iters = this.iters * (this.streak > 12 ? 1.25 : 1.04); }
       this.iters = Math.round(this.iters);
       this.port.postMessage({ at: currentTime, iters: this.iters });
       this.winFrame = currentFrame; this.winWall = now;
@@ -245,7 +280,10 @@ function initAudit(mode) {
     if (building) return n;
     if (GRAPH) params(n);
     if (!GRAPH) { alive[kind] = (alive[kind] || 0) + 1; nodeReg.register(n, kind); }
-    if (performance.now() >= T.mark) { T.born.set(n, kind); T.made++; }
+    if (performance.now() >= T.mark) {
+      T.born.set(n, kind); T.made++;
+      if (GRAPH && window.__stacks) n.__made = kind + ' @ ' + (new Error().stack || '').split(String.fromCharCode(10)).slice(2, 12).map((l) => l.split('@')[0]).join(' < ');
+    }
     return n;
   };
   const BP = BaseAudioContext.prototype;
@@ -309,18 +347,30 @@ function initAudit(mode) {
     // the browser renders it, and what feeds it, every quantum (mixer.js, the effect sleeper).
     for (const to of back.keys()) if (to instanceof AnalyserNode && !edges.get(to)?.size) stack.push(to);
     while (stack.length) { const n = stack.pop(); if (seen.has(n)) continue; seen.add(n); for (const s of back.get(n) || []) stack.push(s); }
-    const by = {}; let wired = 0;
-    for (const n of seen) { const k = T.born.get(n); if (!k) continue; wired++; by[k] = (by[k] || 0) + 1; }
-    return { mode, live: T.live, wired, by, made: T.made, pulled: seen.size, unownedParamEdges: unowned };
+    const by = {}; let wired = 0; const where = {};
+    for (const n of seen) { const k = T.born.get(n); if (!k) continue; wired++; by[k] = (by[k] || 0) + 1; if (n.__made) where[n.__made] = (where[n.__made] || 0) + 1; }
+    const madeAt = window.__stacks ? Object.entries(where).sort((a, b) => b[1] - a[1]).slice(0, 10) : undefined;
+    return { mode, live: T.live, wired, by, made: T.made, pulled: seen.size, unownedParamEdges: unowned, madeAt };
   };
 }
 
 const ENTRY = `import { Audio } from ${JSON.stringify(join(SRC, 'engine/audio.js'))};
+import * as __ToneModule from 'tone';
+window.__Tone = __ToneModule;
 import * as MIXER from ${JSON.stringify(join(SRC, 'engine/mixer.js'))};
+import * as VOICES_ENGINE from ${JSON.stringify(join(SRC, 'engine/voices.js'))};
 import { FIXTURES } from ${JSON.stringify(join(ROOT, 'tools/lib/audio-audit-fixtures.js'))};
 window.__samples = [];
-window.__setup = async ({ start, burn }) => {
-  Audio.setMrdrQuality('phone');
+window.__setup = async ({ start, burn, quality, failWorklets, deep }) => {
+  // --fail-worklets: every worklet module after the harness's own fails to load (Stage W).
+  if (failWorklets && window.AudioWorklet) {
+    const add = AudioWorklet.prototype.addModule;
+    AudioWorklet.prototype.addModule = function (url, ...r) {
+      if (window.__harnessModules) return Promise.reject(new Error('worklet failed to load (harness)'));
+      return add.call(this, url, ...r);
+    };
+  }
+  Audio.setMrdrQuality(quality || 'phone');
   Audio.setMixerMeteringEnabled(false);
   Audio.setSilentLaneSkip(true);
   Audio.setCaptureEnabled(false);
@@ -328,22 +378,48 @@ window.__setup = async ({ start, burn }) => {
   // As main.js sets it for the game: a muted insert is taken out of the graph.
   MIXER.setParkMutedEffects(true);
   // And deep sleep where the game turns it on (WebKit), if this engine has it (--src copies
-  // from before 22 Oct do not).
-  MIXER.setDeepSleep?.(MIXER.deepSleepSuits?.());
+  // from before 22 Oct do not) — for LOAD. Not for a count: a sleeping strip is unplugged,
+  // so whatever a note left wired on it reads as gone at the census and is pulled again the
+  // moment the lane wakes. A leak count runs with every strip awake unless --deep says so.
+  MIXER.setDeepSleep?.(deep && MIXER.deepSleepSuits?.());
+  // And idle pool slots trimmed, as the game does (engine copies from before 22 Oct lack it) —
+  // for load, as deep sleep: a trim between two censuses moves a count by its own timing.
+  VOICES_ENGINE.setTrimIdleSlots?.(!!deep);
   Audio.ensure(); try { await Audio.ctx.resume(); } catch (e) {}
+  // Tone's Transport is made the first time something asks for a tempo (a synced effect
+  // parameter, mid-song) — a clock, a destination, two gains, once per context — and read as
+  // growth at the next count (the Lab's Downtempo, 23 Oct 2026). Ask for it now instead.
+  try { window.__Tone?.getTransport?.(); } catch (e) {}
   if (Audio.mixer) await Audio.mixer.ready;
   const ctx = Audio.ctx;
-  if (burn) {
+  if (burn && ctx.audioWorklet) {
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([${JSON.stringify(BURN)}], { type: 'application/javascript' })));
     const node = new AudioWorkletNode(ctx, 'burn', { numberOfInputs: 0, outputChannelCount: [1], processorOptions: { start } });
     node.port.onmessage = (e) => window.__samples.push(e.data);
     const g = ctx.createGain(); g.gain.value = 0; node.connect(g); g.connect(ctx.destination);
   }
+  window.__harnessModules = true;
   return { state: ctx.state, sampleRate: ctx.sampleRate, baseLatency: ctx.baseLatency ?? null, outputLatency: ctx.outputLatency ?? null,
     worklet: !!ctx.audioWorklet, secure: window.isSecureContext, userAgent: navigator.userAgent };
 };
-window.__play = (bank, mix, arrangement) => { window.__track.mark = performance.now(); Audio.setBank(bank, mix, arrangement); return Audio.ctx.currentTime; };
+// As the game does after a setBank (menus.js, club.js): the worklet lanes and their chorus
+// stages built now, not on the first note — which a count after the first stop read as growth.
+window.__play = (bank, mix, arrangement) => { window.__track.mark = performance.now(); Audio.setBank(bank, mix, arrangement); try { Audio.warmWorkletLanes?.()?.catch?.(() => {}); } catch (e) {} return Audio.ctx.currentTime; };
 window.__now = () => Audio.ctx.currentTime;
+window.__lookahead = (s) => Audio.setSequencerLookahead(s);
+// --sfx: the game's own cues fired over the song, a few a second (Stage W).
+window.__sfxBusy = (on) => {
+  clearInterval(window.__sfxTimer);
+  if (!on) return;
+  const names = ['launch', 'land', 'uiConfirm', 'power', 'boost', 'shield', 'punt', 'perfect', 'thunder', 'slideWhistle', 'hit', 'coinSpray', 'blockBreak'];
+  let i = 0;
+  window.__sfxTimer = setInterval(() => { try { Audio.sfx(names[i++ % names.length]); } catch (e) { window.__sfxErrors = (window.__sfxErrors || 0) + 1; } }, 300);
+};
+window.__sfxOne = (name, on) => {
+  clearInterval(window.__sfxOneTimer);
+  if (on) window.__sfxOneTimer = setInterval(() => { try { Audio.sfx(name); } catch (e) { window.__sfxErrors = (window.__sfxErrors || 0) + 1; } }, 330);
+  return Audio.ctx.currentTime;
+};
 window.__stopSong = () => { Audio.setBank(null); return Audio.ctx.currentTime; };
 window.__replay = (bank, mix, arrangement) => { Audio.setBank(bank, mix, arrangement); return Audio.ctx.currentTime; };
 window.__probe = () => ({ lanes: (Audio.mixer?.lanes || []).length, mixer: !!Audio.mixer, skip: Audio.silentLaneSkip, silent: (Audio.mixer?.lanes || []).filter((l) => Audio.mixer.laneSilent(l)).length, hasSetMute: typeof Audio.mixer?.lane('bass')?.setMute });
@@ -380,7 +456,7 @@ const RUN_META = {
   src: SRC, browser: BROWSER, browserVersion: browser.version(),
   os: `${os.platform()} ${os.release()} ${os.arch()}`, cpu: os.cpus()[0]?.model, cores: os.cpus().length,
   mode: MODE, counts: COUNTS, seconds: SECONDS, copies: COPIES, phrase: PHRASE,
-  setup: 'latencyHint 0.05, MRDR-3 phone, metering off, capture off, silent-lane skip on, muted inserts parked, deep sleep as the game sets it',
+  setup: 'latencyHint 0.05, MRDR-3 phone, metering off, capture off, silent-lane skip on, muted inserts parked, deep sleep as the game sets it, idle pool slots trimmed',
 };
 
 async function openPage(burn, start) {
@@ -389,10 +465,15 @@ async function openPage(burn, start) {
   page.on('pageerror', (e) => errors.push(e.message));
   if (flag('stacks')) await page.addInitScript(() => { window.__stacks = true; });
   await page.addInitScript(initAudit, MODE);
-  await page.route('https://mashenstein.live/', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: HTML }));
-  await page.goto('https://mashenstein.live/');
-  const info = await page.evaluate((a) => window.__setup(a), { start, burn });
+  // --insecure: the http LAN dev URL's situation — no AudioWorklet at all (Stage W).
+  const origin = flag('insecure') ? 'http://mbp14.local:8001/' : 'https://mashenstein.live/';
+  await page.route(origin, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: HTML }));
+  await page.goto(origin);
+  const info = await page.evaluate((a) => window.__setup(a), { start, burn, quality: flag('quality') || null, failWorklets: !!flag('fail-worklets'), deep: !!flag('deep') || !COUNTS });
   if (info.state !== 'running') throw new Error(`context is ${info.state}`);
+  // --lookahead=0.25|0.5|1: how far ahead the sequencer queues (Stage S: does queueing
+  // further ahead cost the audio thread?).
+  if (flag('lookahead')) info.lookahead = await page.evaluate((x) => window.__lookahead(x), Number(flag('lookahead')));
   return { page, errors, info };
 }
 
@@ -416,7 +497,11 @@ const KEYS = MODE === 'graph' ? ['wired', 'live'] : ['nodes', 'bufferBytes', 'li
  * One subject, in one page. `play` starts it and returns the context time; `quiet(on)` silences
  * or resumes it. Censuses are taken with nothing sounding, so in-flight notes never count.
  */
-async function measure(name, { play, quiet }) {
+async function measure(name, { play, quiet: quietFn }) {
+  // --during: count while it PLAYS, no silences — what a song piles up inside itself, which a
+  // stop would clear (lane gates cut at a song change) and so hide. Notes in flight differ a
+  // little between the two counts; a leak grows by every note played between them.
+  const quiet = flag('during') ? async () => {} : quietFn;
   const { page, errors, info } = await openPage(!COUNTS, Math.round((EMPTY || 400000) * 0.95));
   // The burner starts just under the empty context's edge and settles on this page's own
   // before anything plays: that is the page's 0 %.
@@ -443,6 +528,10 @@ async function measure(name, { play, quiet }) {
   }
   const openSources = await page.evaluate(() => window.__openSources());
   if (flag('stacks')) for (const [k, n] of await page.evaluate(() => window.__openStacks())) log(`   ${String(n).padStart(5)}  ${k}`);
+  if (flag('stacks') && censusB.madeAt) {
+    const a = Object.fromEntries(censusA.madeAt || []);
+    for (const [k, n] of censusB.madeAt) if (n - (a[k] || 0) > 0) log(`   wired +${n - (a[k] || 0)} (${n} at the second count)  ${k}`);
+  }
   if (!COUNTS) await sleep(14000);
   const rawBurn = COUNTS ? [] : await page.evaluate(() => window.__samples);
   const levels = await page.evaluate(() => window.__levels);
@@ -592,21 +681,99 @@ try {
     // between: what a stop leaves standing must be the same each time (Stage L, the first
     // whole-song check). Muting every lane does not silence a song: its arrangement sets
     // lane levels and mutes of its own as it goes.
-    const file = [join(SRC, 'data/songs', `${target}.js`), join(SRC, 'data/imported', `${target}.js`)].find(existsSync);
-    const g = await import(file);
+    // audio-canary-load: the canary file's second song, its load staircase.
+    const base = target === 'audio-canary-load' ? 'audio-canary' : target;
+    const file = [join(SRC, 'data/songs', `${base}.js`), join(SRC, 'data/imported', `${base}.js`), join(SRC, 'data', `${base}.js`)].find(existsSync);
+    const g0 = await import(file);
+    const g = target === 'audio-canary-load' ? g0.load : g0;
     const song = { bank: g.bank, mix: g.mix, arrangement: g.arrangement };
-    const r = await measure(`song ${target}`, {
-      play: (page) => page.evaluate((a) => window.__play(a.bank, a.mix, a.arrangement), song),
-      quiet: (page, on) => page.evaluate((a) => (a.on ? window.__stopSong() : window.__replay(a.bank, a.mix, a.arrangement)), { ...song, on }),
+    const sfx = !!flag('sfx');
+    const r = await measure(`song ${target}${sfx ? ' with sfx' : ''}`, {
+      play: async (page) => { const t = await page.evaluate((a) => window.__play(a.bank, a.mix, a.arrangement), song); if (sfx) await page.evaluate(() => window.__sfxBusy(true)); return t; },
+      quiet: (page, on) => page.evaluate((a) => { window.__sfxBusy(!a.on && a.sfx); return a.on ? window.__stopSong() : window.__replay(a.bank, a.mix, a.arrangement); }, { ...song, on, sfx }),
     });
     results.push(r); report(r);
+  } else if (command === 'sfx') {
+    // THE GAME'S CUES (Stage W): one cue (or each, `all`) fired three times a second on an
+    // otherwise silent engine, censused in two silences like a synth.
+    const src = (await import('node:fs')).readFileSync(join(SRC, 'engine/audio.js'), 'utf8');
+    const trim = src.slice(src.indexOf('export const SFX_TRIM'), src.indexOf('};', src.indexOf('export const SFX_TRIM')));
+    const known = ['launch', 'land', 'uiConfirm', 'uiBad', 'ui', 'power', 'boost', 'shield', 'punt', 'perfect', 'thunder', 'slideWhistle', 'hit', 'coinSpray', 'blockBreak', 'boom', 'jump', 'coin'];
+    const names = target === 'all' ? known : [target];
+    for (const name of names) {
+      const r = await measure(`sfx ${name}`, {
+        play: async (page) => { const t = await page.evaluate(() => { window.__track.mark = performance.now(); return window.__now(); }); await page.evaluate((n) => window.__sfxOne(n, true), name); return t; },
+        quiet: (page, on) => page.evaluate((a) => window.__sfxOne(a.name, !a.on), { name, on }),
+      });
+      results.push(r); report(r); save([r]);
+    }
+    void trim;
+  } else if (command === 'soak') {
+    // A SESSION (Stage L): every cabinet song in turn, `--each` seconds each with the game's
+    // cues firing over it, stopped, then the next — for `--minutes` — with a count after every
+    // stop. A clean session reads the same at the end as after its first lap.
+    const ids = ['title', 'hub', 'shop', 'plumber', 'speed', 'rhythm', 'crypt', 'frost', 'neon', 'gravity', 'office', 'surge', 'cardboard', 'megamix', 'finale'];
+    const songs = [];
+    for (const id of ids) {
+      const file = [join(SRC, 'data/songs', `${id}.js`), join(SRC, 'data/imported', `${id}.js`)].find(existsSync);
+      const g = await import(file);
+      songs.push({ id, bank: g.bank, mix: g.mix, arrangement: g.arrangement });
+    }
+    const each = Number(flag('each') || 30), minutes = Number(flag('minutes') || 30);
+    const { page, errors, info } = await openPage(false, 0);
+    const rows = [];
+    const end = Date.now() + minutes * 60000;
+    let lap = 0;
+    // One mark for the whole session, so a node any song left behind is still counted later.
+    await page.evaluate(() => { window.__track.mark = performance.now(); });
+    while (Date.now() < end) {
+      for (const song of songs) {
+        if (Date.now() >= end) break;
+        await page.evaluate((a) => { window.__replay(a.bank, a.mix, a.arrangement); window.__sfxBusy(true); }, song);
+        await sleep(each * 1000);
+        await page.evaluate(() => { window.__sfxBusy(false); window.__stopSong(); });
+        await sleep(4000);
+        const c = await page.evaluate(() => window.__census());
+        const row = { lap, song: song.id, at: Math.round((minutes * 60000 - (end - Date.now())) / 1000), wired: c.wired, live: c.live, pulled: c.pulled };
+        rows.push(row);
+        log(`lap ${lap} ${song.id.padEnd(10)} t ${String(row.at).padStart(5)} s  wired ${c.wired}  live ${c.live}  pulled ${c.pulled}`);
+      }
+      lap++;
+    }
+    await page.close();
+    const firstLap = rows.filter((r) => r.lap === 1), lastLap = rows.filter((r) => r.lap === lap - 1 && lap > 2);
+    const sum = (rs, k) => rs.reduce((a, r) => a + r[k], 0);
+    const r = { subject: 'soak', mode: MODE, minutes, each, laps: lap, errors: errors.slice(0, 3), rows, meta: { ...RUN_META, page: info },
+      verdict: lastLap.length ? { wiredLap1: sum(firstLap, 'wired'), wiredLast: sum(lastLap, 'wired'), liveLap1: sum(firstLap, 'live'), liveLast: sum(lastLap, 'live') } : null };
+    log(`soak: ${lap} laps; ${r.verdict ? `wired after lap 1 ${r.verdict.wiredLap1} vs last ${r.verdict.wiredLast}; live ${r.verdict.liveLap1} vs ${r.verdict.liveLast}` : 'too short to compare laps'}${errors.length ? `; ERRORS ${errors[0]}` : ''}`);
+    results.push(r);
+  } else if (command === 'banger') {
+    // GENERATED SONGS (Stage W): the Lab's generator in node, played as a game song is —
+    // stopped and restarted twice. `target` is a style id or `all`; seeds from --seed (1).
+    await import(join(SRC, 'game/banger/lazy.js'));
+    const make = await import(join(SRC, 'game/banger/make.js'));
+    const { STARTERS, FIRST_STARTER } = await import(join(SRC, 'game/banger/starters.js'));
+    const base = STARTERS[FIRST_STARTER].recipe;
+    const styles = !target || target === 'all' ? make.MAKER_STYLES.map((x) => x.id) : [target];
+    const moods = make.MAKER_MOODS.map((m) => m.id);
+    let n = Number(flag('seed') || 1);
+    for (const style of styles) {
+      const seed = n++;
+      const made = make.makeBanger({ ...base, style, mood: moods[seed % moods.length], seed });
+      const song = { bank: made.bank, mix: made.mix, arrangement: made.arrangement };
+      const r = await measure(`banger ${style} seed ${seed}`, {
+        play: (page) => page.evaluate((a) => window.__play(a.bank, a.mix, a.arrangement), song),
+        quiet: (page, on) => page.evaluate((a) => (a.on ? window.__stopSong() : window.__replay(a.bank, a.mix, a.arrangement)), { ...song, on }),
+      });
+      results.push(r); report(r); save([r]);
+    }
   } else if (command === 'strip' && target) {
     // STANDING COST (Stage 4): song `target`'s whole mix — every strip, insert, send and aux —
     // with not one note in it, for SECONDS, against this page's own baseline. Every lane kept,
     // as rests, so the mix builds the strips it builds for the song; the arrangement
     // (`sections`, `order`) kept as it is — the order is section NUMBERS, and a section is a
     // partial bank whose own lanes are emptied the same way.
-    const file = [join(SRC, 'data/songs', `${target}.js`), join(SRC, 'data/imported', `${target}.js`)].find(existsSync);
+    const file = [join(SRC, 'data/songs', `${target}.js`), join(SRC, 'data/imported', `${target}.js`), join(SRC, 'data', `${target}.js`)].find(existsSync);
     const g = await import(file);
     const rests = (block) => Object.fromEntries(Object.entries(block).map(([k, v]) => {
       if (k === 'order' || !Array.isArray(v)) return [k, v];
@@ -650,7 +817,18 @@ try {
   } else if (command === 'effect' && target) {
     const p = phraseBank('lead', false);
     const voice = Object.fromEntries(p.keys.map((k) => [`${k}Voice`, EFFECT_CARRIER]));
-    for (const [label, effects] of [['absent', []], [target, [{ id: target }]], [`${target} muted`, [{ id: target, mute: true }]]]) {
+    // --extreme (Stage W): every ranged parameter at the top of its range — feedback, decay,
+    // depth, mix — the settings a tail can run away at.
+    let params = undefined;
+    if (flag('extreme')) {
+      const { EFFECT_BY_ID } = await import(join(SRC, 'engine/effects.js'));
+      const def = EFFECT_BY_ID[target] || EFFECT_BY_ID.get?.(target);
+      params = Object.fromEntries(Object.entries(def?.ranges || {}).filter(([, r]) => Number.isFinite(r.max)).map(([k, r]) => [k, r.max]));
+    }
+    const subjects = flag('extreme')
+      ? [[`${target} at its extremes`, [{ id: target, params }]]]
+      : [['absent', []], [target, [{ id: target }]], [`${target} muted`, [{ id: target, mute: true }]]];
+    for (const [label, effects] of subjects) {
       const lanes = Object.fromEntries(p.keys.map((k) => [k, { effects }]));
       const r = await measure(`effect ${label} on ${EFFECT_CARRIER}`, bankSubject(p.bank, { voice, layers: p.layers, lanes }, p.keys));
       results.push(r); report(r);
@@ -659,7 +837,7 @@ try {
     console.error('usage: node tools/audio-audit.js synth <id|family:SYNTH> | songs [id] | effect <id> | strip <song> | leaks | fixture <name|all>  [--seconds=N] [--counts] [--memory] [--browser=…] [--src=dir] [--json]');
     process.exitCode = 1;
   }
-  if (results.length && !ids.length && command !== 'fixture') save(results);
+  if (results.length && !ids.length && !['fixture', 'banger', 'sfx'].includes(command)) save(results);
   if (JSON_OUT) console.log(JSON.stringify(results.map(({ raw, ...r }) => r)));
 } finally {
   await browser.close();

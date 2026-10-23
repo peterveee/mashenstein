@@ -39,7 +39,7 @@ const assert = (cond, msg) => {
 // question — what may a preset's `synth` say.
 // 'Synth' and 'MonoSynth' are the retired names CRLS-1 merged; they stay legal because
 // songs and user presets still carry them, and the engine resolves them onto CRLS-1.
-const ALLOWED = ['KNDO-5', 'GameSynth', 'WNDR-9', 'AdditiveSynth', 'MRDR-3', 'TNGR-2', 'JMJR-4', 'CRLS-1', 'Synth', 'MonoSynth', 'RMND-2', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
+const ALLOWED = ['KNDO-5', 'GameSynth', 'WNDR-9', 'AdditiveSynth', 'MRDR-3', 'TNGR-2', 'FZPP-6', 'JMJR-4', 'CRLS-1', 'Synth', 'MonoSynth', 'RMND-7', 'RMND-2', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
 // The waveforms an OscillatorNode will take. `pwm` and `pulse` are Tone's and throw on a
 // native oscillator — see NATIVE_WAVES in src/engine/voices.js.
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
@@ -171,7 +171,7 @@ for (const v of tone) {
   assert(v.peak > 0 && v.peak !== 1,
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
   assert(v.synth === 'KNDO-5' || v.synth === 'WNDR-9' || v.synth === 'MRDR-3'
-    || v.synth === 'TNGR-2' || v.synth === 'JMJR-4'
+    || v.synth === 'TNGR-2' || v.synth === 'JMJR-4' || (v.synth === 'FZPP-6' && v.fzpp6)
     || (v.options && typeof v.options === 'object'),
     `${v.id}: has constructor options or native synth parameters`);
   // Tone spells unison as `oscillator.count` on a Fat* voicing, and it is the same
@@ -283,8 +283,8 @@ for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
     if (o.fm) assert((o.fm.ratio ?? 1.4) > 0, `${v.id}: an FM ratio is above zero`);
   }
   if (L?.lfo) {
-    assert(['filter', 'level', 'pitch'].includes(L.lfo.target ?? 'filter'),
-      `${v.id}: the LFO points at filter, level or pitch`);
+    assert(['filter', 'level', 'pitch', 'fm'].includes(L.lfo.target ?? 'filter'),
+      `${v.id}: the LFO points at filter, level, pitch or FM`);
   }
   // The global stage the layers sum into. Both sections are optional and absent is the
   // ordinary case — a preset with no `global` block is the parallel voice this synth

@@ -403,6 +403,34 @@ try {
     && trackNote.help.includes('leaves this window open'),
   'track Note FX applies without starting playback and leaves its editor open');
 
+  const guitarUi = await page.evaluate(() => {
+    const root = document.querySelector('#regionedit.notefxmodal');
+    const label = [...root.querySelectorAll('label')].find(el => el.textContent.includes('Guitar Voicing'));
+    const on = label?.querySelector('input');
+    const style = [...root.querySelectorAll('label.regcontrol')].find(el => el.firstElementChild?.textContent === 'Style')?.children[1];
+    const position = [...root.querySelectorAll('label')].find(el => el.textContent.includes('Neck position'))?.querySelector('input');
+    const initiallyDisabled = style?.disabled && position?.disabled;
+    on.checked = true; on.dispatchEvent(new Event('input', { bubbles: true }));
+    style.value = 'barre'; style.dispatchEvent(new Event('input', { bubbles: true }));
+    position.value = '5'; position.dispatchEvent(new Event('input', { bubbles: true }));
+    root.querySelector('.notefxapply').click();
+    return { initiallyDisabled, live: !style.disabled && !position.disabled,
+      retained: style.value === 'barre' && position.value === '5' && on.checked };
+  });
+  assert(guitarUi.initiallyDisabled && guitarUi.live && guitarUi.retained,
+    'Guitar Voicing enables its controls and retains style and neck position after Apply');
+  await page.screenshot({ path: '/tmp/guitar-voicing-ui.png' });
+  const guitarRender = await page.evaluate(() => {
+    const button = document.querySelector('#regionedit .notefxrender');
+    const enabled = button && !button.disabled && button.textContent === 'Render to Notes';
+    button?.click();
+    const after = document.querySelector('#regionedit .notefxrender');
+    return { enabled, consumed: after?.disabled === true };
+  });
+  assert(guitarRender.enabled && guitarRender.consumed,
+    'Render to Notes enables after applying Guitar Voicing and disables after consuming it');
+
+
   // The primary is the one that finishes: it saves and the window goes. Pressed here
   // rather than described, because a staged editor that will not close is the failure
   // this button exists to prevent.

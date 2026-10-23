@@ -160,7 +160,7 @@ async function main() {
   const B_AT = 16 * SPB;             // bar 2, step 0 — two seconds in
   const voices = [
     { name: 'engine square (hand-written lead)', lane: 'lead' },
-    { name: 'RMND-2 epiano (pooled Tone)', lane: 'twinkle', voice: 'epiano' },
+    { name: 'RMND-7 epiano (pooled Tone)', lane: 'twinkle', voice: 'epiano' },
     { name: 'MRDR-3 breathPad (native layers)', lane: 'twinkle', voice: 'breathPad' },
     { name: 'WNDR-9 addDrawbar (additive organ)', lane: 'twinkle', voice: 'addDrawbar' },
     { name: 'KNDO-5 toneSquare', lane: 'twinkle', voice: 'toneSquare' },

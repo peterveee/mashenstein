@@ -2,7 +2,7 @@
 //
 // Not a style of its own: what Sound Set = Light makes a chipstep banger (index.js
 // soundSetOf). The same music as chipstep.js, played only on the cheap synths — KNDO-5 (the
-// chip channel itself), TNGR-2 and RMND-2 — with no MRDR-3 and no JMJR-4, which `phone`
+// chip channel itself), TNGR-2 and RMND-7 — with no MRDR-3 and no JMJR-4, which `phone`
 // makes a hard rule in sound-rules.js. Its sounds are its own entry in sounds.js, edited on
 // the Banger Sounds page like any style's.
 //

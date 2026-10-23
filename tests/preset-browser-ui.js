@@ -1,0 +1,93 @@
+// Opt-in UI regression: run npm run mixer first. Uses an isolated browser and never saves source.
+import { mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({headless:true, args:['--mute-audio']});
+const page = await browser.newPage({viewport:{width:1440,height:1000}});
+const errors=[]; page.on('pageerror', e=>errors.push(e.message));
+const root=fileURLToPath(new URL('../work/mockups/preset-browser/', import.meta.url));
+mkdirSync(root, { recursive: true });
+try {
+ await page.addInitScript(() => localStorage.setItem('mash-mixer-tutorial-seen', '1'));
+ await page.goto(process.env.MASH_PRESET_TEST_URL || 'http://127.0.0.1:8010/');
+ await page.getByRole('button',{name:'Add track',exact:true}).click();
+ const picker=page.locator('#voicepicker');
+ await picker.locator('.voicesearch').fill('');
+ assert.equal(await picker.locator('.preset-columns h5').count(),4);
+ const choose=async (host,key,value)=>host.locator(`[data-facet="${key}"] .preset-options button[data-value="${value}"]`).click();
+ await choose(picker,'category','Keys'); await choose(picker,'subcategory','Electric Piano');
+ await choose(picker,'engine','RMND-7');
+ assert.ok((await picker.locator('.preset-list .vkind').allTextContents()).every(x=>x==='RMND-7'));
+ await picker.locator('.voicesearch').fill('guitar');
+ assert.equal(await picker.locator('.preset-empty').count(),1);
+ assert.equal(await picker.locator('[data-facet="engine"] .on').getAttribute('data-value'),'RMND-7');
+ await picker.locator('.preset-clear').click();
+ await choose(picker,'category','Keys'); await choose(picker,'subcategory','Electric Piano');
+ await page.screenshot({path:root+'track-selector-wide.png'});
+ // Desktop keyboard navigation does not apply a sound until Enter.
+ await picker.locator('[data-facet="engine"] .preset-options button').first().focus();
+ await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+ assert.equal(await picker.locator('[data-facet="engine"] .on').getAttribute('data-value'),'MRDR-3');
+ await picker.locator('.preset-clear').click(); await picker.locator('.voicesearch').fill('saxophone');
+ await picker.locator('[data-voice="mrdrSaxophone"]').click();
+ assert.equal(await page.getByRole('button',{name:'Saxophone',exact:true}).count(),2);
+ await page.getByRole('button',{name:'Undo',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:'Saxophone',exact:true}).count(),0);
+ // Existing drum lanes retain the kit boundary, even when browsing metadata says Effects.
+ const kick=page.getByRole('button',{name:'= Arcade Kick',exact:true}).first();
+ await kick.click(); if(!await picker.isVisible())await kick.click();
+ const cats=await picker.locator('[data-facet="category"] .preset-options').innerText();
+ assert.ok(!cats.includes('Guitars')&&!cats.includes('Keys'));
+ await picker.locator('.voicesearch').fill('guitar');
+ await picker.locator('.voicenow').click();
+ assert.equal(await picker.locator('.preset-list .on').getAttribute('data-voice'),'kickEngine');
+ await page.keyboard.press('Escape');
+ // Library keeps edit/audition behaviour and exposes the engine in both places.
+ await page.getByRole('button',{name:'Preset library',exact:true}).click();
+ const lib=page.locator('#voicelib');
+ await choose(lib,'category','Guitars'); await choose(lib,'subcategory','Acoustic');
+ await lib.locator('[data-voice="fzppSteelAcoustic"]').click();
+ assert.equal(await lib.locator('.preset-current').textContent(),'Steel acoustic · FZPP-6');
+ await page.screenshot({path:root+'preset-library-wide.png'});
+ // Actual audition call through the existing bench; no preset or song is saved.
+ const before=await page.evaluate(()=>{ window.__browseHits=0; const a=window.Audio, f=a.previewNote; a.previewNote=function(...args){window.__browseHits++; return f.apply(this,args);}; return window.__browseHits; });
+ await lib.getByRole('button',{name:'Hit',exact:true}).click();
+ assert.ok(await page.evaluate(()=>window.__browseHits)>before);
+ const hits=await page.evaluate(()=>window.__browseHits);
+ await choose(lib,'category','Keys');
+ assert.equal(await page.evaluate(()=>window.__browseHits),hits,'Filtering must not audition');
+ assert.equal(await lib.locator('.preset-current').textContent(),'Steel acoustic · FZPP-6');
+ await lib.locator('.preset-current').click();
+ assert.equal(await page.evaluate(()=>document.activeElement.dataset.voice),'fzppSteelAcoustic');
+ // Save sheet exposes browsing fields without changing the legacy playback category.
+ await lib.locator('.vesave').click();
+ console.log('Save sheet controls:',await page.locator('.vefield .k').allTextContents());
+ assert.ok((await page.locator('.vefield .k').allTextContents()).includes('Subcategory'));
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ await page.setViewportSize({width:1200,height:800});
+ const facets=lib.locator('.preset-browser');
+ assert.ok(await facets.getByRole('combobox',{name:'Category',exact:true}).isVisible());
+ await facets.getByRole('combobox',{name:'Category',exact:true}).click();
+ await page.getByRole('option',{name:/^Keys \(/}).click();
+ await facets.getByRole('combobox',{name:'Subcategory',exact:true}).click();
+ await page.getByRole('option',{name:/^Electric Piano \(/}).click();
+ await page.screenshot({path:root+'preset-library-compact.png'});
+ await lib.locator('.preset-current').click();
+ await lib.locator('.vlclose').click();
+ await page.setViewportSize({width:1440,height:1000});
+ await page.getByRole('button',{name:'Play (space)',exact:true}).click();
+ await page.waitForFunction(()=>window.Audio?.ctx?.state==='running');
+ const start=await page.evaluate(()=>window.Audio.ctx.currentTime);
+ await page.getByRole('button',{name:'Add track',exact:true}).click();
+ const timings=[];
+ for(const category of ['Keys','Guitars','Bass','Voices','Drums & Percussion','Keys']) {
+   const ms=await picker.locator(`[data-facet="category"] .preset-options button[data-value="${category}"]`).evaluate(b=>{const t=performance.now();b.click();document.querySelector('#voicepicker .preset-list').offsetHeight;return performance.now()-t;});
+   timings.push(Math.round(ms));
+ }
+ assert.ok(await page.evaluate(()=>window.Audio.ctx.currentTime)>start);
+ await picker.locator('.voiceclose').click();
+ await page.getByRole('button',{name:'Stop, silence all sound, and go back to where playback started',exact:true}).click();
+ assert.deepEqual(errors,[]);
+ console.log(JSON.stringify({status:'PASSED',filterDurationsMs:timings,audioClockAdvanced:true,pageErrors:errors,screenshots:root}));
+} finally { await browser.close(); }

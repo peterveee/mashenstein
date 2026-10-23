@@ -150,7 +150,7 @@ voice-source pass. `sounds-tour.wav` plays each one on its own.
 | Garage Wobble Bass | UK Garage · Speed Garage |
 
 They are all MRDR-3 because the acid line and the hoover play on busy lanes. A busy lane on a
-Tone synth (CRLS-1 or RMND-2) keeps costing CPU for the rest of the song.
+Tone synth (CRLS-1 or RMND-7) keeps costing CPU for the rest of the song.
 
 ## Phase 1: acid articulation prototype (do this first)
 
@@ -269,7 +269,7 @@ set of steps the Latin and pop styles took:
 
 Rules that carry over:
 
-- Never put CRLS-1 or RMND-2 on a busy lane.
+- Never put CRLS-1 or RMND-7 on a busy lane.
 - Never name a real record or artist in any text a player or the desk sees.
 
 ## Phase 4: flavours, Boogie, and the Italo/French House migration

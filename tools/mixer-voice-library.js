@@ -15,7 +15,10 @@
 // So: the catalogue with no song in front of it. Pick any preset, hear it on a bench,
 // edit it with the same editor, file it with the same Save.
 
-import { VOICES, VOICE_CATEGORIES, PERCUSSION_LANES, isKitVoice, seamFor } from '../src/data/voices.js';
+import { registerPresetWindow, bringPresetWindowToFront } from './lib/preset-window-stack.js';
+import { VOICES, PERCUSSION_LANES, isKitVoice, seamFor } from '../src/data/voices.js';
+import { createPresetBrowser } from './lib/preset-browser.js';
+import { emptyPresetFilters, presetEngine } from './lib/preset-browser-model.js';
 import { isVoiceUsed } from '../src/data/voices-used.js';
 
 /**
@@ -683,9 +686,7 @@ export function createPatternPlayer({
 /**
  * The library browser.
  *
- * Laid out like the voice picker it is a sibling of — a column per category, everything
- * visible at once — because it is the same catalogue, and learning two shapes for one
- * list is a cost with nothing on the other side of it.
+ * Shares Category / Subcategory / Engine / Preset facets with the track selector.
  *
  * What differs is what a click MEANS. In the picker a preset is a choice being made for
  * a lane, and clicking one puts it on that lane. Here there is no lane: a click opens
@@ -777,7 +778,7 @@ export function createVoiceLibrary({
   // Keep the two ids separate so the list can still mark the source while every sound
   // path follows the thing whose controls are actually changing.
   let heard = null;
-  let synth = 'any';        // which Tone class (or noise/drum construction) to show
+  const browseFilters = emptyPresetFilters();
   // Octaves away from the preset's own root. A bass auditioned where a lead sits tells
   // you nothing about either, and the note a preset was MEASURED at is the bottom of a
   // range rather than the whole of it — a pad that is lovely at A2 can be mud two
@@ -836,78 +837,17 @@ export function createVoiceLibrary({
     { id: 'unused', label: 'Unused', keep: (v) => !isVoiceUsed(v.id) },
   ];
 
-  // ---- what a preset is BUILT from -------------------------------------------
-  //
-  // The thing the library could not tell you. Every row said what a sound is FOR — its
-  // category, its description — and nothing said what it is made of, which is the
-  // question you have while you are designing: an FM bell and a subtractive bell want
-  // completely different edits, and until you opened one there was no way to know which
-  // you were looking at. It also makes the catalogue legible as a whole — that there are
-  // twenty-one FM presets and five DuoSynths is a fact about the library.
-  //
-  // Noise and drum presets have no Tone class: they are the rack's own constructions.
-  // They answer with their kind, because "noise" is the same KIND of answer as
-  // "FMSynth" — it is what the thing is built out of.
-  const synthOf = (v) => v.synth || v.kind;
-  // `MembraneSynth` is thirteen characters in a 150px column beside a preset name that
-  // also wants reading. The suffix is on every one of them and carries nothing.
-  //
-  // Except on Tone's base class, which is called `Synth` outright — stripping there
-  // leaves an empty string, and twelve presets in this catalogue use it. So the rule is
-  // "drop the suffix unless the suffix is the whole name", which is one condition rather
-  // than a special case for one class.
-  // Capitalised on the way out, because two of these are kinds rather than class names:
-  // `noise` and `drum` are written the way the data writes them and would otherwise be
-  // the only lower-case entries in a column of FM, Mono and Membrane. The raw name stays
-  // the option's value — this touches what is read, not what is filtered on.
-  const shortSynth = (name) => {
-    const s = name.replace(/Synth$/, '') || name;
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  };
-  const synthLabel = (v) => shortSynth(synthOf(v));
-
-  /** Every synth the catalogue actually uses, commonest first, with its tally. */
-  function synthsPresent() {
-    const n = {};
-    for (const v of Object.values(VOICES)) {
-      if (v.kind === 'engine' || v.songLocal || v.draft) continue;
-      const s = synthOf(v);
-      n[s] = (n[s] || 0) + 1;
-    }
-    return Object.entries(n).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }
-
+  registerPresetWindow(el);
   const isShown = () => el.classList.contains('show');
-
-  /**
-   * Everything the editor can open, filed by category.
-   *
-   * Engine presets are left out entirely, which the picker does not do. There they are
-   * a real choice — a lane can play one — so hiding them would be hiding a sound. Here
-   * the only thing on offer is editing, and an engine preset is a bundle of bank keys
-   * rather than a synth: the editor refuses it by design, so listing one is offering a
-   * row that can only ever apologise. A song's own copy is out for the same reason from
-   * the other direction — it lives in one song's mix, and this is the library.
-   */
-  function grouped() {
-    const q = query.trim().toLowerCase();
-    const keep = KINDS.find((k) => k.id === kind).keep;
-    const keepSource = SOURCES.find((s) => s.id === source).keep;
-    const keepUsage = USAGE.find((u) => u.id === usage).keep;
-    // The synth is searchable as well as filterable: typing "fm" should find the FM
-    // presets, which is what anyone who knows the catalogue would expect it to do.
-    const hit = (v) => !q
-      || `${v.label} ${v.category} ${v.note || ''} ${synthOf(v)}`.toLowerCase().includes(q);
-    const bySynth = (v) => synth === 'any' || synthOf(v) === synth;
-    return VOICE_CATEGORIES
-      .map((c) => [c, Object.values(VOICES).filter((v) => v.category === c
-        && v.kind !== 'engine' && !v.songLocal && !v.draft && keep(v) && keepSource(v)
-        && keepUsage(v) && bySynth(v) && hit(v))])
-      .filter(([, list]) => list.length);
+  function eligibleVoices() {
+    return Object.values(VOICES).filter((v) => v.kind !== 'engine' && !v.songLocal && !v.draft
+      && KINDS.find((k) => k.id === kind).keep(v)
+      && SOURCES.find((s) => s.id === source).keep(v)
+      && USAGE.find((u) => u.id === usage).keep(v));
   }
 
   function pick(id) {
-    const scrollTop = el.querySelector('.vlresults')?.scrollTop || 0;
+    const scrollTop = el.querySelector('.preset-list')?.scrollTop || 0;
     const opened = edit(id);
     if (!opened) return;
     picked = id;
@@ -918,13 +858,20 @@ export function createVoiceLibrary({
     player.setVoice(heard);
     onPick(id);
     build();
-    const results = el.querySelector('.vlresults');
-    if (results) results.scrollTop = scrollTop;
+    const results = el.querySelector('.preset-list');
+    if (results) {
+      results.scrollTop = scrollTop;
+      [...results.querySelectorAll('button')].find((b) => b.dataset.voice === id)?.focus({ preventScroll: true });
+    }
   }
 
   function build() {
     if (!isShown()) return;
     el.textContent = '';
+    el.onkeydown = (ev) => {
+      if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+      ev.preventDefault(); ev.stopPropagation(); show(false);
+    };
 
     // ---- the header, which is also the handle
     const head = document.createElement('div');
@@ -994,27 +941,6 @@ export function createVoiceLibrary({
       if (search.value) { query = ''; search.value = ''; drawList(); } else show(false);
     });
 
-    // What it is built from, as a filter. A dropdown rather than more chips: there are
-    // nine of them and they are names rather than a spectrum, so a row of nine buttons
-    // would be a row of nine buttons. Counted, because the tally is half the answer —
-    // "MetalSynth (15)" tells you the catalogue leans on it before you click.
-    const syn = document.createElement('select');
-    syn.className = 'fxsel vlsynth';
-    const anyOpt = document.createElement('option');
-    anyOpt.value = 'any'; anyOpt.textContent = 'Any synth';
-    syn.append(anyOpt);
-    for (const [name, n] of synthsPresent()) {
-      const o = document.createElement('option');
-      o.value = name;
-      o.textContent = `${shortSynth(name)} (${n})`;
-      if (name === synth) o.selected = true;
-      syn.append(o);
-    }
-    syn.title = 'Show only presets built from one Tone class — or the rack’s own noise'
-      + ' and drum constructions, which are not Tone classes at all.'
-      + '\n\nAn FM bell and a subtractive bell want completely different edits.';
-    syn.onchange = () => { synth = syn.value; drawList(); };
-
     const close = document.createElement('button');
     close.className = 'vlclose popclose';
     close.textContent = '✕';
@@ -1024,45 +950,21 @@ export function createVoiceLibrary({
     // Keep the search with the library controls. It is the last field before the
     // close button, so the close stays at the far edge instead of looking like part
     // of the filter group.
-    head.append(title, sources, usageChips, chips, syn, search, close);
+    head.append(title, sources, usageChips, chips, search, close);
 
     const results = document.createElement('div');
     results.className = 'vlresults';
 
-    function drawList() {
-      results.textContent = '';
-      const groups = grouped();
-      if (!groups.length) {
-        const none = document.createElement('div');
-        none.className = 'fxgroup voicesearch-none';
-        // Which filter is doing the hiding, named — three of them can empty this list
-        // and an empty panel that does not say which reads as a broken library.
-        const why = [
-          query.trim() ? `“${query.trim()}”` : null,
-          synth !== 'any' ? synth : null,
-          kind !== 'all' ? kind : null,
-          usage !== 'all' ? usage : null,
-        ].filter(Boolean);
-        none.textContent = why.length
-          ? `Nothing matches ${why.join(' + ')}` : 'No presets in this view';
-        results.append(none);
-        return;
-      }
-      for (const [category, list] of groups) {
-        const g = document.createElement('div');
-        g.className = 'vlcat';
-        // A heading, not a control. The card was briefly a drawer you could shut, which
-        // made the head a button with a chevron on it — the outline is what was worth
-        // keeping. Every preset in the library is visible again, and the only thing that
-        // scrolls is the list as a whole.
-        const head = document.createElement('h5');
-        head.className = 'vlcathead';
-        head.textContent = category;
-        g.append(head);
-
-        const body = document.createElement('div');
-        body.className = 'vlcatlist';
-        for (const v of list) {
+    const browser = createPresetBrowser({
+      voices: eligibleVoices, state: browseFilters, query: () => query,
+      onClear: () => {
+        query = ''; search.value = '';
+        kind = 'all'; source = 'all'; usage = 'all';
+        for (const group of [chips, sources, usageChips]) {
+          [...group.children].forEach((button, index) => button.classList.toggle('on', index === 0));
+        }
+      },
+      renderPreset: (v, row) => {
           const btn = document.createElement('button');
           btn.className = v.id === editing() || v.id === picked ? 'on' : '';
           const n = document.createElement('span');
@@ -1072,9 +974,9 @@ export function createVoiceLibrary({
           origin.textContent = v.user ? 'User' : 'Library';
           const k = document.createElement('span');
           k.className = 'vkind';
-          k.textContent = synthLabel(v);
+          k.textContent = row.engine;
           btn.title = `${v.label}${v.note ? ` — ${v.note}` : ''}`
-            + `\n\nBuilt from: ${synthOf(v)}`
+            + `\n\nBuilt from: ${row.engine}`
             + (v.user
               ? '\n\nClick to edit your preset.'
               : '\n\nLibrary preset — click to duplicate it before editing.')
@@ -1095,14 +997,20 @@ export function createVoiceLibrary({
             pick(v.id);
             if (v.user && editing() === v.id) file();
           };
-          body.append(btn);
-        }
-        g.append(body);
-        results.append(g);
-      }
+          return btn;
+      },
+    });
+    results.append(browser.element);
+    function drawList() { browser.refresh(); }
+    const current = VOICES[picked];
+    if (current) {
+      const now = document.createElement('button'); now.type = 'button';
+      now.className = 'preset-current';
+      now.textContent = `${current.label} · ${presetEngine(current)}`;
+      now.title = 'Show current preset';
+      now.onclick = () => browser.reveal(picked);
+      head.insertBefore(now, search);
     }
-
-    drawList();
 
     // ---- one workspace, three regions.
     //
@@ -1328,6 +1236,7 @@ export function createVoiceLibrary({
       return;
     }
     build();
+    bringPresetWindowToFront(el);
     let pos = null;
     try { pos = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); } catch { pos = null; }
     const r = el.getBoundingClientRect();

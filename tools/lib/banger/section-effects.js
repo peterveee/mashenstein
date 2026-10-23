@@ -11,7 +11,7 @@ import { REGION_FX_STYLES, styleSectionRequests, colourSectionChain, limitSectio
 const clone = structuredClone;
 const supported = new Set(SECTION_EFFECTS.map(e => e.id));
 const family = id => ['delay', 'pingpong', 'chandelay'].includes(id) ? 'echo'
-  : ['reverb', 'ambience'].includes(id) ? 'room' : id;
+  : ['reverb', 'ambience', 'strip'].includes(id) ? 'room' : id;
 const usable = chain => Array.isArray(chain) && chain.length && chain.every(e => supported.has(e.id));
 export const SECTION_FX_PRESETS = [
   ['none', 'None'], ['pingpong', 'Ping-Pong Echo'], ['stack', 'Arp Echo Layers'],
@@ -89,7 +89,9 @@ export function sectionEffectPreset(id, busy = false) {
     // different pitches overlap instead of a quarter-note echo doubling the cycle.
     stack: delay('pingpong', 0.75, 0.38, busy ? 0.22 : 0.28),
     echo: delay('delay', 0.75, 0.3, busy ? 0.18 : 0.26),
-    room: [{ id: 'reverb', params: { decay: 1.1, preDelay: 0.015, wet: 0.2 } }],
+    // THE CHANNEL CARD (23 Oct 2026): the lane's reverb SEND up for the section — the song's own
+    // aux reverb, no convolution per lane per section (effects.js 'strip').
+    room: [{ id: 'strip', params: { reverb: 0.2 } }],
     chorus: [{ id: 'chorus2', params: { rateSync: 0, frequency: 0.65, delayMs: 16, depth: 0.35, width: 0.8, feedback: 0, wet: 0.2 } }],
   };
   return chains[id] ? [...chains[id], { id: 'gain', params: { gain: -2 } }] : null;
@@ -145,7 +147,7 @@ export function applySectionEffects({ automation, options, style, form, bars, la
       } else if (kind === 'breakdown' || kind === 'middle8') {
         role = ['pad', 'choir', 'saws'].find(r => active(f, r));
         treatment = 'Trance breakdown space';
-        chain = [{ id: 'reverb', params: { decay: airy ? 3.2 : 2.4, preDelay: 0.025, wet: 0.14 } }];
+        chain = [{ id: 'strip', params: { reverb: 0.12 } }];
       } else if (['intro', 'verse', 'drop', 'chorus', 'outro'].includes(kind) && active(f, 'arp')) {
         role = 'arp';
         treatment = 'Trance dotted arp echo';
@@ -246,6 +248,8 @@ export function applySectionEffects({ automation, options, style, form, bars, la
     if (!usable(chain) || z <= a) { entry.reason = 'No supported effect chain or playable range'; continue; }
     if (request.wetScale) for (const effect of chain) {
       if (typeof effect.params?.wet === 'number') effect.params.wet *= request.wetScale;
+      // The Channel card's sends are its wet (effects.js 'strip').
+      if (effect.id === 'strip') for (const k of ['reverb', 'delay']) if (typeof effect.params?.[k] === 'number') effect.params[k] *= request.wetScale;
       if (effect.id === 'rhythmgate') effect.params.depth *= Math.min(1, request.wetScale);
       if (effect.id === 'gain') effect.params.gain *= Math.min(1, request.wetScale);
     }

@@ -1805,7 +1805,6 @@ function trackMenu(el, key) {
   el.addEventListener('contextmenu', (ev) => {
     if (ev.target.closest('input, select')) return;
     ev.preventDefault();
-    selectLane(key);
     openTrackEditor(ev.clientX, ev.clientY, key);
   });
 }
@@ -1863,7 +1862,10 @@ addEventListener('pointerdown', (e) => {
   // describing would be a tour that cannot get past card 9.
   const customSurface = e.target.closest
     && e.target.closest('.rolltool-menu, .deskselect[role="combobox"]');
-  const inside = customSurface || [menu(), $('regionedit'), $('fxpicker'), $('navdrawer'),
+  // Switching between overlapping preset windows must not dismiss the selector.
+  const presetPeer = $('voicepicker').classList.contains('show')
+    && e.target.closest?.('#synthfull, #voicelib, #voiceedit, .vesheet-backdrop');
+  const inside = customSurface || presetPeer || [menu(), $('regionedit'), $('fxpicker'), $('navdrawer'),
     $('voicepicker'), $('perfdiag'), $('tut')]
     .some((el) => el.contains(e.target));
   const opener = [$('navbtn')].some((el) => el.contains(e.target))
@@ -3317,14 +3319,15 @@ function syncLaneGain(key, { except = null } = {}) {
   const gain = mixFor(trackId).lanes?.[key]?.gain ?? 0;
   const pos = dbToPos(gain);
   const sel = `[data-lane="${CSS.escape(key)}"]`;
-  for (const el of document.querySelectorAll(`${sel} .arrgain, .strip${sel} .fader`)) {
+  for (const el of document.querySelectorAll(`${sel} .arrgain, .strip${sel} .fader, #devmix${sel} .devlevelrange`)) {
     if (el !== except) el.value = pos;
   }
-  for (const el of document.querySelectorAll(`.strip${sel} .db`)) {
+  for (const el of document.querySelectorAll(`.strip${sel} .db, #devmix${sel} .devlevel-number`)) {
     // Not while it is being typed into: the readout holds the type-in box, and writing
     // textContent over it removes the box out from under the caret.
     if (el !== except && !el.querySelector('input')) {
-      el.textContent = `${gain > 0 ? '+' : ''}${gain.toFixed(1)}`;
+      if (el.matches('.devlevel-number')) el.value = gain.toFixed(1);
+      else el.textContent = `${gain > 0 ? '+' : ''}${gain.toFixed(1)}`;
     }
   }
 }
@@ -3435,6 +3438,7 @@ const SYNTH_ABBR = {
   'MRDR-3': 'MR3',
   'TNGR-2': 'TN2',
   'JMJR-4': 'JM4',
+  'FZPP-6': 'FZ6',
   'Game Engine': 'ENG',
   // The three names of one engine: CRLS-1 and the two it merged. A song written before
   // the merge still says Synth or MonoSynth, and it is the same instrument, so it gets
@@ -3452,13 +3456,14 @@ const SYNTH_ABBR = {
   // engine that has no tag rather than one that is spelled somewhere else.
   'WNDR-9': 'WN9',
   'AdditiveSynth': 'WN9',
-  // RMND-2 and the two it merged, on one tag for the same reason: a song written before
+  // RMND-7 and the two it merged, on one tag for the same reason: a song written before
   // the merge says FMSynth or AMSynth and is playing the same instrument. Which of the
   // two destinations it uses is a control on the panel now, not a different engine, so it
   // is not something the strip's three letters have to say.
-  'RMND-2': 'RM2',
-  'FMSynth': 'RM2',
-  'AMSynth': 'RM2',
+  'RMND-7': 'RM7',
+  'RMND-2': 'RM7',
+  'FMSynth': 'RM7',
+  'AMSynth': 'RM7',
   // KNDO-5 and the name it was renamed from, on the same three letters for the same
   // reason the CRLS-1 trio share theirs: a song written before the rename is playing the
   // same instrument.
@@ -4397,7 +4402,8 @@ async function deleteLane(key) {
  * here: both views already carry those buttons, permanently and with their state on.
  */
 function openTrackEditor(x, y, key, options = {}) {
-  openRegionEditor(x, y, { laneKey: key, from: 0, to: 0, wholeTrack: true, ...options });
+  void x; void y; void options;
+  openChannelEffects(key);
 }
 
 function noteFxFor(key) {
@@ -4433,10 +4439,12 @@ function setTrackNoteFx(key, next) {
  * `pushUndo`: this rides the step `applyArrangementEdit` pushed a moment ago, which
  * snapshots mix and arrangement together, so one ⌘Z puts back both the notes and the arp.
  */
-function clearTrackArp(key) {
+function clearTrackArp(key, { guitar = false } = {}) {
   const current = noteFxFor(key);
-  if (!current.arp?.enabled) return;
-  const next = { ...current, arp: { ...current.arp, enabled: false } };
+  if (!current.arp?.enabled && !(guitar && current.guitar?.enabled)) return;
+  const next = { ...current, arp: { ...current.arp, enabled: false },
+    ...(guitar ? { guitar: { ...current.guitar, enabled: false } } : {}),
+  };
   editMix((m) => {
     m.lanes = m.lanes || {};
     m.lanes[key] = m.lanes[key] || emptyLaneMix();
@@ -5089,9 +5097,12 @@ function channelStrip(lane, mix, slotRows, number) {
       L.eq = { ...LANE_DEFAULTS.eq, ...(L.eq || {}), [band]: x };
     }, `eq:${key}:${band}`);
     Audio.mixer?.lane(key)?.setEQ({ [band]: x });
+    syncChannelMixControls(key);
   };
   for (const band of ['high', 'mid', 'low']) {
-    body.append(eqRow(band, s.eq[band], setEq(band)));
+    const row = eqRow(band, s.eq[band], setEq(band));
+    row.dataset.channelEq = band;
+    body.append(row);
   }
 
   // One send per aux, generated from AUXES — adding a fifth send upstream adds a
@@ -5147,10 +5158,12 @@ function channelStrip(lane, mix, slotRows, number) {
           L.send = { ...LANE_DEFAULTS.send, ...(L.send || {}), [aux.id]: lin };
         }, `${aux.id}:${key}`, { affectsFrozen: false });
         Audio.mixer?.lane(key)?.setSend({ [aux.id]: lin });
+        syncChannelMixControls(key);
       },
     });
     row.label.textContent = SHORT[aux.id] || aux.id.toUpperCase();
     row.wrap.classList.add('sendrow');       // what the Sends switch in the header hides
+    row.wrap.dataset.channelSend = aux.id;
     // Nothing to qualify any more. Every channel taps the whole lane into every send
     // and no bank key scales it on the way, so this number IS the amount: the same
     // reading sends the same amount of kick as it does of lead, in every bar of every
@@ -5166,6 +5179,7 @@ function channelStrip(lane, mix, slotRows, number) {
     onInput: (x) => {
       editMix((m) => { laneOf(m, key).pan = x; }, `pan:${key}`, { affectsFrozen: false });
       Audio.mixer?.lane(key)?.setPan(x);
+      syncChannelMixControls(key);
     },
   });
   // Mute and solo close the strip, under the pot — the same small pair the
@@ -5179,6 +5193,7 @@ function channelStrip(lane, mix, slotRows, number) {
     editMix((m) => { laneOf(m, key).gain = x; }, `gain:${key}`, { affectsFrozen: false });
     Audio.mixer?.lane(key)?.setGain(x);
     scheduleLaneGainSync(key, { except: fader });
+    syncChannelMixControls(key);
   };
   const fb = faderBlock({
     value: s.gain,
@@ -9950,7 +9965,9 @@ function effectTargetEntries() {
   for (const lane of deskLanes(viewBank(), 1)) {
     const number = laneNumbers.get(lane.key);
     const label = number ? `${number} · ${targetLabel(lane.key)}` : targetLabel(lane.key);
-    add(lane.key, label, effectsOfForPicker(effectsOf(lane.key)));
+    // The CHANNEL panel is also a place to choose which track to work on, so every
+    // channel belongs in this list even before it has its first insert.
+    add(lane.key, label, effectsOfForPicker(effectsOf(lane.key)), true);
   }
   // A group bus with tracks in it is a target whether or not it carries anything yet:
   // putting one compressor over several tracks is what it is for.
@@ -10000,7 +10017,9 @@ function syncEffectSoloButton() {
   const id = isAux ? key.slice(6) : null;
   const group = groupIdOf(key);
   const on = applicable && (isAux ? soloedAux.has(id) : group ? soloedGroups.has(group) : soloed.has(key));
-  button.hidden = !applicable;
+  // A track's M/S pair lives in the pinned channel strip below the effects. The
+  // header button remains for the master, groups and returns, which have no lane foot.
+  button.hidden = !applicable || !!seamFor(key);
   button.classList.toggle('on', on);
   button.setAttribute('aria-pressed', on ? 'true' : 'false');
   // This sync also runs while a song is being replaced, before its arrangement has
@@ -10012,14 +10031,397 @@ function syncEffectSoloButton() {
       : `Solo the selected track — monitoring only, never saved`;
 }
 
+let channelAdjustOpen = false;
+const channelMixSyncers = new Map();
+
+function syncChannelMixControls(key) {
+  const settings = laneSettings(mixFor(trackId).lanes?.[key]);
+  for (const band of ['low', 'mid', 'high']) {
+    const row = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"] .eqrow[data-channel-eq="${band}"], #devmix[data-lane="${CSS.escape(key)}"] .eqrow[data-channel-eq="${band}"]`);
+    if (!row) continue;
+    const input = row.querySelector('input[type="range"]');
+    const readout = row.querySelector('.val');
+    if (input) input.value = String(settings.eq[band]);
+    if (readout && !readout.querySelector('input')) {
+      const value = settings.eq[band]; readout.textContent = value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
+    }
+  }
+  for (const aux of AUXES) {
+    const row = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"] .sendrow[data-channel-send="${aux.id}"], #devmix[data-lane="${CSS.escape(key)}"] [data-channel-send="${aux.id}"]`);
+    if (!row) continue;
+    const value = mixFor(trackId).lanes?.[key]?.send?.[aux.id] ?? 0;
+    const max = aux.id === 'reverb' ? 3 : 2;
+    const scale = max / dbToGain(6);
+    const db = value <= 0.001 ? FADER_DB_MIN : clamp(gainToDb(value / scale), FADER_DB_MIN, 6);
+    const input = row.querySelector('input[type="range"]');
+    if (input) input.value = String(dbToPos(db));
+    const readout = row.querySelector('.val');
+    if (readout && !readout.querySelector('input')) readout.textContent = db <= FADER_DB_MIN
+      ? 'OFF' : `${db > 0 ? '+' : ''}${db.toFixed(1)}`;
+  }
+  for (const sync of channelMixSyncers.get(key) || []) sync();
+}
+
+function refreshChannelName(key, value) {
+  const label = customTrackLabel(key) || presetForLane(key)?.label || targetLabel(key);
+  const stripName = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"] .striphead h3`);
+  if (stripName) stripName.textContent = label;
+  refreshLaneIdentity(key);
+  for (const option of $('devtarget')?.options || []) {
+    if (option.value === key) {
+      const number = laneNumbers.get(key);
+      option.textContent = number ? `${number} · ${targetLabel(key)}` : targetLabel(key);
+    }
+  }
+  const input = $('devname');
+  if (input && selectedLane === key && document.activeElement !== input) input.value = label;
+}
+
+function buildChannelIdentity(key) {
+  const identity = $('devidentity');
+  const input = $('devname');
+  const sound = $('devsound');
+  const trackChannel = !!key && !!seamFor(key);
+  identity.hidden = !trackChannel;
+  if (!trackChannel) { sound.textContent = ''; return; }
+
+  const trackName = customTrackLabel(key) || presetForLane(key)?.label || targetLabel(key);
+  input.value = trackName;
+  input.hidden = false;
+  let editing = false;
+  input.oninput = () => {
+    if (!editing) { pushUndo(null); editing = true; }
+    const value = input.value.trim().replace(/\s+/g, ' ');
+    editMix((mix) => {
+      mix.labels = { ...(mix.labels || {}) };
+      if (value) mix.labels[key] = value;
+      else delete mix.labels[key];
+      if (!Object.keys(mix.labels).length) mix.labels = undefined;
+    }, null, { undo: false, affectsFrozen: false });
+    bankCache.sig = null;
+    refreshChannelName(key, value || presetForLane(key)?.label || targetLabel(key));
+  };
+  input.onblur = () => { editing = false; };
+
+  sound.textContent = '';
+  const voice = VOICES[laneVoiceId(key)] || null;
+  const label = document.createElement('span');
+  label.className = 'devsound-name';
+  label.textContent = `SOUND · ${voice?.label || targetLabel(key)}`;
+  sound.append(label);
+  const preset = document.createElement('button');
+  preset.textContent = 'Preset';
+  preset.title = `Choose the sound for ${trackName}`;
+  preset.onclick = (ev) => openVoicePicker(ev.clientX, ev.clientY, key);
+  sound.append(preset);
+  if (voice && voice.kind !== 'engine') {
+    const simple = document.createElement('button');
+    simple.textContent = 'Edit';
+    simple.title = `Edit ${voice.label}`;
+    simple.onclick = (ev) => editVoice(key, { advanced: false, at: { x: ev.clientX, y: ev.clientY } });
+    sound.append(simple);
+    if (isQuickVoice(voice)) {
+      const advanced = document.createElement('button');
+      advanced.textContent = 'Advanced';
+      advanced.title = `Open the full ${voice.label} editor`;
+      advanced.onclick = (ev) => editVoice(key, { advanced: true, at: { x: ev.clientX, y: ev.clientY } });
+      sound.append(advanced);
+    }
+  }
+}
+
+function buildChannelAdjust(key) {
+  if (!key || !seamFor(key)) return null;
+  const details = document.createElement('details');
+  details.className = 'devadjust';
+  details.open = channelAdjustOpen;
+  details.addEventListener('toggle', () => { channelAdjustOpen = details.open; });
+  const summary = document.createElement('summary');
+  summary.textContent = 'ADJUST · whole track';
+  details.append(summary);
+  const body = document.createElement('div'); body.className = 'devadjust-body';
+  details.append(body);
+  const last = Math.max(0, arrDraftOf().plan.length - 1);
+  const definitions = [
+    ['transpose', 'Transpose', -12, 12, 1, (v) => v ? `${v > 0 ? '+' : ''}${v} semitones` : 'Original pitch', transposeBars],
+    ['offset', 'Timing', -8, 8, 0.5, timingText, offsetBars],
+    ['gain', 'Gain', -12, 12, 0.5, (v) => v ? `${v > 0 ? '+' : ''}${v} dB` : 'Original level', gainBars],
+    ['pan', 'Pan', -100, 100, 5, (v) => v ? `${v > 0 ? '+' : ''}${v} from channel pan` : 'Where the mix puts it', panBars],
+  ];
+  for (const [field, label, min, max, step, format, write] of definitions) {
+    if (field === 'transpose' && PERCUSSION_LANES.includes(baseLane(key))) continue;
+    const initial = uniformRegionValue(arrDraftOf(), 0, last, field, [key]);
+    let value = initial ?? 0;
+    const row = document.createElement('div');
+    row.className = `devadjust-row${initial == null ? ' mixed' : ''}`;
+    const name = document.createElement('label'); name.textContent = label;
+    const range = document.createElement('input'); range.type = 'range';
+    range.min = String(min); range.max = String(max); range.step = String(step); range.value = String(value);
+    range.setAttribute('aria-label', label);
+    const number = document.createElement('input'); number.type = 'number';
+    number.min = String(min); number.max = String(max); number.step = String(step);
+    number.value = initial == null ? '' : String(value); number.placeholder = initial == null ? 'Mixed' : '';
+    const reset = document.createElement('button'); reset.textContent = 'Reset';
+    const note = document.createElement('div'); note.className = 'devadjust-note';
+    note.textContent = format(value);
+    const show = (raw) => {
+      if (!Number.isFinite(raw)) return;
+      value = clamp(Math.round(clamp(raw, min, max) / step) * step, min, max);
+      range.value = String(value); number.value = String(value); note.textContent = format(value);
+      row.classList.remove('mixed');
+    };
+    const commit = () => {
+      const current = arrDraftOf();
+      const next = write(current, 0, Math.max(0, current.plan.length - 1), [key], value);
+      applyArrangementEdit(next, `${presetHeadingFor(key).name} ${label.toLowerCase()} adjusted across the track`,
+        { undoTag: `channel-adjust:${key}:${field}` });
+    };
+    range.oninput = () => show(+range.value);
+    range.onchange = commit;
+    number.onchange = () => { if (number.value !== '') { show(+number.value); commit(); } };
+    reset.onclick = () => { show(0); commit(); };
+    row.append(name, range, number, reset, note);
+    body.append(row);
+  }
+  return details;
+}
+
+function buildChannelMix(key) {
+  const wrap = $('devmix');
+  for (let i = meters.length - 1; i >= 0; i--) {
+    if (!meters[i].inspector) continue;
+    meterVisibility?.unobserve(meters[i].meter);
+    meters.splice(i, 1);
+  }
+  const previousKey = wrap.dataset.lane;
+  if (previousKey) channelMixSyncers.delete(previousKey);
+  wrap.textContent = '';
+  wrap.hidden = !key || !seamFor(key);
+  if (wrap.hidden) { delete wrap.dataset.lane; return; }
+  wrap.dataset.lane = key;
+  const syncers = [];
+  channelMixSyncers.set(key, syncers);
+  const settings = laneSettings(mixFor(trackId).lanes?.[key]);
+
+  const head = document.createElement('div'); head.className = 'devmix-head';
+  const title = document.createElement('strong'); title.textContent = 'CHANNEL MIX';
+  const [mute, solo] = muteSoloPair(key, targetLabel(key));
+  head.append(title, mute, solo);
+  wrap.append(head);
+  const primary = document.createElement('div'); primary.className = 'devmix-primary';
+  const level = document.createElement('div'); level.className = 'devmix-control';
+  const levelLabel = document.createElement('label'); levelLabel.textContent = 'LEVEL';
+  const number = document.createElement('input'); number.type = 'number'; number.className = 'devlevel-number';
+  number.min = String(FADER_DB_MIN); number.max = String(FADER_DB_MAX); number.step = '0.1';
+  number.value = settings.gain.toFixed(1); number.setAttribute('aria-label', 'Channel level in dB');
+  levelLabel.append(number);
+  const range = document.createElement('input'); range.type = 'range'; range.className = 'devlevelrange';
+  range.min = '0'; range.max = '1'; range.step = '0.002'; range.value = String(dbToPos(settings.gain));
+  range.title = 'Channel output level';
+  attachDeskGesture(range);
+  const meter = document.createElement('div'); meter.className = 'devmixmeter';
+  const fill = document.createElement('i'); const peak = document.createElement('b'); meter.append(fill, peak);
+  const meterEntry = { key, inspector: true, horizontal: true, meter, chans: [{ fill, peak }] };
+  meters.push(meterEntry);
+  const updateGain = (raw, except = null) => {
+    const value = clamp(Math.round(raw * 10) / 10, FADER_DB_MIN, FADER_DB_MAX);
+    editMix((m) => { laneOf(m, key).gain = value; }, `gain:${key}`, { affectsFrozen: false });
+    Audio.mixer?.lane(key)?.setGain(value);
+    if (except !== range) range.value = String(dbToPos(value));
+    number.value = value.toFixed(1);
+    scheduleLaneGainSync(key, { except: range });
+  };
+  range.oninput = () => updateGain(Math.round(posToDb(+range.value) * 10) / 10, range);
+  range.ondblclick = () => { range.value = String(dbToPos(0)); updateGain(0); };
+  number.onchange = () => { if (number.value !== '') updateGain(+number.value, number); };
+  level.append(levelLabel, range, meter);
+
+  const pan = document.createElement('div'); pan.className = 'devmix-control';
+  const panLabel = document.createElement('label'); panLabel.textContent = 'PAN';
+  const panValue = document.createElement('output');
+  const showPan = (value) => { panValue.textContent = value === 0 ? 'C' : value < 0 ? `L ${Math.abs(value)}` : `R ${value}`; };
+  showPan(settings.pan); panLabel.append(panValue);
+  const panRange = document.createElement('input'); panRange.type = 'range';
+  panRange.min = '-100'; panRange.max = '100'; panRange.step = '1'; panRange.value = String(settings.pan);
+  panRange.setAttribute('aria-label', 'Channel pan');
+  attachDeskGesture(panRange);
+  panRange.oninput = () => {
+    const value = +panRange.value;
+    editMix((m) => { laneOf(m, key).pan = value; }, `pan:${key}`, { affectsFrozen: false });
+    Audio.mixer?.lane(key)?.setPan(value); showPan(value);
+    syncChannelMixControls(key);
+  };
+  pan.append(panLabel, panRange);
+  syncers.push(() => { const value = laneSettings(mixFor(trackId).lanes?.[key]).pan;
+    panRange.value = String(value); showPan(value); });
+  primary.append(level, pan); wrap.append(primary);
+  syncers.push(() => { const value = laneSettings(mixFor(trackId).lanes?.[key]).gain;
+    range.value = String(dbToPos(value)); number.value = value.toFixed(1); });
+
+  const extra = document.createElement('details'); extra.className = 'devmix-extra'; extra.id = 'devmix-extra';
+  const summary = document.createElement('summary'); summary.textContent = 'EQ & SENDS'; extra.append(summary);
+  const sends = document.createElement('div'); sends.className = 'devmix-sends';
+  for (const aux of AUXES) {
+    const SEND_DB_MAX = 6;
+    const sendGainMax = aux.id === 'reverb' ? 3 : 2;
+    const gainScale = sendGainMax / dbToGain(SEND_DB_MAX);
+    const toDisplayDb = (g) => g <= 0.001 ? FADER_DB_MIN : clamp(gainToDb(g / gainScale), FADER_DB_MIN, SEND_DB_MAX);
+    const fromDisplayDb = (db) => db <= FADER_DB_MIN ? 0 : dbToGain(db) * gainScale;
+    const fmt = (db) => db <= FADER_DB_MIN ? 'OFF' : `${db > 0 ? '+' : ''}${db.toFixed(1)} dB`;
+    const sendValue = mixFor(trackId).lanes?.[key]?.send?.[aux.id] ?? 0;
+    const control = slider({ min: 0, max: 1, step: 0.001,
+      value: dbToPos(toDisplayDb(sendValue)), reset: dbToPos(FADER_DB_MIN),
+      fmt: (pos) => fmt(posToDb(pos)),
+      display: { format: (pos) => fmt(posToDb(pos)), parse: (raw) => {
+        const text = String(raw).replace(/dB/gi, '').trim();
+        if (/^off$/i.test(text)) return dbToPos(FADER_DB_MIN);
+        const db = Number.parseFloat(text);
+        return Number.isFinite(db) ? dbToPos(clamp(db, FADER_DB_MIN, SEND_DB_MAX)) : null;
+      } },
+      onInput: (pos) => {
+        const amount = fromDisplayDb(posToDb(pos));
+        editMix((m) => { const lane = laneOf(m, key);
+          lane.send = { ...LANE_DEFAULTS.send, ...(lane.send || {}), [aux.id]: amount };
+        }, `${aux.id}:${key}`, { affectsFrozen: false });
+        Audio.mixer?.lane(key)?.setSend({ [aux.id]: amount });
+        syncChannelMixControls(key);
+      },
+    });
+    control.wrap.dataset.channelSend = aux.id;
+    control.label.textContent = `${aux.name.toUpperCase()} SEND`;
+    sends.append(control.wrap);
+    syncers.push(() => {
+      const amount = mixFor(trackId).lanes?.[key]?.send?.[aux.id] ?? 0;
+      const input = control.wrap.querySelector('input[type="range"]');
+      if (input) input.value = String(dbToPos(toDisplayDb(amount)));
+      const readout = control.wrap.querySelector('.val');
+      if (readout && !readout.querySelector('input')) readout.textContent = fmt(posToDb(input ? +input.value : dbToPos(toDisplayDb(amount))));
+    });
+  }
+  extra.append(sends);
+  const eq = document.createElement('div'); eq.className = 'devmix-eq';
+  for (const band of ['low', 'mid', 'high']) {
+    const row = eqRow(band, settings.eq[band], (value) => {
+      editMix((m) => { const lane = laneOf(m, key);
+        lane.eq = { ...LANE_DEFAULTS.eq, ...(lane.eq || {}), [band]: value };
+      }, `eq:${key}:${band}`);
+      Audio.mixer?.lane(key)?.setEQ({ [band]: value });
+      syncChannelMixControls(key);
+    });
+    row.dataset.channelEq = band; eq.append(row);
+    syncers.push(() => {
+      const value = laneSettings(mixFor(trackId).lanes?.[key]).eq[band];
+      const input = row.querySelector('input[type="range"]'); if (input) input.value = String(value);
+      const readout = row.querySelector('.val'); if (readout && !readout.querySelector('input')) readout.textContent = value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
+    });
+  }
+  extra.append(eq); wrap.append(extra);
+}
+
+function buildChannelMore(key) {
+  const button = $('devmore');
+  const menu = $('devmoremenu');
+  menu.textContent = '';
+  const available = !!key && !!seamFor(key);
+  button.hidden = !available;
+  button.setAttribute('aria-expanded', 'false');
+  if (!available) { menu.hidden = true; return; }
+  const addAction = (label, run, { disabled = false, danger = false } = {}) => {
+    const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem');
+    item.textContent = label; item.disabled = disabled; if (danger) item.classList.add('danger');
+    item.onclick = () => { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); run(); };
+    menu.append(item);
+  };
+  addAction('Note FX…', () => openNoteFxEditor(innerWidth / 2, innerHeight / 2, key));
+  if (PERCUSSION_LANES.includes(baseLane(key))) {
+    const mates = deskLanes(viewBank(), 1).map((lane) => lane.key)
+      .filter((mate) => mate !== key && PERCUSSION_LANES.includes(baseLane(mate)));
+    if (mates.length) {
+      const field = document.createElement('label'); field.className = 'devmore-select';
+      const caption = document.createElement('span'); caption.textContent = 'CHOKES WITH';
+      const select = document.createElement('select');
+      select.setAttribute('aria-label', 'Chokes with');
+      const choices = [['', 'Nothing — rings freely'], ...mates.map((mate) => [mate, presetHeadingFor(mate).name])];
+      for (const [value, text] of choices) {
+        const option = document.createElement('option');
+        option.value = value; option.textContent = text; select.append(option);
+      }
+      select.value = chokePartner(arrDraftOf(), key) || '';
+      select.onchange = () => {
+        const next = select.value || null;
+        const current = arrDraftOf();
+        if ((chokePartner(current, key) || null) !== next) {
+          applyArrangementEdit(setChokePartner(current, key, next), next
+            ? `${targetLabel(key)} chokes with ${presetHeadingFor(next).name}`
+            : `${targetLabel(key)} chokes with nothing`);
+        }
+        menu.hidden = true; button.setAttribute('aria-expanded', 'false');
+      };
+      field.append(caption, select); menu.append(field);
+    }
+  }
+  addAction('Copy channel settings', () => copyStrip(key, 'channel'));
+  addAction('Paste channel settings', () => pasteStrip(key, 'channel'), { disabled: clipboard?.kind !== 'channel' });
+  addAction('Paste effects', () => pasteEffects(key), { disabled: !(clipboard?.data?.effects || []).length });
+  addAction('Copy track', () => copyTrack(key));
+  addAction('Paste track as new', () => pasteTrack(), { disabled: arrangementClipboard?.kind !== 'track' });
+  addAction('Duplicate track', () => duplicateLane(key));
+  const freezeState = freezeLaneState(trackId, key);
+  addAction(freezeState === 'full' ? 'Unfreeze all' : 'Freeze track', () =>
+    freezeState === 'full' ? unfreezeLane(key) : freezeLane(key));
+  const chain = effectsOf(key);
+  if (chain.length) addAction(chain.some((effect) => !effect.bypass)
+    ? 'Bypass all effects' : 'Enable all effects', () => {
+    const bypass = chain.some((effect) => !effect.bypass);
+    setEffects(key, chain.map((effect) => ({ ...effect, bypass })));
+  });
+  addAction('Copy notes', () => {
+    const draft = arrDraftOf();
+    arrangementClipboard = { kind: 'lane', ...clipOrigin(targetLabel(key)),
+      ...copyLaneBars(editBank(), draft, 0, Math.max(0, draft.plan.length - 1), key) };
+    toast(`${targetLabel(key)} copied — right-click another track to paste`);
+  });
+  addAction('Paste notes', () => {
+    const draft = arrDraftOf();
+    applyArrangementEdit(pasteLane(draft, 0, key, arrangementClipboard),
+      pasteLaneMessage(draft, 0, targetLabel(key), arrangementClipboard));
+  }, { disabled: arrangementClipboard?.kind !== 'lane' });
+  addAction('Erase notes', () => {
+    const last = Math.max(0, arrDraftOf().plan.length - 1);
+    clearLaneBars(key, 0, last, `${targetLabel(key)} erased`, { shared: true });
+  }, { danger: true });
+  addAction('Reset edits', () => {
+    const last = Math.max(0, arrDraftOf().plan.length - 1);
+    let next = arrDraftOf();
+    next = clearAutomation(next, key, 0, (last + 1) * 16, { points: true, cuts: true, fx: true });
+    next = setLanesOff(next, 0, last, [key], false);
+    next = setLanesDeleted(next, 0, last, [key], false);
+    next = transposeBars(next, 0, last, [key], 0);
+    next = offsetBars(next, 0, last, [key], 0);
+    next = gainBars(next, 0, last, [key], 0);
+    next = panBars(next, 0, last, [key], 0);
+    next = setBarNoteFx(next, 0, last, key, null);
+    next = setBarEffects(next, 0, last, key, null);
+    applyArrangementEdit(next, `${targetLabel(key)} adjustments reset across the whole song`);
+  });
+  addAction('Reset channel', () => resetTarget(key));
+  addAction('Delete track…', () => deleteLane(key), { danger: true });
+}
+
 function buildDevices() {
   const rack = $('devrack');
   disposeL7Meters(rack);
   rack.textContent = '';
   updatePanelTitles();
+  buildChannelIdentity(selectedLane);
+  buildChannelMix(selectedLane);
+  buildChannelMore(selectedLane);
   if (!selectedLane) {
     return;
   }
+
+  const adjust = buildChannelAdjust(selectedLane);
+  if (adjust) rack.append(adjust);
 
   // A send's delay or reverb comes first: it is what the strip IS, and the inserts
   // are things you put in front of it. The master has no card of its own — its
@@ -10029,6 +10431,10 @@ function buildDevices() {
   if (pinned) rack.append(pinned);
 
   const list = effectsOf(selectedLane);
+  const fxLabel = document.createElement('div');
+  fxLabel.className = 'devfx-heading';
+  fxLabel.textContent = `EFFECTS${list.length ? ` · ${list.length}` : ''}`;
+  rack.append(fxLabel);
   if (!list.length) {
     rack.append(addCard(true));
     fitDevices();
@@ -10444,8 +10850,8 @@ function setDevicesFolded(on, refit = true) {
   // it goes back to costing nothing, but only once it is off screen — see afterDock.
   $('devices').classList.remove('fxdock-idle');
   $('devfold').classList.remove('folded');
-  $('devfold').title = 'Close Effects';
-  $('devfold').setAttribute('aria-label', 'Close Effects');
+  $('devfold').title = 'Close Channel';
+  $('devfold').setAttribute('aria-label', 'Close Channel');
   if (!refit) { if (on) $('devices').classList.add('fxdock-idle'); return; }
   scheduleDeskFit(true);
   afterDock(on);
@@ -10491,6 +10897,21 @@ function openChannelEffects(key) {
   selectLane(key);
   setDevicesFolded(false);
 }
+
+$('devmore').onclick = (event) => {
+  event.stopPropagation();
+  const menu = $('devmoremenu');
+  menu.hidden = !menu.hidden;
+  $('devmore').setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+};
+$('devmoremenu').addEventListener('pointerdown', (event) => event.stopPropagation());
+document.addEventListener('pointerdown', (event) => {
+  const menu = $('devmoremenu');
+  if (menu && !menu.hidden && !event.target.closest('#devmoremenu, #devmore')) {
+    menu.hidden = true;
+    $('devmore')?.setAttribute('aria-expanded', 'false');
+  }
+});
 
 /** Switch the inspector target without requiring the Mixer view to be visible. */
 function openEffectTarget(key) {
@@ -12414,7 +12835,7 @@ const hasActiveNoteFx = (fx) => hasEnabledNoteFx(fx);
 // from the lane, and `resolveNoteFx` leaves it out of an 'off' bar where it still sounds
 // — so it neither earns a bar its NFX badge nor counts as something an NFX OFF bar turned
 // off. The per-bar badges ask this; they never read portamento off a resolved bar config.
-const hasBarNoteFx = (fx) => Boolean(fx?.strum?.enabled || fx?.arp?.enabled);
+const hasBarNoteFx = (fx) => Boolean(fx?.strum?.enabled || fx?.arp?.enabled || fx?.guitar?.enabled);
 
 /**
  * What a bar's Note FX override is worth printing in the grid.
@@ -12498,6 +12919,9 @@ function barOperationGroups(barPlanEntry, key, { frozen = false, sections = [] }
   const override = barPlanEntry?.noteFx?.[key];
   const resolved = resolveNoteFx(laneMix.noteFx, barPlanEntry, key);
   const noteItems = [];
+  if (resolved.guitar?.enabled) noteItems.push({
+    text: `Guitar Voicing · ${resolved.guitar.style || 'auto'} · fret ${resolved.guitar.position || 0}`, tone: 'active',
+  });
   if (resolved.strum?.enabled) noteItems.push({
     text: `Strum · ${NOTE_FX_DIRECTION_LABELS[resolved.strum.direction] || 'Up'} · ${resolved.strum.gapMs ?? 18} ms`,
     tone: 'active',
@@ -14920,7 +15344,7 @@ function tick() {
     // Stop reading or writing only the rack meters while that view cannot be seen.
     for (const mt of meters) {
       watchMeter(mt);
-      if (!mixerViewVisible && mt.key !== '__master-toolbar') continue;
+      if (!mixerViewVisible && mt.key !== '__master-toolbar' && !mt.inspector) continue;
       // Out of sight: no read, no writes, and — deliberately — NO ENTRY IN laneLevels.
       // The arrangement VUs below use that map as a cache of what the strips already
       // read, so writing a zero here would blank a visible arrangement meter because a

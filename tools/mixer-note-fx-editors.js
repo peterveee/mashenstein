@@ -88,6 +88,7 @@ const NOTE_FX_RANGE_DEFAULT_HI = 72;
  * a default that will eventually disagree with itself.
  */
 const NOTE_FX_BLANK = Object.freeze({
+  guitar: Object.freeze({ enabled: false, style: 'auto', position: 0 }),
   strum: Object.freeze({ enabled: false, direction: 'up', gapMs: 18 }),
   arp: Object.freeze({ enabled: false, direction: 'up', rate: 1, octaves: 1, limit: 0,
     rangeLimit: false, rangeLo: NOTE_FX_RANGE_DEFAULT_LO, rangeHi: NOTE_FX_RANGE_DEFAULT_HI,
@@ -111,7 +112,7 @@ const NOTE_FX_BLANK = Object.freeze({
 const shownNoteFx = (fx = {}) => {
   const arp = { ...NOTE_FX_BLANK.arp, ...(fx?.arp || {}) };
   const strum = { ...NOTE_FX_BLANK.strum, ...(fx?.strum || {}) };
-  return { arp, strum: { ...strum, enabled: strum.enabled && !arp.enabled } };
+  return { guitar: { ...NOTE_FX_BLANK.guitar, ...(fx?.guitar || {}) }, arp, strum: { ...strum, enabled: strum.enabled && !arp.enabled } };
 };
 
 /**
@@ -175,6 +176,7 @@ function buildNoteFxEditor(x, y, key, scope) {
   const current = firstOverride?.mode === 'on'
     ? { ...trackDefault, ...firstOverride,
       strum: { ...(trackDefault.strum || {}), ...(firstOverride.strum || {}) },
+      guitar: { ...(trackDefault.guitar || {}), ...(firstOverride.guitar || {}) },
       arp: { ...(trackDefault.arp || {}), ...(firstOverride.arp || {}) } }
     : trackDefault;
   const view = shownNoteFx(current);
@@ -274,11 +276,19 @@ function buildNoteFxEditor(x, y, key, scope) {
   // the whole panel. What the words gave up — that Random is seeded rather than fresh
   // every bar — the hover card keeps.
   const strumDir = field('Direction', [['up', 'Up · low to high'], ['down', 'Down · high to low'],
+    ['alternate-up', 'Alternate · Up first'], ['alternate-down', 'Alternate · Down first'],
     ['random', 'Random']], view.strum.direction, {
       name: 'Strum direction',
-      says: 'The order the chord’s notes are spread in. Random is seeded from the lane and the position in the song, so the same bar strums the same way every play and every render — a shuffle, not a dice roll.',
+      says: 'The order the chord’s notes are spread in. Alternate flips direction on each chord and starts again in its named direction every bar; rests and single notes do not flip it. Random is seeded from the lane and the position in the song, so the same bar strums the same way every play and every render — a shuffle, not a dice roll.',
     });
   const gap = number('Gap', 0, 250, 1, view.strum.gapMs, 'milliseconds between notes');
+  fullRow();
+  const guitarOn = check('Guitar Voicing', view.guitar.enabled);
+  pairRow();
+  const guitarStyle = field('Style', [['auto', 'Auto'], ['open', 'Open'], ['barre', 'Barre']],
+    view.guitar.style, { name: 'Guitar voicing',
+      says: 'Standard six-string tuning. Chooses a familiar guitar shape before Strum or Arpeggiator. Auto favours open shapes near the selected position. Ambiguous or unusual chords keep every pitch class and move only by octaves into a compact guitar fingering. Chords that cannot fit, or have uneven lengths, stay unchanged; the instrument sound stays the same.' });
+  const guitarPosition = number('Neck position', 0, 12, 1, view.guitar.position, 'preferred fret; 0 favours open position');
   fullRow();
   const arpOn = check('Arpeggiator', view.arp.enabled);
   pairRow();
@@ -340,21 +350,22 @@ function buildNoteFxEditor(x, y, key, scope) {
   fullRow();
   const latch = check('Latch until the next chord', view.arp.latch);
 
-  // Render belongs to the arpeggiator, not to the panel's own actions. Everything in the
-  // footer decides what happens to this window; this one reaches past it and writes notes
-  // into the song, and it only means anything while there is an arpeggiator to consume.
-  // Down there it read as a fourth way of leaving, and took a whole line to do it.
+  // Render saved voicing/arp settings into individually editable source notes.
   const renderButton = document.createElement('button');
   renderButton.className = 'notefxrender';
-  renderButton.textContent = 'Render Arp to Notes';
-  renderButton.title = scope
-    ? `Write ${targetLabel(key)}'s arpeggiator as ordinary notes in these bars`
-    : `Write ${targetLabel(key)}'s arpeggiator as ordinary notes across the song`;
-  // The SAVED arpeggiator, not the staged one: this writes the notes the song plays
-  // today, so an arp that exists only as an unapplied tick in this window has nothing
-  // for it to render.
-  renderButton.disabled = !resolveNoteFx(trackDefault,
-    scope ? arrDraftOf().plan?.[scope.from] : null, key)?.arp?.enabled;
+  renderButton.textContent = 'Render to Notes';
+  renderButton.title = 'Write applied Guitar Voicing and Arpeggiator results as editable notes; Strum stays live. Apply changes first.';
+  const refreshRender = () => {
+    const draft = arrDraftOf();
+    const track = noteFxFor(key);
+    const from = scope?.from ?? 0;
+    const to = scope?.to ?? Math.max(0, draft.plan.length - 1);
+    renderButton.disabled = !draft.plan.slice(from, to + 1).some(bar => {
+      const fx = resolveNoteFx(track, bar, key);
+      return fx.guitar?.enabled || fx.arp?.enabled;
+    });
+  };
+  refreshRender();
   form.append(renderButton);
 
   // ---- Auto Portamento ---------------------------------------------------------------
@@ -489,7 +500,7 @@ function buildNoteFxEditor(x, y, key, scope) {
   const armBarOverride = () => {
     if (mode) mode.value = 'on';
   };
-  for (const control of [strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,
+  for (const control of [guitarOn, guitarStyle, guitarPosition, strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,
     rangeOn, rangeLo, rangeHi,
     repeat, gate, retrigger, latch]) control.addEventListener('input', armBarOverride);
 
@@ -502,6 +513,7 @@ function buildNoteFxEditor(x, y, key, scope) {
     control.closest('.regcontrol, .regcheck')?.classList.toggle('notefxoff', !live);
   };
   const syncEnabled = () => {
+    for (const control of [guitarStyle, guitarPosition]) setLive(control, guitarOn.checked);
     for (const control of [strumDir, gap]) setLive(control, strumOn.checked);
     for (const control of [arpDir, arpRate, octaves, limit, rangeOn, repeat, gate,
       retrigger, latch]) setLive(control, arpOn.checked);
@@ -524,6 +536,7 @@ function buildNoteFxEditor(x, y, key, scope) {
     if (arpOn.checked) strumOn.checked = false;
     syncEnabled();
   });
+  guitarOn.addEventListener('input', syncEnabled);
   rangeOn.addEventListener('input', syncEnabled);
   if (slide) {
     for (const control of [slide.on, slide.amount, slide.glide]) {
@@ -539,6 +552,9 @@ function buildNoteFxEditor(x, y, key, scope) {
   /** Put a saved Note FX back into the controls, without arming the bar override. */
   const writeFields = (fx) => {
     const next = shownNoteFx(fx);
+    setCheck(guitarOn, next.guitar.enabled);
+    guitarStyle.value = next.guitar.style;
+    guitarPosition.value = next.guitar.position;
     setCheck(strumOn, next.strum.enabled);
     strumDir.value = next.strum.direction;
     gap.value = next.strum.gapMs;
@@ -571,6 +587,8 @@ function buildNoteFxEditor(x, y, key, scope) {
     return carried ? { portamento: carried } : {};
   };
   const collect = () => ({
+    guitar: { enabled: guitarOn.checked, style: guitarStyle.value,
+      position: clamp(Math.round(Number(guitarPosition.value) || 0), 0, 12) },
     strum: { enabled: strumOn.checked, direction: strumDir.value,
       gapMs: clamp(Number(gap.value) || 0, 0, 250) },
     arp: { enabled: arpOn.checked, direction: arpDir.value,
@@ -635,25 +653,28 @@ function buildNoteFxEditor(x, y, key, scope) {
     // here rather than suppressed bar by bar. Telling the render that up front is what
     // lets it leave the bars unmarked instead of stamping an arp-off override on
     // every one of them.
-    const retireTrackArp = !scope && Boolean(trackDefault.arp?.enabled);
+    const savedFx = noteFxFor(key);
+    const retireTrackArp = !scope && Boolean(savedFx.arp?.enabled);
+    const retireTrackGuitar = !scope && Boolean(savedFx.guitar?.enabled);
     // Writing an arpeggiator out as notes rewrites every bar it covers and then rebuilds
     // the editors from the result — the heaviest thing this panel can be asked to do. The
     // prefill covers the whole task that follows it, not merely the call it wraps, so
     // `clearTrackArp`'s own rebuild below rides the same queued audio. Skipped on the
     // scoped branch for the reason given in `applyNoteFx`: it ends in a seek.
     const render = () => applyArrangementEdit(
-      renderArpToNotes(editBank(), draft, from, to, key, trackDefault,
-        { trackArpCleared: retireTrackArp }), '');
+      renderArpToNotes(editBank(), draft, from, to, key, savedFx,
+        { trackArpCleared: retireTrackArp, trackGuitarCleared: retireTrackGuitar }), '');
     const ok = scope ? render() : heavyUi('note fx render', render);
     if (!ok) return;
-    if (retireTrackArp) clearTrackArp(key);
+    if (retireTrackArp || retireTrackGuitar) clearTrackArp(key, { guitar: retireTrackGuitar });
     if (scope) {
+      refreshRender();
       selectLane(key);
       markBar(key, from, to);
       jumpTo(from * 16, { start: true, immediate: true });
       toast(`Playing ${targetLabel(key)} from bar ${from + 1} with rendered Note FX — ⌘Z to undo`);
     } else {
-      toast(`${targetLabel(key)} arpeggiator rendered to notes and switched off — ⌘Z to undo`);
+      toast(`${targetLabel(key)} voicing / arpeggiator rendered to notes and switched off — ⌘Z to undo`);
       // The panel is now describing an arp that no longer exists. Redraw it from the
       // track it just changed, so Render reads as spent rather than still offered.
       openNoteFxEditor(x, y, key, scope);
@@ -688,7 +709,7 @@ function buildNoteFxEditor(x, y, key, scope) {
   applyButton.setAttribute('aria-label', applyButton.title);
   // Apply leaves the window open, so what the engine now finds to slide is read again —
   // the line under Auto Portamento said what the OLD settings selected.
-  applyButton.onclick = () => { if (applyNoteFx()) slide?.refresh(); };
+  applyButton.onclick = () => { if (applyNoteFx()) { slide?.refresh(); refreshRender(); } };
   const applyCloseButton = document.createElement('button');
   applyCloseButton.className = 'regapply';
   applyCloseButton.textContent = 'Apply & Close';
@@ -925,7 +946,21 @@ function buildBarEffectsEditor(x, y, key, {
     for (const s of cut(list)) if (!seen.has(s.key)) seen.set(s.key, s.chain);
     return [...seen.values()];
   };
+  // THE CHANNEL CARD IS LAST (effects.js 'strip'; Peter, 23 Oct 2026). It is not in the signal
+  // path at all — it moves the lane's own EQ and sends, which come after every section effect
+  // — so a position in the list would be a lie. It is drawn last, cannot be dragged, and a
+  // chain that has it anywhere else (a drop after it, an older save) is put right here.
+  const settle = () => {
+    const i = chain.findIndex((e) => e?.id === 'strip');
+    if (i < 0 || i === chain.length - 1) return;
+    const keep = chain[selected];
+    const [card] = chain.splice(i, 1); chain.push(card);
+    if (masks.length > i) { const [m] = masks.splice(i, 1); masks.push(m); }
+    const at = chain.indexOf(keep);
+    if (at >= 0) selected = at;
+  };
   const commit = (tag = null) => {
+    settle();
     if (frame != null) { cancelAnimationFrame(frame); frame = null; }
     // A knob moves every chain its effect is in, each on the nodes already playing it.
     const before = heard.length === chain.length ? playing(heard) : [];
@@ -1165,6 +1200,7 @@ function buildBarEffectsEditor(x, y, key, {
     slots.querySelector('.barfxslot.selected')?.focus({ preventScroll: true });
   };
   const drawSlots = () => {
+    settle();
     const focused = slots.contains(document.activeElement);
     slots.textContent = '';
     chain.forEach((effect, index) => {
@@ -1194,7 +1230,8 @@ function buildBarEffectsEditor(x, y, key, {
         slot.append(mini);
       }
       slot.onclick = () => selectSlot(index);
-      slot.draggable = true;
+      slot.draggable = effect.id !== 'strip';
+      if (effect.id === 'strip') slot.title = `${name} — after every section effect, on the channel itself`;
       slot.addEventListener('dragstart', (ev) => {
         dragFrom = index;
         slot.classList.add('dragging');

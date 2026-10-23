@@ -23,7 +23,7 @@ mix.lanes[laneKey].noteFx.portamento = { enabled: true, amount: 35, glide: 40, v
 | Takes a slide | Refused |
 | --- | --- |
 | CRLS-1 (the pooled Tone leads, `Synth`/`MonoSynth`) with sustain ≥ 0.2 | anything that decays away (pianos, plucks, bells) |
-| MRDR-3, native and worklet, with a sustaining amp | TNGR-2, KNDO-5, RMND-2, WNDR-9, JMJR-4 |
+| MRDR-3, native and worklet, with a sustaining amp | TNGR-2, KNDO-5, RMND-7, WNDR-9, JMJR-4 |
 | | the engine's hand-written voices, drums, noise |
 
 Unsupported lanes are left exactly as they were and the desk says why; the sound is never swapped. Only melody lanes (`autoPortamentoLane`: bass, lead, harmony, twinkle and their layers) can carry it.
