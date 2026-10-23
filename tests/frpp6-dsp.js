@@ -1,9 +1,10 @@
-// FZPP-6's core, measured: tuning to the cent, decay to the second, determinism, string
+// FRPP-6's core, measured: tuning to the cent, decay to the second, determinism, string
 // assignment, and every "zero means off" being a true identity. Node only — the reference
 // renderer runs the same source the worklet will.
-import { renderFzpp6 } from '../src/engine/fzpp6/dsp.js';
-import { compileFzpp6, compileFzpp6With } from '../src/engine/fzpp6/tables.js';
-import { FZPP6_CANDIDATES } from '../tools/lib/fzpp6-candidates.js';
+import { renderFrpp6 } from '../src/engine/frpp6/dsp.js';
+import { compileFrpp6, compileFrpp6With, frpp6BodyModes } from '../src/engine/frpp6/tables.js';
+import { validateFrpp6 } from '../src/engine/frpp6/schema.js';
+import { FRPP6_CANDIDATES } from '../tools/lib/frpp6-candidates.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -16,7 +17,7 @@ const note = (hz, { frame = 0, id = 1, vel = 1, dur = 0 } = {}) => ({
   type: 'noteOn', frame, eventId: id, hz, velocity: vel, ...(dur ? { durFrames: dur } : {}),
 });
 const render = (stored, events, { sr = 44100, seconds = 1, blockSize = 128, play = {} } = {}) =>
-  renderFzpp6({ events, seconds, sampleRate: sr, blockSize, patch: compileFzpp6With(stored, sr, play) });
+  renderFrpp6({ events, seconds, sampleRate: sr, blockSize, patch: compileFrpp6With(stored, sr, play) });
 // The plainest string: no body, no TENSION, no detune, no STIFF. What tuning and decay
 // tests want, so that what they measure is the loop and nothing else.
 const plain = (over = {}) => ({
@@ -114,7 +115,7 @@ const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 {
   const chord = [hzOf(52), hzOf(56), hzOf(59), hzOf(64)];
   const events = [note(chord, { frame: 333, dur: 30000 }), note(hzOf(45), { frame: 9001, id: 2, dur: 8000, vel: 0.6 })];
-  const busy = { ...FZPP6_CANDIDATES.funkRhythm.fzpp6, string: { double: 'shimmer', buzz: 0.2, pickup: 'middle' },
+  const busy = { ...FRPP6_CANDIDATES.funkRhythm.frpp6, string: { double: 'shimmer', buzz: 0.2, pickup: 'middle' },
     filter: { cutoff: 1500, resonance: 3, keyTrack: 0.3 }, filterEnv: { amount: 2, decay: 0.2 } };
   const play = { vibrato: { depth: 0.2, rate: 5, delay: 0.1 } };
   for (const [name, stored, pl] of [['steel', {}, {}], ['busy', busy, {}], ['vibrato', busy, play]]) {
@@ -297,9 +298,9 @@ const rmsAt = (x, t, w, sr = 44100) => {
   // the shaper, so it bites the same on every lane.
   const sr = 44100;
   const ev = (level) => [note(hzOf(45), { dur: 30000, vel: 1 }), ].map((e) => ({ ...e, level }));
-  const mono = { ...FZPP6_CANDIDATES.steelAcoustic, fzpp6: { internal: { spread: 0 } } };
-  const driven = (drive, place = 'post', extra = {}) => renderFzpp6({ events: ev(1), seconds: 1, sampleRate: sr,
-    patch: compileFzpp6({ ...mono, ...extra, drive, shape: 'soft', drivePlace: place }, sr) }).channels[0];
+  const mono = { ...FRPP6_CANDIDATES.steelAcoustic, frpp6: { internal: { spread: 0 } } };
+  const driven = (drive, place = 'post', extra = {}) => renderFrpp6({ events: ev(1), seconds: 1, sampleRate: sr,
+    patch: compileFrpp6({ ...mono, ...extra, drive, shape: 'soft', drivePlace: place }, sr) }).channels[0];
   const peakOf = (x) => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
   const dry = driven(0);
   const hot = driven(1);
@@ -312,22 +313,22 @@ const rmsAt = (x, t, w, sr = 44100) => {
   let res = 0, tot = 0;
   for (let i = 0; i < dry.length; i++) { res += (hot[i] - g * dry[i]) ** 2; tot += hot[i] * hot[i]; }
   assert(res / tot > 0.05, `and it distorts, rather than turning up: ${(100 * res / tot).toFixed(0)}% of the driven note is not the dry note scaled`);
-  const quarter = renderFzpp6({ events: ev(0.25), seconds: 1, sampleRate: sr,
-    patch: compileFzpp6({ ...mono, drive: 0.6, shape: 'soft', drivePlace: 'post' }, sr) }).channels[0];
+  const quarter = renderFrpp6({ events: ev(0.25), seconds: 1, sampleRate: sr,
+    patch: compileFrpp6({ ...mono, drive: 0.6, shape: 'soft', drivePlace: 'post' }, sr) }).channels[0];
   const full = driven(0.6);
   let worst = 0;
   for (let i = 0; i < full.length; i++) worst = Math.max(worst, Math.abs(full[i] - 4 * quarter[i]));
   assert(worst / peakOf(full) < 1e-5, `the note's level does not move the knee: a quarter-level note is the same shape (${(worst / peakOf(full)).toExponential(1)})`);
   // The funk guitar: its stored peak is the fret tick, 12 dB over the string. The knee
   // must sit on the string regardless.
-  const funk = { ...FZPP6_CANDIDATES.funkRhythm, fzpp6: { ...FZPP6_CANDIDATES.funkRhythm.fzpp6, internal: { spread: 0 } }, peak: 1.32 };
-  const fp = compileFzpp6({ ...funk, drive: 1, shape: 'soft' }, sr);
-  const fq = compileFzpp6({ ...funk, drive: 1, shape: 'soft', fzpp6: { ...funk.fzpp6, damping: { ...funk.fzpp6.damping, fret: 0, squeak: 0, lift: 0 } } }, sr);
+  const funk = { ...FRPP6_CANDIDATES.funkRhythm, frpp6: { ...FRPP6_CANDIDATES.funkRhythm.frpp6, internal: { spread: 0 } }, peak: 1.32 };
+  const fp = compileFrpp6({ ...funk, drive: 1, shape: 'soft' }, sr);
+  const fq = compileFrpp6({ ...funk, drive: 1, shape: 'soft', frpp6: { ...funk.frpp6, damping: { ...funk.frpp6.damping, fret: 0, squeak: 0, lift: 0 } } }, sr);
   const fpPeak = 1 / (fp.drive.scaleIn * 32);
   assert(Math.abs(db(fpPeak / fq.stringPeak)) < 0.5 && Math.abs(db(fpPeak / (1.32 / 0.7))) > 6,
     `the funk guitar's knee is at its string (${fpPeak.toFixed(3)}), not at its fret tick (${(1.32 / 0.7).toFixed(2)})`);
-  const pre = driven(0.6, 'pre', { fzpp6: { ...mono.fzpp6, filter: { type: 'lowpass', cutoff: 800, resonance: 2 } } });
-  const post = driven(0.6, 'post', { fzpp6: { ...mono.fzpp6, filter: { type: 'lowpass', cutoff: 800, resonance: 2 } } });
+  const pre = driven(0.6, 'pre', { frpp6: { ...mono.frpp6, filter: { type: 'lowpass', cutoff: 800, resonance: 2 } } });
+  const post = driven(0.6, 'post', { frpp6: { ...mono.frpp6, filter: { type: 'lowpass', cutoff: 800, resonance: 2 } } });
   assert(!same(pre, post), 'PRE and POST are two places: before the filter and after it');
 }
 
@@ -346,19 +347,15 @@ const rmsAt = (x, t, w, sr = 44100) => {
     }
     return est;
   };
-  const held = (stored, hz, secs = 1.4, play = {}, total = secs + 0.3) => renderFzpp6({
+  const held = (stored, hz, secs = 1.4, play = {}, total = secs + 0.3) => renderFrpp6({
     events: [note(hz, { dur: Math.round(secs * sr) })], seconds: total, sampleRate: sr,
-    patch: compileFzpp6With({ body: { type: 'none', mix: 0 }, strings: { tuning: 'free', tension: 0 },
+    patch: compileFrpp6With({ body: { type: 'none', mix: 0 }, strings: { tuning: 'free', tension: 0 },
       internal: { spread: 0 }, amp: { attack: 0.05, release: 0.1 }, ...stored }, sr, play),
   }).channels[0];
   const wind = (type, over = {}) => ({ exciter: { type, pressure: 0.6, ...over } });
-  // Tuning, across the pressure range: the bow and the reed over the whole board, the jet
-  // from C3 up (a flute plays no lower; below that it is 10–30 cents sharp).
-  // The worst cases are the extremes: the bow at full force on the low E, the reed at the
-  // top of the board, the jet at full breath on its lowest note (from C#3; a flute plays no lower).
-  // The sax is the marginal one of the four: in tune from A2 to F5 once it has settled (it
-  // is measured at 0.9 s), and flaky above that at either end of PRESSURE.
-  for (const [type, lo, hi, tol, at] of [['bow', 40, 88, 7, 0.6], ['reed', 40, 88, 10, 0.6], ['sax', 45, 77, 12, 0.9], ['jet', 52, 88, 10, 0.6]]) {
+  // Tuning, across the pressure range and the whole board. The worst case is the extreme:
+  // the bow at full force on the low E.
+  for (const [type, lo, hi, tol, at] of [['bow', 40, 88, 7, 0.6]]) {
     let worst = 0;
     let where = '';
     for (const press of [0.3, 0.6, 1]) {
@@ -382,38 +379,13 @@ const rmsAt = (x, t, w, sr = 44100) => {
     }
     assert(steady != null && steady <= 0.3, `the bow settles into steady motion within 300 ms (${steady == null ? 'never' : `${Math.round(steady * 1000)} ms`})`);
   }
-  // The clarinet's signature: even harmonics far under the odd ones, in the low register.
-  {
-    const hz = hzOf(45);
-    const x = held(wind('reed'), hz);
-    const at = Math.round(0.7 * sr);
-    const h = (k) => db(dft(x, k * hz, at, 8192, sr).mag);
-    const odd = Math.min(h(1), h(3)), even = Math.max(h(2), h(4));
-    assert(odd - even >= 15, `the reed's low register is odd harmonics: evens ${(odd - even).toFixed(0)} dB under`);
-  }
-  // The sax's signature against the clarinet: its even harmonics are there.
-  {
-    const hz = hzOf(52);
-    const x = held(wind('sax'), hz);
-    const at = Math.round(0.7 * sr);
-    const h = (k) => db(dft(x, k * hz, at, 8192, sr).mag);
-    assert(h(2) > h(1) - 12 && h(4) > h(3) - 15, `the sax has its even harmonics (h1 ${h(1).toFixed(0)}, h2 ${h(2).toFixed(0)}, h3 ${h(3).toFixed(0)}, h4 ${h(4).toFixed(0)} dB)`);
-  }
-  // The jet speaks at the note, on its fundamental.
-  for (const jet of [0.3]) {
-    const hz = hzOf(64);
-    const x = held(wind('jet'), hz);
-    const at = Math.round(0.8 * sr);
-    const f = db(dft(x, hz, at, 8192, sr).mag), f2 = db(dft(x, 2 * hz, at, 8192, sr).mag), f23 = db(dft(x, hz * 2 / 3, at, 8192, sr).mag);
-    assert(f > -20 && f - f2 > 6 && f - f23 > 20, `JET ${jet}: the jet speaks on its fundamental (f ${f.toFixed(0)} dB, 2f ${f2.toFixed(0)}, bore mode ${f23.toFixed(0)})`);
-  }
   // Glide on a bowed note: the pitch arrives within 10% of GLIDE, with no click.
   {
     const glide = 0.2;
-    const r = renderFzpp6({
+    const r = renderFrpp6({
       events: [note(hzOf(57), { dur: 30000 }), note(hzOf(69), { frame: Math.round(0.6 * sr), id: 2, dur: 30000 })],
       seconds: 1.6, sampleRate: sr,
-      patch: compileFzpp6With({ ...wind('bow'), body: { type: 'none', mix: 0 }, strings: { tuning: 'free', tension: 0 },
+      patch: compileFrpp6With({ ...wind('bow'), body: { type: 'none', mix: 0 }, strings: { tuning: 'free', tension: 0 },
         internal: { spread: 0 }, amp: { attack: 0.05 } }, sr, { mode: 'legato', portamento: glide }),
     }).channels[0];
     // Mid-glide the pitch is moving, so it is read through a window shorter than the glide.
@@ -444,32 +416,40 @@ const rmsAt = (x, t, w, sr = 44100) => {
   }
   // Determinism, breath noise and all; and stability over the whole of each pot.
   {
-    const a = held(wind('jet', { noise: 0.8 }), 440), b = held(wind('jet', { noise: 0.8 }), 440);
-    assert(same(a, b), 'a breathy jet renders bit-identical twice: its noise is seeded');
+    const a = held(wind('bow', { noise: 0.8 }), 440), b = held(wind('bow', { noise: 0.8 }), 440);
+    assert(same(a, b), 'a rough bow renders bit-identical twice: its noise is seeded');
     let bad = 0;
-    for (const type of ['bow', 'reed', 'sax', 'jet']) {
-      for (const [pressure, noise, extra] of [[0, 1, {}], [1, 1, {}], [1, 0, { speed: 1, reed: 1, bell: 1 }],
-        [0.5, 0.5, { speed: 0, reed: 0, bell: 0 }]]) {
-        const x = held(wind(type, { pressure, noise, ...extra }), hzOf(52), 0.6);
-        for (const v of x) if (!Number.isFinite(v) || Math.abs(v) > 8) bad++;
-      }
+    for (const [pressure, noise, extra] of [[0, 1, {}], [1, 1, {}], [1, 0, { speed: 1 }], [0.5, 0.5, { speed: 0 }]]) {
+      const x = held(wind('bow', { pressure, noise, ...extra }), hzOf(52), 0.6);
+      for (const v of x) if (!Number.isFinite(v) || Math.abs(v) > 8) bad++;
     }
-    assert(bad === 0, `bow, reed and jet stay finite and bounded at every extreme (${bad})`);
+    assert(bad === 0, `the bow stays finite and bounded at every extreme (${bad})`);
   }
+}
+
+// ---- the Body · Advanced door -------------------------------------------------------------
+{
+  const base = frpp6BodyModes({ type: 'steel', size: 1 }, 44100);
+  const moved = frpp6BodyModes({ type: 'steel', size: 1, air: { hz: 120, q: 30, db: 6 } }, 44100);
+  assert(base[0] === 98 && base[1] === 14, 'untouched, the air mode is where the steel set puts it');
+  assert(moved[0] === 120 && moved[1] === 30 && Math.abs(moved[2] / base[2] - 10 ** (6 / 20)) < 1e-9,
+    'a pinned AIR HZ / Q moves the first mode, and its dB trims the set\'s gain');
+  assert(moved[3] === base[3] && moved.length === base.length, 'the other modes and the cloud are untouched');
+  const v = validateFrpp6({ body: { type: 'steel', top: { hz: 99999, db: 40 } } });
+  assert(v.body.top.hz === 4000 && v.body.top.db === 18 && v.body.air.hz === null, 'mode overrides are clamped; an unset one stays unset');
 }
 
 // ---- level up the neck ---------------------------------------------------------------------
 {
-  for (const [id, voice] of Object.entries(FZPP6_CANDIDATES)) {
+  for (const [id, voice] of Object.entries(FRPP6_CANDIDATES)) {
     if (voice.ab) continue;
-    // Without the preset's vibrato: the level curve is calibrated without it, and on the
-    // sax a wobbling pitch at the bottom of the board shifts the regime's level.
-    const patch = compileFzpp6({ ...voice, mode: 'poly', portamento: 0, vibrato: null }, 44100);
-    // A bowed or blown note is measured once it has spoken (from 0.15 s, as the level curve
-    // is calibrated); a pluck from the strike.
-    const sustained = ['bow', 'reed', 'sax', 'jet'].includes(voice.fzpp6?.exciter?.type);
+    // Without the preset's vibrato: the level curve is calibrated without it.
+    const patch = compileFrpp6({ ...voice, mode: 'poly', portamento: 0, vibrato: null }, 44100);
+    // A bowed note is measured once it has spoken (from 0.15 s, as the level curve is
+    // calibrated); a pluck from the strike.
+    const sustained = voice.frpp6?.exciter?.type === 'bow';
     const levels = [40, 52, 64, 76, 88].map((midi) => {
-      const r = renderFzpp6({ events: [note(hzOf(midi), { dur: 44100 })], seconds: sustained ? 0.5 : 0.35, sampleRate: 44100, patch });
+      const r = renderFrpp6({ events: [note(hzOf(midi), { dur: 44100 })], seconds: sustained ? 0.5 : 0.35, sampleRate: 44100, patch });
       return db(rmsAt(r.channels[0], sustained ? 0.15 : 0, 0.3));
     });
     const spread = Math.max(...levels) - Math.min(...levels);
@@ -477,5 +457,5 @@ const rmsAt = (x, t, w, sr = 44100) => {
   }
 }
 
-console.log(failed ? '\nFZPP-6 DSP: FAILED' : '\nFZPP-6 DSP: PASSED');
+console.log(failed ? '\nFRPP-6 DSP: FAILED' : '\nFRPP-6 DSP: PASSED');
 process.exit(failed ? 1 : 0);

@@ -20,6 +20,7 @@ import { VOICES, PERCUSSION_LANES, isKitVoice, seamFor } from '../src/data/voice
 import { createPresetBrowser } from './lib/preset-browser.js';
 import { emptyPresetFilters, presetEngine } from './lib/preset-browser-model.js';
 import { isVoiceUsed } from '../src/data/voices-used.js';
+import { isBuiltIn } from '../src/data/voices-in-play.js';
 
 /**
  * The mark on a button that folds a panel away.
@@ -840,7 +841,8 @@ export function createVoiceLibrary({
   registerPresetWindow(el);
   const isShown = () => el.classList.contains('show');
   function eligibleVoices() {
-    return Object.values(VOICES).filter((v) => v.kind !== 'engine' && !v.songLocal && !v.draft
+    // Built-ins stay off this list as they do off the track picker; see `offered`.
+    return Object.values(VOICES).filter((v) => (!isBuiltIn(v) || v.id === picked) && !v.songLocal && !v.draft
       && KINDS.find((k) => k.id === kind).keep(v)
       && SOURCES.find((s) => s.id === source).keep(v)
       && USAGE.find((u) => u.id === usage).keep(v));

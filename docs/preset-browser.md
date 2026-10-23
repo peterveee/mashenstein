@@ -5,7 +5,7 @@ facets. Search intersects the selected filters; it never silently switches engin
 Opening an existing track starts in its current sound’s category, with all subcategories
 and engines and an empty search. New tracks start with all categories. Clicking a
 preset applies it immediately and keeps the selector open, preserving filters for
-comparison. After adding a track, further choices replace that same track’s sound.
+comparison; double-clicking one applies it and closes the selector. After adding a track, further choices replace that same track’s sound.
 Every result names its engine. The track selector has a compact Show current preset
 action instead of repeating the preset and engine in its header. Narrow browser regions use
 compact selectors above the results; the Desk's existing minimum window size remains.
@@ -29,6 +29,9 @@ Opening, clicking, or focusing the selector, library, or Advanced editor brings 
 window forward. The previous front window stays immediately behind it. The bounded
 window stack remains below save dialogs and dropdowns. Clicking Advanced does not
 dismiss an open selector; clicking elsewhere on the Desk retains the usual dismissal.
+The selector's header is its title bar: drag any empty part of it to move the window.
+Simple and Advanced are never on screen together: Advanced hides the Simple panel, and
+its SIMPLE button (or Edit Simple while it is up) swaps back to it at Advanced's corner.
 
 Tab moves between filter/result groups. Arrow keys, Home, and End navigate within a
 list; Enter or Space selects. Escape dismisses the browser (or clears an active search

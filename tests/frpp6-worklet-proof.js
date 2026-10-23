@@ -1,6 +1,6 @@
 /*
- * The FZPP-6 AudioWorklet proof — TNGR-2's §3 gate (tests/tngr2-worklet-proof.js), run
- * through FZPP-6's REAL controller rather than a proof processor, and held to one claim
+ * The FRPP-6 AudioWorklet proof — TNGR-2's §3 gate (tests/tngr2-worklet-proof.js), run
+ * through FRPP-6's REAL controller rather than a proof processor, and held to one claim
  * TNGR-2's does not make: the worklet renders the SAME SAMPLES as the Node reference
  * renderer the Stage 0 tests and auditions were measured on.
  *
@@ -10,40 +10,40 @@
  *   4. two renders of one buffer agree within 5e-6
  *   5. stems sum to the mix within 5e-6
  *   6. a panic silences what sounds and what is queued
- *   7. the worklet matches renderFzpp6 in Node within 5e-6
+ *   7. the worklet matches renderFrpp6 in Node within 5e-6
  *   8. all of it again from the minified production bundle, in Chromium and in WebKit
  */
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderFzpp6 } from '../src/engine/fzpp6/dsp.js';
-import { compileFzpp6 } from '../src/engine/fzpp6/tables.js';
-import { FZPP6_CANDIDATES } from '../tools/lib/fzpp6-candidates.js';
+import { renderFrpp6 } from '../src/engine/frpp6/dsp.js';
+import { compileFrpp6 } from '../src/engine/frpp6/tables.js';
+import { FRPP6_CANDIDATES } from '../tools/lib/frpp6-candidates.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const VOICE = { ...FZPP6_CANDIDATES.funkRhythm, vibrato: { depth: 0.1, rate: 5 } };
+const VOICE = { ...FRPP6_CANDIDATES.funkRhythm, vibrato: { depth: 0.1, rate: 5 } };
 
 const ENTRY = `
-import { renderFzpp6Lane, fzpp6Lane, fzpp6NoteOn, canHostFzpp6, frameAt }
-  from ${JSON.stringify(join(ROOT, 'src/engine/fzpp6/controller.js'))};
+import { renderFrpp6Lane, frpp6Lane, frpp6NoteOn, canHostFrpp6, frameAt }
+  from ${JSON.stringify(join(ROOT, 'src/engine/frpp6/controller.js'))};
 const VOICE = ${JSON.stringify(VOICE)};
 const chans = (b) => Array.from({ length: b.numberOfChannels }, (_, c) => Array.from(b.getChannelData(c)));
 window.__render = async ({ sampleRate, seconds, lanes }) => {
   const ctx = new OfflineAudioContext(2, Math.ceil(seconds * sampleRate), sampleRate);
-  if (!canHostFzpp6(ctx)) throw new Error('offline context cannot host a worklet');
-  for (const events of lanes) await renderFzpp6Lane(ctx, { voice: VOICE, events });
+  if (!canHostFrpp6(ctx)) throw new Error('offline context cannot host a worklet');
+  for (const events of lanes) await renderFrpp6Lane(ctx, { voice: VOICE, events });
   return chans(await ctx.startRendering());
 };
 window.__live = async () => {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const out = { hosted: canHostFzpp6(ctx) };
+  const out = { hosted: canHostFrpp6(ctx) };
   try {
     await ctx.resume();
-    const lane = await fzpp6Lane(ctx, 'chords', { voice: VOICE });
+    const lane = await frpp6Lane(ctx, 'chords', { voice: VOICE });
     const sink = ctx.createGain(); sink.gain.value = 0;
     lane.node.connect(sink); sink.connect(ctx.destination);
-    fzpp6NoteOn(lane, { at: ctx.currentTime + 0.02, hz: [196, 293.7, 370, 493.9], eventId: 1 });
+    frpp6NoteOn(lane, { at: ctx.currentTime + 0.02, hz: [196, 293.7, 370, 493.9], eventId: 1 });
     const health = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('the live processor never reported')), 4000);
       lane.node.port.onmessage = (e) => {
@@ -100,7 +100,7 @@ async function prove(page, label) {
     assert(chs.every((ch) => ch.every(Number.isFinite)) && peak(chs) > 0.01,
       `${label}: ${rate} Hz renders finite, non-silent (peak ${peak(chs).toFixed(3)})`);
     // 7. The worklet is the reference renderer, sample for sample.
-    const ref = renderFzpp6({ events: lane(rate, A), seconds: 1, sampleRate: rate, patch: compileFzpp6(VOICE, rate) }).channels;
+    const ref = renderFrpp6({ events: lane(rate, A), seconds: 1, sampleRate: rate, patch: compileFrpp6(VOICE, rate) }).channels;
     const d = diff(chs, ref.map((ch) => Array.from(ch)));
     assert(d < TOL, `${label}: ${rate} Hz worklet matches the Node reference (${d.toExponential(2)})`);
     if (rate === 44100) {
@@ -138,8 +138,8 @@ for (const [name, type] of [['chromium', chromium], ['webkit', webkit]]) {
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
       const html = `<!doctype html><meta charset="utf-8"><script>${(await build(minify)).replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
-      await page.route('https://fzpp6-proof.test/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
-      await page.goto('https://fzpp6-proof.test/', { waitUntil: 'load' });
+      await page.route('https://frpp6-proof.test/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+      await page.goto('https://frpp6-proof.test/', { waitUntil: 'load' });
       if (!minify && name === 'chromium') {
         const live = await page.evaluate(() => window.__live());
         assert(!live.error && live.hosted && live.running && live.voices > 0,
@@ -154,5 +154,5 @@ for (const [name, type] of [['chromium', chromium], ['webkit', webkit]]) {
   }
 }
 
-console.log(failed ? `\nFZPP-6 WORKLET PROOF: ${failed} FAILED` : '\nFZPP-6 WORKLET PROOF: PASSED');
+console.log(failed ? `\nFRPP-6 WORKLET PROOF: ${failed} FAILED` : '\nFRPP-6 WORKLET PROOF: PASSED');
 process.exit(failed ? 1 : 0);

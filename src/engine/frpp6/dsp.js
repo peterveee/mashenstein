@@ -1,7 +1,7 @@
-import { registerFzpp6Core } from './tables.js';
+import { registerFrpp6Core } from './tables.js';
 
 /*
- * FZPP-6's DSP core — the waveguide string, and the only copy of its mathematics.
+ * FRPP-6's DSP core — the waveguide string, and the only copy of its mathematics.
  *
  * Held as source text for the reason TNGR-2's is (see the header of tngr2/dsp.js): the
  * worklet gets this string concatenated into its processor and loaded as a Blob, and Node
@@ -47,44 +47,41 @@ import { registerFzpp6Core } from './tables.js';
  * The core, as source. Pure: no DOM, no Tone, no VoiceRack, and no worklet globals — the
  * rate is a constructor argument and the frame is passed in.
  */
-export const FZPP6_DSP_SOURCE = `
-var FZPP6_STRING_COUNT = 6;
-var FZPP6_CTRL = 16;                  // control grid, frames
-var FZPP6_RETUNE = 64;                // loop filter and tuning re-solved this often
-var FZPP6_WINDOW = 128;               // peak window: the retire test and TENSION's follower
-var FZPP6_SILENT = 1e-5;              // -100 dB: below it for a whole window, a voice is gone
-var FZPP6_FADE_SECONDS = 0.005;       // a re-pluck or a steal fades the old vibration over this
-var FZPP6_CHORD_SECONDS = 0.06;       // notes this close together are one chord
-var FZPP6_KEY_REF = 110;              // A2: where DECAY is measured and KEY FOLLOW pivots
-var FZPP6_LEVEL_LO = 12;              // the level curve: MIDI 12 upward, every 4 semitones
-var FZPP6_LEVEL_STEP = 4;             // (the same two numbers as tables.js)
+export const FRPP6_DSP_SOURCE = `
+var FRPP6_STRING_COUNT = 6;
+var FRPP6_CTRL = 16;                  // control grid, frames
+var FRPP6_RETUNE = 64;                // loop filter and tuning re-solved this often
+var FRPP6_WINDOW = 128;               // peak window: the retire test and TENSION's follower
+var FRPP6_SILENT = 1e-5;              // -100 dB: below it for a whole window, a voice is gone
+var FRPP6_FADE_SECONDS = 0.005;       // a re-pluck or a steal fades the old vibration over this
+var FRPP6_CHORD_SECONDS = 0.06;       // notes this close together are one chord
+var FRPP6_KEY_REF = 110;              // A2: where DECAY is measured and KEY FOLLOW pivots
+var FRPP6_LEVEL_LO = 12;              // the level curve: MIDI 12 upward, every 4 semitones
+var FRPP6_LEVEL_STEP = 4;             // (the same two numbers as tables.js)
 // The excitation's overall scale. Set so a preset MEASURES beside the catalogue (~0.02,
 // tools/measure-voices.js): at 0.32 they measured ~0.003, under the +12 dB ceiling on the
 // boost voiceGain will give, and so would have played quiet.
-var FZPP6_LEVEL = 2.5;
-var FZPP6_DETUNE = [-0.6, 0.3, -0.2, 0.5, -0.4, 0.1];
-var FZPP6_GAUGE_STAGES = [4, 3, 3, 1, 1, 0];
-var FZPP6_GAUGE_STIFF = [1, 0.95, 0.9, 0.55, 0.5, 0.45];
-var FZPP6_GAUGE_DAMP = [0.8, 0.85, 0.9, 1, 1.1, 1.2];
-// The sustained exciters' output scales, set so a held note at PRESSURE 0.6 measures beside a
-// pluck (the level system then levels every preset anyway). STK's models, which these follow
-// (Cook & Scavone), put out velocities and pressures of a fraction of one.
-// Measured through the real engine (tools/lib/measure-voice.js) a held note is shorter
-// than a pluck's ring, so these sit higher than a Node rms match would put them: with them
-// the catalogue's bowed and blown presets land where voiceGain's +12 dB boost reaches.
-var FZPP6_BOW_OUT = 0.45;
-var FZPP6_REED_OUT = 0.2;
-var FZPP6_JET_OUT = 0.12;
-var FZPP6_SAX_OUT = 0.2;
+var FRPP6_LEVEL = 2.5;
+var FRPP6_DETUNE = [-0.6, 0.3, -0.2, 0.5, -0.4, 0.1];
+var FRPP6_GAUGE_STAGES = [4, 3, 3, 1, 1, 0];
+var FRPP6_GAUGE_STIFF = [1, 0.95, 0.9, 0.55, 0.5, 0.45];
+var FRPP6_GAUGE_DAMP = [0.8, 0.85, 0.9, 1, 1.1, 1.2];
+// The bow's output scale, set so a held note at PRESSURE 0.6 measures beside a pluck (the
+// level system then levels every preset anyway). STK's Bowed, which it follows (Cook &
+// Scavone), puts out a velocity of a fraction of one. Measured through the real engine
+// (tools/lib/measure-voice.js) a held note is shorter than a pluck's ring, so this sits
+// higher than a Node rms match would put it: with it the catalogue's bowed presets land
+// where voiceGain's +12 dB boost reaches.
+var FRPP6_BOW_OUT = 0.45;
 // The bow plays a constant 5 cents sharp of its loop (the friction junction's regime, the
 // same at every pressure and pitch measured, 23 Oct 2026): its loop is that much longer.
-var FZPP6_BOW_TUNE = 1.00289;
-var FZPP6_TUNINGS = {
+var FRPP6_BOW_TUNE = 1.00289;
+var FRPP6_TUNINGS = {
   standard: [40, 45, 50, 55, 59, 64], dropD: [38, 45, 50, 55, 59, 64],
   openG: [38, 43, 50, 55, 59, 62], dadgad: [38, 45, 50, 55, 57, 62]
 };
 
-function fzpp6Hash(a, b) {
+function frpp6Hash(a, b) {
   var h = 2166136261 ^ Math.imul((a | 0) + 1, 16777619);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   h ^= Math.imul((b | 0) + 1, 2654435761);
@@ -93,11 +90,11 @@ function fzpp6Hash(a, b) {
 }
 
 /** Phase delay, in samples at w, of the loop lowpass g(1+a)/(1+a z^-1). */
-function fzpp6LpDelay(a, w) {
+function frpp6LpDelay(a, w) {
   return -Math.atan2(a * Math.sin(w), 1 + a * Math.cos(w)) / w;
 }
 /** Phase delay, in samples at w, of the first-order allpass (c + z^-1)/(1 + c z^-1). */
-function fzpp6ApDelay(c, w) {
+function frpp6ApDelay(c, w) {
   return 1 - 2 * Math.atan2(c * Math.sin(w), 1 + c * Math.cos(w)) / w;
 }
 
@@ -105,7 +102,7 @@ function fzpp6ApDelay(c, w) {
  * The drive's table, read exactly as a WaveShaperNode reads one at oversample 'none' —
  * TNGR-2's tngr2Shape: linear interpolation, ends held, the input scaled into ±headroom.
  */
-function fzpp6Shape(curve, x, scaleIn) {
+function frpp6Shape(curve, x, scaleIn) {
   var n = curve.length;
   var v = (n - 1) * 0.5 * (x * scaleIn + 1);
   if (v <= 0) return curve[0];
@@ -115,7 +112,7 @@ function fzpp6Shape(curve, x, scaleIn) {
 }
 
 /** One table read at a fractional position; nothing outside the table. */
-function fzpp6Tap(t, p) {
+function frpp6Tap(t, p) {
   if (p < 0) return 0;
   var i = p | 0;
   var n = t.length;
@@ -127,13 +124,13 @@ function fzpp6Tap(t, p) {
 
 // ---- a line: one delay loop --------------------------------------------------------------
 
-function Fzpp6Line(size) {
+function Frpp6Line(size) {
   this.buf = new Float32Array(size);
   this.mask = size - 1;
   this.reset();
 }
 
-Fzpp6Line.prototype.reset = function reset() {
+Frpp6Line.prototype.reset = function reset() {
   this.buf.fill(0);
   this.w = 0;
   this.lagrange = false;
@@ -163,7 +160,7 @@ Fzpp6Line.prototype.reset = function reset() {
  * the fraction, solved exactly at w0 rather than by the low-frequency approximation, which
  * is what holds E6 to the cent.
  */
-Fzpp6Line.prototype.tune = function tune(f, sr, t60, t60hi, stages, dc) {
+Frpp6Line.prototype.tune = function tune(f, sr, t60, t60hi, stages, dc) {
   var w0 = 2 * Math.PI * f / sr;
   var N = sr / f;
   var fhi = Math.min(4000, 0.42 * sr);
@@ -189,9 +186,9 @@ Fzpp6Line.prototype.tune = function tune(f, sr, t60, t60hi, stages, dc) {
   if (g > 0.99999) g = 0.99999;
   this.lg = g * (1 + a);
   this.la = a;
-  var fdel = fzpp6LpDelay(a, w0);
+  var fdel = frpp6LpDelay(a, w0);
   var ns = dc < 0 ? stages : 0;
-  var apd = ns > 0 ? fzpp6ApDelay(dc, w0) : 0;
+  var apd = ns > 0 ? frpp6ApDelay(dc, w0) : 0;
   while (ns > 0 && N - fdel - ns * apd < 4) ns--;
   if (ns !== this.ns) { this.x0 = this.y0 = this.x1 = this.y1 = this.x2 = this.y2 = this.x3 = this.y3 = 0; }
   this.ns = ns;
@@ -214,8 +211,8 @@ Fzpp6Line.prototype.tune = function tune(f, sr, t60, t60hi, stages, dc) {
   this.tuned = true;
 };
 
-/** Aim this line's moving read at a plain delay D — the bow's nut side, the flute's jet. */
-Fzpp6Line.prototype.aim = function aim(D) {
+/** Aim this line's moving read at a plain delay D — the bow's nut side. */
+Frpp6Line.prototype.aim = function aim(D) {
   this.lagrange = true;
   this.fdel = 0;
   if (!this.tuned) { this.D = Math.max(2, D); this.dD = 0; }
@@ -226,7 +223,7 @@ Fzpp6Line.prototype.aim = function aim(D) {
  * Run n samples of this line. 'e' is the excitation, 'o' the voice's output scratch:
  * written when 'add' is false, added to when it is true (the second line of a COURSE).
  */
-Fzpp6Line.prototype.run = function run(e, o, n, add) {
+Frpp6Line.prototype.run = function run(e, o, n, add) {
   var buf = this.buf, mask = this.mask, w = this.w;
   var lagr = this.lagrange, Dint = this.Dint, D = this.D, dD = this.dD;
   var tc = this.tc, tx1 = this.tx1, ty1 = this.ty1;
@@ -291,37 +288,37 @@ Fzpp6Line.prototype.run = function run(e, o, n, add) {
 
 // ---- a voice: one pluck on one string ------------------------------------------------------
 
-function Fzpp6Voice(core, string) {
+function Frpp6Voice(core, string) {
   this.string = string;
-  this.l1 = new Fzpp6Line(core.lineSize);
-  this.l2 = new Fzpp6Line(core.lineSize);
+  this.l1 = new Frpp6Line(core.lineSize);
+  this.l2 = new Frpp6Line(core.lineSize);
   this.active = false;
   this.listed = false;
 }
 
-Fzpp6Voice.prototype.kill = function kill() {
+Frpp6Voice.prototype.kill = function kill() {
   if (this.active) { this.l1.reset(); if (this.course || this.sustained) this.l2.reset(); }
   this.active = false;
 };
 
-Fzpp6Voice.prototype.fadeOut = function fadeOut(frames) {
+Frpp6Voice.prototype.fadeOut = function fadeOut(frames) {
   if (!this.active) return;
   if (this.fading && this.fadeGain <= 0) return;
   this.fading = true;
   this.fadeStep = Math.max(this.fadeStep || 0, (this.fadeGain > 0 ? this.fadeGain : 1) / Math.max(1, frames));
 };
 
-/** Pitch the voice is aiming at and what its loop currently holds — see Fzpp6Core.control. */
-Fzpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromHz) {
+/** Pitch the voice is aiming at and what its loop currently holds — see Frpp6Core.control. */
+Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromHz) {
   var p = core.patch;
   var sr = core.rate;
   var j = this.string;
   var free = !core.open;
-  var cents = p.string.detune * FZPP6_DETUNE[j];
+  var cents = p.string.detune * FRPP6_DETUNE[j];
   var f = Math.min(sr / 5, Math.max(20, hz * Math.pow(2, cents / 1200)));
-  var stages = free ? 2 : FZPP6_GAUGE_STAGES[j];
-  var gStiff = free ? 0.8 : FZPP6_GAUGE_STIFF[j];
-  var gDamp = free ? 1 : FZPP6_GAUGE_DAMP[j];
+  var stages = free ? 2 : FRPP6_GAUGE_STAGES[j];
+  var gStiff = free ? 0.8 : FRPP6_GAUGE_STIFF[j];
+  var gDamp = free ? 1 : FRPP6_GAUGE_DAMP[j];
   var mute = p.damping.mute;
 
   this.active = true;
@@ -335,7 +332,7 @@ Fzpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
   this.stages = p.string.stiffness > 0 ? stages : 0;
   this.dc = -0.6 * p.string.stiffness * gStiff;
   this.chuck = p.damping.mutedBelow > 0 && vel < p.damping.mutedBelow;
-  this.t60 = p.string.decay * Math.pow(FZPP6_KEY_REF / f, p.string.keyFollow) * (1 - 0.92 * mute);
+  this.t60 = p.string.decay * Math.pow(FRPP6_KEY_REF / f, p.string.keyFollow) * (1 - 0.92 * mute);
   this.damp = Math.min(1, Math.max(0.02, p.string.damp * gDamp * (1 - 0.6 * mute)));
   if (this.chuck) { this.t60 = Math.min(this.t60, 0.03); this.damp = 0.25; }
   this.settleTau = p.damping.settle > 0 && !this.chuck ? p.damping.settle / 3 : 0;
@@ -383,11 +380,14 @@ Fzpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
   }
   this.retune(core);
 
-  // A SUSTAINED exciter — BOW, REED or JET — drives the loop for as long as the key is held
-  // (see runBow / runReed / runJet), on the AMP envelope as the player's pressure. Nothing
-  // below about tables applies to it; its loops are aimed in 'retune'.
+  // A SUSTAINED exciter — the BOW — drives the loop for as long as the key is held (see
+  // runBow), on the AMP envelope as the player's pressure. Nothing below about tables
+  // applies to it; its loops are aimed in 'retune'. (REED, SAX and JET ran here too until
+  // 23 Oct 2026: wind sounds that other engines do as well, for a board that stopped
+  // looking like a string's. The bow stays because it IS a string, and because a bowed
+  // section costs a tenth of MRDR-3's.)
   var exType = p.exciter.type;
-  this.sustained = exType === 'bow' || exType === 'reed' || exType === 'sax' || exType === 'jet';
+  this.sustained = exType === 'bow';
   this.exType = exType;
   if (this.sustained) {
     this.lagrange = true;
@@ -397,44 +397,15 @@ Fzpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
     this.l1.reset(); this.l2.reset();
     this.l1.lagrange = true; this.l2.lagrange = true;
     this.l1.weight = 1; this.l2.weight = 1;
-    // The bow/reed/jet's own noise: seeded from the event, so a stem is its mix.
-    this.rng = (fzpp6Hash(eventId, j + 29) | 1) >>> 0;
-    // PRESSURE, as each junction wants it: the reed speaks from about 0.4 and the jet from
-    // about 0.95 (STK's maxPressure), so the pot's bottom is a breath that just sounds.
-    // ...and stops short of where each chokes (the reed shuts at 1.0, the jet at 1.35).
+    // The bow's own noise: seeded from the event, so a stem is its mix.
+    this.rng = (frpp6Hash(eventId, j + 29) | 1) >>> 0;
     var pr = p.exciter.pressure;
-    this.press = exType === 'reed' ? 0.5 + 0.4 * pr : exType === 'jet' ? 0.95 + 0.35 * pr : pr;
+    this.press = pr;
     this.noiseG = p.exciter.noise;
     // The bow's force: STK's slope, with its top held back — at 1 the lowest string fell
     // into a sub-harmonic (raucous) regime.
     this.bowSlope = 5 - 3 * pr;
     this.bowSpeed = 0.03 + 0.2 * p.exciter.speed;
-    this.reedSlope = -0.44 + 0.26 * p.exciter.reed;
-    // The sax's reed table slopes the other way (STK Saxofony: +0.3 where the clarinet's is
-    // negative); REED runs it from soft to hard.
-    // ...and it speaks along a diagonal (measured 23 Oct 2026): a stiffer reed needs less
-    // breath and chokes sooner, about 0.4 above where it starts. So PRESSURE runs from just
-    // speaking to just short of choking for whatever REED is set.
-    this.saxSlope = 0.18 + 0.24 * p.exciter.reed;
-    if (p.internal.saxSlope > 0) this.saxSlope = p.internal.saxSlope;
-    if (exType === 'sax') {
-      var threshold = 1.4 - 2.6 * this.saxSlope;
-      // PRESSURE keeps to the middle of that band: at either edge the top of the board went
-      // unstable (78 cents off at m77 just above the threshold, 23 Oct 2026).
-      this.press = threshold + 0.12 + 0.16 * pr;
-      if (p.internal.saxBreath > 0) this.press = p.internal.saxBreath;
-    }
-    // The bell: a LINEAR-PHASE lowpass on the bore's reflection — c·x[n-1] + h·(x[n] + x[n-2]),
-    // one sample of delay at every frequency. A one-pole here delayed each harmonic
-    // differently and the reed locked to whichever the bell favoured: the pitch drifted a
-    // cent a semitone and jumped 30 cents at two places in the range. BELL runs from the
-    // darkest this shape goes (an average of three) to no filter at all.
-    this.bellK = 1 / 3 + (2 / 3) * p.exciter.bell;
-    // The jet's length against the bore. Fixed: it IS the pitch — 10 cents per 0.01, with no
-    // bore length that puts it right without pushing the regime into another mode (23 Oct
-    // 2026) — so the pot it was came off and the flute plays in tune.
-    this.jetRatio = 0.3;
-    this.rx1 = 0; this.rx2 = 0; this.jdx = 0; this.jdy = 0;
     this.excT = null; this.excU = null; this.gT = 0; this.gU = 0;
     this.comb1 = 1; this.comb2 = 0; this.e2Delay = 0;
     this.bc = 1; this.bh = 1; this.pc = 0;
@@ -444,10 +415,9 @@ Fzpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
     this.liftOn = false;
     this.nT = null; this.nPos = 0; this.nG = 0;
     this.sqT = null; this.sqPos = 0; this.sqG = 0;
-    this.lev = FZPP6_LEVEL * core.levelAt(hz) * vel;
+    this.lev = FRPP6_LEVEL * core.levelAt(hz) * vel;
     this.level = core.noteLevel == null ? 1 : core.noteLevel;
-    this.outK = exType === 'bow' ? FZPP6_BOW_OUT : exType === 'reed' ? FZPP6_REED_OUT
-      : exType === 'sax' ? FZPP6_SAX_OUT : FZPP6_JET_OUT;
+    this.outK = FRPP6_BOW_OUT;
     this.retune(core);
     this.aStage = 0;
     this.aVal = 0;
@@ -456,7 +426,7 @@ Fzpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
     this.fVal = p.filterEnv.attack > 0 ? 0 : 1;
     this.fic1 = 0; this.fic2 = 0; this.dt1 = 0; this.dcx = 0; this.dcy = 0;
     this.fk = 1; this.fa1 = 0; this.fa2 = 0; this.fa3 = 0;
-    var posS = p.strings.spread * (2 * j / (FZPP6_STRING_COUNT - 1) - 1) * 0.8;
+    var posS = p.strings.spread * (2 * j / (FRPP6_STRING_COUNT - 1) - 1) * 0.8;
     var thS = (posS + 1) * Math.PI / 4;
     this.pl = Math.cos(thS) * Math.SQRT2;
     this.pr = Math.sin(thS) * Math.SQRT2;
@@ -465,12 +435,12 @@ Fzpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
 
   // The exciter.
   var t = core.tables;
-  var variant = fzpp6Hash(eventId, j) & 3;
+  var variant = frpp6Hash(eventId, j) & 3;
   var noise = t.noise.length ? t.noise[variant % t.noise.length] : null;
   // The note's LEVEL — the rack's gain, boosts and trims — is NOT in the excitation: it is
   // applied to the voice's output, after the DRIVE, so the shaper meets the string at the
   // string's own level on every lane (TNGR-2 does the same; see renderVoice).
-  var lev = vel * Math.sqrt(N1 / (sr / FZPP6_KEY_REF)) * FZPP6_LEVEL * core.levelAt(hz);
+  var lev = vel * Math.sqrt(N1 / (sr / FRPP6_KEY_REF)) * FRPP6_LEVEL * core.levelAt(hz);
   this.level = core.noteLevel == null ? 1 : core.noteLevel;
   this.lev = lev;
   var type = p.exciter.type;
@@ -530,14 +500,14 @@ Fzpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
 
   // SPREAD: low strings left, as the player hears them.
   var at = free ? j : j;
-  var pos = p.strings.spread * (2 * at / (FZPP6_STRING_COUNT - 1) - 1) * 0.8;
+  var pos = p.strings.spread * (2 * at / (FRPP6_STRING_COUNT - 1) - 1) * 0.8;
   var th = (pos + 1) * Math.PI / 4;
   this.pl = Math.cos(th) * Math.SQRT2;
   this.pr = Math.sin(th) * Math.SQRT2;
 };
 
 /** The loop's decay right now: SETTLE easing off, MUTE, and a note-off's RELEASE. */
-Fzpp6Voice.prototype.retune = function retune(core) {
+Frpp6Voice.prototype.retune = function retune(core) {
   var sr = core.rate;
   if (this.sustained) return this.aimSustained(core, Math.pow(2, this.logPitch));
   var t60 = this.released ? Math.min(this.t60, core.patch.amp.release) : this.t60;
@@ -563,63 +533,26 @@ Fzpp6Voice.prototype.retune = function retune(core) {
 };
 
 /**
- * Where a sustained voice's loops have to be for a pitch f, as the read targets the moving
- * read walks to. BOW: the string split at the bow (WHERE) into a bridge side, which carries
- * the string's loss (RING, HIGHS), and a nut side. REED: a closed-open bore, half a period,
- * less what the bell filter and the reed junction delay. JET: the bore, a period less the
- * junction, and the jet a JET fraction of it.
+ * Where the bow's loops have to be for a pitch f, as the read targets the moving read walks
+ * to: the string split at the bow (WHERE) into a bridge side, which carries the string's loss
+ * (RING, HIGHS), and a nut side.
  */
-Fzpp6Voice.prototype.aimSustained = function aimSustained(core, f) {
+Frpp6Voice.prototype.aimSustained = function aimSustained(core, f) {
   var sr = core.rate;
   var p = core.patch;
   f = Math.min(sr / 5, Math.max(20, f));
   var N = sr / f;
-  var w0 = 2 * Math.PI * f / sr;
   var l1 = this.l1, l2 = this.l2;
-  if (this.exType === 'bow') {
-    var t60 = this.released ? Math.min(this.t60, p.amp.release) : this.t60;
-    l1.tune(f, sr, t60, t60 * this.damp, 0, 0);
-    var tot = Math.max(4, (N - l1.fdel) * FZPP6_BOW_TUNE);
-    var beta = p.exciter.position;
-    l1.fdel = 0; l1.tuned = false; l1.aim(beta * tot); this.aim1 = beta * tot;
-    l2.aim((1 - beta) * tot); this.aim2 = (1 - beta) * tot;
-  } else if (this.exType === 'sax') {
-    // STK's Saxofony: the reed part-way along a FULL-period bore (WHERE), so the bore has
-    // every harmonic where the clarinet's closed one has the odd ones.
-    // Its regime plays sharp of the bore by 11 cents and then a further 1.7 − 1.9e-5·N²
-    // samples (measured 23 Oct 2026, at the reed position the sax is fixed at): the bore is
-    // that much longer. The reed sits a fifth of the way along: moving it changed the tuning
-    // at the top of the board by 30 cents, which is a reason to fix it, not a pot.
-    var boreS = Math.max(6, N * 1.0064 - 3 + 1.7 - 1.9e-5 * N * N);
-    var pos = 0.2;
-    this.aim1 = Math.max(3, (1 - pos) * boreS);
-    this.aim2 = Math.max(3, pos * boreS);
-    l1.aim(this.aim1);
-    l2.aim(this.aim2);
-  } else if (this.exType === 'reed') {
-    // A closed-open bore: half a period, less the bell's one sample and the reed's half —
-    // and less what the reed junction pulls the regime sharp by, measured 23 Oct 2026 as a
-    // straight line in the bore's length (0.53 + 0.0027 per sample of bore, the same at
-    // every pressure), which brings the whole range within a few cents.
-    var half = N / 2;
-    this.aim1 = Math.max(2, half - 1.5 + 0.53 + 0.0027 * half);
-    l1.aim(this.aim1);
-  } else {
-    // STK's flute: the bore is a period and a half and the jet makes it overblow — the
-    // note is the bore's second mode. The jet is a JET fraction of the bore. The jet's
-    // regime plays 50 cents sharp of that bore at every pitch (measured 23 Oct 2026), so
-    // the bore is that much longer.
-    var bore = 1.5 * N * 1.0293 / 1.00347;
-    // ...plus the small sharpness left at the top (32000/bore² cents, i.e. 18.5/bore samples).
-    this.aim1 = Math.max(4, bore - 2 + 18.5 / bore);
-    l1.aim(this.aim1);
-    this.aim2 = Math.max(2, bore * this.jetRatio);
-    l2.aim(this.aim2);
-  }
+  var t60 = this.released ? Math.min(this.t60, p.amp.release) : this.t60;
+  l1.tune(f, sr, t60, t60 * this.damp, 0, 0);
+  var tot = Math.max(4, (N - l1.fdel) * FRPP6_BOW_TUNE);
+  var beta = p.exciter.position;
+  l1.fdel = 0; l1.tuned = false; l1.aim(beta * tot); this.aim1 = beta * tot;
+  l2.aim((1 - beta) * tot); this.aim2 = (1 - beta) * tot;
   this.tuned = true;
 };
 
-Fzpp6Voice.prototype.release = function release(core) {
+Frpp6Voice.prototype.release = function release(core) {
   if (this.released) return;
   var p = core.patch;
   var sr = core.rate;
@@ -643,7 +576,7 @@ Fzpp6Voice.prototype.release = function release(core) {
 };
 
 /** The pitch, in octaves, at 'ahead' frames from now: glide, vibrato and TENSION. */
-Fzpp6Voice.prototype.pitchAhead = function pitchAhead(core, ahead) {
+Frpp6Voice.prototype.pitchAhead = function pitchAhead(core, ahead) {
   var play = core.play;
   var sr = core.rate;
   if (this.glideRate > 0) {
@@ -670,9 +603,9 @@ Fzpp6Voice.prototype.pitchAhead = function pitchAhead(core, ahead) {
 };
 
 /** Legato: a new note on a string still sounding — the fret moves, nothing is plucked. */
-Fzpp6Voice.prototype.retarget = function retarget(core, hz, eventId) {
+Frpp6Voice.prototype.retarget = function retarget(core, hz, eventId) {
   var sr = core.rate;
-  var cents = core.patch.string.detune * FZPP6_DETUNE[this.string];
+  var cents = core.patch.string.detune * FRPP6_DETUNE[this.string];
   var f = Math.min(sr / 5, Math.max(20, hz * Math.pow(2, cents / 1200)));
   this.logTarget = Math.log2(f);
   this.hz = hz;
@@ -685,20 +618,20 @@ Fzpp6Voice.prototype.retarget = function retarget(core, hz, eventId) {
   }
 };
 
-// ---- the sustained exciters -------------------------------------------------------------------
+// ---- the sustained exciter --------------------------------------------------------------------
 //
-// Three physical junctions driving the loops, after STK's Bowed, Clarinet and Flute (Cook &
-// Scavone): a bow-string friction table, a reed table, and a jet's cubic. Each runs as one
-// tight loop with its state in locals, as the string does, and reads its delays through the
-// moving (Lagrange) read, so glide, vibrato and legato move the pitch continuously. The
-// pressure is the AMP envelope (ag, ai) times PRESSURE: the player leaning in and easing off.
+// A physical junction driving the loops, after STK's Bowed (Cook & Scavone): a bow-string
+// friction table. It runs as one tight loop with its state in locals, as the string does,
+// and reads its delays through the moving (Lagrange) read, so glide, vibrato and legato move
+// the pitch continuously. The pressure is the AMP envelope (ag, ai) times PRESSURE: the
+// player leaning in and easing off.
 
-function fzpp6Noise(v) {
+function frpp6Noise(v) {
   v.rng = (Math.imul(v.rng, 1664525) + 1013904223) >>> 0;
   return v.rng / 2147483648 - 1;
 }
 
-Fzpp6Voice.prototype.runBow = function runBow(o, n) {
+Frpp6Voice.prototype.runBow = function runBow(o, n) {
   var l1 = this.l1, l2 = this.l2;
   var b1 = l1.buf, m1 = l1.mask, w1 = l1.w, D1 = l1.D, dD1 = l1.dD;
   var b2 = l2.buf, m2 = l2.mask, w2 = l2.w, D2 = l2.D, dD2 = l2.dD;
@@ -719,7 +652,7 @@ Fzpp6Voice.prototype.runBow = function runBow(o, n) {
     var lp = lg * rb - la * lp1; lp1 = lp;
     var bridgeRefl = -lp;
     var nutRefl = -rn;
-    var bowVel = speed * ag * (1 + nz * fzpp6Noise(this));
+    var bowVel = speed * ag * (1 + nz * frpp6Noise(this));
     var velDiff = bowVel - (bridgeRefl + nutRefl);
     var t = velDiff * slope + 0.001;
     if (t < 0) t = -t;
@@ -741,122 +674,9 @@ Fzpp6Voice.prototype.runBow = function runBow(o, n) {
   l1.peak = peak;
 };
 
-Fzpp6Voice.prototype.runReed = function runReed(o, n) {
-  var l1 = this.l1;
-  var b1 = l1.buf, m1 = l1.mask, w1 = l1.w, D1 = l1.D, dD1 = l1.dD;
-  var c = this.bellK, h = (1 - c) * 0.5, x1 = this.rx1, x2 = this.rx2;
-  var slope = this.reedSlope, press = this.press, nz = this.noiseG * 0.2;
-  var ag = this.aVal, ai = this.aInc;
-  var peak = 0;
-  for (var i = 0; i < n; i++) {
-    var di = D1 | 0, x = D1 - di + 1;
-    var xm1 = x - 1, xm2 = x - 2, xm3 = x - 3;
-    var r = -xm1 * xm2 * xm3 / 6 * b1[(w1 - di + 1) & m1] + x * xm2 * xm3 / 2 * b1[(w1 - di) & m1]
-      - x * xm1 * xm3 / 2 * b1[(w1 - di - 1) & m1] + x * xm1 * xm2 / 6 * b1[(w1 - di - 2) & m1];
-    D1 += dD1;
-    var fl = c * x1 + h * (r + x2);
-    x2 = x1; x1 = r;
-    var breath = press * ag * (1 + nz * fzpp6Noise(this));
-    var pd = -0.95 * fl - breath;
-    var rt = 0.7 + slope * pd;
-    if (rt > 1) rt = 1; else if (rt < -1) rt = -1;
-    b1[w1] = breath + pd * rt;
-    w1 = (w1 + 1) & m1;
-    ag += ai;
-    o[i] = r;
-    var a = r < 0 ? -r : r;
-    if (a > peak) peak = a;
-  }
-  l1.w = w1; l1.D = D1; this.rx1 = x1; this.rx2 = x2;
-  this.aVal = ag;
-  l1.peak = peak;
-};
-
-Fzpp6Voice.prototype.runSax = function runSax(o, n) {
-  var l1 = this.l1, l2 = this.l2;
-  var b1 = l1.buf, m1 = l1.mask, w1 = l1.w, D1 = l1.D, dD1 = l1.dD;
-  var b2 = l2.buf, m2 = l2.mask, w2 = l2.w, D2 = l2.D, dD2 = l2.dD;
-  var c = this.bellK, h = (1 - c) * 0.5, x1 = this.rx1, x2 = this.rx2;
-  var slope = this.saxSlope, press = this.press, nz = this.noiseG * 0.2;
-  var ag = this.aVal, ai = this.aInc;
-  var peak = 0;
-  for (var i = 0; i < n; i++) {
-    var di = D1 | 0, x = D1 - di + 1;
-    var xm1 = x - 1, xm2 = x - 2, xm3 = x - 3;
-    var r0 = -xm1 * xm2 * xm3 / 6 * b1[(w1 - di + 1) & m1] + x * xm2 * xm3 / 2 * b1[(w1 - di) & m1]
-      - x * xm1 * xm3 / 2 * b1[(w1 - di - 1) & m1] + x * xm1 * xm2 / 6 * b1[(w1 - di - 2) & m1];
-    di = D2 | 0; x = D2 - di + 1; xm1 = x - 1; xm2 = x - 2; xm3 = x - 3;
-    var r1 = -xm1 * xm2 * xm3 / 6 * b2[(w2 - di + 1) & m2] + x * xm2 * xm3 / 2 * b2[(w2 - di) & m2]
-      - x * xm1 * xm3 / 2 * b2[(w2 - di - 1) & m2] + x * xm1 * xm2 / 6 * b2[(w2 - di - 2) & m2];
-    D1 += dD1; D2 += dD2;
-    // The bell end reflects through the lowpass, inverted; the mouthpiece end whole.
-    var fl = c * x1 + h * (r0 + x2);
-    x2 = x1; x1 = r0;
-    var temp = -0.95 * fl;
-    var out = temp - r1;
-    var breath = press * ag * (1 + nz * fzpp6Noise(this));
-    var pd = breath - out;
-    var rt = 0.7 + slope * pd;
-    if (rt > 1) rt = 1; else if (rt < -1) rt = -1;
-    b2[w2] = temp;
-    b1[w1] = breath - pd * rt - temp;
-    w1 = (w1 + 1) & m1; w2 = (w2 + 1) & m2;
-    ag += ai;
-    out *= 0.3;
-    o[i] = out;
-    if (out < 0) out = -out;
-    if (out > peak) peak = out;
-  }
-  l1.w = w1; l1.D = D1; l2.w = w2; l2.D = D2; this.rx1 = x1; this.rx2 = x2;
-  this.aVal = ag;
-  l1.peak = peak;
-};
-
-Fzpp6Voice.prototype.runJet = function runJet(o, n) {
-  var l1 = this.l1, l2 = this.l2;
-  var b1 = l1.buf, m1 = l1.mask, w1 = l1.w, D1 = l1.D, dD1 = l1.dD;
-  var b2 = l2.buf, m2 = l2.mask, w2 = l2.w, D2 = l2.D, dD2 = l2.dD;
-  var x1 = this.rx1, x2 = this.rx2, dx = this.jdx, dy = this.jdy;
-  var press = this.press, nz = this.noiseG * 0.15;
-  var ag = this.aVal, ai = this.aInc;
-  var peak = 0;
-  for (var i = 0; i < n; i++) {
-    var di = D1 | 0, x = D1 - di + 1;
-    var xm1 = x - 1, xm2 = x - 2, xm3 = x - 3;
-    var rb = -xm1 * xm2 * xm3 / 6 * b1[(w1 - di + 1) & m1] + x * xm2 * xm3 / 2 * b1[(w1 - di) & m1]
-      - x * xm1 * xm3 / 2 * b1[(w1 - di - 1) & m1] + x * xm1 * xm2 / 6 * b1[(w1 - di - 2) & m1];
-    di = D2 | 0; x = D2 - di + 1; xm1 = x - 1; xm2 = x - 2; xm3 = x - 3;
-    var jd = -xm1 * xm2 * xm3 / 6 * b2[(w2 - di + 1) & m2] + x * xm2 * xm3 / 2 * b2[(w2 - di) & m2]
-      - x * xm1 * xm3 / 2 * b2[(w2 - di - 1) & m2] + x * xm1 * xm2 / 6 * b2[(w2 - di - 2) & m2];
-    D1 += dD1; D2 += dD2;
-    // The bore's end: a linear-phase lowpass reflection (see the reed's bell), inverted,
-    // DC-blocked.
-    var fl = 0.5 * x1 + 0.25 * (rb + x2);
-    x2 = x1; x1 = rb;
-    var temp = -fl;
-    var yd = temp - dx + 0.995 * dy; dx = temp; dy = yd; temp = yd;
-    var breath = press * ag * (1 + nz * fzpp6Noise(this));
-    var pd = breath - 0.5 * temp;
-    b2[w2] = pd;
-    var jt = jd * (jd * jd - 1);
-    if (jt > 1) jt = 1; else if (jt < -1) jt = -1;
-    var pd2 = jt + 0.5 * temp;
-    b1[w1] = pd2;
-    w1 = (w1 + 1) & m1; w2 = (w2 + 1) & m2;
-    ag += ai;
-    var out = 0.3 * pd2;
-    o[i] = out;
-    if (out < 0) out = -out;
-    if (out > peak) peak = out;
-  }
-  l1.w = w1; l1.D = D1; l2.w = w2; l2.D = D2; this.rx1 = x1; this.rx2 = x2; this.jdx = dx; this.jdy = dy;
-  this.aVal = ag;
-  l1.peak = peak;
-};
-
 // ---- the core ------------------------------------------------------------------------------
 
-function Fzpp6Core(options) {
+function Frpp6Core(options) {
   var o = options || {};
   this.rate = o.sampleRate || 44100;
   // A power of two holding a 20 Hz period, so the read wraps with a mask.
@@ -866,25 +686,25 @@ function Fzpp6Core(options) {
   this.lineSize = size;
   this.strings = [];
   this.voices = [];
-  for (var i = 0; i < FZPP6_STRING_COUNT; i++) {
+  for (var i = 0; i < FRPP6_STRING_COUNT; i++) {
     var s = { index: i, cur: 0, pluckFrame: -1e15, voices: [] };
     for (var k = 0; k < 2; k++) {
-      var v = new Fzpp6Voice(this, i);
+      var v = new Frpp6Voice(this, i);
       s.voices.push(v);
       this.voices.push(v);
     }
     this.strings.push(s);
   }
-  this.e1 = new Float64Array(FZPP6_CTRL);
-  this.e2 = new Float64Array(FZPP6_CTRL);
-  this.o = new Float64Array(FZPP6_CTRL);
+  this.e1 = new Float64Array(FRPP6_CTRL);
+  this.e2 = new Float64Array(FRPP6_CTRL);
+  this.o = new Float64Array(FRPP6_CTRL);
   this.pending = [];
   this.pendingHead = 0;
-  this.fadeFrames = Math.round(FZPP6_FADE_SECONDS * this.rate);
-  this.chordFrames = Math.round(FZPP6_CHORD_SECONDS * this.rate);
+  this.fadeFrames = Math.round(FRPP6_FADE_SECONDS * this.rate);
+  this.chordFrames = Math.round(FRPP6_CHORD_SECONDS * this.rate);
   this.dcR = 1 - 2 * Math.PI * 25 / this.rate;
   // The peak hold falls with a 50 ms time constant, sampled once a window.
-  this.holdFall = Math.exp(-FZPP6_WINDOW / (0.05 * this.rate));
+  this.holdFall = Math.exp(-FRPP6_WINDOW / (0.05 * this.rate));
   this.dcX = [0, 0]; this.dcY = [0, 0];
   this.lf = [0, 0, 0, 0];
   this.laneIdle = true;
@@ -896,15 +716,15 @@ function Fzpp6Core(options) {
 }
 
 /**
- * Install a compiled patch (tables.js 'compileFzpp6'): the clamped preset, its play
+ * Install a compiled patch (tables.js 'compileFrpp6'): the clamped preset, its play
  * controls and its tables. A note already ringing keeps the loop it was solved with; the
  * next pluck gets the new patch.
  */
-Fzpp6Core.prototype.installPatch = function installPatch(compiled) {
+Frpp6Core.prototype.installPatch = function installPatch(compiled) {
   this.patch = compiled;
   this.tables = compiled.tables;
   this.play = compiled.play || { mode: 'poly', glide: 0, vibrato: null };
-  var tuning = FZPP6_TUNINGS[compiled.strings.tuning];
+  var tuning = FRPP6_TUNINGS[compiled.strings.tuning];
   this.open = null;
   if (tuning) {
     this.open = [];
@@ -940,11 +760,11 @@ Fzpp6Core.prototype.installPatch = function installPatch(compiled) {
 };
 
 /** The measured level correction at this pitch (tables.js, EVEN UP THE NECK). */
-Fzpp6Core.prototype.levelAt = function levelAt(hz) {
+Frpp6Core.prototype.levelAt = function levelAt(hz) {
   var c = this.patch.levelCurve;
   if (!c || !c.length) return 1;
   var m = 69 + 12 * Math.log2(hz / 440);
-  var x = (m - FZPP6_LEVEL_LO) / FZPP6_LEVEL_STEP;
+  var x = (m - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP;
   if (x <= 0) return c[0];
   if (x >= c.length - 1) return c[c.length - 1];
   var i = x | 0;
@@ -952,7 +772,7 @@ Fzpp6Core.prototype.levelAt = function levelAt(hz) {
 };
 
 /** Back to silence: every voice gone, the queue empty, the lane's own filters cleared. */
-Fzpp6Core.prototype.reset = function reset() {
+Frpp6Core.prototype.reset = function reset() {
   for (var i = 0; i < this.voices.length; i++) this.voices[i].kill();
   for (var j = 0; j < this.strings.length; j++) { this.strings[j].pluckFrame = -1e15; this.strings[j].cur = 0; }
   this.pending.length = 0;
@@ -965,7 +785,7 @@ Fzpp6Core.prototype.reset = function reset() {
 };
 
 /** TPT SVF coefficients (Simper). The same six lines as tables.js — see its header. */
-Fzpp6Core.prototype.svf = function svf(f, q) {
+Frpp6Core.prototype.svf = function svf(f, q) {
   var g = Math.tan(Math.PI * Math.min(f, 0.45 * this.rate) / this.rate);
   var k = 1 / q;
   var a1 = 1 / (1 + g * (g + k));
@@ -973,7 +793,7 @@ Fzpp6Core.prototype.svf = function svf(f, q) {
   return { k: k, a1: a1, a2: a2, a3: g * a2 };
 };
 
-Fzpp6Core.prototype.schedule = function schedule(event) {
+Frpp6Core.prototype.schedule = function schedule(event) {
   if (this.pendingHead === this.pending.length) {
     this.pending.length = 0;
     this.pendingHead = 0;
@@ -992,7 +812,7 @@ Fzpp6Core.prototype.schedule = function schedule(event) {
   }
 };
 
-Fzpp6Core.prototype.scheduleAll = function scheduleAll(events) {
+Frpp6Core.prototype.scheduleAll = function scheduleAll(events) {
   if (this.pendingHead > 0) {
     this.pending.splice(0, this.pendingHead);
     this.pendingHead = 0;
@@ -1011,7 +831,7 @@ Fzpp6Core.prototype.scheduleAll = function scheduleAll(events) {
 };
 
 /** Which string a note goes to — see the header. */
-Fzpp6Core.prototype.assign = function assign(hz, frame) {
+Frpp6Core.prototype.assign = function assign(hz, frame) {
   var strings = this.strings;
   var since = frame - this.chordFrames;
   var j;
@@ -1037,7 +857,7 @@ Fzpp6Core.prototype.assign = function assign(hz, frame) {
   return best;
 };
 
-Fzpp6Core.prototype.pluck = function pluck(j, hz, vel, eventId, frame, fromHz, releaseAtStart) {
+Frpp6Core.prototype.pluck = function pluck(j, hz, vel, eventId, frame, fromHz, releaseAtStart) {
   var s = this.strings[j];
   var old = s.voices[s.cur];
   if (old.active) old.fadeOut(this.fadeFrames);
@@ -1049,8 +869,8 @@ Fzpp6Core.prototype.pluck = function pluck(j, hz, vel, eventId, frame, fromHz, r
   s.pluckFrame = frame;
   this.laneIdle = false;
   // A voice begun between two grid lines gets its envelopes set up to the next one.
-  var into = frame % FZPP6_CTRL;
-  this.controlVoice(v, frame, FZPP6_CTRL - into, into === 0);
+  var into = frame % FRPP6_CTRL;
+  this.controlVoice(v, frame, FRPP6_CTRL - into, into === 0);
   if (releaseAtStart) v.release(this);
   return v;
 };
@@ -1063,23 +883,23 @@ Fzpp6Core.prototype.pluck = function pluck(j, hz, vel, eventId, frame, fromHz, r
  *   SQUEAK  fingers sliding along the string to a new fret: when a string that is still
  *           ringing moves to another pitch. Wound strings squeak most; plain ones a little over half as much.
  *
- * Their levels are fractions of FZPP6_LEVEL, so the balance between hand and string Peter
+ * Their levels are fractions of FRPP6_LEVEL, so the balance between hand and string Peter
  * approved (23 Oct 2026) holds whatever the engine's overall scale is.
  *
  * Both go straight into the voice's output — the sound of the hand, not of the string — so
  * the FILTER and AMP still shape them, and a steal's fade takes them with it.
  */
-Fzpp6Core.prototype.handNoises = function handNoises(v, old, hz) {
+Frpp6Core.prototype.handNoises = function handNoises(v, old, hz) {
   var d = this.patch.damping;
   var t = this.tables;
   if (v.chuck) return;
   var moved = old && old.active && !old.chuck && Math.abs(12 * Math.log2(hz / old.hz)) >= 0.5;
   var wound = !this.open || v.string < 3 ? 1 : 0.6;
   if (d.fret > 0 && t.fret && (!old || !old.active || old.chuck || moved)) {
-    v.nT = t.fret; v.nPos = 0; v.nG = d.fret * 1.125 * FZPP6_LEVEL * v.vel;
+    v.nT = t.fret; v.nPos = 0; v.nG = d.fret * 1.125 * FRPP6_LEVEL * v.vel;
   }
   if (d.squeak > 0 && t.squeak && moved) {
-    this.squeakOn(v, d.squeak * 0.75 * FZPP6_LEVEL * v.vel * wound);
+    this.squeakOn(v, d.squeak * 0.75 * FRPP6_LEVEL * v.vel * wound);
   }
 };
 
@@ -1089,15 +909,15 @@ Fzpp6Core.prototype.handNoises = function handNoises(v, old, hz) {
  * own. So each squeak is read at its own rate — 0.7x to 1.4x, which moves both its length
  * and its pitch — and at its own level, both seeded from the event, so a render repeats.
  */
-Fzpp6Core.prototype.squeakOn = function squeakOn(v, gain) {
-  var h = fzpp6Hash(v.eventId, v.string + 17);
+Frpp6Core.prototype.squeakOn = function squeakOn(v, gain) {
+  var h = frpp6Hash(v.eventId, v.string + 17);
   v.sqT = this.tables.squeak;
   v.sqPos = 0;
   v.sqRate = 0.7 + 0.7 * ((h & 0xffff) / 65536);
   v.sqG = gain * (0.55 + 0.45 * ((h >>> 16) / 65536));
 };
 
-Fzpp6Core.prototype.markEarlyOff = function markEarlyOff(eventId) {
+Frpp6Core.prototype.markEarlyOff = function markEarlyOff(eventId) {
   var pending = this.pending;
   var limit = Math.min(pending.length, this.pendingHead + 64);
   for (var i = this.pendingHead; i < limit; i++) {
@@ -1108,7 +928,7 @@ Fzpp6Core.prototype.markEarlyOff = function markEarlyOff(eventId) {
   }
 };
 
-Fzpp6Core.prototype.apply = function apply(event, frame) {
+Frpp6Core.prototype.apply = function apply(event, frame) {
   var i;
   if (event.type === 'noteOn') {
     if (!this.patch) return;
@@ -1130,8 +950,8 @@ Fzpp6Core.prototype.apply = function apply(event, frame) {
         // A slide is the hand moving along the string: it squeaks, and a hammer-on ticks.
         if (Math.abs(12 * Math.log2(top / was)) >= 0.5) {
           var dd = this.patch.damping;
-          if (dd.squeak > 0 && this.tables.squeak) this.squeakOn(held, dd.squeak * 0.75 * FZPP6_LEVEL * held.vel);
-          if (dd.fret > 0 && this.tables.fret && this.play.glide === 0) { held.nT = this.tables.fret; held.nPos = 0; held.nG = dd.fret * 1.125 * FZPP6_LEVEL * held.vel; }
+          if (dd.squeak > 0 && this.tables.squeak) this.squeakOn(held, dd.squeak * 0.75 * FRPP6_LEVEL * held.vel);
+          if (dd.fret > 0 && this.tables.fret && this.play.glide === 0) { held.nT = this.tables.fret; held.nPos = 0; held.nG = dd.fret * 1.125 * FRPP6_LEVEL * held.vel; }
         }
         if (event.releaseAtStart) held.release(this);
         return;
@@ -1170,16 +990,16 @@ Fzpp6Core.prototype.apply = function apply(event, frame) {
  * coefficients for this stretch, the moving read's target, and — on the coarser grids —
  * the loop's re-solve and the retire test.
  */
-Fzpp6Core.prototype.controlVoice = function controlVoice(v, frame, n, onGrid) {
+Frpp6Core.prototype.controlVoice = function controlVoice(v, frame, n, onGrid) {
   var p = this.patch;
   var sr = this.rate;
-  if (onGrid && frame % FZPP6_WINDOW === 0 && v.age > 0) {
+  if (onGrid && frame % FRPP6_WINDOW === 0 && v.age > 0) {
     // A peak HOLD, not the window's own peak: a low string's first trips are a pulse
     // train with silence between the pulses longer than a window, and a window that
     // happened to fall in a gap must not read as a string that has died.
     v.hold = Math.max(v.winPeak, v.hold * this.holdFall);
     if (v.age <= 0.05 * sr + v.period && v.hold > v.attackPeak) v.attackPeak = v.hold;
-    if (!v.excOn && !v.liftOn && !v.nT && !v.sqT && v.hold < FZPP6_SILENT && v.age > v.period + FZPP6_WINDOW) {
+    if (!v.excOn && !v.liftOn && !v.nT && !v.sqT && v.hold < FRPP6_SILENT && v.age > v.period + FRPP6_WINDOW) {
       v.kill();
       return;
     }
@@ -1213,21 +1033,21 @@ Fzpp6Core.prototype.controlVoice = function controlVoice(v, frame, n, onGrid) {
     }
     v.fVal = fv;
     var cut = p.filter.cutoff * Math.pow(2, fe.amount * fv
-      + p.filter.keyTrack * Math.log2(v.hz / FZPP6_KEY_REF));
+      + p.filter.keyTrack * Math.log2(v.hz / FRPP6_KEY_REF));
     var co = this.svf(Math.max(20, cut), p.filter.resonance);
     v.fk = co.k; v.fa1 = co.a1; v.fa2 = co.a2; v.fa3 = co.a3;
   }
   // TENSION follows the string's own amplitude: sharp while it is loud, settling as it fades.
-  if (v.tension > 0 && onGrid && frame % FZPP6_RETUNE === 0 && v.attackPeak > 0) {
+  if (v.tension > 0 && onGrid && frame % FRPP6_RETUNE === 0 && v.attackPeak > 0) {
     v.tensionC = v.tension * Math.min(1, v.hold / v.attackPeak);
   }
-  if (v.dynamic && onGrid && frame % FZPP6_RETUNE === 0 && v.age > 0) v.retune(this);
+  if (v.dynamic && onGrid && frame % FRPP6_RETUNE === 0 && v.age > 0) v.retune(this);
   // The moving read: where the delay must be by the next grid line.
   if (v.sustained) {
     var lps = v.pitchAhead(this, n);
     v.aimSustained(this, Math.pow(2, lps));
     v.l1.dD = (v.aim1 - v.l1.D) / n;
-    if (v.exType !== 'reed') v.l2.dD = (v.aim2 - v.l2.D) / n;
+    v.l2.dD = (v.aim2 - v.l2.D) / n;
   } else if (v.lagrange) {
     var lp = v.pitchAhead(this, n);
     var f1 = Math.min(sr / 5, Math.pow(2, lp));
@@ -1241,14 +1061,11 @@ Fzpp6Core.prototype.controlVoice = function controlVoice(v, frame, n, onGrid) {
 };
 
 /** One voice, n frames (never past the next grid line), into the lane at 'at'. */
-Fzpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
+Frpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
   var e1 = this.e1, e2 = this.e2, o = this.o;
   var i;
   if (v.sustained) {
-    if (v.exType === 'bow') v.runBow(o, n);
-    else if (v.exType === 'reed') v.runReed(o, n);
-    else if (v.exType === 'sax') v.runSax(o, n);
-    else v.runJet(o, n);
+    v.runBow(o, n);
     var kS = v.lev * v.outK;
     for (i = 0; i < n; i++) o[i] *= kS;
   } else if (v.excOn || v.liftOn) {
@@ -1262,12 +1079,12 @@ Fzpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
     for (i = 0; i < n; i++) {
       var x = 0, y = 0;
       if (v.excOn) {
-        if (T) x = gT * (fzpp6Tap(T, pos) - fzpp6Tap(T, pos - c1));
-        if (U) x += gU * (fzpp6Tap(U, pos) - fzpp6Tap(U, pos - c1));
+        if (T) x = gT * (frpp6Tap(T, pos) - frpp6Tap(T, pos - c1));
+        if (U) x += gU * (frpp6Tap(U, pos) - frpp6Tap(U, pos - c1));
         if (course) {
           var p2 = pos - d2;
-          if (T) y = gT * (fzpp6Tap(T, p2) - fzpp6Tap(T, p2 - c2));
-          if (U) y += gU * (fzpp6Tap(U, p2) - fzpp6Tap(U, p2 - c2));
+          if (T) y = gT * (frpp6Tap(T, p2) - frpp6Tap(T, p2 - c2));
+          if (U) y += gU * (frpp6Tap(U, p2) - frpp6Tap(U, p2 - c2));
         }
         x *= fade; y *= fade;
         fade *= fk;
@@ -1281,7 +1098,7 @@ Fzpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
       e1[i] = b1;
       e2[i] = b2;
       if (v.liftOn) {
-        var lx = v.liftG * fzpp6Tap(v.liftT, v.liftPos++);
+        var lx = v.liftG * frpp6Tap(v.liftT, v.liftPos++);
         e1[i] += lx;
         e2[i] += lx * 0.5;
         if (v.liftPos >= v.liftT.length) v.liftOn = false;
@@ -1302,7 +1119,7 @@ Fzpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
   }
   if (v.sqT) {
     for (i = 0; i < n && v.sqPos < v.sqT.length - 1; i++) {
-      o[i] += v.sqG * fzpp6Tap(v.sqT, v.sqPos);
+      o[i] += v.sqG * frpp6Tap(v.sqT, v.sqPos);
       v.sqPos += v.sqRate;
     }
     if (v.sqPos >= v.sqT.length - 1) v.sqT = null;
@@ -1333,7 +1150,7 @@ Fzpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
     var s = o[i];
     if (pre) {
       var yb = s - dcx + dcR * dcy; dcx = s; dcy = yb;
-      s = fzpp6Shape(dr.curve, yb, dr.scaleIn); dt1 += dtc * (s - dt1); s = dt1;
+      s = frpp6Shape(dr.curve, yb, dr.scaleIn); dt1 += dtc * (s - dt1); s = dt1;
     }
     if (filt) {
       var v3 = s - ic2;
@@ -1345,7 +1162,7 @@ Fzpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
     }
     if (post) {
       var yp = s - dcx + dcR * dcy; dcx = s; dcy = yp;
-      s = fzpp6Shape(dr.curve, yp, dr.scaleIn); dt1 += dtc * (s - dt1); s = dt1;
+      s = frpp6Shape(dr.curve, yp, dr.scaleIn); dt1 += dtc * (s - dt1); s = dt1;
     }
     s *= ag * lvl;
     ag += ai;
@@ -1360,7 +1177,7 @@ Fzpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
 };
 
 /** The lane's own stages over [at, at+n): collapsed filter, lane body, DC, level, guard. */
-Fzpp6Core.prototype.renderLane = function renderLane(L, R, at, n) {
+Frpp6Core.prototype.renderLane = function renderLane(L, R, at, n) {
   var chans = R ? 2 : 1;
   var gain = this.patch ? this.patch.master.gain : 1;
   var lc = this.collapsed ? this.lc : null;
@@ -1411,7 +1228,7 @@ Fzpp6Core.prototype.renderLane = function renderLane(L, R, at, n) {
   }
 };
 
-Fzpp6Core.prototype.liveCount = function liveCount() {
+Frpp6Core.prototype.liveCount = function liveCount() {
   var n = 0;
   for (var i = 0; i < this.voices.length; i++) if (this.voices[i].active) n++;
   return n;
@@ -1422,7 +1239,7 @@ Fzpp6Core.prototype.liveCount = function liveCount() {
  * their own frame; the control grid is absolute; so the result is independent of how the
  * caller cuts its blocks.
  */
-Fzpp6Core.prototype.process = function process(channels, startFrame, count, offset) {
+Frpp6Core.prototype.process = function process(channels, startFrame, count, offset) {
   var base = offset || 0;
   var L = channels[0];
   var R = channels.length > 1 ? channels[1] : null;
@@ -1435,9 +1252,9 @@ Fzpp6Core.prototype.process = function process(channels, startFrame, count, offs
   var f = startFrame;
   var i;
   while (f < endFrame) {
-    if (f % FZPP6_CTRL === 0) {
+    if (f % FRPP6_CTRL === 0) {
       for (i = 0; i < this.voices.length; i++) {
-        if (this.voices[i].active) this.controlVoice(this.voices[i], f, FZPP6_CTRL, true);
+        if (this.voices[i].active) this.controlVoice(this.voices[i], f, FRPP6_CTRL, true);
       }
     }
     if (f >= nextEvent) {
@@ -1452,7 +1269,7 @@ Fzpp6Core.prototype.process = function process(channels, startFrame, count, offs
       pending = this.pending;
       nextEvent = this.pendingHead < pending.length ? pending[this.pendingHead].frame : Infinity;
     }
-    var stop = f - (f % FZPP6_CTRL) + FZPP6_CTRL;
+    var stop = f - (f % FRPP6_CTRL) + FRPP6_CTRL;
     if (nextEvent < stop) stop = nextEvent;
     if (endFrame < stop) stop = endFrame;
     var n = stop - f;
@@ -1466,7 +1283,7 @@ Fzpp6Core.prototype.process = function process(channels, startFrame, count, offs
     // The lane's own filters ring on for a moment after the last string; it goes idle on
     // the window grid, half a second after, with its state cleared.
     if (live > 0) this.quietUntil = stop + Math.round(0.5 * this.rate);
-    else if (!this.laneIdle && stop % FZPP6_WINDOW === 0 && stop >= this.quietUntil) {
+    else if (!this.laneIdle && stop % FRPP6_WINDOW === 0 && stop >= this.quietUntil) {
       this.laneIdle = true;
       this.dcX[0] = this.dcX[1] = this.dcY[0] = this.dcY[1] = 0;
       for (i = 0; i < 4; i++) this.lf[i] = 0;
@@ -1477,7 +1294,7 @@ Fzpp6Core.prototype.process = function process(channels, startFrame, count, offs
 };
 
 /** Which string holds what — for the tests, and later the STRINGS card's readout. */
-Fzpp6Core.prototype.stringReport = function stringReport() {
+Frpp6Core.prototype.stringReport = function stringReport() {
   var out = [];
   for (var i = 0; i < this.strings.length; i++) {
     var s = this.strings[i];
@@ -1487,7 +1304,7 @@ Fzpp6Core.prototype.stringReport = function stringReport() {
   return out;
 };
 
-Fzpp6Core.prototype.health = function health(frame) {
+Frpp6Core.prototype.health = function health(frame) {
   return {
     frame: frame,
     voices: this.liveCount(),
@@ -1502,30 +1319,30 @@ Fzpp6Core.prototype.health = function health(frame) {
 
 // Evaluated once, for Node — tests, tools and the reference renderer. The browser never
 // takes this path; it gets the same text through the worklet.
-const evaluated = new Function(`${FZPP6_DSP_SOURCE}
-return { Fzpp6Core, Fzpp6Line, Fzpp6Voice, fzpp6LpDelay, fzpp6ApDelay };`)();
+const evaluated = new Function(`${FRPP6_DSP_SOURCE}
+return { Frpp6Core, Frpp6Line, Frpp6Voice, frpp6LpDelay, frpp6ApDelay };`)();
 
-export const { Fzpp6Core, Fzpp6Line, Fzpp6Voice, fzpp6LpDelay, fzpp6ApDelay } = evaluated;
+export const { Frpp6Core, Frpp6Line, Frpp6Voice, frpp6LpDelay, frpp6ApDelay } = evaluated;
 
 // Node has the core, so Node-side compiles get their level curve. See tables.js.
-registerFzpp6Core(Fzpp6Core);
+registerFrpp6Core(Frpp6Core);
 
 /** Audio time to the integer frame the core counts in — at the boundary, once. */
 export const frameAt = (seconds, sampleRate) => Math.max(0, Math.round(seconds * sampleRate));
 
 /**
  * The deterministic reference render: the same core, in plain JS, with no browser. Takes a
- * patch already compiled at this rate (tables.js `compileFzpp6`). `blockSize` exists to be
+ * patch already compiled at this rate (tables.js `compileFrpp6`). `blockSize` exists to be
  * varied — 128 and 997 must give the same samples.
  */
-export function renderFzpp6({
+export function renderFrpp6({
   events = [], seconds = 1, sampleRate = 44100, channels = 2, blockSize = 128,
   patch = null, frameOffset = 0, core: given = null,
 } = {}) {
   const frames = Math.max(0, Math.ceil(seconds * sampleRate));
   const out = [];
   for (let c = 0; c < channels; c++) out.push(new Float32Array(frames));
-  const core = given || new Fzpp6Core({ sampleRate });
+  const core = given || new Frpp6Core({ sampleRate });
   if (patch) core.installPatch(patch);
   core.scheduleAll(events);
   const size = Math.max(1, blockSize | 0);

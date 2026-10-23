@@ -112,7 +112,7 @@ const clean = (keys) => new Set([...keys].filter((k) => !BUILTIN.has(k) && !STRU
 const SHARED = clean(readsIn(read('src/engine/audio.js')));
 
 const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'KNDO-5' && s !== 'WNDR-9'
-  && s !== 'MRDR-3' && s !== 'TNGR-2' && s !== 'JMJR-4' && s !== 'FZPP-6');
+  && s !== 'MRDR-3' && s !== 'TNGR-2' && s !== 'JMJR-4' && s !== 'FRPP-6');
 
 /**
  * One case per play path. `methods` is what `play` dispatches to for that voice — plus,
@@ -142,13 +142,13 @@ const CASES = [
     methods: ['_playTngr2Node', 'warmTngr2Lane', '_collectTngr2', 'flushTngr2Offline',
       '_tngr2Output'],
     also: ['src/engine/tngr2/controller.js'] },
-  // FZPP-6 goes through TNGR-2's rack machinery (WORKLET_LANES in voices.js), and its
-  // controller and compiler read the voice: the `fzpp6` block, the shared key mode, glide
+  // FRPP-6 goes through TNGR-2's rack machinery (WORKLET_LANES in voices.js), and its
+  // controller and compiler read the voice: the `frpp6` block, the shared key mode, glide
   // and vibrato (schema.js), and the Effects card's drive keys (tables.js).
-  { name: 'FZPP-6', voice: { synth: 'FZPP-6', fzpp6: { filter: {} } },
+  { name: 'FRPP-6', voice: { synth: 'FRPP-6', frpp6: { filter: {} } },
     methods: ['_playTngr2Node', 'warmTngr2Lane', '_collectTngr2', 'flushTngr2Offline',
       '_tngr2Output'],
-    also: ['src/engine/fzpp6/controller.js', 'src/engine/fzpp6/schema.js', 'src/engine/fzpp6/tables.js'] },
+    also: ['src/engine/frpp6/controller.js', 'src/engine/frpp6/schema.js', 'src/engine/frpp6/tables.js'] },
   // JMJR-4 reads its own block through its compiler and the shared keys in the play path.
   { name: 'JMJR-4', voice: { synth: 'JMJR-4', jmjr4: { amp: {} } },
     methods: ['_playJmjr4', '_speakJmjr4', '_jmjr4Bus', '_jmjr4FlutterSource', '_jmjr4Line', '_jmjr4Patch'],
@@ -178,8 +178,8 @@ const HIDDEN_OK = {
   drum: ['dur', 'fixedLength'],
   // VEL LEVEL / VEL FILTER are off the board while the desk cannot write a note velocity
   // (VELOCITY_CONTROLS_HIDDEN in mixer-voice-editor.js); `_playLayer` still reads them
-  // for songs that carry one. FZPP-6's velocity rows hide the same way, but its root key
-  // `fzpp6` is drawn by every other pot, so it needs no entry here.
+  // for songs that carry one. FRPP-6's velocity rows hide the same way, but its root key
+  // `frpp6` is drawn by every other pot, so it needs no entry here.
   'MRDR-3': ['velocity'],
 };
 

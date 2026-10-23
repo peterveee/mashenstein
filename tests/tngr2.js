@@ -68,7 +68,7 @@ assert.equal(init.tngr2.oscA.envAmount, 0, 'the Quick MOTION macro returns to si
 // the worklet became the only path, so the rack must dispatch to the node and there must
 // be no second synthesis path left to drift from it.
 const source = readFileSync(new URL('../src/engine/voices.js', import.meta.url), 'utf8');
-// Through WORKLET_LANES since FZPP-6 joined it (23 Oct 2026): one table names each
+// Through WORKLET_LANES since FRPP-6 joined it (23 Oct 2026): one table names each
 // worklet lane synth, and `play` dispatches any synth in it to `_playTngr2Node`.
 assert(/const WORKLET_LANES = \{\s*'TNGR-2':/.test(source) && source.includes('if (workletLaneOf(v)) {')
   && source.includes('_playTngr2Node'),

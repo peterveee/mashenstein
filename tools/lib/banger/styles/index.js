@@ -96,17 +96,21 @@ export const styleFor = (id) => {
   return pair ? fusionOf(pair.music, pair.beat) : null;
 };
 
-// A sound kept from a seed is named for the style too — `Ride · Future Bass` — and this takes
-// that off again, but nothing else: a kit sound's instrument stays, so `Havana Patio · Clave`
-// keeps its `Clave`. A flavour's label has a `·` of its own (`Reggaeton · Romántico`), so the
-// longest match wins.
-const STYLE_LABELS = [...BY_ID.values()].map((s) => s.label).filter(Boolean).sort((a, b) => b.length - a.length);
-/** A preset's label without the style it was kept for: `Ride · Future Bass` → `Ride`. */
+// A sound kept from a seed is named for the style too — `Ride Future Bass` — and this takes
+// that off again, but nothing else: a kit sound's instrument stays, so `Havana Patio Clave`
+// keeps its `Clave`. Library names carry no `·` (Peter, 24 Oct 2026), so a flavour's
+// `Reggaeton · Romántico` is `Reggaeton Romántico` in one; the longest match wins. The dotted
+// form is still read, for song copies saved before.
+/** A style's label as it ends a preset name: `Reggaeton · Romántico` → `Reggaeton Romántico`. */
+export const presetStyleName = (label) => String(label).replace(/ · /g, ' ');
+const STYLE_SUFFIXES = [...BY_ID.values()].map((s) => s.label).filter(Boolean)
+  .flatMap((s) => [` · ${s}`, ` ${presetStyleName(s)}`]).sort((a, b) => b.length - a.length);
+/** A preset's label without the style it was kept for: `Ride Future Bass` → `Ride`. */
 export const withoutStyleSuffix = (label) => {
   const text = String(label);
-  for (const s of STYLE_LABELS) {
-    const at = text.lastIndexOf(` · ${s}`);
-    const rest = at < 0 ? null : text.slice(at + s.length + 3);
+  for (const s of STYLE_SUFFIXES) {
+    const at = text.lastIndexOf(s);
+    const rest = at < 0 ? null : text.slice(at + s.length);
     if (at > 0 && (rest === '' || (rest.startsWith(' ') && !rest.includes('·')))) return text.slice(0, at);
   }
   return text;

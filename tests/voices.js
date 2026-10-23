@@ -39,7 +39,7 @@ const assert = (cond, msg) => {
 // question — what may a preset's `synth` say.
 // 'Synth' and 'MonoSynth' are the retired names CRLS-1 merged; they stay legal because
 // songs and user presets still carry them, and the engine resolves them onto CRLS-1.
-const ALLOWED = ['KNDO-5', 'GameSynth', 'WNDR-9', 'AdditiveSynth', 'MRDR-3', 'TNGR-2', 'FZPP-6', 'JMJR-4', 'CRLS-1', 'Synth', 'MonoSynth', 'RMND-7', 'RMND-2', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
+const ALLOWED = ['KNDO-5', 'GameSynth', 'WNDR-9', 'AdditiveSynth', 'MRDR-3', 'TNGR-2', 'FRPP-6', 'JMJR-4', 'CRLS-1', 'Synth', 'MonoSynth', 'RMND-7', 'RMND-2', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
 // The waveforms an OscillatorNode will take. `pwm` and `pulse` are Tone's and throw on a
 // native oscillator — see NATIVE_WAVES in src/engine/voices.js.
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
@@ -171,7 +171,7 @@ for (const v of tone) {
   assert(v.peak > 0 && v.peak !== 1,
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
   assert(v.synth === 'KNDO-5' || v.synth === 'WNDR-9' || v.synth === 'MRDR-3'
-    || v.synth === 'TNGR-2' || v.synth === 'JMJR-4' || (v.synth === 'FZPP-6' && v.fzpp6)
+    || v.synth === 'TNGR-2' || v.synth === 'JMJR-4' || (v.synth === 'FRPP-6' && v.frpp6)
     || (v.options && typeof v.options === 'object'),
     `${v.id}: has constructor options or native synth parameters`);
   // Tone spells unison as `oscillator.count` on a Fat* voicing, and it is the same
@@ -640,8 +640,10 @@ for (const v of dropped) {
 }
 for (const v of engine.filter((x) => !x.quoted && !x.nameOnly)) {
   const lane = v.lanes ? v.lanes[0] : (v.osc ? 'lead' : 'bass');
-  assert(offeredVoices(lane).some((x) => x.id === v.id),
-    `${v.id}: is the engine's own, so it is offered whether a song sits on it or not`);
+  assert(!offeredVoices(lane).some((x) => x.id === v.id),
+    `${v.id}: is built in, so the selector does not offer it`);
+  assert(offeredVoices(lane, { keep: v.id }).some((x) => x.id === v.id),
+    `${v.id}: comes back the moment it is what the lane is playing`);
 }
 // The parked shop auditions are openable on the desk and are not the game. These
 // three are played there and nowhere else, so the counter sounds are the proof that

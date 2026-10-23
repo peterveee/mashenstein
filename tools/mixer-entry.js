@@ -107,7 +107,7 @@ import {
 import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, defaultAddedVoice, polyLane } from '../src/data/voices.js';
 import { createVoiceEditor, isQuickVoice } from './mixer-voice-editor.js';
 import {
-  installVoiceEditorWindow, editVoice, syncVoiceEditorToLane, placeVoiceEditor,
+  installVoiceEditorWindow, editVoice, syncVoiceEditorToLane, placeVoiceEditor, showSimpleEditor,
 } from './mixer-voice-editor-window.js';
 import {
   installLoopLog, LOOP_LOG_COLUMNS, loopLogCsv, mirrorDiagnosticsLog,
@@ -3440,7 +3440,7 @@ const SYNTH_ABBR = {
   'MRDR-3': 'MR3',
   'TNGR-2': 'TN2',
   'JMJR-4': 'JM4',
-  'FZPP-6': 'FZ6',
+  'FRPP-6': 'FR6',
   'Game Engine': 'ENG',
   // The three names of one engine: CRLS-1 and the two it merged. A song written before
   // the merge still says Synth or MonoSynth, and it is the same instrument, so it gets
@@ -4617,6 +4617,7 @@ const voiceEditor = createVoiceEditor({
   // repaint or it goes on showing the preset under the name it no longer has.
   onChanged: () => { buildRack(); voiceLibrary.refresh(); },
   onBlank: () => voiceLibrary.clearPick(),
+  onSimpleShown: (at) => showSimpleEditor(at),
   ask,
   listPresets: ({ engine, laneKey, keep }) => offeredByEngine(engine, { laneKey, keep }),
   selectPreset: (id, { laneKey }) => {

@@ -24,7 +24,7 @@ const SYNTH_STYLE = Object.freeze({
   'KNDO-5': 'Chiptune',
   'KLNG-8': 'Drums',
   'RMND-7': 'FM & AM',
-  'FZPP-6': 'Physical string',
+  'FRPP-6': 'Physical string',
 });
 
 // Exported as well as joined below: the engine pickers draw the name and the style in

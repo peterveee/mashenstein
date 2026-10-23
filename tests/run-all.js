@@ -332,9 +332,9 @@ const suites = [
   // an AudioWorkletProcessor live AND in the OfflineAudioContext its stems come out of.
   // Kept as a permanent regression now that it passes — see docs/TNGR-2-completion-spec.md §3.
   'tests/tngr2-worklet-proof.js',
-  // FZPP-6's proof, through its real controller, in Chromium and WebKit: the worklet renders
+  // FRPP-6's proof, through its real controller, in Chromium and WebKit: the worklet renders
   // the same samples as the Node reference the auditions were measured on.
-  'tests/fzpp6-worklet-proof.js',
+  'tests/frpp6-worklet-proof.js',
   // The same gate, asked again for MRDR-3 — and worth asking twice rather than inheriting,
   // because MRDR-3 puts one thing in front of the mechanism that TNGR-2 never did: a CHORD
   // is ONE event whose tones sum into one shaper (docs/MRDR-3-worklet-spec.md §5.1), so the
@@ -398,9 +398,9 @@ const suites = [
   // takes its rate as an argument and is handed its frame, so it reaches for no worklet
   // global and the same source runs in both hosts.
   'tests/tngr2-dsp.js',
-  // FZPP-6's core in Node: tuning to the cent, decay, determinism, string assignment, the
+  // FRPP-6's core in Node: tuning to the cent, decay, determinism, string assignment, the
   // commuted body against the lane body, and an even level up the neck.
-  'tests/fzpp6-dsp.js',
+  'tests/frpp6-dsp.js',
   // The wavetable assets: finite, zero-DC, cyclic, band-limited per mip level, and —
   // the one that rots quietly — still matching the authoring they were generated from.
   'tests/tngr2-tables.js',
@@ -799,7 +799,7 @@ const browserSuites = new Set([
   'tests/tngr2-audio.js',
   'tests/tngr2-jit-bounce.js',
   'tests/tngr2-worklet-proof.js',
-  'tests/fzpp6-worklet-proof.js',
+  'tests/frpp6-worklet-proof.js',
   'tests/mrdr3-worklet-proof.js',
   'tests/wasm-worklet-proof.js',
   'tests/mrdr3-farm.js',
@@ -910,8 +910,8 @@ const soundSuites = [
   'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/key-mode-render.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js', 'tests/tngr2-audio.js',
-  'tests/tngr2-worklet-proof.js', 'tests/fzpp6-worklet-proof.js', 'tests/mrdr3-worklet-proof.js', 'tests/wasm-worklet-proof.js', 'tests/mrdr3-farm.js', 'tests/mrdr3-primitives.js', 'tests/mrdr3-params.js', 'tests/mrdr3-dsp-parity.js', 'tests/mrdr3-controller.js',
-  'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js', 'tests/fzpp6-dsp.js',
+  'tests/tngr2-worklet-proof.js', 'tests/frpp6-worklet-proof.js', 'tests/mrdr3-worklet-proof.js', 'tests/wasm-worklet-proof.js', 'tests/mrdr3-farm.js', 'tests/mrdr3-primitives.js', 'tests/mrdr3-params.js', 'tests/mrdr3-dsp-parity.js', 'tests/mrdr3-controller.js',
+  'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js', 'tests/frpp6-dsp.js',
   'tests/tngr2-tables.js', 'tests/tngr2-schema.js', 'tests/tngr2-controller.js',
   // The preset schema: defaults, validation, and the migration that has to carry all 43
   // prototype-shaped presets into v1 without changing what any of them was measured at.

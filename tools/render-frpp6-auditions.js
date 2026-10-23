@@ -1,20 +1,20 @@
-// FZPP-6's Gate A auditions: every candidate in tools/lib/fzpp6-candidates.js playing a
+// FRPP-6's Gate A auditions: every candidate in tools/lib/frpp6-candidates.js playing a
 // phrase that suits it, plus the same strum on MRDR-3's mrdrAcousticGuitar for A/B.
 //
-//   node tools/render-fzpp6-auditions.js            → work/auditions/fzpp6/*.wav
+//   node tools/render-frpp6-auditions.js            → work/auditions/frpp6/*.wav
 //
 // Rendered in Node through the reference core — the same source the worklet will run.
 // Chords are strummed through the game's own Note FX processor (src/engine/note-fx.js),
 // so what is heard here is the path a song will take. Each file is normalised to a
 // -1 dBFS peak so they can be compared by ear; levels between them are not the point.
-// The listening index is docs/audio/fzpp6-auditions.md.
+// The listening index is docs/audio/frpp6-auditions.md.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderFzpp6 } from '../src/engine/fzpp6/dsp.js';
-import { compileFzpp6 } from '../src/engine/fzpp6/tables.js';
+import { renderFrpp6 } from '../src/engine/frpp6/dsp.js';
+import { compileFrpp6 } from '../src/engine/frpp6/tables.js';
 import { createNoteFxProcessor } from '../src/engine/note-fx.js';
-import { FZPP6_CANDIDATES } from './lib/fzpp6-candidates.js';
+import { FRPP6_CANDIDATES } from './lib/frpp6-candidates.js';
 import { wavBuffer, SR } from './lib/wav.js';
 import { VOICES } from '../src/data/voices.js';
 import { compileMrdr3, mrdr3Colours } from '../src/engine/mrdr3/compile.js';
@@ -23,7 +23,7 @@ import { renderMrdr3 } from '../src/engine/mrdr3/dsp.js';
 import { mrdr3Tables } from '../src/engine/mrdr3/tables.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = join(ROOT, 'work', 'auditions', 'fzpp6');
+const OUT = join(ROOT, 'work', 'auditions', 'frpp6');
 mkdirSync(OUT, { recursive: true });
 
 const hz = (m) => 440 * 2 ** ((m - 69) / 12);
@@ -132,11 +132,11 @@ const write = (id, label, channels, seconds) => {
   console.log(`  ${file.padEnd(32)} ${label}`);
 };
 
-console.log(`FZPP-6 auditions → ${OUT}`);
-for (const [id, voice] of Object.entries(FZPP6_CANDIDATES)) {
+console.log(`FRPP-6 auditions → ${OUT}`);
+for (const [id, voice] of Object.entries(FRPP6_CANDIDATES)) {
   const { events, seconds } = eventsFor(voice.phrase);
-  const patch = compileFzpp6(voice, SR);
-  const r = renderFzpp6({ events, seconds, sampleRate: SR, patch });
+  const patch = compileFrpp6(voice, SR);
+  const r = renderFrpp6({ events, seconds, sampleRate: SR, patch });
   write(id, voice.label, r.channels, seconds);
 }
 {

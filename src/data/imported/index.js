@@ -192,7 +192,9 @@ import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
 import * as NEON_8BIT from './neon-8bit.js';
 import * as NEON_BLASTERS_ORIGINAL_BANGER_COPY from './neon-blasters-original-banger-copy.js';
+import * as NEON_ORBIT_BANGER_5_COPY from './neon-orbit-banger-5-copy.js';
 import * as NEON_ORBIT_BANGER_BITTERSWEET from './neon-orbit-banger-bittersweet.js';
+import * as NEON_ORBIT_SHIPPED_BANGER from './neon-orbit-shipped-banger.js';
 import * as NEON_REMIX_ENDSTATION from './neon-remix-endstation.js';
 import * as NEON_REMIX_FREEFALL from './neon-remix-freefall.js';
 import * as NEON_REMIX_GOLDEN_HOUR from './neon-remix-golden-hour.js';
@@ -519,7 +521,9 @@ export const IMPORTED_BY_ID = {
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "neon-8bit": { bank: NEON_8BIT.bank, title: NEON_8BIT.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-blasters-original-banger-copy": { bank: NEON_BLASTERS_ORIGINAL_BANGER_COPY.bank, title: NEON_BLASTERS_ORIGINAL_BANGER_COPY.title, group: "copy", writable: true },
+  "neon-orbit-banger-5-copy": { bank: NEON_ORBIT_BANGER_5_COPY.bank, title: NEON_ORBIT_BANGER_5_COPY.title, group: "copy", writable: true },
   "neon-orbit-banger-bittersweet": { bank: NEON_ORBIT_BANGER_BITTERSWEET.bank, title: NEON_ORBIT_BANGER_BITTERSWEET.title, group: "copy", writable: true },
+  "neon-orbit-shipped-banger": { bank: NEON_ORBIT_SHIPPED_BANGER.bank, title: NEON_ORBIT_SHIPPED_BANGER.title, group: "copy", writable: true },
   "neon-remix-endstation": { bank: NEON_REMIX_ENDSTATION.bank, title: NEON_REMIX_ENDSTATION.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-freefall": { bank: NEON_REMIX_FREEFALL.bank, title: NEON_REMIX_FREEFALL.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-golden-hour": { bank: NEON_REMIX_GOLDEN_HOUR.bank, title: NEON_REMIX_GOLDEN_HOUR.title, group: "alternate", writable: true, alternateOf: "neon" },

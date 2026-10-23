@@ -1,13 +1,13 @@
 /*
- * FZPP-6's preset schema: defaults, validation, and the two tables the engine is built on —
+ * FRPP-6's preset schema: defaults, validation, and the two tables the engine is built on —
  * the tunings its six strings are strung to, and the bodies a pluck is coloured by.
  *
- * FZPP-6 is a waveguide string: a delay line one period long, fed by a pluck and losing a
+ * FRPP-6 is a waveguide string: a delay line one period long, fed by a pluck and losing a
  * little of its top end every time round. The "6" is the six string slots a lane has, which
  * is also the hard ceiling on what a lane can cost. See the plan this was built from,
  * ~/.claude/plans/develop-a-physical-modeling-squishy-adleman.md, until a spec doc exists.
  *
- * This is the only place that knows what a stored `fzpp6` block looks like, so the core can
+ * This is the only place that knows what a stored `frpp6` block looks like, so the core can
  * assume its input is sane and the editor has one answer to "what does a fresh patch start
  * from". Every value is clamped here, not in the DSP: the audio thread never sees a NaN it
  * has to think about.
@@ -17,28 +17,29 @@
  * and 0–1 for everything that is an amount.
  */
 
-export const FZPP6_STRINGS = 6;
-export const FZPP6_EXCITERS = ['pick', 'noise', 'impulse', 'bow', 'reed', 'sax', 'jet'];
+export const FRPP6_STRINGS = 6;
+// REED, SAX and JET were here until 23 Oct 2026 — see Frpp6Voice's `sustained` in dsp.js.
+export const FRPP6_EXCITERS = ['pick', 'noise', 'impulse', 'bow'];
 /** The three that keep driving the loop while the key is down (Stage 3, 23 Oct 2026). */
-export const FZPP6_SUSTAINED = ['bow', 'reed', 'sax', 'jet'];
-export const isFzpp6Sustained = (type) => FZPP6_SUSTAINED.includes(type);
-export const FZPP6_FILTER_TYPES = ['lowpass', 'highpass', 'bandpass'];
-export const FZPP6_BODIES = ['steel', 'nylon', 'archtop', 'banjo', 'harp', 'violin', 'cello', 'none'];
-export const FZPP6_MODES = ['poly', 'mono', 'legato'];
+export const FRPP6_SUSTAINED = ['bow'];
+export const isFrpp6Sustained = (type) => FRPP6_SUSTAINED.includes(type);
+export const FRPP6_FILTER_TYPES = ['lowpass', 'highpass', 'bandpass'];
+export const FRPP6_BODIES = ['steel', 'nylon', 'archtop', 'banjo', 'harp', 'violin', 'cello', 'none'];
+export const FRPP6_MODES = ['poly', 'mono', 'legato'];
 
 /**
  * Open-string pitches, low string first, in MIDI note numbers (60 is C4, the spelling
  * src/engine/notes.js uses). FREE is no guitar at all: any pitch may take any slot, which
  * is what a harp, a koto or a synth pluck wants.
  */
-export const FZPP6_TUNINGS = Object.freeze({
+export const FRPP6_TUNINGS = Object.freeze({
   standard: Object.freeze([40, 45, 50, 55, 59, 64]), // E2 A2 D3 G3 B3 E4
   dropD: Object.freeze([38, 45, 50, 55, 59, 64]),    // D2 A2 D3 G3 B3 E4
   openG: Object.freeze([38, 43, 50, 55, 59, 62]),    // D2 G2 D3 G3 B3 D4
   dadgad: Object.freeze([38, 45, 50, 55, 57, 62]),   // D2 A2 D3 G3 A3 D4
   free: null,
 });
-export const FZPP6_TUNING_NAMES = Object.keys(FZPP6_TUNINGS);
+export const FRPP6_TUNING_NAMES = Object.keys(FRPP6_TUNINGS);
 
 /**
  * What a string's gauge does to it, low string first. The three wound strings are darker
@@ -50,7 +51,7 @@ export const FZPP6_TUNING_NAMES = Object.keys(FZPP6_TUNINGS);
  *   stiff   how far STIFF reaches on this string
  *   damp    a multiplier on DAMP: below one is a darker string
  */
-export const FZPP6_GAUGE = Object.freeze({
+export const FRPP6_GAUGE = Object.freeze({
   stages: Object.freeze([4, 3, 3, 1, 1, 0]),
   stiff: Object.freeze([1, 0.95, 0.9, 0.55, 0.5, 0.45]),
   damp: Object.freeze([0.8, 0.85, 0.9, 1, 1.1, 1.2]),
@@ -68,7 +69,7 @@ export const FZPP6_GAUGE = Object.freeze({
  * `tilt` dB per octave. That cloud is what the commuted body can afford and a per-sample
  * body could not: it is rendered into the pluck once, when the patch is installed.
  */
-export const FZPP6_BODY_SETS = Object.freeze({
+export const FRPP6_BODY_SETS = Object.freeze({
   steel: { primary: [[98, 14, 1.0], [204, 20, 0.85], [390, 24, 0.5]],
     cloud: { count: 18, lo: 480, hi: 5200, q: 28, gain: 0.42, tilt: -3.5, seed: 11 } },
   nylon: { primary: [[102, 12, 0.95], [218, 16, 0.8], [410, 18, 0.45]],
@@ -99,14 +100,15 @@ const oneOf = (value, list, fallback) => (list.includes(value) ? value : fallbac
  * THE CONTROLS, and only these (Peter, 23 Oct 2026: "the editor is very complex, it is not
  * easy to work out what is going to change"). Twenty, each named for what you hear:
  *
- *   exciter  type (PICK / NOISE / STRIKE, and the sustained BOW / REED / JET: pressure,
- *            speed, reed, bell, jet, noise), hardness (HARD: soft↔hard — the brightness of
+ *   exciter  type (PICK / NOISE / STRIKE, and the sustained BOW: pressure, speed, noise),
+ *            hardness (HARD: soft↔hard — the brightness of
  *            the pluck comes with it), position (WHERE), mix (SCRAPE), length (LENGTH)
  *   string   decay (RING), damp (HIGHS), stiffness (METAL), buzz (BUZZ),
  *            pickup (acoustic, or a five-way switch: neck … bridge), double (off | shimmer | octave)
  *   damping  mute, mutedBelow (CHUCK), lift, fret, squeak
  *   strings  tuning, tension (BEND)
- *   body     type, mix, size
+ *   body     type, mix, size — and behind an ADVANCED door, the three named modes: air, top,
+ *            back, each hz / q (unset: the body's own) and a dB trim (0: as the body has it)
  *   filter, filterEnv, amp — the standard cards
  *
  * And behind the PLUCK card's ADVANCED door (Peter, 23 Oct 2026: "an advanced panel that
@@ -127,8 +129,8 @@ const oneOf = (value, list, fallback) => (list.includes(value) ? value : fallbac
  */
 // A Strat's five-way switch, plus no pickup at all: positions 2 and 4 are the two in
 // between, which the Gate A clean electric (0.35) and funk guitar (0.75) were set to.
-export const FZPP6_PICKUPS = ['acoustic', 'neck', 'neckMiddle', 'middle', 'middleBridge', 'bridge'];
-export const FZPP6_DOUBLES = ['off', 'shimmer', 'octave'];
+export const FRPP6_PICKUPS = ['acoustic', 'neck', 'neckMiddle', 'middle', 'middleBridge', 'bridge'];
+export const FRPP6_DOUBLES = ['off', 'shimmer', 'octave'];
 // What each pill is, in the core's units: a pickup's place along the string (0 is none),
 // and the second string's interval in cents.
 const PICKUP_AT = { acoustic: 0, neck: 0.15, neckMiddle: 0.35, middle: 0.55, middleBridge: 0.75, bridge: 0.95 };
@@ -141,9 +143,9 @@ const nearest = (table, value) => Object.keys(table).reduce((best, k) =>
   (Math.abs(table[k] - value) < Math.abs(table[best] - value) ? k : best), Object.keys(table)[0]);
 
 /** A fresh patch: a steel-string acoustic, picked, ringing for a few seconds. */
-export const fzpp6Defaults = () => ({
+export const frpp6Defaults = () => ({
   exciter: { type: 'pick', hardness: 0.6, position: 0.18, mix: 0.25, length: 0.006, velocity: FIXED.velocity,
-    pressure: 0.6, speed: 0.5, reed: 0.5, bell: 0.5, noise: 0.1 },
+    pressure: 0.6, speed: 0.5, noise: 0.1 },
   string: { decay: 3.5, damp: 0.22, stiffness: 0.15, buzz: 0, pickup: 'acoustic', double: 'off',
     keyFollow: FIXED.keyFollow, detune: FIXED.detune, shimmer: FIXED.shimmer },
   damping: { mute: 0, mutedBelow: 0, lift: 0, fret: 0, squeak: 0, settle: FIXED.settle },
@@ -152,7 +154,16 @@ export const fzpp6Defaults = () => ({
   filterEnv: { amount: 0, attack: 0.001, decay: 0.3, sustain: 0, release: 0.3 },
   amp: { attack: 0, decay: 0.3, sustain: 1, release: 0.3 },
   strings: { tuning: 'standard', tension: 6, spread: FIXED.spread },
-  body: { type: 'steel', mix: 0.8, size: 1 },
+  body: { type: 'steel', mix: 0.8, size: 1, air: modeDefaults(), top: modeDefaults(), back: modeDefaults() },
+});
+/** One named body mode, untouched: it follows the body set until a pot pins it. */
+const modeDefaults = () => ({ hz: null, q: null, db: 0 });
+/** The three named modes, in the order the sets list them. */
+export const FRPP6_BODY_MODE_KEYS = ['air', 'top', 'back'];
+const modeOf = (raw = {}) => ({
+  hz: raw.hz == null ? null : clamp(raw.hz, 40, 4000, 200),
+  q: raw.q == null ? null : clamp(raw.q, 2, 60, 12),
+  db: clamp(raw.db, -18, 18, 0),
 });
 
 /**
@@ -164,19 +175,16 @@ const internalOf = (raw = {}) => ({
   laneModes: Math.max(1, Math.min(64, Math.round(num(raw.laneModes, 3)))),
   collapse: raw.collapse !== false,
   forceAmp: raw.forceAmp === true,
-  // Test-only: the sax junction's raw numbers, for mapping where it speaks.
-  saxSlope: Math.max(0, num(raw.saxSlope, 0)),
-  saxBreath: Math.max(0, num(raw.saxBreath, 0)),
 });
 
 /**
- * A stored `fzpp6` block to the complete patch the core plays. Never throws. The pills
+ * A stored `frpp6` block to the complete patch the core plays. Never throws. The pills
  * become the core's numbers here, and the fixed values above fill the stages that have no
  * pot. A block saved before the pills existed — PICKUP and COURSE as numbers — lands on
  * the nearest pill.
  */
-export function validateFzpp6(stored = {}) {
-  const d = fzpp6Defaults();
+export function validateFrpp6(stored = {}) {
+  const d = frpp6Defaults();
   const s = stored && typeof stored === 'object' ? stored : {};
   const ex = s.exciter || {};
   const st = s.string || {};
@@ -188,25 +196,23 @@ export function validateFzpp6(stored = {}) {
   const it = s.internal || {};
   const fi = s.filter && s.filter.on !== false ? s.filter : null;
   const pickup = typeof st.pickup === 'number' ? nearest(PICKUP_AT, st.pickup)
-    : oneOf(st.pickup, FZPP6_PICKUPS, d.string.pickup);
+    : oneOf(st.pickup, FRPP6_PICKUPS, d.string.pickup);
   const double = typeof st.course === 'number'
     ? (st.course <= 0 ? 'off' : st.course < 300 ? 'shimmer' : 'octave')
-    : oneOf(st.double, FZPP6_DOUBLES, d.string.double);
+    : oneOf(st.double, FRPP6_DOUBLES, d.string.double);
   const hardness = clamp(ex.hardness, 0, 1, d.exciter.hardness);
   return {
     exciter: {
-      type: oneOf(ex.type, FZPP6_EXCITERS, d.exciter.type),
+      type: oneOf(ex.type, FRPP6_EXCITERS, d.exciter.type),
       mix: clamp(ex.mix, 0, 1, d.exciter.mix),
       length: clamp(ex.length, 0.001, 1, d.exciter.length),
       hardness,
       bright: clamp(it.bright ?? ex.bright, 0, 1, brightOf(hardness)),
       position: clamp(ex.position, 0.05, 0.5, d.exciter.position),
       velocity: clamp(it.velocity ?? ex.velocity, 0, 1, FIXED.velocity),
-      // The sustained exciters' own pots (BOW, REED, JET).
+      // The bow's own pots.
       pressure: it.pressure != null ? clamp(it.pressure, 0, 3, 1) : clamp(ex.pressure, 0, 1, d.exciter.pressure),
       speed: clamp(ex.speed, 0, 1, d.exciter.speed),
-      reed: clamp(ex.reed, 0, 1, d.exciter.reed),
-      bell: clamp(ex.bell, 0, 1, d.exciter.bell),
       noise: clamp(ex.noise, 0, 1, d.exciter.noise),
     },
     string: {
@@ -229,7 +235,7 @@ export function validateFzpp6(stored = {}) {
       squeak: clamp(dm.squeak, 0, 1, d.damping.squeak),
     },
     filter: fi ? {
-      type: oneOf(fi.type, FZPP6_FILTER_TYPES, 'lowpass'),
+      type: oneOf(fi.type, FRPP6_FILTER_TYPES, 'lowpass'),
       cutoff: clamp(fi.cutoff, 20, 18000, 2400),
       resonance: clamp(fi.resonance, 0.1, 24, 0.707),
       keyTrack: clamp(fi.keyTrack, 0, 1, 0),
@@ -248,15 +254,15 @@ export function validateFzpp6(stored = {}) {
       release: clamp(am.release, 0.005, 10, d.amp.release),
     },
     strings: {
-      tuning: oneOf(ss.tuning, FZPP6_TUNING_NAMES, d.strings.tuning),
+      tuning: oneOf(ss.tuning, FRPP6_TUNING_NAMES, d.strings.tuning),
       tension: clamp(ss.tension, 0, 50, d.strings.tension),
       spread: clamp(it.spread ?? ss.spread, 0, 1, FIXED.spread),
     },
     body: {
-      type: oneOf(bo.type, FZPP6_BODIES, d.body.type),
+      type: oneOf(bo.type, FRPP6_BODIES, d.body.type),
       mix: clamp(bo.mix, 0, 1, d.body.mix),
       size: clamp(bo.size, 0.5, 2, d.body.size),
-      modes: null,
+      air: modeOf(bo.air), top: modeOf(bo.top), back: modeOf(bo.back),
     },
     master: { gain: clamp(it.gain, 0, 4, 1) },
     internal: internalOf(it),
@@ -270,11 +276,11 @@ export function validateFzpp6(stored = {}) {
  * `tngr2PatchForVoice` and `tngr2VibratoOf` read them. TRANSPOSE and FINE are applied by
  * the rack before a pitch ever reaches the core, so they are not here.
  */
-export function fzpp6PlayOf(voice = {}) {
+export function frpp6PlayOf(voice = {}) {
   const vib = voice?.vibrato;
   const depth = Number(vib?.depth) || 0;
   return {
-    mode: oneOf(voice?.mode, FZPP6_MODES, 'poly'),
+    mode: oneOf(voice?.mode, FRPP6_MODES, 'poly'),
     glide: Math.max(0, Math.min(10, Number(voice?.portamento) || 0)),
     vibrato: depth > 0 ? {
       depth: Math.min(24, depth),

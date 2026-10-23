@@ -30,10 +30,10 @@ export const WNDR9 = 'WNDR-9';
 /** JMJR-4 — Jean-Michel Jarre. A formant voice; up to four singers to a key. */
 export const JMJR4 = 'JMJR-4';
 /**
- * FZPP-6 — Peter's name (23 Oct 2026). A waveguide string: a pluck into a delay loop one
- * period long, six string slots to a lane. See src/engine/fzpp6/.
+ * FRPP-6 — Peter's name (23 Oct 2026). A waveguide string: a pluck into a delay loop one
+ * period long, six string slots to a lane. See src/engine/frpp6/.
  */
-export const FZPP6 = 'FZPP-6';
+export const FRPP6 = 'FRPP-6';
 
 /**
  * The retired names. Old spellings stay readable forever — song files carry them inside

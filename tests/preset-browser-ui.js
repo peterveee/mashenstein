@@ -49,6 +49,14 @@ try {
  assert.equal(await picker.locator('.preset-list .on').getAttribute('data-voice'),'mrdrSaxophone');
  const toolbarBounds=await picker.locator('.voicetoolbar').evaluate(el=>[...el.children].map(e=>({top:e.getBoundingClientRect().top,height:e.getBoundingClientRect().height})));
  assert.ok(toolbarBounds.every(r=>Math.abs(r.top-toolbarBounds[0].top)<1),'Search and actions share a row');
+ // The header is a title bar: dragging its empty space moves the window, and it stays open.
+ const dragFrom=await picker.boundingBox();
+ const who=await picker.locator('.voicewho').boundingBox();
+ await page.mouse.move(who.x+4,who.y+4); await page.mouse.down();
+ await page.mouse.move(who.x-116,who.y+64,{steps:6}); await page.mouse.up();
+ const dragTo=await picker.boundingBox();
+ assert.ok(await picker.isVisible(),'Dragging keeps the selector open');
+ assert.ok(Math.abs(dragTo.y-dragFrom.y-60)<2,`Header drag moves the selector (${dragFrom.y} → ${dragTo.y})`);
  await picker.locator('.voiceclose').click();
  assert.equal(await page.getByRole('button',{name:'Saxophone',exact:true}).count(),2);
 
@@ -83,13 +91,21 @@ try {
  await picker.locator('.voicesearch').fill('guitar');
  await picker.locator('.voicenow').click();
  assert.equal(await picker.locator('.preset-list .on').getAttribute('data-voice'),'kickEngine');
+ // A double click settles on a preset and closes the selector; a single click (above) leaves it open.
+ await picker.locator('.preset-clear').click();
+ const settle=picker.locator('.preset-list [data-voice]:not([data-voice="kickEngine"])').first();
+ const settleId=await settle.getAttribute('data-voice');
+ await settle.dblclick();
+ assert.ok(!await picker.isVisible(),'Double click closes the selector');
+ assert.equal(await page.getByRole('button',{name:'= Arcade Kick',exact:true}).count(),0,`The kick lane is now on ${settleId}`);
+ await page.getByRole('button',{name:'Undo',exact:true}).click();
  await page.keyboard.press('Escape');
  // Library keeps edit/audition behaviour and exposes the engine in both places.
  await page.getByRole('button',{name:'Preset library',exact:true}).click();
  const lib=page.locator('#voicelib');
  await choose(lib,'category','Guitars'); await choose(lib,'subcategory','Acoustic');
- await lib.locator('[data-voice="fzppSteelAcoustic"]').click();
- assert.equal(await lib.locator('.preset-current').textContent(),'Steel acoustic · FZPP-6');
+ await lib.locator('[data-voice="frppSteelAcoustic"]').click();
+ assert.equal(await lib.locator('.preset-current').textContent(),'Steel acoustic · FRPP-6');
  await page.screenshot({path:root+'preset-library-wide.png'});
  // Actual audition call through the existing bench; no preset or song is saved.
  const before=await page.evaluate(()=>{ window.__browseHits=0; const a=window.Audio, f=a.previewNote; a.previewNote=function(...args){window.__browseHits++; return f.apply(this,args);}; return window.__browseHits; });
@@ -98,9 +114,9 @@ try {
  const hits=await page.evaluate(()=>window.__browseHits);
  await choose(lib,'category','Keys');
  assert.equal(await page.evaluate(()=>window.__browseHits),hits,'Filtering must not audition');
- assert.equal(await lib.locator('.preset-current').textContent(),'Steel acoustic · FZPP-6');
+ assert.equal(await lib.locator('.preset-current').textContent(),'Steel acoustic · FRPP-6');
  await lib.locator('.preset-current').click();
- assert.equal(await page.evaluate(()=>document.activeElement.dataset.voice),'fzppSteelAcoustic');
+ assert.equal(await page.evaluate(()=>document.activeElement.dataset.voice),'frppSteelAcoustic');
  // Save sheet exposes browsing fields without changing the legacy playback category.
  await lib.locator('.vesave').click();
  console.log('Save sheet controls:',await page.locator('.vefield .k').allTextContents());

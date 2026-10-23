@@ -51,7 +51,7 @@ assert(BANGER_STYLES.every((st) => BANGER_SOUNDS[st.id]), `every style has its s
   // The Grit Hat's square blip reads as a clave on eighths — "too distracting" (Peter,
   // 6 Oct 2026) — so no kit plays it, nor 16-Bit's copy of it, as its hats.
   const grit = Object.entries(BANGER_SOUNDS).flatMap(([id, s]) => Object.entries(s.kits || {})
-    .filter(([, kit]) => ['hatGrit', 'seedMegadriveHats'].includes(kit.hats)).map(([k]) => `${id}.${k}`));
+    .filter(([, kit]) => kit.hats === 'hatGrit').map(([k]) => `${id}.${k}`));
   assert(!grit.length, `no kit's hats is the Grit Hat${grit.length ? ` (${grit.join(', ')})` : ''}`);
 }
 for (const [id, s] of Object.entries(BANGER_SOUNDS)) {

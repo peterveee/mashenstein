@@ -1,21 +1,21 @@
 /*
- * The worklet host for FZPP-6's DSP core — TNGR-2's wrapper, for the same reasons (see the
+ * The worklet host for FRPP-6's DSP core — TNGR-2's wrapper, for the same reasons (see the
  * header of tngr2/worklet.js): the processor loads from a BLOB because the offline render
  * harness has no origin to serve a file from; an offline schedule arrives in
  * `processorOptions` because port delivery is not ordered against `startRendering()`;
  * the port is for live play. No synthesis here — the processor drains its block into the
  * core, so live and offline run the same maths by construction.
  */
-import { FZPP6_DSP_SOURCE } from './dsp.js';
+import { FRPP6_DSP_SOURCE } from './dsp.js';
 
-export const FZPP6_PROCESSOR_NAME = 'fzpp6';
+export const FRPP6_PROCESSOR_NAME = 'frpp6';
 
 const PROCESSOR_WRAPPER = `
-class Fzpp6Processor extends AudioWorkletProcessor {
+class Frpp6Processor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     var opts = (options && options.processorOptions) || {};
-    this.core = new Fzpp6Core({ sampleRate: sampleRate });
+    this.core = new Frpp6Core({ sampleRate: sampleRate });
     this.offset = Math.max(0, Math.round(opts.frameOffset || 0));
     // The patch before the schedule: a queued note binds to whatever is installed when it
     // is applied, and applying begins the moment process() first runs.
@@ -52,37 +52,37 @@ class Fzpp6Processor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor(${JSON.stringify(FZPP6_PROCESSOR_NAME)}, Fzpp6Processor);
+registerProcessor(${JSON.stringify(FRPP6_PROCESSOR_NAME)}, Frpp6Processor);
 `;
 
 /** The complete module text handed to `addModule`: the core, then its host. */
-export const fzpp6WorkletSource = () => `${FZPP6_DSP_SOURCE}\n${PROCESSOR_WRAPPER}`;
+export const frpp6WorkletSource = () => `${FRPP6_DSP_SOURCE}\n${PROCESSOR_WRAPPER}`;
 
 const registered = new WeakMap();
 
 /** Whether this context can host a worklet at all — false off a secure origin. */
-export const canHostFzpp6 = (ctx) => !!(ctx && ctx.audioWorklet
+export const canHostFrpp6 = (ctx) => !!(ctx && ctx.audioWorklet
   && typeof ctx.audioWorklet.addModule === 'function'
   && typeof globalThis.AudioWorkletNode === 'function');
 
 /** Register the processor on a context, once. Rejects when the context cannot host it. */
-export function ensureFzpp6Dsp(ctx) {
-  if (!canHostFzpp6(ctx)) {
-    return Promise.reject(new Error('FZPP-6 needs an AudioWorklet, which needs a secure '
+export function ensureFrpp6Dsp(ctx) {
+  if (!canHostFrpp6(ctx)) {
+    return Promise.reject(new Error('FRPP-6 needs an AudioWorklet, which needs a secure '
       + 'context (https, localhost, or a bundled page served from one)'));
   }
   let ready = registered.get(ctx);
   if (!ready) {
-    const url = URL.createObjectURL(new Blob([fzpp6WorkletSource()], { type: 'application/javascript' }));
+    const url = URL.createObjectURL(new Blob([frpp6WorkletSource()], { type: 'application/javascript' }));
     ready = ctx.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url));
     registered.set(ctx, ready);
   }
   return ready;
 }
 
-/** A node on a context already prepared by `ensureFzpp6Dsp`. */
-export function createFzpp6Node(ctx, { events = null, patch = null, frameOffset = 0 } = {}) {
-  return new AudioWorkletNode(ctx, FZPP6_PROCESSOR_NAME, {
+/** A node on a context already prepared by `ensureFrpp6Dsp`. */
+export function createFrpp6Node(ctx, { events = null, patch = null, frameOffset = 0 } = {}) {
+  return new AudioWorkletNode(ctx, FRPP6_PROCESSOR_NAME, {
     numberOfInputs: 0,
     numberOfOutputs: 1,
     outputChannelCount: [2],

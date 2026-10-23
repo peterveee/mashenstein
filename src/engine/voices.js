@@ -75,21 +75,21 @@ import {
   syncTngr2Patch, tngr2EffectsOf, postTngr2Events,
 } from './tngr2/controller.js';
 import {
-  fzpp6Lane, fzpp6LaneNow, fzpp6NoteOn, fzpp6Choke, fzpp6LanesOf, fzpp6ControllerHealth,
-  canHostFzpp6, renderFzpp6Lane, syncFzpp6Patch,
-} from './fzpp6/controller.js';
+  frpp6Lane, frpp6LaneNow, frpp6NoteOn, frpp6Choke, frpp6LanesOf, frpp6ControllerHealth,
+  canHostFrpp6, renderFrpp6Lane, syncFrpp6Patch,
+} from './frpp6/controller.js';
 
 /**
  * THE WORKLET LANE SYNTHS, and the one place that knows which controller each one has.
  *
- * TNGR-2 and FZPP-6 are both one persistent AudioWorkletNode per lane that notes are
+ * TNGR-2 and FRPP-6 are both one persistent AudioWorkletNode per lane that notes are
  * posted to, booked offline and handed over a stretch at a time. The rack's machinery for
  * that — the queue while a lane builds, the chorus stage, held previews, cuts, the offline
  * bookings — was written for TNGR-2 and is the same for any such engine, so it takes its
  * engine from here rather than being written out twice. What differs is behind these
  * entries: how a lane is built and kept on the voice's patch, how a note-on is spelled,
  * and whether the note's VELOCITY travels on its own (`velocity`) or is already folded
- * into its gain. FZPP-6 needs it whole, because its velocity also picks MUTED BELOW's
+ * into its gain. FRPP-6 needs it whole, because its velocity also picks MUTED BELOW's
  * chucks and how bright the pluck is.
  */
 const WORKLET_LANES = {
@@ -118,16 +118,16 @@ const WORKLET_LANES = {
       destination: booking.dry || ctx.destination,
     }),
   },
-  [FAMILY.FZPP6]: {
-    name: 'FZPP-6',
+  [FAMILY.FRPP6]: {
+    name: 'FRPP-6',
     velocity: true,
-    canHost: canHostFzpp6,
-    lane: (ctx, laneKey, v) => fzpp6Lane(ctx, laneKey, { voice: v }),
-    laneNow: fzpp6LaneNow,
-    sync: (lane, v) => syncFzpp6Patch(lane, v),
-    noteOn: (lane, { at, hz, level, velocity, eventId }) => fzpp6NoteOn(lane, { at, hz, level, velocity, eventId }),
+    canHost: canHostFrpp6,
+    lane: (ctx, laneKey, v) => frpp6Lane(ctx, laneKey, { voice: v }),
+    laneNow: frpp6LaneNow,
+    sync: (lane, v) => syncFrpp6Patch(lane, v),
+    noteOn: (lane, { at, hz, level, velocity, eventId }) => frpp6NoteOn(lane, { at, hz, level, velocity, eventId }),
     offlineOn: ({ frame, hz, level, velocity, eventId }) => ({ type: 'noteOn', frame, eventId, hz, level, velocity }),
-    render: (ctx, booking) => renderFzpp6Lane(ctx, {
+    render: (ctx, booking) => renderFrpp6Lane(ctx, {
       voice: booking.voice, events: booking.events, destination: booking.dry || ctx.destination,
     }),
   },
@@ -2964,7 +2964,7 @@ export class VoiceRack {
       });
     }
     if (workletLaneOf(v)) {
-      // TNGR-2 (and FZPP-6, through the same machinery — see WORKLET_LANES) is its
+      // TNGR-2 (and FRPP-6, through the same machinery — see WORKLET_LANES) is its
       // AudioWorklet and nothing else. Live, notes go to the lane's
       // persistent node; offline, they are collected for `flushTngr2Offline`. There is no
       // second synthesis path to fall back to — see `_playTngr2Node` for what happens
@@ -3504,7 +3504,7 @@ export class VoiceRack {
     for (const booking of booked?.values() || []) {
       try {
         const api = workletLaneOf(booking.voice);
-        // Per engine as well as per lane: a TNGR-2 node cannot take an FZPP-6 lane's notes.
+        // Per engine as well as per lane: a TNGR-2 node cannot take an FRPP-6 lane's notes.
         const laneId = `${api.name}|${booking.laneKey}`;
         const already = this._tngr2OfflineLanes.get(laneId);
         if (already) {
@@ -3624,7 +3624,7 @@ export class VoiceRack {
    * said why.
    */
   _queueTngr2(v, laneKey, note) {
-    // Per engine as well as per lane, so a lane switched between TNGR-2 and FZPP-6 while it
+    // Per engine as well as per lane, so a lane switched between TNGR-2 and FRPP-6 while it
     // builds does not hand one engine's notes to the other's node.
     const key = `${v.synth}|${laneKey}`;
     this._tngr2Pending ||= new Map();
@@ -8867,7 +8867,7 @@ export class VoiceRack {
       editMsMax: Math.round(this._editMsMax || 0),
       edits: this._editCount || 0,
       tngr2: this._tngr2Health(),
-      fzpp6: this.ctx ? fzpp6ControllerHealth(this.ctx) : { lanes: 0 },
+      frpp6: this.ctx ? frpp6ControllerHealth(this.ctx) : { lanes: 0 },
       activePreviews: this._activePreviews.size,
       cachedSources: this._cachedPlayback.size,
       mrdrTail: {
@@ -8923,7 +8923,7 @@ export class VoiceRack {
     const offline = typeof this.ctx?.startRendering === 'function';
     if (!offline) {
       tngr2Choke(tngr2LaneNow(this.ctx, laneKey), { at });
-      fzpp6Choke(fzpp6LaneNow(this.ctx, laneKey), { at });
+      frpp6Choke(frpp6LaneNow(this.ctx, laneKey), { at });
       mrdr3Choke(mrdr3LaneNow(this.ctx, laneKey), { at });
       return;
     }
@@ -9477,7 +9477,7 @@ export class VoiceRack {
       try {
         const at = fading ? this.ctx.currentTime + fade : this.ctx.currentTime;
         for (const lane of tngr2LanesOf(this.ctx)) tngr2Choke(lane, { at });
-        for (const lane of fzpp6LanesOf(this.ctx)) fzpp6Choke(lane, { at });
+        for (const lane of frpp6LanesOf(this.ctx)) frpp6Choke(lane, { at });
       } catch { /* context already gone */ }
       try {
         // STAMPED AT THE END OF THE FADE, not at frame 0. A panic drops every sounding

@@ -344,7 +344,8 @@ function editVoice(laneKey, { advanced, at = null } = {}) {
   // Already open on this very preset: leave it where it is and stop. Re-opening would
   // call `open` again, which takes the CURRENT sound as the baseline — so a second ask
   // for the editor would quietly make your unsaved edits the thing Revert goes back to.
-  if (voiceEditor.isOpen() && voiceEditor.laneKey === laneKey
+  // Open counts the full window too: only one of the two surfaces is ever showing.
+  if ((voiceEditor.isOpen() || voiceEditor.fullOpen) && voiceEditor.laneKey === laneKey
       && voiceEditor.editing === chosen) {
     // Except when the full window is what was asked for and it is not up yet — then the
     // panel already being open is no reason to refuse. Not `standalone`: there IS a
@@ -354,6 +355,8 @@ function editVoice(laneKey, { advanced, at = null } = {}) {
       voiceEditor.openFull(1, { at, avoidTransport: true });
       return;
     }
+    // Edit Simple with the full window up swaps one for the other.
+    if (advanced === false && voiceEditor.fullOpen) voiceEditor.showSimple(at);
     return;
   }
   if (!voiceEditor.open(chosen, { laneKey, laneLabel: targetLabel(laneKey) })) return;
@@ -367,8 +370,21 @@ function editVoice(laneKey, { advanced, at = null } = {}) {
     voiceEditor.openFull(1, { standalone: true, at, avoidTransport: true });
     return;
   }
+  // `open` leaves the panel hidden while the full window is up — one surface at a time —
+  // so a Simple ask over a standing full window has to swap them explicitly.
+  if (advanced === false && voiceEditor.fullOpen) { voiceEditor.showSimple(at); return; }
   placeVoiceEditor();
   placeEditorAtPointer(at);
 }
 
-export { editVoice, syncVoiceEditorToLane, placeVoiceEditor };
+/**
+ * The compact panel taking over from the full window (its SIMPLE button, or Edit Simple
+ * while it is up): back in its window, at the full window's corner rather than wherever a
+ * repaint last parked it — the full window may have been dragged across the screen.
+ */
+function showSimpleEditor(at) {
+  placeVoiceEditor();
+  if (voiceEditor.isOpen() && voiceEditor.laneKey && at) clampFloatingEditor(at.x, at.y);
+}
+
+export { editVoice, syncVoiceEditorToLane, placeVoiceEditor, showSimpleEditor };

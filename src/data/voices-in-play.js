@@ -20,6 +20,7 @@
 import { VOICES, VOICE_LANES, defaultVoiceOf, voicesFor, voicesByCategory } from './voices.js';
 import { synthFamily as engineFamily } from '../engine/synth-families.js';
 import { listTracks, resolveTrack } from './tracks.js';
+import { CREATIVE_DRUM_KITS } from './creative-drum-kits.js';
 
 // Preset selection is a FAMILY choice, not a request to rewrite the stored voice, so
 // compare both sides through the engine's own rename map and leave the persisted identity
@@ -83,8 +84,23 @@ const offered = (keep) => {
   // and a mix that chose one of these before it was filtered must still show as chosen
   // and be returnable to. Nothing in the game names one today — it is the desk's own
   // saved mixes that can.
-  return (v) => !v.quoted || v.id === keep || played.has(v.id);
+  //
+  // The built-in presets — the engine's own voices, and the `=` kit, cues and 808/909/CR78
+  // and 80s/303 copies — are the same rule
+  // without the exception: they stay in the catalogue, so a song on one goes on playing it
+  // and the strip goes on naming it, but the menu only shows one while a lane is on it.
+  return (v) => v.id === keep || (!isBuiltIn(v) && !OFF_MENU_KITS.has(v.id) && (!v.quoted || played.has(v.id)));
 };
+
+// The first eight creative kits' own pieces (`lab: false`): their styles are not in use
+// (Peter, 24 Oct 2026). Same rule as a built-in — songs and desk styles that name one go
+// on playing it, and the browser shows one only while a lane is on it. Borrowed pieces
+// (a kit's rim that is another preset) are not the kit's to hide.
+const OFF_MENU_KITS = new Set(CREATIVE_DRUM_KITS.filter((k) => k.lab === false)
+  .flatMap((k) => Object.values(k.voices)).filter((id) => id.startsWith('kit_')));
+
+/** A built-in sound: the engine's own (the browser's Built-in), or marked by a leading `=`. */
+export const isBuiltIn = (v) => v.kind === 'engine' || /^=/.test(v.label || '');
 
 /**
  * `voicesFor`, less the quotations nothing plays. What the preset selector offers.
@@ -119,7 +135,7 @@ export function offeredByEngine(engine, { laneKey = null, keep = null } = {}) {
     ? offeredVoices(laneKey, { keep })
     : Object.values(VOICES).filter((v) =>
       !v.songLocal && !v.nameOnly && !v.starter && !v.draft && v.kind !== 'engine'
-      && (!v.quoted || v.id === keep || quotesInPlay().has(v.id)));
+      && offered(keep)(v));
   return list.filter((v) => {
     const key = v.kind === 'drum' ? 'drum' : engineFamily(v.synth);
     return key === wanted;

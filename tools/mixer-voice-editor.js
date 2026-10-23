@@ -30,6 +30,7 @@ import * as Tone from 'tone';
 import { VOICES } from '../src/data/voices.js';
 import { isMrdrVoice } from '../src/engine/mrdr3/identity.js';
 import { tngr2Defaults, TNGR2_LFO_SHAPES } from '../src/engine/tngr2/schema.js';
+import { FRPP6_BODY_SETS, FRPP6_BODY_MODE_KEYS } from '../src/engine/frpp6/schema.js';
 import { JMJR4_SYLLABLES, JMJR4_MORPH_TARGETS, syllablesFromText } from '../src/engine/jmjr4/syll.js';
 import {
   JMJR4_DEFAULTS, JMJR4_AMP_DEFAULTS, JMJR4_MODES, JMJR4_PER_KEY, JMJR4_PITCH_FOLLOWS, JMJR4_QUALITIES, JMJR4_CHORD_TRACTS, jmjr4DefaultQuality,
@@ -81,7 +82,7 @@ const isUserPreset = (voice) => !!voice?.user && !voice?.songLocal;
  * make that unreachable.
  */
 export const EDITABLE_SYNTHS = [
-  KNDO5, WNDR9, 'MRDR-3', 'TNGR-2', 'JMJR-4', 'FZPP-6',
+  KNDO5, WNDR9, 'MRDR-3', 'TNGR-2', 'JMJR-4', 'FRPP-6',
   CRLS1, RMND7,
 ];
 
@@ -89,7 +90,7 @@ export const EDITABLE_SYNTHS = [
 // they have in common that the panel cares about: their modulators are built per note-on,
 // so a key measured from the start of a note — `vibrato.delay` — means something on these
 // and nothing on the others, whose LFO free-runs in the pool.
-const NATIVE_SYNTHS = [KNDO5, WNDR9, 'MRDR-3', 'TNGR-2', 'JMJR-4', 'FZPP-6'];
+const NATIVE_SYNTHS = [KNDO5, WNDR9, 'MRDR-3', 'TNGR-2', 'JMJR-4', 'FRPP-6'];
 
 // ---- measuring, in the page -------------------------------------------------
 
@@ -141,7 +142,7 @@ export async function measureRaw(voiceId, noiseBuf, sampleRate = 44100) {
   } finally {
     Tone.setContext(live);          // the synchronous window closes here, always
   }
-  // A worklet synth (TNGR-2, FZPP-6) BOOKED its note rather than playing it: an offline
+  // A worklet synth (TNGR-2, FRPP-6) BOOKED its note rather than playing it: an offline
   // lane is built from its whole schedule, here, after the Tone window has closed — the
   // build is async and touches no Tone. Without this both measured as silence.
   await rack.flushTngr2Offline?.();
@@ -533,6 +534,12 @@ const MOD_LFO_WAVES = [...NATIVE_WAVES, 'samplehold'];
 // MRDR-3's FM modulator: the four plus a FIXED 25% pulse, which the engine builds as a
 // PeriodicWave — the cost of a sine. No PWM: a moving width is a delay line per voice.
 const FM_MOD_WAVES = [...NATIVE_WAVES, 'pulse'];
+// RMND-7's MODULATOR in FM mode (Peter, 23 Oct 2026): Tone's pulse and PWM are not centred
+// on zero, and in FM the modulator is ADDED to the carrier's frequency — so their DC offset
+// is a pitch shift that grows with FM DEPTH, and PWM's moves. Greyed in FM, live in AM, where
+// an offset only nudges the level. The square they fall back to is the nearest shape.
+const RMND7_FM_OFF_MODS = ['pulse', 'pwm'];
+const RMND7_FM_MOD_FALLBACK = 'square';
 const LFO_TEMPO_DIVISIONS = ['1/64', '1/32', '1/16', '1/8', '1/4', '1/2'];
 // A two-beat hold is useful on a smooth LFO, but too slow for the stepped S&H
 // source. Keep the stored value compatible while removing that choice from its
@@ -668,7 +675,7 @@ const SHORT = {
   '1bar': 'BAR', '2bar': '2BAR',
   poly: 'POLY', legato: 'LEGATO', mono: 'MONO', samplehold: 'S&H',
   off: 'OFF', '1+2': '1+2', '1+3': '1+3', '1+2+3': 'ALL',
-  // FZPP-6's tunings, bodies and exciters.
+  // FRPP-6's tunings, bodies and exciters.
   standard: 'STD', dropD: 'DROP D', openG: 'OPEN G', dadgad: 'DADGAD',
   steel: 'STEEL', nylon: 'NYLON', archtop: 'ARCH', banjo: 'BANJO', harp: 'HARP', none: 'NONE',
   pick: 'PICK', impulse: 'STRIKE',
@@ -1049,7 +1056,7 @@ const PERCUSSION_HUMANISE_GROUP = humaniseGroupFor(['gain', 'pitch', 'filter']);
 /**
  * Velocity controls are HIDDEN on every synth for now (Peter, 23 Oct 2026). The engines
  * still honour a note's velocity — `play` scales the gain, `_playLayer` reads
- * `v.velocity`, FZPP-6 darkens and chucks — but the desk cannot write one (the piano roll
+ * `v.velocity`, FRPP-6 darkens and chucks — but the desk cannot write one (the piano roll
  * has no velocity lane; snare rolls are done with Spot FX), so a pot nobody can hear move
  * is noise on the board. Flip this when velocity rolls out everywhere, and the rows below
  * come back as they were. tests/pot-coverage.js HIDDEN_OK knows about the MRDR-3 key.
@@ -1714,11 +1721,10 @@ const jmjr4Rows = (shown, rows) => rows.map((row) => ({ ...row, hideWhen: shown 
 const endsGroup = (row) => ({ ...row, gapAfter: true });
 const startsGroup = (row) => ({ ...row, gapBefore: true });
 
-// FZPP-6's exciter kinds, for the rows each kind reads (see the FZPP-6 cards).
-const fzType = (type) => (v) => (v?.fzpp6?.exciter?.type ?? 'pick') === type;
-const fzSustained = (v) => ['bow', 'reed', 'sax', 'jet'].includes(v?.fzpp6?.exciter?.type ?? 'pick');
+// FRPP-6's exciter kinds, for the rows each kind reads (see the FRPP-6 cards).
+const fzType = (type) => (v) => (v?.frpp6?.exciter?.type ?? 'pick') === type;
+const fzSustained = fzType('bow');
 const fzPlucked = (v) => !fzSustained(v);
-const fzWind = (v) => ['reed', 'sax', 'jet'].includes(v?.fzpp6?.exciter?.type ?? 'pick');
 
 const SYNTH_GROUPS = {
   /**
@@ -2068,7 +2074,9 @@ const SYNTH_GROUPS = {
     ] },
     { key: 'oscillators', title: 'Osc', rows: [
       pick('oscillator.type', 'CARRIER', WAVES, 'sine'),
-      pick('modulation.type', 'MODULATOR', WAVES, 'square'),
+      pick('modulation.type', 'MODULATOR', WAVES, 'square', null, {
+        optionOff: (v, o) => isRmnd7Fm(v) && RMND7_FM_OFF_MODS.includes(o),
+      }),
     ] },
     { key: 'modenv', title: 'Mod Env', rows: adsr('modulationEnvelope') },
     // KNDO-5's Pitch Env, on KNDO-5's keys: how far from the written note this starts and
@@ -2175,13 +2183,13 @@ const SYNTH_GROUPS = {
       n('$chorus.width', 'WIDTH', 0, 1, 0.01, fixed(2), CHORUS_DEFAULTS.width, '', chorused),
     ] },
   ],
-  // ---- FZPP-6 -------------------------------------------------------------------------
+  // ---- FRPP-6 -------------------------------------------------------------------------
   //
-  // The waveguide string (src/engine/fzpp6/), on twenty controls named for what you HEAR
+  // The waveguide string (src/engine/frpp6/), on twenty controls named for what you HEAR
   // (Peter, 23 Oct 2026: "the editor is very complex, it is not easy to work out what is
   // going to change" — it had forty, named for the physics). Five of the old ones are fixed
   // in the engine now rather than drawn, and two pairs became one control each; see the
-  // header of src/engine/fzpp6/schema.js. Switches are pills that say what they ARE —
+  // header of src/engine/frpp6/schema.js. Switches are pills that say what they ARE —
   // PICKUP: ACOUSTIC / NECK / MIDDLE / BRIDGE — rather than a number between 0 and 1.
   //
   //   PLUCK        how the string is set going
@@ -2189,57 +2197,54 @@ const SYNTH_GROUPS = {
   //   CHARACTER    what kind of string it is
   //   HAND NOISES  the noises a player's hands make around the notes
   //   BODY         the box it is on
-  'FZPP-6': [
-    // The exciter TYPE a row is for — PICK / NOISE / STRIKE pluck the string once; BOW,
-    // REED and JET (Stage 3) keep driving it while the key is down.
-    //   plucked  the pluck's own pots      sustained  pressure and noise
-    //   wind     REED and JET: no string to ring, no box — the bore and its bell are the instrument
+  'FRPP-6': [
+    // The exciter TYPE a row is for — PICK / NOISE / STRIKE pluck the string once; BOW
+    // keeps driving it while the key is down. (REED, SAX and JET were here until 23 Oct
+    // 2026: wind sounds other engines do as well, on a board that stopped looking like a
+    // string's. The bow stays — it IS a string, and a section costs a tenth of MRDR-3's.)
+    //   plucked  the pluck's own pots      sustained  pressure, speed and noise
     { key: 'pluck', title: 'Exciter',
       tip: 'How the string is set going. PICK plucks it, NOISE scrapes it, STRIKE hits it like a '
-        + 'hammer — once, and it rings. BOW, REED and JET keep playing it for as long as the key '
-        + 'is down: a bow on the string, a reed on a bore (clarinet), a jet across a bore (flute). '
+        + 'hammer — once, and it rings. BOW keeps playing it for as long as the key is down. '
         + 'HARD runs from a soft fingertip to a hard plectrum. WHERE is where along the string it '
         + 'is played or bowed: near the bridge is thin, towards the middle round. SCRAPE is the '
         + 'scratch of the pick\'s edge, LENGTH how long a NOISE scrape lasts. PRESSURE is how hard '
-        + 'the bow or breath drives it, and NOISE its breathiness; SPEED is the bow\'s speed, REED '
-        + 'the reed\'s stiffness, BELL the bore\'s brightness.',
+        + 'the bow drives it, NOISE its roughness, SPEED the bow\'s speed.',
       rows: [
-      pick('$fzpp6.exciter.type', 'TYPE', ['pick', 'noise', 'impulse', 'bow', 'reed', 'sax', 'jet'], 'pick', null, {
+      pick('$frpp6.exciter.type', 'TYPE', ['pick', 'noise', 'impulse', 'bow'], 'pick', null, {
         dropdown: true, startRow: true,
-        optionLabel: (o) => ({ pick: 'Pick', noise: 'Noise', impulse: 'Strike', bow: 'Bow', reed: 'Reed', sax: 'Sax', jet: 'Jet' })[o] || o,
-        tip: 'PICK plucks the string, NOISE scrapes it, STRIKE hits it like a hammer. BOW bows it, REED blows a closed bore through a reed (clarinet: odd harmonics), SAX a reed part-way along an open bore (every harmonic), JET blows across a bore (flute).',
+        optionLabel: (o) => ({ pick: 'Pick', noise: 'Noise', impulse: 'Strike', bow: 'Bow' })[o] || o,
+        tip: 'PICK plucks the string, NOISE scrapes it, STRIKE hits it like a hammer. BOW bows it, for as long as the key is down.',
       }),
-      n('$fzpp6.exciter.hardness', 'HARD', 0, 1, 0.01, fixed(2), 0.6, '', fzPlucked, {
-        startRow: true, tip: 'A soft fingertip (dark, round) to a hard plectrum (bright, sharp).',
+      n('$frpp6.exciter.hardness', 'HARD', 0, 1, 0.01, fixed(2), 0.6, '', null, {
+        hideWhen: fzPlucked, startRow: true, tip: 'A soft fingertip (dark, round) to a hard plectrum (bright, sharp).',
       }),
-      n('$fzpp6.exciter.position', 'WHERE', 0.05, 0.5, 0.01, fixed(2), 0.18, '', (v) => !fzWind(v), {
+      n('$frpp6.exciter.position', 'WHERE', 0.05, 0.5, 0.01, fixed(2), 0.18, '', null, {
         tip: 'Where it is plucked or bowed: by the bridge (thin, twangy) to the middle of the string (round, hollow).',
       }),
-      n('$fzpp6.exciter.mix', 'SCRAPE', 0, 1, 0.01, fixed(2), 0.25, '', (v) => (v?.fzpp6?.exciter?.type ?? 'pick') === 'pick', {
-        tip: 'How much of the scratch of the pick\'s edge you hear.',
+      n('$frpp6.exciter.mix', 'SCRAPE', 0, 1, 0.01, fixed(2), 0.25, '', null, {
+        hideWhen: fzType('pick'), tip: 'How much of the scratch of the pick\'s edge you hear.',
       }),
-      n('$fzpp6.exciter.length', 'LENGTH', 0.001, 1, ENV_TIME_STEP, secs, 0.006, 's', (v) => {
-        // Live whenever there is a scrape to time: NOISE always, PICK while SCRAPE is up.
-        const ex = v?.fzpp6?.exciter || {};
-        return ex.type === 'noise' || ((ex.type ?? 'pick') === 'pick' && (ex.mix ?? 0.25) > 0);
-      }, {
+      n('$frpp6.exciter.length', 'LENGTH', 0.001, 1, ENV_TIME_STEP, secs, 0.006, 's', null, {
+        // Shown whenever there is a scrape to time: NOISE always, PICK while SCRAPE is up.
+        hideWhen: (v) => {
+          const ex = v?.frpp6?.exciter || {};
+          return ex.type === 'noise' || ((ex.type ?? 'pick') === 'pick' && (ex.mix ?? 0.25) > 0);
+        },
         taper: ENV_TIME_TAPER, floor: ENV_TIME_STEP, tip: 'How long the scrape lasts: a flick, or a long bowed swell.',
       }),
-      // The sustained exciters' pots, each shown for the types that read it.
-      n('$fzpp6.exciter.pressure', 'PRESSURE', 0, 1, 0.01, fixed(2), 0.6, '', fzSustained, {
-        startRow: true, tip: 'How hard the bow or the breath drives it: from barely sounding to as hard as it goes before it chokes.',
+      // The sustained exciters' pots. Every pot on this card is HIDDEN, not greyed, for the
+      // types that do not read it (`hideWhen`, as JMJR-4's Vocal card): a bow has no HARD,
+      // a pick no PRESSURE, and a card of greyed pots for the other instrument was clutter
+      // (Peter, 23 Oct 2026).
+      n('$frpp6.exciter.pressure', 'PRESSURE', 0, 1, 0.01, fixed(2), 0.6, '', null, {
+        hideWhen: fzSustained, startRow: true, tip: 'How hard the bow drives the string: from barely sounding to as hard as it goes before it growls.',
       }),
-      n('$fzpp6.exciter.noise', 'NOISE', 0, 1, 0.01, fixed(2), 0.1, '', fzSustained, {
-        tip: 'Breathiness: the noise in the bow or the breath.',
+      n('$frpp6.exciter.noise', 'NOISE', 0, 1, 0.01, fixed(2), 0.1, '', null, {
+        hideWhen: fzSustained, tip: 'Roughness: the noise in the bow.',
       }),
-      n('$fzpp6.exciter.speed', 'SPEED', 0, 1, 0.01, fixed(2), 0.5, '', fzType('bow'), {
-        tip: 'The bow\'s speed: slow and rasping to fast and full.',
-      }),
-      n('$fzpp6.exciter.reed', 'REED', 0, 1, 0.01, fixed(2), 0.5, '', (v) => fzType('reed')(v) || fzType('sax')(v), {
-        tip: 'The reed\'s stiffness: soft and dark to hard and bright.',
-      }),
-      n('$fzpp6.exciter.bell', 'BELL', 0, 1, 0.01, fixed(2), 0.5, '', (v) => fzType('reed')(v) || fzType('sax')(v), {
-        tip: 'The bore\'s brightness at the bell: dark to open.',
+      n('$frpp6.exciter.speed', 'SPEED', 0, 1, 0.01, fixed(2), 0.5, '', null, {
+        hideWhen: fzType('bow'), tip: 'The bow\'s speed: slow and rasping to fast and full.',
       }),
     ] },
     { key: 'ring', title: 'Ring',
@@ -2249,13 +2254,13 @@ const SYNTH_GROUPS = {
         + 'solid for the note, dashed for its highs — and either end can be dragged. RELEASE, '
         + 'on the AMP card, is what stops it early when the note is let go.',
       rows: [
-      envTime('$fzpp6.string.decay', 'RING', 0.02, secs, 3.5, 's', (v) => !fzWind(v), {
+      envTime('$frpp6.string.decay', 'RING', 0.02, secs, 3.5, 's', null, {
         tip: 'How long the note rings before it dies away.',
       }),
-      n('$fzpp6.string.damp', 'HIGHS', 0.02, 1, 0.01, fixed(2), 0.22, '', (v) => !fzWind(v), {
+      n('$frpp6.string.damp', 'HIGHS', 0.02, 1, 0.01, fixed(2), 0.22, '', null, {
         tip: 'How long the top end lasts, against the note: low is a mellow string whose sparkle goes first, high stays bright to the end.',
       }),
-      n('$fzpp6.string.keyFollow', 'RING FOLLOW', 0, 1, 0.01, fixed(2), 0.5, '', (v) => !fzWind(v), {
+      n('$frpp6.string.keyFollow', 'RING FOLLOW', 0, 1, 0.01, fixed(2), 0.5, '', null, {
         tip: 'How much shorter high notes ring than low ones, as on a real string. 0: every note rings as long.',
       }),
     ] },
@@ -2270,39 +2275,39 @@ const SYNTH_GROUPS = {
         + 'STEREO spreads the strings across the field, DETUNE puts them slightly out of tune '
         + 'with each other, SHIMMER sets how far apart DOUBLE\'s pair is.',
       rows: [
-      pick('$fzpp6.strings.tuning', 'TUNING', ['standard', 'dropD', 'openG', 'dadgad', 'free'], 'standard', null, {
+      pick('$frpp6.strings.tuning', 'TUNING', ['standard', 'dropD', 'openG', 'dadgad', 'free'], 'standard', null, {
         // A dropdown: five tunings as pills were five stubs on a line.
         dropdown: true, startRow: true,
         optionLabel: (o) => ({ standard: 'Standard', dropD: 'Drop D', openG: 'Open G', dadgad: 'DADGAD', free: 'Free' })[o] || o,
         tip: 'A guitar\'s six strings (standard or an open tuning) decide which string each note is played on. FREE: any note on any string — harp, koto, synth.',
       }),
-      pick('$fzpp6.string.pickup', 'PICKUP', ['acoustic', 'neck', 'neckMiddle', 'middle', 'middleBridge', 'bridge'], 'acoustic', fzPlucked, {
+      pick('$frpp6.string.pickup', 'PICKUP', ['acoustic', 'neck', 'neckMiddle', 'middle', 'middleBridge', 'bridge'], 'acoustic', fzPlucked, {
         // A dropdown: a Strat's five-way switch plus ACOUSTIC is six positions.
         dropdown: true, startRow: true,
         optionLabel: (o) => ({ acoustic: 'Acoustic', neck: 'Neck', neckMiddle: 'Neck + Middle', middle: 'Middle', middleBridge: 'Middle + Bridge', bridge: 'Bridge' })[o] || o,
         tip: 'ACOUSTIC is the string itself. The rest are an electric guitar\'s five-way pickup switch: NECK warm and round, BRIDGE thin and cutting, and the positions between.',
       }),
-      pick('$fzpp6.string.double', 'DOUBLE', ['off', 'shimmer', 'octave'], 'off', fzPlucked, {
+      pick('$frpp6.string.double', 'DOUBLE', ['off', 'shimmer', 'octave'], 'off', fzPlucked, {
         // Its own line: five and four words do not fit beside each other.
         startRow: true,
         tip: 'A second string beside each one. SHIMMER: a few cents apart, a slow shimmer (twice the CPU). 12-STRING: an octave above.',
       }),
-      n('$fzpp6.string.buzz', 'BUZZ', 0, 1, 0.01, fixed(2), 0, '', fzPlucked, {
+      n('$frpp6.string.buzz', 'BUZZ', 0, 1, 0.01, fixed(2), 0, '', fzPlucked, {
         startRow: true, tip: 'The string buzzing against its bridge: sitar, tanpura, a rattly banjo.',
       }),
-      n('$fzpp6.string.stiffness', 'METAL', 0, 1, 0.01, fixed(2), 0.15, '', fzPlucked, {
+      n('$frpp6.string.stiffness', 'METAL', 0, 1, 0.01, fixed(2), 0.15, '', fzPlucked, {
         tip: 'A stiffer, more metallic string: piano wire, a kalimba\'s tine.',
       }),
-      n('$fzpp6.strings.tension', 'BEND', 0, 50, 1, fixed(0), 6, 'ct', null, {
+      n('$frpp6.strings.tension', 'BEND', 0, 50, 1, fixed(0), 6, 'ct', null, {
         tip: 'How sharp a hard pluck starts and settles back down, in cents — a koto\'s twang.',
       }),
-      n('$fzpp6.strings.spread', 'STEREO', 0, 1, 0.01, fixed(2), 0.3, '', null, {
+      n('$frpp6.strings.spread', 'STEREO', 0, 1, 0.01, fixed(2), 0.3, '', null, {
         tip: 'How wide the strings are spread across the stereo field, low strings left. 0 is mono.',
       }),
-      n('$fzpp6.string.detune', 'DETUNE', 0, 50, 1, fixed(0), 2, 'ct', (v) => !fzWind(v), {
+      n('$frpp6.string.detune', 'DETUNE', 0, 50, 1, fixed(0), 2, 'ct', null, {
         tip: 'How far the six strings are out of tune with each other, in cents.',
       }),
-      n('$fzpp6.string.shimmer', 'SHIMMER', 1, 50, 1, fixed(0), 4, 'ct', (v) => fzPlucked(v) && v?.fzpp6?.string?.double === 'shimmer', {
+      n('$frpp6.string.shimmer', 'SHIMMER', 1, 50, 1, fixed(0), 4, 'ct', (v) => fzPlucked(v) && v?.frpp6?.string?.double === 'shimmer', {
         tip: 'How far apart the two strings of each pair are when DOUBLE is SHIMMER, in cents: slow beating to a wide chorus.',
       }),
     ] },
@@ -2313,15 +2318,15 @@ const SYNTH_GROUPS = {
         + 'the piano roll. FRET is the tick of a string landing on a fret, SQUEAK fingers '
         + 'sliding along a ringing string, LIFT the scratch as the hand lets go.',
       rows: withoutVelocity([
-      n('$fzpp6.damping.mute', 'MUTE', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), { tip: 'The palm resting on the strings: short and thick.' }),
-      n('$fzpp6.damping.mutedBelow', 'CHUCK', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), {
+      n('$frpp6.damping.mute', 'MUTE', 0, 1, 0.01, fixed(2), 0, '', null, { tip: 'The palm resting on the strings: short and thick.' }),
+      n('$frpp6.damping.mutedBelow', 'CHUCK', 0, 1, 0.01, fixed(2), 0, '', null, {
         // Velocity-keyed, so hidden with the rest — see VELOCITY_CONTROLS_HIDDEN.
         velocity: true,
         tip: 'Notes played softer than this become muted chucks — strings touched, not fretted. Needs notes with a velocity: the desk cannot set one yet. 0 is off.',
       }),
-      n('$fzpp6.damping.fret', 'FRET', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), { tip: 'The tick of a string landing on a new fret.' }),
-      n('$fzpp6.damping.squeak', 'SQUEAK', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), { tip: 'Fingers sliding along a ringing string.' }),
-      n('$fzpp6.damping.lift', 'LIFT', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), { tip: 'The scratch of the hand lifting off at the end of a note.' }),
+      n('$frpp6.damping.fret', 'FRET', 0, 1, 0.01, fixed(2), 0, '', null, { tip: 'The tick of a string landing on a new fret.' }),
+      n('$frpp6.damping.squeak', 'SQUEAK', 0, 1, 0.01, fixed(2), 0, '', null, { tip: 'Fingers sliding along a ringing string.' }),
+      n('$frpp6.damping.lift', 'LIFT', 0, 1, 0.01, fixed(2), 0, '', null, { tip: 'The scratch of the hand lifting off at the end of a note.' }),
     ]) },
     // An ADVANCED door on PLUCK — the drum kit keeps TAPS behind a door on its Master card the
     // same way. Fine-tuning for a more sophisticated preset, out of the way of a player.
@@ -2334,57 +2339,89 @@ const SYNTH_GROUPS = {
       rows: withoutVelocity([
         // Behind the door, not on PLUCK, and hidden with every other velocity control for
         // now — see VELOCITY_CONTROLS_HIDDEN.
-        n('$fzpp6.exciter.velocity', 'VELOCITY', 0, 1, 0.01, fixed(2), 0.5, '', null, {
+        n('$frpp6.exciter.velocity', 'VELOCITY', 0, 1, 0.01, fixed(2), 0.5, '', null, {
           velocity: true,
           tip: 'How much darker a softly played note is — for songs whose notes carry a velocity. 0: soft notes are only quieter.',
         }),
-        n('$fzpp6.exciter.bright', 'BRIGHT', 0, 1, 0.01, fixed(2), 0.7, '', null, {
+        n('$frpp6.exciter.bright', 'BRIGHT', 0, 1, 0.01, fixed(2), 0.7, '', null, {
           // Unset, it shows the value HARD gives it — the schema's 0.4 + 0.5 × HARD.
-          read: (raw, v) => raw ?? 0.4 + 0.5 * Number(v?.fzpp6?.exciter?.hardness ?? 0.6),
+          read: (raw, v) => raw ?? 0.4 + 0.5 * Number(v?.frpp6?.exciter?.hardness ?? 0.6),
           tip: 'The pluck\'s brightness on its own. Until you move it, it follows HARD.',
         }),
-        envTime('$fzpp6.damping.settle', 'SETTLE', 0, secs, 0, 's', null, {
+        envTime('$frpp6.damping.settle', 'SETTLE', 0, secs, 0, 's', null, {
           tip: 'How long the bright edge of a pluck takes to settle into the note. 0 is off.',
         }),
       ]) },
-    { key: 'filter', title: 'Filter', optional: 'fzpp6.filter',
+    { key: 'filter', title: 'Filter', optional: 'frpp6.filter',
       onTip: 'Take the filter out — the string as it is',
       offTip: 'Shape each string through a filter, and sweep it',
       rows: [
-        pick('$fzpp6.filter.type', 'TYPE', ['lowpass', 'highpass', 'bandpass'], 'lowpass'),
-        cutoffHz('$fzpp6.filter.cutoff', 'CUTOFF', 2400),
-        resQ('$fzpp6.filter.resonance', 0.707),
-        filterEnvOctaves('$fzpp6.filterEnv.amount'),
-        n('$fzpp6.filter.keyTrack', 'KEY FOLLOW', 0, 1, 0.01, fixed(2), 0),
+        pick('$frpp6.filter.type', 'TYPE', ['lowpass', 'highpass', 'bandpass'], 'lowpass'),
+        cutoffHz('$frpp6.filter.cutoff', 'CUTOFF', 2400),
+        resQ('$frpp6.filter.resonance', 0.707),
+        filterEnvOctaves('$frpp6.filterEnv.amount'),
+        n('$frpp6.filter.keyTrack', 'KEY FOLLOW', 0, 1, 0.01, fixed(2), 0),
       ] },
-    { key: 'filterenv', title: 'Filter Env', bodyWhen: (v) => sectionOn(v, 'fzpp6.filter'), rows: [
-      envTime('$fzpp6.filterEnv.attack', 'ATTACK', 0, secs, 0.001, 's', null, { startRow: true }),
-      envTime('$fzpp6.filterEnv.decay', 'DECAY', 0.001, secs, 0.3),
-      sustainPct('$fzpp6.filterEnv.sustain', 0),
-      envTime('$fzpp6.filterEnv.release', 'RELEASE', 0.001, secs, 0.3),
+    { key: 'filterenv', title: 'Filter Env', bodyWhen: (v) => sectionOn(v, 'frpp6.filter'), rows: [
+      envTime('$frpp6.filterEnv.attack', 'ATTACK', 0, secs, 0.001, 's', null, { startRow: true }),
+      envTime('$frpp6.filterEnv.decay', 'DECAY', 0.001, secs, 0.3),
+      sustainPct('$frpp6.filterEnv.sustain', 0),
+      envTime('$frpp6.filterEnv.release', 'RELEASE', 0.001, secs, 0.3),
     ] },
     // RELEASE is the only release: at note-off the string is stopped within it, highs first,
     // the way a finger stops one — not faded.
     { key: 'amp', title: 'Amp', rows: [
-      envTime('$fzpp6.amp.attack', 'ATTACK', 0, secs, 0, 's', null, { startRow: true }),
-      envTime('$fzpp6.amp.decay', 'DECAY', 0.001, secs, 0.3),
-      sustainPct('$fzpp6.amp.sustain', 100),
-      envTime('$fzpp6.amp.release', 'RELEASE', 0.005, secs, 0.3),
+      envTime('$frpp6.amp.attack', 'ATTACK', 0, secs, 0, 's', null, { startRow: true }),
+      envTime('$frpp6.amp.decay', 'DECAY', 0.001, secs, 0.3),
+      sustainPct('$frpp6.amp.sustain', 100),
+      envTime('$frpp6.amp.release', 'RELEASE', 0.005, secs, 0.3),
     ] },
-    { key: 'body', title: 'Body', bodyWhen: (v) => !fzWind(v),
+    { key: 'body', title: 'Body',
       tip: 'The box the strings are on: a steel-string or classical guitar, an archtop, a '
         + 'banjo\'s drum head, a harp\'s soundboard — or NONE, an electric with no box at all. '
         + 'Each is twenty-one resonances folded into every pluck, so it costs nothing to play. '
         + 'MIX is how much box you hear against the bare string; SIZE makes it bigger and deeper.',
       rows: [
-      pick('$fzpp6.body.type', 'BODY', ['steel', 'nylon', 'archtop', 'banjo', 'harp', 'violin', 'cello', 'none'], 'steel', (v) => !fzWind(v), {
+      pick('$frpp6.body.type', 'BODY', ['steel', 'nylon', 'archtop', 'banjo', 'harp', 'violin', 'cello', 'none'], 'steel', null, {
         dropdown: true, startRow: true,
         optionLabel: (o) => ({ steel: 'Steel-string', nylon: 'Nylon', archtop: 'Archtop', banjo: 'Banjo', harp: 'Harp', violin: 'Violin', cello: 'Cello', none: 'None' })[o] || o,
         tip: 'The box the string is on. NONE is an electric with no box at all.',
       }),
-      n('$fzpp6.body.mix', 'MIX', 0, 1, 0.01, fixed(2), 0.8, '', (v) => !fzWind(v) && (v?.fzpp6?.body?.type ?? 'steel') !== 'none', { startRow: true, tip: 'How much of the box you hear against the bare string.' }),
-      n('$fzpp6.body.size', 'SIZE', 0.5, 2, 0.01, fixed(2), 1, '', (v) => !fzWind(v) && (v?.fzpp6?.body?.type ?? 'steel') !== 'none', { tip: 'A bigger box is a deeper one.' }),
+      n('$frpp6.body.mix', 'MIX', 0, 1, 0.01, fixed(2), 0.8, '', (v) => (v?.frpp6?.body?.type ?? 'steel') !== 'none', { startRow: true, tip: 'How much of the box you hear against the bare string.' }),
+      n('$frpp6.body.size', 'SIZE', 0.5, 2, 0.01, fixed(2), 1, '', (v) => (v?.frpp6?.body?.type ?? 'steel') !== 'none', { tip: 'A bigger box is a deeper one.' }),
     ] },
+    // An ADVANCED door on BODY: the three resonances a player would name, each where the
+    // body set puts it until a pot pins it (the HZ and Q pots read the set's value until
+    // moved, as BRIGHT follows HARD), plus a dB trim. MIX is the whole box against the
+    // string; the trims are the balance INSIDE the box — which resonance leads (Peter asked
+    // whether a gain was needed beside MIX, 24 Oct 2026: it is a different job).
+    { key: 'bodyAdvanced', title: 'Body · Advanced',
+      tip: 'The three resonances that make the box — not EQ bands: each one RINGS after the pluck, '
+        + 'the way a box does, and that ringing is the woody part of the sound. AIR is the air '
+        + 'inside the box (the boom under a low string), TOP the top plate, BACK the back. '
+        + 'Hz is where each rings, Q how long and how narrowly, TRIM how loud against the rest '
+        + 'of the box. Hz and Q sit where the body puts them until you move them. For plain tone '
+        + 'shaping use the FILTER card; this is for making the box a different box — AIR down and '
+        + 'up a few dB is a boomier dreadnought, AIR up with a high Q a boxy parlour guitar, TOP '
+        + 'trimmed down a thinner top. MIX, outside, is the whole box against the bare string.',
+      rows: FRPP6_BODY_MODE_KEYS.flatMap((key, i) => {
+        const set = (v) => FRPP6_BODY_SETS[v?.frpp6?.body?.type ?? 'steel']?.primary?.[i];
+        const on = (v) => (v?.frpp6?.body?.type ?? 'steel') !== 'none';
+        const name = key.toUpperCase();
+        return [
+          n(`$frpp6.body.${key}.hz`, name, 40, 4000, 1, fixed(0), 200, 'Hz', on, {
+            startRow: true, scale: CUTOFF_SCALE, read: (raw, v) => raw ?? set(v)?.[0] ?? 200,
+            tip: `Where the ${key} rings, in Hz. Until you move it, it is where the body puts it.`,
+          }),
+          n(`$frpp6.body.${key}.q`, `${name} Q`, 2, 60, 0.5, fixed(1), 12, '', on, {
+            read: (raw, v) => raw ?? set(v)?.[1] ?? 12,
+            tip: `How long and how narrowly the ${key} rings: low is a broad, quick thump, high a narrow note that hangs on. Until you move it, it is as the body has it.`,
+          }),
+          n(`$frpp6.body.${key}.db`, `${name} TRIM`, -18, 18, 0.5, fixed(1), 0, 'dB', on, {
+            tip: `How loud the ${key} rings against the rest of the box, in dB. 0 is as the body has it; MIX outside sets the whole box.`,
+          }),
+        ];
+      }) },
     // The same card every engine carries, on the same voice-level keys. PLACE means what it
     // means on TNGR-2: PRE drives each string before its filter, POST after it. The knee sits
     // at the string's own peak, measured by the engine when the patch compiles (tables.js).
@@ -3166,10 +3203,17 @@ export function setRmnd7Mode(voice, mode) {
       (voice[HELD] ||= {})['options.modulationIndex'] = options.modulationIndex;
       delete options.modulationIndex;
     }
-  } else if (options.modulationIndex === undefined) {
-    const held = holdOn(voice, 'options.modulationIndex');
-    options.modulationIndex = typeof held === 'number' ? held : RMND7_FM_DEPTH;
-    releaseHold(voice, 'options.modulationIndex');
+  } else {
+    if (options.modulationIndex === undefined) {
+      const held = holdOn(voice, 'options.modulationIndex');
+      options.modulationIndex = typeof held === 'number' ? held : RMND7_FM_DEPTH;
+      releaseHold(voice, 'options.modulationIndex');
+    }
+    // A pulse or PWM modulator picked in AM has no place in FM — see RMND7_FM_OFF_MODS —
+    // so it comes over as a square rather than leaving MODULATOR on a greyed pill.
+    if (RMND7_FM_OFF_MODS.includes(options.modulation?.type)) {
+      options.modulation.type = RMND7_FM_MOD_FALLBACK;
+    }
   }
   return isRmnd7Fm(voice);
 }
@@ -3502,7 +3546,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
   // MRDR-3 on either backend, TNGR-2, JMJR-4, and KNDO-5 and WNDR-9 through
   // `_perNoteKeyMode`. Absent on a drum, which has no pitch to slide.
   ...(isPooled(voice) || isMrdrVoice(voice) || voice?.synth === 'TNGR-2' || voice?.synth === 'JMJR-4'
-    || voice?.synth === 'FZPP-6' || synthFamily(voice?.synth) === KNDO5 || synthFamily(voice?.synth) === WNDR9 ? [
+    || voice?.synth === 'FRPP-6' || synthFamily(voice?.synth) === KNDO5 || synthFamily(voice?.synth) === WNDR9 ? [
     // KEY MODE, not VOICING: the Tone oscillator cards already spend VOICING on
     // single/fat/am/fm, which is a different question from how many notes sound at once.
     pick('$mode', 'KEY MODE', KEY_MODES, 'poly', jmjr4Singing, {
@@ -3653,7 +3697,7 @@ export function panelSpec(voice = {}) {
 // not acquire a second editor during that migration. The pooled Tone classes and the
 // noise kind are being retired and likewise keep their existing detailed strip only.
 const QUICK_SYNTHS = new Set([
-  'TNGR-2', 'JMJR-4', 'FZPP-6', 'drum', KNDO5, WNDR9, RMND7, CRLS1,
+  'TNGR-2', 'JMJR-4', 'FRPP-6', 'drum', KNDO5, WNDR9, RMND7, CRLS1,
 ]);
 /**
  * The presets built for a Quick surface — which are exactly the presets that have a
@@ -4267,17 +4311,17 @@ export const quickRows = (voice) => {
       simpleVibratoRow(voice),
     ];
   }
-  if (voice.synth === 'FZPP-6') {
+  if (voice.synth === 'FRPP-6') {
     // The pluck, the string and the box: what a player reaches for, plus the vibrato.
     return [
       n('$trim', 'LEVEL', -12, 6, 0.1, fixed(1), 0, 'dB'),
       simplePanelRow(voice, '$transpose'),
-      simplePanelRow(voice, '$fzpp6.exciter.hardness'),
-      simplePanelRow(voice, '$fzpp6.exciter.position'),
-      simplePanelRow(voice, '$fzpp6.string.decay'),
-      simplePanelRow(voice, '$fzpp6.string.damp'),
-      simplePanelRow(voice, '$fzpp6.amp.release'),
-      simplePanelRow(voice, '$fzpp6.body.type'),
+      simplePanelRow(voice, '$frpp6.exciter.hardness'),
+      simplePanelRow(voice, '$frpp6.exciter.position'),
+      simplePanelRow(voice, '$frpp6.string.decay'),
+      simplePanelRow(voice, '$frpp6.string.damp'),
+      simplePanelRow(voice, '$frpp6.amp.release'),
+      simplePanelRow(voice, '$frpp6.body.type'),
       simpleVibratoRow(voice),
     ];
   }
@@ -4909,7 +4953,7 @@ function buildTngr2FullLayout(voice, problems) {
 }
 
 const SCOPED_FULL_SYNTHS = new Set([
-  CRLS1, KNDO5, WNDR9, RMND7, 'FZPP-6',
+  CRLS1, KNDO5, WNDR9, RMND7, 'FRPP-6',
 ]);
 
 /**
@@ -5034,7 +5078,7 @@ function buildScopedFullLayout(voice, problems) {
         item(splitCard(take('effects'), CARD_SEAM.effects)),
       ),
     ];
-  } else if (voice.synth === 'FZPP-6') {
+  } else if (voice.synth === 'FRPP-6') {
     // FIVE STACKED COLUMNS, the standard board (Peter, 23 Oct 2026): the signal left to
     // right, SETTINGS over EFFECTS holding the right edge as on every board here.
     //
@@ -5044,7 +5088,7 @@ function buildScopedFullLayout(voice, problems) {
     track = 260;
     cells = [
       // ADVANCED behind a door on PLUCK — the drum kit's TAPS door, the same mechanism.
-      // Every one of FZPP-6's own cards draws what its pots do (Peter, 23 Oct 2026).
+      // Every one of FRPP-6's own cards draws what its pots do (Peter, 23 Oct 2026).
       stack(
         item({ ...take('pluck'), panels: [{ label: 'ADVANCED', title: 'Pluck · Advanced',
           group: { tip: byKey.get('pluckAdvanced')?.tip }, rows: take('pluckAdvanced').rows }] },
@@ -5054,7 +5098,13 @@ function buildScopedFullLayout(voice, problems) {
       ),
       stack(item(take('ring'), { graph: 'ring' }), item(take('hand'), { graph: 'hand' })),
       stack(item(take('filter'), { graph: 'filter' }), item(take('filterenv'), { graph: 'env' })),
-      stack(item(take('amp'), { graph: 'env' }), item(take('body'), { graph: 'body' })),
+      stack(
+        item(take('amp'), { graph: 'env' }),
+        // The second ADVANCED door: the box's three named resonances.
+        item({ ...take('body'), panels: [{ label: 'ADVANCED', title: 'Body · Advanced',
+          group: { tip: byKey.get('bodyAdvanced')?.tip }, rows: take('bodyAdvanced').rows }] },
+        { graph: 'body' }),
+      ),
       stack(
         item(splitCard(take('note'), CARD_SEAM.note)),
         item(splitCard(take('effects'), CARD_SEAM.effects)),
@@ -5573,6 +5623,10 @@ export function createVoiceEditor({
   midiState = () => ({ on: false, inputs: [] }),
   toggleMidi = async () => false,
   midiAdapter = null,
+  // Where the compact panel goes when the full window hands back to it with SIMPLE —
+  // `(at) => void`, `at` being the full window's top-left. Null on a host that has no
+  // compact surface to show, and then the full window draws no SIMPLE button.
+  onSimpleShown = null,
 }) {
   // What is being edited: the live catalogue entry, plus what it looked like when the
   // panel opened. Edits go straight into VOICES[id] — that object IS what the engine
@@ -5923,6 +5977,9 @@ export function createVoiceEditor({
     const list = [];
     const set = {
       push: (el, when, hide = false) => list.push({ el, when, hide }),
+      // Anything else that has to follow the voice without a rebuild — a pick's per-pill
+      // `optionOff`, which another row's write (RMND-7's MODE) can change.
+      call: (fn) => list.push({ fn }),
       // A full-window card stays in the grid when its section is OFF.  Unlike a row
       // guard, this has to cover controls added after the card body is built (graphs,
       // sub-sections and popovers), while leaving only the card's own re-enable switch
@@ -5933,6 +5990,7 @@ export function createVoiceEditor({
       drop: () => { guardSets.delete(set); },
       sync: () => {
         for (const g of list) {
+          if (g.fn) { g.fn(state.voice); continue; }
           const on = !!g.when(state.voice);
           if (g.panel) {
             g.el.classList.toggle('vepaneloff', !on);
@@ -6105,6 +6163,7 @@ export function createVoiceEditor({
     for (const o of options) {
       const b = document.createElement('button');
       b.className = 'segbtn' + (String(o) === String(cur) ? ' on' : '');
+      b.dataset.opt = String(o);
       // Abbreviated, because the pills are what makes this fit: `lowpass` across four
       // options is wider than the panel. The full word is on the tooltip.
       // Uppercased when there is no abbreviation for it, so a pill is never the one
@@ -6154,6 +6213,7 @@ export function createVoiceEditor({
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'segbtn vewavebtn' + (String(o) === String(cur) ? ' on' : '');
+      b.dataset.opt = String(o);
       if (WAVE_GLYPHS[o]) b.append(makeWaveGlyph(WAVE_GLYPHS[o], 'vewavepath'));
       else b.textContent = SHORT[o] ?? String(o).toUpperCase();
       b.title = String(o);
@@ -6334,7 +6394,21 @@ export function createVoiceEditor({
       + (row.startRow ? ' rowstart' : '') + groupGaps(row);
     if (row.tip) wrap.title = row.tip;
     const k = document.createElement('span'); k.className = 'k'; k.textContent = row.label;
-    wrap.append(k, graphicalWave ? buildWaveSeg(row, cur, onChange) : buildSeg(row, cur, onChange));
+    const seg = graphicalWave ? buildWaveSeg(row, cur, onChange) : buildSeg(row, cur, onChange);
+    wrap.append(k, seg);
+    // `optionOff` greys single pills rather than the row, and re-reads the lit one too: the
+    // write that greys a pill (RMND-7's MODE) may also have moved the value off it.
+    if (row.optionOff) {
+      guards.call((voice) => {
+        const now = String(row.read ? row.read(voice) : (getAt(voice, row.path) ?? row.def));
+        for (const b of seg.children) {
+          const off = !!row.optionOff(voice, b.dataset.opt);
+          b.disabled = off;
+          b.classList.toggle('vedisabled', off);
+          b.classList.toggle('on', b.dataset.opt === now);
+        }
+      });
+    }
     if (row.when) guards.push(wrap, row.when);
     if (row.hideWhen) guards.push(wrap, row.hideWhen, true);
     return { wrap, row };
@@ -6855,7 +6929,7 @@ export function createVoiceEditor({
     card.className = 'device vegroup';
     const bar = document.createElement('div'); bar.className = 'devbar';
     const h = document.createElement('h4'); h.textContent = group.title;
-    // A section the engine invented carries its explanation on the title (see FZPP-6).
+    // A section the engine invented carries its explanation on the title (see FRPP-6).
     if (group.tip) { h.title = group.tip; h.style.cursor = 'help'; }
     bar.append(h);
 
@@ -8128,7 +8202,10 @@ export function createVoiceEditor({
     undoHistory.reset();
     // A different preset opens at its top, not where the last one happened to be left.
     build({ keepScroll: false });
-    el.classList.add('show');
+    // One surface at a time: with the full window up, it is the one re-aimed below and
+    // the panel stays behind it. If it closes on a preset with no full layout,
+    // `onFullClosed` brings the panel back.
+    if (!full?.isOpen()) el.classList.add('show');
     // A spoken preset that opens stale (or never compiled) is compiled now.
     ensureJmjr4Phrase();
     // If the full window is up, re-aim it at whatever this is now — a lane follow or a
@@ -8394,6 +8471,8 @@ export function createVoiceEditor({
       return on;
     },
     closeFull: () => full?.close(),
+    simpleAvailable: () => !!state && !!onSimpleShown,
+    showSimple,
     toast,
 
     /**
@@ -8426,6 +8505,19 @@ export function createVoiceEditor({
     },
   };
 
+  /**
+   * Swap the full window for the compact panel on the same preset. Never standalone
+   * once asked: the panel is now what is behind it, so `onFullClosed` reveals it rather
+   * than putting the preset down.
+   */
+  function showSimple(at = null) {
+    if (!state || !onSimpleShown) return;
+    fullStandalone = false;
+    if (full?.isOpen()) full.close();
+    else { el.classList.add('show'); build(); }
+    onSimpleShown(at);
+  }
+
   /** Open the full window on a preset that has one. Built once, on the first ask. */
   let fullStandalone = false;
   function openFull(layer = 1, options = {}) {
@@ -8452,6 +8544,7 @@ export function createVoiceEditor({
     openFull,
     closeFull: () => full?.close(),
     get fullOpen() { return !!full?.isOpen(); },
+    showSimple,
     close,
     /**
      * The save sheet, opened from outside.

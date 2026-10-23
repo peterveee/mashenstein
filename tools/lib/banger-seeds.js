@@ -36,7 +36,7 @@ import { IMPORTED_DIR, songFileIn, writeImportedIndex } from './imported-index.j
 import { compactArrangement, normaliseArrangementResolution } from './arrangement-edit.js';
 import { generateBanger } from './banger/index.js';
 import { captureSectionEffects } from './banger/section-effects.js';
-import { styleFor, BANGER_STYLES, BANGER_FLAVOURS, withoutStyleSuffix } from './banger/styles/index.js';
+import { styleFor, BANGER_STYLES, BANGER_FLAVOURS, withoutStyleSuffix, presetStyleName } from './banger/styles/index.js';
 import { KIT_ROLES, tableIssues, forgetOffered } from './banger/sound-rules.js';
 import { soundsSource, tidyTable } from './banger/sounds-source.js';
 import { songFrom, bangerRefs, buildAllRefs, readLevelData, writeLevelData, CHANNELS_FILE } from './banger-refs.js';
@@ -190,11 +190,21 @@ const pascal = (s) => String(s).split(/[^A-Za-z0-9]+/).filter(Boolean).map((w) =
 /** The library id a sound tuned on a seed (or a combo's banger) is kept under. */
 export const tunedPresetId = (styleId, job, combo = null) => `${combo ? 'combo' : 'seed'}${pascal(styleId)}${combo ? pascal(combo) : ''}${pascal(job)}`;
 // A kept sound's name drops the style (or combo) it was last kept for — `Ride · Future Bass`
-// re-kept for Reggaeton is `Ride · Reggaeton` — but nothing else: a kit sound's instrument
-// stays, so `Havana Patio · Clave` and `Havana Patio · Conga` don't both become
-// `Havana Patio · Reggaeton` (withoutStyleSuffix, styles/index.js).
+// re-kept for Reggaeton is `Ride Reggaeton` — but nothing else: a kit sound's instrument
+// stays, so `Havana Patio Clave` and `Havana Patio Conga` don't both become
+// `Havana Patio Reggaeton` (withoutStyleSuffix, styles/index.js).
 // What a song's copy carries that a library entry does not (or works out for itself).
 const COPY_ONLY = ['id', 'kind', 'level', 'peak', 'factory', 'user', 'songOrigin', 'songSourceId', 'songLocal'];
+const isKeptId = (id) => /^(seed|combo)[A-Z]/.test(id);
+
+/** The library preset (not a starter, not a kept seed or combo sound) a copy still sounds exactly like, or null. */
+function librarySoundOf(params) {
+  const key = soundKey(params);
+  const own = params?.id && VOICES[params.id];
+  if (own && !own.starter && own.kind !== 'engine' && !isKeptId(own.id) && soundKey(own) === key) return own.id;
+  const hit = Object.values(VOICES).find((v) => !v.starter && v.kind !== 'engine' && !isKeptId(v.id) && soundKey(v) === key);
+  return hit?.id ?? null;
+}
 
 /**
  * Keep the sounds tuned on the desk: each copy becomes — or updates — a user preset of its
@@ -208,9 +218,16 @@ async function keepTunedSounds(root, copies, { styleLabel, idFor, measure, resta
   const file = voicesFile || join(root, 'src/data/voices.js');
   const kept = [];
   for (const c of copies) {
+    // A copy nobody tuned is still the library preset it was copied from — name that rather
+    // than keep it again under the style's id (the picker had one sound three times).
+    const same = librarySoundOf(c.params);
+    if (same) {
+      kept.push({ ...c, id: same });
+      continue;
+    }
     const id = idFor(c.job);
     const preset = Object.fromEntries(Object.entries(structuredClone(c.params)).filter(([k]) => !COPY_ONLY.includes(k)));
-    preset.label = `${withoutStyleSuffix(c.params.label || c.job)} · ${styleLabel}`;
+    preset.label = `${withoutStyleSuffix(c.params.label || c.job)} ${presetStyleName(styleLabel)}`;
     preset.starter = false;
     const kind = c.params.kind === 'drum' ? 'drum' : 'tone';
     if (VOICES[id] && soundKey({ ...VOICES[id], label: preset.label }) === soundKey({ ...preset, id })) {

@@ -87,7 +87,7 @@ const SIMPLE_LABELS = {
   // The bare fixture carries no `modulationIndex`, which IS how a preset says amplitude
   // modulation — so this is RMND-7's AM surface. The FM one is asserted just below.
   'RMND-7': ['CARRIER', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'RATIO', 'AM DEPTH'],
-  'FZPP-6': ['LEVEL', 'TRANSPOSE', 'HARD', 'WHERE', 'RING', 'HIGHS', 'RELEASE', 'BODY', 'VIBRATO'],
+  'FRPP-6': ['LEVEL', 'TRANSPOSE', 'HARD', 'WHERE', 'RING', 'HIGHS', 'RELEASE', 'BODY', 'VIBRATO'],
 };
 for (const [synth, labels] of Object.entries(SIMPLE_LABELS)) {
   const surface = stripPanelSpec({ kind: 'tone', synth });
@@ -238,6 +238,17 @@ if (rmnd7Toggle.options.modulationIndex !== undefined
     || !isDeepStrictEqual(restored.options, { ...rmnd7Fm.options, modulationIndex: 25 })) {
     fail('RMND-7 FM did not restore the authored modulation index exactly');
   } else ok('RMND-7 MODE round-trips the authored FM depth through AM and back');
+}
+// Pulse and PWM are greyed as FM modulators, so a pulse picked in AM must not survive the
+// switch back to FM with nothing lit — it comes over as a square.
+for (const type of ['pulse', 'pwm']) {
+  const v = { kind: 'tone', synth: 'RMND-7', options: { harmonicity: 1, modulation: { type } } };
+  setRmnd7Mode(v, 'am');
+  if (v.options.modulation.type !== type) fail(`RMND-7 AM lost its ${type} modulator`);
+  setRmnd7Mode(v, 'fm');
+  if (v.options.modulation.type !== 'square') {
+    fail(`RMND-7 FM kept a ${type} modulator (${v.options.modulation.type}) instead of square`);
+  } else ok(`RMND-7 switching to FM moves a ${type} modulator to square`);
 }
 const rmnd7NeverFm = { kind: 'tone', synth: 'RMND-7', options: { harmonicity: 1 } };
 setRmnd7Mode(rmnd7NeverFm, 'fm');

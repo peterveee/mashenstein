@@ -40,6 +40,10 @@ function openVoicePicker(x, y, laneKey) {
   return heavyUi('open voice picker', () => buildVoicePicker(x, y, laneKey));
 }
 
+// Module-level so it survives the picker being rebuilt between the two clicks.
+let lastClick = { id: null, at: 0 };
+const DOUBLE_CLICK_MS = 400;
+
 function buildVoicePicker(x, y, laneKey) {
   closeMenu();
   setRestorablePopup({ kind: 'voicePicker', laneKey });
@@ -91,7 +95,10 @@ function buildVoicePicker(x, y, laneKey) {
       }
       pending = false;
       setRestorablePopup({ kind: 'voicePicker', laneKey });
-      head.querySelector('.voicewhy')?.remove();
+      // After the double-click window: removed at once, it lifts the list by a line
+      // under the pointer and the second click of a double click misses the row.
+      const why = head.querySelector('.voicewhy');
+      setTimeout(() => why?.remove(), DOUBLE_CLICK_MS);
     } else {
       setLaneVoice(laneKey, id);
     }
@@ -128,7 +135,15 @@ function buildVoicePicker(x, y, laneKey) {
     k.textContent = kind;
     btn.title = title;
     btn.append(n, k);
-    btn.onclick = () => pick(id);
+    // A single click applies the preset and keeps the selector open; a double click
+    // settles on it and closes. Timed by hand rather than `dblclick`: the first pick on
+    // a new track rebuilds the picker, so the two clicks land on different buttons.
+    btn.onclick = () => {
+      const now = performance.now();
+      const second = lastClick.id === id && now - lastClick.at < DOUBLE_CLICK_MS;
+      lastClick = second ? { id: null, at: 0 } : { id, at: now };
+      if (second) closeMenu(); else pick(id);
+    };
     return btn;
   };
 
@@ -233,6 +248,27 @@ function buildVoicePicker(x, y, laneKey) {
   close.className = 'voiceclose popclose'; close.textContent = '✕';
   close.setAttribute('aria-label', 'Close preset selector');
   close.onclick = () => closeMenu(); head.append(close);
+  // The header is the title bar: drag anywhere on it that is not a control. Pointer
+  // capture so a fast drag that outruns the window still gets its pointerup.
+  head.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0 || ev.target.closest('button, input, select, a')) return;
+    ev.preventDefault();
+    const r = el.getBoundingClientRect();
+    const dx = ev.clientX - r.left;
+    const dy = ev.clientY - r.top;
+    const move = (e) => {
+      el.style.left = `${Math.max(4, Math.min(e.clientX - dx, innerWidth - r.width - 6))}px`;
+      el.style.top = `${Math.max(4, Math.min(e.clientY - dy, innerHeight - 30))}px`;
+    };
+    const stop = () => {
+      head.removeEventListener('pointermove', move);
+      head.classList.remove('dragging');
+    };
+    head.classList.add('dragging');
+    try { head.setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
+    head.addEventListener('pointermove', move);
+    head.addEventListener('lostpointercapture', stop, { once: true });
+  });
   search.oninput = () => browser.refresh();
   el.onkeydown = (ev) => {
     if (ev.key !== 'Escape') return;

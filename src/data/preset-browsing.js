@@ -14,13 +14,13 @@ export const PRESET_TAXONOMY = {
   Voices: ['Choir', 'Vowels', 'Synthetic', 'Speech', 'Other'],
   'Bells & Mallets': ['Bells', 'Tuned Percussion', 'Other'],
   'Synth Plucks': ['Short', 'Resonant', 'Metallic', 'Other'],
-  'Drums & Percussion': ['Kick', 'Snare', 'Hats', 'Clap', 'Toms', 'Cymbals', 'Rim', 'Hand Percussion', 'Electronic Percussion', 'Other'],
+  'Drums & Percussion': ['Kick', 'Snare', 'Hats', 'Clap', 'Toms', 'Cymbals', 'Rim', 'Hand Percussion', 'Electronic Perc.', 'Other'],
   Effects: ['Sweeps', 'Impacts', 'Blips', 'Textures', 'Other'],
 };
 export const PRESET_CATEGORIES = Object.keys(PRESET_TAXONOMY);
 
 const drumCategories = { Kick: 'Kick', Snare: 'Snare', Hats: 'Hats', Clap: 'Clap',
-  Tom: 'Toms', Crash: 'Cymbals', Rim: 'Rim', Perc: 'Hand Percussion', Blip: 'Electronic Percussion' };
+  Tom: 'Toms', Crash: 'Cymbals', Rim: 'Rim', Perc: 'Hand Percussion', Blip: 'Electronic Perc.' };
 
 /** Compatibility fallback for older presets and song snapshots without browse metadata.
  * Deliberately reads names, not descriptive prose (which often compares OTHER sounds).
@@ -45,7 +45,7 @@ export function presetClassification(voice = {}) {
     if (has(/conga|bongo|tambora|djembe|talking drum|shaker/)) return pair('Drums & Percussion', 'Hand Percussion');
     if (has(/\btom\b/)) return pair('Drums & Percussion', 'Toms');
     if (has(/\brim\b/)) return pair('Drums & Percussion', 'Rim');
-    if (has(/zap|gate clang|ring tin|synare/)) return pair('Drums & Percussion', 'Electronic Percussion');
+    if (has(/zap|gate clang|ring tin|synare/)) return pair('Drums & Percussion', 'Electronic Perc.');
     return pair('Drums & Percussion', drumCategories[old]);
   }
   if (old === 'Bass') return pair('Bass', has(/\bsub\b|808/) ? 'Sub'

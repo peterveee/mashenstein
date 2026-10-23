@@ -11,7 +11,7 @@ worth reading, but it is closed: a lineup that is half lore quiz and half horror
 reads as neither, and the half already shipped is the lore quiz.
 
 Settled 2026-08-21: **`KNDO-5`** for `GameSynth` — Koji Kondo. See *The gaming-legend
-lane*. Settled 2026-10-23: **`FZPP-6`** for the waveguide string synth — Peter's name. The 6 is
+lane*. Settled 2026-10-23: **`FRPP-6`** for the waveguide string synth — Peter's name. The 6 is
 the six string slots a lane has, which is also the ceiling on what a lane can cost; see
 *The waveguide string* below. Settled the same day as KNDO-5: **`RMND-2`** for the merged `FMSynth`/`AMSynth` — Raymond
 Scott, renamed **`RMND-7`** on 2026-10-23. See *The AM/FM merge*.
@@ -78,7 +78,7 @@ auditable when the engine changes.
 | `RMND-7` (`Tone.FMSynth` / `Tone.AMSynth`) | 42 | **7** ‡ | settled | carrier + modulator, reaching pitch or level; filter + pitch envelope |
 | `KNDO-5` (`_playGame`) | 8 | **5** | settled | 4 waveforms + the noise channel |
 | `WNDR-9` (`_playAdditive`) | 8 | **9** | settled | 9 drawbars |
-| `FZPP-6` (`src/engine/fzpp6/`, a worklet lane) | 29 | **6** | settled | 6 string slots — a waveguide string per slot |
+| `FRPP-6` (`src/engine/frpp6/`, a worklet lane) | 29 | **6** | settled | 6 string slots — a waveguide string per slot |
 
 Where the numbers come from:
 
@@ -430,12 +430,13 @@ retired, and readable forever through RENAMED
 
 ## The waveguide string
 
-**`FZPP-6`**, 2026-10-23 — Peter's name, chosen directly rather than read off the pioneer
-formula, and recorded here as that.
+**`FRPP-6`**, 2026-10-23 — Peter's name: Robert Fripp, the guitarist, for a synth that is
+a guitar string. It was `FZPP-6` (Frank Zappa) for its first day; Peter rebranded it the
+same day the winds came out and the roster narrowed to strings and guitars.
 
 The number keeps the rule that it counts something real: **six string slots** per lane,
-the six strings of the guitar it models (`FZPP6_STRING_COUNT` in
-`src/engine/fzpp6/dsp.js`). A note goes to the string a player would put it on, a chord
+the six strings of the guitar it models (`FRPP6_STRING_COUNT` in
+`src/engine/frpp6/dsp.js`). A note goes to the string a player would put it on, a chord
 takes one string per note, and a seventh note re-plucks or steals — so the six is both the
 instrument and the hard ceiling on what one lane can cost. It was also the one digit the
 roster had not used.

@@ -90,7 +90,7 @@ export const voiceLabel = (id) => withoutStyleSuffix(VOICES[id]?.label || id || 
 /**
  * What a preset is, for a sound list: its name as a button says it and its sound, the numbers to
  * two figures so a re-measured drive or trim is not a new sound. A style's seed is often the
- * library preset it was kept from, unchanged under another id (seedBigRoomBass is detuneBass),
+ * library preset it was kept from, unchanged under another id (seedBigRoomBass was detuneBass),
  * and a list offering both had the one sound twice under one name (Peter, 9 Oct 2026).
  */
 const SOUND_META = new Set(['id', 'label', 'note', 'level', 'peak', 'songOrigin', 'songSourceId', 'starter',
@@ -411,7 +411,7 @@ export class ClubVoices {
     // Two different sounds under one name — a seed tuned off a library preset keeps the preset's name,
     // and the button drops the style it was kept for: that one says it, so each is named once.
     for (const c of out) {
-      if (c.id && out.some((o) => o !== c && o.label === c.label) && / · /.test(VOICES[c.id]?.label || '')) {
+      if (c.id && out.some((o) => o !== c && o.label === c.label) && withoutStyleSuffix(VOICES[c.id]?.label || '') !== VOICES[c.id]?.label) {
         c.label = String(VOICES[c.id].label).replace(/^=\s*/, '').replace(/\s*\(starter\)/i, '').toUpperCase();
       }
     }

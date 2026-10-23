@@ -20,13 +20,13 @@
 export const BANGER_SOUNDS = {
   "big-room": {
     parts: {
-      bass: "seedBigRoomBass", sub: "seedBigRoomSub", square: "seedBigRoomSquare",
-      squareDense: "initSquare", bell: "seedBigRoomBell", megaSaw: "seedBigRoomMegaSaw",
-      third: "seedBigRoomThird", arp: "seedBigRoomArp", counter: "seedBigRoomCounter",
-      choir: "seedBigRoomChoir", saws: "seedBigRoomSaws", pad: "seedBigRoomPad",
-      piano: "mrdrElectricGrand", impact: "seedBigRoomImpact", shaker: "seedBigRoomShaker",
-      tambourine: "seedBigRoomTambourine", congas: "seedBigRoomCongas", cowbell: "seedBigRoomCowbell",
-      ride: "seedBigRoomRide", fallbackMelodic: "mrdrElectricGrand",
+      bass: "detuneBass", sub: "seedReggaetonSub", square: "roundMono2",
+      squareDense: "initSquare", bell: "seedTranceBell", megaSaw: "seedFutureBassMegaSaw",
+      third: "seedBigRoomThird", arp: "seedTranceArp", counter: "seedTranceArp",
+      choir: "seedFutureBassChoir", saws: "tpSuperSaw", pad: "tngrPolarDrift",
+      piano: "mrdrElectricGrand", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "mrdrElectricGrand",
     },
     kits: {
       "808": {
@@ -40,9 +40,9 @@ export const BANGER_SOUNDS = {
         fill: "tr909Tom",
       },
       style: {
-        kick: "seedBigRoomKick", snare: "seedBigRoomSnare", clap: "seedBigRoomClap",
-        hats: "seedBigRoomHats", ohats: "seedBigRoomOhats", crash: "seedBigRoomCrash",
-        fill: "seedBigRoomFill",
+        kick: "ds909KickPunch", snare: "dsSnare", clap: "kit_80s_pop_clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "seedBigRoomCrash",
+        fill: "ds909Tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -339,13 +339,13 @@ export const BANGER_SOUNDS = {
   },
   trance: {
     parts: {
-      bass: "seedTranceBass", sub: "seedTranceSub", square: "seedTranceSquare",
-      squareDense: "bestMegaSawLead", bell: "seedTranceBell", megaSaw: "seedTranceMegaSaw",
-      third: "seedTranceThird", arp: "seedTranceArp", counter: "seedTranceCounter",
-      choir: "seedTranceChoir", saws: "seedTranceSaws", pad: "seedTrancePad",
-      piano: "seedTrancePiano", impact: "seedTranceImpact", shaker: "seedTranceShaker",
-      tambourine: "seedTranceTambourine", congas: "seedTranceCongas", cowbell: "seedTranceCowbell",
-      ride: "seedTranceRide", fallbackMelodic: "mrdrPopGrand",
+      bass: "tngrNightSequence", sub: "seedReggaetonSub", square: "tpSuperSaw",
+      squareDense: "bestMegaSawLead", bell: "seedTranceBell", megaSaw: "seedFutureBassMegaSaw",
+      third: "mrdrPopGrand", arp: "seedTranceArp", counter: "seedTranceArp",
+      choir: "seedFutureBassChoir", saws: "tpSuperSaw", pad: "tngrGlassChoir",
+      piano: "mrdrPopGrand", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "mrdrPopGrand",
     },
     kits: {
       "808": {
@@ -359,9 +359,9 @@ export const BANGER_SOUNDS = {
         fill: "tr909Tom",
       },
       style: {
-        kick: "seedTranceKick", snare: "seedTranceSnare", clap: "seedTranceClap",
-        hats: "seedTranceHats", ohats: "seedTranceOhats", crash: "seedTranceCrash",
-        fill: "seedTranceFill",
+        kick: "seedTranceKick", snare: "seedTranceSnare", clap: "kit_80s_pop_clap",
+        hats: "dsHatClosed", ohats: "ds909OpenHat", crash: "snareEngine",
+        fill: "ds909Tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -656,13 +656,13 @@ export const BANGER_SOUNDS = {
   },
   "future-bass": {
     parts: {
-      bass: "seedFutureBassBass", sub: "seedFutureBassSub", square: "seedFutureBassSquare",
-      squareDense: "initSquare", bell: "seedFutureBassBell", megaSaw: "seedFutureBassMegaSaw",
-      third: "seedFutureBassThird", arp: "seedFutureBassArp", counter: "seedFutureBassCounter",
-      choir: "seedFutureBassChoir", saws: "seedFutureBassSaws", pad: "seedFutureBassPad",
-      piano: "seedFutureBassPiano", impact: "seedFutureBassImpact", shaker: "seedFutureBassShaker",
-      tambourine: "seedFutureBassTambourine", congas: "seedFutureBassCongas", cowbell: "seedFutureBassCowbell",
-      ride: "seedFutureBassRide", fallbackMelodic: "mrdrPopGrand",
+      bass: "seedFutureBassBass", sub: "seedFutureBassSub", square: "jmjrAiueo",
+      squareDense: "initSquare", bell: "musicBox", megaSaw: "seedFutureBassMegaSaw",
+      third: "mrdrPopGrand", arp: "tngrPlainSaw", counter: "seedFutureBassCounter",
+      choir: "seedFutureBassChoir", saws: "tpSuperSaw", pad: "tngrGlassChoir",
+      piano: "mrdrPopGrand", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "mrdrPopGrand",
     },
     kits: {
       "808": {
@@ -676,9 +676,9 @@ export const BANGER_SOUNDS = {
         fill: "tr909Tom",
       },
       style: {
-        kick: "seedFutureBassKick", snare: "seedFutureBassSnare", clap: "seedFutureBassClap",
-        hats: "seedFutureBassHats", ohats: "seedFutureBassOhats", crash: "seedFutureBassCrash",
-        fill: "seedFutureBassFill",
+        kick: "kickClickTop", snare: "dsSnare", clap: "clapRoom",
+        hats: "dsHatClosed", ohats: "hatSnapOpen", crash: "ds909Crash",
+        fill: "ds909Tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -1292,13 +1292,13 @@ export const BANGER_SOUNDS = {
   },
   chipstep: {
     parts: {
-      bass: "seedChipstepBass", sub: "seedChipstepSub", square: "seedChipstepSquare",
-      squareDense: "tngrPlainPulse", bell: "seedChipstepBell", megaSaw: "seedChipstepMegaSaw",
-      third: "seedChipstepThird", arp: "seedChipstepArp", counter: "seedChipstepCounter",
-      choir: "seedChipstepChoir", saws: "seedChipstepSaws", pad: "seedChipstepPad",
-      piano: "initSquare", impact: "seedChipstepImpact", shaker: "seedChipstepShaker",
-      tambourine: "seedChipstepTambourine", congas: "seedChipstepCongas", cowbell: "seedChipstepCowbell",
-      ride: "seedChipstepRide", fallbackMelodic: "tngrPlainPulse",
+      bass: "tngrClassicSquare", sub: "wubClassic", square: "tngrPlainPulse",
+      squareDense: "tngrPlainPulse", bell: "toneSquare", megaSaw: "seedChipstepMegaSaw",
+      third: "jmjrArcadeChorus", arp: "toneSquare", counter: "tngrClassicSquare",
+      choir: "seedChipstepChoir", saws: "bestPwmPadWide", pad: "bestPwmStrings",
+      piano: "initSquare", impact: "kwBlipDrop", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "tngrPlainPulse",
     },
     kits: {
       "808": {
@@ -1312,9 +1312,9 @@ export const BANGER_SOUNDS = {
         fill: "tr909Tom",
       },
       style: {
-        kick: "seedChipstepKick", snare: "seedChipstepSnare", clap: "seedChipstepClap",
-        hats: "seedChipstepHats", ohats: "seedChipstepOhats", crash: "seedChipstepCrash",
-        fill: "seedChipstepFill",
+        kick: "ds909KickPunch", snare: "seedChipstepSnare", clap: "ds909SnareCrack",
+        hats: "hatEngine", ohats: "ohat909SixBit", crash: "seedChipstepCrash",
+        fill: "kwBlipPing",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -3069,13 +3069,13 @@ export const BANGER_SOUNDS = {
   },
   megadrive: {
     parts: {
-      bass: "seedMegadriveBass", sub: "seedMegadriveSub", square: "seedMegadriveSquare",
+      bass: "rmndDxSlap", sub: "seedReggaetonSub", square: "layerMegamixLead",
       squareDense: "layerMegamixLead", bell: "seedMegadriveBell", megaSaw: "seedMegadriveMegaSaw",
-      third: "seedMegadriveThird", arp: "seedMegadriveArp", counter: "seedMegadriveCounter",
-      choir: "seedMegadriveChoir", saws: "bestPwmBrass", pad: "seedMegadrivePad",
-      piano: "seedMegadrivePiano", impact: "syn3PewDeep", shaker: "seedMegadriveShaker",
-      tambourine: "seedMegadriveTambourine", congas: "seedMegadriveCongas", cowbell: "seedMegadriveCowbell",
-      ride: "seedMegadriveRide", fallbackMelodic: "layerMegamixLead",
+      third: "rmndDxPiano", arp: "seedMegadriveBell", counter: "fmKeys",
+      choir: "seedChipstepChoir", saws: "bestPwmBrass", pad: "synthStrings",
+      piano: "fmKeys", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "layerMegamixLead",
     },
     kits: {
       "808": {
@@ -3089,9 +3089,9 @@ export const BANGER_SOUNDS = {
         fill: "tr909Tom",
       },
       style: {
-        kick: "seedMegadriveKick", snare: "seedMegadriveSnare", clap: "seedMegadriveClap",
-        hats: "hatEngine", ohats: "seedMegadriveOhats", crash: "seedMegadriveCrash",
-        fill: "seedMegadriveFill",
+        kick: "seedMegadriveKick", snare: "dsCrackSnare2", clap: "clapFm",
+        hats: "hatEngine", ohats: "ohat909SixBit", crash: "seedMegadriveCrash",
+        fill: "sdsTomHigh",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -4028,13 +4028,13 @@ export const BANGER_SOUNDS = {
   },
   "italo-disco": {
     parts: {
-      bass: "seedItaloDiscoBass", sub: "seedItaloDiscoSub", square: "seedItaloDiscoSquare",
-      squareDense: "tngrBerlinSignal", bell: "seedItaloDiscoBell", megaSaw: "seedItaloDiscoMegaSaw",
-      third: "seedItaloDiscoThird", arp: "seedItaloDiscoArp", counter: "seedItaloDiscoCounter",
-      choir: "seedItaloDiscoChoir", saws: "stSynthStrings", pad: "seedItaloDiscoPad",
-      piano: "tngrDigitalEp84", impact: "syn3PewDeep", shaker: "seedItaloDiscoShaker",
-      tambourine: "seedItaloDiscoTambourine", congas: "seedItaloDiscoCongas", cowbell: "seedItaloDiscoCowbell",
-      ride: "seedItaloDiscoRide", fallbackMelodic: "tngrDigitalEp84",
+      bass: "bass80sFM", sub: "seedReggaetonSub", square: "tngrBerlinSignal",
+      squareDense: "tngrBerlinSignal", bell: "seedTranceBell", megaSaw: "tngrHorizonSolo",
+      third: "tngrDigitalEp84", arp: "seedTranceArp", counter: "seedTranceArp",
+      choir: "seedFutureBassChoir", saws: "stSynthStrings", pad: "tngrPolarDrift",
+      piano: "tngrDigitalEp84", impact: "syn3PewDeep", shaker: "shaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "cb808Unclamped",
+      ride: "ride909SixBit", fallbackMelodic: "tngrDigitalEp84",
     },
     kits: {
       "808": {
@@ -4166,13 +4166,13 @@ export const BANGER_SOUNDS = {
   },
   reggaeton: {
     parts: {
-      bass: "seedReggaetonBass", sub: "seedReggaetonSub", square: "seedReggaetonSquare",
-      squareDense: "marimba", bell: "seedReggaetonBell", megaSaw: "seedReggaetonMegaSaw",
-      third: "seedReggaetonThird", arp: "seedReggaetonArp", counter: "seedReggaetonCounter",
-      choir: "seedReggaetonChoir", saws: "tngrDreamCircuit", pad: "seedReggaetonPad",
-      piano: "seedReggaetonPiano", impact: "seedReggaetonImpact", shaker: "seedReggaetonShaker",
-      tambourine: "seedReggaetonTambourine", congas: "seedReggaetonCongas", cowbell: "seedReggaetonCowbell",
-      ride: "seedReggaetonRide", fallbackMelodic: "tngrDataMarimba",
+      bass: "mrdrDist808", sub: "seedReggaetonSub", square: "marimba",
+      squareDense: "marimba", bell: "tpKalimba", megaSaw: "tngrHorizonSolo",
+      third: "tngrDataMarimba", arp: "tngrDataMarimba", counter: "jmjrChoirAah",
+      choir: "jmjrChoirOoh", saws: "tngrDreamCircuit", pad: "tngrDreamCircuit",
+      piano: "mrdrAcousticGuitar", impact: "syn3PewDeep", shaker: "dsShaker",
+      tambourine: "tambourine", congas: "congaHigh", cowbell: "kit_havana_patio_rim",
+      ride: "ride909SixBit", fallbackMelodic: "tngrDataMarimba",
     },
     kits: {
       "808": {
@@ -4186,9 +4186,9 @@ export const BANGER_SOUNDS = {
         fill: "tr909Tom",
       },
       style: {
-        kick: "seedReggaetonKick", snare: "seedReggaetonSnare", clap: "seedReggaetonClap",
-        hats: "seedReggaetonHats", ohats: "seedReggaetonOhats", crash: "seedReggaetonCrash",
-        fill: "seedReggaetonFill",
+        kick: "ds808Kick", snare: "snareTight", clap: "snareTight",
+        hats: "dsHatClosed", ohats: "ds808OpenHat", crash: "seedReggaetonCrash",
+        fill: "kit_havana_patio_tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -4973,13 +4973,13 @@ export const BANGER_SOUNDS = {
   },
   "reggaeton-romantico": {
     parts: {
-      bass: "tngrRoundBass", sub: "seedReggaetonSub", square: "seedReggaetonSquare",
-      squareDense: "marimba", bell: "seedReggaetonBell", megaSaw: "seedReggaetonMegaSaw",
-      third: "seedReggaetonThird", arp: "mrdrAcousticGuitar", counter: "seedReggaetonCounter",
-      choir: "seedReggaetonChoir", saws: "tngrWarmStrings", pad: "tngrWarmStrings",
-      piano: "seedReggaetonPiano", impact: "seedReggaetonImpact", shaker: "dsShaker",
-      tambourine: "seedReggaetonTambourine", congas: "bongoHigh", cowbell: "seedReggaetonCowbell",
-      ride: "seedReggaetonRide", fallbackMelodic: "mrdrVocalOh",
+      bass: "tngrRoundBass", sub: "seedReggaetonSub", square: "marimba",
+      squareDense: "marimba", bell: "tpKalimba", megaSaw: "tngrHorizonSolo",
+      third: "tngrDataMarimba", arp: "mrdrAcousticGuitar", counter: "jmjrChoirAah",
+      choir: "jmjrChoirOoh", saws: "tngrWarmStrings", pad: "tngrWarmStrings",
+      piano: "mrdrAcousticGuitar", impact: "syn3PewDeep", shaker: "dsShaker",
+      tambourine: "tambourine", congas: "bongoHigh", cowbell: "kit_havana_patio_rim",
+      ride: "ride909SixBit", fallbackMelodic: "mrdrVocalOh",
     },
     kits: {
       "808": {
@@ -4994,7 +4994,7 @@ export const BANGER_SOUNDS = {
       },
       style: {
         kick: "ds808Kick", snare: "clvRosewood", clap: "clvRosewood",
-        hats: "guiraChk", ohats: "seedReggaetonOhats", crash: "seedReggaetonCrash",
+        hats: "guiraChk", ohats: "ds808OpenHat", crash: "seedReggaetonCrash",
         fill: "bongoLow",
       },
       studio: {
@@ -5105,13 +5105,13 @@ export const BANGER_SOUNDS = {
   },
   "reggaeton-perreo": {
     parts: {
-      bass: "mrdrDist808", sub: "seedReggaetonSub", square: "seedReggaetonSquare",
-      squareDense: "marimba", bell: "seedReggaetonBell", megaSaw: "seedReggaetonMegaSaw",
-      third: "seedReggaetonThird", arp: "tngrDataMarimba", counter: "seedReggaetonCounter",
-      choir: "seedReggaetonChoir", saws: "tngrPolarDrift", pad: "tngrPolarDrift",
-      piano: "bestPwmClav", impact: "seedReggaetonImpact", shaker: "seedReggaetonShaker",
-      tambourine: "seedReggaetonTambourine", congas: "seedReggaetonCongas", cowbell: "seedReggaetonCowbell",
-      ride: "seedReggaetonRide", fallbackMelodic: "tngrDataMarimba",
+      bass: "mrdrDist808", sub: "seedReggaetonSub", square: "marimba",
+      squareDense: "marimba", bell: "tpKalimba", megaSaw: "tngrHorizonSolo",
+      third: "tngrDataMarimba", arp: "tngrDataMarimba", counter: "jmjrChoirAah",
+      choir: "jmjrChoirOoh", saws: "tngrPolarDrift", pad: "tngrPolarDrift",
+      piano: "bestPwmClav", impact: "syn3PewDeep", shaker: "dsShaker",
+      tambourine: "tambourine", congas: "congaHigh", cowbell: "kit_havana_patio_rim",
+      ride: "ride909SixBit", fallbackMelodic: "tngrDataMarimba",
     },
     kits: {
       "808": {
@@ -5127,7 +5127,7 @@ export const BANGER_SOUNDS = {
       style: {
         kick: "ds808Kick", snare: "snareTight", clap: "snareTight",
         hats: "dsHatClosed", ohats: "ds808OpenHat", crash: "seedReggaetonCrash",
-        fill: "seedReggaetonFill",
+        fill: "kit_havana_patio_tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",
@@ -6186,13 +6186,13 @@ export const BANGER_SOUNDS = {
   },
   "uk-garage": {
     parts: {
-      bass: "seedUkGarageBass", sub: "seedUkGarageSub", square: "seedUkGarageSquare",
-      squareDense: "mrdrVocalOh", bell: "seedUkGarageBell", megaSaw: "seedUkGarageMegaSaw",
-      third: "seedUkGarageThird", arp: "seedUkGarageArp", counter: "seedUkGarageCounter",
-      choir: "seedUkGarageChoir", saws: "mrdrHouseOrganStab", pad: "seedUkGaragePad",
-      piano: "seedUkGaragePiano", impact: "syn3PewDeep", shaker: "seedUkGarageShaker",
-      tambourine: "seedUkGarageTambourine", congas: "seedUkGarageCongas", cowbell: "seedUkGarageCowbell",
-      ride: "seedUkGarageRide", fallbackMelodic: "rmndTineEP",
+      bass: "mrdrOrganBass", sub: "seedReggaetonSub", square: "mrdrVocalOh",
+      squareDense: "mrdrVocalOh", bell: "tngrIceBell", megaSaw: "mrdrHouseOrganStab",
+      third: "rmndTineEP", arp: "seedUkGarageArp", counter: "mrdrVocalOh",
+      choir: "jmjrChoirOoh", saws: "mrdrHouseOrganStab", pad: "tngrCloudMemory",
+      piano: "seedUkGaragePiano", impact: "syn3PewDeep", shaker: "dsShaker",
+      tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
+      ride: "ride909SixBit", fallbackMelodic: "rmndTineEP",
     },
     kits: {
       "808": {
@@ -6206,9 +6206,9 @@ export const BANGER_SOUNDS = {
         fill: "tr909Tom",
       },
       style: {
-        kick: "seedUkGarageKick", snare: "seedUkGarageSnare", clap: "seedUkGarageClap",
+        kick: "ds909Kick", snare: "seedUkGarageSnare", clap: "clapTight",
         hats: "seedUkGarageHats", ohats: "seedUkGarageOhats", crash: "seedUkGarageCrash",
-        fill: "seedUkGarageFill",
+        fill: "ds909Tom",
       },
       studio: {
         kick: "ds909KickPunch", snare: "snareCrisp", clap: "clap808",

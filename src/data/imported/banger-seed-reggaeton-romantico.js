@@ -931,7 +931,7 @@ export const banger = {
     {
       "lane": "ohats",
       "part": "part:ohats",
-      "preset": "seedReggaetonOhats",
+      "preset": "ds808OpenHat",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -963,7 +963,7 @@ export const banger = {
     {
       "lane": "rim2",
       "part": "part:tambourine",
-      "preset": "seedReggaetonTambourine",
+      "preset": "tambourine",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -971,7 +971,7 @@ export const banger = {
     {
       "lane": "rim3",
       "part": "part:cowbell",
-      "preset": "seedReggaetonCowbell",
+      "preset": "kit_havana_patio_rim",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -987,7 +987,7 @@ export const banger = {
     {
       "lane": "crash2",
       "part": "part:ride",
-      "preset": "seedReggaetonRide",
+      "preset": "ride909SixBit",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1019,7 +1019,7 @@ export const banger = {
     {
       "lane": "lead2",
       "part": "part:square",
-      "preset": "seedReggaetonSquare",
+      "preset": "marimba",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1027,7 +1027,7 @@ export const banger = {
     {
       "lane": "lead3",
       "part": "part:bell",
-      "preset": "seedReggaetonBell",
+      "preset": "tpKalimba",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1035,7 +1035,7 @@ export const banger = {
     {
       "lane": "lead4",
       "part": "part:megaSaw",
-      "preset": "seedReggaetonMegaSaw",
+      "preset": "tngrHorizonSolo",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1051,7 +1051,7 @@ export const banger = {
     {
       "lane": "lead6",
       "part": "part:choir",
-      "preset": "seedReggaetonChoir",
+      "preset": "jmjrChoirOoh",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1059,7 +1059,7 @@ export const banger = {
     {
       "lane": "lead7",
       "part": "part:third",
-      "preset": "seedReggaetonThird",
+      "preset": "tngrDataMarimba",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1067,7 +1067,7 @@ export const banger = {
     {
       "lane": "lead8",
       "part": "part:counter",
-      "preset": "seedReggaetonCounter",
+      "preset": "jmjrChoirAah",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1623,7 +1623,7 @@ export const banger = {
         "role": "ohats",
         "lane": "ohats",
         "label": "OPEN HATS",
-        "voice": "seedReggaetonOhats",
+        "voice": "ds808OpenHat",
         "voiceParams": null,
         "strip": {
           "gain": -1.4,
@@ -1677,7 +1677,7 @@ export const banger = {
         "role": "tambourine",
         "lane": "rim2",
         "label": "PERC Tambourine",
-        "voice": "seedReggaetonTambourine",
+        "voice": "tambourine",
         "voiceParams": null,
         "strip": {
           "gain": -5.6,
@@ -1692,7 +1692,7 @@ export const banger = {
         "role": "cowbell",
         "lane": "rim3",
         "label": "PERC Clave",
-        "voice": "seedReggaetonCowbell",
+        "voice": "kit_havana_patio_rim",
         "voiceParams": null,
         "strip": {
           "gain": -7.4,
@@ -1722,7 +1722,7 @@ export const banger = {
         "role": "ride",
         "lane": "crash2",
         "label": "RIDE",
-        "voice": "seedReggaetonRide",
+        "voice": "ride909SixBit",
         "voiceParams": null,
         "strip": {
           "gain": -1.1,
@@ -1776,7 +1776,7 @@ export const banger = {
         "role": "square",
         "lane": "lead2",
         "label": "HOOK DOUBLE · Marimba · Reggaeton",
-        "voice": "seedReggaetonSquare",
+        "voice": "marimba",
         "voiceParams": null,
         "strip": {
           "gain": -2,
@@ -1802,7 +1802,7 @@ export const banger = {
         "role": "bell",
         "lane": "lead3",
         "label": "HOOK 8VA · Kalimba · Reggaeton",
-        "voice": "seedReggaetonBell",
+        "voice": "tpKalimba",
         "voiceParams": null,
         "strip": {
           "gain": -14.2,
@@ -1818,7 +1818,7 @@ export const banger = {
         "role": "megaSaw",
         "lane": "lead4",
         "label": "LEAD 8VA · Horizon Solo · Reggaeton",
-        "voice": "seedReggaetonMegaSaw",
+        "voice": "tngrHorizonSolo",
         "voiceParams": null,
         "strip": {
           "gain": -14.8,
@@ -1849,7 +1849,7 @@ export const banger = {
         "role": "choir",
         "lane": "lead6",
         "label": "CHOIR · Choir Ooh · Reggaeton",
-        "voice": "seedReggaetonChoir",
+        "voice": "jmjrChoirOoh",
         "voiceParams": null,
         "strip": {
           "gain": -12,
@@ -1863,7 +1863,7 @@ export const banger = {
         "role": "third",
         "lane": "lead7",
         "label": "THIRD BELOW · Data Marimba · Reggaeton",
-        "voice": "seedReggaetonThird",
+        "voice": "tngrDataMarimba",
         "voiceParams": null,
         "strip": {
           "gain": -3,
@@ -1879,7 +1879,7 @@ export const banger = {
         "role": "counter",
         "lane": "lead8",
         "label": "VOX Chops · Choir Aah · Reggaeton",
-        "voice": "seedReggaetonCounter",
+        "voice": "jmjrChoirAah",
         "voiceParams": null,
         "strip": {
           "gain": -7.6,
@@ -2076,7 +2076,7 @@ export const mix = {
   layers: [{ key: "rim2", from: "rim", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "crash2", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead8", from: "lead", independent: true }],
   order: ["kick","snare","clap","hats","ohats","crash","tom","rim","rim2","rim3","tom2","crash2","bass","bass2","chords","lead","lead2","lead3","lead4","lead5","lead6","lead7","lead8"],
   labels: {"kick":"KICK","snare":"CLAVE Roll","clap":"DEMBOW Clave","hats":"GÜIRA","ohats":"OPEN HATS","crash":"CRASH Ride","tom":"BONGO Hembra","rim":"PERC Shaker","rim2":"PERC Tambourine","rim3":"PERC Clave","tom2":"BONGO Macho","crash2":"RIDE","bass":"BASS · Round Bass","bass2":"SUB · Sub Sine (starter) · Reggaeton","chords":"PAD · Warm Strings","lead":"RIFF Grand · HOOK","lead2":"HOOK DOUBLE · Marimba · Reggaeton","lead3":"HOOK 8VA · Kalimba · Reggaeton","lead4":"LEAD 8VA · Horizon Solo · Reggaeton","lead5":"GUITAR Nylon · Acoustic Guitar","lead6":"CHOIR · Choir Ooh · Reggaeton","lead7":"THIRD BELOW · Data Marimba · Reggaeton","lead8":"VOX Chops · Choir Aah · Reggaeton"},
-  voice: {"kickVoice":"ds808Kick","snareVoice":"clvRosewood","clapVoice":"clvRosewood","hatsVoice":"guiraChk","ohatsVoice":"seedReggaetonOhats","crashVoice":"seedReggaetonCrash","tomVoice":"bongoLow","rimVoice":"dsShaker","rim2Voice":"seedReggaetonTambourine","rim3Voice":"seedReggaetonCowbell","tom2Voice":"bongoHigh","crash2Voice":"seedReggaetonRide","bassVoice":"tngrRoundBass","bass2Voice":"seedReggaetonSub","chordsVoice":"tngrWarmStrings","leadVoice":"mrdrElectricGrand","lead2Voice":"seedReggaetonSquare","lead3Voice":"seedReggaetonBell","lead4Voice":"seedReggaetonMegaSaw","lead5Voice":"mrdrAcousticGuitar","lead6Voice":"seedReggaetonChoir","lead7Voice":"seedReggaetonThird","lead8Voice":"seedReggaetonCounter"},
+  voice: {"kickVoice":"ds808Kick","snareVoice":"clvRosewood","clapVoice":"clvRosewood","hatsVoice":"guiraChk","ohatsVoice":"ds808OpenHat","crashVoice":"seedReggaetonCrash","tomVoice":"bongoLow","rimVoice":"dsShaker","rim2Voice":"tambourine","rim3Voice":"kit_havana_patio_rim","tom2Voice":"bongoHigh","crash2Voice":"ride909SixBit","bassVoice":"tngrRoundBass","bass2Voice":"seedReggaetonSub","chordsVoice":"tngrWarmStrings","leadVoice":"mrdrElectricGrand","lead2Voice":"marimba","lead3Voice":"tpKalimba","lead4Voice":"tngrHorizonSolo","lead5Voice":"mrdrAcousticGuitar","lead6Voice":"jmjrChoirOoh","lead7Voice":"tngrDataMarimba","lead8Voice":"jmjrChoirAah"},
   fx: { reverb: { decay: 2.8 } },
   lanes: {
     snare: { gain: -2.7, send: { reverb: 0.2 } },
@@ -2096,7 +2096,7 @@ export const mix = {
     lead: { gain: -4, send: { delay: 0.3, reverb: 0.5 }, eq: { high: 0.5 } },
     lead2: { gain: -2, pan: 0.05, send: { delay: 0.1, reverb: 0.2 }, effects: [{ id: "peq", params: { f3: 3000, g3: -2, q3: 0.9 } }] },
     lead3: { gain: -14.2, pan: 0.2, send: { delay: 0.25, reverb: 0.45 } },
-    lead4: { gain: -14.8, pan: 0.1, send: { reverb: 0.3 } },
+    lead4: { gain: -15.4, pan: 0.1, send: { reverb: 0.3 } },
     lead5: { gain: -14.8, pan: -0.2, send: { delay: 0.15, reverb: 0.3 } },
     lead6: { gain: -12, send: { reverb: 0.5 } },
     lead7: { gain: -3, pan: 0.15, send: { delay: 0.1, reverb: 0.3 } },

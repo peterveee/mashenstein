@@ -87,4 +87,16 @@ selector.events.pointerdown();
 assert.ok(+selector.style.zIndex > +advanced.style.zIndex);
 for (let i = 0; i < 50; i++) { advanced.events.focusin(); library.events.pointerdown(); }
 assert.ok(peers.every((el) => +el.style.zIndex < 71 && +el.style.zIndex > 60));
+// Library names are plain words (Peter, 24 Oct 2026): no `·` or dash separators, no `NEW`
+// tag, and no two presets under one name. A leading `=` is a marker, not a separator.
+const presets = all.filter((v) => !v.songLocal);
+const separated = presets.filter((v) => /·| [—–-] |^NEW\b/.test(v.label || '')).map((v) => `${v.id} "${v.label}"`);
+assert.deepEqual(separated, [], 'preset names carry no separators');
+const named = new Map();
+for (const v of presets) {
+  const key = String(v.label || '').toLowerCase();
+  assert.ok(!named.has(key), `"${v.label}" names both ${named.get(key)} and ${v.id}`);
+  named.set(key, v.id);
+}
+
 console.log(`PRESET BROWSER: PASSED (${all.length} presets; filtering, compatibility, and save round-trips)`);

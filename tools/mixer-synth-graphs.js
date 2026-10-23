@@ -179,7 +179,7 @@ export function envelopeGraph({ rows, read, writeMany, onLive, onStart, onEnd, h
 // ---- a string's ring --------------------------------------------------------
 
 /**
- * FZPP-6's RING card, drawn: how the note dies away. The solid line is the body of the
+ * FRPP-6's RING card, drawn: how the note dies away. The solid line is the body of the
  * note, reaching silence (−60 dB) at RING; the dashed one is its top end, which goes at
  * RING × HIGHS. One look says whether the string is long or short, mellow or bright —
  * which is what the two pots under it mean, and the reason they are drawn at all
@@ -257,10 +257,10 @@ export function decayGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 
   return { box, draw };
 }
 
-// ---- FZPP-6's other three pictures, and the hand's timeline ---------------------
+// ---- FRPP-6's other three pictures, and the hand's timeline ---------------------
 //
 // Peter, 23 Oct 2026: "is there a simpler way to do any of the other controls like we did
-// for the ring graph which makes it super easy to understand?" Each card of FZPP-6's own
+// for the ring graph which makes it super easy to understand?" Each card of FRPP-6's own
 // draws what its pots DO: where the string is plucked, which strings there are, what the
 // box sounds like, and when the hand's noises happen. They read the voice as it is now, so
 // any pot move — on this card or another — redraws them (`redrawGraphs`).
@@ -270,7 +270,7 @@ const txt = (x, y, text, anchor = 'start') => {
   t.textContent = text;
   return t;
 };
-const fz = (voice) => voice?.fzpp6 || {};
+const fz = (voice) => voice?.frpp6 || {};
 // The pickup pills, as the fraction of the string from the bridge each one sits at — the
 // same numbers as the engine (schema PICKUP_AT, then dsp's 0.28 − 0.22 × value).
 const PICKUP_VALUE = { acoustic: 0, neck: 0.15, neckMiddle: 0.35, middle: 0.55, middleBridge: 0.75, bridge: 0.95 };
@@ -289,20 +289,26 @@ export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voic
   const box = document.createElement('div');
   box.className = 'sfgraph';
   box.style.height = `${h}px`;
-  box.title = 'The string, bridge to neck, pulled out where it is plucked (drag to move WHERE; a sharp '
-    + 'corner is a hard pick, a rounded one a fingertip). Bowed: the bow across it at WHERE, as thick as '
-    + 'PRESSURE. Reed, sax, jet: the bore, its bell as open as BELL, and the breath going in — as thick '
-    + 'as PRESSURE, as rough as NOISE.';
+  // One tip per picture, set on each draw (Peter, 23 Oct 2026).
+  const TIPS = {
+    pluck: 'The string, bridge to neck, pulled out where it is plucked (drag to move WHERE; a sharp '
+      + 'corner is a hard pick, a rounded one a fingertip).',
+    bow: 'The string, bridge to neck, with the bow across it at WHERE — as thick as PRESSURE, as '
+      + 'rough as NOISE. The arrow is the stroke: as long as SPEED.',
+  };
+  box.title = TIPS.pluck;
   const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
   const ends = el('path', { class: 'sfgrid', d: '' });
   const line = el('path', { class: 'sfline', d: '' });
   const pick = el('path', { class: 'sfgrid', d: '', 'stroke-dasharray': '2 3' });
+  // The bow's motion arrow.
+  const extra = el('path', { class: 'sfline', d: '' });
   const pu = el('rect', { class: 'sffill', x: -10, y: 0, width: 6, height: 0 });
   const handle = el('circle', { class: 'sfhandle', r: 4.5, cx: -10, cy: -10 });
   const lb = txt(6, h - 5, 'BRIDGE');
   const ln = txt(0, h - 5, 'NECK', 'end');
   const lp = txt(-50, 10, 'PICKUP', 'middle');
-  svg.append(ends, pu, pick, line, handle, lb, ln, lp);
+  svg.append(ends, pu, pick, extra, line, handle, lb, ln, lp);
   box.append(svg);
   let w = 200;
   const x0 = 10;
@@ -313,6 +319,12 @@ export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voic
     const ex = fz(voice?.()).exciter || {};
     const type = ex.type ?? 'pick';
     const pressure = Number(ex.pressure ?? 0.6), noise = Number(ex.noise ?? 0.1);
+    // Widths go on the STYLE: the `.sfgrid` / `.sfline` rules set stroke-width, and a CSS rule
+    // beats a presentation attribute — which is why PRESSURE never thickened anything until
+    // 23 Oct 2026.
+    const width = (node, w) => { node.style.strokeWidth = w == null ? '' : w.toFixed(1); };
+    const accent = (node, on) => { node.style.stroke = on ? 'var(--accent)' : ''; node.style.opacity = on ? '0.9' : ''; };
+    extra.setAttribute('d', '');
     // The breath or the bow, as a line: as thick as PRESSURE, as rough as NOISE. Seeded,
     // so it does not shimmer on every redraw.
     const rough = (xa, ya, xb, yb, amp) => {
@@ -325,28 +337,10 @@ export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voic
       }
       return d;
     };
-    if (type === 'reed' || type === 'sax' || type === 'jet') {
-      // A bore with its bell: no string to pluck. The reed or the jet sits at the left, the
-      // bell flares as much as BELL opens it, and the breath goes in as PRESSURE and NOISE.
-      const y0 = rest();
-      const x1b = x1();
-      const bell = type === 'jet' ? 0.3 : Number(ex.bell ?? 0.5);
-      const flare = 6 + 18 * bell;
-      line.setAttribute('d', `M${x0 + 26},${y0 - 9} H${x1b - 30} Q${x1b - 10},${y0 - 9} ${x1b},${y0 - 9 - flare} `
-        + `M${x0 + 26},${y0 + 9} H${x1b - 30} Q${x1b - 10},${y0 + 9} ${x1b},${y0 + 9 + flare}`);
-      ends.setAttribute('d', `M${x0 + 26},${y0 - 9} V${y0 + 9}`);
-      pick.setAttribute('d', rough(x0, y0, x0 + 24 + 30 * pressure, y0, 2 + 10 * noise));
-      pick.setAttribute('stroke-dasharray', '');
-      pick.setAttribute('stroke-width', (1 + 3 * pressure).toFixed(1));
-      handle.setAttribute('cx', -10);
-      pu.setAttribute('x', -10); lp.setAttribute('x', -50);
-      lb.textContent = type === 'jet' ? 'JET' : 'REED';
-      ln.textContent = 'BELL';
-      ln.setAttribute('x', x1b);
-      return;
-    }
+    box.title = type === 'bow' ? TIPS.bow : TIPS.pluck;
     pick.setAttribute('stroke-dasharray', '2 3');
-    pick.setAttribute('stroke-width', '1');
+    width(pick, null);
+    accent(pick, false);
     lb.textContent = 'BRIDGE';
     ln.textContent = 'NECK';
     const where = Number(read(rows.where)) || rows.where.def;
@@ -362,13 +356,21 @@ export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voic
     const p1x = ax - (ax - x0) * t1, p1y = ay + (y0 - ay) * t1;
     const p2x = ax + (x1() - ax) * t2, p2y = ay + (y0 - ay) * t2;
     if (type === 'bow') {
-      // The string lies flat; the bow crosses it at WHERE, as thick as PRESSURE, as rough as
-      // NOISE, and the string is pulled a little under it.
-      line.setAttribute('d', `M${x0},${y0} L${(ax - 6).toFixed(1)},${y0} L${ax.toFixed(1)},${(y0 - 4 - 6 * pressure).toFixed(1)} L${(ax + 6).toFixed(1)},${y0} L${x1()},${y0}`);
+      // The string lies flat and the bow crosses it at WHERE, slanting as a bow does. The
+      // string bends under it by PRESSURE, the bow's hair is as thick as PRESSURE and as
+      // rough as NOISE, and the arrow along the string is the stroke: as long as SPEED.
+      const speed = Number(ex.speed ?? 0.5);
+      const dip = 3 + 12 * pressure;
+      line.setAttribute('d', `M${x0},${y0} L${(ax - 8).toFixed(1)},${y0} L${ax.toFixed(1)},${(y0 + dip).toFixed(1)} L${(ax + 8).toFixed(1)},${y0} L${x1()},${y0}`);
       ends.setAttribute('d', `M${x0},${y0 - 14} V${y0 + 10} M${x1()},${y0 - 14} V${y0 + 10}`);
-      pick.setAttribute('d', rough(ax, 8, ax, y0 + 12, 1 + 6 * noise));
+      pick.setAttribute('d', rough(ax - 9, 8, ax + 9, y0 + dip + 14, 1 + 6 * noise));
       pick.setAttribute('stroke-dasharray', '');
-      pick.setAttribute('stroke-width', (1.5 + 4 * pressure).toFixed(1));
+      width(pick, 1.5 + 5 * pressure);
+      accent(pick, true);
+      const len = 10 + 40 * speed;
+      const ayr = y0 - 22;
+      extra.setAttribute('d', `M${(ax + 14).toFixed(1)},${ayr} h${len.toFixed(1)} m-6,-4 l6,4 l-6,4`);
+      width(extra, 1.2);
     } else {
       line.setAttribute('d', `M${x0},${y0} L${p1x.toFixed(1)},${p1y.toFixed(1)} `
         + `Q${ax.toFixed(1)},${ay} ${p2x.toFixed(1)},${p2y.toFixed(1)} L${x1()},${y0}`);
@@ -484,7 +486,7 @@ export function bodyGraph({ rows, read, voice, modesOf, h = 94 }) {
   box.className = 'sfgraph';
   box.style.height = `${h}px`;
   box.title = 'The tone of the box, low notes left, high right. Each peak is a resonance. '
-    + 'SIZE slides them all, MIX is how much of it you hear.';
+    + 'SIZE slides them all, MIX is how much of it you hear; ADVANCED moves the three named ones.';
   const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
   const grid = el('path', { class: 'sfgrid', d: '' });
   const fill = el('path', { class: 'sffill', d: '' });
@@ -496,7 +498,7 @@ export function bodyGraph({ rows, read, voice, modesOf, h = 94 }) {
     const v = fz(voice?.());
     const type = v.body?.type ?? 'steel';
     const mix = type === 'none' ? 0 : Number(read(rows.mix) ?? 0.8);
-    const modes = type === 'none' ? [] : modesOf({ type, size: Number(read(rows.size) ?? 1), modes: null });
+    const modes = type === 'none' ? [] : modesOf({ ...(v.body || {}), type, size: Number(read(rows.size) ?? 1) });
     const xs = (f) => (Math.log(f / 50) / Math.log(12000 / 50)) * w;
     const pts = [];
     let top = -Infinity;

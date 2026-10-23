@@ -1005,7 +1005,7 @@ export const banger = {
     {
       "lane": "rim",
       "part": "part:shaker",
-      "preset": "seedItaloDiscoShaker",
+      "preset": "shaker",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1013,7 +1013,7 @@ export const banger = {
     {
       "lane": "rim2",
       "part": "part:tambourine",
-      "preset": "seedItaloDiscoTambourine",
+      "preset": "tambourine",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1021,7 +1021,7 @@ export const banger = {
     {
       "lane": "crash2",
       "part": "part:ride",
-      "preset": "seedItaloDiscoRide",
+      "preset": "ride909SixBit",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1029,7 +1029,7 @@ export const banger = {
     {
       "lane": "bass",
       "part": "part:bass",
-      "preset": "seedItaloDiscoBass",
+      "preset": "bass80sFM",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1037,7 +1037,7 @@ export const banger = {
     {
       "lane": "bass2",
       "part": "part:sub",
-      "preset": "seedItaloDiscoSub",
+      "preset": "seedReggaetonSub",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1061,7 +1061,7 @@ export const banger = {
     {
       "lane": "lead3",
       "part": "part:square",
-      "preset": "seedItaloDiscoSquare",
+      "preset": "tngrBerlinSignal",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1069,7 +1069,7 @@ export const banger = {
     {
       "lane": "lead4",
       "part": "part:bell",
-      "preset": "seedItaloDiscoBell",
+      "preset": "seedTranceBell",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1077,7 +1077,7 @@ export const banger = {
     {
       "lane": "lead5",
       "part": "part:megaSaw",
-      "preset": "seedItaloDiscoMegaSaw",
+      "preset": "tngrHorizonSolo",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1085,7 +1085,7 @@ export const banger = {
     {
       "lane": "lead6",
       "part": "part:arp",
-      "preset": "seedItaloDiscoArp",
+      "preset": "seedTranceArp",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1093,7 +1093,7 @@ export const banger = {
     {
       "lane": "lead7",
       "part": "part:choir",
-      "preset": "seedItaloDiscoChoir",
+      "preset": "seedFutureBassChoir",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1101,7 +1101,7 @@ export const banger = {
     {
       "lane": "lead8",
       "part": "part:third",
-      "preset": "seedItaloDiscoThird",
+      "preset": "tngrDigitalEp84",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1109,7 +1109,7 @@ export const banger = {
     {
       "lane": "lead9",
       "part": "part:counter",
-      "preset": "seedItaloDiscoCounter",
+      "preset": "seedTranceArp",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1745,7 +1745,7 @@ export const banger = {
         "role": "shaker",
         "lane": "rim",
         "label": "PERC Shaker",
-        "voice": "seedItaloDiscoShaker",
+        "voice": "shaker",
         "voiceParams": null,
         "strip": {
           "gain": -12.6,
@@ -1757,7 +1757,7 @@ export const banger = {
         "role": "tambourine",
         "lane": "rim2",
         "label": "PERC Tambourine",
-        "voice": "seedItaloDiscoTambourine",
+        "voice": "tambourine",
         "voiceParams": null,
         "strip": {
           "gain": -9.4,
@@ -1772,7 +1772,7 @@ export const banger = {
         "role": "ride",
         "lane": "crash2",
         "label": "RIDE",
-        "voice": "seedItaloDiscoRide",
+        "voice": "ride909SixBit",
         "voiceParams": null,
         "strip": {
           "gain": -12,
@@ -1787,7 +1787,7 @@ export const banger = {
         "role": "bass",
         "lane": "bass",
         "label": "BASS · =80s FM Bass · Italo Disco",
-        "voice": "seedItaloDiscoBass",
+        "voice": "bass80sFM",
         "voiceParams": null,
         "strip": {
           "gain": -4.4
@@ -1798,7 +1798,7 @@ export const banger = {
         "role": "sub",
         "lane": "bass2",
         "label": "SUB · Sub Sine · Italo Disco",
-        "voice": "seedItaloDiscoSub",
+        "voice": "seedReggaetonSub",
         "voiceParams": null,
         "strip": {
           "gain": -17.4
@@ -1853,7 +1853,7 @@ export const banger = {
         "role": "square",
         "lane": "lead3",
         "label": "HOOK DOUBLE · Bright Glide Lead · Italo Disco",
-        "voice": "seedItaloDiscoSquare",
+        "voice": "tngrBerlinSignal",
         "voiceParams": null,
         "strip": {
           "gain": -7.4,
@@ -1879,7 +1879,7 @@ export const banger = {
         "role": "bell",
         "lane": "lead4",
         "label": "HOOK 8VA · Ice Bell · Italo Disco",
-        "voice": "seedItaloDiscoBell",
+        "voice": "seedTranceBell",
         "voiceParams": null,
         "strip": {
           "gain": -9.7,
@@ -1895,7 +1895,7 @@ export const banger = {
         "role": "megaSaw",
         "lane": "lead5",
         "label": "LEAD 8VA · Legato Solo Lead · Italo Disco",
-        "voice": "seedItaloDiscoMegaSaw",
+        "voice": "tngrHorizonSolo",
         "voiceParams": null,
         "strip": {
           "gain": -12.6,
@@ -1909,7 +1909,7 @@ export const banger = {
         "role": "arp",
         "lane": "lead6",
         "label": "ARP · Sparkle Pluck · Italo Disco",
-        "voice": "seedItaloDiscoArp",
+        "voice": "seedTranceArp",
         "voiceParams": null,
         "strip": {
           "gain": -22.9,
@@ -1932,7 +1932,7 @@ export const banger = {
         "role": "choir",
         "lane": "lead7",
         "label": "CHOIR · Synth Choir Aah · Italo Disco",
-        "voice": "seedItaloDiscoChoir",
+        "voice": "seedFutureBassChoir",
         "voiceParams": null,
         "strip": {
           "gain": -11.2,
@@ -1946,7 +1946,7 @@ export const banger = {
         "role": "third",
         "lane": "lead8",
         "label": "THIRD BELOW · Digital E-Piano · Italo Disco",
-        "voice": "seedItaloDiscoThird",
+        "voice": "tngrDigitalEp84",
         "voiceParams": null,
         "strip": {
           "gain": -2.6,
@@ -1962,7 +1962,7 @@ export const banger = {
         "role": "counter",
         "lane": "lead9",
         "label": "COUNTER-MELODY · Sparkle Pluck · Italo Disco",
-        "voice": "seedItaloDiscoCounter",
+        "voice": "seedTranceArp",
         "voiceParams": null,
         "strip": {
           "gain": -7.8,
@@ -2201,7 +2201,7 @@ export const mix = {
   layers: [{ key: "rim2", from: "rim", independent: true }, { key: "crash2", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead8", from: "lead", independent: true }, { key: "lead9", from: "lead", independent: true }, { key: "lead2", from: "lead", independent: true }],
   order: ["kick","snare","clap","hats","ohats","crash","tom","rim","rim2","crash2","bass","bass2","chords","chords2","lead","lead3","lead4","lead5","lead6","lead7","lead8","lead9","lead2"],
   labels: {"kick":"KICK","snare":"SNARE Roll","clap":"CLAP","hats":"HATS","ohats":"OPEN HATS","crash":"CRASH","tom":"DISCO TOM","rim":"PERC Shaker","rim2":"PERC Tambourine","crash2":"RIDE","bass":"BASS · =80s FM Bass · Italo Disco","bass2":"SUB · Sub Sine · Italo Disco","chords":"CHORDS Stabs · String Machine","chords2":"STRINGS · String Machine","lead":"RIFF Lullaby melody · HOOK","lead3":"HOOK DOUBLE · Bright Glide Lead · Italo Disco","lead4":"HOOK 8VA · Ice Bell · Italo Disco","lead5":"LEAD 8VA · Legato Solo Lead · Italo Disco","lead6":"ARP · Sparkle Pluck · Italo Disco","lead7":"CHOIR · Synth Choir Aah · Italo Disco","lead8":"THIRD BELOW · Digital E-Piano · Italo Disco","lead9":"COUNTER-MELODY · Sparkle Pluck · Italo Disco","lead2":"RIFF After-hours answer"},
-  voice: {"kickVoice":"kit_syndrum_disco_kick","snareVoice":"kit_syndrum_disco_snare","clapVoice":"kit_syndrum_disco_clap","hatsVoice":"kit_syndrum_disco_hats","ohatsVoice":"kit_syndrum_disco_ohats","crashVoice":"kit_syndrum_disco_crash","tomVoice":"kit_syndrum_disco_tom","rimVoice":"seedItaloDiscoShaker","rim2Voice":"seedItaloDiscoTambourine","crash2Voice":"seedItaloDiscoRide","bassVoice":"seedItaloDiscoBass","bass2Voice":"seedItaloDiscoSub","chordsVoice":"stSynthStrings","chords2Voice":"stSynthStrings","leadVoice":"bestRobotVox","lead3Voice":"seedItaloDiscoSquare","lead4Voice":"seedItaloDiscoBell","lead5Voice":"seedItaloDiscoMegaSaw","lead6Voice":"seedItaloDiscoArp","lead7Voice":"seedItaloDiscoChoir","lead8Voice":"seedItaloDiscoThird","lead9Voice":"seedItaloDiscoCounter","lead2Voice":"tngrBerlinSignal"},
+  voice: {"kickVoice":"kit_syndrum_disco_kick","snareVoice":"kit_syndrum_disco_snare","clapVoice":"kit_syndrum_disco_clap","hatsVoice":"kit_syndrum_disco_hats","ohatsVoice":"kit_syndrum_disco_ohats","crashVoice":"kit_syndrum_disco_crash","tomVoice":"kit_syndrum_disco_tom","rimVoice":"shaker","rim2Voice":"tambourine","crash2Voice":"ride909SixBit","bassVoice":"bass80sFM","bass2Voice":"seedReggaetonSub","chordsVoice":"stSynthStrings","chords2Voice":"stSynthStrings","leadVoice":"bestRobotVox","lead3Voice":"tngrBerlinSignal","lead4Voice":"seedTranceBell","lead5Voice":"tngrHorizonSolo","lead6Voice":"seedTranceArp","lead7Voice":"seedFutureBassChoir","lead8Voice":"tngrDigitalEp84","lead9Voice":"seedTranceArp","lead2Voice":"tngrBerlinSignal"},
   fx: { reverb: { decay: 2.8 } },
   lanes: {
     kick: { gain: 0.3 },
@@ -2219,9 +2219,9 @@ export const mix = {
     chords: { gain: -8.1, send: { reverb: 0.25 }, eq: { low: -3 }, effects: [{ id: "peq", params: { f3: 3000, g3: -2, q3: 0.9 } }] },
     chords2: { gain: -8.5, send: { reverb: 0.5 }, eq: { low: -5 } },
     lead: { gain: -5, pan: 0.05, send: { delay: 0.25, reverb: 0.4 }, eq: { high: 2 }, effects: [{ id: "exciter", params: { tune: 2500, drive: 0.5, timbre: 0.4, mix: 0.18 } }] },
-    lead3: { gain: -7.4, pan: 0.05, send: { delay: 0.1, reverb: 0.2 }, effects: [{ id: "peq", params: { f3: 3000, g3: -2, q3: 0.9 } }] },
+    lead3: { gain: -9.8, pan: 0.05, send: { delay: 0.1, reverb: 0.2 }, effects: [{ id: "peq", params: { f3: 3000, g3: -2, q3: 0.9 } }] },
     lead4: { gain: -9.7, pan: 0.2, send: { delay: 0.25, reverb: 0.45 } },
-    lead5: { gain: -12.6, send: { reverb: 0.35 } },
+    lead5: { gain: -12.8, send: { reverb: 0.35 } },
     lead6: { gain: -22.9, pan: -0.25, effects: [{ id: "pingpong", params: { sync: 1, division: 0.75, feedback: 0.35, wet: 0.3 } }] },
     lead7: { gain: -11.2, send: { reverb: 0.5 } },
     lead8: { gain: -2.6, pan: 0.15, send: { delay: 0.1, reverb: 0.3 } },

@@ -1,15 +1,12 @@
 // Audited factory filing, separate from playback categories. IDs keep filing stable across renames.
 // Add new factory presets here; old/user/song-local presets also have a compatibility fallback.
 const GROUPS = [
-  ['Strings', 'Solo', 'fzppViolin fzppCello fzppErhu'],
-  ['Strings', 'Ensemble', 'fzppStringSection'],
-  ['Winds', 'Reeds', 'fzppClarinet'],
-  ['Winds', 'Saxophone', 'fzppSaxLike'],
-  ['Winds', 'Flute', 'fzppFlute fzppPanPipes'],
-  ['Bass', 'Electric', 'fzppFretlessBass'],
+  ['Strings', 'Solo', 'frppViolin frppCello frppErhu'],
+  ['Strings', 'Ensemble', 'frppStringSection'],
+  ['Bass', 'Electric', 'frppFretlessBass'],
   ["Bass", "Electric",
     "tpBassGuitar tngrPickedBass mrdrSlapThumb mrdrSlapPop mrdrFretClack" + " " +
-    "fzppBassNeck fzppBassBridge"
+    "frppBassNeck frppBassBridge"
   ],
   ["Bass", "Sub",
     "mrdrDist808 rm7RingSub"
@@ -30,7 +27,7 @@ const GROUPS = [
     "rmndClangPop rmndSquarePop tngrMegaPop mrdrAcid303 mrdrAcid303Accent" + " " +
     "mrdrAcid303Square mrdrAcid303Deep mrdrOrganBass mrdrGarageWobble rm7WahBass" + " " +
     "rm7LaserBass rm7MonsterGrowl rm7AcidFm rm7ReeseFm rm7OctaverBass" + " " +
-    "fzppSynthBass fzppAcidPluck mrdrFmWub"
+    "frppSynthBass frppAcidPluck mrdrFmWub"
   ],
   ["Bells & Mallets", "Bells",
     "engTitleTwinkle engShopTwinkle fmBell addBell tngrIceBell" + " " +
@@ -40,7 +37,7 @@ const GROUPS = [
   ["Bells & Mallets", "Tuned Percussion",
     "celeste marimba musicBox tpMarimba tpSteelpan" + " " +
     "tpKalimba tngrDataMarimba tngrCelesta squareVSMono mrdrVibraphone" + " " +
-    "rm7TempleGong fzppDulcimer fzppKalimba"
+    "rm7TempleGong frppDulcimer frppKalimba"
   ],
   ["Brass", "Ensemble",
     "brassStab layerBrassStack tngrBrassSection mrdrHornStab"
@@ -66,7 +63,7 @@ const GROUPS = [
     "ds909Crash rideSosTwoPath rideSosFullTail cy808Cymbal crash808Long" + " " +
     "ride909SixBit sdsCymbal"
   ],
-  ["Drums & Percussion", "Electronic Percussion",
+  ["Drums & Percussion", "Electronic Perc.",
     "rm7RingTin kit_nes_clap kit_neuro_rim vl1Pi vl1Po" + " " +
     "gateClang kwBlipPing kwBlipSnap kwBlipWood kwBlipGlass" + " " +
     "kwBlipTick kwBlipDrop kwBlipDouble syn3RingBell"
@@ -151,16 +148,16 @@ const GROUPS = [
     "ringMod bestPwmDrift tngrTransmission coyoteHowl rm7Chopper"
   ],
   ["Guitars", "Acoustic",
-    "mrdrAcousticGuitar rm7NylonGuitar rm7SteelAcoustic rm7TwelveString fzppSteelAcoustic" + " " +
-    "fzppSteelAcousticShimmer fzppNylon fzppNylonShimmer fzppTwelveString"
+    "mrdrAcousticGuitar rm7NylonGuitar rm7SteelAcoustic rm7TwelveString frppSteelAcoustic" + " " +
+    "frppSteelAcousticShimmer frppNylon frppNylonShimmer frppTwelveString"
   ],
   ["Guitars", "Clean Electric",
     "mrdrWahGuitar mrdrFunkGuitar rm7JazzGuitar rm7CleanElectric rm7FunkChop" + " " +
-    "rm7GuitarHarmonics rm7TremoloGuitar fzppCleanElectric fzppCleanElectricShimmer fzppElectricNeck" + " " +
-    "fzppElectricBridge fzppFunkRhythm fzppFunkBright fzppSlideGuitar"
+    "rm7GuitarHarmonics rm7TremoloGuitar frppCleanElectric frppCleanElectricShimmer frppElectricNeck" + " " +
+    "frppElectricBridge frppFunkRhythm frppFunkBright frppSlideGuitar"
   ],
   ["Guitars", "Muted",
-    "mrdrFunkGuitarMuted fzppPalmMuted fzppFunkMuted"
+    "mrdrFunkGuitarMuted frppPalmMuted frppFunkMuted"
   ],
   ["Keys", "Clav",
     "clav syncWireClav bestPwmClav tngrPhaseClav rm7AmClav"
@@ -228,7 +225,7 @@ const GROUPS = [
     "bestSampleHoldOrbit syncOrbitPad tngrDreamCircuit rm7SweepPad rm7PulsingPad"
   ],
   ["Pads", "Strings",
-    "fzppSwelledString"
+    "frppSwelledString"
   ],
   ["Pads", "Textures",
     "engTitleChords glassPad addGlassPad layerTitleChords layerDreamPad" + " " +
@@ -243,9 +240,9 @@ const GROUPS = [
     "rm7BeatingStrings rm7DxStrings"
   ],
   ["Strings", "Plucked",
-    "harpPluck koto tpPizz tngrWireHarp fzppBanjo" + " " +
-    "fzppHarp fzppHarpShimmer fzppKoto fzppSitar fzppTanpura" + " " +
-    "fzppMandolin"
+    "harpPluck koto tpPizz tngrWireHarp frppBanjo" + " " +
+    "frppHarp frppHarpShimmer frppKoto frppSitar frppTanpura" + " " +
+    "frppMandolin"
   ],
   ["Strings", "Solo",
     "tpElectricCello mrdrViolin mrdrViolinMarcato mrdrViola mrdrCello" + " " +
@@ -255,7 +252,7 @@ const GROUPS = [
     "rm7SteelPluck"
   ],
   ["Synth Plucks", "Resonant",
-    "fzppFilterSlam"
+    "frppFilterSlam"
   ],
   ["Synth Plucks", "Short",
     "synthPluck tpTreeTrunk tngrCrystalTrigger"

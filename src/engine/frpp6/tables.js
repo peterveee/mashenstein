@@ -1,5 +1,5 @@
 /*
- * FZPP-6's exciter tables: the pluck, with the body already in it.
+ * FRPP-6's exciter tables: the pluck, with the body already in it.
  *
  * ---- why the body lives in the pluck ------------------------------------------------
  *
@@ -16,7 +16,7 @@
  * The same modes run per sample in the core when `internal.bodyMethod` is 'lane' — the A/B
  * the Gate A auditions make, and the body a bowed string will need in Stage 3, since a
  * bow has no one-shot excitation to fold anything into. That makes the SVF here and the
- * SVF in dsp.js two copies of the same six lines. tests/fzpp6-dsp.js holds them together:
+ * SVF in dsp.js two copies of the same six lines. tests/frpp6-dsp.js holds them together:
  * the commuted render and the lane render of one pluck must agree to 1e-4, and they only
  * can if the two filters are the same filter.
  *
@@ -26,7 +26,7 @@
  * arrive at the core already built, as TNGR-2's wavetables do.
  */
 
-import { FZPP6_BODY_SETS, validateFzpp6, fzpp6PlayOf, isFzpp6Sustained } from './schema.js';
+import { FRPP6_BODY_SETS, FRPP6_BODY_MODE_KEYS, validateFrpp6, frpp6PlayOf, isFrpp6Sustained } from './schema.js';
 import {
   driveCurveTable, DRIVE_HEADROOM, DRIVE_CURVE_POINTS, driveRef, DRIVE_REF_MIN, DRIVE_REF_MAX,
 } from '../drive-curve.js';
@@ -48,8 +48,8 @@ function rng(seed) {
  * modes (or the Advanced edits of them) and then the seeded cloud. SIZE scales every
  * frequency together, as a bigger box would. Modes above 0.45 of the rate are dropped.
  */
-export function fzpp6BodyModes(body, sampleRate) {
-  const set = FZPP6_BODY_SETS[body?.type];
+export function frpp6BodyModes(body, sampleRate) {
+  const set = FRPP6_BODY_SETS[body?.type];
   if (!set) return new Float64Array(0);
   const size = body.size || 1;
   const out = [];
@@ -57,8 +57,12 @@ export function fzpp6BodyModes(body, sampleRate) {
     const hz = f / size;
     if (hz < 0.45 * sampleRate && g > 0) out.push(hz, q, g);
   };
-  const primary = body.modes || set.primary;
-  for (const [f, q, g] of primary) add(f, q, g);
+  // The three named modes, each as the set has it unless a pot pinned its hz or q, and
+  // trimmed by its dB — the Body · Advanced door.
+  set.primary.forEach(([f, q, g], i) => {
+    const o = body[FRPP6_BODY_MODE_KEYS[i]] || {};
+    add(o.hz ?? f, o.q ?? q, g * 10 ** ((o.db || 0) / 20));
+  });
   const c = set.cloud;
   const rand = rng(c.seed);
   for (let i = 0; i < c.count; i++) {
@@ -250,8 +254,8 @@ function fingerSqueak(sampleRate) {
   return out;
 }
 
-export const FZPP6_NOISE_VARIANTS = 4;
-export const FZPP6_SCRAPE_VARIANTS = 2;
+export const FRPP6_NOISE_VARIANTS = 4;
+export const FRPP6_SCRAPE_VARIANTS = 2;
 
 /**
  * Every table a patch needs, at one rate — and only those: an IMPULSE patch builds no noise,
@@ -263,17 +267,16 @@ export const FZPP6_SCRAPE_VARIANTS = 2;
  * whisper beside a pluck. In lane mode each table is the DRY burst, scaled by the factor
  * its commuted twin needed, which is what makes the two renders comparable at all.
  */
-export function buildFzpp6Tables(patch, sampleRate) {
+export function buildFrpp6Tables(patch, sampleRate) {
   // A bowed string has no one-shot pluck to fold the body into: its body runs per sample on
-  // the lane, from the few modes the VIOLIN and CELLO sets carry. REED and JET have no body
-  // — the bore and its bell are the instrument.
-  const sustained = isFzpp6Sustained(patch.exciter.type);
+  // the lane, from the few modes the VIOLIN and CELLO sets carry.
+  const sustained = isFrpp6Sustained(patch.exciter.type);
   if (sustained) {
-    const modes = patch.exciter.type === 'bow' ? fzpp6BodyModes(patch.body, sampleRate) : new Float64Array(0);
+    const modes = frpp6BodyModes(patch.body, sampleRate);
     return { pulse: null, noise: [], scrape: [], fret: null, squeak: null, modes, tail: 0, lane: true };
   }
   const lane = patch.internal?.bodyMethod === 'lane';
-  const modes = fzpp6BodyModes(patch.body, sampleRate);
+  const modes = frpp6BodyModes(patch.body, sampleRate);
   const mix = patch.body.mix;
   const tail = modes.length ? bodyTail(modes) : 0;
   const make = (burst, targetEnergy) => {
@@ -295,12 +298,12 @@ export function buildFzpp6Tables(patch, sampleRate) {
   if (type !== 'impulse') {
     const length = patch.exciter.length;
     const energy = Math.max(1, Math.sqrt(length / 0.006));
-    for (let v = 0; v < FZPP6_NOISE_VARIANTS; v++) {
+    for (let v = 0; v < FRPP6_NOISE_VARIANTS; v++) {
       tables.noise.push(make(noiseBurst(length, 0x5eed + v * 7919, sampleRate), energy));
     }
   }
   if (patch.damping.mutedBelow > 0 || patch.damping.lift > 0) {
-    for (let v = 0; v < FZPP6_SCRAPE_VARIANTS; v++) {
+    for (let v = 0; v < FRPP6_SCRAPE_VARIANTS; v++) {
       tables.scrape.push(make(scrapeBurst(0xc4ac + v * 104729, sampleRate), 1));
     }
   }
@@ -326,12 +329,12 @@ const compiled = new Map();
  * controller registers the copy it loads as a module.
  */
 let CalCore = null;
-export function registerFzpp6Core(Core) {
+export function registerFrpp6Core(Core) {
   CalCore = Core;
   compiled.clear();
 }
-export const FZPP6_LEVEL_LO = 12;
-export const FZPP6_LEVEL_STEP = 4;
+export const FRPP6_LEVEL_LO = 12;
+export const FRPP6_LEVEL_STEP = 4;
 const LEVEL_POINTS = 28;
 const hzOfMidi = (midi) => 440 * 2 ** ((midi - 69) / 12);
 
@@ -348,9 +351,9 @@ function levelCurve(result, sampleRate) {
   const out = [new Float32Array(128), new Float32Array(128)];
   const rms = [];
   // A sustained exciter is measured over its held note less its attack; a pluck from the strike.
-  const skip = isFzpp6Sustained(result.exciter.type) ? Math.round(0.15 * sampleRate) : 0;
+  const skip = isFrpp6Sustained(result.exciter.type) ? Math.round(0.15 * sampleRate) : 0;
   for (let k = 0; k < LEVEL_POINTS; k++) {
-    const hz = Math.min(sampleRate / 5.5, hzOfMidi(FZPP6_LEVEL_LO + k * FZPP6_LEVEL_STEP));
+    const hz = Math.min(sampleRate / 5.5, hzOfMidi(FRPP6_LEVEL_LO + k * FRPP6_LEVEL_STEP));
     core.reset();
     core.scheduleAll([{ type: 'noteOn', frame: 0, eventId: 1, hz, velocity: 1 }]);
     let e = 0;
@@ -361,7 +364,7 @@ function levelCurve(result, sampleRate) {
     }
     rms.push(Math.sqrt(e / frames));
   }
-  // The A2 peak, at level 1: where the drive's knee goes (fzpp6DriveOf).
+  // The A2 peak, at level 1: where the drive's knee goes (frpp6DriveOf).
   core.reset();
   core.scheduleAll([{ type: 'noteOn', frame: 0, eventId: 1, hz: 110, velocity: 1 }]);
   let stringPeak = 0;
@@ -371,16 +374,16 @@ function levelCurve(result, sampleRate) {
     if (f >= skip) for (let i = 0; i < n; i++) { const a = Math.abs(out[0][i]); if (a > stringPeak) stringPeak = a; }
   }
   core.reset();
-  const ref = rms[(45 - FZPP6_LEVEL_LO) / FZPP6_LEVEL_STEP | 0]
-    + (rms[Math.ceil((45 - FZPP6_LEVEL_LO) / FZPP6_LEVEL_STEP)] - rms[(45 - FZPP6_LEVEL_LO) / FZPP6_LEVEL_STEP | 0])
-      * (((45 - FZPP6_LEVEL_LO) / FZPP6_LEVEL_STEP) % 1);
-  // Bounded, so a broken measurement cannot run away — but wide: a hard reed blown hard is
-  // 25 dB louder at the top of the board than at A2, and that is what this is for.
+  const ref = rms[(45 - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP | 0]
+    + (rms[Math.ceil((45 - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP)] - rms[(45 - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP | 0])
+      * (((45 - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP) % 1);
+  // Bounded, so a broken measurement cannot run away — but wide: a bow pressed hard is many
+  // dB louder at the top of the board than at A2, and that is what this is for.
   return { curve: Float32Array.from(rms, (r) => Math.min(16, Math.max(1 / 32, r > 1e-9 ? ref / r : 1))), stringPeak };
 }
 
 /**
- * A voice (or a bare `fzpp6` block) to what the core installs: the clamped patch, the
+ * A voice (or a bare `frpp6` block) to what the core installs: the clamped patch, the
  * voice-level play controls beside it, and its tables at this rate. Memoised per patch and
  * rate, because a song plays the same preset on many notes and a lane rebuild should not
  * rebuild tables that have not changed.
@@ -401,7 +404,7 @@ function levelCurve(result, sampleRate) {
  * host with no core registered falls back to `driveRef`; CRUSH is not staged (a quantiser
  * changes no level). The 32k-point table is built here, on the main thread, once per patch.
  */
-function fzpp6DriveOf(voice, stringPeak) {
+function frpp6DriveOf(voice, stringPeak) {
   const amount = Math.min(1, Math.max(0, Number(voice?.drive) || 0));
   if (!(amount > 0)) return null;
   const ref = voice?.shape === 'crush' || !(stringPeak > 0) ? driveRef(voice)
@@ -420,31 +423,31 @@ function fzpp6DriveOf(voice, stringPeak) {
   };
 }
 
-export function compileFzpp6(voiceOrStored, sampleRate) {
-  const isVoice = voiceOrStored && voiceOrStored.fzpp6 !== undefined;
-  const stored = isVoice ? voiceOrStored.fzpp6 : voiceOrStored;
+export function compileFrpp6(voiceOrStored, sampleRate) {
+  const isVoice = voiceOrStored && voiceOrStored.frpp6 !== undefined;
+  const stored = isVoice ? voiceOrStored.frpp6 : voiceOrStored;
   const voice = isVoice ? voiceOrStored : {};
-  const play = fzpp6PlayOf(voice);
+  const play = frpp6PlayOf(voice);
   const driveKey = [voice.drive, voice.shape, voice.drivePlace, voice.tone?.freq, voice.peak];
   const key = `${sampleRate}|${!!CalCore}|${JSON.stringify(stored)}|${JSON.stringify(play)}|${JSON.stringify(driveKey)}`;
   const hit = compiled.get(key);
   if (hit) return hit;
-  const patch = validateFzpp6(stored);
+  const patch = validateFrpp6(stored);
   const result = { ...patch, play, drive: null, sampleRate,
-    tables: buildFzpp6Tables(patch, sampleRate), levelCurve: null, stringPeak: 0 };
+    tables: buildFrpp6Tables(patch, sampleRate), levelCurve: null, stringPeak: 0 };
   if (CalCore) {
     const cal = levelCurve(result, sampleRate);
     result.levelCurve = cal.curve;
     result.stringPeak = cal.stringPeak;
   }
   // After the calibration, which it depends on — and which must not see it.
-  result.drive = fzpp6DriveOf(voice, result.stringPeak);
+  result.drive = frpp6DriveOf(voice, result.stringPeak);
   if (compiled.size > 64) compiled.delete(compiled.keys().next().value);
   compiled.set(key, result);
   return result;
 }
 
 /** For callers that want the play controls on a bare block (the auditions, the tests). */
-export function compileFzpp6With(stored, sampleRate, play = {}) {
-  return compileFzpp6({ fzpp6: stored, ...play }, sampleRate);
+export function compileFrpp6With(stored, sampleRate, play = {}) {
+  return compileFrpp6({ frpp6: stored, ...play }, sampleRate);
 }

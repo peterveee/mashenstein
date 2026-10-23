@@ -29,7 +29,7 @@ import { registerPresetWindow, bringPresetWindowToFront } from './lib/preset-win
 import {
   envelopeGraph, responseGraph, decayGraph, pluckGraph, stringsGraph, bodyGraph, handGraph, filterModelOf,
 } from './mixer-synth-graphs.js';
-import { fzpp6BodyModes } from '../src/engine/fzpp6/tables.js';
+import { frpp6BodyModes } from '../src/engine/frpp6/tables.js';
 import { isMrdrSynth } from '../src/engine/mrdr3/identity.js';
 import { createSynthKeyboard } from './mixer-synth-keyboard.js';
 import { WAVE_GLYPHS } from './lib/wave-glyphs.js';
@@ -40,7 +40,7 @@ import { synthDisplayName } from './lib/synth-display.js';
  * layout selector while this list names the family itself. */
 export const FULL_EDITORS = [
   'MRDR-3', 'TNGR-2', 'JMJR-4', 'drum', 'CRLS-1',
-  'KNDO-5', 'WNDR-9', 'RMND-7', 'FZPP-6',
+  'KNDO-5', 'WNDR-9', 'RMND-7', 'FRPP-6',
 ];
 
 /**
@@ -65,7 +65,7 @@ const ENV_ROWS = { attack: 'ATTACK', decay: 'DECAY', sustain: 'SUSTAIN', release
 const FILTER_ROWS = { freq: 'CUTOFF', Q: 'RESONANCE', type: 'TYPE', slope: 'SLOPE' };
 const ENV_OPTIONAL = ['release'];
 const FILTER_OPTIONAL = ['slope'];
-// FZPP-6's RING card: how long the note rings, and how long its highs last.
+// FRPP-6's RING card: how long the note rings, and how long its highs last.
 const RING_ROWS = { ring: 'RING', highs: 'HIGHS' };
 // ...and its PLUCK and BODY cards.
 const PLUCK_ROWS = { where: 'WHERE', hard: 'HARD' };
@@ -245,7 +245,21 @@ export function createSynthFull({
     undo.disabled = !kit.canUndo();
     undo.onclick = () => kit.undo();
     undoButton = undo;
-    bar.append(undo, span('sfspace'));
+    bar.append(undo);
+    // Back to the compact panel on the same preset — the other half of its ADVANCED.
+    if (kit.simpleAvailable?.()) {
+      const simple = document.createElement('button');
+      simple.className = 'sfundo sfsimple';
+      simple.type = 'button';
+      simple.textContent = 'SIMPLE';
+      simple.title = 'Switch to the Simple editor for this preset';
+      simple.onclick = () => {
+        const r = el.getBoundingClientRect();
+        kit.showSimple({ x: r.left, y: r.top });
+      };
+      bar.append(simple);
+    }
+    bar.append(span('sfspace'));
     const extra = headExtra?.();
     if (extra) bar.append(extra);
     // SOLO — the desk's, on the channel this preset is playing.
@@ -426,7 +440,7 @@ export function createSynthFull({
       }
       if (tabs) bar.append(tabs);
       else {
-        // A card that is the engine's own idea — FZPP-6's PLUCK, RING and the rest — says
+        // A card that is the engine's own idea — FRPP-6's PLUCK, RING and the rest — says
         // what it is on its title: the hover is where a section nobody has met before gets
         // explained, without a caption sitting on the board for ever.
         const t = span('sftitle', spec.title);
@@ -754,7 +768,7 @@ export function createSynthFull({
   const sectionPanel = (host, p) => panelButton({
     card: host,
     label: p.label,
-    // The door's tooltip explains what is behind it when the section says (FZPP-6's two
+    // The door's tooltip explains what is behind it when the section says (FRPP-6's two
     // ADVANCED doors); otherwise it is the section's name.
     title: p.group?.tip || p.title || p.label,
     // Two columns wide when asked.
@@ -831,6 +845,9 @@ export function createSynthFull({
       // width of every option and made a four-word row read as a form.
       else b.append(span('t', kit.short[o] ?? String(o).toUpperCase()));
       b.title = row.optionTips?.[o] ?? String(o);
+      // A single pill greyed while the rest of the row is live — RMND-7's pulse and PWM
+      // modulators in FM. The window repaints on every pick, so build time is enough.
+      if (row.optionOff?.(kit.voice(), o)) { b.disabled = true; b.classList.add('vedisabled'); }
       b.onclick = () => { kit.pickWrite(row, o); kit.repaint(); };
       opts.append(b);
     }
@@ -1111,7 +1128,7 @@ export function createSynthFull({
         : kind === 'pluck' ? pluckGraph(graphOptions)
           : kind === 'strings' ? stringsGraph(graphOptions)
             : kind === 'hand' ? handGraph(graphOptions)
-              : kind === 'body' ? bodyGraph({ ...graphOptions, modesOf: (b) => fzpp6BodyModes(b, 44100) })
+              : kind === 'body' ? bodyGraph({ ...graphOptions, modesOf: (b) => frpp6BodyModes(b, 44100) })
                 : envelopeGraph(graphOptions);
     // Before the grid, after the header. The grid then takes `margin-top: auto`, so the
     // knob rows across a band land on one baseline whatever height the graph came out.

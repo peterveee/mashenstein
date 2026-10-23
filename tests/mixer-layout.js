@@ -5236,8 +5236,8 @@ assert(/if \(laneKey && !laneExists\(laneKey\)\)/.test(placeFn)
   && !/\.strip\[data-lane/.test(placeFn) && !/\.strip\[data-lane/.test(editVoiceBody)
   && /laneExists: \(key\) => engineDeskLanes\(viewBank\(\), 1\)\.some/.test(entry),
   'a lane filtered out of the rack can still open and keep its preset editor');
-assert(/#voiceedit\.vefloat \{[\s\S]*?height: min\(350px, calc\(100vh - 8px\)\);[\s\S]*?max-height: min\(350px, calc\(100vh - 8px\)\);[\s\S]*?resize: none; overflow: hidden;/.test(shell),
-  'Simple editors share one short, non-resizable height and scroll extra rows internally');
+assert(/#voiceedit\.vefloat \{[\s\S]*?height: auto;[\s\S]*?max-height: calc\(100vh - 8px\);[\s\S]*?resize: none; overflow: hidden;/.test(shell),
+  'Simple editors are as tall as their controls, non-resizable, and scroll only on a screen too short for them');
 // Centred in the middle of the screen, the panel is the only thing on screen naming the
 // channel it edits — so the caption says which one.
 assert(/tag\.textContent = `\$\{state\.laneLabel \? `\$\{state\.laneLabel\} · ` : ''\}`/.test(editor),
