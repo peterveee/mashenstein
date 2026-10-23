@@ -106,17 +106,6 @@ export function upgradeSelect(select) {
   // after that marker has been added.
   const carried = select.className.split(/\s+/).filter((c) => c && c !== 'deskselect-native');
   if (carried.length) field.className = `deskselect ${carried.join(' ')}`;
-  if (select.id === 'devtarget') {
-    const NS = 'http://www.w3.org/2000/svg';
-    const caret = document.createElementNS(NS, 'svg');
-    caret.classList.add('deskselect-caret');
-    caret.setAttribute('viewBox', '0 0 24 24');
-    caret.setAttribute('aria-hidden', 'true');
-    const path = document.createElementNS(NS, 'path');
-    path.setAttribute('d', 'M5 8.5l7 7 7-7');
-    caret.append(path);
-    field.append(caret);
-  }
   field.disabled = select.disabled;
   select.after(field);
   // Not `hidden` and not removed: still in the document, still the state, still what

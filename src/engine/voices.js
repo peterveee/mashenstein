@@ -4420,7 +4420,7 @@ export class VoiceRack {
     // the song's load climbed from ~12% to ~55% over two and a half minutes, flat with the
     // KNDO-5 lanes muted (work/local/_rhythm-climb-webkit-2026-10-20.txt) — and the iPad tips
     // over at bar 39 of Rhythm Bankruptcy, one of its lightest stretches.
-    this._retireNote(rec.sources, [...noteOuts, ...paramMods]);
+    this._retireNote(rec.sources, [...noteOuts, ...paramMods], laneKey);
     return true;
   }
 
@@ -5990,7 +5990,7 @@ export class VoiceRack {
     }
     // Out of the graph once it has rung out — a choke above stops the sources early, and
     // `ended` follows them. See `_retireNote`.
-    this._retireNote(sources, [...outs, ...paramMods]);
+    this._retireNote(sources, [...outs, ...paramMods], laneKey);
     return true;
   }
 
@@ -6223,7 +6223,7 @@ export class VoiceRack {
     record.gateUntil = hold ? time + HOLD_SECONDS : time + Math.max(0.05, Array.isArray(dur) ? Math.max(...dur) : (dur || 0));
     this._jmjr4Last.set(lineKey, record);
     if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
-    this._retireNote(sources, [busOut, ...new Set(paramMods)]);
+    this._retireNote(sources, [busOut, ...new Set(paramMods)], laneKey);
     return true;
   }
 
@@ -6351,7 +6351,7 @@ export class VoiceRack {
     // The phrase's carriers stop at its end + 0.05 (dsp.js): the shared flutter just before.
     for (const m of sharedMods.oscs) { m.start(time); m.stop(lastOff + 0.05 - MOD_EARLY); }
     if (preview && !hold) this._registerLiveNote(v.id, [], lastOff);
-    this._retireNote(spoken, [busOut, ...speakMods]);
+    this._retireNote(spoken, [busOut, ...speakMods], laneKey);
     return true;
   }
 
@@ -6659,7 +6659,7 @@ export class VoiceRack {
     // note it belongs to is a node nothing disposes.
     if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff - MOD_EARLY); sharedMods.oscs.push(lfo); }
     this._perNoteKeyModeEnd(km, hold, rec);
-    this._retireNote([...rec.sources, ...pips], [...rec.outs, ...vibMods]);
+    this._retireNote([...rec.sources, ...pips], [...rec.outs, ...vibMods], laneKey);
     return true;
   }
 
@@ -8085,7 +8085,7 @@ export class VoiceRack {
       this._mrdrTailStats.culled++;
       this._mrdrTailStats.savedSeconds += tailPlan.saved;
     }
-    this._retireNote(noteSources, [...allOuts, ...paramMods]);
+    this._retireNote(noteSources, [...allOuts, ...paramMods], laneKey);
     return true;
   }
 
@@ -8129,15 +8129,19 @@ export class VoiceRack {
    * 27 gains, 8 shapers and 8 filters pulled forever, gc() or not. That is the banger that
    * plays fine for a few passes on an iPhone and then stutters.
    */
-  _retireNote(sources, outs) {
+  _retireNote(sources, outs, laneKey = '') {
     sources = [...new Set(sources)];
     if (!sources.length || !outs.length || typeof this.ctx.startRendering === 'function') return;
     // A source that cannot say when it has ended (a test's stand-in node) leaves the note
     // where it is: cutting a note early is worse than keeping a dead one.
     if (!sources.every((src) => typeof src.addEventListener === 'function')) return;
     // Kept until its sources end, so a rack taken down under it can stop what is left
-    // (`dispose`, engine/drain.js).
-    const note = { sources, outs };
+    // (`dispose`, engine/drain.js) — and so the lane's strip knows not to SLEEP under it
+    // (`laneRinging`, the mixer's sleep guard): a strip unplugged with a note mid-flight
+    // leaves that note's sources unpulled, and a source nothing pulls never reaches its
+    // stop and never ends. A muted lane's long notes did exactly that (23 Oct 2026,
+    // tools/audio-audit.js --phrase=held: 306 oscillators left running on every stop).
+    const note = { sources, outs, laneKey };
     (this._ringingNotes ||= new Set()).add(note);
     let left = sources.length;
     const unwire = () => { for (const out of outs) { try { out.disconnect(); } catch { /* already gone */ } } };
@@ -8170,6 +8174,13 @@ export class VoiceRack {
       if (typeof setTimeout === 'function') setTimeout(finish, 1000);
     };
     for (const src of sources) src.addEventListener('ended', ended, { once: true });
+  }
+
+  /** Whether a per-note graph on this lane is still sounding, or ringing out, or not yet ended. */
+  laneRinging(laneKey) {
+    if (!this._ringingNotes?.size) return false;
+    for (const note of this._ringingNotes) if (note.laneKey === laneKey) return true;
+    return false;
   }
 
   /**

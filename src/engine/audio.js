@@ -7,7 +7,7 @@ import * as Tone from 'tone';
 import { installJunctionGuard } from './webkit-junction-guard.js';
 import { crumb } from './diag.js';
 import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
-import { createMixer, dbToGain, AUX_DEFAULTS } from './mixer.js';
+import { createMixer, dbToGain, AUX_DEFAULTS, setSleepGuard } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
 import { canHostEngineWorklets, createCaptureNode, prepareEngineWorklets } from './engine-worklets.js';
 import {
@@ -1770,6 +1770,8 @@ class AudioSys {
     // the music bus and return that chain into the shared global master. SFX stays
     // directly on the global master; a song's -19dB title trim must not attenuate UI
     // cues or tutorial feedback.
+    // A strip may not sleep under a note still ringing on its lane — see `laneRinging`.
+    setSleepGuard((key) => !!this.voices?.laneRinging?.(key));
     this.mixer = createMixer(this.ctx, {
       metered: this.mixerMeteringEnabled,
       musicBus: this.musicBus, echoBus: this.echoBus,

@@ -280,6 +280,10 @@ export function setParkMutedEffects(on) { parkMuted = !!on; }
 // wake, keep-alive or not (work/local/_param-switch-sleep-probe.mjs). WebKit lands it. Off
 // on the desk, which keeps its chains exactly as they always ran.
 let deepSleep = false;
+// Whether a strip may sleep NOW: the engine's answer (a note mid-flight on the lane says no —
+// see `laneRinging` in voices.js). Null: silence alone decides.
+let sleepGuard = null;
+export function setSleepGuard(fn) { sleepGuard = typeof fn === 'function' ? fn : null; }
 /** Let quiet chains and idle strips come out of the graph entirely (main.js, on WebKit). */
 export function setDeepSleep(on) { deepSleep = !!on; }
 // The strips' half of it can be told apart, for a test that needs to know which half did what.
@@ -1673,7 +1677,12 @@ export function createMixer(ctx, {
       for (let i = 0; i < stripSamples.length; i++) peak = Math.max(peak, Math.abs(stripSamples[i]));
       if (peak > EFFECT_SLEEP_FLOOR) stripQuietSince = null;
       else if (stripQuietSince == null) stripQuietSince = now;
-      if (stripQuietSince != null && now - stripQuietSince >= STRIP_SLEEP_GAP) { sleepStrip(); return; }
+      // Silent for long enough — and nothing on the lane still waiting to end. A muted lane
+      // is silent at once, with its notes still running under the fader: unplugged then,
+      // those notes never reach their stop (23 Oct 2026). They are a few, and they end
+      // the moment they are pulled again, so the strip waits the few seconds they take.
+      if (stripQuietSince != null && now - stripQuietSince >= STRIP_SLEEP_GAP
+        && !(sleepGuard && sleepGuard(key))) { sleepStrip(); return; }
       stripTimer = setTimeout(pollStrip, STRIP_SLEEP_POLL_MS);
     };
     const watchStrip = () => {

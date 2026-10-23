@@ -1046,6 +1046,18 @@ const humaniseGroupFor = (keys) => {
 const ADDITIVE_HUMANISE_GROUP = humaniseGroupFor(['gain', 'pitch']);
 const PERCUSSION_HUMANISE_GROUP = humaniseGroupFor(['gain', 'pitch', 'filter']);
 
+/**
+ * Velocity controls are HIDDEN on every synth for now (Peter, 23 Oct 2026). The engines
+ * still honour a note's velocity — `play` scales the gain, `_playLayer` reads
+ * `v.velocity`, FZPP-6 darkens and chucks — but the desk cannot write one (the piano roll
+ * has no velocity lane; snare rolls are done with Spot FX), so a pot nobody can hear move
+ * is noise on the board. Flip this when velocity rolls out everywhere, and the rows below
+ * come back as they were. tests/pot-coverage.js HIDDEN_OK knows about the MRDR-3 key.
+ */
+export const VELOCITY_CONTROLS_HIDDEN = true;
+/** A row list with its velocity rows dropped while they are hidden. */
+const withoutVelocity = (rows) => VELOCITY_CONTROLS_HIDDEN ? rows.filter((r) => !r.velocity) : rows;
+
 // Velocity response remains active; humanise gain/pitch/filter are bypassed in MRDR-3.
 const MRDR3_VELOCITY_GROUP = {
   key: 'velocity', title: 'Velocity', seedless: true,
@@ -1768,7 +1780,7 @@ const SYNTH_GROUPS = {
     // written-in `bassRepeat` taken out. `_playLayer` does not read `taps` either —
     // a card removed while the engine still honoured the key would be exactly the
     // hidden parameter tests/pot-coverage.js exists to catch.
-    MRDR3_VELOCITY_GROUP,
+    ...(VELOCITY_CONTROLS_HIDDEN ? [] : [MRDR3_VELOCITY_GROUP]),
   ],
   /**
    * Additive: a stack of sine partials, which is the drawbar organ and — once the
@@ -2300,17 +2312,17 @@ const SYNTH_GROUPS = {
         + 'percussive scratch of funk rhythm guitar — so ghost strums are just quiet notes in '
         + 'the piano roll. FRET is the tick of a string landing on a fret, SQUEAK fingers '
         + 'sliding along a ringing string, LIFT the scratch as the hand lets go.',
-      rows: [
+      rows: withoutVelocity([
       n('$fzpp6.damping.mute', 'MUTE', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), { tip: 'The palm resting on the strings: short and thick.' }),
       n('$fzpp6.damping.mutedBelow', 'CHUCK', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), {
-        // Velocity-keyed, and the desk cannot write a velocity yet: CHUCK works on songs whose
-        // notes carry one (`${lane}Velocity`). Left as it is for now (Peter, 23 Oct 2026).
+        // Velocity-keyed, so hidden with the rest — see VELOCITY_CONTROLS_HIDDEN.
+        velocity: true,
         tip: 'Notes played softer than this become muted chucks — strings touched, not fretted. Needs notes with a velocity: the desk cannot set one yet. 0 is off.',
       }),
       n('$fzpp6.damping.fret', 'FRET', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), { tip: 'The tick of a string landing on a new fret.' }),
       n('$fzpp6.damping.squeak', 'SQUEAK', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), { tip: 'Fingers sliding along a ringing string.' }),
       n('$fzpp6.damping.lift', 'LIFT', 0, 1, 0.01, fixed(2), 0, '', (v) => !fzWind(v), { tip: 'The scratch of the hand lifting off at the end of a note.' }),
-    ] },
+    ]) },
     // An ADVANCED door on PLUCK — the drum kit keeps TAPS behind a door on its Master card the
     // same way. Fine-tuning for a more sophisticated preset, out of the way of a player.
     // CHARACTER had one too (DETUNE, SHIMMER) until Peter judged them plain enough to show.
@@ -2319,10 +2331,11 @@ const SYNTH_GROUPS = {
         + 'is, where a song carries velocities. BRIGHT: the brightness on its own — it follows '
         + 'HARD until it is moved, so a preset can be hard but dark. SETTLE: how long the bright '
         + 'edge of a pluck takes to fade into the note.',
-      rows: [
-        // Behind the door, not on PLUCK: the desk cannot set a note's velocity yet (the piano
-        // roll does not draw one), so this only answers songs that already carry them.
+      rows: withoutVelocity([
+        // Behind the door, not on PLUCK, and hidden with every other velocity control for
+        // now — see VELOCITY_CONTROLS_HIDDEN.
         n('$fzpp6.exciter.velocity', 'VELOCITY', 0, 1, 0.01, fixed(2), 0.5, '', null, {
+          velocity: true,
           tip: 'How much darker a softly played note is — for songs whose notes carry a velocity. 0: soft notes are only quieter.',
         }),
         n('$fzpp6.exciter.bright', 'BRIGHT', 0, 1, 0.01, fixed(2), 0.7, '', null, {
@@ -2333,7 +2346,7 @@ const SYNTH_GROUPS = {
         envTime('$fzpp6.damping.settle', 'SETTLE', 0, secs, 0, 's', null, {
           tip: 'How long the bright edge of a pluck takes to settle into the note. 0 is off.',
         }),
-      ] },
+      ]) },
     { key: 'filter', title: 'Filter', optional: 'fzpp6.filter',
       onTip: 'Take the filter out — the string as it is',
       offTip: 'Shape each string through a filter, and sweep it',
@@ -5302,7 +5315,8 @@ function buildFullLayout(voice, layer, problems) {
   // undifferentiated list — the whole point of pulling VIBRATO out originally, got back
   // without the second header that cost.
   const noteCard = take('note');
-  const velocityCard = take('velocity');
+  // The Velocity card is off the board while VELOCITY_CONTROLS_HIDDEN; nothing to fold in.
+  const velocityCard = byKey.has('velocity') ? take('velocity') : { rows: [] };
   noteCard.rows.push(...velocityCard.rows.map((row) => ({ ...row, part: 'settings' })));
   const settings = { kind: 'card', span: 1, card: splitCard(noteCard, CARD_SEAM.note) };
 

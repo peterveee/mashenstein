@@ -6,8 +6,9 @@ import {
   PERCUSSION_LANES, defaultAddedVoice,
 } from '../src/data/voices.js';
 import { offeredVoices } from '../src/data/voices-in-play.js';
-import { createPresetBrowser } from './lib/preset-browser.js';
-import { presetEngine } from './lib/preset-browser-model.js';
+import { createPresetBrowser, revealPresetRow } from './lib/preset-browser.js';
+import { presetClassification } from '../src/data/preset-browsing.js';
+import { emptyPresetFilters } from './lib/preset-browser-model.js';
 import { heavyUi } from './lib/heavy-ui.js';
 
 const $ = (id) => document.getElementById(id);
@@ -17,17 +18,15 @@ const $ = (id) => document.getElementById(id);
 // the pending track is MUTATED through its getter — picking a kit voice re-keys the
 // track being created onto the piece of the kit it actually is.
 let pendingAddTrack, closeMenu, mixFor, trackId, commitPendingAddTrack, targetLabel,
-  setRestorablePopup, isIndependentLane, kitLaneOf, nextLayerKey, setLaneVoice, track, cap;
+  setRestorablePopup, isIndependentLane, kitLaneOf, nextLayerKey, setLaneVoice, track, cap, undoPreset, canUndoPreset;
 
 /** Hand the picker the desk whose channel it is choosing a sound for. */
 export function installVoicePicker(deps) {
   ({
     pendingAddTrack, closeMenu, mixFor, trackId, commitPendingAddTrack, targetLabel,
-    setRestorablePopup, isIndependentLane, kitLaneOf, nextLayerKey, setLaneVoice, track, cap,
+    setRestorablePopup, isIndependentLane, kitLaneOf, nextLayerKey, setLaneVoice, track, cap, undoPreset, canUndoPreset,
   } = deps);
 }
-
-let voicePickerQuery = '';
 
 /**
  * The voice picker — the longest list the desk builds, one row per offered preset.
@@ -45,13 +44,13 @@ function buildVoicePicker(x, y, laneKey) {
   closeMenu();
   setRestorablePopup({ kind: 'voicePicker', laneKey });
   const seam = seamFor(laneKey);
-  const chosen = mixFor(trackId()).voice?.[seam.voiceKey];
+  let chosen = mixFor(trackId()).voice?.[seam.voiceKey];
   // A preset the library would otherwise leave off the menu is still offered while
   // this lane is the thing playing it — a picker cannot hide the row it is meant to
   // be highlighting. Today that is only the song quotations nothing in the game plays
   // any more, which were pickable before they were filtered; see offeredVoices.
   const offer = { keep: chosen || null };
-  const pending = pendingAddTrack()?.key === laneKey;
+  let pending = pendingAddTrack()?.key === laneKey;
   // A duplicate layer has no engine default to go back to. An independent editor lane
   // is different: it is empty, not copied, and its neutral engine fallback is still a
   // valid starting point while the user chooses a preset.
@@ -62,8 +61,10 @@ function buildVoicePicker(x, y, laneKey) {
   el.textContent = '';
 
   const pick = (id) => {
+    rememberSearch();
+    const wasPending = pending;
     // A freshly added lane is only a proposal until its first sound is chosen. Commit
-    // before closing so closeMenu does not treat this successful choice as a cancel.
+    // once; subsequent choices replace the sound on that same new channel.
     if (pendingAddTrack()?.key === laneKey) {
       // The voice the user picked is what the track IS, not whatever lane happened to be
       // selected when they clicked +. A pitched voice re-keys the pending track as a
@@ -83,15 +84,36 @@ function buildVoicePicker(x, y, laneKey) {
         const newKey = nextLayerKey(home);
         pendingAddTrack().key = newKey;
         pendingAddTrack().from = home;
+        laneKey = newKey;
         commitPendingAddTrack(newKey, id);
       } else {
         commitPendingAddTrack(laneKey, id);
       }
-      closeMenu();
-      return;
+      pending = false;
+      setRestorablePopup({ kind: 'voicePicker', laneKey });
+      head.querySelector('.voicewhy')?.remove();
+    } else {
+      setLaneVoice(laneKey, id);
     }
-    closeMenu();
-    setLaneVoice(laneKey, id);
+    chosen = id;
+    selectedPreset = VOICES[id];
+    offer.keep = id;
+    who.textContent = `${targetLabel(laneKey)} voice`;
+    updateCurrent();
+    if (wasPending) {
+      const scrollTop = results.querySelector('.preset-list')?.scrollTop || 0;
+      browser.refresh({ reconcile: true });
+      results.querySelector('.preset-list').scrollTop = scrollTop;
+      currentRow()?.focus({ preventScroll: true });
+    }
+    // Keep filters, scroll position, and keyboard focus while switching sounds.
+    for (const button of results.querySelectorAll('[data-voice]')) {
+      const active = button.dataset.voice === id;
+      button.classList.toggle('on', active);
+      button.setAttribute('aria-pressed', String(active));
+      button.tabIndex = active ? 0 : -1;
+    }
+    bringPresetWindowToFront(el);
   };
   const entry = (id, label, kind, title) => {
     const btn = document.createElement('button');
@@ -110,12 +132,12 @@ function buildVoicePicker(x, y, laneKey) {
     return btn;
   };
 
-  const selectedPreset = VOICES[chosen]
+  let selectedPreset = VOICES[chosen]
     || (independent ? VOICES[defaultAddedVoice(laneKey)] : defaultVoiceOf(track()?.bank, laneKey));
-  const drumsOnly = pending ? !!pendingAddTrack()?.drumsOnly
+  const drumsOnly = () => pending ? !!pendingAddTrack()?.drumsOnly
     : PERCUSSION_LANES.includes(baseLane(laneKey));
   const voices = () => offeredVoices(laneKey, offer)
-    .filter((v) => !drumsOnly || isKitVoice(v) || v.id === chosen);
+    .filter((v) => !drumsOnly() || isKitVoice(v) || v.id === chosen);
 
   const head = document.createElement('div'); head.className = 'voicehead';
   const who = document.createElement('span'); who.className = 'voicewho';
@@ -123,12 +145,39 @@ function buildVoicePicker(x, y, laneKey) {
   head.append(who);
   const search = document.createElement('input');
   search.className = 'voicesearch'; search.type = 'search';
-  search.placeholder = 'Search presets…'; search.value = voicePickerQuery;
+  search.setAttribute('list', 'preset-recent-searches');
+  search.autocomplete = 'off';
+  search.placeholder = 'Search presets…';
   search.setAttribute('aria-label', 'Search presets');
+  const recent = document.createElement('datalist'); recent.id = 'preset-recent-searches';
+  const historyKey = 'mash-preset-recent-searches';
+  let history = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(historyKey) || '[]');
+    if (Array.isArray(saved)) history = saved.filter(v => typeof v === 'string' && v.trim()).slice(0, 12);
+  } catch { /* Browsing still works with unavailable storage. */ }
+  const showHistory = () => recent.replaceChildren(...history.map(value => {
+    const option = document.createElement('option'); option.value = value; return option;
+  }));
+  function rememberSearch() {
+    const value = search.value.trim();
+    if (!value) return;
+    history = [value, ...history.filter(v => v.toLowerCase() !== value.toLowerCase())].slice(0, 12);
+    try { localStorage.setItem(historyKey, JSON.stringify(history)); } catch { /* Optional history. */ }
+    showHistory();
+  }
+  showHistory();
+  search.addEventListener('change', rememberSearch);
+  search.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { rememberSearch(); ev.stopPropagation(); }
+  });
   const results = document.createElement('div'); results.className = 'voiceresults';
   const browser = createPresetBrowser({
     voices, query: () => search.value,
-    onClear: () => { search.value = ''; voicePickerQuery = ''; },
+    // Start with related sounds across every engine; new tracks browse everything.
+    state: { ...emptyPresetFilters(),
+      category: !pending && selectedPreset ? presetClassification(selectedPreset).category : 'all' },
+    onClear: () => { search.value = ''; },
     renderPreset: (v, row) => {
       const button = entry(v.id, v.label, row.engine,
         `${v.label} — ${row.category} / ${row.subcategory}\n${v.note || ''}`
@@ -138,18 +187,41 @@ function buildVoicePicker(x, y, laneKey) {
     },
   });
   results.append(browser.element);
-  if (!pending && selectedPreset) {
-    const available = voices().some((v) => v.id === selectedPreset.id);
-    const now = document.createElement(available ? 'button' : 'span');
-    now.className = 'voicenow';
-    now.textContent = `${selectedPreset.label} · ${presetEngine(selectedPreset)}`;
-    if (available) {
-      now.type = 'button'; now.title = 'Show current preset';
-      now.onclick = () => browser.reveal(selectedPreset.id);
+  const now = document.createElement('button');
+  now.className = 'voicenow'; now.type = 'button'; now.title = 'Show current preset';
+  now.onclick = () => browser.reveal(selectedPreset.id);
+  function updateCurrent() {
+    now.hidden = pending || !selectedPreset;
+    if (selectedPreset) {
+      now.textContent = 'Show current preset';
+      now.disabled = !voices().some((v) => v.id === selectedPreset.id);
     }
-    head.append(now);
   }
-  head.append(search);
+  const undoButton = document.createElement('button');
+  undoButton.type = 'button'; undoButton.className = 'voiceundo';
+  undoButton.textContent = 'Undo'; undoButton.title = 'Undo the last desk change';
+  undoButton.disabled = !canUndoPreset();
+  undoButton.onclick = () => {
+    undoPreset();
+    // Undoing the initial add removes the channel itself.
+    if (isLayer(laneKey) && !(mixFor(trackId()).layers || []).some(l => l.key === laneKey)) {
+      closeMenu(); return;
+    }
+    chosen = mixFor(trackId()).voice?.[seamFor(laneKey).voiceKey];
+    selectedPreset = VOICES[chosen] || defaultVoiceOf(track()?.bank, laneKey);
+    offer.keep = chosen || null;
+    who.textContent = `${targetLabel(laneKey)} voice`;
+    updateCurrent();
+    const list = results.querySelector('.preset-list');
+    const scrollTop = list?.scrollTop || 0;
+    browser.refresh();
+    results.querySelector('.preset-list').scrollTop = scrollTop;
+    undoButton.disabled = !canUndoPreset();
+  };
+  updateCurrent();
+  const toolbar = document.createElement('div'); toolbar.className = 'voicetoolbar';
+  toolbar.append(search, now, undoButton, browser.element.querySelector('.preset-clear'));
+  head.append(toolbar, recent);
   if (layer || pending) {
     const why = document.createElement('span'); why.className = 'voicewhy';
     const source = (mixFor(trackId()).layers || []).find((l) => l.key === laneKey)?.from || baseLane(laneKey);
@@ -161,12 +233,12 @@ function buildVoicePicker(x, y, laneKey) {
   close.className = 'voiceclose popclose'; close.textContent = '✕';
   close.setAttribute('aria-label', 'Close preset selector');
   close.onclick = () => closeMenu(); head.append(close);
-  search.oninput = () => { voicePickerQuery = search.value; browser.refresh(); };
+  search.oninput = () => browser.refresh();
   el.onkeydown = (ev) => {
     if (ev.key !== 'Escape') return;
     ev.preventDefault(); ev.stopPropagation();
     if (ev.target === search && search.value) {
-      search.value = ''; voicePickerQuery = ''; browser.refresh();
+      search.value = ''; browser.refresh();
     } else closeMenu();
   };
   const currentRow = () => [...results.querySelectorAll('[data-voice]')]
@@ -185,7 +257,7 @@ function buildVoicePicker(x, y, laneKey) {
     // Opening ON the sound the lane already plays, rather than at the top of a list it
     // is somewhere inside. `nearest` so a row that is already visible does not move,
     // and `preventScroll` on the focus after it so the caret does not undo the scroll.
-    currentRow()?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    revealPresetRow(currentRow());
     search.focus({ preventScroll: true });
   });
 }

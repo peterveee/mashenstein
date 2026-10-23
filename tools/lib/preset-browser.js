@@ -4,6 +4,17 @@ import { emptyPresetFilters, presetBrowserModel } from './preset-browser-model.j
 
 let browserSequence = 0;
 
+// Scroll only the results list: scrollIntoView can also scroll clipped ancestors,
+// pushing the facet headings and options out of the visible browser.
+export function revealPresetRow(row) {
+  const list = row?.closest('.preset-list');
+  if (!list) return;
+  const bounds = list.getBoundingClientRect();
+  const item = row.getBoundingClientRect();
+  if (item.top < bounds.top) list.scrollTop -= bounds.top - item.top;
+  else if (item.bottom > bounds.bottom) list.scrollTop += item.bottom - bounds.bottom;
+}
+
 /** Shared browser; hosts own eligibility, search, selection, and audio actions. */
 export function createPresetBrowser({ voices, renderPreset, state = emptyPresetFilters(),
   query = () => '', onClear = () => {} }) {
@@ -95,7 +106,7 @@ export function createPresetBrowser({ voices, renderPreset, state = emptyPresetF
       Object.assign(state, emptyPresetFilters()); onClear(); refresh();
       row = [...element.querySelectorAll('.preset-list button')].find((b) => b.dataset.voice === id);
     }
-    row?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    revealPresetRow(row);
     row?.focus({ preventScroll: true });
   }
   refresh({ reconcile: true });

@@ -289,8 +289,10 @@ export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voic
   const box = document.createElement('div');
   box.className = 'sfgraph';
   box.style.height = `${h}px`;
-  box.title = 'The string, bridge to neck, pulled out where it is plucked or bowed. Drag to move WHERE. '
-    + 'A sharp corner is a hard pick, a rounded one a fingertip (HARD). For REED and JET: the bore and its bell.';
+  box.title = 'The string, bridge to neck, pulled out where it is plucked (drag to move WHERE; a sharp '
+    + 'corner is a hard pick, a rounded one a fingertip). Bowed: the bow across it at WHERE, as thick as '
+    + 'PRESSURE. Reed, sax, jet: the bore, its bell as open as BELL, and the breath going in — as thick '
+    + 'as PRESSURE, as rough as NOISE.';
   const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
   const ends = el('path', { class: 'sfgrid', d: '' });
   const line = el('path', { class: 'sfline', d: '' });
@@ -308,15 +310,34 @@ export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voic
   const rest = () => h * 0.62;
   const draw = () => {
     w = svg.clientWidth || box.clientWidth || 200;
-    const type = fz(voice?.()).exciter?.type ?? 'pick';
+    const ex = fz(voice?.()).exciter || {};
+    const type = ex.type ?? 'pick';
+    const pressure = Number(ex.pressure ?? 0.6), noise = Number(ex.noise ?? 0.1);
+    // The breath or the bow, as a line: as thick as PRESSURE, as rough as NOISE. Seeded,
+    // so it does not shimmer on every redraw.
+    const rough = (xa, ya, xb, yb, amp) => {
+      let seed = 7;
+      const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+      let d = `M${xa.toFixed(1)},${ya.toFixed(1)}`;
+      for (let k = 1; k <= 12; k++) {
+        const t = k / 12;
+        d += ` L${(xa + (xb - xa) * t).toFixed(1)},${(ya + (yb - ya) * t + r() * amp).toFixed(1)}`;
+      }
+      return d;
+    };
     if (type === 'reed' || type === 'sax' || type === 'jet') {
-      // A bore with its bell: no string to pluck. The reed or the jet sits at the left.
+      // A bore with its bell: no string to pluck. The reed or the jet sits at the left, the
+      // bell flares as much as BELL opens it, and the breath goes in as PRESSURE and NOISE.
       const y0 = rest();
       const x1b = x1();
-      line.setAttribute('d', `M${x0},${y0 - 9} H${x1b - 30} Q${x1b - 10},${y0 - 9} ${x1b},${y0 - 22} `
-        + `M${x0},${y0 + 9} H${x1b - 30} Q${x1b - 10},${y0 + 9} ${x1b},${y0 + 22}`);
-      ends.setAttribute('d', `M${x0},${y0 - 9} V${y0 + 9}`);
-      pick.setAttribute('d', '');
+      const bell = type === 'jet' ? 0.3 : Number(ex.bell ?? 0.5);
+      const flare = 6 + 18 * bell;
+      line.setAttribute('d', `M${x0 + 26},${y0 - 9} H${x1b - 30} Q${x1b - 10},${y0 - 9} ${x1b},${y0 - 9 - flare} `
+        + `M${x0 + 26},${y0 + 9} H${x1b - 30} Q${x1b - 10},${y0 + 9} ${x1b},${y0 + 9 + flare}`);
+      ends.setAttribute('d', `M${x0 + 26},${y0 - 9} V${y0 + 9}`);
+      pick.setAttribute('d', rough(x0, y0, x0 + 24 + 30 * pressure, y0, 2 + 10 * noise));
+      pick.setAttribute('stroke-dasharray', '');
+      pick.setAttribute('stroke-width', (1 + 3 * pressure).toFixed(1));
       handle.setAttribute('cx', -10);
       pu.setAttribute('x', -10); lp.setAttribute('x', -50);
       lb.textContent = type === 'jet' ? 'JET' : 'REED';
@@ -324,6 +345,8 @@ export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voic
       ln.setAttribute('x', x1b);
       return;
     }
+    pick.setAttribute('stroke-dasharray', '2 3');
+    pick.setAttribute('stroke-width', '1');
     lb.textContent = 'BRIDGE';
     ln.textContent = 'NECK';
     const where = Number(read(rows.where)) || rows.where.def;
@@ -338,10 +361,20 @@ export function pluckGraph({ rows, read, writeMany, onLive, onStart, onEnd, voic
     const t2 = Math.min(1, r / Math.hypot(x1() - ax, y0 - ay));
     const p1x = ax - (ax - x0) * t1, p1y = ay + (y0 - ay) * t1;
     const p2x = ax + (x1() - ax) * t2, p2y = ay + (y0 - ay) * t2;
-    line.setAttribute('d', `M${x0},${y0} L${p1x.toFixed(1)},${p1y.toFixed(1)} `
-      + `Q${ax.toFixed(1)},${ay} ${p2x.toFixed(1)},${p2y.toFixed(1)} L${x1()},${y0}`);
-    ends.setAttribute('d', `M${x0},${y0 - 14} V${y0 + 10} M${x1()},${y0 - 14} V${y0 + 10}`);
-    pick.setAttribute('d', `M${ax.toFixed(1)},${ay} V${y0 + 10}`);
+    if (type === 'bow') {
+      // The string lies flat; the bow crosses it at WHERE, as thick as PRESSURE, as rough as
+      // NOISE, and the string is pulled a little under it.
+      line.setAttribute('d', `M${x0},${y0} L${(ax - 6).toFixed(1)},${y0} L${ax.toFixed(1)},${(y0 - 4 - 6 * pressure).toFixed(1)} L${(ax + 6).toFixed(1)},${y0} L${x1()},${y0}`);
+      ends.setAttribute('d', `M${x0},${y0 - 14} V${y0 + 10} M${x1()},${y0 - 14} V${y0 + 10}`);
+      pick.setAttribute('d', rough(ax, 8, ax, y0 + 12, 1 + 6 * noise));
+      pick.setAttribute('stroke-dasharray', '');
+      pick.setAttribute('stroke-width', (1.5 + 4 * pressure).toFixed(1));
+    } else {
+      line.setAttribute('d', `M${x0},${y0} L${p1x.toFixed(1)},${p1y.toFixed(1)} `
+        + `Q${ax.toFixed(1)},${ay} ${p2x.toFixed(1)},${p2y.toFixed(1)} L${x1()},${y0}`);
+      ends.setAttribute('d', `M${x0},${y0 - 14} V${y0 + 10} M${x1()},${y0 - 14} V${y0 + 10}`);
+      pick.setAttribute('d', `M${ax.toFixed(1)},${ay} V${y0 + 10}`);
+    }
     handle.setAttribute('cx', ax.toFixed(1)); handle.setAttribute('cy', ay);
     ln.setAttribute('x', x1());
     const p = pickupAt(voice?.());

@@ -176,6 +176,11 @@ const CASES = [
  */
 const HIDDEN_OK = {
   drum: ['dur', 'fixedLength'],
+  // VEL LEVEL / VEL FILTER are off the board while the desk cannot write a note velocity
+  // (VELOCITY_CONTROLS_HIDDEN in mixer-voice-editor.js); `_playLayer` still reads them
+  // for songs that carry one. FZPP-6's velocity rows hide the same way, but its root key
+  // `fzpp6` is drawn by every other pot, so it needs no entry here.
+  'MRDR-3': ['velocity'],
 };
 
 /**

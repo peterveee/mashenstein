@@ -7232,15 +7232,21 @@
              overflow-x: scroll; overflow-y: auto; align-items: stretch;
              scrollbar-gutter: stable; }
   #devrack .devempty { align-self: center; }
-  /* The selected track after the panel label — its number and preset name:
-     "4  Arcade Kick". The preset name is enough here; the instrument type is already
-     implied by the strip and editor controls. */
-  #devhead #devtitle { display: inline-flex; align-items: baseline;
-                       gap: 8px; margin-left: 4px; color: var(--dim); font-weight: 400;
+  /* The active instrument is the identity of this panel; the editable track name stays
+     one row below, where it can be changed without confusing it with the synth. */
+  #devhead #devtitle { display: inline-flex; align-items: center; gap: 5px;
+                       flex: 1 1 auto; min-width: 0; overflow: hidden; margin: 0 2px;
                        text-transform: none; }
   #devhead #devtitle:empty { display: none; }
-  #devhead .panelnumber { color: var(--dim); font-variant-numeric: tabular-nums; }
-  #devhead .panelpreset { color: var(--ink); text-transform: none; }
+  #devhead .panel-channel-number { flex: none; color: var(--ink); font-size: 11px; }
+  #devhead .panel-synth-name { min-width: 0; overflow: hidden; padding: 2px 5px;
+                               color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel2));
+                               border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+                               border-radius: 4px; font: 700 13px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+                               text-overflow: ellipsis; white-space: nowrap; }
+  #devhead .panel-target-name { min-width: 0; overflow: hidden; color: var(--ink);
+                                font: 700 10px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+                                text-overflow: ellipsis; white-space: nowrap; }
 
   /* Cards grow SIDEWAYS, not downwards: a long parameter list flows into a second
      column instead of making the panel scroll. The Channel EQ's ten controls were the
@@ -7983,9 +7989,10 @@
 
      Under 820px there is no width to give up: the panel goes back to covering, because
      the sliver of desk left beside it is not a desk you can mix on. */
-  body { --fxdock-w: min(372px, calc(100vw - 16px)); --fxdock-gap: 10px; --fxdock: 0px;
+  body { --fxdock-w: min(348px, calc(100vw - 16px)); --fxdock-gap: 10px; --fxdock: 0px;
          padding-right: 0; }
   body.fxdock-open { --fxdock: var(--fxdock-w); }
+  body.fxdock-collapsed { --fxdock: 38px; }
   /* Only the desk yields width to the inspector. The toolbar and footer are global
      chrome, so they keep the full viewport frame while Timeline, Arrangement and the
      lower editor remain one left-hand workspace beside FX. */
@@ -8006,7 +8013,7 @@
                                           box-shadow: -3px 0 10px -7px #000b; }
   }
   #devices { display: flex; position: fixed; z-index: 28;
-             inset: calc(var(--ctlh) + 16px) 0 0 auto;
+             inset: calc(var(--ctlh) + 16px) 0 var(--footh, 28px) auto;
              width: calc(var(--fxdock-w, min(372px, calc(100vw - 16px))) - var(--fxdock-gap));
              height: auto !important; min-width: 0; min-height: 0;
              max-width: calc(100vw - 16px); max-height: none;
@@ -8022,7 +8029,7 @@
              transform: translateX(100%); visibility: hidden; pointer-events: none;
              transition: transform var(--fxdock-anim) var(--fxdock-ease),
                          visibility var(--fxdock-anim) var(--fxdock-ease); }
-  body.fxdock-left #devices { inset: calc(var(--ctlh) + 16px) auto 0 0;
+  body.fxdock-left #devices { inset: calc(var(--ctlh) + 16px) auto var(--footh, 28px) 0;
                                border-right: 1px solid var(--line2); border-left: 0;
                                border-radius: 0 8px 8px 0;
                                box-shadow: 10px 0 26px -12px #000b;
@@ -8030,6 +8037,21 @@
   #devices.fxwindow-open { transform: translateX(0); visibility: visible;
                            pointer-events: auto; }
   body.fxdock-left #devices.fxwindow-open { transform: translateX(0); }
+  #devices.channel-collapsed { width: 38px; overflow: hidden; }
+  #devices.channel-collapsed #devhead { flex-direction: column; height: 100%; min-height: 0;
+    padding: 6px 3px; gap: 12px; border-bottom: 0; }
+  #devices.channel-collapsed #devhead > .label,
+  #devices.channel-collapsed .devnav,
+  #devices.channel-collapsed #devmore,
+  #devices.channel-collapsed #devsolo { display: none; }
+  #devices.channel-collapsed #devcollapse { order: 0; }
+  #devices.channel-collapsed #devtitle { flex: none; writing-mode: vertical-rl;
+    overflow: visible; margin: 0; gap: 8px; }
+  #devices.channel-collapsed .panel-synth-name { text-overflow: clip; }
+  #devices.channel-collapsed #devcollapse .collapse-divider { transform: translateX(8px); }
+  #devices.channel-collapsed #devidentity,
+  #devices.channel-collapsed #devrack,
+  #devices.channel-collapsed #devmix { display: none; }
   /* A closed inspector still holds the selected strip's chain, and the panel's own box
      can no longer be taken out of the document — the transform needs something to animate.
      So the chain is what goes: once the slide has landed the rack is dropped out of layout
@@ -8051,7 +8073,7 @@
                       min-height: var(--ctlh);
                       padding: 0 var(--foldx); column-gap: 4px;
                       border-bottom: 1px solid var(--line); }
-  #devices #devtitle { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap;
+  #devices #devtitle { order: 2; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap;
                        text-overflow: ellipsis; }
   #devices #devsolo { flex: 0 0 26px; width: 26px; min-width: 26px;
                       height: 26px; min-height: 26px; padding: 0; order: 3;
@@ -8061,44 +8083,24 @@
   #devices #devsolo[hidden] { display: none; }
   #devices #devsolo:hover { border-color: var(--accent); }
   #devices #devsolo.on { background: var(--solo); border-color: var(--solo); color: var(--on-solo); }
-  /* The target picker is the one fast route into a chain when the Mixer is off screen.
-     Keep the closed field quiet — just one chevron at the far right — and let the open
-     menu carry the channel and effect names at full panel width. */
-  #devices .devtarget { flex: 0 0 26px; width: 26px; min-width: 26px;
-                        margin-left: auto; order: 2; }
-  #devices #devmove { flex: 0 0 26px; width: 26px; min-width: 26px;
-                      height: 26px; min-height: 26px; padding: 0; order: 5;
-                      display: grid; place-items: center; color: var(--dim);
-                      background: transparent; border-color: transparent;
-                      line-height: 1; }
-  #devices #devmove svg { width: 23px; height: 23px; fill: none; stroke: currentColor;
-                          stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  #devices #devmove:hover, #devices #devmove:focus-visible { color: var(--ink);
-                                                              background: var(--hover);
-                                                              border-color: transparent; }
-  #devices #devfold { order: 5; }
-  #devices button.deskselect.devtarget { width: 26px; height: 26px;
-                                         min-height: 26px; max-width: none;
-                                         padding: 0 !important; justify-content: center;
-                                         color: var(--dim); background: transparent;
-                                         border-color: transparent; font-size: 0 !important; }
-  #devices button.deskselect.devtarget > .deskselect-value { display: none; }
-  #devices button.deskselect.devtarget::after { content: none; }
-  #devices button.deskselect.devtarget .deskselect-caret { position: absolute; right: 2px;
-                                                           top: 50%; width: 22px; height: 22px;
-                                                           transform: translateY(-50%);
-                                                           fill: none; stroke: currentColor;
-                                                           stroke-width: 2; stroke-linecap: round;
-                                                           stroke-linejoin: round; pointer-events: none;
-                                                           transform-origin: center;
-                                                           transition: transform .18s cubic-bezier(.22, .61, .36, 1); }
-  #devices button.deskselect.devtarget[aria-expanded="true"] .deskselect-caret {
-    transform: translateY(-50%) rotate(180deg); }
-  #devices button.deskselect.devtarget:hover,
-  #devices button.deskselect.devtarget:focus-visible,
-  #devices button.deskselect.devtarget[aria-expanded="true"] { color: var(--ink);
-                                                               background: var(--hover);
-                                                               border-color: transparent; }
+  #devices .devnav { display: flex; flex: none; gap: 4px; order: 3; }
+  #devices .devnav button { display: grid; place-items: center; flex: 0 0 22px;
+                            width: 22px; min-width: 22px; height: 26px; min-height: 26px;
+                            padding: 0; color: var(--dim); background: var(--panel2);
+                            border-color: var(--line); }
+  #devices .devnav button:hover:not(:disabled),
+  #devices .devnav button:focus-visible { color: var(--ink); background: var(--hover); }
+  #devices .devnav button:disabled { opacity: .32; cursor: default; }
+  #devices .devnav svg { width: 17px; height: 17px; fill: none; stroke: currentColor;
+                         stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #devices #devcollapse { flex: 0 0 26px; width: 26px; min-width: 26px;
+    height: 26px; min-height: 26px; padding: 0; order: 6; display: grid; place-items: center;
+    color: var(--dim); background: var(--panel2); border-color: var(--line); }
+  #devices #devcollapse:hover { color: var(--ink); border-color: var(--accent); }
+  #devices #devcollapse svg { width: 17px; height: 17px; fill: none; stroke: currentColor;
+    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  #devices #devsolo { order: 4; }
+  #devices #devmore { order: 5; }
   /* ONE NUMBER FOR THE PANEL'S AIR. The gap above the first card, the gap between two
      cards and the gap down either side are all --fxair, so the chain reads as a stack of
      cards in a frame rather than as four margins that happen to meet.
@@ -8135,24 +8137,28 @@
   #devices #devidentity { flex: none; padding: 9px 10px 10px; border-bottom: 1px solid var(--line);
                           background: var(--panel); }
   #devices #devidentity[hidden], #devices #devmore[hidden] { display: none; }
-  #devices .devname-label { display: block; margin: 0 0 5px; color: var(--dim);
-                            font-size: 10px; letter-spacing: .08em; }
   #devices #devname { display: block; width: 100%; min-width: 0; min-height: 34px;
                       padding: 6px 9px; color: var(--ink); background: var(--panel2);
                       border: 1px solid var(--line2); border-radius: 5px;
-                      font: 600 13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  #devices #devsound { display: flex; align-items: center; gap: 5px; margin-top: 7px;
-                       min-height: 26px; color: var(--dim); font-size: 10px; }
-  #devices #devsound .devsound-name { flex: 1; min-width: 0; overflow: hidden;
-                                      text-overflow: ellipsis; white-space: nowrap; }
-  #devices #devsound button { min-height: 25px; padding: 2px 7px; font-size: 10px; }
+                      font: 500 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #devices #devsound { display: grid; gap: 8px; margin-top: 9px;
+                       min-width: 0; color: var(--dim); font-size: 9px; }
+  #devices .devsound-meta { display: flex; flex: 1 1 auto; align-items: center; gap: 7px; min-width: 0; }
+  #devices #devsound .devsound-name { flex: 1 1 auto; min-width: 0;
+    font-size: 12px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+  #devices .devsound-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+                               align-items: stretch; gap: 5px; min-width: 0; }
+  #devices #devsound button { width: 100%; min-width: 0; height: 26px; min-height: 26px;
+    padding: 2px 7px; font-size: 10px; text-align: left; justify-content: flex-start; }
+  #devices #devnotefx { margin-left: 0; display: inline-flex; align-items: center; gap: 5px; }
+  #devices .devnotefx-indicator { width: 5px; height: 5px; border: 1px solid var(--faint); border-radius: 50%; }
+  #devices #devnotefx[data-active="true"] { color: var(--accent); border-color: var(--accent); }
+  #devices #devnotefx[data-active="true"] .devnotefx-indicator { background: var(--accent); border-color: var(--accent); }
   #devices #devmore { flex: 0 0 28px; width: 28px; height: 27px; min-height: 27px;
-                      padding: 0; color: var(--dim); background: transparent;
-                      border-color: transparent; }
+                      padding: 0; color: var(--dim); background: var(--panel2);
+                      border-color: var(--line); }
   #devices #devmore:hover, #devices #devmore[aria-expanded="true"] {
     color: var(--ink); background: var(--hover); }
-  #devices #devtarget { order: 2; margin-left: 0; }
-  #devices #devtitle { display: none; }
   #devices #devmoremenu { position: absolute; z-index: 50; top: calc(var(--ctlh) + 4px);
                           right: 8px; width: min(260px, calc(100vw - 24px)); padding: 5px;
                           max-height: min(70vh, 520px); overflow-y: auto; overscroll-behavior: contain;
@@ -8168,10 +8174,10 @@
                                     color: var(--ink); background: var(--panel);
                                     border: 1px solid var(--line2); border-radius: 4px;
                                     font: 11px ui-monospace, monospace; }
-  #devices .devadjust { flex: none; border: 1px solid var(--line2); border-radius: 5px;
-                        background: var(--panel2); }
-  #devices .devadjust summary { min-height: 30px; padding: 8px 9px; cursor: pointer;
-                                color: var(--dim); font-size: 10px; letter-spacing: .08em; }
+  #devices .devadjust { flex: none; border-bottom: 1px solid var(--line);
+                        background: transparent; }
+  #devices .devadjust summary { min-height: 23px; padding: 3px 0 7px; cursor: pointer;
+                                color: var(--dim); font-size: 10px; }
   #devices .devadjust[open] summary { border-bottom: 1px solid var(--line); }
   #devices .devadjust-body { display: grid; gap: 8px; padding: 9px; }
   #devices .devadjust-row { display: grid; grid-template-columns: 58px minmax(40px, 1fr) 66px 42px;
@@ -8184,8 +8190,15 @@
   #devices .devadjust-row button { min-height: 27px; padding: 3px 5px; font-size: 10px; }
   #devices .devadjust-note { grid-column: 2 / -1; margin-top: -5px; color: var(--dim); font-size: 10px; }
   #devices .devadjust-row.mixed input[type="number"]::placeholder { color: var(--dim); }
-  #devices .devfx-heading { flex: none; padding: 1px 2px 0; color: var(--dim);
+  #devices .devfx-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; padding: 1px 2px 0; color: var(--dim);
                             font-size: 10px; letter-spacing: .08em; }
+  #devices .devbypass-all { min-height: 24px; padding: 2px 5px; border-color: transparent;
+    background: transparent; color: var(--dim); font: inherit; letter-spacing: 0; }
+  #devices .devbypass-all::after { content: ' ○'; }
+  #devices .devbypass-all[aria-pressed="true"] { color: var(--accent); }
+  #devices .devbypass-all[aria-pressed="true"]::after { content: ' ●'; }
+  #devices .devbypass-all:hover:not(:disabled) { border-color: var(--line2); color: var(--ink); }
+  #devices .devbypass-all:disabled { opacity: .35; cursor: default; }
   /* The effect list owns the flexible middle. The + control sticks to its bottom edge,
      while this separate strip remains fixed against the panel bottom. */
   #devices #devrack { padding-bottom: 8px; }
@@ -8193,35 +8206,29 @@
     width: 100%; min-height: 38px; height: 38px; align-self: stretch; flex: none;
     margin: 2px 0 0; padding: 0; border-style: dashed; border-radius: 5px;
     background: color-mix(in srgb, var(--panel) 92%, transparent); }
-  #devices #devrack .devaddcard::after { content: '＋ Add effect'; opacity: 1;
+  #devices #devrack .devaddcard::after { content: '＋ ADD EFFECT'; opacity: 1;
     color: var(--accent); font: 11px ui-monospace, monospace; }
-  #devices #devmix { flex: none; padding: 9px 10px 11px; border-top: 1px solid var(--line2);
+  #devices #devmix { flex: none; padding: 7px 10px 8px; border-top: 1px solid var(--line2);
                       background: var(--panel2); }
   #devices #devmix[hidden] { display: none; }
-  #devices .devmix-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+  #devices .devmix-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
                           color: var(--dim); font-size: 10px; letter-spacing: .08em; }
-  #devices .devmix-head strong { margin-right: auto; font-weight: 600; }
+  #devices .devmix-head strong { flex: none; font-weight: 600; }
   #devices .devmix-head .mutebtn, #devices .devmix-head .solobtn { width: 29px; height: 26px;
     min-height: 26px; padding: 0; font-size: 10px; }
   #devices .devmix-primary { display: grid; grid-template-columns: minmax(0, 1fr) 74px;
                              gap: 9px; align-items: end; }
-  #devices .devmix-control label { display: flex; justify-content: space-between; gap: 5px;
-    margin-bottom: 4px; color: var(--dim); font-size: 10px; }
-  #devices .devmix-control output { color: var(--ink); font-variant-numeric: tabular-nums; }
-  #devices .devmix-control input[type="range"] { width: 100%; min-width: 0; margin: 0;
-                                                   accent-color: var(--accent); }
-  #devices .devmixmeter { position: relative; height: 5px; margin-top: 5px; overflow: hidden;
+  #devices .devmix-primary .row { min-width: 0; }
+  #devices .devmixmeter { position: relative; flex: 1; min-width: 20px; height: 5px; margin: 0 3px; overflow: hidden;
     background: var(--panel); border-radius: 3px; }
   #devices .devmixmeter > i { position: absolute; left: 0; bottom: 0; width: 0; height: 100%;
     background: var(--accent); }
   #devices .devmixmeter > b { position: absolute; left: 0; bottom: 0; width: 1px; height: 100%;
     background: var(--ink); opacity: 0; }
   #devices .devmixmeter.clip > i { background: #ee776f; }
-  #devices .devmix-extra { margin-top: 8px; border-top: 1px solid var(--line); }
-  #devices .devmix-extra summary { padding: 7px 0 3px; cursor: pointer; color: var(--dim);
-                                   font-size: 10px; }
+  #devices .devmix-extra { margin-top: 6px; padding-top: 1px; border-top: 1px solid var(--line); }
   #devices .devmix-sends, #devices .devmix-eq { display: grid; grid-template-columns: 1fr 1fr;
-    gap: 5px 10px; padding-top: 6px; }
+    gap: 4px 8px; padding-top: 4px; }
   #devices .devmix-sends .slider, #devices .devmix-eq .slider { min-width: 0; }
   #devices .devmix-eq { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #devices .devmix-eq .eqrow { padding: 0; }
@@ -8229,7 +8236,8 @@
   #devices .devmix-eq .eqrow .val { font-size: 10px; }
   @media (max-height: 620px) {
     #devices #devidentity { padding-top: 5px; padding-bottom: 5px; }
-    #devices #devsound { display: none; }
+    #devices #devsound { gap: 3px; margin-top: 4px; }
+    #devices .devsound-actions button { min-height: 22px; padding-top: 1px; padding-bottom: 1px; }
   }
   /* Plugin cards used to flow into four-row columns for a screen-wide shelf. In the
      inspector they fill the available width and use compact paired controls instead;
@@ -8253,14 +8261,6 @@
   #devices .device.dropzone { box-shadow: 0 -3px 0 var(--accent); }
   #devices .devaddcard { width: 52px; height: 52px; align-self: center; }
   #devices .devaddcard::after { opacity: .35; }
-  /* The panel now uses the desk's standard close mark. It belongs in the compact right
-     control cluster beside the caret, so it keeps its hit target without adding a second
-     margin between the controls. */
-  #devices #devfold.popclose { width: 28px; height: 28px; margin-left: 0; order: 4;
-                               padding: 0; display: inline-grid; place-items: center;
-                               font-size: 19px !important; line-height: 1; }
-  #devices #devfold.popclose span { font-size: inherit; line-height: 1; }
-
   /* The catalogue belongs to the narrow inspector too. Two groups across keeps it
      readable without recreating the old screen-wide sheet; openPicker places it to
      the left of the inspector so neither surface covers the other. */
@@ -8346,13 +8346,18 @@
   #voicepicker.show { display: flex; flex-direction: column; width: min(1180px, 94vw);
     height: min(650px, 82vh); max-height: 82vh; overflow: hidden; }
   #voicepicker .voicehead { flex-wrap: wrap; flex: none; position: relative; }
-  #voicepicker .voicesearch { flex-basis: 100%; }
+  #voicepicker .voicetoolbar { display: flex; align-items: stretch; gap: 8px; width: 100%; min-width: 0; }
+  #voicepicker .voicetoolbar .voicesearch { flex: 1 1 0; width: 0; min-width: 0; }
+  #voicepicker .voicetoolbar :is(.voicenow, .voiceundo, .preset-clear) { flex: 0 0 auto; width: auto;
+    min-width: 0; margin: 0; padding: 5px 9px; white-space: nowrap; align-self: stretch; }
+  #voicepicker .voicetoolbar [hidden] { display: none; }
   #voicepicker .voiceresults, #voicelib .vlresults { display: flex; flex: 1; min-height: 0;
-    min-width: 0; overflow: hidden; padding: 0; gap: 0; }
+    min-width: 0; overflow: hidden; padding: 0; gap: 0; flex-wrap: nowrap; align-items: stretch; }
   .preset-browser { display: flex; flex-direction: column; flex: 1; min-width: 0;
     min-height: 0; container-type: inline-size; }
   .preset-columns { display: grid; grid-template-columns: minmax(135px, 1fr) minmax(135px, 1fr)
-    minmax(105px, .8fr) minmax(250px, 2.5fr); gap: 8px; flex: 1; min-height: 0; }
+    minmax(105px, .8fr) minmax(250px, 2.5fr); grid-template-rows: minmax(0, 1fr);
+    gap: 8px; flex: 1; min-height: 0; }
   .preset-facet, .preset-result { display: flex; flex-direction: column; min-width: 0; min-height: 0;
     border: 1px solid var(--line); border-radius: 5px; background: var(--input); overflow: hidden; }
   .preset-columns h5 { margin: 0; padding: 9px 10px; background: var(--panel2);
@@ -9101,29 +9106,29 @@
 
 <div id="devices" role="region" aria-label="Channel controls" aria-hidden="true">
   <div id="devhead">
-    <button id="devfold" class="foldbtn popclose" title="Close Channel" aria-label="Close Channel">
-      <span aria-hidden="true">✕</span>
-    </button>
     <span class="label">Channel</span>
-    <span id="devtitle" class="label"></span>
+    <span id="devtitle" aria-live="polite"></span>
+    <div class="devnav" role="group" aria-label="Channel navigation">
+      <button id="devprev" type="button" title="Previous channel" aria-label="Previous channel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5-7 7 7 7"></path></svg>
+      </button>
+      <button id="devnext" type="button" title="Next channel" aria-label="Next channel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5 7 7-7 7"></path></svg>
+      </button>
+    </div>
     <button id="devsolo" class="solobtn devsolo" type="button" hidden
             aria-label="Solo selected effects target" aria-pressed="false">S</button>
     <button id="devmore" type="button" aria-haspopup="menu" aria-expanded="false"
             title="More track actions">•••</button>
-    <select id="devtarget" class="devtarget"
-            data-menu-class="rolltool-menu deskmenu fxtargetmenu"
-            aria-label="Channel"
-            title="Switch channel">
-    </select>
-    <button id="devmove" type="button" aria-label="Move Effects panel to the left"
-            title="Move Effects panel to the left">
-      <svg class="devmoveicon" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 12h16M13 5l7 7-7 7"></path>
+    <button id="devcollapse" type="button" aria-label="Collapse channel panel"
+            title="Collapse channel panel" aria-expanded="true" aria-controls="devidentity devrack devmix">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+        <path class="collapse-divider" d="M8 4v16"></path>
       </svg>
     </button>
   </div>
   <div id="devidentity">
-    <label class="devname-label" for="devname">TRACK NAME</label>
     <input id="devname" type="text" maxlength="48" spellcheck="false" autocomplete="off"
            aria-label="Track name">
     <div id="devsound"></div>

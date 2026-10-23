@@ -893,6 +893,8 @@ function syncUndoButton() {
   if (!button) return;
   const m8 = rearrangeActive();
   button.disabled = m8 ? !rearrangeUndoStack.length : undoStack.length === 0;
+  const presetUndo = $('voicepicker')?.querySelector('.voiceundo');
+  if (presetUndo) presetUndo.disabled = undoStack.length === 0;
   button.textContent = m8 ? 'Undo M8TRX' : 'Undo';
   button.dataset.tip = m8 ? 'Undo M8TRX' : 'Undo';
   button.dataset.tipsays = m8
@@ -3326,7 +3328,7 @@ function syncLaneGain(key, { except = null } = {}) {
     // Not while it is being typed into: the readout holds the type-in box, and writing
     // textContent over it removes the box out from under the caret.
     if (el !== except && !el.querySelector('input')) {
-      if (el.matches('.devlevel-number')) el.value = gain.toFixed(1);
+      if (el.matches('.devlevel-number')) el.textContent = `${gain > 0 ? '+' : ''}${gain.toFixed(1)} dB`;
       else el.textContent = `${gain > 0 ? '+' : ''}${gain.toFixed(1)}`;
     }
   }
@@ -3500,6 +3502,7 @@ function synthAbbrevFor(preset) {
  * falls back to exactly what buildArrangement drew.
  */
 function refreshLaneIdentity(laneKey) {
+  if (selectedLane === laneKey) renderPresetHeading($('devtitle'), laneKey);
   const row = $('arrgrid')?.querySelector(`.arrrow[data-lane="${CSS.escape(laneKey)}"]`);
   if (!row) return;
   const preset = presetForLane(laneKey);
@@ -3518,19 +3521,29 @@ function refreshLaneIdentity(laneKey) {
 
 function renderPresetHeading(el, laneKey) {
   el.textContent = '';
+  el.removeAttribute('title');
+  el.removeAttribute('aria-label');
   if (!laneKey) return;
-  const heading = presetHeadingFor(laneKey);
-  const number = laneNumbers.get(laneKey);
-  if (number) {
-    const trackNumber = document.createElement('span');
-    trackNumber.className = 'panelnumber';
-    trackNumber.textContent = String(number);
-    el.append(trackNumber);
+  const hasChannel = !!seamFor(laneKey);
+  const synth = hasChannel ? synthesizerLabelFor(presetForLane(laneKey)) : null;
+  if (synth) {
+    const label = document.createElement('span');
+    label.className = 'panel-channel-number';
+    label.textContent = laneNumbers.get(laneKey) ? `${laneNumbers.get(laneKey)} ·` : '';
+    const name = document.createElement('strong');
+    name.className = 'panel-synth-name';
+    name.textContent = synth;
+    el.append(label, name);
+    el.title = `Synthesizer: ${synth} · ${targetLabel(laneKey)}`;
+    el.setAttribute('aria-label', `Synthesizer: ${synth}`);
+    return;
   }
-  const name = document.createElement('span');
-  name.className = 'panelpreset';
-  name.textContent = heading.name;
-  el.append(name);
+  const target = document.createElement('strong');
+  target.className = 'panel-target-name';
+  target.textContent = targetLabel(laneKey);
+  el.append(target);
+  el.title = targetLabel(laneKey);
+  el.setAttribute('aria-label', targetLabel(laneKey));
 }
 
 /**
@@ -5025,6 +5038,7 @@ $('addtrackbtn').onclick = (ev) => {
 installVoicePicker({
   closeMenu, mixFor, commitPendingAddTrack, targetLabel, isIndependentLane, kitLaneOf,
   nextLayerKey, setLaneVoice, cap,
+  undoPreset: undo, canUndoPreset: () => undoStack.length > 0,
   pendingAddTrack: () => pendingAddTrack,
   trackId: () => trackId,
   track: () => track,
@@ -9363,6 +9377,7 @@ function currentDeskSession() {
     loop: { on: loopOn, locA, locB },
     lowerView,
     effectsOpen: $('devices')?.classList.contains('fxwindow-open') || false,
+    effectsCollapsed: $('devices')?.classList.contains('channel-collapsed') || false,
     libraryOpen: voiceLibrary?.isShown?.() || false,
     drawerOpen: $('navdrawer')?.classList.contains('show') || false,
     voiceEditor: voiceEditor?.isOpen?.() ? {
@@ -9496,6 +9511,7 @@ function restoreDeskSession(session = savedDeskSession) {
   // final restore gives the saved hand-position the last word on a cold reload too.
   setTimeout(restoreEditorViews, 300);
   setDevicesFolded(session.effectsOpen !== true, false);
+  setChannelPanelCollapsed(session.effectsOpen === true && session.effectsCollapsed === true, false);
 
   const restoreScrollers = () => {
     if ($('arrgrid')) $('arrgrid').scrollTop = Math.max(0, Number(session.scroll?.arrangement) || 0);
@@ -9719,6 +9735,16 @@ function setEffectOff(key, list, i, off) {
   bypassOn(key, i, !!next[i].bypass);
   muteOn(key, i, !!next[i].mute);
   return next;
+}
+
+function toggleAllChannelEffects(key) {
+  const list = effectsOf(key);
+  if (!list.length) return;
+  const off = list.some((effect) => !effectOff(effect));
+  const kind = offKind();
+  setEffects(key, list.map((effect) => ({ ...effect,
+    bypass: off && kind === 'bypass', mute: off && kind === 'mute',
+  })));
 }
 
 function muteOn(key, i, on) {
@@ -9949,63 +9975,62 @@ function pinnedCard(key) {
   return card;
 }
 
-/** Keep the Effects panel header in sync with the selected channel. Notes names a
- *  preset too, but its own one — see syncNotesPanel: Effects is always the selected
- *  strip, the roll is not. */
+/** Every destination the channel panel can inspect, in desk order. */
 function effectTargetEntries() {
   const entries = [];
-  const add = (key, label, effects, always = false) => {
-    if (!always && !effects.length) return;
-    entries.push({ key, label, effects });
-  };
-  const effectsOfForPicker = (chain) => chain.map((effect) => ({
-    text: EFFECT_BY_ID[effect.id]?.short || EFFECT_BY_ID[effect.id]?.name || effect.id,
-    off: effectOff(effect),
-  }));
   for (const lane of deskLanes(viewBank(), 1)) {
     const number = laneNumbers.get(lane.key);
-    const label = number ? `${number} · ${targetLabel(lane.key)}` : targetLabel(lane.key);
-    // The CHANNEL panel is also a place to choose which track to work on, so every
-    // channel belongs in this list even before it has its first insert.
-    add(lane.key, label, effectsOfForPicker(effectsOf(lane.key)), true);
+    const name = presetHeadingFor(lane.key).name;
+    const label = number ? `${number} · ${name}` : name;
+    entries.push({ key: lane.key, label });
   }
-  // A group bus with tracks in it is a target whether or not it carries anything yet:
-  // putting one compressor over several tracks is what it is for.
   for (const g of activeGroups()) {
-    add(groupKey(g.id), g.name.toUpperCase(), effectsOfForPicker(effectsOf(groupKey(g.id))), true);
+    entries.push({ key: groupKey(g.id), label: g.name.toUpperCase() });
   }
-  // Returns always have their built-in delay/reverb card, even when they have no
-  // additional insert, so they are valid effect targets too.
   for (const aux of AUXES) {
-    add(`__aux:${aux.id}`, targetLabel(`__aux:${aux.id}`).toUpperCase(), [
-      { text: aux.name, off: false },
-      ...effectsOfForPicker(effectsOf(`__aux:${aux.id}`)),
-    ]);
+    const key = `__aux:${aux.id}`;
+    entries.push({ key, label: targetLabel(key).toUpperCase() });
   }
-  // MASTER is the one useful destination even with an empty chain: keeping it visible
-  // makes the picker a reliable route to the master bus when the Mixer is hidden.
-  add('__master', 'MASTER', effectsOfForPicker(effectsOf('__master')), true);
+  entries.push({ key: '__master', label: 'MASTER' });
   return entries;
 }
 
-function syncEffectTargetPicker() {
-  const select = $('devtarget');
-  if (!select) return;
+function syncChannelNavigation() {
+  const previous = $('devprev');
+  const next = $('devnext');
+  if (!previous || !next) return;
   const entries = effectTargetEntries();
-  const options = entries.map(({ key, label, effects }) => {
-    const target = new Option(label, key);
-    target.dataset.note = effects.map(({ text }) => text).join(' + ');
-    target.dataset.fxparts = JSON.stringify(effects);
-    return target;
-  });
-  select.replaceChildren(...options);
-  select.value = entries.some(({ key }) => key === selectedLane) ? selectedLane : '';
+  const index = entries.findIndex(({ key }) => key === selectedLane);
+  const available = entries.length > 1 && index >= 0;
+  previous.disabled = next.disabled = !available;
+  if (!available) {
+    previous.title = 'No previous channel';
+    next.title = 'No next channel';
+    previous.setAttribute('aria-label', 'Previous channel');
+    next.setAttribute('aria-label', 'Next channel');
+    return;
+  }
+  const before = entries[(index - 1 + entries.length) % entries.length];
+  const after = entries[(index + 1) % entries.length];
+  previous.title = `Previous channel: ${before.label}`;
+  next.title = `Next channel: ${after.label}`;
+  previous.setAttribute('aria-label', previous.title);
+  next.setAttribute('aria-label', next.title);
 }
 
 function updatePanelTitles() {
   renderPresetHeading($('devtitle'), selectedLane);
-  syncEffectTargetPicker();
+  syncChannelNavigation();
   syncEffectSoloButton();
+}
+
+function stepChannelTarget(direction) {
+  const entries = effectTargetEntries();
+  if (!entries.length) return;
+  const index = entries.findIndex(({ key }) => key === selectedLane);
+  const from = index >= 0 ? index : (direction > 0 ? -1 : 0);
+  const next = entries[(from + direction + entries.length) % entries.length];
+  if (next && next.key !== selectedLane) selectLane(next.key);
 }
 
 function syncEffectSoloButton() {
@@ -10067,14 +10092,22 @@ function refreshChannelName(key, value) {
   const stripName = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"] .striphead h3`);
   if (stripName) stripName.textContent = label;
   refreshLaneIdentity(key);
-  for (const option of $('devtarget')?.options || []) {
-    if (option.value === key) {
-      const number = laneNumbers.get(key);
-      option.textContent = number ? `${number} · ${targetLabel(key)}` : targetLabel(key);
-    }
-  }
+  syncChannelNavigation();
   const input = $('devname');
   if (input && selectedLane === key && document.activeElement !== input) input.value = label;
+}
+
+function syncChannelNoteFxIndicator() {
+  const button = $('devnotefx');
+  if (!button || !selectedLane || button.dataset.lane !== selectedLane) return;
+  const fx = mixFor(trackId).lanes?.[selectedLane]?.noteFx || {};
+  const trackEnabled = hasEnabledNoteFx(fx);
+  const barsEnabled = arrDraftOf().plan.some((bar) => hasEnabledNoteFx(resolveNoteFx(fx, bar, selectedLane)));
+  const active = trackEnabled || barsEnabled;
+  button.dataset.active = String(active);
+  const state = trackEnabled ? 'Enabled on this track' : barsEnabled ? 'Enabled on individual bars' : 'No note effects enabled';
+  button.title = `Note FX · ${state}`;
+  button.setAttribute('aria-label', button.title);
 }
 
 function buildChannelIdentity(key) {
@@ -10105,29 +10138,41 @@ function buildChannelIdentity(key) {
 
   sound.textContent = '';
   const voice = VOICES[laneVoiceId(key)] || null;
+  const meta = document.createElement('div'); meta.className = 'devsound-meta';
   const label = document.createElement('span');
   label.className = 'devsound-name';
-  label.textContent = `SOUND · ${voice?.label || targetLabel(key)}`;
-  sound.append(label);
-  const preset = document.createElement('button');
-  preset.textContent = 'Preset';
-  preset.title = `Choose the sound for ${trackName}`;
-  preset.onclick = (ev) => openVoicePicker(ev.clientX, ev.clientY, key);
-  sound.append(preset);
+  label.textContent = voice?.label || targetLabel(key);
+  meta.append(label);
+  sound.append(meta);
+  const actions = document.createElement('div'); actions.className = 'devsound-actions';
+  const presetButton = document.createElement('button');
+  presetButton.textContent = 'Preset';
+  presetButton.title = `Choose the sound for ${trackName}`;
+  presetButton.onclick = (ev) => openVoicePicker(ev.clientX, ev.clientY, key);
+  actions.append(presetButton);
   if (voice && voice.kind !== 'engine') {
     const simple = document.createElement('button');
     simple.textContent = 'Edit';
     simple.title = `Edit ${voice.label}`;
     simple.onclick = (ev) => editVoice(key, { advanced: false, at: { x: ev.clientX, y: ev.clientY } });
-    sound.append(simple);
+    actions.append(simple);
     if (isQuickVoice(voice)) {
       const advanced = document.createElement('button');
       advanced.textContent = 'Advanced';
       advanced.title = `Open the full ${voice.label} editor`;
       advanced.onclick = (ev) => editVoice(key, { advanced: true, at: { x: ev.clientX, y: ev.clientY } });
-      sound.append(advanced);
+      actions.append(advanced);
     }
   }
+  const noteFx = document.createElement('button');
+  noteFx.id = 'devnotefx'; noteFx.type = 'button'; noteFx.dataset.lane = key;
+  noteFx.textContent = 'Note FX';
+  const indicator = document.createElement('span'); indicator.className = 'devnotefx-indicator';
+  indicator.setAttribute('aria-hidden', 'true'); noteFx.append(indicator);
+  noteFx.onclick = (ev) => openNoteFxEditor(ev.clientX, ev.clientY, key);
+  actions.append(noteFx);
+  sound.append(actions);
+  syncChannelNoteFxIndicator();
 }
 
 function buildChannelAdjust(key) {
@@ -10137,7 +10182,8 @@ function buildChannelAdjust(key) {
   details.open = channelAdjustOpen;
   details.addEventListener('toggle', () => { channelAdjustOpen = details.open; });
   const summary = document.createElement('summary');
-  summary.textContent = 'ADJUST · whole track';
+  summary.textContent = 'ADJUST TRACK';
+  summary.title = 'Whole-track pitch, timing and note offsets';
   details.append(summary);
   const body = document.createElement('div'); body.className = 'devadjust-body';
   details.append(body);
@@ -10209,57 +10255,59 @@ function buildChannelMix(key) {
   head.append(title, mute, solo);
   wrap.append(head);
   const primary = document.createElement('div'); primary.className = 'devmix-primary';
-  const level = document.createElement('div'); level.className = 'devmix-control';
-  const levelLabel = document.createElement('label'); levelLabel.textContent = 'LEVEL';
-  const number = document.createElement('input'); number.type = 'number'; number.className = 'devlevel-number';
-  number.min = String(FADER_DB_MIN); number.max = String(FADER_DB_MAX); number.step = '0.1';
-  number.value = settings.gain.toFixed(1); number.setAttribute('aria-label', 'Channel level in dB');
-  levelLabel.append(number);
-  const range = document.createElement('input'); range.type = 'range'; range.className = 'devlevelrange';
-  range.min = '0'; range.max = '1'; range.step = '0.002'; range.value = String(dbToPos(settings.gain));
-  range.title = 'Channel output level';
-  attachDeskGesture(range);
+  const formatLevel = (pos) => {
+    const db = posToDb(pos);
+    return `${db > 0 ? '+' : ''}${db.toFixed(1)} dB`;
+  };
+  const level = slider({ min: 0, max: 1, step: 0.002,
+    value: dbToPos(settings.gain), reset: dbToPos(0), fmt: formatLevel,
+    display: { format: formatLevel, parse: (raw) => {
+      const db = Number.parseFloat(raw);
+      return Number.isFinite(db) ? dbToPos(clamp(db, FADER_DB_MIN, FADER_DB_MAX)) : null;
+    } },
+    onInput: (pos) => {
+      const value = Math.round(posToDb(pos) * 10) / 10;
+      editMix((m) => { laneOf(m, key).gain = value; }, `gain:${key}`, { affectsFrozen: false });
+      Audio.mixer?.lane(key)?.setGain(value);
+      scheduleLaneGainSync(key, { except: level.input });
+    },
+  });
+  level.label.textContent = 'LEVEL';
+  level.input.classList.add('devlevelrange');
+  level.input.setAttribute('aria-label', 'Channel output level');
+  level.readout.classList.add('devlevel-number');
+  attachDeskGesture(level.input);
   const meter = document.createElement('div'); meter.className = 'devmixmeter';
   const fill = document.createElement('i'); const peak = document.createElement('b'); meter.append(fill, peak);
-  const meterEntry = { key, inspector: true, horizontal: true, meter, chans: [{ fill, peak }] };
-  meters.push(meterEntry);
-  const updateGain = (raw, except = null) => {
-    const value = clamp(Math.round(raw * 10) / 10, FADER_DB_MIN, FADER_DB_MAX);
-    editMix((m) => { laneOf(m, key).gain = value; }, `gain:${key}`, { affectsFrozen: false });
-    Audio.mixer?.lane(key)?.setGain(value);
-    if (except !== range) range.value = String(dbToPos(value));
-    number.value = value.toFixed(1);
-    scheduleLaneGainSync(key, { except: range });
-  };
-  range.oninput = () => updateGain(Math.round(posToDb(+range.value) * 10) / 10, range);
-  range.ondblclick = () => { range.value = String(dbToPos(0)); updateGain(0); };
-  number.onchange = () => { if (number.value !== '') updateGain(+number.value, number); };
-  level.append(levelLabel, range, meter);
+  meters.push({ key, inspector: true, horizontal: true, meter, chans: [{ fill, peak }] });
+  head.insertBefore(meter, mute);
 
-  const pan = document.createElement('div'); pan.className = 'devmix-control';
-  const panLabel = document.createElement('label'); panLabel.textContent = 'PAN';
-  const panValue = document.createElement('output');
-  const showPan = (value) => { panValue.textContent = value === 0 ? 'C' : value < 0 ? `L ${Math.abs(value)}` : `R ${value}`; };
-  showPan(settings.pan); panLabel.append(panValue);
-  const panRange = document.createElement('input'); panRange.type = 'range';
-  panRange.min = '-100'; panRange.max = '100'; panRange.step = '1'; panRange.value = String(settings.pan);
-  panRange.setAttribute('aria-label', 'Channel pan');
-  attachDeskGesture(panRange);
-  panRange.oninput = () => {
-    const value = +panRange.value;
-    editMix((m) => { laneOf(m, key).pan = value; }, `pan:${key}`, { affectsFrozen: false });
-    Audio.mixer?.lane(key)?.setPan(value); showPan(value);
-    syncChannelMixControls(key);
-  };
-  pan.append(panLabel, panRange);
-  syncers.push(() => { const value = laneSettings(mixFor(trackId).lanes?.[key]).pan;
-    panRange.value = String(value); showPan(value); });
-  primary.append(level, pan); wrap.append(primary);
-  syncers.push(() => { const value = laneSettings(mixFor(trackId).lanes?.[key]).gain;
-    range.value = String(dbToPos(value)); number.value = value.toFixed(1); });
+  const formatPan = (value) => Math.abs(value) < 0.005 ? 'C' : `${value < 0 ? 'L' : 'R'} ${Math.abs(value).toFixed(2)}`;
+  const pan = slider({ min: -1, max: 1, step: 0.01, value: settings.pan, reset: 0, fmt: formatPan,
+    display: { format: formatPan, parse: (raw) => {
+      const text = String(raw).trim();
+      if (/^c$/i.test(text)) return 0;
+      const value = Number.parseFloat(text.replace(/^[lr]\s*/i, ''));
+      return Number.isFinite(value) ? clamp(/^l/i.test(text) ? -Math.abs(value) : value, -1, 1) : null;
+    } },
+    onInput: (value) => {
+      editMix((m) => { laneOf(m, key).pan = value; }, `pan:${key}`, { affectsFrozen: false });
+      Audio.mixer?.lane(key)?.setPan(value);
+      syncChannelMixControls(key);
+    },
+  });
+  pan.label.textContent = 'PAN';
+  pan.input.setAttribute('aria-label', 'Channel pan');
+  attachDeskGesture(pan.input);
+  syncers.push(() => {
+    const current = laneSettings(mixFor(trackId).lanes?.[key]);
+    if (!level.readout.querySelector('input')) level.sync(dbToPos(current.gain));
+    if (!pan.readout.querySelector('input')) pan.sync(current.pan);
+  });
+  primary.append(level.wrap, pan.wrap); wrap.append(primary);
 
-  const extra = document.createElement('details'); extra.className = 'devmix-extra'; extra.id = 'devmix-extra';
-  const summary = document.createElement('summary'); summary.textContent = 'EQ & SENDS'; extra.append(summary);
+  const extra = document.createElement('div'); extra.className = 'devmix-extra'; extra.id = 'devmix-extra';
+  extra.setAttribute('role', 'group'); extra.setAttribute('aria-label', 'EQ sliders and sends');
   const sends = document.createElement('div'); sends.className = 'devmix-sends';
   for (const aux of AUXES) {
     const SEND_DB_MAX = 6;
@@ -10298,7 +10346,6 @@ function buildChannelMix(key) {
       if (readout && !readout.querySelector('input')) readout.textContent = fmt(posToDb(input ? +input.value : dbToPos(toDisplayDb(amount))));
     });
   }
-  extra.append(sends);
   const eq = document.createElement('div'); eq.className = 'devmix-eq';
   for (const band of ['low', 'mid', 'high']) {
     const row = eqRow(band, settings.eq[band], (value) => {
@@ -10315,7 +10362,7 @@ function buildChannelMix(key) {
       const readout = row.querySelector('.val'); if (readout && !readout.querySelector('input')) readout.textContent = value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
     });
   }
-  extra.append(eq); wrap.append(extra);
+  extra.append(sends, eq); wrap.append(extra);
 }
 
 function buildChannelMore(key) {
@@ -10323,15 +10370,20 @@ function buildChannelMore(key) {
   const menu = $('devmoremenu');
   menu.textContent = '';
   const available = !!key && !!seamFor(key);
-  button.hidden = !available;
+  button.hidden = !key;
   button.setAttribute('aria-expanded', 'false');
-  if (!available) { menu.hidden = true; return; }
+  if (!key) { menu.hidden = true; return; }
   const addAction = (label, run, { disabled = false, danger = false } = {}) => {
     const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem');
     item.textContent = label; item.disabled = disabled; if (danger) item.classList.add('danger');
     item.onclick = () => { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); run(); };
     menu.append(item);
   };
+  addAction($('devices').classList.contains('channel-collapsed') ? 'Expand channel panel' : 'Collapse channel panel',
+    () => setChannelPanelCollapsed(!$('devices').classList.contains('channel-collapsed')));
+  addAction(fxDockSide === 'left' ? 'Move channel panel right' : 'Move channel panel left',
+    () => setFxDockSide(fxDockSide === 'left' ? 'right' : 'left'));
+  if (!available) return;
   addAction('Note FX…', () => openNoteFxEditor(innerWidth / 2, innerHeight / 2, key));
   if (PERCUSSION_LANES.includes(baseLane(key))) {
     const mates = deskLanes(viewBank(), 1).map((lane) => lane.key)
@@ -10370,11 +10422,8 @@ function buildChannelMore(key) {
   addAction(freezeState === 'full' ? 'Unfreeze all' : 'Freeze track', () =>
     freezeState === 'full' ? unfreezeLane(key) : freezeLane(key));
   const chain = effectsOf(key);
-  if (chain.length) addAction(chain.some((effect) => !effect.bypass)
-    ? 'Bypass all effects' : 'Enable all effects', () => {
-    const bypass = chain.some((effect) => !effect.bypass);
-    setEffects(key, chain.map((effect) => ({ ...effect, bypass })));
-  });
+  if (chain.length) addAction(chain.every(effectOff)
+    ? 'Enable all effects' : 'Bypass all effects', () => toggleAllChannelEffects(key));
   addAction('Copy notes', () => {
     const draft = arrDraftOf();
     arrangementClipboard = { kind: 'lane', ...clipOrigin(targetLabel(key)),
@@ -10433,7 +10482,17 @@ function buildDevices() {
   const list = effectsOf(selectedLane);
   const fxLabel = document.createElement('div');
   fxLabel.className = 'devfx-heading';
-  fxLabel.textContent = `EFFECTS${list.length ? ` · ${list.length}` : ''}`;
+  const fxCaption = document.createElement('span');
+  fxCaption.textContent = `EFFECTS${list.length ? ` · ${list.length}` : ''}`;
+  const bypassAll = document.createElement('button');
+  bypassAll.type = 'button'; bypassAll.className = 'devbypass-all';
+  const allOff = list.length > 0 && list.every(effectOff);
+  bypassAll.textContent = 'Bypass all';
+  bypassAll.disabled = !list.length;
+  bypassAll.setAttribute('aria-pressed', String(allOff));
+  bypassAll.title = allOff ? 'Enable all channel effects' : 'Bypass all channel effects';
+  bypassAll.onclick = () => toggleAllChannelEffects(selectedLane);
+  fxLabel.append(fxCaption, bypassAll);
   rack.append(fxLabel);
   if (!list.length) {
     rack.append(addCard(true));
@@ -10817,14 +10876,7 @@ function syncPanelResizeEdges() {
 function applyFxDockSide() {
   const onLeft = fxDockSide === 'left';
   document.body.classList.toggle('fxdock-left', onLeft);
-  const move = $('devmove');
-  if (!move) return;
-  const next = onLeft ? 'right' : 'left';
-  move.querySelector('path')?.setAttribute('d', onLeft
-    ? 'M4 12h16M13 5l7 7-7 7'
-    : 'M20 12H4M11 5 4 12l7 7');
-  move.title = `Move Effects panel to the ${next}`;
-  move.setAttribute('aria-label', `Move Effects panel to the ${next}`);
+
 }
 
 function setFxDockSide(side, refit = true) {
@@ -10838,10 +10890,37 @@ function setFxDockSide(side, refit = true) {
   afterDock(false);
 }
 
+function syncChannelCollapseButton() {
+  const collapsed = $('devices').classList.contains('channel-collapsed');
+  const button = $('devcollapse');
+  button.title = collapsed ? 'Expand channel panel' : 'Collapse channel panel';
+  button.setAttribute('aria-label', button.title);
+  button.setAttribute('aria-expanded', String(!collapsed));
+}
+
+function setChannelPanelCollapsed(collapsed, refit = true) {
+  const panel = $('devices');
+  if (collapsed && !panel.classList.contains('fxwindow-open')) return;
+  const changed = panel.classList.contains('channel-collapsed') !== collapsed;
+  panel.classList.toggle('channel-collapsed', collapsed);
+  document.body.classList.toggle('fxdock-collapsed', collapsed);
+  syncChannelCollapseButton();
+  if (collapsed) {
+    $('devmoremenu').hidden = true;
+    $('devmore').setAttribute('aria-expanded', 'false');
+  }
+  if (!changed || !refit) return;
+  scheduleDeskFit(true);
+  afterDock(false);
+}
+
 function setDevicesFolded(on, refit = true) {
-  $('devices').classList.remove('collapsed');
-  $('devices').classList.toggle('fxwindow-open', !on);
-  $('devices').setAttribute('aria-hidden', on ? 'true' : 'false');
+  const panel = $('devices');
+  panel.classList.remove('collapsed', 'channel-collapsed');
+  document.body.classList.remove('fxdock-collapsed');
+  syncChannelCollapseButton();
+  panel.classList.toggle('fxwindow-open', !on);
+  panel.setAttribute('aria-hidden', on ? 'true' : 'false');
   document.body.classList.toggle('fxdock-open', !on);
   // The toolbar toggle is the panel's switch, so it says what the panel is doing.
   $('fxbtn')?.classList.toggle('on', !on);
@@ -10849,9 +10928,6 @@ function setDevicesFolded(on, refit = true) {
   // Opening: the chain has to be laid out before it can be seen sliding in. Closing:
   // it goes back to costing nothing, but only once it is off screen — see afterDock.
   $('devices').classList.remove('fxdock-idle');
-  $('devfold').classList.remove('folded');
-  $('devfold').title = 'Close Channel';
-  $('devfold').setAttribute('aria-label', 'Close Channel');
   if (!refit) { if (on) $('devices').classList.add('fxdock-idle'); return; }
   scheduleDeskFit(true);
   afterDock(on);
@@ -10883,10 +10959,10 @@ function afterDock(closed) {
 }
 
 applyFxDockSide();
-$('devmove').onclick = () => setFxDockSide(fxDockSide === 'left' ? 'right' : 'left');
-$('devfold').onclick = () => setDevicesFolded(true);
-// A toggle, not an opener: the arrow in the panel's own header does the same job from
-// the other end, and one of the two has to be reachable when the panel is shut.
+$('devcollapse').onclick = () => setChannelPanelCollapsed(!$('devices').classList.contains('channel-collapsed'));
+$('devprev').onclick = () => stepChannelTarget(-1);
+$('devnext').onclick = () => stepChannelTarget(1);
+// The toolbar toggles the dock; the More menu folds it to its title bar.
 const devicesOpen = () => $('devices').classList.contains('fxwindow-open');
 $('fxbtn').onclick = () => setDevicesFolded(devicesOpen());
 setDevicesFolded(true, false);
@@ -10901,6 +10977,7 @@ function openChannelEffects(key) {
 $('devmore').onclick = (event) => {
   event.stopPropagation();
   const menu = $('devmoremenu');
+  if (menu.hidden) buildChannelMore(selectedLane);
   menu.hidden = !menu.hidden;
   $('devmore').setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
 };
@@ -10913,14 +10990,6 @@ document.addEventListener('pointerdown', (event) => {
   }
 });
 
-/** Switch the inspector target without requiring the Mixer view to be visible. */
-function openEffectTarget(key) {
-  if (!key) return;
-  selectLane(key);
-  setDevicesFolded(false);
-}
-
-$('devtarget').onchange = () => openEffectTarget($('devtarget').value);
 $('devsolo').onclick = () => {
   if (!selectedLane || selectedLane === '__master') return;
   if (selectedLane.startsWith('__aux:')) {
@@ -14248,6 +14317,7 @@ function groupRow(g, barTotal) {
 }
 
 function buildArrangement() {
+  syncChannelNoteFxIndicator();
   const grid = $('arrgrid');
   grid.textContent = '';
   clearArrangementPlayback();
@@ -24470,6 +24540,8 @@ void (async () => {
   const initialDeskSessionMatches = savedDeskSession?.version === 1
     && savedDeskSession.song === trackId;
   setDevicesFolded(!(initialDeskSessionMatches && savedDeskSession.effectsOpen === true), false);
+  setChannelPanelCollapsed(initialDeskSessionMatches && savedDeskSession.effectsOpen === true
+    && savedDeskSession.effectsCollapsed === true, false);
   await selectSong(trackId);
   // If the preset library was open last session, open it again.
   const sessionMatches = savedDeskSession?.version === 1 && savedDeskSession.song === trackId;

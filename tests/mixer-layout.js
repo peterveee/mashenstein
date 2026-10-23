@@ -1274,8 +1274,8 @@ assert(/head\.append\(title, sources,[^)]*search, close\)/.test(
   && !/const searchRow = document\.createElement\('div'\)/.test(
     librarySource),
   'the preset search sits in the top header immediately before the far-right close');
-assert(/let voicePickerQuery = '';[\s\S]*?search\.value = voicePickerQuery[\s\S]*?voicePickerQuery = search\.value[\s\S]*?browser\.refresh\(\)/.test(voicePicker),
-  'the strip preset picker keeps its search when it is reopened');
+assert(!/voicePickerQuery/.test(voicePicker) && /category: !pending && selectedPreset \? presetClassification\(selectedPreset\)\.category : 'all'/.test(voicePicker),
+  'the strip preset picker opens on related sounds without retaining an old search');
 assert(voicePicker.includes('createPresetBrowser({')
   && voicePicker.includes('presetEngine(selectedPreset)')
   && !voicePicker.includes("engine = selectedEngine")
@@ -2142,9 +2142,9 @@ assert(/const LOWER_VIEW_KEY = 'mash-mixer-lower-view'/.test(entry)
   && /setLowerView\(lowerView, \{ remember: false, animate: false \}\)/.test(entry)
   && /#tlfold, #arrfold, #notefold, #mixfold \{ display: none !important; \}/.test(shell),
   'the desk remembers one lower-workspace view and exposes no panel-collapse controls');
-assert(/#devices \{[^}]*position:\s*fixed[^}]*inset:\s*calc\(var\(--ctlh\) \+ 16px\) 0 0 auto[^}]*width:\s*calc\(var\(--fxdock-w[^}]*height:\s*auto !important[^}]*resize:\s*none/s.test(shell)
+assert(/#devices \{[^}]*position:\s*fixed[^}]*inset:\s*calc\(var\(--ctlh\) \+ 16px\) 0 var\(--footh, 28px\) auto[^}]*width:\s*calc\(var\(--fxdock-w[^}]*height:\s*auto !important[^}]*resize:\s*none/s.test(shell)
   && /#devices \{[^}]*border-right:\s*0[^}]*border-radius:\s*8px 0 0 8px[^}]*box-shadow:\s*-10px 0/s.test(shell)
-  && /body\.fxdock-left #devices \{[^}]*inset:\s*calc\(var\(--ctlh\) \+ 16px\) auto 0 0[^}]*border-right:\s*1px solid var\(--line2\)[^}]*transform:\s*translateX\(-100%\)/s.test(shell)
+  && /body\.fxdock-left #devices \{[^}]*inset:\s*calc\(var\(--ctlh\) \+ 16px\) auto var\(--footh, 28px\) 0[^}]*border-right:\s*1px solid var\(--line2\)[^}]*transform:\s*translateX\(-100%\)/s.test(shell)
   && !entry.includes("win.style.transform = 'none'")
   && !entry.includes('event.clientX - dx'),
   'Effects is a fixed full-height inspector with a small desk gutter, not a draggable floating dialog');
@@ -2153,7 +2153,7 @@ assert(/#devices \{[^}]*position:\s*fixed[^}]*inset:\s*calc\(var\(--ctlh\) \+ 16
 // so they read as a single gesture. `visibility`, not `display`, because a panel that
 // stops existing has nothing to animate back out.
 assert(/:root \{[^}]*--fxdock-anim:[^}]*--fxdock-ease:/s.test(shell)
-  && /body \{[^}]*--fxdock-w:\s*min\(372px,[^}]*--fxdock:\s*0px;[^}]*padding-right:\s*0;/s.test(shell)
+  && /body \{[^}]*--fxdock-w:\s*min\(348px,[^}]*--fxdock:\s*0px;[^}]*padding-right:\s*0;/s.test(shell)
   && /body\.fxdock-open \{ --fxdock: var\(--fxdock-w\); \}/.test(shell)
   && /#desk \{[^}]*margin-right:\s*var\(--fxdock\);[^}]*margin-left:\s*0;[^}]*transition:[^}]*margin-left var\(--fxdock-anim\)/s.test(shell)
   && /body\.fxdock-left #desk \{[^}]*margin-right:\s*0;[^}]*margin-left:\s*var\(--fxdock\)/s.test(shell)
@@ -2178,34 +2178,33 @@ assert(/#devices #devrack \{[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*scroll[^
   && /@media \(max-width:\s*620px\)[\s\S]*?#devices \.devgrid \{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/.test(shell),
   'the effect chain stacks vertically and each plugin reflows to two compact columns, then one on narrow windows');
 // Three marks, three meanings, and none of them borrows another's glyph: the card's own
-// remove is a bin (it throws the effect out), the panel's is a close mark, and the insert
-// slot — 23px tall, with a name in it — keeps the drawn cross.
+// remove is a bin (it throws the effect out), the panel folds to its title bar, and the
+// insert slot — 23px tall, with a name in it — keeps the drawn cross.
 assert(/function trashIcon\(\) \{[\s\S]*?'M2\.3 3\.5h7\.4'[\s\S]*?\n\}/.test(entry)
   && ((entry + noteFxEditors).match(/close\.append\(trashIcon\(\)\);|remove\.append\(trashIcon\(\)\);/g) || []).length === 2
   && !/devclose[\s\S]{0,80}?append\(closeIcon\(\)\)/.test(entry)
   && /remove\.className = 'rmhit'[\s\S]*?remove\.append\(closeIcon\(\)\)/.test(entry + noteFxEditors),
   'a plugin card is thrown away with a bin, not with the cross that means "put the panel away"');
-assert(/<button id="devfold" class="foldbtn popclose" title="Close Effects"[\s\S]*?<span aria-hidden="true">✕<\/span>/.test(shell)
-  && /#devices #devfold\.popclose \{[^}]*width:\s*28px[^}]*height:\s*28px[^}]*font-size:\s*19px !important/s.test(shell)
-  && /#synthfull \.sflanesolo \{[^}]*width:\s*28px[^}]*min-width:\s*28px[^}]*height:\s*28px[^}]*min-height:\s*28px[^}]*padding:\s*0;[^}]*font-size:\s*13px[^}]*font-weight:\s*700;/s.test(shell)
-  && /#synthfull \.sfpresetpicker > summary::after \{[^}]*font-size:\s*13px[^}]*line-height:\s*1[^}]*font-weight:\s*700;/s.test(shell)
-  && /\$\('devfold'\)\.onclick = \(\) => setDevicesFolded\(true\)/.test(entry)
-  && !/<path d="M4 12h13"/.test(shell),
-  'the panel closes on a centered close mark with the same-sized hit target as the caret');
-assert(/<button id="devmove"[^>]*aria-label="Move Effects panel to the left"[^>]*>[\s\S]*?<svg class="devmoveicon"[^>]*>[\s\S]*?<path d="M4 12h16M13 5l7 7-7 7"><\/path>/.test(shell)
-  && /#devices #devtarget|#devices \.devtarget/.test(shell)
-  && /#devices #devsolo \{[^}]*order:\s*3/s.test(shell)
-  && /#devices \.devtarget \{[^}]*order:\s*2/s.test(shell)
-  && /#devices #devmove \{[^}]*order:\s*5/s.test(shell)
-  && /#devices #devmove svg \{[^}]*stroke-width:\s*2/s.test(shell)
-  && /#devices button\.deskselect\.devtarget \.deskselect-caret \{[^}]*stroke-width:\s*2[^}]*transition:\s*transform \.18s/s.test(shell)
+assert(!/id="devfold"/.test(shell)
+  && /addAction\([^;]*Collapse channel panel[\s\S]*?setChannelPanelCollapsed/.test(entry)
+  && /effectsCollapsed: \$\('devices'\)\?\.classList\.contains\('channel-collapsed'\)/.test(entry),
+  'the header has no down caret and folding remains available from More');
+assert(/<button id="devcollapse"[^>]*aria-label="Collapse channel panel"/.test(shell)
+  && /<div class="devnav" role="group" aria-label="Channel navigation">[\s\S]*?id="devprev"[\s\S]*?id="devnext"/.test(shell)
+  && /#devices \.devnav \{[^}]*order:\s*3/s.test(shell)
+  && /#devices #devsolo \{[^}]*order:\s*4/s.test(shell)
+  && /#devices #devmore \{[^}]*order:\s*5/s.test(shell)
+  && !/id="devtarget"/.test(shell + entry)
+  && /function effectTargetEntries\(\)[\s\S]*?deskLanes\(viewBank\(\), 1\)[\s\S]*?activeGroups\(\)[\s\S]*?AUXES/.test(entry)
+  && /function stepChannelTarget\(direction\)[\s\S]*?selectLane\(next\.key\)/.test(entry)
+  && /\$\('devprev'\)\.onclick = \(\) => stepChannelTarget\(-1\)/.test(entry)
+  && /\$\('devnext'\)\.onclick = \(\) => stepChannelTarget\(1\)/.test(entry)
   && /const FX_SIDE_KEY = 'mash-mixer-fxside'/.test(entry)
   && /let fxDockSide = localStorage\.getItem\(FX_SIDE_KEY\) === 'left' \? 'left' : 'right';/.test(entry)
-  && /function applyFxDockSide\(\)[\s\S]*?classList\.toggle\('fxdock-left', onLeft\)[\s\S]*?querySelector\('path'\)\?\.setAttribute\('d', onLeft[\s\S]*?\? 'M4 12h16M13 5l7 7-7 7'[\s\S]*?: 'M20 12H4M11 5 4 12l7 7'/.test(entry)
   && /function setFxDockSide\(side, refit = true\)[\s\S]*?localStorage\.setItem\(FX_SIDE_KEY, fxDockSide\)[\s\S]*?afterDock\(false\)/.test(entry)
-  && /\$\('devmove'\)\.onclick = \(\) => setFxDockSide\(fxDockSide === 'left' \? 'right' : 'left'\)/.test(entry)
-  && /select\.id === 'devtarget'[\s\S]*?deskselect-caret[\s\S]*?M5 8\.5l7 7 7-7/.test(deskSelect),
-  'the Effects header arrow moves the dock to the opposite edge, updates its direction, and remembers the choice');
+  && /Move channel panel right[\s\S]*?Move channel panel left[\s\S]*?setFxDockSide/.test(entry)
+  && !/select\.id === 'devtarget'/.test(deskSelect),
+  'the title bar navigates channels and collapses, while the More menu moves dock sides');
 // The cards sit centred in the panel at any chain length — the scrollbar comes out of
 // both margins, not out of the right-hand one alone — and one number sets every gap in
 // the chain: above the first card, between two cards, and down either side.
@@ -4445,7 +4444,7 @@ assert(/const devicesOpen = \(\) => \$\('devices'\)\.classList\.contains\('fxwin
   && /function setDevicesFolded[\s\S]*?\$\('fxbtn'\)\?\.classList\.toggle\('on', !on\);[\s\S]*?setAttribute\('aria-pressed'/.test(entry),
   'the toolbar toggle opens and closes the effects panel, and reads back what the panel is doing');
 const bootBody = /void \(async \(\) => \{[\s\S]*?\n\}\)\(\);/.exec(entry)?.[0] || '';
-assert(/const initialDeskSessionMatches = savedDeskSession\?\.version === 1[\s\S]*?setDevicesFolded\(!\(initialDeskSessionMatches && savedDeskSession\.effectsOpen === true\), false\);\s*await selectSong\(trackId\);/.test(bootBody)
+assert(/const initialDeskSessionMatches = savedDeskSession\?\.version === 1[\s\S]*?setDevicesFolded\(!\(initialDeskSessionMatches && savedDeskSession\.effectsOpen === true\), false\);\s*setChannelPanelCollapsed\(initialDeskSessionMatches[\s\S]*?await selectSong\(trackId\);/.test(bootBody)
   && /selectSong\(trackId\);[\s\S]*?if \(sessionMatches\) restoreDeskSession\(savedDeskSession\);/.test(bootBody),
   'the saved Effects dock state is applied before the first arranger build');
 assert(/\.fxicon \.body \{ fill: currentColor; \}/.test(shell.replace(/\n\s+/g, ' '))
@@ -4533,20 +4532,20 @@ assert(/\.fxbtns \{[^}]*margin:\s*8px 0 0/s.test(shell)
   && /#rackwrap:is\(\.no-eq, \.shed-eq\):is\(\.no-sends, \.shed-sends\) \.fxbtns,\s*\.stripbody > \.fxbtns:first-child \{ margin-top: 0; \}/.test(shell),
   'the gap above the chain is the gap between it and the rows, so it goes when there are'
   + ' no rows — and the fader keeps the foot’s own padding either way');
-// Device summaries still get their body spacing, but channel identity now belongs in
-// the header. The picker button and its old stepping arrows must not return as a second
-// channel control.
+// Device summaries still get their body spacing, and the selected channel's synth now
+// leads the title bar while the editable track name remains in the identity row.
 assert(/\.stripbody > \.devlink \{\s*margin: 5px 0 6px/.test(shell),
   'device summaries keep their body spacing');
 assert(/function presetForLane\(laneKey\)[\s\S]*?defaultVoiceOf\(track\?\.bank, laneKey\)/.test(entry)
   && /function presetHeadingFor\(laneKey\)[\s\S]*?name: customTrackLabel\(laneKey\)/.test(entry)
-  && /function renderPresetHeading\(el, laneKey\)[\s\S]*?laneNumbers\.get\(laneKey\)[\s\S]*?panelnumber/.test(entry)
+  && /function renderPresetHeading\(el, laneKey\)[\s\S]*?synthesizerLabelFor\(presetForLane\(laneKey\)\)[\s\S]*?panel-synth-name/.test(entry)
   && /function updatePanelTitles\(\)[\s\S]*?renderPresetHeading\(\$\('devtitle'\), selectedLane\)/.test(entry)
+  && /syncChannelNavigation\(\)/.test(entry)
   && /function selectLane\(key\)[\s\S]*?buildDevices\(\)[\s\S]*?pianoRoll\.refresh\(\)/.test(entry)
-  && /#devhead \.panelpreset \{[^}]*text-transform:\s*none/s.test(shell)
+  && /#devhead \.panel-synth-name \{[^}]*color:\s*var\(--accent\)/s.test(shell)
   && !/#devhead \.paneltype/.test(shell)
   && !/className = 'paneltype'/.test(entry),
-  'the effects heading carries the track number and active preset name, and strip selection refreshes the roll');
+  'the effects heading emphasizes the active synth, and strip selection refreshes navigation and the roll');
 // The Notes header is the word, and then the preset whose part is ON SCREEN — which is
 // not always the selected strip: with the master selected the roll still shows a lane.
 // On the kit it is the selected drum, the one whose row the column marks. Only a channel

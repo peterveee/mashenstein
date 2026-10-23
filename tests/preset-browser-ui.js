@@ -32,6 +32,47 @@ try {
  await picker.locator('.preset-clear').click(); await picker.locator('.voicesearch').fill('saxophone');
  await picker.locator('[data-voice="mrdrSaxophone"]').click();
  assert.equal(await page.getByRole('button',{name:'Saxophone',exact:true}).count(),2);
+ assert.ok(await picker.isVisible(),'Picking a preset keeps the selector open');
+ assert.equal(await picker.locator('.voicenow').textContent(),'Show current preset');
+ await picker.locator('.preset-clear').click();
+ await choose(picker,'category','Winds');
+ const alternative=picker.locator('.preset-list button:not([data-voice="mrdrSaxophone"])').first();
+ const alternativeId=await alternative.getAttribute('data-voice');
+ const alternativeName=await alternative.locator('span').first().textContent();
+ await alternative.click();
+ assert.ok(await picker.isVisible());
+ assert.equal(await picker.locator('.preset-list .on').getAttribute('data-voice'),alternativeId);
+ assert.equal(await picker.locator('.preset-list .on span').first().textContent(),alternativeName);
+ assert.equal(await picker.locator('[data-facet="category"] .on').getAttribute('data-value'),'Winds');
+ await picker.locator('.voiceundo').click();
+ assert.ok(await picker.isVisible(),'Undo keeps the selector open');
+ assert.equal(await picker.locator('.preset-list .on').getAttribute('data-voice'),'mrdrSaxophone');
+ const toolbarBounds=await picker.locator('.voicetoolbar').evaluate(el=>[...el.children].map(e=>({top:e.getBoundingClientRect().top,height:e.getBoundingClientRect().height})));
+ assert.ok(toolbarBounds.every(r=>Math.abs(r.top-toolbarBounds[0].top)<1),'Search and actions share a row');
+ await picker.locator('.voiceclose').click();
+ assert.equal(await page.getByRole('button',{name:'Saxophone',exact:true}).count(),2);
+
+ const sax=page.getByRole('button',{name:'Saxophone',exact:true}).first();
+ await sax.click(); if(!await picker.isVisible())await sax.click();
+ assert.equal(await picker.locator('.voicesearch').inputValue(),'');
+ assert.equal(await picker.locator('.voicesearch').getAttribute('list'),'preset-recent-searches');
+ assert.ok((await picker.locator('#preset-recent-searches option').evaluateAll(options=>options.map(o=>o.value))).includes('saxophone'),'Completed searches remain available on reopening');
+ assert.ok((await page.evaluate(()=>JSON.parse(localStorage.getItem('mash-preset-recent-searches')))).includes('saxophone'));
+ assert.equal(await picker.locator('.voicetoolbar .preset-clear').count(),1);
+
+ assert.equal(await picker.locator('[data-facet="category"] .on').getAttribute('data-value'),'Winds');
+ for(const key of ['subcategory','engine'])assert.equal(await picker.locator(`[data-facet="${key}"] .on`).getAttribute('data-value'),'all');
+ assert.ok(new Set(await picker.locator('.preset-list .vkind').allTextContents()).size>1);
+ assert.equal(await picker.locator('.preset-list .on').getAttribute('data-voice'),'mrdrSaxophone');
+ // Opening on a late-alphabet preset must scroll only its own list, never the facets.
+ const geometry=await picker.evaluate(el=>{
+   const results=el.querySelector('.voiceresults').getBoundingClientRect();
+   return [...el.querySelectorAll('.preset-columns h5')].map(h=>({top:h.getBoundingClientRect().top,bottom:h.getBoundingClientRect().bottom,min:results.top,max:results.bottom}));
+ });
+ assert.ok(geometry.every(r=>r.top>=r.min && r.bottom<=r.max),'All facet headings stay inside the browser');
+ await page.screenshot({path:root+'related-presets-visible-facets.png'});
+
+ await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'Undo',exact:true}).click();
  assert.equal(await page.getByRole('button',{name:'Saxophone',exact:true}).count(),0);
  // Existing drum lanes retain the kit boundary, even when browsing metadata says Effects.

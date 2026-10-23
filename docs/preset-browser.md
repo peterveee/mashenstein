@@ -2,7 +2,12 @@
 
 The track selector and preset library share Category → Subcategory → Engine → Preset
 facets. Search intersects the selected filters; it never silently switches engines.
-Every result and current-preset readout names its engine. Narrow browser regions use
+Opening an existing track starts in its current sound’s category, with all subcategories
+and engines and an empty search. New tracks start with all categories. Clicking a
+preset applies it immediately and keeps the selector open, preserving filters for
+comparison. After adding a track, further choices replace that same track’s sound.
+Every result names its engine. The track selector has a compact Show current preset
+action instead of repeating the preset and engine in its header. Narrow browser regions use
 compact selectors above the results; the Desk's existing minimum window size remains.
 
 ## Classification and compatibility
