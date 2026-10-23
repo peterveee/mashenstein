@@ -14,12 +14,14 @@
 //   M3 Pro, WebKit and Chromium             ~400 ms  never tips
 //   Peter's iPhone in Low Power Mode        527 ms   full Gravity, clean
 //   Peter's iPad Pro (A12Z)                 ~720 ms  (estimated from its 1.8x live gap) tips
-// LIGHT_BENCH_MS sits between, and is Peter's call: "assume 600 for now to be safe".
+// LIGHT_BENCH_MS sits between, and is Peter's call: "assume 600 for now to be safe" — raised to
+// 700 on 24 Oct 2026, after the audit's fixes (Peter). The trail since: the iPhone reads 609 ms
+// (full mixes from now), the iPad 1298 ms (light).
 
 const KEY = 'mash_audio_bench';
 // Bumped when the bench itself changes, so a stored score from another bench is not trusted.
 const VERSION = 1;
-export const LIGHT_BENCH_MS = 600;
+export const LIGHT_BENCH_MS = 700;
 
 /** The stored score, or null before the first bench has finished. */
 export function readAudioBench() {

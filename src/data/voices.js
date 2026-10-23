@@ -645,7 +645,6 @@ const DRUM = {
       + 'tails; no drive, crusher or saturation.',
     osc: { type: 'triangle', from: 574, to: 338, sweep: 0.004583, attack: 0.0015, decay: 0.035, curve: 'exp', gain: 0.12 },
     noise: { type: 'bandpass', freq: 4200, Q: 0.7, attack: 0.001, decay: 0.075, gain: 0.7 },
-    taps: [0], tapFalloff: 0.8,
     trim: 1.5 },
   kit_pocket_pixel_hats: { label: 'Pocket Pixel Closed Hat', category: 'Hats', homeLane: 'hats', dur: 1,
     note: 'Tiny, clean Game Boy-inspired percussion. Rounded triangle bodies and longer noise '
@@ -6347,7 +6346,7 @@ const TONE = {
     },
     pitch: { semitones: 36, attack: 0, decay: 0.25, sustain: 0, release: 0.02, decayCurve: 'exp' },
     filter: { type: 'highpass', slope: -12, freq: 300, Q: 1, track: 0 } },
-  rm7Riser: { label: 'FM Riser', category: 'Sweep', synth: 'RMND-7', dur: 16,
+  rm7Riser: { label: 'FM Riser', category: 'FX', synth: 'RMND-7', dur: 16,
     note: 'Starts two octaves down and climbs onto the note over three seconds while the '
       + 'modulator and a resonant lowpass both open — hold it into a drop.',
     options: {
@@ -6924,7 +6923,7 @@ const TONE = {
   frppNylon: { label: 'Nylon classical', category: 'Pluck', synth: 'FRPP-6', dur: 3,
     note: 'A classical guitar under the fingertip: a soft, round pluck on nylon strings, darker at the top and warmer in the box.',
     frpp6: { exciter: { hardness: 0.25, position: 0.15, mix: 0.1 }, string: { decay: 3, damp: 0.15, stiffness: 0.05 }, body: { type: 'nylon', mix: 0.85 } } },
-  frppNylonShimmer: { label: 'Nylon classical · Shimmer', category: 'Pluck', synth: 'FRPP-6', dur: 3,
+  frppNylonShimmer: { label: 'Nylon classical Shimmer', category: 'Pluck', synth: 'FRPP-6', dur: 3,
     note: 'A classical guitar under the fingertip: a soft, round pluck on nylon strings, '
       + 'darker at the top and warmer in the box. With a second loop four cents off each '
       + 'string: the slow shimmer and two-stage decay of a real string.',

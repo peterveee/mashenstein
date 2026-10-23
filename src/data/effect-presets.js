@@ -1217,6 +1217,18 @@ export const EFFECT_PRESETS = {
         }
       }
     },
+    "strip": {
+      "default": {
+        "high": 0,
+        "mid": 0,
+        "low": 0,
+        "delay": 0,
+        "reverb": 0,
+        "level": 0,
+        "pan": 0
+      },
+      "presets": {}
+    },
     "reverb": {
       "default": {
         "decay": 3,

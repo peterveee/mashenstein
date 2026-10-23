@@ -432,7 +432,7 @@ assert(/#mastertoolbar \{/.test(shell) && /#mastertoolbar \.meter\.toolbar-meter
 assert(/#synthfull #mastertoolbar \{ flex: 0 0 auto/.test(mrdrShell),
   'the standalone gives the fader a lane of its own rather than letting it grow');
 assert(/headExtra = null,/.test(full) && /const extra = headExtra\?\.\(\);/.test(full)
-  && /bar\.append\(undo, span\('sfspace'\)\);\s*\n\s*const extra/.test(full)
+  && /bar\.append\(span\('sfspace'\)\);\s*\n\s*const extra/.test(full)
   && /headExtra: \(\) => masterMeter\.root/.test(standalone)
   && !/headExtra/.test(mixerEntry),
   'the title bar takes one extra control, and only the playground passes one');

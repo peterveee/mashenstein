@@ -157,6 +157,8 @@ const heard = (data, from, to, rate = RATE) =>
       const lane = {
         nextEventId: 0,
         ctx: { sampleRate: RATE },
+        // An MRDR-3 lane talks to `lane.port` (the worklet's, or the farm's — controller.js).
+        port: { postMessage: (m) => posted.push(m) },
         node: { port: { postMessage: (m) => posted.push(m) } },
       };
       // The lines `_playMrdr3Aw` writes when a key goes down.

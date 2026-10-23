@@ -918,14 +918,14 @@ assert(/if \(gesturing\) editDeferred = true;\s*else onEdit/.test(touchedBody)
   'a slider keeps the live voice moving but persists its song-owned preset once per gesture');
 
 assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(noteFxEditors)
-  && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(noteFxEditors),
+  && /\[guitarOn, guitarStyle, guitarPosition, strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(noteFxEditors),
   'editing any bar Note FX control automatically enables that bar override');
 {
   const noteFxEditor = noteFxEditors.slice(noteFxEditors.indexOf('function openNoteFxEditor'),
     noteFxEditors.indexOf('function openBarEffectsEditor'));
   const regionEditor = entry.slice(entry.indexOf('function openRegionEditor'),
     noteFxEditors.indexOf('function openNoteFxEditor'));
-  assert(/notefxrender[\s\S]*Render Arp to Notes[\s\S]*renderArpToNotes/.test(noteFxEditor)
+  assert(/notefxrender[\s\S]*Render to Notes[\s\S]*renderArpToNotes/.test(noteFxEditor)
     && !regionEditor.includes("label: 'Render Arp to Notes'"),
   'Render Arp to Notes lives inside the Note FX popup rather than the region menu');
 }
@@ -936,7 +936,7 @@ assert(/const repeat = check\('Repeat pattern', view\.arp\.repeat !== false\)/.t
 // One live effect at a time. The processor hands an arpeggiated lane one tone per tick
 // and a strum needs two, so a lane with both ticked has only ever played the arp — the
 // panel now says that rather than showing a setting the engine ignores.
-assert(/return \{ arp, strum: \{ \.\.\.strum, enabled: strum\.enabled && !arp\.enabled \} \};/.test(noteFxEditors)
+assert(/arp, strum: \{ \.\.\.strum, enabled: strum\.enabled && !arp\.enabled \} \};/.test(noteFxEditors)
   && /if \(strumOn\.checked\) arpOn\.checked = false;/.test(noteFxEditors)
   && /if \(arpOn\.checked\) strumOn\.checked = false;/.test(noteFxEditors)
   && /for \(const control of \[strumDir, gap\]\) setLive\(control, strumOn\.checked\);/.test(noteFxEditors)
@@ -970,7 +970,7 @@ assert(/foot\.append\(cancelButton, resetButton, applyButton, applyCloseButton\)
   const rows = noteFxEditor.split(/pairRow\(\);/).slice(1)
     .map((chunk) => chunk.split(/fullRow\(\);|pairRow\(\);/)[0])
     .map((chunk) => [...chunk.matchAll(/const (\w+) = (?:field|number)\(/g)].map((m) => m[1]));
-  assert(JSON.stringify(rows) === JSON.stringify([['strumDir', 'gap'], ['arpDir', 'arpRate'],
+  assert(JSON.stringify(rows) === JSON.stringify([['strumDir', 'gap'], ['guitarStyle', 'guitarPosition'], ['arpDir', 'arpRate'],
     ['octaves', 'limit'], ['rangeLo', 'rangeHi'], ['gate', 'retrigger']])
     && /#regionedit\.notefxmodal \{ width: 500px; \}/.test(shell)
     && /\.notefxpair \{\s*display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(shell)
@@ -1015,8 +1015,10 @@ assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
   // 0.0001 is the noise ATTACK's floor alone: dsKickHard ships attack 0.000343 and the
   // engine takes the value raw, so a 1ms floor was a pot that rewrote a factory preset
   // on first touch — the exact failure tests/pot-coverage.js exists to catch.
+  // 0.02 and 0.005 are FRPP-6's RING and RELEASE, whose engine clamps there
+  // (src/engine/frpp6/schema.js): a pot below them would move nothing.
   assert(mins.length === envelopeTimeRows.length
-    && mins.every((m) => m === '0' || m === '0.001' || m === '0.0001' || m === 'min'),
+    && mins.every((m) => ['0', '0.001', '0.0001', '0.005', '0.02', 'min'].includes(m)),
     `every envelope time starts at zero or at its taper floor (${new Set(mins).size} distinct)`);
 }
 
@@ -1277,7 +1279,7 @@ assert(/head\.append\(title, sources,[^)]*search, close\)/.test(
 assert(!/voicePickerQuery/.test(voicePicker) && /category: !pending && selectedPreset \? presetClassification\(selectedPreset\)\.category : 'all'/.test(voicePicker),
   'the strip preset picker opens on related sounds without retaining an old search');
 assert(voicePicker.includes('createPresetBrowser({')
-  && voicePicker.includes('presetEngine(selectedPreset)')
+  && voicePicker.includes('entry(v.id, v.label, row.engine,')
   && !voicePicker.includes("engine = selectedEngine")
   && !voicePicker.includes("entry(null, 'Engine default'"),
   'the picker shares the faceted browser, shows the current engine, and starts across all engines');
@@ -1350,7 +1352,7 @@ assert(/const BACKGROUND_LOOKAHEAD = 1\.5;/.test(audio)
 // not pictures, and a seek that waits for you to look back is a broken seek.
 assert(/syncLoopAnchor\(\);\s*\n\s*syncPendingSeek\(\);\s*\n\s*syncPendingPlaybackFlash\(\);\s*\n\s*if \(typeof document !== 'undefined' && !document\.hasFocus\(\)\) \{\s*\n\s*requestAnimationFrame\(tick\);\s*\n\s*return;/.test(entry),
   'an unattended desk keeps its transport running and stops drawing meters at it');
-assert(/const mixerViewVisible = lowerView === 'mixer';[\s\S]*?for \(const mt of meters\) \{[\s\S]*?if \(!mixerViewVisible && mt\.key !== '__master-toolbar'\) continue;/.test(entry)
+assert(/const mixerViewVisible = lowerView === 'mixer';[\s\S]*?for \(const mt of meters\) \{[\s\S]*?if \(!mixerViewVisible && mt\.key !== '__master-toolbar' && !mt\.inspector\) continue;/.test(entry)
   && /for \(const \[key, readout\] of arrangementMeters\)[\s\S]*?updateArrangementMeter\(readout, lin, now, dt\)/.test(entry),
   'the hidden Mixer stops rendering its rack meters while the toolbar master VU and arrangement VUs remain live');
 // And it asks the browser for room to be late in, which the game must not inherit
@@ -2043,7 +2045,7 @@ assert(/header #fxbtn \{[^}]*width:\s*var\(--ctlh\)[^}]*min-width:\s*var\(--ctlh
   && /<button id="fxbtn"[^>]*>\s*<span aria-hidden="true">FX<\/span>/.test(shell)
   && !/<button id="fxbtn"[\s\S]*?<\/button>/.exec(shell)?.[0].includes('<svg'),
   'the toolbar effects action is a bold text FX control rather than an icon');
-assert(/v\.kind !== 'engine' && !v\.songLocal && !v\.draft/.test(
+assert(/\(!isBuiltIn\(v\) \|\| v\.id === picked\) && !v\.songLocal && !v\.draft/.test(
   readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
   && /!v\.songLocal && !v\.draft/.test(
     readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
@@ -2816,12 +2818,14 @@ assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*
 // happens to be on screen — and on a generated song, which names its sound in the bank
 // rather than in the mix, nothing is highlighted at all. The header says it in words,
 // and clicking it drops whatever filter is hiding the row and scrolls to it.
-assert(voicePicker.includes('if (!pending && selectedPreset)')
-  && voicePicker.includes("document.createElement(available ? 'button' : 'span')")
-  && voicePicker.includes('presetEngine(selectedPreset)')
-  && voicePicker.includes('browser.reveal(selectedPreset.id)')
+// Since the faceted browser (23 Oct 2026) the rows name the engine and the head offers
+// Show current preset, disabled when no filter could show that row.
+assert(voicePicker.includes("now.textContent = 'Show current preset'")
+  && voicePicker.includes('now.hidden = pending || !selectedPreset')
+  && voicePicker.includes('now.disabled = !voices().some((v) => v.id === selectedPreset.id)')
+  && voicePicker.includes('now.onclick = () => browser.reveal(selectedPreset.id)')
   && /#voicepicker \.voicenow \{[^}]*color: var\(--ink\)/s.test(shell),
-  'the preset selector names the current sound and engine and reveals its row on request');
+  'the preset selector offers Show current preset and reveals its row on request');
 // Sticky rather than scrolling away with the columns: the negative margin cancels the
 // panel's own padding so the band covers its full width, and the padding it takes in
 // exchange puts the row back where it sat.
@@ -2829,7 +2833,7 @@ assert(/#voicepicker \.voicehead \{[^}]*position: sticky[^}]*top: 0[^}]*align-it
   && /#voicepicker button\.voiceclose \{[^}]*position: absolute[^}]*top: 3px[^}]*right: 3px/s.test(shell),
   'the selector head stays visible at the top and its close sits in the upper-right corner');
 // Opening ON the current sound rather than at the top of a list it is somewhere inside.
-assert(/requestAnimationFrame\(\(\) => \{[\s\S]*?if \(!el\.classList\.contains\('show'\)\) return;[\s\S]*?currentRow\(\)\?\.scrollIntoView\(\{ block: 'nearest', inline: 'nearest' \}\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(voicePicker),
+assert(/requestAnimationFrame\(\(\) => \{[\s\S]*?if \(!el\.classList\.contains\('show'\)\) return;[\s\S]*?revealPresetRow\(currentRow\(\)\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(voicePicker),
   'the selector opens with the current preset already scrolled into view');
 assert(/id="font"[^>]*>[\s\S]*?<\/select>\s*<\/label>\s*<label[^>]*>\s*<span>Theme<\/span>\s*<select id="theme"/s.test(shell),
   'the colour theme selector sits beside the font selector in Desk settings');
@@ -3066,9 +3070,9 @@ assert(/const CATEGORY_LANE = \{[\s\S]*?Kick: 'kick'/.test(entry)
 // — a channel the grid it was added from cannot show a single note of.
 assert((entry.match(/addInstrument: \(anchor\) => addBlankTrack\(anchor, \{ drumsOnly: true \}\)/g) || []).length === 2
   && /\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\);/.test(entry)
-  && voicePicker.includes('const drumsOnly = pending ? !!pendingAddTrack()?.drumsOnly')
+  && voicePicker.includes('const drumsOnly = () => pending ? !!pendingAddTrack()?.drumsOnly')
   && voicePicker.includes(': PERCUSSION_LANES.includes(baseLane(laneKey))')
-  && voicePicker.includes('.filter((v) => !drumsOnly || isKitVoice(v) || v.id === chosen)')
+  && voicePicker.includes('.filter((v) => !drumsOnly() || isKitVoice(v) || v.id === chosen)')
   && /const blocked = home === 'lead' && pendingAddTrack\(\)\.drumsOnly;/.test(voicePicker),
   'both pattern editors can only add drums — the picker holds nothing but the kit and the'
   + ' re-key to a melodic lane is refused, while the arrangement plus stays neutral');
@@ -3081,10 +3085,10 @@ assert(/const isIndependentLane = \(key\)/.test(entry)
   'independent tracks are not presented as duplicates of Tom in the voice picker');
 assert(/function duplicateLane\(key\)[\s\S]*?duplicateLaneContent\(editBank\(\), arr, key, newKey\)[\s\S]*?\{ key: newKey, from, independent: true/.test(entry),
   'Duplicate snapshots the source pattern and declares the new track independent');
-assert(voicePicker.includes('const pending = pendingAddTrack()?.key === laneKey')
+assert(voicePicker.includes('let pending = pendingAddTrack()?.key === laneKey')
   && voicePicker.includes('createPresetBrowser({')
   && voicePicker.includes("pending ? 'Choose a preset for this new track'")
-  && voicePicker.includes('if (!pending && selectedPreset)'),
+  && voicePicker.includes("category: !pending && selectedPreset ? presetClassification(selectedPreset).category : 'all'"),
   'the plus picker starts on All without presenting the Tom engine default');
 assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStorage\.removeItem\(LANE_KEY\)[\s\S]*?rebuildForShape\(\)/.test(entry)
   // Two words on the button, the track named in the confirmation — which is the step you
@@ -3181,14 +3185,15 @@ assert(replicateFn
 // decides which — the arrangement row is the track, the mixer strip is its signal path.
 // Both used to open the track panel, which put one set of buttons behind two gestures and
 // made the result of a right-click unguessable from the thing under the pointer.
-assert(/function openTrackEditor\(x, y, key, options = \{\}\)[\s\S]*?wholeTrack: true, \.\.\.options/.test(entry)
+// Since 23 Oct 2026 the track's panel IS its channel inspector (openChannelEffects).
+assert(/function openTrackEditor\(x, y, key, options = \{\}\) \{\s*void x; void y; void options;\s*openChannelEffects\(key\);/.test(entry)
   && /function trackMenu\(el, key\)[\s\S]*?openTrackEditor\(ev\.clientX, ev\.clientY, key\)/.test(entry)
   && /trackMenu\(header, row\.key\)/.test(entry)
   && !/openTrackEditor/.test(entry.slice(entry.indexOf('function stripMenu'),
     entry.indexOf('function trackMenu')))
   && !entry.includes('trackMenuItems')
   && !/label: 'Adjust entire track…'/.test(entry),
-'the arrangement row opens the track panel and the strip no longer does');
+'the arrangement row opens the track\'s channel inspector and the strip no longer does');
 // The strip gets what the master and the sends have always had: the signal-path actions,
 // plus a direct door to the selected channel's Effects inspector.
 assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{Kind\}`[\s\S]*?label: `Reset \$\{Kind\}`/.test(entry)
@@ -4862,10 +4867,10 @@ assert(/function setTrackNoteFx\(key, next\) \{[\s\S]*?buildRack\(\);\s*\n(?:\s*
   assert(/if \(hasEnabledNoteFx\(next\)\) m\.lanes\[key\]\.noteFx = next;/.test(entry)
     && !/if \(next\??\.strum\??\.enabled/.test(entry),
   'both setters decide whether a lane keeps its Note FX by the same predicate');
-  // The one hand-written pair left in the entry is the BAR badge's, on purpose: a bar
-  // override can only set or silence the strum and the arpeggiator.
+  // The one hand-written gate left in the entry is the BAR badge's, on purpose: a bar
+  // override can only set or silence the strum, the arpeggiator and the guitar voicing.
   assert((bareEntry.match(/strum\?\.enabled \|\| fx\?\.arp\?\.enabled/g) || []).length === 1
-    && /const hasBarNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| fx\?\.arp\?\.enabled\);/.test(bareEntry)
+    && /const hasBarNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| fx\?\.arp\?\.enabled \|\| fx\?\.guitar\?\.enabled\);/.test(bareEntry)
     && /hasBarNoteFx\(trackNoteFx\) \? 'NFX OFF'/.test(bareEntry)
     && /hasBarNoteFx\(resolveNoteFx\(trackNoteFx, barPlanEntry, key\)\) \? 'NFX'/.test(bareEntry),
   'the only strum-or-arp gate left on the desk is the bar badge\'s, which Auto Portamento deliberately is not part of');
@@ -5020,8 +5025,8 @@ assert(/function setTrackNoteFx\(key, next\) \{[\s\S]*?buildRack\(\);\s*\n(?:\s*
     assert(same(shown.shownPortamento({ portamento: { version: 2, enabled: true, amount: 90 } }),
       shown.NOTE_FX_BLANK.portamento),
     'a version this build does not read shows as the blank — it is left alone, not interpreted');
-    assert(same(Object.keys(shown.shownNoteFx({ portamento: on() })).sort(), ['arp', 'strum']),
-      'shownNoteFx is still the strum and the arpeggiator alone — its return is not the portamento\'s');
+    assert(same(Object.keys(shown.shownNoteFx({ portamento: on() })).sort(), ['arp', 'guitar', 'strum']),
+      'shownNoteFx is still the strum, the arpeggiator and the guitar voicing alone — its return is not the portamento\'s');
   }
 
   // What the card tells a lane about its sound, run against the real catalogue. A melodic
@@ -5118,7 +5123,7 @@ assert(/function setTrackNoteFx\(key, next\) \{[\s\S]*?buildRack\(\);\s*\n(?:\s*
   assert(/analysis = autoPortamentoReport\?\.\(key\) \?\? null; \} catch \{ analysis = null; \}/.test(bare)
     && /'No suitable connections'/.test(bare)
     && /analysis\.eligible === 0/.test(bare) && /analysis\.supported !== false/.test(bare)
-    && /applyButton\.onclick = \(\) => \{ if \(applyNoteFx\(\)\) slide\?\.refresh\(\); \};/.test(bare),
+    && /applyButton\.onclick = \(\) => \{ if \(applyNoteFx\(\)\) \{ slide\?\.refresh\(\); refreshRender\(\); \} \};/.test(bare),
   'the engine\'s analysis is asked defensively and never breaks the panel: no answer is no line, none to slide says so');
   assert(/slide\?\.stage\(fx\);/.test(bare) && /wiped = !isForeignSlide\(fx\?\.portamento\);/.test(bare),
     'Reset empties the card with the rest of the panel');
@@ -6086,7 +6091,7 @@ delete CATALOGUE[copyId];
   // genuinely absent from layout, so its DOM must not be read or painted; arrangement
   // VUs still use the same frame and their own live lookup.
   assert(/const mixerViewVisible = lowerView === 'mixer';/.test(frame)
-    && /for \(const mt of meters\) \{[\s\S]*?if \(!mixerViewVisible && mt\.key !== '__master-toolbar'\) continue;/.test(frame)
+    && /for \(const mt of meters\) \{[\s\S]*?if \(!mixerViewVisible && mt\.key !== '__master-toolbar' && !mt\.inspector\) continue;/.test(frame)
     && /for \(const \[key, readout\] of arrangementMeters\)/.test(frame),
     'the hidden Mixer leaves its rack meters alone while the toolbar master VU and arrangement VUs keep drawing');
   // When Mixer IS visible, an out-of-sight strip is culled but the master remains a

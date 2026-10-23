@@ -458,7 +458,13 @@ export function createSynthFull({
         // built by the strip's own `tapsGroup` — so it is gated on being taps rather than
         // on having rows to draw, which is the test every other door passes.
         if (p.taps) right.append(tapsPanel(c, p));
-        else if (p.rows.length) right.append(sectionPanel(c, p));
+        else if (p.rows.length) {
+          const door = sectionPanel(c, p);
+          // A door can vanish with the patch, as a row can (`hideWhen`): FRPP-6's PLUCK door
+          // holds pluck-only controls, so a bowed string has no door at all.
+          if (p.hideWhen) guards.push(door, p.hideWhen, true);
+          right.append(door);
+        }
       }
       if (curveRows.length) right.append(curvePanel(c, curveRows));
       // No per-card count. It was the completeness invariant rendered, which was a good

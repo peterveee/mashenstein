@@ -5090,7 +5090,8 @@ function buildScopedFullLayout(voice, problems) {
       // ADVANCED behind a door on PLUCK — the drum kit's TAPS door, the same mechanism.
       // Every one of FRPP-6's own cards draws what its pots do (Peter, 23 Oct 2026).
       stack(
-        item({ ...take('pluck'), panels: [{ label: 'ADVANCED', title: 'Pluck · Advanced',
+        // Hidden for BOW: BRIGHT and SETTLE shape a pluck, and a bow has none (Peter, 24 Oct 2026).
+        item({ ...take('pluck'), panels: [{ label: 'ADVANCED', title: 'Pluck · Advanced', hideWhen: fzPlucked,
           group: { tip: byKey.get('pluckAdvanced')?.tip }, rows: take('pluckAdvanced').rows }] },
         { graph: 'pluck' }),
         // No drawing: the dropdowns say what they are (Peter, 23 Oct 2026).

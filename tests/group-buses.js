@@ -292,8 +292,11 @@ try {
     const inside = [9, 11, 13, 15].map((i) => dB(rms(d.x, (i + 0.2) * SPB, (i + 0.8) * SPB) / rms(c.x, (i + 0.2) * SPB, (i + 0.8) * SPB)));
     assert(inside.every((v) => Math.abs(v + 12) < 0.05),
       `and takes the group's members down through its stretch (${inside.map((v) => v.toFixed(2)).join(', ')} dB)`);
-    assert(maxDiff(c.x, d.x, 0, 8 * SPB - 0.001) < 1e-6 && maxDiff(c.x, d.x, 16 * SPB + 0.01, 4) < 1e-6,
-      'and nowhere else');
+    // Up to the 4 ms crossfade a switch ENDS on its section's time with (makeSectionSwitch,
+    // 19 Oct 2026: a hit on the section's first sixteenth is wholly inside it).
+    const before = maxDiff(c.x, d.x, 0, 8 * SPB - 0.0045), after = maxDiff(c.x, d.x, 16 * SPB + 0.01, 4);
+    assert(before < 1e-6 && after < 1e-6,
+      `and nowhere else (before ${before.toExponential(1)}, after ${after.toExponential(1)})`);
     assert(!d.probe.phantom, 'no strip is built for a group\'s arrangement key');
     // A SWEEP: the group faded 0 → -24 dB across bar one.
     const e = await render('fx:lead:sweep', { bank: leadOnly, mix: grouped, arrangement: section(

@@ -1309,7 +1309,7 @@ try {
     const keptSounds = (await import(`${pathToFileURL(join(temp, 'tools/lib/banger/sounds.js')).href}?v=${Math.random()}`)).BANGER_SOUNDS;
     const voicesSrc = readFileSync(tempVoices, 'utf8');
     assert(keptUse.ok && keptUse.kept?.[0]?.id === 'seedEurobeatBass' && keptSounds.eurobeat.parts.bass === 'seedEurobeatBass'
-      && /seedEurobeatBass: \{ label: 'My Bass · Eurobeat'/.test(voicesSrc) && /seedEurobeatBass: 0\.05/.test(voicesSrc),
+      && /seedEurobeatBass: \{ label: 'My Bass Eurobeat'/.test(voicesSrc) && /seedEurobeatBass: 0\.05/.test(voicesSrc),
     `a sound tuned on the seed is kept as a preset of its own, measured, and the style plays it (${keptUse.problems?.join('; ') || 'ok'})`);
     await useAsStyle(temp, seedId, { measure, voicesFile: tempVoices });
     assert(measured === 1 && (readFileSync(tempVoices, 'utf8').match(/seedEurobeatBass: \{/g) || []).length === 1,

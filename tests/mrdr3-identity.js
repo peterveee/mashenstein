@@ -342,8 +342,8 @@ assert(!read('tools/lib/mix-source.js').includes('mrdrComparison'),
   // so a lane the disposing rack leaves behind is a lane the NEXT rack inherits — still
   // marked connected, still wired to the gates `_cutLaneGates` has just cut.
   //
-  // The two instruments answer that differently, and the difference is the point. TNGR-2
-  // releases its context outright. MRDR-3 must not: building a lane structured-clones the
+  // TNGR-2 used to release its context outright; it now keeps its nodes and chokes them
+  // (see VoiceRack.dispose). MRDR-3 must not release either: building a lane structured-clones the
   // table pyramid and the noise set into the processor, and the desk re-banks on a stop,
   // a voice change or an apply — so releasing ten lanes and rebuilding them a bar later
   // charges ten clones to a rendering audio thread, which is audible as a crack. What it
@@ -357,8 +357,11 @@ assert(!read('tools/lib/mix-source.js').includes('mrdrComparison'),
     const from = voices.search(/^ {2}dispose\(/m);
     assert(from >= 0, 'VoiceRack.dispose is where this test thinks it is');
     const body = from < 0 ? '' : voices.slice(from, voices.indexOf('\n  }\n', from));
-    assert(/releaseTngr2Context\(this\.ctx\)/.test(body),
-      'TNGR-2 releases its lanes when the rack is disposed');
+    // TNGR-2 keeps its nodes too since 23 Oct 2026 (the worklet heap never gave a
+    // released processor's memory back): it chokes every lane instead of releasing them.
+    assert(/for \(const lane of tngr2LanesOf\(this\.ctx\)\) tngr2Choke\(lane/.test(body)
+      && !/releaseTngr2Context\(this\.ctx\)/.test(body),
+      'TNGR-2 chokes its lanes when the rack is disposed, and keeps the nodes');
     assert(/mrdr3PanicAll\(this\.ctx/.test(body)
       && /releaseIdleMrdr3Lanes\(this\.ctx/.test(body),
       'and MRDR-3 clears every lane\'s queue and reaps only the idle ones, because'

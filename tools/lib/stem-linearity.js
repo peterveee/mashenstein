@@ -38,6 +38,8 @@ const LINEAR_CANDIDATES = [
   // A gain moved by the trigger track's NOTES, not by any signal — the same in every
   // render, because a stem render keeps the trigger tracks in (muted) for exactly this.
   'duck',
+  // The Channel card: shelves, a level, a pan and send offsets — all linear.
+  'strip',
 ];
 const KNOWN = new Set(EFFECTS.map((def) => def.id));
 // An id that is not (or is no longer) an effect is dropped rather than trusted.

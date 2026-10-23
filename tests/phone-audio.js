@@ -61,7 +61,11 @@ assert(applyPhoneAudioProfile(stub, detectPlatform({ ua: DESKTOP })) === null &&
 
 // THE ORDERING, which is the whole point: latencyHint is an AudioContext constructor
 // argument, so a call that lands after ensure() is a call that silently does nothing.
-const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+// audioRestart() builds a fresh context long after boot, so its ensure() calls are cut out.
+const mainSrc = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+const restartAt = mainSrc.indexOf('async function audioRestart(');
+const main = restartAt < 0 ? mainSrc
+  : mainSrc.slice(0, restartAt) + mainSrc.slice(mainSrc.indexOf('\n}\n', restartAt) + 3);
 const applyAt = main.indexOf('applyPhoneAudioProfile(Audio, platform)');
 const ensureAt = main.indexOf('Audio.ensure()');
 assert(applyAt > 0 && ensureAt > 0 && applyAt < ensureAt,

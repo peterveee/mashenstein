@@ -297,7 +297,8 @@ const call = (script) => `(${script.toString()})`;
 
   // The controller puts the treatment on the wire and nothing else on it.
   const sent = [];
-  const fakeLane = { ctx: { sampleRate: RATE }, node: { port: { postMessage: (m) => sent.push(m) } } };
+  // An MRDR-3 lane talks to `lane.port` (the worklet's, or the farm's — controller.js).
+  const fakeLane = { ctx: { sampleRate: RATE }, port: { postMessage: (m) => sent.push(m) } };
   mrdr3NoteOn(fakeLane, { at: 0.5, hz: C4, durSeconds: 0.2, eventId: 7, auto: slide() });
   mrdr3NoteOn(fakeLane, { at: 0.6, hz: D4, durSeconds: 0.2, eventId: 8 });
   assert(sent[0].auto?.kind === 'slide' && sent[0].auto.from === 'a' && sent[0].auto.glide === SLIDE,

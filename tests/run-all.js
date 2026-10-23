@@ -511,6 +511,9 @@ const suites = [
   // RMND-7's optional filter: a native cascade behind Tone's FM/AM classes, swept on the
   // same envelope as CRLS-1, and absent from the preset until switched on. Four renders.
   'tests/rmnd7-filter.js',
+  // MRDR-3's layer FM envelope with SUSTAIN and RELEASE: the desk panel, the worklet core
+  // and the native path agree on it, and the Mod LFO's TARGET FM moves it on both.
+  'tests/mrdr3-fm-adsr.js',
   // A native vibrato starts at the same point in its wobble wherever in a render quantum
   // its note lands. Twelve renders.
   'tests/vibrato-start.js',

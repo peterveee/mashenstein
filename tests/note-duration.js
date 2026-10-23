@@ -417,8 +417,11 @@ try {
   // Straight is not "nearly straight": 50 is the grid, at the sample. This is the same
   // claim the null test makes for the whole engine, made here where a failure names the
   // path that broke it.
-  assert(same(straightVoiced, await play({ hats: HATS(), hatsVoice: hatPreset.id, swing: 50 })),
-    'a swing of 50 through the preset path is bit-identical to no swing at all');
+  // Within 1e-6, not bit for bit: two renders of this preset with nothing changed differ by
+  // ~1e-7 (24 Oct 2026), so bit-identical is a bar the preset path cannot meet run to run.
+  const near = (a, b) => a.outL.length === b.outL.length && a.outL.every((v, i) => Math.abs(v - b.outL[i]) < 1e-6);
+  assert(near(straightVoiced, await play({ hats: HATS(), hatsVoice: hatPreset.id, swing: 50 })),
+    'a swing of 50 through the preset path is the same as no swing at all (to render noise)');
 
   // Unequal lengths among simultaneous chord tones: the whole reason the lengths are per
   // tone rather than per onset.
