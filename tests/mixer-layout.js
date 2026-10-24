@@ -4775,6 +4775,14 @@ assert(/function setLaneVoice[\s\S]*?if \(independent\) buildArrangement\(\); el
   && /function refreshLaneIdentity\(laneKey\)[\s\S]*?\.arrname[\s\S]*?\.arrpresetcat[\s\S]*?delete name\.dataset\.full;[\s\S]*?markClipped\(row\);[\s\S]*?category\.textContent = preset\?\.category/
     .test(entry),
   'choosing a preset renames the arrangement row as well as the strip');
+// A preset on a worklet engine chosen under a playing song builds its lane BEFORE the
+// choice lands; built by its first note, it was a mid-bar stall on every engine change.
+// The editor's Save-as-New handoff repoints at a sound already playing and must not wait.
+assert(/function setLaneVoice\([^)]*warmFirst = true[\s\S]*?if \(warmFirst && playing && voiceId\)[\s\S]*?Audio\.warmLaneVoice\?\.\(laneKey, VOICES\[voiceId\]\)[\s\S]*?ticket !== laneVoiceTicket[\s\S]*?warmFirst: false/
+  .test(entry)
+  && /assign: \(laneKey, id\) => \{[^}]*warmFirst: false/.test(entry)
+  && /function undo\(\) \{[\s\S]{0,300}laneVoiceTicket\+\+/.test(entry),
+  'a live preset change warms its worklet lane first, and undo cancels one still warming');
 // A click on a track selects it wherever it lands. Half a header that answered a click
 // and half that did not read as a dead row.
 //
