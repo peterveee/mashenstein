@@ -1037,7 +1037,7 @@ export const banger = {
     {
       "lane": "lead5",
       "part": "part:arp",
-      "preset": "mrdrFunkGuitarMuted",
+      "preset": "frppFunkMuted",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1870,7 +1870,7 @@ export const banger = {
         "role": "arp",
         "lane": "lead5",
         "label": "ARP · Funk Guitar · Muted",
-        "voice": "mrdrFunkGuitarMuted",
+        "voice": "frppFunkMuted",
         "voiceParams": null,
         "strip": {
           "gain": -11,
@@ -2129,7 +2129,7 @@ export const mix = {
   layers: [{ key: "rim2", from: "rim", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "crash2", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead8", from: "lead", independent: true }],
   order: ["kick","snare","clap","hats","ohats","crash","tom","rim","rim2","rim3","tom2","crash2","bass","bass2","chords","chords2","lead","lead2","lead3","lead4","lead5","lead6","lead7","lead8"],
   labels: {"kick":"KICK","snare":"SNARE Roll","clap":"CLAP","hats":"HATS","ohats":"OPEN HATS","crash":"CRASH","tom":"FILL TOMS","rim":"PERC Shaker","rim2":"PERC Tambourine","rim3":"PERC Cowbell","tom2":"PERC Congas","crash2":"RIDE","bass":"SYNTH SLAP · Synth Slap","bass2":"SUB · Sub Sine","chords":"FM PIANO · FM Piano","chords2":"PAD · Warm Strings","lead":"RIFF Grand · HOOK","lead2":"HOOK DOUBLE · Sync Wire Clav","lead3":"HOOK 8VA · Celesta","lead4":"LEAD 8VA · Brass Section","lead5":"ARP · Funk Guitar · Muted","lead6":"CHOIR · Sung Choir Aah","lead7":"THIRD BELOW · FM Piano","lead8":"ORCH HIT · Orchestra Hit"},
-  voice: {"kickVoice":"ds808Kick","snareVoice":"snareFat","clapVoice":"clapRoom","hatsVoice":"simple808StyleHat","ohatsVoice":"ds808OpenHat","crashVoice":"crash808Long","tomVoice":"ds808Tom","rimVoice":"shaker","rim2Voice":"tambourine","rim3Voice":"tr808CowbellClassic","tom2Voice":"congaMid","crash2Voice":"ride909SixBit","bassVoice":"mrdrSynthSlap","bass2Voice":"stSubSine","chordsVoice":"rmndDxPiano","chords2Voice":"tngrWarmStrings","leadVoice":"mrdrElectricGrand","lead2Voice":"syncWireClav","lead3Voice":"tngrCelesta","lead4Voice":"tngrBrassSection","lead5Voice":"mrdrFunkGuitarMuted","lead6Voice":"jmjrChoirAah","lead7Voice":"rmndDxPiano","lead8Voice":"mrdrOrchHit"},
+  voice: {"kickVoice":"ds808Kick","snareVoice":"snareFat","clapVoice":"clapRoom","hatsVoice":"simple808StyleHat","ohatsVoice":"ds808OpenHat","crashVoice":"crash808Long","tomVoice":"ds808Tom","rimVoice":"shaker","rim2Voice":"tambourine","rim3Voice":"tr808CowbellClassic","tom2Voice":"congaMid","crash2Voice":"ride909SixBit","bassVoice":"mrdrSynthSlap","bass2Voice":"stSubSine","chordsVoice":"rmndDxPiano","chords2Voice":"tngrWarmStrings","leadVoice":"mrdrElectricGrand","lead2Voice":"syncWireClav","lead3Voice":"tngrCelesta","lead4Voice":"tngrBrassSection","lead5Voice":"frppFunkMuted","lead6Voice":"jmjrChoirAah","lead7Voice":"rmndDxPiano","lead8Voice":"mrdrOrchHit"},
   fx: { reverb: { decay: 2.8 } },
   lanes: {
     snare: { gain: 0.9, effects: [{ id: "reverb", params: { decay: 1.8, preDelay: 0.005, wet: 0.5 } }, { id: "noisegate", params: { threshold: -34, attack: 0.002, release: 0.08 } }] },

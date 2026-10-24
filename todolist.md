@@ -370,6 +370,45 @@ passes `minSeconds`. Neither the script nor the renders are tracked.
 - The pre-mixer versions (28 Jul, `1bdf353^`) are also renderable, through that
   commit's own `tools/render-track.js`. They sit in `work/auditions/premixer-originals/`.
 
+### Velocity editing in the piano roll, and velocity that adds impact
+Velocity is stored per note as `${lane}Velocity`, a number from 0 to 1 with no fixed
+steps (blank means full strength). Every edit has carried it since 24 Oct, and it is listed
+in `NOTE_ATTRS` (src/engine/lanes.js). What is missing is a way to edit it, and sounds that
+react to it in more than volume.
+
+- **A velocity editor in the roll.** A lane of bars under the notes, or a drag on the note
+  itself. Muting already shows the pattern: `stageAttrs` in tools/mixer-bar-grid.js
+  stages an attribute without redrawing the note.
+- **New notes default to about 0.8** (MIDI 100), so harder hits have room above. Existing
+  songs stay at 1.0: they are levelled to -21 LUFS and pass the null test as they are.
+  The ~-2 dB that new songs lose is absorbed when they are levelled.
+- **Impact comes from more than level.** Velocity is a straight volume scale on most
+  voices (voices.js `play`), so 0.8 to 1.0 is only +2 dB. Give the main bass and lead
+  synths a velocity-to-filter setting like MRDR-3's `velocity.filter`, and maybe a
+  velocity-to-attack one, so that a hard hit is also brighter and sharper.
+- **Maybe a curve.** Under a straight volume scale, half a slider's travel is -6 dB down to
+  silence. A curve, or showing MIDI-style 1–127, would make the range easier to use.
+- 11 song files carry velocities today (gravity.js plus ten imported ones), mostly at
+  0.35 / 0.62 / 1.
+- **Layout picked (24 Oct): option A** from `work/local/velocity-editor-mockup.html`
+  (untracked; the picture is beside it). The Volume strip under the roll gets a VOL / VEL
+  switch in its label column. VEL draws one stalk per note, with the volume line kept as a
+  faint shadow behind it. Drag a stalk; shift-click several and drag them by the same amount;
+  drag across empty space for a ramp. A dashed line marks the default (100). Muted notes get a
+  hollow stalk, and chords one stalk per step. Option C (velocity drawn on the note, ⌥-drag)
+  may be added later on top of A.
+- **The strip is the place for every lane like this.** The switch grows into a picker
+  (VOL · VEL · PAN · BEND …), and becomes a drop-down past three or four, with an option
+  to pin a second strip open. Each entry belongs to one of two families:
+  - *Per note, drawn as stalks:* velocity, per-note pan, per-note pitch offset. Each one
+    goes into `NOTE_ATTRS`, so it moves, copies and gets deleted with the note for free.
+  - *Over time, drawn as a line:* volume, channel pan, a filter sweep. These live in the
+    existing automation behind the Volume strip, and note edits never touch them.
+  - The rule: what belongs to the note travels with the note, and what belongs to the
+    track stays on the timeline. **Pitch bend fits neither.** It is a curve inside a
+    note, closer to a small per-note curve editor or to Auto Portamento's slides, and
+    needs a design of its own.
+
 ## Done
 <!-- move shipped items here with a date -->
 

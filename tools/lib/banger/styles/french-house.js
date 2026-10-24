@@ -27,6 +27,10 @@ export const FRENCH_HOUSE = Object.freeze({
   // The wah guitar is the loop: it plays its own figure, from the first phrase.
   arpFixed: true,
   enter: { arp: 0 },
+  // Guitar chords strummed tight, down and up (guitar.js), and the wah guitar's loop played as funk
+  // stabs and chucks in about two takes in three (Guitar: Random).
+  guitarStrum: { direction: 'alternate-down', gapMs: 7, upDb: -4 },
+  funkGuitar: { strummed: 0.65 },
   defaults: {
     mood: 'funky',
     form: { template: 'club', doubleDrop: false, hardStop: false, keyLift: 'none' },

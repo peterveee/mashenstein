@@ -101,6 +101,9 @@ import * as CHOPIN_MINUTE_WALTZ_BOOGIE_VELVET_SWITCH from './chopin-minute-waltz
 import * as CHOPIN_MINUTE_WALTZ_BOOGIE from './chopin-minute-waltz-boogie.js';
 import * as CHOPIN_MINUTE_WALTZ_CLUB from './chopin-minute-waltz-club.js';
 import { CHOPIN3 } from './chopin3.js';
+import * as CORP_FUNKHY_2 from './corp-funkhy-2.js';
+import * as CORP_FUNKHY_3 from './corp-funkhy-3.js';
+import * as CORP_FUNKHY from './corp-funkhy.js';
 import * as CORP_REMIX_1_COPY_2 from './corp-remix-1-copy-2.js';
 import * as CORP_REMIX_1 from './corp-remix-1.js';
 import * as CORPORATE_KOMBAT_V1_8BIT from './corporate-kombat-v1-8bit.js';
@@ -216,6 +219,7 @@ import * as OFFICE_PREVIEW_NEW_JACK from './office-preview-new-jack.js';
 import * as OFFICE_PREVIEW_OFFICE_MACHINES from './office-preview-office-machines.js';
 import * as OFFICE_PREVIEW_POWER_SUIT from './office-preview-power-suit.js';
 import * as OFFICE_PREVIEW_TRADING_FLOOR from './office-preview-trading-floor.js';
+import * as OFFICE_REMIX_BLUE_CHIP from './office-remix-blue-chip.js';
 import * as OFFICE_THEME_1_THE_CLIMB from './office-theme-1-the-climb.js';
 import * as OFFICE_THEME_2_HOSTILE_BOARDROOM from './office-theme-2-hostile-boardroom.js';
 import * as OFFICE_THEME_3_EXECUTIVE_NOIR from './office-theme-3-executive-noir.js';
@@ -273,6 +277,10 @@ import * as SESERAGI_V9_SYNDRUM from './seseragi-v9-syndrum.js';
 import * as SHOP_80BPM from './shop-80bpm.js';
 import * as SHOP_8BIT from './shop-8bit.js';
 import * as SHOP_CHORDS from './shop-chords.js';
+import * as SHOP_REMIX_AISLE_FEVER from './shop-remix-aisle-fever.js';
+import * as SHOP_REMIX_BROWSING_BOSSA from './shop-remix-browsing-bossa.js';
+import * as SHOP_REMIX_HOT_CLUB from './shop-remix-hot-club.js';
+import * as SHOP_REMIX_STEEL_STRING from './shop-remix-steel-string.js';
 import * as SHOPPING_FULL from './shopping-full.js';
 import * as SHOPPINGCHANNEL_SWING from './shoppingchannel-swing.js';
 import * as SHOPPINGCHANNEL_WVE from './shoppingchannel-wve.js';
@@ -430,6 +438,9 @@ export const IMPORTED_BY_ID = {
   "chopin-minute-waltz-boogie": { bank: CHOPIN_MINUTE_WALTZ_BOOGIE.bank, title: CHOPIN_MINUTE_WALTZ_BOOGIE.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_BOOGIE.banger },
   "chopin-minute-waltz-club": { bank: CHOPIN_MINUTE_WALTZ_CLUB.bank, title: CHOPIN_MINUTE_WALTZ_CLUB.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_CLUB.banger },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
+  "corp-funkhy-2": { bank: CORP_FUNKHY_2.bank, title: CORP_FUNKHY_2.title, group: "copy", writable: true },
+  "corp-funkhy-3": { bank: CORP_FUNKHY_3.bank, title: CORP_FUNKHY_3.title, group: "copy", writable: true },
+  "corp-funkhy": { bank: CORP_FUNKHY.bank, title: CORP_FUNKHY.title, group: "copy", writable: true },
   "corp-remix-1-copy-2": { bank: CORP_REMIX_1_COPY_2.bank, title: CORP_REMIX_1_COPY_2.title, group: "copy", writable: true },
   "corp-remix-1": { bank: CORP_REMIX_1.bank, title: CORP_REMIX_1.title, group: "copy", writable: true },
   "corporate-kombat-v1-8bit": { bank: CORPORATE_KOMBAT_V1_8BIT.bank, title: CORPORATE_KOMBAT_V1_8BIT.title, group: "copy", writable: true },
@@ -545,6 +556,7 @@ export const IMPORTED_BY_ID = {
   "office-preview-office-machines": { bank: OFFICE_PREVIEW_OFFICE_MACHINES.bank, title: OFFICE_PREVIEW_OFFICE_MACHINES.title, group: "imported", writable: true },
   "office-preview-power-suit": { bank: OFFICE_PREVIEW_POWER_SUIT.bank, title: OFFICE_PREVIEW_POWER_SUIT.title, group: "imported", writable: true },
   "office-preview-trading-floor": { bank: OFFICE_PREVIEW_TRADING_FLOOR.bank, title: OFFICE_PREVIEW_TRADING_FLOOR.title, group: "imported", writable: true },
+  "office-remix-blue-chip": { bank: OFFICE_REMIX_BLUE_CHIP.bank, title: OFFICE_REMIX_BLUE_CHIP.title, group: "alternate", writable: true, alternateOf: "office" },
   "office-theme-1-the-climb": { bank: OFFICE_THEME_1_THE_CLIMB.bank, title: OFFICE_THEME_1_THE_CLIMB.title, group: "alternate", writable: true, alternateOf: "office" },
   "office-theme-2-hostile-boardroom": { bank: OFFICE_THEME_2_HOSTILE_BOARDROOM.bank, title: OFFICE_THEME_2_HOSTILE_BOARDROOM.title, group: "alternate", writable: true, alternateOf: "office" },
   "office-theme-3-executive-noir": { bank: OFFICE_THEME_3_EXECUTIVE_NOIR.bank, title: OFFICE_THEME_3_EXECUTIVE_NOIR.title, group: "alternate", writable: true, alternateOf: "office" },
@@ -602,6 +614,10 @@ export const IMPORTED_BY_ID = {
   "shop-80bpm": { bank: SHOP_80BPM.bank, title: SHOP_80BPM.title, group: "imported", writable: true },
   "shop-8bit": { bank: SHOP_8BIT.bank, title: SHOP_8BIT.title, group: "alternate", writable: true, alternateOf: "shop" },
   "shop-chords": { bank: SHOP_CHORDS.bank, title: SHOP_CHORDS.title, group: "copy", writable: true },
+  "shop-remix-aisle-fever": { bank: SHOP_REMIX_AISLE_FEVER.bank, title: SHOP_REMIX_AISLE_FEVER.title, group: "alternate", writable: true, alternateOf: "shop" },
+  "shop-remix-browsing-bossa": { bank: SHOP_REMIX_BROWSING_BOSSA.bank, title: SHOP_REMIX_BROWSING_BOSSA.title, group: "alternate", writable: true, alternateOf: "shop" },
+  "shop-remix-hot-club": { bank: SHOP_REMIX_HOT_CLUB.bank, title: SHOP_REMIX_HOT_CLUB.title, group: "alternate", writable: true, alternateOf: "shop" },
+  "shop-remix-steel-string": { bank: SHOP_REMIX_STEEL_STRING.bank, title: SHOP_REMIX_STEEL_STRING.title, group: "alternate", writable: true, alternateOf: "shop" },
   "shopping-full": { bank: SHOPPING_FULL.bank, title: SHOPPING_FULL.title, group: "copy", writable: true },
   "shoppingchannel-swing": { bank: SHOPPINGCHANNEL_SWING.bank, title: SHOPPINGCHANNEL_SWING.title, group: "copy", writable: true },
   "shoppingchannel-wve": { bank: SHOPPINGCHANNEL_WVE.bank, title: SHOPPINGCHANNEL_WVE.title, group: "copy", writable: true },

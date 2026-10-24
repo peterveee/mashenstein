@@ -918,7 +918,7 @@ assert(/if \(gesturing\) editDeferred = true;\s*else onEdit/.test(touchedBody)
   'a slider keeps the live voice moving but persists its song-owned preset once per gesture');
 
 assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(noteFxEditors)
-  && /\[guitarOn, guitarStyle, guitarPosition, strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(noteFxEditors),
+  && /\[guitarOn, guitarStyle, guitarPosition, strumOn, strumDir, gap, downTrim, upTrim, arpOn, arpDir, arpRate, octaves, limit,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(noteFxEditors),
   'editing any bar Note FX control automatically enables that bar override');
 {
   const noteFxEditor = noteFxEditors.slice(noteFxEditors.indexOf('function openNoteFxEditor'),
@@ -970,7 +970,7 @@ assert(/foot\.append\(cancelButton, resetButton, applyButton, applyCloseButton\)
   const rows = noteFxEditor.split(/pairRow\(\);/).slice(1)
     .map((chunk) => chunk.split(/fullRow\(\);|pairRow\(\);/)[0])
     .map((chunk) => [...chunk.matchAll(/const (\w+) = (?:field|number)\(/g)].map((m) => m[1]));
-  assert(JSON.stringify(rows) === JSON.stringify([['strumDir', 'gap'], ['guitarStyle', 'guitarPosition'], ['arpDir', 'arpRate'],
+  assert(JSON.stringify(rows) === JSON.stringify([['strumDir', 'gap'], ['downTrim', 'upTrim'], ['guitarStyle', 'guitarPosition'], ['arpDir', 'arpRate'],
     ['octaves', 'limit'], ['rangeLo', 'rangeHi'], ['gate', 'retrigger']])
     && /#regionedit\.notefxmodal \{ width: 500px; \}/.test(shell)
     && /\.notefxpair \{\s*display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(shell)
@@ -1276,7 +1276,7 @@ assert(/head\.append\(title, sources,[^)]*search, close\)/.test(
   && !/const searchRow = document\.createElement\('div'\)/.test(
     librarySource),
   'the preset search sits in the top header immediately before the far-right close');
-assert(!/voicePickerQuery/.test(voicePicker) && /category: !pending && selectedPreset \? presetClassification\(selectedPreset\)\.category : 'all'/.test(voicePicker),
+assert(!/voicePickerQuery/.test(voicePicker) && /const opening = !pending && selectedPreset \? presetClassification\(selectedPreset\) : null;[\s\S]*?category: opening\?\.category \|\| 'all'/.test(voicePicker),
   'the strip preset picker opens on related sounds without retaining an old search');
 assert(voicePicker.includes('createPresetBrowser({')
   && voicePicker.includes('entry(v.id, v.label, row.engine,')
@@ -2155,7 +2155,7 @@ assert(/#devices \{[^}]*position:\s*fixed[^}]*inset:\s*calc\(var\(--ctlh\) \+ 16
 // so they read as a single gesture. `visibility`, not `display`, because a panel that
 // stops existing has nothing to animate back out.
 assert(/:root \{[^}]*--fxdock-anim:[^}]*--fxdock-ease:/s.test(shell)
-  && /body \{[^}]*--fxdock-w:\s*min\(348px,[^}]*--fxdock:\s*0px;[^}]*padding-right:\s*0;/s.test(shell)
+  && /body \{[^}]*--fxdock-w:\s*min\(381px,[^}]*--fxdock:\s*0px;[^}]*padding-right:\s*0;/s.test(shell)
   && /body\.fxdock-open \{ --fxdock: var\(--fxdock-w\); \}/.test(shell)
   && /#desk \{[^}]*margin-right:\s*var\(--fxdock\);[^}]*margin-left:\s*0;[^}]*transition:[^}]*margin-left var\(--fxdock-anim\)/s.test(shell)
   && /body\.fxdock-left #desk \{[^}]*margin-right:\s*0;[^}]*margin-left:\s*var\(--fxdock\)/s.test(shell)
@@ -2188,9 +2188,9 @@ assert(/function trashIcon\(\) \{[\s\S]*?'M2\.3 3\.5h7\.4'[\s\S]*?\n\}/.test(ent
   && /remove\.className = 'rmhit'[\s\S]*?remove\.append\(closeIcon\(\)\)/.test(entry + noteFxEditors),
   'a plugin card is thrown away with a bin, not with the cross that means "put the panel away"');
 assert(!/id="devfold"/.test(shell)
-  && /addAction\([^;]*Collapse channel panel[\s\S]*?setChannelPanelCollapsed/.test(entry)
+  && !/addAction\([^;]*Collapse channel panel/.test(entry)
   && /effectsCollapsed: \$\('devices'\)\?\.classList\.contains\('channel-collapsed'\)/.test(entry),
-  'the header has no down caret and folding remains available from More');
+  'the header has no down caret and More omits the redundant collapse action');
 assert(/<button id="devcollapse"[^>]*aria-label="Collapse channel panel"/.test(shell)
   && /<div class="devnav" role="group" aria-label="Channel navigation">[\s\S]*?id="devprev"[\s\S]*?id="devnext"/.test(shell)
   && /#devices \.devnav \{[^}]*order:\s*3/s.test(shell)
@@ -2328,7 +2328,7 @@ assert(/function keepSelectedLaneVisible\(\)[\s\S]*?classList\.contains\('collap
 assert(/function syncArrangementLaneSelection[\s\S]*?const selected = el\.dataset\.lane === selectedLane\(\);[\s\S]*?classList\.toggle\('sel', selected\)[\s\S]*?if \(reveal\) keepSelectedLaneVisible\(\)/.test(deskLayout)
   && /function selectLane\(key\)[\s\S]*?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
   && /function loadTrack\(id\)[\s\S]*?buildArrangement\(\);[\s\S]{0,300}?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
-  && /function buildArrangement\(\)[\s\S]*?syncArrangementLaneSelection\(\);\s*\n\s*redrawSelection\(\)/.test(entry),
+  && /function buildArrangement\(layout = arrangementLayout\(\)\)[\s\S]*?syncArrangementLaneSelection\(\);\s*\n\s*redrawSelection\(\)/.test(entry),
   'channel selection and song load reveal the selected track while rebuilds preserve its mark');
 assert(/function selectLane\(key\)[\s\S]*?classList\.toggle\('selected', selected\)[\s\S]*?dataset\.lowerView === 'mixer'[\s\S]*?revealMixerStrip\(\$\('rack'\), chosenStrip\)/.test(entry),
   'selecting an arrangement track highlights and reveals its channel whenever the Mixer is visible');
@@ -2730,7 +2730,7 @@ assert(/\.arrrow \{[^}]*flex-direction:\s*column[^}]*height:\s*var\(--arrrow\)[^
   && /\.arrtrack-bottom \{[^}]*grid-row:\s*2/s.test(shell)
   && /#arrange \{[^}]*max-height:\s*calc\(var\(--arrhead-h\)\s*\+ var\(--arrrow\) \* var\(--arrmax-lanes\)\s*\+ var\(--arrgap\) \* \(var\(--arrmax-lanes\) - 1\)\s*\+ var\(--arrgrid-pad\) \+ 1px\)/s.test(shell)
   && /#arrgrid \{[^}]*overflow-x:\s*auto[^}]*padding:\s*0;[^}]*row-gap:\s*var\(--arrgap\)/s.test(shell)
-  && /const preset = presetForLane\(row\.key\)[\s\S]*?const displayLabel = customTrackLabel\(row\.key\) \|\| preset\?\.label \|\| row\.label[\s\S]*?preset\?\.category/.test(entry)
+  && /const preset = presetForLane\(row\.key\)[\s\S]*?displayLabel(?: =|:) customTrackLabel\(row\.key\) \|\| preset\?\.label \|\| row\.label[\s\S]*?preset\?\.category/.test(entry)
   && /const icon = frozen[\s\S]{0,120}?freezeMark\('arrtrack-icon arrfreeze', '❄'\)/.test(entry)
   && /top\.className = 'arrtrack-top'/.test(entry)
   && /bottom\.className = 'arrtrack-bottom'/.test(entry)
@@ -3072,7 +3072,8 @@ assert((entry.match(/addInstrument: \(anchor\) => addBlankTrack\(anchor, \{ drum
   && /\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\);/.test(entry)
   && voicePicker.includes('const drumsOnly = () => pending ? !!pendingAddTrack()?.drumsOnly')
   && voicePicker.includes(': PERCUSSION_LANES.includes(baseLane(laneKey))')
-  && voicePicker.includes('.filter((v) => !drumsOnly() || isKitVoice(v) || v.id === chosen)')
+  && voicePicker.includes('(drumsOnly() ? isKitVoice(v) : !pitchedOnly() || !isKitVoice(v))')
+  && voicePicker.includes('const pitchedOnly = () => !pending && !drumsOnly();')
   && /const blocked = home === 'lead' && pendingAddTrack\(\)\.drumsOnly;/.test(voicePicker),
   'both pattern editors can only add drums — the picker holds nothing but the kit and the'
   + ' re-key to a melodic lane is refused, while the arrangement plus stays neutral');
@@ -3088,7 +3089,8 @@ assert(/function duplicateLane\(key\)[\s\S]*?duplicateLaneContent\(editBank\(\),
 assert(voicePicker.includes('let pending = pendingAddTrack()?.key === laneKey')
   && voicePicker.includes('createPresetBrowser({')
   && voicePicker.includes("pending ? 'Choose a preset for this new track'")
-  && voicePicker.includes("category: !pending && selectedPreset ? presetClassification(selectedPreset).category : 'all'"),
+  && voicePicker.includes("const opening = !pending && selectedPreset ? presetClassification(selectedPreset) : null;")
+  && voicePicker.includes("category: opening?.category || 'all'"),
   'the plus picker starts on All without presenting the Tom engine default');
 assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStorage\.removeItem\(LANE_KEY\)[\s\S]*?rebuildForShape\(\)/.test(entry)
   // Two words on the button, the track named in the confirmation — which is the step you
@@ -3172,28 +3174,28 @@ assert(replicateFn
 // bars before the selection — which are the source and must not move.
 assert(replicateFn
   && !/insertSilence|duplicateBars|deleteBars|pasteBars|writeBarNotesShared/.test(replicateFn + replicateScan)
-  && /const laneBarPart = \(bank, draft, bar, lane\)[\s\S]*?notes: readBarLane\(bank, draft, bar, lane\)[\s\S]*?lengths: readBarLane\(bank, draft, bar, lenKey\(lane\)\)[\s\S]*?noteFx: entry\?\.noteFx\?\.\[lane\][\s\S]*?inlineFx: entry\?\.inlineFx\?\.\[lane\]/.test(barFields)
-  && /const writeLaneBarPart = \(bank, draft, bar, lane, part, current = null\)[\s\S]*?writeBarNotes\(bank, draft, bar, lane, part\.notes, part\.lengths\)[\s\S]*?setLanesOff[\s\S]*?setLanesDeleted[\s\S]*?transposeBars[\s\S]*?offsetBars[\s\S]*?gainBars[\s\S]*?panBars[\s\S]*?setBarNoteFx[\s\S]*?setBarEffects/.test(barFields)
+  && /const laneBarPart = \(bank, draft, bar, lane\)[\s\S]*?notes: readBarLane\(bank, draft, bar, lane\)[\s\S]*?lengths: readBarLane\(bank, draft, bar, lenKey\(lane\)\)[\s\S]*?attrs: readBarAttrs\(bank, draft, bar, lane\)[\s\S]*?noteFx: entry\?\.noteFx\?\.\[lane\][\s\S]*?inlineFx: entry\?\.inlineFx\?\.\[lane\]/.test(barFields)
+  && /const writeLaneBarPart = \(bank, draft, bar, lane, part, current = null\)[\s\S]*?writeBarNotes\(bank, draft, bar, lane, part\.notes, part\.lengths, part\.attrs \?\? null\)[\s\S]*?setLanesOff[\s\S]*?setLanesDeleted[\s\S]*?transposeBars[\s\S]*?offsetBars[\s\S]*?gainBars[\s\S]*?panBars[\s\S]*?setBarNoteFx[\s\S]*?setBarEffects/.test(barFields)
   // Every one of those writers copies the WHOLE draft, so a destination bar that already
   // agrees is skipped rather than written: laying a figure over the longest song in the
   // game is a fifth of a second of held main thread otherwise, which on this desk is a
   // hole in the music rather than a slow button. Same reason the write sits in `heavyUi`.
   && /const same = \(field\) => was && JSON\.stringify\(was\[field\]\) === JSON\.stringify\(now\[field\]\)/.test(barFields)
   && /if \(!same\('off'\)\) out = setLanesOff/.test(barFields),
-'a replicated bar carries the whole bar — notes, lengths and edits — into bars that already exist');
+'a replicated bar carries the whole bar — notes, lengths, velocities, mutes and edits — into bars that already exist');
 // Tracks do track things, channels do channel things, and WHERE you right-clicked is what
 // decides which — the arrangement row is the track, the mixer strip is its signal path.
 // Both used to open the track panel, which put one set of buttons behind two gestures and
 // made the result of a right-click unguessable from the thing under the pointer.
 // Since 23 Oct 2026 the track's panel IS its channel inspector (openChannelEffects).
 assert(/function openTrackEditor\(x, y, key, options = \{\}\) \{\s*void x; void y; void options;\s*openChannelEffects\(key\);/.test(entry)
-  && /function trackMenu\(el, key\)[\s\S]*?openTrackEditor\(ev\.clientX, ev\.clientY, key\)/.test(entry)
+  && /function trackMenu\(el, key\)[\s\S]*?buildChannelMore\(key,/.test(entry)
   && /trackMenu\(header, row\.key\)/.test(entry)
   && !/openTrackEditor/.test(entry.slice(entry.indexOf('function stripMenu'),
     entry.indexOf('function trackMenu')))
   && !entry.includes('trackMenuItems')
   && !/label: 'Adjust entire track…'/.test(entry),
-'the arrangement row opens the track\'s channel inspector and the strip no longer does');
+'the arrangement row shares channel panel actions while the strip retains its own menu');
 // The strip gets what the master and the sends have always had: the signal-path actions,
 // plus a direct door to the selected channel's Effects inspector.
 assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{Kind\}`[\s\S]*?label: `Reset \$\{Kind\}`/.test(entry)
@@ -3207,10 +3209,10 @@ assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{Kind\}`[\s\S
 // left to default here, because the default is the preset's own opinion — a drum
 // jumps to the full window from the strip's one ✎, which is right when there is one
 // button and wrong when there are two beside each other saying different things.
-assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePickerFor\(laneKey, \{ x, y \}\)[\s\S]*?label: 'Edit Simple'[\s\S]*?editVoice\(laneKey, \{ advanced: false, at: \{ x, y \} \}\)[\s\S]*?label: 'Edit Advanced'[\s\S]*?editVoice\(laneKey, \{ advanced: true, at: \{ x, y \} \}\)/.test(trackBranch)
+assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePickerFor\(laneKey, \{ x, y \}\)[\s\S]*?label: 'Tweak Preset'[\s\S]*?editVoice\(laneKey, \{ advanced: false, at: \{ x, y \} \}\)[\s\S]*?label: 'Edit Preset'[\s\S]*?editVoice\(laneKey, \{ advanced: true, at: \{ x, y \} \}\)/.test(trackBranch)
   // Offered only where there is a second surface behind it — the Drum Synth and
   // MRDR-3 — and gated on the editor's own answer rather than a list kept here.
-  && /trackPreset && isQuickVoice\(trackPreset\) && \{\s*label: 'Edit Advanced'/.test(trackBranch)
+  && /trackPreset && isQuickVoice\(trackPreset\) && \{\s*label: 'Edit Preset'/.test(trackBranch)
   && !/isNew: true/.test(trackBranch)
   && /label: 'Channel Effects'[\s\S]*?openChannelEffects\(laneKey\)/.test(trackBranch)
   && /label: 'Duplicate',\s*title: layersOf\(laneKey\)\.length/.test(trackBranch)
@@ -3322,7 +3324,7 @@ assert(/function editVoice\(laneKey, \{ advanced, at = null \} = \{\}\)/.test(ed
   && /placeVoiceEditor\(\);\s*placeEditorAtPointer\(at\);/.test(editVoiceFn),
 'the preset editor opens at the click that asked for it, on both of its surfaces');
 const stripMenuAt = entry.slice(entry.indexOf('function stripMenu(el, key, kind)'),
-  entry.indexOf('/** The TRACK panel'));
+  entry.indexOf('/** Track actions'));
 assert(/const at = \{ x: ev\.clientX, y: ev\.clientY \};/.test(stripMenuAt)
   && /editVoice\(key, \{ advanced: false, at \}\)/.test(stripMenuAt)
   && /editVoice\(key, \{ advanced: true, at \}\)/.test(stripMenuAt)
@@ -3626,7 +3628,7 @@ assert(/let cols = 16;\s*\n\s*let colStride = 1;/.test(barGrid)
 // An off-grid note is not hidden and not moved: it is drawn inside the column it falls
 // in, as a real `.ssqcell` carrying its own storage slot — which is why selection,
 // dragging, resizing and the keyboard reach it without knowing it exists.
-assert(/insets\.push\(\{ at: k \/ colStride, step: i \+ k, value, len: pair\.lengths\[i \+ k\] \?\? null \}\)/.test(barGrid)
+assert(/insets\.push\(\{ at: k \/ colStride, step: i \+ k, value, len: pair\.lengths\[i \+ k\] \?\? null,\s*attrs: attrsAt\(pair, i \+ k\) \}\)/.test(barGrid)
   && /const inset = from > 0;/.test(barGrid)
   && /cell\.style\.setProperty\('--at', String\(from\)\)/.test(barGrid)
   && /drawnSpan\(field, at, cellSpan\(row, value, len, f\.b, step\), from\)/.test(barGrid)
@@ -4615,12 +4617,12 @@ assert(/function schedulePianoRollOpen\([\s\S]*?if \(!notesRollUp\(\) \|\| piano
 const channelStrip = entry.slice(entry.indexOf('function channelStrip'), entry.indexOf('function sendStrip'));
 assert(channelStrip.includes('label: customTrackLabel(key) || preset?.label || lane.label')
   && channelStrip.includes('sublabel: preset?.category || null')
-  && channelStrip.includes("presetName.classList.add('strippreset')")
-  && channelStrip.includes('openVoicePicker(ev.clientX, ev.clientY, key)')
+  && !channelStrip.includes('openVoicePicker(ev.clientX, ev.clientY, key)')
+  && !channelStrip.includes("head.addEventListener('contextmenu'")
   && !entry.includes('function voiceRow')
   && !entry.includes('function stepVoice')
   && !shell.includes('.voicestep'),
-  'channel strips show the current preset above its type and use that name to choose');
+  'channel strips show the current preset above its type and use the header for selection');
 assert(/function fillEffectControls\(\{[\s\S]*?visibleParams\(def, entryParams, \{ section \}\)[\s\S]*?paramRange\(pname, def\)/.test(effectCards)
   && /function buildDevices\(\)[\s\S]*?fillEffectControls\(\{[\s\S]*?grid, def, entry, patch, replaceParams/.test(entry)
   && /const drawCard = \(\) => \{[\s\S]*?const effect = chain\[index\];[\s\S]*?card\.className = `device barfxdevice[\s\S]*?bar\.append\(bypass, heading, remove\);[\s\S]*?fillEffectControls\(\{[\s\S]*?rebuild: drawCard,[\s\S]*?patch: \(params, tag\)[\s\S]*?commitSoon\(tag\)[\s\S]*?replaceParams: \(params, tag\)[\s\S]*?tag: \(part\) => \(part \? `spotfx:/.test(noteFxEditors)
@@ -4776,27 +4778,20 @@ assert(/function setLaneVoice[\s\S]*?if \(independent\) buildArrangement\(\); el
 // A click on a track selects it wherever it lands. Half a header that answered a click
 // and half that did not read as a dead row.
 //
-// The name is the exception, and it is a TWO-step: the row and the strip are two copies
-// of one name, so both change what plays the track the same way. The safety is in the
-// arming — on a row you are not on, the first click only arms and falls through to the
-// header, which selects it, so the picker can only ever open on a track you are already
-// looking at. One click opening it outright is what this used to be, and landing on a
-// name you meant to point at cost you a sound.
-const arrangementFn = entry.slice(entry.indexOf('function buildArrangement'));
+// The name is the exception: one click selects the track AND opens the preset picker
+// (Peter's call, 24 Oct — it used to arm on the first click and open on the second).
+// Right-click on the header opens the preset editor.
+// From the bars builder on: the row's bars are drawn by `arrangementBars`, its header by
+// `buildArrangement` straight after.
+const arrangementFn = entry.slice(entry.indexOf('function arrangementBars'));
 assert(/header\.addEventListener\('click', \(\) => selectLane\(row\.key\)\)/.test(arrangementFn)
   && /header\.addEventListener\('dblclick'[\s\S]*?closest\('\.arrbtns, \.arrgain'\)[\s\S]*?playFromLaneStart\(row\.key\)/
     .test(arrangementFn)
-  // Armed first, and the un-armed click returns WITHOUT stopping propagation — that
-  // fall-through is what lets the header underneath do the selecting.
-  && /name\.addEventListener\('click', \(ev\) => \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*if \(!presetArmed\(row\.key\)\) \{ armPreset\(row\.key\); return; \}\s*\n\s*ev\.stopPropagation\(\);\s*\n\s*openVoicePicker\(ev\.clientX, ev\.clientY, row\.key\);/
-    .test(arrangementFn)
-  && /name\.setAttribute\('role', 'button'\)/.test(arrangementFn)
-  // Two clicks of the name are not a double-click on the track, which would play from
-  // where the lane comes in — not what the second click meant.
-  && /name\.addEventListener\('dblclick', \(ev\) => ev\.stopPropagation\(\)\)/.test(arrangementFn)
+  && !arrangementFn.includes('openVoicePicker(ev.clientX, ev.clientY, row.key)')
+  && /function trackMenu[\s\S]*?selectLane\(key\)[\s\S]*?buildChannelMore\(key,/.test(entry)
   && /mute\.onclick = \(ev\) => \{\s*ev\.stopPropagation\(\)/.test(entry)
   && /solo\.onclick = \(ev\) => \{\s*ev\.stopPropagation\(\)/.test(entry),
-  'anywhere on a track header selects the track, M/S and the level opt out, and the name opens the picker only on the second click');
+  'anywhere on a track header selects the track, M/S and the level opt out, the name selects, right-click opens track actions');
 const arrangementBarClick = /box\.onclick = \(ev\) => \{[\s\S]*?\n\s*\};/.exec(arrangementFn)?.[0] || '';
 assert(!arrangementBarClick.includes('jumpTo(')
   && /playButton\.className = 'arrbarplay'[\s\S]*?jumpTo\(at, \{ start: true, immediate: true \}\)/.test(arrangementFn)
@@ -5210,11 +5205,11 @@ assert(!/stripedit/.test(entry) && !/^\s*\.stripedit[ .:,{]/m.test(shell)
 // The way in is the strip's own right-click menu, beside the picker that chooses which
 // preset — which sound, then what that sound does.
 const stripMenuFn = entry.slice(entry.indexOf('function stripMenu(el, key, kind)'),
-  entry.indexOf('/** The TRACK panel'));
+  entry.indexOf('/** Track actions'));
 assert(/const preset = kind === 'channel' \? editablePresetFor\(key\) : null;/.test(stripMenuFn)
   && /preset && \{ label: 'Preset', run: \(\) => openVoicePickerFor\(key, at\) \}/.test(stripMenuFn)
-  && /preset && \{ label: 'Edit Simple', run: \(\) => editVoice\(key, \{ advanced: false, at \}\) \}/.test(stripMenuFn)
-  && /preset && isQuickVoice\(preset\) && \{\s*label: 'Edit Advanced', run: \(\) => editVoice\(key, \{ advanced: true, at \}\)/.test(stripMenuFn),
+  && /preset && \{ label: 'Tweak Preset', run: \(\) => editVoice\(key, \{ advanced: false, at \}\) \}/.test(stripMenuFn)
+  && /preset && isQuickVoice\(preset\) && \{\s*label: 'Edit Preset', run: \(\) => editVoice\(key, \{ advanced: true, at \}\)/.test(stripMenuFn),
   'a channel’s right-click menu opens the preset picker and both editor surfaces');
 // A send return and the master have no preset, so they get none of those three.
 assert(/kind === 'channel' \?/.test(stripMenuFn),
@@ -5523,7 +5518,7 @@ assert(/stacks: \(lane\) => polyLane\(editBank\(\), lane\)/.test(entry),
   assert(/export const defaultVoiceMode = \(laneKey\) =>\s*\(CHORD_LANES\.includes\(baseLane\(laneKey\)\) \? 'poly' : 'mono'\);/.test(roll),
     'and a channel starts Mono unless it is a chord lane, so the default is never the mode'
     + ' that stacks onto a note you meant to correct');
-  assert(/const canStack = \(key\) => polyLane\(editBank\(\), key\);/.test(roll)
+  assert(/const canStack = \(key\) => polyLane\(null, key\);/.test(roll)
     && /const modeFor = \(key\) => \(canStack\(key\)[\s\S]*?: 'mono'\);/.test(roll),
     'Poly is gated on polyLane — the same authority the recorder asks — so vox and shout'
     + ' cannot be handed a chord the engine would drop');

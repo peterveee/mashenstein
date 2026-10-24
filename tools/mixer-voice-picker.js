@@ -151,8 +151,13 @@ function buildVoicePicker(x, y, laneKey) {
     || (independent ? VOICES[defaultAddedVoice(laneKey)] : defaultVoiceOf(track()?.bank, laneKey));
   const drumsOnly = () => pending ? !!pendingAddTrack()?.drumsOnly
     : PERCUSSION_LANES.includes(baseLane(laneKey));
+  // A drum track takes only drums, and a synth lane only pitched sounds. A track still
+  // being added may take either — choosing re-keys it to match (see `pick`) — unless it
+  // was added from the drum side.
+  const pitchedOnly = () => !pending && !drumsOnly();
   const voices = () => offeredVoices(laneKey, offer)
-    .filter((v) => !drumsOnly() || isKitVoice(v) || v.id === chosen);
+    .filter((v) => v.id === chosen
+      || (drumsOnly() ? isKitVoice(v) : !pitchedOnly() || !isKitVoice(v)));
 
   const head = document.createElement('div'); head.className = 'voicehead';
   const who = document.createElement('span'); who.className = 'voicewho';
@@ -187,11 +192,15 @@ function buildVoicePicker(x, y, laneKey) {
     if (ev.key === 'Enter') { rememberSearch(); ev.stopPropagation(); }
   });
   const results = document.createElement('div'); results.className = 'voiceresults';
+  // Open on the current preset's own kind — a hat on Hats, a bass on its bass family —
+  // across every engine, because a swap is nearly always for another of the same thing.
+  // New tracks browse everything.
+  const opening = !pending && selectedPreset ? presetClassification(selectedPreset) : null;
   const browser = createPresetBrowser({
     voices, query: () => search.value,
-    // Start with related sounds across every engine; new tracks browse everything.
     state: { ...emptyPresetFilters(),
-      category: !pending && selectedPreset ? presetClassification(selectedPreset).category : 'all' },
+      category: opening?.category || 'all',
+      subcategory: opening?.subcategory || 'all' },
     onClear: () => { search.value = ''; },
     renderPreset: (v, row) => {
       const button = entry(v.id, v.label, row.engine,
@@ -269,7 +278,7 @@ function buildVoicePicker(x, y, laneKey) {
     head.addEventListener('pointermove', move);
     head.addEventListener('lostpointercapture', stop, { once: true });
   });
-  search.oninput = () => browser.refresh();
+  search.oninput = () => browser.refresh({ broadenIfEmpty: true });
   el.onkeydown = (ev) => {
     if (ev.key !== 'Escape') return;
     ev.preventDefault(); ev.stopPropagation();

@@ -68,17 +68,20 @@ async function effectSleepLifecycle() {
     const barChain = [{ id: 'delay', params: {
       sync: 0, delayMs: 300, feedback: 0.5, wet: 1,
     } }];
+    // Since 23 Oct 2026 a Spot FX branch is BUILT WHEN SELECTED (makeSectionSwitch): `prepare`
+    // only remembers it, so nothing stands — and nothing renders — until its section starts.
     strip.prepareBarEffects([barChain], 120);
     await new Promise((resolve) => setTimeout(resolve, 900));
-    const barSlot = strip._barFxSlots[0];
-    const barStartedAsleep = !barSlot.awake;
+    const barStartedAsleep = strip._barFxSlots.length === 0;
     strip.scheduleBarEffects(barChain, ctx.currentTime + 0.03);
-    const barWoke = barSlot.awake;
+    const barSlot = strip._barFxSlots[0];
+    const barWoke = !!barSlot?.awake;
     strip.scheduleBarEffects([], ctx.currentTime + 0.08);
     await new Promise((resolve) => setTimeout(resolve, 300));
     const delayGapKeptAwake = barSlot.awake;
     await new Promise((resolve) => setTimeout(resolve, 650));
-    const barSleptAfterTail = !barSlot.awake;
+    // Asleep after its tail, or already dropped (Chromium drops a deselected branch then).
+    const barSleptAfterTail = !barSlot.awake || !strip._barFxSlots.includes(barSlot);
     mixer.reset();
     const oldBarGraphsCleared = strip._barFxSlots.length === 0;
     await ctx.close();

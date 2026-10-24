@@ -24,6 +24,9 @@ import {
 import { quotesInPlay, offeredVoices, offeredByCategory } from '../src/data/voices-in-play.js';
 import { LANE_KEYS } from '../src/engine/lanes.js';
 import { resolveTrack } from '../src/data/tracks.js';
+// Presets whose MEASURED peak is exactly 1 (tools/lib/measure-voice.js, 24 Oct 2026) — the
+// placeholder's value, but not the placeholder: the level beside it is measured.
+const PEAK_MEASURED_AT_ONE = new Set(['seedUkGarageSnare']);
 
 let failed = 0;
 const assert = (cond, msg) => {
@@ -168,7 +171,7 @@ for (const v of tone) {
   // tools/measure-voices.js, and will arrive at the wrong level on every lane — see
   // the note over `voiceGain` for why this is energy and not the peak beside it.
   assert(v.level > 0, `${v.id}: carries a measured level (${v.level}), not the placeholder`);
-  assert(v.peak > 0 && v.peak !== 1,
+  assert(v.peak > 0 && (v.peak !== 1 || PEAK_MEASURED_AT_ONE.has(v.id)),
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
   assert(v.synth === 'KNDO-5' || v.synth === 'WNDR-9' || v.synth === 'MRDR-3'
     || v.synth === 'TNGR-2' || v.synth === 'JMJR-4' || (v.synth === 'FRPP-6' && v.frpp6)
@@ -403,7 +406,7 @@ for (const v of drum) {
   }
   assert(!v.synth, `${v.id}: is native nodes, not a Tone class`);
   assert(v.level > 0, `${v.id}: carries a measured level (${v.level}), not the placeholder`);
-  assert(v.peak > 0 && v.peak !== 1,
+  assert(v.peak > 0 && (v.peak !== 1 || PEAK_MEASURED_AT_ONE.has(v.id)),
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
   // A clap is one hit heard several times, so the first tap IS the hit — a list that
   // starts anywhere else is a drum that arrives late.

@@ -557,7 +557,10 @@ try {
   assert(rack.streams > rack.voices,
     `and each note expands into its oscillator streams (${rack.streams} for ${rack.voices} voices)`);
   assert(rack.nonFinite === 0, 'nothing non-finite reached the output');
-  assert(rack.disposedLanes === 0, 'disposing the rack releases its worklet lanes');
+  // Since 23 Oct 2026 a rack's dispose CHOKES its TNGR-2 lanes and keeps them for the next rack
+  // (voices.js dispose): WebKit kept every released processor's memory for good, ~27 MB a song.
+  // The lanes go with their context (releaseTngr2Context, a context replacement or teardown).
+  assert(rack.disposedLanes === 1, `disposing the rack keeps its worklet lane for the next song (${rack.disposedLanes})`);
 
   // OFFLINE: notes are collected during the scheduling pass and become a node at the
   // flush, because a worklet takes its schedule at construction.

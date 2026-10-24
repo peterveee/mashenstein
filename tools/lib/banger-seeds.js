@@ -197,12 +197,12 @@ export const tunedPresetId = (styleId, job, combo = null) => `${combo ? 'combo' 
 const COPY_ONLY = ['id', 'kind', 'level', 'peak', 'factory', 'user', 'songOrigin', 'songSourceId', 'songLocal'];
 const isKeptId = (id) => /^(seed|combo)[A-Z]/.test(id);
 
-/** The library preset (not a starter, not a kept seed or combo sound) a copy still sounds exactly like, or null. */
+/** The library preset (not a kept seed or combo sound) a copy still sounds exactly like, or null. Starters count: they are frozen, and bangers name them (stSubSine). */
 function librarySoundOf(params) {
   const key = soundKey(params);
   const own = params?.id && VOICES[params.id];
-  if (own && !own.starter && own.kind !== 'engine' && !isKeptId(own.id) && soundKey(own) === key) return own.id;
-  const hit = Object.values(VOICES).find((v) => !v.starter && v.kind !== 'engine' && !isKeptId(v.id) && soundKey(v) === key);
+  if (own && own.kind !== 'engine' && !isKeptId(own.id) && soundKey(own) === key) return own.id;
+  const hit = Object.values(VOICES).find((v) => v.kind !== 'engine' && !isKeptId(v.id) && soundKey(v) === key);
   return hit?.id ?? null;
 }
 

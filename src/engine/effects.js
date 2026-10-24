@@ -242,7 +242,14 @@ function makeChannelDelay(ctx, params) {
   const input = ctx.createGain();
   const output = ctx.createGain();
   const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 180;
-  const line = ctx.createDelay(MAX_DELAY_SECONDS);
+  // SIZED TO THE TIME IT IS SET TO, live (24 Oct 2026): WebKit keeps every DelayNode's line for
+  // the life of the context, and an 8-second stereo line is 3 MB — five of them for every
+  // Crypt song change, for good. A live line is the delay time and a margin, and is regrown
+  // (growLine) when a knob or a tempo asks for more. An offline render keeps the 8-second
+  // line, and its samples, exactly as before.
+  const live = typeof ctx.startRendering !== 'function';
+  const sizeFor = (secs) => (live ? Math.min(MAX_DELAY_SECONDS, Math.max(1, Math.ceil(secs * 1.5 + 0.25))) : MAX_DELAY_SECONDS);
+  let line = ctx.createDelay(sizeFor(delaySeconds({ sync: 1, division: 0.5, delayMs: 250, ...params }, 120)));
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4000; lp.Q.value = 0.7071;
   const fb = ctx.createGain(); fb.gain.value = 0.3;
   const wet = ctx.createGain(); wet.gain.value = 0;
@@ -273,9 +280,20 @@ function makeChannelDelay(ctx, params) {
       ];
     },
   });
+  const growLine = (secs) => {
+    if (secs <= line.delayTime.maxValue - 0.01) return;
+    const next = ctx.createDelay(sizeFor(secs));
+    next.delayTime.value = line.delayTime.value;
+    try { hp.disconnect(line); } catch { /* not wired */ }
+    try { fb.disconnect(line); } catch { /* not wired */ }
+    try { line.disconnect(); } catch { /* not wired */ }
+    hp.connect(next); fb.connect(next); next.connect(lp);
+    line = next;
+  };
   node.applyState = (bpm) => {
     const t = ctx.currentTime;
     seconds = delaySeconds(state, bpm);
+    growLine(seconds);
     line.delayTime.setTargetAtTime(seconds, t, 0.05);
     lp.frequency.setTargetAtTime(Math.max(200, Math.min(16000, state.tone)), t, 0.05);
     pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, state.pan)), t, 0.03);
@@ -381,11 +399,19 @@ const CONV_POOL = new WeakMap();   // ctx → Map(sig → ConvolverNode[])
 const IR_CACHE = new WeakMap();    // ctx → Map(sig → AudioBuffer)
 const poolOf = (map, ctx) => { let m = map.get(ctx); if (!m) { m = new Map(); map.set(ctx, m); } return m; };
 const irSig = (decay, preDelay) => `${decay}|${preDelay}`;
+// The impulse cache holds the last few rooms, not every room a session has met (24 Oct 2026:
+// 16 MB after one jukebox lap). An impulse is a loop over the tail — a few milliseconds — so a
+// room asked for again after it has gone is simply made again; the same seed makes the same
+// samples, so it sounds the same.
+const IR_CACHE_MAX = 4;
 function impulseFor(ctx, decay, preDelay) {
   const cache = poolOf(IR_CACHE, ctx);
   const sig = irSig(decay, preDelay);
   let buf = cache.get(sig);
-  if (!buf) { buf = reverbImpulse(ctx, decay, preDelay); cache.set(sig, buf); }
+  if (buf) { cache.delete(sig); cache.set(sig, buf); return buf; }   // most recent last
+  buf = reverbImpulse(ctx, decay, preDelay);
+  cache.set(sig, buf);
+  while (cache.size > IR_CACHE_MAX) cache.delete(cache.keys().next().value);
   return buf;
 }
 function takeConvolver(ctx, sig) {
@@ -399,9 +425,25 @@ function takeConvolver(ctx, sig) {
   fresh.normalize = true;
   return { conv: fresh, ready: false };
 }
+// THE SHELF IS CAPPED (24 Oct 2026): a parked convolver keeps its kernels dirty, and a jukebox
+// tour meets a dozen and more distinct rooms — the page's footprint grew by most of its first
+// lap that way (macOS `footprint`, which counts what iOS counts). Past the cap a convolver is
+// not shelved: its impulse is swapped for one sample, which lets WebKit free the kernels (they
+// become reclaimable), and it is dropped. `convShelfMax` only bounds the reuse; a room asked
+// for again after it has gone is built again.
+const convShelfMax = () => Number(globalThis.__MASH_CONV_SHELF ?? 3);   // read at park time, so a probe can set it
+let tinyImpulses = new WeakMap();
 function parkConvolver(ctx, sig, conv) {
   if (!sig || typeof ctx.startRendering === 'function') return;   // an offline render ends with its context
   const pool = poolOf(CONV_POOL, ctx);
+  let shelved = 0;
+  for (const list of pool.values()) shelved += list.length;
+  if (shelved >= convShelfMax()) {
+    let tiny = tinyImpulses.get(ctx);
+    if (!tiny) { tiny = ctx.createBuffer(2, 1, ctx.sampleRate); tinyImpulses.set(ctx, tiny); }
+    try { conv.buffer = tiny; } catch { /* kept as it is */ }
+    return;
+  }
   if (!pool.has(sig)) pool.set(sig, []);
   pool.get(sig).push(conv);
 }
@@ -4927,7 +4969,69 @@ function makeMidSideCompressor(ctx, def, params = {}) {
  * file naming an effect that has since been removed degrades to "no effect" instead
  * of taking the whole song down.
  */
+// A live context in WebKit (Safari, every browser on iOS): where a DelayNode's line is never
+// given back, so lines are sized to need (createEffect). Mirrors mixer.js deepSleepSuits.
+const webkitLive = (ctx) => {
+  if (!ctx || typeof ctx.startRendering === 'function' || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return (/AppleWebKit/.test(ua) && !/(Chrome|Chromium|Edg|OPR)\//.test(ua)) || /(CriOS|FxiOS|EdgiOS)\//.test(ua);
+};
+
+// WAVESHAPERS ARE POOLED ON WEBKIT, PER CONTEXT (24 Oct 2026). WebKit never gives a
+// WaveShaperNode's memory back while its context lives (its curve and its oversampler; ~43 KB at
+// 4x with a long curve — work/local/_probe-webkit-node-churn.mjs), and every song change
+// rebuilds its inserts: ~32 shapers a Gravity, inside our limiters, exciters and drives and
+// inside Tone's LFOs and crossfades. So while an effect is built (createEffect) every shaper the
+// context makes is noted against it — ours and Tone's alike, through the context's own
+// createWaveShaper — and when the mixer disposes the effect (disposeLinks) they go back on a
+// shelf for the next effect to take, curve and oversampling reset. A shaper holds no audio, so
+// one taken from the shelf carries nothing of the last song. Chromium frees them: there, and
+// offline, nothing changes.
+const SHAPER_POOLS = new WeakMap();   // ctx → shaper[]
+let collectingShapers = null;
+function shaperPoolFor(ctx) {
+  if (!webkitLive(ctx)) return null;
+  let pool = SHAPER_POOLS.get(ctx);
+  if (pool) return pool;
+  pool = [];
+  SHAPER_POOLS.set(ctx, pool);
+  const make = BaseAudioContext.prototype.createWaveShaper;
+  ctx.createWaveShaper = function createWaveShaper() {
+    let node = pool.pop();
+    if (node) {
+      try { node.curve = null; } catch { /* a browser that will not take null keeps the old one until set */ }
+      node.oversample = 'none';
+    } else node = make.call(ctx);
+    if (collectingShapers) collectingShapers.push(node);
+    return node;
+  };
+  return pool;
+}
+/** The mixer has disposed `link` (disposeLinks): its shapers back on the shelf. */
+export function releaseEffectShapers(ctx, link) {
+  const pool = ctx && SHAPER_POOLS.get(ctx);
+  if (!pool || !link?.shapers?.length) return;
+  for (const node of link.shapers) {
+    try { node.disconnect(); } catch { /* fine */ }
+    pool.push(node);
+  }
+  link.shapers = null;
+}
+
 export function createEffect(id, params = {}, ctx = null, bpm = 120) {
+  if (!ctx || !shaperPoolFor(ctx)) return createEffectNode(id, params, ctx, bpm);
+  const outer = collectingShapers;
+  collectingShapers = [];
+  try {
+    const link = createEffectNode(id, params, ctx, bpm);
+    if (link) link.shapers = collectingShapers;
+    return link;
+  } finally {
+    collectingShapers = outer;
+  }
+}
+
+function createEffectNode(id, params = {}, ctx = null, bpm = 120) {
   const def = EFFECT_BY_ID[id];
   if (!def) return null;
   if (def.virtual) return null;   // the Channel card: no node; the strip applies it
@@ -5002,6 +5106,13 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   for (const k of ownKeys) { own[k] = opts[k]; delete opts[k]; }
   // Tone's delays take seconds; the desk speaks note divisions or milliseconds.
   if (def.timed) opts.delayTime = delaySeconds(opts, bpm);
+  // ON WEBKIT, LIVE: a line sized to the delay, not Tone's 1 s default (24 Oct 2026). WebKit
+  // keeps every DelayNode's line for the life of the context, and the game rebuilds its inserts
+  // on every song change: six ping-pongs a Gravity, nine a Megamix, for good. Twice the time it
+  // is set to, which a game mix never moves past; the desk (Chromium) keeps the default.
+  if (def.timed && (def.tone === 'PingPongDelay' || def.tone === 'FeedbackDelay') && webkitLive(ctx)) {
+    opts.maxDelay = Math.min(1, Math.max(0.1, opts.delayTime * 2));
+  }
   if (def.params.includes('rateSync')) opts.frequency = rateHz(opts, bpm);
   let node;
   try {

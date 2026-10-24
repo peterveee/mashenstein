@@ -40,7 +40,10 @@ import {
  * choice nobody made. So only a finer grid is carried, and null means "as composed".
  */
 const fineOr = (v) => (RESOLUTIONS.includes(v) && v !== LEGACY_RESOLUTION ? v : null);
-import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
+import {
+  LANES, LANE_KEYS, lenKey, validLen, NOTE_ATTRS, noteAttrKey, attrSays, muteKey, unmutedValue,
+  velocityKey,
+} from '../../src/engine/lanes.js';
 import {
   hasAutomation, shiftAutomation, copyAutomationRange, pasteAutomation, dropLanes,
   copyLane as copyLaneAutomation, setLaneFade, clearLaneRange, addLaneCut, removeLaneCut,
@@ -189,9 +192,12 @@ export function readBarLane(bank, draft, barIndex, key) {
   const bar = draft?.plan?.[barIndex];
   const slots = resolutionOf(null, draft);
   if (!bar || !bank) return new Array(slots).fill(null);
-  const resolved = (bar.sec != null
-    ? resolveSection({ ...bank, sections: sectionsOf(bank, draft) }, bar.sec)
-    : null) || {};
+  return barValues(bank, sectionsOf(bank, draft), bar.sec, bar.half, key, slots);
+}
+
+/** `readBarLane` against a section list rather than a draft — what `putLane` has. */
+function barValues(bank, sections, sec, half, key, slots) {
+  const resolved = (sec != null ? resolveSection({ ...bank, sections }, sec) : null) || {};
   const arr = resolved[key] ?? bank[key];
   if (!Array.isArray(arr)) return new Array(slots).fill(null);
   // A fine draft can still inherit a hand-authored coarser lane. Its notes occupy every
@@ -202,10 +208,10 @@ export function readBarLane(bank, draft, barIndex, key) {
   const laneResolution = arr.length / 2;
   const stride = slots / laneResolution;
   if (arr.length < slots * 2 && Number.isInteger(stride) && RESOLUTIONS.includes(laneResolution)) {
-    const at = bar.half * laneResolution;
+    const at = half * laneResolution;
     return Array.from({ length: slots }, (_, i) => (i % stride ? null : arr[at + i / stride] ?? null));
   }
-  const at = bar.half * slots;
+  const at = half * slots;
   return Array.from({ length: slots }, (_, i) => arr[at + i] ?? null);
 }
 
@@ -850,7 +856,8 @@ export function duplicateLaneContent(bank, draft, from, to) {
     // private destination section.
     out = writeBarNotesShared(bank, out, bar, to,
       readBarLane(bank, source, bar, from),
-      readBarLane(bank, source, bar, lenKey(from)));
+      readBarLane(bank, source, bar, lenKey(from)),
+      readBarAttrs(bank, source, bar, from));
   }
   return out;
 }
@@ -888,7 +895,10 @@ export function removeLanes(draft, keys) {
   for (const section of out.sections) {
     // The lengths go with the lane, or deleting a track and adding it back gives the
     // new one the old one's note lengths — for notes that are not there any more.
-    for (const key of drop) { delete section[key]; delete section[lenKey(key)]; }
+    for (const key of drop) {
+      delete section[key]; delete section[lenKey(key)];
+      for (const { suffix } of NOTE_ATTRS) delete section[noteAttrKey(key, suffix)];
+    }
   }
   for (const bar of out.plan) {
     for (const field of LANE_LISTS) {
@@ -1202,14 +1212,16 @@ export function copyLaneBars(bank, draft, from, to, lane) {
   const [a, b] = range(draft, from, to);
   const bars = [];
   const lengths = [];
+  const attrs = [];
   // At the DRAFT'S OWN GRID, through `readBarLane`. This read sixteen steps a bar
   // whatever the grid was, so on a 1/32 song a copy, a paste and a drag onto another
   // track all kept every other note and lost the 32nds between them (Peter, 23 Sep).
   for (let i = a; i <= b; i++) {
     bars.push(readBarLane(bank, draft, i, lane).map(clone));
     lengths.push(readBarLane(bank, draft, i, lenKey(lane)).map(clone));
+    attrs.push(readBarAttrs(bank, draft, i, lane));
   }
-  return { lane, bars, lengths };
+  return { lane, bars, lengths, attrs };
 }
 
 /**
@@ -1241,7 +1253,13 @@ export function fitLaneClip(draft, clip) {
     return Array.isArray(len) && len.length === bar.length
       ? spread(len, null) : new Array(grid).fill(null);
   });
-  return { draft: out, bars, lengths, grid };
+  // Velocities and mutes ride the same slots as the lengths. A clip from before they
+  // were copied has none, and pastes as nothing said — null, which clears the bar.
+  const attrs = (clip?.bars || []).map((bar, i) => Object.fromEntries(NOTE_ATTRS.map(({ suffix }) => {
+    const arr = clip.attrs?.[i]?.[suffix];
+    return [suffix, Array.isArray(arr) && arr.length === bar.length ? spread(arr, null) : null];
+  })));
+  return { draft: out, bars, lengths, attrs, grid };
 }
 
 /**
@@ -1256,11 +1274,13 @@ export function copyLaneTrack(bank, draft, from, to, lane) {
   const [a, b] = range(draft, from, to);
   const bars = [];
   const lengths = [];
+  const attrs = [];
   const edits = [];
   for (let i = a; i <= b; i++) {
     const bar = draft.plan[i];
     bars.push(readBarLane(bank, draft, i, lane).map(clone));
     lengths.push(readBarLane(bank, draft, i, lenKey(lane)).map(clone));
+    attrs.push(readBarAttrs(bank, draft, i, lane));
     const edit = {};
     for (const field of LANE_LISTS) {
       if (bar[field]?.includes(lane)) edit[field] = true;
@@ -1275,7 +1295,7 @@ export function copyLaneTrack(bank, draft, from, to, lane) {
     if (sections.length) edit.fx = sections;
     edits.push(edit);
   }
-  return { lane, bars, lengths, edits };
+  return { lane, bars, lengths, attrs, edits };
 }
 
 /** Paste a complete track clip onto a fresh lane without changing song length. */
@@ -1290,7 +1310,7 @@ export function pasteLaneTrack(bank, draft, at, lane, clip) {
   for (let i = 0; i < count; i++) {
     const bar = start + i;
     out = writeBarNotesShared(bank, out, bar, lane, fitted.bars[i],
-      clip.lengths?.[i] ? fitted.lengths[i] : null);
+      clip.lengths?.[i] ? fitted.lengths[i] : null, fitted.attrs[i]);
     const edit = clip.edits?.[i] || {};
     out = setLanesOff(out, bar, bar, [lane], !!edit.off);
     out = setLanesDeleted(out, bar, bar, [lane], !!edit.delete);
@@ -1318,10 +1338,14 @@ export function moveLaneBars(bank, draft, from, to, sourceLane, targetLane, targ
   let out = copy(draft);
   if (!shouldCopy) {
     const rest = Array.from({ length: resolutionOf(null, draft) }, () => null);
-    for (let i = from; i <= to; i++) out = writeBarNotes(bank, out, i, sourceLane, rest, rest);
+    const cleared = Object.fromEntries(NOTE_ATTRS.map(({ suffix }) => [suffix, null]));
+    for (let i = from; i <= to; i++) {
+      out = writeBarNotes(bank, out, i, sourceLane, rest, rest, cleared);
+    }
   }
   for (let i = 0; i < count; i++) {
-    out = writeBarNotes(bank, out, start + i, targetLane, clip.bars[i], clip.lengths[i]);
+    out = writeBarNotes(bank, out, start + i, targetLane, clip.bars[i], clip.lengths[i],
+      clip.attrs[i]);
   }
   return out;
 }
@@ -1576,13 +1600,76 @@ function laneWith(bank, sections, sec, half, lane, steps) {
  * equal to what is inherited, and `undefined` never equals an array — so the file
  * would silt up with `bassLen: [null × 32]` on every song anybody drew a note in.
  */
-function putLane(section, bank, sections, sec, half, lane, steps16, lengths16) {
+function putLane(section, bank, sections, sec, half, lane, steps16, lengths16, attrs16 = null) {
+  // Read before the notes are written: what the bar held is what decides which of its
+  // velocities and mutes still have a note to belong to.
+  if (!attrs16) attrs16 = keptAttrs(bank, sections, sec, half, lane, steps16);
   section[lane] = laneWith(bank, sections, sec, half, lane, steps16);
+  putAttrs(section, bank, sections, sec, half, lane, steps16.length, attrs16);
   if (!lengths16) return;
   const key = lenKey(lane);
   const next = laneWith(bank, sections, sec, half, key, lengths16);
   if (next.some((v) => (Array.isArray(v) ? v.some(validLen) : validLen(v)))) section[key] = next;
   else delete section[key];
+}
+
+/**
+ * The note attributes (`NOTE_ATTRS` — velocity, mute) that go with a write, beside the
+ * lengths and on the same terms: a suffix `attrs16` does not name is left alone, `null`
+ * clears the bar, an array is the bar's values.
+ *
+ * Deleted when all-null, as lengths are — with one difference that matters more here
+ * than there. A key a section deletes is a key it INHERITS, and the game's own songs
+ * carry velocities in their base sections: a fork that deleted its cleared accents would
+ * play the base's accents again, on notes that are not the ones they were written for.
+ * So a bar whose base says something is written as explicit nulls instead.
+ */
+function putAttrs(section, bank, sections, sec, half, lane, slots, attrs16) {
+  if (!attrs16) return;
+  for (const { suffix } of NOTE_ATTRS) {
+    const steps = attrs16[suffix];
+    if (steps === undefined) continue;
+    const key = noteAttrKey(lane, suffix);
+    const next = laneWith(bank, sections, sec, half, key,
+      steps || new Array(slots).fill(null));
+    if (next.some(attrSays)) { section[key] = next; continue; }
+    const base = section.base != null
+      ? resolveSection({ ...bank, sections }, section.base) : null;
+    const inherited = base && base[key] !== undefined ? base[key] : bank[key];
+    if (attrSays(inherited)) section[key] = next;
+    else delete section[key];
+  }
+}
+
+/**
+ * What a write that says nothing about velocities and mutes does to them: a step whose
+ * note is unchanged keeps its own, a step whose note changed loses them. The recorder, a
+ * groove figure and a hand-written test call do not know these arrays exist, and
+ * without this a note recorded over a muted one would be recorded silent, and a figure
+ * laid over an accented bar would play the old accents. Null — nothing to write — for
+ * the lane with none, which is nearly every lane.
+ */
+function keptAttrs(bank, sections, sec, half, lane, steps16) {
+  let out = null;
+  let was = null;
+  for (const { suffix } of NOTE_ATTRS) {
+    const values = barValues(bank, sections, sec, half, noteAttrKey(lane, suffix), steps16.length);
+    if (!values.some(attrSays)) continue;
+    was ||= barValues(bank, sections, sec, half, lane, steps16.length);
+    out ||= {};
+    out[suffix] = values.map((v, i) => (JSON.stringify(was[i] ?? null) === JSON.stringify(steps16[i] ?? null)
+      ? v : null));
+  }
+  return out;
+}
+
+/** Every note attribute of a lane in one bar, as `putAttrs` takes them. */
+export function readBarAttrs(bank, draft, barIndex, lane) {
+  const out = {};
+  for (const { suffix } of NOTE_ATTRS) {
+    out[suffix] = readBarLane(bank, draft, barIndex, noteAttrKey(lane, suffix)).map(clone);
+  }
+  return out;
 }
 
 /**
@@ -1600,14 +1687,18 @@ function putLane(section, bank, sections, sec, half, lane, steps16, lengths16) {
  * null for "as long as the lane says". Omit it entirely and the lengths are left
  * alone; it is a sixth positional argument rather than a change of shape because
  * every caller that has nothing to say about length should not have to say it.
+ *
+ * `attrs16` is the rest of what belongs to the notes — `{ Velocity, Mute }`, see
+ * `putAttrs`. Any edit that MOVES notes must pass it, or the accents and mutes stay on
+ * the steps the notes left.
  */
-export function writeBarNotes(bank, draft, barIndex, lane, steps16, lengths16 = null) {
+export function writeBarNotes(bank, draft, barIndex, lane, steps16, lengths16 = null, attrs16 = null) {
   const forked = forkBar(bank, draft, barIndex);
   const bar = forked.plan[barIndex];
   if (!bar) return forked;
   const idx = bar.sec - (bank.sections?.length || 0);
   putLane(forked.sections[idx], bank, sectionsOf(bank, forked), bar.sec, bar.half,
-    lane, steps16, lengths16);
+    lane, steps16, lengths16, attrs16);
   return forked;
 }
 
@@ -1643,28 +1734,51 @@ export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
     const bar = source.plan[barIndex];
     const notes = readBarLane(bank, source, barIndex, lane);
     const lengths = readBarLane(bank, source, barIndex, lenKey(lane));
+    const mutes = readBarLane(bank, source, barIndex, muteKey(lane));
+    const velocities = readBarLane(bank, source, barIndex, velocityKey(lane));
     const slots = source.resolution;
     const outNotes = new Array(slots).fill(null);
     const outLengths = new Array(slots).fill(null);
+    const outAttrs = { Velocity: new Array(slots).fill(null), Mute: new Array(slots).fill(null) };
     const config = resolveNoteFx(trackNoteFx, bar, lane);
+    // The velocity of the note the arp is playing from: the last one struck.
+    let struck = null;
     for (let slot = 0; slot < slots; slot++) {
-      const value = notes[slot];
-      const len = lengths[slot];
+      // The arp plays what playback plays, so muted notes are not fed to it — a render
+      // must sound like the bar did. A muted tone of a chord leaves with its length.
+      const raw = notes[slot];
+      const mute = mutes[slot];
+      const value = unmutedValue(raw, mute);
+      const len = Array.isArray(mute) && Array.isArray(lengths[slot])
+        ? lengths[slot].filter((_, j) => mute[j] !== true) : lengths[slot];
+      if (value != null) struck = velocities[slot] ?? null;
       const events = processor.process({ laneKey: lane, value, len,
         step: barIndex * 16 + slot * 16 / slots, spb: 1, config: {
           ...config, strum: { ...(config.strum || {}), enabled: false },
         }, barIndex });
-      if (barIndex < a || !events.length) continue;
+      if (barIndex < a) continue;
+      if (!events.length) {
+        // A muted note nothing was rendered over stays where it was, still muted: it
+        // was kept to be tried again, and a render is not a reason to lose it.
+        if (raw != null && attrSays(mute)) {
+          outNotes[slot] = raw;
+          outLengths[slot] = lengths[slot];
+          outAttrs.Mute[slot] = mute;
+          outAttrs.Velocity[slot] = velocities[slot] ?? null;
+        }
+        continue;
+      }
       const freqs = events.map((event) => event.freq);
       const lens = events.map((event) => event.len);
       outNotes[slot] = freqs.length === 1 ? freqs[0] : freqs;
       outLengths[slot] = lens.length === 1 ? lens[0] : lens;
+      outAttrs.Velocity[slot] = struck;
     }
     // A bar whose voicing and arp are off — including `mode: 'off'` — renders
     // to the notes it already had, so writing it back would fork the section to say
     // nothing. The processor still walked it above; only the write is skipped.
     if (barIndex >= a && (config.arp?.enabled || config.guitar?.enabled)) {
-      rendered.set(barIndex, { notes: outNotes, lengths: outLengths, config });
+      rendered.set(barIndex, { notes: outNotes, lengths: outLengths, attrs: outAttrs, config });
     }
   }
   // Two strums play the same iff both are off, or they agree on the direction and gap
@@ -1673,6 +1787,7 @@ export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
   const strumSig = (fx) => (fx?.strum?.enabled
     ? `${['down', 'random', 'alternate-up', 'alternate-down'].includes(fx.strum.direction) ? fx.strum.direction : 'up'}`
       + `/${Math.max(0, Math.min(250, Number(fx.strum.gapMs) || 0))}`
+      + `/${Number(fx.strum.downDb) || 0}/${Number(fx.strum.upDb) || 0}`
     : 'off');
   const trackAfter = { ...trackNoteFx,
     ...(trackArpCleared ? { arp: { ...trackNoteFx.arp, enabled: false } } : {}),
@@ -1680,7 +1795,8 @@ export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
   };
   let out = source;
   for (const [barIndex, material] of rendered) {
-    out = writeBarNotes(bank, out, barIndex, lane, material.notes, material.lengths);
+    out = writeBarNotes(bank, out, barIndex, lane, material.notes, material.lengths,
+      material.attrs);
     const strum = material.config.strum || {};
     // Inheriting the track already leaves the arp off and the same strum on, so the
     // override has nothing to say. Clear it rather than stamp it.
@@ -1716,7 +1832,7 @@ export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
  * that case forks too: the bars playing the loop move to a detached copy and change
  * together, and the bar that left stays where it was put.
  */
-export function writeBarNotesShared(bank, draft, barIndex, lane, steps16, lengths16 = null) {
+export function writeBarNotesShared(bank, draft, barIndex, lane, steps16, lengths16 = null, attrs16 = null) {
   const out = expandSectionless(bank, copy(draft));
   const bar = out.plan[barIndex];
   if (!bar) return out;
@@ -1725,12 +1841,12 @@ export function writeBarNotesShared(bank, draft, barIndex, lane, steps16, length
   const dependents = hasDependents(out, sec);
   if (!isBankSection(bank, sec) && !dependents) {
     putLane(out.sections[sec - (bank.sections?.length || 0)], bank, sections,
-      sec, bar.half, lane, steps16, lengths16);
+      sec, bar.half, lane, steps16, lengths16, attrs16);
     return out;
   }
   const idx = sections.length;
   const section = dependents ? detachedFrom(bank, sections, sec) : { base: sec };
-  putLane(section, bank, sections, sec, bar.half, lane, steps16, lengths16);
+  putLane(section, bank, sections, sec, bar.half, lane, steps16, lengths16, attrs16);
   out.sections.push(section);
   for (const b of out.plan) if (b.sec === sec) b.sec = idx;
   return out;

@@ -17,7 +17,7 @@
 // only writes the file it makes.
 import { Rng } from '../../../src/engine/rng.js';
 import { riffNeedsLead, writeLead, freeLeadLane } from './lead.js';
-import { PERCUSSION_LANES, baseLane } from '../../../src/data/voices.js';
+import { PERCUSSION_LANES, baseLane, VOICES } from '../../../src/data/voices.js';
 import { LANE_KEYS } from '../../../src/engine/lanes.js';
 import { arrangementIssues } from '../../../src/data/arrangements.js';
 import { packBank, hasNotes, isDrumPart, midi, MIDI_MIN, MIDI_MAX, BASS_FIGURES, echoPart } from './theory.js';
@@ -36,7 +36,8 @@ import { INTRO_WAYS } from './intro-ways.js';
 import { DROP2_WAYS } from './drop-ways.js';
 import { voiceLeadChords } from './voice-leading.js';
 import { allocateLanes, buildMix, pickRiffSounds, BASS_ECHO } from './lanes.js';
-import { levelMix } from './levels.js';
+import { levelMix, levelWindow, predictedProcessedPart, soundOf } from './levels.js';
+import { planGuitar, strumGuitarChords, funkIssues, FUNK_SETS, CHUCK_UNDER_DB, GUITAR_ERA } from './guitar.js';
 import { rollReport } from './report.js';
 import { buildFx } from './fx.js';
 import { applySectionEffects } from './section-effects.js';
@@ -66,6 +67,7 @@ export { DROP2_WAYS } from './drop-ways.js';
 export { extractRiff, laneVoiceOf, validateRiff, pickHook, riffSummary, parseRiff } from './riff.js';
 export { keyName, MODE_INFO } from './analyse.js';
 export { BANGER_SOUNDS } from './sounds.js';
+export { isGuitarVoice, guitarOffered, GUITAR_PRESETS, FUNK_SETS, FUNK_HANDS } from './guitar.js';
 export {
   PART_SLOTS, KIT_ROLES, KITS, RANDOM_JOBS, CHOICE_SLOTS, MOOD_IDS, soundIssues, soundAllowed, slotChoices, tableIssues, resolveSounds,
 } from './sound-rules.js';
@@ -101,7 +103,12 @@ export {
  * (options.js) — so a desk take re-made from its recipe does not move. Kept Lab songs stay as they
  * were by recipe expression 6 (src/game/banger/make.js).
  */
-export const BANGER_GENERATOR_VERSION = 11;
+/* 12 (24 Oct 2026): the GUITARS (guitar.js), from Ways Era 5. Guitar chords strum in the style's feel, and
+ * Guitar (Random, Picked, Strummed) can play a funk or disco arp guitar as sixteenth-note stabs and chucks.
+ * A request that names its parts but no Guitar — every take and kept Lab recipe made before — is era 4 at
+ * most and Picked (options.js), and is made exactly as it was.
+ */
+export const BANGER_GENERATOR_VERSION = 12;
 /** How each way of playing a breakdown reads in a take's note. */
 const BREAKDOWN_WAY_LABELS = { ...Object.fromEntries(BREAKDOWN_WAYS.map((w) => [w.id, w.label])), exposed: 'Hook Alone' };
 const BUILD_WAY_LABELS = Object.fromEntries(BUILD_WAYS.map((w) => [w.id, w.label]));
@@ -244,6 +251,8 @@ export function generateBanger({
     backing: stream('backing'),
     // Club Shape's (templates.js CLUB_SHAPES).
     shape: stream('shape'),
+    // Guitar: Random's coin and the strummed guitar's pattern set (guitar.js).
+    guitar: stream('guitar'),
   };
   const warnings = [];
   if (raw?.production?.mode && raw.production.mode !== 'style' && options.production.mode === 'style') {
@@ -383,6 +392,9 @@ export function generateBanger({
     scale: key.melodyScale, candidates: analysis.candidates, modeChords: analysis.modeChords,
     dominant: key.own ? romanChord('V', key.own) : romanChord(MODE_INFO[key.mode]?.turn || 'V', key),
   };
+  // GUITAR (guitar.js, from Ways Era 5): where the arp is a funk or disco guitar, Picked as ever or Strummed —
+  // stabs and muted chucks — as the request says, or drawn off a stream of its own (Random).
+  ctx.guitar = planGuitar({ asked: options.parts.guitar, era: options.waysEra, style, mood: options.mood, arpSound: sounds.parts.arp, rng: rng.guitar });
   const { bars, events, asWritten } = buildSections(ctx);
   // The coloured chords voice-led, each moving least from the one before (voice-leading.js) — in
   // a lifted section, about its centre lifted with it.
@@ -446,11 +458,17 @@ export function generateBanger({
   const mix = buildMix({
     style, sounds, options, laneOf, riffParts: tparts, hookKey, coreFromRiff: ctx.coreFromRiff, bpm,
     denseHook: hookOnsets / hookPart.parsed.length > 8, riffSounds, riserWay: events.riserWay, dropHit: events.dropHit, tonic: key.tonic, riserLands: events.riserLands,
+    guitar: ctx.guitar,
   });
+  // The strummed funk guitar's two lanes, when the take plays it.
+  const funkLanes = ctx.guitar?.strummed ? [laneOf.get('arp'), laneOf.get('chuck')].filter(Boolean) : [];
+  const barsOfLane = (lane) => laneBars.map((b) => b[lane] || null);
   // Palette production is ordinary channel data. Apply it before the production planner
   // so the planner sees authored inserts/sends and leaves that channel alone.
   const paletteByLane = new Map();
   for (const [role, lane] of laneOf) {
+    // (the strummed funk guitar plays its own two sounds: the arp's palette choice is the picked arp's)
+    if (funkLanes.includes(lane)) continue;
     let choice = null;
     if (role === 'hook' || role.startsWith('riff:')) {
       const key = role === 'hook' ? hookKey : role.slice(5);
@@ -466,10 +484,19 @@ export function generateBanger({
     if (choice.send != null) strip.send = { ...(strip.send || {}), ...structuredClone(choice.send) };
     paletteByLane.set(lane, choice);
   }
+  // GUITAR CHORDS STRUM (guitar.js, from Ways Era 5): every part playing chords on a guitar — the style's sound,
+  // the mood's, a roll, a Random riff sound — strummed in the style's feel and voiced on six strings. A Note FX
+  // setting a seed channel or the riff already gave a lane stays as it is.
+  const strummedChords = options.waysEra >= GUITAR_ERA
+    ? strumGuitarChords({ mix, lanes: mix.order, barsOf: barsOfLane, style, skip: new Set(funkLanes) }) : [];
   const trackEffects = applyTrackEffects({ style, options, mix, bars, laneOf, riffParts: tparts,
     hookKey, bpm, rng: rng.production, combo, protectedLanes: new Set([...paletteByLane].filter(([, p]) => p.inserts != null || p.send != null).map(([lane]) => lane)) });
   const sectionEffects = applySectionEffects({ automation, options, style, form, bars, laneOf, mix, bpm, rng: rng.sectionFx });
   if (sectionEffects.automation) arrangement.automation = sectionEffects.automation;
+  // The funk guitar's chucks move as its stabs do: whatever the builds and the section FX put on the arp's lane.
+  if (funkLanes.length === 2 && arrangement.automation?.[funkLanes[0]]) {
+    arrangement.automation = { ...arrangement.automation, [funkLanes[1]]: structuredClone(arrangement.automation[funkLanes[0]]) };
+  }
   // Every channel's fader, from what its part plays and on what (levels.js). `level: false`
   // is for tools/banger-levels.js, which reads the style's own default parts from here.
   const levels = level ? levelMix({ style, form, bars, laneOf, mix, bank, bpm, riffParts: tparts, hookKey, refs: combo?.refs, data: levelData, calibration }) : [];
@@ -481,6 +508,9 @@ export function generateBanger({
   for (const [lane, choice] of paletteByLane) {
     if (choice.trimDb) mix.lanes[lane].gain = Math.round(((mix.lanes[lane].gain || 0) + choice.trimDb) * 10) / 10;
   }
+  // The funk guitar's chucks have no reference of their own: they ride the stabs' final fader, CHUCK_UNDER_DB
+  // under them as heard (guitar.js).
+  if (funkLanes.length === 2) chuckFader({ form, bars, mix, bpm, lanes: funkLanes, guitar: ctx.guitar, curves: levelData?.curves });
   // The bass echo has no reference of its own: it rides the bass's final levelled fader,
   // including any palette trim.
   if (laneOf.has('bassEcho') && laneOf.has('bass')) {
@@ -507,6 +537,9 @@ export function generateBanger({
     }
   }
   if (bars.length !== total) throw new Error(`banger generator: ${bars.length} bars, not ${total}`);
+  // The strummed guitar keeps the hand — strike k of a bar on a step of parity k — and one note to a string.
+  const funkWrong = funkIssues(funkLanes, barsOfLane);
+  if (funkWrong.length) throw new Error(`banger generator: the strummed guitar ${funkWrong.slice(0, 3).join('; ')}`);
 
   const title = `${String(riff.source?.title || 'RIFF').toUpperCase()} BANGER`;
   const hook = parts.find((p) => p.key === hookKey);
@@ -530,6 +563,10 @@ export function generateBanger({
     `A BANGER, made on the desk from bars ${riff.source.from + 1}–${riff.source.to + 1} of ${riff.source.title || riff.source.id || 'a song'}.`,
     `${style.label} · ${options.mood} · ${keyName(key)} · ${options.variation} · ${total} bars at ${bpm} BPM, ${seconds}s.`,
     `The hook is ${hook?.label || hookKey}. Seed ${s}; generator v${BANGER_GENERATOR_VERSION}.`,
+    ...(ctx.guitar ? [`Guitar: ${ctx.guitar.strummed
+      ? `Strummed — ${FUNK_SETS.find((x) => x.id === ctx.guitar.set)?.label || ctx.guitar.set} hands, chord stabs on ${VOICES[ctx.guitar.stab]?.label || ctx.guitar.stab} and muted chucks on ${VOICES[ctx.guitar.chuck]?.label || ctx.guitar.chuck}`
+      : 'Picked, the arp'}${ctx.guitar.asked === 'random' ? ' (Random)' : ''}.`] : []),
+    ...(strummedChords.length ? [`Guitar chords strummed on ${strummedChords.map((l) => (mix.labels[l] || l).split(' · ')[0]).join(', ')} — a lane Note FX setting, editable on the desk.`] : []),
     ...(expressed?.applied.length ? [`Auto Portamento on ${expressed.applied.map((a) => `${(mix.labels[a.lane] || a.role).split(' · ')[0]} (Amount ${a.set.amount}, Glide ${a.set.glide})`).join(', ')} — a lane Note FX setting, editable on the desk.`] : []),
     ...(trackEffects.mode !== 'style' ? ['', `Track Effects (${trackEffects.mode}):`,
       ...trackEffects.roles.map(x => `  ${(mix.labels[x.lane] || x.role).split(' · ')[0]}: ${x.treatment} — ${x.reason}.`)] : []),
@@ -554,6 +591,7 @@ export function generateBanger({
     ...(style.flavour ? { flavour: style.flavour } : {}),
     ...(style.fusion ? { fusion: style.fusion } : {}),
     options,
+    ...(ctx.guitar ? { guitar: { asked: ctx.guitar.asked, strummed: ctx.guitar.strummed, set: ctx.guitar.set } } : {}),
     seed: s,
     paletteSnapshot: resolvedPaletteSnapshot,
     palette: paletteReport,
@@ -598,7 +636,23 @@ export const BANGER_REROLLS = Object.freeze([
   { stream: 'riserFx', label: 'Riser FX', title: 'Another effect over the risers (Spot FX → Riser FX: Varied)' },
   { stream: 'drop2', label: 'Drop 2', title: 'Another way for the second drop to differ from the first (Drop 2: Varied)' },
   { stream: 'backing', label: 'Breakdown Backing', title: 'Something else under the breakdown\'s hook (Breakdown Backing: Varied)' },
+  { stream: 'guitar', label: 'Guitar', title: 'Picked or Strummed again, and another strumming pattern, where the arp is a funk guitar (Guitar: Random)' },
 ]);
+
+/**
+ * The strummed funk guitar's chucks onto the stabs' fader: CHUCK_UNDER_DB under them as the level model hears
+ * the two parts (levels.js), over the stabs' own window — so a busy hand's chucks come down and a sparse one's
+ * come up to the same place.
+ */
+function chuckFader({ form, bars, mix, bpm, lanes: [stabLane, chuckLane], guitar, curves }) {
+  const window = levelWindow(form, (b) => hasNotes(bars[b]?.arp));
+  const of = (role) => (window ? Array.from({ length: window[1] - window[0] + 1 }, (_, i) => bars[window[0] + i]?.[role] || null) : []);
+  const heard = (role, lane, id) => (window ? predictedProcessedPart({ bars: of(role), bpm, lane, sound: soundOf({ id }), strip: mix.lanes[lane], ...(curves ? { curves } : {}) }) : null);
+  const stab = heard('arp', stabLane, guitar.stab);
+  const chuck = heard('chuck', chuckLane, guitar.chuck);
+  const trim = stab != null && chuck != null ? Math.max(-12, Math.min(6, stab - chuck)) : 0;
+  mix.lanes[chuckLane].gain = Math.round(((mix.lanes[stabLane].gain ?? 0) + trim + CHUCK_UNDER_DB) * 10) / 10;
+}
 
 /**
  * The riff as it was read off the song. A recipe saved before 3 Oct kept its riff with the

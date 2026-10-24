@@ -1017,6 +1017,65 @@ the song learned (`learnLight`).
   keys, so renders are unchanged (null test: the same two warnings, plumber and megamix, as on
   22 Oct). `tests/wave-caches-finite.js`: 80 000 phase asks → 64 waves, 25 000 sync asks → 192,
   5000 spoken pitches → 33.
+- *24 Oct — overnight and after (MEASURED; partly FIXED).* Song load against 22 Oct (WebKit,
+  playing): Office 25.4 → 18.9 %, Gravity 17.3 → 10.3, Plumber 17.1 → 12.0, Neon 16.1 → 13.1,
+  Rhythm 15.1 → 12.0. The 45-min soak: +18 sources a lap (unplugged Spot FX LFOs kept until the
+  next song, mostly). A lap of the soak (15 songs, cues firing) took headless WebKit from ~480 MB
+  to ~1 GB, then ~+10–35 MB a song on repeats. Delay lines (never freed by WebKit) made per song
+  change, and fixed: `Audio.growDelayLine` compared against `maxDelayTime`, which a DelayNode
+  does not have, so every call built a new 2 s line (2–3 a song) — now `delayTime.maxValue`;
+  the Channel Delay's 8 s line is sized to its time live (regrown on demand; offline keeps 8 s);
+  the drum resonator's per-HIT 50 ms line is 512 samples live. Not fixed: Tone's own delays
+  (ping-pong, chorus, feedback: 1 s each, per insert per song), the PWM per-note 0.25 s line,
+  and a remainder of ~10 MB a song change not accounted for by node type. The soak's crashes on
+  24 Oct are the TEST BROWSER's: every crash report is a JavaScriptCore DFG assertion
+  (`VirtualRegisterAllocationPhase`) on a JIT thread in Playwright's development WebKit build;
+  at random songs, ~1 run in 2, not memory. Null test unchanged (plumber, megamix warnings as
+  on 22 Oct). Bench cut-off LIGHT_BENCH_MS 600 → 700 (Peter). The five long-failing suites pass:
+  held-keys and auto-portamento-render (fake MRDR-3 lanes given `port`), group-buses (window
+  allows the designed 4 ms early crossfade), note-duration (swing 50 within 1e-6: the preset
+  path differs ~1e-7 run to run), voices (the Pocket Pixel clap's one-tap `taps` dropped; the
+  four blast presets' real peaks stored — 1.24–1.45, 0.9–1.6 dB quieter, Peter's yes;
+  seedUkGarageSnare measures exactly 1 and is allowed).
+- *24 Oct, later — the rest of the per-song memory (FIXED; MEASURED).* On WebKit's live contexts
+  Tone's ping-pong and feedback delays get a line twice their time (≤1 s) instead of 1 s
+  (`effects.js webkitLive`; the desk in Chromium unchanged), and the PWM's per-NOTE line is one
+  cycle of the note's lower pitch plus a tenth instead of 0.25 s (A/B live in WebKit: level
+  within 1 % at 55/110/440 Hz, same top end). The JS heap is flat across song changes (Chromium,
+  forced GC: 32–33 MB over 8 rounds of shop+neon+crypt), and plain nodes level off in WebKit
+  (25 cycles of 600) — so what was left was WebKit's delay lines. Repeats now: Shop +9 MB once,
+  then ~0 (was +10–12 every time); Gravity +3–12 (was +20–48). What remains on Gravity: ~32
+  WaveShapers (~43 KB each, also kept by WebKit) and a few compressors — ~2 MB a load.
+- *24 Oct, later still — shapers pooled, Spot FX dropped at a stop, the soak clean (FIXED;
+  MEASURED).* WaveShapers on WebKit's live contexts are shelved per context (`effects.js
+  shaperPoolFor`): every shaper made while an effect is built — ours and Tone's, through the
+  context's own `createWaveShaper` — is noted against it, and goes back on the shelf, curve and
+  oversampling reset, when the mixer disposes it (`releaseEffectShapers` in `disposeLinks`).
+  After Gravity's first load none is built new. A reused shaper carries nothing (Gravity live in
+  WebKit fresh / after two rounds of other songs: RMS 0.0229 / 0.0225 / 0.0234; silence exactly
+  0). Compressors are left: ~20 KB each and they hold envelope state. Gravity over 15 reloads:
+  812 → 917 MB, ~2–6 MB a reload after the first few (was +20–48). Panners, splitters/mergers
+  and short delays churn flat in WebKit. A song's STOP now drops every Spot FX branch after its
+  tail on every browser (`makeSectionSwitch.release`): Office left 46 LFOs running after its
+  stop, now 7 — its own inserts, which belong to the mix until the next song, steady across a
+  restart. The soak: still-running sources 3 every lap (the keep-alive and Tone's transport),
+  wired 84 every lap — the +18 a lap is gone. The harness launches WebKit with
+  `__XPC_JSC_useDFGJIT=0` (macOS hands an XPC service only `__XPC_`-prefixed variables): the
+  test browser's DFG assertion stops ending runs (`--dfg` keeps it). The full suite passes
+  (song-processing, tngr2-controller and mixer-metering updated for the audit's new behaviour).
+- *24 Oct, evening — measured as iOS measures, and the caches capped (MEASURED; FIXED).* RSS
+  (`ps`) had been overstating all day: it counts memory WebKit has freed and kept for reuse.
+  macOS `footprint` (phys_footprint, what jetsam reads) over the game's own laps (15 songs,
+  cues firing, no harness bookkeeping — the soak's graph mode holds every node it ever saw in
+  strong Maps, which was most of its 300 MB a lap): start 237 MB → after lap 1 470 → lap 2 478.
+  Repeat song changes cost ~1.5–2.5 MB; the first lap is the cost — WebKit malloc +154 MB,
+  JS typed arrays +52. Not caches of ours: the note cache is desk-only, the worklets hold ~5 MB
+  of tables, PeriodicWaves ~33 a lap, JS keeps ~23 MB of big arrays after a lap (Chromium, GC).
+  Capped: the convolver shelf at 3 (`effects.js parkConvolver` — past it a convolver's impulse
+  is swapped for one sample, so WebKit frees its kernels, and it is dropped) → after two laps
+  442 MB against 478; the impulse cache at the 4 most recent rooms (16 MB after a lap before).
+  Null test unchanged. The probe had played out loud for an hour before it had a gain-0 sink
+  (Peter heard it); every `work/local/_probe-*.mjs` that plays now has one.
 - *22 Oct — the Lab on the iPad (MEASURED, device, https, 17:38).* Full Gravity over https:
   bars 1–50 at C 1.00. The Lab crackled: a Big Room House club song at bar 13 (C 0.92, Q 0.84,
   no frame trouble — DSP) and bar 27 (C 0.94, after the guard's 8-bit), and the next club song

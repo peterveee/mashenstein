@@ -28,6 +28,9 @@ export const REGGAETON = Object.freeze({
   title: '96 BPM: the dembow beat under an 808, a filtered pad, the hook on a marimba with vocal chops answering it — and a beat switch to Latin trap in the middle 8. Starts as a Pop Song in the Uplifting mood, the chords strummed on a guitar over the pad',
   bpm: 96,
   tempoRange: [90, 104],
+  // Its guitar chords strummed (guitar.js): the 3-3-2 strums down and up, quick, the up-strokes 3 dB
+  // under — Romántico's picked nylon too.
+  guitarStrum: { direction: 'alternate-down', gapMs: 12, upDb: -3 },
   defaults: {
     mood: 'uplifting',
     form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },

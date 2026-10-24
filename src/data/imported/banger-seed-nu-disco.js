@@ -994,7 +994,7 @@ export const banger = {
     {
       "lane": "bass",
       "part": "part:bass",
-      "preset": "tngrPickedBass",
+      "preset": "frppBassNeck",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1042,7 +1042,7 @@ export const banger = {
     {
       "lane": "lead5",
       "part": "part:arp",
-      "preset": "mrdrAcousticGuitar",
+      "preset": "frppSteelAcoustic",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1709,7 +1709,7 @@ export const banger = {
         "role": "bass",
         "lane": "bass",
         "label": "BASS · Picked Bass",
-        "voice": "tngrPickedBass",
+        "voice": "frppBassNeck",
         "voiceParams": null,
         "strip": {
           "gain": -2.6
@@ -1812,7 +1812,7 @@ export const banger = {
         "role": "arp",
         "lane": "lead5",
         "label": "GUITAR Picked · Acoustic Guitar",
-        "voice": "mrdrAcousticGuitar",
+        "voice": "frppSteelAcoustic",
         "voiceParams": null,
         "strip": {
           "gain": -3.6,
@@ -2053,7 +2053,7 @@ export const mix = {
   layers: [{ key: "rim2", from: "rim", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "crash2", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead8", from: "lead", independent: true }],
   order: ["kick","snare","clap","hats","ohats","crash","tom","rim","rim2","rim3","tom2","crash2","bass","bass2","chords","lead","lead2","lead3","lead4","lead5","lead6","lead7","lead8"],
   labels: {"kick":"KICK","snare":"SNARE Roll","clap":"SNARE","hats":"HATS","ohats":"OPEN HATS","crash":"CRASH","tom":"FILL TOMS","rim":"PERC Shaker","rim2":"PERC Tambourine","rim3":"PERC Cowbell","tom2":"PERC Congas","crash2":"RIDE","bass":"BASS · Picked Bass","bass2":"SUB · Sub Sine (starter)","chords":"STRINGS · Soft Strings","lead":"RIFF Grand · HOOK","lead2":"HOOK DOUBLE · Vibraphone","lead3":"HOOK 8VA · Celesta","lead4":"LEAD 8VA · Concert Flute","lead5":"GUITAR Picked · Acoustic Guitar","lead6":"CHOIR · Choir Ooh","lead7":"THIRD BELOW · Tine Electric Piano","lead8":"COUNTER-MELODY · Vibraphone"},
-  voice: {"kickVoice":"ds909Kick","snareVoice":"ds909Snare","clapVoice":"ds909Snare","hatsVoice":"dsHatClosed","ohatsVoice":"ds909OpenHat","crashVoice":"ds909Crash","tomVoice":"ds909Tom","rimVoice":"shaker","rim2Voice":"tambourine","rim3Voice":"ds808Cowbell","tom2Voice":"congaHigh","crash2Voice":"ride909SixBit","bassVoice":"tngrPickedBass","bass2Voice":"stSubSine","chordsVoice":"tngrSoftStrings","leadVoice":"mrdrElectricGrand","lead2Voice":"mrdrVibraphone","lead3Voice":"tngrCelesta","lead4Voice":"mrdrConcertFlute","lead5Voice":"mrdrAcousticGuitar","lead6Voice":"jmjrChoirOoh","lead7Voice":"rmndTineEP","lead8Voice":"mrdrVibraphone"},
+  voice: {"kickVoice":"ds909Kick","snareVoice":"ds909Snare","clapVoice":"ds909Snare","hatsVoice":"dsHatClosed","ohatsVoice":"ds909OpenHat","crashVoice":"ds909Crash","tomVoice":"ds909Tom","rimVoice":"shaker","rim2Voice":"tambourine","rim3Voice":"ds808Cowbell","tom2Voice":"congaHigh","crash2Voice":"ride909SixBit","bassVoice":"frppBassNeck","bass2Voice":"stSubSine","chordsVoice":"tngrSoftStrings","leadVoice":"mrdrElectricGrand","lead2Voice":"mrdrVibraphone","lead3Voice":"tngrCelesta","lead4Voice":"mrdrConcertFlute","lead5Voice":"frppSteelAcoustic","lead6Voice":"jmjrChoirOoh","lead7Voice":"rmndTineEP","lead8Voice":"mrdrVibraphone"},
   fx: { reverb: { decay: 2.8 } },
   lanes: {
     kick: { eq: { high: -3 } },

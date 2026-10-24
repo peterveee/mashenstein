@@ -208,7 +208,9 @@ assert(fullSource.includes('onChange: redrawGraphs')
   && fullSource.includes('kit.numRow(row, guards, redrawGraphs)'),
   'Advanced cards wire pot changes to graph-only redraws');
 assert(editorSource.includes('onChange?.();')
-  && editorSource.includes('numRow(row, guards, onChange)'),
+  // An options object may follow — the slider layout passes `{ flat }` — as long as
+  // the callback is still the third argument.
+  && /numRow\(row, guards, onChange[,)]/.test(editorSource),
   'the shared pot builder invokes the graph refresh callback');
 
 if (failed) {

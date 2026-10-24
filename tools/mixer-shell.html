@@ -3519,6 +3519,47 @@
                        background: none;
                        border-bottom: 3px solid var(--lane, var(--line));
                        border-radius: 5px 5px 0 0; }
+  #voiceedit .vehead.vecompact-head { display: flex; align-items: center; gap: 9px;
+    padding: 9px 7px; border-bottom: 1px solid var(--line2); }
+  #voiceedit .vecompact-head .vetitle { flex: none; font-size: 10px; }
+  #voiceedit .vecompact-head .vesynth { flex: none; padding: 0; white-space: nowrap; color: var(--accent); font-size: 14px; font-weight: 700; }
+  #voiceedit .vecompact-head .veundo { margin-left: auto; }
+  #voiceedit .vecompact-head .veopen { margin-left: auto; padding: 4px; letter-spacing: 0; }
+  #voiceedit .vecompact-head .veopen ~ .veundo { margin-left: 0; }
+  #voiceedit .vecompact-head button { flex: none; width: auto; background: transparent; border: 0; color: var(--dim);
+    font: 10px ui-monospace, monospace; min-width: 0; padding: 4px; }
+  #voiceedit .vecompact-head .devlink::after { content: none; }
+  #voiceedit .vecompact-head button:hover { color: var(--ink); }
+  #voiceedit .vecompact-head .veclose { position: static; }
+  /* Edit, Undo and Revert are one row of the same text button. Revert arrives as a
+     `.devlink`, which brings a block display and a 5px bottom margin from the footer it
+     used to live in — that margin is what lifted it off the line. */
+  #voiceedit .vehead.vecompact-head > button:not(.veclose, .velanesolo, .venextnotes) {
+    display: inline-flex; align-items: center; height: 24px; margin: 0; padding: 0 4px;
+    color: var(--dim); font: 10px/1 ui-monospace, monospace; letter-spacing: 0; }
+  #voiceedit .vehead.vecompact-head > button:not(.veclose, .velanesolo, .venextnotes):hover:not(:disabled) { color: var(--ink); }
+  /* The first of them takes the slack, so Edit … ✕ sit hard right; the margin: 0 above
+     would otherwise cancel the old margin-left: auto on Edit and Undo. */
+  #voiceedit .vehead.vecompact-head > button:not(.veclose, .velanesolo, .venextnotes):first-of-type { margin-left: auto; }
+  /* Every item is centred on the same line: the title, the engine and the buttons share
+     line-height 1, and the ✕ drops into the buttons' 24px box rather than its own 28. */
+  #voiceedit .vehead.vecompact-head > * { margin-top: 0; margin-bottom: 0; line-height: 1; }
+  /* The full window's title-bar S (`.sflanesolo`), at this header's 24px. */
+  #voiceedit .vehead.vecompact-head > .velanesolo { flex: none; width: 24px; height: 24px;
+    margin: 0 0 0 4px; padding: 0; display: inline-grid; place-items: center;
+    box-sizing: border-box; border-radius: 3px; cursor: pointer;
+    font: 700 12px/1 ui-monospace, monospace; letter-spacing: 0;
+    color: var(--dim); background: var(--input); border: 1px solid var(--line); }
+  #voiceedit .vehead.vecompact-head > .velanesolo::after { content: none; }
+  #voiceedit .vehead.vecompact-head > .velanesolo:hover { background: var(--hover); color: var(--ink); }
+  #voiceedit .vehead.vecompact-head > .velanesolo.on { background: var(--solo); border-color: var(--solo);
+    color: var(--on-solo); }
+  #voiceedit .vehead.vecompact-head > .veclose { width: 24px; height: 24px; margin: 0 0 0 2px;
+    padding: 0; display: inline-grid; place-items: center; font-size: 16px; line-height: 1; }
+  #voiceedit .vetrackname { width: 100%; min-width: 0; background: transparent; color: var(--ink);
+    border: 0; border-bottom: 1px solid var(--line2); padding: 7px 0 10px;
+    font: 600 12px ui-monospace, monospace; }
+  #voiceedit .vepreset-name { color: var(--dim); font-size: 12px; padding: 10px 0; }
   #voiceedit .vetitle { margin: 0; font-size: 11.5px; text-align: center; font-weight: 400;
                         letter-spacing: .04em; color: var(--ink);
                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3679,6 +3720,13 @@
      2+2 across two rows with a gap down one side because an oscillator's own pots
      left the cursor mid-row. See `numRow`'s `row.startRow`. */
   :is(#voiceedit, #synthfull) .devgrid .potrow.rowstart { grid-column-start: 1; }
+  /* The compact panel's flat sliders: half a card each, two to a line, label and reading
+     over the range — the effect cards' slider, so the two panels read alike. */
+  :is(#voiceedit, #synthfull) .devgrid .slidrow { grid-column: span 2; min-width: 0; }
+  :is(#voiceedit, #synthfull) .devgrid .slidrow.rowstart { grid-column-start: 1; }
+  :is(#voiceedit, #synthfull) .devgrid .slidrow .k { color: var(--dim); font-size: 9.5px; letter-spacing: .03em;
+                                    text-transform: uppercase; }
+  :is(#voiceedit, #synthfull) .devgrid .slidrow .kunit { text-transform: none; opacity: .7; }
   /* The same on a PICK, and it means the same thing: begin a fresh line. TYPE and SLOPE
      are one question in two halves and have to be the pair that lands together — with
      COLOUR now above them they would otherwise flow COLOUR|TYPE and strand SLOPE. The
@@ -4160,6 +4208,16 @@
   #synthfull .sfsolo { font-size: 11px; letter-spacing: .06em; color: var(--solo);
                        white-space: nowrap; }
   #synthfull .sfspace { margin-left: auto; }
+  /* EVERY WORD BUTTON IN BOTH PRESET EDITORS IS CAPITALS — UNDO, TWEAK and SHARE already
+     were, and Revert and Save beside them read as a different kind of control. Done in
+     CSS rather than the strings so the accessible names, the tooltips that quote them and
+     the tests that find them by name keep their ordinary spelling. Title bars, the footer,
+     the save sheet and the channel panel's sound row only: preset names in the picker keep the case they were given. */
+  #synthfull .sfhead > button,
+  #voiceedit .vehead > button,
+  #voiceedit .vefoot button,
+  .vesheet-backdrop .vesheetfoot button,
+  #devices .devsound-actions button { text-transform: uppercase; }
   /* The full window's way out is the desk's standard close too — see `.popclose`. It was
      a bordered pill reading ✕ at the end of a row of bordered pills, which made the one
      control that leaves look like the ones that change something.
@@ -4175,6 +4233,7 @@
                        color: var(--ink); background: var(--input);
                        border: 1px solid var(--line); border-radius: 4px; }
   #synthfull .sfundo:hover:not(:disabled) { border-color: var(--accent); }
+  #synthfull .sfsave { color: var(--accent); border-color: var(--accent); }
   #synthfull .sfundo:disabled { opacity: .38; cursor: default; }
   #synthfull .sfshare { font: inherit; font-size: 10px; letter-spacing: .06em;
                         padding: 4px 8px; white-space: nowrap; cursor: pointer;
@@ -5850,6 +5909,16 @@
      move cursor over a note — the two things it can do. */
   #pianoroll.tool-select .ssqcell { cursor: default; }
   #pianoroll.tool-select .ssqcell.on { cursor: move; }
+  /* Mute takes a note by clicking it and draws nothing, so it points like Select over
+     empty space and offers a click over a note — previewed as the hollow it would become,
+     or filled back in on a note that is already muted. */
+  #pianoroll.tool-mute .ssqcell { cursor: default; }
+  #pianoroll.tool-mute .ssqcell.on { cursor: pointer; }
+  #pianoroll.tool-mute .ssqcell.on:not(.note-muted):hover::before {
+                        background: color-mix(in srgb, var(--lane) 40%, transparent);
+                        box-shadow: inset 0 0 0 1.5px var(--lane); }
+  #pianoroll.tool-mute .ssqcell.on.note-muted:hover::before {
+                        background: color-mix(in srgb, var(--lane) 60%, transparent); }
   /* ---- a set of notes ---------------------------------------------------------------
      Picked out by a ring rather than by a colour: the lane's colour is what says which
      part this is, and a selection that recoloured its notes would be saying the wrong
@@ -5869,6 +5938,18 @@
      single step. The physical key lights in the same accent (see `.ssqlane:has` above),
      which answers "which one is new" a second time without touching the note at all.
      Not animated: stop playback and the last edit is still the thing you can see. */
+  /* ---- a muted note -----------------------------------------------------------------
+     Kept in the part and not played: drawn HOLLOW, in its own lane colour — an outline
+     with a faint wash of the fill. Still plainly the same note in the same channel, still
+     the full rectangle to grab, move and unmute; only the solid fill, which is what reads
+     as "sounding", is gone. Selection and the just-drawn ring still sit on top. */
+  #pianoroll .ssqcell.on.note-muted::before {
+                        background: color-mix(in srgb, var(--lane) 16%, transparent);
+                        box-shadow: inset 0 0 0 1.5px var(--lane); }
+  #pianoroll .ssqcell.on.note-muted .ssqnote-label { color: var(--ink); opacity: .75; }
+  :is(#stepseq,#kitroll) .ssqcell.on.note-muted {
+                        background: color-mix(in srgb, var(--lane) 16%, transparent);
+                        box-shadow: inset 0 0 0 1.5px var(--lane); }
   #pianoroll .ssqcell.on.edited { z-index: 3; }
   #pianoroll .ssqcell.on.edited::before {
                         outline: 2px solid color-mix(in srgb, var(--accent) 92%, var(--ink));
@@ -6360,11 +6441,14 @@
                      border-radius: 4px; color: var(--ink); }
   #fxpicker button:hover { background: var(--hover); color: var(--accent); }
   #fxpicker .cost { color: var(--faint); font-size: 9px; font-variant-numeric: tabular-nums; }
+  :is(#ctxmenu, #devices #devmoremenu) .ctxseparator {
+    height: 0; border-top: 1px solid var(--line); margin: 4px 5px;
+  }
   #ctxmenu .ctxhead { font-size: 9px; color: var(--dim); text-transform: uppercase;
                       letter-spacing: .06em; padding: 3px 9px 5px; }
-  #ctxmenu button { display: block; width: 100%; text-align: left; border: 1px solid transparent;
+  :is(#ctxmenu, #devices #devmoremenu) button { display: block; width: 100%; text-align: left; border: 1px solid transparent;
                     background: none; padding: 5px 9px; font-size: 11px; color: var(--ink); }
-  #ctxmenu button:hover { background: var(--hover); border-color: transparent; color: var(--accent); }
+  :is(#ctxmenu, #devices #devmoremenu) button:not(:disabled):hover { background: var(--hover); border-color: transparent; color: var(--accent); }
   /* ---- The on-screen keyboard -----------------------------------------------
      A floating window, not a menu: it stays open while you work on a channel, so
      nothing about it is dismiss-on-click. Above the pickers in the stack because
@@ -7291,7 +7375,7 @@
                   font-weight: 600; letter-spacing: .08em; line-height: 1.2; }
   .mbcrossovers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
                   gap: 0 10px; }
-  .mbcrossovers h5 { grid-column: 1 / -1; }
+  .mbcrossovers h5, .mbcrossovers > .checkrow { grid-column: 1 / -1; }
   .mbbands { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .mbband-low { border-top-color: color-mix(in srgb, var(--go) 55%, var(--line2)); }
   .mbband-mid { border-top-color: color-mix(in srgb, var(--solo) 55%, var(--line2)); }
@@ -7481,8 +7565,9 @@
                                       height: var(--rowh); box-sizing: border-box; }
   #devices .devgrid > .fxselectrow .head { min-width: 0; }
   #devices .devgrid > .fxselectrow .fxsel { width: 100%; min-width: 0; margin-top: 0; }
-  /* Filter TYPE is a four-way choice, not a hidden list. Use the preset editor's
-     segmented radio language, but make the group fill this effect card's full row. */
+  #devices .devgrid > .fxselectrow.fxwide { grid-column: 1 / -1; }
+  /* A choice that plainly fits as a radio (the multiband's SPLIT) uses the preset
+     editor's segmented language across the card's full row. */
   #devices .devgrid > .fxradio { grid-column: 1 / -1; display: grid;
                                   grid-template-columns: max-content minmax(0, 1fr);
                                   align-items: center; column-gap: 8px;
@@ -7494,8 +7579,8 @@
                                         min-width: 0; padding: 2px; box-sizing: border-box;
                                         background: var(--input); border: 1px solid var(--line);
                                         border-radius: 6px; }
-  #devices .devgrid > .fxradio .segbtn { flex: 1; min-width: 0; margin: 0; padding: 2px 1px;
-                                         font: inherit; font-size: 8.5px; font-weight: 700;
+  #devices .devgrid > .fxradio .segbtn { flex: 1; min-width: 0; margin: 0; padding: 2px 4px;
+                                         font: inherit; font-size: 10px; font-weight: 700;
                                          letter-spacing: .02em; color: var(--dim);
                                          background: none; border: 0; border-radius: 4px;
                                          white-space: nowrap; }
@@ -7622,6 +7707,9 @@
     to   { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 0%, transparent); }
   }
   .device.flash { animation: devflash 1.2s ease-out; }
+  /* And which one is open: the card and its slot on the strip, held until another is. */
+  .device.picked { box-shadow: 0 0 0 2px var(--accent); }
+  .fxbtns button.picked { box-shadow: inset 0 0 0 1px var(--accent); }
   /* The strip's own device: a send's delay or reverb, the master's limiter. Pinned
      first in the rack and not removable — it is what the strip IS, not something
      someone added to it. Everything to its right is an insert. */
@@ -7993,7 +8081,8 @@
 
      Under 820px there is no width to give up: the panel goes back to covering, because
      the sliver of desk left beside it is not a desk you can mix on. */
-  body { --fxdock-w: min(348px, calc(100vw - 16px)); --fxdock-gap: 10px; --fxdock: 0px;
+  /* 381 = half again on the old 254, which was a squeeze for every two-column card. */
+  body { --fxdock-w: min(381px, calc(100vw - 16px)); --fxdock-gap: 6px; --fxdock: 0px;
          padding-right: 0; }
   body.fxdock-open { --fxdock: var(--fxdock-w); }
   body.fxdock-collapsed { --fxdock: 38px; }
@@ -8041,7 +8130,7 @@
   #devices.fxwindow-open { transform: translateX(0); visibility: visible;
                            pointer-events: auto; }
   body.fxdock-left #devices.fxwindow-open { transform: translateX(0); }
-  #devices.channel-collapsed { width: 38px; overflow: hidden; }
+  #devices.channel-collapsed { width: 38px; overflow: hidden; cursor: pointer; }
   #devices.channel-collapsed #devhead { flex-direction: column; height: 100%; min-height: 0;
     padding: 6px 3px; gap: 12px; border-bottom: 0; }
   #devices.channel-collapsed #devhead > .label,
@@ -8075,8 +8164,10 @@
      and hands the next line to the effect cards beside Arrangement. */
   #devices #devhead { cursor: default; user-select: none; height: var(--ctlh);
                       min-height: var(--ctlh);
-                      padding: 0 var(--foldx); column-gap: 4px;
+                      padding: 0 4px; column-gap: 3px;
                       border-bottom: 1px solid var(--line); }
+  #devices #devhead > .label { font-size: 9px; }
+  #devices #devhead .panel-synth-name { font-size: 12px; padding-inline: 3px; }
   #devices #devtitle { order: 2; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap;
                        text-overflow: ellipsis; }
   #devices #devsolo { flex: 0 0 26px; width: 26px; min-width: 26px;
@@ -8087,7 +8178,7 @@
   #devices #devsolo[hidden] { display: none; }
   #devices #devsolo:hover { border-color: var(--accent); }
   #devices #devsolo.on { background: var(--solo); border-color: var(--solo); color: var(--on-solo); }
-  #devices .devnav { display: flex; flex: none; gap: 4px; order: 3; }
+  #devices .devnav { display: flex; flex: none; gap: 2px; order: 3; }
   #devices .devnav button { display: grid; place-items: center; flex: 0 0 22px;
                             width: 22px; min-width: 22px; height: 26px; min-height: 26px;
                             padding: 0; color: var(--dim); background: var(--panel2);
@@ -8138,26 +8229,49 @@
                                calc(var(--fxair) + var(--ctlh) + 2px) var(--fxair); }
   /* A channel's identity stays in view while its inserts scroll. The track name is
      real editable mix data; it is not a staged label or a rename of the sound preset. */
-  #devices #devidentity { flex: none; padding: 9px 10px 10px; border-bottom: 1px solid var(--line);
+  #devices #devidentity { flex: none; padding: 10px 12px 12px; border-bottom: 1px solid var(--line);
                           background: var(--panel); }
   #devices #devidentity[hidden], #devices #devmore[hidden] { display: none; }
-  #devices #devname { display: block; width: 100%; min-width: 0; min-height: 34px;
-                      padding: 6px 9px; color: var(--ink); background: var(--panel2);
-                      border: 1px solid var(--line2); border-radius: 5px;
-                      font: 500 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  #devices #devsound { display: grid; gap: 8px; margin-top: 9px;
+  /* Inset like any other field, so the focus ring has air round the name instead of
+     sitting on its first letter; the sound line below starts where the name does. */
+  #devices #devname { display: block; width: 100%; min-width: 0; min-height: 30px;
+                      padding: 6px 8px; color: var(--ink); background: transparent;
+                      border: 1px solid transparent; border-bottom-color: var(--line2);
+                      border-radius: 4px;
+                      font: 600 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #devices #devname:hover { border-color: var(--line2); }
+  #devices #devname:focus { outline: none; border-color: var(--accent); background: var(--panel2); }
+  #devices #devsound { display: grid; gap: 8px; margin-top: 7px;
                        min-width: 0; color: var(--dim); font-size: 9px; }
-  #devices .devsound-meta { display: flex; flex: 1 1 auto; align-items: center; gap: 7px; min-width: 0; }
+  #devices .devsound-meta { display: flex; flex: 1 1 auto; align-items: center; gap: 7px; min-width: 0;
+                           padding-left: 9px; }
   #devices #devsound .devsound-name { flex: 1 1 auto; min-width: 0;
-    font-size: 12px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+    font-size: 12px; font-weight: 400; line-height: 1.4; color: var(--dim); overflow-wrap: anywhere; }
   #devices .devsound-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
                                align-items: stretch; gap: 5px; min-width: 0; }
   #devices #devsound button { width: 100%; min-width: 0; height: 26px; min-height: 26px;
     padding: 2px 7px; font-size: 10px; text-align: center; justify-content: center; }
-  #devices #devnotefx { margin-left: 0; display: inline-flex; align-items: center; gap: 5px; }
-  #devices .devnotefx-indicator { width: 5px; height: 5px; border: 1px solid var(--faint); border-radius: 50%; }
-  #devices #devnotefx[data-active="true"] { color: var(--accent); border-color: var(--accent); }
-  #devices #devnotefx[data-active="true"] .devnotefx-indicator { background: var(--accent); border-color: var(--accent); }
+  #devices #devsound #devnotefx { margin-left: 0; display: inline-flex; align-items: center; gap: 3px;
+    padding-inline: 3px; white-space: nowrap;
+    color: var(--dim); background: transparent; border-color: transparent; }
+  #devices #devnotefx:hover, #devices #devnotefx:focus-visible { color: var(--ink); border-color: var(--line2); }
+  #devices #devnotefx[data-active="true"] { border-color: var(--accent); }
+  /* THE HOLLOW PLAY — on to the next bar this channel has notes in. The transport's own
+     triangle, drawn as an outline: the same verb, a smaller promise. The same look on
+     the channel panel and in both editors' headers; disabled when the lane is empty. */
+  .nextnotes { flex: none; display: inline-grid; place-items: center; padding: 0;
+    box-sizing: border-box; border-radius: 3px; cursor: pointer;
+    color: var(--dim); background: transparent; border: 1px solid var(--line); }
+  .nextnotes::after { content: none; }
+  .nextnotes > svg { width: 12px; height: 12px; fill: none; stroke: currentColor;
+    stroke-width: 1.4; stroke-linejoin: round; }
+  .nextnotes:hover:not(:disabled), .nextnotes:focus-visible { color: var(--ink); background: var(--hover); }
+  .nextnotes:disabled { opacity: .35; cursor: default; }
+  #devices #devsound #devnextnotes { width: 26px; height: 26px; min-height: 26px; padding: 0; }
+  #synthfull .sfnextnotes { width: 28px; min-width: 28px; height: 28px; min-height: 28px; margin-right: 6px; }
+  /* It is now the head's first button, so it takes the slack that Edit's :first-of-type
+     rule gave — Edit … ✕ still sit hard right. */
+  #voiceedit .vehead.vecompact-head > .venextnotes { width: 24px; height: 24px; margin: 0 auto 0 6px; }
   #devices #devmore { flex: 0 0 28px; width: 28px; height: 27px; min-height: 27px;
                       padding: 0; color: var(--dim); background: var(--panel2);
                       border-color: var(--line); }
@@ -8168,13 +8282,13 @@
                           max-height: min(70vh, 520px); overflow-y: auto; overscroll-behavior: contain;
                           border: 1px solid var(--line2); border-radius: 7px;
                           background: var(--panel2); box-shadow: 0 8px 28px #0008; }
-  #devices #devmoremenu:not([hidden]) { display: grid; gap: 3px; }
-  #devices #devmoremenu button { width: 100%; min-height: 30px; padding: 5px 8px;
-                                 text-align: left; font-size: 11px; }
-  #devices #devmoremenu button.danger { color: var(--danger, #ed827e); }
-  #devices .devmore-select { display: grid; gap: 4px; padding: 5px 8px; color: var(--dim);
+  #devices #devmoremenu:not([hidden]) { display: block; }
+  :is(#ctxmenu, #devices #devmoremenu) button { min-height: 0; border-radius: 2px; }
+  :is(#ctxmenu, #devices #devmoremenu) button:disabled { opacity: .35; cursor: default; }
+  :is(#ctxmenu, #devices #devmoremenu) button.danger { color: var(--danger, #ed827e); }
+  :is(#devices, #ctxmenu) .devmore-select { display: grid; gap: 4px; padding: 5px 8px; color: var(--dim);
                              font-size: 10px; }
-  #devices .devmore-select select { width: 100%; min-height: 29px; padding: 4px 7px;
+  :is(#devices, #ctxmenu) .devmore-select select { width: 100%; min-height: 29px; padding: 4px 7px;
                                     color: var(--ink); background: var(--panel);
                                     border: 1px solid var(--line2); border-radius: 4px;
                                     font: 11px ui-monospace, monospace; }
@@ -8183,35 +8297,15 @@
   #devices .devadjust summary { min-height: 23px; padding: 3px 0 7px; cursor: pointer;
                                 color: var(--dim); font-size: 10px; }
   #devices .devadjust[open] summary { border-bottom: 1px solid var(--line); }
-  #devices .devadjust-body { display: grid; gap: 8px; padding: 9px; }
-  #devices .devadjust-row { display: grid; grid-template-columns: 58px minmax(40px, 1fr) 66px 42px;
-                            align-items: center; gap: 7px; }
-  #devices .devadjust-row > label { color: var(--ink); font-size: 11px; }
-  #devices .devadjust-row input[type="range"] { width: 100%; min-width: 0; accent-color: var(--accent); }
-  #devices .devadjust-row input[type="number"] { width: 100%; min-width: 0; height: 28px;
-    padding: 3px 6px; color: var(--ink); background: var(--panel); border: 1px solid var(--line2);
-    border-radius: 4px; font: 12px ui-monospace, monospace; }
-  #devices .devadjust-row button { min-height: 27px; padding: 3px 5px; font-size: 10px; }
-  #devices .devadjust-note { grid-column: 2 / -1; margin-top: -5px; color: var(--dim); font-size: 10px; }
-  #devices .devadjust-row.mixed input[type="number"]::placeholder { color: var(--dim); }
+  #devices .devadjust-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                             gap: 4px 10px; padding: 7px 9px 6px; }
+  #devices .devadjust-row { min-width: 0; }
+  #devices .devadjust-row.mixed .v { color: var(--dim); font-style: italic; }
   #devices .devfx-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; padding: 1px 2px 0; color: var(--dim);
                             font-size: 10px; letter-spacing: .08em; }
-  #devices .devbypass-all { min-height: 24px; padding: 2px 5px; border-color: transparent;
-    background: transparent; color: var(--dim); font: inherit; letter-spacing: 0; }
-  #devices .devbypass-all::after { content: ' ○'; }
-  #devices .devbypass-all[aria-pressed="true"] { color: var(--accent); }
-  #devices .devbypass-all[aria-pressed="true"]::after { content: ' ●'; }
-  #devices .devbypass-all:hover:not(:disabled) { border-color: var(--line2); color: var(--ink); }
-  #devices .devbypass-all:disabled { opacity: .35; cursor: default; }
-  /* The effect list owns the flexible middle. The + control sticks to its bottom edge,
-     while this separate strip remains fixed against the panel bottom. */
+  /* The effect list owns the flexible middle; the add card is the plain square + at the
+     end of it, the same card the rack has always ended on. */
   #devices #devrack { padding-bottom: 8px; }
-  #devices #devrack .devaddcard { position: sticky; bottom: 0; z-index: 2;
-    width: 100%; min-height: 38px; height: 38px; align-self: stretch; flex: none;
-    margin: 2px 0 0; padding: 0; border-style: dashed; border-radius: 5px;
-    background: color-mix(in srgb, var(--panel) 92%, transparent); }
-  #devices #devrack .devaddcard::after { content: '＋ ADD EFFECT'; opacity: 1;
-    color: var(--accent); font: 11px ui-monospace, monospace; }
   #devices #devmix { flex: none; padding: 7px 10px 8px; border-top: 1px solid var(--line2);
                       background: var(--panel2); }
   #devices #devmix[hidden] { display: none; }
@@ -8231,7 +8325,7 @@
     background: var(--ink); opacity: 0; }
   #devices .devmixmeter.clip > i { background: #ee776f; }
   #devices .devmix-extra { margin-top: 6px; padding-top: 1px; border-top: 1px solid var(--line); }
-  #devices .devmix-sends, #devices .devmix-eq { display: grid; grid-template-columns: 1fr 1fr;
+  #devices .devmix-sends, #devices .devmix-eq { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 4px 8px; padding-top: 4px; }
   #devices .devmix-sends .slider, #devices .devmix-eq .slider { min-width: 0; }
   #devices .devmix-eq { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -8263,7 +8357,7 @@
      card, so half a column was also where they got cut off. */
   #devices .devgrid > .fxpresetrow { grid-column: 1 / -1; }
   #devices .device.dropzone { box-shadow: 0 -3px 0 var(--accent); }
-  #devices .devaddcard { width: 52px; height: 52px; align-self: center; }
+  #devices .devaddcard { width: 78px; height: 78px; align-self: center; }
   #devices .devaddcard::after { opacity: .35; }
   /* The catalogue belongs to the narrow inspector too. Two groups across keeps it
      readable without recreating the old screen-wide sheet; openPicker places it to
@@ -9119,7 +9213,6 @@
 
 <div id="devices" role="region" aria-label="Channel controls" aria-hidden="true">
   <div id="devhead">
-    <span class="label">Channel</span>
     <span id="devtitle" aria-live="polite"></span>
     <div class="devnav" role="group" aria-label="Channel navigation">
       <button id="devprev" type="button" title="Previous channel" aria-label="Previous channel">

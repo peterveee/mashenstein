@@ -133,6 +133,23 @@ export function laneShapeLengths(laneKey, lengths16) {
   return lengths16.map((len) => (mono && Array.isArray(len) ? (len[0] ?? null) : len ?? null));
 }
 
+/**
+ * The velocities and mutes that go with `laneShape`, on the same terms as the lengths.
+ *
+ * A velocity is one number a step on every lane, so it crosses unchanged. A mute is per
+ * tone on a chord, and a chord flattened onto a mono or percussion lane keeps the flag
+ * of the tone that survived — tone 0, as the length does. A scalar mute is already legal
+ * on a chord lane, where it covers the step.
+ */
+export function laneShapeAttrs(laneKey, attrs) {
+  if (!attrs) return null;
+  const kind = laneKind(laneKey);
+  const flat = kind === 'perc' || MONO_LANES.includes(baseLane(laneKey));
+  return Object.fromEntries(Object.entries(attrs).map(([suffix, steps]) => [suffix,
+    !Array.isArray(steps) || suffix !== 'Mute' || !flat ? steps
+      : steps.map((m) => (Array.isArray(m) ? (m[0] === true ? true : null) : m ?? null))]));
+}
+
 /** Which bar of the song a step falls in, and where in that bar. */
 export const barOfStep = (step) => Math.floor(step / 16);
 export const stepInBar = (step) => step % 16;

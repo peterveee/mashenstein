@@ -1043,7 +1043,7 @@ export const banger = {
     {
       "lane": "bass2",
       "part": "part:sub",
-      "preset": "seedReggaetonSub",
+      "preset": "stSubSine",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1894,7 +1894,7 @@ export const banger = {
         "role": "sub",
         "lane": "bass2",
         "label": "SUB · Sub Sine (starter) · Reggaeton",
-        "voice": "seedReggaetonSub",
+        "voice": "stSubSine",
         "voiceParams": null,
         "strip": {
           "gain": -14
@@ -2259,7 +2259,7 @@ export const mix = {
   layers: [{ key: "crash2", from: "crash", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "tom3", from: "tom", independent: true }, { key: "crash3", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead8", from: "lead", independent: true }],
   order: ["kick","snare","clap","hats","ohats","crash","crash2","tom","tom2","rim","rim2","rim3","tom3","crash3","bass","bass2","chords","chords2","lead","lead2","lead3","lead4","lead5","lead6","lead7","lead8"],
   labels: {"kick":"KICK","snare":"SNARE Roll","clap":"SNARE Dembow","hats":"HATS","ohats":"OPEN HATS","crash":"CRASH Ride","crash2":"RISER","tom":"IMPACT","tom2":"FILL Perc","rim":"PERC Shaker","rim2":"PERC Tambourine","rim3":"PERC Clave","tom3":"PERC Congas","crash3":"RIDE","bass":"808 Dist · Distorted 808","bass2":"SUB · Sub Sine (starter) · Reggaeton","chords":"STAB · BEST PWM Clav","chords2":"PAD · Polar Drift","lead":"RIFF Grand · HOOK","lead2":"HOOK DOUBLE · Marimba · Reggaeton","lead3":"HOOK 8VA · Kalimba · Reggaeton","lead4":"LEAD 8VA · Horizon Solo · Reggaeton","lead5":"PLUCK Riff · Data Marimba","lead6":"CHOIR · Choir Ooh · Reggaeton","lead7":"THIRD BELOW · Data Marimba · Reggaeton","lead8":"VOX Chops · Choir Aah · Reggaeton"},
-  voice: {"kickVoice":"ds808Kick","snareVoice":"snareTight","clapVoice":"snareTight","hatsVoice":"hatGrit","ohatsVoice":"ds808OpenHat","crashVoice":"seedReggaetonCrash","tomVoice":"syn3PewDeep","tom2Voice":"kit_havana_patio_tom","rimVoice":"dsShaker","rim2Voice":"tambourine","rim3Voice":"kit_havana_patio_rim","tom3Voice":"congaHigh","crash3Voice":"ride909SixBit","bassVoice":"mrdrDist808","bass2Voice":"seedReggaetonSub","chordsVoice":"bestPwmClav","chords2Voice":"tngrPolarDrift","leadVoice":"mrdrElectricGrand","lead2Voice":"marimba","lead3Voice":"tpKalimba","lead4Voice":"tngrHorizonSolo","lead5Voice":"tngrDataMarimba","lead6Voice":"jmjrChoirOoh","lead7Voice":"tngrDataMarimba","lead8Voice":"jmjrChoirAah"},
+  voice: {"kickVoice":"ds808Kick","snareVoice":"snareTight","clapVoice":"snareTight","hatsVoice":"hatGrit","ohatsVoice":"ds808OpenHat","crashVoice":"seedReggaetonCrash","tomVoice":"syn3PewDeep","tom2Voice":"kit_havana_patio_tom","rimVoice":"dsShaker","rim2Voice":"tambourine","rim3Voice":"kit_havana_patio_rim","tom3Voice":"congaHigh","crash3Voice":"ride909SixBit","bassVoice":"mrdrDist808","bass2Voice":"stSubSine","chordsVoice":"bestPwmClav","chords2Voice":"tngrPolarDrift","leadVoice":"mrdrElectricGrand","lead2Voice":"marimba","lead3Voice":"tpKalimba","lead4Voice":"tngrHorizonSolo","lead5Voice":"tngrDataMarimba","lead6Voice":"jmjrChoirOoh","lead7Voice":"tngrDataMarimba","lead8Voice":"jmjrChoirAah"},
   voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":5,"note":"White noise through a band climbing 250 Hz to 8 kHz over 5.00s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":5,"Q":1.6,"slope":-24,"color":"white","attack":4.6000000000000005,"hold":0,"decay":0.4,"curve":"exp","gain":1},"drive":0.01756248699,"peak":0.0337,"trim":0.04859517898,"level":0.1314}},
   fx: { reverb: { decay: 2.8 } },
   lanes: {

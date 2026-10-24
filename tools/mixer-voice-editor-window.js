@@ -272,7 +272,7 @@ function placeVoiceEditor() {
  *   false      the small Simple panel, on a drum as much as on anything else.
  *
  * The track panel and the channel menu pass it explicitly on both of their items, so
- * **Edit Simple** and **Edit Advanced** each do exactly what they are called. A preset
+ * **Tweak Preset** and **Edit Preset** each do exactly what they are called. A preset
  * with only one surface ignores it; there is nothing else to open.
  *
  * Either way the window opens at the POINTER — `at` is the click that asked for it, and
@@ -355,7 +355,7 @@ function editVoice(laneKey, { advanced, at = null } = {}) {
       voiceEditor.openFull(1, { at, avoidTransport: true });
       return;
     }
-    // Edit Simple with the full window up swaps one for the other.
+    // Tweak Preset with the full window up swaps one for the other.
     if (advanced === false && voiceEditor.fullOpen) voiceEditor.showSimple(at);
     return;
   }
@@ -378,7 +378,7 @@ function editVoice(laneKey, { advanced, at = null } = {}) {
 }
 
 /**
- * The compact panel taking over from the full window (its SIMPLE button, or Edit Simple
+ * The compact panel taking over from the full window (its TWEAK button, or Tweak Preset
  * while it is up): back in its window, at the full window's corner rather than wherever a
  * repaint last parked it — the full window may have been dragged across the screen.
  */

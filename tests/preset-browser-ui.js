@@ -20,8 +20,11 @@ try {
  await choose(picker,'engine','RMND-7');
  assert.ok((await picker.locator('.preset-list .vkind').allTextContents()).every(x=>x==='RMND-7'));
  await picker.locator('.voicesearch').fill('guitar');
- assert.equal(await picker.locator('.preset-empty').count(),1);
- assert.equal(await picker.locator('[data-facet="engine"] .on').getAttribute('data-value'),'RMND-7');
+ assert.equal(await picker.locator('.preset-empty').count(),0);
+ for (const key of ['category','subcategory','engine']) {
+  assert.equal(await picker.locator(`[data-facet="${key}"] .on`).getAttribute('data-value'),'all');
+ }
+ assert.equal(await picker.locator('.voicesearch').inputValue(),'guitar');
  await picker.locator('.preset-clear').click();
  await choose(picker,'category','Keys'); await choose(picker,'subcategory','Electric Piano');
  await page.screenshot({path:root+'track-selector-wide.png'});

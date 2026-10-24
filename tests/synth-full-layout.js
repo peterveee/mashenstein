@@ -92,7 +92,7 @@ const SIMPLE_LABELS = {
 for (const [synth, labels] of Object.entries(SIMPLE_LABELS)) {
   const surface = stripPanelSpec({ kind: 'tone', synth });
   const actual = surface.groups[0]?.rows.map((row) => row.label);
-  if (surface.mode !== 'quick' || surface.groups[0]?.title !== 'Simple'
+  if (surface.mode !== 'quick' || surface.groups[0]?.title !== 'Tweak'
     || !isDeepStrictEqual(actual, labels)) {
     fail(`${synth} Simple surface is ${JSON.stringify(actual)}, not ${JSON.stringify(labels)}`);
   } else if (actual.includes('FINE')) {

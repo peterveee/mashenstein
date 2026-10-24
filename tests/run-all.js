@@ -268,6 +268,9 @@ const suites = [
   'tests/banger-intros.js',
   // Drop 2: each way changes the second drop and nothing else; Varied passes over what a song cannot play.
   'tests/banger-drop2.js',
+  // The guitars: guitar chords strum in the style's feel, the strummed funk guitar keeps the hand's parity
+  // in every bar, Guitar forces each mode and Random is seeded, kept songs made as they were.
+  'tests/banger-guitar.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
@@ -707,6 +710,9 @@ const suites = [
   // are about what comes out of the speakers: a length that reads correctly in the file
   // and changes nothing about the sound is the one failure the unit half cannot see.
   'tests/note-duration.js',
+  // Velocity and mute — the rest of what belongs to a note. Every edit carries them, and
+  // its last claim renders: a muted note is sample-identical to no note.
+  'tests/note-attrs.js',
   // What a length that long does to the song AFTER it: opening another song has to
   // stop the note that is still ringing, not merely slide it for half a second.
   'tests/song-switch.js',

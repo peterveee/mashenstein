@@ -84,6 +84,7 @@ import * as GAME_ALT_NEON_REMIX_GOLDEN_HOUR from './imported/neon-remix-golden-h
 import * as GAME_ALT_NEON_REMIX_LIVE_WIRE from './imported/neon-remix-live-wire.js';
 import * as GAME_ALT_NEW_THE_FOOD_COURT from './imported/new-the-food-court.js';
 import * as GAME_ALT_OFFICE_8BIT from './imported/office-8bit.js';
+import * as GAME_ALT_OFFICE_REMIX_BLUE_CHIP from './imported/office-remix-blue-chip.js';
 import * as GAME_ALT_OFFICE_THEME_1_THE_CLIMB from './imported/office-theme-1-the-climb.js';
 import * as GAME_ALT_OFFICE_THEME_2_HOSTILE_BOARDROOM from './imported/office-theme-2-hostile-boardroom.js';
 import * as GAME_ALT_OFFICE_THEME_3_EXECUTIVE_NOIR from './imported/office-theme-3-executive-noir.js';
@@ -97,6 +98,10 @@ import * as GAME_ALT_RHYTHM_REMIX_FIRE_SALE from './imported/rhythm-remix-fire-s
 import * as GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER from './imported/rhythm-remix-hostile-takeover.js';
 import * as GAME_ALT_RHYTHM_REMIX_IN_THE_RED from './imported/rhythm-remix-in-the-red.js';
 import * as GAME_ALT_SHOP_8BIT from './imported/shop-8bit.js';
+import * as GAME_ALT_SHOP_REMIX_AISLE_FEVER from './imported/shop-remix-aisle-fever.js';
+import * as GAME_ALT_SHOP_REMIX_BROWSING_BOSSA from './imported/shop-remix-browsing-bossa.js';
+import * as GAME_ALT_SHOP_REMIX_HOT_CLUB from './imported/shop-remix-hot-club.js';
+import * as GAME_ALT_SHOP_REMIX_STEEL_STRING from './imported/shop-remix-steel-string.js';
 import * as GAME_ALT_SPEED_8BIT from './imported/speed-8bit.js';
 import * as GAME_ALT_SPEED_HORIZON_LINES_OVERDRIVE from './imported/speed-horizon-lines-overdrive.js';
 import * as GAME_ALT_SPEED_HORIZON_LINES from './imported/speed-horizon-lines.js';
@@ -199,6 +204,7 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_NEON_REMIX_LIVE_WIRE,
   GAME_ALT_NEW_THE_FOOD_COURT,
   GAME_ALT_OFFICE_8BIT,
+  GAME_ALT_OFFICE_REMIX_BLUE_CHIP,
   GAME_ALT_OFFICE_THEME_1_THE_CLIMB,
   GAME_ALT_OFFICE_THEME_2_HOSTILE_BOARDROOM,
   GAME_ALT_OFFICE_THEME_3_EXECUTIVE_NOIR,
@@ -212,6 +218,10 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER,
   GAME_ALT_RHYTHM_REMIX_IN_THE_RED,
   GAME_ALT_SHOP_8BIT,
+  GAME_ALT_SHOP_REMIX_AISLE_FEVER,
+  GAME_ALT_SHOP_REMIX_BROWSING_BOSSA,
+  GAME_ALT_SHOP_REMIX_HOT_CLUB,
+  GAME_ALT_SHOP_REMIX_STEEL_STRING,
   GAME_ALT_SPEED_8BIT,
   GAME_ALT_SPEED_HORIZON_LINES_OVERDRIVE,
   GAME_ALT_SPEED_HORIZON_LINES,

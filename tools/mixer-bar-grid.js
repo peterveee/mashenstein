@@ -30,7 +30,7 @@
 import {
   resolveSection, RESOLUTIONS, LEGACY_RESOLUTION, promoteResolution, resolutionOf,
 } from '../src/data/arrangements.js';
-import { lenKey } from '../src/engine/lanes.js';
+import { lenKey, NOTE_ATTRS, noteAttrKey } from '../src/engine/lanes.js';
 import { writeBarNotes, writeBarNotesShared, setLanesOff } from './lib/arrangement-edit.js';
 // A whole-song roll is tens of thousands of nodes built in one task — measured at
 // ~200ms plus a ~120ms layout follow-up on smw-all-instruments — and the sequencer
@@ -225,6 +225,8 @@ const ARROWS = {
  *   run     the step grid's drag: a trail of separate notes, or rubbing a trail out,
  *           decided by whether the first cell was filled
  *   erase   the same drag, always rubbing out
+ *   mute    mute or unmute the note pressed (the selection with it, if it is in one),
+ *           and give every note the drag crosses the same answer
  */
 export function gestureFor({
   tool = 'auto', alt = false, meta = false, shift = false,
@@ -246,6 +248,9 @@ export function gestureFor({
   if (shift && on) return 'select';
   if (alt || tool === 'paint') return 'run';
   if (tool === 'erase') return 'erase';
+  // Mute flips the note it lands on and never writes one. Empty space bands notes, so
+  // a phrase can be picked out and then muted with one click on any of it.
+  if (tool === 'mute') return on ? 'mute' : 'marquee';
   // Select is the pointer that never writes: empty space draws a rectangle, a note is
   // taken hold of, and dragging one that is already selected moves the whole set.
   if (tool === 'select') return on ? 'select' : 'marquee';
@@ -454,6 +459,16 @@ export function createBarGrid({
   // beat is not a gesture anybody performs on a kit.
   withLen = () => null, cellLen = () => null, addLength = () => null,
   resizable = () => false, movable = false,
+  // ---- what else belongs to a note: its velocity and its mute (`NOTE_ATTRS`)
+  //
+  // `withAttr(row, attr, value, stored, on, given)` is `withLen`'s twin: what a step's
+  // stored attribute becomes when this row's cell is drawn or cleared. `given` is what
+  // the gesture says — a moved note's own mute, a toggle — or undefined for "nothing",
+  // in which case a note that stays keeps its own and a new one starts with none.
+  // `noteAttrs(row, value, stored)` reads one NOTE's attributes out of the step's, so a
+  // move can carry them. The defaults are per step, which is right for any panel whose
+  // cell is the whole step; the roll overrides both for chords, whose mutes are per tone.
+  withAttr = null, noteAttrs = (row, value, stored) => stored,
   // Runtime note-onset resolution. The transport and stored lengths remain in
   // sixteenth-step units; only the number of addressable onset slots changes.
   stepsPerBar = () => 16,
@@ -819,8 +834,24 @@ export function createBarGrid({
     return {
       notes: pend?.notes || readKey(b, lane),
       lengths: pend?.lengths || readKey(b, lenKey(lane)),
+      // Velocities and mutes, read on the same terms and staged in the same entry.
+      attrs: pend?.attrs || Object.fromEntries(NOTE_ATTRS.map(({ suffix }) =>
+        [suffix, readKey(b, noteAttrKey(lane, suffix))])),
     };
   }
+
+  /** One step's attributes, as a `{ Velocity, Mute }` of single values. */
+  const attrsAt = (pair, step) => Object.fromEntries(NOTE_ATTRS.map(({ suffix }) =>
+    [suffix, pair.attrs[suffix][step] ?? null]));
+
+  // The per-step default for `withAttr`: see the option. A note this row holds keeps its
+  // own unless told otherwise; a cleared one takes them with it; another row's note on
+  // the same step — the eraser dragged along a row past a different pitch — is left be.
+  const attrAfter = withAttr || ((row, attr, value, stored, on, given) => {
+    const held = isOn(row, value);
+    if (on) return given !== undefined ? given ?? null : (held ? stored : null);
+    return held ? null : stored;
+  });
 
   /** The sixteen raw values a bar plays on one lane, pending edits included. */
   const readBar = (b, lane) => readPair(b, lane).notes;
@@ -864,7 +895,7 @@ export function createBarGrid({
    * the length that was there, which for the roll means: a new note inherits nothing and
    * an erased one takes its length with it. Nothing here knows which; `withLen` does.
    */
-  function setCell(row, b, step, on, drawn = null) {
+  function setCell(row, b, step, on, drawn = null, carry = undefined) {
     const key = kof(b, row.lane);
     const cur = readPair(b, row.lane);
     const value = cur.notes[step] ?? null;
@@ -872,9 +903,17 @@ export function createBarGrid({
     const nextValue = withCell(row, value, on);
     const nextLen = withLen(row, value, len, on,
       drawn == null ? null : drawn * colUnit());
+    const nextAttrs = {};
+    let attrChanged = false;
+    for (const attr of NOTE_ATTRS) {
+      const stored = cur.attrs[attr.suffix][step] ?? null;
+      const next = attrAfter(row, attr, value, stored, on, carry?.[attr.suffix]);
+      nextAttrs[attr.suffix] = next;
+      if (!sameLen(next, stored)) attrChanged = true;
+    }
     const noteChanged = !Object.is(nextValue, value);
     const lenChanged = !sameLen(nextLen, len);
-    if (!noteChanged && !lenChanged) return false;
+    if (!noteChanged && !lenChanged && !attrChanged) return false;
     const notes = cur.notes.slice();
     notes[step] = nextValue;
     // Materialised only once a length is actually in play. A percussion grid never
@@ -886,7 +925,19 @@ export function createBarGrid({
       lengths = cur.lengths.slice();
       lengths[step] = nextLen;
     }
-    pending.set(key, { notes, lengths });
+    // The same for velocities and mutes — and also whenever a gesture CARRIES them, since
+    // a carried value equal to what was on the step is still a value to write: left
+    // unstaged, the desk would clear it, because the note under it changed.
+    const stagedAttrs = pending.get(key)?.attrs;
+    let attrs = stagedAttrs || null;
+    if (attrChanged || stagedAttrs || carry !== undefined) {
+      attrs = Object.fromEntries(NOTE_ATTRS.map(({ suffix }) => {
+        const arr = cur.attrs[suffix].slice();
+        arr[step] = nextAttrs[suffix];
+        return [suffix, arr];
+      }));
+    }
+    pending.set(key, { notes, lengths, attrs });
     const edit = noteKey(b, step, row.key);
     if (on) editedKey = edit;
     else editedKey = null;
@@ -913,7 +964,7 @@ export function createBarGrid({
       const lane = k.slice(cut + 1);
       lanes.add(lane);
       bars.add(b);
-      d = write(eb, d, b, lane, edit.notes, edit.lengths);
+      d = write(eb, d, b, lane, edit.notes, edit.lengths, edit.attrs);
     }
     pending.clear();
     const what = `${[...lanes].map((l) => laneLabel(l)).join(', ')} in `
@@ -2169,10 +2220,12 @@ export function createBarGrid({
           for (let k = 1; k < colStride; k++) {
             const value = pair.notes[i + k] ?? null;
             if (!isOn(row, value)) continue;
-            insets.push({ at: k / colStride, step: i + k, value, len: pair.lengths[i + k] ?? null });
+            insets.push({ at: k / colStride, step: i + k, value, len: pair.lengths[i + k] ?? null,
+              attrs: attrsAt(pair, i + k) });
           }
           const value = pair.notes[i] ?? null;
-          field.push({ b, c, i, off, value, on: isOn(row, value), len: pair.lengths[i] ?? null, insets });
+          field.push({ b, c, i, off, value, on: isOn(row, value), len: pair.lengths[i] ?? null,
+            attrs: attrsAt(pair, i), insets });
         }
       }
       /**
@@ -2184,9 +2237,12 @@ export function createBarGrid({
        * `--at` is how far across its column it is drawn; `from` is the same number, for
        * clipping it against whatever comes next.
        */
-      const noteCell = (f, at, step, from, value, len) => {
+      const noteCell = (f, at, step, from, value, len, attrs) => {
         const inset = from > 0;
         const on = inset || f.on;
+        // A muted note is drawn hollow: still there to pick up, move and unmute, and
+        // plainly not playing. The lane's own colour stays on it, as on every note.
+        const held = on && noteAttrs(row, value, attrs)?.Mute === true;
         // A div where a column is a button, because an inset is drawn INSIDE its column
         // and a button inside a button is not a thing a document may contain. It is still
         // a control: same role, same focus, same Enter/Space, and the panel's own keydown
@@ -2197,6 +2253,7 @@ export function createBarGrid({
         cell.className = 'ssqcell' + (inset ? ' ssqinset' : stepClasses(f.b, f.c))
           + (on ? ' on' : '')
           + (on && editedKey === noteKey(f.b, step, row.key) ? ' edited' : '')
+          + (held ? ' note-muted' : '')
           + (f.off ? ' muted' : '');
         cell.dataset.bar = f.b;
         cell.dataset.step = step;
@@ -2213,7 +2270,7 @@ export function createBarGrid({
           const lengthText = noteLengthName(musicalLength);
           cell.dataset.tip = row.label;
           cell.dataset.tipsays = `Bar ${f.b + 1}, ${slotLabel(step)} · `
-            + `Length ${lengthText}`;
+            + `Length ${lengthText}` + (held ? ' · Muted' : '');
           // At taller pitch zooms a one-step note is wide enough for the name. Short
           // black-key rows stay clean until their measured height can carry readable
           // text; long notes qualify on width as well as height.
@@ -2231,13 +2288,13 @@ export function createBarGrid({
         return cell;
       };
       field.forEach((f, at) => {
-        const cell = noteCell(f, at, f.i, 0, f.value, f.len);
+        const cell = noteCell(f, at, f.i, 0, f.value, f.len, f.attrs);
         // Inside the column, because a column is the only box on screen that knows where
         // its own left edge is: the field's geometry is measured, not multiplied, and an
         // inset positioned in the flex row would need a pixel we deliberately never
         // compute. `--at` is a fraction of its parent, which needs no measurement at all.
         for (const mark of f.insets) {
-          cell.append(noteCell(f, at, mark.step, mark.at, mark.value, mark.len));
+          cell.append(noteCell(f, at, mark.step, mark.at, mark.value, mark.len, mark.attrs));
         }
         cells.append(cell);
         const col = kof(f.b, f.i);
@@ -2615,6 +2672,7 @@ export function createBarGrid({
     if (!setCell(row, b, i, paint, drawn)) return;
     cell.classList.toggle('on', paint);
     cell.classList.toggle('edited', paint);
+    if (!paint) cell.classList.remove('note-muted');
     cell.setAttribute('aria-pressed', paint ? 'true' : 'false');
     // `setCell` stages the new note and its chosen length immediately, but this cell is
     // already on screen. Refresh its rectangle in the same gesture so a 1/2 or 1/4 note
@@ -2734,8 +2792,9 @@ export function createBarGrid({
     if (span > 0 && Math.abs(span - 1) > 1e-9) cell.style.setProperty('--len', String(span));
     else cell.style.removeProperty('--len');
   };
-  const showOn = (cell, on) => {
+  const showOn = (cell, on, held = false) => {
     cell.classList.toggle('on', on);
+    cell.classList.toggle('note-muted', on && held);
     cell.setAttribute('aria-pressed', on ? 'true' : 'false');
   };
   /** Draw a cell as what it really holds — for a preview that has moved on. */
@@ -2744,7 +2803,7 @@ export function createBarGrid({
     if (!row) return;
     const pair = readPair(b, row.lane);
     const value = pair.notes[i] ?? null;
-    showOn(cell, isOn(row, value));
+    showOn(cell, isOn(row, value), noteAttrs(row, value, attrsAt(pair, i))?.Mute === true);
     showLen(cell, cellSpan(row, value, pair.lengths[i] ?? null, b, i) || 1);
   };
 
@@ -2832,16 +2891,17 @@ export function createBarGrid({
       if (!pair) { pair = readPair(bar, row.lane); pairs.set(at, pair); }
       const value = pair.notes[step] ?? null;
       if (!isOn(row, value)) continue;
-      visit(row, rowKey, bar, step, value, pair.lengths[step] ?? null);
+      visit(row, rowKey, bar, step, value, pair.lengths[step] ?? null,
+        noteAttrs(row, value, attrsAt(pair, step)));
     }
   }
 
   /** What the selection actually holds, read out of the bank. */
   function selected() {
     const out = [];
-    eachSelected((row, rowKey, bar, step, value, len) => {
+    eachSelected((row, rowKey, bar, step, value, len, attrs) => {
       out.push({
-        bar, step, row, rowAt: rowAtOf(rowKey), value,
+        bar, step, row, rowAt: rowAtOf(rowKey), value, attrs,
         len: cellSpan(row, value, len, bar, step),
       });
     });
@@ -2905,6 +2965,7 @@ export function createBarGrid({
         midi: Number(note.row.midi),
         offset: (note.bar * slots + note.step - first) * slotUnit(),
         length: Math.max(0.25, (Number(note.len) || 1) * colUnit()),
+        ...(note.attrs ? { attrs: note.attrs } : {}),
       })),
     };
   }
@@ -2930,7 +2991,9 @@ export function createBarGrid({
       const slot = Math.round(at / slotUnit());
       const b = Math.floor(slot / slots);
       const step = slot % slots;
-      if (setCell(row, b, step, true, Math.max(0.25, (Number(note.length) || 1) / colUnit()))) {
+      // A clip from before velocities and mutes travelled has none, and pastes as new notes.
+      if (setCell(row, b, step, true, Math.max(0.25, (Number(note.length) || 1) / colUnit()),
+        note.attrs || Object.fromEntries(NOTE_ATTRS.map(({ suffix }) => [suffix, null])))) {
         changed++;
       }
       nextSelection.push(noteKey(b, step, row.key));
@@ -3016,12 +3079,13 @@ export function createBarGrid({
    */
   function allNotes() {
     const out = [];
-    const noteAt = (row, b, step, value, len) => ({
+    const noteAt = (row, b, step, value, len, pair) => ({
       bar: b,
       step,
       row,
       rowAt: rowAtOf(row.key),
       value,
+      attrs: noteAttrs(row, value, attrsAt(pair, step)),
       len: cellSpan(row, value, len, b, step),
     });
     if (!keysOf) {
@@ -3033,7 +3097,7 @@ export function createBarGrid({
           for (let step = 0; step < slots; step++) {
             const value = pair.notes[step] ?? null;
             if (!isOn(row, value)) continue;
-            out.push(noteAt(row, b, step, value, pair.lengths[step] ?? null));
+            out.push(noteAt(row, b, step, value, pair.lengths[step] ?? null, pair));
           }
         }
       }
@@ -3052,7 +3116,7 @@ export function createBarGrid({
             // A note the keyboard has no row for is a note this panel cannot show, and
             // the scan above would not have found it either.
             if (!row || row.lane !== lane) continue;
-            found.push(noteAt(row, b, step, value, pair.lengths[step] ?? null));
+            found.push(noteAt(row, b, step, value, pair.lengths[step] ?? null, pair));
           }
         }
       }
@@ -3092,6 +3156,8 @@ export function createBarGrid({
       // The length it has NOW, so a resize that ends where it started changes nothing
       // and a move carries the note's own length to wherever it lands.
       len: cellSpan(row, pair.notes[i] ?? null, pair.lengths[i] ?? null, b, i),
+      // And its velocity and mute, which go wherever it goes.
+      attrs: noteAttrs(row, pair.notes[i] ?? null, attrsAt(pair, i)),
       x: ev.clientX, y: ev.clientY, moved: false,
       // `delta` is how far the set has been dragged so far, `shown` the cells the
       // preview has touched and owes a redraw to.
@@ -3187,16 +3253,17 @@ export function createBarGrid({
     // right would rub out its own next note on the way past.
     for (const cell of drag.shown || []) restore(cell);
     drag.shown = [];
-    const mark = (cell, on, span) => {
+    const mark = (cell, on, span, held = false) => {
       if (!cell) return;
-      showOn(cell, on);
+      showOn(cell, on, held);
       showLen(cell, on ? span : 1);
       drag.shown.push(cell);
     };
     for (const nt of set) mark(cellFor(rowList[nt.rowAt]?.key, nt.bar, nt.step), false);
     for (const nt of set) {
       const at = movedNote(nt, want.dStep, want.dRow, bounds);
-      mark(cellFor(rowList[at.rowAt]?.key, at.bar, at.step), true, nt.len ?? 1);
+      mark(cellFor(rowList[at.rowAt]?.key, at.bar, at.step), true, nt.len ?? 1,
+        nt.attrs?.Mute === true);
     }
   }
 
@@ -3242,7 +3309,7 @@ export function createBarGrid({
 
   /** What a drag is about: the selection it started inside, or the one note it holds. */
   const dragSet = (d) => (d.set.length ? d.set : [{
-    row: d.row, bar: d.b, step: d.i, rowAt: rowAtOf(d.row.key), len: d.len,
+    row: d.row, bar: d.b, step: d.i, rowAt: rowAtOf(d.row.key), len: d.len, attrs: d.attrs,
   }]);
 
   /**
@@ -3335,7 +3402,7 @@ export function createBarGrid({
           const g = Math.round(start + piece * colStride * i);
           if (g >= plan.length * slots) break;
           const b = Math.floor(g / slots); const step = g % slots;
-          if (setCell(nt.row, b, step, true, piece)) changed++;
+          if (setCell(nt.row, b, step, true, piece, nt.attrs)) changed++;
         }
       }
     } else if (kind === 'quantise') {
@@ -3367,7 +3434,7 @@ export function createBarGrid({
         const b = Math.floor(to / slots);
         const step = to % slots;
         if (b >= plan.length) continue;
-        if (setCell(nt.row, b, step, true, nt.len)) changed++;
+        if (setCell(nt.row, b, step, true, nt.len, nt.attrs)) changed++;
         moved.set(noteKey(nt.bar, nt.step, nt.row.key), noteKey(b, step, nt.row.key));
       }
       if (selection.size && moved.size) {
@@ -3401,7 +3468,7 @@ export function createBarGrid({
       for (const { nt, midi } of targets) {
         const row = rowList.find((candidate) => candidate.midi === midi);
         if (!row) continue;
-        if (setCell(row, nt.bar, nt.step, true, nt.len)) changed++;
+        if (setCell(row, nt.bar, nt.step, true, nt.len, nt.attrs)) changed++;
         nextSelection.push(noteKey(nt.bar, nt.step, row.key));
       }
       if (selection.size) selection = new Set(nextSelection);
@@ -3434,7 +3501,7 @@ export function createBarGrid({
     for (const { nt, at } of landing) {
       const row = rowList[at.rowAt];
       if (!row) continue;
-      setCell(row, at.bar, at.step, true, nt.len);
+      setCell(row, at.bar, at.step, true, nt.len, nt.attrs);
       next.push(noteKey(at.bar, at.step, row.key));
     }
     if (selection.size) selection = new Set(next);
@@ -3446,6 +3513,118 @@ export function createBarGrid({
       if (row) preview(row, readBar(first.at.bar, row.lane)[first.at.step]);
     }
   }
+
+  /**
+   * Mute or unmute notes, as one edit: the selection, or every note in the part.
+   *
+   * `toggle` mutes the lot unless every one of them is muted already, in which case it
+   * unmutes them — so one key both takes a phrase out and puts it back, and a set that is
+   * half muted is evened out rather than flipped note by note into its mirror image.
+   * The note itself is untouched: its pitch, length and velocity are all still there.
+   */
+  function muteNotes(scopeKind, mode = 'toggle') {
+    const notes = scopeKind === 'all' ? allNotes() : selected();
+    if (!notes.length) return { count: 0, changed: 0, muted: false };
+    const isMuted = (nt) => nt.attrs?.Mute === true;
+    const muted = mode === 'toggle' ? !notes.every(isMuted) : mode === 'mute';
+    let changed = 0;
+    for (const nt of notes) {
+      if (stageAttrs(nt.row, nt.bar, nt.step, { ...nt.attrs, Mute: muted ? true : null })) changed++;
+    }
+    if (changed) commit();
+    return { count: notes.length, changed, muted };
+  }
+
+  /**
+   * Stage new attributes for a note that is otherwise left exactly as it is.
+   *
+   * Not `setCell(…, true)`: that redraws the note through `withCell`, which is the draw
+   * gesture — with the roll's chord tool in hand it would stamp a fresh chord over the
+   * one being muted.
+   */
+  function stageAttrs(row, b, step, given) {
+    const key = kof(b, row.lane);
+    const cur = readPair(b, row.lane);
+    const value = cur.notes[step] ?? null;
+    let changed = false;
+    const attrs = Object.fromEntries(NOTE_ATTRS.map((attr) => {
+      const arr = cur.attrs[attr.suffix].slice();
+      const stored = arr[step] ?? null;
+      const next = attrAfter(row, attr, value, stored, true, given[attr.suffix]);
+      if (!sameLen(next, stored)) changed = true;
+      arr[step] = next;
+      return [attr.suffix, arr];
+    }));
+    if (!changed) return false;
+    pending.set(key, { notes: cur.notes.slice(), lengths: pending.get(key)?.lengths || null, attrs });
+    return true;
+  }
+
+  /** The note a cell shows, as `selected()` describes one — or null over an empty cell. */
+  function noteOfCell(cell) {
+    const { row, b, i } = cellOf(cell);
+    if (!row) return null;
+    const pair = readPair(b, row.lane);
+    const value = pair.notes[i] ?? null;
+    if (!isOn(row, value)) return null;
+    return { row, bar: b, step: i, rowAt: rowAtOf(row.key), value,
+      attrs: noteAttrs(row, value, attrsAt(pair, i)) };
+  }
+
+  /**
+   * The Mute tool's press. The note pressed decides: muted becomes unmuted and the other
+   * way round — for the whole selection if the note is part of it — and every note the
+   * drag then crosses gets that same answer rather than flipping on its own, so a sweep
+   * across a half-muted phrase evens it out. One edit, committed on release; the cells
+   * change as the pointer passes so the drag can be seen working.
+   */
+  function muteDrag(cell) {
+    const first = noteOfCell(cell);
+    if (!first) return;
+    const muted = first.attrs?.Mute !== true;
+    const done = new Set();
+    let changed = 0;
+    const flip = (nt) => {
+      const key = noteKey(nt.bar, nt.step, nt.row.key);
+      if (done.has(key)) return;
+      done.add(key);
+      if (!stageAttrs(nt.row, nt.bar, nt.step, { ...nt.attrs, Mute: muted ? true : null })) return;
+      changed++;
+      cellFor(nt.row.key, nt.bar, nt.step)?.classList.toggle('note-muted', muted);
+    };
+    (isSelected(cell) ? selected() : [first]).forEach(flip);
+    const move = (e) => {
+      const over = cellAt(e.clientX, e.clientY);
+      const nt = over ? noteOfCell(over) : null;
+      if (nt) flip(nt);
+    };
+    const stop = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', stop);
+      removeEventListener('pointercancel', stop);
+      commit();
+      if (changed) toast(`${changed} note${changed === 1 ? '' : 's'} ${muted ? 'muted' : 'unmuted'}`);
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', stop);
+    addEventListener('pointercancel', stop);
+  }
+
+  /** Delete the muted notes — the selection's, or the whole part's — as one edit. */
+  function deleteMuted(scopeKind) {
+    const notes = (scopeKind === 'all' ? allNotes() : selected())
+      .filter((nt) => nt.attrs?.Mute === true);
+    if (!notes.length) return 0;
+    const removed = new Set(notes.map((nt) => noteKey(nt.bar, nt.step, nt.row.key)));
+    for (const nt of notes) setCell(nt.row, nt.bar, nt.step, false);
+    selection = new Set([...selection].filter((key) => !removed.has(key)));
+    commit();
+    return notes.length;
+  }
+
+  /** How many of the notes in scope are muted — for a menu to grey itself out by. */
+  const mutedCount = (scopeKind) => (scopeKind === 'all' ? allNotes() : selected())
+    .filter((nt) => nt.attrs?.Mute === true).length;
 
   /** Rub out everything picked out, as one edit. */
   function deleteSelection() {
@@ -3500,6 +3679,9 @@ export function createBarGrid({
     }
     if (g === 'marquee') {
       beginDrag('marquee', cell, ev);
+    } else if (g === 'mute') {
+      muteDrag(cell);
+      return;
     } else if (g === 'select') {
       // ⇧ adds one or takes one out; a plain press in Select mode is "just this one",
       // and dragging from it moves whatever is now picked out.
@@ -3836,6 +4018,12 @@ export function createBarGrid({
     clearSelection,
     copySelection,
     deleteSelection,
+    muteNotes: ({ scope: scopeKind = 'selection', mode = 'toggle' } = {}) =>
+      muteNotes(scopeKind === 'all' ? 'all' : 'selection', mode),
+    deleteMuted: ({ scope: scopeKind = 'selection' } = {}) =>
+      deleteMuted(scopeKind === 'all' ? 'all' : 'selection'),
+    mutedCount: ({ scope: scopeKind = 'selection' } = {}) =>
+      mutedCount(scopeKind === 'all' ? 'all' : 'selection'),
     armPaste,
     cancelPaste,
     pasteArmed: () => !!pastePlacement,

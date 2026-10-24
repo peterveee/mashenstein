@@ -239,6 +239,12 @@ export const BANGER_GROUPS = Object.freeze([
       title: 'Varied: the style\'s own figure first, then a different one each build and drop. Or one figure throughout',
       options: [['vary', 'Varied', 'The style\'s own first, then a new figure each section'], ['style', 'Style\'s Own', 'The style\'s figure throughout'],
         ...ARP_FIGURES.map((f) => [f.id, f.label, f.note])] },
+    // GUITAR (24 Oct 2026, guitar.js): the funk or disco guitar on the arp, picked or strummed.
+    { key: 'guitar', label: 'Guitar', type: 'select',
+      title: 'Where the arp is a funk or disco guitar: Picked plays it as the arp, single notes. Strummed plays it Chic-style — chord stabs on one guitar and muted chucks between them on a second, strummed down and up in sixteenths — even with the Arp off. Random picks one each take, leaning Strummed in the funk and disco styles and moods. Styles and moods without such a guitar ignore it',
+      options: [['random', 'Random', 'Picked or Strummed, drawn each take — mostly Strummed in the funk and disco styles and moods'],
+        ['picked', 'Picked', 'The arp, single notes, as it always was'],
+        ['strummed', 'Strummed', 'Sixteenth-note strumming: stabs and muted chucks on two guitars']] },
     { key: 'choir', label: 'Choir', title: 'A choir in the breakdown and the final drop' },
     { key: 'counter', label: 'Counter-Melody', title: 'A new line in the hook\'s rests' },
     { key: 'fillIn', label: 'Fill In', type: 'select',
@@ -371,7 +377,7 @@ export const BANGER_DEFAULTS = Object.freeze({
   },
   parts: {
     bass: 'offbeat', sub: true, chords: 'saws', square: true, bell: true, octaveDouble: true,
-    riffBass: 'replace', bassLift: true, thirdBelow: false, arp: true, arpPattern: 'vary', choir: true, counter: false, fillIn: 'off', fillEvery: '2', fillNotes: '2', writeLead: 'auto', riffSound: 'keep', partSounds: 'roll', soundSet: 'style',
+    riffBass: 'replace', bassLift: true, thirdBelow: false, arp: true, arpPattern: 'vary', guitar: 'random', choir: true, counter: false, fillIn: 'off', fillEvery: '2', fillNotes: '2', writeLead: 'auto', riffSound: 'keep', partSounds: 'roll', soundSet: 'style',
   },
   spot: { intoDrop: 'style', outOf: 'style', quiet: 'none', intro: 'style', ending: 'style', riser: 'varied' },
   fx: {
@@ -533,6 +539,10 @@ export function normaliseBangerOptions(raw = {}, styleArg = null) {
     if (group.id === 'spot' && given.riser == null) out.spot.riser = 'none';
     // ...and no Chords Early, before that (9 Oct 2026): the chords in the style's own place.
     if (group.id === 'form' && given.chordsEarly == null) out.form.chordsEarly = false;
+    // ...and parts that name no Guitar, before the guitars (24 Oct 2026, guitar.js): the arp picked, and
+    // the Ways Era no later than 4, so no guitar chord is strummed either. A take re-made from its recipe
+    // is made as it was.
+    if (group.id === 'parts' && given.guitar == null) { out.parts.guitar = 'picked'; out.waysEra = Math.min(out.waysEra, 4); }
     for (const [k, given1] of Object.entries(given)) {
       if (group.id === 'sectionFx' && k === 'assignments') { out.sectionFx.assignments = normaliseSectionAssignments(given1, issues); continue; }
       if (group.id === 'production' && k === 'version') continue;

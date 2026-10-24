@@ -89,7 +89,7 @@ const NOTE_FX_RANGE_DEFAULT_HI = 72;
  */
 const NOTE_FX_BLANK = Object.freeze({
   guitar: Object.freeze({ enabled: false, style: 'auto', position: 0 }),
-  strum: Object.freeze({ enabled: false, direction: 'up', gapMs: 18 }),
+  strum: Object.freeze({ enabled: false, direction: 'up', gapMs: 18, downDb: 0, upDb: 0 }),
   arp: Object.freeze({ enabled: false, direction: 'up', rate: 1, octaves: 1, limit: 0,
     rangeLimit: false, rangeLo: NOTE_FX_RANGE_DEFAULT_LO, rangeHi: NOTE_FX_RANGE_DEFAULT_HI,
     repeat: true, gate: 80, retrigger: 'chord', latch: false }),
@@ -282,6 +282,12 @@ function buildNoteFxEditor(x, y, key, scope) {
       says: 'The order the chord’s notes are spread in. Alternate flips direction on each chord and starts again in its named direction every bar; rests and single notes do not flip it. Random is seeded from the lane and the position in the song, so the same bar strums the same way every play and every render — a shuffle, not a dice roll.',
     });
   const gap = number('Gap', 0, 250, 1, view.strum.gapMs, 'milliseconds between notes');
+  // The faux return: a trim per stroke direction, live only on an Alternate strum.
+  pairRow();
+  const trimTip = { name: 'Stroke trims',
+    says: 'Alternate only. How loud the down-strokes and the up-strokes are, in dB below full. A strumming hand hits harder going down and catches fewer strings coming back up, so an up-stroke a few dB under the down-stroke is what makes a 16th-note strum sound played rather than repeated. 0 is full; it only changes the level, not the sound.' };
+  const downTrim = number('Down trim', -24, 0, 0.5, view.strum.downDb, 'dB', trimTip);
+  const upTrim = number('Up trim', -24, 0, 0.5, view.strum.upDb, 'dB', trimTip);
   fullRow();
   const guitarOn = check('Guitar Voicing', view.guitar.enabled);
   pairRow();
@@ -500,7 +506,7 @@ function buildNoteFxEditor(x, y, key, scope) {
   const armBarOverride = () => {
     if (mode) mode.value = 'on';
   };
-  for (const control of [guitarOn, guitarStyle, guitarPosition, strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,
+  for (const control of [guitarOn, guitarStyle, guitarPosition, strumOn, strumDir, gap, downTrim, upTrim, arpOn, arpDir, arpRate, octaves, limit,
     rangeOn, rangeLo, rangeHi,
     repeat, gate, retrigger, latch]) control.addEventListener('input', armBarOverride);
 
@@ -515,6 +521,8 @@ function buildNoteFxEditor(x, y, key, scope) {
   const syncEnabled = () => {
     for (const control of [guitarStyle, guitarPosition]) setLive(control, guitarOn.checked);
     for (const control of [strumDir, gap]) setLive(control, strumOn.checked);
+    const alternate = strumDir.value === 'alternate-up' || strumDir.value === 'alternate-down';
+    for (const control of [downTrim, upTrim]) setLive(control, strumOn.checked && alternate);
     for (const control of [arpDir, arpRate, octaves, limit, rangeOn, repeat, gate,
       retrigger, latch]) setLive(control, arpOn.checked);
     // The two ends of the window answer to the tick above them as well as to the arp.
@@ -537,6 +545,9 @@ function buildNoteFxEditor(x, y, key, scope) {
     syncEnabled();
   });
   guitarOn.addEventListener('input', syncEnabled);
+  // The stroke trims are Alternate-only: a change of direction lights or greys them.
+  strumDir.addEventListener('input', syncEnabled);
+  strumDir.addEventListener('change', syncEnabled);
   rangeOn.addEventListener('input', syncEnabled);
   if (slide) {
     for (const control of [slide.on, slide.amount, slide.glide]) {
@@ -558,6 +569,8 @@ function buildNoteFxEditor(x, y, key, scope) {
     setCheck(strumOn, next.strum.enabled);
     strumDir.value = next.strum.direction;
     gap.value = next.strum.gapMs;
+    downTrim.value = next.strum.downDb;
+    upTrim.value = next.strum.upDb;
     setCheck(arpOn, next.arp.enabled);
     arpDir.value = next.arp.direction;
     arpRate.value = next.arp.rate;
@@ -590,7 +603,9 @@ function buildNoteFxEditor(x, y, key, scope) {
     guitar: { enabled: guitarOn.checked, style: guitarStyle.value,
       position: clamp(Math.round(Number(guitarPosition.value) || 0), 0, 12) },
     strum: { enabled: strumOn.checked, direction: strumDir.value,
-      gapMs: clamp(Number(gap.value) || 0, 0, 250) },
+      gapMs: clamp(Number(gap.value) || 0, 0, 250),
+      downDb: clamp(Number(downTrim.value) || 0, -24, 0),
+      upDb: clamp(Number(upTrim.value) || 0, -24, 0) },
     arp: { enabled: arpOn.checked, direction: arpDir.value,
       rate: clamp(Number(arpRate.value) || 1, 1 / 3, 4),
       octaves: clamp(Math.round(Number(octaves.value) || 1), 1, 4),

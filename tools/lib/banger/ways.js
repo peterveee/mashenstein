@@ -10,8 +10,11 @@
  *   2  Gated Hook, Octave Echo, Low and Muffled join the breakdown's (10 Oct 2026)
  *   3  the style and mood rules (`notFor`) shape the breakdown's, the builds' and the drop-ins' too
  *   4  Breakdown Backing and Club Shape join (10 Oct 2026)
+ *   5  the GUITARS (24 Oct 2026, guitar.js): guitar chords strum in the style's feel, and Guitar:
+ *      Random draws the strummed funk guitar where the arp is a funk or disco guitar. A request that
+ *      names its parts but no Guitar was made before, and is read as era 4 at most (options.js)
  */
-export const WAYS_ERA = 4;
+export const WAYS_ERA = 5;
 
 /**
  * STYLE FAMILIES for the rules (`notFor` / `onlyFor` on a way — Peter, 10 Oct 2026: "make sure that we

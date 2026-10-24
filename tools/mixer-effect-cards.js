@@ -18,7 +18,7 @@ import {
   PEQ_BANDS, peqResponse, DUCK_GRID,
 } from '../src/engine/effects.js';
 import { responseGraph } from './mixer-synth-graphs.js';
-import { paramLabel, checkRow, divisionRow, optionRow, radioRow } from './mixer-controls.js';
+import { paramLabel, checkRow, divisionRow, optionRow, radioRow, fitsAsRadio } from './mixer-controls.js';
 
 /** The same clamp the desk uses. Copied rather than passed: it is one expression. */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -540,12 +540,11 @@ function multibandControls({ def, entryParams, applyPatch }) {
   crossovers.className = 'mbsection mbcrossovers';
   const crossoverTitle = document.createElement('h5');
   crossoverTitle.textContent = 'CROSSOVERS';
-  // SPLIT: FLAT bands sum back to the input; CLASSIC is the old split with a notch at
-  // each crossover. A saved card with no SPLIT is CLASSIC (effects.js), so that is what
-  // an unset value shows.
+  // Off uses the flat split for new cards. Preserve classic on older saved cards
+  // without an explicit split, matching the engine's compatibility default.
   crossovers.append(crossoverTitle,
-    radioRow('SPLIT', paramRange('split', def).options, entryParams.split ?? 'classic',
-      (next) => applyPatch({ split: next }, 'split')),
+    checkRow('Classic Split', (entryParams.split ?? 'classic') === 'classic',
+      (on) => applyPatch({ split: on ? 'classic' : 'flat' }, 'split')),
     numberRow('lowFrequency', 'LOW / MID'),
     numberRow('highFrequency', 'MID / HIGH'));
   panel.append(crossovers);
@@ -797,7 +796,9 @@ function fillEffectControls({
     }
     if (rng.options) {
       const value = entryParams[pname] ?? rng.options[0];
-      grid.append(def.id === 'filter' && pname === 'type'
+      // Pills when every option fits on the card's one row as a whole word — the filter's
+      // four shapes do at the 381px panel — and the desk's combo when they would not.
+      grid.append(fitsAsRadio(rng.options)
         ? radioRow(paramLabel(pname, def), rng.options, value,
           (next) => applyPatch({ [pname]: next }))
         : optionRow(paramLabel(pname, def), rng.options, value,

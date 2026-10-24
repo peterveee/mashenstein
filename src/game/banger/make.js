@@ -739,14 +739,18 @@ export function newSeed() {
  * Version 11 (10 Oct 2026) rolls the drum kit from the style's own list — the five machine kits and
  * the creative kits that suit it (tools/lib/banger/kit-rolls.js); every recipe before it rolls from
  * the five alone.
- * A NEW recipe carries 11 (maker.js); one saved
+ * Version 12 (24 Oct 2026) plays the GUITARS (tools/lib/banger/guitar.js, Ways Era 5): guitar chords
+ * strum in the style's feel, and a funk or disco guitar on the arp is drawn Picked or Strummed (Guitar:
+ * Random — the Lab has no control of its own); every recipe before it plays the arp picked and strums
+ * nothing, as it did.
+ * A NEW recipe carries 12 (maker.js); one saved
  * at 1 has the slide but no rolls, and one saved before there was any has no `expression` and reads
  * as 0, and is made EXACTLY as it always was, Go Wild included. A kept song is only its recipe,
  * made again whenever it is played, so a recipe that did not say must come out the way it did.
  * It is not RIFF_VERSION (what the grid's numbers mean) and not the generator's version (which
  * the Lab does not record).
  */
-export const RECIPE_EXPRESSION = 11;
+export const RECIPE_EXPRESSION = 12;
 /**
  * The form each of these styles started on before version 5 (9 Oct 2026, Peter: "I'd like less pop
  * songs" — five went to Club and two to Groove). A recipe kept before then is made in its old form.
@@ -813,7 +817,8 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   const picked = labShape(shape);
   const rolls = expressionVersionOf(expression) >= 2 ? voltageRollsFor(style, mood, voltage, seed, beat, expressionVersionOf(expression), flavour, picked) : {};
   const soundSet = ownFlavour(style, flavour) ? labSoundSet(style, seed, voltage) : 'style';
-  const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}) };
+  const parts = { ...rolls.parts, ...(hasHookPalette ? { riffSound: 'random' } : {}), ...(soundSet !== 'style' ? { soundSet } : {}),
+    guitar: expressionVersionOf(expression) >= 12 ? 'random' : 'picked' };
   // A pair's switch goes on the form, which must name its template (a form that names none is Club).
   // A recipe kept before its style's form moved is made in the form it had (FORMS_BEFORE_5).
   const keptForm = !beat && !picked && formBefore(style, expressionVersionOf(expression)) ? { template: formBefore(style, expressionVersionOf(expression)) } : null;
@@ -831,6 +836,8 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   const opens = expressionVersionOf(expression) >= 8;
   // The breakdown's backing and the Club shape (version 10), likewise.
   const shapes = expressionVersionOf(expression) >= 10;
+  // The guitars (version 12): Guitar: Random, and guitar chords strummed — Picked and the era before, said outright.
+  const guitars = expressionVersionOf(expression) >= 12;
   const ways = { buildWay: varied ? 'varied' : 'roll', dropIn: varied ? 'varied' : 'straight', introWay: opens ? 'varied' : 'riff', tuneFirst: opens, groovePace: opens ? 'four' : 'eight', drop2Way: opens ? 'varied' : 'more',
     breakdownBacking: shapes ? 'varied' : 'classic', clubShape: shapes ? 'varied' : 'club' };
   const ownForm = styleDefaults(styleFor(style) || styleSettings).form;
@@ -840,13 +847,13 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
   const formOptions = { template: ownTemplate, ...keptForm, ...(pairForm || rolls.form), ...(picked ? { template: picked } : {}), ...clubForm, breakdownHook, ...ways, chordsEarly };
   const options = {
     // The Varied draws of its time (ways.js WAYS_ERA): the first for versions 6 and 7, the third for 8
-    // and 9, the fourth from 10.
-    waysEra: shapes ? 4 : opens ? 3 : 1,
+    // and 9, the fourth for 10 and 11, the fifth — the guitars — from 12.
+    waysEra: guitars ? 5 : shapes ? 4 : opens ? 3 : 1,
     style, mood, ...(flavour ? { flavour } : {}), ...(beat ? { fusion: beat } : {}), ...lengthOptions(songLength), energy: energyOf(energy), production: normaliseTrackEffects(production), ...(selectedVariation ? { variation: selectedVariation } : {}),
     ...voltageTempo,
     ...(expressionVersionOf(expression) >= 3 ? { sectionFx: { mode: voltageSettings(voltage).sectionFx } } : {}),
     ...(slides ? { expression: { autoPortamento: true, version: BANGER_EXPRESSION_VERSION } } : {}),
-    ...(Object.keys(parts).length ? { parts } : {}),
+    parts,
     // (and the riser: Varied from version 8, the noise riser before it — said outright, as the form's ways are)
     fx: { ...rolls.fx, riserWay: opens ? 'varied' : 'noise', dropHit: opens ? 'varied' : 'style' },
     ...(rolls.drums ? { drums: rolls.drums } : {}),
@@ -871,5 +878,7 @@ export function makeBanger({ notes, lengths = null, mode = 'simple', style, mood
     laneOf: { ...(out.laneOf || {}) }, kit: out.banger?.options?.drums?.kit || 'style',
     // A fusion's sounds are its two rows put together (sound-rules.js soundsRow reads the name).
     soundsId: out.banger?.fusion ? out.banger.style : soundsIdFor(style, seed, voltage, mood, flavour),
-    form: (out.form || []).map((f) => ({ role: f.role, type: f.type, from: f.from, to: f.to })) };
+    form: (out.form || []).map((f) => ({ role: f.role, type: f.type, from: f.from, to: f.to })),
+    // The Ways Era it was made in: from 5 the club's sound swaps strum a guitar's chords (club-voices.js).
+    waysEra: out.banger?.options?.waysEra ?? null };
 }

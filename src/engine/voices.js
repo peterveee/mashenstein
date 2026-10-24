@@ -3998,6 +3998,17 @@ export class VoiceRack {
     return Promise.resolve(false);
   }
 
+  /**
+   * Whether `warmWorkletLane` would build anything for this voice here: false for a
+   * pooled or one-shot voice, and for a context that cannot host a worklet at all.
+   */
+  isWorkletVoice(voice) {
+    const v = mrdrComparisonVoice(voice);
+    const api = workletLaneOf(v);
+    if (api) return !!api.canHost(this.ctx);
+    return v?.synth === MRDR3_AW && canHostMrdr3(this.ctx);
+  }
+
   /** Build a lane for a voice, and say plainly when the context cannot host one. */
   async warmMrdr3Lane(v, laneKey) {
     if (!v || v.synth !== MRDR3_AW) return false;
@@ -5918,7 +5929,11 @@ export class VoiceRack {
           sat.curve = curve;
           chain.tail.connect(sat);
 
-          const delay = ctx.createDelay(0.05);
+          // A one-sample loop (clamped to a render quantum in a cycle), so the line need only
+          // hold a few quanta. Live, it is sized to that: WebKit keeps every DelayNode's line
+          // for the life of the context, and this one is made per HIT (24 Oct 2026: twenty a
+          // bar on Plumber). An offline render keeps its 50 ms line and its exact samples.
+          const delay = ctx.createDelay(typeof ctx.startRendering === 'function' ? 0.05 : 512 / ctx.sampleRate);
           delay.delayTime.setValueAtTime(1 / ctx.sampleRate, t);
           const feedback = ctx.createGain();
           const amount = Math.min(0.995, Math.max(0, resonator.feedback ?? 0.96));
@@ -7762,8 +7777,14 @@ export class VoiceRack {
               // the PWM presets on a phone — bestPwmBrass 80% → 48% with PWM off).
               const a = ctx.createOscillator(); a.type = 'sawtooth';
               // 0.25s is four seconds' worth of headroom at the lowest note anything here
-              // can play; the delay only ever holds one cycle's fraction.
-              const line = ctx.createDelay(0.25);
+              // can play; the delay only ever holds one cycle's fraction. LIVE, the line is
+              // that fraction's worst case and no more — a whole cycle of the lower of the two
+              // pitches the note sits on, with a tenth over (24 Oct 2026): it is made per NOTE,
+              // and WebKit keeps every DelayNode's line for the life of the context, 48 KB a
+              // note at 0.25 s. An offline render keeps 0.25 s, and its samples.
+              const lowHz = Math.max(4, Math.min(startHz, target || startHz));
+              const line = ctx.createDelay(typeof ctx.startRendering === 'function'
+                ? 0.25 : Math.min(0.25, Math.max(0.005, 1.1 / lowHz)));
               const inv = ctx.createGain(); inv.gain.value = -1;
               const sum = ctx.createGain();
               a.connect(sum);

@@ -33,7 +33,7 @@ import { useToneContext } from './tone-context.js';
 import { LANES } from './lanes.js';
 import {
   createEffect, makeReverb, rampParam, TEMPO_DIVISIONS, MAX_DELAY_SECONDS, delaySeconds,
-  EFFECT_BY_ID,
+  EFFECT_BY_ID, releaseEffectShapers,
 } from './effects.js';
 import { prepareEngineWorklets } from './engine-worklets.js';
 import { EFFECT_PRESETS } from '../data/effect-presets.js';
@@ -415,6 +415,7 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false, spotRoom = null
       try { link.node.dispose(); } catch { /* fine */ }
       try { link.muteDry.disconnect(); } catch { /* fine */ }
       try { link.muteWet.disconnect(); } catch { /* fine */ }
+      releaseEffectShapers(ctx, link);   // WebKit: its WaveShapers back on the shelf (effects.js)
     }
   };
   // The same effects, settings, bypass and mute, at the same tempo: what a fresh build of
@@ -872,12 +873,14 @@ function makeSectionSwitch(ctx, from, to, { spotRoom = null, onStrip = null } = 
     try { branch.input.disconnect(); } catch { /* already gone */ }
     if (!branches.size) holdAwake(false);
   };
-  const dropAfterTail = (signature, at) => {
-    // Chrome's lever only: with deep sleep (WebKit) an idle branch is unplugged instead, and
-    // WebKit keeps a dropped branch's delays and analyser for good — see the pools above.
-    if (!liveCtx || deepSleep) return;
+  const dropAfterTail = (signature, at, force = false) => {
+    // Chrome's lever only, mid-song: with deep sleep (WebKit) an idle branch is unplugged
+    // instead, because a branch dropped there and selected again later in the song would be
+    // built again, and WebKit keeps a dropped branch's delay lines for good. `force` is the
+    // song's stop (release), after which nothing selects it again: dropped everywhere.
+    if (!liveCtx || (deepSleep && !force)) return;
     const branch = branches.get(signature);
-    if (!branch || branch.list.some((e) => RHYTHM_FX.has(e?.id))) return;
+    if (!branch || (!force && branch.list.some((e) => RHYTHM_FX.has(e?.id)))) return;
     const t = drops.get(signature);
     if (t) clearTimeout(t);
     const gap = effectSilenceGap(branch.list, known.get(signature)?.bpm ?? 120);
@@ -987,10 +990,15 @@ function makeSectionSwitch(ctx, from, to, { spotRoom = null, onStrip = null } = 
      * stop closes, so nothing else would ever stop its loop.
      */
     release(at = ctx.currentTime, seconds = 0) {
-      if (!selected) return;
       const t = Math.max(Number.isFinite(at) ? at : 0, ctx.currentTime);
-      for (const link of live(selected)) link.disengage?.(t, seconds);
-      sw.select([], t + seconds);
+      if (selected) {
+        for (const link of live(selected)) link.disengage?.(t, seconds);
+        sw.select([], t + seconds);
+      }
+      // THE SONG HAS STOPPED (24 Oct 2026): every branch goes once its tail has, rather than
+      // standing until the next song clears it — Office's left 46 LFOs running after its stop
+      // (tools/audio-audit.js song office). Live only, like every drop.
+      for (const signature of [...branches.keys()]) dropAfterTail(signature, t + seconds, true);
     },
     /**
      * The strip has gone to sleep: every branch with it, the selected one too. A selected

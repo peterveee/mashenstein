@@ -30,6 +30,7 @@ import { DROP_INDEX } from './form-types.js';
 import { songMaterial } from './cohesion.js';
 import { arrangeEnergy } from './energy.js';
 import { planTransitions, withPickup, cutAny } from './transitions.js';
+import { funkBar, keepTheHand } from './guitar.js';
 
 const LIFT_SEMIS = { none: 0, half: 1, whole: 2, third: 4 };
 
@@ -37,7 +38,9 @@ const LIFT_SEMIS = { none: 0, half: 1, whole: 2, third: 4 };
 const CORE_OF = { kick: 'kick', snare: 'clap', clap: 'clap', hats: 'hats', ohats: 'ohats' };
 /** Roles that are PITCHED — what a key lift moves. */
 const PITCHED = new Set(['hook', 'square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter',
-  'bass', 'sub', 'saws', 'pad', 'piano', 'sonar', 'vocoder', 'word']);
+  'bass', 'sub', 'saws', 'pad', 'piano', 'sonar', 'vocoder', 'word',
+  // the strummed funk guitar's chucks (guitar.js), beside its stabs on the arp
+  'chuck']);
 
 /**
  * A chord coloured the way the mood colours chords: moody turns triads into sevenths,
@@ -561,7 +564,20 @@ export function buildSections(ctx) {
       for (let b = sec.from - 1; b < sec.to; b++) arpPlan.set(b, idx);
     }
   }
-  const arp = (c, b) => arpBar(triads(c), arpPlan.get(b) || ownArp, C.arp, 1);
+  // THE STRUMMED FUNK GUITAR (guitar.js, Guitar: Strummed or drawn by Random): the arp's lane strums chord
+  // stabs and a second, `chuck`, the muted chucks between them — wherever the arp would play, the Arp
+  // switch on or off. Picked, or a take with no funk guitar, the arp as ever.
+  const strummed = !!ctx.guitar?.strummed;
+  const arpOn = options.parts.arp || strummed;
+  const funkAt = (c, b) => funkBar(colourAll(c, mood), { bar0: b, form, set: ctx.guitar.set, centre: C.arp || 'A4', fits: mood.fits });
+  const arp = (c, b) => (strummed ? funkAt(c, b).stab : arpBar(triads(c), arpPlan.get(b) || ownArp, C.arp, 1));
+  /** The arp into bar `b` over chords `c`, through `how` (a cut before a stop) — strummed, its chucks with it. */
+  const putArp = (b, c, how = (part) => part) => {
+    if (!strummed) { put(b, 'arp', how(arp(c, b))); return; }
+    const { stab, chuck } = funkAt(c, b);
+    put(b, 'arp', how(stab));
+    put(b, 'chuck', how(chuck));
+  };
   const choirPart = (c) => padBar(colourAll(c, mood), C.choir);
   // The counter part: a new line in the hook's rests — or, for a style that answers with
   // chord stabs on a rhythm of its own (eurobeat's brass), triads on that rhythm; or single
@@ -653,7 +669,7 @@ export function buildSections(ctx) {
     if (options.parts.square) put(b, 'square', st(up(tune)));
     if (options.parts.bell && joined('bell', p, dropIndex, layered)) put(b, 'bell', st(shift(up(tune), 12)));
     if (dropIndex >= 1) put(b, 'megaSaw', st(shift(legato([up(tune)], 0, 3)[0], 12)));
-    if (options.parts.arp && joined('arp', p, dropIndex, layered)) put(b, 'arp', st(arp(c, b)));
+    if (arpOn && joined('arp', p, dropIndex, layered)) putArp(b, c, st);
     // the third below is the hook moved, so it is fitted to the chord: a scale third can land on a grind
     if (options.parts.thirdBelow && (dropIndex === 1 || final)) put(b, 'third', st(fitToChords(diatonic(up(tune), -2, ctx.scale), c)));
     if (options.parts.choir && final) put(b, 'choir', st(choirPart(c)));
@@ -710,7 +726,8 @@ export function buildSections(ctx) {
     perc: (r) => ['shaker', 'tambourine', 'congas', 'cowbell', 'ride'].includes(r),
     doubles: (r) => ['square', 'bell', 'megaSaw', 'third', 'choir', 'counter'].includes(r),
   };
-  const named = (tokens, role) => tokens.some((t) => t === role || GROUP[t]?.(role));
+  // (the funk guitar's chucks come and go with its stabs, the arp)
+  const named = (tokens, role) => { const r = role === 'chuck' ? 'arp' : role; return tokens.some((t) => t === r || GROUP[t]?.(r)); };
   /** The layer a role comes with — the last, for a role no layer names. */
   const layerOf = (role) => {
     const li = LAYERS.findIndex((layer) => named(layer, role));
@@ -840,7 +857,7 @@ export function buildSections(ctx) {
         const pb = phraseBar(p, len === 8 || len <= 4 ? planIndex(len, k) : k === len - 1 ? 7 : k, sec.dropIndex, j);
         const tune = pb.part;
         const c = pb.chords;
-        if (on.has('arp') && options.parts.arp) put(b, 'arp', arp(c, b));
+        if (on.has('arp') && arpOn) putArp(b, c);
         if (on.has('sonar') && b % 2 === 0) put(b, 'sonar', bassBar(triads(c), R.sonar, C.sonar));
         // A hook in the bass register is the bass, and plays wherever the bass does.
         if (on.has('lead') || (hookIsBass && on.has('bass'))) put(b, 'hook', tune);
@@ -879,6 +896,7 @@ export function buildSections(ctx) {
       arrangeEnergy(ctx, sec, bars, events);
       liftSection(sec);
     }
+    if (strummed) keepTheHand(bars);
     return { bars, events, cell, asWritten };
   }
 
@@ -982,7 +1000,7 @@ export function buildSections(ctx) {
         const b = from + i;
         const c = analysis.riffChords[i % L0];
         put(b, 'pad', padBar(colourAll(c, mood), C.pad));
-        put(b, 'arp', arp(c, b));
+        putArp(b, c);
         if (i >= half) put(b, 'hats', drum('hats', D.hats8, i));
         if (n < 4 ? i === n - 1 : i >= n - 2) put(b, 'kick', drum('kick', D.kick, i));
       }
@@ -1029,7 +1047,7 @@ export function buildSections(ctx) {
         put(b, 'hook', hookBar);
         if (chordRole) put(b, chordRole, lastCut(chordPart(c)));
         if (chordRole && chordRole !== 'pad') put(b, 'pad', lastCut(padBar(colourAll(c, mood), C.pad)));
-        if ((second || sec.variant === 'rebuild') && options.parts.arp) put(b, 'arp', lastCut(arp(c, b)));
+        if ((second || sec.variant === 'rebuild') && arpOn) putArp(b, c, lastCut);
         if (second && options.parts.square) put(b, 'square', up(hookBar));
         put(b, 'bass', lastCut(bassLine(c, R, 0, b)));
         put(b, 'sub', lastCut(subLine(c)));
@@ -1178,7 +1196,7 @@ export function buildSections(ctx) {
         } else put(b, 'hook', tune);
         if (extra) put(b, ...extra(c));
         // The chords: an open pad — or an arp, or held piano chords where the piano is not the hook's.
-        if (backing === 'arp') put(b, 'arp', arp(c, b));
+        if (backing === 'arp') putArp(b, c);
         else if (backing === 'piano' && !onPiano) put(b, 'piano', padBar(c, C.piano || C.pad, { open: true }));
         else if (chordRole) put(b, 'pad', padBar(c, C.pad, { open: true }));
         if (options.parts.choir && joins && backing !== 'stripped') put(b, 'choir', { notes: [openVoicing(c, 'E5'), ...Array(15).fill(null)], lens: [16, ...Array(15).fill(null)] });
@@ -1286,7 +1304,7 @@ export function buildSections(ctx) {
         // looked at it: each is fitted to its chords, so nothing grinds (Peter, 6 Oct 2026)
         put(b, singer, fitToChords(line[i], c));
         if (chordRole) put(b, 'pad', padBar(colourAll(c, mood), C.pad));
-        if (e >= 0.5 && options.parts.arp) put(b, 'arp', arp(c, b));
+        if (e >= 0.5 && arpOn) putArp(b, c);
         put(b, 'bass', e >= 0.42 ? bassLine(c, R, 0, b) : hookIsBass || options.parts.bass === 'none' ? null : bassBar(triads(c), R.sub, C.bassFloor));
         put(b, 'sub', subLine(c));
         sectionDrums(b, i, e, 'verse');
@@ -1306,7 +1324,7 @@ export function buildSections(ctx) {
         put(b, singer, fitToChords(line[i], c));
         if (chordRole) put(b, 'pad', padBar(colourAll(c, mood), C.pad));
         if (second && chordRole && chordRole !== 'pad') put(b, chordRole, chordPart(c));
-        if (second && options.parts.arp) put(b, 'arp', arp(c, b));
+        if (second && arpOn) putArp(b, c);
         put(b, 'bass', bassLine(c, R, 0, b));
         put(b, 'sub', subLine(c));
         sectionDrums(b, i, sec.energy ?? 0.62, 'preChorus');
@@ -1401,6 +1419,8 @@ export function buildSections(ctx) {
     }
   });
 
+  // The strummed guitar as the song ends up — lifted, led into a lift, cut — back on the strings and the hand.
+  if (strummed) keepTheHand(bars);
   return { bars, events, cell, asWritten };
 }
 

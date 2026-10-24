@@ -155,6 +155,9 @@ export function createSynthFull({
     bar.append(
       span('sfsynth', synthDisplayName(v?.synth || (v?.kind === 'drum' ? 'drum' : ''))),
     );
+    // The hollow play, beside the engine: on to the next bar this channel has notes in.
+    const nextNotes = kit.nextNotesButton?.('sfnextnotes');
+    if (nextNotes) bar.append(nextNotes);
     if (choices.length) {
       // A native select is compact, but it cannot search a catalogue of several
       // hundred sounds. `<details>` keeps the browser's built-in disclosure/focus
@@ -241,25 +244,39 @@ export function createSynthFull({
     undo.className = 'sfundo';
     undo.type = 'button';
     undo.textContent = 'UNDO';
-    undo.title = 'Undo the last Advanced Patch edit (Ctrl/Cmd+Z)';
+    undo.title = 'Undo the last sound edit (Ctrl/Cmd+Z)';
     undo.disabled = !kit.canUndo();
     undo.onclick = () => kit.undo();
     undoButton = undo;
-    bar.append(undo);
+    // The buttons stand in the compact panel's order — the way across to the other
+    // window, Undo, Revert, then the solo and the close — so a hand that learned one
+    // finds the same thing in the same place in the other.
+    bar.append(span('sfspace'));
     // Back to the compact panel on the same preset — the other half of its ADVANCED.
     if (kit.simpleAvailable?.()) {
       const simple = document.createElement('button');
       simple.className = 'sfundo sfsimple';
       simple.type = 'button';
-      simple.textContent = 'SIMPLE';
-      simple.title = 'Switch to the Simple editor for this preset';
+      simple.textContent = 'TWEAK';
+      simple.title = 'Switch to the Tweak panel for this preset — the controls that matter most';
       simple.onclick = () => {
         const r = el.getBoundingClientRect();
         kit.showSimple({ x: r.left, y: r.top });
       };
       bar.append(simple);
     }
-    bar.append(span('sfspace'));
+    bar.append(undo);
+    const revert = document.createElement('button');
+    revert.type = 'button'; revert.className = 'sfundo'; revert.textContent = 'Revert';
+    revert.title = 'Restore the sound to when this editor opened';
+    revert.onclick = () => kit.discard?.();
+    bar.append(revert);
+    if (kit.canSave?.()) {
+      const save = document.createElement('button');
+      save.type = 'button'; save.className = 'sfundo sfsave'; save.textContent = 'Save';
+      save.title = 'Save this preset'; save.onclick = () => kit.save?.();
+      bar.append(save);
+    }
     const extra = headExtra?.();
     if (extra) bar.append(extra);
     // SOLO — the desk's, on the channel this preset is playing.
@@ -304,7 +321,7 @@ export function createSynthFull({
     shut.type = 'button';
     shut.textContent = '✕';
     // Not "the panel beside the strip is still on this preset", which it used to say:
-    // opened from either menu's EDIT ADVANCED this window is standalone and closing it
+    // opened from either menu's EDIT PRESET this window is standalone and closing it
     // puts the preset down entirely. Only the ADVANCED button inside the small panel
     // leaves something behind, and one title cannot promise both.
     shut.title = 'Close the full editor';

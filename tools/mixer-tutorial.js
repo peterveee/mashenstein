@@ -165,7 +165,7 @@ export function createTutorial({
       id: 'synth',
       title: 'Open the instrument',
       anchor: () => $('voiceedit'),
-      says: 'Right-click a strip for Edit Simple — or Edit Advanced, where that instrument '
+      says: 'Right-click a strip for Tweak Preset — or Edit Preset, where that instrument '
         + 'has a full window. It opens where you clicked and stays open, so you can work '
         + 'while the sound changes under your hands, and the preset is copied into this song '
         + 'first: your edits belong to the song and ride its undo stack.'

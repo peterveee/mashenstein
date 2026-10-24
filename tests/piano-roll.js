@@ -286,6 +286,10 @@ assert(press({ tool: 'paint', on: false }) === 'run' && press({ tool: 'paint', o
   'Paint is the step grid’s drag: a run of separate notes, or a run rubbed out');
 assert(press({ tool: 'erase', on: true }) === 'erase' && press({ tool: 'erase', on: false }) === 'erase',
   'Erase erases, including from the empty cell you happened to start the drag on');
+assert(press({ tool: 'mute', on: true }) === 'mute' && press({ tool: 'mute', on: false }) === 'marquee',
+  'Mute flips the note it lands on and never draws one — empty space bands notes to mute together');
+assert(press({ tool: 'mute', on: true, shift: true }) === 'select',
+  'and ⇧ on a note still builds the selection, as it does in every mode');
 assert(press({ tool: 'nonsense', on: false }) === 'draw',
   'and an unknown tool is Auto rather than nothing at all');
 

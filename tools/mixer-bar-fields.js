@@ -12,6 +12,7 @@
 import {
   barCount, readBarLane, writeBarNotes, setLanesOff, setLanesDeleted, transposeBars,
   offsetBars, gainBars, panBars, setBarNoteFx, setBarEffects, barSections, putBarSections,
+  readBarAttrs,
 } from './lib/arrangement-edit.js';
 import { lenKey } from '../src/engine/lanes.js';
 
@@ -57,6 +58,8 @@ const laneBarPart = (bank, draft, bar, lane) => {
   return {
     notes: readBarLane(bank, draft, bar, lane),
     lengths: readBarLane(bank, draft, bar, lenKey(lane)),
+    // Velocities and mutes, which belong to the notes as much as their lengths do.
+    attrs: readBarAttrs(bank, draft, bar, lane),
     edits: {
       off: (entry?.off || []).includes(lane),
       delete: (entry?.delete || []).includes(lane),
@@ -108,7 +111,8 @@ const writeLaneBarPart = (bank, draft, bar, lane, part, current = null) => {
   // selection and explicitly not being replicated over.
   let out = current && JSON.stringify(current.notes) === JSON.stringify(part.notes)
     && JSON.stringify(current.lengths) === JSON.stringify(part.lengths)
-    ? draft : writeBarNotes(bank, draft, bar, lane, part.notes, part.lengths);
+    && JSON.stringify(current.attrs) === JSON.stringify(part.attrs)
+    ? draft : writeBarNotes(bank, draft, bar, lane, part.notes, part.lengths, part.attrs ?? null);
   if (!same('off')) out = setLanesOff(out, bar, bar, [lane], now.off);
   if (!same('delete')) out = setLanesDeleted(out, bar, bar, [lane], now.delete);
   if (!same('transpose')) out = transposeBars(out, bar, bar, [lane], now.transpose);

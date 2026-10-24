@@ -1037,7 +1037,7 @@ export const banger = {
     {
       "lane": "bass2",
       "part": "part:sub",
-      "preset": "seedReggaetonSub",
+      "preset": "stSubSine",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1093,7 +1093,7 @@ export const banger = {
     {
       "lane": "lead7",
       "part": "part:choir",
-      "preset": "seedFutureBassChoir",
+      "preset": "bestChoirAah",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1798,7 +1798,7 @@ export const banger = {
         "role": "sub",
         "lane": "bass2",
         "label": "SUB · Sub Sine · Italo Disco",
-        "voice": "seedReggaetonSub",
+        "voice": "stSubSine",
         "voiceParams": null,
         "strip": {
           "gain": -17.4
@@ -1932,7 +1932,7 @@ export const banger = {
         "role": "choir",
         "lane": "lead7",
         "label": "CHOIR · Synth Choir Aah · Italo Disco",
-        "voice": "seedFutureBassChoir",
+        "voice": "bestChoirAah",
         "voiceParams": null,
         "strip": {
           "gain": -11.2,
@@ -2201,7 +2201,7 @@ export const mix = {
   layers: [{ key: "rim2", from: "rim", independent: true }, { key: "crash2", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead8", from: "lead", independent: true }, { key: "lead9", from: "lead", independent: true }, { key: "lead2", from: "lead", independent: true }],
   order: ["kick","snare","clap","hats","ohats","crash","tom","rim","rim2","crash2","bass","bass2","chords","chords2","lead","lead3","lead4","lead5","lead6","lead7","lead8","lead9","lead2"],
   labels: {"kick":"KICK","snare":"SNARE Roll","clap":"CLAP","hats":"HATS","ohats":"OPEN HATS","crash":"CRASH","tom":"DISCO TOM","rim":"PERC Shaker","rim2":"PERC Tambourine","crash2":"RIDE","bass":"BASS · =80s FM Bass · Italo Disco","bass2":"SUB · Sub Sine · Italo Disco","chords":"CHORDS Stabs · String Machine","chords2":"STRINGS · String Machine","lead":"RIFF Lullaby melody · HOOK","lead3":"HOOK DOUBLE · Bright Glide Lead · Italo Disco","lead4":"HOOK 8VA · Ice Bell · Italo Disco","lead5":"LEAD 8VA · Legato Solo Lead · Italo Disco","lead6":"ARP · Sparkle Pluck · Italo Disco","lead7":"CHOIR · Synth Choir Aah · Italo Disco","lead8":"THIRD BELOW · Digital E-Piano · Italo Disco","lead9":"COUNTER-MELODY · Sparkle Pluck · Italo Disco","lead2":"RIFF After-hours answer"},
-  voice: {"kickVoice":"kit_syndrum_disco_kick","snareVoice":"kit_syndrum_disco_snare","clapVoice":"kit_syndrum_disco_clap","hatsVoice":"kit_syndrum_disco_hats","ohatsVoice":"kit_syndrum_disco_ohats","crashVoice":"kit_syndrum_disco_crash","tomVoice":"kit_syndrum_disco_tom","rimVoice":"shaker","rim2Voice":"tambourine","crash2Voice":"ride909SixBit","bassVoice":"bass80sFM","bass2Voice":"seedReggaetonSub","chordsVoice":"stSynthStrings","chords2Voice":"stSynthStrings","leadVoice":"bestRobotVox","lead3Voice":"tngrBerlinSignal","lead4Voice":"seedTranceBell","lead5Voice":"tngrHorizonSolo","lead6Voice":"seedTranceArp","lead7Voice":"seedFutureBassChoir","lead8Voice":"tngrDigitalEp84","lead9Voice":"seedTranceArp","lead2Voice":"tngrBerlinSignal"},
+  voice: {"kickVoice":"kit_syndrum_disco_kick","snareVoice":"kit_syndrum_disco_snare","clapVoice":"kit_syndrum_disco_clap","hatsVoice":"kit_syndrum_disco_hats","ohatsVoice":"kit_syndrum_disco_ohats","crashVoice":"kit_syndrum_disco_crash","tomVoice":"kit_syndrum_disco_tom","rimVoice":"shaker","rim2Voice":"tambourine","crash2Voice":"ride909SixBit","bassVoice":"bass80sFM","bass2Voice":"stSubSine","chordsVoice":"stSynthStrings","chords2Voice":"stSynthStrings","leadVoice":"bestRobotVox","lead3Voice":"tngrBerlinSignal","lead4Voice":"seedTranceBell","lead5Voice":"tngrHorizonSolo","lead6Voice":"seedTranceArp","lead7Voice":"bestChoirAah","lead8Voice":"tngrDigitalEp84","lead9Voice":"seedTranceArp","lead2Voice":"tngrBerlinSignal"},
   fx: { reverb: { decay: 2.8 } },
   lanes: {
     kick: { gain: 0.3 },

@@ -35,7 +35,9 @@ const PROFILES = {
   chipstep: { perc: 'tambourine' },
 };
 export const DECORATION = ['square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter',
-  'shaker', 'tambourine', 'congas', 'cowbell', 'ride'];
+  'shaker', 'tambourine', 'congas', 'cowbell', 'ride',
+  // the strummed funk guitar's chucks (guitar.js), which go and stay with its stabs, the arp
+  'chuck'];
 const DROPS = new Set(['drop', 'drop2', 'drop3', 'reprise']);
 
 /**
@@ -55,7 +57,7 @@ export function arrangeEnergy({ options, style, form, scale }, sec, bars, events
   const from = sec.from - 1;
   if (energy === 'lean') {
     for (let b = from; b < sec.to; b++) {
-      for (const role of DECORATION) if (!profile.keep?.includes(role)) delete bars[b][role];
+      for (const role of DECORATION) if (!profile.keep?.includes(role === 'chuck' ? 'arp' : role)) delete bars[b][role];
     }
     return;
   }

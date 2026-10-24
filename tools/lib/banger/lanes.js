@@ -13,6 +13,7 @@ import { riserVoice, subDropVoice } from './theory.js';
 import { DROP_HIT_WAY, RISER_WAY } from './build-ways.js';
 import { RANDOM_JOBS, soundAllowed, slotChoices } from './sound-rules.js';
 import { weightedPalettePick } from './palette.js';
+import { FUNK_STRIPS, FUNK_STRUM, FUNK_CHUCK } from './guitar.js';
 
 /** Which lane family each generated role lives in. */
 export const ROLE_FAMILY = Object.freeze({
@@ -23,13 +24,15 @@ export const ROLE_FAMILY = Object.freeze({
   saws: 'chords', pad: 'chords', piano: 'chords',
   square: 'lead', bell: 'lead', megaSaw: 'lead', arp: 'lead', choir: 'lead', third: 'lead', counter: 'lead',
   sonar: 'lead', vocoder: 'lead', word: 'lead',
+  // the strummed funk guitar's muted chucks (guitar.js), beside its stabs on the arp's lane
+  chuck: 'lead',
 });
 /** The order roles are given lanes in — and the desk's strip order, kit first. */
 export const ROLE_ORDER = Object.freeze([
   'kick', 'snare', 'clap', 'hats', 'hatsSoft', 'ohats', 'crash', 'riser', 'riser2', 'impact', 'fill',
   'shaker', 'tambourine', 'cowbell', 'congas', 'ride', 'rim',
   'bass', 'sub', 'bassEcho', 'saws', 'piano', 'pad',
-  'square', 'bell', 'megaSaw', 'arp', 'choir', 'third', 'counter', 'sonar', 'vocoder', 'word',
+  'square', 'bell', 'megaSaw', 'arp', 'chuck', 'choir', 'third', 'counter', 'sonar', 'vocoder', 'word',
 ]);
 export const DRUM_ROLES = new Set(['kick', 'snare', 'clap', 'hats', 'hatsSoft', 'ohats', 'crash', 'riser', 'riser2', 'impact',
   'fill', 'shaker', 'tambourine', 'cowbell', 'congas', 'ride', 'rim']);
@@ -152,8 +155,10 @@ export function pickRiffSounds({ riffParts, laneOf, hookKey, rng, sounds, palett
  */
 export function buildMix({
   style, sounds, options, laneOf, riffParts, hookKey, coreFromRiff, bpm, denseHook = false, riffSounds = new Map(),
-  riserWay = 'noise', dropHit = 'style', tonic = 9, riserLands = {},
+  riserWay = 'noise', dropHit = 'style', tonic = 9, riserLands = {}, guitar = null,
 }) {
+  // The strummed funk guitar (guitar.js): the arp's lane plays its stabs, `chuck` its muted chucks.
+  const funk = !!guitar?.strummed;
   const mood = style.moods[options.mood] || {};
   // The chosen kit, with the style kit's sound wherever it leaves a drum out.
   const kit = { ...sounds.kits.style, ...(sounds.kits[options.drums.kit] || {}) };
@@ -225,10 +230,17 @@ export function buildMix({
     else if (role === 'impact' && VOICES[DROP_HIT_WAY[dropHit]?.voice]) mix.voice[vk] = DROP_HIT_WAY[dropHit].voice;
     else if (DRUM_ROLES.has(role)) mix.voice[vk] = kit[as] || sounds.parts[as] || kit.fill;
     else if (role === 'square' && denseHook) mix.voice[vk] = sounds.parts.squareDense;
+    else if (role === 'arp' && funk) mix.voice[vk] = guitar.stab;
+    else if (role === 'chuck') mix.voice[vk] = guitar?.chuck || FUNK_CHUCK;
     else mix.voice[vk] = sounds.parts[as];
     const strip = role === 'bassEcho'
       ? { ...clone(style.strips.bass || {}), gain: (style.strips.bass?.gain ?? 0) + BASS_ECHO.gain, pan: BASS_ECHO.pan }
-      : clone(style.strips[role === 'riser2' ? 'riser' : role] || {});
+      // The funk guitar's two channels: the recipe's own, else panned apart with a little air (guitar.js),
+      // each strummed down and up. The stabs' fader starts at the arp's, which its level was set for.
+      : (role === 'arp' && funk) || role === 'chuck'
+        ? { gain: style.strips.arp?.gain ?? 0, ...clone(style.strips[role === 'chuck' ? 'funkChuck' : 'funkStab'] || FUNK_STRIPS[role === 'chuck' ? 'chuck' : 'stab']),
+          noteFx: { strum: { ...FUNK_STRUM[role === 'chuck' ? 'chuck' : 'stab'] } } }
+        : clone(style.strips[role === 'riser2' ? 'riser' : role] || {});
     // The chords' gate: the style's own, or the one Chord Gate names (fx.js stripGate).
     const gate = stripGate(options, style);
     // Supersaw Stabs are a rhythm already: never gated. Gate the Choir chops the choir with the chords.
@@ -244,6 +256,7 @@ export function buildMix({
     // the sound is editable on the Banger Sounds page and a name baked into the label would
     // go on naming the old one. A drum's part name is enough.
     const base = role === 'saws' && options.parts.chords === 'stabs' ? 'CHORDS Stabs'
+      : role === 'arp' && funk ? 'GUITAR Strummed' : role === 'chuck' ? 'GUITAR Chucks'
       : role === 'riser2' ? `${style.labels.riser || 'RISER'} 2`
         : style.labels[role] || (role === 'bassEcho' ? BASS_ECHO.label : role.toUpperCase());
     const preset = DRUM_ROLES.has(role) ? null : VOICES[mix.voice[vk]]?.label;

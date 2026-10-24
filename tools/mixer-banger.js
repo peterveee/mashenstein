@@ -14,7 +14,7 @@ import {
   BANGER_REROLLS, modifyBanger, describeModify, BANGER_STRUCTURE, keepStructure,
   styleFor, generateBanger, validateRiff, riffSummary, randomBangerSeed, keyName, parseRiff, flavoursFor, moodFlavour,
   fusionOf, flavourOf, BANGER_FLAVOURS,
-  bangerBars, bangerBpm, BANGER_GENERATOR_VERSION, BANGER_EXPRESSION_VERSION, sourceRiff,
+  bangerBars, bangerBpm, BANGER_GENERATOR_VERSION, BANGER_EXPRESSION_VERSION, sourceRiff, guitarOffered,
 } from './lib/banger/index.js';
 import { analyseRiff } from './lib/banger/analyse.js';
 import { createFormEditor } from './mixer-banger-form.js';
@@ -165,7 +165,7 @@ export function createBangerDesk(desk) {
     // Visual sections share the existing parts request; each control is rendered once.
     const partSections = [
       { id: 'bass', label: 'Bass', keys: ['bass', 'riffBass', 'bassLift', 'sub'] },
-      { id: 'chords', label: 'Chords', keys: ['chords', 'choir', 'arp', 'arpPattern'] },
+      { id: 'chords', label: 'Chords', keys: ['chords', 'choir', 'arp', 'arpPattern', 'guitar'] },
       { id: 'leads', label: 'Leads', keys: ['writeLead', 'riffSound', 'fillIn', 'fillEvery', 'fillNotes', 'square', 'bell', 'octaveDouble', 'thirdBelow', 'counter'] },
       { id: 'sounds', label: 'Instrument sounds', keys: ['soundSet', 'partSounds'] },
     ];
@@ -324,6 +324,8 @@ export function createBangerDesk(desk) {
     if (stored.form && !(stored.prefs >= 6)) stored.form = { ...stored.form, groovePace: 'four', drop2Way: stored.form.drop2Way ?? 'varied' };
     // ...and Breakdown Backing and Club Shape, Varied since 10 Oct 2026 (`prefs` 7).
     if (stored.form && !(stored.prefs >= 7)) stored.form = { ...stored.form, breakdownBacking: 'varied', clubShape: 'varied' };
+    // ...and Guitar, Random since 24 Oct 2026 (`prefs` 8): parts saved before it name none, which a request reads as Picked.
+    if (stored.parts && !(stored.prefs >= 8)) stored.parts = { ...stored.parts, guitar: stored.parts.guitar ?? 'random' };
     const start = normaliseBangerOptions(settings ? recipe.options : { ...stored, hook: 'auto' }).options;
     // A take or a preference from early on 7 Oct 2026 named its sound `style` and its groove `fusion`;
     // the desk asks the other way round now: Style the groove, Infusion the sound. Modify keeps the
@@ -478,6 +480,9 @@ export function createBangerDesk(desk) {
           if (label) label.classList.toggle('bangerdim', formEditor.edited || !f.forms.includes(tpl));
         }
       }
+      // Guitar has something to choose only where the arp is a funk or disco guitar: dimmed elsewhere, the same way.
+      const guitarLabel = box.querySelector('[data-group="parts"][data-key="guitar"]')?.closest('label');
+      if (guitarLabel) guitarLabel.classList.toggle('bangerdim', !guitarOffered(style, options.mood));
       formEditor.render();
       paintSimple(options, style);
       // The Style field's tooltip: the chosen style, in full.
@@ -664,7 +669,7 @@ export function createBangerDesk(desk) {
     // Remembered as a working preference — everything but the hook, which belongs to a riff.
     const { hook, ...keep } = options;
     void hook;
-    writeStore(BANGER_PREFS_KEY, { ...keep, prefs: 7 });
+    writeStore(BANGER_PREFS_KEY, { ...keep, prefs: 8 });
     const rerolls = modifying ? [...box.querySelectorAll('#bgrerolls button.on')].map((b) => b.dataset.stream) : [];
     // Whatever a button wrote over them (Surprise Me, Go Crazy, a style's defaults), the
     // shape goes back to the take's own.

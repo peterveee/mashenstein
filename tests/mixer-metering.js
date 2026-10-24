@@ -5,7 +5,10 @@ import { build } from 'esbuild';
 import { openLiveBrowser } from './lib/live-browser.js';
 
 const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
-assert(main.indexOf('Audio.setMixerMeteringEnabled(false)') < main.indexOf('Audio.ensure()'));
+// The BOOT's first ensure() — not the audio guard's restart, a function defined earlier in the
+// file and only ever called long after boot (audioRestart, 22 Oct 2026).
+const bootEnsure = main.indexOf('Audio.ensure()', main.indexOf('Audio.setLifecyclePaused(lifecyclePolicy('));
+assert(main.indexOf('Audio.setMixerMeteringEnabled(false)') < bootEnsure);
 const bundle = await build({ stdin: { contents: `import {Audio} from './src/engine/audio.js'; import {bank,mix} from './src/data/songs/rhythm.js'; window.audio = Audio; window.rhythm = {bank,mix};`,
   resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
 const host = await openLiveBrowser();

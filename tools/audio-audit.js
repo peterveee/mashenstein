@@ -441,8 +441,12 @@ const built = await esbuild.build({ stdin: { contents: ENTRY, resolveDir: ROOT, 
 const HTML = `<!doctype html><meta charset="utf-8"><script>${built.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>')}</script>`;
 const playwright = require('playwright');
 const BROWSER = flag('browser') || (MODE === 'memory' ? 'chromium' : 'webkit');
+// WebKit without its DFG tier: Playwright's development WebKit trips a JavaScriptCore assertion
+// (DFG::VirtualRegisterAllocationPhase) on long runs — the test browser's bug, not ours (24 Oct
+// 2026, every crash report from the soaks). `--dfg` keeps it on.
 const launch = () => playwright[BROWSER].launch({ headless: true,
-  ...(BROWSER === 'chromium' ? { args: ['--js-flags=--expose-gc', '--autoplay-policy=no-user-gesture-required'] } : {}) });
+  ...(BROWSER === 'chromium' ? { args: ['--js-flags=--expose-gc', '--autoplay-policy=no-user-gesture-required'] } : {}),
+  ...(BROWSER === 'webkit' && !process.argv.includes('--dfg') ? { env: { ...process.env, JSC_useDFGJIT: '0', __XPC_JSC_useDFGJIT: '0' } } : {}) });
 let browser = await launch();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : NaN; };
@@ -712,7 +716,8 @@ try {
     // A SESSION (Stage L): every cabinet song in turn, `--each` seconds each with the game's
     // cues firing over it, stopped, then the next — for `--minutes` — with a count after every
     // stop. A clean session reads the same at the end as after its first lap.
-    const ids = ['title', 'hub', 'shop', 'plumber', 'speed', 'rhythm', 'crypt', 'frost', 'neon', 'gravity', 'office', 'surge', 'cardboard', 'megamix', 'finale'];
+    // --songs=a,b to soak just those (a crash hunt).
+    const ids = flag('songs') ? String(flag('songs')).split(',') : ['title', 'hub', 'shop', 'plumber', 'speed', 'rhythm', 'crypt', 'frost', 'neon', 'gravity', 'office', 'surge', 'cardboard', 'megamix', 'finale'];
     const songs = [];
     for (const id of ids) {
       const file = [join(SRC, 'data/songs', `${id}.js`), join(SRC, 'data/imported', `${id}.js`)].find(existsSync);
@@ -734,10 +739,16 @@ try {
         await page.evaluate(() => { window.__sfxBusy(false); window.__stopSong(); });
         await sleep(4000);
         const c = await page.evaluate(() => window.__census());
-        const row = { lap, song: song.id, at: Math.round((minutes * 60000 - (end - Date.now())) / 1000), wired: c.wired, live: c.live, pulled: c.pulled };
+        const row = { lap, song: song.id, at: Math.round((minutes * 60000 - (end - Date.now())) / 1000), wired: c.wired, live: c.live, pulled: c.pulled, nodes: c.nodes, bufferBytes: c.bufferBytes, waves: c.waves };
         rows.push(row);
-        log(`lap ${lap} ${song.id.padEnd(10)} t ${String(row.at).padStart(5)} s  wired ${c.wired}  live ${c.live}  pulled ${c.pulled}`);
+        log(`lap ${lap} ${song.id.padEnd(10)} t ${String(row.at).padStart(5)} s  wired ${c.wired}  live ${c.live}  pulled ${c.pulled}`
+          + (c.nodes != null ? `  nodes ${c.nodes}  buffers ${Math.round((c.bufferBytes || 0) / 1048576)} MB  waves ${c.waves}` : '')
+          + (c.alive && song.id === songs[0].id ? `\n   alive: ${JSON.stringify(c.alive)}` : ''));
       }
+      // --stacks: what is still running at the end of each lap, by class and rate, and where it
+      // was made — the lap-on-lap growth named.
+      log(`   still running after lap ${lap}: ${JSON.stringify(await page.evaluate(() => window.__openSources()))}`);
+      if (flag('stacks')) for (const [k, n] of await page.evaluate(() => window.__openStacks())) log(`   ${String(n).padStart(5)}  ${k}`);
       lap++;
     }
     await page.close();

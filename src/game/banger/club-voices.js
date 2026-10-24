@@ -21,6 +21,11 @@
 //
 // Nothing is kept: leaving the floor puts the song's own sounds back (release).
 //
+// GUITAR CHORDS STRUM (24 Oct 2026, tools/lib/banger/guitar.js): a part playing chords that a swap puts on a
+// guitar strums in the style's feel, on six strings, and one swapped off a guitar stops — the same rule the
+// generator writes the song with, through the same helper (restrumNoteFx). Only the setting the generator
+// wrote moves; a seed's or the riff's own stays. A song made before the guitars (Ways Era 5) is left as it was.
+//
 // LEVELLED (Peter, 9 Oct 2026: "can we do it when swapping by hand also? there seems to huge
 // variation even when its done with the dice"). A preset arrives at its lane's target for ONE
 // note (voiceGain), but the fader under it was set by the generator for the sound the take was
@@ -42,6 +47,7 @@ import { nameOf, hasNotes } from '../../../tools/lib/banger/theory.js';
 import { VOICES, baseLane, PERCUSSION_LANES } from '../../data/voices.js';
 import { laneSettings } from '../../data/mix.js';
 import { Audio } from '../../engine/audio.js';
+import { playsChords, restrumNoteFx, GUITAR_ERA } from '../../../tools/lib/banger/guitar.js';
 
 export const CHIP_SET = 'chipstep-8bit';
 /**
@@ -171,6 +177,8 @@ export function roleVoice(row, kit, role, lane = '') {
   }
   if (KIT_ROLES.includes(role)) return row.kits?.[kit]?.[role] ?? row.kits?.style?.[role] ?? null;
   if (role === 'hook') return row.parts?.square ?? row.parts?.fallbackMelodic ?? null;
+  // the strummed funk guitar's chucks go where its stabs do: onto the arp's sound
+  if (role === 'chuck') return row.parts?.arp ?? null;
   return row.parts?.[role] ?? null;
 }
 
@@ -311,6 +319,31 @@ export class ClubVoices {
     this.pendingAt = null;
     this.trims = new Map();    // `lane\nid` → dB (trimFor), and each lane's bars it is read on
     this.barsOf = new Map();
+    this.chordsOf = new Map(); // lane → whether it plays chords (restrum)
+  }
+
+  /**
+   * The mix with `voices` (lane → preset) strummed to suit (see the top of this file): each swapped lane
+   * playing chords gets the style's guitar strum on a guitar, and loses it on anything else. Not the
+   * strummed funk guitar's own two lanes, whose strum is the part's hand, not its sound's.
+   */
+  restrum(mix, voices) {
+    if (!voices.size || !((this.song?.waysEra ?? 0) >= GUITAR_ERA)) return mix;
+    const style = styleFor(this.ownSet) || styleFor(this.style);
+    let lanes = null;
+    for (const [lane, id] of voices) {
+      const role = this.roles.get(lane);
+      if (role === 'chuck' || (role === 'arp' && this.song?.laneOf?.chuck)) continue;
+      if (!this.chordsOf.has(lane)) this.chordsOf.set(lane, playsChords(laneBars(this.song?.bank, lane)));
+      const base = this.song?.mix?.lanes?.[lane]?.noteFx;
+      const fx = restrumNoteFx(base, { voice: id, chords: this.chordsOf.get(lane), style });
+      if (same(fx, base)) continue;
+      lanes ||= { ...(mix?.lanes || {}) };
+      const strip = { ...(lanes[lane] || {}) };
+      if (fx) strip.noteFx = fx; else delete strip.noteFx;
+      lanes[lane] = strip;
+    }
+    return lanes ? { ...mix, lanes } : mix;
   }
 
   /**
@@ -582,7 +615,7 @@ export class ClubVoices {
 
   mixFor(state) {
     const voices = this.voicesFor(state);
-    return mixWithVoices(this.song?.mix, voices, this.trimsFor(voices));
+    return this.restrum(mixWithVoices(this.song?.mix, voices, this.trimsFor(voices)), voices);
   }
 
   /**

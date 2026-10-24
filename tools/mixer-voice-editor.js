@@ -2326,7 +2326,9 @@ const SYNTH_GROUPS = {
       }),
       n('$frpp6.damping.fret', 'FRET', 0, 1, 0.01, fixed(2), 0, '', null, { tip: 'The tick of a string landing on a new fret.' }),
       n('$frpp6.damping.squeak', 'SQUEAK', 0, 1, 0.01, fixed(2), 0, '', null, { tip: 'Fingers sliding along a ringing string.' }),
-      n('$frpp6.damping.lift', 'LIFT', 0, 1, 0.01, fixed(2), 0, '', null, { tip: 'The scratch of the hand lifting off at the end of a note.' }),
+      // Not on a bow: a released bow just lifts, so the core never plays the scratch (see
+      // Frpp6Voice.release).
+      n('$frpp6.damping.lift', 'LIFT', 0, 1, 0.01, fixed(2), 0, '', null, { hideWhen: fzPlucked, tip: 'The scratch of the hand lifting off at the end of a note.' }),
     ]) },
     // An ADVANCED door on PLUCK — the drum kit keeps TAPS behind a door on its Master card the
     // same way. Fine-tuning for a more sophisticated preset, out of the way of a player.
@@ -3704,7 +3706,7 @@ const QUICK_SYNTHS = new Set([
  * full window behind it. One set, because the two go together: a Quick surface is only
  * worth drawing when there is somewhere to put the controls it leaves out, and the
  * ADVANCED button that opens that window is gated on this. Exported so the desk can ask
- * the same question before offering **Edit Advanced** — see `editVoice` in
+ * the same question before offering **Edit Preset** — see `editVoice` in
  * tools/mixer-entry.js.
  */
 export const isQuickVoice = (voice) => isMrdrVoice(voice)
@@ -4458,7 +4460,7 @@ export function stripPanelSpec(voice = {}) {
   const common = { title: 'Settings', rows: commonRows(voice) };
   const groups = voice.kind === 'drum' ? DRUM_GROUPS : synthGroupsFor(voice);
   if (isQuickVoice(voice)) {
-    return { mode: 'quick', groups: [{ title: 'Simple', rows: quickRows(voice) }] };
+    return { mode: 'quick', groups: [{ title: 'Tweak', rows: quickRows(voice) }] };
   }
   return { mode: 'detailed', groups: [common, ...groups] };
 }
@@ -5550,7 +5552,9 @@ function rawId(label) {
  * other rotary on the desk, down to shift-drag and click-the-number-to-type.
  */
 export function createVoiceEditor({
-  el, knob, toast, refresh, noiseBuf, sampleRate, onChanged, assign, close,
+  // `slideKnob` is the flat slider the compact panel uses in place of pots; a host
+  // without one gets pots there too.
+  el, knob, slideKnob = null, toast, refresh, noiseBuf, sampleRate, onChanged, assign, close,
   fetchAction = (...args) => fetch(...args),
   // Solo one layer of a stack for listening — `(voiceId, layerKey, on) => void`, and
   // `null` to drop them all. Monitoring state that belongs to the ENGINE rather than to
@@ -5567,6 +5571,11 @@ export function createVoiceEditor({
   // does not draw at all.
   setLaneSolo = null,
   laneSoloOn = () => false,
+  // The channel panel's hollow play, for the lane this preset is playing on:
+  // `(laneKey, className) => button`, on to the next bar that lane has notes in. The
+  // desk builds it — it owns the transport and the song — and the panel only places it.
+  // Absent with no desk behind it, like the solo.
+  nextNotesButton = null,
   // Optional-section toggles and filter-envelope zero crossings change the native MRDR
   // graph/trajectory rather than a live Tone parameter. Hosts use this seam to clear
   // already-queued audition notes so the next hit is an unmistakable read of the
@@ -5590,6 +5599,8 @@ export function createVoiceEditor({
   // own Save; a song's copy lives in that song's mix, so every touch has to reach the
   // draft or the desk would hold a mix that disagrees with the sound. See writeSongVoice.
   onEdit = () => {},
+  trackName = null,
+  trackNumber = null,
   // Copy what is on the panel into the song the lane belongs to — measured on the way
   // in, because a copy gets its level from a peak exactly as a library preset does.
   saveToSong = null,
@@ -5711,7 +5722,11 @@ export function createVoiceEditor({
       state.silent = snapshot.silent;
     },
   });
-  const historyChanged = () => full?.syncHistory();
+  const historyChanged = () => {
+    full?.syncHistory();
+    const button = el.querySelector('.veundo');
+    if (button) button.disabled = !undoHistory.canUndo();
+  };
   const matchesBaseline = () => JSON.stringify(asPreset(state.voice))
     === JSON.stringify(state.baseline)
     && state.voice.level === state.levelBaseline
@@ -6067,12 +6082,12 @@ export function createVoiceEditor({
     return { wrap, row, set: (v) => { input.value = String(v ?? ''); } };
   };
 
-  const numRow = (row, guards = rowGuards, onChange = null) => {
+  const numRow = (row, guards = rowGuards, onChange = null, { flat = false } = {}) => {
     const raw = getAt(state.voice, row.path);
     const cur = row.read ? row.read(raw, state.voice) : raw;
     const value = typeof cur === 'number' ? Math.min(row.max, Math.max(row.min, cur)) : row.def;
     const scale = typeof row.scale === 'function' ? row.scale(state.voice) : row.scale;
-    const r = knob({
+    const r = (flat && slideKnob ? slideKnob : knob)({
       min: row.min, max: row.max, step: row.step, value, reset: row.def, fmt: row.fmt,
       scale, origin: row.origin, taper: row.taper, floor: row.floor,
       onStart: beginGesture, onEnd: endGesture,
@@ -6924,7 +6939,7 @@ export function createVoiceEditor({
   // negotiable in the same way: one knob, one feel, everywhere.
   const groupCard = (group, {
     guards = rowGuards, repaint = build, dimOff = false, onRow = null, renderPick = null,
-    onChange = null,
+    onChange = null, sliders = false,
   } = {}) => {
     const card = document.createElement('div');
     card.className = 'device vegroup';
@@ -7081,7 +7096,7 @@ export function createVoiceEditor({
           ? { wrap: renderPick(row), row }
           : pickRow({ ...row, wide: picks < 2 }, guards, onChange))
         : row.kind === 'text' ? textRow(row, guards, onChange)
-          : numRow(row, guards, onChange);
+          : numRow(row, guards, onChange, { flat: sliders });
       const { wrap } = handle;
       if (group.bodyWhen && row.label === 'AMP') wrap.dataset.vePanelKeep = '1';
       // Hand the row back to whoever asked for the card. The full window wants the pot's
@@ -7263,7 +7278,7 @@ export function createVoiceEditor({
         kind.textContent = synthDisplayName(v.synth);
         kind.title = `${synthDisplayName(v.synth)} — the engine family this preset is built from. Change it in`
           + ' the library, where the preset is built, not on the strip playing it.';
-        sub.append(synLabel('ENGINE'), kind);
+        head.append(kind);
       } else {
         // The stored name is each option's value; what it DOES is a second column beside
         // it. This is the one place a preset's engine is chosen outright, so it is the
@@ -7298,7 +7313,7 @@ export function createVoiceEditor({
           // nothing — back to the top with it.
           build({ keepScroll: false });
         };
-        sub.append(synLabel('ENGINE'), syn);
+        sub.append(syn);
       }
       // The way into the full window, on the SYNTH row rather than in the header.
       //
@@ -7310,7 +7325,7 @@ export function createVoiceEditor({
       if (createFull && isQuickVoice(v) && fullLayout(v)) {
         const open = document.createElement('button');
         open.className = 'devlink veopen';
-        open.textContent = 'ADVANCED';
+        open.textContent = 'Edit';
         open.title = `Open the full-window ${synthDisplayName(v.synth)} editor — every control on one screen`;
         open.onclick = () => openFull();
         sub.append(open);
@@ -7320,10 +7335,10 @@ export function createVoiceEditor({
       const kind = document.createElement('span');
       kind.className = 'vesynth veclass';
       kind.textContent = 'KLNG-8';
-      sub.append(synLabel('ENGINE'), kind);
+      head.append(kind);
       const open = document.createElement('button');
       open.className = 'devlink veopen';
-      open.textContent = 'ADVANCED';
+      open.textContent = 'Edit';
       open.title = 'Open the full-window KLNG-8 editor — every control on one screen';
       open.onclick = () => openFull();
       sub.append(open);
@@ -7352,8 +7367,57 @@ export function createVoiceEditor({
       ? 'Hide the editor — the rail down the side brings it back'
       : 'Close the editor — unsaved changes stay on the sound until you revert';
     shut.onclick = () => closePanel();
+    // No ADJUST: the engine's name leads, as it does in the full window's title bar.
+    title.remove();
+    tag.remove();
+    head.classList.add('vecompact-head');
+    const undo = document.createElement('button');
+    undo.className = 'veundo'; undo.type = 'button'; undo.textContent = 'Undo';
+    undo.title = 'Undo the last sound edit'; undo.disabled = !undoHistory.canUndo();
+    undo.onclick = () => undoEdit();
+    head.append(undo);
+    // The desk's solo for this channel, beside the close — the full window's S, in the
+    // same lit token, so shaping a sound against the mix is one click either way.
+    if (state.laneKey && setLaneSolo) {
+      const solo = document.createElement('button');
+      solo.type = 'button';
+      const paintSolo = () => {
+        const on = laneSoloOn(state.laneKey);
+        const lane = state.laneLabel || 'this channel';
+        solo.className = `velanesolo${on ? ' on' : ''}`;
+        solo.textContent = 'S';
+        solo.setAttribute('aria-pressed', on ? 'true' : 'false');
+        solo.title = on
+          ? `Stop soloing ${lane} — the rest of the song comes back`
+          : `Solo ${lane} on the desk — hear this preset alone. Monitoring only, never saved`;
+      };
+      paintSolo();
+      solo.onclick = () => { setLaneSolo(state.laneKey, !laneSoloOn(state.laneKey)); paintSolo(); };
+      head.append(solo);
+    }
+    // The hollow play rides beside the engine's badge, as it does in the full window's
+    // title bar: on to the next bar this channel has notes in.
+    if (state.laneKey && nextNotesButton) {
+      const badge = head.querySelector('.veclass');
+      head.insertBefore(nextNotesButton(state.laneKey, 'venextnotes'), badge ? badge.nextSibling : head.firstChild);
+    }
     head.append(shut);
+    // Edit rides in the header too: the engine badge is always a short name, so there is
+    // room, and on its own row it was a whole line of the short panel for one button.
+    const openFullBtn = sub.querySelector('.veopen');
+    if (openFullBtn) head.insertBefore(openFullBtn, undo);
     el.append(head);
+    // Which track, read-only: the name is changed on the channel panel, and a second
+    // place to rename it was a second place for the two to disagree.
+    if (state.laneKey && trackName) {
+      const name = document.createElement('div');
+      name.className = 'vetrackname';
+      const number = trackNumber?.(state.laneKey);
+      name.textContent = `${number ? `${number} · ` : ''}${trackName(state.laneKey)}`;
+      el.append(name);
+    }
+    const presetName = document.createElement('div'); presetName.className = 'vepreset-name';
+    presetName.textContent = v.label || 'Untitled preset'; el.append(presetName);
     // Only when it holds a control. An empty `.vesub` still costs its own margin, and
     // the whole point of dropping the badge was the vertical space it was spending.
     if (sub.childElementCount) el.append(sub);
@@ -7377,7 +7441,7 @@ export function createVoiceEditor({
     }
     for (const g of surface.groups) {
       if (g.when && !g.when(v)) continue;
-      rack.append(groupCard(g, { onRow: (h) => { if (h.set) stripPots.push(h); } }));
+      rack.append(groupCard(g, { sliders: true, onRow: (h) => { if (h.set) stripPots.push(h); } }));
     }
     syncRows();
     el.append(rack);
@@ -7465,7 +7529,8 @@ export function createVoiceEditor({
 
     save.onclick = () => openSaveSheet();
 
-    bar.append(revert);
+    // Revert joins Edit and Undo; the solo and the close stay last.
+    head.insertBefore(revert, head.querySelector('.velanesolo') || shut);
     // Filing a preset needs a server to file it in, and the deployed desk has none: the
     // POST comes back as somebody's 404 page, which is a perfectly successful fetch
     // carrying an error, and the raw HTML used to land in a toast. Revert alone, then —
@@ -7489,14 +7554,16 @@ export function createVoiceEditor({
       // presets expose both choices: fork it, or update it in place.
       bar.append(saveNew);
       if (showUpdate) bar.append(update);
-    } else if (filing) {
+    } else if (filing && !state.laneKey) {
       // DEV keeps the compact Revert / Save workflow; its save sheet offers Update
-      // and Save as New where both are meaningful.
+      // and Save as New where both are meaningful. Not on a channel: the sound there is
+      // the song's own copy and the song's Save keeps it, so a second Save in the
+      // panel was a button for something that already happens.
       bar.append(save);
     }
-    el.append(bar);
+    if (bar.childElementCount) el.append(bar);
     foot = {
-      saveBtn: filing && !userLibraryEditor ? save : null,
+      saveBtn: filing && !userLibraryEditor && !state.laneKey ? save : null,
       saveNewBtn: filing && userLibraryEditor ? saveNew : null,
       updateBtn: showUpdate ? update : null,
       revertBtn: revert,
@@ -8320,6 +8387,8 @@ export function createVoiceEditor({
     }),
     dirty: () => !!state?.dirty && !matchesBaseline(),
     discard: discardChanges,
+    canSave: () => canFile(),
+    save: () => openSaveSheet(),
     confirmDiscard: () => ask
       ? ask('Discard preset edits?', '<p>This sound has unsaved changes. Discard them and switch presets?</p>', 'Discard')
       : Promise.resolve(true),
@@ -8465,6 +8534,7 @@ export function createVoiceEditor({
     laneSoloAvailable: () => !!(state?.laneKey && setLaneSolo),
     laneSoloOn: () => !!(state?.laneKey && laneSoloOn(state.laneKey)),
     laneSoloLabel: () => state?.laneLabel || '',
+    nextNotesButton: (className) => (state?.laneKey && nextNotesButton ? nextNotesButton(state.laneKey, className) : null),
     toggleLaneSolo: () => {
       if (!state?.laneKey || !setLaneSolo) return false;
       const on = !laneSoloOn(state.laneKey);

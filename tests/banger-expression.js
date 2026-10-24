@@ -673,9 +673,9 @@ const plannedAt = (fixture, lane, set) => createLaneView({
   // what makeBanger lays over the generator's output: the hook's trim, and THE CEILING on the mix
   const trimmed = (out) => { const o = structuredClone(out); const l = o.mix.lanes[o.laneOf.hook]; l.gain = Math.round(((l.gain ?? 0) + hookTrim(o.banger.options.style)) * 10) / 10; o.mix.ceiling = true; return o; };
 
-  assert(RECIPE_EXPRESSION === 11 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
+  assert(RECIPE_EXPRESSION === 12 && expressionVersionOf(1) === 1 && expressionVersionOf(2) === 2 && expressionVersionOf(0) === 0
     && expressionVersionOf(undefined) === 0 && expressionVersionOf('1') === 0 && expressionVersionOf(-1) === 0 && expressionVersionOf(Number.NaN) === 0 && expressionVersionOf(null) === 0,
-  'a recipe\'s expression version is 11 for a new recipe, and anything unreadable reads as none');
+  'a recipe\'s expression version is 12 for a new recipe, and anything unreadable reads as none');
 
   // VOLTAGE ROLLS (expression 2): read off the seed, so a kept take is made again the same;
   // the higher the voltage, the more often the bass and the chord gate move
@@ -808,7 +808,8 @@ const plannedAt = (fixture, lane, set) => createLaneView({
         // (in the form its style started on then: FORMS_BEFORE_5; with the breakdown, builds, intro
         // and riser every song had before version 6 — a form or effects named without them are those)
         const form = { template: FORMS_BEFORE_5[st.id] || styleDefaults(BANGER_STYLES.find((x) => x.id === st.id)).form.template, breakdownHook: 'half' };
-        const expected = trimmed(direct(r, { form, fx: { riserWay: 'noise' }, spot: { ...spotFor(r.style, r.seed), riser: 'none' }, ...(wild ? { variation: 'wild' } : {}) }));
+        // (and from before the guitars, 24 Oct 2026: Ways Era 4 at most, the arp picked — guitar.js)
+        const expected = trimmed(direct(r, { form, waysEra: 4, fx: { riserWay: 'noise' }, spot: { ...spotFor(r.style, r.seed), riser: 'none' }, ...(wild ? { variation: 'wild' } : {}) }));
         if (!(same(as.bank, expected.bank) && same(as.mix, expected.mix) && same(as.arrangement, expected.arrangement))) legacyOk = false;
         for (const expression of [0, undefined, null, 'x', -1, Number.NaN]) {
           if (!same(makeBanger({ ...r, wild, expression }).mix, as.mix)) legacyOk = false;

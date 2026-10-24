@@ -63,7 +63,7 @@ const barValue = (map, key) => (typeof map === 'number' ? map
 export function createLaneView({
   bank, mix = null, resolution, formSteps, position = null, voiceFor = voiceOf,
 }) {
-  const bars = songBars(bank);
+  const bars = songBars(bank, 1, { playing: true });
   const tick = 16 / resolution;
   const ticks = Math.max(0, Math.round(formSteps / tick));
   const supportCache = new Map();

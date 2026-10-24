@@ -20,10 +20,10 @@
 export const BANGER_SOUNDS = {
   "big-room": {
     parts: {
-      bass: "detuneBass", sub: "seedReggaetonSub", square: "roundMono2",
-      squareDense: "initSquare", bell: "seedTranceBell", megaSaw: "seedFutureBassMegaSaw",
+      bass: "detuneBass", sub: "stSubSine", square: "roundMono2",
+      squareDense: "initSquare", bell: "seedTranceBell", megaSaw: "bestMegaSawLead",
       third: "seedBigRoomThird", arp: "seedTranceArp", counter: "seedTranceArp",
-      choir: "seedFutureBassChoir", saws: "tpSuperSaw", pad: "tngrPolarDrift",
+      choir: "bestChoirAah", saws: "tpSuperSaw", pad: "tngrPolarDrift",
       piano: "mrdrElectricGrand", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
       ride: "ride909SixBit", fallbackMelodic: "mrdrElectricGrand",
@@ -142,10 +142,13 @@ export const BANGER_SOUNDS = {
       ],
       counter: [
         "tngrIceBell", "tngrAlloyChime", "tngrCrystalTrigger", "mrdrElectricGrand",
-        "bestPwmHollowLead", "tngrClassicSquare", "koto", "mrdrConcertFlute", "celeste2",
+        "bestPwmHollowLead", "tngrClassicSquare", "frppKoto", "mrdrConcertFlute", "celeste2",
         "musicBox"
       ],
-      bass: ["detuneBass", "tngrNightSequence", "bass80sFM", "bestClassicMono", "bass80sMono"],
+      bass: [
+        "detuneBass", "tngrNightSequence", "bass80sFM", "bestClassicMono", "bass80sMono",
+        "frppSynthBass"
+      ],
       chords: [
         "tpSuperSaw", "mrdrPopGrand", "rmndTineEP", "bestPwmStrings", "bestPwmBrass",
         "tngrWarmStrings", "tngrGlassChoir", "tngrPolarDrift", "layerDreamPad",
@@ -166,7 +169,7 @@ export const BANGER_SOUNDS = {
       },
       uplifting: {
         parts: {
-          arp: "mrdrAcousticGuitar",
+          arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -180,20 +183,20 @@ export const BANGER_SOUNDS = {
         parts: {
           counter: "mrdrMutedTrumpet", bell: "mrdrVibraphone",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       dark: {
         parts: {
           bass: "mrdrDist808", impact: "metalHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       gothic: {
         parts: {
           pad: "fullOrgan", choir: "bestChoirAah", bell: "mrdrTollingBell",
           arp: "mrdrHarpsichord", sub: "mrdrPedalOrgan", impact: "timpaniHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       heroic: {
         parts: {
@@ -225,14 +228,14 @@ export const BANGER_SOUNDS = {
       },
       disco: {
         parts: {
-          bass: "tngrPickedBass", pad: "mrdrViolinSection", arp: "mrdrFunkGuitarMuted",
+          bass: "frppBassBridge", pad: "mrdrViolinSection", arp: "frppFunkMuted",
           counter: "tngrBrassSection", impact: "sdDiscoTom",
         },
         skip: [],
       },
       sunshine: {
         parts: {
-          piano: "tngrBrightPiano", bell: "toyPiano", arp: "mrdrAcousticGuitar",
+          piano: "tngrBrightPiano", bell: "toyPiano", arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -248,7 +251,7 @@ export const BANGER_SOUNDS = {
           pad: "mrdrViolinSection", piano: "wndrConcertGrand", choir: "bestChoirOoh",
           counter: "mrdrOboe",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       lofi: {
         parts: {
@@ -274,7 +277,7 @@ export const BANGER_SOUNDS = {
       lounge: {
         parts: {
           bass: "mrdrContrabass", piano: "rmndTineEP", bell: "mrdrVibraphone",
-          arp: "mrdrAcousticGuitar", counter: "mrdrConcertFlute",
+          arp: "frppSteelAcoustic", counter: "mrdrConcertFlute",
         },
         skip: [],
       },
@@ -290,14 +293,14 @@ export const BANGER_SOUNDS = {
           pad: "bestPwmBrass", arp: "mrdrViolinMarcato", choir: "bestChoirAah",
           bell: "tngrAlloyChime", impact: "taikoHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       flamenco: {
         parts: {
-          piano: "mrdrAcousticGuitar", arp: "mrdrAcousticGuitar", pad: "mrdrViolinSection",
+          piano: "frppNylon", arp: "frppNylon", pad: "mrdrViolinSection",
           counter: "mrdrViolin", cowbell: "clvRosewood",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       hypnotic: {
         parts: {
@@ -323,9 +326,9 @@ export const BANGER_SOUNDS = {
       mystery: {
         parts: {
           bass: "mrdrContrabass", pad: "tngrSoftStrings", bell: "mrdrVibraphone",
-          arp: "mrdrFunkGuitar", counter: "mrdrClarinet",
+          arp: "frppFunkRhythm", counter: "mrdrClarinet",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       playful: {
         parts: {
@@ -339,10 +342,10 @@ export const BANGER_SOUNDS = {
   },
   trance: {
     parts: {
-      bass: "tngrNightSequence", sub: "seedReggaetonSub", square: "tpSuperSaw",
-      squareDense: "bestMegaSawLead", bell: "seedTranceBell", megaSaw: "seedFutureBassMegaSaw",
+      bass: "tngrNightSequence", sub: "stSubSine", square: "tpSuperSaw",
+      squareDense: "bestMegaSawLead", bell: "seedTranceBell", megaSaw: "bestMegaSawLead",
       third: "mrdrPopGrand", arp: "seedTranceArp", counter: "seedTranceArp",
-      choir: "seedFutureBassChoir", saws: "tpSuperSaw", pad: "tngrGlassChoir",
+      choir: "bestChoirAah", saws: "tpSuperSaw", pad: "tngrGlassChoir",
       piano: "mrdrPopGrand", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
       ride: "ride909SixBit", fallbackMelodic: "mrdrPopGrand",
@@ -461,10 +464,13 @@ export const BANGER_SOUNDS = {
       ],
       counter: [
         "tngrIceBell", "tngrAlloyChime", "tngrCrystalTrigger", "mrdrElectricGrand",
-        "bestPwmHollowLead", "tngrClassicSquare", "koto", "mrdrConcertFlute", "celeste2",
+        "bestPwmHollowLead", "tngrClassicSquare", "frppKoto", "mrdrConcertFlute", "celeste2",
         "musicBox"
       ],
-      bass: ["detuneBass", "tngrNightSequence", "bass80sFM", "bestClassicMono", "bass80sMono"],
+      bass: [
+        "detuneBass", "tngrNightSequence", "bass80sFM", "bestClassicMono", "bass80sMono",
+        "frppSynthBass"
+      ],
       chords: [
         "tpSuperSaw", "mrdrPopGrand", "rmndTineEP", "bestPwmStrings", "bestPwmBrass",
         "tngrWarmStrings", "tngrGlassChoir", "tngrPolarDrift", "layerDreamPad",
@@ -497,20 +503,20 @@ export const BANGER_SOUNDS = {
         parts: {
           counter: "mrdrMutedTrumpet", bell: "mrdrVibraphone",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       dark: {
         parts: {
           bass: "mrdrDist808", impact: "metalHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       gothic: {
         parts: {
           pad: "fullOrgan", choir: "bestChoirAah", bell: "mrdrTollingBell",
           arp: "mrdrHarpsichord", sub: "mrdrPedalOrgan", impact: "timpaniHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       heroic: {
         parts: {
@@ -542,14 +548,14 @@ export const BANGER_SOUNDS = {
       },
       disco: {
         parts: {
-          bass: "tngrPickedBass", pad: "mrdrViolinSection", arp: "mrdrFunkGuitarMuted",
+          bass: "frppBassBridge", pad: "mrdrViolinSection", arp: "frppFunkMuted",
           counter: "tngrBrassSection", impact: "sdDiscoTom",
         },
         skip: [],
       },
       sunshine: {
         parts: {
-          piano: "tngrBrightPiano", bell: "toyPiano", arp: "mrdrAcousticGuitar",
+          piano: "tngrBrightPiano", bell: "toyPiano", arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -565,7 +571,7 @@ export const BANGER_SOUNDS = {
           pad: "mrdrViolinSection", piano: "wndrConcertGrand", choir: "bestChoirOoh",
           counter: "mrdrOboe",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       lofi: {
         parts: {
@@ -591,7 +597,7 @@ export const BANGER_SOUNDS = {
       lounge: {
         parts: {
           bass: "mrdrContrabass", piano: "rmndTineEP", bell: "mrdrVibraphone",
-          arp: "mrdrAcousticGuitar", counter: "mrdrConcertFlute",
+          arp: "frppSteelAcoustic", counter: "mrdrConcertFlute",
         },
         skip: [],
       },
@@ -607,14 +613,14 @@ export const BANGER_SOUNDS = {
           pad: "bestPwmBrass", arp: "mrdrViolinMarcato", choir: "bestChoirAah",
           bell: "tngrAlloyChime", impact: "taikoHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       flamenco: {
         parts: {
-          piano: "mrdrAcousticGuitar", arp: "mrdrAcousticGuitar", pad: "mrdrViolinSection",
+          piano: "frppNylon", arp: "frppNylon", pad: "mrdrViolinSection",
           counter: "mrdrViolin", cowbell: "clvRosewood",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       hypnotic: {
         parts: {
@@ -640,9 +646,9 @@ export const BANGER_SOUNDS = {
       mystery: {
         parts: {
           bass: "mrdrContrabass", pad: "tngrSoftStrings", bell: "mrdrVibraphone",
-          arp: "mrdrFunkGuitar", counter: "mrdrClarinet",
+          arp: "frppFunkRhythm", counter: "mrdrClarinet",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       playful: {
         parts: {
@@ -656,10 +662,10 @@ export const BANGER_SOUNDS = {
   },
   "future-bass": {
     parts: {
-      bass: "seedFutureBassBass", sub: "seedFutureBassSub", square: "jmjrAiueo",
-      squareDense: "initSquare", bell: "musicBox", megaSaw: "seedFutureBassMegaSaw",
+      bass: "tngrRoundBass", sub: "seedFutureBassSub", square: "jmjrAiueo",
+      squareDense: "initSquare", bell: "musicBox", megaSaw: "bestMegaSawLead",
       third: "mrdrPopGrand", arp: "tngrPlainSaw", counter: "seedFutureBassCounter",
-      choir: "seedFutureBassChoir", saws: "tpSuperSaw", pad: "tngrGlassChoir",
+      choir: "bestChoirAah", saws: "tpSuperSaw", pad: "tngrGlassChoir",
       piano: "mrdrPopGrand", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
       ride: "ride909SixBit", fallbackMelodic: "mrdrPopGrand",
@@ -777,10 +783,13 @@ export const BANGER_SOUNDS = {
       ],
       counter: [
         "tngrIceBell", "tngrAlloyChime", "tngrCrystalTrigger", "mrdrElectricGrand",
-        "bestPwmHollowLead", "tngrClassicSquare", "koto", "mrdrConcertFlute", "celeste2",
+        "bestPwmHollowLead", "tngrClassicSquare", "frppKoto", "mrdrConcertFlute", "celeste2",
         "musicBox"
       ],
-      bass: ["detuneBass", "tngrNightSequence", "bass80sFM", "bestClassicMono", "bass80sMono"],
+      bass: [
+        "detuneBass", "tngrNightSequence", "bass80sFM", "bestClassicMono", "bass80sMono",
+        "frppSynthBass"
+      ],
       chords: [
         "tpSuperSaw", "mrdrPopGrand", "rmndTineEP", "bestPwmStrings", "bestPwmBrass",
         "tngrWarmStrings", "tngrGlassChoir", "tngrPolarDrift", "layerDreamPad",
@@ -801,7 +810,7 @@ export const BANGER_SOUNDS = {
       },
       uplifting: {
         parts: {
-          arp: "mrdrAcousticGuitar",
+          arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -813,20 +822,20 @@ export const BANGER_SOUNDS = {
         parts: {
           counter: "mrdrMutedTrumpet", bell: "mrdrVibraphone",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       dark: {
         parts: {
           bass: "mrdrDist808", impact: "metalHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       gothic: {
         parts: {
           pad: "fullOrgan", choir: "bestChoirAah", bell: "mrdrTollingBell",
           arp: "mrdrHarpsichord", sub: "mrdrPedalOrgan", impact: "timpaniHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       heroic: {
         parts: {
@@ -858,14 +867,14 @@ export const BANGER_SOUNDS = {
       },
       disco: {
         parts: {
-          bass: "tngrPickedBass", pad: "mrdrViolinSection", arp: "mrdrFunkGuitarMuted",
+          bass: "frppBassBridge", pad: "mrdrViolinSection", arp: "frppFunkMuted",
           counter: "tngrBrassSection", impact: "sdDiscoTom",
         },
         skip: [],
       },
       sunshine: {
         parts: {
-          piano: "tngrBrightPiano", bell: "toyPiano", arp: "mrdrAcousticGuitar",
+          piano: "tngrBrightPiano", bell: "toyPiano", arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -881,7 +890,7 @@ export const BANGER_SOUNDS = {
           pad: "mrdrViolinSection", piano: "wndrConcertGrand", choir: "bestChoirOoh",
           counter: "mrdrOboe",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       lofi: {
         parts: {
@@ -907,7 +916,7 @@ export const BANGER_SOUNDS = {
       lounge: {
         parts: {
           bass: "mrdrContrabass", piano: "rmndTineEP", bell: "mrdrVibraphone",
-          arp: "mrdrAcousticGuitar", counter: "mrdrConcertFlute",
+          arp: "frppSteelAcoustic", counter: "mrdrConcertFlute",
         },
         skip: [],
       },
@@ -923,14 +932,14 @@ export const BANGER_SOUNDS = {
           pad: "bestPwmBrass", arp: "mrdrViolinMarcato", choir: "bestChoirAah",
           bell: "tngrAlloyChime", impact: "taikoHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       flamenco: {
         parts: {
-          piano: "mrdrAcousticGuitar", arp: "mrdrAcousticGuitar", pad: "mrdrViolinSection",
+          piano: "frppNylon", arp: "frppNylon", pad: "mrdrViolinSection",
           counter: "mrdrViolin", cowbell: "clvRosewood",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       hypnotic: {
         parts: {
@@ -956,9 +965,9 @@ export const BANGER_SOUNDS = {
       mystery: {
         parts: {
           bass: "mrdrContrabass", pad: "tngrSoftStrings", bell: "mrdrVibraphone",
-          arp: "mrdrFunkGuitar", counter: "mrdrClarinet",
+          arp: "frppFunkRhythm", counter: "mrdrClarinet",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       playful: {
         parts: {
@@ -1098,7 +1107,7 @@ export const BANGER_SOUNDS = {
       ],
       bass: [
         "bass80sDuo", "detuneBass", "bass80sFM", "bass80sMono", "bestClassicMono",
-        "tngrNightSequence"
+        "tngrNightSequence", "frppSynthBass"
       ],
       chords: [
         "bestPwmStrings", "tngrWarmStrings", "bestPwmBrass", "tngrBrassSection",
@@ -1119,7 +1128,7 @@ export const BANGER_SOUNDS = {
       },
       uplifting: {
         parts: {
-          arp: "mrdrAcousticGuitar",
+          arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -1133,20 +1142,20 @@ export const BANGER_SOUNDS = {
         parts: {
           counter: "mrdrMutedTrumpet", bell: "mrdrVibraphone",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       dark: {
         parts: {
           bass: "mrdrDist808", impact: "metalHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       gothic: {
         parts: {
           pad: "fullOrgan", choir: "bestChoirAah", bell: "mrdrTollingBell",
           arp: "mrdrHarpsichord", sub: "mrdrPedalOrgan", impact: "timpaniHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       heroic: {
         parts: {
@@ -1178,14 +1187,14 @@ export const BANGER_SOUNDS = {
       },
       disco: {
         parts: {
-          bass: "tngrPickedBass", pad: "mrdrViolinSection", arp: "mrdrFunkGuitarMuted",
+          bass: "frppBassBridge", pad: "mrdrViolinSection", arp: "frppFunkMuted",
           counter: "tngrBrassSection", impact: "sdDiscoTom",
         },
         skip: [],
       },
       sunshine: {
         parts: {
-          piano: "tngrBrightPiano", bell: "toyPiano", arp: "mrdrAcousticGuitar",
+          piano: "tngrBrightPiano", bell: "toyPiano", arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -1201,7 +1210,7 @@ export const BANGER_SOUNDS = {
           pad: "mrdrViolinSection", piano: "wndrConcertGrand", choir: "bestChoirOoh",
           counter: "mrdrOboe",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       lofi: {
         parts: {
@@ -1227,7 +1236,7 @@ export const BANGER_SOUNDS = {
       lounge: {
         parts: {
           bass: "mrdrContrabass", piano: "rmndTineEP", bell: "mrdrVibraphone",
-          arp: "mrdrAcousticGuitar", counter: "mrdrConcertFlute",
+          arp: "frppSteelAcoustic", counter: "mrdrConcertFlute",
         },
         skip: [],
       },
@@ -1243,14 +1252,14 @@ export const BANGER_SOUNDS = {
           pad: "bestPwmBrass", arp: "mrdrViolinMarcato", choir: "bestChoirAah",
           bell: "tngrAlloyChime", impact: "taikoHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       flamenco: {
         parts: {
-          piano: "mrdrAcousticGuitar", arp: "mrdrAcousticGuitar", pad: "mrdrViolinSection",
+          piano: "frppNylon", arp: "frppNylon", pad: "mrdrViolinSection",
           counter: "mrdrViolin", cowbell: "clvRosewood",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       hypnotic: {
         parts: {
@@ -1276,9 +1285,9 @@ export const BANGER_SOUNDS = {
       mystery: {
         parts: {
           bass: "mrdrContrabass", pad: "tngrSoftStrings", bell: "mrdrVibraphone",
-          arp: "mrdrFunkGuitar", counter: "mrdrClarinet",
+          arp: "frppFunkRhythm", counter: "mrdrClarinet",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       playful: {
         parts: {
@@ -1295,7 +1304,7 @@ export const BANGER_SOUNDS = {
       bass: "tngrClassicSquare", sub: "wubClassic", square: "tngrPlainPulse",
       squareDense: "tngrPlainPulse", bell: "toneSquare", megaSaw: "seedChipstepMegaSaw",
       third: "jmjrArcadeChorus", arp: "toneSquare", counter: "tngrClassicSquare",
-      choir: "seedChipstepChoir", saws: "bestPwmPadWide", pad: "bestPwmStrings",
+      choir: "bestPwmChoir", saws: "bestPwmPadWide", pad: "bestPwmStrings",
       piano: "initSquare", impact: "kwBlipDrop", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
       ride: "ride909SixBit", fallbackMelodic: "tngrPlainPulse",
@@ -1435,7 +1444,7 @@ export const BANGER_SOUNDS = {
       },
       uplifting: {
         parts: {
-          arp: "mrdrAcousticGuitar",
+          arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -1449,20 +1458,20 @@ export const BANGER_SOUNDS = {
         parts: {
           counter: "mrdrMutedTrumpet", bell: "mrdrVibraphone",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       dark: {
         parts: {
           bass: "mrdrDist808", impact: "metalHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       gothic: {
         parts: {
           pad: "fullOrgan", choir: "bestChoirAah", bell: "mrdrTollingBell",
           arp: "mrdrHarpsichord", sub: "mrdrPedalOrgan", impact: "timpaniHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       heroic: {
         parts: {
@@ -1494,14 +1503,14 @@ export const BANGER_SOUNDS = {
       },
       disco: {
         parts: {
-          bass: "tngrPickedBass", pad: "mrdrViolinSection", arp: "mrdrFunkGuitarMuted",
+          bass: "frppBassBridge", pad: "mrdrViolinSection", arp: "frppFunkMuted",
           counter: "tngrBrassSection", impact: "sdDiscoTom",
         },
         skip: [],
       },
       sunshine: {
         parts: {
-          piano: "tngrBrightPiano", bell: "toyPiano", arp: "mrdrAcousticGuitar",
+          piano: "tngrBrightPiano", bell: "toyPiano", arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -1517,7 +1526,7 @@ export const BANGER_SOUNDS = {
           pad: "mrdrViolinSection", piano: "wndrConcertGrand", choir: "bestChoirOoh",
           counter: "mrdrOboe",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       lofi: {
         parts: {
@@ -1543,7 +1552,7 @@ export const BANGER_SOUNDS = {
       lounge: {
         parts: {
           bass: "mrdrContrabass", piano: "rmndTineEP", bell: "mrdrVibraphone",
-          arp: "mrdrAcousticGuitar", counter: "mrdrConcertFlute",
+          arp: "frppSteelAcoustic", counter: "mrdrConcertFlute",
         },
         skip: [],
       },
@@ -1559,14 +1568,14 @@ export const BANGER_SOUNDS = {
           pad: "bestPwmBrass", arp: "mrdrViolinMarcato", choir: "bestChoirAah",
           bell: "tngrAlloyChime", impact: "taikoHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       flamenco: {
         parts: {
-          piano: "mrdrAcousticGuitar", arp: "mrdrAcousticGuitar", pad: "mrdrViolinSection",
+          piano: "frppNylon", arp: "frppNylon", pad: "mrdrViolinSection",
           counter: "mrdrViolin", cowbell: "clvRosewood",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       hypnotic: {
         parts: {
@@ -1592,9 +1601,9 @@ export const BANGER_SOUNDS = {
       mystery: {
         parts: {
           bass: "mrdrContrabass", pad: "tngrSoftStrings", bell: "mrdrVibraphone",
-          arp: "mrdrFunkGuitar", counter: "mrdrClarinet",
+          arp: "frppFunkRhythm", counter: "mrdrClarinet",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       playful: {
         parts: {
@@ -2033,20 +2042,20 @@ export const BANGER_SOUNDS = {
         parts: {
           counter: "mrdrMutedTrumpet", bell: "mrdrVibraphone",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       dark: {
         parts: {
           bass: "mrdrDist808", impact: "metalHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       gothic: {
         parts: {
           pad: "fullOrgan", choir: "bestChoirAah", bell: "mrdrTollingBell",
           arp: "mrdrHarpsichord", sub: "mrdrPedalOrgan", impact: "timpaniHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       heroic: {
         parts: {
@@ -2078,14 +2087,14 @@ export const BANGER_SOUNDS = {
       },
       disco: {
         parts: {
-          bass: "tngrPickedBass", pad: "mrdrViolinSection", arp: "mrdrFunkGuitarMuted",
+          bass: "frppBassBridge", pad: "mrdrViolinSection", arp: "frppFunkMuted",
           counter: "tngrBrassSection", impact: "sdDiscoTom",
         },
         skip: [],
       },
       sunshine: {
         parts: {
-          piano: "tngrBrightPiano", bell: "toyPiano", arp: "mrdrAcousticGuitar",
+          piano: "tngrBrightPiano", bell: "toyPiano", arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -2101,7 +2110,7 @@ export const BANGER_SOUNDS = {
           pad: "mrdrViolinSection", piano: "wndrConcertGrand", choir: "bestChoirOoh",
           counter: "mrdrOboe",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       lofi: {
         parts: {
@@ -2127,7 +2136,7 @@ export const BANGER_SOUNDS = {
       lounge: {
         parts: {
           bass: "mrdrContrabass", piano: "rmndTineEP", bell: "mrdrVibraphone",
-          arp: "mrdrAcousticGuitar", counter: "mrdrConcertFlute",
+          arp: "frppSteelAcoustic", counter: "mrdrConcertFlute",
         },
         skip: [],
       },
@@ -2143,14 +2152,14 @@ export const BANGER_SOUNDS = {
           pad: "bestPwmBrass", arp: "mrdrViolinMarcato", choir: "bestChoirAah",
           bell: "tngrAlloyChime", impact: "taikoHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       flamenco: {
         parts: {
-          piano: "mrdrAcousticGuitar", arp: "mrdrAcousticGuitar", pad: "mrdrViolinSection",
+          piano: "frppNylon", arp: "frppNylon", pad: "mrdrViolinSection",
           counter: "mrdrViolin", cowbell: "clvRosewood",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       hypnotic: {
         parts: {
@@ -2176,9 +2185,9 @@ export const BANGER_SOUNDS = {
       mystery: {
         parts: {
           bass: "mrdrContrabass", pad: "tngrSoftStrings", bell: "mrdrVibraphone",
-          arp: "mrdrFunkGuitar", counter: "mrdrClarinet",
+          arp: "frppFunkRhythm", counter: "mrdrClarinet",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       playful: {
         parts: {
@@ -2317,7 +2326,7 @@ export const BANGER_SOUNDS = {
       ],
       bass: [
         "bestClassicMono", "detuneBass", "bass80sFM", "bass80sMono", "tngrNightSequence",
-        "syncBassBite"
+        "syncBassBite", "frppSynthBass"
       ],
       chords: [
         "bestPwmStrings", "tngrWarmStrings", "bestPwmBrass", "tngrGlassChoir", "rmndTineEP",
@@ -2338,7 +2347,7 @@ export const BANGER_SOUNDS = {
       },
       uplifting: {
         parts: {
-          arp: "mrdrAcousticGuitar",
+          arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -2352,20 +2361,20 @@ export const BANGER_SOUNDS = {
         parts: {
           counter: "mrdrMutedTrumpet", bell: "mrdrVibraphone",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       dark: {
         parts: {
           bass: "mrdrDist808", impact: "metalHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       gothic: {
         parts: {
           pad: "fullOrgan", choir: "bestChoirAah", bell: "mrdrTollingBell",
           arp: "mrdrHarpsichord", sub: "mrdrPedalOrgan", impact: "timpaniHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       heroic: {
         parts: {
@@ -2397,14 +2406,14 @@ export const BANGER_SOUNDS = {
       },
       disco: {
         parts: {
-          bass: "tngrPickedBass", pad: "mrdrViolinSection", arp: "mrdrFunkGuitarMuted",
+          bass: "frppBassBridge", pad: "mrdrViolinSection", arp: "frppFunkMuted",
           counter: "tngrBrassSection", impact: "sdDiscoTom",
         },
         skip: [],
       },
       sunshine: {
         parts: {
-          piano: "tngrBrightPiano", bell: "toyPiano", arp: "mrdrAcousticGuitar",
+          piano: "tngrBrightPiano", bell: "toyPiano", arp: "frppSteelAcoustic",
         },
         skip: [],
       },
@@ -2420,7 +2429,7 @@ export const BANGER_SOUNDS = {
           pad: "mrdrViolinSection", piano: "wndrConcertGrand", choir: "bestChoirOoh",
           counter: "mrdrOboe",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       lofi: {
         parts: {
@@ -2446,7 +2455,7 @@ export const BANGER_SOUNDS = {
       lounge: {
         parts: {
           bass: "mrdrContrabass", piano: "rmndTineEP", bell: "mrdrVibraphone",
-          arp: "mrdrAcousticGuitar", counter: "mrdrConcertFlute",
+          arp: "frppSteelAcoustic", counter: "mrdrConcertFlute",
         },
         skip: [],
       },
@@ -2462,14 +2471,14 @@ export const BANGER_SOUNDS = {
           pad: "bestPwmBrass", arp: "mrdrViolinMarcato", choir: "bestChoirAah",
           bell: "tngrAlloyChime", impact: "taikoHit",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       flamenco: {
         parts: {
-          piano: "mrdrAcousticGuitar", arp: "mrdrAcousticGuitar", pad: "mrdrViolinSection",
+          piano: "frppNylon", arp: "frppNylon", pad: "mrdrViolinSection",
           counter: "mrdrViolin", cowbell: "clvRosewood",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       hypnotic: {
         parts: {
@@ -2495,9 +2504,9 @@ export const BANGER_SOUNDS = {
       mystery: {
         parts: {
           bass: "mrdrContrabass", pad: "tngrSoftStrings", bell: "mrdrVibraphone",
-          arp: "mrdrFunkGuitar", counter: "mrdrClarinet",
+          arp: "frppFunkRhythm", counter: "mrdrClarinet",
         },
-        skip: ["tngrMusicBell", "celeste2", "musicBox", "koto"],
+        skip: ["tngrMusicBell", "celeste2", "musicBox", "frppKoto"],
       },
       playful: {
         parts: {
@@ -2655,11 +2664,11 @@ export const BANGER_SOUNDS = {
   },
   shibuya: {
     parts: {
-      bass: "tngrRoundBass", sub: "stSubSine", square: "mrdrVibraphone",
+      bass: "frppBassNeck", sub: "stSubSine", square: "mrdrVibraphone",
       squareDense: "mrdrVibraphone", bell: "tngrCelesta", megaSaw: "mrdrMutedTrumpet",
       third: "epiano", arp: "mrdrHarpsichord", counter: "mrdrConcertFlute",
       choir: "bestChoirAah", saws: "tngrWarmStrings", pad: "addDrawbar",
-      piano: "mrdrAcousticGuitar", impact: "syn3PewDeep", shaker: "shaker",
+      piano: "frppNylon", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
       ride: "ride909SixBit", fallbackMelodic: "epiano",
     },
@@ -2771,22 +2780,25 @@ export const BANGER_SOUNDS = {
     random: {
       hook: [
         "mrdrConcertFlute", "mrdrVibraphone", "mrdrMutedTrumpet", "epiano", "mrdrHarpsichord",
-        "tngrCelesta", "mrdrAcousticGuitar"
+        "tngrCelesta", "frppNylon"
       ],
       counter: [
         "mrdrConcertFlute", "mrdrVibraphone", "mrdrMutedTrumpet", "tngrCelesta",
         "mrdrHarpsichord"
       ],
-      bass: ["tngrRoundBass", "tngrPickedBass", "layerLoungeBass", "layerWalkingBass"],
+      bass: [
+        "frppBassNeck", "tngrRoundBass", "tngrPickedBass", "layerLoungeBass",
+        "layerWalkingBass", "frppFretlessBass"
+      ],
       chords: [
-        "epiano", "mrdrAcousticGuitar", "addDrawbar", "tngrWarmStrings", "mrdrHarpsichord",
+        "epiano", "frppNylon", "addDrawbar", "tngrWarmStrings", "mrdrHarpsichord",
         "mrdrVibraphone"
       ],
     },
     choices: {
       saws: ["bestPwmStrings"],
       pad: ["tngrWarmStrings"],
-      arp: ["mrdrVibraphone", "mrdrAcousticGuitar"],
+      arp: ["mrdrVibraphone", "frppNylon"],
       choir: ["jmjrChoirOoh"],
       bell: ["mrdrVibraphone"],
     },
@@ -3069,10 +3081,10 @@ export const BANGER_SOUNDS = {
   },
   megadrive: {
     parts: {
-      bass: "rmndDxSlap", sub: "seedReggaetonSub", square: "layerMegamixLead",
-      squareDense: "layerMegamixLead", bell: "seedMegadriveBell", megaSaw: "seedMegadriveMegaSaw",
-      third: "rmndDxPiano", arp: "seedMegadriveBell", counter: "fmKeys",
-      choir: "seedChipstepChoir", saws: "bestPwmBrass", pad: "synthStrings",
+      bass: "rmndDxSlap", sub: "stSubSine", square: "layerMegamixLead",
+      squareDense: "layerMegamixLead", bell: "stFmBell", megaSaw: "seedMegadriveMegaSaw",
+      third: "rmndDxPiano", arp: "stFmBell", counter: "fmKeys",
+      choir: "bestPwmChoir", saws: "bestPwmBrass", pad: "synthStrings",
       piano: "fmKeys", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
       ride: "ride909SixBit", fallbackMelodic: "layerMegamixLead",
@@ -3323,7 +3335,7 @@ export const BANGER_SOUNDS = {
         "mrdrElectricGrand", "tngrHorizonSolo", "tngrCrystalTrigger", "mrdrDeepOrganStab"
       ],
       counter: ["mrdrVibraphone", "tngrIceBell", "rmndTineEP", "tngrCrystalTrigger", "tngrAlloyChime"],
-      bass: ["tngrRoundBass", "roundBass", "tpBassy", "bass80sMono"],
+      bass: ["tngrRoundBass", "roundBass", "tpBassy", "bass80sMono", "frppSynthBass"],
       chords: [
         "rmndTineEP", "tngrMemoryOrgan", "tngrCloudMemory", "epiano", "tngrDigitalEp84",
         "warmPad", "mrdrHouseOrganStab", "mrdrDeepOrganStab", "addOrganStab"
@@ -3342,9 +3354,9 @@ export const BANGER_SOUNDS = {
   },
   "nu-disco": {
     parts: {
-      bass: "tngrPickedBass", sub: "stSubSine", square: "mrdrVibraphone",
+      bass: "frppBassNeck", sub: "stSubSine", square: "mrdrVibraphone",
       squareDense: "mrdrVibraphone", bell: "tngrCelesta", megaSaw: "mrdrConcertFlute",
-      third: "rmndTineEP", arp: "mrdrAcousticGuitar", counter: "mrdrVibraphone",
+      third: "rmndTineEP", arp: "frppSteelAcoustic", counter: "mrdrVibraphone",
       choir: "jmjrChoirOoh", saws: "tngrSoftStrings", pad: "tngrSoftStrings",
       piano: "rmndTineEP", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaHigh", cowbell: "ds808Cowbell",
@@ -3462,12 +3474,15 @@ export const BANGER_SOUNDS = {
       ],
       counter: [
         "mrdrVibraphone", "mrdrConcertFlute", "tngrCelesta", "marimba", "rmndTineEP",
-        "mrdrFunkGuitar"
+        "frppFunkRhythm"
       ],
-      bass: ["tngrPickedBass", "tngrRoundBass", "rmndDxSlap", "tpBassGuitar"],
+      bass: [
+        "frppBassNeck", "tngrPickedBass", "tngrRoundBass", "rmndDxSlap", "tpBassGuitar",
+        "frppBassBridge", "frppFretlessBass"
+      ],
       chords: [
-        "tngrSoftStrings", "rmndTineEP", "mrdrAcousticGuitar", "tngrWarmStrings", "epiano",
-        "addDrawbar", "mrdrFunkGuitar"
+        "tngrSoftStrings", "rmndTineEP", "frppSteelAcoustic", "tngrWarmStrings", "epiano",
+        "addDrawbar", "frppFunkRhythm"
       ],
     },
     choices: {
@@ -3601,7 +3616,10 @@ export const BANGER_SOUNDS = {
         "mrdrCello", "mrdrShakuhachi"
       ],
       counter: ["mrdrVibraphone", "mrdrMutedTrumpet", "rmndTineEP", "tngrCelesta", "mrdrClarinet"],
-      bass: ["tngrRoundBass", "roundBass", "mrdrContrabass", "tpBassGuitar"],
+      bass: [
+        "tngrRoundBass", "roundBass", "mrdrContrabass", "tpBassGuitar", "frppFretlessBass",
+        "frppBassNeck"
+      ],
       chords: ["rmndTineEP", "tngrSoftStrings", "wndrFeltPiano", "tngrFeltUpright", "warmPad"],
     },
     choices: {
@@ -3619,7 +3637,7 @@ export const BANGER_SOUNDS = {
     parts: {
       bass: "mrdrSynthSlap", sub: "stSubSine", square: "syncWireClav",
       squareDense: "syncWireClav", bell: "tngrCelesta", megaSaw: "tngrBrassSection",
-      third: "rmndDxPiano", arp: "mrdrFunkGuitarMuted", counter: "mrdrHornStab",
+      third: "rmndDxPiano", arp: "frppFunkMuted", counter: "mrdrHornStab",
       choir: "jmjrChoirAah", saws: "tngrBrassSection", pad: "tngrWarmStrings",
       piano: "syncWireClav", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "tr808CowbellClassic",
@@ -3735,11 +3753,14 @@ export const BANGER_SOUNDS = {
         "bestVoiceBox70s", "syncVowelLead", "tngrNeonReed", "mrdrSaxophone", "clav",
         "rmndDxPiano", "bestPwmBrass"
       ],
-      counter: ["mrdrHornStab", "clav", "mrdrFunkGuitarMuted", "tngrBrassSection", "rmndDxPiano"],
-      bass: ["mrdrSynthSlap", "rmndDxSlap", "tngrSlap", "mrdrSlapPop", "rubberBass"],
+      counter: ["mrdrHornStab", "clav", "frppFunkMuted", "tngrBrassSection", "rmndDxPiano"],
+      bass: [
+        "mrdrSynthSlap", "rmndDxSlap", "tngrSlap", "mrdrSlapPop", "rubberBass",
+        "frppBassBridge"
+      ],
       chords: [
-        "syncWireClav", "clav", "mrdrFunkGuitarMuted", "tngrDigitalEp84", "tngrBrassSection",
-        "mrdrFunkGuitar"
+        "syncWireClav", "clav", "frppFunkMuted", "tngrDigitalEp84", "tngrBrassSection",
+        "frppFunkRhythm"
       ],
     },
     choices: {
@@ -3874,7 +3895,7 @@ export const BANGER_SOUNDS = {
         "fmBell", "mrdrFestivalStab"
       ],
       counter: ["tngrCrystalTrigger", "fmBell", "mrdrPopGrand", "tngrIceBell", "synthPluck"],
-      bass: ["detuneBass", "bass80sSynth", "tngrOrangeCurrent", "roundMono"],
+      bass: ["detuneBass", "bass80sSynth", "tngrOrangeCurrent", "roundMono", "frppSynthBass"],
       chords: ["mrdrPopGrand", "tngrBrightPiano", "synthStrings", "tpSuperSaw", "tngrHollowKeys"],
     },
     choices: {
@@ -3890,9 +3911,9 @@ export const BANGER_SOUNDS = {
   },
   "french-house": {
     parts: {
-      bass: "tngrPickedBass", sub: "stSubSine", square: "mrdrElectricGrand",
+      bass: "frppBassBridge", sub: "stSubSine", square: "mrdrElectricGrand",
       squareDense: "mrdrElectricGrand", bell: "tngrCelesta", megaSaw: "tngrBrassSection",
-      third: "tngrElectricKeys", arp: "mrdrWahGuitar", counter: "mrdrFunkGuitarMuted",
+      third: "tngrElectricKeys", arp: "mrdrWahGuitar", counter: "frppFunkMuted",
       choir: "jmjrChoirOoh", saws: "tngrWarmStrings", pad: "tngrWarmStrings",
       piano: "tngrElectricKeys", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "ds808Cowbell",
@@ -4006,19 +4027,22 @@ export const BANGER_SOUNDS = {
     random: {
       hook: [
         "tngrElectricKeys", "tngrBrassSection", "bestVoiceBox70s", "mrdrElectricGrand",
-        "tngrDigitalEp84", "mrdrFunkGuitar"
+        "tngrDigitalEp84", "frppFunkRhythm"
       ],
-      counter: ["mrdrFunkGuitarMuted", "tngrElectricKeys", "tngrBrassSection", "rmndTineEP"],
-      bass: ["tngrPickedBass", "rubberBass", "tpBassGuitar", "rmndDxSlap"],
+      counter: ["frppFunkMuted", "tngrElectricKeys", "tngrBrassSection", "rmndTineEP"],
+      bass: [
+        "frppBassBridge", "tngrPickedBass", "rubberBass", "tpBassGuitar", "rmndDxSlap",
+        "frppBassNeck"
+      ],
       chords: [
-        "tngrElectricKeys", "rmndTineEP", "mrdrFunkGuitar", "mrdrHouseOrganStab",
+        "tngrElectricKeys", "rmndTineEP", "frppFunkRhythm", "mrdrHouseOrganStab",
         "tngrBrassSection", "epiano"
       ],
     },
     choices: {
       saws: ["tngrSoftStrings"],
       pad: ["tngrSoftStrings"],
-      arp: ["mrdrFunkGuitarMuted"],
+      arp: ["frppFunkMuted"],
       choir: ["jmjrChoirAah"],
       bell: ["mrdrVibraphone"],
     },
@@ -4028,10 +4052,10 @@ export const BANGER_SOUNDS = {
   },
   "italo-disco": {
     parts: {
-      bass: "bass80sFM", sub: "seedReggaetonSub", square: "tngrBerlinSignal",
+      bass: "bass80sFM", sub: "stSubSine", square: "tngrBerlinSignal",
       squareDense: "tngrBerlinSignal", bell: "seedTranceBell", megaSaw: "tngrHorizonSolo",
       third: "tngrDigitalEp84", arp: "seedTranceArp", counter: "seedTranceArp",
-      choir: "seedFutureBassChoir", saws: "stSynthStrings", pad: "tngrPolarDrift",
+      choir: "bestChoirAah", saws: "stSynthStrings", pad: "tngrPolarDrift",
       piano: "tngrDigitalEp84", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "cb808Unclamped",
       ride: "ride909SixBit", fallbackMelodic: "tngrDigitalEp84",
@@ -4147,7 +4171,7 @@ export const BANGER_SOUNDS = {
         "bestPwmHollowLead", "tngrDigitalEp84"
       ],
       counter: ["tngrCrystalTrigger", "tngrIceBell", "tngrDigitalEp84", "fmBell"],
-      bass: ["bass80sFM", "tngrNightSequence", "tngrOrangeCurrent", "rmndDxSlap"],
+      bass: ["bass80sFM", "tngrNightSequence", "tngrOrangeCurrent", "rmndDxSlap", "frppSynthBass"],
       chords: [
         "tngrPolarDrift", "stSynthStrings", "tngrDigitalEp84", "bestPwmStrings",
         "synthStrings"
@@ -4166,11 +4190,11 @@ export const BANGER_SOUNDS = {
   },
   reggaeton: {
     parts: {
-      bass: "mrdrDist808", sub: "seedReggaetonSub", square: "marimba",
+      bass: "mrdrDist808", sub: "stSubSine", square: "marimba",
       squareDense: "marimba", bell: "tpKalimba", megaSaw: "tngrHorizonSolo",
       third: "tngrDataMarimba", arp: "tngrDataMarimba", counter: "jmjrChoirAah",
       choir: "jmjrChoirOoh", saws: "tngrDreamCircuit", pad: "tngrDreamCircuit",
-      piano: "mrdrAcousticGuitar", impact: "syn3PewDeep", shaker: "dsShaker",
+      piano: "frppSteelAcoustic", impact: "syn3PewDeep", shaker: "dsShaker",
       tambourine: "tambourine", congas: "congaHigh", cowbell: "kit_havana_patio_rim",
       ride: "ride909SixBit", fallbackMelodic: "tngrDataMarimba",
     },
@@ -4280,12 +4304,12 @@ export const BANGER_SOUNDS = {
       },
     },
     random: {
-      hook: ["tngrDataMarimba", "marimba", "tpKalimba", "synthPluck", "tngrWireHarp", "koto"],
-      counter: ["tngrDataMarimba", "tpKalimba", "koto", "marimba", "tngrWireHarp"],
+      hook: ["tngrDataMarimba", "marimba", "tpKalimba", "synthPluck", "tngrWireHarp", "frppKoto"],
+      counter: ["tngrDataMarimba", "tpKalimba", "frppKoto", "marimba", "tngrWireHarp"],
       bass: ["mrdrDist808", "stSubSine", "roundBass", "tngrRoundBass"],
       chords: [
-        "mrdrAcousticGuitar", "tngrSoftPiano", "tngrDreamCircuit", "warmPad",
-        "tngrCloudMemory", "synthPluck"
+        "frppSteelAcoustic", "tngrSoftPiano", "tngrDreamCircuit", "warmPad", "tngrCloudMemory",
+        "synthPluck"
       ],
     },
     choices: {
@@ -4438,7 +4462,7 @@ export const BANGER_SOUNDS = {
     parts: {
       bass: "rmndDxSlap", sub: "stSubSine", square: "roundMono2",
       squareDense: "initSquare", bell: "tngrIceBell", megaSaw: "mrdrMutedTrumpet",
-      third: "mrdrSaxophone", arp: "mrdrAcousticGuitar", counter: "tngrBrassSection",
+      third: "mrdrSaxophone", arp: "frppSteelAcoustic", counter: "tngrBrassSection",
       choir: "bestChoirAah", saws: "tngrBrassSection", pad: "tngrWarmStrings",
       piano: "mrdrPopGrand", impact: "syn3PewDeep", shaker: "guiraScrape",
       tambourine: "tambourine", congas: "tambora", cowbell: "kit_rio_lanterns_rim",
@@ -4552,7 +4576,7 @@ export const BANGER_SOUNDS = {
     random: {
       hook: [
         "mrdrSaxophone", "tngrBrassSection", "mrdrMutedTrumpet", "mrdrPopGrand",
-        "mrdrAcousticGuitar", "tngrDataMarimba"
+        "frppSteelAcoustic", "tngrDataMarimba"
       ],
       counter: ["tngrBrassSection", "mrdrMutedTrumpet", "mrdrSaxophone", "mrdrPopGrand", "tpKalimba"],
       bass: ["rmndDxSlap", "mrdrSlapThumb", "tngrSlap", "tngrRoundBass"],
@@ -4973,11 +4997,11 @@ export const BANGER_SOUNDS = {
   },
   "reggaeton-romantico": {
     parts: {
-      bass: "tngrRoundBass", sub: "seedReggaetonSub", square: "marimba",
+      bass: "tngrRoundBass", sub: "stSubSine", square: "marimba",
       squareDense: "marimba", bell: "tpKalimba", megaSaw: "tngrHorizonSolo",
-      third: "tngrDataMarimba", arp: "mrdrAcousticGuitar", counter: "jmjrChoirAah",
+      third: "tngrDataMarimba", arp: "frppNylon", counter: "jmjrChoirAah",
       choir: "jmjrChoirOoh", saws: "tngrWarmStrings", pad: "tngrWarmStrings",
-      piano: "mrdrAcousticGuitar", impact: "syn3PewDeep", shaker: "dsShaker",
+      piano: "frppNylon", impact: "syn3PewDeep", shaker: "dsShaker",
       tambourine: "tambourine", congas: "bongoHigh", cowbell: "kit_havana_patio_rim",
       ride: "ride909SixBit", fallbackMelodic: "mrdrVocalOh",
     },
@@ -5087,9 +5111,9 @@ export const BANGER_SOUNDS = {
       },
     },
     random: {
-      hook: ["mrdrVocalOh", "tngrAirFlute", "mrdrAcousticGuitar", "tpKalimba", "tngrDataMarimba"],
-      counter: ["tngrDataMarimba", "tpKalimba", "koto", "marimba", "tngrWireHarp"],
-      bass: ["tngrRoundBass", "stSubSine", "roundBass", "tngrPickedBass"],
+      hook: ["mrdrVocalOh", "tngrAirFlute", "frppNylon", "tpKalimba", "tngrDataMarimba"],
+      counter: ["tngrDataMarimba", "tpKalimba", "frppKoto", "marimba", "tngrWireHarp"],
+      bass: ["tngrRoundBass", "stSubSine", "roundBass", "tngrPickedBass", "frppBassNeck"],
       chords: ["tngrWarmStrings", "tngrCloudMemory", "warmPad", "tngrDreamCircuit"],
     },
     choices: {
@@ -5105,7 +5129,7 @@ export const BANGER_SOUNDS = {
   },
   "reggaeton-perreo": {
     parts: {
-      bass: "mrdrDist808", sub: "seedReggaetonSub", square: "marimba",
+      bass: "mrdrDist808", sub: "stSubSine", square: "marimba",
       squareDense: "marimba", bell: "tpKalimba", megaSaw: "tngrHorizonSolo",
       third: "tngrDataMarimba", arp: "tngrDataMarimba", counter: "jmjrChoirAah",
       choir: "jmjrChoirOoh", saws: "tngrPolarDrift", pad: "tngrPolarDrift",
@@ -5220,7 +5244,7 @@ export const BANGER_SOUNDS = {
     },
     random: {
       hook: ["tngrDataMarimba", "bestPwmClav", "marimba", "tngrWireHarp", "tpKalimba"],
-      counter: ["tngrDataMarimba", "tpKalimba", "koto", "marimba", "tngrWireHarp"],
+      counter: ["tngrDataMarimba", "tpKalimba", "frppKoto", "marimba", "tngrWireHarp"],
       bass: ["mrdrDist808", "stSubSine", "tngrRoundBass", "roundBass"],
       chords: ["bestPwmClav", "tngrPolarDrift", "tngrDreamCircuit", "warmPad"],
     },
@@ -5903,7 +5927,10 @@ export const BANGER_SOUNDS = {
         "fmBell"
       ],
       counter: ["mrdrHouseOrganStab", "tngrCrystalTrigger", "rmndTineEP", "fmBell"],
-      bass: ["mrdrAcid303", "mrdrAcid303Square", "mrdrAcid303Deep", "mrdrAcid303Accent"],
+      bass: [
+        "mrdrAcid303", "mrdrAcid303Square", "mrdrAcid303Deep", "mrdrAcid303Accent",
+        "frppAcidPluck"
+      ],
       chords: ["mrdrHouseOrganStab", "mrdrDeepOrganStab", "mrdrRaveStab", "addOrganStab"],
     },
     choices: {
@@ -6186,7 +6213,7 @@ export const BANGER_SOUNDS = {
   },
   "uk-garage": {
     parts: {
-      bass: "mrdrOrganBass", sub: "seedReggaetonSub", square: "mrdrVocalOh",
+      bass: "mrdrOrganBass", sub: "stSubSine", square: "mrdrVocalOh",
       squareDense: "mrdrVocalOh", bell: "tngrIceBell", megaSaw: "mrdrHouseOrganStab",
       third: "rmndTineEP", arp: "seedUkGarageArp", counter: "mrdrVocalOh",
       choir: "jmjrChoirOoh", saws: "mrdrHouseOrganStab", pad: "tngrCloudMemory",
@@ -6434,7 +6461,7 @@ export const BANGER_SOUNDS = {
     random: {
       hook: ["fmBell", "bestHeroLead", "tngrIceBell", "fmKeys", "toneSquare"],
       counter: ["mrdrOrchHit", "brassStab", "bestPwmBrass", "mrdrHornStab"],
-      bass: ["layerBass80s", "bestPwmBass", "mrdrSynthSlap", "syncBassBite"],
+      bass: ["layerBass80s", "bestPwmBass", "mrdrSynthSlap", "syncBassBite", "frppSynthBass"],
       chords: ["bestPwmStrings", "tngrWarmStrings", "synthStrings", "bestPwmBrass"],
     },
     choices: {
@@ -6853,7 +6880,10 @@ export const BANGER_SOUNDS = {
         "mrdrCello", "mrdrShakuhachi"
       ],
       counter: ["mrdrVibraphone", "mrdrMutedTrumpet", "rmndTineEP", "tngrCelesta", "mrdrClarinet"],
-      bass: ["tngrRoundBass", "roundBass", "mrdrContrabass", "tpBassGuitar"],
+      bass: [
+        "tngrRoundBass", "roundBass", "mrdrContrabass", "tpBassGuitar", "frppFretlessBass",
+        "frppBassNeck"
+      ],
       chords: ["rmndTineEP", "tngrSoftStrings", "wndrFeltPiano", "tngrFeltUpright", "warmPad"],
     },
     choices: {
@@ -6871,7 +6901,7 @@ export const BANGER_SOUNDS = {
     parts: {
       bass: "mrdrSynthSlap", sub: "stSubSine", square: "syncWireClav",
       squareDense: "syncWireClav", bell: "tngrCelesta", megaSaw: "tngrBrassSection",
-      third: "rmndDxPiano", arp: "mrdrFunkGuitarMuted", counter: "mrdrOrchHit",
+      third: "rmndDxPiano", arp: "frppFunkMuted", counter: "mrdrOrchHit",
       choir: "jmjrChoirAah", saws: "tngrBrassSection", pad: "tngrWarmStrings",
       piano: "rmndDxPiano", impact: "syn3PewDeep", shaker: "shaker",
       tambourine: "tambourine", congas: "congaMid", cowbell: "tr808CowbellClassic",
@@ -6987,11 +7017,14 @@ export const BANGER_SOUNDS = {
         "bestVoiceBox70s", "syncVowelLead", "tngrNeonReed", "mrdrSaxophone", "clav",
         "rmndDxPiano", "bestPwmBrass"
       ],
-      counter: ["mrdrHornStab", "clav", "mrdrFunkGuitarMuted", "tngrBrassSection", "rmndDxPiano"],
-      bass: ["mrdrSynthSlap", "rmndDxSlap", "tngrSlap", "mrdrSlapPop", "rubberBass"],
+      counter: ["mrdrHornStab", "clav", "frppFunkMuted", "tngrBrassSection", "rmndDxPiano"],
+      bass: [
+        "mrdrSynthSlap", "rmndDxSlap", "tngrSlap", "mrdrSlapPop", "rubberBass",
+        "frppBassBridge"
+      ],
       chords: [
-        "syncWireClav", "clav", "mrdrFunkGuitarMuted", "tngrDigitalEp84", "tngrBrassSection",
-        "mrdrFunkGuitar"
+        "syncWireClav", "clav", "frppFunkMuted", "tngrDigitalEp84", "tngrBrassSection",
+        "frppFunkRhythm"
       ],
     },
     choices: {
@@ -7123,7 +7156,7 @@ export const BANGER_SOUNDS = {
     random: {
       hook: ["tngrCrystalTrigger", "tngrIceBell", "mrdrRaveStab", "fmBell", "tngrPlainPulse"],
       counter: ["tngrCrystalTrigger", "fmBell", "toneSquare", "tngrIceBell"],
-      bass: ["bestClassicMono", "bass80sMono", "roundMono2", "mrdrAcid303Deep"],
+      bass: ["bestClassicMono", "bass80sMono", "roundMono2", "mrdrAcid303Deep", "frppAcidPluck"],
       chords: ["mrdrRaveStab", "mrdrDeepOrganStab", "mrdrHouseOrganStab", "bestPwmBrass"],
     },
     choices: {

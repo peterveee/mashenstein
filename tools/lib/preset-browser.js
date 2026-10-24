@@ -46,8 +46,14 @@ export function createPresetBrowser({ voices, renderPreset, state = emptyPresetF
       buttons[index].focus();
     });
   };
-  function refresh({ reconcile = false, focusKey = null } = {}) {
-    const model = presetBrowserModel(voices(), state, query(), { reconcile });
+  function refresh({ reconcile = false, focusKey = null, broadenIfEmpty = false } = {}) {
+    const available = voices();
+    const text = query();
+    let model = presetBrowserModel(available, state, text, { reconcile });
+    if (broadenIfEmpty && text.trim() && !model.results.length) {
+      Object.assign(state, emptyPresetFilters());
+      model = presetBrowserModel(available, state, text);
+    }
     Object.assign(state, model.filters);
     columns.replaceChildren();
     for (const [key, label] of [['category', 'Category'], ['subcategory', 'Subcategory'], ['engine', 'Engine']]) {

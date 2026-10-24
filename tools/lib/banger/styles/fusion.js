@@ -36,7 +36,9 @@ export const FUSION_KEYS = Object.freeze({
   music: Object.freeze(['progressions', 'moods', 'modeHarmony', 'breakdown', 'breakdownHook', 'enter', 'arpFixed', 'padUnder',
     'master', 'exciter', 'sectionLabels', 'form', 'machineGunSweep', 'layers', 'grooveParts', 'harmony', 'script', 'blips',
     // Chord Memory's one shape (9 Oct 2026) is the harmony's.
-    'chordMemory']),
+    'chordMemory',
+    // How its guitar chords strum, and how often its funk guitar strums (24 Oct 2026, guitar.js): the sound's.
+    'guitarStrum', 'funkGuitar']),
   // Shared out part by part, below.
   // `filterMoves` (9 Oct 2026, fx.js): each part's slow filter movement travels with the part —
   // the bass's from the groove, the rest from the sound.

@@ -13,7 +13,7 @@ import { canHostEngineWorklets, createCaptureNode, prepareEngineWorklets } from 
 import {
   laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
   LANE_KEYS, stepLen, toneLen, effectiveStepLen, effectiveToneLength, sequenceValue, lenKey,
-  stepVelocity,
+  stepVelocity, resolvePlayingSection,
 } from './lanes.js';
 import {
   VoiceRack, pulseTable, createNoteCacheState, setNoteCachePlaybackActive,
@@ -25,7 +25,7 @@ import { laneGroup } from '../data/group-buses.js';
 import { VOICES, VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
 import { trackIdOf } from '../data/tracks.js';
 import {
-  applyArrangement, resolveSection, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
+  applyArrangement, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
   resolutionOf, promoteResolution, LEGACY_RESOLUTION, FINE_RESOLUTION, RESOLUTIONS,
   songTransposeOf,
 } from '../data/arrangements.js';
@@ -98,6 +98,9 @@ const URGENT_PRIORITY_BASE = 1e6;
 // deferring the repair until the drag ends, which on a slow sweep is the whole problem.
 const EDIT_RECOVERY_DELAY_MS = 250;
 const EDIT_RECOVERY_MAX_WAIT_MS = 1000;
+// How long a live preset change waits for its worklet lane before going ahead without
+// it (warmLaneVoice). A cold TNGR-2 takes ~0.4 s; anything past this is a stuck build.
+const WARM_LANE_TIMEOUT_MS = 3000;
 
 /**
  * A trailing debounce with a ceiling, and an accumulating set of what changed.
@@ -2009,7 +2012,7 @@ class AudioSys {
     if (cached && cached.bar === bar && cached.bank === this.bank) return cached.b;
     let b = this.bank;
     if (b?.sections?.length && bar.sec != null) {
-      const sec = resolveSection(b, bar.sec % b.sections.length);
+      const sec = resolvePlayingSection(b, bar.sec % b.sections.length);
       if (sec) b = { ...this.bank, ...sec };
     }
     if (bar.off || bar.delete) {
@@ -2664,7 +2667,11 @@ class AudioSys {
    * ever builds a bigger one.
    */
   growDelayLine(secs) {
-    if (!this.ctx || !this.delay || secs <= this.delay.maxDelayTime - 0.01) return this.delay;
+    // The line's limit is `delayTime.maxValue`: a DelayNode has no `maxDelayTime` property, so
+    // until 24 Oct 2026 this compare was against undefined, always false, and every call built
+    // a new line — two or three a song change, each one kept by WebKit for good.
+    const max = this.delay?.delayTime?.maxValue ?? this.delay?.maxDelayTime ?? 0;
+    if (!this.ctx || !this.delay || secs <= max - 0.01) return this.delay;
     const next = this.ctx.createDelay(Math.min(MAX_DELAY_SECONDS, Math.ceil(secs) + 1));
     next.delayTime.value = this.delay.delayTime.value;
     for (const [from, node] of [[this.echoHp, this.delay], [this.delayFb, this.delay]]) {
@@ -3258,7 +3265,7 @@ class AudioSys {
       const s = Math.round((step % 16) * resolution / 16) + bar.half * resolution;
       let b = bank;
       if (b.sections?.length && bar.sec != null) {
-        const section = resolveSection(b, bar.sec % b.sections.length);
+        const section = resolvePlayingSection(b, bar.sec % b.sections.length);
         if (section) b = { ...bank, ...section };
       }
       if (bar.off || bar.delete) {
@@ -8996,7 +9003,7 @@ class AudioSys {
       const bar = plan[Math.floor(formStep / 16)];
       let b = this.bank;
       if (b.sections && b.sections.length && bar.sec != null) {
-        const sec = resolveSection(b, bar.sec % b.sections.length);
+        const sec = resolvePlayingSection(b, bar.sec % b.sections.length);
         if (sec) b = { ...b, ...sec };
       }
       if (bar.off || bar.delete) {
@@ -9132,6 +9139,38 @@ class AudioSys {
     return Promise.all(lanes.map(([key, v]) => rack.warmWorkletLane(v, key)
       .then((ok) => (ok ? 1 : 0), () => 0)))
       .then((built) => built.reduce((a, b) => a + b, 0));
+  }
+
+  /**
+   * The same build for ONE lane, ahead of a preset change under a playing song.
+   *
+   * `warmWorkletLanes` only runs where the song is silent anyway — a song change, Play.
+   * A preset chosen on the desk mid-song had no such moment: the new engine's lane was
+   * built by its first note, inside a scheduling pass, and TNGR-2's tables and lane
+   * took 70–150 ms of the quarter-second queue to do it (measured 25 Oct 2026,
+   * work/local/_engine-switch-probe.mjs). So the desk asks first and applies the
+   * choice when this resolves; the old preset plays on in the meantime.
+   *
+   * A second of song is queued before the synchronous part, on the OLD voice, so the
+   * table expansion cannot run the queue dry. Null when there is nothing to build — a
+   * pooled voice, a context that cannot host the worklet, or the preset the lane is
+   * already on — so the caller can apply at once. Never rejects, and gives up waiting
+   * after WARM_LANE_TIMEOUT_MS: a stuck build must not swallow the choice.
+   */
+  warmLaneVoice(laneKey, voice) {
+    if (this.offline || !this.ctx || !this.bank || !voice || !laneKey) return null;
+    const rack = this._ensureVoiceRack();
+    if (!rack.isWorkletVoice(voice)) return null;
+    const now = voiceOf(this.bank, laneKey);
+    if (now && now.synth === voice.synth && now.label === voice.label) return null;
+    this.prefill(1);
+    if (voice.synth === 'TNGR-2' && this.canHostTngr2()) {
+      try { warmTngr2Families(tngr2FamiliesOfVoice(voice), { idle: false }); } catch { /* a bad patch warms nothing */ }
+    }
+    return Promise.race([
+      rack.warmWorkletLane(voice, laneKey).catch(() => false),
+      new Promise((resolve) => setTimeout(() => resolve(false), WARM_LANE_TIMEOUT_MS)),
+    ]);
   }
 
   playVoice(key, b, value, {
@@ -9920,7 +9959,12 @@ class AudioSys {
       // src/data/arrangements.js.
       const plan = barPlan(this.bank);
       const bar = plan[sourceBarIndex % plan.length];
-      if ((sourceStep % 16 === 0 || sourceBarChanged)
+      // Not for a PREVIEW. previewNote schedules one step of a solo bank at PREVIEW_STEP
+      // (bar 1), and that bank still carries the song's automation, so a clicked drum
+      // switched the master onto bar 1's Spot FX (CORP FUNKHY's lobby-speaker PEQ) and
+      // left it there: the whole song filtered (Peter, 24 Oct 2026). A preview is a note,
+      // not a place in the song — it may not move any effect, level line or cut.
+      if (!this._previewing && (sourceStep % 16 === 0 || sourceBarChanged)
         && Number.isFinite(sourceStep)) {
         this.mixer?.scheduleBarEffectsForBar?.(bar, this.nextTime, this._sectionLanes());
       }
@@ -9928,7 +9972,7 @@ class AudioSys {
       // very step has to swap its lane's door before the note that lands on it is routed.
       // Ahead of the half-tick skip below too, so a cut between two sixteenths is reached
       // on the tick that reaches it. Returns at once on a song with no automation.
-      this._automationTick(sourceStep, sourceBarIndex, plan.length, spb);
+      if (!this._previewing) this._automationTick(sourceStep, sourceBarIndex, plan.length, spb);
       const frozenKeys = new Set();
       for (const key of (rearrangeMute ? [] : this.frozenLanes.keys())) {
         const frozenPercussion = PERCUSSION_LANES.includes(baseLane(key));
@@ -9999,7 +10043,7 @@ class AudioSys {
       const pulse = Math.floor(s * 16 / resolution);
       let b = this.bank;
       if (b.sections && b.sections.length && bar.sec != null) {
-        const sec = resolveSection(b, bar.sec % b.sections.length);
+        const sec = resolvePlayingSection(b, bar.sec % b.sections.length);
         if (sec) { work.preambleMerges++; b = { ...this.bank, ...sec }; }
       }
       // Lanes this bar does not pass on. Nulled rather than emptied: every lane block
@@ -10409,7 +10453,8 @@ class AudioSys {
           for (const event of events) {
             played = this.playVoice(key, b, event.freq, {
               spb, dry, wet, velocity, ...opts,
-              gainScale: (opts.gainScale ?? 1) * laneGainScale,
+              // `event.gain`: an Alternate strum's stroke trim (note-fx.js); absent is 1.
+              gainScale: (opts.gainScale ?? 1) * laneGainScale * (event.gain ?? 1),
               delay: voiceDelay(extraDelay + event.delay), len: event.len,
             }) || played;
           }
@@ -10459,7 +10504,10 @@ class AudioSys {
             { lane: lastLane, freq, dur, gain, step: this.step });
           return;
         }
-        const t = scheduleAt(delay + (eventFor(lastLane, freq)?.delay || 0));
+        const fxEvent = eventFor(lastLane, freq);
+        const t = scheduleAt(delay + (fxEvent?.delay || 0));
+        // An Alternate strum's stroke trim, on the hand-written voices too (note-fx.js).
+        if (fxEvent?.gain != null) gain *= fxEvent.gain;
         // Written repeats and Note-FX events can land well beyond the step that found
         // them. Keep a sleeping channel insert connected through this actual attack.
         this.mixer?.lane(lastLane)?.wakeEffects?.(t + 0.1);
@@ -11408,7 +11456,7 @@ class AudioSys {
     if (memo && memo.bank === this.bank && memo.sec === secIdx) return memo.key;
     let b = this.bank;
     if (secIdx >= 0) {
-      const sec = resolveSection(b, secIdx);
+      const sec = resolvePlayingSection(b, secIdx);
       if (sec) b = { ...this.bank, ...sec };
     }
     // Lane values are frequencies; a rest is 0 or null. The melodic lanes only —

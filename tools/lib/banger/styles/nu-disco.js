@@ -24,6 +24,10 @@ export const NU_DISCO = Object.freeze({
   // The picked guitar is the style: it plays its own figure, from the first phrase.
   arpFixed: true,
   enter: { arp: 0 },
+  // Guitar chords strummed tight, down and up (guitar.js), and the picked guitar played Chic-style —
+  // stabs and chucks — in a little more than half the takes (Guitar: Random).
+  guitarStrum: { direction: 'alternate-down', gapMs: 7, upDb: -4 },
+  funkGuitar: { strummed: 0.6 },
   defaults: {
     mood: 'nostalgic',
     // The chords come in with the second layer, at bar 9 of a Groove song (9 Oct 2026: they waited for bar 17).

@@ -757,8 +757,8 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   assert(typeof made.rec.name === 'string' && made.rec.name.length > 0, 'the pending preview is titled before it is kept');
   const kept = keepBanger({ ...made.rec, fresh: false, name: made.rec.name });
   assert(kept === bangerState().kept.at(-1) && bangerState().kept.includes(kept), 'saving the pending recipe keeps the song');
-  assert(kept.expression === 11 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
-    'a new recipe opts into expression version 11 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song, the Varied breakdown, Chords Early, the Varied intro and riser, the key lift roll, the breakdown backing and Club shape, the style\'s own kit rolls), and made again from the kept recipe it is the song just handed over');
+  assert(kept.expression === 12 && JSON.stringify(makeBanger(kept).mix) === JSON.stringify(made.song.mix),
+    'a new recipe opts into expression version 12 (Go Wild\'s slide on the lead, the voltage rolls, the form roll, seven styles off the Pop Song, the Varied breakdown, Chords Early, the Varied intro and riser, the key lift roll, the breakdown backing and Club shape, the style\'s own kit rolls, the guitars), and made again from the kept recipe it is the song just handed over');
 
   tap(maker, ...centre(L.buttons[0]));
   made = null;
@@ -3002,7 +3002,7 @@ save.data = { settings: {}, slots: [null, null, null], bangers: { startersGiven:
   const revised = reviseBanger(rec, made);
   assert(revised === rec && rec.style === other && rec.name === name && rec.n === n && bangerState().kept.length === count,
     'and saving the edit remakes that song in place: same name and number, the new style, no new song');
-  assert(rec.expression === 11, 'and an old recipe edited with the pencil opts into expression version 11');
+  assert(rec.expression === 12, 'and an old recipe edited with the pencil opts into expression version 12');
   assert(JSON.stringify(bangerState().draft) === draftBefore, 'editing a song leaves the NEW BANGER draft alone');
 }
 

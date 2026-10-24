@@ -252,6 +252,13 @@ export function resolveNoteFx(track = null, bar = null, laneKey = '') {
   };
 }
 
+/** A strum stroke's trim: dB, -24 to 0, as a gain. */
+export const STRUM_TRIM_MIN_DB = -24;
+export const strumTrimGain = (db) => {
+  const d = Math.max(STRUM_TRIM_MIN_DB, Math.min(0, Number(db) || 0));
+  return d === 0 ? 1 : 10 ** (d / 20);
+};
+
 export function createNoteFxProcessor() {
   const arpState = new Map();
   const strumState = new Map();
@@ -336,7 +343,8 @@ export function createNoteFxProcessor() {
     if (strum.enabled && events.length > 1) {
       let direction = strum.direction === 'down' ? 'down'
         : strum.direction === 'random' ? 'random' : 'up';
-      if (strum.direction === 'alternate-up' || strum.direction === 'alternate-down') {
+      const alternate = strum.direction === 'alternate-up' || strum.direction === 'alternate-down';
+      if (alternate) {
         let state = strumState.get(laneKey);
         // Count chord strikes, not grid ticks: rests and single notes do not flip the
         // stroke. Reset on each bar, a style change, or a transport wrap/rewind.
@@ -353,7 +361,15 @@ export function createNoteFxProcessor() {
         `${laneKey}:${step}:${barIndex}`);
       const byFreq = new Map(events.map((event) => [event.freq, event]));
       const gap = Math.max(0, Math.min(250, Number(strum.gapMs) || 0)) / 1000;
-      events = order.map((freq, i) => ({ ...byFreq.get(freq), delay: i * gap }));
+      // The faux return: on an Alternate strum, each stroke direction has its own trim, so
+      // the up-strokes can sit under the down-strokes the way a strumming hand's do (Peter,
+      // 24 Oct 2026). A level on the note, not a velocity — velocity is parked until it
+      // rolls out on every synth — so it changes how loud a stroke is and nothing else.
+      // At 0 dB the event carries no `gain`, and every strum written before this plays
+      // exactly as it did.
+      const gain = alternate ? strumTrimGain(direction === 'down' ? strum.downDb : strum.upDb) : 1;
+      events = order.map((freq, i) => ({ ...byFreq.get(freq), delay: i * gap,
+        ...(gain !== 1 ? { gain } : {}) }));
     }
     // Durations remain full from each delayed start. `delay` never shortens `len`.
     return events;

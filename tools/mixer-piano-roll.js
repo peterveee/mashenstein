@@ -37,7 +37,7 @@
 // than left to whatever the last edit happened to leave behind.
 import { CHORD_LANES, PERCUSSION_LANES, baseLane, polyLane } from '../src/data/voices.js';
 import {
-  LANES, validLen, perNoteLengthLane,
+  LANES, validLen, perNoteLengthLane, attrSays, NOTE_ATTRS,
 } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
 import { customPicker } from './mixer-picker.js';
@@ -371,6 +371,53 @@ export function noteSpan({ chord, midi }, value, len) {
 }
 
 /**
+ * ---- velocity and mute ------------------------------------------------------------
+ *
+ * The grid's `withAttr` and `noteAttrs` for this panel (see `NOTE_ATTRS` in lanes.js).
+ * On a mono lane a step holds one note, so its velocity and mute are that note's and the
+ * grid's per-step default would do. A chord is the reason these exist: a MUTE is per
+ * tone there, aligned with the frequencies and paired, sorted and split exactly as
+ * `noteLength` does lengths — and a VELOCITY stays one number for the step, since a
+ * chord is struck once.
+ *
+ * `given` is what the gesture says about this note (a carried value, a toggle), or
+ * undefined for nothing: a note that stays keeps its own, a new one starts with none.
+ */
+export function noteAttr({ chord, midi, freq }, { perTone }, value, stored, on, given) {
+  const said = given !== undefined;
+  if (chord) {
+    const had = (Array.isArray(value) ? value
+      : (typeof value === 'number' && value > 0 ? [value] : [])).filter((f) => f > 0);
+    const mine = had.findIndex((f) => freqMidi(f) === midi);
+    if (!perTone) {
+      if (on) return said ? given ?? null : (had.length ? stored : null);
+      return had.some((f) => freqMidi(f) !== midi) ? stored : null;
+    }
+    // A scalar on a chord step covers every tone, as a scalar length does.
+    const at = (i) => (Array.isArray(stored) ? stored[i] ?? null : stored ?? null);
+    const pairs = had.map((f, i) => ({ f, a: at(i) })).filter((p) => freqMidi(p.f) !== midi);
+    if (on) pairs.push({ f: freq, a: said ? given ?? null : (mine >= 0 ? at(mine) : null) });
+    pairs.sort((x, y) => x.f - y.f);
+    return pairs.some((p) => attrSays(p.a)) ? pairs.map((p) => p.a) : null;
+  }
+  const held = typeof value === 'number' && value > 0 && freqMidi(value) === midi;
+  if (on) return said ? given ?? null : (held ? stored : null);
+  return held ? null : stored;
+}
+
+/** One note's velocity and mute out of its step's — this row's tone, on a chord. */
+export function noteAttrsOf({ chord, midi }, attrs, value, stored) {
+  if (!chord || !stored) return stored;
+  const values = Array.isArray(value) ? value
+    : (typeof value === 'number' && value > 0 ? [value] : []);
+  const i = values.findIndex((f) => f > 0 && freqMidi(f) === midi);
+  return Object.fromEntries(attrs.map(({ suffix, perTone }) => {
+    const v = stored[suffix] ?? null;
+    return [suffix, perTone && Array.isArray(v) ? (i >= 0 ? v[i] ?? null : null) : v];
+  }));
+}
+
+/**
  * Can a note on this lane be given a length at all?
  *
  * The editable model is now the melodic note lanes themselves. Gesture lanes, drums and
@@ -487,6 +534,12 @@ export const ROLL_TOOLS = [
     hint: 'Paint — drag to lay a run of separate notes, right-drag to rub a run out',
   },
   { id: 'erase', label: 'Erase', hint: 'Erase — drag over notes to rub them out' },
+  {
+    id: 'mute',
+    label: 'Mute',
+    hint: 'Mute — click a note to mute or unmute it (the whole selection, if it is in one);'
+      + ' drag across notes to do the same to each; drag on empty space to pick notes out',
+  },
 ];
 export const ROLL_TOOL_IDS = ROLL_TOOLS.map((t) => t.id);
 export const rollTool = (id) => (ROLL_TOOL_IDS.includes(id) ? id : 'auto');
@@ -696,7 +749,12 @@ export function createPianoRoll({
   // switch says — `vox` and `shout` are in the roll and are in MONO_LANES. `polyLane` is
   // the authority the recorder already asks (mixer-entry.js), so ask the same one here
   // rather than keeping a second list that can drift from it.
-  const canStack = (key) => polyLane(editBank(), key);
+  //
+  // Without the bank: `polyLane` ignores it (see its note in voices.js), and this runs
+  // once per CELL through `isChord`. `editBank()` builds a fresh desk bank on every
+  // call, which was most of the cost of drawing the roll — about half a second of
+  // main thread on releasing a note-length drag, long enough to empty the audio queue.
+  const canStack = (key) => polyLane(null, key);
   const modeFor = (key) => (canStack(key)
     ? voiceMode(voiceModes.get(baseLane(key)) ?? defaultVoiceMode(key))
     : 'mono');
@@ -1502,6 +1560,13 @@ export function createPianoRoll({
       grid.armPaste(noteClipboard);
       toast('Paste armed — click the time column for the first note, or press Escape');
     });
+    const mute = make('Mute', 'Mute or unmute the selected notes — M. A muted note stays in '
+      + 'the part, drawn hollow, and does not play', () => {
+      const result = grid.muteNotes({ scope: 'selection' });
+      if (result.changed) {
+        toast(`${result.changed} note${result.changed === 1 ? '' : 's'} ${result.muted ? 'muted' : 'unmuted'}`);
+      }
+    });
     const erase = make('Erase bar',
       'Erase this instrument\'s selected bar(s) — the song bars and other tracks stay',
       () => {
@@ -1514,6 +1579,7 @@ export function createPianoRoll({
       none.disabled = !selected;
       cut.disabled = !selected;
       copy.disabled = !selected;
+      mute.disabled = !selected;
       paste.disabled = !noteClipboard;
       loopRange.disabled = !time || time.end <= time.start || !onLoopTime;
       favourite.disabled = !time || time.end <= time.start || !onAddRearrangeFavourite;
@@ -1707,6 +1773,12 @@ export function createPianoRoll({
       }
       return noteLength({ ...row, chord: isChord(value) }, value, len, on, drawn);
     },
+    // Velocity and mute: per tone where a chord needs it, see `noteAttr`. The chord tool
+    // stamps a whole new chord, which starts with neither.
+    withAttr: (row, attr, value, stored, on, given) => (toolId === 'chord' && given === undefined
+      ? null : noteAttr({ ...row, chord: isChord(value) }, attr, value, stored, on, given)),
+    noteAttrs: (row, value, stored) =>
+      noteAttrsOf({ ...row, chord: isChord(value) }, NOTE_ATTRS, value, stored),
     // Only a genuinely new note takes this value. The shared grid calls it for taps,
     // paint trails and Draw mode, while existing notes keep their own lengths.
     addLength: () => (rollResizable(lane()) ? (noteAddLength ?? quantise) : null),
@@ -1914,7 +1986,7 @@ export function createPianoRoll({
     playingSlot = at;
     playingAnchor = anchor;
     const rows = new Set();
-    for (const cell of el.querySelectorAll('.ssqcell.on:not(.muted)')) {
+    for (const cell of el.querySelectorAll('.ssqcell.on:not(.muted):not(.note-muted)')) {
       const span = Number(cell.style.getPropertyValue('--len')) || 1;
       if (!noteActiveAt(step, cell.dataset.bar, cell.dataset.step, span, slots, cols)) continue;
       rows.add(cell.dataset.row);
@@ -2033,6 +2105,17 @@ export function createPianoRoll({
       grid.quantiseLengths({ scope, grid: gridSize }),
     transformNotes: ({ scope = 'selection', kind, value = null } = {}) =>
       grid.transformNotes({ scope, kind, value }),
+    muteNotes: ({ scope = 'selection', mode = 'toggle' } = {}) => {
+      const result = grid.muteNotes({ scope, mode });
+      syncActionState();
+      return result;
+    },
+    deleteMuted: ({ scope = 'selection' } = {}) => {
+      const count = grid.deleteMuted({ scope });
+      syncActionState();
+      return count;
+    },
+    mutedCount: ({ scope = 'selection' } = {}) => grid.mutedCount({ scope }),
     /**
      * Forget which lane the window was fitted to, so the next refresh fits it again.
      *

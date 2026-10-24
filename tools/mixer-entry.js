@@ -83,7 +83,7 @@ import {
 // the roll's, which it imports rather than restating. See tools/lib/note-recorder.js.
 import {
   createTake, quantiseStep, heldLength, chordAnchor, laneKind, barOfStep, stepInBar,
-  laneShape, laneShapeLengths,
+  laneShape, laneShapeLengths, laneShapeAttrs,
 } from './lib/note-recorder.js';
 import { deskNoteName, deskNoteNameHz } from './mixer-note-names.js';
 import { listTracks, resolveTrack, registerTrack, unregisterTrack } from '../src/data/tracks.js';
@@ -113,7 +113,7 @@ import {
   installLoopLog, LOOP_LOG_COLUMNS, loopLogCsv, mirrorDiagnosticsLog,
 } from './mixer-loop-log.js';
 import {
-  installControls, paramLabel, makeTypableDb, panKnob, knob, checkRow,
+  installControls, paramLabel, makeTypableDb, panKnob, knob, slideKnob, checkRow,
   divisionRow, optionRow, radioRow,
 } from './mixer-controls.js';
 import {
@@ -1072,6 +1072,9 @@ async function fetchMixerAction(input, init) {
 
 function undo() {
   endDeskGesture();
+  // A preset still warming has not been made yet, so ⌘Z must not let it land after the
+  // step it undoes. See setLaneVoice.
+  laneVoiceTicket++;
   // A take that has not been written yet is not on this stack, so undoing past it would
   // step back over the bar BEFORE the one you just played — and then the buffered notes
   // would land on top of what was restored. Writing it first makes ⌘Z mean what it
@@ -1389,6 +1392,7 @@ function insertSlots(key, label, rows) {
       toast(`${def?.name || e.id} removed from ${label} — ⌘Z to undo`);
     };
     btn.append(power, name, remove);
+    btn.dataset.idx = String(i);
     btn.title = `${def?.name || e.id} — click to open it below`
       + `\nThe power mark turns it ${effectOff(e) ? 'on' : 'off'} without leaving the fader`;
     btn.onclick = (ev) => {
@@ -1424,7 +1428,7 @@ function insertSlots(key, label, rows) {
       ev.preventDefault();
       btn.classList.remove('dropzone');
       if (dragFromSlot == null || dragFromSlot === i) return;
-      const next = effectsOf(key);
+      const next = [...effectsOf(key)];
       const [moved] = next.splice(dragFromSlot, 1);
       next.splice(i, 0, moved);
       dragFromSlot = null;
@@ -1769,12 +1773,12 @@ function stripMenu(el, key, kind) {
       preset && { label: 'Preset', run: () => openVoicePickerFor(key, at) },
       // Explicit on both, as in the track menu: one button cannot offer a choice, so
       // each of these says in its name which surface it opens.
-      preset && { label: 'Edit Simple', run: () => editVoice(key, { advanced: false, at }) },
+      preset && { label: 'Tweak Preset', run: () => editVoice(key, { advanced: false, at }) },
       // Only the families that HAVE a second surface — KLNG-8, MRDR-3, TNGR-2. Absent
       // rather than disabled elsewhere: a button that can never light on this channel is
       // a promise of a screen that does not exist.
       preset && isQuickVoice(preset) && {
-        label: 'Edit Advanced', run: () => editVoice(key, { advanced: true, at }),
+        label: 'Edit Preset', run: () => editVoice(key, { advanced: true, at }),
       },
       { label: `Copy ${Kind}`, run: () => copyStrip(key, kind) },
       clipboard && clipboard.kind === kind && {
@@ -1802,12 +1806,18 @@ function stripMenu(el, key, kind) {
   });
 }
 
-/** The TRACK panel — on the arrangement row, which is where the track lives. */
+/** Track actions share the channel panel's compact menu. */
 function trackMenu(el, key) {
   el.addEventListener('contextmenu', (ev) => {
     if (ev.target.closest('input, select')) return;
     ev.preventDefault();
-    openTrackEditor(ev.clientX, ev.clientY, key);
+    ev.stopPropagation();
+    selectLane(key);
+    openMenu(ev.clientX, ev.clientY, targetLabel(key), []);
+    buildChannelMore(key, { target: menu(), at: { x: ev.clientX, y: ev.clientY } });
+    const r = menu().getBoundingClientRect();
+    menu().style.left = `${Math.max(4, Math.min(ev.clientX, innerWidth - r.width - 6))}px`;
+    menu().style.top = `${Math.max(4, Math.min(ev.clientY, innerHeight - r.height - 6))}px`;
   });
 }
 
@@ -1924,10 +1934,51 @@ addEventListener('blur', () => setTimeout(() => {
  * the card on screen; this says WHICH of six it was, which the panel cannot show on
  * its own once a chain is long enough to scroll.
  */
+// The insert last opened from a strip, held until another is, so the panel's card and
+// the strip's slot both stay marked as the one being worked on — through rebuilds too.
+// `entry` is the effect itself, so a reorder or a removal above it moves the mark with
+// it (see followPickedEffect) rather than leaving it on whatever slides into its place.
+let pickedEffect = null;
+
+/** Re-find the picked insert in the chain `list` is about to become, or drop the mark. */
+function followPickedEffect(key, list) {
+  if (!pickedEffect || pickedEffect.key !== key) return;
+  // An edit to the card's params can store a fresh object, so the effect is also
+  // whatever now sits at the picked index of the chain as stored — read before the write.
+  const stored = effectsOf(key)[pickedEffect.index];
+  const entry = stored ?? pickedEffect.entry;
+  let at = list.indexOf(entry);
+  if (at < 0) at = list.indexOf(pickedEffect.entry);
+  // The mix can hand back copies (an undo, a reload), so fall back to the same effect
+  // by value — but only when exactly one insert matches, or the mark would be a guess.
+  if (at < 0 && entry) {
+    const same = JSON.stringify(entry);
+    const matches = list.flatMap((e, i) => (JSON.stringify(e) === same ? [i] : []));
+    if (matches.length === 1) at = matches[0];
+  }
+  pickedEffect = at < 0 ? null : { key, index: at, entry: list[at] };
+}
+
+/** Mark the picked insert on its strip and in the channel panel, and nothing else. */
+function markPickedEffect() {
+  const idx = pickedEffect && pickedEffect.key === selectedLane ? String(pickedEffect.index) : null;
+  for (const b of document.querySelectorAll('.fxbtns button.picked')) b.classList.remove('picked');
+  for (const card of $('devrack').querySelectorAll('.device[data-idx]')) {
+    card.classList.toggle('picked', card.dataset.idx === idx);
+  }
+  if (idx == null) return;
+  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(selectedLane)}"]`);
+  strip?.querySelector(`.fxbtns button[data-idx="${idx}"]`)?.classList.add('picked');
+}
+
 function focusDevice(index) {
+  pickedEffect = selectedLane ? { key: selectedLane, index, entry: effectsOf(selectedLane)[index] } : null;
+  markPickedEffect();
   // The cards live in a modeless window now. Clicking an insert is an explicit request
-  // to see it, so open the window whatever state an old folded-panel preference held.
+  // to see it, so open the window whatever state an old folded-panel preference held —
+  // and unfold the channel panel, which would otherwise keep the card out of sight.
   if (!$('devices').classList.contains('fxwindow-open')) setDevicesFolded(false);
+  else if ($('devices').classList.contains('channel-collapsed')) setChannelPanelCollapsed(false);
   requestAnimationFrame(() => {
     const card = $('devrack').querySelector(`.device[data-idx="${index}"]`);
     if (!card) return;
@@ -1999,16 +2050,6 @@ function laneOf(mix, key) {
 const LANE_KEY = 'mash-mixer-lane';
 let selectedLane = localStorage.getItem(LANE_KEY) || null;
 
-// The preset name on a strip is a two-step control: the first click selects the
-// channel, the second one opens the picker. What arms the second step is the NAME you
-// clicked, not the selection — a rebuild or a lane going away can move `selectedLane`
-// between two clicks of the same word, and when that happens the click you can see
-// yourself making has to still mean what it looked like it meant. selectLane disarms
-// it whenever the selection lands anywhere else, so a name is never hot on the first
-// click after you were somewhere else on the desk.
-let armedPresetLane = null;
-const armPreset = (key) => { armedPresetLane = key; };
-const presetArmed = (key) => armedPresetLane === key || selectedLane === key;
 
 /**
  * Which editor the Notes panel puts up for a channel — or neither.
@@ -3128,7 +3169,7 @@ function routeLive(keys) {
 function afterRoutesChanged() {
   buildRack();
   buildArrangement();
-  syncEffectTargetPicker();
+  syncChannelNavigation();
 }
 
 /** Route one track into a group, or back to the mix (`id` null). One undo step. */
@@ -3225,13 +3266,43 @@ function openRouteMenu(key, x, y) {
 }
 
 /** Write one group's settings, and push them straight at the live bus. */
-function editGroup(id, patch, tag) {
+function editGroup(id, patch, tag, { except = null } = {}) {
   editMix((m) => {
     m.groups = m.groups || {};
     const cur = m.groups[id] || {};
     m.groups[id] = { ...cur, ...patch, ...(patch.eq ? { eq: { ...(cur.eq || {}), ...patch.eq } } : {}) };
   }, tag, { affectsFrozen: false });
   Audio.mixer?.setGroup?.(id, patch);
+  syncGroupControls(id, { except });
+}
+
+// A group's pan pot in the rack, by group id — the one strip control with no value
+// attribute to write, so the channel panel needs its setter to move it.
+const groupPanPots = new Map();
+
+/**
+ * Repaint a group's level, pan and EQ wherever they show — its rack strip and the
+ * channel panel — after either one moved them. `except` is the control being dragged.
+ */
+function syncGroupControls(id, { except = null } = {}) {
+  const key = groupKey(id);
+  const g = groupSettings(mixFor(trackId).groups?.[id]);
+  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"]`);
+  if (strip) {
+    const fader = strip.querySelector('.fader');
+    if (fader && fader !== except) fader.value = dbToPos(g.gain);
+    const db = strip.querySelector('.db');
+    if (db && fader !== except && !db.querySelector('input')) db.textContent = `${g.gain > 0 ? '+' : ''}${g.gain.toFixed(1)}`;
+    for (const row of strip.querySelectorAll('.eqrow[data-channel-eq]')) {
+      if (row === except) continue;
+      const value = g.eq[row.dataset.channelEq];
+      const input = row.querySelector('input[type="range"]'); if (input) input.value = String(value);
+      const readout = row.querySelector('.val');
+      if (readout && !readout.querySelector('input')) readout.textContent = (value > 0 ? '+' : '') + value.toFixed(1);
+    }
+  }
+  if (!(except instanceof Element && strip?.contains(except))) groupPanPots.get(id)?.(g.pan);
+  for (const sync of channelMixSyncers.get(key) || []) sync({ except });
 }
 
 /** Group mute: saved with the group, and broadcast to its tracks and their sends. */
@@ -3270,19 +3341,22 @@ function groupStrip(def, mix, slotRows) {
   });
   el.dataset.route = def.id;
   for (const band of ['high', 'mid', 'low']) {
-    body.append(eqRow(band, g.eq[band], (x) => editGroup(def.id, { eq: { [band]: x } }, `${key}:eq:${band}`)));
+    const row = eqRow(band, g.eq[band], (x) => editGroup(def.id, { eq: { [band]: x } }, `${key}:eq:${band}`, { except: row }));
+    row.dataset.channelEq = band;
+    body.append(row);
   }
   body.append(insertSlots(key, def.name, slotRows));
   const fb = faderBlock({
     value: g.gain,
     title: `${def.name} level — moves its ${n} track${n === 1 ? '' : 's'} together`,
-    onInput: (x) => editGroup(def.id, { gain: x }, `${key}:gain`),
+    onInput: (x) => editGroup(def.id, { gain: x }, `${key}:gain`, { except: fb.col.querySelector('.fader') }),
     onReset: (x) => editGroup(def.id, { gain: x }),
   });
   const pan = panKnob({
     value: g.pan,
-    onInput: (x) => editGroup(def.id, { pan: x }, `${key}:pan`),
+    onInput: (x) => editGroup(def.id, { pan: x }, `${key}:pan`, { except: pan.el }),
   });
+  groupPanPots.set(def.id, pan.set);
   const mute = document.createElement('button');
   mute.textContent = 'M';
   mute.className = 'mutebtn warn' + (g.mute ? ' on' : '');
@@ -3741,8 +3815,28 @@ function saveVoiceToSong(laneKey, preset) {
  * version OF the old preset — its envelope, its filter, its name — so keeping it over
  * the top of a new choice would mean picking Sub Sine and hearing the bass you had
  * already shaped, with no way to tell why. Undo puts it back.
+ *
+ * Under a playing song a preset on a worklet engine (TNGR-2, FRPP-6, MRDR-3 AW) has its
+ * lane built FIRST and the choice made when it is ready: built by its first note
+ * instead, it was a mid-bar stall on every change of engine. The old preset plays on
+ * for that moment. `warmFirst: false` is for the editor's Save-as-New handoff, which
+ * repoints the lane at the sound it is already playing and has to land at once.
  */
-function setLaneVoice(laneKey, voiceId, { redraw = true, autoCopy = true } = {}) {
+let laneVoiceTicket = 0;
+function setLaneVoice(laneKey, voiceId, { redraw = true, autoCopy = true, warmFirst = true } = {}) {
+  // Any choice outdates one still warming: the last preset picked is the one you get.
+  const ticket = ++laneVoiceTicket;
+  if (warmFirst && playing && voiceId) {
+    const warming = Audio.warmLaneVoice?.(laneKey, VOICES[voiceId]);
+    if (warming) {
+      const song = trackId;
+      warming.then(() => {
+        if (ticket !== laneVoiceTicket || song !== trackId) return;
+        setLaneVoice(laneKey, voiceId, { redraw, autoCopy, warmFirst: false });
+      });
+      return;
+    }
+  }
   const seam = seamFor(laneKey);
   const before = mixFor(trackId);
   const hadCopy = !!before.voiceParams?.[seam.voiceKey];
@@ -3763,8 +3857,33 @@ function setLaneVoice(laneKey, voiceId, { redraw = true, autoCopy = true } = {})
   // the lane is sent back to the engine. See syncVoiceEditorToLane.
   const closed = syncVoiceEditorToLane(laneKey, { autoCopy });
   // A voice change updates the strip's header and the arrangement identity together.
-  // The picker owns the interaction now, so the rack can repaint normally after a choice.
-  if (redraw || closed) buildRack();
+  // Keep the mixer controls and meters mounted while browsing sounds. Rebuilding
+  // every strip here spends the audio scheduler's lookahead on unrelated DOM work.
+  if (redraw || closed) {
+    if (independent) buildRack();
+    else {
+      const head = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"] .striphead`);
+      const preset = presetForLane(laneKey);
+      if (head) {
+        const title = head.querySelector('h3');
+        if (title) {
+          title.textContent = customTrackLabel(laneKey) || preset?.label || targetLabel(laneKey);
+          delete title.dataset.full;
+        }
+        const sub = head.querySelector('.stripsub');
+        if (sub) {
+          sub.textContent = preset?.category || '';
+          const synth = synthAbbrevFor(preset);
+          if (synth) {
+            const badge = document.createElement('span');
+            badge.className = 'stripsynth'; badge.textContent = synth; sub.append(badge);
+          }
+        }
+        markClipped(head);
+      }
+      if (selectedLane === laneKey) buildDevices();
+    }
+  }
   // Playing, rebank() above has already put the new voice on the engine — and the strips
   // hold this mix already, since a voice is nothing a strip carries. applyToEngine on top
   // of it reset every strip and rebuilt the master chain under the sounding song: the
@@ -3844,10 +3963,35 @@ function rebuildForShape({ voiceOnly = false, orderOnly = false } = {}) {
   if (!(voiceOnly && playing)) applyToEngine(mixFor(trackId));
 }
 
-/** The next free key for a layer of `from`: bass → bass2, then bass3. */
+/**
+ * The next free key for a layer of `from`: bass → bass2, then bass3.
+ *
+ * Free means no trace ANYWHERE in the song, not just absent from the layer list. A song
+ * can still hold notes, lengths or a voice under a key whose track was deleted, or that
+ * a copy carried over from the song it was copied from; reusing that key handed a new,
+ * supposedly blank track those old notes (CORP FUNKHY 3, 24 Oct 2026 — Peter: "it should
+ * never be doing that under any circumstances"). So a key with any leftover is skipped.
+ */
+function laneHasTrace(key) {
+  const mix = mixFor(trackId) || {};
+  const bank = track?.bank || {};
+  const arrays = [key, `${key}Len`, `${key}Velocity`];
+  const holds = (o) => !!o && arrays.some((k) => Array.isArray(o[k])
+    && o[k].some((v) => v != null && v !== false && !(Array.isArray(v) && !v.length)));
+  if (holds(bank) || (bank.sections || []).some(holds)) return true;
+  // The arrangement draft owns per-bar note sections too (a duplicate's notes live there).
+  let draft = null;
+  try { draft = arrDraftOf(); } catch { draft = null; }
+  if ((draft?.sections || []).some(holds)) return true;
+  const voiceKey = `${key}Voice`;
+  return !!(mix.voice?.[voiceKey] || mix.voiceParams?.[voiceKey] || mix.lanes?.[key] || mix.labels?.[key]);
+}
 function nextLayerKey(from) {
   const taken = new Set((mixFor(trackId).layers || []).map((l) => l.key));
-  for (let n = 2; ; n++) if (!taken.has(`${from}${n}`)) return `${from}${n}`;
+  for (let n = 2; ; n++) {
+    const key = `${from}${n}`;
+    if (!taken.has(key) && !laneHasTrace(key)) return key;
+  }
 }
 
 /**
@@ -4114,6 +4258,21 @@ function duplicateLane(key) {
   openVoicePickerFor(newKey);
 }
 
+/**
+ * The desk order with `key` placed directly under `afterKey` and that track's own layers.
+ * `cur` is the order as the desk shows it now (before `key` exists in it). Null when
+ * `afterKey` is not on the desk, so the caller leaves the order alone.
+ */
+function orderWithUnder(cur, key, afterKey) {
+  const at = afterKey ? cur.indexOf(afterKey) : -1;
+  if (at === -1) return null;
+  const rest = cur.filter((k) => k !== key);
+  const i = rest.indexOf(afterKey);
+  const block = laneBlock(rest, i);
+  rest.splice(i + block.length, 0, key);
+  return rest;
+}
+
 /** Commit the staged Add Track once the user has chosen its first preset. */
 function commitPendingAddTrack(laneKey, voiceId) {
   const pending = pendingAddTrack;
@@ -4121,10 +4280,14 @@ function commitPendingAddTrack(laneKey, voiceId) {
   const seam = seamFor(laneKey);
   if (!seam) { pendingAddTrack = null; return false; }
   pendingAddTrack = null;
+  const before = deskLanes(viewBank(), 1).map((l) => l.key);
+  const order = orderWithUnder(before, pending.key, pending.after);
   editMix((m) => {
     m.layers = [...(m.layers || []), {
       key: pending.key, from: pending.from, independent: true,
     }];
+    // Under the track that was selected — the whole desk order is written, as a drag does.
+    if (order) m.order = order;
     m.lanes = m.lanes || {};
     // A newly-added channel is deliberately independent of the selected lane. Keep
     // the neutral state explicit so no live strip, send, EQ, or insert can leak into it.
@@ -4259,7 +4422,10 @@ function addBlankTrack(anchor = null, { drumsOnly = false } = {}) {
   const extras = (mixFor(trackId).layers || []).filter((l) => l.independent
     && PERCUSSION_LANES.includes(baseLane(l.key))).length;
   const label = `Track ${extras + 1}`;
-  pendingAddTrack = { key: newKey, from, label, ...(drumsOnly ? { drumsOnly } : {}) };
+  // `after`: the track that was selected when Add Track was asked for. The new one goes
+  // directly under it (and under its own layers), not at the bottom of the desk (Peter,
+  // 24 Oct 2026). Null when nothing is selected — then it lands where it always did.
+  pendingAddTrack = { key: newKey, from, label, after: selectedLane || null, ...(drumsOnly ? { drumsOnly } : {}) };
   const plusRect = anchor?.getBoundingClientRect?.();
   // The arrangement plus is the action's anchor. There is no strip yet, so the
   // selector uses the plus itself rather than a temporary row that would look real.
@@ -4563,8 +4729,11 @@ function openVoicePickerFor(laneKey, at = null) {
 const voiceEditEl = $('voiceedit');
 
 const voiceEditor = createVoiceEditor({
+  trackName: (key) => customTrackLabel(key) || presetForLane(key)?.label || targetLabel(key),
+  trackNumber: (key) => laneNumbers.get(key),
   el: voiceEditEl,
   knob,
+  slideKnob,
   toast,
   fetchAction: (...args) => fetchMixerAction(...args),
   // The full-window editor, built the first time EDIT is pressed and never otherwise.
@@ -4597,6 +4766,7 @@ const voiceEditor = createVoiceEditor({
   // set of buttons: `setLaneSolo` lights the strip and the solo lamp on the way through.
   setLaneSolo,
   laneSoloOn: (key) => soloed.has(key),
+  nextNotesButton,
   // A filter/VCA bypass changes the native graph, not just a parameter. Clear only
   // audition notes already queued on the bench so the next hit is the unmistakable
   // bypassed sound; the song's own playback continues through its normal scheduler.
@@ -4637,7 +4807,7 @@ const voiceEditor = createVoiceEditor({
   canFile: () => !STATIC,
   // A never-saved preset takes its id from its name at the moment it is saved, so the
   // lane holding the old id has to be repointed at the new one — see `commit`.
-  assign: (laneKey, id) => { if (laneKey) setLaneVoice(laneKey, id, { redraw: false, autoCopy: false }); },
+  assign: (laneKey, id) => { if (laneKey) setLaneVoice(laneKey, id, { redraw: false, autoCopy: false, warmFirst: false }); },
   // Where an edit lands when the preset is the song's own — see writeSongVoice.
   onEdit: writeSongVoice,
   saveToSong: saveVoiceToSong,
@@ -5060,44 +5230,11 @@ function channelStrip(lane, mix, slotRows, number) {
   // The head is the strip's handle, so double-clicking it plays the channel: from
   // the bar it comes in on, which for anything that enters late is the only bar you
   // wanted to hear. See playFromLaneStart.
-  head.title = 'Click to show this strip’s devices below'
-    + ' — double-click to play from where this channel comes in';
-  head.addEventListener('dblclick', (ev) => {
-    if (!ev.target.closest('.strippreset')) playFromLaneStart(key);
-  });
-  // …and it is the strip's handle in the other sense too: drag it to move the track.
-  // The head only, not the whole strip — everything below it is a control with a drag
-  // of its own. The preset name is excluded because it is a button living on the handle.
-  laneDragHandle(el, head, key, '.strippreset, button, input, select');
-
-  const presetName = head.querySelector('h3');
-  if (seam && presetName) {
-    presetName.classList.add('strippreset');
-    presetName.setAttribute('role', 'button');
-    presetName.tabIndex = 0;
-    // No title: markClipped() owns this element's title attribute — it puts the full
-    // name on only when the strip is too narrow to show it — so anything written here
-    // is wiped on the next fit. A "Change X on Y" title used to sit here and had been
-    // invisible for exactly that reason.
-    //
-    // One click, one job. Clicking the name of an unselected strip used to select the
-    // channel and open the picker in the same motion, so the selection you had just
-    // made was underneath the popup that came with it — you never got to see the strip
-    // you landed on. Now the first click selects, and the second one changes the preset.
-    const choosePreset = (ev) => {
-      ev.stopPropagation();
-      if (!presetArmed(key)) { selectLane(key); armPreset(key); return; }
-      openVoicePicker(ev.clientX, ev.clientY, key);
-    };
-    presetName.addEventListener('click', choosePreset);
-    presetName.addEventListener('dblclick', (ev) => ev.stopPropagation());
-    presetName.addEventListener('keydown', (ev) => {
-      if (ev.key !== 'Enter' && ev.key !== ' ') return;
-      ev.preventDefault();
-      const r = presetName.getBoundingClientRect();
-      choosePreset({ clientX: r.left, clientY: r.bottom, stopPropagation() {} });
-    });
-  }
+  head.title = 'Click to select channel · right-click for actions · double-click to play from its first entry';
+  head.addEventListener('dblclick', () => playFromLaneStart(key));
+  laneDragHandle(el, head, key, 'button, input, select');
+  // Selection is shared by the arrangement, mixer and channel panel. The strip's
+  // existing context-menu handler also handles its header.
 
   // NO EDIT BUTTON ON THE HEAD. There used to be a » here that opened the preset editor
   // docked beside the strip. It is gone, and so is the docked editor: a strip head is
@@ -9659,6 +9796,72 @@ function playFromLaneStart(key) {
     : `${label} is in from the top — playing from bar 1`);
 }
 
+/**
+ * Every bar a lane plays in, counted from 0, in order. Memoised against the bank the
+ * same way `firstBarOf` is — and unlike it, this one follows edits, because the bank
+ * is rebuilt by every arrangement write and the identity check drops the cache.
+ */
+let laneBarsCache = { bank: null, map: new Map() };
+function barsOf(key) {
+  const view = viewBank();
+  if (laneBarsCache.bank !== view) {
+    const map = new Map();
+    for (const row of laneActivity(view, 1, 1)) {
+      const bars = [];
+      row.density.forEach((d, bar) => { if (d > 0) bars.push(bar); });
+      map.set(row.key, bars);
+    }
+    laneBarsCache = { bank: view, map };
+  }
+  return laneBarsCache.map.get(key) || [];
+}
+
+function laneHasNotes(key) { return !!key && barsOf(key).length > 0; }
+
+/**
+ * THE HOLLOW PLAY: on to the next bar this lane has notes in, round to its first one
+ * after the last. A sparse part — a fill every eight bars, a stab in the chorus — is
+ * otherwise a lot of listening to other channels between the bits you are editing.
+ *
+ * Counted from where the transport is GOING, not where it is: a press while the last
+ * one is still queued for the bar line moves on from that, so pressing three times
+ * walks three parts ahead rather than asking for the same one three times. With a loop
+ * armed it walks only the bars inside the loop, which is where the transport stays.
+ */
+function playNextBarOf(key) {
+  const label = targetLabel(key);
+  let bars = barsOf(key);
+  const bounds = loopOn ? currentLoopBounds() : null;
+  if (bounds) bars = bars.filter((bar) => bar * 16 < bounds.end && (bar + 1) * 16 > bounds.start);
+  if (!bars.length) { toast(bounds ? `${label} has no notes inside the loop` : `${label} has no notes`); return; }
+  const at = playing ? (pendingSeekStep ?? heardStepNow() ?? parkedAt) : parkedAt;
+  const now = Math.floor((at ?? 0) / 16);
+  const next = bars.find((bar) => bar > now) ?? bars[0];
+  jumpTo(next * 16, { start: true });
+  toast(`${label} · bar ${next + 1}${next <= now ? ' — round from the top' : ''}`);
+}
+
+/** The hollow play's button: one look on the channel panel and in both editors. */
+function nextNotesButton(key, className) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `nextnotes ${className || ''}`.trim();
+  button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3l8 5-8 5z"/></svg>';
+  const sync = () => {
+    const label = targetLabel(key);
+    const any = laneHasNotes(key);
+    button.disabled = !any;
+    button.title = any ? `Play the next bar ${label} has notes in` : `${label} has no notes to play`;
+    button.setAttribute('aria-label', button.title);
+  };
+  sync();
+  button.sync = sync;
+  // An edit in the roll can empty a lane or fill one while the button sits here.
+  button.addEventListener('pointerenter', sync);
+  button.onclick = () => { sync(); if (!button.disabled) playNextBarOf(key); };
+  return button;
+}
+
 // ---- device panel ----------------------------------------------------------
 // The selected channel's effect chain, along the bottom. Strips carry only a
 // one-line summary; a 132px column cannot hold four parameters legibly, and most
@@ -9771,6 +9974,7 @@ function targetLabel(key) {
 
 function setEffects(key, list) {
   const bpm = deskTempo();
+  followPickedEffect(key, list);
   // Stored through storeEffects, not beside it: this used to carry its own copy of
   // the same three branches, and the copies disagreed about what an empty master
   // chain means — one wrote it, the other deleted it, and taking the seeded bus
@@ -10099,6 +10303,7 @@ function refreshChannelName(key, value) {
 }
 
 function syncChannelNoteFxIndicator() {
+  $('devnextnotes')?.sync?.();
   const button = $('devnotefx');
   if (!button || !selectedLane || button.dataset.lane !== selectedLane) return;
   const fx = mixFor(trackId).lanes?.[selectedLane]?.noteFx || {};
@@ -10143,7 +10348,9 @@ function buildChannelIdentity(key) {
   const label = document.createElement('span');
   label.className = 'devsound-name';
   label.textContent = voice?.label || targetLabel(key);
-  meta.append(label);
+  const nextNotes = nextNotesButton(key);
+  nextNotes.id = 'devnextnotes';
+  meta.append(label, nextNotes);
   sound.append(meta);
   const actions = document.createElement('div'); actions.className = 'devsound-actions';
   const presetButton = document.createElement('button');
@@ -10153,13 +10360,13 @@ function buildChannelIdentity(key) {
   actions.append(presetButton);
   if (voice && voice.kind !== 'engine') {
     const simple = document.createElement('button');
-    simple.textContent = 'Edit';
-    simple.title = `Edit ${voice.label}`;
+    simple.textContent = 'Tweak';
+    simple.title = `Tweak ${voice.label} — the controls that matter most`;
     simple.onclick = (ev) => editVoice(key, { advanced: false, at: { x: ev.clientX, y: ev.clientY } });
     actions.append(simple);
     if (isQuickVoice(voice)) {
       const advanced = document.createElement('button');
-      advanced.textContent = 'Advanced';
+      advanced.textContent = 'Edit';
       advanced.title = `Open the full ${voice.label} editor`;
       advanced.onclick = (ev) => editVoice(key, { advanced: true, at: { x: ev.clientX, y: ev.clientY } });
       actions.append(advanced);
@@ -10168,8 +10375,6 @@ function buildChannelIdentity(key) {
   const noteFx = document.createElement('button');
   noteFx.id = 'devnotefx'; noteFx.type = 'button'; noteFx.dataset.lane = key;
   noteFx.textContent = 'Note FX';
-  const indicator = document.createElement('span'); indicator.className = 'devnotefx-indicator';
-  indicator.setAttribute('aria-hidden', 'true'); noteFx.append(indicator);
   noteFx.onclick = (ev) => openNoteFxEditor(ev.clientX, ev.clientY, key);
   actions.append(noteFx);
   sound.append(actions);
@@ -10183,52 +10388,61 @@ function buildChannelAdjust(key) {
   details.open = channelAdjustOpen;
   details.addEventListener('toggle', () => { channelAdjustOpen = details.open; });
   const summary = document.createElement('summary');
-  summary.textContent = 'ADJUST TRACK';
-  summary.title = 'Whole-track pitch, timing and note offsets';
+  // MODIFY, not ADJUST: Adjust is the preset editor's word, and this is the part.
+  summary.textContent = 'MODIFY TRACK';
+  summary.title = 'Whole-track pitch, timing, level and pan';
   details.append(summary);
+  // The effect cards' own slider, two across: label and readout over the range, the
+  // readout typed into, the label clicked to zero. What a value MEANS ("Original pitch",
+  // "Delay 1/16 note") is the tooltip — it was a third line under every control.
   const body = document.createElement('div'); body.className = 'devadjust-body';
   details.append(body);
   const last = Math.max(0, arrDraftOf().plan.length - 1);
   const definitions = [
-    ['transpose', 'Transpose', -12, 12, 1, (v) => v ? `${v > 0 ? '+' : ''}${v} semitones` : 'Original pitch', transposeBars],
-    ['offset', 'Timing', -8, 8, 0.5, timingText, offsetBars],
-    ['gain', 'Gain', -12, 12, 0.5, (v) => v ? `${v > 0 ? '+' : ''}${v} dB` : 'Original level', gainBars],
-    ['pan', 'Pan', -100, 100, 5, (v) => v ? `${v > 0 ? '+' : ''}${v} from channel pan` : 'Where the mix puts it', panBars],
+    ['transpose', 'TRANSPOSE', -12, 12, 1, (v) => `${signed(v)} st`,
+      (v) => v ? `${signed(v)} semitone${Math.abs(v) === 1 ? '' : 's'}` : 'Original pitch', transposeBars],
+    ['offset', 'TIMING', -8, 8, 0.5, (v) => (v ? timingBadge(v) : '0'), timingText, offsetBars],
+    ['gain', 'GAIN', -12, 12, 0.5, (v) => `${signed(v)} dB`,
+      (v) => v ? `${signed(v)} dB` : 'Original level', gainBars],
+    ['pan', 'PAN', -100, 100, 5, signed,
+      (v) => v ? `${signed(v)} from channel pan` : 'Where the mix puts it', panBars],
   ];
-  for (const [field, label, min, max, step, format, write] of definitions) {
+  for (const [field, label, min, max, step, short, describe, write] of definitions) {
     if (field === 'transpose' && PERCUSSION_LANES.includes(baseLane(key))) continue;
     const initial = uniformRegionValue(arrDraftOf(), 0, last, field, [key]);
+    let mixed = initial == null;
     let value = initial ?? 0;
-    const row = document.createElement('div');
-    row.className = `devadjust-row${initial == null ? ' mixed' : ''}`;
-    const name = document.createElement('label'); name.textContent = label;
-    const range = document.createElement('input'); range.type = 'range';
-    range.min = String(min); range.max = String(max); range.step = String(step); range.value = String(value);
-    range.setAttribute('aria-label', label);
-    const number = document.createElement('input'); number.type = 'number';
-    number.min = String(min); number.max = String(max); number.step = String(step);
-    number.value = initial == null ? '' : String(value); number.placeholder = initial == null ? 'Mixed' : '';
-    const reset = document.createElement('button'); reset.textContent = 'Reset';
-    const note = document.createElement('div'); note.className = 'devadjust-note';
-    note.textContent = format(value);
-    const show = (raw) => {
-      if (!Number.isFinite(raw)) return;
-      value = clamp(Math.round(clamp(raw, min, max) / step) * step, min, max);
-      range.value = String(value); number.value = String(value); note.textContent = format(value);
-      row.classList.remove('mixed');
-    };
+    let held = false;
+    let timer = 0;
     const commit = () => {
+      clearTimeout(timer);
       const current = arrDraftOf();
       const next = write(current, 0, Math.max(0, current.plan.length - 1), [key], value);
       applyArrangementEdit(next, `${presetHeadingFor(key).name} ${label.toLowerCase()} adjusted across the track`,
         { undoTag: `channel-adjust:${key}:${field}` });
     };
-    range.oninput = () => show(+range.value);
-    range.onchange = commit;
-    number.onchange = () => { if (number.value !== '') { show(+number.value); commit(); } };
-    reset.onclick = () => { show(0); commit(); };
-    row.append(name, range, number, reset, note);
-    body.append(row);
+    const r = slider({ min, max, step, value, reset: 0,
+      fmt: (v) => (mixed ? 'mixed' : short(v)),
+      onInput: (raw) => {
+        value = clamp(Math.round(clamp(raw, min, max) / step) * step, min, max);
+        mixed = false;
+        r.wrap.classList.remove('mixed');
+        r.readout.textContent = short(value);
+        r.wrap.title = describe(value);
+        // A drag on the range lands once, on release. Everything else — a typed value,
+        // a click on the label, a drag on the readout — settles a moment after it stops.
+        clearTimeout(timer);
+        if (!held) timer = setTimeout(commit, 150);
+      } });
+    r.label.textContent = label;
+    r.label.title = 'Click to reset to zero';
+    r.wrap.classList.add('devadjust-row');
+    if (mixed) r.wrap.classList.add('mixed');
+    r.wrap.title = mixed ? 'Mixed values across the track' : describe(value);
+    r.input.setAttribute('aria-label', label.toLowerCase());
+    r.input.addEventListener('pointerdown', () => { held = true; });
+    r.input.addEventListener('change', () => { held = false; commit(); });
+    body.append(r.wrap);
   }
   return details;
 }
@@ -10243,11 +10457,12 @@ function buildChannelMix(key) {
   const previousKey = wrap.dataset.lane;
   if (previousKey) channelMixSyncers.delete(previousKey);
   wrap.textContent = '';
-  wrap.hidden = !key || !seamFor(key);
+  wrap.hidden = !key || (!seamFor(key) && !isGroupKey(key));
   if (wrap.hidden) { delete wrap.dataset.lane; return; }
   wrap.dataset.lane = key;
   const syncers = [];
   channelMixSyncers.set(key, syncers);
+  if (isGroupKey(key)) { buildGroupChannelMix(wrap, key, syncers); return; }
   const settings = laneSettings(mixFor(trackId).lanes?.[key]);
 
   const head = document.createElement('div'); head.className = 'devmix-head';
@@ -10337,7 +10552,8 @@ function buildChannelMix(key) {
       },
     });
     control.wrap.dataset.channelSend = aux.id;
-    control.label.textContent = `${aux.name.toUpperCase()} SEND`;
+    control.label.textContent = aux.name.toUpperCase();
+    control.wrap.title = `${aux.name} send`;
     sends.append(control.wrap);
     syncers.push(() => {
       const amount = mixFor(trackId).lanes?.[key]?.send?.[aux.id] ?? 0;
@@ -10366,10 +10582,98 @@ function buildChannelMix(key) {
   extra.append(sends, eq); wrap.append(extra);
 }
 
-function buildChannelMore(key) {
+/**
+ * The CHANNEL MIX block for a group bus: what its rack strip carries — level, pan, EQ,
+ * M and S — and no sends, because its tracks keep their own, taken before the group.
+ */
+function buildGroupChannelMix(wrap, key, syncers) {
+  const id = groupIdOf(key);
+  const def = GROUP_BY_ID[id];
+  const current = () => groupSettings(mixFor(trackId).groups?.[id]);
+  const settings = current();
+
+  const head = document.createElement('div'); head.className = 'devmix-head';
+  const title = document.createElement('strong'); title.textContent = 'CHANNEL MIX';
+  const mute = document.createElement('button');
+  mute.textContent = 'M';
+  mute.className = 'mutebtn warn' + (settings.mute ? ' on' : '');
+  mute.title = `Mute ${def.name} — its tracks and their sends (M)`;
+  mute.onclick = (ev) => { ev.stopPropagation(); setGroupMute(id, !mute.classList.contains('on')); };
+  const solo = document.createElement('button');
+  solo.textContent = 'S';
+  solo.className = 'solobtn groupsolo' + (soloedGroups.has(id) ? ' on' : '');
+  solo.title = `Solo ${def.name} — its tracks, monitoring only, never saved (S)`;
+  solo.onclick = (ev) => { ev.stopPropagation(); setGroupSolo(id, !solo.classList.contains('on')); };
+  const meter = document.createElement('div'); meter.className = 'devmixmeter';
+  const fill = document.createElement('i'); const peak = document.createElement('b'); meter.append(fill, peak);
+  meters.push({ key, inspector: true, horizontal: true, meter, chans: [{ fill, peak }] });
+  head.append(title, meter, mute, solo);
+  wrap.append(head);
+
+  const primary = document.createElement('div'); primary.className = 'devmix-primary';
+  const formatLevel = (pos) => {
+    const db = posToDb(pos);
+    return `${db > 0 ? '+' : ''}${db.toFixed(1)} dB`;
+  };
+  const level = slider({ min: 0, max: 1, step: 0.002,
+    value: dbToPos(settings.gain), reset: dbToPos(0), fmt: formatLevel,
+    display: { format: formatLevel, parse: (raw) => {
+      const db = Number.parseFloat(raw);
+      return Number.isFinite(db) ? dbToPos(clamp(db, FADER_DB_MIN, FADER_DB_MAX)) : null;
+    } },
+    onInput: (pos) => editGroup(id, { gain: Math.round(posToDb(pos) * 10) / 10 }, `${key}:gain`, { except: level.input }),
+  });
+  level.label.textContent = 'LEVEL';
+  level.input.classList.add('devlevelrange');
+  level.input.setAttribute('aria-label', `${def.name} output level`);
+  level.readout.classList.add('devlevel-number');
+  attachDeskGesture(level.input);
+
+  const formatPan = (value) => Math.abs(value) < 0.005 ? 'C' : `${value < 0 ? 'L' : 'R'} ${Math.abs(value).toFixed(2)}`;
+  const pan = slider({ min: -1, max: 1, step: 0.01, value: settings.pan, reset: 0, fmt: formatPan,
+    display: { format: formatPan, parse: (raw) => {
+      const text = String(raw).trim();
+      if (/^c$/i.test(text)) return 0;
+      const value = Number.parseFloat(text.replace(/^[lr]\s*/i, ''));
+      return Number.isFinite(value) ? clamp(/^l/i.test(text) ? -Math.abs(value) : value, -1, 1) : null;
+    } },
+    onInput: (value) => editGroup(id, { pan: value }, `${key}:pan`, { except: pan.input }),
+  });
+  pan.label.textContent = 'PAN';
+  pan.input.setAttribute('aria-label', `${def.name} pan`);
+  attachDeskGesture(pan.input);
+  primary.append(level.wrap, pan.wrap); wrap.append(primary);
+
+  const extra = document.createElement('div'); extra.className = 'devmix-extra'; extra.id = 'devmix-extra';
+  extra.setAttribute('role', 'group'); extra.setAttribute('aria-label', 'EQ sliders');
+  const eq = document.createElement('div'); eq.className = 'devmix-eq';
+  const eqRows = {};
+  for (const band of ['low', 'mid', 'high']) {
+    const row = eqRow(band, settings.eq[band], (x) => editGroup(id, { eq: { [band]: x } }, `${key}:eq:${band}`, { except: row }));
+    row.dataset.channelEq = band; eq.append(row); eqRows[band] = row;
+  }
+  extra.append(eq); wrap.append(extra);
+
+  syncers.push(({ except } = {}) => {
+    const g = current();
+    if (except !== level.input && !level.readout.querySelector('input')) level.sync(dbToPos(g.gain));
+    if (except !== pan.input && !pan.readout.querySelector('input')) pan.sync(g.pan);
+    for (const band of ['low', 'mid', 'high']) {
+      const row = eqRows[band];
+      if (except === row) continue;
+      const input = row.querySelector('input[type="range"]'); if (input) input.value = String(g.eq[band]);
+      const readout = row.querySelector('.val');
+      if (readout && !readout.querySelector('input')) readout.textContent = (g.eq[band] > 0 ? '+' : '') + g.eq[band].toFixed(1);
+    }
+    mute.classList.toggle('on', g.mute);
+    solo.classList.toggle('on', soloedGroups.has(id));
+  });
+}
+
+function buildChannelMore(key, { target = null, at = null } = {}) {
   const button = $('devmore');
-  const menu = $('devmoremenu');
-  menu.textContent = '';
+  const menu = target || $('devmoremenu');
+  if (!target) menu.textContent = '';
   const available = !!key && !!seamFor(key);
   button.hidden = !key;
   button.setAttribute('aria-expanded', 'false');
@@ -10377,14 +10681,40 @@ function buildChannelMore(key) {
   const addAction = (label, run, { disabled = false, danger = false } = {}) => {
     const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem');
     item.textContent = label; item.disabled = disabled; if (danger) item.classList.add('danger');
-    item.onclick = () => { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); run(); };
+    item.onclick = () => { if (target) closeMenu(); else menu.hidden = true; button.setAttribute('aria-expanded', 'false'); run(); };
     menu.append(item);
   };
-  addAction($('devices').classList.contains('channel-collapsed') ? 'Expand channel panel' : 'Collapse channel panel',
-    () => setChannelPanelCollapsed(!$('devices').classList.contains('channel-collapsed')));
-  addAction(fxDockSide === 'left' ? 'Move channel panel right' : 'Move channel panel left',
-    () => setFxDockSide(fxDockSide === 'left' ? 'right' : 'left'));
-  if (!available) return;
+  const separate = () => {
+    const divider = document.createElement('div');
+    divider.className = 'ctxseparator';
+    divider.setAttribute('role', 'separator');
+    menu.append(divider);
+  };
+  const addPanelPosition = () => {
+    if (target) return;
+    addAction(fxDockSide === 'left' ? 'Move channel panel right' : 'Move channel panel left',
+      () => setFxDockSide(fxDockSide === 'left' ? 'right' : 'left'));
+  };
+  if (!available) { addPanelPosition(); return; }
+  const preset = editablePresetFor(key);
+  addAction('Preset', () => openVoicePickerFor(key, at || undefined));
+  if (preset) addAction('Tweak Preset', () => editVoice(key, { advanced: false, at }));
+  if (preset && isQuickVoice(preset)) addAction('Edit Preset', () => editVoice(key, { advanced: true, at }));
+  separate();
+  addAction('Copy channel settings', () => copyStrip(key, 'channel'));
+  addAction('Paste channel settings', () => pasteStrip(key, 'channel'), { disabled: clipboard?.kind !== 'channel' });
+  addAction('Paste effects', () => pasteEffects(key), { disabled: !(clipboard?.data?.effects || []).length });
+  const chain = effectsOf(key);
+  if (chain.length) addAction(chain.every(effectOff)
+    ? 'Enable all effects' : 'Bypass all effects', () => toggleAllChannelEffects(key));
+  separate();
+  addAction('Copy track', () => copyTrack(key));
+  addAction('Paste track as new', () => pasteTrack(), { disabled: arrangementClipboard?.kind !== 'track' });
+  addAction('Duplicate track', () => duplicateLane(key));
+  const freezeState = freezeLaneState(trackId, key);
+  addAction(freezeState === 'full' ? 'Unfreeze all' : 'Freeze track', () =>
+    freezeState === 'full' ? unfreezeLane(key) : freezeLane(key));
+  separate();
   addAction('Note FX…', () => openNoteFxEditor(innerWidth / 2, innerHeight / 2, key));
   if (PERCUSSION_LANES.includes(baseLane(key))) {
     const mates = deskLanes(viewBank(), 1).map((lane) => lane.key)
@@ -10408,23 +10738,11 @@ function buildChannelMore(key) {
             ? `${targetLabel(key)} chokes with ${presetHeadingFor(next).name}`
             : `${targetLabel(key)} chokes with nothing`);
         }
-        menu.hidden = true; button.setAttribute('aria-expanded', 'false');
+        if (target) closeMenu(); else menu.hidden = true; button.setAttribute('aria-expanded', 'false');
       };
       field.append(caption, select); menu.append(field);
     }
   }
-  addAction('Copy channel settings', () => copyStrip(key, 'channel'));
-  addAction('Paste channel settings', () => pasteStrip(key, 'channel'), { disabled: clipboard?.kind !== 'channel' });
-  addAction('Paste effects', () => pasteEffects(key), { disabled: !(clipboard?.data?.effects || []).length });
-  addAction('Copy track', () => copyTrack(key));
-  addAction('Paste track as new', () => pasteTrack(), { disabled: arrangementClipboard?.kind !== 'track' });
-  addAction('Duplicate track', () => duplicateLane(key));
-  const freezeState = freezeLaneState(trackId, key);
-  addAction(freezeState === 'full' ? 'Unfreeze all' : 'Freeze track', () =>
-    freezeState === 'full' ? unfreezeLane(key) : freezeLane(key));
-  const chain = effectsOf(key);
-  if (chain.length) addAction(chain.every(effectOff)
-    ? 'Enable all effects' : 'Bypass all effects', () => toggleAllChannelEffects(key));
   addAction('Copy notes', () => {
     const draft = arrDraftOf();
     arrangementClipboard = { kind: 'lane', ...clipOrigin(targetLabel(key)),
@@ -10440,6 +10758,7 @@ function buildChannelMore(key) {
     const last = Math.max(0, arrDraftOf().plan.length - 1);
     clearLaneBars(key, 0, last, `${targetLabel(key)} erased`, { shared: true });
   }, { danger: true });
+  separate();
   addAction('Reset edits', () => {
     const last = Math.max(0, arrDraftOf().plan.length - 1);
     let next = arrDraftOf();
@@ -10455,7 +10774,9 @@ function buildChannelMore(key) {
     applyArrangementEdit(next, `${targetLabel(key)} adjustments reset across the whole song`);
   });
   addAction('Reset channel', () => resetTarget(key));
+  separate();
   addAction('Delete track…', () => deleteLane(key), { danger: true });
+  if (!target) { separate(); addPanelPosition(); }
 }
 
 function buildDevices() {
@@ -10485,15 +10806,7 @@ function buildDevices() {
   fxLabel.className = 'devfx-heading';
   const fxCaption = document.createElement('span');
   fxCaption.textContent = `EFFECTS${list.length ? ` · ${list.length}` : ''}`;
-  const bypassAll = document.createElement('button');
-  bypassAll.type = 'button'; bypassAll.className = 'devbypass-all';
-  const allOff = list.length > 0 && list.every(effectOff);
-  bypassAll.textContent = 'Bypass all';
-  bypassAll.disabled = !list.length;
-  bypassAll.setAttribute('aria-pressed', String(allOff));
-  bypassAll.title = allOff ? 'Enable all channel effects' : 'Bypass all channel effects';
-  bypassAll.onclick = () => toggleAllChannelEffects(selectedLane);
-  fxLabel.append(fxCaption, bypassAll);
+  fxLabel.append(fxCaption);
   rack.append(fxLabel);
   if (!list.length) {
     rack.append(addCard(true));
@@ -10616,6 +10929,7 @@ function buildDevices() {
     rack.append(card);
   });
   rack.append(addCard());              // the next slot, at the end of the chain
+  markPickedEffect();
   fitDevices();
 }
 
@@ -10961,6 +11275,11 @@ function afterDock(closed) {
 
 applyFxDockSide();
 $('devcollapse').onclick = () => setChannelPanelCollapsed(!$('devices').classList.contains('channel-collapsed'));
+// Collapsed, the whole rail is the expand button — it is 38px of nothing else to hit.
+$('devices').addEventListener('click', (ev) => {
+  if (!$('devices').classList.contains('channel-collapsed') || ev.target.closest('#devcollapse')) return;
+  setChannelPanelCollapsed(false);
+});
 $('devprev').onclick = () => stepChannelTarget(-1);
 $('devnext').onclick = () => stepChannelTarget(1);
 // The toolbar toggles the dock; the More menu folds it to its title bar.
@@ -11016,8 +11335,6 @@ function selectLane(key) {
     dismissVoiceEditor();
   }
   selectedLane = key;
-  // The selection moving off a name puts that name back to its first click.
-  if (armedPresetLane !== key) armedPresetLane = null;
   localStorage.setItem(LANE_KEY, key);
   for (const el of document.querySelectorAll('.strip[data-lane]')) {
     const selected = el.dataset.lane === key;
@@ -11709,13 +12026,17 @@ function applyArrangementEdit(next, what, {
   // step as well; otherwise a mute appears in the grid but the next note audition
   // still comes from the pre-edit arrangement. Playing uses the gap-free swap above.
   if (!playing) applyToEngine(mixFor(trackId));
-  if (render) {
+  // A note edit repaints only the rows it touched, but anything that changes the shape
+  // still rebuilds the whole desk, and the panel that made the edit rebuilds itself
+  // straight after. Queued past it, after the new arrangement is in, so the notes it
+  // prefills are the edited ones.
+  if (render) heavyUi('arrangement edit', () => {
     const lanesAfter = laneSetSig();
     buildTimeline();
     if (lanesAfter !== lanesBefore) {
       rebuildForShape();                      // repaints the note editors on its way past
     } else {
-      buildArrangement();
+      refreshArrangementNotes();
       // Only when the bars themselves moved. A note edit leaves the plan alone and the
       // panel that made it has already redrawn itself — repainting here as well would
       // rebuild a whole-song field twice for every step of a paint drag.
@@ -11731,7 +12052,7 @@ function applyArrangementEdit(next, what, {
         kitRoll.redrawVolume?.();
       }
     }
-  }
+  });
   // `atStep` is which bar the loop should re-arm from, and it matters as soon as an
   // edit can land while the song is running. `applyLoop` snaps to the bar containing
   // the step it is given, so re-arming from `Audio.step` moves a multi-bar loop forward
@@ -12175,6 +12496,20 @@ const runNoteLengthQuantise = (scopeKind) => {
     ? `Quantised ${result.changed} note lengths to 16ths`
     : 'All note lengths are already on 16ths');
 };
+const runNoteMute = (scopeKind, mode) => {
+  const result = pianoRoll.muteNotes({ scope: scopeKind, mode });
+  if (!result.count) {
+    toast(scopeKind === 'all' ? 'There are no notes in this track' : 'Select one or more notes first');
+    return;
+  }
+  toast(result.changed
+    ? `${result.changed} note${result.changed === 1 ? '' : 's'} ${result.muted ? 'muted' : 'unmuted'}`
+    : (result.muted ? 'Those notes are already muted' : 'No muted notes in this track'));
+};
+const runDeleteMuted = (scopeKind) => {
+  const count = pianoRoll.deleteMuted({ scope: scopeKind });
+  toast(count ? `Deleted ${count} muted note${count === 1 ? '' : 's'}` : 'No muted notes in this track');
+};
 noteLengthMenuButton.onclick = (ev) => {
   if (noteLengthMenuButton.hidden) return;
   const r = noteLengthMenuButton.getBoundingClientRect();
@@ -12227,6 +12562,11 @@ noteLengthMenuButton.onclick = (ev) => {
       run: () => run('quantise', null, `Quantised the track to ${pianoRoll.quantiseLabel()}`, 'all') },
     { label: 'Quantise lengths to 16ths', run: () => runNoteLengthQuantise('selection') },
     { label: 'Custom transform all notes…', run: () => openNoteLengthAdjust('all', r.left, r.bottom + 4) },
+    // Muting keeps a note in the part without playing it, so a combination can be tried
+    // and taken back. The last two are the way out: put them all back, or decide.
+    { label: 'Mute / unmute selected notes (M)', run: () => runNoteMute('selection', 'toggle') },
+    { label: 'Unmute all notes in this track', run: () => runNoteMute('all', 'unmute') },
+    { label: 'Delete muted notes in this track', run: () => runDeleteMuted('all') },
   ]);
 };
 
@@ -12708,7 +13048,8 @@ const pasteLane = (draft, from, lane, clip) => {
     // `laneShape`, which exists because pasting a bassline onto `chords` wrote bare
     // numbers into a lane `scheduleStep` calls `.forEach` on.
     out = writeBarNotes(editBank(), out, from + i, lane,
-      fitted.bars[i].map((v) => laneShape(lane, v)), laneShapeLengths(lane, lengths));
+      fitted.bars[i].map((v) => laneShape(lane, v)), laneShapeLengths(lane, lengths),
+      laneShapeAttrs(lane, fitted.attrs[i]));
   }
   return out;
 };
@@ -13536,7 +13877,7 @@ function openRegionEditor(x, y, {
         // An engine preset is a bundle of bank keys rather than a synth, so there is
         // nothing for the editor to show.
         trackPreset && trackPreset.kind !== 'engine' && {
-          label: 'Edit Simple', title: `Open ${trackPreset.label} in the simple preset editor`,
+          label: 'Tweak Preset', title: `Tweak ${trackPreset.label} — the controls that matter most`,
           run: () => editVoice(laneKey, { advanced: false, at: { x, y } }) },
         // KLNG-8, MRDR-3 and TNGR-2 are the families with a second, wider surface, and until
         // now the only door to it was the ADVANCED button inside the panel — so getting
@@ -13546,13 +13887,13 @@ function openRegionEditor(x, y, {
         // Absent on every other preset rather than disabled: a button that cannot ever
         // light on this track is a promise of a screen that does not exist.
         trackPreset && isQuickVoice(trackPreset) && {
-          label: 'Edit Advanced',
+          label: 'Edit Preset',
           title: `Open ${trackPreset.label} in the full-window editor — every control on one screen`,
           run: () => editVoice(laneKey, { advanced: true, at: { x, y } }) },
       ],
       // Which synth these two buttons would open. The title already names the PRESET
       // ("Track 7. Round Bass"); this is the other half of that identity, and it is the
-      // half that says what the editor behind Edit Simple will actually look like —
+      // half that says what the editor behind Tweak Preset will actually look like —
       // KLNG-8's six source cards and CRLS-1's filter page are not the same screen.
       // In full, not the strip's three letters: this is where there is room for the word,
       // and seeing MNO on the channel and MonoSynth here is how the abbreviation is
@@ -14317,18 +14658,326 @@ function groupRow(g, barTotal) {
   return el;
 }
 
-function buildArrangement() {
-  syncChannelNoteFxIndicator();
-  const grid = $('arrgrid');
-  grid.textContent = '';
-  clearArrangementPlayback();
-  arrCells = [];
-  arrangementMeters.clear();
-  const arrange = $('arrange');
-  if (arrange) {
-    arrange.dataset.noteVisual = noteVisualMode;
-    arrange.dataset.noteAnimation = noteAnimation ? 'on' : 'off';
+/** One row's bars: the note marks, badges, hover cards and every gesture on them. */
+function arrangementBars(row, facts, { plan, patternStart, perBar, pitchRanges }) {
+  const { laneNoteFx, autoCurve, preset, displayLabel, trackNumber } = facts;
+  const bars = document.createElement('div');
+  bars.className = 'arrbars';
+  // Runs of playing beats are one region, not a row of chips. The chosen visual
+  // language paints the note marks; the cells themselves stay the same width so the
+  // columns continue to line up with the ruler.
+  // A whole bar is the unit you pick, whatever resolution the shading is drawn at:
+  // the cells inside a bar are a picture of it, and the bar is the target.
+  const barCount = Math.ceil(row.density.length / perBar);
+  for (let bar = 0; bar < barCount; bar++) {
+    const box = document.createElement('div');
+    const playing = row.density.slice(bar * perBar, (bar + 1) * perBar).some((v) => v > 0);
+    const barFrozen = freezeCoversBar(trackId, row.key, bar);
+    box.className = `arrbar${playing ? ' has-notes' : ''}${barFrozen ? ' frozen' : ''}`;
+    box.dataset.bar = String(bar);
+    const barColour = arrangementBarField(row.key);
+    box.style.setProperty('--bar-colour', barColour);
+    // A bar this lane plays in is tinted its own colour end to end, so the rests
+    // inside it read as part of the bar rather than as the gap between two bars.
+    // The tint also fills the gutters between beats, which is what makes a bar
+    // with a hit on every other beat still look like one bar.
+    if (playing) {
+      box.style.background = barColour;
+    }
+    // Melodic detail is carried by the same fixed-size dots as percussion. The
+    // smooth bar-wide trail uses those exact note positions, so compression
+    // preserves rhythm without making the line drift from the marks.
+    const barSteps = row.steps.slice(bar * perBar, (bar + 1) * perBar);
+    const nextBarSteps = row.steps.slice((bar + 1) * perBar, (bar + 2) * perBar);
+    const barPoints = row.group === 'melodic'
+      ? melodicMovementPoints(barSteps, pitchRanges.get(row.key))
+      : [];
+    const nextBarPoints = row.group === 'melodic'
+      ? melodicMovementPoints(nextBarSteps, pitchRanges.get(row.key))
+      : [];
+    const movement = row.group === 'melodic'
+      ? melodicMovementPath(barSteps, pitchRanges.get(row.key))
+      : '';
+    const tail = melodicMovementTailPath(barPoints.at(-1), nextBarPoints[0]);
+    const melodicDots = row.group === 'melodic'
+      ? melodicDotPoints(barSteps, pitchRanges.get(row.key))
+      : [];
+    if (movement || tail) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      line.classList.add('arrmelodyline');
+      line.setAttribute('viewBox', '0 0 100 100');
+      line.setAttribute('preserveAspectRatio', 'none');
+      line.setAttribute('aria-hidden', 'true');
+      if (movement) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', movement);
+        line.append(path);
+      }
+      if (tail) {
+        const fadeId = `arrtrailfade-${row.key.replace(/[^a-z0-9_-]/gi, '_')}-${bar}`;
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+        gradient.id = fadeId;
+        // Keep the handoff solid until the final few pixels of the bar. Using
+        // bar-space coordinates avoids making a long tail look prematurely faded.
+        gradient.setAttribute('x1', '94'); gradient.setAttribute('y1', '0');
+        gradient.setAttribute('x2', '100'); gradient.setAttribute('y2', '0');
+        gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
+        const solid = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        solid.setAttribute('offset', '0'); solid.setAttribute('stop-color', 'var(--trail-thread)');
+        solid.setAttribute('stop-opacity', '.74');
+        const fade = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        fade.setAttribute('offset', '1'); fade.setAttribute('stop-color', 'var(--trail-thread)');
+        fade.setAttribute('stop-opacity', '.42');
+        gradient.append(solid, fade); defs.append(gradient); line.append(defs);
+        const tailPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        tailPath.classList.add('arrtrailtail');
+        tailPath.setAttribute('d', tail);
+        tailPath.style.stroke = `url(#${fadeId})`;
+        line.append(tailPath);
+      }
+      box.append(line);
+    }
+    for (const point of melodicDots) {
+      const dot = document.createElement('span');
+      dot.className = 'arrmicrodot';
+      dot.dataset.cell = String(point.cellIndex);
+      // The sixteenth INSIDE that cell this attack belongs to. A compressed song puts
+      // several of them in one cell, and the playback accent has to follow the note
+      // rather than the box it is drawn in.
+      dot.dataset.slot = String(point.slot);
+      dot.setAttribute('aria-hidden', 'true');
+      dot.style.setProperty('--micro-x', `${point.x.toFixed(2)}%`);
+      dot.style.setProperty('--micro-y', `${point.y.toFixed(1)}%`);
+      box.append(dot);
+    }
+    for (let beat = 0; beat < perBar; beat++) {
+      const cell = bar * perBar + beat;
+      const d = row.density[cell] ?? 0;
+      // Regions stay joined inside one pattern, but stop cleanly at a pattern
+      // boundary. Without this the divider sits over one uninterrupted colour bar
+      // and reads as a ruler tick rather than a change in the music.
+      const openL = d > 0 && cell > 0 && row.density[cell - 1] > 0
+        && !(beat === 0 && patternStart[bar]);
+      const openR = d > 0 && row.density[cell + 1] > 0
+        && !(beat === perBar - 1 && patternStart[bar + 1]);
+      const c = document.createElement('div');
+      // The downbeat tick would cut a region in half, so it only marks bars that
+      // start something — a rest, or the first beat of a region.
+      const note = d > 0;
+      c.className = 'arrcell'
+        + (perBar > 1 && beat === 0 && !openL ? ' barstart' : '')
+        + (note ? ' note' : '');
+      if (note) {
+        c.style.setProperty('--note-strength', String(clamp(d, 0, 1)));
+        c.style.setProperty('--note-tilt', `${(((bar * perBar + beat) * 17) % 7) - 3}deg`);
+        const values = row.steps[cell] || [];
+        const frequencies = noteFrequencies(values);
+        // Which sixteenths inside this cell are attacks. One character per slot, read
+        // back by the playback accent so a note on the second half of a cell is set
+        // off when it sounds and not when the playhead reaches the cell.
+        c.dataset.hits = (values.length ? values : [true])
+          .map((value) => (value === true || noteFrequencies([value]).length ? '1' : '0')).join('');
+        const hasChord = values.some((value) => Array.isArray(value)
+          && noteFrequencies([value]).length > 1);
+        if (hasChord) c.classList.add('chord');
+        if (row.group === 'melodic' && frequencies.length) {
+          // One visual cell can represent a whole bar in a long song. Keep the
+          // actual attacks visible at their local time positions; only tones in
+          // the same source step share an x coordinate and read as a chord.
+          c.classList.add('micro-notes');
+        }
+        const percussionHits = percussionHitPositions(values);
+        if (percussionHits.length) {
+          c.classList.add('percussion');
+          const slots = values.length;
+          for (const index of percussionHits) {
+            const hit = document.createElement('span');
+            hit.className = 'arrhit';
+            hit.dataset.slot = String(index);
+            hit.setAttribute('aria-hidden', 'true');
+            hit.style.left = `${(((index + 0.5) / slots) * 100).toFixed(1)}%`;
+            c.append(hit);
+          }
+        }
+        const geometry = noteVisualGeometry(values, pitchRanges.get(row.key));
+        c.style.setProperty('--note-y', geometry.y);
+        c.style.setProperty('--note-span', geometry.span);
+      }
+      if (d > 0) {
+        if (noteVisualMode === 'solid') c.style.background = 'transparent';
+        else c.style.background = 'transparent';
+      } else if (playing) {
+        c.style.background = 'transparent';        // the bar's own tint shows through
+      }
+      box.append(c);
+    }
+    // A lane the arrangement silences here keeps its written colour but gets the
+    // muted treatment below. That is a different thing from deletion: the bar still
+    // occupies time and can be unmuted without restoring any notes.
+    if (plan[bar]?.off?.includes(row.key)) {
+      box.classList.add('barmuted');
+    }
+    if (plan[bar]?.delete?.includes(row.key)) {
+      box.classList.add('bardeleted');
+    }
+    const autoMarks = automationBarMarks(autoCurve, bar);
+    if (autoMarks) box.append(autoMarks);
+    // The bar's effect sections, and its per-bar snapshot where no section reaches it —
+    // the same reading the engine and the hover card make.
+    const barSections = (autoCurve?.fx || [])
+      .filter((section) => section.to > bar * 16 + 1e-6 && section.from < bar * 16 + 16 - 1e-6);
+    const barFx = barSections.length
+      ? barSections.flatMap((section) => section.chain)
+      : plan[bar]?.inlineFx?.[row.key] || [];
+    const barFxNames = [...new Set(barFx.map((effect) => EFFECT_BY_ID[effect.id]?.short
+      || EFFECT_BY_ID[effect.id]?.name || effect.id))].join(' + ');
+    // Keep the most important melodic edit visible without opening a tooltip. The
+    // full details remain in the hover card, while a compact +5/-7 badge makes a transposed
+    // bar immediately recognisable in the arrangement row.
+    const transpose = typeof plan[bar]?.transpose === 'number'
+      ? (row.group === 'melodic' ? plan[bar].transpose : null)
+      : plan[bar]?.transpose?.[row.key];
+    const offset = typeof plan[bar]?.offset === 'number'
+      ? plan[bar].offset
+      : plan[bar]?.offset?.[row.key];
+    const gain = typeof plan[bar]?.gain === 'number'
+      ? plan[bar].gain
+      : plan[bar]?.gain?.[row.key];
+    const pan = typeof plan[bar]?.pan === 'number'
+      ? plan[bar].pan
+      : plan[bar]?.pan?.[row.key];
+    const badge = [
+      transpose != null && `${transpose > 0 ? '+' : ''}${transpose}`,
+      offset != null && timingBadge(offset),
+      gain != null && `${gain > 0 ? '+' : ''}${gain}dB`,
+      // L20 / R20, the way a console prints a pan — the one badge here that is a
+      // direction rather than a quantity, and the sign would read as a semitone.
+      pan != null && `${pan < 0 ? 'L' : 'R'}${Math.abs(pan)}`,
+      noteFxBadge(plan[bar], row.key, laneNoteFx),
+      barFx.length && `FX${barFx.length}${barFxNames ? ` · ${barFxNames}` : ''}`,
+    ].filter(Boolean).join(' · ');
+    if (badge) {
+      const meta = document.createElement('span');
+      meta.className = 'arrmeta';
+      meta.textContent = badge;
+      box.append(meta);
+    }
+    // Only note-bearing bars get the structured hover card. Empty time is still a
+    // selectable/editable destination, but there is nothing useful to summarize and
+    // opening a large card over it makes the arrangement feel noisy.
+    if (playing) {
+      box.dataset.tip = displayLabel;
+      box.dataset.tipkind = 'bar';
+      box.dataset.tipkey = trackNumber ? `Track ${trackNumber}` : 'Track';
+      box.dataset.tipcontext = `Bar ${bar + 1}`;
+      box.dataset.tipgroups = JSON.stringify([
+        { label: 'Synthesiser', items: [{
+          text: synthesizerLabelFor(preset) || 'Unknown',
+          tone: synthesizerLabelFor(preset) ? 'active' : 'quiet',
+        }] },
+        ...barOperationGroups(plan[bar], row.key, { frozen: barFrozen, sections: barSections }),
+        ...automationTipGroups(autoCurve, bar),
+      ]);
+      box.dataset.tiphints = JSON.stringify([
+        { key: 'Click', text: 'Select' },
+        { key: 'Drag', text: 'Move' },
+        { key: '⌘ Drag', text: 'Copy' },
+        { key: 'Right-click', text: 'Edit' },
+        { key: 'Double-click', text: 'Notes' },
+        { key: '▶', text: 'Play' },
+      ]);
+    }
+    const at = bar * 16;
+    const playButton = document.createElement('button');
+    playButton.type = 'button';
+    playButton.className = 'arrbarplay';
+    playButton.textContent = '▶';
+    if (playing) {
+      playButton.dataset.tip = `Play bar ${bar + 1}`;
+      playButton.dataset.tipsays = `Start playback immediately from ${displayLabel} at bar ${bar + 1}.`;
+    }
+    playButton.setAttribute('aria-label', `Play ${displayLabel} from bar ${bar + 1}`);
+    playButton.onpointerdown = (ev) => ev.stopPropagation();
+    playButton.ondblclick = (ev) => ev.stopPropagation();
+    playButton.onclick = (ev) => {
+      ev.stopPropagation();
+      if (selectedLane !== row.key) selectLane(row.key);
+      markBar(row.key, bar);
+      jumpTo(at, { start: true, immediate: true });
+      toast(`Playing from bar ${bar + 1}`);
+    };
+    box.append(playButton);
+    box.onclick = (ev) => {
+      arrangementKeyboardActive = true;
+      if (dragClickSuppress) { dragClickSuppress = false; return; }
+      const selectionChanges = !selectedBar || selFrom() !== bar || selTo() !== bar;
+      // Only when it is a different channel. A double-click sends this handler
+      // through twice before the dblclick that opens the roll, and re-selecting the
+      // lane you are already on tears down and rebuilds the whole device rack.
+      if (selectedLane !== row.key) selectLane(row.key);
+      // Shift extends the selection from where it started, the way a list does.
+      if (ev.shiftKey && selectedBar) markBar(selectedBar.key, selectedBar.from, bar);
+      // Same reason: the second click of a double-click asks for the selection it
+      // already has. Bring it back into view, which is the part of `markBar` that
+      // still means something on a repeat click, and skip the repaint.
+      else if (selectionChanges || selectedBar.key !== row.key) markBar(row.key, bar);
+      else focusSelectionEditors();
+    };
+    // Drag across the row to take a range. Held on the row rather than the cell so
+    // the pointer can leave the bar it started in, which is the whole gesture.
+    box.onpointerdown = (ev) => {
+      if (ev.button !== 0) return;
+      arrangementKeyboardActive = true;
+      // Empty bars have no musical content to carry. Keep their original gesture:
+      // dragging across the row selects a bar range. A note-bearing bar is the only
+      // place where the newer move/copy gesture should take ownership.
+      if (!playing) {
+        dragSel = { key: row.key, from: bar, moved: false };
+        ev.stopPropagation();
+        dragClickSuppress = false;
+        barDrag = null;
+        return;
+      }
+      const selectedRange = selectedBar?.key === row.key
+        && bar >= selFrom() && bar <= selTo();
+      const from = selectedRange ? selFrom() : bar;
+      const to = selectedRange ? selTo() : bar;
+      barDrag = { sourceLane: row.key, from, to, copy: barCopyModifier(ev), moved: false, target: null,
+        x: ev.clientX, y: ev.clientY };
+      showBarDragCue(ev, barCopyModifier(ev));
+      ev.stopPropagation();
+      dragClickSuppress = false;
+      dragSel = null;
+    };
+    box.onpointerenter = () => {
+      if (barDrag) return;
+      if (!dragSel) return;
+      dragSel.moved = true;
+      markBar(dragSel.key, dragSel.from, bar, { focus: false, deferEditors: true });
+    };
+    // The bar menu: mute a lane here, drop the kit, duplicate, build up, delete.
+    box.oncontextmenu = (ev) => barMenu(ev, row.key, bar);
+    // Double-click opens the notes, not the transport.
+    //
+    // It used to play from here, matching the timeline. But a bar of a TRACK is a
+    // different thing to point at than a moment of the song: the timeline is where
+    // you go to hear, and a lane's bar is where you go to look at what it plays. The
+    // ruler above still plays from where you double-click, so nothing was lost —
+    // and "open what I am pointing at" is what a double-click means everywhere else
+    // on the desk.
+    box.ondblclick = () => openNoteEditor(row.key, bar);
+    bars.append(box);
   }
+  return bars;
+}
+
+/**
+ * What every arrangement row is drawn from: the bar plan, the cell resolution, and each
+ * lane's notes. Shared by the full build and by `refreshArrangementNotes`, so the two can
+ * never disagree about what a row should show.
+ */
+function arrangementLayout() {
   // The bar plan, so each cell knows whether the arrangement silences its lane here.
   const plan = songShape().bars;
   const patternStart = patternStarts(plan);
@@ -14337,7 +14986,6 @@ function buildArrangement() {
   // movement. The breakpoints cap the total at roughly 256 cells across a row while
   // preserving the finest useful rhythm for short songs.
   const perBar = [16, 8, 4, 2, 1].find((cells) => plan.length * cells <= 256) || 1;
-  arrCellsPerBar = perBar;
   // Every lane, whatever the mixer is showing: the arrangement is the song, and a
   // song does not lose its drums because you are looking at the melody.
   const view = viewBank();
@@ -14354,6 +15002,134 @@ function buildArrangement() {
       pitchRanges.set(row.key, { min, span: Math.max(1, max - min) });
     }
   }
+  return { plan, patternStart, perBar, rows, pitchRanges };
+}
+
+/** What a row's header and its bars both read, worked out once per row. */
+function arrangementRowFacts(row) {
+  const freezeState = freezeLaneState(trackId, row.key);
+  const preset = presetForLane(row.key);
+  return {
+    freezeState,
+    frozen: freezeState !== 'live',
+    // The lane's track Note FX, read once per row: every bar badge resolves against it.
+    laneNoteFx: mixFor(trackId).lanes?.[row.key]?.noteFx || null,
+    // And its level line and cuts, once per row for the same reason.
+    autoCurve: laneCurve(arrFor(trackId)?.automation?.[row.key]),
+    preset,
+    displayLabel: customTrackLabel(row.key) || preset?.label || row.label,
+    trackNumber: laneNumbers.get(row.key),
+  };
+}
+
+/**
+ * Everything a row is drawn from, as two strings: the HEADER's inputs and the BARS'.
+ *
+ * `refreshArrangementNotes` compares these against the last build to find the rows an
+ * edit actually touched. Over-inclusive on purpose — a string that changes when nothing
+ * visible did costs one row's repaint, and one that misses an input leaves a stale row.
+ */
+function arrangementRowSig(row, facts, layout) {
+  const { preset } = facts;
+  return {
+    head: JSON.stringify([
+      row.label, row.group, facts.freezeState, facts.displayLabel, facts.trackNumber ?? null,
+      laneVoiceId(row.key) ?? null, preset?.label ?? null, preset?.category ?? null,
+      effectsOf(row.key).length > 0, hasActiveNoteFx(facts.laneNoteFx), laneColour(row.key),
+    ]),
+    bars: JSON.stringify([
+      row.steps, row.density, facts.laneNoteFx,
+      mixFor(trackId).lanes?.[row.key]?.effects ?? null,
+      arrFor(trackId)?.automation?.[row.key] ?? null,
+      // Only the pattern boundaries this row has a note on both sides of: those are the
+      // only places a boundary changes what the row draws (see `openL`).
+      layout.plan.map((_, bar) => layout.patternStart[bar]
+        && row.density[bar * layout.perBar - 1] > 0 && row.density[bar * layout.perBar] > 0),
+      layout.plan.map((bar) => planForLane(bar, row.key)),
+      facts.frozen ? layout.plan.map((_, bar) => freezeCoversBar(trackId, row.key, bar)) : null,
+      synthesizerLabelFor(preset) || null, noteVisualMode,
+    ]),
+  };
+}
+
+// Which section a bar plays is a position, not something a row draws: the notes it puts
+// there are in `row.steps`, and the boundaries in `patternStart`. Left in, the first edit
+// to a bar — which forks it a section of its own — would read as every row changing.
+const PLAN_POSITION_FIELDS = new Set(['sec', 'half']);
+
+/**
+ * One bar of the plan as it bears on one lane: a field that lists lanes becomes whether
+ * this one is listed, a field keyed by lane becomes this lane's value, and a whole-bar
+ * value stays as it is. Generic on purpose, so a per-lane field added to the plan later
+ * is compared without anyone remembering to add it here.
+ */
+const planForLane = (bar, key) => (bar ? Object.entries(bar)
+  .filter(([field]) => !PLAN_POSITION_FIELDS.has(field))
+  .map(([field, v]) => [field, Array.isArray(v) ? v.includes(key)
+    : (v && typeof v === 'object' ? v[key] ?? null : v)]) : null);
+
+// The inputs the rows on screen were drawn from — see `arrangementRowSig`.
+let arrShapeSig = null;
+const arrRowSigs = new Map();
+
+/**
+ * Repaint only the rows whose notes changed.
+ *
+ * A note edit changes one lane's bars and nothing else, but rebuilding the arrangement
+ * for it replaced every row on the desk — about a quarter of a second on a long song,
+ * every time a note in the piano roll was drawn, moved or stretched. The bars of the
+ * changed rows are swapped in place; their headers, and every other row, are left alone.
+ *
+ * Anything else — a different number of bars or cell resolution, a lane added, removed
+ * or reordered, a header that would read differently — goes to the full build, so this
+ * is only ever a shortcut to the same picture.
+ */
+function refreshArrangementNotes() {
+  const layout = arrangementLayout();
+  const keys = layout.rows.map((row) => row.key);
+  const shape = JSON.stringify([layout.plan.length, layout.perBar, keys]);
+  if (shape !== arrShapeSig || arrCells.length !== keys.length) { buildArrangement(layout); return; }
+  const changed = [];
+  for (const [i, row] of layout.rows.entries()) {
+    const facts = arrangementRowFacts(row);
+    const sig = arrangementRowSig(row, facts, layout);
+    const was = arrRowSigs.get(row.key);
+    if (!was || was.head !== sig.head || arrCells[i]?.key !== row.key) {
+      buildArrangement(layout);
+      return;
+    }
+    if (was.bars !== sig.bars) changed.push({ row, facts, sig, entry: arrCells[i] });
+  }
+  syncChannelNoteFxIndicator();
+  if (!changed.length) return;
+  clearArrangementPlayback();
+  for (const { row, facts, sig, entry } of changed) {
+    const bars = arrangementBars(row, facts, layout);
+    entry.bars.replaceWith(bars);
+    entry.bars = bars;
+    arrRowSigs.set(row.key, sig);
+  }
+  redrawSelection();            // the selected bars may be among the new ones
+  // Same widths, but the cache holds the old elements' measurements.
+  forgetArrangementGeometry();
+}
+
+function buildArrangement(layout = arrangementLayout()) {
+  syncChannelNoteFxIndicator();
+  const grid = $('arrgrid');
+  grid.textContent = '';
+  clearArrangementPlayback();
+  arrCells = [];
+  arrRowSigs.clear();
+  arrangementMeters.clear();
+  const arrange = $('arrange');
+  if (arrange) {
+    arrange.dataset.noteVisual = noteVisualMode;
+    arrange.dataset.noteAnimation = noteAnimation ? 'on' : 'off';
+  }
+  const { plan, perBar, rows } = layout;
+  arrCellsPerBar = perBar;
+  arrShapeSig = JSON.stringify([plan.length, perBar, rows.map((row) => row.key)]);
 
   // The group buses with tracks in them, first: a row each, for their Spot FX — under the
   // master's band above and over the tracks they sum, in number order. Not in `arrCells`:
@@ -14361,12 +15137,9 @@ function buildArrangement() {
   for (const g of activeGroups()) grid.append(groupRow(g, plan.length));
   paintGroupRange();
   rows.forEach((row) => {
-    const freezeState = freezeLaneState(trackId, row.key);
-    const frozen = freezeState !== 'live';
-    // The lane's track Note FX, read once per row: every bar badge resolves against it.
-    const laneNoteFx = mixFor(trackId).lanes?.[row.key]?.noteFx || null;
-    // And its level line and cuts, once per row for the same reason.
-    const autoCurve = laneCurve(arrFor(trackId)?.automation?.[row.key]);
+    const facts = arrangementRowFacts(row);
+    arrRowSigs.set(row.key, arrangementRowSig(row, facts, layout));
+    const { freezeState, frozen, laneNoteFx, preset, displayLabel, trackNumber } = facts;
     const el = document.createElement('div');
     el.className = `arrrow${frozen ? ' frozen' : ''}${freezeState === 'partial' ? ' partially-frozen' : ''}`;
     el.dataset.lane = row.key;
@@ -14380,8 +15153,6 @@ function buildArrangement() {
     // below. The number spans both lines; the bars sit alongside the upper line.
     const header = document.createElement('div');
     header.className = 'arrhead-cell';
-    const preset = presetForLane(row.key);
-    const displayLabel = customTrackLabel(row.key) || preset?.label || row.label;
     // Desk order, numbered — the way you refer to a track out loud ("mute 3") and
     // the order the strips run in below.
     const num = document.createElement('span');
@@ -14417,37 +15188,15 @@ function buildArrangement() {
         openChannelEffects(row.key);
       };
     }
-    const trackNumber = laneNumbers.get(row.key);
     name.dataset.tip = displayLabel;
     name.dataset.tipkind = 'track';
     name.dataset.tipkey = trackNumber ? `Track ${trackNumber}` : 'Track';
     name.dataset.tipcontext = `${trackNumber ? `Track ${trackNumber} · ` : ''}${plan.length} bars`;
     name.dataset.tipgroups = JSON.stringify(trackHoverGroups(preset, { frozen }));
     name.dataset.tiphints = JSON.stringify([
-      { key: 'Click', text: 'Select / choose preset' },
-      { key: 'Right-click', text: 'Track editor' },
+      { key: 'Click', text: 'Select track' },
+      { key: 'Right-click', text: 'Track actions' },
     ]);
-    // No title here: markClipped() puts one on only if the name is actually cut off.
-    //
-    // The name changes what plays the track — the same two-step the channel strip's
-    // name takes. Pointing at a track still has to stay safe, and it is: the first
-    // click on a row you are not on selects it and nothing more, so the library only
-    // ever opens on a track you are already looking at. (This used to be the row's
-    // right-click menu and nothing else, back when one click opened the picker
-    // outright and landing on a name you meant to point at cost you a sound.)
-    if (seamFor(row.key)) {
-      name.setAttribute('role', 'button');
-      name.addEventListener('click', (ev) => {
-        // Not armed yet: let the click through to the header, which selects the row —
-        // arming this name for the second click on the way past.
-        if (!presetArmed(row.key)) { armPreset(row.key); return; }
-        ev.stopPropagation();
-        openVoicePicker(ev.clientX, ev.clientY, row.key);
-      });
-      // Two clicks of the name are not a double-click gesture: the header's dblclick
-      // plays from where the lane comes in, which is not what the second click meant.
-      name.addEventListener('dblclick', (ev) => ev.stopPropagation());
-    }
     //
     // Selecting is what a plain click does, and it is the WHOLE header that does it: the
     // number, the family mark, the name, the type and the space around them are all the
@@ -14502,314 +15251,7 @@ function buildArrangement() {
     if (fx) bottom.append(fx);
     bottom.append(btns);
     header.append(num, icon, top, bottom);
-    const bars = document.createElement('div');
-    bars.className = 'arrbars';
-    // Runs of playing beats are one region, not a row of chips. The chosen visual
-    // language paints the note marks; the cells themselves stay the same width so the
-    // columns continue to line up with the ruler.
-    // A whole bar is the unit you pick, whatever resolution the shading is drawn at:
-    // the cells inside a bar are a picture of it, and the bar is the target.
-    const barCount = Math.ceil(row.density.length / perBar);
-    for (let bar = 0; bar < barCount; bar++) {
-      const box = document.createElement('div');
-      const playing = row.density.slice(bar * perBar, (bar + 1) * perBar).some((v) => v > 0);
-      const barFrozen = freezeCoversBar(trackId, row.key, bar);
-      box.className = `arrbar${playing ? ' has-notes' : ''}${barFrozen ? ' frozen' : ''}`;
-      box.dataset.bar = String(bar);
-      const barColour = arrangementBarField(row.key);
-      box.style.setProperty('--bar-colour', barColour);
-      // A bar this lane plays in is tinted its own colour end to end, so the rests
-      // inside it read as part of the bar rather than as the gap between two bars.
-      // The tint also fills the gutters between beats, which is what makes a bar
-      // with a hit on every other beat still look like one bar.
-      if (playing) {
-        box.style.background = barColour;
-      }
-      // Melodic detail is carried by the same fixed-size dots as percussion. The
-      // smooth bar-wide trail uses those exact note positions, so compression
-      // preserves rhythm without making the line drift from the marks.
-      const barSteps = row.steps.slice(bar * perBar, (bar + 1) * perBar);
-      const nextBarSteps = row.steps.slice((bar + 1) * perBar, (bar + 2) * perBar);
-      const barPoints = row.group === 'melodic'
-        ? melodicMovementPoints(barSteps, pitchRanges.get(row.key))
-        : [];
-      const nextBarPoints = row.group === 'melodic'
-        ? melodicMovementPoints(nextBarSteps, pitchRanges.get(row.key))
-        : [];
-      const movement = row.group === 'melodic'
-        ? melodicMovementPath(barSteps, pitchRanges.get(row.key))
-        : '';
-      const tail = melodicMovementTailPath(barPoints.at(-1), nextBarPoints[0]);
-      const melodicDots = row.group === 'melodic'
-        ? melodicDotPoints(barSteps, pitchRanges.get(row.key))
-        : [];
-      if (movement || tail) {
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        line.classList.add('arrmelodyline');
-        line.setAttribute('viewBox', '0 0 100 100');
-        line.setAttribute('preserveAspectRatio', 'none');
-        line.setAttribute('aria-hidden', 'true');
-        if (movement) {
-          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          path.setAttribute('d', movement);
-          line.append(path);
-        }
-        if (tail) {
-          const fadeId = `arrtrailfade-${row.key.replace(/[^a-z0-9_-]/gi, '_')}-${bar}`;
-          const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-          const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-          gradient.id = fadeId;
-          // Keep the handoff solid until the final few pixels of the bar. Using
-          // bar-space coordinates avoids making a long tail look prematurely faded.
-          gradient.setAttribute('x1', '94'); gradient.setAttribute('y1', '0');
-          gradient.setAttribute('x2', '100'); gradient.setAttribute('y2', '0');
-          gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
-          const solid = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-          solid.setAttribute('offset', '0'); solid.setAttribute('stop-color', 'var(--trail-thread)');
-          solid.setAttribute('stop-opacity', '.74');
-          const fade = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-          fade.setAttribute('offset', '1'); fade.setAttribute('stop-color', 'var(--trail-thread)');
-          fade.setAttribute('stop-opacity', '.42');
-          gradient.append(solid, fade); defs.append(gradient); line.append(defs);
-          const tailPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          tailPath.classList.add('arrtrailtail');
-          tailPath.setAttribute('d', tail);
-          tailPath.style.stroke = `url(#${fadeId})`;
-          line.append(tailPath);
-        }
-        box.append(line);
-      }
-      for (const point of melodicDots) {
-        const dot = document.createElement('span');
-        dot.className = 'arrmicrodot';
-        dot.dataset.cell = String(point.cellIndex);
-        // The sixteenth INSIDE that cell this attack belongs to. A compressed song puts
-        // several of them in one cell, and the playback accent has to follow the note
-        // rather than the box it is drawn in.
-        dot.dataset.slot = String(point.slot);
-        dot.setAttribute('aria-hidden', 'true');
-        dot.style.setProperty('--micro-x', `${point.x.toFixed(2)}%`);
-        dot.style.setProperty('--micro-y', `${point.y.toFixed(1)}%`);
-        box.append(dot);
-      }
-      for (let beat = 0; beat < perBar; beat++) {
-        const cell = bar * perBar + beat;
-        const d = row.density[cell] ?? 0;
-        // Regions stay joined inside one pattern, but stop cleanly at a pattern
-        // boundary. Without this the divider sits over one uninterrupted colour bar
-        // and reads as a ruler tick rather than a change in the music.
-        const openL = d > 0 && cell > 0 && row.density[cell - 1] > 0
-          && !(beat === 0 && patternStart[bar]);
-        const openR = d > 0 && row.density[cell + 1] > 0
-          && !(beat === perBar - 1 && patternStart[bar + 1]);
-        const c = document.createElement('div');
-        // The downbeat tick would cut a region in half, so it only marks bars that
-        // start something — a rest, or the first beat of a region.
-        const note = d > 0;
-        c.className = 'arrcell'
-          + (perBar > 1 && beat === 0 && !openL ? ' barstart' : '')
-          + (note ? ' note' : '');
-        if (note) {
-          c.style.setProperty('--note-strength', String(clamp(d, 0, 1)));
-          c.style.setProperty('--note-tilt', `${(((bar * perBar + beat) * 17) % 7) - 3}deg`);
-          const values = row.steps[cell] || [];
-          const frequencies = noteFrequencies(values);
-          // Which sixteenths inside this cell are attacks. One character per slot, read
-          // back by the playback accent so a note on the second half of a cell is set
-          // off when it sounds and not when the playhead reaches the cell.
-          c.dataset.hits = (values.length ? values : [true])
-            .map((value) => (value === true || noteFrequencies([value]).length ? '1' : '0')).join('');
-          const hasChord = values.some((value) => Array.isArray(value)
-            && noteFrequencies([value]).length > 1);
-          if (hasChord) c.classList.add('chord');
-          if (row.group === 'melodic' && frequencies.length) {
-            // One visual cell can represent a whole bar in a long song. Keep the
-            // actual attacks visible at their local time positions; only tones in
-            // the same source step share an x coordinate and read as a chord.
-            c.classList.add('micro-notes');
-          }
-          const percussionHits = percussionHitPositions(values);
-          if (percussionHits.length) {
-            c.classList.add('percussion');
-            const slots = values.length;
-            for (const index of percussionHits) {
-              const hit = document.createElement('span');
-              hit.className = 'arrhit';
-              hit.dataset.slot = String(index);
-              hit.setAttribute('aria-hidden', 'true');
-              hit.style.left = `${(((index + 0.5) / slots) * 100).toFixed(1)}%`;
-              c.append(hit);
-            }
-          }
-          const geometry = noteVisualGeometry(values, pitchRanges.get(row.key));
-          c.style.setProperty('--note-y', geometry.y);
-          c.style.setProperty('--note-span', geometry.span);
-        }
-        if (d > 0) {
-          if (noteVisualMode === 'solid') c.style.background = 'transparent';
-          else c.style.background = 'transparent';
-        } else if (playing) {
-          c.style.background = 'transparent';        // the bar's own tint shows through
-        }
-        box.append(c);
-      }
-      // A lane the arrangement silences here keeps its written colour but gets the
-      // muted treatment below. That is a different thing from deletion: the bar still
-      // occupies time and can be unmuted without restoring any notes.
-      if (plan[bar]?.off?.includes(row.key)) {
-        box.classList.add('barmuted');
-      }
-      if (plan[bar]?.delete?.includes(row.key)) {
-        box.classList.add('bardeleted');
-      }
-      const autoMarks = automationBarMarks(autoCurve, bar);
-      if (autoMarks) box.append(autoMarks);
-      // The bar's effect sections, and its per-bar snapshot where no section reaches it —
-      // the same reading the engine and the hover card make.
-      const barSections = (autoCurve?.fx || [])
-        .filter((section) => section.to > bar * 16 + 1e-6 && section.from < bar * 16 + 16 - 1e-6);
-      const barFx = barSections.length
-        ? barSections.flatMap((section) => section.chain)
-        : plan[bar]?.inlineFx?.[row.key] || [];
-      const barFxNames = [...new Set(barFx.map((effect) => EFFECT_BY_ID[effect.id]?.short
-        || EFFECT_BY_ID[effect.id]?.name || effect.id))].join(' + ');
-      // Keep the most important melodic edit visible without opening a tooltip. The
-      // full details remain in the hover card, while a compact +5/-7 badge makes a transposed
-      // bar immediately recognisable in the arrangement row.
-      const transpose = typeof plan[bar]?.transpose === 'number'
-        ? (row.group === 'melodic' ? plan[bar].transpose : null)
-        : plan[bar]?.transpose?.[row.key];
-      const offset = typeof plan[bar]?.offset === 'number'
-        ? plan[bar].offset
-        : plan[bar]?.offset?.[row.key];
-      const gain = typeof plan[bar]?.gain === 'number'
-        ? plan[bar].gain
-        : plan[bar]?.gain?.[row.key];
-      const pan = typeof plan[bar]?.pan === 'number'
-        ? plan[bar].pan
-        : plan[bar]?.pan?.[row.key];
-      const badge = [
-        transpose != null && `${transpose > 0 ? '+' : ''}${transpose}`,
-        offset != null && timingBadge(offset),
-        gain != null && `${gain > 0 ? '+' : ''}${gain}dB`,
-        // L20 / R20, the way a console prints a pan — the one badge here that is a
-        // direction rather than a quantity, and the sign would read as a semitone.
-        pan != null && `${pan < 0 ? 'L' : 'R'}${Math.abs(pan)}`,
-        noteFxBadge(plan[bar], row.key, laneNoteFx),
-        barFx.length && `FX${barFx.length}${barFxNames ? ` · ${barFxNames}` : ''}`,
-      ].filter(Boolean).join(' · ');
-      if (badge) {
-        const meta = document.createElement('span');
-        meta.className = 'arrmeta';
-        meta.textContent = badge;
-        box.append(meta);
-      }
-      // Only note-bearing bars get the structured hover card. Empty time is still a
-      // selectable/editable destination, but there is nothing useful to summarize and
-      // opening a large card over it makes the arrangement feel noisy.
-      if (playing) {
-        box.dataset.tip = displayLabel;
-        box.dataset.tipkind = 'bar';
-        box.dataset.tipkey = trackNumber ? `Track ${trackNumber}` : 'Track';
-        box.dataset.tipcontext = `Bar ${bar + 1}`;
-        box.dataset.tipgroups = JSON.stringify([
-          { label: 'Synthesiser', items: [{
-            text: synthesizerLabelFor(preset) || 'Unknown',
-            tone: synthesizerLabelFor(preset) ? 'active' : 'quiet',
-          }] },
-          ...barOperationGroups(plan[bar], row.key, { frozen: barFrozen, sections: barSections }),
-          ...automationTipGroups(autoCurve, bar),
-        ]);
-        box.dataset.tiphints = JSON.stringify([
-          { key: 'Click', text: 'Select' },
-          { key: 'Drag', text: 'Move' },
-          { key: '⌘ Drag', text: 'Copy' },
-          { key: 'Right-click', text: 'Edit' },
-          { key: 'Double-click', text: 'Notes' },
-          { key: '▶', text: 'Play' },
-        ]);
-      }
-      const at = bar * 16;
-      const playButton = document.createElement('button');
-      playButton.type = 'button';
-      playButton.className = 'arrbarplay';
-      playButton.textContent = '▶';
-      if (playing) {
-        playButton.dataset.tip = `Play bar ${bar + 1}`;
-        playButton.dataset.tipsays = `Start playback immediately from ${displayLabel} at bar ${bar + 1}.`;
-      }
-      playButton.setAttribute('aria-label', `Play ${displayLabel} from bar ${bar + 1}`);
-      playButton.onpointerdown = (ev) => ev.stopPropagation();
-      playButton.ondblclick = (ev) => ev.stopPropagation();
-      playButton.onclick = (ev) => {
-        ev.stopPropagation();
-        if (selectedLane !== row.key) selectLane(row.key);
-        markBar(row.key, bar);
-        jumpTo(at, { start: true, immediate: true });
-        toast(`Playing from bar ${bar + 1}`);
-      };
-      box.append(playButton);
-      box.onclick = (ev) => {
-        arrangementKeyboardActive = true;
-        if (dragClickSuppress) { dragClickSuppress = false; return; }
-        const selectionChanges = !selectedBar || selFrom() !== bar || selTo() !== bar;
-        // Only when it is a different channel. A double-click sends this handler
-        // through twice before the dblclick that opens the roll, and re-selecting the
-        // lane you are already on tears down and rebuilds the whole device rack.
-        if (selectedLane !== row.key) selectLane(row.key);
-        // Shift extends the selection from where it started, the way a list does.
-        if (ev.shiftKey && selectedBar) markBar(selectedBar.key, selectedBar.from, bar);
-        // Same reason: the second click of a double-click asks for the selection it
-        // already has. Bring it back into view, which is the part of `markBar` that
-        // still means something on a repeat click, and skip the repaint.
-        else if (selectionChanges || selectedBar.key !== row.key) markBar(row.key, bar);
-        else focusSelectionEditors();
-      };
-      // Drag across the row to take a range. Held on the row rather than the cell so
-      // the pointer can leave the bar it started in, which is the whole gesture.
-      box.onpointerdown = (ev) => {
-        if (ev.button !== 0) return;
-        arrangementKeyboardActive = true;
-        // Empty bars have no musical content to carry. Keep their original gesture:
-        // dragging across the row selects a bar range. A note-bearing bar is the only
-        // place where the newer move/copy gesture should take ownership.
-        if (!playing) {
-          dragSel = { key: row.key, from: bar, moved: false };
-          ev.stopPropagation();
-          dragClickSuppress = false;
-          barDrag = null;
-          return;
-        }
-        const selectedRange = selectedBar?.key === row.key
-          && bar >= selFrom() && bar <= selTo();
-        const from = selectedRange ? selFrom() : bar;
-        const to = selectedRange ? selTo() : bar;
-        barDrag = { sourceLane: row.key, from, to, copy: barCopyModifier(ev), moved: false, target: null,
-          x: ev.clientX, y: ev.clientY };
-        showBarDragCue(ev, barCopyModifier(ev));
-        ev.stopPropagation();
-        dragClickSuppress = false;
-        dragSel = null;
-      };
-      box.onpointerenter = () => {
-        if (barDrag) return;
-        if (!dragSel) return;
-        dragSel.moved = true;
-        markBar(dragSel.key, dragSel.from, bar, { focus: false, deferEditors: true });
-      };
-      // The bar menu: mute a lane here, drop the kit, duplicate, build up, delete.
-      box.oncontextmenu = (ev) => barMenu(ev, row.key, bar);
-      // Double-click opens the notes, not the transport.
-      //
-      // It used to play from here, matching the timeline. But a bar of a TRACK is a
-      // different thing to point at than a moment of the song: the timeline is where
-      // you go to hear, and a lane's bar is where you go to look at what it plays. The
-      // ruler above still plays from where you double-click, so nothing was lost —
-      // and "open what I am pointing at" is what a double-click means everywhere else
-      // on the desk.
-      box.ondblclick = () => openNoteEditor(row.key, bar);
-      bars.append(box);
-    }
+    const bars = arrangementBars(row, facts, layout);
     // Expanded gain/VU control in the lower header line, below the name and beside M/S.
     // The thumb controls gain while the rail shows the live channel level.
     const gainSlider = document.createElement('input');
@@ -21217,6 +21659,15 @@ addEventListener('keydown', (e) => {
   }
   if (!selectedLane) return;
   const strip = document.querySelector(`.strip[data-lane="${CSS.escape(selectedLane)}"]`);
+  // With notes picked out in the roll, M mutes THOSE notes rather than the channel —
+  // the same word one level down, and what a selection is there to be acted on by.
+  if (key === 'm' && pianoRoll.isOpen() && pianoRoll.selectedLengthCount() > 0) {
+    const result = pianoRoll.muteNotes({ scope: 'selection' });
+    if (result.changed) {
+      toast(`${result.changed} note${result.changed === 1 ? '' : 's'} ${result.muted ? 'muted' : 'unmuted'}`);
+    }
+    return;
+  }
   if (key === 'm') { strip?.querySelector('.mutebtn')?.click(); return; }
   if (key === 's') { strip?.querySelector('.solobtn')?.click(); return; }
   if (key === 'r') { resetTarget(selectedLane); return; }

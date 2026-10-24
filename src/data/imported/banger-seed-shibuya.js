@@ -982,7 +982,7 @@ export const banger = {
     {
       "lane": "bass",
       "part": "part:bass",
-      "preset": "tngrRoundBass",
+      "preset": "frppBassNeck",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -998,7 +998,7 @@ export const banger = {
     {
       "lane": "chords",
       "part": "part:piano",
-      "preset": "mrdrAcousticGuitar",
+      "preset": "frppNylon",
       "trimDb": 0,
       "favourite": false,
       "origin": "style default"
@@ -1797,7 +1797,7 @@ export const banger = {
         "role": "bass",
         "lane": "bass",
         "label": "BASS · Round Bass",
-        "voice": "tngrRoundBass",
+        "voice": "frppBassNeck",
         "voiceParams": null,
         "strip": {
           "gain": -3
@@ -1819,7 +1819,7 @@ export const banger = {
         "role": "piano",
         "lane": "chords",
         "label": "GUITAR Bossa · Acoustic Guitar",
-        "voice": "mrdrAcousticGuitar",
+        "voice": "frppNylon",
         "voiceParams": null,
         "strip": {
           "gain": -6.1,
@@ -2149,7 +2149,7 @@ export const mix = {
   layers: [{ key: "crash2", from: "crash", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "crash3", from: "crash", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "chords2", from: "chords", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead8", from: "lead", independent: true }],
   order: ["kick","snare","clap","hats","ohats","crash","crash2","tom","rim","rim2","rim3","tom2","crash3","bass","bass2","chords","chords2","lead","lead2","lead3","lead4","lead5","lead6","lead7","lead8"],
   labels: {"kick":"KICK","snare":"SNARE Roll","clap":"RIM","hats":"HATS","ohats":"OPEN HATS","crash":"CRASH","crash2":"RISER","tom":"FILL TOMS","rim":"PERC Shaker","rim2":"PERC Tambourine","rim3":"PERC Cowbell","tom2":"PERC Congas","crash3":"RIDE","bass":"BASS · Round Bass","bass2":"SUB · Sub Sine (starter)","chords":"GUITAR Bossa · Acoustic Guitar","chords2":"ORGAN · Drawbar Organ","lead":"RIFF Grand · HOOK","lead2":"VIBES · Vibraphone","lead3":"CELESTA · Celesta","lead4":"TRUMPET 8VA · Muted Trumpet","lead5":"HARPSICHORD · Harpsichord","lead6":"CHOIR Ba-Ba · BEST Choir Aah","lead7":"KEYS 3RD · Electric Piano","lead8":"FLUTE · Concert Flute"},
-  voice: {"kickVoice":"dsKick","snareVoice":"snareCrisp","clapVoice":"dsRim","hatsVoice":"dsHatClosed","ohatsVoice":"dsHatOpen","crashVoice":"ds909Crash","tomVoice":"dsTom","rimVoice":"shaker","rim2Voice":"tambourine","rim3Voice":"ds808Cowbell","tom2Voice":"congaMid","crash3Voice":"ride909SixBit","bassVoice":"tngrRoundBass","bass2Voice":"stSubSine","chordsVoice":"mrdrAcousticGuitar","chords2Voice":"addDrawbar","leadVoice":"mrdrElectricGrand","lead2Voice":"mrdrVibraphone","lead3Voice":"tngrCelesta","lead4Voice":"mrdrMutedTrumpet","lead5Voice":"mrdrHarpsichord","lead6Voice":"bestChoirAah","lead7Voice":"epiano","lead8Voice":"mrdrConcertFlute"},
+  voice: {"kickVoice":"dsKick","snareVoice":"snareCrisp","clapVoice":"dsRim","hatsVoice":"dsHatClosed","ohatsVoice":"dsHatOpen","crashVoice":"ds909Crash","tomVoice":"dsTom","rimVoice":"shaker","rim2Voice":"tambourine","rim3Voice":"ds808Cowbell","tom2Voice":"congaMid","crash3Voice":"ride909SixBit","bassVoice":"frppBassNeck","bass2Voice":"stSubSine","chordsVoice":"frppNylon","chords2Voice":"addDrawbar","leadVoice":"mrdrElectricGrand","lead2Voice":"mrdrVibraphone","lead3Voice":"tngrCelesta","lead4Voice":"mrdrMutedTrumpet","lead5Voice":"mrdrHarpsichord","lead6Voice":"bestChoirAah","lead7Voice":"epiano","lead8Voice":"mrdrConcertFlute"},
   voiceParams: {"crash2Voice":{"label":"Noise Riser","category":"Sweep","homeLane":"crash","kind":"drum","dur":3.8095238095238093,"note":"White noise through a band climbing 250 Hz to 8 kHz over 3.81s as it fades in: the lift into a drop.","noise":{"type":"bandpass","freq":250,"to":8000,"sweep":3.8095238095238093,"Q":1.6,"slope":-24,"color":"white","attack":3.5047619047619047,"hold":0,"decay":0.30476190476190473,"curve":"exp","gain":1},"drive":0.01756248699,"peak":0.0337,"trim":0.04859517898,"level":0.1154}},
   fx: { reverb: { decay: 2.8 } },
   lanes: {

@@ -241,7 +241,8 @@ export function midiBuffer(bank, {
   // section written out at full length, so the half nobody asked for came out as a
   // blank bar between every bar of music. It also threw the mute mask away, which is
   // a per-bar answer that cannot survive being asked a two-bar question.
-  const bars = songBars(bank, repeat).map(({ b, half, off, delete: del, bar }) => ({
+  // As PLAYED — muted notes out: an export is of what the song plays.
+  const bars = songBars(bank, repeat, { playing: true }).map(({ b, half, off, delete: del, bar }) => ({
     b: barBank(b, { ...bar, off, delete: del }), half, bar,
   }));
 

@@ -267,5 +267,21 @@ for (const style of ['alternate-up', 'alternate-down']) {
   assert(hit(18, 1)[0].freq === first, `${style} resets with the processor`);
 }
 
+// The faux return: an Alternate strum's down- and up-strokes each take their own trim.
+{
+  const p = createNoteFxProcessor();
+  const config = { strum: { enabled: true, direction: 'alternate-down', gapMs: 10, downDb: 0, upDb: -6 } };
+  const hit = (step) => p.process({ laneKey: 'chords', value: chord, len: 2, step, barIndex: 0, spb: 0.1, config });
+  const down = hit(0), up = hit(2);
+  assert(down.every((e) => e.gain === undefined), 'a down-stroke at 0 dB carries no gain: it plays as it always did');
+  assert(up.every((e) => Math.abs(e.gain - 10 ** (-6 / 20)) < 1e-12), 'an up-stroke at -6 dB carries half the level, on every note');
+  const plain = createNoteFxProcessor().process({ laneKey: 'chords', value: chord, len: 2, step: 0, barIndex: 0, spb: 0.1,
+    config: { strum: { enabled: true, direction: 'up', gapMs: 10, upDb: -12 } } });
+  assert(plain.every((e) => e.gain === undefined), 'a plain Up strum ignores the trims: they are for Alternate only');
+  const floor = createNoteFxProcessor().process({ laneKey: 'chords', value: chord, len: 2, step: 0, barIndex: 0, spb: 0.1,
+    config: { strum: { enabled: true, direction: 'alternate-up', gapMs: 10, upDb: -99 } } });
+  assert(Math.abs(floor[0].gain - 10 ** (-24 / 20)) < 1e-12, 'a trim is held to -24 dB at the bottom');
+}
+
 console.log(failed ? '\nNOTE FX: FAILED' : '\nNOTE FX: PASSED');
 process.exit(failed ? 1 : 0);

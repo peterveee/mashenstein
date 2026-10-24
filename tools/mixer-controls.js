@@ -218,6 +218,62 @@ function panKnob({ value, onInput }) {
 }
 
 /**
+ * A pot's travel: where on its 0–1 sweep each value sits, and back. Shared by the round
+ * pot and the simple editor's slider, so the two give a control the same feel.
+ */
+function potTaper({ min, max, step, scale = 1, origin = null, taper = null, floor = 0 }) {
+  // A scale above one gives the low end more physical travel without changing the
+  // stored range. Envelope times opt into this shared response; ordinary desk knobs
+  // remain linear because their values do not represent elapsed time.
+  const curve = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  // A BIPOLAR pot tapers about its origin, not across the span. Curving the whole range
+  // would drag the centre detent off twelve o'clock — on -10..+10 at curve 3 the middle
+  // of the travel reads -7.5 — so each side gets the response applied to its own distance
+  // from the origin instead, and zero stays where the eye expects it. Only the two
+  // together take this path: without an origin, or at curve 1, the arithmetic below is
+  // the linear one it has always been.
+  const bipolar = Number.isFinite(origin) && curve !== 1;
+  // A TIME pot is dialled in ratios, not in fractions of its ceiling: 5ms to 10ms is the
+  // same move as 1s to 2s, and no exponent says that. `taper: 'log'` spends the travel
+  // evenly per decade instead — with `floor` as the smallest length it reaches, and the
+  // left stop still landing on `min`, so a stage that may be switched off can be.
+  const logTaper = taper === 'log' && max > 0;
+  const logLo = logTaper ? Math.max(min, floor > 0 ? floor : step, 1e-6) : 0;
+  const logSpan = logTaper ? Math.log(max / logLo) : 0;
+  const originFrac = (max - min) ? clamp((origin - min) / (max - min), 0, 1) : 0;
+  const valueAt = (position) => {
+    const pos = clamp(position, 0, 1);
+    if (logTaper) return pos <= 0 ? min : logLo * Math.exp(logSpan * pos);
+    if (!bipolar) return min + (max - min) * Math.pow(pos, curve);
+    if (pos >= originFrac) {
+      const f = originFrac >= 1 ? 0 : (pos - originFrac) / (1 - originFrac);
+      return origin + (max - origin) * Math.pow(f, curve);
+    }
+    const f = originFrac <= 0 ? 0 : (originFrac - pos) / originFrac;
+    return origin - (origin - min) * Math.pow(f, curve);
+  };
+  const positionAt = (x) => {
+    if (logTaper) {
+      const t = clamp(x, min, max);
+      // Anything at or under the floor — including a true zero — sits at the stop.
+      return t <= logLo ? 0 : clamp(Math.log(t / logLo) / logSpan, 0, 1);
+    }
+    if (!bipolar) {
+      const frac = (max - min) ? clamp((x - min) / (max - min), 0, 1) : 0;
+      return Math.pow(frac, 1 / curve);
+    }
+    const v = clamp(x, min, max);
+    if (v >= origin) {
+      const span = max - origin;
+      return originFrac + (1 - originFrac) * Math.pow(span > 0 ? (v - origin) / span : 0, 1 / curve);
+    }
+    const span = origin - min;
+    return originFrac - originFrac * Math.pow(span > 0 ? (origin - v) / span : 0, 1 / curve);
+  };
+  return { valueAt, positionAt };
+}
+
+/**
  * The same knob, sweeping from one end instead of from the centre.
  *
  * `panKnob` is bipolar because pan is: nothing is the middle, and the arc growing
@@ -267,54 +323,7 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
   };
   track.setAttribute('d', arcPath(-SWEEP, SWEEP));
 
-  // A scale above one gives the low end more physical travel without changing the
-  // stored range. Envelope times opt into this shared response; ordinary desk knobs
-  // remain linear because their values do not represent elapsed time.
-  const curve = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  // A BIPOLAR pot tapers about its origin, not across the span. Curving the whole range
-  // would drag the centre detent off twelve o'clock — on -10..+10 at curve 3 the middle
-  // of the travel reads -7.5 — so each side gets the response applied to its own distance
-  // from the origin instead, and zero stays where the eye expects it. Only the two
-  // together take this path: without an origin, or at curve 1, the arithmetic below is
-  // the linear one it has always been.
-  const bipolar = Number.isFinite(origin) && curve !== 1;
-  // A TIME pot is dialled in ratios, not in fractions of its ceiling: 5ms to 10ms is the
-  // same move as 1s to 2s, and no exponent says that. `taper: 'log'` spends the travel
-  // evenly per decade instead — with `floor` as the smallest length it reaches, and the
-  // left stop still landing on `min`, so a stage that may be switched off can be.
-  const logTaper = taper === 'log' && max > 0;
-  const logLo = logTaper ? Math.max(min, floor > 0 ? floor : step, 1e-6) : 0;
-  const logSpan = logTaper ? Math.log(max / logLo) : 0;
-  const originFrac = (max - min) ? clamp((origin - min) / (max - min), 0, 1) : 0;
-  const valueAt = (position) => {
-    const pos = clamp(position, 0, 1);
-    if (logTaper) return pos <= 0 ? min : logLo * Math.exp(logSpan * pos);
-    if (!bipolar) return min + (max - min) * Math.pow(pos, curve);
-    if (pos >= originFrac) {
-      const f = originFrac >= 1 ? 0 : (pos - originFrac) / (1 - originFrac);
-      return origin + (max - origin) * Math.pow(f, curve);
-    }
-    const f = originFrac <= 0 ? 0 : (originFrac - pos) / originFrac;
-    return origin - (origin - min) * Math.pow(f, curve);
-  };
-  const positionAt = (x) => {
-    if (logTaper) {
-      const t = clamp(x, min, max);
-      // Anything at or under the floor — including a true zero — sits at the stop.
-      return t <= logLo ? 0 : clamp(Math.log(t / logLo) / logSpan, 0, 1);
-    }
-    if (!bipolar) {
-      const frac = (max - min) ? clamp((x - min) / (max - min), 0, 1) : 0;
-      return Math.pow(frac, 1 / curve);
-    }
-    const v = clamp(x, min, max);
-    if (v >= origin) {
-      const span = max - origin;
-      return originFrac + (1 - originFrac) * Math.pow(span > 0 ? (v - origin) / span : 0, 1 / curve);
-    }
-    const span = origin - min;
-    return originFrac - originFrac * Math.pow(span > 0 ? (origin - v) / span : 0, 1 / curve);
-  };
+  const { valueAt, positionAt } = potTaper({ min, max, step, scale, origin, taper, floor });
   // Where the arc grows FROM. Left stop for everything with a floor — an attack time,
   // a level — and the centre for a bipolar control, which is `panKnob`'s reading applied
   // to a pot that still has a min, a max and a step: on a pitch AMOUNT, up and down are
@@ -415,6 +424,76 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
   return { wrap, label: k, set: (x) => { val = clamp(x, min, max); position = positionAt(val); draw(); } };
 }
 
+/**
+ * `knob`, laid flat: the effect cards' slider — name and reading on one line, the range
+ * under them — with the pot's own taper, so a time control still spends its travel per
+ * decade. The simple editor uses it; same arguments and the same `{ wrap, label, set }`
+ * back, so `numRow` can hand out either.
+ */
+function slideKnob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,
+  taper = null, floor = 0, onStart = null, onEnd = null }) {
+  const { valueAt, positionAt } = potTaper({ min, max, step, scale, origin, taper, floor });
+  const wrap = document.createElement('div'); wrap.className = 'row slidrow';
+  const head = document.createElement('div'); head.className = 'head';
+  const k = document.createElement('span'); k.className = 'k';
+  const v = document.createElement('span'); v.className = 'v typable';
+  head.append(k, v);
+  const input = document.createElement('input');
+  input.type = 'range'; input.min = '0'; input.max = '1'; input.step = '0.001';
+  wrap.append(head, input);
+
+  let val = clamp(value, min, max);
+  const draw = () => { input.value = String(positionAt(val)); v.textContent = fmt(val); };
+  draw();
+  let dragging = false;
+  const set = (x) => {
+    onStart?.();
+    const stepped = Math.round(x / step) * step;
+    const next = clamp(Number(stepped.toFixed(6)), min, max);
+    if (dragging && next === val) return;
+    val = next;
+    draw();
+    onInput(val);
+    if (!dragging) onEnd?.();
+  };
+  input.addEventListener('pointerdown', () => { dragging = true; onStart?.(); });
+  input.addEventListener('input', () => set(valueAt(+input.value)));
+  const stop = () => { if (!dragging) return; dragging = false; draw(); onEnd?.(); };
+  input.addEventListener('pointerup', stop);
+  input.addEventListener('pointercancel', stop);
+  input.addEventListener('change', stop);
+  input.addEventListener('dblclick', () => set(reset));
+
+  // Click the reading to type one, as on every effect slider.
+  v.title = 'Click to type a value';
+  v.addEventListener('click', () => {
+    if (v.querySelector('input')) return;
+    const box = document.createElement('input');
+    box.type = 'text'; box.className = 'typein';
+    box.value = String(val);
+    v.textContent = ''; v.append(box); box.focus(); box.select();
+    let closed = false;
+    const done = (commit) => {
+      if (closed) return;
+      closed = true;
+      const n = parseFloat(box.value);
+      box.remove();
+      if (commit && Number.isFinite(n)) set(n); else draw();
+    };
+    box.addEventListener('keydown', (ev) => {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') done(true); else if (ev.key === 'Escape') done(false);
+    });
+    box.addEventListener('blur', () => done(true));
+  });
+
+  k.classList.add('resettable');
+  k.title = `Reset to ${fmt(reset)}`;
+  k.addEventListener('click', () => set(reset));
+
+  return { wrap, label: k, set: (x) => { val = clamp(x, min, max); draw(); } };
+}
+
 /** A one-line labelled switch, using the synth editor's capsule around a real checkbox. */
 function checkRow(label, checked, onChange) {
   const row = document.createElement('label');
@@ -443,6 +522,16 @@ function checkRow(label, checked, onChange) {
  * moment, on the label alone, and never on what gets stored or sent to the node.
  */
 const optionLabel = (s) => String(s).replace(/\b[a-z]/g, (c) => c.toUpperCase());
+// A choice whose names will not fit half a card takes the whole row, rather than
+// showing `K…` in a combo squeezed beside its label.
+const WIDE_CHOICE_CHARS = 10;
+const markWideChoice = (row, texts) => {
+  if (texts.some((text) => text.length > WIDE_CHOICE_CHARS)) row.classList.add('fxwide');
+};
+// A radio row spans the card, and at 10px a full card row holds about 32 characters of
+// option names across four pills once the label and the pill padding are paid for.
+const fitsAsRadio = (options) => options.length <= 4
+  && options.reduce((sum, option) => sum + optionLabel(option).length, 0) <= 32;
 
 /**
  * A select row with a live readout, for parameters that are a note division rather
@@ -471,6 +560,7 @@ function divisionRow(label, divisions, value, fmt, onChange) {
   const show = () => { v.textContent = fmt(+sel.value); };
   show();
   sel.onchange = () => { show(); onChange(+sel.value); };
+  markWideChoice(row, [...sel.options].map((o) => o.textContent));
   row.append(hd, sel);
   return row;
 }
@@ -497,6 +587,7 @@ function optionRow(label, options, value, onChange, texts = null) {
   }
   sel.onchange = () => onChange(sel.value);
   row.select = sel;
+  markWideChoice(row, [...sel.options].map((o) => o.textContent));
   row.append(hd, sel);
   return row;
 }
@@ -530,4 +621,4 @@ function radioRow(label, options, value, onChange) {
 
 // PARAM_LABELS and optionLabel stay in: nothing outside asks for either, and both are
 // only ever read through the rows above them.
-export { paramLabel, makeTypableDb, panKnob, knob, checkRow, divisionRow, optionRow, radioRow };
+export { paramLabel, makeTypableDb, panKnob, knob, slideKnob, checkRow, divisionRow, optionRow, radioRow, fitsAsRadio };

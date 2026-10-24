@@ -119,6 +119,124 @@ export function stepVelocity(bank, laneKey, step, resolution = resolutionOf(bank
   return Number.isFinite(at) && at >= 0 ? Math.min(1, at) : null;
 }
 
+/**
+ * ---- per-note mutes (24 Oct 2026) --------------------------------------------
+ *
+ * A lane may carry a parallel array under `${lane}Mute`: `true` on a step whose note is
+ * kept in the song but not played — the piano roll's way of trying a part without the
+ * note before deciding to delete it. On a chord lane the entry may instead be an array,
+ * one flag per tone, aligned with the frequencies the way chord lengths are, so one note
+ * of a chord can be taken out. Absent is every bank written before this.
+ *
+ * The engine never reads it on the clock. `resolvePlayingSection` takes the muted notes
+ * out of a section once, when the section is first played, and caches the result — so a
+ * muted note costs what a rest costs, and a song with no mutes gets the very section
+ * object it always did.
+ */
+export const muteKey = (laneKey) => `${laneKey}Mute`;
+
+/** Is this bank key a lane's mutes? */
+export const isMuteKey = (key) => typeof key === 'string' && /Mute$/.test(key);
+
+/**
+ * The arrays that belong to the NOTE on a step rather than to the step, other than its
+ * length: every edit that moves, copies, pastes or erases a note carries these with it,
+ * and this list is how it knows which they are — adding one is a line here rather than
+ * a hunt through every edit path for the places that name `Len`.
+ *
+ * Lengths stay out of the list because they are not just carried: an absent length means
+ * "as long as the lane says", which the editors read through on their own terms.
+ *
+ * `perTone`: on a chord lane the value is one per tone, aligned with the frequencies.
+ * A velocity is per STEP — `stepVelocity` reads a number, and a chord is struck once.
+ */
+export const NOTE_ATTRS = [
+  { suffix: 'Velocity', perTone: false },
+  { suffix: 'Mute', perTone: true },
+];
+export const noteAttrKey = (laneKey, suffix) => `${laneKey}${suffix}`;
+
+/** Does a stored attribute value say anything? A velocity of 0 does; `false` does not. */
+export const attrSays = (v) => (Array.isArray(v) ? v.some(attrSays) : v != null && v !== false);
+
+/** Is this tone, on this step, muted? `i` indexes the tone within a chord. */
+export function toneMuted(mute, i = 0) {
+  return Array.isArray(mute) ? mute[i] === true : mute === true;
+}
+
+/**
+ * A bank or section with its muted notes taken out, or the SAME object when it has none.
+ *
+ * A muted note becomes a rest — `false` on a percussion lane, `null` elsewhere — and a
+ * muted chord tone leaves the chord, taking its per-tone length with it so the tones that
+ * stay keep their own. Only a mute array the same length as its lane is read: the editor
+ * always writes the two together, and a mismatch is a hand-edit this should not guess at.
+ */
+export function withoutMuted(bank) {
+  if (!bank) return bank;
+  let out = null;
+  for (const key of Object.keys(bank)) {
+    if (!isMuteKey(key)) continue;
+    const mutes = bank[key];
+    const lane = key.slice(0, -'Mute'.length);
+    const notes = bank[lane];
+    if (!Array.isArray(mutes) || !Array.isArray(notes) || mutes.length !== notes.length
+      || !mutes.some(attrSays)) continue;
+    const lens = Array.isArray(bank[lenKey(lane)]) && bank[lenKey(lane)].length === notes.length
+      ? bank[lenKey(lane)] : null;
+    const nextNotes = notes.slice();
+    const nextLens = lens?.slice() ?? null;
+    for (let i = 0; i < notes.length; i++) {
+      const m = mutes[i];
+      const v = notes[i];
+      if (!attrSays(m) || v == null || v === false) continue;
+      if (Array.isArray(v) && Array.isArray(m)) {
+        const keep = v.map((_, j) => m[j] !== true);
+        const tones = v.filter((_, j) => keep[j]);
+        nextNotes[i] = tones.length ? tones : null;
+        if (nextLens && Array.isArray(lens[i])) {
+          nextLens[i] = tones.length ? lens[i].filter((_, j) => keep[j]) : null;
+        }
+      } else if (m === true) {
+        nextNotes[i] = typeof v === 'boolean' ? false : null;
+      }
+    }
+    out ||= { ...bank };
+    out[lane] = nextNotes;
+    if (nextLens) out[lenKey(lane)] = nextLens;
+  }
+  return out || bank;
+}
+
+/** One step's value as it plays: with its muted tones, or the whole muted note, gone. */
+export function unmutedValue(v, m) {
+  if (!attrSays(m) || v == null || v === false) return v;
+  if (Array.isArray(v) && Array.isArray(m)) {
+    const tones = v.filter((_, j) => m[j] !== true);
+    return tones.length ? tones : null;
+  }
+  if (m !== true) return v;
+  return typeof v === 'boolean' ? false : null;
+}
+
+const PLAYING_SECTIONS = new WeakMap();
+
+/**
+ * `resolveSection` as the engine should play it: muted notes out. Cached against the
+ * resolved section, which `resolveSection` itself caches per section list, so this is
+ * one WeakMap read per call and a song without mutes plays its sections untouched.
+ */
+export function resolvePlayingSection(bank, idx) {
+  const sec = resolveSection(bank, idx);
+  if (!sec) return sec;
+  let out = PLAYING_SECTIONS.get(sec);
+  if (out === undefined) {
+    out = withoutMuted(sec);
+    PLAYING_SECTIONS.set(sec, out);
+  }
+  return out;
+}
+
 /** A length is a real, positive number of steps. Anything else is not a length. */
 export const validLen = (v) => Number.isFinite(v) && v > 0;
 
@@ -593,8 +711,13 @@ export function invalidateBarPlan(bank) { BAR_PLANS.delete(bank); }
  * crash silenced in bar 7" are different questions, and a lane muted everywhere must
  * still get a strip or there is nothing to unmute it with.
  */
-export function songBars(bank, repeat = 1) {
+export function songBars(bank, repeat = 1, { playing = false } = {}) {
   const has = !!(bank.sections && bank.sections.length);
+  // `playing`: the sections as the engine PLAYS them, muted notes out — for a reader that
+  // has to agree with the scheduler about what sounds (a slide, an export). Off for every
+  // question about what the song CONTAINS: a lane whose notes are all muted is still a
+  // lane, and still needs a strip and a roll to unmute them in.
+  const sectionAt = playing ? resolvePlayingSection : resolveSection;
   return barPlan(bank, repeat).map((bar) => {
     let b = bank;
     if (has && bar.sec != null) {
@@ -602,7 +725,7 @@ export function songBars(bank, repeat = 1) {
       // the end of the section list wraps rather than falling back to the bare bank.
       // Nothing in the game is out of range — tests/arrangement.js asserts it — but
       // matching the engine exactly is what makes this swap inaudible.
-      const sec = resolveSection(bank, bar.sec % bank.sections.length);
+      const sec = sectionAt(bank, bar.sec % bank.sections.length);
       if (sec) b = { ...bank, ...sec };
     }
     // `bar` is the plan entry itself, so a caller that also wants the per-bar maps —
