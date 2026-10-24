@@ -858,6 +858,7 @@ const browserSuites = new Set([
   // Renders through headless chromium, one fresh page per song — see the note in the file.
   'tests/auto-portamento-render.js',
   'tests/note-velocity.js',
+  'tests/note-attrs.js',
   'tests/tngr2-controller.js',
   // The JMJR-4 suites: each asserts a stretch browserlessly and then launches chromium
   // to compare the engine's own output against the reference, which is the same shape

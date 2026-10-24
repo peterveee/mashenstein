@@ -272,12 +272,14 @@ const tones = (v) => (v == null ? [] : [...new Set([].concat(v))]);
 {
   // A Lab song is its recipe, made again whenever it plays. One kept before the guitars (expression 11) plays
   // no strum and no strummed guitar — and its notes and arrangement are pinned, as they were made before them.
-  const hash = (o) => createHash('sha1').update(JSON.stringify(o)).digest('hex').slice(0, 16);
+  // (numbers to 12 significant figures: Node 22 and 26 disagree in the last bit of a note's frequency, and the
+  // deploy runs 22 — the song is the same song either way.)
+  const hash = (o) => createHash('sha1').update(JSON.stringify(o, (k, v) => (typeof v === 'number' ? Number(v.toPrecision(12)) : v))).digest('hex').slice(0, 16);
   // (bank and arrangement hashed: what the guitars would change, and nothing a re-measured sound or level moves.
   // Recorded on the tree before the guitars were built.)
   const KEPT = {
-    'shibuya/lounge/3': 'e6fd1089dea4ee0d', 'nu-disco/disco/5': '30339529de8d74a3', 'electro-funk/funky/8': 'f40ed60161c0399d',
-    'french-house/funky/2': '1fb84153ae83c0d3', 'big-room/disco/13': '6eacb5fd3dbac27e', 'reggaeton/moody/4': '3975aa2c75a47278',
+    'shibuya/lounge/3': '1590f49ba4903614', 'nu-disco/disco/5': '546e766586f77504', 'electro-funk/funky/8': '0361c820387ed78e',
+    'french-house/funky/2': '69f567d362f2044d', 'big-room/disco/13': '7dd26ef9605d33c7', 'reggaeton/moody/4': '23c7a1cc97bb1e15',
   };
   const got = {}; const strums = [];
   for (const key of Object.keys(KEPT)) {
