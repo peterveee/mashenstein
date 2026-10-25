@@ -64,10 +64,12 @@ for (const [id, entry] of Object.entries(MIX)) {
   // What it copies may be another layer — a duplicate of a duplicate, or of one of the
   // added tracks an imported song is made of — but it has to be a lane that already
   // EXISTS where it is declared: `deskBank` builds the list in order and drops a layer
-  // standing on one it has not reached yet.
+  // standing on one it has not reached yet. An independent layer is the exception —
+  // its notes were snapshotted when it was made, so `deskBank` keeps it after its
+  // source is deleted (office's chords9, lead7 … outlived theirs).
   const built = new Set(laneKeys);
   for (const l of entry.layers || []) {
-    assert(built.has(l.from), `${id}: layer "${l.key}" copies a lane the song has by then`);
+    assert(l.independent || built.has(l.from), `${id}: layer "${l.key}" copies a lane the song has by then`);
     assert(!laneKeys.has(l.key), `${id}: layer "${l.key}" does not shadow a lane of the song`);
     built.add(l.key);
   }
