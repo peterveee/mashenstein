@@ -103,11 +103,14 @@ import * as CHOPIN_MINUTE_WALTZ_CLUB from './chopin-minute-waltz-club.js';
 import { CHOPIN3 } from './chopin3.js';
 import * as CORP_FUNKHY_2 from './corp-funkhy-2.js';
 import * as CORP_FUNKHY_3 from './corp-funkhy-3.js';
+import * as CORP_FUNKHY_4 from './corp-funkhy-4.js';
 import * as CORP_FUNKHY from './corp-funkhy.js';
 import * as CORP_REMIX_1_COPY_2 from './corp-remix-1-copy-2.js';
 import * as CORP_REMIX_1 from './corp-remix-1.js';
 import * as CORPORATE_KOMBAT_V1_8BIT from './corporate-kombat-v1-8bit.js';
 import * as CORPORATE_KOMBAT_V1 from './corporate-kombat-v1.js';
+import * as CORPORATE_KOMBAT_V2_8BIT from './corporate-kombat-v2-8bit.js';
+import * as CORPORATE_KOMBAT_V2 from './corporate-kombat-v2.js';
 import * as CORPORATE_KOMBAT_VICE from './corporate-kombat-vice.js';
 import * as CRYPT_8BIT from './crypt-8bit.js';
 import * as CRYPT_BLACK_ABBEY from './crypt-black-abbey.js';
@@ -440,11 +443,14 @@ export const IMPORTED_BY_ID = {
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
   "corp-funkhy-2": { bank: CORP_FUNKHY_2.bank, title: CORP_FUNKHY_2.title, group: "copy", writable: true },
   "corp-funkhy-3": { bank: CORP_FUNKHY_3.bank, title: CORP_FUNKHY_3.title, group: "copy", writable: true },
+  "corp-funkhy-4": { bank: CORP_FUNKHY_4.bank, title: CORP_FUNKHY_4.title, group: "copy", writable: true },
   "corp-funkhy": { bank: CORP_FUNKHY.bank, title: CORP_FUNKHY.title, group: "copy", writable: true },
   "corp-remix-1-copy-2": { bank: CORP_REMIX_1_COPY_2.bank, title: CORP_REMIX_1_COPY_2.title, group: "copy", writable: true },
   "corp-remix-1": { bank: CORP_REMIX_1.bank, title: CORP_REMIX_1.title, group: "copy", writable: true },
   "corporate-kombat-v1-8bit": { bank: CORPORATE_KOMBAT_V1_8BIT.bank, title: CORPORATE_KOMBAT_V1_8BIT.title, group: "copy", writable: true },
   "corporate-kombat-v1": { bank: CORPORATE_KOMBAT_V1.bank, title: CORPORATE_KOMBAT_V1.title, group: "copy", writable: true },
+  "corporate-kombat-v2-8bit": { bank: CORPORATE_KOMBAT_V2_8BIT.bank, title: CORPORATE_KOMBAT_V2_8BIT.title, group: "copy", writable: true },
+  "corporate-kombat-v2": { bank: CORPORATE_KOMBAT_V2.bank, title: CORPORATE_KOMBAT_V2.title, group: "copy", writable: true },
   "corporate-kombat-vice": { bank: CORPORATE_KOMBAT_VICE.bank, title: CORPORATE_KOMBAT_VICE.title, group: "alternate", writable: true, alternateOf: "office" },
   "crypt-8bit": { bank: CRYPT_8BIT.bank, title: CRYPT_8BIT.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-black-abbey": { bank: CRYPT_BLACK_ABBEY.bank, title: CRYPT_BLACK_ABBEY.title, group: "alternate", writable: true, alternateOf: "crypt" },

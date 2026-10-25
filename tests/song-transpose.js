@@ -54,8 +54,11 @@ assert(up3.transpose === 3, 'setSongTranspose writes the number onto the entry')
 assert(json(up3.order) === json(plain?.order),
   'and ONLY the number: the order it saves is the order it would have saved without it');
 assert(Array.isArray(up3.order) && up3.order.length > 8 && !json(up3.order).includes('"transpose":3')
-  && json(up3.order).includes('"transpose":{"lead13":12}'),
-  `no bar picks up a +3 of its own, and the one bar that had a transpose keeps exactly that (${up3.order.length} entries)`);
+  // The theme's own per-bar lane transposes survive untouched. Read off the song rather than
+  // pinned: the theme changes (CORP FUNKHY 4 replaced it on 25 Oct 2026, with a chords6 +12).
+  && up3.order.every((e, i) => json(e.transpose ?? null) === json(plain.order[i]?.transpose ?? null))
+  && up3.order.some((e) => e.transpose && typeof e.transpose === 'object'),
+  `no bar picks up a +3 of its own, and the bars that had a transpose keep exactly that (${up3.order.length} entries)`);
 assert(entryOf(office, setSongTranspose(draftOf(office, up3), 0))?.transpose === undefined,
   'clicking it back to 0 takes the key out of the entry again');
 assert(setSongTranspose(base, 40).transpose === TRANSPOSE_MAX
