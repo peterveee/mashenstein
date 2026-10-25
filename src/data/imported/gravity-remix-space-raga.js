@@ -772,8 +772,8 @@ export const mix = {
   lanes: {
     lead: { gain: 3.216, send: { delay: 0.24, reverb: 0.596 }, eq: { high: 2.5 }, effects: [{ id: "exciter", params: { tune: 2500, drive: 0.5, timbre: 0.4, mix: 0.25 } }] },
     lead2: { gain: -5.76, pan: -0.18, send: { delay: 0.1, reverb: 0.3 }, eq: { high: 2 } },
-    chords: { gain: -15.3, pan: -0.35, send: { delay: 0.14, reverb: 0.3 }, eq: { high: 2 }, effects: [{ id: "phaser", params: { rateSync: 0, frequency: 0.22, octaves: 3, baseFrequency: 450, feedback: 0.3, wet: 0.35 } }], noteFx: {"strum":{"enabled":true,"direction":"down","gapMs":10,"downDb":0,"upDb":0}} },
-    chords5: { gain: -15.6, pan: 0.32, send: { reverb: 0.24 }, eq: { high: 2 }, noteFx: {"strum":{"enabled":true,"direction":"alternate-down","gapMs":14,"downDb":0,"upDb":-4}} },
+    chords: { gain: -15.3, pan: -0.35, send: { delay: 0.14, reverb: 0.3 }, eq: { high: 2 }, effects: [{ id: "phaser", params: { rateSync: 0, frequency: 0.22, octaves: 3, baseFrequency: 450, feedback: 0.3, wet: 0.35 } }], noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":10,"downDb":0,"upDb":0}} },
+    chords5: { gain: -15.6, pan: 0.32, send: { reverb: 0.24 }, eq: { high: 2 }, noteFx: {"strum":{"enabled":true,"direction":"alternate-up","gapMs":14,"downDb":-4,"upDb":0}} },
     chords2: { gain: -1.28, send: { reverb: 0.45 }, effects: [{ id: "widener", params: { width: 0.6 } }] },
     chords3: { gain: -14.6, send: { reverb: 0.55 }, eq: { low: -2 }, effects: [{ id: "widener", params: { width: 0.9 } }] },
     chords4: { gain: -15, pan: 0.22, send: { delay: 0.1, reverb: 0.35 }, eq: { high: 1.5 } },

@@ -17,8 +17,8 @@ full, off-beats −4 dB); only the roll order inside each chord is inverted.
 - DONE 25 Oct: office.js (CORPORATE KOMBAT) and office-8bit flipped.
 - Songs: corp-funkhy 1–4,
   office-remix-blue-chip, shop-remix-aisle-fever / -browsing-bossa / -steel-string,
-  frost-remix-winter-ballad (one lane), gravity-remix-space-raga, crypt-remix-dead-mans-gulch,
-  hub-remix-boogaloo, speed-remix-wipeout, neon-remix-last-train, rhythm-remix-highlife.
+  frost-remix-winter-ballad (one lane), crypt-remix-dead-mans-gulch,
+  speed-remix-wipeout, neon-remix-last-train, rhythm-remix-highlife.
   Fix in each generator in work/local/ where there is one and regenerate; hand-edit desk saves.
   Already right: office-remix-rumba-room, and the older `up` strums in crypt/plumber/neon.
 - DONE 25 Oct: the three shop remixes (steel-string, aisle-fever, bossa) and the Banger defaults (guitar.js, five style recipes). No era bump: guitar strums are hours old and no kept take carries one (work/bangers/corp-funkhy-banger.js has one — left as is).
