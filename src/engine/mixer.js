@@ -2272,17 +2272,18 @@ export function createMixer(ctx, {
     }
     masterOut.disconnect();
     masterPan.disconnect();
-    if (ceiling) {
-      try { Tone.disconnect(limiter, ceiling.input); } catch { /* not fed from there */ }
-      ceiling.out.disconnect();
-    }
+    // The limiter's output too, whether or not it stays in. Only taken off when it went OUT,
+    // it kept its wire to `destination` when THE CEILING went in after it — limiter straight
+    // out AND limiter through the ceiling, the whole song twice, 6 ms apart: a comb filter,
+    // heard as phasing (Peter, 25 Oct 2026; the title screen's song, limiter on, then a
+    // jukebox song with it on too — work/local/_master-ir-probe.mjs, two taps of 1.11).
+    limiter.disconnect();
+    if (ceiling) ceiling.out.disconnect();
     masterOut.connect(masterPan);
     let finalSource = masterPan;
     if (limiterOn) {
       Tone.connect(masterPan, limiter);
       finalSource = limiter;
-    } else {
-      limiter.disconnect();
     }
     if (ceilingOn) {
       ceiling ||= makeCeiling();
@@ -2859,6 +2860,23 @@ export function createMixer(ctx, {
         // zero and a song without echo could be loaded before one with it.
         if (used) a.monitor.connect(auxReturn);
         else { try { a.monitor.disconnect(auxReturn); } catch { /* already detached */ } }
+      }
+    },
+    /**
+     * A song change: nothing the mixer keeps from one song to the next may still be ringing
+     * with the last one when the next opens. Every reverb — the aux Reverb, the Spot FX rooms,
+     * an insert the new mix kept (makeChainSlot's `pending`) — is emptied now (makeReverb's
+     * `empty`), and every delay insert has its line emptied from `at`, the way a CUT empties
+     * it (`flush`). Audio._emptyTails calls it once the old song is down.
+     */
+    emptyTails(at = ctx.currentTime) {
+      for (const a of auxes.values()) a.reverb?.empty?.();
+      const slots = [...everySlot(), ...[...spotRooms.values()].map((room) => room.slot)];
+      for (const slot of slots) {
+        for (const link of slot.chain || []) {
+          link.node?.empty?.();
+          link.flush?.(Math.max(at, ctx.currentTime));
+        }
       }
     },
     limiter,

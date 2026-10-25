@@ -719,6 +719,10 @@ const suites = [
   // And how the old song goes: in the game it fades out before the new song's mix goes
   // on, so a scene change is a fade and not a cut to silence that comes back.
   'tests/song-change-fade.js',
+  // And its tails go with it: the last song's echo and reverb do not come out over the next one.
+  'tests/song-change-tails.js',
+  // The master limiter and THE CEILING, in and out in any order, leave one path to the output.
+  'tests/master-wiring.js',
   // A lane trimmed over a range of bars. Also a claim about the speakers and not the
   // graph: the trim routed every note on that lane through a gain pair BUILT PER STEP,
   // and a new pair is a new graph to the voice rack, which answered it by disposing
@@ -834,6 +838,8 @@ const browserSuites = new Set([
   'tests/note-duration.js',
   'tests/song-switch.js',
   'tests/song-change-fade.js',
+  'tests/song-change-tails.js',
+  'tests/master-wiring.js',
   'tests/bar-gain.js',
   'tests/bar-pan.js',
   'tests/mix-automation.js',

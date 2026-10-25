@@ -444,6 +444,10 @@ function parkConvolver(ctx, sig, conv) {
     try { conv.buffer = tiny; } catch { /* kept as it is */ }
     return;
   }
+  // Emptied before it is shelved (25 Oct 2026): a convolver holds the last seconds of whatever
+  // went into it, and the next reverb to take this one would have played the last song's tail
+  // out of it. Its own impulse again empties it and keeps the kernels (see makeReverb's empty).
+  if (conv.buffer) try { conv.buffer = conv.buffer; } catch { /* kept as it is */ }
   if (!pool.has(sig)) pool.set(sig, []);
   pool.get(sig).push(conv);
 }
@@ -542,8 +546,19 @@ export function makeReverb(ctx, params) {
   Object.defineProperty(node, 'wet', { get: () => state.wet, set: (v) => { state.wet = v; mix(); } });
   node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
   node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  // EMPTY THE ROOM (25 Oct 2026): what is still ringing in it goes, at once. A convolver has no
+  // reset, but given its impulse again it starts with nothing in it — Chromium and WebKit
+  // alike (work/local/_convolver-reset-probe.mjs) — on the kernels it has. For a room that
+  // outlives its song (the mixer's emptyTails, at a song change). Not `flush`: that is a
+  // delay's, at an audio time, for a CUT — and a CUT leaves a room alone (flushEchoes).
+  node.empty = () => {
+    const buf = conv.buffer;
+    if (buf) try { conv.buffer = buf; } catch { /* kept as it is */ }
+  };
   node.dispose = () => {
     node.disconnect();
+    // Its input too: a shelved convolver must not stay wired to a reverb that has gone.
+    try { input.disconnect(); } catch { /* fine */ }
     try { conv.disconnect(); } catch { /* fine */ }
     // Back to the pool with the impulse it holds, for the next reverb that wants it.
     parkConvolver(ctx, built, conv);

@@ -322,6 +322,9 @@ const SONG_OPEN = 0.004;
 // it: long enough for the master chain to empty out what it was still holding (a lookahead
 // limiter keeps ~10ms of the old song in its delay line) before the stage opens again.
 const SONG_DRAIN = 0.02;
+// How long past its own time Delay 1's line is held shut at a song change (_shutEchoLine):
+// a few render quanta, which is what a DelayNode in a feedback loop rounds its time up to.
+const ECHO_FLUSH_MARGIN = 0.01;
 // THE LISTENING SCREENS — the jukebox and the Lab — play the music this much louder (Peter,
 // 9 Oct 2026: "Since we are not in game should we raise the music volume in jukebox and lab?").
 // In a game the songs sit under the cues; there, the song is the point. Three dB is about what
@@ -1760,12 +1763,16 @@ class AudioSys {
     // One second, and deliberately not more — see growDelayLine, which is where a
     // longer division gets the buffer it needs.
     this.delay = this.ctx.createDelay(1.0); this.delay.delayTime.value = 0.32;
+    // Inside the loop, so shutting it stops the repeats as well as the return — see
+    // _shutEchoLine. Unity the rest of the time.
+    this.echoGate = this.ctx.createGain(); this.echoGate.gain.value = 1;
     this.delayLp = this.ctx.createBiquadFilter(); this.delayLp.type = 'lowpass'; this.delayLp.frequency.value = 4500;
     this.delayFb = this.ctx.createGain(); this.delayFb.gain.value = 0.35;
     this.echoBus.connect(this.echoSend);
     this.echoSend.connect(this.echoHp);
     this.echoHp.connect(this.delay);
-    this.delay.connect(this.delayLp);
+    this.delay.connect(this.echoGate);
+    this.echoGate.connect(this.delayLp);
     this.delayLp.connect(this.delayFb);
     this.delayFb.connect(this.delay);
     this.delayLp.connect(this.songTrim);
@@ -2677,12 +2684,73 @@ class AudioSys {
     for (const [from, node] of [[this.echoHp, this.delay], [this.delayFb, this.delay]]) {
       try { from.disconnect(node); } catch { /* not wired */ }
     }
-    try { this.delay.disconnect(this.delayLp); } catch { /* not wired */ }
+    try { this.delay.disconnect(this.echoGate); } catch { /* not wired */ }
     this.echoHp.connect(next);
     this.delayFb.connect(next);
-    next.connect(this.delayLp);
+    next.connect(this.echoGate);
     this.delay = next;
     return next;
+  }
+
+  /**
+   * EMPTY DELAY 1 ACROSS A SONG CHANGE (25 Oct 2026). The line is one node for the life of
+   * the context (growDelayLine), and its feedback loop does not stop when the song does:
+   * songTrim shuts the return, but the repeats go on round behind it through the half-second
+   * gap and come out over the new song's opening when it opens — the last song's echo, a
+   * step quieter each beat (Peter, 25 Oct 2026: "a little bit of delay from the previous song
+   * at the start of a new song"; up to −40 dB after the title theme in the jukebox,
+   * work/local/_jukebox-switch-tail.mjs). Until 24 Oct growDelayLine built a new, empty line
+   * on every song change by mistake, and that hid it.
+   *
+   * So echoGate, between the line and its damping, is shut once the old song is down. That
+   * breaks the loop, and the line fills with silence. It opens again once everything written
+   * before `shut` has been read out — `shut` plus the line's time — which is before the new
+   * song's first repeat can come round: its first note is at `start`, a whole delay time
+   * ahead of that repeat. Opening after the line's full length is only the fallback, for a
+   * mix that never lands; _openEchoLine moves it forward when the mix does land. Live only:
+   * an offline render starts with an empty line, and its samples stay as they were.
+   */
+  _shutEchoLine(shut, start = Infinity) {
+    const g = this.echoGate?.gain;
+    if (!g || this.offline) return;
+    const at = Math.max(this.ctx.currentTime, shut);
+    g.cancelScheduledValues(this.ctx.currentTime);
+    g.setValueAtTime(0, at);
+    g.setValueAtTime(1, at + (this.delay.delayTime.maxValue || MAX_DELAY_SECONDS) + ECHO_FLUSH_MARGIN);
+    this._echoFlush = { shut: at, start, time: this.delay.delayTime.value };
+  }
+
+  /** The new song's mix is on (afterMix), so its delay time is known: open echoGate on time. */
+  _openEchoLine() {
+    const f = this._echoFlush;
+    const g = this.echoGate?.gain;
+    if (!f || !g) return;
+    this._echoFlush = null;
+    const now = this.ctx.currentTime;
+    // The longer of the two times: the line was read at the old one until the mix landed.
+    const open = f.shut + Math.max(f.time, this.delay.delayTime.value) + ECHO_FLUSH_MARGIN;
+    g.cancelScheduledValues(Math.max(now, f.shut) + 1e-4);
+    g.setValueAtTime(1, Math.max(now, open));
+    this._emptyTails(f);
+  }
+
+  /**
+   * EMPTY THE ROOMS TOO (25 Oct 2026). The aux Reverb is one room for the life of the mixer —
+   * and a Spot FX room, or an insert a song change keeps, outlives its song the same way — so
+   * the last song's tail was still in it when the new song's trim opened: a breath of it over
+   * the opening, from −57 dB (Field Service into Speed Zone; work/local/_jukebox-switch-tail.mjs).
+   * The mixer empties every one of them, and every delay insert's line (emptyTails), once the
+   * old song is down. The rooms go by the wall clock, which can run late, so not at all once
+   * the new song's trim is opening: that would cut the new song's own room instead.
+   */
+  _emptyTails({ shut, start }) {
+    const go = () => {
+      if (!this._mixer || this.ctx.currentTime > start - SONG_OPEN - ECHO_FLUSH_MARGIN) return;
+      this._mixer.emptyTails?.(shut);
+    };
+    const wait = shut - this.ctx.currentTime;
+    if (wait > 0) setTimeout(go, wait * 1000 + 2);
+    else go();
   }
 
   // mulberry32: seeded so an offline render repeats exactly — see setNoiseSeed.
@@ -7576,6 +7644,7 @@ class AudioSys {
           const shut = Math.max(now, fadeEnd);
           if (shut > now) g.setValueAtTime(g.value, now);
           g.setValueAtTime(0.0001, shut);
+          this._shutEchoLine(shut, openBy);
           // Open by the time the new song's trim starts to, even if a short gap (the intro
           // film's cut) leaves the drain short.
           const reopen = Math.max(shut, Math.min(shut + SONG_DRAIN, openBy - 2 * SONG_OPEN));
@@ -7586,6 +7655,7 @@ class AudioSys {
         }
         g.setValueAtTime(g.value, now);
         g.linearRampToValueAtTime(0.0001, now + fade);
+        this._shutEchoLine(now + fade, openBy);
       };
       if (bank) {
         // Mute any notes left in the old lookahead window, then open the new
@@ -7656,6 +7726,8 @@ class AudioSys {
         if (this.delay) this.growDelayLine(this.delayTimeSeconds()).delayTime.value = this.delayTimeSeconds();
       });
     }
+    // After the time above is set, so the old song's echoes are flushed against the new one.
+    this.afterMix(() => this._openEchoLine());
     // Unconditional, unlike the tempo above: a song with no swing has to REPLACE the
     // swing of whatever was playing before it, and `0` would fail a truthiness guard and
     // leave the shuffle on. Nothing tempo-synced follows it, so there is nothing to rebuild.
