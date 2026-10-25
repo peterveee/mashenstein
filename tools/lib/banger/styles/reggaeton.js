@@ -30,7 +30,7 @@ export const REGGAETON = Object.freeze({
   tempoRange: [90, 104],
   // Its guitar chords strummed (guitar.js): the 3-3-2 strums down and up, quick, the up-strokes 3 dB
   // under — Romántico's picked nylon too.
-  guitarStrum: { direction: 'alternate-down', gapMs: 12, upDb: -3 },
+  guitarStrum: { direction: 'alternate-up', gapMs: 12, upDb: -3 },
   defaults: {
     mood: 'uplifting',
     form: { template: 'pop', doubleDrop: false, hardStop: false, keyApproach: 'mood' },

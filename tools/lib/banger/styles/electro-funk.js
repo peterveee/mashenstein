@@ -27,7 +27,7 @@ export const ELECTRO_FUNK = Object.freeze({
   // Guitar chords strummed tight, down and up (guitar.js), and a funk guitar strumming sixteenths —
   // stabs and muted chucks, where the arp would play, Arp on or off — in seven takes in ten (Guitar:
   // Random). New Jack Swing's too.
-  guitarStrum: { direction: 'alternate-down', gapMs: 7, upDb: -4 },
+  guitarStrum: { direction: 'alternate-up', gapMs: 7, upDb: -4 },
   funkGuitar: { strummed: 0.7 },
   defaults: {
     mood: 'funky',

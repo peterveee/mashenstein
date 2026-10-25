@@ -6,6 +6,26 @@ mattering.
 
 ## Ideas
 
+### Flip the backwards guitar strums (found 25 Oct 2026)
+The strum Note FX stores directions in pitch order: `up` = low to high, which a guitarist
+calls a DOWN-stroke. The desk now labels them the guitarist's way, and that showed up that most
+strummed parts written on 23–25 Oct are physically backwards: `alternate-down` (beat strokes
+high→low) or plain `down` where a down-strum was meant. Their accents are right (beat strokes
+full, off-beats −4 dB); only the roll order inside each chord is inverted.
+- Fix: `alternate-down` → `alternate-up` and swap `upDb`/`downDb` (so the accent stays on the
+  beat); a plain `down` meant as a down-strum → `up`.
+- DONE 25 Oct: office.js (CORPORATE KOMBAT) and office-8bit flipped.
+- Songs: corp-funkhy 1–4,
+  office-remix-blue-chip, shop-remix-aisle-fever / -browsing-bossa / -steel-string,
+  frost-remix-winter-ballad (one lane), gravity-remix-space-raga, crypt-remix-dead-mans-gulch,
+  hub-remix-boogaloo, speed-remix-wipeout, neon-remix-last-train, rhythm-remix-highlife.
+  Fix in each generator in work/local/ where there is one and regenerate; hand-edit desk saves.
+  Already right: office-remix-rumba-room, and the older `up` strums in crypt/plumber/neon.
+- DONE 25 Oct: the three shop remixes (steel-string, aisle-fever, bossa) and the Banger defaults (guitar.js, five style recipes). No era bump: guitar strums are hours old and no kept take carries one (work/bangers/corp-funkhy-banger.js has one — left as is).
+- Banger (done, see above): tools/lib/banger/guitar.js `guitarStrum` defaults (`alternate-down`, `upDb −4`) and
+  the strummed funk part — flip under a new WAYS_ERA so kept bangers regenerate unchanged.
+- Re-render nothing unless asked; re-measure LUFS only if the trims moved.
+
 ### Record a take from the visualiser lab
 The desk's `HALF-PIPE HORIZON — LAB` is a performance — the interesting part is
 *when* the knobs get turned, and nothing captures it. A REC button on the control

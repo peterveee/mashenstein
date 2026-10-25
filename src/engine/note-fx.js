@@ -367,6 +367,8 @@ export function createNoteFxProcessor() {
       // rolls out on every synth — so it changes how loud a stroke is and nothing else.
       // At 0 dB the event carries no `gain`, and every strum written before this plays
       // exactly as it did.
+      // Pitch-order words: 'up' is low to high, which a guitarist calls a DOWN-stroke. The desk
+      // labels them the guitarist's way and maps `upDb` / `downDb` to match.
       const gain = alternate ? strumTrimGain(direction === 'down' ? strum.downDb : strum.upDb) : 1;
       events = order.map((freq, i) => ({ ...byFreq.get(freq), delay: i * gap,
         ...(gain !== 1 ? { gain } : {}) }));

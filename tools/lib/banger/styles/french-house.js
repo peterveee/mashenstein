@@ -29,7 +29,7 @@ export const FRENCH_HOUSE = Object.freeze({
   enter: { arp: 0 },
   // Guitar chords strummed tight, down and up (guitar.js), and the wah guitar's loop played as funk
   // stabs and chucks in about two takes in three (Guitar: Random).
-  guitarStrum: { direction: 'alternate-down', gapMs: 7, upDb: -4 },
+  guitarStrum: { direction: 'alternate-up', gapMs: 7, upDb: -4 },
   funkGuitar: { strummed: 0.65 },
   defaults: {
     mood: 'funky',

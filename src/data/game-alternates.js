@@ -12,6 +12,7 @@ import * as GAME_ALT_CRYPT_MIDNIGHT_PROCESSION from './imported/crypt-midnight-p
 import * as GAME_ALT_CRYPT_PLUS_HAUNTED_MANOR from './imported/crypt-plus-haunted-manor.js';
 import * as GAME_ALT_CRYPT_PLUS_SEANCE_PARLOUR from './imported/crypt-plus-seance-parlour.js';
 import * as GAME_ALT_CRYPT_REMIX_COVEN from './imported/crypt-remix-coven.js';
+import * as GAME_ALT_CRYPT_REMIX_DEAD_MANS_GULCH from './imported/crypt-remix-dead-mans-gulch.js';
 import * as GAME_ALT_CRYPT_REMIX_GRAVEYARD_SHIFT from './imported/crypt-remix-graveyard-shift.js';
 import * as GAME_ALT_CRYPT_REMIX_RAISE_THE_DEAD from './imported/crypt-remix-raise-the-dead.js';
 import * as GAME_ALT_CRYPT_WHISPER_EXCHANGE from './imported/crypt-whisper-exchange.js';
@@ -28,11 +29,13 @@ import * as GAME_ALT_FIELD_SERVICE_ORIGINAL from './imported/field-service-origi
 import * as GAME_ALT_FIELD_SERVICE_OVERCLOCK from './imported/field-service-overclock.js';
 import * as GAME_ALT_FIELD_SERVICE_REWIRED from './imported/field-service-rewired.js';
 import * as GAME_ALT_FIELD_SERVICE_SLAP_HAPPY from './imported/field-service-slap-happy.js';
+import * as GAME_ALT_FIELD_SERVICE_TRUCK_STOP from './imported/field-service-truck-stop.js';
 import * as GAME_ALT_FINALE_8BIT from './imported/finale-8bit.js';
 import * as GAME_ALT_FROST_8BIT from './imported/frost-8bit.js';
 import * as GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO from './imported/frost-remix-absolute-zero.js';
 import * as GAME_ALT_FROST_REMIX_BLACK_ICE from './imported/frost-remix-black-ice.js';
 import * as GAME_ALT_FROST_REMIX_SNOW_GLOBE from './imported/frost-remix-snow-globe.js';
+import * as GAME_ALT_FROST_REMIX_WINTER_BALLAD from './imported/frost-remix-winter-ballad.js';
 import * as GAME_ALT_GRAVITY_8BIT from './imported/gravity-8bit.js';
 import * as GAME_ALT_GRAVITY_C7_TRANSITION_A from './imported/gravity-c7-transition-a.js';
 import * as GAME_ALT_GRAVITY_C7_TRANSITION_B from './imported/gravity-c7-transition-b.js';
@@ -73,18 +76,26 @@ import * as GAME_ALT_GRAVITY_LIGHT from './imported/gravity-light.js';
 import * as GAME_ALT_GRAVITY_REMIX_ORBITAL from './imported/gravity-remix-orbital.js';
 import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './imported/gravity-remix-radiophonic-moog-seq.js';
 import * as GAME_ALT_GRAVITY_REMIX_RADIOPHONIC from './imported/gravity-remix-radiophonic.js';
+import * as GAME_ALT_GRAVITY_REMIX_SPACE_RAGA from './imported/gravity-remix-space-raga.js';
 import * as GAME_ALT_GRAVITY_REMIX_STARDUST_DISCO from './imported/gravity-remix-stardust-disco.js';
 import * as GAME_ALT_HUB_8BIT from './imported/hub-8bit.js';
+import * as GAME_ALT_HUB_REMIX_BOOGALOO from './imported/hub-remix-boogaloo.js';
+import * as GAME_ALT_HUB_REMIX_LIBRARY_FUNK from './imported/hub-remix-library-funk.js';
 import * as GAME_ALT_MEGAMIX_8BIT from './imported/megamix-8bit.js';
 import * as GAME_ALT_MONSTER_MEGAMIX_ALT from './imported/monster-megamix-alt.js';
 import * as GAME_ALT_NEON_8BIT from './imported/neon-8bit.js';
 import * as GAME_ALT_NEON_REMIX_ENDSTATION from './imported/neon-remix-endstation.js';
 import * as GAME_ALT_NEON_REMIX_FREEFALL from './imported/neon-remix-freefall.js';
 import * as GAME_ALT_NEON_REMIX_GOLDEN_HOUR from './imported/neon-remix-golden-hour.js';
+import * as GAME_ALT_NEON_REMIX_LAST_TRAIN from './imported/neon-remix-last-train.js';
 import * as GAME_ALT_NEON_REMIX_LIVE_WIRE from './imported/neon-remix-live-wire.js';
 import * as GAME_ALT_NEW_THE_FOOD_COURT from './imported/new-the-food-court.js';
 import * as GAME_ALT_OFFICE_8BIT from './imported/office-8bit.js';
+import * as GAME_ALT_OFFICE_REMIX_AFTER_HOURS from './imported/office-remix-after-hours.js';
 import * as GAME_ALT_OFFICE_REMIX_BLUE_CHIP from './imported/office-remix-blue-chip.js';
+import * as GAME_ALT_OFFICE_REMIX_BONUS_STAGE from './imported/office-remix-bonus-stage.js';
+import * as GAME_ALT_OFFICE_REMIX_RUMBA_ROOM from './imported/office-remix-rumba-room.js';
+import * as GAME_ALT_OFFICE_REMIX_VICE_PRESIDENT from './imported/office-remix-vice-president.js';
 import * as GAME_ALT_OFFICE_THEME_1_THE_CLIMB from './imported/office-theme-1-the-climb.js';
 import * as GAME_ALT_OFFICE_THEME_2_HOSTILE_BOARDROOM from './imported/office-theme-2-hostile-boardroom.js';
 import * as GAME_ALT_OFFICE_THEME_3_EXECUTIVE_NOIR from './imported/office-theme-3-executive-noir.js';
@@ -95,6 +106,7 @@ import * as GAME_ALT_PLUMBER_8BIT from './imported/plumber-8bit.js';
 import * as GAME_ALT_PLUMBER_PANIC_ALT from './imported/plumber-panic-alt.js';
 import * as GAME_ALT_RHYTHM_8BIT from './imported/rhythm-8bit.js';
 import * as GAME_ALT_RHYTHM_REMIX_FIRE_SALE from './imported/rhythm-remix-fire-sale.js';
+import * as GAME_ALT_RHYTHM_REMIX_HIGHLIFE from './imported/rhythm-remix-highlife.js';
 import * as GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER from './imported/rhythm-remix-hostile-takeover.js';
 import * as GAME_ALT_RHYTHM_REMIX_IN_THE_RED from './imported/rhythm-remix-in-the-red.js';
 import * as GAME_ALT_SHOP_8BIT from './imported/shop-8bit.js';
@@ -109,6 +121,7 @@ import * as GAME_ALT_SPEED_REMIX_BREAKNECK from './imported/speed-remix-breaknec
 import * as GAME_ALT_SPEED_REMIX_COWBELL from './imported/speed-remix-cowbell.js';
 import * as GAME_ALT_SPEED_REMIX_HAIRPIN from './imported/speed-remix-hairpin.js';
 import * as GAME_ALT_SPEED_REMIX_REDLINE_ACID_GPT from './imported/speed-remix-redline-acid-gpt.js';
+import * as GAME_ALT_SPEED_REMIX_WIPEOUT from './imported/speed-remix-wipeout.js';
 import * as GAME_ALT_SPEED_ZONE_ALT_2 from './imported/speed-zone-alt-2.js';
 import * as GAME_ALT_SPEED_ZONE_ALT from './imported/speed-zone-alt.js';
 import * as GAME_ALT_SPEED_ZONE_ORIGINAL from './imported/speed-zone-original.js';
@@ -120,6 +133,8 @@ import * as GAME_ALT_SURGE_REMIX_SHORT_CIRCUIT from './imported/surge-remix-shor
 import * as GAME_ALT_THE_FOOD_COURT_ALT_2 from './imported/the-food-court-alt-2.js';
 import * as GAME_ALT_THE_FOOD_COURT_ALT from './imported/the-food-court-alt.js';
 import * as GAME_ALT_TITLE_8BIT from './imported/title-8bit.js';
+import * as GAME_ALT_TITLE_REMIX_FILTER_DISCO from './imported/title-remix-filter-disco.js';
+import * as GAME_ALT_TITLE_REMIX_LOFI from './imported/title-remix-lofi.js';
 
 export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_ARCADE_THEME,
@@ -132,6 +147,7 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_CRYPT_PLUS_HAUNTED_MANOR,
   GAME_ALT_CRYPT_PLUS_SEANCE_PARLOUR,
   GAME_ALT_CRYPT_REMIX_COVEN,
+  GAME_ALT_CRYPT_REMIX_DEAD_MANS_GULCH,
   GAME_ALT_CRYPT_REMIX_GRAVEYARD_SHIFT,
   GAME_ALT_CRYPT_REMIX_RAISE_THE_DEAD,
   GAME_ALT_CRYPT_WHISPER_EXCHANGE,
@@ -148,11 +164,13 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_FIELD_SERVICE_OVERCLOCK,
   GAME_ALT_FIELD_SERVICE_REWIRED,
   GAME_ALT_FIELD_SERVICE_SLAP_HAPPY,
+  GAME_ALT_FIELD_SERVICE_TRUCK_STOP,
   GAME_ALT_FINALE_8BIT,
   GAME_ALT_FROST_8BIT,
   GAME_ALT_FROST_REMIX_ABSOLUTE_ZERO,
   GAME_ALT_FROST_REMIX_BLACK_ICE,
   GAME_ALT_FROST_REMIX_SNOW_GLOBE,
+  GAME_ALT_FROST_REMIX_WINTER_BALLAD,
   GAME_ALT_GRAVITY_8BIT,
   GAME_ALT_GRAVITY_C7_TRANSITION_A,
   GAME_ALT_GRAVITY_C7_TRANSITION_B,
@@ -193,18 +211,26 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_GRAVITY_REMIX_ORBITAL,
   GAME_ALT_GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ,
   GAME_ALT_GRAVITY_REMIX_RADIOPHONIC,
+  GAME_ALT_GRAVITY_REMIX_SPACE_RAGA,
   GAME_ALT_GRAVITY_REMIX_STARDUST_DISCO,
   GAME_ALT_HUB_8BIT,
+  GAME_ALT_HUB_REMIX_BOOGALOO,
+  GAME_ALT_HUB_REMIX_LIBRARY_FUNK,
   GAME_ALT_MEGAMIX_8BIT,
   GAME_ALT_MONSTER_MEGAMIX_ALT,
   GAME_ALT_NEON_8BIT,
   GAME_ALT_NEON_REMIX_ENDSTATION,
   GAME_ALT_NEON_REMIX_FREEFALL,
   GAME_ALT_NEON_REMIX_GOLDEN_HOUR,
+  GAME_ALT_NEON_REMIX_LAST_TRAIN,
   GAME_ALT_NEON_REMIX_LIVE_WIRE,
   GAME_ALT_NEW_THE_FOOD_COURT,
   GAME_ALT_OFFICE_8BIT,
+  GAME_ALT_OFFICE_REMIX_AFTER_HOURS,
   GAME_ALT_OFFICE_REMIX_BLUE_CHIP,
+  GAME_ALT_OFFICE_REMIX_BONUS_STAGE,
+  GAME_ALT_OFFICE_REMIX_RUMBA_ROOM,
+  GAME_ALT_OFFICE_REMIX_VICE_PRESIDENT,
   GAME_ALT_OFFICE_THEME_1_THE_CLIMB,
   GAME_ALT_OFFICE_THEME_2_HOSTILE_BOARDROOM,
   GAME_ALT_OFFICE_THEME_3_EXECUTIVE_NOIR,
@@ -215,6 +241,7 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_PLUMBER_PANIC_ALT,
   GAME_ALT_RHYTHM_8BIT,
   GAME_ALT_RHYTHM_REMIX_FIRE_SALE,
+  GAME_ALT_RHYTHM_REMIX_HIGHLIFE,
   GAME_ALT_RHYTHM_REMIX_HOSTILE_TAKEOVER,
   GAME_ALT_RHYTHM_REMIX_IN_THE_RED,
   GAME_ALT_SHOP_8BIT,
@@ -229,6 +256,7 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_SPEED_REMIX_COWBELL,
   GAME_ALT_SPEED_REMIX_HAIRPIN,
   GAME_ALT_SPEED_REMIX_REDLINE_ACID_GPT,
+  GAME_ALT_SPEED_REMIX_WIPEOUT,
   GAME_ALT_SPEED_ZONE_ALT_2,
   GAME_ALT_SPEED_ZONE_ALT,
   GAME_ALT_SPEED_ZONE_ORIGINAL,
@@ -240,6 +268,8 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_THE_FOOD_COURT_ALT_2,
   GAME_ALT_THE_FOOD_COURT_ALT,
   GAME_ALT_TITLE_8BIT,
+  GAME_ALT_TITLE_REMIX_FILTER_DISCO,
+  GAME_ALT_TITLE_REMIX_LOFI,
 ].map((song) => [song.id, song]));
 
 export function gameAlternate(id, parentId = null) {

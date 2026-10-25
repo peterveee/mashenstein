@@ -485,7 +485,7 @@ export const mix = {
     lead3: { gain: -2, pan: 0.15, send: { delay: 0.1, reverb: 0.3 }, eq: { high: 2 } },
     leadHarm: { gain: -8, pan: 0.3, send: { reverb: 0.3 }, eq: { high: 1.5 } },
     twinkle: { gain: -11, pan: 0.25, send: { delay: 0.2, reverb: 0.5 } },
-    chords: { gain: -7, pan: -0.3, send: { reverb: 0.15 }, eq: { high: 2.5 }, noteFx: {"strum":{"enabled":true,"direction":"alternate-down","gapMs":12,"downDb":0,"upDb":-4}} },
+    chords: { gain: -7, pan: -0.3, send: { reverb: 0.15 }, eq: { high: 2.5 }, noteFx: {"strum":{"enabled":true,"direction":"alternate-up","gapMs":12,"downDb":-4,"upDb":0}} },
     chords2: { gain: -11, pan: 0.4, send: { delay: 0.06, reverb: 0.22 }, eq: { high: 2 } },
     organChords: { gain: -13, pan: 0.2, send: { reverb: 0.35 }, eq: { low: -4 } },
     bass: { gain: -2, eq: { low: 3, high: -1 } },

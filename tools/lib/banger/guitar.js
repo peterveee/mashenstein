@@ -73,10 +73,12 @@ export const FUNK_GUITARS = Object.freeze(['frppFunkRhythm', 'frppFunkBright', '
 // ---------------------------------------------------------------- 1. guitar chords strum
 /**
  * How a style's guitar chords are strummed (a recipe's `guitarStrum`): `direction` as Note FX
- * names it, the gap between strings in ms, and the up-strokes' trim on an Alternate strum.
- * Unset, a gentle down-strum.
+ * STORES it (pitch order: 'up' is low to high, which a guitarist plays as a DOWN-stroke — so a
+ * guitar's down-strum is 'up' and a real alternating hand is 'alternate-up'), the gap between
+ * strings in ms, and the guitarist's up-stroke trim (`upDb`) on an Alternate strum. Unset, a
+ * gentle down-strum.
  */
-export const GUITAR_STRUM_DEFAULT = Object.freeze({ direction: 'down', gapMs: 14 });
+export const GUITAR_STRUM_DEFAULT = Object.freeze({ direction: 'up', gapMs: 14 });
 const ALTERNATE = new Set(['alternate-up', 'alternate-down']);
 
 /** The Note FX a guitar chord part is given in `style`: `{ guitar, strum }`, whole, as the desk writes them. */
@@ -85,7 +87,11 @@ export function chordStrumFx(style) {
   const alternate = ALTERNATE.has(feel.direction);
   return {
     guitar: { enabled: true, style: 'auto', position: 0 },
-    strum: { enabled: true, direction: feel.direction, gapMs: feel.gapMs, downDb: 0, upDb: alternate ? (feel.upDb ?? -3) : 0 },
+    // The quieter stroke is the guitarist's up-stroke: stored `down` (high to low) on an
+    // 'alternate-up' strum, stored `up` on a legacy 'alternate-down' one.
+    strum: { enabled: true, direction: feel.direction, gapMs: feel.gapMs,
+      downDb: alternate && feel.direction === 'alternate-up' ? (feel.upDb ?? -3) : 0,
+      upDb: alternate && feel.direction === 'alternate-down' ? (feel.upDb ?? -3) : 0 },
   };
 }
 
@@ -225,10 +231,10 @@ export const FUNK_CHUCK = 'frppFunkMuted';
 /** Every preset the strummed part plays — what tools/banger-levels.js `curves` measures for it. */
 export const FUNK_SOUNDS = Object.freeze([...new Set([...FUNK_SETS.map((s) => s.stab), FUNK_CHUCK])]);
 
-/** The two lanes' strums: Alternate-Down, the up-strokes 4 dB under, a tight gap. */
+/** The two lanes' strums: a real alternating hand (stored 'alternate-up'), the up-strokes 4 dB under, a tight gap. */
 export const FUNK_STRUM = Object.freeze({
-  stab: Object.freeze({ enabled: true, direction: 'alternate-down', gapMs: 7, downDb: 0, upDb: -4 }),
-  chuck: Object.freeze({ enabled: true, direction: 'alternate-down', gapMs: 6, downDb: 0, upDb: -4 }),
+  stab: Object.freeze({ enabled: true, direction: 'alternate-up', gapMs: 7, downDb: -4, upDb: 0 }),
+  chuck: Object.freeze({ enabled: true, direction: 'alternate-up', gapMs: 6, downDb: -4, upDb: 0 }),
 });
 /**
  * The two lanes' channels, unless the recipe gives its own (`strips.funkStab`, `strips.funkChuck`):

@@ -7,7 +7,13 @@
 // cabinets.js -> audio.js is a cycle, and the bank files ran before the engine's
 // own constants were initialised. They are data utilities, not engine internals,
 // so they live on their own now and the cycle cannot come back.
-const NOTES = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
+// Flats too (25 Oct 2026): 'Bb4' parsed as nothing at all, so a hand-written line spelled with
+// flats lost those notes without a word. Cb / Fb / E# / B# count from their own letter, so Cb4
+// is B3 and B#3 is C4, as written music means them.
+const NOTES = {
+  C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11,
+  Db: 1, Eb: 3, Gb: 6, Ab: 8, Bb: 10, Cb: -1, Fb: 4, 'E#': 5, 'B#': 12,
+};
 
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -25,7 +31,7 @@ export function noteName(hz) {
 /** n('A2') -> frequency in Hz. */
 export function n(name) {
   if (name == null) return null;
-  const m = /^([A-G]#?)(\d)$/.exec(name);
+  const m = /^([A-G][#b]?)(\d)$/.exec(name);
   if (!m) return null;
   const semitone = NOTES[m[1]] + (parseInt(m[2], 10) + 1) * 12;
   return 440 * Math.pow(2, (semitone - 69) / 12);
@@ -45,7 +51,7 @@ const CHORD_IV = {
  * so both spellings have to sit in the same array.
  */
 export function chord(name) {
-  const m = String(name).match(/^([A-G]#?\d+)(maj7|min7|maj|min|9|7)?$/);
+  const m = String(name).match(/^([A-G][#b]?\d+)(maj7|min7|maj|min|9|7)?$/);
   if (!m) return null;
   const root = n(m[1]);
   return CHORD_IV[m[2] || 'maj'].map((semi) => root * Math.pow(2, semi / 12));

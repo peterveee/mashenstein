@@ -1074,7 +1074,7 @@ function undo() {
   endDeskGesture();
   // A preset still warming has not been made yet, so ⌘Z must not let it land after the
   // step it undoes. See setLaneVoice.
-  laneVoiceTicket++;
+  cancelPendingLaneVoices();
   // A take that has not been written yet is not on this stack, so undoing past it would
   // step back over the bar BEFORE the one you just played — and then the buffered notes
   // would land on top of what was restored. Writing it first makes ⌘Z mean what it
@@ -1719,7 +1719,8 @@ function pasteEffects(key) {
   if (!clipboard) return;
   const list = JSON.parse(JSON.stringify(clipboard.data.effects || []));
   setEffects(key, list);
-  applyToEngine(mixFor(trackId));
+  // setEffects already updates the target chain. Applying the whole mix here also
+  // resets unrelated strips and effect chains under the playing song.
   toast(list.length ? `${list.length} effect${list.length === 1 ? '' : 's'} → ${targetLabel(key)}`
     : `${targetLabel(key)} — effects cleared`);
 }
@@ -2228,6 +2229,7 @@ function hideLoadProgress() {
 }
 
 function loadTrack(id) {
+  disposeChannelAdjust();
   const report = arguments[1] || (() => {});
   return (async () => {
   report('Preparing the song…', 0.08);
@@ -2619,6 +2621,7 @@ function buildLaneFilter(all) {
 }
 
 function buildRack() {
+  cancelChannelMixSync();
   const rack = $('rack');
   // Held across the clear: the sends live inside the rack, so emptying it detaches
   // them, and this reference is what puts them back at the end of the row. Rebuilt
@@ -3792,7 +3795,9 @@ function saveVoiceToSong(laneKey, preset) {
     m.voiceParams = { ...(m.voiceParams || {}), [seam.voiceKey]: preset };
   });
   rebank();
-  applyToEngine(mixFor(trackId));
+  // Like choosing a preset, this changes the voice, not the mixer strips. The
+  // stopped desk still needs its audition bank refreshed.
+  if (!playing) applyToEngine(mixFor(trackId));
   // Onto the copy, which is what the lane plays now. Then the repaint, which is also
   // what puts the panel back beside its strip.
   syncVoiceEditorToLane(laneKey);
@@ -3823,15 +3828,23 @@ function saveVoiceToSong(laneKey, preset) {
  * repoints the lane at the sound it is already playing and has to land at once.
  */
 let laneVoiceTicket = 0;
+const pendingLaneVoices = new Map();
+function cancelPendingLaneVoices() {
+  pendingLaneVoices.clear();
+}
 function setLaneVoice(laneKey, voiceId, { redraw = true, autoCopy = true, warmFirst = true } = {}) {
-  // Any choice outdates one still warming: the last preset picked is the one you get.
+  // Only a choice on THIS lane outdates its warmup. Selecting a sound for another
+  // channel must not silently cancel the first channel's pending choice.
   const ticket = ++laneVoiceTicket;
+  pendingLaneVoices.delete(laneKey);
   if (warmFirst && playing && voiceId) {
     const warming = Audio.warmLaneVoice?.(laneKey, VOICES[voiceId]);
     if (warming) {
       const song = trackId;
+      pendingLaneVoices.set(laneKey, ticket);
       warming.then(() => {
-        if (ticket !== laneVoiceTicket || song !== trackId) return;
+        if (pendingLaneVoices.get(laneKey) !== ticket || song !== trackId) return;
+        pendingLaneVoices.delete(laneKey);
         setLaneVoice(laneKey, voiceId, { redraw, autoCopy, warmFirst: false });
       });
       return;
@@ -5334,6 +5347,8 @@ function channelStrip(lane, mix, slotRows, number) {
       syncChannelMixControls(key);
     },
   });
+  // Owned by the mounted strip, so rebuilding it releases the old knob closure.
+  el.__channelPan = pan.set;
   // Mute and solo close the strip, under the pot — the same small pair the
   // arrangement rows carry, so they read the same in both places.
   const btns = btnRow(routeButton(key), ...muteSoloPair(key, lane.label));
@@ -9988,10 +10003,9 @@ function setEffects(key, list) {
   // on the strip and have to appear and disappear with the chain.
   buildRack();
   // Arrangement rows carry their own FX shortcut, so a chain gaining or losing its
-  // last insert must repaint the row header immediately. The selected inspector also
-  // owns a separate rack; refresh it here when this edit came from that panel.
+  // last insert must repaint the row header immediately. buildRack already refreshes
+  // the selected channel panel through selectLane; do not build that panel twice.
   if (key && key !== '__master' && !key.startsWith('__aux:')) buildArrangement();
-  if (key === selectedLane && $('devices')?.classList.contains('fxwindow-open')) buildDevices();
 }
 
 // ---- Channel EQ ------------------------------------------------------------
@@ -10263,11 +10277,33 @@ function syncEffectSoloButton() {
 
 let channelAdjustOpen = false;
 const channelMixSyncers = new Map();
+const pendingChannelMixSync = new Map();
+let channelMixSyncFrame = 0;
 
 function syncChannelMixControls(key) {
+  pendingChannelMixSync.set(key, trackId);
+  if (channelMixSyncFrame) return;
+  channelMixSyncFrame = requestAnimationFrame(() => {
+    channelMixSyncFrame = 0;
+    for (const [lane, song] of pendingChannelMixSync) {
+      if (song === trackId) flushChannelMixControls(lane);
+    }
+    pendingChannelMixSync.clear();
+  });
+}
+
+function cancelChannelMixSync() {
+  cancelAnimationFrame(channelMixSyncFrame);
+  channelMixSyncFrame = 0;
+  pendingChannelMixSync.clear();
+}
+
+function flushChannelMixControls(key) {
   const settings = laneSettings(mixFor(trackId).lanes?.[key]);
+  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"]`);
+  strip?.__channelPan?.(settings.pan);
   for (const band of ['low', 'mid', 'high']) {
-    const row = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"] .eqrow[data-channel-eq="${band}"], #devmix[data-lane="${CSS.escape(key)}"] .eqrow[data-channel-eq="${band}"]`);
+    const row = strip?.querySelector(`.eqrow[data-channel-eq="${band}"]`);
     if (!row) continue;
     const input = row.querySelector('input[type="range"]');
     const readout = row.querySelector('.val');
@@ -10277,7 +10313,7 @@ function syncChannelMixControls(key) {
     }
   }
   for (const aux of AUXES) {
-    const row = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"] .sendrow[data-channel-send="${aux.id}"], #devmix[data-lane="${CSS.escape(key)}"] [data-channel-send="${aux.id}"]`);
+    const row = strip?.querySelector(`.sendrow[data-channel-send="${aux.id}"]`);
     if (!row) continue;
     const value = mixFor(trackId).lanes?.[key]?.send?.[aux.id] ?? 0;
     const max = aux.id === 'reverb' ? 3 : 2;
@@ -10381,8 +10417,15 @@ function buildChannelIdentity(key) {
   syncChannelNoteFxIndicator();
 }
 
+const channelAdjustDisposers = new Set();
+function disposeChannelAdjust() {
+  for (const dispose of channelAdjustDisposers) dispose();
+  channelAdjustDisposers.clear();
+}
+
 function buildChannelAdjust(key) {
   if (!key || !seamFor(key)) return null;
+  const songId = trackId;
   const details = document.createElement('details');
   details.className = 'devadjust';
   details.open = channelAdjustOpen;
@@ -10414,8 +10457,19 @@ function buildChannelAdjust(key) {
     let value = initial ?? 0;
     let held = false;
     let timer = 0;
+    let pending = false;
+    let disposed = false;
+    channelAdjustDisposers.add(() => {
+      disposed = true;
+      pending = false;
+      clearTimeout(timer);
+    });
     const commit = () => {
       clearTimeout(timer);
+      // A typed edit can settle after a song switch or panel rebuild. Never apply
+      // that old control's value to the current song or a replacement panel.
+      if (!pending || disposed || trackId !== songId || !details.isConnected) return;
+      pending = false;
       const current = arrDraftOf();
       const next = write(current, 0, Math.max(0, current.plan.length - 1), [key], value);
       applyArrangementEdit(next, `${presetHeadingFor(key).name} ${label.toLowerCase()} adjusted across the track`,
@@ -10424,6 +10478,8 @@ function buildChannelAdjust(key) {
     const r = slider({ min, max, step, value, reset: 0,
       fmt: (v) => (mixed ? 'mixed' : short(v)),
       onInput: (raw) => {
+        if (disposed || trackId !== songId || !details.isConnected) return;
+        pending = true;
         value = clamp(Math.round(clamp(raw, min, max) / step) * step, min, max);
         mixed = false;
         r.wrap.classList.remove('mixed');
@@ -10442,6 +10498,13 @@ function buildChannelAdjust(key) {
     r.input.setAttribute('aria-label', label.toLowerCase());
     r.input.addEventListener('pointerdown', () => { held = true; });
     r.input.addEventListener('change', () => { held = false; commit(); });
+    for (const event of ['pointercancel', 'lostpointercapture', 'blur']) {
+      r.input.addEventListener(event, () => {
+        if (!held) return;
+        held = false;
+        commit();
+      });
+    }
     body.append(r.wrap);
   }
   return details;
@@ -10779,7 +10842,12 @@ function buildChannelMore(key, { target = null, at = null } = {}) {
   if (!target) { separate(); addPanelPosition(); }
 }
 
+let channelEffectsAbort = null;
 function buildDevices() {
+  disposeChannelAdjust();
+  channelEffectsAbort?.abort();
+  channelEffectsAbort = new AbortController();
+  const signal = channelEffectsAbort.signal;
   const rack = $('devrack');
   disposeL7Meters(rack);
   rack.textContent = '';
@@ -10815,7 +10883,9 @@ function buildDevices() {
   }
 
   let dragFrom = null;
-  rack.addEventListener('dragover', (e) => e.preventDefault());
+  // This container survives panel rebuilds; replace its handler rather than
+  // accumulating another listener every time a channel is selected.
+  rack.ondragover = (e) => e.preventDefault();
 
   list.forEach((entry, i) => {
     const def = EFFECT_BY_ID[entry.id];
@@ -10849,11 +10919,14 @@ function buildDevices() {
     };
     bar.append(byp, h, close);
     bar.title = 'Drag here to reorder';
+    const releaseDrag = () => { card.draggable = false; };
     bar.addEventListener('mousedown', (ev) => {
       if (ev.target.closest('button')) return;
       card.draggable = true;
+      // Only an armed drag needs a window listener. Rebuilding the panel aborts
+      // it, so a detached card cannot remain held by a never-fired mouseup.
+      addEventListener('mouseup', releaseDrag, { once: true, signal });
     });
-    addEventListener('mouseup', () => { card.draggable = false; }, { once: true });
     card.append(bar);
     const grid = document.createElement('div');
     grid.className = 'devgrid';
@@ -13228,6 +13301,12 @@ const NOTE_FX_DIRECTION_LABELS = {
   pedalLow: 'Pedal · low', pedalHigh: 'Pedal · high', cascade: 'Cascade',
   random: 'Random', asPlayed: 'As played',
 };
+// A strum's direction in a guitarist's words — see the Note FX panel. Not the arp's map:
+// an arpeggio's Up really is low to high, a strum's down-stroke is too.
+const STRUM_DIRECTION_LABELS = {
+  up: 'Down-stroke', down: 'Up-stroke', 'alternate-up': 'Alternate · down first',
+  'alternate-down': 'Alternate · up first', random: 'Random',
+};
 const NOTE_FX_RATE_LABELS = [[4, '1/4'], [8 / 3, '1/4T'], [2, '1/8'], [4 / 3, '1/8T'],
   [1, '1/16'], [2 / 3, '1/16T'], [0.5, '1/32'], [1 / 3, '1/32T']];
 const noteFxRateLabel = (rate) => (NOTE_FX_RATE_LABELS
@@ -13334,7 +13413,7 @@ function barOperationGroups(barPlanEntry, key, { frozen = false, sections = [] }
     text: `Guitar Voicing · ${resolved.guitar.style || 'auto'} · fret ${resolved.guitar.position || 0}`, tone: 'active',
   });
   if (resolved.strum?.enabled) noteItems.push({
-    text: `Strum · ${NOTE_FX_DIRECTION_LABELS[resolved.strum.direction] || 'Up'} · ${resolved.strum.gapMs ?? 18} ms`,
+    text: `Strum · ${STRUM_DIRECTION_LABELS[resolved.strum.direction] || 'Down-stroke'} · ${resolved.strum.gapMs ?? 18} ms`,
     tone: 'active',
   });
   if (resolved.arp?.enabled) {
@@ -20252,6 +20331,11 @@ let allSongStateLoaded = false;
 
 function selectSong(id) {
   if (pendingSongLoad?.id === id) return pendingSongLoad.promise;
+  cancelPendingLaneVoices();
+  cancelChannelMixSync();
+  // Cancel the old panel's delayed edits before yielding to paint or fetching the
+  // next song. Waiting until loadTrack lets them commit during a slow file read.
+  disposeChannelAdjust();
   endDeskGesture();
   draftPersistence.flush();
   const request = ++songLoadRequest;

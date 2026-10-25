@@ -101,6 +101,7 @@ import * as CHOPIN_MINUTE_WALTZ_BOOGIE_VELVET_SWITCH from './chopin-minute-waltz
 import * as CHOPIN_MINUTE_WALTZ_BOOGIE from './chopin-minute-waltz-boogie.js';
 import * as CHOPIN_MINUTE_WALTZ_CLUB from './chopin-minute-waltz-club.js';
 import { CHOPIN3 } from './chopin3.js';
+import * as CORP_AFTER_HOURS from './corp-after-hours.js';
 import * as CORP_FUNKHY_2 from './corp-funkhy-2.js';
 import * as CORP_FUNKHY_3 from './corp-funkhy-3.js';
 import * as CORP_FUNKHY_4 from './corp-funkhy-4.js';
@@ -119,6 +120,7 @@ import * as CRYPT_MIDNIGHT_PROCESSION from './crypt-midnight-procession.js';
 import * as CRYPT_PLUS_HAUNTED_MANOR from './crypt-plus-haunted-manor.js';
 import * as CRYPT_PLUS_SEANCE_PARLOUR from './crypt-plus-seance-parlour.js';
 import * as CRYPT_REMIX_COVEN from './crypt-remix-coven.js';
+import * as CRYPT_REMIX_DEAD_MANS_GULCH from './crypt-remix-dead-mans-gulch.js';
 import * as CRYPT_REMIX_GRAVEYARD_SHIFT from './crypt-remix-graveyard-shift.js';
 import * as CRYPT_REMIX_RAISE_THE_DEAD from './crypt-remix-raise-the-dead.js';
 import * as CRYPT_WHISPER_EXCHANGE from './crypt-whisper-exchange.js';
@@ -140,12 +142,14 @@ import * as FIELD_SERVICE_ORIGINAL from './field-service-original.js';
 import * as FIELD_SERVICE_OVERCLOCK from './field-service-overclock.js';
 import * as FIELD_SERVICE_REWIRED from './field-service-rewired.js';
 import * as FIELD_SERVICE_SLAP_HAPPY from './field-service-slap-happy.js';
+import * as FIELD_SERVICE_TRUCK_STOP from './field-service-truck-stop.js';
 import * as FINALE_8BIT from './finale-8bit.js';
 import * as FOODCOURTTWEAK from './foodcourttweak.js';
 import * as FROST_8BIT from './frost-8bit.js';
 import * as FROST_REMIX_ABSOLUTE_ZERO from './frost-remix-absolute-zero.js';
 import * as FROST_REMIX_BLACK_ICE from './frost-remix-black-ice.js';
 import * as FROST_REMIX_SNOW_GLOBE from './frost-remix-snow-globe.js';
+import * as FROST_REMIX_WINTER_BALLAD from './frost-remix-winter-ballad.js';
 import * as GARY_NUMAN_CARS_2 from './gary-numan-cars-2.js';
 import * as GARY_NUMAN_CARS from './gary-numan-cars.js';
 import * as GRAVITY_8BIT from './gravity-8bit.js';
@@ -189,8 +193,11 @@ import * as GRAVITY_LIGHT from './gravity-light.js';
 import * as GRAVITY_REMIX_ORBITAL from './gravity-remix-orbital.js';
 import * as GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './gravity-remix-radiophonic-moog-seq.js';
 import * as GRAVITY_REMIX_RADIOPHONIC from './gravity-remix-radiophonic.js';
+import * as GRAVITY_REMIX_SPACE_RAGA from './gravity-remix-space-raga.js';
 import * as GRAVITY_REMIX_STARDUST_DISCO from './gravity-remix-stardust-disco.js';
 import * as HUB_8BIT from './hub-8bit.js';
+import * as HUB_REMIX_BOOGALOO from './hub-remix-boogaloo.js';
+import * as HUB_REMIX_LIBRARY_FUNK from './hub-remix-library-funk.js';
 import * as MEGAMIX_8BIT from './megamix-8bit.js';
 import * as MIN_NEW from './min-new.js';
 import * as MIN3_BANGER_3_GOOD from './min3-banger-3-good.js';
@@ -204,6 +211,7 @@ import * as NEON_ORBIT_SHIPPED_BANGER from './neon-orbit-shipped-banger.js';
 import * as NEON_REMIX_ENDSTATION from './neon-remix-endstation.js';
 import * as NEON_REMIX_FREEFALL from './neon-remix-freefall.js';
 import * as NEON_REMIX_GOLDEN_HOUR from './neon-remix-golden-hour.js';
+import * as NEON_REMIX_LAST_TRAIN from './neon-remix-last-train.js';
 import * as NEON_REMIX_LIVE_WIRE from './neon-remix-live-wire.js';
 import * as NEW_THE_FOOD_COURT from './new-the-food-court.js';
 import * as OFFICE_8BIT from './office-8bit.js';
@@ -222,7 +230,11 @@ import * as OFFICE_PREVIEW_NEW_JACK from './office-preview-new-jack.js';
 import * as OFFICE_PREVIEW_OFFICE_MACHINES from './office-preview-office-machines.js';
 import * as OFFICE_PREVIEW_POWER_SUIT from './office-preview-power-suit.js';
 import * as OFFICE_PREVIEW_TRADING_FLOOR from './office-preview-trading-floor.js';
+import * as OFFICE_REMIX_AFTER_HOURS from './office-remix-after-hours.js';
 import * as OFFICE_REMIX_BLUE_CHIP from './office-remix-blue-chip.js';
+import * as OFFICE_REMIX_BONUS_STAGE from './office-remix-bonus-stage.js';
+import * as OFFICE_REMIX_RUMBA_ROOM from './office-remix-rumba-room.js';
+import * as OFFICE_REMIX_VICE_PRESIDENT from './office-remix-vice-president.js';
 import * as OFFICE_THEME_1_THE_CLIMB from './office-theme-1-the-climb.js';
 import * as OFFICE_THEME_2_HOSTILE_BOARDROOM from './office-theme-2-hostile-boardroom.js';
 import * as OFFICE_THEME_3_EXECUTIVE_NOIR from './office-theme-3-executive-noir.js';
@@ -252,6 +264,7 @@ import * as RHYTHM_8BIT from './rhythm-8bit.js';
 import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
 import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
 import * as RHYTHM_REMIX_FIRE_SALE from './rhythm-remix-fire-sale.js';
+import * as RHYTHM_REMIX_HIGHLIFE from './rhythm-remix-highlife.js';
 import * as RHYTHM_REMIX_HOSTILE_TAKEOVER from './rhythm-remix-hostile-takeover.js';
 import * as RHYTHM_REMIX_IN_THE_RED from './rhythm-remix-in-the-red.js';
 import * as ROSSINI_BARBER_OF_SEVILLE_OVERTURE from './rossini-barber-of-seville-overture.js';
@@ -330,6 +343,7 @@ import * as SPEED_REMIX_BREAKNECK from './speed-remix-breakneck.js';
 import * as SPEED_REMIX_COWBELL from './speed-remix-cowbell.js';
 import * as SPEED_REMIX_HAIRPIN from './speed-remix-hairpin.js';
 import * as SPEED_REMIX_REDLINE_ACID_GPT from './speed-remix-redline-acid-gpt.js';
+import * as SPEED_REMIX_WIPEOUT from './speed-remix-wipeout.js';
 import * as SPEED_ZONE_ALT_2 from './speed-zone-alt-2.js';
 import * as SPEED_ZONE_ALT from './speed-zone-alt.js';
 import * as SPEED_ZONE_ORIGINAL from './speed-zone-original.js';
@@ -348,6 +362,8 @@ import * as THE_SURGE_MASHTERPIECE_COPY from './the-surge-mashterpiece-copy.js';
 import * as TIME_VORTEX_V1 from './time-vortex-v1.js';
 import * as TIME_VORTEX_V2 from './time-vortex-v2.js';
 import * as TITLE_8BIT from './title-8bit.js';
+import * as TITLE_REMIX_FILTER_DISCO from './title-remix-filter-disco.js';
+import * as TITLE_REMIX_LOFI from './title-remix-lofi.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
 import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
 import * as WIPL_BGM_SHOP_COPY from './wipl-bgm-shop-copy.js';
@@ -441,6 +457,7 @@ export const IMPORTED_BY_ID = {
   "chopin-minute-waltz-boogie": { bank: CHOPIN_MINUTE_WALTZ_BOOGIE.bank, title: CHOPIN_MINUTE_WALTZ_BOOGIE.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_BOOGIE.banger },
   "chopin-minute-waltz-club": { bank: CHOPIN_MINUTE_WALTZ_CLUB.bank, title: CHOPIN_MINUTE_WALTZ_CLUB.title, group: "imported", writable: true, banger: CHOPIN_MINUTE_WALTZ_CLUB.banger },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
+  "corp-after-hours": { bank: CORP_AFTER_HOURS.bank, title: CORP_AFTER_HOURS.title, group: "copy", writable: true },
   "corp-funkhy-2": { bank: CORP_FUNKHY_2.bank, title: CORP_FUNKHY_2.title, group: "copy", writable: true },
   "corp-funkhy-3": { bank: CORP_FUNKHY_3.bank, title: CORP_FUNKHY_3.title, group: "copy", writable: true },
   "corp-funkhy-4": { bank: CORP_FUNKHY_4.bank, title: CORP_FUNKHY_4.title, group: "copy", writable: true },
@@ -459,6 +476,7 @@ export const IMPORTED_BY_ID = {
   "crypt-plus-haunted-manor": { bank: CRYPT_PLUS_HAUNTED_MANOR.bank, title: CRYPT_PLUS_HAUNTED_MANOR.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-plus-seance-parlour": { bank: CRYPT_PLUS_SEANCE_PARLOUR.bank, title: CRYPT_PLUS_SEANCE_PARLOUR.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-remix-coven": { bank: CRYPT_REMIX_COVEN.bank, title: CRYPT_REMIX_COVEN.title, group: "alternate", writable: true, alternateOf: "crypt" },
+  "crypt-remix-dead-mans-gulch": { bank: CRYPT_REMIX_DEAD_MANS_GULCH.bank, title: CRYPT_REMIX_DEAD_MANS_GULCH.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-remix-graveyard-shift": { bank: CRYPT_REMIX_GRAVEYARD_SHIFT.bank, title: CRYPT_REMIX_GRAVEYARD_SHIFT.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-remix-raise-the-dead": { bank: CRYPT_REMIX_RAISE_THE_DEAD.bank, title: CRYPT_REMIX_RAISE_THE_DEAD.title, group: "alternate", writable: true, alternateOf: "crypt" },
   "crypt-whisper-exchange": { bank: CRYPT_WHISPER_EXCHANGE.bank, title: CRYPT_WHISPER_EXCHANGE.title, group: "alternate", writable: true, alternateOf: "crypt" },
@@ -480,12 +498,14 @@ export const IMPORTED_BY_ID = {
   "field-service-overclock": { bank: FIELD_SERVICE_OVERCLOCK.bank, title: FIELD_SERVICE_OVERCLOCK.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "field-service-rewired": { bank: FIELD_SERVICE_REWIRED.bank, title: FIELD_SERVICE_REWIRED.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "field-service-slap-happy": { bank: FIELD_SERVICE_SLAP_HAPPY.bank, title: FIELD_SERVICE_SLAP_HAPPY.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "field-service-truck-stop": { bank: FIELD_SERVICE_TRUCK_STOP.bank, title: FIELD_SERVICE_TRUCK_STOP.title, group: "alternate", writable: true, alternateOf: "plumber" },
   "finale-8bit": { bank: FINALE_8BIT.bank, title: FINALE_8BIT.title, group: "alternate", writable: true, alternateOf: "finale" },
   "foodcourttweak": { bank: FOODCOURTTWEAK.bank, title: FOODCOURTTWEAK.title, group: "copy", writable: true },
   "frost-8bit": { bank: FROST_8BIT.bank, title: FROST_8BIT.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-absolute-zero": { bank: FROST_REMIX_ABSOLUTE_ZERO.bank, title: FROST_REMIX_ABSOLUTE_ZERO.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-black-ice": { bank: FROST_REMIX_BLACK_ICE.bank, title: FROST_REMIX_BLACK_ICE.title, group: "alternate", writable: true, alternateOf: "frost" },
   "frost-remix-snow-globe": { bank: FROST_REMIX_SNOW_GLOBE.bank, title: FROST_REMIX_SNOW_GLOBE.title, group: "alternate", writable: true, alternateOf: "frost" },
+  "frost-remix-winter-ballad": { bank: FROST_REMIX_WINTER_BALLAD.bank, title: FROST_REMIX_WINTER_BALLAD.title, group: "alternate", writable: true, alternateOf: "frost" },
   "gary-numan-cars-2": { bank: GARY_NUMAN_CARS_2.bank, title: GARY_NUMAN_CARS_2.title, group: "imported", writable: true },
   "gary-numan-cars": { bank: GARY_NUMAN_CARS.bank, title: GARY_NUMAN_CARS.title, group: "imported", writable: true },
   "gravity-8bit": { bank: GRAVITY_8BIT.bank, title: GRAVITY_8BIT.title, group: "alternate", writable: true, alternateOf: "gravity" },
@@ -529,8 +549,11 @@ export const IMPORTED_BY_ID = {
   "gravity-remix-orbital": { bank: GRAVITY_REMIX_ORBITAL.bank, title: GRAVITY_REMIX_ORBITAL.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-radiophonic-moog-seq": { bank: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.bank, title: GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-radiophonic": { bank: GRAVITY_REMIX_RADIOPHONIC.bank, title: GRAVITY_REMIX_RADIOPHONIC.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "gravity-remix-space-raga": { bank: GRAVITY_REMIX_SPACE_RAGA.bank, title: GRAVITY_REMIX_SPACE_RAGA.title, group: "alternate", writable: true, alternateOf: "gravity" },
   "gravity-remix-stardust-disco": { bank: GRAVITY_REMIX_STARDUST_DISCO.bank, title: GRAVITY_REMIX_STARDUST_DISCO.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "hub-8bit": { bank: HUB_8BIT.bank, title: HUB_8BIT.title, group: "alternate", writable: true, alternateOf: "hub" },
+  "hub-remix-boogaloo": { bank: HUB_REMIX_BOOGALOO.bank, title: HUB_REMIX_BOOGALOO.title, group: "alternate", writable: true, alternateOf: "hub" },
+  "hub-remix-library-funk": { bank: HUB_REMIX_LIBRARY_FUNK.bank, title: HUB_REMIX_LIBRARY_FUNK.title, group: "alternate", writable: true, alternateOf: "hub" },
   "megamix-8bit": { bank: MEGAMIX_8BIT.bank, title: MEGAMIX_8BIT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },
   "min3-banger-3-good": { bank: MIN3_BANGER_3_GOOD.bank, title: MIN3_BANGER_3_GOOD.title, group: "copy", writable: true },
@@ -544,6 +567,7 @@ export const IMPORTED_BY_ID = {
   "neon-remix-endstation": { bank: NEON_REMIX_ENDSTATION.bank, title: NEON_REMIX_ENDSTATION.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-freefall": { bank: NEON_REMIX_FREEFALL.bank, title: NEON_REMIX_FREEFALL.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-golden-hour": { bank: NEON_REMIX_GOLDEN_HOUR.bank, title: NEON_REMIX_GOLDEN_HOUR.title, group: "alternate", writable: true, alternateOf: "neon" },
+  "neon-remix-last-train": { bank: NEON_REMIX_LAST_TRAIN.bank, title: NEON_REMIX_LAST_TRAIN.title, group: "alternate", writable: true, alternateOf: "neon" },
   "neon-remix-live-wire": { bank: NEON_REMIX_LIVE_WIRE.bank, title: NEON_REMIX_LIVE_WIRE.title, group: "alternate", writable: true, alternateOf: "neon" },
   "new-the-food-court": { bank: NEW_THE_FOOD_COURT.bank, title: NEW_THE_FOOD_COURT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "office-8bit": { bank: OFFICE_8BIT.bank, title: OFFICE_8BIT.title, group: "alternate", writable: true, alternateOf: "office" },
@@ -562,7 +586,11 @@ export const IMPORTED_BY_ID = {
   "office-preview-office-machines": { bank: OFFICE_PREVIEW_OFFICE_MACHINES.bank, title: OFFICE_PREVIEW_OFFICE_MACHINES.title, group: "imported", writable: true },
   "office-preview-power-suit": { bank: OFFICE_PREVIEW_POWER_SUIT.bank, title: OFFICE_PREVIEW_POWER_SUIT.title, group: "imported", writable: true },
   "office-preview-trading-floor": { bank: OFFICE_PREVIEW_TRADING_FLOOR.bank, title: OFFICE_PREVIEW_TRADING_FLOOR.title, group: "imported", writable: true },
+  "office-remix-after-hours": { bank: OFFICE_REMIX_AFTER_HOURS.bank, title: OFFICE_REMIX_AFTER_HOURS.title, group: "alternate", writable: true, alternateOf: "office" },
   "office-remix-blue-chip": { bank: OFFICE_REMIX_BLUE_CHIP.bank, title: OFFICE_REMIX_BLUE_CHIP.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-remix-bonus-stage": { bank: OFFICE_REMIX_BONUS_STAGE.bank, title: OFFICE_REMIX_BONUS_STAGE.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-remix-rumba-room": { bank: OFFICE_REMIX_RUMBA_ROOM.bank, title: OFFICE_REMIX_RUMBA_ROOM.title, group: "alternate", writable: true, alternateOf: "office" },
+  "office-remix-vice-president": { bank: OFFICE_REMIX_VICE_PRESIDENT.bank, title: OFFICE_REMIX_VICE_PRESIDENT.title, group: "alternate", writable: true, alternateOf: "office" },
   "office-theme-1-the-climb": { bank: OFFICE_THEME_1_THE_CLIMB.bank, title: OFFICE_THEME_1_THE_CLIMB.title, group: "alternate", writable: true, alternateOf: "office" },
   "office-theme-2-hostile-boardroom": { bank: OFFICE_THEME_2_HOSTILE_BOARDROOM.bank, title: OFFICE_THEME_2_HOSTILE_BOARDROOM.title, group: "alternate", writable: true, alternateOf: "office" },
   "office-theme-3-executive-noir": { bank: OFFICE_THEME_3_EXECUTIVE_NOIR.bank, title: OFFICE_THEME_3_EXECUTIVE_NOIR.title, group: "alternate", writable: true, alternateOf: "office" },
@@ -592,6 +620,7 @@ export const IMPORTED_BY_ID = {
   "rhythm-bankruptcy-copy-2": { bank: RHYTHM_BANKRUPTCY_COPY_2.bank, title: RHYTHM_BANKRUPTCY_COPY_2.title, group: "copy", writable: true },
   "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },
   "rhythm-remix-fire-sale": { bank: RHYTHM_REMIX_FIRE_SALE.bank, title: RHYTHM_REMIX_FIRE_SALE.title, group: "alternate", writable: true, alternateOf: "rhythm" },
+  "rhythm-remix-highlife": { bank: RHYTHM_REMIX_HIGHLIFE.bank, title: RHYTHM_REMIX_HIGHLIFE.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-remix-hostile-takeover": { bank: RHYTHM_REMIX_HOSTILE_TAKEOVER.bank, title: RHYTHM_REMIX_HOSTILE_TAKEOVER.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rhythm-remix-in-the-red": { bank: RHYTHM_REMIX_IN_THE_RED.bank, title: RHYTHM_REMIX_IN_THE_RED.title, group: "alternate", writable: true, alternateOf: "rhythm" },
   "rossini-barber-of-seville-overture": { bank: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.bank, title: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.title, group: "imported", writable: true },
@@ -670,6 +699,7 @@ export const IMPORTED_BY_ID = {
   "speed-remix-cowbell": { bank: SPEED_REMIX_COWBELL.bank, title: SPEED_REMIX_COWBELL.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-remix-hairpin": { bank: SPEED_REMIX_HAIRPIN.bank, title: SPEED_REMIX_HAIRPIN.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-remix-redline-acid-gpt": { bank: SPEED_REMIX_REDLINE_ACID_GPT.bank, title: SPEED_REMIX_REDLINE_ACID_GPT.title, group: "alternate", writable: true, alternateOf: "speed" },
+  "speed-remix-wipeout": { bank: SPEED_REMIX_WIPEOUT.bank, title: SPEED_REMIX_WIPEOUT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt-2": { bank: SPEED_ZONE_ALT_2.bank, title: SPEED_ZONE_ALT_2.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt": { bank: SPEED_ZONE_ALT.bank, title: SPEED_ZONE_ALT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-original": { bank: SPEED_ZONE_ORIGINAL.bank, title: SPEED_ZONE_ORIGINAL.title, group: "alternate", writable: true, alternateOf: "speed" },
@@ -688,6 +718,8 @@ export const IMPORTED_BY_ID = {
   "time-vortex-v1": { bank: TIME_VORTEX_V1.bank, title: TIME_VORTEX_V1.title, group: "copy", writable: true },
   "time-vortex-v2": { bank: TIME_VORTEX_V2.bank, title: TIME_VORTEX_V2.title, group: "copy", writable: true },
   "title-8bit": { bank: TITLE_8BIT.bank, title: TITLE_8BIT.title, group: "alternate", writable: true, alternateOf: "title" },
+  "title-remix-filter-disco": { bank: TITLE_REMIX_FILTER_DISCO.bank, title: TITLE_REMIX_FILTER_DISCO.title, group: "alternate", writable: true, alternateOf: "title" },
+  "title-remix-lofi": { bank: TITLE_REMIX_LOFI.bank, title: TITLE_REMIX_LOFI.title, group: "alternate", writable: true, alternateOf: "title" },
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },
   "wiishoppingchannel": { bank: WIISHOPPINGCHANNEL, title: "WIISHOPPINGCHANNEL", group: "imported", writable: false },
   "wipl-bgm-shop-copy": { bank: WIPL_BGM_SHOP_COPY.bank, title: WIPL_BGM_SHOP_COPY.title, group: "copy", writable: true },

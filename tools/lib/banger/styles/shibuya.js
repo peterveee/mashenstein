@@ -26,7 +26,7 @@ export const SHIBUYA = Object.freeze({
   // A light swing on the sixteenths (the arrangement's Swing: 50 is straight).
   swing: 56,
   // Its guitar chords strummed (guitar.js): a gentle down-stroke, the strings 20 ms apart.
-  guitarStrum: { direction: 'down', gapMs: 20 },
+  guitarStrum: { direction: 'up', gapMs: 20 },
   // The flute (Counter-Melody) on; the guitar comps the chords; no supersaws, no pump, no
   // drop-music hits.
   defaults: {

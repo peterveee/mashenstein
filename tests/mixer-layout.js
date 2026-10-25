@@ -970,7 +970,7 @@ assert(/foot\.append\(cancelButton, resetButton, applyButton, applyCloseButton\)
   const rows = noteFxEditor.split(/pairRow\(\);/).slice(1)
     .map((chunk) => chunk.split(/fullRow\(\);|pairRow\(\);/)[0])
     .map((chunk) => [...chunk.matchAll(/const (\w+) = (?:field|number)\(/g)].map((m) => m[1]));
-  assert(JSON.stringify(rows) === JSON.stringify([['strumDir', 'gap'], ['downTrim', 'upTrim'], ['guitarStyle', 'guitarPosition'], ['arpDir', 'arpRate'],
+  assert(JSON.stringify(rows) === JSON.stringify([['strumDir', 'gap'], ['upTrim', 'downTrim'], ['guitarStyle', 'guitarPosition'], ['arpDir', 'arpRate'],
     ['octaves', 'limit'], ['rangeLo', 'rangeHi'], ['gate', 'retrigger']])
     && /#regionedit\.notefxmodal \{ width: 500px; \}/.test(shell)
     && /\.notefxpair \{\s*display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(shell)
@@ -4778,10 +4778,10 @@ assert(/function setLaneVoice[\s\S]*?if \(independent\) buildArrangement\(\); el
 // A preset on a worklet engine chosen under a playing song builds its lane BEFORE the
 // choice lands; built by its first note, it was a mid-bar stall on every engine change.
 // The editor's Save-as-New handoff repoints at a sound already playing and must not wait.
-assert(/function setLaneVoice\([^)]*warmFirst = true[\s\S]*?if \(warmFirst && playing && voiceId\)[\s\S]*?Audio\.warmLaneVoice\?\.\(laneKey, VOICES\[voiceId\]\)[\s\S]*?ticket !== laneVoiceTicket[\s\S]*?warmFirst: false/
+assert(/function setLaneVoice\([^)]*warmFirst = true[\s\S]*?if \(warmFirst && playing && voiceId\)[\s\S]*?Audio\.warmLaneVoice\?\.\(laneKey, VOICES\[voiceId\]\)[\s\S]*?pendingLaneVoices\.get\(laneKey\) !== ticket[\s\S]*?warmFirst: false/
   .test(entry)
   && /assign: \(laneKey, id\) => \{[^}]*warmFirst: false/.test(entry)
-  && /function undo\(\) \{[\s\S]{0,300}laneVoiceTicket\+\+/.test(entry),
+  && /function undo\(\) \{[\s\S]{0,300}cancelPendingLaneVoices\(\)/.test(entry),
   'a live preset change warms its worklet lane first, and undo cancels one still warming');
 // A click on a track selects it wherever it lands. Half a header that answered a click
 // and half that did not read as a dead row.

@@ -275,19 +275,24 @@ function buildNoteFxEditor(x, y, key, scope) {
   // Short entries, because a combobox as wide as its longest sentence sets the width of
   // the whole panel. What the words gave up — that Random is seeded rather than fresh
   // every bar — the hover card keeps.
-  const strumDir = field('Direction', [['up', 'Up · low to high'], ['down', 'Down · high to low'],
-    ['alternate-up', 'Alternate · Up first'], ['alternate-down', 'Alternate · Down first'],
+  // Named as a guitarist names them (Peter, 25 Oct 2026): a DOWN-stroke falls from the low
+  // string to the high one, so it plays the chord low to high. The stored values stay the
+  // engine's pitch-order words — 'up' is low to high — so no saved song changes.
+  const strumDir = field('Direction', [['up', 'Down-stroke · low to high'], ['down', 'Up-stroke · high to low'],
+    ['alternate-up', 'Alternate · down-stroke first'], ['alternate-down', 'Alternate · up-stroke first'],
     ['random', 'Random']], view.strum.direction, {
       name: 'Strum direction',
-      says: 'The order the chord’s notes are spread in. Alternate flips direction on each chord and starts again in its named direction every bar; rests and single notes do not flip it. Random is seeded from the lane and the position in the song, so the same bar strums the same way every play and every render — a shuffle, not a dice roll.',
+      says: 'Strokes are named as a guitarist names them: a down-stroke goes from the low string to the high one, an up-stroke comes back from high to low. The order the chord’s notes are spread in. Alternate flips direction on each chord and starts again in its named direction every bar; rests and single notes do not flip it. Random is seeded from the lane and the position in the song, so the same bar strums the same way every play and every render — a shuffle, not a dice roll.',
     });
   const gap = number('Gap', 0, 250, 1, view.strum.gapMs, 'milliseconds between notes');
   // The faux return: a trim per stroke direction, live only on an Alternate strum.
   pairRow();
   const trimTip = { name: 'Stroke trims',
     says: 'Alternate only. How loud the down-strokes and the up-strokes are, in dB below full. A strumming hand hits harder going down and catches fewer strings coming back up, so an up-stroke a few dB under the down-stroke is what makes a 16th-note strum sound played rather than repeated. 0 is full; it only changes the level, not the sound.' };
-  const downTrim = number('Down trim', -24, 0, 0.5, view.strum.downDb, 'dB', trimTip);
-  const upTrim = number('Up trim', -24, 0, 0.5, view.strum.upDb, 'dB', trimTip);
+  // `upDb` trims the engine's 'up' strokes (low to high) — a guitarist's DOWN-strokes — and
+  // `downDb` the high-to-low ones, the up-strokes. Labelled for the hand, stored for the engine.
+  const upTrim = number('Down-stroke trim', -24, 0, 0.5, view.strum.upDb, 'dB', trimTip);
+  const downTrim = number('Up-stroke trim', -24, 0, 0.5, view.strum.downDb, 'dB', trimTip);
   fullRow();
   const guitarOn = check('Guitar Voicing', view.guitar.enabled);
   pairRow();

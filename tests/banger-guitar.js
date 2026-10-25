@@ -64,23 +64,23 @@ const tones = (v) => (v == null ? [] : [...new Set([].concat(v))]);
   const shibuya = make({ style: 'shibuya' });
   const fx = fxOf(shibuya, 'piano');
   assert(voiceOf(shibuya, 'piano') === 'frppNylon' && same(fx?.guitar, { enabled: true, style: 'auto', position: 0 })
-    && same(fx?.strum, { enabled: true, direction: 'down', gapMs: 20, downDb: 0, upDb: 0 }),
+    && same(fx?.strum, { enabled: true, direction: 'up', gapMs: 20, downDb: 0, upDb: 0 }),
   `Shibuya-Kei's nylon chords get the six-string voicing and a gentle down-strum, 20 ms (${JSON.stringify(fx)})`);
   assert(/Guitar chords strummed on GUITAR Bossa/.test(shibuya.note), 'and the take\'s note says so');
   // the feel by style
   const feel = (id) => G.chordStrumFx(styleFor(id)).strum;
-  assert(feel('reggaeton').direction === 'alternate-down' && feel('reggaeton').gapMs === 12 && feel('reggaeton').upDb === -3
+  assert(feel('reggaeton').direction === 'alternate-up' && feel('reggaeton').gapMs === 12 && feel('reggaeton').downDb === -3 && feel('reggaeton').upDb === 0
     && same(feel('reggaeton-romantico'), feel('reggaeton')),
   'Reggaeton strums down and up, 12 ms, the up-strokes 3 dB under — Romántico too');
-  assert(['electro-funk', 'electro-funk-newjack', 'french-house', 'nu-disco'].every((id) => feel(id).direction === 'alternate-down'
-    && feel(id).gapMs >= 6 && feel(id).gapMs <= 8 && feel(id).upDb === -4), 'the funk and disco styles strum tight, down and up, the up-strokes 4 dB under');
-  assert(same(feel('big-room'), { enabled: true, direction: 'down', gapMs: 14, downDb: 0, upDb: 0 }), 'any other style a plain down-strum, 14 ms');
+  assert(['electro-funk', 'electro-funk-newjack', 'french-house', 'nu-disco'].every((id) => feel(id).direction === 'alternate-up'
+    && feel(id).gapMs >= 6 && feel(id).gapMs <= 8 && feel(id).downDb === -4 && feel(id).upDb === 0), 'the funk and disco styles strum tight, down and up, the up-strokes 4 dB under');
+  assert(same(feel('big-room'), { enabled: true, direction: 'up', gapMs: 14, downDb: 0, upDb: 0 }), 'any other style a plain down-strum, 14 ms');
   // the flavours, by their own rows: Clásico strums its guitar chords down and up; Romántico picks its nylon (the
   // arp, single notes) over a pad, unstrummed; Perreo's chords are clav stabs, which are no guitar
   const clasico = make({ style: 'reggaeton' });
   const romantico = make({ style: 'reggaeton', flavour: 'romantico' });
   const perreo = make({ style: 'reggaeton', flavour: 'perreo' });
-  assert(G.isGuitarVoice(voiceOf(clasico, 'piano')) && fxOf(clasico, 'piano')?.strum?.direction === 'alternate-down'
+  assert(G.isGuitarVoice(voiceOf(clasico, 'piano')) && fxOf(clasico, 'piano')?.strum?.direction === 'alternate-up'
     && voiceOf(romantico, 'arp') === 'frppNylon' && !fxOf(romantico, 'arp') && !G.isGuitarVoice(voiceOf(perreo, 'piano')) && !fxOf(perreo, 'piano'),
   'each flavour as its sounds are: Clásico\'s guitar chords strummed, Romántico\'s picked nylon and Perreo\'s clav not');
   // a fusion: Shibuya-Kei's sound over Deep House's groove keeps the nylon guitar, and its strum
@@ -171,7 +171,7 @@ const tones = (v) => (v == null ? [] : [...new Set([].concat(v))]);
       for (const lane of [stab, chuck]) {
         const s = out.mix.lanes[lane];
         const st = s.noteFx?.strum;
-        if (!(st?.enabled && st.direction === 'alternate-down' && st.upDb === -4 && st.gapMs >= 6 && st.gapMs <= 8) || s.noteFx?.guitar) problems.push(`${style}/${mood}/${seed} ${lane}: strum ${JSON.stringify(s.noteFx)}`);
+        if (!(st?.enabled && st.direction === 'alternate-up' && st.downDb === -4 && st.upDb === 0 && st.gapMs >= 6 && st.gapMs <= 8) || s.noteFx?.guitar) problems.push(`${style}/${mood}/${seed} ${lane}: strum ${JSON.stringify(s.noteFx)}`);
         if (!(s.eq?.high > 0) || !(s.send?.reverb > 0)) problems.push(`${style}/${mood}/${seed} ${lane}: strip ${JSON.stringify(s)}`);
         // the bank as it plays: every strike keeps the hand, every chord one note to a string
         laneBars(out.bank, lane).forEach((part, b) => {

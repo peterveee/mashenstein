@@ -466,6 +466,11 @@ const suites = [
   'tests/mixer-draft-persistence.js',
   // Desk saves, including preset pinning, apply in order and retain newer edits.
   'tests/mixer-save-queue.js',
+  // Channel edit callbacks stay with their song; targeted changes avoid full mix applies.
+  'tests/mixer-channel-edits.js',
+  'tests/mixer-edit-diagnostics.js',
+  'tests/mixer-preset-races.js',
+  'tests/mixer-channel-sync.js',
   // The same shape of claim for gameplay numbers: that the constants the dev
   // strip moves still exist, under those names, as plain numbers, in the files
   // the manifest names — and that the rewrite which makes them movable never
@@ -916,6 +921,10 @@ const soundSuites = [
   'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-draft-persistence.js', 'tests/mixer-save-queue.js',
+  'tests/mixer-channel-edits.js',
+  'tests/mixer-edit-diagnostics.js',
+  'tests/mixer-preset-races.js',
+  'tests/mixer-channel-sync.js',
   'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
   'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-fusion.js', 'tests/banger-mood-pairs.js', 'tests/banger-rolls.js', 'tests/banger-forms.js', 'tests/banger-chords-early.js', 'tests/banger-modify.js',
   'tests/banger-expression.js', 'tests/banger-voice-leading.js',

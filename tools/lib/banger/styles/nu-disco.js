@@ -26,7 +26,7 @@ export const NU_DISCO = Object.freeze({
   enter: { arp: 0 },
   // Guitar chords strummed tight, down and up (guitar.js), and the picked guitar played Chic-style —
   // stabs and chucks — in a little more than half the takes (Guitar: Random).
-  guitarStrum: { direction: 'alternate-down', gapMs: 7, upDb: -4 },
+  guitarStrum: { direction: 'alternate-up', gapMs: 7, upDb: -4 },
   funkGuitar: { strummed: 0.6 },
   defaults: {
     mood: 'nostalgic',
