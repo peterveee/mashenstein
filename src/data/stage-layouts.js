@@ -161,6 +161,9 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.55, high: false },
     pits: [{ at: 0.37, w: 56 }, { at: 0.7, w: 60 }],
     rewindAt: null,
+    sections: [
+      { to: 1, label: "runaway wheels x4 on the lane, to kick into the copter (about 10 a run)", weights: { runawayWheel: 4 } },
+    ],
   },
   "gravity-1": {
     durationSec: 84,

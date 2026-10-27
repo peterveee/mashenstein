@@ -132,6 +132,8 @@ function normalizeSections(sections) {
       tierCap: s.tierCap ?? null,
       exclude: s.exclude && s.exclude.length ? new Set(s.exclude) : null,
       excludePatterns: s.excludePatterns && s.excludePatterns.length ? new Set(s.excludePatterns) : null,
+      // Hazard multipliers for this span, laid over the cabinet's own (spawner.pickPattern).
+      weights: s.weights ?? null,
       drip: {
         capsule: s.drip?.capsule ?? null,
         battery: s.drip?.battery ?? null,

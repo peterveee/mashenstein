@@ -321,12 +321,12 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 | Stage | Title | Bonus challenge |
 |---|---|---|
 | 1 | ZOOM SERVICE | HIT 4 BOOST PADS |
-| 2 | BONK VOYAGE | BONK CLOWN-COPTER *(from below, 3 times; it is underinsured)* |
+| 2 | TIME FLIES | FINISH UNDER 60 SECONDS *(replayed ground costs time)* |
 | 3 | AIR MAIL | COLLECT M-A-S-H *(on the lap; a letter you take stays taken)* |
 
 **Briefings:**
 > **2-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "I INVENTED SPEED. IN 1987. NO ONE THANKED ME. YOU THINK YOU ARE RUNNING FAST, BUT YOU ARE MERELY REPEATING MY EARLY WORK AT A HIGHER FREQUENCY."
-> **2-2, RISK MANAGEMENT BULLETIN:** THE CLOWN-COPTER'S FLIGHT PREMIUMS ARE FORTY YEARS OVERDUE. LANDING HITS ON THIS VEHICLE WILL RESULT IN AUTOMATED SYSTEM REJECTIONS. PREPARE FORM 27-B.
+> **2-2, RISK MANAGEMENT BULLETIN:** THIS ROAD RUNS ON A PUBLISHED TIMETABLE. LATE ARRIVALS WILL RESULT IN AUTOMATED SYSTEM REJECTIONS. PREPARE FORM 27-B.
 > **2-3, CALIBRATION ERROR:** GNASH THE NEEDLEMOUSE FINISHED THIS LAP YESTERDAY AND DROPPED FOUR LETTERS ON THE WAY ROUND. THEY ARE UP HIGH AND OVER THE HOLES. ONE YOU MISS WILL WAIT FOR YOUR NEXT LAP. *(Gnash, not Rusty — the briefing text itself still names him; it has not been rewritten for his replacement.)*
 
 ## CABINET 3 — RHYTHM BANKRUPTCY
@@ -394,7 +394,7 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 |---|---|---|
 | 1 | DEAD QUIET | COLLECT 25 COINS *(blackout stage)* |
 | 2 | TOMB SERVICE | COLLECT 25 COINS |
-| 3 | BOO, AGAIN | COLLECT 30 COINS *(blackout stage)* |
+| 3 | BOO, AGAIN | COLLECT M-A-S-H *(blackout stage; a letter you take stays taken)* |
 
 **Briefings:**
 > **5-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "THE DARKNESS IS A COST-SAVING MEASURE. THE SPOOKINESS IS FREE."
@@ -411,12 +411,12 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 |---|---|---|
 | 1 | FARE GAME | DESTROY 5 TARGETS *(they are very destroyable)* |
 | 2 | LETTER EXPRESS | COLLECT M-A-S-H *(a letter you take stays taken)* |
-| 3 | MIDNIGHT DASH | COLLECT 25 COINS — **BOSS STAGE** |
+| 3 | AIR FARE | BONK CLOWN-COPTER *(from below, 3 times)* — **BOSS STAGE** |
 
 **Briefings:**
 > **6-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "THOSE TARGETS COST ME A FORTUNE. DO NOT SHOOT THEM. DO NOT JUMP INTO THEM. AND UNDER NO CIRCUMSTANCES DESTROY FIVE OF THEM."
 > **6-2, TIMETABLE NOTICE:** FOUR LETTERS ARE RIDING THE TRAINS TONIGHT. WATCH THEM COME IN OVERHEAD: ONE ON A ROOF, ONE IN A DOORWAY. YOU CANNOT BE ON THE ROOF AND IN THE CARRIAGE AT ONCE. WE CHECKED.
-> **6-3, SCHEDULE NOTICE:** THE CLOWN-COPTER IS IN THE SHOP TONIGHT. THE REST OF THE NIGHT SHIFT IS NOT. REACH THE END. *(The copter being "in the shop" is the briefing's joke; it is very much not in the shop by the end of the stage.)*
+> **6-3, SCHEDULE NOTICE:** THE CLOWN-COPTER IS OUT OF THE SHOP AND BACK ON THE NIGHT SHIFT. ITS PREMIUMS REMAIN UNPAID. BONK IT FROM BELOW THREE TIMES.
 
 ### ⚡ BOSS — THE UNDERINSURED CLOWN-COPTER
 *6 HP. Ends Act II.*
@@ -467,7 +467,7 @@ Speed, low-gravity and air-jump capsules are all banned across this whole cabine
 
 | Stage | Title | Bonus challenge |
 |---|---|---|
-| 1 | PLEASE SIGN IN | COLLECT 35 COINS |
+| 1 | PLEASE SIGN IN | FINISH UNDER 95 SECONDS *(replayed ground costs time)* |
 | 2 | MEETING CANCELLED | PULL 3 FIRE ALARMS *(the meeting is cancelled)* |
 | 3 | UNSAFE SAVINGS | CRACK 3 SAFES *(shoot the lock; take the money — a pile of cash and banknotes waits at the exit once you do)* |
 

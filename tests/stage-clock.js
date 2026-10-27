@@ -54,17 +54,18 @@ assert(STAGE_BY_ID['crypt-1'].blackout && STAGE_BY_ID['crypt-3'].blackout && !ST
 
 // ----------------------------------------------------------------- the limit
 const LIMITS = new Set(TIME_TIERS.map((t) => t.limit));
-for (const [id, want] of [['plumber-1', 100], ['rhythm-2', 150], ['gravity-1', 150], ['gravity-2', 200], ['surge-3', 200]]) {
+for (const [id, want] of [['plumber-1', 100], ['rhythm-2', 150], ['gravity-1', 150], ['gravity-2', 160], ['gravity-3', 160], ['office-1', 180], ['surge-3', 200]]) {
   const run = newRun({ stage: STAGE_BY_ID[id] });
   assert(run.timeLimit === want, `${id}: ${run.duration}s stage, ${run.timeLimit}s on the clock`);
 }
 for (const s of STAGES) {
   const run = newRun({ stage: s });
-  if (!LIMITS.has(run.timeLimit) || run.timeLimit < run.duration * 1.5) {
-    assert(false, `${s.id}: limit ${run.timeLimit}s is a tier value and leaves room for replays over its ${run.duration}s`);
+  // A stage may name its own limit (stages.js timeLimit) in place of its tier's.
+  if ((!s.timeLimit && !LIMITS.has(run.timeLimit)) || run.timeLimit < run.duration * 1.5) {
+    assert(false, `${s.id}: limit ${run.timeLimit}s is a tier value (or its own) and leaves room for replays over its ${run.duration}s`);
   }
 }
-assert(true, 'every stage is on a tier and has at least half its length again for replays');
+assert(true, 'every stage is on a tier (or names its own limit) and has at least half its length again for replays');
 assert(newRun({ noClock: true }).timeLimit === null, 'noClock runs have no clock');
 assert(newRun({ stage: null, overtime: true }).timeLimit === null, 'overtime has no clock');
 

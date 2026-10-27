@@ -32,8 +32,9 @@
 //   · everything renders DRY (`echoLevel: 0`). The melodic lanes reach the delay by
 //     default, and a lane's send is not a property of the preset sitting on it.
 //
-// Usage: node tools/measure-voices.js          measure and rewrite the tables
-//        node tools/measure-voices.js --dry    print them, change nothing
+// Usage: node tools/measure-voices.js            measure and rewrite the tables
+//        node tools/measure-voices.js --dry      print them, change nothing
+//        node tools/measure-voices.js --library  the tables only, no song copies
 //
 // Re-run it after editing any preset's `options`: an envelope edit moves the energy,
 // and a stale number is a preset that is quietly twice as loud as its neighbours. And
@@ -73,6 +74,13 @@ const FILL = process.argv.includes('--fill');
  * measured nor written. For finishing a song-copy pass without re-rendering the catalogue.
  */
 const COPIES = process.argv.includes('--copies');
+/*
+ * `--library`: the library and the lane targets only — no song copy is measured or written.
+ * The other half of `--copies`. A copy's stored level is what its song was mixed by ear
+ * against, so re-measuring a finished song's copies re-mixes it (28 Oct 2026: office's hats
+ * would have dropped 7.4 dB); this refreshes the presets without touching any song file.
+ */
+const LIBRARY = process.argv.includes('--library');
 
 /**
  * A preset whose DRIVE is staged off its stored peak (`driveRef`, src/engine/drive-curve.js):
@@ -152,7 +160,7 @@ try {
   // drawers keep copies too, and play them by the same division. The same sound on the
   // same lane is rendered once — a song's variants and alternates share most of theirs.
   const measured = new Map();
-  for (const { id, song, file } of await deskSongs()) {
+  for (const { id, song, file } of LIBRARY ? [] : await deskSongs()) {
     const params = song.mix?.voiceParams;
     if (!params) continue;
     for (const [voiceKey, preset] of Object.entries(params)) {
@@ -329,7 +337,7 @@ if (DRY) {
   writeFileSync(FILE, next);
   console.log(`\nwrote ${tone.length} preset levels and ${Object.keys(targets).length}`
     + ' lane targets into src/data/voices.js');
-  const songs = writeCopies();
+  const songs = LIBRARY ? 0 : writeCopies();
   if (songs) console.log(`and ${copies.length} song copies across ${songs} song file(s)`);
   else if (copies.length) console.log(`${copies.length} song copies were already correct`);
 }

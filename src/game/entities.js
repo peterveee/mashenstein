@@ -557,7 +557,11 @@ export const OBSTACLES = {
   // the box and answer of the slot it took: the wheel the barrel's (rolls, heavy punt), the
   // ladder the fire barrel's (shootable), the fan the saw's, the bollards a spike plate that
   // never lurks — they are always out.
-  runawayWheel: { w: 13, h: 13, sprite: 'runawayWheel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'WHEEL' },
+  runawayWheel: { w: 13, h: 13, sprite: 'runawayWheel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'WHEEL', hop: 2.6 },
+  // THE TYRE AND THE HEARSE WHEEL (Peter, 28 Oct 2026): Speed Zone's and Crypt Shift's barrels.
+  // The wheel's box and answer; `hop` is how far the art bounces as it rolls (draw.js — art only).
+  tyre:         { w: 13, h: 13, sprite: 'tyre', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'TYRE', hop: 3.4 },
+  hearseWheel:  { w: 13, h: 13, sprite: 'hearseWheel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'HEARSE WHEEL', hop: 1.8 },
   jacobsLadder: { w: 13, h: 13, sprite: 'jacobsLadder', ground: true, breakable: true, action: 'jump' },
   risingBollards: { w: 15, h: 7, sprite: 'risingBollards', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
   laserFan:     { w: 15, h: 8, sprite: 'laserFan', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
@@ -696,6 +700,8 @@ export const DEBRIS = {
   giantSnowball: { colors: ['#f7fbff', '#c9def0', '#d8383c'], size: 3.2, count: 14, mat: 'soft' },
   eternalFlame: { colors: ['#8a8496', '#5c566a', '#ffc470'], size: 2.8, spark: '#ffef9e', mat: 'stone' },
   runawayWheel: { colors: ['#17142a', '#262257', '#ff2e4d'], size: 3, spark: '#ffd0d8', mat: 'metal' },
+  tyre:         { colors: ['#2b2730', '#4a4452', '#f6c23c'], size: 3, mat: 'soft' },
+  hearseWheel:  { colors: ['#1b1722', '#e8e4ee', '#c9c7d8'], size: 3, spark: '#c9a8ff', mat: 'metal' },
   jacobsLadder: { colors: ['#4c5488', '#aab1d0', '#a99bff'], size: 3, spark: '#e2e6f6', mat: 'metal' },
 };
 

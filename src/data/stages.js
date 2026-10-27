@@ -19,11 +19,11 @@ const CAB_DURATION = {
 // Player-facing episode names; save keys remain independent of display copy.
 const STAGE_NAMES = {
   plumber: ['PLUG AND PLAY', 'CRATE EXPECTATIONS', 'ALPHABET SPAGHETTI'],
-  speed: ['ZOOM SERVICE', 'BONK VOYAGE', 'AIR MAIL'],
+  speed: ['ZOOM SERVICE', 'TIME FLIES', 'AIR MAIL'],
   rhythm: ['BOP TILL YOU DROP', 'COMBO MAMBO', 'BONK TO THE BEAT'],
   frost: ['ICE TO MEET YOU', 'SNOW PROBLEM', 'ALPHABET SLUSH'],
   crypt: ['DEAD QUIET', 'TOMB SERVICE', 'BOO, AGAIN'],
-  neon: ['FARE GAME', 'LETTER EXPRESS', 'MIDNIGHT DASH'],
+  neon: ['FARE GAME', 'LETTER EXPRESS', 'AIR FARE'],
   gravity: ['WRONG SIDE UP', 'DUST BUSTED', 'SPACE INVADED'],
   office: ['PLEASE SIGN IN', 'MEETING CANCELLED', 'UNSAFE SAVINGS'],
   surge: ['YOU AGAIN', 'SECOND HELPING', 'ONE LAST MASH'],
@@ -282,7 +282,7 @@ export const STAGES = [
   // which charged fifteen seconds of replay for a hole in the opening third.
   S('speed', 2,
     REACH,
-    { type: 'chase', n: 3, desc: 'BONK CLOWN-COPTER', note: 'FROM BELOW, 3 TIMES. IT IS UNDERINSURED.' },
+    { type: 'finishUnder', seconds: 60, desc: 'FINISH UNDER 60 SECONDS', note: 'REPLAYED GROUND COSTS TIME.' },
     { pits: [{ at: 0.14, w: 52 }, { at: 0.72, w: 56 }], paperPreset: 'cardstockClear' }),
   // THE THIRD CROSSING, and the one the cabinet's own furniture argues for: a
   // road that files for collapse should have a stretch where it has actually
@@ -419,7 +419,11 @@ export const STAGES = [
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' }),
   S('crypt', 3,
     REACH,
-    { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' },
+    // M-A-S-H on the lane (Peter, 28 Oct), in place of the coins. S stands on the ground ABOVE
+    // the catacomb (0.40-0.55), between its mouth and its roof gap, so a hero who dropped in
+    // misses it; the other three are on the lane.
+    { type: 'mash', n: 4, at: [0.12, 0.28, { at: 0.475, surface: true }, 0.82],
+      desc: 'COLLECT M-A-S-H', note: 'A LETTER YOU TAKE STAYS TAKEN.' },
     { blackout: true }),
   // THE TRAINS OPEN THE CABINET. Three of them back to back from the start
   // line, which is where they have to be if the arrival cut scene is going to
@@ -477,7 +481,7 @@ export const STAGES = [
   // past a checkpoint, which is where the replay budget wants them.
   S('neon', 3,
     REACH,
-    { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
+    { type: 'chase', n: 3, desc: 'BONK CLOWN-COPTER', note: 'FROM BELOW, 3 TIMES. IT IS UNDERINSURED.' },
     { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
   // ACT III -------------------------------------------------------------------
   S('gravity', 1,
@@ -492,15 +496,15 @@ export const STAGES = [
   S('gravity', 2,
     REACH,
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { intro: 'THE CLEANER HAS MISTAKEN YOU FOR DEBRIS.', durationSec: 100, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'], quiet: true }),
+    { intro: 'THE CLEANER HAS MISTAKEN YOU FOR DEBRIS.', durationSec: 100, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'], quiet: true, timeLimit: 160 }),
   S('gravity', 3,
     REACH,
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { intro: 'LOW GRAVITY. LONG JUMPS. LOOSE HARDWARE.', durationSec: 96, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'], quiet: true }),
+    { intro: 'LOW GRAVITY. LONG JUMPS. LOOSE HARDWARE.', durationSec: 96, bannedPowers: ['capSpeed', 'capLowGrav', 'capAirJump'], quiet: true, timeLimit: 160 }),
   S('office', 1,
     REACH,
-    { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
-    { intro: 'THE PRINTERS SMELL FEAR. AND TONER. MOSTLY TONER.' }),
+    { type: 'finishUnder', seconds: 95, desc: 'FINISH UNDER 95 SECONDS', note: 'REPLAYED GROUND COSTS TIME.' },
+    { intro: 'THE PRINTERS SMELL FEAR. AND TONER. MOSTLY TONER.', timeLimit: 180 }),
   S('office', 2,
     REACH,
     // FOUR ALARMS ON THE WALL, THREE ASKED FOR (Peter, 15 Oct): one before the
@@ -514,7 +518,7 @@ export const STAGES = [
     // No slow-down capsule on any CORPORATE KOMBAT floor (Peter, 26 Oct). This one had a capsule at
     // 0.73, ahead of the two alarms sitting close together at 0.82 and 0.855.
     { quiet: true, introBy: 'eggshell', introSec: 7,
-      intro: 'DO NOT TOUCH MY FIRE ALARMS. THE MEETING ENDS WHEN I SAY.' }),
+      intro: 'DO NOT TOUCH MY FIRE ALARMS. THE MEETING ENDS WHEN I SAY.', timeLimit: 180 }),
   // CRACK THE SAFES (Peter, 15 Oct): four double-height safes placed on floor 88,
   // three asked for, and one SHOT opens each (Run.crackSafe). Replaced the
   // retired escort bonus.
@@ -535,7 +539,7 @@ export const STAGES = [
       },
       desc: 'CRACK 3 SAFES', note: 'SHOOT THE LOCK. TAKE THE MONEY.' },
     // Eggshell introduces the safes himself, by forbidding them (Peter, 15 Oct).
-    { introBy: 'eggshell', intro: 'DO NOT SHOOT MY SAFES. THAT MONEY IS FOR TAXES. I AM NOT PAYING THEM.', introSec: 7 }),
+    { introBy: 'eggshell', intro: 'DO NOT SHOOT MY SAFES. THAT MONEY IS FOR TAXES. I AM NOT PAYING THEM.', introSec: 7, timeLimit: 180 }),
   S('surge', 1,
     REACH,
     { type: 'coins', n: 40, desc: 'COLLECT 40 COINS' },

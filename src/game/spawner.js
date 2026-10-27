@@ -419,7 +419,8 @@ export class Spawner {
     // missions count them. `weights` then multiplies a pattern by each of its hazards'
     // factors, for the cabinet's own tilt. Still one draw; a cabinet with neither keeps
     // its uniform pick exactly.
-    const weights = this.cabinet.weights;
+    // A section's own multipliers tilt the cabinet's for its span (neon-3's runaway wheels).
+    const weights = section?.weights ? { ...this.cabinet.weights, ...section.weights } : this.cabinet.weights;
     let idx;
     if (weights || this.cabinet.balance) {
       const kinds = pats.map((p) => {

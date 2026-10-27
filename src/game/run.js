@@ -7303,7 +7303,13 @@ export class RunState {
    * True when time ran out this frame and the run has ended.
    */
   tickClock(dt) {
-    if (this.timeLimit == null || this.finished || this.finishing) return false;
+    if (this.finished || this.finishing) return false;
+    // A run with no fail clock (the attract demo, ?noclock) still keeps time for a FINISH UNDER bonus,
+    // or its countdown would sit at the full limit for the whole run.
+    if (this.timeLimit == null) {
+      if (this.challenge?.type === 'finishUnder') this.clockT += dt;
+      return false;
+    }
     this.clockT += dt;
     const left = this.timeLimit - this.clockT;
     // Rhythm stages normally leave the rewind recorder off. Warm it only for
@@ -10427,7 +10433,7 @@ export class RunState {
     // zombies harmlessly. A kicked barrel flies over them, then can hit once
     // it lands and rolls on.
     for (const barrel of this.obstacles) {
-      if (!barrel.live || barrel.type !== 'barrel' || !barrel.punted || barrel.vx <= 0
+      if (!barrel.live || !(barrel.type === 'barrel' || barrel.type === 'hearseWheel') || !barrel.punted || barrel.vx <= 0
         || (barrel.route?.kind !== 'tunnel'
           && !(this.cabinet?.id === 'crypt' && barrel.route == null))) continue;
       for (const zombie of this.obstacles) {
@@ -13118,7 +13124,7 @@ export class RunState {
     }
   }
 
-  // The Crypt's regular surface barrel pattern is independent of the
+  // The Crypt's regular surface barrel pattern (a HEARSE WHEEL since 28 Oct) is independent of the
   // underground route furniture, so give each committed surface barrel its
   // own close, fleeing target. The marker lives on the barrel and therefore
   // survives rewind with the pair; naturally rolling barrels remain harmless.
@@ -13126,7 +13132,7 @@ export class RunState {
     if (this.cabinet?.id !== 'crypt' || !this.stage || this.stage.index < 2) return;
     const finishWall = this.overtime ? Infinity : this.laneWallX();
     for (const barrel of this.obstacles) {
-      if (!barrel.live || barrel.type !== 'barrel' || barrel.route != null
+      if (!barrel.live || !(barrel.type === 'barrel' || barrel.type === 'hearseWheel') || barrel.route != null
         || barrel.cryptSurfaceTargetSpawned) continue;
       barrel.cryptSurfaceTargetSpawned = true;
       const zombieX = barrel.x + 32;
@@ -13747,6 +13753,8 @@ export class RunState {
   //   { after: i, dx, alt } `dx` past the far end of the stage's i-th island, at
   //                        `alt` above the lane: too high to reach from the lane,
   //                        in reach of a jump taken OFF the island.
+  //   { at, surface: true } the lane at `at` even where a road runs underneath: the top of a
+  //                        tunnel, so only a hero who stayed up there takes it.
   //   { at, lift }         on the road at `at`, `lift` above its surface rather
   //                        than resting on it — 52 over an island is out of
   //                        every hero's reach from the lane, so it takes a jump
@@ -13791,6 +13799,7 @@ export class RunState {
           - Math.abs(b.x / this.totalDist - spot.after))[0];
       const train = spot.train != null ? islands[spot.train] : null;
       let x, alt = null, clear = false, lift = null, inside = false;
+      const surface = spot.surface === true;
       if (train && spot.door) { x = neonTrainDoorX(train, spot.door); alt = TRAIN_FLOOR_LIFT + COIN_FLOOR; inside = true; }
       else if (train) x = train.x + (train.bodyW ?? train.w) * (spot.along ?? 0.5);
       else if (island) { x = island.x + island.w + (spot.dx ?? 50); alt = spot.alt ?? MASH_LANE_ALT; clear = true; }
@@ -13805,7 +13814,7 @@ export class RunState {
         lift = spot.lift ?? null;
         clear = true;
       }
-      return { letter, x, alt, lift, clear, inside, train: train ? spot.train : null, banked: banked.has(letter), spawned: false, got: false, missed: false };
+      return { letter, x, alt, lift, clear, inside, train: train ? spot.train : null, banked: banked.has(letter), surface, spawned: false, got: false, missed: false };
     });
     this.bonus.count = this.mashHeld();
     this.mashGold = false;
@@ -13823,7 +13832,7 @@ export class RunState {
   mashTrain(l) { return this.routes.filter((rt) => rt.kind === 'island' && !rt.crossing)[l.train]; }
 
   /** A letter's road; none for one inside a train, which is on the floor under it. */
-  mashLetterRoad(l) { return l.inside ? null : this.mashRoadAt(l.x); }
+  mashLetterRoad(l) { return l.inside || l.surface ? null : this.mashRoadAt(l.x); }
 
   /**
    * How high a road letter stands above the LANE under it. A letter on a raised

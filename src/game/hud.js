@@ -2280,7 +2280,9 @@ function portraitBonusText(run) {
     if (challengeMet(run)) return met;
     const left = Math.ceil(challengeSecondsLeft(run));
     const seconds = Number(c.seconds) || 0;
-    return ['BONUS', [`${desc} `, `${left}s`, `${seconds}s`], '#f6c945', '#ffffff'];
+    // UNDER 100s: 96s, not the landscape sentence: three digits of limit and a countdown do not fit the
+    // narrow column beside FINISH UNDER 100 SECONDS, and the tail is the part worth keeping.
+    return ['BONUS', [`UNDER ${seconds}s: `, `${left}s`, `${seconds}s`], '#f6c945', '#ffffff'];
   }
   const n = Number(c.n) || 0;
   const count = Math.min(Number(c.count) || 0, n);
@@ -2528,9 +2530,13 @@ function drawPortraitHud(ctx, run) {
     const bonus = run.overtime ? ['MODE', 'OVERTIME', '#b888f0', '#ffffff'] : portraitBonusText(run);
     if (bonus) {
       const [tag, text, tagColor, ink, tailInks] = bonus;
+      // The panel is the tag and its padding as well as the words (objectivePanelMetrics' `lead`), so the
+      // words get what is left of the column after them. They were trimmed against the whole column,
+      // which let a three-digit countdown (FINISH UNDER 100 SECONDS 97s) run off the right edge.
+      const room = maxText + 22 - (15 + textWidth(tag, 0.8, 'bold')) - 4;
       const bonusText = Array.isArray(text)
-        ? [portraitTrim(text[0].trimEnd(), maxText - textWidth(`  ${text[2]}`), 1) + text[0].match(/\s*$/)[0], text[1], text[2]]
-        : portraitTrim(text, maxText, 1);
+        ? [portraitTrim(text[0].trimEnd(), room - textWidth(`  ${text[2]}`), 1) + text[0].match(/\s*$/)[0], text[1], text[2]]
+        : portraitTrim(text, room, 1);
       const bonusFullWidth = objectivePanelMetrics(tag, bonusText, 1, 0).width;
       const expandedRight = objectiveLeft + bonusFullWidth;
       ctx.save();

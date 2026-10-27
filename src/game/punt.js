@@ -167,13 +167,22 @@ export const HEAVY_PUNT = {
 };
 
 /**
+ * A kicked WHEEL is the heavy arc with a livelier landing (Peter, 28 Oct 2026: "a bounce after a
+ * kick is also nice"): 0.55 where the barrel's 0.35 gives one 6px hop, so a tyre comes down, hops
+ * about 16px, then 5, then settles into the roll-out. Same launch, so the shot at the copter is
+ * the barrel's shot; only the landing differs.
+ */
+export const WHEEL_PUNT = { ...HEAVY_PUNT, restitution: 0.55 };
+
+/**
  * Which arc an obstacle leaves on. `def.punt` carries it: `true` is the cone's,
  * and any other truthy value names a heavier one — so the def reads as what the
  * thing IS ("punt: 'heavy'") rather than as a second parallel flag that can
  * disagree with the first.
  */
 export function puntTuneFor(ob) {
-  return ob && ob.def && ob.def.punt === 'heavy' ? HEAVY_PUNT : PUNT;
+  if (ob && ob.def && ob.def.punt === 'heavy') return ob.def.hop ? WHEEL_PUNT : HEAVY_PUNT;
+  return PUNT;
 }
 
 /**
@@ -268,7 +277,7 @@ export function stepPunt(ob, dt, tune = PUNT) {
   ob.spin = (ob.spin || 0) + (ob.spinV || 0) * dt;
   if (ob.alt <= tune.restAlt) {
     ob.alt = tune.restAlt;
-    ob.vy = -ob.vy * 0.35;
+    ob.vy = -ob.vy * (tune.restitution ?? 0.35);
     ob.vx *= tune.bounceVx;
     ob.spinV *= 0.5;
     if (ob.vy < tune.restVy) {

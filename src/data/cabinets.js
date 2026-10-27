@@ -1155,7 +1155,9 @@ const BAKEOFF_PICKS = {
   speed: {
     // The saucer (the bake-off's I) flies in the songbird's place ("replace the bird with
     // the flying saucer in speed"), and more often than the bird did ("increase it's frequency").
-    swap: { cactus: ['pricklyPear', 'dynamite'], cactusBig: ['barrelCactus'], fireBarrel: ['smudgePot'], boomBarrier: ['sawhorse'], buzzbird: ['saucer'] },
+    swap: { cactus: ['pricklyPear', 'dynamite'], cactusBig: ['barrelCactus'], fireBarrel: ['smudgePot'], boomBarrier: ['sawhorse'], buzzbird: ['saucer'],
+      // The barrel is a TYRE (Peter, 28 Oct), which bounces as it rolls.
+      barrel: ['tyre'] },
     weights: { saucer: 3, barrelCactus: 2, sawhorse: 2, smudgePot: 1.5 },
     // Tier 0, so Speed 1 deals them too: it opens on tier 0 alone.
     add: [
@@ -1180,7 +1182,9 @@ const BAKEOFF_PICKS = {
     P(2, [{ t: 'crampons', dx: 0 }, { t: 'parcels', dx: 70 }]),
   ] },
   crypt: {
-    swap: { dogSnarler: ['graveHands'], dogFeral: ['graveRoses', 'eternalFlame'] },
+    swap: { dogSnarler: ['graveHands'], dogFeral: ['graveRoses', 'eternalFlame'],
+      // The lane's barrel is a HEARSE WHEEL (Peter, 28 Oct); the catacomb's own barrel passes keep the barrel.
+      barrel: ['hearseWheel'] },
     // "yes reduce them in crypt" (15 Oct): the tombstones and braziers still led every run.
     weights: { tombstone: 0.4, brazier: 0.4 },
   },

@@ -9,8 +9,9 @@ import { SPEED_PROP_SPECS } from './speedProps.js';
 import { FROST_PROP_SPECS } from './frostProps.js';
 import { CRYPT_PROP_SPECS } from './cryptProps.js';
 import { NEON_PROP_SPECS } from './neonProps.js';
+import { WHEEL_PROP_SPECS } from './wheelProps.js';
 
-const SPECS = { ...PLUMBER_PROP_SPECS, ...SPEED_PROP_SPECS, ...FROST_PROP_SPECS, ...CRYPT_PROP_SPECS, ...NEON_PROP_SPECS };
+const SPECS = { ...PLUMBER_PROP_SPECS, ...SPEED_PROP_SPECS, ...FROST_PROP_SPECS, ...CRYPT_PROP_SPECS, ...NEON_PROP_SPECS, ...WHEEL_PROP_SPECS };
 
 // The painted envelope a painter is authored in, in world units.
 export function cabinetPropEnvelope(name) {

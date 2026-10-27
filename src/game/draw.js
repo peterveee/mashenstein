@@ -1191,7 +1191,12 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     // updateBarrelArrivals). Absent on every other barrel in the game, which is
     // what the fallbacks are for.
     const scale = e.artScale || 1;
-    ctx.translate(x + e.w / 2, y + e.h / 2 - (e.artRise || 0));
+    // THE WHEELS HOP (def.hop: runaway wheel, tyre, hearse wheel) as they come down the road (Peter, 28 Oct): a bounce off each stretch
+    // of its own travel, so a row of them does not hop in step. ART ONLY, like the lurch above —
+    // the box stays on the road, and a punted wheel (it has a `spin` of its own) is left alone.
+    const hop = e.def.hop && e.spin == null && !e.punted
+      ? Math.abs(Math.sin(e.x * 0.11)) * e.def.hop : 0;
+    ctx.translate(x + e.w / 2, y + e.h / 2 - (e.artRise || 0) - hop);
     if (scale !== 1) ctx.scale(scale, scale);
     // A barrel has been rolling since the level loaded, so it takes its angle
     // from the world clock and every barrel on screen spins in step — which is

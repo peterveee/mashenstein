@@ -9,8 +9,11 @@
 //   ... --slogans        re-render the words layer (and the end card) only
 //   ... --assemble       cut what is on disk into the export
 //
-// Everything lands in work/video/corporate-kombat-mv/. The song is
-// `node tools/render-track.js office 1 work/video/corporate-kombat-mv/song.wav --no-loop`.
+//   ... --song           re-render song.wav from office.js as the game plays it
+//
+// Everything lands in work/video/corporate-kombat-mv/. The song is rendered with office.js's
+// own ARRANGEMENT (its bar order, mutes, transposes and master automation): render-track.js
+// bounces the composed bank, which is an older form of the song, not the one the game plays.
 //
 // ONE CLOCK. Every source is rendered on the song's own timeline — frame g is song time
 // g/60 — so the edit is only a choice of source per bar range, and nothing can drift.
@@ -30,6 +33,8 @@ import { resolve, join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { analyseSong } from './lib/song-analysis.js';
+import { renderBankBrowser } from './lib/render-bank-browser.js';
+import { wavBuffer, dbfs } from './lib/wav.js';
 import { bundleEntry, openArtPage } from './lib/art-page.js';
 import { SR } from './lib/wav.js';
 import * as office from '../src/data/songs/office.js';
@@ -44,6 +49,12 @@ const BAR = 240 / BPM;                  // 2.034 s
 const W = 1920, H = 1080;               // the export
 const SW = 3840, SH = 2160;             // the club's capture: 480x270 logical at x8
 const SEED = 0x6b0b7a;
+// HOW THIN THE HEROES' INK IS IN A CLOSE-UP. The rig thins its contour as the camera pushes in
+// (toons.js CONTOUR taper), but it only knows about the GAME's camera: a crop of the 4K frame, or
+// a dance drawn full frame, is a push-in it cannot see, so it inks the hero as if at room size and
+// the line comes out a thick, soft band (Peter, 28 Oct 2026). So each close-up pins the ink scale
+// (setInkScale) to its push-in times this. 1 would be the game's own rule; more is finer.
+const INK_FINE = 4;
 mkdirSync(DIR, { recursive: true });
 
 /** The frame bar `b` (1-based) starts on. */
@@ -58,33 +69,39 @@ const END = F(61) + 2 * FPS;
 const HERO = { lorenzo: 0, b33p: 1, ramon: 2, grumpos: 3, kiko: 4, clara: 5, fernwick: 6, rusty: 7 };
 
 // THE CUE SHEET: what is done to the room, and on which bar (1-based, fractions allowed).
-//   sky   — lasers from the truss (two patterns, two bars each)
+//   sky   — lasers from the truss: `kinds`, two patterns of two bars each. Named rather than left to
+//           the club's own pick so that all five (club.js LASER_PATTERNS) are seen, each one first
+//           in a tap, which is the half that lands in a wide shot
+//   bolt  — THE BOLT's strike without its remix: the mirror ball spins up inside its plasma globe
+//           and bursts, arcs out to the room, on the last beat before the next bar line at least
+//           2 s off (club.js strikePlan) — the song is not touched
 //   can   — a par can's light show, in its colour
 //   hold  — a hero held down until `until`
 //   tap   — a hero tapped (B-33P: the room onto its CRT, and off again)
 //   led   — a line on the LED board
 //   moment — a crowd moment (confetti, streamers, sticks, toaster, smoke, ball, moonwalk, spotlight…)
 const CUES = [
-  { bar: 5, do: 'sky' },
+  { bar: 5, do: 'sky', kinds: ['floor', 'ceiling'] },
   { bar: 7, do: 'can', k: 0 },
   { bar: 9, do: 'led', text: 'CORPORATE KOMBAT' },
-  { bar: 9, do: 'sky' },
+  { bar: 9, do: 'sky', kinds: ['sheet', 'scissors'] },
   { bar: 13, do: 'can', k: 1 },
   { bar: 15, do: 'hold', hero: 'grumpos', until: 17 },
   { bar: 17, do: 'moment', kind: 'confetti', options: { streamers: true } },
   { bar: 21, do: 'hold', hero: 'lorenzo', until: 25 },
   { bar: 28.75, do: 'tap', hero: 'b33p' },
   { bar: 32.75, do: 'tap', hero: 'b33p' },
-  { bar: 33, do: 'sky' },
+  { bar: 33, do: 'sky', kinds: ['tunnel', 'sheet'] },
   { bar: 37, do: 'moment', kind: 'smoke' },
+  { bar: 39.75, do: 'bolt' },   // bursts on bar 40, beat 4
   { bar: 41, do: 'moment', kind: 'toaster' },
   { bar: 45, do: 'moment', kind: 'sticks' },
   { bar: 45, do: 'can', k: 2 },
   { bar: 49, do: 'moment', kind: 'moonwalk' },
-  { bar: 49, do: 'sky' },
+  { bar: 49, do: 'sky', kinds: ['scissors', 'floor'] },
   { bar: 51, do: 'can', k: 3 },
   { bar: 53, do: 'moment', kind: 'confetti', options: { streamers: true } },
-  { bar: 53, do: 'sky' },
+  { bar: 53, do: 'sky', kinds: ['ceiling', 'tunnel'] },
   { bar: 57, do: 'led', text: 'OUT OF OFFICE' },
 ];
 
@@ -137,9 +154,10 @@ const EDIT = [
   { from: 35, to: 37, src: 'club', frame: { hero: 'ramon', zoom: 2 } },
   { from: 37, to: 39, src: 'club', frame: 'wide' },
   { from: 39, to: 40, src: 'dance', hero: 'kiko', move: 'siren-sweep' },
-  { from: 40, to: 41, src: 'dance', hero: 'grumpos', move: 'beard-bounce' },
+  // THE BOLT: the ball spinning up in its globe, then the room as it bursts
+  { from: 40, to: 40.75, src: 'club', frame: { at: BALL, zoom: 2 } },
   // A3: the toaster, the glow sticks
-  { from: 41, to: 43, src: 'club', frame: 'wide' },
+  { from: 40.75, to: 43, src: 'club', frame: 'wide' },
   { from: 43, to: 45, src: 'club', frame: { hero: 'rusty', zoom: 2 } },
   { from: 45, to: 47, src: 'club', frame: 'wide' },
   { from: 47, to: 49, src: 'club', frame: { hero: 'kiko', zoom: 2 } },
@@ -169,14 +187,14 @@ const SLOGANS = [
   { bar: 19, words: [[0, 'PERFORMANCE'], [2, 'REVIEW']], until: 4 },
   { bar: 20, words: [[0, 'EMPLOYEE'], [2, 'OF THE'], [3, 'MONTH']], until: 4 },
   { bar: 21, words: [[0, 'DEEP'], [1, 'DIVE']], until: 4 },
-  { bar: 29, words: [[0, 'DIGITAL'], [2, 'TRANSFORMATION']], until: 4 },
+  { bar: 29, words: [[0, 'TURN IT'], [1, 'OFF AND'], [2, 'ON AGAIN']], until: 4 },
   { bar: 33, words: [[0, 'MANDATORY'], [2, 'FUN']], until: 4 },
   { bar: 37, words: [[0, 'FIRE'], [1, 'DRILL!']], until: 3 },
   { bar: 41, words: [[0, 'HOT'], [1, 'DESKING']], until: 3 },
   { bar: 45, words: [[0, 'TEAM'], [2, 'BUILDING']], until: 4 },
   { bar: 48, words: [[2, 'OVERTIME!']], until: 4, card: '#48e0c8' },
   { bar: 49, words: [[0, 'MOVING'], [2, 'FORWARD']], until: 4 },
-  { bar: 53, words: [[0, 'EXCEEDS'], [2, 'EXPECTATIONS']], until: 4 },
+  { bar: 53, words: [[0, 'RAISE'], [1, 'THE'], [2, 'ROOF']], until: 4 },
   { bar: 57, words: [[0, "LET'S TAKE THIS"], [2, 'OFFLINE']], until: 4 },
   { bar: 58, words: [[2, 'OUT OF'], [3, 'OFFICE']], until: 4, card: '#ff4fa3' },
 ];
@@ -231,13 +249,43 @@ const INIT = (seed) => {
   };
 };
 
+// The game's own bundle, built here rather than taken from the dev server, so the page can reach
+// the rig's ink dial: the same entry and the same Lab calibration split as build/build.js, plus
+// one line that hands setInkScale to the window.
+let gameJs = null;
+async function gameBundle() {
+  if (gameJs) return gameJs;
+  const { default: esbuild } = await import('esbuild');
+  const out = await esbuild.build({
+    stdin: {
+      contents: `import './src/main.js';
+import { setInkScale } from './src/sprites/toons.js';
+window.__mvInk = setInkScale;`,
+      resolveDir: ROOT, loader: 'js',
+    },
+    bundle: true, format: 'iife', target: ['es2020'], write: false, logLevel: 'error',
+    plugins: [{
+      name: 'banger-calibration-split',
+      setup(b) {
+        b.onResolve({ filter: /calibration-data\.js$/ }, (args) => (
+          args.importer.endsWith('/banger/lazy.js') ? undefined
+            : { path: join(ROOT, 'src/game/banger/calibration-shim.js') }));
+      },
+    }],
+  });
+  gameJs = `window.__MASH_BUILD__="music video";${out.outputFiles[0].text}`;
+  return gameJs;
+}
+
 async function openClub(browser, scale, frames) {
   const page = await browser.newPage({ viewport: { width: SW * scale, height: SH * scale } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.addInitScript(INIT, SEED);
+  const body = await gameBundle();
+  await page.route(/\/game\.js(\?|$)/, (route) => route.fulfill({ contentType: 'text/javascript', body }));
   await page.goto(`${BASE}/?mute&density=${8 * scale}&goto=lab`, { waitUntil: 'load', timeout: 60000 });
-  await page.waitForFunction(() => window.__mash_booted && window.__mash_render_loop
+  await page.waitForFunction(() => window.__mash_booted && window.__mash_render_loop && window.__mvInk
     && /SoundTestState$/.test(window.__mash_cur?.constructor?.name || ''), null, { timeout: 120000 });
 
   // The song's analysis, one reading a frame, for the LED equaliser.
@@ -303,6 +351,10 @@ async function openClub(browser, scale, frames) {
     const neon = c.neon.bind(c), pixels = c.neonPixels.bind(c);
     c.neon = (text, ...rest) => neon(sign(text), ...rest);
     c.neonPixels = (text, ...rest) => pixels(sign(text), ...rest);
+    // THE BOLT, staged: no new take is made, and the burst lands back in this club — the flash,
+    // the ring and the arcs drawn off it as a new take's club would (drawStrike), the song untouched.
+    c.makeReroll = () => { c.rerollTake = { commit() {} }; };
+    c.rerollNow = () => { c.rerolling = 0; c.strikeAt = c.t; };
     // A held hero stays held until the cue sheet lets go.
     const letGo = c.letGo.bind(c);
     c.letGo = () => { if (R.frame < R.holdUntil) return; R.holdUntil = -1; letGo(); };
@@ -314,7 +366,9 @@ async function openClub(browser, scale, frames) {
         const tops = c.boxes.heroes.filter(Boolean).map((b) => b.y);
         const y = ((L.stageTop ?? 0) + Math.min(...tops)) / 2;
         if (!c.tapSky(cue.x ?? 200, y)) throw new Error('tapSky missed');
-      } else if (cue.do === 'can') c.tapCan(cue.k);
+        if (cue.kinds) { c.laserSweep.kinds = cue.kinds; c.lastLaser = cue.kinds.at(-1); }
+      } else if (cue.do === 'bolt') c.strike();
+      else if (cue.do === 'can') c.tapCan(cue.k);
       else if (cue.do === 'tap') c.tapHero(cue.i);
       else if (cue.do === 'hold') { R.holdUntil = cue.untilFrame; c.pressHero(cue.i, 'cue'); }
       else if (cue.do === 'moment') {
@@ -337,7 +391,7 @@ async function stepClub(page, from, to, grab, outW, scale) {
     }));
     plan.push({ g, cues, frame: grab(g) });
   }
-  return page.evaluate(({ plan, outW, scale, SW, SH }) => {
+  return page.evaluate(({ plan, outW, scale, SW, SH, fine }) => {
     const R = window.__mv;
     const c = window.__mash_cur;
     const canvas = document.getElementById('game');
@@ -347,6 +401,8 @@ async function stepClub(page, from, to, grab, outW, scale) {
       R.frame = p.g;
       window.__mvClock = R.t0 + p.g / 60;
       for (const cue of p.cues) R.act(cue);
+      // a close-up is a push-in the rig cannot see: its ink is pinned to it (INK_FINE)
+      window.__mvInk(p.frame && p.frame !== 'wide' ? p.frame.zoom * fine : null);
       window.__mash_render_loop.stepOffline();
       if (!p.frame) continue;
       let rect = [0, 0, SW, SH];
@@ -371,7 +427,7 @@ async function stepClub(page, from, to, grab, outW, scale) {
       outs.push(R.out.toDataURL('image/png').split(',')[1]);
     }
     return outs;
-  }, { plan, outW, scale, SW, SH });
+  }, { plan, outW, scale, SW, SH, fine: INK_FINE });
 }
 
 function framingAt(g) {
@@ -385,19 +441,22 @@ function framingAt(g) {
   return 'wide';
 }
 
+// --probe: a wide frame a beat into every bar, half size. --probe=40.2,40.5,… : those bars instead.
 async function probeClub(browser) {
-  const total = F(RANGE.to);
-  const { page, errors } = await openClub(browser, 0.5, total);
+  const list = process.argv.find((a) => a.startsWith('--probe='))?.slice(8).split(',').map(Number);
+  const ats = (list ?? Array.from({ length: RANGE.to - 1 }, (_, k) => k + 1.25)).map(F).sort((a, b) => a - b);
+  const { page, errors } = await openClub(browser, 0.5, ats.at(-1) + 1);
   const dir = join(DIR, 'probe');
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  let n = 0;
+  let n = 0, from = 0;
   try {
-    for (let b = 1; b < RANGE.to; b++) {
-      // up to a beat into bar b, then one frame, wide
-      const at = F(b) + Math.round(BAR * FPS / 4);
-      const from = b === 1 ? 0 : F(b - 1) + Math.round(BAR * FPS / 4) + 1;
-      const pngs = await stepClub(page, from, at + 1, (g) => (g === at ? 'wide' : null), 960, 0.5);
+    for (const at of ats) {
+      for (; from < at; from += 60) await stepClub(page, from, Math.min(at, from + 60), () => null, 960, 0.5);
+      const pngs = await stepClub(page, at, at + 1, () => 'wide', 960, 0.5);
+      from = at + 1;
+      const lasers = await page.evaluate(() => { const c = window.__mash_cur; const L = c.laserState(c.heardNow()); return L ? `${L.kind} ${L.q.toFixed(1)}` : '-'; });
+      console.log(`${String(n).padStart(3, '0')}  bar ${(at / FPS / BAR + 1).toFixed(2)}  lasers ${lasers}`);
       writeFileSync(join(dir, `${String(n++).padStart(3, '0')}.png`), Buffer.from(pngs[0], 'base64'));
     }
     const state = await page.evaluate(() => {
@@ -409,6 +468,44 @@ async function probeClub(browser) {
       '-vf', 'tile=4x6:padding=4', '-frames:v', '1', join(DIR, 'probe-club.jpg')]);
     console.log(join(DIR, 'probe-club.jpg'));
     if (errors.length) console.log(`page errors: ${errors.slice(0, 5).join(' | ')}`);
+  } finally { await page.close(); }
+}
+
+// --look: the close-ups at three ink settings, side by side, to choose INK_FINE by eye.
+async function lookClub(browser) {
+  const shots = EDIT.filter((e) => e.src === 'club' && e.frame?.hero).slice(0, 6);
+  const last = F(shots.at(-1).from) + 60;
+  const { page } = await openClub(browser, 1, last + 1);
+  const fines = [1, INK_FINE, INK_FINE * 2];
+  const dir = join(ROOT, 'work/local/ckmv/look');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  try {
+    let at = 0;
+    for (const e of shots) {
+      const g = F(e.from) + 60;
+      for (let a = at; a < g; a += 30) await stepClub(page, a, Math.min(g, a + 30), () => null, W, 1);
+      at = g;
+      const pngs = await page.evaluate(({ g, i, zoom, fines, SW, SH, W }) => {
+        const R = window.__mv, c = window.__mash_cur, canvas = document.getElementById('game');
+        const out = document.createElement('canvas'); out.width = W; out.height = W * 9 / 16;
+        const o = out.getContext('2d');
+        return fines.map((f) => {
+          R.frame = g; window.__mvClock = R.t0 + g / 60;
+          window.__mvInk(zoom * f);
+          window.__mash_render_loop.stepOffline();
+          const b = c.boxes.heroes[i];
+          const w = SW / zoom, h = SH / zoom;
+          const x = Math.max(0, Math.min(SW - w, (b.x + b.w / 2) * 8 - w / 2));
+          const y = Math.max(0, Math.min(SH - h, (b.y + b.h * 0.55) * 8 - h / 2));
+          o.drawImage(canvas, x, y, w, h, 0, 0, out.width, out.height);
+          return out.toDataURL('image/png').split(',')[1];
+        });
+      }, { g, i: HERO[e.frame.hero], zoom: e.frame.zoom, fines, SW, SH, W });
+      pngs.forEach((png, k) => writeFileSync(join(dir, `${e.frame.hero}-${fines[k]}.png`), Buffer.from(png, 'base64')));
+      at = g + fines.length;
+    }
+    console.log(`${dir}: ${shots.map((e) => e.frame.hero).join(', ')} at ink ${fines.join(' / ')}`);
   } finally { await page.close(); }
 }
 
@@ -449,7 +546,8 @@ async function captureClub(browser) {
 // on the song's beat.
 const DANCE_ENTRY = `
 import { HERO_DANCE_LAB_CANDIDATES, drawHeroDance } from './src/dev/hero-dance-candidates.js';
-window.danceFrames = (hero, move, beats, w, h) => {
+import { setInkScale } from './src/sprites/toons.js';
+window.danceFrames = (hero, move, beats, w, h, ink) => {
   const cand = HERO_DANCE_LAB_CANDIDATES.find((c) => c.hero === hero && c.move === move);
   if (!cand) throw new Error('no dance ' + hero + '/' + move);
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -457,11 +555,17 @@ window.danceFrames = (hero, move, beats, w, h) => {
   return beats.map((beat) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+    setInkScale(ink);
     drawHeroDance(ctx, cand, beat, w / 2, h * 0.92, h * 0.78);
+    setInkScale(null);
     return c.toDataURL('image/png').split(',')[1];
   });
 };
 `;
+
+// The dance's hero (78% of the frame) against the same hero in the club's wide shot (66 of
+// 270 logical px): the push-in its ink is pinned to.
+const DANCE_PUSH = 0.78 / (66 / 270);
 
 async function renderDances() {
   const { browser, page } = await openArtPage(await bundleEntry(DANCE_ENTRY, ROOT));
@@ -472,8 +576,8 @@ async function renderDances() {
       for (let a = F(e.from); a < F(e.to); a += 20) {
         const beats = [];
         for (let g = a; g < Math.min(F(e.to), a + 20); g++) beats.push(g / FPS * BPM / 60);
-        const pngs = await page.evaluate(({ hero, move, beats, W, H }) => window.danceFrames(hero, move, beats, W, H),
-          { hero: e.hero, move: e.move, beats, W, H });
+        const pngs = await page.evaluate(({ hero, move, beats, W, H, ink }) => window.danceFrames(hero, move, beats, W, H, ink),
+          { hero: e.hero, move: e.move, beats, W, H, ink: DANCE_PUSH * INK_FINE });
         for (const png of pngs) if (!ff.stdin.write(Buffer.from(png, 'base64'))) await once(ff.stdin, 'drain');
       }
       ff.stdin.end();
@@ -640,12 +744,31 @@ function assemble() {
   console.log(`${out}  ${dur.toFixed(2)} s`);
 }
 
+// ---------------------------------------------------------------- the song
+
+// The song as the game plays it: the arranged form, once through, then the tail.
+async function renderSong() {
+  const { outL, outR, seconds, peak } = await renderBankBrowser(office.bank, {
+    trackId: 'office', mix: office.mix, arrangement: office.arrangement, songLoop: false, repeat: 1,
+  });
+  mkdirSync(DIR, { recursive: true });
+  writeFileSync(SONG_WAV, wavBuffer([outL, outR], 1));
+  console.log(`${SONG_WAV}: ${seconds.toFixed(2)} s, peak ${dbfs(peak)}`);
+}
+
 // ---------------------------------------------------------------- main
 
 async function main() {
-  if (!existsSync(SONG_WAV)) throw new Error(`render the song first: node tools/render-track.js office 1 ${SONG_WAV} --no-loop`);
-  const only = ['--probe', '--club', '--dances', '--slogans', '--assemble'].filter(arg);
+  if (arg('--look')) {
+    const browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio'] });
+    try { await lookClub(browser); } finally { await browser.close(); }
+    return;
+  }
+  if (process.argv.some((a) => a.startsWith('--probe='))) process.argv.push('--probe');
+  const only = ['--song', '--probe', '--club', '--dances', '--slogans', '--assemble'].filter(arg);
   const want = (k) => !only.length || only.includes(k);
+  if (want('--song') && (only.length || !existsSync(SONG_WAV))) await renderSong();
+  if (!existsSync(SONG_WAV)) throw new Error(`render the song first: node tools/render-music-video.js --song`);
   if (arg('--probe') || want('--club')) {
     const browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio'] });
     try {
