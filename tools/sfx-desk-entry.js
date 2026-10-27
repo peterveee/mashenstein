@@ -97,6 +97,7 @@ const GROUPS = [
       { cue: 'coyoteYip', what: "one of the pup's two yips in the coyote chorus" },
       { cue: 'coyoteChorus', what: 'the whole pack joining in on the coyote chorus' },
       { cue: 'faxHandshake', what: "a fax machine's handshake, ending on the downbeat that starts office-2's song" },
+      { cue: 'tada', what: 'a Windows-style ta-da in G minor on the downbeat of bar 7 of office-2's song' },
       { cue: 'sleighCarol', what: "the minor-key carol on vibes as Santa's sleigh flies over frost-3's tape" },
       { cue: 'cameraClick', what: 'the speed camera taking your picture on speed-2' },
       { cue: 'blockBreak', what: 'a crate or ?-crate breaking' },

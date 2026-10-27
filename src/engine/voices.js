@@ -2659,8 +2659,8 @@ export class VoiceRack {
    * a MonoSynth's filter has one of its own, and a retired pool must outlive the
    * slowest of them or holding it back would have bought nothing. A release written in
    * Tone's note notation ('8n') is not a number of seconds and is not read; the one
-   * second floor covers every one of those in the catalogue. The editor allows ten
-   * seconds now, so the retirement window must cover that full envelope too.
+   * second floor covers every one of those in the catalogue. The editor allows thirty
+   * seconds now (27 Oct 2026), so the retirement window must cover that full envelope too.
    */
   static tailOf(spec) {
     let longest = 0;
@@ -2672,7 +2672,7 @@ export class VoiceRack {
       }
     };
     walk(spec?.opts);
-    return Math.min(10, Math.max(1, longest)) + 0.1;
+    return Math.min(30, Math.max(1, longest)) + 0.1;
   }
 
   /**

@@ -126,10 +126,11 @@ function validateOsc(raw, defaults, problems, where) {
  */
 function validateEnv(raw, defaults) {
   const e = raw || {};
-  const out = { attack: clamp(e.attack, 0, 10, defaults.attack) };
-  out.decay = clamp(e.decay, 0, 10, defaults.decay);
+  // Thirty seconds, the desk's ENV_MAX_SECONDS (27 Oct 2026; was ten).
+  const out = { attack: clamp(e.attack, 0, 30, defaults.attack) };
+  out.decay = clamp(e.decay, 0, 30, defaults.decay);
   out.sustain = clamp(e.sustain, 0, 1, defaults.sustain);
-  out.release = clamp(e.release, 0, 10, defaults.release);
+  out.release = clamp(e.release, 0, 30, defaults.release);
   out.attackCurve = oneOf(e.attackCurve, TNGR2_CURVES, defaults.attackCurve);
   out.decayCurve = oneOf(e.decayCurve, TNGR2_CURVES, defaults.decayCurve);
   out.releaseCurve = oneOf(e.releaseCurve, TNGR2_CURVES, defaults.releaseCurve);
@@ -140,7 +141,8 @@ function validateLfo(raw, defaults) {
   const l = raw || {};
   return {
     shape: oneOf(l.shape, TNGR2_LFO_SHAPES, defaults.shape),
-    rate: clamp(l.rate, 0.01, 64, defaults.rate),
+    // 200, the desk's LFO_RATE_MAX (27 Oct 2026; was 64).
+    rate: clamp(l.rate, 0.01, 200, defaults.rate),
     phase: clamp(l.phase, 0, 1, defaults.phase),
   };
 }

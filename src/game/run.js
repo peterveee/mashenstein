@@ -82,6 +82,7 @@ import { ensureKanaFonts, neonPlatformCall, NEON_SORRY_KANA } from '../engine/ka
 import { TRON_PALETTE } from '../sprites/train.js';
 import { setGlowSprites } from '../sprites/props.js';
 import { paperStrengthOf, paperTextureSource } from '../engine/paper-material.js';
+import { win31Pick } from '../engine/stylePacks/officeLigne/deskPlan.js';
 import { finishCryptGouacheBake, CRYPT_WEATHER_TIMING, cryptNight } from '../engine/stylePacks/cryptGouache.js';
 import { drawArcadeIntroBackdrop, arcadeIntroResolve, ARCADE_INTRO_POWER_DOWN_BEAT, arcadeLandingDrop, ARCADE_LANDING_SECS, ARCADE_LANDING_SHAKE, warmArcadeIntro } from '../engine/arcadeIntro.js';
 import { paintHudGlitched } from '../engine/stylePacks/surgeHud.js';
@@ -4496,6 +4497,9 @@ export class RunState {
         && !this.noClock && Number.isFinite(duration) ? timeLimitFor(this.stage, duration) : null;
     }
     this.distance = 0;
+    this.officeTadaDone = false;
+    this.officeTadaBgAt = null;
+    this.officeTadaCam = null;
     // Beat and gravity stages are exactly one fixed-speed duration; ordinary
     // lanes retain their small finish cushion. Gravity encounters are authored
     // against travel seconds, so a hidden 5% tail would desync their finish.
@@ -5041,6 +5045,8 @@ export class RunState {
     Audio.warmWorkletLanes?.();
     // The heavy cues (thunder, boom) as buffers before the level needs them (Audio._bakedCue).
     Audio.warmBakedCues?.()?.catch?.(() => {});
+    // The ta-da on office-2's bar 7, synthesised now rather than a beat before it sounds.
+    if (this.cabinet?.id === 'office' && this.stage?.index === 2) { Audio.warmTada?.(); Audio.warmFireBell?.(); }
     // And the arcade intro's first frames — see warmArcadeIntro. After the prefill for the
     // same reason as the line above: it is a block of main thread, and the queue has to be
     // full past it first. Behind the shutter, where a block costs nothing anyone sees.
@@ -5673,6 +5679,39 @@ export class RunState {
     Audio.sfx('faxHandshake', { inBeats: startIn / spb });
   }
 
+  // CORPORATE KOMBAT level 2: the ta-da (Peter, 26 Oct) on the downbeat of bar 7, where the
+  // Moog's G-Bb-C-D hook first comes in over G minor, while cubicle monitors are on screen. The
+  // cue is in G minor to match (audio.js tadaSamples). Placed on the song clock exactly as the
+  // fax is, and only on the song's first pass through the intro: a level begun past bar 7, or
+  // with too little left of it to place the cue, has no ta-da rather than a late one. The
+  // backdrop is told when it starts (`tadaT`) to put Windows 3.1 on one monitor for it.
+  updateOfficeTada() {
+    if (this.officeTadaDone || this.cabinet?.id !== 'office' || this.stage?.index !== 2) return;
+    if (this.overtime || this.recordBackground) return;
+    if (!this.stageMusicBank || Audio.sourceBank !== this.stageMusicBank) return;
+    const beat = Audio.songBeat();
+    const bpm = Audio.bpm * (Audio.tempo || 1);
+    if (!Number.isFinite(beat) || !(bpm > 0)) return;
+    const BAR7 = 24;
+    if (beat >= BAR7) { this.officeTadaDone = true; return; }
+    // Still on the cabinet screen's bars 1-4 loop: it has not yet been released into bar 5.
+    if (Audio.loopEnd != null && Audio.loopEnd <= 16 * 4) return;
+    // Where the camera will be at bar 7, as soon as the song's place is known: the backdrop keeps
+    // blue screens off the desks on show then, so the Windows monitor starts from a green one.
+    this.officeTadaCam = this.camX + (BAR7 - beat) * 60 / bpm * (this.speed || 0);
+    const spb = 60 / bpm;
+    const startIn = (BAR7 - beat) * spb;
+    if (startIn > Audio.cueLeadSec() + 0.25) return;      // not yet: ask nearer the time
+    this.officeTadaDone = true;
+    if (startIn < Audio.cueLeadSec(0)) return;            // too late to land it on the downbeat
+    // No Windows monitor to turn at that camera (nobody's desk free and green, or a room in the
+    // way): no ta-da either (Peter, 26 Oct).
+    if (win31Pick('open', this.camX + startIn * (this.speed || 0), this.totalDist) == null) return;
+    Audio.sfx('tada', { inBeats: startIn / spb });
+    this.officeTadaBgAt = this.backgroundT + startIn;
+    this.officeTadaCam = this.camX + startIn * (this.speed || 0);
+  }
+
   updateNeonSky(dt) {
     if (this.cabinet?.id !== 'neon') return;
     const stageIndex = this.stage?.index ?? 1;
@@ -6294,6 +6333,7 @@ export class RunState {
     if (!this.paused) this.backgroundT += dt;
     if (!this.paused) this.updateNeonSky(dt);
     if (!this.paused) this.updateOfficeFax();
+    if (!this.paused) this.updateOfficeTada();
     // The marker's own clock, advanced on EVERY path including the finale hold.
     // The cloth's frame index used to come off tRun, which deliberately stops
     // when the hold starts — so the flag froze mid-wave at the exact moment the
@@ -8756,7 +8796,7 @@ export class RunState {
     // the evacuation runs on scenery time, which carries on through the finish (backgroundT):
     // nothing animated stops at the line (Peter, 15 Oct)
     this.fireAlarmBgT = this.backgroundT;
-    Audio.sfx('fireBell');
+    this.ringFireBell(true);
     this.floatText('FIRE ALARM. EVERYBODY OUT.', '#ff6a78');
   }
 
@@ -8765,6 +8805,16 @@ export class RunState {
     // A rewind or a checkpoint back to before the third pull un-rings it.
     if ((this.bonus.count || 0) < this.bonus.n) { this.fireAlarmT = null; return; }
     this.fireAlarmT += dt;
+    // The bell rings until the end of the level (Peter, 26 Oct).
+    if (!this.finishing && !this.finished && !this.dead) this.ringFireBell(false);
+  }
+
+  // The fire bell, as one looped buffer (audio.js fireBellKeep): asked for every frame it should be
+  // ringing, and it falls silent a moment after the asking stops — at the finish, in a pause, on a
+  // death. Headless (no context) it rings once, on the alarm itself.
+  ringFireBell(first) {
+    if (Audio.fireBellKeep?.()) return;
+    if (first) Audio.sfx('fireBell');
   }
 
   drawEvacuation(ctx, cam) {
@@ -17637,6 +17687,9 @@ export class RunState {
       // live-gap geometry needed for that visual cull, not the run's obstacle
       // objects themselves.
       evacuate: this.fireAlarmT == null ? null : this.backgroundT - this.fireAlarmBgT,
+      // office-2's ta-da: seconds since it began (negative just before), or null
+      tadaT: this.officeTadaBgAt == null ? null : this.backgroundT - this.officeTadaBgAt,
+      tadaCam: this.officeTadaCam ?? null,
       roadGaps: this.obstacles
         .filter((ob) => ob?.live && ob.def?.isGap)
         .map((ob) => ({ x: ob.x, w: ob.w })),

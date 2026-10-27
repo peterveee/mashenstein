@@ -907,6 +907,7 @@ export const EFFECT_PRESETS = {
         "octaves": 6,
         "sensitivity": 0,
         "Q": 2,
+        "smoothing": 200,
         "wet": 1
       },
       "presets": {}

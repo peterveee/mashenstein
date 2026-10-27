@@ -1,10 +1,12 @@
 import { paintOfficeCleaners } from './cleanerPlacement.js';
+import { deskMonitorX, paintWin31Screen, WIN31_HOLD_SEC } from './win31.js';
+import { noBlueZone, blueNow, win31Pick } from './deskPlan.js';
 // Corporate Kombat: LIGNE ’89 index painter. Shared with the preserved bake-off.
 import { OFFICE_FLOORS, WALL_BASE, FACTORS, MID_BASE, officeFrame } from '../officeClimb.js';
-import { PAL, bakeStrip, drawStrip, W, box, line } from './line.js';
+import { PAL, bakeStrip, drawStrip, W, box, line, hash } from './line.js';
 import { paintFar, paintNear, cloudShape, sky, stars, sun, clouds, cityLights, towerLights, vehicle, flyer, cradle } from './outside.js';
 import { paintWall, upperWall, liftDoors, clockHands, revolvingDoor, signNeon, floorLights, noonWall, sunShafts, noonShafts, glints, fireExitDoor, alarmSign } from './wall.js';
-import { paintMid, ceiling, ceilingLights, floorPlane, slab, midActors, midDevices, lampSheen, lights, setOfficeEvacuation } from './room.js';
+import { paintMid, ceiling, ceilingLights, floorPlane, slab, midActors, midDevices, lampSheen, lights, setOfficeEvacuation, bsodScreen } from './room.js';
 import { OFFICE_ZOOM as ZOOM } from '../officeClimb.js';
 import { paintFront } from './front.js';
 import { OFFICE_CORRIDORS, officeFurnitureCuts, paintOfficeLandmarks, paintOfficeWallSections, officeLiftSpans, warmOfficeWallSections, officeAlarmSignBay } from './progression.js';
@@ -180,6 +182,44 @@ function exitLineReach(f, doorU) {
   EXIT_CLEAR.set(T, reach);
   return reach;
 }
+// Whether anybody is still to go through the door: from the alarm until the head of the line (the
+// first dealt, so the furthest back) has gone in. After that, and before any alarm, it is shut.
+function fireExitInUse(doorX, f) {
+  if (f.evacT == null || EXIT_FROM == null) return false;
+  const far = Math.min(exitLineReach(f, doorX + f.wall.shift), EXIT_FROM - (f.W + 60));
+  return f.evacT * EXIT_SPEED <= far - EXIT_SHIFT + 46;
+}
+// THE ONE MONITOR THAT BOOTS WINDOWS 3.1 for the ta-da (win31.js): see win31Plan below.
+const noBlue = (f) => noBlueZone(f.floor, f.tadaCam);
+// The crashed terminals, laid over the green ones the bake has (room.js bsodScreen).
+// Once the fire alarm is pulled (office-2, `evacT` seconds since) EVERY monitor on the floor
+// crashes to the blue screen (Peter, 26 Oct), staggered over the first second or so so the room
+// goes down in a wave rather than all at once, the occupied desks' as well as the empty ones.
+function blueScreens(ctx, frame, P, zone, evacT) {
+  for (const m of frame.mid.items) for (const d of m.desks) {
+    const crashed = evacT != null && evacT >= hash(d.seed * 3.7 + 5) * 1.2;
+    if (crashed || blueNow(d, frame.mid.shift, zone)) bsodScreen(ctx, d, deskMonitorX(d), P.inkM);
+  }
+}
+// The Windows monitor is CHOSEN AHEAD, for the camera the ta-da is predicted to land at (deskPlan.js
+// win31Pick), so one is certain to be on screen when it sounds (Peter, 26 Oct: "sound effect
+// happens but no windows"). Recomputed only when the prediction moves.
+let WIN31_PLAN = null;
+function win31Plan(f) {
+  const cam = f.tadaCam;
+  if (WIN31_PLAN && WIN31_PLAN.floor === f.floor && Math.abs(WIN31_PLAN.cam - cam) < 60) return WIN31_PLAN.key;
+  WIN31_PLAN = { floor: f.floor, cam, key: win31Pick(f.floor, cam, f.totalDist, f.coverage) };
+  return WIN31_PLAN.key;
+}
+function win31Monitor(ctx, f, frame, tadaT, zone) {
+  if (tadaT > WIN31_HOLD_SEC + 0.4) { WIN31_PLAN = null; return; }
+  // locked once it has begun; before that it follows the prediction
+  const key = tadaT >= 0 && WIN31_PLAN ? WIN31_PLAN.key : (f.tadaCam != null ? win31Plan(f) : null);
+  if (key == null || tadaT < 0) return;
+  for (const m of frame.mid.items) for (const d of m.desks) {
+    if (d.evacKey === key) { paintWin31Screen(ctx, deskMonitorX(d), tadaT); return; }
+  }
+}
 function fireExitQueue(ctx, doorX, f, P) {
   const run = f.evacT * EXIT_SPEED;
   const far = Math.min(exitLineReach(f, doorX + f.wall.shift), EXIT_FROM - (f.W + 60));
@@ -327,9 +367,10 @@ export const STYLE = {
       const lineIn = f.evacT != null && dx - EXIT_REACH - 60 < f.W + 40 && dx > f.coverage.left - 60;
       // the doorway, then the line, then the open leaf again over whoever is going in
       const doorIn = dx > f.coverage.left - 260 && dx < f.W + 40;
-      if (doorIn) fireExitDoor(ctx, dx, P);
-      if (lineIn) fireExitQueue(ctx, dx, f, P);
-      if (doorIn && lineIn) fireExitDoor(ctx, dx, P, WALL_BASE, true);
+      const inUse = (doorIn || lineIn) && fireExitInUse(dx, f);
+      if (doorIn) fireExitDoor(ctx, dx, P, WALL_BASE, false, !inUse);
+      if (lineIn && inUse) fireExitQueue(ctx, dx, f, P);
+      if (doorIn && lineIn && inUse) fireExitDoor(ctx, dx, P, WALL_BASE, true);
     }
     ctx.restore();
 
@@ -442,7 +483,10 @@ export const STYLE = {
     const layer = (draw) => { ctx.save(); draw(); ctx.restore(); };
     if (B.midBack) drawStrip(ctx, B.midBack, f.mid.shift);
     if (B.midCubiclesBack) drawStrip(ctx, B.midCubiclesBack, f.mid.shift);
+    // the crashed terminals go under the workers, whose heads stand in front of their monitors
+    if (f.floor === 'open') layer(() => blueScreens(ctx, cubicleFrame, P, noBlue(f), f.evacT));
     layer(() => midActors(ctx, cubicleFrame, P));
+    if (f.floor === 'open' && f.tadaCam != null) layer(() => win31Monitor(ctx, f, cubicleFrame, f.tadaT ?? -1, noBlue(f)));
     if (MID_EXTRA) layer(() => MID_EXTRA(ctx, f, P, 'desk'));
     drawStrip(ctx, B.midFront, f.mid.shift);
     if (B.midCubiclesFront) drawStrip(ctx, B.midCubiclesFront, f.mid.shift);

@@ -108,6 +108,9 @@ import * as CORP_FUNKHY_4 from './corp-funkhy-4.js';
 import * as CORP_FUNKHY from './corp-funkhy.js';
 import * as CORP_REMIX_1_COPY_2 from './corp-remix-1-copy-2.js';
 import * as CORP_REMIX_1 from './corp-remix-1.js';
+import * as CORPORATE_KOMBAT_12_INCH from './corporate-kombat-12-inch.js';
+import * as CORPORATE_KOMBAT_CLUB_MIX from './corporate-kombat-club-mix.js';
+import * as CORPORATE_KOMBAT_DUB_MIX from './corporate-kombat-dub-mix.js';
 import * as CORPORATE_KOMBAT_V1_8BIT from './corporate-kombat-v1-8bit.js';
 import * as CORPORATE_KOMBAT_V1 from './corporate-kombat-v1.js';
 import * as CORPORATE_KOMBAT_V2_8BIT from './corporate-kombat-v2-8bit.js';
@@ -195,6 +198,9 @@ import * as GRAVITY_REMIX_RADIOPHONIC_MOOG_SEQ from './gravity-remix-radiophonic
 import * as GRAVITY_REMIX_RADIOPHONIC from './gravity-remix-radiophonic.js';
 import * as GRAVITY_REMIX_SPACE_RAGA from './gravity-remix-space-raga.js';
 import * as GRAVITY_REMIX_STARDUST_DISCO from './gravity-remix-stardust-disco.js';
+import * as HALLOWEEEN_MIX from './halloweeen-mix.js';
+import * as HI_HOW_ARE_YOU_M3_2 from './hi-how-are-you-m3-2.js';
+import * as HI_HOW_ARE_YOU_M3 from './hi-how-are-you-m3.js';
 import * as HUB_8BIT from './hub-8bit.js';
 import * as HUB_REMIX_BOOGALOO from './hub-remix-boogaloo.js';
 import * as HUB_REMIX_LIBRARY_FUNK from './hub-remix-library-funk.js';
@@ -464,6 +470,9 @@ export const IMPORTED_BY_ID = {
   "corp-funkhy": { bank: CORP_FUNKHY.bank, title: CORP_FUNKHY.title, group: "copy", writable: true },
   "corp-remix-1-copy-2": { bank: CORP_REMIX_1_COPY_2.bank, title: CORP_REMIX_1_COPY_2.title, group: "copy", writable: true },
   "corp-remix-1": { bank: CORP_REMIX_1.bank, title: CORP_REMIX_1.title, group: "copy", writable: true },
+  "corporate-kombat-12-inch": { bank: CORPORATE_KOMBAT_12_INCH.bank, title: CORPORATE_KOMBAT_12_INCH.title, group: "copy", writable: true },
+  "corporate-kombat-club-mix": { bank: CORPORATE_KOMBAT_CLUB_MIX.bank, title: CORPORATE_KOMBAT_CLUB_MIX.title, group: "copy", writable: true },
+  "corporate-kombat-dub-mix": { bank: CORPORATE_KOMBAT_DUB_MIX.bank, title: CORPORATE_KOMBAT_DUB_MIX.title, group: "copy", writable: true },
   "corporate-kombat-v1-8bit": { bank: CORPORATE_KOMBAT_V1_8BIT.bank, title: CORPORATE_KOMBAT_V1_8BIT.title, group: "copy", writable: true },
   "corporate-kombat-v1": { bank: CORPORATE_KOMBAT_V1.bank, title: CORPORATE_KOMBAT_V1.title, group: "copy", writable: true },
   "corporate-kombat-v2-8bit": { bank: CORPORATE_KOMBAT_V2_8BIT.bank, title: CORPORATE_KOMBAT_V2_8BIT.title, group: "copy", writable: true },
@@ -551,6 +560,9 @@ export const IMPORTED_BY_ID = {
   "gravity-remix-radiophonic": { bank: GRAVITY_REMIX_RADIOPHONIC.bank, title: GRAVITY_REMIX_RADIOPHONIC.title, group: "alternate", writable: true, alternateOf: "cardboard" },
   "gravity-remix-space-raga": { bank: GRAVITY_REMIX_SPACE_RAGA.bank, title: GRAVITY_REMIX_SPACE_RAGA.title, group: "alternate", writable: true, alternateOf: "gravity" },
   "gravity-remix-stardust-disco": { bank: GRAVITY_REMIX_STARDUST_DISCO.bank, title: GRAVITY_REMIX_STARDUST_DISCO.title, group: "alternate", writable: true, alternateOf: "cardboard" },
+  "halloweeen-mix": { bank: HALLOWEEEN_MIX.bank, title: HALLOWEEEN_MIX.title, group: "copy", writable: true },
+  "hi-how-are-you-m3-2": { bank: HI_HOW_ARE_YOU_M3_2.bank, title: HI_HOW_ARE_YOU_M3_2.title, group: "imported", writable: true },
+  "hi-how-are-you-m3": { bank: HI_HOW_ARE_YOU_M3.bank, title: HI_HOW_ARE_YOU_M3.title, group: "imported", writable: true },
   "hub-8bit": { bank: HUB_8BIT.bank, title: HUB_8BIT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "hub-remix-boogaloo": { bank: HUB_REMIX_BOOGALOO.bank, title: HUB_REMIX_BOOGALOO.title, group: "alternate", writable: true, alternateOf: "hub" },
   "hub-remix-library-funk": { bank: HUB_REMIX_LIBRARY_FUNK.bank, title: HUB_REMIX_LIBRARY_FUNK.title, group: "alternate", writable: true, alternateOf: "hub" },

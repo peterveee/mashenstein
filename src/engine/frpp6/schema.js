@@ -24,7 +24,7 @@ export const FRPP6_EXCITERS = ['pick', 'noise', 'impulse', 'bow'];
 export const FRPP6_SUSTAINED = ['bow'];
 export const isFrpp6Sustained = (type) => FRPP6_SUSTAINED.includes(type);
 export const FRPP6_FILTER_TYPES = ['lowpass', 'highpass', 'bandpass'];
-export const FRPP6_BODIES = ['steel', 'nylon', 'archtop', 'banjo', 'harp', 'violin', 'cello', 'none'];
+export const FRPP6_BODIES = ['steel', 'nylon', 'archtop', 'banjo', 'harp', 'violin', 'cello', 'soundboard', 'none'];
 export const FRPP6_MODES = ['poly', 'mono', 'legato'];
 
 /**
@@ -86,6 +86,14 @@ export const FRPP6_BODY_SETS = Object.freeze({
     cloud: { count: 3, lo: 900, hi: 2800, q: 12, gain: 0.45, tilt: -3, seed: 61 } },
   cello: { primary: [[98, 8, 1.0], [180, 10, 0.9], [290, 9, 0.6]],
     cloud: { count: 3, lo: 400, hi: 1600, q: 11, gain: 0.45, tilt: -3, seed: 67 } },
+  // A piano's soundboard (the piano trial, 27 Oct 2026; not on the desk's list yet): no air
+  // in a box, just a big ribbed plate — a few broad low modes, then a dense, even cloud right
+  // up the range, which is what makes a struck string sound like it is in a piano.
+  soundboard: { primary: [[58, 5, 0.7], [112, 7, 0.9], [196, 9, 0.8]],
+    cloud: { count: 60, lo: 150, hi: 7500, q: 30, gain: 0.5, tilt: -2, seed: 79 },
+    // A board's response is mostly a diffuse, noisy tail rather than tones: seeded noise,
+    // its lows ringing for t60Lo and its highs for t60Hi (tables.js renderThroughBody).
+    diffuse: { gain: 1, t60Lo: 0.35, t60Hi: 0.06, split: 600, seed: 83 } },
   none: null,
 });
 
@@ -104,10 +112,13 @@ const oneOf = (value, list, fallback) => (list.includes(value) ? value : fallbac
  *            hardness (HARD: soft↔hard — the brightness of
  *            the pluck comes with it), position (WHERE), mix (SCRAPE), length (LENGTH)
  *   string   decay (RING), damp (HIGHS), stiffness (METAL), buzz (BUZZ),
- *            pickup (acoustic, or a five-way switch: neck … bridge), double (off | shimmer | octave)
+ *            resonance (RESONANCE: the open strings ringing along) and drop (DROP: a fast
+ *            first fall, then the long tail) — both on RING, 27 Oct 2026,
+ *            pickup (acoustic, or a five-way switch: neck … bridge), double (off | shimmer | octave),
+ *            sub (SUB: a sine an octave below, for basses — 27 Oct 2026)
  *   damping  mute, mutedBelow (CHUCK), lift, fret, squeak
  *   strings  tuning, tension (BEND)
- *   body     type, mix, size — and behind an ADVANCED door, the three named modes: air, top,
+ *   body     type, mix, size, wood (WOOD: the box's noisy tail, 27 Oct 2026) — and behind an ADVANCED door, the three named modes: air, top,
  *            back, each hz / q (unset: the body's own) and a dB trim (0: as the body has it)
  *   filter, filterEnv, amp — the standard cards
  *
@@ -131,6 +142,11 @@ const oneOf = (value, list, fallback) => (list.includes(value) ? value : fallbac
 // between, which the Gate A clean electric (0.35) and funk guitar (0.75) were set to.
 export const FRPP6_PICKUPS = ['acoustic', 'neck', 'neckMiddle', 'middle', 'middleBridge', 'bridge'];
 export const FRPP6_DOUBLES = ['off', 'shimmer', 'octave'];
+// How METAL bends the overtones (27 Oct 2026, from the glass auditions). STRING: the same
+// allpasses on every note — past METAL 1 a bar or a bell that changes note to note. PIANO: the
+// stretch solved per note on a piano's curve (dsp.js frpp6DispersionC) — even, growing up the
+// keyboard, glassy at the top. Lands on the piano trial's `internal.inharmonic`.
+export const FRPP6_STRETCHES = ['string', 'piano'];
 // What each pill is, in the core's units: a pickup's place along the string (0 is none),
 // and the second string's interval in cents.
 const PICKUP_AT = { acoustic: 0, neck: 0.15, neckMiddle: 0.35, middle: 0.55, middleBridge: 0.75, bridge: 0.95 };
@@ -146,7 +162,8 @@ const nearest = (table, value) => Object.keys(table).reduce((best, k) =>
 export const frpp6Defaults = () => ({
   exciter: { type: 'pick', hardness: 0.6, position: 0.18, mix: 0.25, length: 0.006, velocity: FIXED.velocity,
     pressure: 0.6, speed: 0.5, noise: 0.1 },
-  string: { decay: 3.5, damp: 0.22, stiffness: 0.15, buzz: 0, pickup: 'acoustic', double: 'off',
+  string: { decay: 3.5, damp: 0.22, stiffness: 0.15, buzz: 0, pickup: 'acoustic', double: 'off', sub: 0, stretch: 'string',
+    resonance: 0, drop: 0,
     keyFollow: FIXED.keyFollow, detune: FIXED.detune, shimmer: FIXED.shimmer },
   damping: { mute: 0, mutedBelow: 0, lift: 0, fret: 0, squeak: 0, settle: FIXED.settle },
   // Absent is OFF, as TNGR-2's Osc B is: a patch carries a filter or it does not.
@@ -154,7 +171,7 @@ export const frpp6Defaults = () => ({
   filterEnv: { amount: 0, attack: 0.001, decay: 0.3, sustain: 0, release: 0.3 },
   amp: { attack: 0, decay: 0.3, sustain: 1, release: 0.3 },
   strings: { tuning: 'standard', tension: 6, spread: FIXED.spread },
-  body: { type: 'steel', mix: 0.8, size: 1, air: modeDefaults(), top: modeDefaults(), back: modeDefaults() },
+  body: { type: 'steel', mix: 0.8, size: 1, wood: 0, air: modeDefaults(), top: modeDefaults(), back: modeDefaults() },
 });
 /** One named body mode, untouched: it follows the body set until a pot pins it. */
 const modeDefaults = () => ({ hz: null, q: null, db: 0 });
@@ -170,11 +187,40 @@ const modeOf = (raw = {}) => ({
  * Engine switches that are NOT preset controls: the A/B the Gate A auditions ran (the body
  * as a per-sample lane filter), and the stages the tests isolate.
  */
-const internalOf = (raw = {}) => ({
+const internalOf = (raw = {}, pots = {}) => ({
   bodyMethod: raw.bodyMethod === 'lane' ? 'lane' : 'commuted',
   laneModes: Math.max(1, Math.min(64, Math.round(num(raw.laneModes, 3)))),
   collapse: raw.collapse !== false,
   forceAmp: raw.forceAmp === true,
+  // The piano trial (27 Oct 2026) — no pot yet, so presets cannot reach them:
+  //   unison       3 makes a SHIMMER pair a trio (dsp.js 'triple')
+  //   stiffStages  dispersion allpasses on a FREE string (2 unset), up to 8
+  //   stiffReach   how far METAL 1 bends each one (0.6 unset — every existing patch)
+  //   sympathetic  the undamped strings under a held pedal, ringing along (0 is off)
+  //   sympRing     how long they ring, seconds
+  //   inharmonic   METAL follows a piano's stretch curve (dsp.js frpp6DispersionC)
+  //   slots        strings on a FREE lane, 6 unset, up to 16
+  //   ringScale    RING times this — a piano's C4 rings ~15 s, past RING's 10 s pot
+  //   twoStage     UNISON 3's middle string decays this much faster and carries the
+  //                attack: a piano's prompt sound, then its aftersound (0 is off)
+  //   knock        the hammer and key's thump, straight to the output (0 is off)
+  //   bodyNoise    a diffuse wood-noise tail on any body that has none of its own (0 is off)
+  //   polarise     a plain string becomes its two polarisations, 0.3 ct apart, so
+  //                TWO STAGE has two lines to work with
+  unison: raw.unison === 3 ? 3 : 2,
+  stiffStages: raw.stiffStages == null ? null : Math.max(0, Math.min(8, Math.round(num(raw.stiffStages, 2)))),
+  stiffReach: clamp(raw.stiffReach, 0, 0.95, 0.6),
+  // These five are where the RESONANCE, DROP and WOOD pots land (`pots`); a key set here
+  // directly, as the auditions do, wins over the pot.
+  sympathetic: clamp(raw.sympathetic ?? pots.sympathetic, 0, 2, 0),
+  sympRing: clamp(raw.sympRing ?? pots.sympRing, 0.2, 30, 4),
+  inharmonic: raw.inharmonic === true || (raw.inharmonic !== false && pots.inharmonic === true),
+  slots: Math.max(6, Math.min(16, Math.round(num(raw.slots, 6)))),
+  ringScale: clamp(raw.ringScale, 0.1, 10, 1),
+  twoStage: clamp(raw.twoStage ?? pots.twoStage, 0, 1, 0),
+  knock: clamp(raw.knock, 0, 4, 0),
+  bodyNoise: clamp(raw.bodyNoise ?? pots.bodyNoise, 0, 2, 0),
+  polarise: raw.polarise === true || (raw.polarise !== false && pots.polarise === true),
 });
 
 /**
@@ -201,6 +247,14 @@ export function validateFrpp6(stored = {}) {
     ? (st.course <= 0 ? 'off' : st.course < 300 ? 'shimmer' : 'octave')
     : oneOf(st.double, FRPP6_DOUBLES, d.string.double);
   const hardness = clamp(ex.hardness, 0, 1, d.exciter.hardness);
+  // Ranges widened 27 Oct 2026 (Peter: "let's do all 5"): RING to 30 s, RESONANCE and WOOD
+  // to 2, SIZE 0.25–4, WHERE down to 0.02. Every preset sat inside the old ranges.
+  const decay = clamp(st.decay, 0.02, 30, d.string.decay);
+  const resonance = clamp(st.resonance, 0, 2, 0);
+  const drop = clamp(st.drop, 0, 1, 0);
+  const wood = clamp(bo.wood, 0, 2, 0);
+  // DROP needs two lines: a plain string becomes its two polarisations (dsp.js TWO STAGE).
+  const polarise = it.polarise === true || (it.polarise !== false && drop > 0);
   return {
     exciter: {
       type: oneOf(ex.type, FRPP6_EXCITERS, d.exciter.type),
@@ -208,7 +262,7 @@ export function validateFrpp6(stored = {}) {
       length: clamp(ex.length, 0.001, 1, d.exciter.length),
       hardness,
       bright: clamp(it.bright ?? ex.bright, 0, 1, brightOf(hardness)),
-      position: clamp(ex.position, 0.05, 0.5, d.exciter.position),
+      position: clamp(ex.position, 0.02, 0.5, d.exciter.position),
       velocity: clamp(it.velocity ?? ex.velocity, 0, 1, FIXED.velocity),
       // The bow's own pots.
       pressure: it.pressure != null ? clamp(it.pressure, 0, 3, 1) : clamp(ex.pressure, 0, 1, d.exciter.pressure),
@@ -216,14 +270,19 @@ export function validateFrpp6(stored = {}) {
       noise: clamp(ex.noise, 0, 1, d.exciter.noise),
     },
     string: {
-      decay: clamp(st.decay, 0.02, 10, d.string.decay),
+      decay,
+      resonance,
+      drop,
       damp: clamp(st.damp, 0.02, 1, d.string.damp),
-      stiffness: clamp(st.stiffness, 0, 1, d.string.stiffness),
+      // 0–2 (27 Oct 2026; was 0–1): above 1 the string turns to bar and bell — see dsp.js.
+      stiffness: clamp(st.stiffness, 0, 2, d.string.stiffness),
       keyFollow: clamp(it.keyFollow ?? st.keyFollow, 0, 1, FIXED.keyFollow),
       detune: clamp(it.detune ?? st.detune, 0, 50, FIXED.detune),
       course: clamp(it.course, 0, 1200, double === 'shimmer'
-        ? clamp(st.shimmer, 1, 50, FIXED.shimmer) : DOUBLE_CENTS[double]),
+        ? clamp(st.shimmer, 1, 50, FIXED.shimmer) : double === 'off' && polarise ? 0.3 : DOUBLE_CENTS[double]),
       buzz: clamp(st.buzz, 0, 1, d.string.buzz),
+      sub: clamp(st.sub, 0, 1, d.string.sub),
+      stretch: oneOf(st.stretch, FRPP6_STRETCHES, d.string.stretch),
       pickup: clamp(it.pickup, 0, 1, PICKUP_AT[pickup]),
     },
     damping: {
@@ -242,16 +301,17 @@ export function validateFrpp6(stored = {}) {
     } : null,
     filterEnv: {
       amount: clamp(fe.amount, -10, 10, d.filterEnv.amount),
-      attack: clamp(fe.attack, 0, 10, d.filterEnv.attack),
-      decay: clamp(fe.decay, 0.001, 10, d.filterEnv.decay),
+      // Envelope times to thirty seconds, the desk's ENV_MAX_SECONDS (27 Oct 2026; was ten).
+      attack: clamp(fe.attack, 0, 30, d.filterEnv.attack),
+      decay: clamp(fe.decay, 0.001, 30, d.filterEnv.decay),
       sustain: clamp(fe.sustain, 0, 1, d.filterEnv.sustain),
-      release: clamp(fe.release, 0.001, 10, d.filterEnv.release),
+      release: clamp(fe.release, 0.001, 30, d.filterEnv.release),
     },
     amp: {
-      attack: clamp(am.attack, 0, 10, d.amp.attack),
-      decay: clamp(am.decay, 0.001, 10, d.amp.decay),
+      attack: clamp(am.attack, 0, 30, d.amp.attack),
+      decay: clamp(am.decay, 0.001, 30, d.amp.decay),
       sustain: clamp(am.sustain, 0, 1, d.amp.sustain),
-      release: clamp(am.release, 0.005, 10, d.amp.release),
+      release: clamp(am.release, 0.005, 30, d.amp.release),
     },
     strings: {
       tuning: oneOf(ss.tuning, FRPP6_TUNING_NAMES, d.strings.tuning),
@@ -261,11 +321,13 @@ export function validateFrpp6(stored = {}) {
     body: {
       type: oneOf(bo.type, FRPP6_BODIES, d.body.type),
       mix: clamp(bo.mix, 0, 1, d.body.mix),
-      size: clamp(bo.size, 0.5, 2, d.body.size),
+      size: clamp(bo.size, 0.25, 4, d.body.size),
+      wood,
       air: modeOf(bo.air), top: modeOf(bo.top), back: modeOf(bo.back),
     },
     master: { gain: clamp(it.gain, 0, 4, 1) },
-    internal: internalOf(it),
+    internal: internalOf(it, { sympathetic: resonance, sympRing: decay, twoStage: drop, bodyNoise: wood,
+      polarise: drop > 0, inharmonic: oneOf(st.stretch, FRPP6_STRETCHES, 'string') === 'piano' }),
   };
 }
 

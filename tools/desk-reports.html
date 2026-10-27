@@ -319,13 +319,13 @@ function drawBass(r) {
 }
 
 // ---------------------------------------------------------------- frames --
-const CAB_NAMES = { plumber: 'Field Service', speed: 'Speed Zone', rhythm: 'Rhythm Bankruptcy', frost: 'Frost Fortress', crypt: 'Crypt Shift', neon: 'Terminal Velocity' };
+const CAB_NAMES = { plumber: 'Field Service', speed: 'Speed Zone', rhythm: 'Rhythm Bankruptcy', frost: 'Frost Fortress', crypt: 'Crypt Shift', neon: 'Terminal Velocity', gravity: 'Gravity Grid', office: 'Corporate Kombat', surge: 'Déjà View' };
 function drawFrames(r) {
   const root = document.getElementById('frames');
-  const head = el('div', { class: 'report-head' }, el('h2', {}, 'Frame time — cabinets 1–6 on a phone'),
+  const head = el('div', { class: 'report-head' }, el('h2', {}, 'Frame time — every cabinet on a phone'),
     r ? el('span', { class: 'when' }, `measured ${ago(r.at)} · ${Math.round(r.minutes || 0)} min${r.quick ? ' · quick run' : ''}`) : null);
   if (!r) {
-    root.replaceChildren(head, el('div', { class: 'empty' }, 'Not run yet. FRAME REPORT on the desk plays every stage of cabinets 1–6 and fills this in.'));
+    root.replaceChildren(head, el('div', { class: 'empty' }, 'Not run yet. FRAME REPORT on the desk plays every stage of every cabinet and fills this in.'));
     return;
   }
   const P = r.phone;

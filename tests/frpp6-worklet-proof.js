@@ -22,7 +22,10 @@ import { FRPP6_CANDIDATES } from '../tools/lib/frpp6-candidates.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const VOICE = { ...FRPP6_CANDIDATES.funkRhythm, vibrato: { depth: 0.1, rate: 5 } };
+// With SUB on, so the worklet proves the sub's oscillator and its measured scale too.
+const VOICE = { ...FRPP6_CANDIDATES.funkRhythm, vibrato: { depth: 0.1, rate: 5 },
+  frpp6: { ...FRPP6_CANDIDATES.funkRhythm.frpp6,
+    string: { ...FRPP6_CANDIDATES.funkRhythm.frpp6.string, sub: 0.4 } } };
 
 const ENTRY = `
 import { renderFrpp6Lane, frpp6Lane, frpp6NoteOn, canHostFrpp6, frameAt }

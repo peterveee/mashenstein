@@ -1604,6 +1604,9 @@
      horizontal affordance only under the bars. The ruler is dragged along by
      `--arr-scroll`, and the two cannot disagree because the rail mirrors this position. */
   #arrgrid { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+             /* Keep the thousands of note marks in their own stacking context;
+                playback changes must not re-layer the rest of the workspace. */
+             isolation: isolate;
              overflow-y: auto; overflow-x: auto; scrollbar-gutter: stable;
              /* No left padding: a sticky cell pins to the scrollport's PADDING edge, so
                 any inset here is a strip the bars scroll into and show through, beside
@@ -1743,6 +1746,9 @@
   .arrrow.sel .arrnum { color: var(--selected-ink); }
   .arrrow.sel .arrname { color: var(--selected-ink); font-weight: 500; }
   .arrbars { flex: 1; align-self: stretch; display: flex; gap: 4px; height: auto;
+             /* These variables size row containers and headers, never note marks.
+                Stop density changes invalidating every note's inherited style. */
+             --arrrow: 0px; --arrrow-main: 0px;
              margin-top: 0; position: relative; }
   /* A bar is the unit you point at — the beats inside it are a picture of what it
      plays, not sixteen separate targets. */
@@ -5178,6 +5184,11 @@
   .deskmenu { font-size: 12px; max-height: min(60vh, 420px); overflow-y: auto; }
   /* `hidden` is a display:none the `display: flex` above would otherwise beat. */
   .rolltool-menu[hidden] { display: none; }
+  /* What has been typed to narrow the list, pinned to the top of it while the rows scroll. */
+  .rolltool-find { position: sticky; top: -3px; z-index: 1; grid-column: 1 / -1; padding: 5px 9px;
+                   margin-bottom: 2px; background: var(--panel); color: var(--accent);
+                   border-bottom: 1px solid var(--line); white-space: pre; }
+  .rolltool-find[hidden] { display: none; }
   .rolltool-option { padding: 4px 7px; border-radius: 3px; color: var(--dim);
                      white-space: nowrap; cursor: pointer; }
   .deskmenu .rolltool-option { padding: 5px 9px; }
@@ -7771,6 +7782,7 @@
   #ask { position: fixed; inset: 0; background: rgba(10,11,14,.72); z-index: 71;
          display: none; align-items: center; justify-content: center; }
   #ask.show { display: flex; }
+  #askbox:has(.asktracklist) { max-height: 92vh; overflow: auto; box-sizing: border-box; }
   #askbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
             box-shadow: 0 18px 50px color-mix(in srgb, var(--deep) 60%, transparent); width: min(420px, 90vw); padding: 20px 22px 16px; }
   #asktitle { font-size: 15px; color: var(--ink); margin-bottom: 8px; }
@@ -7820,6 +7832,9 @@
   /* `display` above outranks the UA stylesheet's `[hidden] { display: none }`, so a row
      the dialog hides — the style of a Blank song — would go on being drawn. */
   #askbody .askfield[hidden], #askbody .askcheck[hidden] { display: none; }
+  #askbody .asktrackall { display: flex; gap: 6px; margin-top: 12px; }
+  #askbody .asktrackall button { padding: 4px 12px; font-size: 11px; }
+  #askbody .asktrackall + .asktracklist { margin-top: 6px; }
   #askbody .asktracklist { max-height: min(48vh, 360px); overflow: auto; margin-top: 12px;
                            border: 1px solid var(--line); border-radius: 5px; background: var(--input); }
   #askbody .asktrack { display: flex; align-items: center; gap: 8px; min-height: 31px;
@@ -7827,6 +7842,7 @@
   #askbody .asktrack + .asktrack { border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
   #askbody .asktrack:hover { background: var(--hover); }
   #askbody .asktrack input { flex: 0 0 auto; margin: 0; accent-color: var(--accent); }
+  #askbody .asktrack .asktracknum { flex: 0 0 22px; color: var(--dim); font-style: normal; font-size: 10px; text-align: right; }
   #askbody .asktrack span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #askbody .asktrack code { color: var(--dim); font-size: 10px; }
   #askrow { display: flex; gap: 8px; justify-content: flex-end; }

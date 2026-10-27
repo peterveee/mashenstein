@@ -73,6 +73,9 @@ var FRPP6_GAUGE_DAMP = [0.8, 0.85, 0.9, 1, 1.1, 1.2];
 // higher than a Node rms match would put it: with it the catalogue's bowed presets land
 // where voiceGain's +12 dB boost reaches.
 var FRPP6_BOW_OUT = 0.45;
+// SUB's level when no core was registered to measure the patch (see tables.js 'levelCurve'):
+// the default patch's own ratio, so a host that skipped the calibration still gets a sub.
+var FRPP6_SUB_REF = 0.17;
 // The bow plays a constant 5 cents sharp of its loop (the friction junction's regime, the
 // same at every pressure and pitch measured, 23 Oct 2026): its loop is that much longer.
 var FRPP6_BOW_TUNE = 1.00289;
@@ -96,6 +99,38 @@ function frpp6LpDelay(a, w) {
 /** Phase delay, in samples at w, of the first-order allpass (c + z^-1)/(1 + c z^-1). */
 function frpp6ApDelay(c, w) {
   return 1 - 2 * Math.atan2(c * Math.sin(w), 1 + c * Math.cos(w)) / w;
+}
+
+/**
+ * A piano string's stiffness, as the coefficient of 'stages' identical dispersion allpasses
+ * (the piano trial, 27 Oct 2026). A stiff string's partial n sits at n·f0·sqrt(1 + B·n²);
+ * a fixed coefficient cannot follow that across a keyboard (its bend is fixed in Hz, so the
+ * bass got nothing and the middle went 70 cents sharp), so the coefficient is solved per
+ * note: bisected until partial K lands where B puts it, with the fundamental held in tune
+ * as tune() holds it. B follows a piano's own curve — about 1e-4 in the low tenor, rising
+ * a decade every 28 semitones up the treble and a little again into the wound bass — and
+ * METAL scales it, 0.5 being a real piano's. About 30 × 6 phase evaluations, at note-on.
+ */
+function frpp6PianoB(f, metal) {
+  var m = 69 + 12 * Math.log2(f / 440);
+  var b = m >= 40 ? 1.2e-4 * Math.pow(10, (m - 40) / 28) : 1.2e-4 * Math.pow(10, (40 - m) * 0.5 / 19);
+  return b * 2 * metal;
+}
+function frpp6DispersionC(f, sr, stages, B) {
+  var w0 = 2 * Math.PI * f / sr;
+  var N = sr / f;
+  var K = Math.max(2, Math.min(10, Math.floor(5000 / f)));
+  var aim = Math.sqrt(1 + B * K * K);
+  var lo = -0.995, hi = 0;
+  for (var it = 0; it < 30; it++) {
+    var c = 0.5 * (lo + hi);
+    var D = N - stages * frpp6ApDelay(c, w0);
+    if (D < 4) { lo = c; continue; }
+    var w = K * w0;
+    for (var k = 0; k < 6; k++) w = 2 * Math.PI * K / (D + stages * frpp6ApDelay(c, Math.min(w, 3)));
+    if (w / (K * w0) > aim) lo = c; else hi = c;
+  }
+  return hi;
 }
 
 /**
@@ -140,6 +175,8 @@ Frpp6Line.prototype.reset = function reset() {
   this.ns = 0; this.dc = 0;
   this.x0 = 0; this.y0 = 0; this.x1 = 0; this.y1 = 0;
   this.x2 = 0; this.y2 = 0; this.x3 = 0; this.y3 = 0;
+  this.x4 = 0; this.y4 = 0; this.x5 = 0; this.y5 = 0;
+  this.x6 = 0; this.y6 = 0; this.x7 = 0; this.y7 = 0;
   this.fdel = 0;
   this.buzzH = 0; this.buzzR = 0.35;
   this.pickRatio = 0; this.pickN = 0;
@@ -190,7 +227,10 @@ Frpp6Line.prototype.tune = function tune(f, sr, t60, t60hi, stages, dc) {
   var ns = dc < 0 ? stages : 0;
   var apd = ns > 0 ? frpp6ApDelay(dc, w0) : 0;
   while (ns > 0 && N - fdel - ns * apd < 4) ns--;
-  if (ns !== this.ns) { this.x0 = this.y0 = this.x1 = this.y1 = this.x2 = this.y2 = this.x3 = this.y3 = 0; }
+  if (ns !== this.ns) {
+    this.x0 = this.y0 = this.x1 = this.y1 = this.x2 = this.y2 = this.x3 = this.y3 = 0;
+    this.x4 = this.y4 = this.x5 = this.y5 = this.x6 = this.y6 = this.x7 = this.y7 = 0;
+  }
   this.ns = ns;
   this.dc = dc;
   fdel += ns * apd;
@@ -231,6 +271,8 @@ Frpp6Line.prototype.run = function run(e, o, n, add) {
   var ns = this.ns, dc = this.dc;
   var x0 = this.x0, y0 = this.y0, x1 = this.x1, y1 = this.y1;
   var x2 = this.x2, y2 = this.y2, x3 = this.x3, y3 = this.y3;
+  var x4 = this.x4, y4 = this.y4, x5 = this.x5, y5 = this.y5;
+  var x6 = this.x6, y6 = this.y6, x7 = this.x7, y7 = this.y7;
   var bh = this.buzzH, br = this.buzzR;
   var pN = this.pickN, pick = this.pickRatio > 0;
   var ein = this.ein, wt = this.weight;
@@ -257,7 +299,20 @@ Frpp6Line.prototype.run = function run(e, o, n, add) {
         t = dc * r + x1 - dc * y1; x1 = r; y1 = t; r = t;
         if (ns > 2) {
           t = dc * r + x2 - dc * y2; x2 = r; y2 = t; r = t;
-          if (ns > 3) { t = dc * r + x3 - dc * y3; x3 = r; y3 = t; r = t; }
+          if (ns > 3) {
+            t = dc * r + x3 - dc * y3; x3 = r; y3 = t; r = t;
+            // Stages 5–8: only a piano's STIFF ROLE asks for them (internal.stiffStages).
+            if (ns > 4) {
+              t = dc * r + x4 - dc * y4; x4 = r; y4 = t; r = t;
+              if (ns > 5) {
+                t = dc * r + x5 - dc * y5; x5 = r; y5 = t; r = t;
+                if (ns > 6) {
+                  t = dc * r + x6 - dc * y6; x6 = r; y6 = t; r = t;
+                  if (ns > 7) { t = dc * r + x7 - dc * y7; x7 = r; y7 = t; r = t; }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -283,6 +338,8 @@ Frpp6Line.prototype.run = function run(e, o, n, add) {
   this.tx1 = tx1; this.ty1 = ty1; this.lp1 = lp1;
   this.x0 = x0; this.y0 = y0; this.x1 = x1; this.y1 = y1;
   this.x2 = x2; this.y2 = y2; this.x3 = x3; this.y3 = y3;
+  this.x4 = x4; this.y4 = y4; this.x5 = x5; this.y5 = y5;
+  this.x6 = x6; this.y6 = y6; this.x7 = x7; this.y7 = y7;
   this.peak = peak;
 };
 
@@ -292,12 +349,18 @@ function Frpp6Voice(core, string) {
   this.string = string;
   this.l1 = new Frpp6Line(core.lineSize);
   this.l2 = new Frpp6Line(core.lineSize);
+  this.l3 = null; // built the first time UNISON 3 asks for it
+  this.triple = false;
   this.active = false;
   this.listed = false;
 }
 
 Frpp6Voice.prototype.kill = function kill() {
-  if (this.active) { this.l1.reset(); if (this.course || this.sustained) this.l2.reset(); }
+  if (this.active) {
+    this.l1.reset();
+    if (this.course || this.sustained) this.l2.reset();
+    if (this.triple) this.l3.reset();
+  }
   this.active = false;
 };
 
@@ -316,7 +379,8 @@ Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
   var free = !core.open;
   var cents = p.string.detune * FRPP6_DETUNE[j];
   var f = Math.min(sr / 5, Math.max(20, hz * Math.pow(2, cents / 1200)));
-  var stages = free ? 2 : FRPP6_GAUGE_STAGES[j];
+  var it = p.internal;
+  var stages = free ? (it.stiffStages != null ? it.stiffStages : 2) : FRPP6_GAUGE_STAGES[j];
   var gStiff = free ? 0.8 : FRPP6_GAUGE_STIFF[j];
   var gDamp = free ? 1 : FRPP6_GAUGE_DAMP[j];
   var mute = p.damping.mute;
@@ -330,9 +394,18 @@ Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
   this.age = 0;
   this.lagrange = core.moving;
   this.stages = p.string.stiffness > 0 ? stages : 0;
-  this.dc = -0.6 * p.string.stiffness * gStiff;
+  // METAL above 1 (27 Oct 2026) goes on bending each allpass, to a stable −0.95, and adds
+  // stages in proportion — up to twice the gauge's — so 2 is a bar or a bell, not a string.
+  // At 1 and below this is exactly the 0–1 METAL every preset was made with.
+  var metal = p.string.stiffness;
+  if (metal > 1 && this.stages > 0) this.stages = Math.min(8, Math.round(this.stages * metal));
+  this.dc = Math.max(-0.95, -it.stiffReach * metal * gStiff);
+  if (it.inharmonic && p.string.stiffness > 0) {
+    this.stages = it.stiffStages != null ? it.stiffStages : 4;
+    this.dc = this.stages > 0 ? frpp6DispersionC(f, sr, this.stages, frpp6PianoB(f, p.string.stiffness)) : 0;
+  }
   this.chuck = p.damping.mutedBelow > 0 && vel < p.damping.mutedBelow;
-  this.t60 = p.string.decay * Math.pow(FRPP6_KEY_REF / f, p.string.keyFollow) * (1 - 0.92 * mute);
+  this.t60 = p.string.decay * it.ringScale * Math.pow(FRPP6_KEY_REF / f, p.string.keyFollow) * (1 - 0.92 * mute);
   this.damp = Math.min(1, Math.max(0.02, p.string.damp * gDamp * (1 - 0.6 * mute)));
   if (this.chuck) { this.t60 = Math.min(this.t60, 0.03); this.damp = 0.25; }
   this.settleTau = p.damping.settle > 0 && !this.chuck ? p.damping.settle / 3 : 0;
@@ -354,6 +427,9 @@ Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
   var c = p.string.course;
   this.course = c > 0;
   this.polar = c > 0 && c < 300;
+  // UNISON 3 (internal, the piano trial of 27 Oct 2026): a SHIMMER pair becomes a trio, the
+  // third string as far flat as the second is sharp — a piano's three strings to a note.
+  this.triple = this.polar && it.unison === 3;
   this.courseRatio = Math.pow(2, c / 1200);
   var buzzH = p.string.buzz > 0 ? 0.004 + 0.5 * (1 - p.string.buzz) * (1 - p.string.buzz) : 0;
   var pickRatio = p.string.pickup > 0 ? 0.28 - 0.22 * p.string.pickup : 0;
@@ -362,7 +438,7 @@ Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
   l1.lagrange = this.lagrange;
   l1.buzzH = buzzH;
   l1.pickRatio = pickRatio;
-  l1.weight = this.course ? (this.polar ? 0.82 : 0.92) : 1;
+  l1.weight = this.course ? (this.triple ? 0.67 : this.polar ? 0.82 : 0.92) : 1;
   var N1 = sr / f;
   if (this.course) {
     var l2 = this.l2;
@@ -370,9 +446,31 @@ Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
     l2.lagrange = this.lagrange;
     l2.buzzH = buzzH;
     l2.pickRatio = pickRatio;
-    l2.weight = this.polar ? 0.82 : 0.92;
+    l2.weight = this.triple ? 0.67 : this.polar ? 0.82 : 0.92;
     var N2 = N1 / this.courseRatio;
     l2.ein = this.polar ? 0.7 : 0.55 * Math.sqrt(N2 / N1);
+    if (this.triple) {
+      if (!this.l3) this.l3 = new Frpp6Line(core.lineSize);
+      var l3 = this.l3;
+      l3.reset();
+      l3.lagrange = this.lagrange;
+      l3.buzzH = buzzH;
+      l3.pickRatio = pickRatio;
+      l3.weight = 0.67;
+      l3.ein = 0.7;
+      // TWO STAGE: the middle string takes the attack and lets it go fast; the outer two
+      // are the aftersound, starting lower and ringing long.
+      if (it.twoStage > 0) {
+        var ts = it.twoStage;
+        l1.weight = 0.67 + 0.33 * ts;
+        l2.weight = l3.weight = 0.67 * (1 - 0.7 * ts);
+      }
+    } else if (this.polar && it.twoStage > 0) {
+      // A pair: the first line is the polarisation that drives the top (loud, short), the
+      // second the one parallel to it (quieter, long) — a guitar's two-stage decay.
+      l1.weight = 0.82 * (1 + 0.4 * it.twoStage);
+      l2.weight = 0.82 * (1 - 0.6 * it.twoStage);
+    }
     this.comb2 = Math.max(1, p.exciter.position * N2);
     this.e2Delay = this.polar ? 0 : Math.round(0.001 * sr);
   } else {
@@ -394,6 +492,7 @@ Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
     this.dynamic = true;
     this.course = false;
     this.polar = false;
+    this.triple = false;
     this.l1.reset(); this.l2.reset();
     this.l1.lagrange = true; this.l2.lagrange = true;
     this.l1.weight = 1; this.l2.weight = 1;
@@ -426,10 +525,11 @@ Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
     this.fVal = p.filterEnv.attack > 0 ? 0 : 1;
     this.fic1 = 0; this.fic2 = 0; this.dt1 = 0; this.dcx = 0; this.dcy = 0;
     this.fk = 1; this.fa1 = 0; this.fa2 = 0; this.fa3 = 0;
-    var posS = p.strings.spread * (2 * j / (FRPP6_STRING_COUNT - 1) - 1) * 0.8;
+    var posS = p.strings.spread * (2 * j / (core.slots - 1) - 1) * 0.8;
     var thS = (posS + 1) * Math.PI / 4;
     this.pl = Math.cos(thS) * Math.SQRT2;
     this.pr = Math.sin(thS) * Math.SQRT2;
+    this.subStart(core);
     return;
   }
 
@@ -500,10 +600,27 @@ Frpp6Voice.prototype.start = function start(core, hz, vel, eventId, frame, fromH
 
   // SPREAD: low strings left, as the player hears them.
   var at = free ? j : j;
-  var pos = p.strings.spread * (2 * at / (FRPP6_STRING_COUNT - 1) - 1) * 0.8;
+  var pos = p.strings.spread * (2 * at / (core.slots - 1) - 1) * 0.8;
   var th = (pos + 1) * Math.PI / 4;
   this.pl = Math.cos(th) * Math.SQRT2;
   this.pr = Math.sin(th) * Math.SQRT2;
+  this.subStart(core);
+};
+
+/**
+ * SUB: a sine an octave below the note, for basses (Peter, 27 Oct 2026). A magic-circle
+ * oscillator — two multiply-adds a sample, exact in frequency, and it starts at zero, so a
+ * note-on cannot click. It rides on the string: a pluck's sub dies at the string's RING
+ * (and its RELEASE once the key is up), a bow's follows the bow's pressure. It goes in
+ * with the string, so DRIVE, FILTER, AMP and STEREO treat the two as one sound. Its scale
+ * is the string's own at A2 ('subRef', measured when the patch compiles), so SUB 1 is a
+ * sub as loud as the string. A chuck has no pitch, so no sub. At 0 it costs one test a block.
+ */
+Frpp6Voice.prototype.subStart = function subStart(core) {
+  var sub = core.patch.string.sub;
+  this.subG = sub > 0 && !this.chuck ? sub * core.subRef * this.vel : 0;
+  this.subX = 1; this.subY = 0; this.subE = 0;
+  this.subK = this.subG > 0 && !this.sustained ? Math.pow(10, -3 / (this.t60 * core.rate)) : 1;
 };
 
 /** The loop's decay right now: SETTLE easing off, MUTE, and a note-off's RELEASE. */
@@ -521,7 +638,9 @@ Frpp6Voice.prototype.retune = function retune(core) {
   // vibrato and the glide, in its moving read (see control), so its loop is solved at the
   // plain pitch.
   if (!this.lagrange && cents) f *= Math.pow(2, cents / 1200);
-  var c1 = this.polar ? 0.8 : 1;
+  var c1 = this.polar && core.patch.internal.twoStage > 0
+    ? (this.triple ? 1 - 0.85 * core.patch.internal.twoStage : 0.8 * (1 - 0.6 * core.patch.internal.twoStage))
+    : this.polar ? 0.8 : 1;
   this.l1.tune(f, sr, t60 * (this.course ? c1 : 1), t60 * damp * (this.course ? c1 : 1),
     this.stages, this.dc);
   if (this.course) {
@@ -529,6 +648,9 @@ Frpp6Voice.prototype.retune = function retune(core) {
     var d2 = this.polar ? 1 : 0.7;
     this.l2.tune(Math.min(sr / 5, f * this.courseRatio), sr, t60 * c2, t60 * damp * c2 * d2,
       this.polar ? this.stages : Math.min(1, this.stages), this.dc);
+    if (this.triple) {
+      this.l3.tune(Math.max(20, f / this.courseRatio), sr, t60 * 1.05, t60 * damp * 1.05, this.stages, this.dc);
+    }
   }
 };
 
@@ -561,6 +683,7 @@ Frpp6Voice.prototype.release = function release(core) {
   this.aInc = 0;
   this.fStage = 2;
   this.retune(core);
+  if (this.subG > 0 && !this.sustained) this.subK = Math.pow(10, -3 / (Math.min(this.t60, p.amp.release) * sr));
   // The bow lifts, the breath stops: the pressure falls over RELEASE and the loop rings down
   // on its own loss. Nothing else of a note-off applies to a sustained voice.
   if (this.sustained) return;
@@ -686,15 +809,8 @@ function Frpp6Core(options) {
   this.lineSize = size;
   this.strings = [];
   this.voices = [];
-  for (var i = 0; i < FRPP6_STRING_COUNT; i++) {
-    var s = { index: i, cur: 0, pluckFrame: -1e15, voices: [] };
-    for (var k = 0; k < 2; k++) {
-      var v = new Frpp6Voice(this, i);
-      s.voices.push(v);
-      this.voices.push(v);
-    }
-    this.strings.push(s);
-  }
+  this.slots = FRPP6_STRING_COUNT;
+  this.growStrings(FRPP6_STRING_COUNT);
   this.e1 = new Float64Array(FRPP6_CTRL);
   this.e2 = new Float64Array(FRPP6_CTRL);
   this.o = new Float64Array(FRPP6_CTRL);
@@ -715,6 +831,19 @@ function Frpp6Core(options) {
   this.noteLevel = 1;
 }
 
+/** Strings up to 'count', built once and kept: only a patch asking for more SLOTS grows them. */
+Frpp6Core.prototype.growStrings = function growStrings(count) {
+  for (var i = this.strings.length; i < count; i++) {
+    var s = { index: i, cur: 0, pluckFrame: -1e15, voices: [] };
+    for (var k = 0; k < 2; k++) {
+      var v = new Frpp6Voice(this, i);
+      s.voices.push(v);
+      this.voices.push(v);
+    }
+    this.strings.push(s);
+  }
+};
+
 /**
  * Install a compiled patch (tables.js 'compileFrpp6'): the clamped preset, its play
  * controls and its tables. A note already ringing keeps the loop it was solved with; the
@@ -730,8 +859,13 @@ Frpp6Core.prototype.installPatch = function installPatch(compiled) {
     this.open = [];
     for (var i = 0; i < tuning.length; i++) this.open.push(440 * Math.pow(2, (tuning[i] - 69) / 12));
   }
+  // SLOTS (the piano trial, 27 Oct 2026): a FREE patch may ask for more than six strings —
+  // a pedalled piano's notes ring over each other, and six stole them. A tuning is six.
+  this.slots = tuning ? FRPP6_STRING_COUNT : compiled.internal.slots;
+  this.growStrings(this.slots);
   this.moving = !!this.play.vibrato || this.play.glide > 0 || this.play.mode === 'legato';
   this.drive = compiled.drive || null;
+  this.subRef = compiled.subRef > 0 ? compiled.subRef : FRPP6_SUB_REF;
   this.driveTone = this.drive ? 1 - Math.exp(-2 * Math.PI * Math.min(this.drive.tone, 0.45 * this.rate) / this.rate) : 0;
   var f = compiled.filter;
   this.filterOn = !!f;
@@ -757,6 +891,50 @@ Frpp6Core.prototype.installPatch = function installPatch(compiled) {
     }
     this.laneBody = lb;
   }
+  // A RESONANCE turned, or any other pot, reinstalls the patch: the bank is kept, still
+  // ringing, when its strings are the same strings, and only its level and length change.
+  var want = compiled.internal.sympathetic > 0 ? this.sympBank(compiled.internal, this.symp) : null;
+  this.symp = want;
+};
+
+/**
+ * SYMPATHETIC (the piano trial, 27 Oct 2026): what a held sustain pedal leaves free. Every
+ * undamped string on a piano rings along with whatever is played, at its own harmonics,
+ * and that bloom is half of what a pedalled piano sounds like. Here it is 24 plain
+ * Karplus-Strong loops — two octaves of chromatic strings from C2, whose harmonics cover
+ * every note above them — fed the lane's mono sum and returned across the stereo field.
+ * No pluck of their own: they only ring with what reaches them. About 24 multiply-adds a
+ * sample, on the lane, not per voice.
+ */
+Frpp6Core.prototype.sympBank = function sympBank(it, had) {
+  var sr = this.rate;
+  var key = this.open ? this.open.join(',') : 'free';
+  // A tuned lane's free strings are its own six open strings; a FREE one gets two
+  // chromatic octaves from C2, a piano's undamped middle.
+  var open = this.open;
+  var count = open ? open.length : 24;
+  if (had && had.key === key) {
+    had.mix = it.sympathetic;
+    for (var h = 0; h < had.count; h++) had.g[h] = Math.pow(10, -3 / (had.f[h] * it.sympRing));
+    return had;
+  }
+  var b = { key: key, f: [], count: count, mix: it.sympathetic, buf: [], len: [], w: [], g: [], lp: new Float64Array(count),
+    pan: new Float64Array(count * 2) };
+  for (var k = 0; k < count; k++) {
+    var f = open ? open[k] : 440 * Math.pow(2, (36 + k - 69) / 12);
+    var N = Math.max(2, Math.round(sr / f - 0.5));
+    var size = 1;
+    while (size < N + 2) size <<= 1;
+    b.buf.push(new Float32Array(size));
+    b.len.push(N);
+    b.w.push(0);
+    b.f.push(f);
+    b.g.push(Math.pow(10, -3 / (f * it.sympRing)));
+    var th = (k % 2 ? 0.7 : 0.3) * Math.PI / 2;
+    b.pan[k * 2] = Math.cos(th) * Math.SQRT2;
+    b.pan[k * 2 + 1] = Math.sin(th) * Math.SQRT2;
+  }
+  return b;
 };
 
 /** The measured level correction at this pitch (tables.js, EVEN UP THE NECK). */
@@ -764,7 +942,7 @@ Frpp6Core.prototype.levelAt = function levelAt(hz) {
   var c = this.patch.levelCurve;
   if (!c || !c.length) return 1;
   var m = 69 + 12 * Math.log2(hz / 440);
-  var x = (m - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP;
+  var x = (m - FRPP6_LEVEL_LO) / (this.patch.levelStep || FRPP6_LEVEL_STEP);
   if (x <= 0) return c[0];
   if (x >= c.length - 1) return c[c.length - 1];
   var i = x | 0;
@@ -780,8 +958,15 @@ Frpp6Core.prototype.reset = function reset() {
   this.dcX[0] = this.dcX[1] = this.dcY[0] = this.dcY[1] = 0;
   for (i = 0; i < 4; i++) this.lf[i] = 0;
   if (this.laneBody) this.laneBody.st.fill(0);
+  this.sympClear();
   this.laneIdle = true;
   this.lastVoice = null;
+};
+
+Frpp6Core.prototype.sympClear = function sympClear() {
+  var sb = this.symp;
+  if (!sb) return;
+  for (var k = 0; k < sb.count; k++) { sb.buf[k].fill(0); sb.w[k] = 0; sb.lp[k] = 0; }
 };
 
 /** TPT SVF coefficients (Simper). The same six lines as tables.js — see its header. */
@@ -842,13 +1027,14 @@ Frpp6Core.prototype.assign = function assign(hz, frame) {
     return idx;
   }
   var best = -1;
-  for (j = 0; j < strings.length; j++) {
+  var slots = this.slots;
+  for (j = 0; j < slots; j++) {
     var v = strings[j].voices[strings[j].cur];
     if (!v.active && strings[j].pluckFrame <= since) return j;
   }
   // FREE and full: the oldest pluck, a released one first.
   var bestScore = Infinity;
-  for (j = 0; j < strings.length; j++) {
+  for (j = 0; j < slots; j++) {
     var cur = strings[j].voices[strings[j].cur];
     var score = strings[j].pluckFrame + (cur.active && !cur.released ? 1e12 : 0);
     if (score < bestScore) { bestScore = score; best = j; }
@@ -866,6 +1052,13 @@ Frpp6Core.prototype.pluck = function pluck(j, hz, vel, eventId, frame, fromHz, r
   if (v.active) v.kill();
   v.start(this, hz, vel, eventId, frame, fromHz);
   this.handNoises(v, old, hz);
+  // KNOCK (the piano trial): the hammer and key, through no string at all.
+  if (this.patch.internal.knock > 0 && this.tables.knock && !v.chuck) {
+    // The same at every pitch (KNOCK 1 sits ~14 dB under a note's first 60 ms): the key and
+    // hammer are the same size up the keyboard even though the strings are not.
+    v.nT = this.tables.knock; v.nPos = 0;
+    v.nG = this.patch.internal.knock * 0.88 * FRPP6_LEVEL * this.levelAt(hz) * v.vel;
+  }
   s.pluckFrame = frame;
   this.laneIdle = false;
   // A voice begun between two grid lines gets its envelopes set up to the next one.
@@ -1057,6 +1250,15 @@ Frpp6Core.prototype.controlVoice = function controlVoice(v, frame, n, onGrid) {
       var l2 = v.l2;
       l2.dD = (Math.max(2, sr / Math.min(sr / 5, f1 * v.courseRatio) - l2.fdel) - l2.D) / n;
     }
+    if (v.triple) {
+      var l3 = v.l3;
+      l3.dD = (Math.max(2, sr / Math.max(20, f1 / v.courseRatio) - l3.fdel) - l3.D) / n;
+    }
+  }
+  // SUB's pitch for this stretch: the string's, an octave down.
+  if (v.subG > 0) {
+    var sl = v.sustained ? lps : v.lagrange ? lp : v.logPitch + v.tensionC / 1200;
+    v.subE = 2 * Math.sin(Math.PI * Math.min(0.25 * sr, Math.pow(2, sl - 1)) / sr);
   }
 };
 
@@ -1064,6 +1266,7 @@ Frpp6Core.prototype.controlVoice = function controlVoice(v, frame, n, onGrid) {
 Frpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
   var e1 = this.e1, e2 = this.e2, o = this.o;
   var i;
+  var a0 = v.aVal, ai0 = v.aInc;
   if (v.sustained) {
     v.runBow(o, n);
     var kS = v.lev * v.outK;
@@ -1112,6 +1315,19 @@ Frpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
   if (!v.sustained) {
     v.l1.run(e1, o, n, false);
     if (v.course) v.l2.run(e2, o, n, true);
+    if (v.triple) v.l3.run(e2, o, n, true);
+  }
+  if (v.subG > 0) {
+    // SUB — see subStart. A bow's rides its pressure (the AMP envelope), a pluck's decays.
+    var sx = v.subX, sy = v.subY, se = v.subE, sg = v.subG;
+    if (v.sustained) {
+      for (i = 0; i < n; i++) { sx -= se * sy; sy += se * sx; o[i] += sg * a0 * sy; a0 += ai0; }
+    } else {
+      var sk = v.subK;
+      for (i = 0; i < n; i++) { sx -= se * sy; sy += se * sx; o[i] += sg * sy; sg *= sk; }
+      v.subG = sg;
+    }
+    v.subX = sx; v.subY = sy;
   }
   if (v.nT) {
     for (i = 0; i < n && v.nPos < v.nT.length; i++) o[i] += v.nG * v.nT[v.nPos++];
@@ -1126,7 +1342,9 @@ Frpp6Core.prototype.renderVoice = function renderVoice(v, L, R, at, n) {
   }
   var pk = v.l1.peak * (v.sustained ? v.lev * v.outK : 1);
   if (v.course && v.l2.peak > pk) pk = v.l2.peak;
+  if (v.triple && v.l3.peak > pk) pk = v.l3.peak;
   v.l1.peak = 0; v.l2.peak = 0;
+  if (v.triple) v.l3.peak = 0;
   if (pk > v.winPeak) v.winPeak = pk;
   v.age += n;
 
@@ -1188,6 +1406,27 @@ Frpp6Core.prototype.renderLane = function renderLane(L, R, at, n) {
   // pulse a driven pluck becomes — the output read 3.5 dB over the knee the shaper can't
   // exceed. Removing the mean of a signal that has no mean is the one thing it must not do.
   var dcR = this.drive ? 0 : this.dcR;
+  var sb = this.symp;
+  if (sb) {
+    var feed = 0.0035 * sb.mix; // SYMPATHETIC 1: the ringing strings about 6 dB under the played ones
+    for (var si = at; si < at + n; si++) {
+      var x = R ? 0.5 * (L[si] + R[si]) : L[si];
+      var ol = 0, or = 0;
+      for (var k = 0; k < sb.count; k++) {
+        var buf = sb.buf[k], mask = buf.length - 1, w = sb.w[k];
+        var rd = buf[(w - sb.len[k]) & mask];
+        var y0 = 0.5 * (rd + sb.lp[k]);
+        sb.lp[k] = rd;
+        var y1 = sb.g[k] * y0 + feed * x;
+        buf[w] = y1;
+        sb.w[k] = (w + 1) & mask;
+        ol += y1 * sb.pan[k * 2];
+        or += y1 * sb.pan[k * 2 + 1];
+      }
+      L[si] += ol * 2;
+      if (R) R[si] += or * 2;
+    }
+  }
   for (var c = 0; c < chans; c++) {
     var X = c === 0 ? L : R;
     var dx = this.dcX[c], dy = this.dcY[c];
@@ -1282,12 +1521,13 @@ Frpp6Core.prototype.process = function process(channels, startFrame, count, offs
     if (!this.laneIdle) this.renderLane(L, R, at, n);
     // The lane's own filters ring on for a moment after the last string; it goes idle on
     // the window grid, half a second after, with its state cleared.
-    if (live > 0) this.quietUntil = stop + Math.round(0.5 * this.rate);
+    if (live > 0) this.quietUntil = stop + Math.round((this.symp ? this.patch.internal.sympRing : 0.5) * this.rate);
     else if (!this.laneIdle && stop % FRPP6_WINDOW === 0 && stop >= this.quietUntil) {
       this.laneIdle = true;
       this.dcX[0] = this.dcX[1] = this.dcY[0] = this.dcY[1] = 0;
       for (i = 0; i < 4; i++) this.lf[i] = 0;
       if (this.laneBody) this.laneBody.st.fill(0);
+      this.sympClear();
     }
     f = stop;
   }

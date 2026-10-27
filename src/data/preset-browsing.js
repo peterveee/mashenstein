@@ -2,12 +2,12 @@ import { FACTORY_PRESET_BROWSING } from './preset-browsing-catalog.js';
 
 // Browsing only. Never use these families to decide lane compatibility or playback.
 export const PRESET_TAXONOMY = {
-  Bass: ['Synth', 'Electric', 'Acoustic', 'Sub', 'Other'],
-  Leads: ['Analog-style', 'Digital', 'Vocal/Formant', 'Other'],
-  Pads: ['Warm', 'Strings', 'Choir', 'Evolving', 'Textures', 'Other'],
+  Bass: ['Synth', 'Acid', 'Slap & Pop', 'Wobble & Reese', 'Electric', 'Acoustic', 'Sub', 'Other'],
+  Leads: ['Analog-style', 'Basic Waves', 'Digital', 'Vocal/Formant', 'Other'],
+  Pads: ['Warm', 'Strings', 'Evolving', 'Textures', 'Other'],
   Keys: ['Piano', 'Electric Piano', 'Clav', 'Harpsichord', 'Synth Keys', 'Other'],
   Organs: ['Drawbar', 'Transistor', 'Pipe', 'Reed', 'Digital', 'Other'],
-  Guitars: ['Acoustic', 'Clean Electric', 'Muted', 'Distorted', 'Other'],
+  Guitars: ['Acoustic', 'Clean Electric', 'Muted', 'Other'],
   Strings: ['Solo', 'Ensemble', 'Plucked', 'Other'],
   Brass: ['Solo', 'Ensemble', 'Synth Brass', 'Other'],
   Winds: ['Saxophone', 'Flute', 'Reeds', 'Other'],
@@ -50,9 +50,10 @@ export function presetClassification(voice = {}) {
   }
   if (old === 'Bass') return pair('Bass', has(/\bsub\b|808/) ? 'Sub'
     : has(/bass guitar|bass, .*pickup|picked bass|fretless bass|thumb slap|slap pop|fret clack/) ? 'Electric'
-      : has(/upright|double bass/) ? 'Acoustic' : 'Synth');
+      : has(/upright|double bass/) ? 'Acoustic' : has(/acid|303/) ? 'Acid'
+        : has(/slap|\bpop\b/) ? 'Slap & Pop' : has(/wub|wobble|reese|growl/) ? 'Wobble & Reese' : 'Synth');
   if (has(/guitar|nylon|steel acoustic|12-string|clean electric|palm-muted electric|electric, .*pickup|funk chop/)) {
-    return pair('Guitars', has(/muted/) ? 'Muted' : has(/distort|overdriv/) ? 'Distorted'
+    return pair('Guitars', has(/muted/) ? 'Muted'
       : has(/acoustic|nylon|12-string/) ? 'Acoustic' : 'Clean Electric');
   }
   if (has(/harp(?!sichord)|koto|sitar|tanpura|banjo|mandolin|\bpizz/)) return pair('Strings', 'Plucked');
@@ -64,6 +65,8 @@ export function presetClassification(voice = {}) {
   if (has(/flute|pan pipes|shakuhachi|bansuri|ocarina|recorder/)) return pair('Winds', 'Flute');
   if (has(/clarinet|oboe/) || (old === 'Orch' && has(/reed|breath|wind/))) return pair('Winds', 'Reeds');
   if (has(/string pad/)) return pair('Pads', 'Strings');
+  if (has(/string machine/)) return pair('Strings', 'Ensemble');
+  if (has(/^(simple |plain |raw |short )?(square|saw|sawtooth|triangle|sine)( tone)?$|^sintone$/)) return pair('Leads', 'Basic Waves');
   if (has(/violin|viola|cello|contrabass|strings|string section|erhu/)) return pair('Strings',
     has(/section|strings/) ? 'Ensemble' : 'Solo');
   if (has(/brass|trumpet|tuba|horn/)) return pair('Brass', has(/synth|pwm|circuit|\bdx\b|\bam\b/) ? 'Synth Brass'

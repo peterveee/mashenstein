@@ -6,6 +6,21 @@ mattering.
 
 ## Ideas
 
+### Freeze a kept Lab song's sounds (before release — noted 27 Oct 2026)
+A song saved on the desk freezes every sound it uses into the song (`freezeVoices` in
+tools/mixer-entry.js), so a library preset edit never changes it. A player's kept Lab song does
+NOT: the save file keeps a recipe (`save.bangers.kept`), and the song is rebuilt from the library
+presets every time it plays. So any preset change reaches every player's Lab songs that use it.
+The 27 Oct FRPP-6 acoustic update (WOOD, RESONANCE, DROP) already did.
+- Fine while the game is in development; Peter wants it fixed once things settle and the game
+  is properly released.
+- Fix: when a Lab song is kept, store the voices it resolved to alongside the recipe, and play
+  those copies back. Same idea as `freezeVoices`.
+- Watch the save size: the save is meant to stay a few kilobytes (src/engine/save.js), and a
+  full voice per lane is far bigger than a recipe. Store only the voices the song actually uses,
+  or a content hash plus a versioned preset archive.
+- Import/export (SETTINGS > IMPORT / EXPORT) has to carry the frozen copies too.
+
 ### Flip the backwards guitar strums (found 25 Oct 2026)
 The strum Note FX stores directions in pitch order: `up` = low to high, which a guitarist
 calls a DOWN-stroke. The desk now labels them the guitarist's way, and that showed up that most

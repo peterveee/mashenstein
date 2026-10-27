@@ -87,6 +87,10 @@ export function officePack(settings = {}) {
       frame.totalDist = totalDist;
       // office-2's fire alarm: seconds since the floor began to evacuate, or null (run.js)
       frame.evacT = Number.isFinite(facts.evacuate) ? facts.evacuate : null;
+      // office-2's ta-da: seconds since it began, for the one monitor that boots Windows 3.1 (run.js)
+      frame.tadaT = Number.isFinite(facts.tadaT) ? facts.tadaT : null;
+      // and the camera it is predicted to land at, round which no blue screens stand (index.js noBlue)
+      frame.tadaCam = Number.isFinite(facts.tadaCam) ? facts.tadaCam : null;
       // Floor 88's helicopter is a single fly-past part-way along the stage, not a fixture.
       // Floor 23's blimp drifts through complete passes, with no progress cutoff.
       const heli = OFFICE_CORRIDORS.exec.outside.flyer;

@@ -52,7 +52,7 @@ const TRACKS = [
   { cab: 'frost', title: 'Our Breath Hangs in the Great Hall', time: '4:07', view: 0 },
   { cab: 'crypt', title: 'Somebody Down There Is Asking Questions', time: '3:36', view: 6 },
   { cab: 'neon', title: 'The Doors Are Closing, Please Stand Clear', time: '2:44', view: 5 },
-  { cab: 'cardboard', title: 'This Side Up (Mostly)', time: '3:19', view: 1 },
+  { cab: 'gravity', title: 'This Side Up (Mostly)', time: '3:19', view: 1 },
   { cab: 'office', title: 'You’ve Been on Mute the Whole Time', time: '3:53', view: 0 },
   { cab: 'surge', title: 'Too Many Plugs in One Power Strip', time: '4:26' },
 ].map((t, i) => ({ ...t, n: i + 1, cabName: CABINET_BY_ID[t.cab].name }));
@@ -300,7 +300,7 @@ function sceneArt(id, px, random, bare = false) {
 // every strip from the same place across the frame — one landscape in eight
 // styles, which is what the cabinet does to them on the beat. Its own star runs
 // across the cuts: Gary, at its own hazard.
-const SURGE_FROM = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon', 'cardboard', 'office'];
+const SURGE_FROM = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon', 'gravity', 'office'];
 function surgeArt(px, seed, sky) {
   const c = document.createElement('canvas');
   c.width = c.height = px;

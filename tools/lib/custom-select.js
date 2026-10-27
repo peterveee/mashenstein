@@ -76,7 +76,16 @@ export function createCustomSelect({
   // pointer that is using it.
   let rows = options;
   let optionEls = [];
+  // TYPE TO FIND. Typing while the list is open (or on the closed field, which opens it)
+  // narrows the rows to those whose name CONTAINS what was typed, anywhere in it, and the
+  // first of them is the one Enter takes. The typed text is drawn as the list's first row so
+  // there is never a filter that cannot be seen.
+  let query = '';
+  const findEl = document.createElement('div');
+  findEl.className = 'rolltool-find';
+  findEl.hidden = true;
   const buildOptions = () => {
+  menu.append(findEl);
   // Two columns only when something asks for them, so every existing caller draws
   // exactly the single-column list it drew before.
   menu.className = rows.some(([, , note]) => note) ? `${menuClass} twocol` : menuClass;
@@ -147,12 +156,13 @@ export function createCustomSelect({
   };
 
   const openable = (index) => !optionEls[index]?.dataset.off;
+  const shown = (index) => optionEls[index]?.style.display !== 'none';
   // Step PAST a closed row rather than stopping on it, in whichever direction the caller
   // was already going, and give up rather than spin if every row is closed.
   const nextOpen = (index, step) => {
     let at = (index + optionEls.length) % optionEls.length;
     for (let i = 0; i < optionEls.length; i++) {
-      if (openable(at)) return at;
+      if (openable(at) && shown(at)) return at;
       at = (at + step + optionEls.length) % optionEls.length;
     }
     return -1;
@@ -180,9 +190,24 @@ export function createCustomSelect({
     }
   };
 
+  const applyFilter = () => {
+    const needle = query.trim().toLowerCase();
+    findEl.hidden = !query;
+    findEl.textContent = query;
+    optionEls.forEach((option, i) => {
+      const hay = `${rows[i][1]} ${rows[i][2] || ''}`.toLowerCase();
+      option.style.display = !needle || hay.includes(needle) ? '' : 'none';
+    });
+    menu.scrollTop = 0;
+    // the first row that still matches, the chosen one if it does
+    const first = optionEls.findIndex((o) => o.style.display !== 'none' && !o.dataset.off);
+    const keep = optionEls[active]?.style.display !== 'none' && !optionEls[active]?.dataset.off && !needle;
+    if (first >= 0) setActive(keep ? active : first);
+  };
   const closeMenu = ({ focus = false } = {}) => {
     if (!open) return;
     open = false;
+    if (query) { query = ''; applyFilter(); }
     menu.hidden = true;
     menu.remove();
     field.setAttribute('aria-expanded', 'false');
@@ -248,10 +273,19 @@ export function createCustomSelect({
     const rect = field.getBoundingClientRect();
     menu.style.minWidth = `${Math.round(rect.width)}px`;
     menu.style.left = `${Math.round(rect.left)}px`;
-    const height = menu.offsetHeight;
+    let height = menu.offsetHeight;
     const below = window.innerHeight - rect.bottom;
     const flip = below < height + 8 && rect.top > below;
-    menu.style.top = `${Math.round(flip ? rect.top - height - 3 : rect.bottom + 3)}px`;
+    // A list taller than the room on its side of the field is cut to that room and
+    // scrolls, rather than running off the top or bottom of the window with its first or
+    // last rows out of reach.
+    const room = Math.floor((flip ? rect.top : below) - 12);
+    if (height > room) {
+      menu.style.maxHeight = `${Math.max(120, room)}px`;
+      menu.style.overflowY = 'auto';
+      height = menu.offsetHeight;
+    }
+    menu.style.top = `${Math.max(4, Math.round(flip ? rect.top - height - 3 : rect.bottom + 3))}px`;
     field.classList.toggle('flipped', flip);
     // Bubble after the field's own click handler. A capture-phase pointerdown here can
     // race a caret click: it closes the menu, then the field sees `open === false` and
@@ -271,9 +305,33 @@ export function createCustomSelect({
     if (ev.key === 'Tab') { closeMenu(); return; }
     if (ev.key === 'Escape') {
       if (!open) return;
+      // the first Escape takes back what was typed, the next closes the list
+      if (query) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        query = '';
+        applyFilter();
+        return;
+      }
       ev.preventDefault();
       ev.stopPropagation();
       closeMenu({ focus: true });
+      return;
+    }
+    // A letter, digit or (once something is typed) a space is part of a search.
+    if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey && (ev.key !== ' ' || query)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!open) openMenu();
+      query += ev.key;
+      applyFilter();
+      return;
+    }
+    if (open && query && ev.key === 'Backspace') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      query = query.slice(0, -1);
+      applyFilter();
       return;
     }
     if (!open) {
@@ -290,7 +348,7 @@ export function createCustomSelect({
     else if (ev.key === 'ArrowUp') setActive(active - 1, -1);
     else if (ev.key === 'Home') setActive(0, 1);
     else if (ev.key === 'End') setActive(optionEls.length - 1, -1);
-    else if (openable(active)) choose(optionEls[active].dataset.value);
+    else if (openable(active) && shown(active)) choose(optionEls[active].dataset.value);
   };
 
   Object.defineProperty(field, 'value', {
@@ -313,6 +371,7 @@ export function createCustomSelect({
     optionEls = buildOptions();
     active = 0;
     paint();
+    if (query) applyFilter();
     if (open) setActive(Math.max(0, optionEls.findIndex((o) => o.dataset.value === current)));
   };
   paint();

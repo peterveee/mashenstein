@@ -66,10 +66,12 @@ const FILTER_ROWS = { freq: 'CUTOFF', Q: 'RESONANCE', type: 'TYPE', slope: 'SLOP
 const ENV_OPTIONAL = ['release'];
 const FILTER_OPTIONAL = ['slope'];
 // FRPP-6's RING card: how long the note rings, and how long its highs last.
-const RING_ROWS = { ring: 'RING', highs: 'HIGHS' };
+const RING_ROWS = { ring: 'RING', highs: 'HIGHS', drop: 'DROP', resonance: 'RESONANCE' };
 // ...and its PLUCK and BODY cards.
 const PLUCK_ROWS = { where: 'WHERE', hard: 'HARD' };
-const BODY_ROWS = { mix: 'MIX', size: 'SIZE' };
+const BODY_ROWS = { mix: 'MIX', size: 'SIZE', wood: 'WOOD' };
+// Drawn when the card has them: a preset window built before 27 Oct 2026 does not.
+const FRPP6_OPTIONAL = ['drop', 'resonance', 'wood'];
 
 /**
  * A waveform, drawn.
@@ -1132,7 +1134,8 @@ export function createSynthFull({
         : kind === 'strings' || kind === 'hand' ? {} : ENV_ROWS;
     // The foot too: a seamed card (`splitCard`) keeps its envelope pots below the seam.
     const rows = byLabel([...spec.rows, ...(spec.foot || [])], want,
-      kind === 'filter' ? FILTER_OPTIONAL : ENV_ROWS === want ? ENV_OPTIONAL : []);
+      kind === 'filter' ? FILTER_OPTIONAL : ENV_ROWS === want ? ENV_OPTIONAL
+        : kind === 'ring' || kind === 'body' ? FRPP6_OPTIONAL : []);
     if (!rows) return;
     const onLive = (pairs) => {
       for (const [row, x] of pairs) pots.get(row.path)?.(x);

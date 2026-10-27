@@ -86,6 +86,59 @@ function svfCoefs(f, q, sampleRate) {
   return { k, a1, a2, a3: g * a2 };
 }
 
+/**
+ * A soundboard's diffuse tail: seeded white noise split at 'split' Hz, the lows decaying
+ * over t60Lo and the highs over t60Hi, with a 1 ms rise. Unit energy.
+ */
+function diffuseTail(d, sampleRate, len) {
+  const rand = rng(d.seed);
+  const ir = new Float64Array(len);
+  const c = Math.exp((-2 * Math.PI * d.split) / sampleRate);
+  const kLo = 10 ** (-3 / (d.t60Lo * sampleRate));
+  const kHi = 10 ** (-3 / (d.t60Hi * sampleRate));
+  const rise = Math.round(0.001 * sampleRate);
+  let lp = 0;
+  let gLo = 1;
+  let gHi = 1;
+  let e = 0;
+  for (let n = 0; n < len; n++) {
+    const x = rand() * 2 - 1;
+    lp = (1 - c) * x + c * lp;
+    ir[n] = (lp * 3 * gLo + (x - lp) * gHi) * Math.min(1, n / rise);
+    gLo *= kLo;
+    gHi *= kHi;
+    e += ir[n] * ir[n];
+  }
+  const k = 1 / Math.sqrt(e);
+  for (let n = 0; n < len; n++) ir[n] *= k;
+  return ir;
+}
+
+/**
+ * The hammer and key's thump (the piano trial, 27 Oct 2026): a few low wooden modes and a
+ * breath of noise, over in about 40 ms. Unit energy; the core scales it by KNOCK.
+ */
+function hammerKnock(sampleRate) {
+  const n = Math.round(0.06 * sampleRate);
+  const rand = rng(0x4b0c);
+  const out = new Float32Array(n);
+  const modes = [[85, 0.018, 1], [140, 0.014, 0.8], [230, 0.01, 0.6], [410, 0.006, 0.35]];
+  let lp = 0;
+  const c = Math.exp((-2 * Math.PI * 700) / sampleRate);
+  let e = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sampleRate;
+    let s = 0;
+    for (const [f, tau, g] of modes) s += g * Math.sin(2 * Math.PI * f * t) * Math.exp(-t / tau);
+    lp = (1 - c) * (rand() * 2 - 1) + c * lp;
+    s += 0.5 * lp * Math.exp(-t / 0.008);
+    out[i] = s * Math.min(1, i / (0.0005 * sampleRate));
+    e += out[i] * out[i];
+  }
+  for (let i = 0; i < n; i++) out[i] /= Math.sqrt(e);
+  return out;
+}
+
 /** How long the slowest mode takes to fall 90 dB, capped: the table's tail. */
 function bodyTail(modes) {
   let t60 = 0;
@@ -100,10 +153,22 @@ function bodyTail(modes) {
  * The DC blocker is part of the table so that nothing with a mean ever enters a loop whose
  * gain is nearly one.
  */
-function renderThroughBody(burst, modes, mix, sampleRate, tailSeconds) {
+function renderThroughBody(burst, modes, mix, sampleRate, tailSeconds, diffuse) {
   const len = burst.length + Math.ceil(tailSeconds * sampleRate);
   const out = new Float64Array(len);
   for (let n = 0; n < burst.length; n++) out[n] = burst[n] * (modes.length ? 1 - mix : 1);
+  if (diffuse && mix > 0) {
+    // The diffuse tail, convolved with the burst directly — a strike is a few dozen samples.
+    const ir = diffuseTail(diffuse, sampleRate, len);
+    let rms = 0;
+    for (let m = 0; m < modes.length; m += 3) rms += modes[m + 2] * modes[m + 2];
+    const g = mix * diffuse.gain * Math.sqrt(rms / Math.max(1e-9, modes.length / 3));
+    for (let b = 0; b < burst.length; b++) {
+      if (!burst[b]) continue;
+      const x = g * burst[b];
+      for (let n = b; n < len; n++) out[n] += x * ir[n - b];
+    }
+  }
   if (modes.length && mix > 0) {
     for (let m = 0; m < modes.length; m += 3) {
       const { k, a1, a2, a3 } = svfCoefs(modes[m], modes[m + 1], sampleRate);
@@ -278,9 +343,15 @@ export function buildFrpp6Tables(patch, sampleRate) {
   const lane = patch.internal?.bodyMethod === 'lane';
   const modes = frpp6BodyModes(patch.body, sampleRate);
   const mix = patch.body.mix;
-  const tail = modes.length ? bodyTail(modes) : 0;
+  // A body's diffuse tail: the soundboard has its own; any other body gets a short guitar-
+  // sized one when BODY NOISE asks (the guitar A/B, 27 Oct 2026), the same seed per body.
+  const set = FRPP6_BODY_SETS[patch.body.type];
+  const bn = patch.internal.bodyNoise;
+  const diffuse = set?.diffuse || (set && bn > 0
+    ? { gain: bn, t60Lo: 0.2 * (patch.body.size || 1), t60Hi: 0.035, split: 900, seed: set.cloud.seed + 1 } : null);
+  const tail = modes.length ? Math.max(bodyTail(modes), diffuse ? Math.min(1.2, 1.5 * diffuse.t60Lo) : 0) : 0;
   const make = (burst, targetEnergy) => {
-    const wet = renderThroughBody(burst, modes, mix, sampleRate, tail);
+    const wet = renderThroughBody(burst, modes, mix, sampleRate, tail, diffuse);
     const factor = Math.sqrt(targetEnergy / Math.max(1e-30, energyOf(wet)));
     if (!lane) return scaled(wet, factor);
     // Padded to its twin's length first: the DC blocker's own tail is part of the table,
@@ -308,6 +379,7 @@ export function buildFrpp6Tables(patch, sampleRate) {
     }
   }
   if (patch.damping.fret > 0) tables.fret = fretClick(sampleRate);
+  if (patch.internal.knock > 0) tables.knock = hammerKnock(sampleRate);
   if (patch.damping.squeak > 0) tables.squeak = fingerSqueak(sampleRate);
   return tables;
 }
@@ -343,43 +415,72 @@ function levelCurve(result, sampleRate) {
   // The string's level, not the hand's: FRET and SQUEAK are kept out of the measurement.
   // Undriven and in mono (spread 0), because the A2 peak this also takes is the DRIVE's
   // stage — the string as the shaper will meet it. The curve itself is pan-independent
-  // either way: the pan law keeps L² + R² constant.
-  core.installPatch({ ...result, damping: { ...result.damping, fret: 0, squeak: 0 },
+  // either way: the pan law keeps L² + R² constant. SUB is kept out too: the curve evens
+  // the STRING up the neck, and the sub rides on top of it at its own measured scale.
+  const plain = { ...result, damping: { ...result.damping, fret: 0, squeak: 0 },
+    string: { ...result.string, sub: 0 },
     strings: { ...result.strings, spread: 0 }, drive: null,
-    play: { mode: 'poly', glide: 0, vibrato: null }, levelCurve: null });
+    play: { mode: 'poly', glide: 0, vibrato: null }, levelCurve: null };
+  core.installPatch(plain);
   const frames = Math.round(0.3 * sampleRate);
   const out = [new Float32Array(128), new Float32Array(128)];
   const rms = [];
   // A sustained exciter is measured over its held note less its attack; a pluck from the strike.
   const skip = isFrpp6Sustained(result.exciter.type) ? Math.round(0.15 * sampleRate) : 0;
-  for (let k = 0; k < LEVEL_POINTS; k++) {
-    const hz = Math.min(sampleRate / 5.5, hzOfMidi(FRPP6_LEVEL_LO + k * FRPP6_LEVEL_STEP));
+  // Every semitone, not every four, when WOOD is on: a noisy body tail lands each note's
+  // harmonics on its own peaks and dips, so the level moves note to note (±6 dB on the
+  // steel, more on nylon, measured 27 Oct 2026) and a four-semitone curve cannot follow
+  // it. Each note is measured over half the stretch, so the curve costs about twice a
+  // plain patch's rather than four times (~60 ms against ~20, once per patch).
+  const step = result.levelStep || FRPP6_LEVEL_STEP;
+  const points = Math.round(((LEVEL_POINTS - 1) * FRPP6_LEVEL_STEP) / step) + 1;
+  const span = step < FRPP6_LEVEL_STEP ? Math.round(frames / 2) : frames;
+  for (let k = 0; k < points; k++) {
+    const hz = Math.min(sampleRate / 5.5, hzOfMidi(FRPP6_LEVEL_LO + k * step));
     core.reset();
     core.scheduleAll([{ type: 'noteOn', frame: 0, eventId: 1, hz, velocity: 1 }]);
     let e = 0;
-    for (let f = 0; f < frames + skip; f += 128) {
-      const n = Math.min(128, frames + skip - f);
+    for (let f = 0; f < span + skip; f += 128) {
+      const n = Math.min(128, span + skip - f);
       core.process(out, f, n, 0);
       if (f >= skip) for (let i = 0; i < n; i++) e += out[0][i] * out[0][i] + out[1][i] * out[1][i];
     }
-    rms.push(Math.sqrt(e / frames));
+    rms.push(Math.sqrt(e / span));
   }
   // The A2 peak, at level 1: where the drive's knee goes (frpp6DriveOf).
   core.reset();
   core.scheduleAll([{ type: 'noteOn', frame: 0, eventId: 1, hz: 110, velocity: 1 }]);
   let stringPeak = 0;
+  let a2 = 0;
   for (let f = 0; f < frames + skip; f += 128) {
     const n = Math.min(128, frames + skip - f);
     core.process(out, f, n, 0);
-    if (f >= skip) for (let i = 0; i < n; i++) { const a = Math.abs(out[0][i]); if (a > stringPeak) stringPeak = a; }
+    if (f >= skip) for (let i = 0; i < n; i++) { const a = Math.abs(out[0][i]); if (a > stringPeak) stringPeak = a; a2 += a * a; }
   }
   core.reset();
-  const ref = rms[(45 - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP | 0]
-    + (rms[Math.ceil((45 - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP)] - rms[(45 - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP | 0])
-      * (((45 - FRPP6_LEVEL_LO) / FRPP6_LEVEL_STEP) % 1);
+  // SUB's scale: the same A2 again with a sub at scale 1, so SUB 1 is a sub as loud (rms) as
+  // the string over the same stretch — its decay, MUTE and the bow's pressure included. The
+  // sub sits an octave under every harmonic, so the two add as powers and it is the difference.
+  let subRef = 0;
+  if (result.string.sub > 0) {
+    core.installPatch({ ...plain, string: { ...result.string, sub: 1 }, subRef: 1 });
+    core.scheduleAll([{ type: 'noteOn', frame: 0, eventId: 1, hz: 110, velocity: 1 }]);
+    let both = 0;
+    for (let f = 0; f < frames + skip; f += 128) {
+      const n = Math.min(128, frames + skip - f);
+      core.process(out, f, n, 0);
+      if (f >= skip) for (let i = 0; i < n; i++) both += out[0][i] * out[0][i];
+    }
+    core.reset();
+    const sub = Math.sqrt(Math.max(0, both - a2));
+    subRef = sub > 1e-9 ? Math.sqrt(a2) / sub : 0;
+  }
+  const ref = rms[(45 - FRPP6_LEVEL_LO) / step | 0]
+    + (rms[Math.ceil((45 - FRPP6_LEVEL_LO) / step)] - rms[(45 - FRPP6_LEVEL_LO) / step | 0])
+      * (((45 - FRPP6_LEVEL_LO) / step) % 1);
   // Bounded, so a broken measurement cannot run away — but wide: a bow pressed hard is many
   // dB louder at the top of the board than at A2, and that is what this is for.
-  return { curve: Float32Array.from(rms, (r) => Math.min(16, Math.max(1 / 32, r > 1e-9 ? ref / r : 1))), stringPeak };
+  return { curve: Float32Array.from(rms, (r) => Math.min(16, Math.max(1 / 32, r > 1e-9 ? ref / r : 1))), stringPeak, subRef };
 }
 
 /**
@@ -434,11 +535,13 @@ export function compileFrpp6(voiceOrStored, sampleRate) {
   if (hit) return hit;
   const patch = validateFrpp6(stored);
   const result = { ...patch, play, drive: null, sampleRate,
-    tables: buildFrpp6Tables(patch, sampleRate), levelCurve: null, stringPeak: 0 };
+    tables: buildFrpp6Tables(patch, sampleRate), levelCurve: null, stringPeak: 0, subRef: 0,
+    levelStep: patch.internal.bodyNoise > 0 ? 1 : FRPP6_LEVEL_STEP };
   if (CalCore) {
     const cal = levelCurve(result, sampleRate);
     result.levelCurve = cal.curve;
     result.stringPeak = cal.stringPeak;
+    result.subRef = cal.subRef;
   }
   // After the calibration, which it depends on — and which must not see it.
   result.drive = frpp6DriveOf(voice, result.stringPeak);

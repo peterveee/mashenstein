@@ -187,6 +187,9 @@ export function envelopeGraph({ rows, read, writeMany, onLive, onStart, onEnd, h
  *
  * Time runs on the square root, as the envelope graph's does, so a short pluck and a
  * long harp note both have room. Drag either end to set it; the pots move with it.
+ *
+ * DROP bends the solid line: a quick first fall to a knee, then the long tail. RESONANCE
+ * is a faint dotted line under it — the other strings, ringing as long as RING.
  */
 export function decayGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 94 }) {
   const box = document.createElement('div');
@@ -198,7 +201,8 @@ export function decayGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 
   const fill = el('path', { class: 'sffill', d: '' });
   const lows = el('path', { class: 'sfline', d: '' });
   const highs = el('path', { class: 'sfline', d: '', 'stroke-dasharray': '4 3', opacity: 0.75 });
-  svg.append(grid, fill, lows, highs);
+  const reso = el('path', { class: 'sfline', d: '', 'stroke-dasharray': '1 3', opacity: 0.6 });
+  svg.append(grid, fill, lows, highs, reso);
   const dots = [0, 1].map(() => {
     const c = el('circle', { class: 'sfhandle', r: 4.5, cx: -10, cy: -10 });
     svg.append(c);
@@ -221,8 +225,17 @@ export function decayGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 
     let g = '';
     for (const s of [0.1, 1, 5]) g += `M${xOf(s).toFixed(1)},0 V${h} `;
     grid.setAttribute('d', g + `M0,${((top + b) / 2).toFixed(1)} H${w}`);
-    lows.setAttribute('d', `M4,${top} L${xl.toFixed(1)},${b}`);
-    fill.setAttribute('d', `M4,${top} L${xl.toFixed(1)},${b} L4,${b} Z`);
+    // DROP: the knee is where the fast first fall meets the tail — the engine's split, with
+    // the loud line at 0.8 × (1 − 0.6 × DROP) of RING and the quiet one ~DROP × 8 dB down.
+    const drop = rows.drop ? Number(read(rows.drop)) || 0 : 0;
+    const res = rows.resonance ? Number(read(rows.resonance)) || 0 : 0;
+    const kx = xOf(ring * 0.12);
+    const ky = top + (b - top) * (0.12 + 0.18 * drop);
+    const path = drop > 0 ? `M4,${top} L${kx.toFixed(1)},${ky.toFixed(1)} L${xl.toFixed(1)},${b}` : `M4,${top} L${xl.toFixed(1)},${b}`;
+    lows.setAttribute('d', path);
+    fill.setAttribute('d', `${path} L4,${b} Z`);
+    const ry = b - (b - top) * 0.35 * res;
+    reso.setAttribute('d', res > 0 ? `M${xOf(ring * 0.03).toFixed(1)},${ry.toFixed(1)} L${xl.toFixed(1)},${b}` : '');
     highs.setAttribute('d', `M4,${top} L${xh.toFixed(1)},${b}`);
     dots[0].setAttribute('cx', xl.toFixed(1)); dots[0].setAttribute('cy', b);
     dots[1].setAttribute('cx', xh.toFixed(1)); dots[1].setAttribute('cy', b);
@@ -480,6 +493,7 @@ export function stringsGraph({ voice, h = 94 }) {
  * BODY: the box's tone, low to high, the way the FILTER card draws its filter. The peaks
  * are its resonances — the air, the top, and the dense rest of the wood. SIZE slides them
  * all down or up together; MIX lifts the curve off the flat line of the bare string.
+ * WOOD is the haze under the peaks: the box's noisy tail, falling away above ~1 kHz.
  */
 export function bodyGraph({ rows, read, voice, modesOf, h = 94 }) {
   const box = document.createElement('div');
@@ -491,7 +505,8 @@ export function bodyGraph({ rows, read, voice, modesOf, h = 94 }) {
   const grid = el('path', { class: 'sfgrid', d: '' });
   const fill = el('path', { class: 'sffill', d: '' });
   const line = el('path', { class: 'sfline', d: '' });
-  svg.append(grid, fill, line, txt(4, h - 4, '100'), txt(0, h - 4, '1k', 'middle'), txt(0, h - 4, '10k', 'end'));
+  const haze = el('path', { class: 'sffill', d: '', opacity: 0 });
+  svg.append(grid, haze, fill, line, txt(4, h - 4, '100'), txt(0, h - 4, '1k', 'middle'), txt(0, h - 4, '10k', 'end'));
   box.append(svg);
   const draw = () => {
     const w = svg.clientWidth || box.clientWidth || 200;
@@ -524,6 +539,17 @@ export function bodyGraph({ rows, read, voice, modesOf, h = 94 }) {
     const d = pts.map(([x, db], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${Math.min(h - 14, y(db)).toFixed(1)}`).join(' ');
     line.setAttribute('d', d);
     fill.setAttribute('d', `${d} L${w},${h - 14} L0,${h - 14} Z`);
+    const wood = rows.wood && type !== 'none' ? Number(read(rows.wood)) || 0 : 0;
+    if (wood > 0) {
+      const hz = [];
+      for (let i = 0; i <= 40; i++) {
+        const f = 50 * (12000 / 50) ** (i / 40);
+        const db = top - 14 + 10 * Math.log10(wood) - 10 * Math.log10(1 + (f / 900) ** 2);
+        hz.push(`${i ? 'L' : 'M'}${xs(f).toFixed(1)},${Math.min(h - 14, y(db)).toFixed(1)}`);
+      }
+      haze.setAttribute('d', `${hz.join(' ')} L${w},${h - 14} L0,${h - 14} Z`);
+      haze.setAttribute('opacity', (0.25 + 0.35 * wood).toFixed(2));
+    } else haze.setAttribute('opacity', 0);
     grid.setAttribute('d', `M${xs(100).toFixed(1)},0 V${h - 14} M${xs(1000).toFixed(1)},0 V${h - 14} M${xs(10000).toFixed(1)},0 V${h - 14}`);
     const labels = svg.querySelectorAll('.sfgraphtxt');
     labels[0].setAttribute('x', (xs(100) + 2).toFixed(1));

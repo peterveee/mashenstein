@@ -912,9 +912,11 @@ export const CABINETS = [
     // `swapSpacing` below keeps each animal at least three screens from the last of its
     // own kind — one that would come sooner is a crate or a spike plate instead.
     swaps: {
-      cactus: ['crate', 'pandaBarrier', 'popSpikes', 'trafficCone', 'frogBarrier',
-        'pandaBarrier', 'popSpikes', 'monkeyBarrier', 'trafficCone', 'crate'],
-      cactusBig: ['crate', 'popSpikes'],
+      // The crates and spike plates the cactus came down as are the ladder and the bollards
+      // since 27 Oct 2026 (BAKEOFF_PICKS, below).
+      cactus: ['jacobsLadder', 'pandaBarrier', 'risingBollards', 'trafficCone', 'frogBarrier',
+        'pandaBarrier', 'risingBollards', 'monkeyBarrier', 'trafficCone', 'jacobsLadder'],
+      cactusBig: ['jacobsLadder', 'risingBollards'],
       // NO BIRDS OVER TOKYO (Peter, 24 Sep: "replace the birds with drones"). A bird
       // flies over the lane and asks nothing; a drone is a slide — so turning every one
       // made half the level drones. Now half of them are drones and half a floating
@@ -924,7 +926,7 @@ export const CABINETS = [
     swapSpacing: {
       types: ['pandaBarrier', 'frogBarrier', 'monkeyBarrier'],
       gap: 900,                        // world px: three screens at the desktop zoom
-      fallback: ['crate', 'popSpikes'],
+      fallback: ['jacobsLadder', 'risingBollards'],
     },
     // No invincibility on these stages (Peter, 24 Sep): UNPEELABLE, and the legacy
     // star capsule that can still arrive through old data. And NO SPEED-UP (Peter,
@@ -1131,6 +1133,7 @@ export const CABINET_BY_ID = Object.fromEntries(CABINETS.map((c) => [c.id, c]));
 //   Field Service: "A B & C instead of fires and boom barrier" — the goose stays.
 //   Speed Zone: "ABCFG", each in its own slot — the rattlesnake stays.
 //   Frost Fortress: "ABCDE to be added while keeping the existing" — then E, the caltrops, out.
+//   Terminal Velocity: "barrels = runaway wheels, floor saw = laser fan, cactus = Jacob's ladder or rising bollards".
 //   Crypt Shift: "get rid of a dog or 2 … replace them with A B or G".
 // `weights` tilts the lane's pick toward or away from a hazard (Spawner.pickPattern),
 // after Peter saw the counts per run the same day: Field Service "no cactus … reduce
@@ -1180,6 +1183,12 @@ const BAKEOFF_PICKS = {
     swap: { dogSnarler: ['graveHands'], dogFeral: ['graveRoses', 'eternalFlame'] },
     // "yes reduce them in crypt" (15 Oct): the tombstones and braziers still led every run.
     weights: { tombstone: 0.4, brazier: 0.4 },
+  },
+  // Terminal Velocity (27 Oct): "get rid of all cactii and firebarrels and barrels and floor
+  // saws" — barrels are runaway wheels, floor saws laser fans, fire barrels Jacob's ladders;
+  // the cactus slot (cabinet.swaps) deals ladders and rising bollards.
+  neon: {
+    swap: { barrel: ['runawayWheel'], floorSaw: ['laserFan'], fireBarrel: ['jacobsLadder'] },
   },
 };
 // EVERY RANDOM LANE DEALS BY HAZARD, not by pattern (Peter, 15 Oct 2026: "do the per
@@ -1305,7 +1314,7 @@ CABINET_BY_ID.surge.patterns = [...new Set([
     P(0, [{ t: 'crate', dx: 0 }, coinArc(60)]),
     P(0, [{ t: 'popSpikes', dx: 0 }, coinArc(50)]),
     P(0, [coinLine(0, 7)]),
-    P(1, [{ t: 'floorSaw', dx: 0 }, coinArc(60)]),
+    P(1, [{ t: 'laserFan', dx: 0 }, coinArc(60)]),   // the saw's turn, 27 Oct 2026
   ];
   neon.patterns = [...neon.patterns, maneki, pythagoras, openingTarget, ...coinedJumps];
   const darkCat = P(1, [{ t: 'neonCat', dx: 0 }, coinArc(120)]);

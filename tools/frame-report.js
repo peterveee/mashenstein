@@ -29,7 +29,7 @@
 // otherwise starts one for the run and stops it after.
 //
 // Usage:
-//   node tools/frame-report.js                   cabinets 1-6, portrait at 3 points + landscape at 1
+//   node tools/frame-report.js                   every cabinet, portrait at 3 points + landscape at 1
 //   node tools/frame-report.js speed crypt       just those cabinets
 //   node tools/frame-report.js --quick           portrait only, one point a stage
 //   node tools/frame-report.js --seconds 8       a longer look at each point (default 6)
@@ -44,10 +44,8 @@ const reportPath = join(root, 'work/local/reports/frame-report.json');
 const PORT = 8001;
 const BASE = `http://localhost:${PORT}`;
 
-// Cabinets 1-6 in the registry's order; the rest have nothing of note on them yet.
-const CABINETS = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon'];
-// Asked for by name only (not in the default run).
-const NAMED_ONLY = ['office', 'gravity', 'surge'];
+// The cabinets in the registry's order, act 3 (gravity, office, surge) last.
+const CABINETS = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon', 'gravity', 'office', 'surge'];
 const PHONE = { w: 393, h: 852, dpr: 3 };
 const DENSITY = { portrait: 2, landscape: 3 };
 const BUDGET = 16.7;
@@ -64,9 +62,9 @@ const quick = flag('--quick');
 const seconds = valueOf('--seconds', 6);
 const numericArgs = new Set(args.flatMap((a, i) => (a === '--seconds' ? [i + 1] : [])));
 const named = args.filter((a, i) => !a.startsWith('--') && !numericArgs.has(i));
-const unknown = named.filter((c) => !CABINETS.includes(c) && !NAMED_ONLY.includes(c));
+const unknown = named.filter((c) => !CABINETS.includes(c));
 if (unknown.length) {
-  console.error(`not one of cabinets 1-6: ${unknown.join(', ')} (${CABINETS.join(', ')})`);
+  console.error(`not a cabinet: ${unknown.join(', ')} (${CABINETS.join(', ')})`);
   process.exit(1);
 }
 const cabinets = named.length ? named : CABINETS;
@@ -237,9 +235,9 @@ for (const cab of cabinets) {
   }
 }
 // A partial run (named cabinets) keeps the other cabinets' last rows, so the page
-// always shows all six.
+// always shows every cabinet.
 const kept = named.length && previous?.rows ? previous.rows.filter((r) => !cabinets.includes(r.cab)) : [];
-const order = (r) => [...CABINETS, ...NAMED_ONLY].indexOf(r.cab) * 10 + Number(r.stage.split('-')[1]) + (r.orient === 'landscape' ? 0.5 : 0);
+const order = (r) => CABINETS.indexOf(r.cab) * 10 + Number(r.stage.split('-')[1]) + (r.orient === 'landscape' ? 0.5 : 0);
 const all = [...kept, ...rows].sort((a, b) => order(a) - order(b));
 
 mkdirSync(dirname(reportPath), { recursive: true });

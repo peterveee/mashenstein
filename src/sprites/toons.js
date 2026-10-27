@@ -334,7 +334,24 @@ function handPiecePath(c, f, piece, r) {
 // forearm's direction, null when the caller had none; the fingers then point
 // down, the hanging default. `skinInk` false paints the disc as a plain fill,
 // the way Grumpos's gauntlet always has. `kind` is the pose, for 'auto'.
+// Where a humanoid's head, hip and hands landed on the canvas, for dev tools
+// that hang things on a moving figure (tools/render-halloween.js). Off unless
+// a caller hands in a sink; production never does, so this draws nothing and
+// changes nothing. Each mark is the canvas point plus the rotation and scale
+// of the transform it was drawn under, appended in paint order (back hand
+// before front hand).
+let LANDMARKS = null;
+export function captureToonLandmarks(sink = null) { LANDMARKS = sink; }
+function markLandmark(ctx, key, x, y) {
+  const m = ctx.getTransform();
+  (LANDMARKS[key] || (LANDMARKS[key] = [])).push({
+    x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f,
+    a: Math.atan2(m.b, m.a), sx: Math.hypot(m.a, m.b), sy: Math.hypot(m.c, m.d),
+  });
+}
+
 function paintHand(ctx, spec, u, ow, x, y, outer, cuff, skin, ang, skinInk = true, kind = null) {
+  if (LANDMARKS) markLandmark(ctx, 'hand', x, y);
   let r = outer;
   if (cuff != null) {
     const band = (spec.handRing ?? HAND_RING) * u;
@@ -1519,7 +1536,9 @@ export const TOON_SPECS = {
     armWidth: 0.92,
     // end character editor proportions
   },
-  gary: { rig: 'humanoid', shoeShape: 'sneaker', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true, limbStyle: 'snap' ,
+  // pants + tee: his shirt worn out over trousers, the hem hiding the leg join
+  // (Peter, 26 Oct 2026: T+ off the trouser bake-off, tidy hem).
+  gary: { rig: 'humanoid', shoeShape: 'sneaker', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true, limbStyle: 'snap', pants: true, tee: 0.05,
     // proportions — written by the character editor (tools/character-editor.js)
     legShiftFoot: -0.03,
     hipRound: 0,
@@ -12757,6 +12776,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // both arms in the back pass, which is right for arms at rest — but a
   // celebration that MEETS its hands in front of the chest (Grumpos's clap,
   // Kiko's salute) puts them behind the torso and shows nothing at all.
+  // `handAtF` / `handAtB`: put a hand at [x, y] u from the feet (x off the
+  // torso centre), with `elbowF` / `elbowB` choosing the bend — for a held
+  // prop on a still pose. No game pose sets them; social stills only.
+  if (pose.handAtF) { handF = [torsoCx + pose.handAtF[0] * u, pose.handAtF[1] * u]; if (pose.elbowF) elbF = pose.elbowF; }
+  if (pose.handAtB) { handB = [torsoCx + pose.handAtB[0] * u, pose.handAtB[1] * u]; if (pose.elbowB) elbB = pose.elbowB; }
   const clapFront = (pose.kind === 'celebrate' && (
     id === 'grumpos'
     || id === 'kiko'
@@ -12778,11 +12802,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // target. The old arrangement — gun on the far shoulder but painted in
     // front — forced the free arm to be re-rooted onto the near side with a
     // borrowed swing, which is the tangle this replaces.
-    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
-    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(armFill, farShade), ow, armWB, true);
-    drawPuff(shB, armY, handB, armSeg, elbB, armSegF, farShade);
-    if (pistolAngleB != null) drawPistol(ctx, handB[0], handB[1], pistolAngleB, u, ow, p, farShade);
-    handDeco(handB[0], handB[1], farShade, shB, armY, elbB);
+    // (`farArmFront` repaints its forearm in the front pass — see the end.)
+    {
+      if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
+      else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(armFill, farShade), ow, armWB, true);
+      drawPuff(shB, armY, handB, armSeg, elbB, armSegF, farShade);
+      if (pistolAngleB != null) drawPistol(ctx, handB[0], handB[1], pistolAngleB, u, ow, p, farShade);
+      handDeco(handB[0], handB[1], farShade, shB, armY, elbB);
+    }
     // Standing, the cannon now hides behind the torso here same as every
     // other hero's front arm does — only the hip-height muzzle tip clears the
     // silhouette, matching how a plain hand peeks out at rest. It used to be
@@ -13006,27 +13033,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.beginPath(); torsoPath(ctx); ctx.clip();
     ctx.fillStyle = p.p;
     ctx.fillRect(torsoCx - torsoHalf * 1.2, beltY, torsoHalf * 2.4, torsoBot - beltY + 0.1 * u);
-    ctx.restore();
-  }
-  if (turned && !slide) {
-    // Shade the receding far side. Grumpos's body and skin share a colour, so
-    // using skin here was invisible and left his torso reading front-on.
-    const side = -nearSign;
-    const sideFill = p.p;
-    const sideWidth = torsoHalf * (0.2 + 0.16 * turnDepth);
-    const edge = torsoCx + side * torsoHalf * 0.9;
-    const inner = edge - side * sideWidth;
-    ctx.save();
-    ctx.beginPath(); torsoPath(ctx); ctx.clip();
-    ctx.globalAlpha *= 0.42;
-    ctx.fillStyle = sideFill;
-    ctx.beginPath();
-    ctx.moveTo(inner, torsoTop + torsoHalf * 0.22);
-    ctx.lineTo(edge, torsoTop + torsoHalf * 0.3);
-    ctx.lineTo(edge, torsoBot - torsoHalf * 0.18);
-    ctx.lineTo(inner, torsoBot - torsoHalf * 0.08);
-    ctx.closePath();
-    ctx.fill();
     ctx.restore();
   }
   if (spec.steeleFinish && !lod && !slide) {
@@ -13799,6 +13805,30 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // band over the knee.
   hipKit('belt');
   if (!frontLegs) drawFrontLeg();
+  // `tee`: the shirt worn OUT over the trousers — its hem, `tee` u below the
+  // trouser seam, repainted after the legs so it covers the top of the leg
+  // join in every stride. Its top fades in so it has no edge of its own.
+  // Gary's, picked 26 Oct 2026 (Peter: tidy, not ragged — he works the shop).
+  if (spec.tee && !lod && !slide) {
+    const top = beltY - 0.05 * u, hem = beltY + spec.tee * u;
+    const hT = bodyHalfAt(top), hH = Math.max(bodyHalfAt(top), torsoHalf) * 1.02;
+    const hemPath = (c) => {
+      c.moveTo(torsoCx - hT, top); c.lineTo(torsoCx + hT, top);
+      c.lineTo(torsoCx + hH, hem);
+      c.quadraticCurveTo(torsoCx, hem + 0.012 * u, torsoCx - hH, hem);
+      c.closePath();
+    };
+    const fade = ctx.createLinearGradient(0, top, 0, top + 0.03 * u);
+    const rgb = parseHex(p.b) || [200, 80, 40];
+    fade.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+    fade.addColorStop(1, `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`);
+    ctx.beginPath(); hemPath(ctx); ctx.fillStyle = fade; ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(torsoCx + hT, top); ctx.lineTo(torsoCx + hH, hem);
+    ctx.quadraticCurveTo(torsoCx, hem + 0.012 * u, torsoCx - hH, hem);
+    ctx.lineTo(torsoCx - hT, top);
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = ow; ctx.lineJoin = 'round'; ctx.stroke();
+  }
   hipKit('pouch');
   if (beltPouch) beltPouch();
   // THE WORN WRENCH, on the same seam and for the same reason as the pouch: it
@@ -14616,7 +14646,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // get the centre they should always have had. Same 0.01u it always was;
     // only the poses that get it changed. The yaw term beside it is untouched:
     // that is a real three-quarter offset, not a nudge.
-    drawHead(ctx, id, spec, p, u, ow, (stand ? 0 : 0.01 * u) + torsoCx + nearSign * turnDepth * 0.015 * u, headY, lod, pose);
+    const headX = (stand ? 0 : 0.01 * u) + torsoCx + nearSign * turnDepth * 0.015 * u;
+    if (LANDMARKS) { markLandmark(ctx, 'head', headX, headY); markLandmark(ctx, 'hip', torsoCx, hipY); }
+    drawHead(ctx, id, spec, p, u, ow, headX, headY, lod, pose);
   }
 
   // The same round shield he normally carries on his back, riding whichever
@@ -14686,6 +14718,20 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (slingOverArm) slingOverArm();
     if (apronStrapOver) apronStrapOver();
     if (pose.held) drawHeld();
+  }
+  // `farArmFront`: the far arm alone drawn over the body (the near arm stays
+  // where a standing pose puts it) — for a hand holding something in front
+  // of the chest. No game pose sets it; social stills only.
+  // The shoulder and upper arm stay behind the torso, as the near arm's do;
+  // only the part below the elbow's height comes over the body.
+  if (pose.farArmFront && !armsInFront && !clapFront && !bowArmFront) {
+    const cutY = armY + (handB[1] - armY) * 0.5;
+    ctx.save(); ctx.beginPath(); ctx.rect(-4 * u, cutY, 8 * u, 4 * u); ctx.clip();
+    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
+    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(armFill, farShade), ow, armWB, true);
+    drawPuff(shB, armY, handB, armSeg, elbB, armSegF, farShade);
+    handDeco(handB[0], handB[1], farShade, shB, armY, elbB);
+    ctx.restore();
   }
 }
 

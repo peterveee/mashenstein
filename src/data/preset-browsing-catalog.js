@@ -4,6 +4,17 @@ const GROUPS = [
   ['Strings', 'Solo', 'frppViolin frppCello frppErhu'],
   ['Strings', 'Ensemble', 'frppStringSection'],
   ['Bass', 'Electric', 'frppFretlessBass'],
+  ['Bass', 'Acoustic', 'frppUprightBass frppUprightBassBig'],
+  ['Keys', 'Harpsichord', 'frppHarpsichord frppHarpsichord8'],
+  ['Strings', 'Plucked', 'frppOud frppCharango'],
+  ['Strings', 'Ensemble', 'frppPizzicato frppPizzicatoBox'],
+  ['Guitars', 'Acoustic', 'frppUkulele'],
+  ['Bells & Mallets', 'Tuned Percussion', 'frppSantoor frppMusicBoxTines'],
+  ['Bells & Mallets', 'Bells', 'frppGamelan'],
+  ['Pads', 'Textures', 'frppAutoharp'],
+  ['Pads', 'Evolving', 'frppAmbientPluck'],
+  ['Bells & Mallets', 'Bells', 'frppCrystalStrike frppCrystalShimmer frppGlassPluck frppGlassBell'],
+  ['Bells & Mallets', 'Tuned Percussion', 'frppCelesta frppMusicBox'],
   ["Bass", "Electric",
     "tpBassGuitar tngrPickedBass mrdrSlapThumb mrdrSlapPop mrdrFretClack" + " " +
     "frppBassNeck frppBassBridge"
@@ -14,25 +25,33 @@ const GROUPS = [
   ["Bass", "Synth",
     "engFilteredSaw engFilteredSawOpen eng80s eng80sSaw engTitleBass" + " " +
     "engFinaleBass engFinaleBassRepeat engMegamixBass engShopBass engLoungeBass" + " " +
-    "engWalkingBass engBright80sBass roundMono fmGrowl acidSquelch" + " " +
-    "rubberBass clangBass detuneBass tpBassy fmGrowl2" + " " +
-    "bass80sMono bass80sFM bass80sDuo bass80sSynth bass303Squelch" + " " +
-    "bass303Rubber bass303DeepGlide bass303Bite bass303Pulse layerBass80s" + " " +
-    "layerFilteredSaw layerTitleBass layerFinaleBass layerFinaleBassGhost layerWalkingBass" + " " +
-    "layerMegamixBass layerShopBass layerLoungeBass layerBright80sBass bestSampleHoldBass" + " " +
-    "syncBassBite bestMonsterBass bestReeseBass bestPwmBass bestPwmGrowlBass" + " " +
-    "tngrOrangeCurrent tngrGlassMotor tngrNightSequence tngrHollowVector tngrDigitalGrowl" + " " +
-    "tngrRoundBass rmndDxSlap rmndDxPop rmndDigitalSlap mrdrSynthSlap" + " " +
-    "tngrSlap mrdrMegaPop mrdrWirePop mrdrZapPop rmndMaxPop" + " " +
-    "rmndClangPop rmndSquarePop tngrMegaPop mrdrAcid303 mrdrAcid303Accent" + " " +
-    "mrdrAcid303Square mrdrAcid303Deep mrdrOrganBass mrdrGarageWobble rm7WahBass" + " " +
-    "rm7LaserBass rm7MonsterGrowl rm7AcidFm rm7ReeseFm rm7OctaverBass" + " " +
-    "frppSynthBass frppAcidPluck mrdrFmWub"
+    "engWalkingBass engBright80sBass roundMono rubberBass clangBass" + " " +
+    "detuneBass tpBassy bass80sMono bass80sFM bass80sDuo" + " " +
+    "bass80sSynth layerBass80s layerFilteredSaw layerTitleBass layerFinaleBass" + " " +
+    "layerFinaleBassGhost layerWalkingBass layerMegamixBass layerShopBass layerLoungeBass" + " " +
+    "layerBright80sBass bestSampleHoldBass syncBassBite bestPwmBass tngrOrangeCurrent" + " " +
+    "tngrGlassMotor tngrNightSequence tngrHollowVector tngrRoundBass mrdrOrganBass" + " " +
+    "rm7WahBass rm7LaserBass rm7OctaverBass frppSynthBass"
+  ],
+  ["Bass", "Acid",
+    "acidSquelch bass303Squelch bass303Rubber bass303DeepGlide bass303Bite" + " " +
+    "bass303Pulse mrdrAcid303 mrdrAcid303Accent mrdrAcid303Square mrdrAcid303Deep" + " " +
+    "rm7AcidFm frppAcidPluck stAcidSquelch"
+  ],
+  ["Bass", "Slap & Pop",
+    "rmndDxSlap rmndDxPop rmndDigitalSlap mrdrSynthSlap tngrSlap" + " " +
+    "mrdrMegaPop mrdrWirePop mrdrZapPop rmndMaxPop rmndClangPop" + " " +
+    "rmndSquarePop tngrMegaPop"
+  ],
+  ["Bass", "Wobble & Reese",
+    "bestReeseBass rm7ReeseFm mrdrGarageWobble mrdrFmWub bestMonsterBass" + " " +
+    "rm7MonsterGrowl fmGrowl fmGrowl2 tngrDigitalGrowl bestPwmGrowlBass" + " " +
+    "stFmGrowl"
   ],
   ["Bells & Mallets", "Bells",
     "engTitleTwinkle engShopTwinkle fmBell addBell tngrIceBell" + " " +
     "tngrAlloyChime tngrMusicBell tngrChurchBell mrdrTollingBell darkMetalChime" + " " +
-    "rm7RingBell rm7GlassRing rm7BellLead"
+    "rm7RingBell rm7GlassRing rm7BellLead addCathedralBell"
   ],
   ["Bells & Mallets", "Tuned Percussion",
     "celeste marimba musicBox tpMarimba tpSteelpan" + " " +
@@ -100,7 +119,7 @@ const GROUPS = [
     "kit_neuro_kick kit_brushes_kick kit_syndrum_disco_kick tr808Kick tr909Kick" + " " +
     "cr78Kick dsKick kickCrush kickClickTop kickEngine" + " " +
     "kickShop kickMegamix ds909Kick ds909KickPunch dsCr78Kick" + " " +
-    "ds808Kick sdsKick"
+    "ds808Kick sdsKick kickIron"
   ],
   ["Drums & Percussion", "Other",
     "taikoHit timpaniHit"
@@ -130,10 +149,10 @@ const GROUPS = [
     "kit_pocket_pixel_tom kit_rubber_factory_tom kit_velvet_basement_tom kit_80s_pop_tom kit_breakbeat_tom" + " " +
     "kit_nes_tom kit_neuro_tom kit_brushes_tom tr808Tom tr909Tom" + " " +
     "dsTom tomSimmons tomEngine ds909Tom dsCr78Tom" + " " +
-    "ds808Tom sdsTomHigh sdsTomMid sdsTomLow"
+    "ds808Tom sdsTomHigh sdsTomMid sdsTomLow tomClank"
   ],
   ["Effects", "Blips",
-    "rm7LaserZap rm7RingZap dsZap syn3Zap"
+    "rm7LaserZap rm7RingZap dsZap syn3Zap dsLaserZap"
   ],
   ["Effects", "Impacts",
     "mrdrOrchHit noiseSweep blastBoom blastThunder blastImpact" + " " +
@@ -145,7 +164,8 @@ const GROUPS = [
     "syn3PewSnap syn3PewPew syn3PewDeep syn3PewFormant"
   ],
   ["Effects", "Textures",
-    "ringMod bestPwmDrift tngrTransmission coyoteHowl rm7Chopper"
+    "ringMod bestPwmDrift tngrTransmission coyoteHowl rm7Chopper" + " " +
+    "layerRobotTremor"
   ],
   ["Guitars", "Acoustic",
     "mrdrAcousticGuitar rm7NylonGuitar rm7SteelAcoustic rm7TwelveString frppSteelAcoustic" + " " +
@@ -175,24 +195,28 @@ const GROUPS = [
     "tngrFeltUpright"
   ],
   ["Keys", "Synth Keys",
-    "engSine engFinaleStab engFinaleSawStab engShopComp softKeys" + " " +
-    "tpTiny toneSine initSquare initSaw initSquareSub" + " " +
-    "initSawSub initOneFilter layerTwinkle layerFinaleStab layerFinaleSawStab" + " " +
+    "engFinaleStab engFinaleSawStab engShopComp softKeys tpTiny" + " " +
+    "layerTwinkle layerFinaleStab layerFinaleSawStab" + " " +
     "layerShopComp bestSampleHoldPulse tngrHollowKeys mrdrRaveStab rm7StutterStab"
   ],
+  ["Leads", "Basic Waves",
+    "engSquare engSaw engTriangle engSine simpleSquare" + " " +
+    "simpleSawtooth simpleTriangle toneSquare toneSawtooth toneTriangle" + " " +
+    "toneSine squareTone2 tngrPlainSaw tngrPlainPulse tngrClassicSquare" + " " +
+    "initSquare initSaw initSquareSub initSawSub initOneFilter"
+  ],
   ["Leads", "Analog-style",
-    "engSquare engSaw engTriangle engBright engTitleLead" + " " +
+    "engBright engTitleLead" + " " +
     "engFinaleLead engMegamixLead engShopLead engCounterLead engTitleHarm" + " " +
-    "engSineHarm simpleSquare simpleSawtooth simpleTriangle monoBright" + " " +
+    "engSineHarm monoBright" + " " +
     "amHollow duoDetune screamLead buzzSaw tpCoolGuy" + " " +
-    "tpLectric tpSuperSaw tpThinSaws roundMono2 toneSquare" + " " +
-    "toneSawtooth toneTriangle squareTone2 layerLeadBright layerTitleLead" + " " +
+    "tpLectric tpSuperSaw tpThinSaws roundMono2" + " " +
+    "layerLeadBright layerTitleLead" + " " +
     "layerFinaleLead layerMegamixLead layerShopLead layerCounterLead layerTitleHarm" + " " +
     "layerSineHarm cryptTheremin bestSampleHoldCircuit syncRazorLead bestMegaSawLead" + " " +
     "bestHeroLead bestScreamerLead bestPwmHollowLead bestClassicMono tngrBerlinSignal" + " " +
-    "tngrRubyScanner tngrHorizonSolo tngrSatelliteWire tngrPlainSaw tngrPlainPulse" + " " +
-    "tngrClassicSquare mrdrFestivalStab mrdrHoover rm7GlideLead rm7AmTheremin" + " " +
-    "rm7OctaveLead"
+    "tngrRubyScanner tngrHorizonSolo tngrSatelliteWire mrdrFestivalStab mrdrHoover" + " " +
+    "rm7GlideLead rm7AmTheremin rm7OctaveLead bestBuzzwireLead"
   ],
   ["Leads", "Digital",
     "glassLead hardFm rm7ScreamLead rm7OvermodLead rm7RadioRing" + " " +
@@ -201,7 +225,7 @@ const GROUPS = [
   ],
   ["Leads", "Vocal/Formant",
     "vibratoLead tpBah bestPwmReedLead tngrNeonReed rm7RingRobot" + " " +
-    "rm7ReedLead rm7AmReed"
+    "rm7ReedLead rm7AmReed stTpBah"
   ],
   ["Organs", "Digital",
     "engLayawayOrgan engHeldOrgan amOrgan fullOrgan tpHarmonics" + " " +
@@ -230,14 +254,15 @@ const GROUPS = [
   ["Pads", "Textures",
     "engTitleChords glassPad addGlassPad layerTitleChords layerDreamPad" + " " +
     "bestPwmPadWide tngrPolarDrift tngrBlueCathedral rm7CrystalPad rm7ShimmerPad" + " " +
-    "rm7DarkDrone rm7RingPad rm7HaloPad rm7UnderwaterPad mrdrFmShimmerPad"
+    "rm7DarkDrone rm7RingPad rm7HaloPad rm7UnderwaterPad mrdrFmShimmerPad" + " " +
+    "layerGrowlPad tngrTidalWavetable tngrGlassRing"
   ],
   ["Pads", "Warm",
     "padTriangle warmPad tngrCloudMemory rm7WarmPad"
   ],
   ["Strings", "Ensemble",
     "synthStrings mrdrViolinSection bestPwmStrings tngrWarmStrings tngrSoftStrings" + " " +
-    "rm7BeatingStrings rm7DxStrings"
+    "rm7BeatingStrings rm7DxStrings stSynthStrings"
   ],
   ["Strings", "Plucked",
     "harpPluck koto tpPizz tngrWireHarp frppBanjo" + " " +

@@ -1,6 +1,7 @@
 import { studyHead, workerHead } from './peopleHeads.js';
 // Corporate Kombat: LIGNE ’89 room painter. Shared with the preserved bake-off.
 import { box, W, line, LW, YH, VPX, xOf, pen, rbox, LWF, circ, poly, ell, DWALL, fOfD, yOfF, hash, M89, neon, fs, TAU, LWM, lines, grid, letters, squiggle, topRound, eggPath, confetti, copies, PAL } from './line.js';
+import { deskBlueScreen } from './win31.js';
 import { MID_BASE, WALL_BASE, LANE_TOP, FACTORS } from '../officeClimb.js';
 
 function ceiling(ctx, f, P) {
@@ -963,16 +964,10 @@ function cubiclesBack(g, it, P, desks) {
     // tab with the name in blue, then white text and a blinking prompt. Cubicles are floor 23's.
     // Only at an empty desk ("make sure blue screens are on monitors with no one in front of
     // them"): 0.45 of the empty ones, which is 3 of the floor's 19 desks.
-    if (!d.occupied && h(11) < 0.45) {
-      box(g, mx - 5.4, b - 44.4, 10.8, 9, '#0000aa', ink, 0.35);
-      box(g, mx - 2.6, b - 43.6, 5.2, 1.6, '#aaaaaa');
-      letters(g, 'WINDOWS', mx, b - 42.25, 0.95, { ink: '#0000aa', lw: 0.22, align: 'center', track: 0.08 });
-      g.beginPath();
-      for (let k = 0; k < 3; k++) { g.moveTo(mx - 4.4, b - 40.6 + k * 1.3); g.lineTo(mx - 4.4 + 5 + h(k + 12) * 3.8, b - 40.6 + k * 1.3); }
-      pen(g, '#ffffff', 0.4);
-      g.stroke();
-      box(g, mx - 0.6, b - 36.6, 1.2, 0.5, '#ffffff');
-    } else {
+    // The crashed ones are NOT in the bake any more: this paints them as a green terminal and
+    // index.js lays the blue screen over them live (bsodScreen), so a stretch of the floor can
+    // be kept free of them — office-2's ta-da needs a green terminal to turn into Windows.
+    {
       box(g, mx - 5.4, b - 44.4, 10.8, 9, '#1d3a2a', ink, 0.35);
       box(g, mx - 4.4, b - 43.4, 8.8, 7, null, 'rgba(120,255,170,0.3)', 1.4);
       g.beginPath();
@@ -980,6 +975,18 @@ function cubiclesBack(g, it, P, desks) {
       pen(g, d.occupied ? '#5fd88a' : '#8affaa', 0.5);
       g.stroke();
       letters(g, d.occupied ? 'ASAP' : 'UNREAD', mx, b - 36, 1.5, { ink: '#8affaa', lw: 0.25, align: 'center', track: 0.2 });
+      // now and then a yellow Post-it on the top of an unattended monitor (Peter, 26 Oct: not
+      // one with a blue screen, not one with somebody at it): a tiny square a little askew
+      if (!d.occupied && !deskBlueScreen(d) && h(21) < 0.2) {
+        const px = mx - 4.5 + h(22) * 6.5;
+        g.save();
+        g.translate(px + 1.5, b - 47.4);
+        g.rotate((h(23) - 0.5) * 0.35);
+        box(g, -1.5, -1.5, 3, 3, '#f6e24a', ink, 0.25);
+        line(g, -0.9, -0.3, 0.9, -0.3, 'rgba(120,96,20,0.55)', 0.25);
+        line(g, -0.9, 0.5, 0.5, 0.5, 'rgba(120,96,20,0.55)', 0.25);
+        g.restore();
+      }
     }
     const kind = Math.floor(h(9) * 4);
     const ox = mx > x + 20 ? x + 6 : x + 30;
@@ -1000,6 +1007,20 @@ function cubiclesBack(g, it, P, desks) {
       line(g, ox, b - 36.8, ox, b - 34.5, ink, 0.6);
     }
   }
+}
+
+// A crashed terminal's blue screen, over the green one cubiclesBack baked (index.js draws these
+// each frame, for the desks deskBlueScreen picks and the stretch the ta-da has cleared).
+function bsodScreen(g, d, mx, ink) {
+  const b = MID_BASE, h = (n) => hash(d.seed * 7.31 + n);
+  box(g, mx - 5.4, b - 44.4, 10.8, 9, '#0000aa', ink, 0.35);
+  box(g, mx - 2.6, b - 43.6, 5.2, 1.6, '#aaaaaa');
+  letters(g, 'WINDOWS', mx, b - 42.25, 0.95, { ink: '#0000aa', lw: 0.22, align: 'center', track: 0.08 });
+  g.beginPath();
+  for (let k = 0; k < 3; k++) { g.moveTo(mx - 4.4, b - 40.6 + k * 1.3); g.lineTo(mx - 4.4 + 5 + h(k + 12) * 3.8, b - 40.6 + k * 1.3); }
+  pen(g, '#ffffff', 0.4);
+  g.stroke();
+  box(g, mx - 0.6, b - 36.6, 1.2, 0.5, '#ffffff');
 }
 
 function cubiclesFront(g, it, P, desks) {
@@ -1624,4 +1645,4 @@ function midDevices(ctx, f, P) {
   }
 }
 
-export { HAIRS as OFFICE_HAIRS, SHIRTS as OFFICE_SHIRTS, SKINS as OFFICE_SKINS, chairFromBehind, ceiling, ceilingLights, lights, globeGlint, floorPlane, sunPatches, slab, CHIP_P, CHIPS, chips, memphisRug, padded, BAKING, lampSheen, SKINS, HAIRS, STYLES, SHIRTS, personFor, head, shadowFoot, pot, leaf, plant, reception, turnstiles, sofa, sculpture, cubiclesBack, cubiclesFront, deskList, cooler, copier, cabinet, boardroomBack, boardroomFront, easel, execDesk, libGlobe, tallClock, paintMid, midActors, headset, midDevices };
+export { HAIRS as OFFICE_HAIRS, SHIRTS as OFFICE_SHIRTS, SKINS as OFFICE_SKINS, chairFromBehind, ceiling, ceilingLights, lights, globeGlint, floorPlane, sunPatches, slab, CHIP_P, CHIPS, chips, memphisRug, padded, BAKING, lampSheen, SKINS, HAIRS, STYLES, SHIRTS, personFor, head, shadowFoot, pot, leaf, plant, reception, turnstiles, sofa, sculpture, cubiclesBack, bsodScreen, cubiclesFront, deskList, cooler, copier, cabinet, boardroomBack, boardroomFront, easel, execDesk, libGlobe, tallClock, paintMid, midActors, headset, midDevices };

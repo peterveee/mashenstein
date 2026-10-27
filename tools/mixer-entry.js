@@ -41,6 +41,7 @@ import { installTooltips, placeCard } from './mixer-tooltips.js';
 import { createVisualiserPanel } from './mixer-visualiser.js';
 import { createPerfDiag } from './mixer-perf-diag.js';
 import { createDraftPersistence } from './mixer-draft-persistence.js';
+import { channelLevelUndo } from './lib/mixer-level-undo.js';
 import { createSaveQueue } from './mixer-save-queue.js';
 const enqueueMixSave = createSaveQueue();
 import {
@@ -1124,6 +1125,7 @@ function undo() {
     return JSON.stringify(rest);
   };
   const before = bankSig();
+  const mixBeforeUndo = mixFor(trackId);
   const restBefore = restSig();
   const unorderedBefore = unorderedSig();
   const fxBefore = noteFxSig();
@@ -1161,8 +1163,25 @@ function undo() {
       orderOnly: !arrMoved && unorderedSig() === unorderedBefore });
     updateStatus();
   } else {
-    buildRack(); applyToEngine(mixFor(trackId)); updateStatus();
+    const levels = playing && Audio.mixer ? channelLevelUndo(mixBeforeUndo, mixFor(trackId)) : null;
+    // Undo a fader/pan gesture through the same setters as the gesture. All other
+    // changes keep the existing full apply, including routing and effect topology.
+    if (levels && levels.every(({ key }) => Audio.mixer.lanes.includes(key))) {
+      for (const { key, gain, pan } of levels) {
+        const strip = Audio.mixer.lane(key);
+        // A setter cancels that parameter's automation: leave the other alone.
+        if (gain !== undefined) strip.setGain(gain);
+        if (pan !== undefined) strip.setPan(pan);
+      }
+      buildRack();
+    } else {
+      buildRack(); applyToEngine(mixFor(trackId));
+    }
+    updateStatus();
     if (noteFxSig() !== fxBefore || routeSig() !== routesBefore) buildArrangement();
+    else for (const row of $('arrgrid')?.querySelectorAll('.arrrow[data-lane]') || []) {
+      syncArrangementEffectShortcut(row.dataset.lane);
+    }
   }
   if (arrMoved) reopenSpotFx();
   toast('undone');
@@ -1373,7 +1392,7 @@ function insertSlots(key, label, rows) {
     power.title = `Turn ${def?.name || e.id} ${effectOff(e) ? 'on' : 'off'}`;
     const toggle = () => {
       const next = setEffectOff(key, list, i, !effectOff(e));
-      buildRack();
+      refreshRackEffectSlots(key);
       toast(`${def?.name || e.id} ${effectOff(next[i]) ? 'off' : 'on'} — ${label}`);
     };
     power.onclick = (ev) => { ev.stopPropagation(); toggle(); };
@@ -1841,7 +1860,7 @@ function openMenu(x, y, title, items) {
   el.style.left = `${Math.max(4, Math.min(x, innerWidth - r.width - 6))}px`;
   el.style.top = `${Math.max(4, Math.min(y, innerHeight - r.height - 6))}px`;
 }
-const closeMenu = () => {
+const closeMenu = ({ keepPicker = false } = {}) => {
   restorablePopup = null;
   document.dispatchEvent(new Event('mash-close-custom-select'));
   const pickerWasOpen = $('voicepicker')?.classList.contains('show');
@@ -1855,8 +1874,8 @@ const closeMenu = () => {
     $('regionedit').classList.remove('notefxmodal');
   }
   $('fxpicker').classList.remove('show');
-  $('voicepicker').classList.remove('show');
-  if (pickerWasOpen) pendingAddTrack = null;
+  if (!keepPicker) $('voicepicker').classList.remove('show');
+  if (pickerWasOpen && !keepPicker) pendingAddTrack = null;
   const drawer = $('navdrawer');
   const backdrop = $('drawerbackdrop');
   const nav = $('navbtn');
@@ -1883,7 +1902,9 @@ addEventListener('pointerdown', (e) => {
     .some((el) => el.contains(e.target));
   const opener = [$('navbtn')].some((el) => el.contains(e.target))
     || (e.target.closest && e.target.closest('.devaddcard'));
-  if (!inside && !opener) closeMenu();
+  // The preset selector stays up when you click away: only a double-click on a preset,
+  // its ✕ or Escape put it away.
+  if (!inside && !opener) closeMenu({ keepPicker: true });
 }, true);
 // The bar, track, Note FX and Bar Effects editors are moved by their title bar, like the
 // preset editor and the performance log. Bar Effects most of all: six cards tall, it sits
@@ -1927,7 +1948,7 @@ if (typeof ResizeObserver === 'function') {
 // reloaded or discarded while hidden, and its session snapshot needs the live fields.
 // Clicking into another application still dismisses it after the blur settles.
 addEventListener('blur', () => setTimeout(() => {
-  if (!document.hidden) closeMenu();
+  if (!document.hidden) closeMenu({ keepPicker: true });
 }, 0));
 
 /**
@@ -4876,6 +4897,7 @@ function dismissVoiceEditor() {
 // rebank — it writes nothing here, which is why the seam is all inputs.
 installVoiceEditorWindow({
   voiceEditor,
+  isPlaying: () => playing,
   voiceEditEl,
   laneVoiceId,
   dismissVoiceEditor,
@@ -9988,6 +10010,9 @@ function targetLabel(key) {
 }
 
 function setEffects(key, list) {
+  // Chain construction and inspector layout can still hold the main thread.
+  // Keep scheduled notes ahead of that work, as rebuildForShape already does.
+  try { Audio.prefill?.(1); } catch { /* audio may not have started yet */ }
   const bpm = deskTempo();
   followPickedEffect(key, list);
   // Stored through storeEffects, not beside it: this used to carry its own copy of
@@ -9999,13 +10024,52 @@ function setEffects(key, list) {
   else if (key && key.startsWith('__aux:')) Audio.mixer?.setAuxEffects(key.slice(6), list, bpm);
   else if (isGroupKey(key)) Audio.mixer?.setGroupEffects?.(groupIdOf(key), list, bpm);
   else Audio.mixer?.lane(key)?.setEffects(list, bpm);
-  // Rebuild the rack, not just the summary line: the per-effect bypass buttons live
-  // on the strip and have to appear and disappear with the chain.
-  buildRack();
-  // Arrangement rows carry their own FX shortcut, so a chain gaining or losing its
-  // last insert must repaint the row header immediately. buildRack already refreshes
-  // the selected channel panel through selectLane; do not build that panel twice.
-  if (key && key !== '__master' && !key.startsWith('__aux:')) buildArrangement();
+  refreshRackEffectSlots(key);
+  // Inserts change the row's FX shortcut, not its notes or geometry. Keep the grid
+  // (and its selection, scroll and pointer targets) mounted.
+  syncArrangementEffectShortcut(key);
+}
+
+function refreshRackEffectSlots(key) {
+  const strips = [...$('rack').querySelectorAll('.strip[data-lane]')];
+  const rows = Math.min(MAX_EFFECTS, 1 + Math.max(0,
+    ...strips.map(strip => effectsOf(strip.dataset.lane).length)));
+  const target = document.querySelector(`.strip[data-lane="${CSS.escape(key)}"] .fxbtns`);
+  if (target) {
+    const master = key === '__master';
+    const replacement = insertSlots(key, targetLabel(key), master
+      ? Math.min(MAX_EFFECTS, effectsOf(key).length + 1) : rows);
+    if (master) replacement.classList.add('master-fxbtns');
+    target.replaceWith(replacement);
+  }
+  // Every visible strip reserves the longest chain plus its spare slot. Changing
+  // that reservation needs new heights, not new faders, meters or drag listeners.
+  for (const strip of strips) {
+    strip.querySelector('.fxbtns')?.style.setProperty('--fxrowsh', `${rows * SLOT_ROW - 4}px`);
+  }
+  forgetStripMetrics();
+  if (selectedLane === key) buildDevices();
+  scheduleDeskFit(true);
+}
+
+function syncArrangementEffectShortcut(key) {
+  if (!key || key === '__master' || key.startsWith('__aux:')) return;
+  const row = $('arrgrid')?.querySelector(`.arrrow[data-lane="${CSS.escape(key)}"]`);
+  const bottom = row?.querySelector('.arrtrack-bottom');
+  if (!bottom) return;
+  const hasEffects = effectsOf(key).length > 0;
+  const existing = bottom.querySelector('.arrfxdot');
+  if (!hasEffects) existing?.remove();
+  else if (!existing) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'arrfxdot'; button.textContent = 'FX';
+    button.title = `Open effects for ${row.querySelector('.arrname')?.textContent || targetLabel(key)}`;
+    button.setAttribute('aria-label', button.title);
+    button.onclick = (event) => { event.stopPropagation(); openChannelEffects(key); };
+    bottom.prepend(button);
+  }
+  const signature = arrRowSigs.get(key);
+  if (signature) signature.effects = hasEffects;
 }
 
 // ---- Channel EQ ------------------------------------------------------------
@@ -11756,10 +11820,13 @@ async function importTracks() {
   const options = songs.map((item) => `<option value="${escapeHtml(item.id)}"`
     + `${item.id === first.id ? ' selected' : ''}>${escapeHtml(item.title || item.id)}`
     + `${item.id === trackId ? ' (current song)' : ''}</option>`).join('');
-  const chosen = await ask('Import tracks',
+  const asking = ask('Import tracks',
     '<p>Choose the song whose complete tracks you want to add to this song.</p>'
     + `<label class="askfield">Source song<select id="importtracks-song">${options}</select></label>`,
     'Pick tracks');
+  // On the song list, ready to type part of a name (the dropdown is upgraded a tick after the body lands)
+  setTimeout(() => document.querySelector('#askbody button.deskselect')?.focus(), 0);
+  const chosen = await asking;
   if (!chosen) return;
   const sourceId = $('importtracks-song')?.value;
   if (!sourceId) return;
@@ -11769,13 +11836,20 @@ async function importTracks() {
     toast('That song has no playable tracks to import');
     return;
   }
-  const rows = lanes.map((lane) => `<label class="asktrack"><input type="checkbox"`
+  const rows = lanes.map((lane, i) => `<label class="asktrack"><input type="checkbox"`
     + ` name="importtracks-lane" value="${escapeHtml(lane.key)}" checked>`
-    + `<span>${escapeHtml(lane.label)}</span><code>${escapeHtml(lane.key)}</code></label>`).join('');
+    + `<em class="asktracknum">${i + 1}</em><span>${escapeHtml(lane.label)}</span><code>${escapeHtml(lane.key)}</code></label>`).join('');
   const sourceTitle = resolveTrack(sourceId)?.title || sourceId;
-  const picked = await ask(`Pick tracks from ${sourceTitle}`,
+  const picking = ask(`Pick tracks from ${sourceTitle}`,
     `<p>Tick the complete tracks to add to <b>${escapeHtml(track.title || trackId)}</b>.</p>`
+    + '<div class="asktrackall"><button type="button" id="importtracks-all">All</button>'
+    + '<button type="button" id="importtracks-none">None</button></div>'
     + `<div class="asktracklist">${rows}</div>`, 'Import');
+  const tickAll = (on) => document.querySelectorAll('input[name="importtracks-lane"]')
+    .forEach((input) => { input.checked = on; });
+  $('importtracks-all').onclick = () => tickAll(true);
+  $('importtracks-none').onclick = () => tickAll(false);
+  const picked = await picking;
   if (!picked) return;
   const keys = [...document.querySelectorAll('input[name="importtracks-lane"]:checked')]
     .map((input) => input.value);
@@ -15111,10 +15185,11 @@ function arrangementRowFacts(row) {
 function arrangementRowSig(row, facts, layout) {
   const { preset } = facts;
   return {
+    effects: effectsOf(row.key).length > 0,
     head: JSON.stringify([
       row.label, row.group, facts.freezeState, facts.displayLabel, facts.trackNumber ?? null,
       laneVoiceId(row.key) ?? null, preset?.label ?? null, preset?.category ?? null,
-      effectsOf(row.key).length > 0, hasActiveNoteFx(facts.laneNoteFx), laneColour(row.key),
+      hasActiveNoteFx(facts.laneNoteFx), laneColour(row.key),
     ]),
     bars: JSON.stringify([
       row.steps, row.density, facts.laneNoteFx,
@@ -15173,7 +15248,7 @@ function refreshArrangementNotes() {
     const facts = arrangementRowFacts(row);
     const sig = arrangementRowSig(row, facts, layout);
     const was = arrRowSigs.get(row.key);
-    if (!was || was.head !== sig.head || arrCells[i]?.key !== row.key) {
+    if (!was || was.head !== sig.head || was.effects !== sig.effects || arrCells[i]?.key !== row.key) {
       buildArrangement(layout);
       return;
     }

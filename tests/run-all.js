@@ -471,6 +471,9 @@ const suites = [
   'tests/mixer-edit-diagnostics.js',
   'tests/mixer-preset-races.js',
   'tests/mixer-channel-sync.js',
+  'tests/mixer-scroll.js',
+  'tests/mixer-level-undo.js',
+  'tests/mixer-voice-window.js',
   // The same shape of claim for gameplay numbers: that the constants the dev
   // strip moves still exist, under those names, as plain numbers, in the files
   // the manifest names — and that the rewrite which makes them movable never
@@ -726,6 +729,8 @@ const suites = [
   'tests/song-change-fade.js',
   // And its tails go with it: the last song's echo and reverb do not come out over the next one.
   'tests/song-change-tails.js',
+  // Nor through a WebKit shaper the last song's effect left fed: a shelved shaper has no input.
+  'tests/webkit-shaper-pool.js',
   // The master limiter and THE CEILING, in and out in any order, leave one path to the output.
   'tests/master-wiring.js',
   // A lane trimmed over a range of bars. Also a claim about the speakers and not the
@@ -844,6 +849,7 @@ const browserSuites = new Set([
   'tests/song-switch.js',
   'tests/song-change-fade.js',
   'tests/song-change-tails.js',
+  'tests/webkit-shaper-pool.js',
   'tests/master-wiring.js',
   'tests/bar-gain.js',
   'tests/bar-pan.js',
@@ -925,6 +931,9 @@ const soundSuites = [
   'tests/mixer-edit-diagnostics.js',
   'tests/mixer-preset-races.js',
   'tests/mixer-channel-sync.js',
+  'tests/mixer-scroll.js',
+  'tests/mixer-level-undo.js',
+  'tests/mixer-voice-window.js',
   'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js', 'tests/song-dates.js',
   'tests/song-copies.js', 'tests/song-alternates.js', 'tests/banger.js', 'tests/banger-sounds.js', 'tests/banger-flavours.js', 'tests/banger-fusion.js', 'tests/banger-mood-pairs.js', 'tests/banger-rolls.js', 'tests/banger-forms.js', 'tests/banger-chords-early.js', 'tests/banger-modify.js',
   'tests/banger-expression.js', 'tests/banger-voice-leading.js',

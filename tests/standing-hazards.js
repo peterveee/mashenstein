@@ -119,7 +119,9 @@ assert(carries('speed', 'campfire'), 'Speed gives the campfire its second home')
 // the beehive and the scarecrow stand where the drum fire and the campfire stood.
 assert(!carries('plumber', 'fireBarrel') && carries('plumber', 'beehive') && carries('plumber', 'scarecrow'),
   'Plumber deals the beehive and the scarecrow where its fires were');
-assert(carries('neon', 'popSpikes') && carries('neon', 'floorSaw') && carries('neon', 'fireBarrel'),
+// Neon's saw, drum fire and barrel went on 27 Oct 2026 (Peter: laser fan, Jacob's ladder, runaway wheel).
+assert(carries('neon', 'popSpikes') && carries('neon', 'laserFan') && carries('neon', 'jacobsLadder') && carries('neon', 'runawayWheel')
+  && !carries('neon', 'floorSaw') && !carries('neon', 'fireBarrel') && !carries('neon', 'barrel'),
   'Neon owns ground reads of its own — its bag is not just the air');
 // Cardboard Kingdom's slot is Gravity Grid now, whose hazards are all authored
 // (data/gravity-stages.js) and whose pattern bank is empty on purpose.
@@ -149,7 +151,9 @@ assert(carries('rhythm', 'beatBar')
   'the beat prop is taught at tier 0 — the signature is not a stage-3 secret');
 // Each one is introduced somewhere a first run will actually meet it.
 for (const id of HAZARDS) {
-  const early = CABINETS.some((cab) => cab.patterns.some((p) => p.tier <= 1 && p.cells.some((c) => c.t === id)));
+  // The drum fire's last home, Neon, deals Jacob's ladder in its place since 27 Oct 2026.
+  const dealt = id === 'fireBarrel' ? 'jacobsLadder' : id;
+  const early = CABINETS.some((cab) => cab.patterns.some((p) => p.tier <= 1 && p.cells.some((c) => c.t === dealt)));
   assert(early, `${id} appears at tier 1 or below somewhere, so a first run meets it`);
 }
 

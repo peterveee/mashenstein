@@ -82,7 +82,7 @@ export const JMJR4_DEFAULTS = Object.freeze({
   rate: 44.1,        // kHz, 2–44.1, 44.1 = off: its hold rate
 });
 export const JMJR4_RANGES = Object.freeze({
-  morph: [0, 100], morphTime: [0, 10], bend: [-12, 12], bendTime: [0, 10], unison: [1, JMJR4_MAX_UNISON],
+  morph: [0, 100], morphTime: [0, 30], bend: [-12, 12], bendTime: [0, 30], unison: [1, JMJR4_MAX_UNISON],
   spread: [0, 100], tract: [0.75, 1.3], press: [0.3, 0.75], tilt: [0, 12], breath: [0, 0.8],
   flutter: [0, 2], jitter: [0, 2], nasal: [0, 100], sibilance: [0, 200], buzz: [0, 100], resonance: [0, 100],
   speed: [0.5, 2], pitchHz: [60, 260], range: [0, 2], bits: [4, 16], rate: [2, 44.1],
@@ -190,7 +190,7 @@ export function compileJmjr4(voice, data, { forCompile = false } = {}) {
     release: num(a.release) ?? JMJR4_AMP_DEFAULTS.release,
   };
   for (const [k, x] of Object.entries(amp)) {
-    if (x < 0 || x > (k === 'sustain' ? 1 : 10)) problems.push(`amp.${k} ${x} is outside its range`);
+    if (x < 0 || x > (k === 'sustain' ? 1 : 30)) problems.push(`amp.${k} ${x} is outside its range`);
   }
 
   // ---- SPEAK: the phrase's pots, and the compiled block that must match them ----

@@ -61,7 +61,7 @@ const assert = (cond, msg) => (cond ? ok(msg) : fail(msg));
   assert(wild.filter.type === 'lowpass' && wild.filter.cutoff === 18000
     && wild.filter.resonance === 24, 'the filter is clamped to its documented range');
   assert(wild.filterEnv.amount === 10, 'the filter envelope amount is clamped to +-10 octaves');
-  assert(wild.lfo1.shape === 'sine' && wild.lfo1.rate === 64,
+  assert(wild.lfo1.shape === 'sine' && wild.lfo1.rate === 200,
     'an unknown LFO shape falls back and its rate is clamped');
   assert(problems.some((p) => p.includes('nonesuch')), 'the bad table is reported');
   assert(problems.some((p) => p.includes('somethingElse')), 'an unknown key is reported');

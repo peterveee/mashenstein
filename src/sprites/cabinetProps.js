@@ -1,5 +1,5 @@
 // The lane obstacles picked on 15 Oct 2026 from the 12 Oct per-cabinet bake-offs
-// (Field Service, Speed Zone, Frost Fortress, Crypt Shift), gathered into the
+// (Field Service, Speed Zone, Frost Fortress, Crypt Shift; Terminal Velocity 27 Oct), gathered into the
 // same tables officeProps.js and gravityProps.js hand sprites/props.js. Each
 // cabinet's painters live in its own module (sprites/<cabinet>Props.js); boxes
 // and flags are in game/entities.js, and data/cabinets.js deals them.
@@ -8,8 +8,9 @@ import { PLUMBER_PROP_SPECS } from './plumberProps.js';
 import { SPEED_PROP_SPECS } from './speedProps.js';
 import { FROST_PROP_SPECS } from './frostProps.js';
 import { CRYPT_PROP_SPECS } from './cryptProps.js';
+import { NEON_PROP_SPECS } from './neonProps.js';
 
-const SPECS = { ...PLUMBER_PROP_SPECS, ...SPEED_PROP_SPECS, ...FROST_PROP_SPECS, ...CRYPT_PROP_SPECS };
+const SPECS = { ...PLUMBER_PROP_SPECS, ...SPEED_PROP_SPECS, ...FROST_PROP_SPECS, ...CRYPT_PROP_SPECS, ...NEON_PROP_SPECS };
 
 // The painted envelope a painter is authored in, in world units.
 export function cabinetPropEnvelope(name) {

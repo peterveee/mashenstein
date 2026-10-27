@@ -832,6 +832,129 @@ export function faxHandshakeSamples(sr = 44100) {
   return out;
 }
 
+// THE FIRE BELL AS A LOOP (Peter, 26 Oct: "let the sound keep going until the end", then "a little
+// slowdown because of the fire alarm sound... is this pre rendered?"). The one-shot 'fireBell' builds
+// ~300 oscillators live; laid end to end for the rest of a level that was a burst of node
+// creation every 1.5 s. So this is the same bell rendered ONCE into one 1.5 s buffer — 27 strikes
+// (the bell's own grid) and two whoops of the siren (its 0.75 s period), so it joins itself — and
+// looped as a single node (Audio.fireBellKeep). Same partials, gains, attack and decay as the
+// oscillator version; the siren's square is built from its odd harmonics, as the browser's is.
+export const FIRE_BELL_LOOP_SEC = 1.5;
+// Held under the one-shot's level because it rings for the rest of the level (Peter, 26 Oct: "lower
+// volume of fire alarm"): 0.5, about 6 dB down.
+const FIRE_BELL_LOOP_GAIN = 0.5;
+export function fireBellSamples(sr = 44100) {
+  const N = Math.round(FIRE_BELL_LOOP_SEC * sr), out = new Float32Array(N);
+  // osc()'s envelope: exponential up over the attack, held (`hold` of the length), then exponential down
+  const env = (t, dur, gain, hold) => {
+    const atk = CUE_ATTACK, sustain = Math.max(atk, Math.min(0.95, hold) * dur);
+    if (t < atk) return 0.0001 * Math.pow(gain / 0.0001, t / atk);
+    if (t < sustain) return gain;
+    return gain * Math.pow(0.0001 / gain, (t - sustain) / Math.max(1e-6, dur - sustain));
+  };
+  for (let i = 0; i < 27; i++) {
+    const s0 = Math.round(i * (FIRE_BELL_LOOP_SEC / 27) * sr);
+    for (const [f, dur, gain] of [[960, 0.08, 0.19], [2650, 0.05, 0.11], [5180, 0.03, 0.07]]) {
+      const n = Math.ceil(dur * sr);
+      for (let k = 0; k < n; k++) out[(s0 + k) % N] += Math.sin(2 * Math.PI * f * k / sr) * env(k / sr, dur, gain, 0);
+    }
+  }
+  for (let w = 0; w < 2; w++) {
+    const s0 = Math.round(w * 0.75 * sr), dur = 0.72, n = Math.ceil(dur * sr);
+    let ph = 0;
+    for (let k = 0; k < n; k++) {
+      const t = k / sr, f = 420 * Math.pow(680 / 420, Math.min(1, t / dur));
+      ph += f / sr;
+      let x = 0;
+      for (let h = 1; h * f < 12000; h += 2) x += Math.sin(2 * Math.PI * ph * h) / h;
+      out[(s0 + k) % N] += (4 / Math.PI) * x * env(t, dur, 0.05, 0.85);
+    }
+  }
+  return out;
+}
+
+// THE TA-DA — CORPORATE KOMBAT level 2, on the downbeat of bar 7 (run.js updateOfficeTada).
+// Modelled on measurements of a reference clip of the
+// Windows 3.x start-up fanfare (Peter supplied it, 26 Oct 2026): a short "ta" chord, a dip of
+// about 15 dB, then a bigger held "da" chord in C major that rings out to 1.25 s. The patch is
+// a bright chorused ensemble, so each note here is
+// three detuned saws through a lowpass that closes through the hold, the way the reference's
+// highs fade. Peter's note on the first render, "a bit less bottom heavy": the low notes are
+// quieter and everything under ~350 Hz is high-passed away. TUNED to the song (Peter, 26 Oct:
+// "bar 7 ... tune it"): bar 7's downbeat is G minor (Bb-D-G over a G bass) under the Moog's G
+// Bb C D, so the fanfare is the reference's chord moved up a fifth with its third flattened —
+// a B natural would grind against every Bb in the tune — and at concert pitch where the
+// reference sat ~19 cents flat, which against a song would beat. Deterministic (fixed phases);
+// peak-normalised, the level in the game is TADA_GAIN × the cue's SFX_TRIM.
+export const TADA_SEC = 1.3;
+const TADA_GAIN = 0.3;        // 0.6, then 0.4 (26 Oct: "come down in volume"), then 0.3 to offset the octave drop being louder
+export function tadaSamples(sr = 44100) {
+  const out = new Float32Array(Math.ceil(TADA_SEC * sr));
+  const TUNE = 1, KEY = -5, CHORUS = [0.9915, 1, 1.0105], TILT = 0.75, BRIGHT = 7000;
+  const CUT_OPEN = 4200, CUT_END = 900;
+  const hz = (m) => 440 * Math.pow(2, (m + KEY - 69) / 12) * TUNE;
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const note = (t0, dur, midi, gain, { attack = 0.012, rel = 0.1, sag = 0.3, close = true } = {}) => {
+    const f0 = hz(midi), start = Math.floor(t0 * sr), count = Math.floor((dur + rel) * sr);
+    const hmax = Math.max(2, Math.floor(BRIGHT / f0));
+    const ph = CHORUS.map(() => rnd());
+    let lp1 = 0, lp2 = 0;
+    for (let i = 0; i < count && start + i < out.length; i++) {
+      const t = i / sr;
+      let env = t < attack ? t / attack : 1;
+      if (t > dur) env *= Math.exp(-(t - dur) * (6 / rel));
+      else env *= 1 - sag * (t / dur);
+      let x = 0;
+      for (let d = 0; d < CHORUS.length; d++) {
+        ph[d] += (f0 * CHORUS[d]) / sr;
+        for (let h = 1; h <= hmax; h++) x += Math.sin(2 * Math.PI * ph[d] * h) / Math.pow(h, TILT);
+      }
+      const fc = close ? CUT_OPEN * Math.pow(CUT_END / CUT_OPEN, Math.min(1, t / (dur * 0.7))) : CUT_OPEN;
+      const a = 1 - Math.exp(-2 * Math.PI * fc / sr);
+      lp1 += a * (x - lp1); lp2 += a * (lp1 - lp2);
+      out[start + i] += lp2 * env * gain;
+    }
+  };
+  const TA = 0, DA = 0.16;
+  // Written in C with the third flattened (E -> Eb, midi 63 / 75), KEY moves it to G minor — +7 (a fifth
+  // up) until 26 Oct, then -5 (the same G minor chord an OCTAVE lower, Peter: "pitch down the tada but
+  // still fit with the key"; a fifth or a third down would have changed the chord):
+  // "ta" G4 C5 Eb5 G5 C6 -> D5 G5 Bb5 D6 G6; "da" Eb4 G4 C5 Eb5 G5 C6 G6 -> Bb4 D5 G5 Bb5 D6 G6
+  // D7. The low voices sit back.
+  const level = (m) => (m < 66 ? 0.5 : m < 74 ? 0.8 : 1);
+  [67, 72, 75, 79, 84].forEach((m) => note(TA, 0.1, m, 0.08 * level(m), { attack: 0.006, rel: 0.045, sag: 0, close: false }));
+  [63, 67, 72, 75, 79, 84, 91].forEach((m) => note(DA, 1.06, m, (m === 91 ? 0.03 : 0.055) * level(m), { attack: 0.03, rel: 0.04, sag: 0.38 }));
+  // High-pass (RBJ, Q 0.7): the thin end of "less bottom heavy". 350 Hz while it sat a fifth up; 250 now
+  // it is an octave down, so the low voices keep some body.
+  {
+    const w = 2 * Math.PI * 250 / sr, al = Math.sin(w) / 1.4, c = Math.cos(w);
+    const b0 = (1 + c) / 2, b1 = -(1 + c), b2 = b0, a0 = 1 + al, a1 = -2 * c, a2 = 1 - al;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < out.length; i++) { const y = (b0 * out[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0; x2 = x1; x1 = out[i]; y2 = y1; y1 = y; out[i] = y; }
+  }
+  let peak = 0;
+  for (let i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]));
+  const g = 0.708 / (peak || 1), fade = Math.floor(0.03 * sr);
+  // CRUSHED (Peter, 26 Oct: "a bit crushed", and "a little harsh"): the era's own sample format,
+  // 22.05 kHz held sample-and-hold and 8 bits, then a lowpass at 5 kHz to take the edge off the
+  // fold-over the crush makes. Done after the level is set so the 8 bits are spent on the whole
+  // range, not on a quiet one.
+  const step = sr / 22050, QUANT = 127;
+  let held = 0;
+  for (let i = 0; i < out.length; i++) {
+    if (i === 0 || Math.floor(i / step) !== Math.floor((i - 1) / step)) held = Math.round(out[i] * g * QUANT) / QUANT;
+    out[i] = held;
+  }
+  {
+    const w = 2 * Math.PI * 5000 / sr, al = Math.sin(w) / 1.4, c = Math.cos(w);
+    const b0 = (1 - c) / 2, b1 = 1 - c, b2 = b0, a0 = 1 + al, a1 = -2 * c, a2 = 1 - al;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < out.length; i++) { const y = (b0 * out[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0; x2 = x1; x1 = out[i]; y2 = y1; y1 = y; out[i] = y * Math.min(1, (out.length - i) / fade); }
+  }
+  return out;
+}
+
 // Exported ONLY so tools/sfx-desk.js can move a fader while the game is running:
 // the desk needs to hear a level change against a playing song, and the alternative
 // — rebuilding the bundle per nudge — is not a thing anybody can level against. The
@@ -1006,6 +1129,8 @@ export const SFX_TRIM = {
   // howl's -23.7 (tools/render-cues.js, 14 Oct) — a touch under it, because the whole cue
   // sits in the 1-3 kHz band the ear is keenest in, where the howl is mostly below it.
   faxHandshake: 1.32,
+  // The office-2 ta-da on bar 8. Not yet levelled by RMS; starts at the fax's trim.
+  tada: 1.32,
   // The Frost sleigh's carol. A tune has to be FOLLOWED over the band, not just heard, so
   // it sits with the howl rather than under it: -35.3 RMS untrimmed, here -28.4, against
   // FROST FORTRESS at -23.1 in the bars it plays over (tools/render-carol-auditions.js).
@@ -5665,6 +5790,81 @@ class AudioSys {
     src.start(t);
   }
 
+  // The fire bell as a looped buffer (see fireBellSamples). Called every frame the alarm should be
+  // ringing: it starts the loop if it is not running, and a watchdog stops it a moment after the
+  // calls cease — a finish, a pause, a death, leaving the stage all end it with no hook of their own.
+  // Built once per sample rate, ahead of the alarm (run.js enterStage) so the first ring is not a hitch.
+  warmFireBell() {
+    if (!this.ctx || typeof this.ctx.createBuffer !== 'function') return null;
+    const sr = this.ctx.sampleRate || 44100;
+    if (!this._bellBuf || this._bellBuf.sampleRate !== sr) {
+      const x = fireBellSamples(sr);
+      const b = this.ctx.createBuffer(1, x.length, sr);
+      b.getChannelData(0).set(x);
+      this._bellBuf = b;
+    }
+    return this._bellBuf;
+  }
+  fireBellKeep() {
+    if (!this.ctx || typeof this.ctx.createBufferSource !== 'function') return false;
+    this._bellLast = this.ctx.currentTime;
+    if (this._bellSrc) return true;
+    const buf = this.warmFireBell();
+    if (!buf) return false;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const g = this.ctx.createGain();
+    g.gain.value = (SFX_TRIM.fireBell ?? 1) * FIRE_BELL_LOOP_GAIN;
+    src.connect(g); g.connect(this.sfxGain);
+    src.start();
+    this._bellSrc = src; this._bellGain = g;
+    this._bellTimer = setInterval(() => {
+      if (!this.ctx || this.ctx.currentTime - this._bellLast > 0.6) this.fireBellStop();
+    }, 250);
+    return true;
+  }
+  fireBellStop() {
+    clearInterval(this._bellTimer); this._bellTimer = null;
+    const src = this._bellSrc, g = this._bellGain;
+    this._bellSrc = null; this._bellGain = null;
+    if (!src || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    g.gain.setTargetAtTime(0, t, 0.04);
+    try { src.stop(t + 0.3); } catch { /* already stopped */ }
+    src.onended = () => { try { src.disconnect(); g.disconnect(); } catch { /* gone */ } };
+  }
+
+  // The ta-da's buffer (see tadaSamples), built once per sample rate. The synthesis is ~240 ms
+  // of main thread, so a first build INSIDE the cue is a hitch just before the downbeat it was
+  // placed on (Peter, 26 Oct: "it stutters just before it happens"): run.js warms it behind the
+  // stage shutter instead, and the cue only ever finds it built.
+  warmTada() {
+    if (!this.ctx || typeof this.ctx.createBuffer !== 'function') return null;
+    const sr = this.ctx.sampleRate || 44100;
+    if (!this._tadaBuf || this._tadaBuf.sampleRate !== sr) {
+      const x = tadaSamples(sr);
+      const b = this.ctx.createBuffer(1, x.length, sr);
+      const d = b.getChannelData(0);
+      d.set(x.length > d.length ? x.subarray(0, d.length) : x);
+      this._tadaBuf = b;
+    }
+    return this._tadaBuf;
+  }
+
+  // The ta-da: played whole from that buffer.
+  tada() {
+    if (!this.ctx || typeof this.ctx.createBufferSource !== 'function') return;
+    const buf = this.warmTada();
+    if (!buf) return;
+    const t = this.cueAt();
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    g.gain.value = TADA_GAIN * this.cueGain;
+    src.connect(g); g.connect(this.cueDest || this.sfxGain);
+    src.start(t);
+  }
+
   doorWhoosh(rising, hinged = false) {
     // A context that cannot make a buffer source is a test stub, not a browser.
     // Same guard explosion() carries for its own buffer, and for the same
@@ -6449,6 +6649,7 @@ class AudioSys {
       case 'doorSwingOpen': this.doorWhoosh(true, true); break;
       case 'doorSwingShut': this.doorWhoosh(false, true); break;
       case 'faxHandshake': this.faxHandshake(); break;
+      case 'tada': this.tada(); break;
       case 'gateSlam': this.gateSlam(); break;
       case 'vacuumSuck':
         this.noise(0.18, 0.11, 'lowpass', 620);

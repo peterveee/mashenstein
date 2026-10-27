@@ -267,7 +267,7 @@ for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
         assert(o.type === 'pulse',
           `${v.id}: only a pulse carries live PWM — the width is the thing being modulated`);
       }
-      assert((o.pwm.rate ?? 0.4) >= 0.05 && (o.pwm.rate ?? 0.4) <= 12,
+      assert((o.pwm.rate ?? 0.4) >= 0.01 && (o.pwm.rate ?? 0.4) <= 200,
         `${v.id}: its PWM rate is inside the pot's range`);
     }
     assert((o.len ?? 1) > 0, `${v.id}: every layer length multiplier is above zero`);

@@ -595,10 +595,10 @@ const KITTEN_DESIGN = { w: 32, h: 46 };
 // and a line underneath that undercuts it.
 const CLASSIC_POSTERS = {
   TEAMWORK: 'BLAME IS SHARED',
-  SUCCESS: 'SOMEONE ELSE\'S',
-  LEADERSHIP: 'FOLLOW THE ONE IN FRONT',
-  EXCELLENCE: 'CANCELLED: BUDGET',
-  INNOVATION: 'IF NOTHING CHANGES',
+  SUCCESS: 'MINE, NOT YOURS',
+  LEADERSHIP: 'NO ONE HAS THE MAP',
+  EXCELLENCE: 'NOT IN SCOPE',
+  INNOVATION: 'SAME IDEA, NEW LOGO',
   PERSEVERANCE: 'ONLY 40 YEARS TO GO',
   OPPORTUNITY: 'UNPAID, OF COURSE',
 };
@@ -927,9 +927,23 @@ function alarmSign(g, h, P) {
 
 // THE FIRE EXIT on floor 23's back wall by the finish (Peter, 15 Oct): a steel
 // door standing open on the stairwell, the green FIRE EXIT sign over it. The
-// evacuating floor walks off towards it (room.js setOfficeEvacuation).
-function fireExitDoor(g, x, P, base = WALL_BASE, leafOnly = false) {
+// evacuating floor walks off towards it (room.js setOfficeEvacuation). It stands SHUT unless
+// somebody is going through it (Peter, 26 Oct: "closed if no one is walking through it at the end
+// of the level"): `closed` is the leaf in its frame, the stairwell behind it unseen.
+function fireExitDoor(g, x, P, base = WALL_BASE, leafOnly = false, closed = false) {
   const w = 40, h = 74, y = base - h;
+  if (closed) {
+    box(g, x - 3, y - 3, w + 6, h + 3, '#c9ced8', P.ink, LW);
+    box(g, x, y, w, h, '#e0203a', P.ink, LWF);
+    box(g, x + 3, y + 4, w - 6, h * 0.42, '#c9182f', P.ink, LWF);          // upper panel, pressed in
+    box(g, x + 3, y + h * 0.5, w - 6, h * 0.5 - 4, '#c9182f', P.ink, LWF); // lower panel
+    box(g, x + 5, y + h * 0.48, w - 10, 3, '#c9ced8', P.ink, LWF);         // the push bar across it
+    box(g, x + w - 1, y + 4, 1.5, 6, '#a3162c');                           // hinge side shadow
+    box(g, x + 0.5, y + 6, 2, 7, '#c9ced8', P.ink, LWF);                   // hinges
+    box(g, x + 0.5, y + h - 14, 2, 7, '#c9ced8', P.ink, LWF);
+    fireExitSign(g, x, y, w, P);
+    return;
+  }
   if (leafOnly) {
     // the open door again, over whoever has just walked in behind it
     box(g, x + w - 2, y, 10, h, '#e0203a', P.ink, LW);
@@ -946,6 +960,10 @@ function fireExitDoor(g, x, P, base = WALL_BASE, leafOnly = false) {
   box(g, x + w - 2, y, 10, h, '#e0203a', P.ink, LW);
   box(g, x + w + 6, y, 2, h, '#a3162c');
   box(g, x + w + 3, y + h * 0.5, 4, 2, '#c9ced8', P.ink, LWF);
+  fireExitSign(g, x, y, w, P);
+}
+// the lit green FIRE EXIT sign over the door, open or shut
+function fireExitSign(g, x, y, w, P) {
   const sy = y - 22, sw = 64;
   // the sign is lit, as an emergency exit sign is: a soft green halo on the wall round it
   const gx = x + w / 2, gy = sy + 7;
@@ -956,10 +974,26 @@ function fireExitDoor(g, x, P, base = WALL_BASE, leafOnly = false) {
   g.fillRect(gx - 54, gy - 30, 108, 60);
   box(g, x + w / 2 - sw / 2, sy, sw, 14, '#2f8a4e', P.ink, LW);
   letters(g, 'FIRE EXIT', x + w / 2 + 6, sy + 10.2, 6, { ink: '#f2f8ee', lw: 0.7, align: 'center' });
-  const mx = x + w / 2 - sw / 2 + 6, my = sy + 3;
-  circ(g, mx + 3.6, my + 1, 1.2, '#f2f8ee');
-  lines(g, [mx + 3.2, my + 2.4, mx + 2.2, my + 5.6, mx + 2.2, my + 5.6, mx + 4.4, my + 8.4, mx + 2.2, my + 5.6, mx, my + 8.4,
-    mx + 3, my + 3.6, mx + 5.6, my + 4.6, mx + 3, my + 3.6, mx + 0.4, my + 4.4], '#f2f8ee', 0.9);
+  runningMan(g, x + w / 2 - sw / 2 + 2, sy + 1.3, 11.6, '#f2f8ee');
+}
+// The exit-sign pictogram: the running figure, solid, with a round head and thick limbs. Drawn on
+// a 100-unit design, `size` px tall, from its top-left corner.
+function runningMan(g, ox, oy, size, ink) {
+  const k = size / 100, X = (v) => ox + v * k, Y = (v) => oy + v * k;
+  g.save();
+  g.strokeStyle = ink; g.fillStyle = ink; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.arc(X(72.8), Y(9.5), 9.5 * k, 0, Math.PI * 2); g.fill();
+  const limb = (w, pts) => {
+    g.lineWidth = w * k; g.beginPath(); g.moveTo(X(pts[0]), Y(pts[1]));
+    for (let i = 2; i < pts.length; i += 2) g.lineTo(X(pts[i]), Y(pts[i + 1]));
+    g.stroke();
+  };
+  limb(16, [56, 22, 46, 45]);                 // torso, leaning into the run
+  limb(9, [42, 19, 26, 28]);                // back arm, flung behind
+  limb(9, [67, 28, 72, 45, 91, 43.5]);      // front arm, bent
+  limb(12.5, [46, 50, 66, 64, 52, 92]);        // front leg, knee up then planted
+  limb(11, [40, 60, 32, 69, 7, 68]);           // back leg, trailing flat
+  g.restore();
 }
 
 const EXEC_PANEL = 60;

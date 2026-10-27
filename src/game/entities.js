@@ -552,6 +552,15 @@ export const OBSTACLES = {
   graveHands:   { w: 15, h: 7, sprite: 'graveHands', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
   graveRoses:   { w: 15, h: 7, sprite: 'graveRoses', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
   eternalFlame: { w: 12, h: 14, sprite: 'eternalFlame', ground: true, breakable: true, action: 'jump' },
+  // TERMINAL VELOCITY (Peter, 27 Oct 2026, from the neon bake-off): "barrels = runaway
+  // wheels, floor saw = laser fan, cactus = Jacob's ladder or rising bollards". Each copies
+  // the box and answer of the slot it took: the wheel the barrel's (rolls, heavy punt), the
+  // ladder the fire barrel's (shootable), the fan the saw's, the bollards a spike plate that
+  // never lurks — they are always out.
+  runawayWheel: { w: 13, h: 13, sprite: 'runawayWheel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'WHEEL' },
+  jacobsLadder: { w: 13, h: 13, sprite: 'jacobsLadder', ground: true, breakable: true, action: 'jump' },
+  risingBollards: { w: 15, h: 7, sprite: 'risingBollards', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
+  laserFan:     { w: 15, h: 8, sprite: 'laserFan', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
@@ -686,6 +695,8 @@ export const DEBRIS = {
   parcels:      { colors: ['#d8383c', '#f6c23c', '#f7fbff'], size: 2.8, mat: 'soft' },
   giantSnowball: { colors: ['#f7fbff', '#c9def0', '#d8383c'], size: 3.2, count: 14, mat: 'soft' },
   eternalFlame: { colors: ['#8a8496', '#5c566a', '#ffc470'], size: 2.8, spark: '#ffef9e', mat: 'stone' },
+  runawayWheel: { colors: ['#17142a', '#262257', '#ff2e4d'], size: 3, spark: '#ffd0d8', mat: 'metal' },
+  jacobsLadder: { colors: ['#4c5488', '#aab1d0', '#a99bff'], size: 3, spark: '#e2e6f6', mat: 'metal' },
 };
 
 export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8, mat: 'wood' };

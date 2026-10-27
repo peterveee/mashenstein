@@ -457,5 +457,177 @@ const rmsAt = (x, t, w, sr = 44100) => {
   }
 }
 
+// ---- SUB: a sine an octave below (27 Oct 2026) --------------------------------------------
+{
+  const sr = 44100;
+  const f = hzOf(40); // E2
+  const bass = (sub, over = {}) => plain({ string: { decay: 2, sub, ...(over.string || {}) },
+    ...Object.fromEntries(Object.entries(over).filter(([k]) => k !== 'string')) });
+  const plainR = render(plain({ string: { decay: 2 } }), [note(f)], { seconds: 0.5 });
+  const zeroR = render(bass(0), [note(f)], { seconds: 0.5 });
+  assert(plainR.channels[0].every((x, i) => x === zeroR.channels[0][i]), 'SUB 0 is bit-identical to no SUB at all');
+
+  const r = render(bass(1), [note(f)], { seconds: 1.5 });
+  const x = r.channels[0];
+  const half = dft(x, f / 2, 2205, 4096, sr).mag;
+  const halfPlain = dft(plainR.channels[0], f / 2, 2205, 4096, sr).mag;
+  assert(db(half) - db(halfPlain) > 30, `SUB puts an octave-below fundamental in (+${(db(half) - db(halfPlain)).toFixed(1)} dB at f/2)`);
+  const subHz = measuredHz(x, f / 2, sr, Math.round(0.05 * sr), 0.1, 2048);
+  assert(Math.abs(centsOff(subHz, f / 2)) < 1, `the sub is an octave down to the cent (${centsOff(subHz, f / 2).toFixed(2)} ct)`);
+
+  // SUB 1 is a sub as loud as the string over the calibration stretch: the two add as powers.
+  const sR = rmsAt(x, 0, 0.3), pR = rmsAt(plainR.channels[0], 0, 0.3);
+  const subOnly = Math.sqrt(Math.max(0, sR * sR - pR * pR));
+  assert(Math.abs(db(subOnly) - db(pR)) < 1.5, `SUB 1 is as loud as the string (${(db(subOnly) - db(pR)).toFixed(2)} dB)`);
+  const r5 = render(bass(0.5), [note(f)], { seconds: 0.5 });
+  const s5 = rmsAt(r5.channels[0], 0, 0.3);
+  const sub5 = Math.sqrt(Math.max(0, s5 * s5 - pR * pR));
+  assert(Math.abs(db(sub5 / subOnly) + 6.02) < 0.5, `SUB is a linear amount: 0.5 is 6 dB under 1 (${db(sub5 / subOnly).toFixed(2)} dB)`);
+
+  // It rides the string: rings with RING, stops with the key.
+  const early = dft(x, f / 2, Math.round(0.1 * sr), 4096, sr).mag;
+  const late = dft(x, f / 2, Math.round(1.1 * sr), 4096, sr).mag;
+  const fell = db(early) - db(late);
+  assert(Math.abs(fell - 30) < 4, `a pluck's sub decays at the string's RING (${fell.toFixed(1)} dB in 1 s at RING 2 s; 30 expected)`);
+  const cut = render(bass(1, { amp: { release: 0.05 } }), [note(f, { dur: Math.round(0.2 * sr) })], { seconds: 0.6 });
+  assert(rmsAt(cut.channels[0], 0.45, 0.1) < 1e-4 * rmsAt(cut.channels[0], 0.05, 0.1), 'a released note takes its sub with it');
+
+  // Glide: the sub follows the string's moving pitch.
+  const g = render(bass(1, { string: { decay: 4 } }), [note(f, { id: 1, dur: 4410 }), note(f * 1.5, { id: 2, frame: 4410, dur: 40000 })],
+    { seconds: 1, play: { mode: 'legato', portamento: 0.02 } });
+  const gHz = measuredHz(g.channels[0], f * 0.75, sr, Math.round(0.3 * sr), 0.1, 2048);
+  assert(Math.abs(centsOff(gHz, f * 0.75)) < 3, `under legato GLIDE the sub lands an octave under the new note (${centsOff(gHz, f * 0.75).toFixed(2)} ct)`);
+
+  // The bow: the sub rides the bow's pressure, and stops with it.
+  const bow = (sub) => plain({ exciter: { type: 'bow', pressure: 0.6 }, string: { decay: 2, sub }, amp: { attack: 0.05, release: 0.1 } });
+  const bR = render(bow(1), [note(f, { dur: Math.round(0.6 * sr) })], { seconds: 1.2 });
+  const bP = render(bow(0), [note(f, { dur: Math.round(0.6 * sr) })], { seconds: 1.2 });
+  const bHalf = db(dft(bR.channels[0], f / 2, Math.round(0.2 * sr), 4096, sr).mag) - db(dft(bP.channels[0], f / 2, Math.round(0.2 * sr), 4096, sr).mag);
+  assert(bHalf > 20, `a bowed note gets its sub while held (+${bHalf.toFixed(1)} dB at f/2)`);
+  assert(rmsAt(bR.channels[0], 1.05, 0.1) < 1e-3 * rmsAt(bR.channels[0], 0.3, 0.1), 'a lifted bow takes its sub with it');
+
+  // The level curve evens the STRING: a sub does not move it, nor the DRIVE's stage.
+  const c0 = compileFrpp6With(bass(0), sr), c1 = compileFrpp6With(bass(0.7), sr);
+  assert(c0.levelCurve.every((v, i) => v === c1.levelCurve[i]) && c0.stringPeak === c1.stringPeak,
+    'SUB leaves the level curve and the drive stage where the string puts them');
+  assert(c0.subRef === 0 && c1.subRef > 0, 'subRef is only measured for a patch that has a sub');
+
+  // Deterministic and grid-exact: any block size, the same samples.
+  const a = render(bass(1), [note(f), note(f * 2, { id: 2, frame: 3000 })], { seconds: 0.4, blockSize: 128 });
+  const b = render(bass(1), [note(f), note(f * 2, { id: 2, frame: 3000 })], { seconds: 0.4, blockSize: 997 });
+  assert(a.channels[0].every((v, i) => v === b.channels[0][i]), 'SUB renders the same in 128- and 997-frame blocks');
+  assert(validateFrpp6({ string: { sub: 7 } }).string.sub === 1 && validateFrpp6({}).string.sub === 0, 'SUB is clamped to 0–1 and defaults to off');
+}
+
+// ---- DROP, RESONANCE, WOOD (27 Oct 2026) ------------------------------------------------
+{
+  const sr = 44100;
+  const f = 196;
+  const rmsAt = (x, at, len) => { let e = 0; const a = Math.round(at * sr), n = Math.round(len * sr);
+    for (let i = a; i < a + n; i++) e += x[i] * x[i]; return Math.sqrt(e / n); };
+  const db = (x) => 20 * Math.log10(x);
+  const g = (over = {}) => plain({ body: { type: 'steel', mix: 0.8 }, string: { decay: 3, ...(over.string || {}) },
+    ...Object.fromEntries(Object.entries(over).filter(([k]) => k !== 'string')) });
+
+  // All three at 0 are exactly today's string.
+  const today = render(g(), [note(f)], { seconds: 0.5 });
+  const zeros = render(g({ string: { decay: 3, drop: 0, resonance: 0 }, body: { type: 'steel', mix: 0.8, wood: 0 } }), [note(f)], { seconds: 0.5 });
+  assert(today.channels[0].every((x, i) => x === zeros.channels[0][i]), 'DROP, RESONANCE and WOOD at 0 are bit-identical to no pot at all');
+
+  // DROP: the early fall is steeper than the late one; without it the two match.
+  const slope = (r) => [db(rmsAt(r.channels[0], 0.05, 0.05)) - db(rmsAt(r.channels[0], 0.6, 0.05)),
+    db(rmsAt(r.channels[0], 0.6, 0.05)) - db(rmsAt(r.channels[0], 1.15, 0.05))];
+  const [e0, l0] = slope(render(g(), [note(f)], { seconds: 1.3 }));
+  const [e1, l1] = slope(render(g({ string: { decay: 3, drop: 1 } }), [note(f)], { seconds: 1.3 }));
+  assert(Math.abs(e0 - l0) < 1.5, `with no DROP the fall is even (${e0.toFixed(1)} then ${l0.toFixed(1)} dB per 0.55 s)`);
+  assert(e1 > l1 + 4, `DROP 1 falls fast first, then slow (${e1.toFixed(1)} then ${l1.toFixed(1)} dB per 0.55 s)`);
+  assert(validateFrpp6({ string: { drop: 0.5 } }).string.course > 0 && validateFrpp6({ string: { drop: 0.5, double: 'shimmer' } }).string.course === 4,
+    'DROP splits a plain string into its two polarisations, and uses SHIMMER\'s pair when there is one');
+
+  // RESONANCE: after a short note is let go, the open strings ring on; without it, silence.
+  const short = (resonance) => render(g({ string: { decay: 3, resonance }, amp: { release: 0.05 } }),
+    [note(hzOf(52), { dur: Math.round(0.2 * sr) })], { seconds: 1.2 });
+  const dry = rmsAt(short(0).channels[0], 0.8, 0.2), wet = rmsAt(short(1).channels[0], 0.8, 0.2);
+  assert(dry < 1e-6 && wet > 1e-4, `RESONANCE rings on after the note is damped (${db(wet).toFixed(0)} dBFS against ${db(dry || 1e-12).toFixed(0)})`);
+  const c = compileFrpp6With(g({ string: { decay: 3, resonance: 0.5 } }), sr);
+  assert(c.internal.sympathetic === 0.5 && c.internal.sympRing === 3, 'RESONANCE rings for as long as RING');
+
+  // WOOD: same energy (the table is normalised), longer, noisier tail.
+  const t0 = compileFrpp6With(g(), sr).tables.pulse, t1 = compileFrpp6With(g({ body: { type: 'steel', mix: 0.8, wood: 1 } }), sr).tables.pulse;
+  const en = (t) => t.reduce((a, x) => a + x * x, 0);
+  assert(Math.abs(db(Math.sqrt(en(t1) / en(t0)))) < 0.01, 'WOOD changes the colour of the pluck, not its energy');
+  assert(t1.length >= t0.length && t1.some((x, i) => x !== (t0[i] ?? 0)), 'WOOD puts a tail into the pluck');
+  const none = compileFrpp6With(plain({ body: { type: 'none', mix: 0, wood: 1 } }), sr).tables.pulse;
+  const none0 = compileFrpp6With(plain(), sr).tables.pulse;
+  assert(none.length === none0.length && none.every((x, i) => x === none0[i]), 'WOOD does nothing with no body');
+
+  // Deterministic: any block size, the same samples.
+  const all = g({ string: { decay: 3, drop: 0.6, resonance: 0.6 }, body: { type: 'steel', mix: 0.8, wood: 0.6 } });
+  const a = render(all, [note(f), note(f * 1.5, { id: 2, frame: 3000 })], { seconds: 0.4, blockSize: 128 });
+  const b = render(all, [note(f), note(f * 1.5, { id: 2, frame: 3000 })], { seconds: 0.4, blockSize: 997 });
+  assert(a.channels[0].every((v, i) => v === b.channels[0][i]), 'DROP, RESONANCE and WOOD render the same in 128- and 997-frame blocks');
+}
+
+// ---- METAL past 1 (27 Oct 2026) -----------------------------------------------------------
+{
+  const sr = 44100;
+  assert(validateFrpp6({ string: { stiffness: 3 } }).string.stiffness === 2, 'METAL is clamped to 0–2');
+  for (const [tuning, m] of [['free', 52], ['free', 76], ['standard', 40], ['standard', 64]]) {
+    const f0 = hzOf(m);
+    const r = render(plain({ string: { stiffness: 2, decay: 4 }, strings: { tuning } }), [note(f0)], { seconds: 1 });
+    const x = r.channels[0];
+    let best = 0, bc = 0;
+    for (let c = -20; c <= 20; c += 0.5) {
+      const mag = dft(x, f0 * 2 ** (c / 1200), 4096, 16384, sr).mag;
+      if (mag > best) { best = mag; bc = c; }
+    }
+    assert(Math.abs(bc) <= 1 && r.health.nonFinite === 0, `METAL 2 keeps ${tuning} m${m} in tune and finite (${bc} ct)`);
+  }
+}
+
+// ---- the widened ranges (27 Oct 2026) -----------------------------------------------------
+{
+  const sr = 44100;
+  const v = validateFrpp6({ string: { decay: 99, resonance: 9 }, body: { wood: 9, size: 99 }, exciter: { position: 0 } });
+  assert(v.string.decay === 30 && v.string.resonance === 2 && v.body.wood === 2 && v.body.size === 4 && v.exciter.position === 0.02,
+    'RING reaches 30 s, RESONANCE and WOOD 2, SIZE 4, WHERE 0.02');
+  assert(validateFrpp6({ body: { size: 0 } }).body.size === 0.25, 'SIZE goes down to 0.25');
+  const peakOf = (r) => r.channels[0].reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+  const base = render(plain({ body: { type: 'steel', mix: 0.8 } }), [note(110)], { seconds: 1 });
+  for (const [name, over] of [
+    ['RING 30 s', { string: { decay: 30 } }],
+    ['WHERE 0.02', { exciter: { position: 0.02 } }],
+    ['a bow at WHERE 0.02', { exciter: { type: 'bow', position: 0.02, pressure: 0.6 } }],
+    ['SIZE 0.25', { body: { type: 'steel', mix: 0.8, size: 0.25 } }],
+    ['SIZE 4', { body: { type: 'steel', mix: 0.8, size: 4 } }],
+    ['RESONANCE 2 and WOOD 2', { string: { resonance: 2 }, body: { type: 'steel', mix: 0.8, wood: 2 } }],
+  ]) {
+    const r = render(plain({ body: { type: 'steel', mix: 0.8 }, ...over }), [note(110), note(hzOf(88), { id: 2, frame: 2000 })], { seconds: 1 });
+    const p = peakOf(r);
+    assert(r.health.nonFinite === 0 && p > 0 && p < 40 * peakOf(base), `${name} plays, finite and bounded (peak ${p.toFixed(3)})`);
+  }
+  // RING 30 s really rings: 60 dB over 30 s is 2 dB a second, so ~6 dB in the 2.95 s measured.
+  const long = render(plain({ string: { decay: 30 }, internal: { keyFollow: 0 } }), [note(110)], { seconds: 3.2 });
+  const rmsOf = (x, a, n) => { let e = 0; for (let i = a; i < a + n; i++) e += x[i] * x[i]; return Math.sqrt(e / n); };
+  const fell = 20 * Math.log10(rmsOf(long.channels[0], 4410, 4410) / rmsOf(long.channels[0], Math.round(3.05 * sr), 4410));
+  assert(Math.abs(fell - 6) < 3, `RING 30 s falls ~2 dB a second (${fell.toFixed(1)} dB over 2.95 s)`);
+}
+
+// ---- STRETCH: METAL's two bends (27 Oct 2026) ----------------------------------------------
+{
+  const glass = (string, internal = {}) => ({ exciter: { type: 'impulse', hardness: 0.9, mix: 0 },
+    string: { decay: 3, damp: 0.9, stiffness: 2, ...string }, strings: { tuning: 'free', tension: 0 },
+    body: { type: 'none', mix: 0 }, internal });
+  const ev = [note(hzOf(84)), note(hzOf(60), { id: 2, frame: 2000 })];
+  const same = (a, b) => a.channels[0].every((x, i) => x === b.channels[0][i]);
+  assert(same(render(glass({ stretch: 'piano' }), ev, { seconds: 0.3 }), render(glass({}, { inharmonic: true }), ev, { seconds: 0.3 })),
+    'STRETCH PIANO is the piano trial\'s internal.inharmonic, sample for sample');
+  assert(same(render(glass({ stretch: 'string' }), ev, { seconds: 0.3 }), render(glass({}), ev, { seconds: 0.3 })),
+    'STRETCH STRING is METAL as it was');
+  assert(validateFrpp6({ string: { stretch: 'piano' } }).internal.inharmonic === true
+    && validateFrpp6({ string: { stretch: 'piano' }, internal: { inharmonic: false } }).internal.inharmonic === false
+    && validateFrpp6({ string: { stretch: 'nonsense' } }).string.stretch === 'string', 'STRETCH validates, and an explicit internal key still wins');
+}
+
 console.log(failed ? '\nFRPP-6 DSP: FAILED' : '\nFRPP-6 DSP: PASSED');
 process.exit(failed ? 1 : 0);

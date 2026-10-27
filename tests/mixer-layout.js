@@ -996,7 +996,7 @@ assert(/const rangeOn = check\('Keep notes inside a range', view\.arp\.rangeLimi
   'the Arpeggiator range is saved as two note bounds that can never be less than an octave apart');
 
 const envelopeTimeRows = editor.match(/envTime\(/g) || [];
-assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
+assert(/const ENV_MAX_SECONDS = 30;/.test(editor)
   && /const ENV_TIME_TAPER = 'log';/.test(editor)
   && /const ENV_TIME_STEP = 0\.001;/.test(editor)
   && /n\(path, label, min, ENV_MAX_SECONDS, ENV_TIME_STEP/.test(editor)
@@ -1004,7 +1004,7 @@ assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
   && envelopeTimeRows.length >= 19
   && /SUSTAIN', 0, 100, 1/.test(editor)
   && /write: \(v\) => v \/ 100/.test(editor),
-  'every envelope time shares the 10-second maximum, the millisecond step and the log '
+  'every envelope time shares the 30-second maximum, the millisecond step and the log '
   + 'taper, and sustain is edited as 0–100%');
 
 // The step is not a per-call argument any more, so no envelope pot can be built coarser
@@ -1238,7 +1238,7 @@ const bypass = new Function('synthFamily', 'CRLS1', `
 // throwing the switch never produces.
 assert(/const FM_INDEX_SEED = [\d.]+;/.test(editor)
   && /'osc\.fm': \{ type: 'sine', ratio: 1\.4, index: FM_INDEX_SEED, decay: 0\.35 \}/.test(editor)
-  && /`\$\$\{sec\}\.fm\.index`, 'FM DEPTH', 0, 8, 0\.05, fixed\(2\), FM_INDEX_SEED/.test(editor),
+  && /`\$\$\{sec\}\.fm\.index`, 'FM DEPTH', 0, 100, 0\.05, fixed\(2\), FM_INDEX_SEED/.test(editor),
   'the FM card opens on the same depth its FM DEPTH pot resets to — one number, named once');
 
 // An FM section at zero depth is no FM section. `_playLayer` has always read it that way;

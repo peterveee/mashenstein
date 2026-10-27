@@ -100,6 +100,7 @@ const effectDesk = new Function('env', `
     lane: key => ({ setEffects: (list, bpm) => record('lane', key, list, bpm) }),
   } };
   const buildRack = () => {}, buildArrangement = () => {}, buildDevices = () => {};
+  const syncArrangementEffectShortcut = () => {}, refreshRackEffectSlots = () => {};
   const $ = () => ({ classList: { contains: () => false } });
   const targetLabel = key => key, toast = () => {};
   const applyToEngine = () => { throw Error('must not apply the whole mix'); };

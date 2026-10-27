@@ -173,7 +173,7 @@ Two RUN cards under PERFORMANCE, reported at the top of the same `/reports` page
 | --- | --- | --- |
 | FRAME REPORT | `tools/frame-report.js <ticked cabinets>` | the report only; unticked cabinets keep their last rows |
 
-It plays every stage of cabinets 1–6 on an iPhone 15 Pro-shaped screen, at three points
+It plays every stage of every cabinet (the six plus Gravity Grid, Corporate Kombat and Surge) on an iPhone 15 Pro-shaped screen, at three points
 a stage in portrait and at the halfway point in landscape, and times every frame for six
 seconds each. The render density is pinned where that phone plays (2 portrait, 3
 landscape), and the 2D renderer is forced, since headless Chromium has no GPU. Each row
@@ -185,7 +185,7 @@ is a stage's slowest point:
 The numbers are this Mac's, not the phone's. Read them against each other: cabinet
 against cabinet, portrait against landscape, and this run against the last one (the
 page shows the change). It uses THE GAME on :8001, or starts the dev server for the run
-and stops it after. It takes about twelve minutes; run it with the mixer quiet, since
+and stops it after. It takes about twenty minutes; run it with the mixer quiet, since
 anything else busy on the machine shows up as slow frames. `--quick` measures portrait
 only, one point a stage.
 

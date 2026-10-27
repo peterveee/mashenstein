@@ -185,24 +185,33 @@ function syncArrangementScroll() {
   const upper = $('upperwork');
   const rail = $('arrscroll');
   const railContent = $('arrscroll-content');
+  const ruler = $('barsarea');
   if (!grid || !upper || !rail || !railContent) return;
+  // Only the ruler consumes these variables. Writing them on #upperwork makes
+  // every note cell inherit a new value on scroll and forces a whole-grid style
+  // recalculation before the paired scrollbar can even read its position.
+  const moveRuler = (x) => {
+    const value = `${Math.round(x)}px`;
+    if (ruler && ruler.style.getPropertyValue('--arr-scroll') !== value) {
+      ruler.style.setProperty('--arr-scroll', value);
+    }
+  };
   const bars = grid.querySelector('.arrrow .arrbars');
   const width = bars ? Math.round(bars.scrollWidth) : 0;
   // Only when the rows genuinely want more than they have. A song that fits keeps the
   // behaviour it always had: bars stretched across the window, no scrollbar to reach for.
   const scrolls = width > 0 && grid.scrollWidth > grid.clientWidth + 1;
   upper.dataset.arrscroll = scrolls ? '1' : '0';
-  upper.style.setProperty('--arr-content-w', `${width}px`);
+  ruler?.style.setProperty('--arr-content-w', `${width}px`);
   railContent.style.width = `${Math.max(1, width)}px`;
   rail.scrollLeft = Math.max(0, grid.scrollLeft);
-  if (!scrolls) upper.style.setProperty('--arr-scroll', '0px');
-  else upper.style.setProperty('--arr-scroll', `${Math.round(grid.scrollLeft)}px`);
+  moveRuler(scrolls ? grid.scrollLeft : 0);
   if (grid.dataset.scrollBound !== '1') {
     grid.dataset.scrollBound = '1';
     grid.addEventListener('scroll', () => {
       const x = Math.max(0, grid.scrollLeft);
       if (Math.abs(rail.scrollLeft - x) > 0.5) rail.scrollLeft = x;
-      upper.style.setProperty('--arr-scroll', `${Math.round(x)}px`);
+      moveRuler(x);
     }, { passive: true });
   }
   if (rail.dataset.scrollBound === '1') return;

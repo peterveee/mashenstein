@@ -511,11 +511,10 @@ export const STAGES = [
     // DO NOT HIT THE FIRE ALARMS sign introduces them (officeClimb.js).
     { type: 'targets', n: 3, targetType: 'fireAlarm', label: 'ALARMS', at: [0.15, 0.45, 0.82, 0.855],
       desc: 'PULL 3 FIRE ALARMS', note: 'THE MEETING IS CANCELLED.' },
-    // A slow-down capsule at 0.73, ahead of the two alarms sitting close
-    // together at 0.82 and 0.855 — CORPORATE KOMBAT runs at speedBonus 0.3125,
-    // and the last-chance pair is exactly the spot a little less pace helps.
+    // No slow-down capsule on any CORPORATE KOMBAT floor (Peter, 26 Oct). This one had a capsule at
+    // 0.73, ahead of the two alarms sitting close together at 0.82 and 0.855.
     { quiet: true, introBy: 'eggshell', introSec: 7,
-      intro: 'DO NOT TOUCH MY FIRE ALARMS. THE MEETING ENDS WHEN I SAY.', slowAt: 0.73 }),
+      intro: 'DO NOT TOUCH MY FIRE ALARMS. THE MEETING ENDS WHEN I SAY.' }),
   // CRACK THE SAFES (Peter, 15 Oct): four double-height safes placed on floor 88,
   // three asked for, and one SHOT opens each (Run.crackSafe). Replaced the
   // retired escort bonus.

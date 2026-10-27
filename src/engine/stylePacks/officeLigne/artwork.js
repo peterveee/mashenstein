@@ -2,7 +2,7 @@
 // absolute position, so a repeated architectural bay need not repeat its art.
 import { box, line, poly, circ, ell, letters, hash, canvas, PAL } from './line.js';
 import { WALL_BASE, FACTORS, OFFICE_ZOOM, officeFrame } from '../officeClimb.js';
-import { OFFICE_CORRIDORS, officeFurnitureCuts, officeLandmarks, officeAlarmSignBay } from './progression.js';
+import { OFFICE_CORRIDORS, officeFurnitureCuts, officeLandmarks, officeAlarmSignBay, officeFireExitBay } from './progression.js';
 import { officeMonthBoard } from './zombies.js';
 import { poster, pictureLight } from './wall.js';
 import { PROFESSOR_PIECES, PROFESSOR_BY_FLOOR, paintFramedProfessor } from './professorArt.js';
@@ -31,6 +31,9 @@ const GENERIC_SKIP=0.42;
 // Floor 23's short stretches of wall between the windows nearly all get something.
 const GENERIC_SKIP_BY_FLOOR={open:0.12};
 const FALLBACK_SHARE=0.22;
+// from the fire exit's centre to the middle of the poster hung between it and the finish pole,
+// and to where the pole's wall ends the art
+const FINISH_POSTER_DX=150,FINISH_POLE_DX=200;
 
 // A wall bay's single slot in the wall's ABSOLUTE coordinates (its own u plus whole periods), so
 // which picture hangs where never depends on what is on screen.
@@ -176,10 +179,13 @@ export function officeArtworks(f){
   return id;
  };
  const out=[],bays=wallBays(def);
+ const exitBay=plan&&f.floor==='open'?officeFireExitBay(f.floor,plan.totalDist):null;
+ const pastFinish=exitBay?(exitBay.u0+exitBay.u1)/2+FINISH_POLE_DX:0;
  for(let j=Math.floor((shift+cov.left-160)/P)-1;j<=Math.floor((shift+cov.right+160)/P)+1;j++){
   for(const bay of bays){
    for(const sl of layoutBay(f.floor,def,bay,j,pick,null,posterFor,plan)){
     if(sl.occupied||sl.sparse)continue;
+    if(pastFinish&&sl.x>=pastFinish)continue;
     if(plan&&!sl.professor&&plan.avoid.some(([a,b])=>sl.x+sl.w>a&&sl.x<b))continue; // no print behind a room or lift
     const x=sl.x-shift;
     if(x+sl.w<cov.left-20||x>cov.right+20)continue;
@@ -187,6 +193,17 @@ export function officeArtworks(f){
     if(f.wallClear?.some(([a,b])=>sl.x<b&&sl.x+sl.w>a))continue;
     out.push({x,y:sl.y,w:sl.w,h:sl.h,seed:sl.seed,kind:sl.professor?'professor':sl.poster?'poster':sl.kind,professor:sl.professor,poster:sl.poster});
    }
+  }
+ }
+ // floor 23: PERSEVERANCE hangs on the plain wall between the fire exit and the finish pole, and
+ // nothing hangs past the pole (Peter, 26 Oct)
+ const exit=exitBay;
+ if(exit){
+  const design=OFFICE_POSTERS.open.find(p=>p.label==='PERSEVERANCE'),{w,h}=officePosterSize(design);
+  const x=(exit.u0+exit.u1)/2+FINISH_POSTER_DX-w/2-shift;
+  if(x+w>cov.left-20&&x<cov.right+20&&!f.wallClear?.some(([a,b])=>x+shift<b&&x+shift+w>a)){
+   for(let i=out.length-1;i>=0;i--)if(out[i].x<x+w+8&&out[i].x+out[i].w>x-8)out.splice(i,1);
+   out.push({x,y:66,w,h,seed:11,kind:'poster',poster:design});
   }
  }
  if(plan?.finish){

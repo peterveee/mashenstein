@@ -283,7 +283,7 @@ ACTIONS.push(
     openPath: reportHref('banger-levels.json', 'bangers'),
   },
 );
-// PERFORMANCE: how smoothly cabinets 1-6 run on a phone-shaped screen, portrait first
+// PERFORMANCE: how smoothly every cabinet runs on a phone-shaped screen, portrait first
 // (tools/frame-report.js). Niced like the audio reports; the measurements are relative,
 // so run it with the machine otherwise quiet and compare against the last run. No
 // BACKGROUND switch: what it measures is frame time, and in the background band every
@@ -291,9 +291,9 @@ ACTIONS.push(
 ACTIONS.push(
   {
     id: 'framereport', group: 'perf', label: 'FRAME REPORT',
-    blurb: 'plays every stage of the ticked cabinets on an iPhone-shaped screen and times each frame — portrait at three points a stage, landscape at one (tools/frame-report.js). Cabinets left unticked keep their last numbers on the report. Uses THE GAME on :8001, or starts it for the run. About two minutes a cabinet; best with the mixer quiet.',
+    blurb: 'plays every stage of the ticked cabinets on an iPhone-shaped screen and times each frame — portrait at three points a stage, landscape at one (tools/frame-report.js). Cabinets left unticked keep their last numbers on the report. Uses THE GAME on :8001, or starts it for the run. About two minutes a cabinet (twenty with all nine); best with the mixer quiet.',
     // One card, a toggle per cabinet (all on by default): RUN measures what is ticked.
-    choices: ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon'],
+    choices: ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon', 'gravity', 'office', 'surge'],
     needsIds: true,
     steps: (args) => [niced(['tools/frame-report.js', ...idsFrom(args)])],
     openPath: reportHref('frame-report.json', 'frames'),

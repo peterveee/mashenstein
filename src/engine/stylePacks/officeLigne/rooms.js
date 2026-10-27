@@ -244,8 +244,9 @@ export function wallWhiteboard(g,x,y,w,h,P,{title,detail}){
   box(g,x+3,y+3,w-6,h-6,'#fffef9',P.ink,0.3);
   const ts=Math.min(16,h*0.26),n=detail.length;
   whiteboardText(g,title,x+w/2,y+h*0.3,ts,w-24,'#202733',700);
-  // two lines sit under the title at their full size; more close up to fit above the tray
-  const step=n>2?Math.min(ts*0.85,h*0.42/n):ts*0.85,size=Math.min(ts*0.72,step*0.95),y0=n>2?y+h*0.5+step*0.55:y+h*0.58;
+  // two lines sit under the title at their full size; more close up to fit above the tray, and
+  // sit half a line nearer the title (Peter, 26 Oct)
+  const step=n>2?Math.min(ts*0.85,h*0.42/n):ts*0.85,size=Math.min(ts*0.72,step*0.95),y0=n>2?y+h*0.5+step*0.05:y+h*0.58;
   for(let i=0;i<n;i++)whiteboardText(g,detail[i],x+w/2,y0+i*step,size,w-28,'#4a5360',600);
   box(g,x+w*0.2,y+h-1,w*0.6,3,'#7d8490',P.ink,0.4);
   for(const [u,col] of [[0.3,'#2f6fd0'],[0.36,'#e2483e'],[0.42,'#2a8a4a']])box(g,x+w*u,y+h-2.6,7,1.8,col);

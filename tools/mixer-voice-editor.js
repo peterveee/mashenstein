@@ -168,12 +168,14 @@ const semis = (x) => `${x > 0 ? '+' : ''}${x.toFixed(1)}`;
 // trailing `.0` is a decimal place saying nothing. Cents are DETUNE's job.
 const semiSteps = (x) => `${x > 0 ? '+' : ''}${x.toFixed(0)}`;
 const fixed = (d) => (x) => x.toFixed(d);
-const ENV_MAX_SECONDS = 10;
-// A DECADE PER QUARTER TURN. An envelope time is heard as a ratio — 5ms to 10ms is the
-// same step as 1s to 2s — so the travel is split by ratio and not by fraction of the
-// ceiling: 1ms at the floor, 10ms at a quarter, 100ms at half, 1s at three quarters,
-// ten seconds at the stop. Half the pot is now under a tenth of a second, which is
-// where the sounds this desk makes actually live.
+// Thirty seconds (27 Oct 2026; was ten): a wavetable sweep, a bell's tail, a pad's swell
+// all want more than ten, and FRPP-6's RING had already gone to thirty for the same reason.
+const ENV_MAX_SECONDS = 30;
+// SPLIT BY RATIO. An envelope time is heard as a ratio — 5ms to 10ms is the same step as
+// 1s to 2s — so the travel is split by ratio and not by fraction of the ceiling: 1ms at
+// the floor, 10ms at 22%, 100ms at 45%, 1s at two thirds, 10s at 89%, thirty at the stop.
+// Nearly half the pot is under a tenth of a second, which is where the sounds this desk
+// makes actually live.
 //
 // A power curve was the previous answer and cannot do this. Steep enough to bring
 // 100ms into reach it collapses everything below into a sliver thinner than the step —
@@ -410,6 +412,12 @@ const SLOW_END_SCALE = 2;
 // Squared (`SLOW_END_SCALE`) is the neighbouring case and deliberately not this one: those
 // rates reach further up their range, where these two never do.
 const SLOW_LFO_RATE_SCALE = 3;
+
+// The routable LFOs' ceiling — TNGR-2's LFO 1 and MRDR-3's layer LFO and PWM (27 Oct
+// 2026; was 8 and 12). Two hundred is audio rate: the modulation stops being movement
+// and becomes sidebands, which is a sound a synth without it cannot make. Their pots run
+// a log taper from 0.01 Hz, so the slow rates they mostly live at keep their travel.
+const LFO_RATE_MAX = 200;
 
 // A filter envelope's depth has to reach right across the cutoff range: from the 40 Hz
 // floor, opening the filter all the way is log2(20000/40) — nearly nine octaves — so the
@@ -940,8 +948,11 @@ const tngrLfo = (key, label, d) => {
     pick(at('shape'), `${label} WAVE`, TNGR2_LFO_SHAPES, d.shape, null, { startRow: true }),
     // No tempo sync: this LFO moves table POSITION, which is a timbre, and a timbre
     // snapped to the beat is a rhythm the sequencer already owns.
-    n(at('rate'), `${label} RATE`, 0.01, 8, 0.01, fixed(2), d.rate, 'Hz', null,
-      { startRow: true,
+    // To 200 Hz on a log taper (27 Oct 2026; was 8): past ~20 Hz the position moves
+    // inside a single note's cycle and the sweep turns into a timbre of its own. 1 Hz
+    // sits at 47% of the travel, 10 Hz at 70%.
+    n(at('rate'), `${label} RATE`, 0.01, LFO_RATE_MAX, 0.01, fixed(2), d.rate, 'Hz', null,
+      { startRow: true, taper: 'log', floor: 0.01,
         tip: 'How fast the LFO runs. How FAR it moves an oscillator is that oscillator\'s '
           + 'own LFO MOVE, on its card — this LFO has no depth of its own' }),
   ];
@@ -1334,9 +1345,11 @@ const layerGroups = () => {
         // three numbers used to live in `SECTION_DEFAULTS` and arrive when the section was
         // switched on; with no switch left they belong on the row, or all three layers
         // would default to one rate and phase-lock.
-        n(`$${p}.pwm.rate`, 'RATE', 0.05, 12, 0.01, fixed(2), [0.4, 0.53, 0.31][i - 1], 'Hz',
+        // To LFO_RATE_MAX on a log taper (27 Oct 2026; was 0.05–12): a width swept at audio
+        // rate is a buzz of sidebands no fixed width makes.
+        n(`$${p}.pwm.rate`, 'RATE', 0.01, LFO_RATE_MAX, 0.01, fixed(2), [0.4, 0.53, 0.31][i - 1], 'Hz',
           (v) => (getAt(v, `$${p}.pwm.depth`) ?? 0) > 0,
-          { scale: SLOW_END_SCALE,
+          { taper: 'log', floor: 0.01,
             tip: 'How fast the width moves. Under 1 Hz is the string-machine drift; each '
               + 'layer starts on a slightly different rate so they never line up' }),
         envTime(`$${p}.pwm.delay`, 'ONSET', 0, secs, 0, 's',
@@ -1580,11 +1593,14 @@ const layerGroups = () => {
         { startRow: true,
           tip: 'How far the LFO swings its target. Zero builds no LFO at all — pitch '
             + 'LFO movement is separate from VIB DEPTH, up in Note' }),
-      n('$layer.lfo.rate', 'RATE', 0.05, 12, 0.05, fixed(2), 0.5, 'Hz',
+      // 0.01 to LFO_RATE_MAX on a log taper (27 Oct 2026; was 0.05–12 with a cube for
+      // sample-and-hold only): the top reaches audio rate — growl on the filter, ring on
+      // the level, sidebands on the pitch — and the log spreads the slow end evenly
+      // whatever the wave, so sample-and-hold needs no taper of its own.
+      n('$layer.lfo.rate', 'RATE', 0.01, LFO_RATE_MAX, 0.01, fixed(2), 0.5, 'Hz',
         (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0
           && getAt(v, '$layer.lfo.sync') !== 'tempo',
-        { scale: (v) => getAt(v, '$layer.lfo.type') === 'samplehold'
-          ? SLOW_LFO_RATE_SCALE : 1 }),
+        { taper: 'log', floor: 0.01 }),
       envTime('$layer.lfo.delay', 'ONSET', 0, secs, 0, 's',
         (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0),
     ],
@@ -2219,7 +2235,7 @@ const SYNTH_GROUPS = {
       n('$frpp6.exciter.hardness', 'HARD', 0, 1, 0.01, fixed(2), 0.6, '', null, {
         hideWhen: fzPlucked, startRow: true, tip: 'A soft fingertip (dark, round) to a hard plectrum (bright, sharp).',
       }),
-      n('$frpp6.exciter.position', 'WHERE', 0.05, 0.5, 0.01, fixed(2), 0.18, '', null, {
+      n('$frpp6.exciter.position', 'WHERE', 0.02, 0.5, 0.01, fixed(2), 0.18, '', null, {
         tip: 'Where it is plucked or bowed: by the bridge (thin, twangy) to the middle of the string (round, hollow).',
       }),
       n('$frpp6.exciter.mix', 'SCRAPE', 0, 1, 0.01, fixed(2), 0.25, '', null, {
@@ -2251,10 +2267,15 @@ const SYNTH_GROUPS = {
       tip: 'How the note dies away once it is plucked. RING is how long it sounds before it is '
         + 'gone. HIGHS is how long its top end lasts against that: low gives a mellow string '
         + 'whose sparkle fades first, high keeps it bright to the end. The graph draws both — '
-        + 'solid for the note, dashed for its highs — and either end can be dragged. RELEASE, '
+        + 'solid for the note, dashed for its highs — and either end can be dragged. DROP gives '
+        + 'the note a quick first fall before its long tail, as a real string has; RESONANCE '
+        + 'lets the other strings ring along with it. RELEASE, '
         + 'on the AMP card, is what stops it early when the note is let go.',
       rows: [
-      envTime('$frpp6.string.decay', 'RING', 0.02, secs, 3.5, 's', null, {
+      // RING reaches 30 s (27 Oct 2026), past the 10 s every envelope time stops at: bells,
+      // drones, a long harp note. Same taper as an envelope time, so the short end keeps its room.
+      n('$frpp6.string.decay', 'RING', 0.02, 30, ENV_TIME_STEP, secs, 3.5, 's', null, {
+        taper: ENV_TIME_TAPER, floor: ENV_TIME_STEP,
         tip: 'How long the note rings before it dies away.',
       }),
       n('$frpp6.string.damp', 'HIGHS', 0.02, 1, 0.01, fixed(2), 0.22, '', null, {
@@ -2263,6 +2284,15 @@ const SYNTH_GROUPS = {
       n('$frpp6.string.keyFollow', 'RING FOLLOW', 0, 1, 0.01, fixed(2), 0.5, '', null, {
         tip: 'How much shorter high notes ring than low ones, as on a real string. 0: every note rings as long.',
       }),
+      // DROP and RESONANCE (Peter, 27 Oct 2026, from the piano trial's guitar A/B).
+      n('$frpp6.string.drop', 'DROP', 0, 1, 0.01, fixed(2), 0, '',
+        (v) => (v?.frpp6?.string?.double ?? 'off') !== 'octave' && (v?.frpp6?.exciter?.type ?? 'pick') !== 'bow', {
+          startRow: true,
+          tip: 'A quick first fall, then the long tail: the loud part of the note goes early and a quieter ring carries on. 0: one even fade.',
+        }),
+      n('$frpp6.string.resonance', 'RESONANCE', 0, 2, 0.01, fixed(2), 0, '', null, {
+        tip: 'The other strings ringing along with what is played — the open strings on a guitar tuning, a piano\'s worth on FREE. They ring for as long as RING.',
+      }),
     ] },
     { key: 'character', title: 'Character',
       tip: 'What kind of string it is. TUNING: a guitar\'s six strings in standard or an open '
@@ -2270,7 +2300,8 @@ const SYNTH_GROUPS = {
         + 'any string, for harp, koto and synth sounds. PICKUP: ACOUSTIC is the string itself; '
         + 'NECK, MIDDLE and BRIDGE are an electric guitar\'s pickups, warm to cutting. DOUBLE '
         + 'adds a second string beside each one — SHIMMER a few cents apart, 12-STRING an '
-        + 'octave up (both cost twice the CPU). BUZZ is a sitar\'s buzzing bridge, METAL a '
+        + 'octave up (both cost twice the CPU). SUB adds a sine an octave below each note, '
+        + 'for weight under a bass. BUZZ is a sitar\'s buzzing bridge, METAL a '
         + 'stiffer, more metallic string, BEND how sharp a hard pluck starts before it settles. '
         + 'STEREO spreads the strings across the field, DETUNE puts them slightly out of tune '
         + 'with each other, SHIMMER sets how far apart DOUBLE\'s pair is.',
@@ -2292,11 +2323,20 @@ const SYNTH_GROUPS = {
         startRow: true,
         tip: 'A second string beside each one. SHIMMER: a few cents apart, a slow shimmer (twice the CPU). 12-STRING: an octave above.',
       }),
-      n('$frpp6.string.buzz', 'BUZZ', 0, 1, 0.01, fixed(2), 0, '', fzPlucked, {
-        startRow: true, tip: 'The string buzzing against its bridge: sitar, tanpura, a rattly banjo.',
+      pick('$frpp6.string.stretch', 'STRETCH', ['string', 'piano'], 'string', fzPlucked, {
+        startRow: true,
+        optionLabel: (o) => ({ string: 'String', piano: 'Piano' })[o] || o,
+        tip: 'How METAL bends the overtones. STRING: the same on every note — past 1 a bar or a bell that changes from note to note. PIANO: even, growing up the keyboard as a piano\'s does — glassy at the top.',
       }),
-      n('$frpp6.string.stiffness', 'METAL', 0, 1, 0.01, fixed(2), 0.15, '', fzPlucked, {
-        tip: 'A stiffer, more metallic string: piano wire, a kalimba\'s tine.',
+      n('$frpp6.string.sub', 'SUB', 0, 1, 0.01, fixed(2), 0, '', null, {
+        startRow: true,
+        tip: 'A sine an octave below each note, for weight under a bass. It rings and stops with the string; 1 is as loud as the string. 0 is off and costs nothing.',
+      }),
+      n('$frpp6.string.buzz', 'BUZZ', 0, 1, 0.01, fixed(2), 0, '', fzPlucked, {
+        tip: 'The string buzzing against its bridge: sitar, tanpura, a rattly banjo.',
+      }),
+      n('$frpp6.string.stiffness', 'METAL', 0, 2, 0.01, fixed(2), 0.15, '', fzPlucked, {
+        tip: 'A stiffer, more metallic string: piano wire, a kalimba\'s tine. Past 1 it stops being a string — a bar, a bell, a tine.',
       }),
       n('$frpp6.strings.tension', 'BEND', 0, 50, 1, fixed(0), 6, 'ct', null, {
         tip: 'How sharp a hard pluck starts and settles back down, in cents — a koto\'s twang.',
@@ -2382,7 +2422,8 @@ const SYNTH_GROUPS = {
       tip: 'The box the strings are on: a steel-string or classical guitar, an archtop, a '
         + 'banjo\'s drum head, a harp\'s soundboard — or NONE, an electric with no box at all. '
         + 'Each is twenty-one resonances folded into every pluck, so it costs nothing to play. '
-        + 'MIX is how much box you hear against the bare string; SIZE makes it bigger and deeper.',
+        + 'MIX is how much box you hear against the bare string; SIZE makes it bigger and deeper; '
+        + 'WOOD adds the box\'s own noisy breath.',
       rows: [
       pick('$frpp6.body.type', 'BODY', ['steel', 'nylon', 'archtop', 'banjo', 'harp', 'violin', 'cello', 'none'], 'steel', null, {
         dropdown: true, startRow: true,
@@ -2390,7 +2431,11 @@ const SYNTH_GROUPS = {
         tip: 'The box the string is on. NONE is an electric with no box at all.',
       }),
       n('$frpp6.body.mix', 'MIX', 0, 1, 0.01, fixed(2), 0.8, '', (v) => (v?.frpp6?.body?.type ?? 'steel') !== 'none', { startRow: true, tip: 'How much of the box you hear against the bare string.' }),
-      n('$frpp6.body.size', 'SIZE', 0.5, 2, 0.01, fixed(2), 1, '', (v) => (v?.frpp6?.body?.type ?? 'steel') !== 'none', { tip: 'A bigger box is a deeper one.' }),
+      n('$frpp6.body.size', 'SIZE', 0.25, 4, 0.01, fixed(2), 1, '', (v) => (v?.frpp6?.body?.type ?? 'steel') !== 'none', { tip: 'A bigger box is a deeper one.' }),
+      n('$frpp6.body.wood', 'WOOD', 0, 2, 0.01, fixed(2), 0, '',
+        (v) => (v?.frpp6?.body?.type ?? 'steel') !== 'none' && (v?.frpp6?.exciter?.type ?? 'pick') !== 'bow', {
+          tip: 'The wood itself: a short, noisy breath of the box under its resonances. 0: clean resonances only.',
+        }),
     ] },
     // An ADVANCED door on BODY: the three resonances a player would name, each where the
     // body set puts it until a pot pins it (the HZ and Q pots read the set's value until
@@ -2785,7 +2830,11 @@ const oscFmRows = (sec) => [
   n(`$${sec}.fm.ratio`, 'RATIO', 0.005, 12, 0.005, fixed(3), 1.4),
   // Resets to what the switch seeds — see FM_INDEX_SEED. A double-click that landed
   // somewhere the switch never goes would make "put it back" a third value.
-  n(`$${sec}.fm.index`, 'FM DEPTH', 0, 8, 0.05, fixed(2), FM_INDEX_SEED),
+  // 0–100 on RMND-7's FM DEPTH taper (27 Oct 2026; was 0–8 linear): eight stopped short
+  // of the clank tom, the metallic kick and the harsh zap. The stored unit is unchanged —
+  // a multiple of the carrier's starting frequency — so every kit plays as it did.
+  n(`$${sec}.fm.index`, 'FM DEPTH', 0, 100, 0.05, fixed(2), FM_INDEX_SEED, '', null,
+    { scale: FM_DEPTH_SCALE }),
   envTime(`$${sec}.fm.attack`, 'ATTACK', 0.001, secs, 0.001, 's', null,
     { startRow: true, foot: true }),
   envTime(`$${sec}.fm.hold`, 'HOLD', 0, secs, 0),

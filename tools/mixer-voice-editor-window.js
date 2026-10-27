@@ -20,14 +20,14 @@ const $ = (id) => document.getElementById(id);
 // way to be sure of an answer.
 let voiceEditor, voiceEditEl, laneVoiceId, dismissVoiceEditor, clamp, editMix, rebank,
   applyToEngine, mixFor, trackId, targetLabel, toast, voiceLibrary, dockIntoLibrary,
-  track, closeMenu, selectLane, laneExists;
+  track, closeMenu, selectLane, laneExists, isPlaying;
 
 /** Hand the window the desk it floats over. */
 export function installVoiceEditorWindow(deps) {
   ({
     voiceEditor, voiceEditEl, laneVoiceId, dismissVoiceEditor, clamp, editMix, rebank,
     applyToEngine, mixFor, trackId, targetLabel, toast, voiceLibrary, dockIntoLibrary,
-    track, closeMenu, selectLane, laneExists,
+    track, closeMenu, selectLane, laneExists, isPlaying = () => false,
   } = deps);
   // Bound here rather than at module scope: the element arrives with the deps.
   // Dragged by its header, like every other window here. Delegated from the panel rather
@@ -171,7 +171,9 @@ function syncVoiceEditorToLane(laneKey, { autoCopy = true } = {}) {
         m.voiceParams = { ...(m.voiceParams || {}), [seam.voiceKey]: JSON.parse(JSON.stringify(preset)) };
       });
       rebank();
-      applyToEngine(mixFor(trackId()));
+      // The playing bank now owns the copy. Mixer strips and effect chains have
+      // not changed; only the stopped desk needs its audition bank refreshed.
+      if (!isPlaying()) applyToEngine(mixFor(trackId()));
       chosen = laneVoiceId(laneKey);
       preset = VOICES[chosen];
     }
@@ -319,7 +321,7 @@ function editVoice(laneKey, { advanced, at = null } = {}) {
         m.voiceParams = { ...(m.voiceParams || {}), [seam.voiceKey]: JSON.parse(JSON.stringify(source)) };
       });
       rebank();
-      applyToEngine(mixFor(trackId()));
+      if (!isPlaying()) applyToEngine(mixFor(trackId()));
       chosen = laneVoiceId(laneKey);  // now returns the song-local id
     }
   }

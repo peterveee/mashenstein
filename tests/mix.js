@@ -250,7 +250,7 @@ for (const [id, checks] of Object.entries({
   ambience: { space: [0, 1], damping: [0, 2] },
   spring: { tension: [0, 1], damping: [0, 1], drip: [0, 1] },
   autowah: { baseFrequency: [40, 2000], octaves: [0.5, 8],
-    sensitivity: [-40, 0], Q: [0.2, 10] },
+    sensitivity: [-40, 0], Q: [0.2, 10], smoothing: [10, 400] },
   compressor: { inputGain: [-24, 24], outputGain: [-24, 24] },
   noisegate: { threshold: [-80, 0], attack: [0.001, 0.5], release: [0.01, 2] },
   msComp: { pump: [0, 1] },

@@ -2124,7 +2124,10 @@ function makeAutoWah(ctx, params = {}) {
   const follower = ctx.createBiquadFilter();
   follower.type = 'lowpass';
   follower.Q.value = 0.7071;
-  follower.frequency.value = 5; // Tone.AutoWah's default 200ms follower smoothing.
+  // SMOOTHING is the follower's time in ms, read as Tone reads it: a lowpass at
+  // 1/seconds. Tone's 200 ms default is far too slow for sixteenth chops — at funk
+  // tempos the filter never closes between strokes — so it is a knob, not a constant.
+  follower.frequency.value = 5;
 
   const envelopeMap = ctx.createWaveShaper();
   const tempoMap = ctx.createWaveShaper();
@@ -2171,7 +2174,7 @@ function makeAutoWah(ctx, params = {}) {
 
   const state = {
     rateSync: 0, rateDivision: 2,
-    baseFrequency: 100, octaves: 6, sensitivity: 0, Q: 2, wet: 1, ...params,
+    baseFrequency: 100, octaves: 6, sensitivity: 0, Q: 2, smoothing: 200, wet: 1, ...params,
   };
   let running = false;
   const set = (param, value, seconds = 0.03) => setAudioParam(ctx, param, value, running, seconds);
@@ -2187,6 +2190,7 @@ function makeAutoWah(ctx, params = {}) {
     const sensitivity = Math.max(-40, Math.min(0, state.sensitivity ?? 0));
     set(inputBoost.gain, 10 ** (-sensitivity / 20));
     set(bandpass.Q, Math.max(0.1, Math.min(20, state.Q ?? 2)));
+    set(follower.frequency, 1000 / Math.max(10, Math.min(400, state.smoothing ?? 200)));
 
     const synced = (state.rateSync ?? 0) >= 0.5;
     if (synced) {
@@ -4242,15 +4246,16 @@ export const EFFECTS = [
   { id: 'autofilter', name: 'Auto Filter', cost: 0.58, tone: 'AutoFilter',
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'baseFrequency', 'octaves', 'wet'], defaults: { rateSync: 0, rateDivision: 2, frequency: 1, depth: 1, baseFrequency: 200, octaves: 2.6, wet: 1 }, start: true },
   { id: 'autowah', name: 'Auto Wah', cost: 0.86, custom: makeAutoWah,
-    params: ['rateSync', 'rateDivision', 'baseFrequency', 'octaves', 'sensitivity', 'Q', 'wet'],
-    defaults: { rateSync: 0, rateDivision: 2, baseFrequency: 100, octaves: 6, sensitivity: 0, Q: 2, wet: 1 },
+    params: ['rateSync', 'rateDivision', 'baseFrequency', 'octaves', 'sensitivity', 'Q', 'smoothing', 'wet'],
+    defaults: { rateSync: 0, rateDivision: 2, baseFrequency: 100, octaves: 6, sensitivity: 0, Q: 2, smoothing: 200, wet: 1 },
     ranges: {
       baseFrequency: { min: 40, max: 2000, step: 10, unit: 'Hz', log: true },
       octaves: { min: 0.5, max: 8, step: 0.1, unit: 'oct' },
       sensitivity: { min: -40, max: 0, step: 1, unit: 'dB' },
       Q: { min: 0.2, max: 10, step: 0.1 },
+      smoothing: { min: 10, max: 400, step: 1, unit: 'ms', log: true },
     },
-    labels: { baseFrequency: 'BASE FREQ', octaves: 'OCTAVES', sensitivity: 'SENSITIVITY' } },
+    labels: { baseFrequency: 'BASE FREQ', octaves: 'OCTAVES', sensitivity: 'SENSITIVITY', smoothing: 'SMOOTHING' } },
   { id: 'autopanner', name: 'Auto Panner', cost: 0.46, tone: 'AutoPanner',
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'wet'], defaults: { rateSync: 0, rateDivision: 2, frequency: 1, depth: 1, wet: 1 }, start: true },
   { id: 'distortion', name: 'Distortion', cost: 0.25, tone: 'Distortion',
@@ -4999,35 +5004,65 @@ const webkitLive = (ctx) => {
 // inside Tone's LFOs and crossfades. So while an effect is built (createEffect) every shaper the
 // context makes is noted against it — ours and Tone's alike, through the context's own
 // createWaveShaper — and when the mixer disposes the effect (disposeLinks) they go back on a
-// shelf for the next effect to take, curve and oversampling reset. A shaper holds no audio, so
-// one taken from the shelf carries nothing of the last song. Chromium frees them: there, and
-// offline, nothing changes.
+// shelf for the next effect to take, curve and oversampling reset. Chromium frees them: there,
+// and offline, nothing changes.
+//
+// A shelved shaper must have nothing wired INTO it, and disposing the effect does not see to
+// that. `node.disconnect()` cuts the shaper's outputs; what feeds it belongs to someone else, and
+// Tone's dispose leaves a Signal's constant source wired on — a CrossFade's fade into its
+// GainToAudio shaper, the widener's WIDTH into madeSide's law. So a shaper came off the shelf
+// with a DC input still on it, and whatever took it next played that DC through its own curve
+// from the moment it was connected (26 Oct 2026: after Gravity, CORPORATE KOMBAT's driven
+// shaker and conga took seven such shapers — every hit a slab at the curve's end, clicking on
+// and off for the second or two until the shelf ran out; heard on iPhone and iPad). So every
+// connection into a pooled-context shaper is noted, and releasing it cuts exactly those.
 const SHAPER_POOLS = new WeakMap();   // ctx → shaper[]
+const SHAPER_FEEDS = new WeakMap();   // shaper → Set of the nodes connected into it
 let collectingShapers = null;
+let feedsNoted = false;
+function noteShaperFeeds() {
+  if (feedsNoted) return;
+  feedsNoted = true;
+  const connect = AudioNode.prototype.connect;
+  AudioNode.prototype.connect = function (dest, ...rest) {
+    const feeds = dest && SHAPER_FEEDS.get(dest);
+    if (feeds) feeds.add(this);
+    return connect.call(this, dest, ...rest);
+  };
+}
 function shaperPoolFor(ctx) {
   if (!webkitLive(ctx)) return null;
   let pool = SHAPER_POOLS.get(ctx);
   if (pool) return pool;
   pool = [];
   SHAPER_POOLS.set(ctx, pool);
+  noteShaperFeeds();
   const make = BaseAudioContext.prototype.createWaveShaper;
   ctx.createWaveShaper = function createWaveShaper() {
     let node = pool.pop();
     if (node) {
       try { node.curve = null; } catch { /* a browser that will not take null keeps the old one until set */ }
       node.oversample = 'none';
-    } else node = make.call(ctx);
+    } else {
+      node = make.call(ctx);
+      SHAPER_FEEDS.set(node, new Set());
+    }
     if (collectingShapers) collectingShapers.push(node);
     return node;
   };
   return pool;
 }
-/** The mixer has disposed `link` (disposeLinks): its shapers back on the shelf. */
+/** The mixer has disposed `link` (disposeLinks): its shapers, unwired both ways, back on the shelf. */
 export function releaseEffectShapers(ctx, link) {
   const pool = ctx && SHAPER_POOLS.get(ctx);
   if (!pool || !link?.shapers?.length) return;
   for (const node of link.shapers) {
     try { node.disconnect(); } catch { /* fine */ }
+    const feeds = SHAPER_FEEDS.get(node);
+    if (feeds) {
+      for (const src of feeds) { try { src.disconnect(node); } catch { /* already cut */ } }
+      feeds.clear();
+    }
     pool.push(node);
   }
   link.shapers = null;
