@@ -60,7 +60,9 @@ try {
   await page.screenshot({path:'work/mockups/banger-section-effects/intro-inspector.png',fullPage:true});
   await page.locator('#askok').click(); await waitPosts(1);
   const first = generated, intro = first.form.find(x=>x.type==='intro');
-  const row = first.banger.options.sectionFx.assignments[intro.id][0];
+  // The inspector's block is the Club form's intro; a take that drew another Club Shape keeps it there.
+  const introKey = 'club:intro:1';
+  const row = first.banger.options.sectionFx.assignments[introKey][0];
   assert.equal(row.chain[0].params.wet,.41); assert.equal(row.chain[0].params.feedback,.36);
   assert.equal(row.chain[0].params.division,.75); assert.equal(first.banger.options.form.sections,null);
   const baseline = generateBanger({riff:first.banger.riff,seed:first.banger.seed, options:{...first.banger.options,sectionFx:{mode:'off'}}});
@@ -77,7 +79,7 @@ try {
   await page.locator('.bgblock.on').press('Alt+ArrowRight');
   assert.equal(await page.locator('[data-fx-param="wet"]').inputValue(),'0.41','assignment follows moved/renamed/resized block');
   await page.locator('#askok').click(); await waitPosts(2);
-  assert.equal(generated.banger.options.sectionFx.assignments[intro.id][0].chain[0].params.wet,.41);
+  assert.equal(generated.banger.options.sectionFx.assignments[introKey][0].chain[0].params.wet,.41);
   await page.locator('#navbtn').click(); await page.locator('#bangermodify').click();
   await choose(1);
   assert.equal(await page.locator('#bgfstype').isDisabled(),true);
@@ -92,7 +94,7 @@ try {
   assert.equal(posts[2].direction,'modify');
   assert.deepEqual(generated.bank,posts[1].generated.bank,'FX modification retains the notes');
   await page.locator('#navbtn').click(); await page.locator('#bangeragain').click(); await waitPosts(4);
-  assert.equal(generated.banger.options.sectionFx.assignments[intro.id][0].chain[0].params.wet,.3,'Remix retains explicit settings');
+  assert.equal(generated.banger.options.sectionFx.assignments[introKey][0].chain[0].params.wet,.3,'Remix retains explicit settings');
   await page.locator('#navbtn').click(); await page.locator('#bangersettings').click(); await choose(1);
   await page.locator('#bgformreset').click(); await choose();
   assert.equal(await page.locator('[data-fx-row]').count(),0,'form reset clears explicit assignments');

@@ -22,6 +22,7 @@ const { riffFromNotes, DEFAULT_SIMPLE } = await import('../src/game/banger/riff.
 const { makeBanger, RECIPE_EXPRESSION } = await import('../src/game/banger/make.js');
 const { ClubVoices, laneBars } = await import('../src/game/banger/club-voices.js');
 const { midi } = await import('../tools/lib/banger/theory.js');
+const { levelWindow, predictedProcessedPart, soundOf } = await import('../tools/lib/banger/levels.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -188,7 +189,17 @@ const tones = (v) => (v == null ? [] : [...new Set([].concat(v))]);
         });
       }
       if (!(Math.sign(out.mix.lanes[stab].pan) === -Math.sign(out.mix.lanes[chuck].pan) && out.mix.lanes[stab].pan !== 0)) problems.push(`${style}/${mood}/${seed}: not panned apart`);
-      if (!(out.mix.lanes[chuck].gain < out.mix.lanes[stab].gain)) problems.push(`${style}/${mood}/${seed}: chucks ${out.mix.lanes[chuck].gain} not under stabs ${out.mix.lanes[stab].gain}`);
+      // the chucks sit CHUCK_UNDER_DB under the stabs as the level model hears them (index.js chuckFader) —
+      // not on the faders: a sparse hand's chucks are quieter to start with, and their fader comes up past the stabs'
+      {
+        const sb = laneBars(out.bank, stab), cb = laneBars(out.bank, chuck);
+        const win = levelWindow(out.form, (b) => !!sb[b]?.notes?.some((v) => v != null));
+        const heard = (parts, lane, id) => predictedProcessedPart({ bars: parts.slice(win[0], win[1] + 1).map((p) => p || null), bpm: out.bank.bpm, lane, sound: soundOf({ id }), strip: out.mix.lanes[lane] });
+        const hs = heard(sb, stab, sv), hc = heard(cb, chuck, cv);
+        const raw = hs - hc;
+        const under = (hc + out.mix.lanes[chuck].gain) - (hs + out.mix.lanes[stab].gain);
+        if (raw >= -12 && raw <= 6 && !(Math.abs(under - G.CHUCK_UNDER_DB) <= 0.6)) problems.push(`${style}/${mood}/${seed}: chucks heard ${under.toFixed(1)} dB under the stabs, not ${G.CHUCK_UNDER_DB}`);
+      }
       // at most two guitar lanes more than the picked take, and the chucks follow the stabs' automation
       const pick = make({ style, mood, parts: { guitar: 'picked' }, ...extra }, seed);
       if (lanesOf(out) - lanesOf(pick) > 2) problems.push(`${style}/${mood}/${seed}: ${lanesOf(out) - lanesOf(pick)} lanes more`);

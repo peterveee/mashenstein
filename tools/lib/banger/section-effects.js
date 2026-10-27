@@ -4,6 +4,7 @@ import { expandOrder } from '../../../src/data/arrangements.js';
 import { SECTION_EFFECTS, MAX_EFFECTS, EFFECT_BY_ID } from '../../../src/engine/effects.js';
 import { typeOf as sectionType } from './form-types.js';
 import { productionFeatures } from './production.js';
+import { CLUB_SHAPES } from './templates.js';
 import { voiceOfLane } from './expression.js';
 
 import { REGION_FX_STYLES, styleSectionRequests, colourSectionChain, limitSectionEchoes, chooseSectionRequests } from './section-style-fx.js';
@@ -212,7 +213,8 @@ export function applySectionEffects({ automation, options, style, form, bars, la
       requests.push({ role, f, a, z, effect, origin: `Rule ${slot === 'first' ? 1 : 2}` });
     }
   }
-  for (const f of form) for (const [assignmentIndex, row] of (config.assignments?.[f.id] || []).entries()) {
+  const club = clubTwins(form);
+  for (const f of form) for (const [assignmentIndex, row] of (config.assignments?.[f.id] || config.assignments?.[club.get(f)] || []).entries()) {
     const [a, z] = sectionEffectRange(f, row.range);
     if (row.enabled === false) {
       decisions.push({ role: row.part, section: f.label, sectionId: f.id, assignmentIndex, origin: 'Section choice',
@@ -298,6 +300,21 @@ export function sectionEffectRange(f, range = 'whole') {
   if (range === 'second') a = half;
   if (range === 'last2') a = Math.max(a, z - 32);
   return [a, z];
+}
+/**
+ * The Club block each section of a Club Shape stands in for (index.js CLUB_SHAPES): the inspector
+ * places effects on the plain Club form's blocks (`club:intro:1`), and a take that drew another
+ * shape (`peaks:intro`) keeps them on the same section by type and occurrence.
+ */
+const SHAPE_IDS = new Set(CLUB_SHAPES.map((w) => w.id).filter((id) => id !== 'club'));
+function clubTwins(form) {
+  const seen = {}, out = new Map();
+  for (const f of form) {
+    const kind = f.type || f.role;
+    seen[kind] = (seen[kind] || 0) + 1;
+    if (SHAPE_IDS.has(String(f.id).split(':')[0])) out.set(f, `club:${kind}:${seen[kind]}`);
+  }
+  return out;
 }
 /** Old rules retain their density-sensitive policy until a parameter is edited. */
 export function expandSectionRules(config = {}, form) {
