@@ -6369,7 +6369,7 @@ delete CATALOGUE[copyId];
     return Number.isFinite(z) && freezeZ > z;
   }), 'the freeze progress panel stacks above every window that could cover it');
 
-  const closeMenuBody = entry.slice(entry.indexOf('const closeMenu = () => {'),
+  const closeMenuBody = entry.slice(entry.indexOf('const closeMenu = ('),
     entry.indexOf('// Anything that is not the popup itself dismisses it.'));
   assert(/if \(!\$\('regionedit'\)\.classList\.contains\('freezeprogress'\)\)/.test(closeMenuBody),
     'a click elsewhere on the desk does not dismiss a running freeze’s progress panel');

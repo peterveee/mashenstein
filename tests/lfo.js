@@ -30,10 +30,10 @@ assert.equal(panelSpec(voice).pillLabels.samplehold, 'S&H', 'sample-and-hold has
 assert.equal(panelSpec(voice).pillLabels.pitch, 'PITCH', 'pitch has a clear compact pill label');
 assert.equal(panelSpec(voice).pillLabels.tempo, 'TEMPO', 'tempo sync has a clear compact pill label');
 const rate = rows.find((r) => r.path === '$layer.lfo.rate');
-assert.equal(rate.scale({ layer: { lfo: { type: 'samplehold' } } }), 3,
-  'sample-and-hold rate uses a cubic low-end taper');
-assert.equal(rate.scale({ layer: { lfo: { type: 'sine' } } }), 1,
-  'ordinary LFO rates keep their linear response');
+// Since 27 Oct 2026 every wave shares one log taper down to 0.01 Hz, so sample-and-hold
+// no longer needs a cube of its own.
+assert.equal(rate.taper, 'log', 'LFO rate spreads the slow end on a log taper');
+assert.equal(rate.floor, 0.01, 'and the taper reaches down to 0.01 Hz');
 
 const source = readFileSync(new URL('../src/engine/voices.js', import.meta.url), 'utf8');
 assert(source.includes("lfoSpec.type === 'samplehold'"), 'the engine selects the S&H path');
