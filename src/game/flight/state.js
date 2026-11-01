@@ -19,6 +19,7 @@ import {
   drawPassage, drawFlightHero, drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE,
   plate, warmPassage, currentFlightLayout, flightHudTop,
   drawFlightBalloon, drawBalloonBasket, drawBalloonBurst, drawBackupMachine, backupCopterCentre,
+  drawGiantPlug, drawPassageReveal,
 } from './scene.js';
 
 const smooth01 = (x) => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
@@ -32,6 +33,8 @@ const MIDPOINT_LINES = {
 const ACTION_INK = { jump: '#3fbf5a', slide: '#72d8f0' };
 const CHROME_SHIM = {};
 const HUD_IN = 0.55;
+// Tub travel per unit of finger travel when steering by drag (touch).
+const DRAG_GAIN = 1.6;
 
 // The run's pause plates, laid out the same way: a centred row of 120x26 at
 // y 230 in landscape, a card with a row of tall plates in portrait.
@@ -64,6 +67,8 @@ export class FlightPrototypeState {
     this.carried = carried; this.hull = hull; this.arrive = arrive; this.actNo = act;
     this.panelIdx = 0; this.panelT = 0; this.hudT = arrive ? 0 : HUD_IN;
     this.hudTitle = 'FLIGHT LAB';
+    // The reveal's clock, carried on from the run's at a handover.
+    this.revealT = Number.isFinite(arrive?.revealT) ? arrive.revealT : 99;
   }
 
   enter() {
@@ -134,7 +139,7 @@ export class FlightPrototypeState {
   update(dt) {
     if (H !== this.height || presentationFrame().revision !== this.revision) this.relayout();
     if (Input.usingTouch !== this.touchButtons || chrome.gen !== this.chromeGen) this.setButtons();
-    this.hudT += dt;
+    this.hudT += dt; if (!this.paused) this.revealT += dt;
     const was = this.panel();
     if (!was && (Input.pressed('escape') || Input.pressed('pause'))) this.paused = true;
     // The press that opened a card is spent: the card reads input from the next frame.
@@ -144,7 +149,54 @@ export class FlightPrototypeState {
     if (this.panel()) this.panelChanged();
   }
 
-  step(dt) { this.model.update(dt, Input.held('jump'), Input.held('slide')); }
+  // On touch the picture is a steering surface too: put a finger anywhere off
+  // the discs and drag it up or down, and the tub follows the drag (the tub
+  // goes where the finger has moved it from where it started), easing to a
+  // hover when the finger stops or lifts. The discs still work alongside it.
+  // The model counts what happened; the sounds follow the counts, once each.
+  soundCounts() {
+    const m = this.model, c = this.counts || (this.counts = { fired: 0, pinged: 0, warned: 0, hurts: 0, phase: m.phase });
+    if ((m.fired || 0) > c.fired) { if (m.fired % 2) Audio.sfx('flightShot'); c.fired = m.fired; }   // every other pellet
+    if ((m.pinged || 0) > c.pinged) { Audio.sfx('flightPing'); c.pinged = m.pinged; }
+    if ((m.warned || 0) > c.warned) { Audio.sfx('flightWarn'); c.warned = m.warned; }
+    if ((m.hurts || 0) > c.hurts) { Audio.sfx('flightHurt'); c.hurts = m.hurts; }
+    if (m.phase !== c.phase) {
+      if (m.phase === 'fall' || (m.phase === 'won' && m.pattern.final)) Audio.sfx('flightPop');
+      if (m.phase === 'dead') Audio.sfx('powerDown');
+      if (m.phase === 'midpoint') Audio.sfx('smallBoom');
+      c.phase = m.phase;
+    }
+  }
+  step(dt) {
+    let up = Input.held('jump'), down = Input.held('slide');
+    const steer = this.steerTarget();
+    if (steer != null && !up && !down) {
+      const dy = steer - this.model.y, dead = 6 * this.model.layout.scale;
+      up = dy < -dead; down = dy > dead;
+    }
+    this.model.update(dt, up, down);
+    this.soundCounts();
+  }
+  steerTarget() {
+    let finger = null;
+    for (const [id, t] of Input.touches || []) {
+      if (t.isButton || t.action) continue;
+      finger = { id, t };
+      break;
+    }
+    if (!finger) { this.drag = null; return null; }
+    if (!this.drag || this.drag.id !== finger.id) this.drag = { id: finger.id, fy: finger.t.y, my: this.model.y };
+    const l = this.model.layout;
+    const target = this.drag.my + (finger.t.y - this.drag.fy) * DRAG_GAIN;
+    // A drag past the band's edge re-anchors, so reversing answers at once.
+    const lo = l.top + l.radius, hi = l.bottom - l.radius;
+    if (target < lo || target > hi) {
+      const c = Math.max(lo, Math.min(hi, target));
+      this.drag.my = c; this.drag.fy = finger.t.y;
+      return c;
+    }
+    return target;
+  }
 
   updatePanel(dt) {
     this.panelT += dt;
@@ -206,6 +258,9 @@ export class FlightPrototypeState {
     const m = this.model, l = m.layout;
     const beat = Audio.songBeat();
     drawPassage(d, { scroll: m.scroll, top: l.top, bottom: l.bottom, ...this.passageBanks() });
+    if (Number.isFinite(this.arrive?.plugX)) drawGiantPlug(d, this.arrive.plugX - m.scroll, l.bottom, l.scale);
+    this.paintScenery(d);
+    drawPassageReveal(d, { top: l.top, bottom: l.bottom, scroll: m.scroll, rt: this.revealT, act: this.actNo, heroX: l.px, heroY: m.y, s: l.scale });
     const t = this.artClock();
     if (m.warning && m.warning.kind === 'column') this.paintColumnWarning(d, m.warning.gapY, m.pattern.columnGap, 'spark');
     else if (m.warning) {
@@ -229,6 +284,8 @@ export class FlightPrototypeState {
     d.globalAlpha = 1;
     this.paintBoss(d, beat);
   }
+  // Scenery behind the actors that a subclass owns (the socket, 6-3's shutter).
+  paintScenery() {}
   // The pictures' clock: the model's, carried on from the run's at a handover
   // so faces, rotors and jets do not jump on the swap frame.
   artClock() { return this.model.t + (this.arrive?.clock || 0); }
@@ -269,7 +326,7 @@ export class FlightPrototypeState {
   // BACKUP POWER's beam: the band it will fill while it charges, then the beam.
   paintBeam(d, t) {
     const m = this.model, l = m.layout, s = l.scale, ms = l.mscale || s;
-    const half = BACKUP.band * s, x1 = l.bx - 50 * ms;
+    const half = Math.max(4, m.beamHalf() - 19 * s), x1 = l.bx - 50 * ms;
     if (!m.beam.on) {
       const k = Math.min(1, m.beam.t / BACKUP.charge);
       d.fillStyle = `rgba(255,96,64,${0.08 + 0.14 * k})`;
@@ -326,10 +383,11 @@ export class FlightPrototypeState {
     };
     if (m.phase === 'fall') {
       const ft = m.fallTime;
+      const popY = (Number.isFinite(m.popY) ? m.popY : m.by) + 7 * s;
       // Burst, then he and the tub drop out of the bottom of the frame.
       const drop = ft > 0.12 ? 0.5 * 1150 * (ft - 0.12) ** 2 : 0;
-      if (hitY + drop < this.height + 220) drawBalloonBasket(d, l.bx, hitY + drop, s, {});
-      drawBalloonBurst(d, l.bx, hitY, s, ft / 0.55);
+      if (popY + drop < this.height + 220) drawBalloonBasket(d, l.bx, popY + drop, s, {});
+      drawBalloonBurst(d, l.bx, popY, s, ft / 0.55);
       // BACKUP POWER rises from below, the cables drawing the arcade's power.
       if (ft > 2.8) {
         const rise = (1 - smooth01((ft - 2.8) / 2.4)) * (this.height - m.by + 200 * ms);
@@ -350,6 +408,7 @@ export class FlightPrototypeState {
     const m = this.model, l = m.layout, s = this.hudScale();
     const portrait = isPhonePortraitPresentation();
     const top = this.hudTop + this.hudOffset();
+    if (!portrait) { this.paintSlimHud(d, top); return; }
     // Portrait leaves the PAUSE disc its corner.
     const right = portrait ? W - 76 : W - 12;
     drawPanel(d, 12, top + 7, right - 12, 53, 8, 'rgba(24,20,33,0.93)', { border: 'rgba(255,255,255,0.14)' });
@@ -373,7 +432,7 @@ export class FlightPrototypeState {
     plate(d, bx + 2, ly - 4, Math.max(0, (bw - 4) * frac), 8, m.hitFlash ? '#fff3ce' : backup ? '#ff8a5c' : '#eab35a', 3);
     if (!backup) { d.fillStyle = '#171321'; d.fillRect(bx + bw / 2, ly - 6, 2, 12); }
     if (m.lead > 0 && m.phase === 'first' || (m.lead > 0 && m.phase === 'second' && this.showHintOnRetry)) {
-      drawTextCenteredForPresentation(d, 'HOLD JUMP TO RISE  ·  SLIDE TO DROP', W / 2,
+      drawTextCenteredForPresentation(d, Input.usingTouch ? 'DRAG UP OR DOWN  ·  OR HOLD JUMP / SLIDE' : 'HOLD JUMP TO RISE  ·  SLIDE TO DROP', W / 2,
         textYForMid(l.top + 22, s * 0.9, 'bold'), '#e8dcba', s * 0.9, 'bold');
     }
     const said = m.phase === 'midpoint' ? (MIDPOINT_LINES[this.actNo] || MIDPOINT_LINES[1])
@@ -384,6 +443,33 @@ export class FlightPrototypeState {
       drawTextCenteredForPresentation(d, said[1], W / 2, textYForMid(l.top + 40, s * 0.8, 'ui'), '#675b75', s * 0.8, 'ui');
     }
     if (portrait) this.paintCaptions(d);
+  }
+
+  // Landscape: one row the height of the run's status pill — hull cells, the
+  // boss bar with its name inside it, nothing else.
+  paintSlimHud(d, top) {
+    const m = this.model, l = m.layout;
+    const backup = m.pattern.final && (m.phase === 'final' || m.phase === 'won' || (m.phase === 'fall' && m.fallTime > 3));
+    const frac = !backup ? m.hp / 100 : m.phase === 'fall' ? smooth01((m.fallTime - 3) / 2.2) : m.finalHp / BACKUP.hp;
+    const y = top + 4, h = 16;
+    drawPanel(d, 6, y, W - 12, h, 6, 'rgba(24,20,33,0.85)', { border: 'rgba(255,255,255,0.12)' });
+    let x = 12;
+    for (let i = 0; i < m.maxHull; i++) { plate(d, x, y + 4, 6, 8, i < m.hull ? '#7be38b' : '#3a3346', 1.5); x += 9; }
+    const bx = x + 6, bw = W - 18 - bx;
+    plate(d, bx, y + 3, bw, h - 6, '#41364c', 3);
+    plate(d, bx + 1, y + 4, Math.max(0, (bw - 2) * frac), h - 8, m.hitFlash ? '#fff3ce' : backup ? '#ff8a5c' : '#eab35a', 2.5);
+    if (!backup) { d.fillStyle = '#171321'; d.fillRect(bx + bw / 2, y + 3, 1.5, h - 6); }
+    drawTextForPresentation(d, backup ? 'BACKUP POWER' : 'EGGSHELL', bx + 5, textYForMid(y + h / 2, 0.75, 'bold'), '#2a2132', 0.75, 'bold');
+    const said = m.phase === 'midpoint' ? (MIDPOINT_LINES[this.actNo] || MIDPOINT_LINES[1])
+      : m.phase === 'fall' && m.fallTime > 1.9 && m.fallTime < 4.2 ? ['BACKUP. POWER.', 'DRAWING ON THE ARCADE...'] : null;
+    if (said) {
+      drawPanel(d, 90, l.top + 4, W - 180, 34, 8, 'rgba(238,234,242,0.96)');
+      drawTextCenteredForPresentation(d, said[0], W / 2, textYForMid(l.top + 16, 1, 'bold'), '#30273c', 1, 'bold');
+      drawTextCenteredForPresentation(d, said[1], W / 2, textYForMid(l.top + 30, 0.75, 'ui'), '#675b75', 0.75, 'ui');
+    } else if (m.lead > 0 && m.phase === 'first') {
+      drawTextCenteredForPresentation(d, Input.usingTouch ? 'DRAG UP OR DOWN  ·  OR HOLD JUMP / SLIDE' : 'HOLD JUMP TO RISE  ·  SLIDE TO DROP', W / 2,
+        textYForMid(l.top + 12, 0.85, 'bold'), '#e8dcba', 0.85, 'bold');
+    }
   }
 
   // The run's portrait legend under the two discs: same words, same place.

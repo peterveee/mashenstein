@@ -68,6 +68,8 @@ export function finishFlightCheckpoint(save, pending, apply, seconds, hits) {
   if (current(save, pending.stageId) !== pending) return null;
   const result = { ...pending.result, reason: null, time: (pending.result.time || 0) + seconds,
     damageTaken: (pending.result.damageTaken || 0) + hits };
+  // TAKE NO DAMAGE covers the whole stage, the flight included.
+  if (hits > 0 && pending.result.stage?.challenge?.type === 'noDamage') result.challengeDone = false;
   drop(save, pending.stageId);
   const cab = ACT_ENDINGS[pending.stageId]?.cabinet || 'rhythm';
   const c = save.slot.campaign;
@@ -84,7 +86,10 @@ export function abandonFlightCheckpoint(save, pending, apply, reason, seconds = 
   const result = { ...pending.result, success: false, reason,
     time: (pending.result.time || 0) + seconds,
     damageTaken: (pending.result.damageTaken || 0) + hits,
-    challengeDone: false };
+    challengeDone: false,
+    // A failed run is not paid the clock's seconds at the tape.
+    coins: Math.max(0, (pending.result.coins || 0) - (pending.result.timeBonusCoins || 0)),
+    timeBonusCoins: 0, timeLeft: null };
   drop(save, pending.stageId);
   if (!apply) { save.persist(); return { result, gains: null }; }
   return { result, gains: apply(save, result) };

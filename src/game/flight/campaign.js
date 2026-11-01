@@ -1,28 +1,35 @@
 import { FlightPrototypeState } from './state.js';
-import { W, H, isPhonePortraitPresentation } from '../../engine/renderer.js';
+import { W, H, isPhonePortraitPresentation, presentationFrame } from '../../engine/renderer.js';
 import { Audio } from '../../engine/audio.js';
 import { MusicDirector } from '../../engine/music-director.js';
 import { CABINET_BY_ID } from '../../data/cabinets.js';
 import { drawPanel, drawTextCenteredForPresentation, textYForMid } from '../../engine/sprites.js';
-import { drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, plate } from './scene.js';
+import { drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, plate, drawSocketPanel, drawShutter } from './scene.js';
 import { ACT_ENDINGS } from './acts.js';
 
 // The flight as the end of a stage. The run owns everything up to the moment
 // the passage fills the screen (run.js updateFlightExit); this state owns the
 // fight from there, the checkpoint writes, and the escape that ends the act.
 // No campaign writes in draw.
-const VICTORY_T = 3.5;
+// The ending, in beats of the victory clock: Eggshell limps off (acts I and II)
+// or the machine gives out (III); the tub flies on to the arcade's mains
+// socket on its breaker panel; the hero pushes the plug home; the bank's
+// lamps come on from it; the plate says what has been won. Peter, 1 Nov:
+// "should there be some sort of proper ending, not just eggshell flying off?"
+const END = { socketIn: 1.6, reach: 3.2, seat: 3.9, lamps: 4.3, plate: 5.0, done: 7.2 };
+const ease01 = (x) => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
 const UNPLUGGED_DOWN_T = 1.2;
 
 export class CampaignFlightState extends FlightPrototypeState {
   constructor({ pending, act = ACT_ENDINGS[pending?.stageId] || ACT_ENDINGS['rhythm-3'], settings, musicSong,
-    arrive = null, carried = null, hull = 4,
-    onMidpoint, onComplete, onExit, onRestart, onFail }) {
+    arrive = null, carried = null, hull = 4, banksBefore = null,
+    onMidpoint, onComplete, onExit, onRestart, onFail, onDown }) {
     super({ hero: pending.result.finalHero || 'b33p', seed: pending.seed, onExit, carried, hull, arrive, act: act.act });
     this.pending = pending; this.act = act; this.settings = settings || {};
     this.musicSong = musicSong;
     this.onMidpoint = onMidpoint; this.onComplete = onComplete;
-    this.onRestart = onRestart; this.onFail = onFail;
+    this.onRestart = onRestart; this.onFail = onFail; this.onDown = onDown;
+    this.banksBefore = Number.isFinite(banksBefore) ? banksBefore : Math.max(0, act.bank - 1);
     this.victoryT = 0; this.completed = false; this.downT = null;
     this.seconds = pending.flightSeconds || 0; this.hits = pending.flightHits || 0;
     this.hudTitle = act.hudTitle;
@@ -68,10 +75,12 @@ export class CampaignFlightState extends FlightPrototypeState {
 
   update(dt) {
     if (this.completed) return;
+    // A rotation during the escape or the downed beat still relays.
+    if (H !== this.height || presentationFrame().revision !== this.revision) this.relayout();
     if (this.model.phase === 'won') { if (!this.exitBoss) this.beginVictory(); this.updateVictory(dt); return; }
     if (this.downT != null) {
       this.downT += dt;
-      if (this.downT >= UNPLUGGED_DOWN_T) { this.completed = true; this.onFail?.(this.seconds, this.hits); }
+      if (this.downT >= UNPLUGGED_DOWN_T) { this.completed = true; this.onFail?.(); }
       return;
     }
     super.update(dt);
@@ -85,7 +94,7 @@ export class CampaignFlightState extends FlightPrototypeState {
       Audio.sfx('checkpoint');
     }
     if (m.phase === 'won') this.beginVictory();
-    if (m.phase === 'dead' && !this.offerRetry()) this.downT = 0;
+    if (m.phase === 'dead' && !this.offerRetry() && this.downT == null) { this.downT = 0; this.onDown?.(this.seconds, this.hits); }
   }
 
   beginVictory() {
@@ -111,7 +120,15 @@ export class CampaignFlightState extends FlightPrototypeState {
       if (e.t < 0.55) { e.y += Math.sin(e.t / 0.55 * Math.PI) * 26 * dt; e.jx = Math.sin(e.t * 61) * 2.2; }
       else { e.jx = 0; e.vx += 240 * dt; e.x += e.vx * dt; e.y -= (30 + (e.t - 0.55) * 46) * dt; }
     }
-    if (this.victoryT >= VICTORY_T + (this.model.pattern.final ? 1.2 : 0)) { this.completed = true; this.onComplete?.(this.seconds, this.hits); }
+    // The socket panel comes in from the right; the tub rises or drops to its
+    // line, and the plug goes in on the beat its cue was placed for.
+    const vt = this.victoryT, l = this.model.layout;
+    const sx = W + 80 - ease01((vt - END.socketIn) / 1.2) * (W + 80 - (l.bx - 10));
+    this.socket = { x: sx, y: (l.top + l.bottom) / 2, seat: ease01((vt - END.reach) / (END.seat - END.reach)) };
+    const want = this.socket.y - 2;
+    this.model.y += (want - this.model.y) * Math.min(1, dt * 3);
+    if (vt >= END.seat && !this.plugged) { this.plugged = true; Audio.sfx('socketDrop'); Audio.sfx('switchFlick', { inSeconds: 0.25 }); }
+    if (vt >= END.done) { this.completed = true; this.onComplete?.(this.seconds, this.hits); }
   }
 
   // The banks earlier acts restored are on; this act's comes on behind him as he
@@ -119,14 +136,15 @@ export class CampaignFlightState extends FlightPrototypeState {
   // Act III's BACKUP POWER takes the lit ones back, from the right, as it
   // assembles, and its defeat brings all three on at once.
   passageBanks() {
-    const m = this.model, before = Math.max(0, this.act.bank - 1);
+    const m = this.model, before = this.banksBefore;
     if (m.pattern.final) {
       if (m.phase === 'fall') return { banks: before, stealX: m.fallTime < 2 ? Infinity : W - (m.fallTime - 2) * 520 };
       if (m.phase === 'final') return { banks: 0 };
-      if (m.phase === 'won') return { banks: 0, waveBank: 'all', waveX: (this.victoryT - 0.8) * 420 };
+      if (m.phase === 'won') return { banks: 0, waveBank: 'all', waveX: this.plugged ? (this.victoryT - END.lamps) * 620 : -Infinity };
     }
     if (m.phase !== 'won') return { banks: before };
-    return { banks: before, waveBank: before, waveX: (this.victoryT - 0.5) * 520 };
+    // The bank comes on from the socket once the plug is in.
+    return { banks: before, waveBank: before, waveX: this.plugged ? (this.victoryT - END.lamps) * 620 : -Infinity };
   }
 
   paintBoss(d, beat) {
@@ -144,6 +162,24 @@ export class CampaignFlightState extends FlightPrototypeState {
       { t: m.t + this.victoryT, beat, mood: 'sour', hitT: 0.5 + 0.5 * Math.max(0, 1 - this.victoryT) });
   }
 
+  paintScenery(d) {
+    const m = this.model, l = m.layout;
+    if (m.phase === 'won' && this.socket) {
+      drawSocketPanel(d, this.socket.x, this.socket.y, l.scale, this.socket.seat, this.victoryT);
+    }
+    // 6-3: the shutter he drops behind him as he leaves the game. It starts
+    // down while the hero is still crossing and shuts once the whole tub is
+    // through: it rides the passage's own scroll, so it never catches him.
+    if (this.act.act === 2 && Number.isFinite(this.arrive?.plugX) && this.revealT < 6) {
+      const x = this.arrive.plugX - 300 - m.scroll;
+      const drop = l.top + ease01((this.revealT - 0.9) / 0.5) * (l.bottom - l.top + 24);
+      if (x > -60 && x < W + 60) {
+        drawShutter(d, x, l.top - 24, drop, l.scale);
+        if (!this.slammed && this.revealT >= 1.4) { this.slammed = true; Audio.sfx('gateSlam'); }
+      }
+    }
+  }
+
   paint(d) {
     super.paint(d);
     if (this.model.phase === 'won') this.paintVictory(d);
@@ -154,14 +190,14 @@ export class CampaignFlightState extends FlightPrototypeState {
   // one pip per act lit up to this one.
   paintVictory(d) {
     const l = this.model.layout, s = isPhonePortraitPresentation() ? 1.45 : 1;
-    const k = Math.min(1, Math.max(0, (this.victoryT - 0.9) / 0.4));
+    const k = Math.min(1, Math.max(0, (this.victoryT - END.plate) / 0.4));
     if (k <= 0) return;
     const y = l.top + 10 + (1 - k) * -18, w = Math.min(W - 60, 300 * s), x = (W - w) / 2, h = 54 * s;
     drawPanel(d, x, y, w, h, 10, `rgba(33,26,43,${0.93 * k})`, { border: 'rgba(255,218,135,0.5)', shadow: true });
     d.globalAlpha = k;
     drawTextCenteredForPresentation(d, this.act.bankText, W / 2, textYForMid(y + 18 * s, s * 1.15, 'bold'), '#ffda87', s * 1.15, 'bold');
     drawTextCenteredForPresentation(d, this.act.completeText, W / 2, textYForMid(y + 36 * s, s * 0.9, 'bold'), '#e3dce9', s * 0.9, 'bold');
-    for (let i = 0; i < 3; i++) plate(d, W / 2 - 28 * s + i * 22 * s, y + h - 9 * s, 12 * s, 5 * s, i < this.act.bank ? '#f5c871' : '#55495c', 2);
+    for (let i = 0; i < 3; i++) plate(d, W / 2 - 28 * s + i * 22 * s, y + h - 9 * s, 12 * s, 5 * s, i < (this.model.pattern.final ? 3 : this.banksBefore + 1) ? '#f5c871' : '#55495c', 2);
     d.globalAlpha = 1;
   }
 

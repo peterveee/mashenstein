@@ -5142,8 +5142,10 @@ const TROPHY_BOSSES = [
   // Act I ends in Eggshell's flight now (the Dust Devil was retired as a boss,
   // 1 Nov 2026): its relic is the panel that comes off his tub at halfway.
   { id: 'rhythm', label: 'SIDE PANEL', relic: 'sidepanel' },
-  { id: 'neon', label: 'COPTER', relic: 'copter' },
-  { id: 'surge', label: 'FINAL STRIP', relic: 'powerstrip' },
+  // Act II: his rotor, bent, off the copter that limped away at 6-3. Act III:
+  // BACKUP POWER's core, burnt out, from the machine he built at 9-3 (1 Nov 2026).
+  { id: 'neon', label: 'ROTOR', relic: 'rotor' },
+  { id: 'surge', label: 'SPENT CORE', relic: 'core' },
 ];
 
 export class TrophyRoomState {
@@ -5543,6 +5545,39 @@ export class TrophyRoomState {
       ctx.fillStyle = '#6f6a78';
       for (const bx of [-12, 12]) { ctx.beginPath(); ctx.arc(bx, -9, 1.4, 0, Math.PI * 2); ctx.fill(); }
       ctx.strokeStyle = '#3c8be0'; ctx.beginPath(); ctx.moveTo(-15, 4); ctx.quadraticCurveTo(-21, 8, -18, 14); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 30, 34, 4);
+      return;
+    }
+    if (relic === 'rotor') {
+      // Two blades on the hub and mast stub, the near one bent down at the tip.
+      ctx.save();
+      ctx.translate(x, y + 16);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#3a3a48'; ctx.lineWidth = 3.2;
+      ctx.beginPath(); ctx.moveTo(-17, -2); ctx.lineTo(0, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(11, 1); ctx.lineTo(16, 7); ctx.stroke();
+      ctx.strokeStyle = '#9a9aa8'; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.moveTo(-15, -2.4); ctx.lineTo(-2, -0.6); ctx.moveTo(2, -0.4); ctx.lineTo(10.5, 0.4); ctx.stroke();
+      ctx.fillStyle = '#3a3a48'; ctx.fillRect(-1.2, 0, 2.4, 12);
+      ctx.fillStyle = '#8a8a98'; ctx.beginPath(); ctx.arc(0, 0, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 30, 34, 4);
+      return;
+    }
+    if (relic === 'core') {
+      // The core in a scorched cradle, cold: dull amber, a crack, a wisp.
+      ctx.save();
+      ctx.translate(x, y + 17);
+      ctx.fillStyle = '#2b2433'; ctx.beginPath(); ctx.roundRect(-13, 1, 26, 12, 2); ctx.fill();
+      ctx.fillStyle = '#c8332c'; ctx.fillRect(-12, 2, 2, 10); ctx.fillRect(10, 2, 2, 10);
+      const g = ctx.createRadialGradient(-3, -4, 1, 0, -1, 10);
+      g.addColorStop(0, '#b98a5a'); g.addColorStop(0.6, '#7a4a2a'); g.addColorStop(1, '#3a2418');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -1, 9.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#1a1210'; ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.moveTo(-2, -10); ctx.lineTo(1, -4); ctx.lineTo(-1, 0); ctx.lineTo(3, 5); ctx.stroke();
+      ctx.strokeStyle = 'rgba(200,196,210,0.45)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(4, -12); ctx.quadraticCurveTo(8, -17, 4, -21); ctx.stroke();
       ctx.restore();
       ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 30, 34, 4);
       return;

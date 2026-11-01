@@ -292,7 +292,9 @@ export function drawCabinetEdge(c, x, w, cabId) {
 // the model's hit line (by + 7); the patches go on as his health goes down.
 // Authored 28x46 with the envelope centred 12.5 down; drawn 56x92 at scale 1.
 import { eggshellBalloonArt as balloonArt } from '../../sprites/props.js';
-export const BALLOON_W = 56, BALLOON_H = 92;
+// The same 28-unit ape as the copter's, so he is the same size in both: the
+// balloon's box is the copter's width (FLIGHT_BOSS_SIZE) by its 46/28 height.
+export const BALLOON_W = FLIGHT_BOSS_SIZE, BALLOON_H = FLIGHT_BOSS_SIZE * 46 / 28;
 const BALLOON_ENV_Y = 12.5 / 46;
 function balloonBox(cx, hitY, s) {
   const w = BALLOON_W * s, h = BALLOON_H * s;
@@ -449,5 +451,207 @@ export function drawRunBalloon(c, x, alt, t) {
   c.translate(x, top + h * 0.56); c.rotate(Math.sin(t * 1.3) * 0.035); c.translate(-x, -(top + h * 0.56));
   c.translate(x - w / 2, top);
   balloonArt(c, w, h, {});
+  c.restore();
+}
+
+// ---------------------------------------------------------------- the drama
+// (docs/ACT_ENDING_TRANSITION_DRAMA.md) Leaving the game: a thick slice of the
+// cabinet's inside crosses the camera, then each act reveals the passage its
+// own way. `rt` is the reveal clock: seconds since the screen began to leave,
+// carried across the handover so both sides paint the same frame.
+const ease01 = (x) => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
+
+// The crossing: glass edge and bezel (the cabinet's), its dark insides — a
+// circuit board, hanging wires — and a close brace, then the casing's back edge.
+export function crossingWidth(portrait) { return portrait ? 300 : 230; }
+export function drawCabinetCrossing(c, x, w, cabId) {
+  const edgeW = Math.round(w * 0.36);
+  // Insides first, the edge over their left side.
+  const ix = x + edgeW * 0.5, iw = w - edgeW * 0.5;
+  c.fillStyle = '#0d1119'; c.fillRect(ix, 0, iw, H);
+  const bx = ix + iw * 0.18, bw = iw * 0.42;
+  const tint = { rhythm: '#203c35', neon: '#1f2a46', surge: '#3a2633' }[cabId] || '#203c35';
+  c.fillStyle = tint; c.fillRect(bx, H * 0.12, bw, H * 0.66);
+  for (let j = 0; j < 6; j++) {
+    c.fillStyle = '#60734d'; c.fillRect(bx + 8 + j * bw / 7, H * 0.16, 2, H * 0.56);
+    c.fillStyle = '#101d21'; c.fillRect(bx + 5 + j * bw / 7, H * (0.26 + (j % 3) * 0.08), 9, H * 0.06);
+  }
+  c.strokeStyle = '#653b39'; c.lineWidth = 4;
+  for (let j = 0; j < 4; j++) {
+    const sx = ix + 10 + j * 9;
+    c.beginPath(); c.moveTo(sx, 0); c.bezierCurveTo(sx + iw * 0.3, H * 0.3, sx - 10, H * 0.55, sx + 20 + j * 12, H); c.stroke();
+  }
+  // The close brace.
+  const br = x + w - 40;
+  c.fillStyle = '#080a11'; c.fillRect(br, 0, 30, H);
+  c.fillStyle = '#30323a'; c.fillRect(br + 4, H * 0.07, 2, H * 0.86);
+  c.fillStyle = '#858b8c'; c.fillRect(br + 6, H * 0.11, 3, 14); c.fillRect(br + 6, H * 0.83, 3, 14);
+  drawCabinetEdge(c, x, edgeW, cabId);
+}
+
+// The service lamps overhead, the dark the passage starts in, the tub's
+// headlight, and per act: 1 lamps come on ahead in sequence (discovery); 2 a
+// low steady dark (pursuit); 3 the lamps fade out toward the balloon and come
+// back slowly (he is drawing power). Local light: banks are drawn separately.
+export function drawPassageReveal(c, o) {
+  const { top, bottom, scroll = 0, rt = 0, act = 1, heroX = 80, heroY = 200, s = 1 } = o;
+  if (rt > 9) return;
+  const lampY = top - 4;
+  const step = 150, first = Math.floor((scroll * 1.0) / step);
+  const off = ((scroll % step) + step) % step;
+  for (let i = -1, x = -off + 60; x < W + 60; i++, x += step) {
+    const order = Math.max(0, x) / W;
+    let lit;
+    if (act === 1) lit = ease01((rt - 0.7 - order * 0.6) * 4);
+    else if (act === 3) lit = Math.max(1 - 0.85 * ease01((rt - 0.7 - (1 - order) * 0.5) * 4), ease01((rt - 4.5) / 2));
+    else lit = 1;
+    void first;
+    c.fillStyle = '#11111b'; c.fillRect(x, lampY - 3, 35, 8);
+    c.fillStyle = `rgba(255,227,158,${0.1 + 0.9 * lit})`; c.fillRect(x + 4, lampY - 1, 27, 3);
+    if (lit > 0.02) {
+      const g = c.createLinearGradient(0, lampY, 0, bottom);
+      g.addColorStop(0, `rgba(255,219,145,${lit * 0.13})`); g.addColorStop(1, 'rgba(255,219,145,0)');
+      c.fillStyle = g; c.beginPath(); c.moveTo(x, lampY + 5); c.lineTo(x + 35, lampY + 5); c.lineTo(x + 85, bottom); c.lineTo(x - 50, bottom); c.fill();
+    }
+  }
+  const dark = act === 1 ? 0.8 * (1 - ease01((rt - 0.8) / 1.1))
+    : act === 3 ? 0.5 * ease01((rt - 0.7) / 0.7) * (1 - ease01((rt - 4.5) / 2))
+      : 0.18 * (1 - ease01((rt - 3) / 2));
+  if (dark > 0.01) { c.fillStyle = `rgba(3,6,13,${dark})`; c.fillRect(0, 0, W, H); }
+  // The tub's headlight, catching the passage before the lamps do.
+  const beam = ease01((rt - 0.3) / 0.6) * (1 - ease01((rt - 4.2) / 1.2));
+  if (beam > 0.01) {
+    const g = c.createLinearGradient(heroX, 0, W - 20, 0);
+    g.addColorStop(0, `rgba(194,233,235,${0.16 * beam})`); g.addColorStop(1, 'rgba(194,233,235,0)');
+    c.fillStyle = g; c.beginPath();
+    c.moveTo(heroX + 20 * s, heroY - 4 * s); c.lineTo(W - 20, heroY - 85 * s); c.lineTo(W - 20, heroY + 75 * s); c.closePath(); c.fill();
+  }
+}
+
+// The scale cue: a mains plug the size of a cabinet, lying unplugged on the
+// passage floor with its cable, at passage position `px` (scroll space).
+export function drawGiantPlug(c, sx, bottom, s = 1) {
+  if (sx < -120 || sx > W + 120) return;
+  const y = bottom + 10 * s;
+  c.strokeStyle = '#090c13'; c.lineWidth = 13 * s; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(sx + 25 * s, H + 20); c.bezierCurveTo(sx - 5 * s, y - 20 * s, sx + 40 * s, y + 10 * s, sx, y - 30 * s); c.stroke();
+  c.fillStyle = '#12121b'; c.fillRect(sx - 17 * s, y - 60 * s, 36 * s, 42 * s);
+  c.fillStyle = '#353542'; c.fillRect(sx - 12 * s, y - 56 * s, 26 * s, 31 * s);
+  c.fillStyle = '#89887b'; c.fillRect(sx - 9 * s, y - 73 * s, 6 * s, 15 * s); c.fillRect(sx + 7 * s, y - 73 * s, 6 * s, 15 * s);
+}
+
+// 6-3's maintenance shutter: a slatted door dropping from the top rail to
+// `drop` (screen y of its bottom edge).
+export function drawShutter(c, x, top, drop, s = 1) {
+  const w = 34 * s;
+  c.fillStyle = '#1c1b22'; c.fillRect(x - 4 * s, 0, w + 8 * s, top);
+  c.fillStyle = '#66636a'; c.fillRect(x, top, w, Math.max(0, drop - top));
+  c.fillStyle = '#292c35';
+  for (let y = top + 8 * s; y < drop; y += 12 * s) c.fillRect(x, y, w, 2 * s);
+  c.fillStyle = '#d7af50'; c.fillRect(x, drop - 7 * s, w, 7 * s);
+}
+
+// THE ENDING: the arcade's mains, a breaker panel on the passage wall with its
+// big socket, its breaker lever and its pilot lamp; and the plug, hanging off
+// its cable from the top rail, that the hero pushes home. Everything here is
+// in passage space at scale `s`; `t` is the victory clock.
+//
+// panel(c, x, y, s, { lever 0..1 (down..up), lamp 'off'|'wait'|'on', t })
+export function drawBreakerPanel(c, x, y, s, o = {}) {
+  const { lever = 0, lamp = 'wait', t = 0 } = o;
+  const pw = 92 * s, ph = 132 * s, px = x - pw / 2, py = y - ph / 2;
+  // Conduit in from above, and the panel's shadow on the wall.
+  c.fillStyle = '#17131f'; c.fillRect(x - 7 * s, 0, 14 * s, py + 4 * s);
+  c.fillStyle = '#2a2433'; c.fillRect(x - 4 * s, 0, 8 * s, py + 4 * s);
+  c.fillStyle = 'rgba(6,4,12,0.45)'; c.beginPath(); c.roundRect(px + 5 * s, py + 7 * s, pw, ph, 7 * s); c.fill();
+  plate(c, px, py, pw, ph, '#3a3444', 7 * s);
+  c.strokeStyle = '#140f1a'; c.lineWidth = Math.max(1, 1.1 * s); c.beginPath(); c.roundRect(px, py, pw, ph, 7 * s); c.stroke();
+  c.fillStyle = '#c8332c'; c.fillRect(px + 5 * s, py + 7 * s, 3 * s, ph - 14 * s);
+  c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(px + 1.5 * s, py + 1.5 * s, pw - 3 * s, 1.5 * s);
+  for (const [sx, sy] of [[px + 9 * s, py + 9 * s], [px + pw - 9 * s, py + 9 * s], [px + 9 * s, py + ph - 9 * s], [px + pw - 9 * s, py + ph - 9 * s]]) {
+    c.fillStyle = '#7a7286'; c.beginPath(); c.arc(sx, sy, 2.2 * s, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#1d1824'; c.lineWidth = Math.max(1, 0.8 * s); c.beginPath(); c.moveTo(sx - 1.4 * s, sy - 1.4 * s); c.lineTo(sx + 1.4 * s, sy + 1.4 * s); c.stroke();
+  }
+  // The label strip.
+  plate(c, x - 26 * s, py + 12 * s, 52 * s, 11 * s, '#d9d6df', 2 * s);
+  c.fillStyle = '#2a2132'; c.font = `bold ${Math.round(7 * s)}px system-ui`; c.textAlign = 'center';
+  c.fillText('MAINS', x, py + 20.5 * s); c.textAlign = 'left';
+  // The socket: a bevelled plate with two slots and the earth hole.
+  const sy0 = y - 8 * s;
+  plate(c, x - 22 * s, sy0 - 22 * s, 44 * s, 44 * s, '#e6e3ea', 5 * s);
+  c.strokeStyle = '#8f8a98'; c.lineWidth = Math.max(1, 1 * s); c.beginPath(); c.roundRect(x - 22 * s, sy0 - 22 * s, 44 * s, 44 * s, 5 * s); c.stroke();
+  c.fillStyle = '#2a2433';
+  c.fillRect(x - 12 * s, sy0 - 10 * s, 5 * s, 13 * s); c.fillRect(x + 7 * s, sy0 - 10 * s, 5 * s, 13 * s);
+  c.beginPath(); c.arc(x, sy0 + 11 * s, 3.4 * s, 0, Math.PI * 2); c.fill();
+  // The breaker lever, flipping up as the power comes back.
+  const lx = x + 30 * s, ly = y + 36 * s;
+  plate(c, lx - 9 * s, ly - 14 * s, 18 * s, 28 * s, '#221d2a', 3 * s);
+  c.fillStyle = '#c8332c'; c.fillRect(lx - 6 * s, ly - 11 * s, 12 * s, 9 * s);
+  c.fillStyle = '#4caf6a'; c.fillRect(lx - 6 * s, ly + 2 * s, 12 * s, 9 * s);
+  const ang = (0.5 - lever) * 1.1;
+  c.save(); c.translate(lx, ly); c.rotate(ang);
+  plate(c, -3.5 * s, -2 * s, 7 * s, 15 * s, '#e0dde4', 2 * s);
+  c.fillStyle = '#9a95a3'; c.fillRect(-2 * s, 10 * s, 4 * s, 2.5 * s);
+  c.restore();
+  // The pilot lamp: red blink while it waits, green when the mains is back.
+  const lx2 = x - 30 * s, ly2 = y + 36 * s;
+  const on = lamp === 'on', blink = lamp === 'wait' && Math.floor(t * 3) % 2 === 0;
+  c.fillStyle = on ? '#7be38b' : blink ? '#e04848' : '#4a1c1c';
+  c.beginPath(); c.arc(lx2, ly2, 4.5 * s, 0, Math.PI * 2); c.fill();
+  if (on || blink) {
+    const g = c.createRadialGradient(lx2, ly2, 2 * s, lx2, ly2, 14 * s);
+    g.addColorStop(0, on ? 'rgba(123,227,139,0.5)' : 'rgba(224,72,72,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(lx2, ly2, 14 * s, 0, Math.PI * 2); c.fill();
+  }
+  c.strokeStyle = '#1d1824'; c.lineWidth = Math.max(1, 0.9 * s); c.beginPath(); c.arc(lx2, ly2, 4.5 * s, 0, Math.PI * 2); c.stroke();
+}
+// Where the plug's prongs go: the socket's face, in the panel's own terms.
+export function breakerSocketPoint(x, y, s) { return { x: x - 22 * s, y: y - 8 * s }; }
+
+// The plug on its cable. `pivot` is where the cable hangs from (the top rail),
+// `tip` where the prongs are, `ang` the plug's lean (0 = pointing right into
+// the socket). The cable sags from the pivot to the plug's back.
+export function drawHangingPlug(c, pivot, tip, ang, s, o = {}) {
+  const { seated = 0, t = 0 } = o;
+  const back = { x: tip.x - Math.cos(ang) * 34 * s, y: tip.y - Math.sin(ang) * 34 * s };
+  const sag = Math.max(10 * s, (back.y - pivot.y) * 0.25);
+  c.strokeStyle = '#090c13'; c.lineWidth = 7 * s; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(pivot.x, pivot.y);
+  c.bezierCurveTo(pivot.x + 6 * s, pivot.y + sag, back.x - 24 * s, back.y - sag * 0.4, back.x, back.y); c.stroke();
+  c.strokeStyle = '#2f2a38'; c.lineWidth = 2.2 * s;
+  c.beginPath(); c.moveTo(pivot.x, pivot.y);
+  c.bezierCurveTo(pivot.x + 6 * s, pivot.y + sag, back.x - 24 * s, back.y - sag * 0.4, back.x, back.y); c.stroke();
+  // The clip at the top rail.
+  plate(c, pivot.x - 5 * s, pivot.y - 4 * s, 10 * s, 8 * s, '#5a5564', 2 * s);
+  c.save();
+  c.translate(tip.x, tip.y); c.rotate(ang);
+  // Strain relief, moulded body with its grip ridges, the prongs and the earth pin.
+  c.fillStyle = '#2a2731'; c.beginPath(); c.roundRect(-40 * s, -5 * s, 12 * s, 10 * s, 3 * s); c.fill();
+  plate(c, -32 * s, -13 * s, 32 * s, 26 * s, '#3b3745', 5 * s);
+  c.strokeStyle = '#140f1a'; c.lineWidth = Math.max(1, 1 * s); c.beginPath(); c.roundRect(-32 * s, -13 * s, 32 * s, 26 * s, 5 * s); c.stroke();
+  c.fillStyle = '#2a2731'; for (let i = 0; i < 3; i++) c.fillRect(-27 * s + i * 6 * s, -9 * s, 2 * s, 18 * s);
+  c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(-30 * s, -11 * s, 28 * s, 2 * s);
+  const prong = 11 * s * (1 - seated * 0.95);
+  c.fillStyle = '#b4b0a6';
+  c.fillRect(0, -9 * s, prong, 3.2 * s); c.fillRect(0, 5.8 * s, prong, 3.2 * s);
+  c.fillRect(0, -1.6 * s, prong * 0.85, 3.2 * s);
+  c.fillStyle = '#7d7a73'; c.fillRect(0, -9 * s, prong, 1 * s); c.fillRect(0, 5.8 * s, prong, 1 * s);
+  c.restore();
+  void t;
+}
+
+// The spark ring and the flash where the plug meets the socket.
+export function drawPlugSpark(c, x, y, s, k) {
+  if (k <= 0 || k >= 1) return;
+  c.save();
+  c.globalAlpha = 1 - k;
+  c.strokeStyle = '#fff6c8'; c.lineWidth = 2 * s;
+  c.beginPath(); c.arc(x, y, (4 + 26 * k) * s, 0, Math.PI * 2); c.stroke();
+  c.strokeStyle = '#8fe4ff'; c.lineWidth = 1.2 * s;
+  for (let i = 0; i < 7; i++) {
+    const a = i * Math.PI * 2 / 7 + k * 2;
+    c.beginPath(); c.moveTo(x + Math.cos(a) * 6 * s, y + Math.sin(a) * 6 * s);
+    c.lineTo(x + Math.cos(a) * (10 + 30 * k) * s, y + Math.sin(a) * (10 + 30 * k) * s); c.stroke();
+  }
   c.restore();
 }

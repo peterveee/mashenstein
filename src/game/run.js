@@ -46,8 +46,8 @@ import { pickHitPicture, hitPicLife, hitFamilyOf } from '../sprites/hitPictures.
 import { CAT_HIT_T, CAT_IFRAMES_T, catSwipeActive, catHitScreenOffset } from './cat-hit.js';
 import { LEDGE_REACH, PIT_WORDS, PIT_HANG_RAN, PIT_HANG_JUMPED, PIT_GRIP, PIT_GRIP_ALT, PIT_GRIP_DX, PIT_MANTLE_T, pitGripSlip, pitMantle, warmPitFall } from '../sprites/pitFall.js';
 import { Player, PLAYER_X, HERO_ANCHOR, setHeroAnchor, beatLayOff, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, jumpV, LANDED_T } from './player.js';
-import { drawHeroTub, drawPassage, drawFlightHero, drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, currentFlightLayout, edgeBandWidth, drawCabinetEdge, warmPassage, drawFlightBalloon, drawRunBalloon } from './flight/scene.js';
-import { actEndingFor } from './flight/acts.js';
+import { drawHeroTub, drawPassage, drawFlightHero, drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, currentFlightLayout, crossingWidth, drawCabinetCrossing, warmPassage, drawFlightBalloon, drawRunBalloon, drawPassageReveal, drawGiantPlug } from './flight/scene.js';
+import { actEndingFor, flightBanksBefore } from './flight/acts.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
@@ -4185,7 +4185,7 @@ export class RunState {
     this.prevAnimationPlayer = this.player;
     this.prevPlayerAnim = this.player?.anim;
     this.prevFinishPlayerX = this.finishPlayerX;
-    if (this.fx) this.fx.prevSlide = this.fx.slide;
+    if (this.fx) { this.fx.prevSlide = this.fx.slide; this.fx.prevTubDx = this.fx.tubDx; this.fx.prevTubFloorH = this.fx.tubFloorH; }
     this.prevIntroRunX = this.introRunX;
     this.prevPitDx = this.heroPitDx();
   }
@@ -4206,7 +4206,7 @@ export class RunState {
     this.prevAnimationPlayer = this.player;
     this.prevPlayerAnim = this.player?.anim;
     this.prevFinishPlayerX = this.finishPlayerX;
-    if (this.fx) this.fx.prevSlide = this.fx.slide;
+    if (this.fx) { this.fx.prevSlide = this.fx.slide; this.fx.prevTubDx = this.fx.tubDx; this.fx.prevTubFloorH = this.fx.tubFloorH; }
     this.prevIntroRunX = this.introRunX;
     this.prevPitDx = this.heroPitDx();
   }
@@ -7840,7 +7840,7 @@ export class RunState {
     let c = this.copter;
     if (!c) {
       c = this.copter = { x: this.viewRightX() + 40, alt: 78, cooldown: 0, mode: 'away', modeT: 0,
-        bar: 4 * 60 / this.laneBpm(), hitT: 0, fromDx: null, enterAt: 0 };
+        bar: 4 * 60 / this.laneBpm(), hitT: 0, fromDx: null, enterAt: 0, fxOnly: true };
     }
     if (c.shot) this.dropCopterShot(c);
     c.flyOff = false; c.escape = { t: 0 }; c.hitT = 0; c.shieldT = 0; c.evadeT = 0;
@@ -7912,7 +7912,10 @@ export class RunState {
     updateShake(dt, () => this.fxRng.float());
     this.updateTimeCoins(dt);
     const p = this.player;
-    for (const k of ['iframes', 'catHitT', 'catIframesT', 'dashT', 'rollT', 'stumbleT', 'slipT', 'landedT', 'boostT']) {
+    // Player.update does not run for him from here, so its presentation clocks
+    // are wound down here, or a hit picture, a zap or an aim pose freezes on him.
+    for (const k of ['iframes', 'catHitT', 'catIframesT', 'dashT', 'rollT', 'stumbleT', 'slipT', 'landedT', 'boostT',
+      'powerPoseT', 'hitPicT', 'zapT', 'blastT', 'slideKickT', 'landingSlideT']) {
       if (p[k] > 0) p[k] = Math.max(0, p[k] - dt);
     }
     let camV = sp;
@@ -7942,6 +7945,9 @@ export class RunState {
     this.endInvincibility();
     this.player.iframes = 0;
     this.keepSongTempo();
+    // Nothing he threw is still flying once the run is a picture.
+    this.projectiles = [];
+    this.player.wrenchThrown = false;
     // The result the fight will pay, the clock's seconds already in it; the pill
     // counts them up while he boards, as the flag's tally does.
     const result = { ...this.runResult(true, 'FLIGHT CHECKPOINT'), coins: this.coins + bonus, timeBonusCoins: bonus };
@@ -8043,6 +8049,9 @@ export class RunState {
     // THE HOP, his own jump: his take-off speed and gravity, so it is his arc.
     if (!fx.hop) {
       fx.hop = { y: p.y, v: Math.max(p.vy, fx.hopV0), at: t };
+      // A real jump to the pose painter: not a fall, not a slide.
+      p.jumps = Math.max(1, p.jumps || 0); p.launched = false;
+      p.sliding = false; p.slideAmount = 0;
       p.jumpFace = rollJumpFace(this.fxRng, p.jumpFace);
     }
     const tau = t - fx.hop.at;
@@ -8064,6 +8073,18 @@ export class RunState {
     const e = c.escape;
     e.t += dt;
     if (e.fromDx == null) { e.fromDx = Number.isFinite(c.dx) ? c.dx : c.x - this.camX; e.fromAlt = c.alt; }
+    // From the tape he makes for the edge of the game and is gone beyond the
+    // casing before the hero is even in the tub: he knows the way out.
+    if (this.fx && this.fx.phase !== 'approach') {
+      if (e.outV == null) { e.outV = 40; e.fromDx = Number.isFinite(c.dx) ? c.dx : c.x - this.camX; }
+      e.outV += 420 * dt;
+      c.dx = (Number.isFinite(c.dx) ? c.dx : e.fromDx) + e.outV * dt;
+      c.alt += 18 * dt;
+      c.x = this.camX + c.dx;
+      if (c.dx > this.viewRightDx() + 60) c.gone = true;
+      c.mode = 'hover'; c.mood = 'smile';
+      return;
+    }
     const tgt = this.fx?.targets || this.flightTargets();
     const k = smooth01(e.t / FLIGHT_ESCAPE_T);
     c.dx = e.fromDx + (tgt.eggDx - e.fromDx) * k;
@@ -8077,7 +8098,13 @@ export class RunState {
   startFlightSlide() {
     const fx = this.fx;
     fx.phase = 'slide'; fx.slide = 0; fx.prevSlide = 0; fx.vs = 0;
-    fx.bandW = edgeBandWidth(isPhonePortraitPresentation());
+    fx.bandW = crossingWidth(isPhonePortraitPresentation());
+    // The scale cue waits just past the crossing, in the passage's own space.
+    fx.plugX = W + fx.bandW + 170;
+    // Each act's reveal sound, on the reveal's own clock.
+    const act = actEndingFor(this.stage?.id)?.act || 1;
+    if (act === 1) for (const k of [0.75, 0.95, 1.15]) this.flightCue(fx.t + k, 'switchFlick');
+    if (act === 3) this.flightCue(fx.t + 0.8, 'powerDown');
     fx.layout = currentFlightLayout();
     // What was said on this screen leaves with it.
     this.speech = null; this.speechQueue = [];
@@ -8090,17 +8117,19 @@ export class RunState {
     if (!this.o.onFlightHandoff) { this.endRun(true, 'FLIGHT CHECKPOINT'); return; }
     this.finished = true;
     this.fxHandedOff = true;
-    this.o.onFlightHandoff({ scroll: fx.slide, scrollV: fx.vs, clock: this.backgroundT });
+    this.o.onFlightHandoff({ scroll: fx.slide, scrollV: fx.vs, clock: this.backgroundT, revealT: fx.t - fx.slideAt, plugX: fx.plugX });
   }
 
   // The tub, in the hero's own overlay pass so it covers his legs once he is in.
-  paintFlightTub(c, z, pan, floorY, xOffset) {
+  paintFlightTub(c, z, pan, floorY, xOffset, alpha = 1) {
     const fx = this.fx;
+    const mix = (a, b) => (Number.isFinite(a) ? a + (b - a) * alpha : b);
+    const tubDx = mix(fx.prevTubDx, fx.tubDx), tubFloorH = mix(fx.prevTubFloorH, fx.tubFloorH);
     c.save();
     if (this.mirror) { c.translate(W, 0); c.scale(-1, 1); }
     applyWorld(c, z, pan, floorY, xOffset);
-    const gx = this.camX + fx.tubDx;
-    drawHeroTub(c, fx.tubDx, this.groundYAt(gx) - fx.tubFloorH, { u: 1, thrust: fx.thrust || 0, t: this.backgroundT });
+    const gx = this.camX + tubDx;
+    drawHeroTub(c, tubDx, this.groundYAt(gx) - tubFloorH, { u: 1, thrust: fx.thrust || 0, t: this.backgroundT });
     c.restore();
   }
 
@@ -15367,7 +15396,10 @@ export class RunState {
     this.finishPlayerX = PLAYER_X;
     this.fx = null;
     this.flightChrome = false;
-    if (this.copter) this.copter.escape = null;
+    // The flight's Eggshell goes back to what the stage had: none, if the
+    // flight brought him on; the chase copter otherwise.
+    if (this.copter?.fxOnly) this.copter = null;
+    if (this.copter) { this.copter.escape = null; this.copter.vehicle = null; }
     this.flip = null;
     this.flipCoins = null;
     this.timeCoins = null;
@@ -17718,16 +17750,19 @@ export class RunState {
       const bandL = W - fxSlide, mid = bandL + fx.bandW / 2, edgeR = bandL + fx.bandW;
       fxHeroOut = (heroScreenX + HERO_CENTER_OFF + portraitWorldXOffset) * z >= mid;
       const c = this.copter;
-      fxEggOut = !c || (mix(Number.isFinite(c.prevX) ? c.prevX : c.x, c.x) - cam + portraitWorldXOffset) * z >= mid;
+      fxEggOut = !c || c.gone || (mix(Number.isFinite(c.prevX) ? c.prevX : c.x, c.x) - cam + portraitWorldXOffset) * z >= mid;
       const cy = (L.top + L.bottom) / 2;
       const heroId = this.relay.current, clock = backgroundT, beat = Audio.songBeat();
       const heroOut = fxHeroOut, eggOut = fxEggOut, balloon = this.copter?.vehicle === 'balloon';
       // The banks earlier acts brought back are already on in the passage.
-      const banksOn = Math.max(0, (actEndingFor(this.stage?.id)?.bank || 1) - 1);
+      const banksOn = flightBanksBefore(actEndingFor(this.stage?.id), this.save?.slot);
+      const actNo = actEndingFor(this.stage?.id)?.act || 1, plugX = fx.plugX, rt = fx.t - fx.slideAt;
       pushOverlayDraw((d) => {
         d.save();
         d.beginPath(); d.rect(edgeR, 0, W - edgeR + 2, H); d.clip();
         drawPassage(d, { scroll: fxSlide, top: L.top, bottom: L.bottom, banks: banksOn });
+        drawGiantPlug(d, plugX - fxSlide, L.bottom, L.scale);
+        drawPassageReveal(d, { top: L.top, bottom: L.bottom, scroll: fxSlide, rt, act: actNo, heroX: L.px, heroY: cy, s: L.scale });
         if (eggOut && balloon) drawFlightBalloon(d, L.bx, cy + 7 * L.scale, L.scale, { t: clock });
         else if (eggOut) drawFlightBoss(d, L.bx, flightBossCentre(cy, L.scale), FLIGHT_BOSS_SIZE * L.scale, { t: clock, beat, mood: 'smile' });
         if (heroOut) drawFlightHero(d, heroId, L.px, cy, L.scale, { t: clock, thrust: 0.32 });
@@ -18983,7 +19018,7 @@ export class RunState {
           // run's to draw: the flight's picture of him is in the passage.
           if (fxHeroOut) return;
           const paint = fx?.tubDx != null
-            ? (c) => { painted(c); this.paintFlightTub(c, z, pan, floorY, portraitXOffset); }
+            ? (c) => { painted(c); this.paintFlightTub(c, z, pan, floorY, portraitXOffset, alpha); }
             : painted;
           if (liftHero) heroLift = paint;
           else pushOverlayDraw(paint);
@@ -19267,7 +19302,7 @@ export class RunState {
     // camera transform, so the headless fallback is the same callback handed
     // the screen-space context — the actors-above-post branch above does
     // exactly this. On the way out he waits for the frame instead (below).
-    if (copterLift && !copterOverHud && !fxEggOut && !pushOverlayDraw(copterLift)) copterLift(ctx);
+    if (copterLift && !copterOverHud && !fxEggOut && !this.copter?.gone && !pushOverlayDraw(copterLift)) copterLift(ctx);
     // The held-back hero, now that the cards he is jumping through are down.
     // Dropped rather than drawn if there is no overlay at all (headless): that
     // is the same nothing drawHeroSprite itself does on that path.
@@ -19310,7 +19345,7 @@ export class RunState {
     // The cabinet's edge, over everything the screen and the two of them paint.
     if (fxSlide > 0) {
       const bandX = W - fxSlide, bandW = fx.bandW, cabId = this.cabinet.id;
-      pushOverlayDraw((d) => drawCabinetEdge(d, bandX, bandW, cabId));
+      pushOverlayDraw((d) => drawCabinetCrossing(d, bandX, bandW, cabId));
     }
     // The touch discs, on #chrome over everything: declared here, committed
     // centrally by states.js once the frame is drawn.

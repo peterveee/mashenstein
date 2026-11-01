@@ -26,3 +26,11 @@ export const ACT_ENDINGS = {
 export function actEndingFor(stageId) {
   return (stageId && ACT_ENDINGS[stageId]) || null;
 }
+
+// The power banks lit before this act's fight: one for each EARLIER act whose
+// flight has been won (bossesDown), not simply this act's number minus one.
+export function flightBanksBefore(act, slot) {
+  if (!act) return 0;
+  const down = slot?.campaign?.bossesDown || {};
+  return Object.values(ACT_ENDINGS).filter((a) => a.act < act.act && down[a.cabinet]).length;
+}

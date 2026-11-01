@@ -7142,6 +7142,15 @@ class AudioSys {
         this.osc('square', 880, 520, 0.12, 0.022, 0.015, null, 0.34);
         break;
       case 'plop': this.osc('sine', 300, 120, 0.15, 0.2); break;
+      // THE ACT-ENDING FLIGHT's placeholders (Peter, 1 Nov 2026: "put in
+      // something/anything and we'll finesse these later"): the tub's pellet,
+      // a pellet landing on Eggshell, his telegraph, a hit on the tub, the
+      // balloon's pop / the core giving out.
+      case 'flightShot': this.osc('square', 1400, 700, 0.06, 0.05); this.noise(0.03, 0.03, 'highpass', 3000); break;
+      case 'flightPing': this.osc('triangle', 900, 1300, 0.07, 0.07); break;
+      case 'flightWarn': this.osc('square', 330, 330, 0.08, 0.07); this.osc('square', 440, 440, 0.08, 0.07, 0.11); break;
+      case 'flightHurt': this.osc('sawtooth', 240, 60, 0.28, 0.22); this.noise(0.14, 0.16, 'lowpass', 700); break;
+      case 'flightPop': this.noise(0.05, 0.6, 'highpass', 500); this.osc('sine', 180, 40, 0.4, 0.3, 0.02); break;
       case 'type': this.osc('square', 800, 800, 0.02, 0.05); break;
       case 'comet': this.cometSwoop(); break;
       case 'neonBuzz': this.neonBuzz(); break;

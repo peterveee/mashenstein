@@ -36,11 +36,19 @@ export const BACKUP = { hp: 40, coreDamage: 1, charge: 1.25, beam: 0.5, band: 24
 const SHOT_HY = 19, SPARK_HY = 27, SPARK_STEP = 44;
 
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-// `o.hudTop` is where the HUD plate starts (below the portrait status-bar
-// wash); the flight band starts 74 under it, as the prototype was tuned.
+export const PORTRAIT_BAND = 430;
+// `o.hudTop` is where the HUD starts (below the portrait status-bar wash). In
+// portrait the band starts 74 under it (the two-row plate) and stops above the
+// discs; in landscape the HUD is one slim row and the discs are in the side
+// margins, so the band takes nearly the whole height (Peter, 1 Nov: "way too
+// much HUD in landscape... very little room to move").
 export function flightLayout(width, height, safe = {}, o = {}) {
-  const top = Math.max(0, Number.isFinite(o.hudTop) ? o.hudTop : (safe.top || 0)) + 74;
-  const bottom = Math.min(height, safe.bottom ?? height) - (height > width ? 130 : 48);
+  const portrait = height > width;
+  const bottom = Math.min(height, safe.bottom ?? height) - (portrait ? 130 : 16);
+  // Portrait's band has a roof (Peter, 1 Nov: "too easy to avoid"): no taller
+  // than PORTRAIT_BAND, so a shot can't be outrun simply by having more sky.
+  const hudBottom = Math.max(0, Number.isFinite(o.hudTop) ? o.hudTop : (safe.top || 0)) + (portrait ? 74 : 30);
+  const top = portrait ? Math.max(hudBottom, bottom - PORTRAIT_BAND) : hudBottom;
   return { width, height, top, bottom: Math.max(top + 60, bottom),
     px: width * (height > width ? .14 : .22),
     bx: width * (height > width ? .86 : .79),
@@ -76,6 +84,9 @@ export class FlightModel {
     const old = this.layout;
     const remap = y => layout.top + clamp((y - old.top) / (old.bottom - old.top), 0, 1) * (layout.bottom - layout.top);
     this.y = remap(this.y); this.by = remap(this.by); this.layout = layout;
+    this.y = clamp(this.y, layout.top + layout.radius, layout.bottom - layout.radius);
+    this.by = clamp(this.by, layout.top + layout.radius, layout.bottom - layout.radius);
+    if (Number.isFinite(this.popY)) this.popY = clamp(this.popY, layout.top, layout.bottom);
     this.vy = 0; this.shots = []; this.pellets = []; this.warning = null;
     this.burst = null; this.attack = 2; this.grace = 2; this.lead = 2;
     this.beam = null; if (this.fin.mode !== 'vent') this.fin = { mode: 'idle', t: 0, n: this.fin.n };
@@ -89,7 +100,8 @@ export class FlightModel {
       this.clearHazards();
     } else if (this.hp === 0) {
       // Act III's ordinary form only looks beaten: the balloon goes, and BACKUP POWER comes.
-      this.phase = this.pattern.final ? 'fall' : 'won'; this.fallTime = 0;
+      this.phase = this.pattern.final ? 'fall' : 'won'; this.fallTime = 0; this.popY = this.by;
+      if (this.phase === 'won') this.hitFlash = 0;
       this.clearHazards();
     }
   }
@@ -97,7 +109,7 @@ export class FlightModel {
   damageCore(amount) {
     if (this.phase !== 'final') return;
     this.finalHp = Math.max(0, this.finalHp - amount); this.hitFlash = .08;
-    if (this.finalHp === 0) { this.phase = 'won'; this.clearHazards(); }
+    if (this.finalHp === 0) { this.phase = 'won'; this.hitFlash = 0; this.deflect = 0; this.clearHazards(); }
   }
   // The passage keeps moving under every phase that is still flying, and the
   // handoff's arrival speed settles to the cruise on its own clock.
@@ -117,11 +129,18 @@ export class FlightModel {
     const span = (l.bottom - l.radius * 0.4) - (l.top + l.radius * 0.4);
     return Math.max(2 * SPARK_HY * s + 14 * s, Math.min(gap * s, 0.45 * span));
   }
+  // The beam's reach: its band plus the tub, but never so much that both ends of
+  // a short band (landscape with a home indicator) are inside it.
+  beamHalf() {
+    const l = this.layout;
+    return Math.min((BACKUP.band + SHOT_HY) * l.scale, (l.bottom - l.top - 2 * l.radius) / 2 - 4);
+  }
   bandLane(lane) {
     const l = this.layout;
     return l.top + l.radius + lane * (l.bottom - l.top - 2 * l.radius);
   }
   tick(dt, up, down) {
+    this.hitFlash = Math.max(0, this.hitFlash - dt); this.deflect = Math.max(0, this.deflect - dt);
     if (this.phase === 'dead' || this.phase === 'won') return;
     this.advanceScroll(dt); this.t += dt;
     if (this.phase === 'midpoint') {
@@ -146,8 +165,7 @@ export class FlightModel {
       return;
     }
     const l = this.layout;
-    this.grace = Math.max(0, this.grace - dt); this.hitFlash = Math.max(0, this.hitFlash - dt);
-    this.deflect = Math.max(0, this.deflect - dt);
+    this.grace = Math.max(0, this.grace - dt);
     const direction = Number(down) - Number(up);
     const target = direction * (l.height > l.width ? 240 : 145);
     this.vy += clamp(target - this.vy, -850 * dt, 850 * dt);
@@ -166,7 +184,7 @@ export class FlightModel {
     if (this.lead > 0) { this.lead -= dt; return; }
     this.fire -= dt;
     if (this.fire <= 0) {
-      this.fire += .16; this.pellets.push({ x: l.px + PELLET_MUZZLE * l.scale, y: this.y + 7 * l.scale });
+      this.fire += .16; this.pellets.push({ x: l.px + PELLET_MUZZLE * l.scale, y: this.y + 7 * l.scale }); this.fired = (this.fired || 0) + 1;
     }
     const shoot = (targetY, sourceY, travel = pat.travel, kind = 'shot') => {
       // Same arrival time across layouts. Aim is locked before release.
@@ -197,6 +215,7 @@ export class FlightModel {
         const kind = seq[this.attackN % seq.length];
         this.attackN++;
         const w = { y: this.y, source: this.by + 7 * l.scale, time: .7, kind, n: this.attackN, fan: 0, gapY: null };
+      this.warned = (this.warned || 0) + 1;
         if (kind === 'fan') w.fan = pat.fanGap * l.scale;
         if (kind === 'column') w.gapY = gapNear(this.y, this.attackN, pat.columnGap);
         this.warning = w;
@@ -238,14 +257,16 @@ export class FlightModel {
         }
         continue;
       }
-      if (prev <= l.bx + 22 * l.scale && p.x >= l.bx - 22 * l.scale && Math.abs(p.y - (this.by + 7 * l.scale)) < 15 * l.scale) {
-        p.x = l.width + 100; this.damageBoss(2);
+      // The balloon's envelope is the target in Act III: bigger than the tub.
+      const hx = this.pattern.final ? 30 : 22, hy = this.pattern.final ? 28 : 15;
+      if (prev <= l.bx + hx * l.scale && p.x >= l.bx - hx * l.scale && Math.abs(p.y - (this.by + 7 * l.scale)) < hy * l.scale) {
+        p.x = l.width + 100; this.damageBoss(2); this.pinged = (this.pinged || 0) + 1;
         if (this.phase !== 'first' && this.phase !== 'second') return;
       }
     }
     this.pellets = this.pellets.filter(p => p.x < l.width + 10);
     const hurt = () => {
-      this.hull--; this.grace = 1.2;
+      this.hull--; this.grace = 1.2; this.hurts = (this.hurts || 0) + 1;
       if (this.hull === 0) { this.phase = 'dead'; this.clearHazards(); return true; }
       return false;
     };
@@ -257,7 +278,7 @@ export class FlightModel {
         if (hurt()) return;
       }
     }
-    if (this.beam && this.beam.on && this.grace === 0 && Math.abs(this.y - this.beam.y) < (BACKUP.band + SHOT_HY) * l.scale) {
+    if (this.beam && this.beam.on && this.grace === 0 && Math.abs(this.y - this.beam.y) < this.beamHalf()) {
       if (hurt()) return;
     }
     this.shots = this.shots.filter(p => p.x > -20 && p.y > -20 && p.y < l.height + 20);
@@ -271,6 +292,7 @@ export class FlightModel {
     this.vent += (open - this.vent) * Math.min(1, dt * 9);
     if (f.mode === 'idle' && f.t >= BACKUP.between) {
       f.n++;
+      this.warned = (this.warned || 0) + 1;
       if (f.n % 2) { f.mode = 'charge'; f.t = 0; this.beam = { y: this.by, on: false, t: 0 }; }
       else { f.mode = 'surge'; f.t = 0; f.gapY = gapNear(this.y, f.n, BACKUP.surgeGap); }
     } else if (f.mode === 'charge' && f.t >= BACKUP.charge) {
