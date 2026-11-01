@@ -38,70 +38,72 @@ export function plate(c, x, y, w, h, colour, r = 4) {
 // where his feet stand — at the origin. The run draws it at u = 1 inside its
 // world transform; the flight scales u to its own hero. The front wall comes
 // up to his hips, so he stands in it the way Eggshell stands in his.
-export const TUB = { halfW: 11, rimY: -9.6, bottom: 4, baseY: 4.6, hoverY: 7 };
+// THE POD (1 Nov, Peter picked C off the pod sheet): wider than the old
+// bucket so it reads as a vehicle he sits in, not one he stands in, and about
+// the size of Eggshell's tray (which grew too, props.js EG_TUB_SCALE). The rim is
+// where the old one was, so he sits exactly as deep; the belly is rounded.
+export const TUB = { halfW: 16, rimY: -9.6, bottom: 3, baseY: 3, hoverY: 7 };
 const TUB_INK = '#2a2836';
 const TUB_LW = 0.35;
 
 function tubBodyPath(k) {
   k.beginPath();
-  k.roundRect(-TUB.halfW, -9, TUB.halfW * 2, 12.5, [2, 2, 4, 4]);
+  k.moveTo(-TUB.halfW, -9.6); k.lineTo(TUB.halfW, -9.6);
+  k.bezierCurveTo(TUB.halfW, -0.2, 10.5, TUB.bottom, 0, TUB.bottom);
+  k.bezierCurveTo(-10.5, TUB.bottom, -TUB.halfW, -0.2, -TUB.halfW, -9.6);
+  k.closePath();
 }
 
-// thrust 0..1: the jet under the base. squash: the landing's give, 0..1.
+// thrust 0..1: the jet under the belly.
 export function drawHeroTub(c, cx, floorY, o = {}) {
   const { u = 1, thrust = 0, t = 0 } = o;
   c.save();
   c.translate(cx, floorY);
   c.scale(u, u);
   c.lineJoin = 'round';
-  // The jet first, so the base sits over its root.
+  // The jet first, so the belly sits over its root.
   if (thrust > 0.01) {
     const flick = 0.82 + 0.18 * Math.sin(t * 47) * Math.sin(t * 31 + 1.3);
     const len = (2.2 + 6.2 * thrust) * flick;
-    const g = c.createLinearGradient(0, 6, 0, 6 + len);
+    const y0 = TUB.bottom - 0.6;
+    const g = c.createLinearGradient(0, y0, 0, y0 + len);
     g.addColorStop(0, `rgba(236,252,255,${0.95 * Math.min(1, thrust * 1.6)})`);
     g.addColorStop(0.35, `rgba(120,226,244,${0.75 * Math.min(1, thrust * 1.4)})`);
     g.addColorStop(1, 'rgba(120,226,244,0)');
     c.fillStyle = g;
     c.beginPath();
-    c.moveTo(-3.4, 6.2);
-    c.quadraticCurveTo(0, 6.2 + len * 1.25, 3.4, 6.2);
+    c.moveTo(-3.4, y0);
+    c.quadraticCurveTo(0, y0 + len * 1.25, 3.4, y0);
     c.closePath();
     c.fill();
   }
-  // The hover base: a squat dark dome under the hull.
-  c.fillStyle = '#3a3d4a';
-  c.beginPath(); c.ellipse(0, TUB.baseY, 7, 2.1, 0, 0, Math.PI * 2); c.fill();
-  c.strokeStyle = TUB_INK; c.lineWidth = TUB_LW; c.stroke();
-  c.fillStyle = '#5b6070';
-  c.beginPath(); c.ellipse(0, TUB.baseY - 0.8, 5.2, 0.9, 0, Math.PI, Math.PI * 2); c.fill();
-  // The gun: auto-fire leaves from here, so it points the way he is chasing.
+  // The gun on the nose: auto-fire leaves from here, so it points the way he is chasing.
   c.fillStyle = '#586279';
-  c.beginPath(); c.roundRect(TUB.halfW - 0.4, -5.6, 4.6, 2.6, 0.8); c.fill();
-  c.strokeStyle = TUB_INK; c.stroke();
+  c.beginPath(); c.roundRect(TUB.halfW - 1.2, -5.6, 5, 2.6, 0.8); c.fill();
+  c.strokeStyle = TUB_INK; c.lineWidth = TUB_LW; c.stroke();
   c.fillStyle = '#f2c14e';
-  c.beginPath(); c.arc(TUB.halfW + 4.6, -4.3, 1.45, 0, Math.PI * 2); c.fill(); c.stroke();
+  c.beginPath(); c.arc(TUB.halfW + 4.2, -4.3, 1.45, 0, Math.PI * 2); c.fill(); c.stroke();
   // Hull, its lower shade, the stripe and the lamps, all clipped to the hull.
   tubBodyPath(c);
   c.fillStyle = '#e9edf3'; c.fill();
   c.save();
   tubBodyPath(c); c.clip();
-  c.fillStyle = '#d3dae4'; c.fillRect(-TUB.halfW, 1.4, TUB.halfW * 2, 3);
-  c.fillStyle = '#36bec8'; c.fillRect(-2.6, -9, 5.2, 13);
-  c.fillStyle = '#2ea3ad'; c.fillRect(-2.6, 1.4, 5.2, 3);
+  c.fillStyle = '#d3dae4'; c.fillRect(-TUB.halfW - 1, -2, TUB.halfW * 2 + 2, 6);
+  c.fillStyle = '#36bec8'; c.fillRect(-2.8, -10, 5.6, 14);
+  c.fillStyle = '#2ea3ad'; c.fillRect(-2.8, -2, 5.6, 6);
   c.restore();
-  for (const x of [-7, 7]) {
+  for (const x of [-9.5, 9.5]) {
     c.fillStyle = '#68d9f0';
-    c.beginPath(); c.arc(x, -2.2, 1.9, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x, -5.2, 2, 0, Math.PI * 2); c.fill();
     c.strokeStyle = '#3a8fb0'; c.lineWidth = TUB_LW; c.stroke();
     c.fillStyle = 'rgba(255,255,255,0.85)';
-    c.beginPath(); c.arc(x - 0.6, -2.8, 0.55, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x - 0.6, -5.8, 0.55, 0, Math.PI * 2); c.fill();
   }
   tubBodyPath(c);
   c.strokeStyle = TUB_INK; c.lineWidth = TUB_LW; c.stroke();
   // The rim, a hair wider than the hull, over his waist.
   c.fillStyle = '#f8f7fa';
-  c.beginPath(); c.roundRect(-TUB.halfW - 1, -10.4, TUB.halfW * 2 + 2, 2.6, 1.2); c.fill();
+  c.beginPath(); c.roundRect(-TUB.halfW - 1.4, -11, TUB.halfW * 2 + 2.8, 2.7, 1.3); c.fill();
   c.stroke();
   c.restore();
 }
@@ -127,20 +129,43 @@ export function drawTubbedHero(c, heroId, cx, floorY, o = {}) {
 export const FLIGHT_HERO_H = 46;
 export function flightHeroFloor(cy, scale) { return cy + 15 * scale; }
 
+// The flight leans both vehicles forward (Peter, 1 Nov: "angling them ... so
+// it looks like they're going faster"); `lean` is radians, clockwise = nose
+// down, and the pod and hero turn together about the pod's middle.
+export const FLIGHT_LEAN = 7 * Math.PI / 180;
 export function drawFlightHero(c, heroId, cx, cy, scale, o = {}) {
   const u = FLIGHT_HERO_H * scale / 24;
   const floorY = flightHeroFloor(cy, scale) + (o.dip || 0) * u;
+  const lean = o.lean ?? FLIGHT_LEAN;
+  c.save();
+  if (lean) { const py = floorY - 3 * u; c.translate(cx, py); c.rotate(lean); c.translate(-cx, -py); }
   drawTubbedHero(c, heroId, cx, floorY, {
     u, thrust: o.thrust ?? 0.4, t: o.t || 0,
     pose: o.pose || { kind: 'idle', grounded: true, time: o.t || 0 },
   });
+  c.restore();
+}
+
+// Speed streaks trailing a vehicle: three short lines left of (x, y), moving
+// with the passage's scroll so they read as air going past.
+export function drawSpeedStreaks(c, x, y, s, scroll = 0, k = 1) {
+  if (k <= 0.01) return;
+  c.save(); c.lineCap = 'round'; c.lineWidth = 1.3 * s;
+  for (let i = 0; i < 3; i++) {
+    const yy = y + (i - 1) * 7 * s, len = (20 + 9 * ((i * 37) % 5) / 5) * s;
+    const x0 = x - ((i * 13 + scroll * 0.35) % 22) * s;
+    const g = c.createLinearGradient(x0 - len, 0, x0, 0);
+    g.addColorStop(0, 'rgba(180,235,255,0)'); g.addColorStop(1, `rgba(180,235,255,${0.5 * k})`);
+    c.strokeStyle = g; c.beginPath(); c.moveTo(x0 - len, yy); c.lineTo(x0, yy); c.stroke();
+  }
+  c.restore();
 }
 
 // Eggshell in his copter tub, painted live (his face moves). `cx, cy` is the
 // centre of the art box; `size` is its side. The rotor turns once a beat and
 // the headlamps blink on the song, exactly as they do in the chase.
 export function drawFlightBoss(c, cx, cy, size, o = {}) {
-  const { t = 0, beat = null, mood = 'flat', look = -0.75, hitT = 0, pop = 0, parts = null } = o;
+  const { t = 0, beat = null, mood = 'flat', look = -0.75, hitT = 0, pop = 0, parts = null, lean = FLIGHT_LEAN } = o;
   const beatPhase = Number.isFinite(beat) ? ((beat % 1) + 1) % 1 : null;
   const frame = copterFrame(t, beatPhase);
   const { lamp, ink } = copterLamps({ shieldT: 0, hitT }, beat);
@@ -151,13 +176,17 @@ export function drawFlightBoss(c, cx, cy, size, o = {}) {
     twitch: [t % 5.3 < 0.22 ? 1 : 0, t % 3.9 < 0.18 ? 1 : 0],
   };
   c.save();
+  if (lean) { c.translate(cx, cy); c.rotate(lean); c.translate(-cx, -cy); }
   c.translate(cx - size / 2, cy - size / 2);
   eggshellCopterArt(c, size, size, frame, { face, lamp, lampInk: ink, pop, parts });
   c.restore();
 }
 // The prototype's anchor: the art box centre sits 7 units above the model's y.
-export function flightBossCentre(by, scale) { return by - 7 * scale; }
-export const FLIGHT_BOSS_SIZE = 72;
+// 83 (was 72): Peter picked B of the 1 Nov scale sheet, Eggshell 15% bigger so
+// he and his tub stand up to the hero and ours. The centre rises with the box
+// so his tub stays on the model's y.
+export function flightBossCentre(by, scale) { return by - 9 * scale; }
+export const FLIGHT_BOSS_SIZE = 83;
 
 // ---------------------------------------------------------------- the passage
 //
@@ -553,97 +582,74 @@ export function drawShutter(c, x, top, drop, s = 1) {
   c.fillStyle = '#d7af50'; c.fillRect(x, drop - 7 * s, w, 7 * s);
 }
 
-// THE ENDING: the arcade's mains, a breaker panel on the passage wall with its
-// big socket, its breaker lever and its pilot lamp; and the plug, hanging off
-// its cable from the top rail, that the hero pushes home. Everything here is
-// in passage space at scale `s`; `t` is the victory clock.
-//
-// panel(c, x, y, s, { lever 0..1 (down..up), lamp 'off'|'wait'|'on', t })
-export function drawBreakerPanel(c, x, y, s, o = {}) {
-  const { lever = 0, lamp = 'wait', t = 0 } = o;
-  const pw = 92 * s, ph = 132 * s, px = x - pw / 2, py = y - ph / 2;
-  // Conduit in from above, and the panel's shadow on the wall.
-  c.fillStyle = '#17131f'; c.fillRect(x - 7 * s, 0, 14 * s, py + 4 * s);
-  c.fillStyle = '#2a2433'; c.fillRect(x - 4 * s, 0, 8 * s, py + 4 * s);
+// THE ENDING: the arcade's mains — a big lever on a panel on the passage wall.
+// The hero lands the tub, climbs out, jumps for the grip and rides the lever
+// down with his own weight (Peter, 1 Nov: "maybe we should land, jump out and
+// click a switch"). Everything is in passage space at scale `s`; `P` is the
+// lever's pivot, `ang` its angle (radians from pointing straight left; up is
+// negative: MAINS_LEVER.off is up, .on is down).
+export const MAINS_LEVER = { arm: 40, off: -0.62, on: 0.44 };
+export function mainsGrip(P, s, ang) {
+  // s may carry a radius fraction (the jaws sit at 0.62 of the arm).
+  return { x: P.x - Math.cos(ang) * MAINS_LEVER.arm * s, y: P.y + Math.sin(ang) * MAINS_LEVER.arm * s };
+}
+export function drawMainsLever(c, P, s, o = {}) {
+  const { ang = MAINS_LEVER.off, on = false, t = 0 } = o;
+  const px = P.x - 64 * s, py = P.y - 62 * s, pw = 88 * s, ph = 118 * s;
+  // Conduit up into the ceiling, and the panel's shadow on the wall.
+  c.fillStyle = '#17131f'; c.fillRect(P.x - 7 * s, 0, 14 * s, py + 4 * s);
+  c.fillStyle = '#2a2433'; c.fillRect(P.x - 4 * s, 0, 8 * s, py + 4 * s);
   c.fillStyle = 'rgba(6,4,12,0.45)'; c.beginPath(); c.roundRect(px + 5 * s, py + 7 * s, pw, ph, 7 * s); c.fill();
   plate(c, px, py, pw, ph, '#3a3444', 7 * s);
   c.strokeStyle = '#140f1a'; c.lineWidth = Math.max(1, 1.1 * s); c.beginPath(); c.roundRect(px, py, pw, ph, 7 * s); c.stroke();
-  c.fillStyle = '#c8332c'; c.fillRect(px + 5 * s, py + 7 * s, 3 * s, ph - 14 * s);
-  c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(px + 1.5 * s, py + 1.5 * s, pw - 3 * s, 1.5 * s);
-  for (const [sx, sy] of [[px + 9 * s, py + 9 * s], [px + pw - 9 * s, py + 9 * s], [px + 9 * s, py + ph - 9 * s], [px + pw - 9 * s, py + ph - 9 * s]]) {
+  // Hazard stripes along the foot.
+  c.save(); c.beginPath(); c.rect(px + 4 * s, py + ph - 13 * s, pw - 8 * s, 8 * s); c.clip();
+  c.fillStyle = '#e8b93c'; c.fillRect(px, py + ph - 13 * s, pw, 8 * s); c.fillStyle = '#1f1a26';
+  for (let x = px - 10 * s; x < px + pw; x += 10 * s) { c.beginPath(); c.moveTo(x, py + ph - 5 * s); c.lineTo(x + 5 * s, py + ph - 13 * s); c.lineTo(x + 10 * s, py + ph - 13 * s); c.lineTo(x + 5 * s, py + ph - 5 * s); c.fill(); }
+  c.restore();
+  for (const [sx, sy] of [[px + 8 * s, py + 8 * s], [px + pw - 8 * s, py + 8 * s]]) {
     c.fillStyle = '#7a7286'; c.beginPath(); c.arc(sx, sy, 2.2 * s, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = '#1d1824'; c.lineWidth = Math.max(1, 0.8 * s); c.beginPath(); c.moveTo(sx - 1.4 * s, sy - 1.4 * s); c.lineTo(sx + 1.4 * s, sy + 1.4 * s); c.stroke();
   }
-  // The label strip.
-  plate(c, x - 26 * s, py + 12 * s, 52 * s, 11 * s, '#d9d6df', 2 * s);
+  plate(c, px + pw / 2 - 24 * s, py + 10 * s, 48 * s, 11 * s, '#d9d6df', 2 * s);
   c.fillStyle = '#2a2132'; c.font = `bold ${Math.round(7 * s)}px system-ui`; c.textAlign = 'center';
-  c.fillText('MAINS', x, py + 20.5 * s); c.textAlign = 'left';
-  // The socket: a bevelled plate with two slots and the earth hole.
-  const sy0 = y - 8 * s;
-  plate(c, x - 22 * s, sy0 - 22 * s, 44 * s, 44 * s, '#e6e3ea', 5 * s);
-  c.strokeStyle = '#8f8a98'; c.lineWidth = Math.max(1, 1 * s); c.beginPath(); c.roundRect(x - 22 * s, sy0 - 22 * s, 44 * s, 44 * s, 5 * s); c.stroke();
-  c.fillStyle = '#2a2433';
-  c.fillRect(x - 12 * s, sy0 - 10 * s, 5 * s, 13 * s); c.fillRect(x + 7 * s, sy0 - 10 * s, 5 * s, 13 * s);
-  c.beginPath(); c.arc(x, sy0 + 11 * s, 3.4 * s, 0, Math.PI * 2); c.fill();
-  // The breaker lever, flipping up as the power comes back.
-  const lx = x + 30 * s, ly = y + 36 * s;
-  plate(c, lx - 9 * s, ly - 14 * s, 18 * s, 28 * s, '#221d2a', 3 * s);
-  c.fillStyle = '#c8332c'; c.fillRect(lx - 6 * s, ly - 11 * s, 12 * s, 9 * s);
-  c.fillStyle = '#4caf6a'; c.fillRect(lx - 6 * s, ly + 2 * s, 12 * s, 9 * s);
-  const ang = (0.5 - lever) * 1.1;
-  c.save(); c.translate(lx, ly); c.rotate(ang);
-  plate(c, -3.5 * s, -2 * s, 7 * s, 15 * s, '#e0dde4', 2 * s);
-  c.fillStyle = '#9a95a3'; c.fillRect(-2 * s, 10 * s, 4 * s, 2.5 * s);
+  c.fillText('MAINS', px + pw / 2, py + 18.5 * s);
+  // OFF above the pivot, ON below it: red while it waits, green once it is down.
+  const lamp = (y, col, lit, label) => {
+    c.fillStyle = lit ? col : '#2b2530'; c.beginPath(); c.arc(P.x + 13 * s, y, 4 * s, 0, Math.PI * 2); c.fill();
+    if (lit) { const g = c.createRadialGradient(P.x + 13 * s, y, 1.5 * s, P.x + 13 * s, y, 13 * s); g.addColorStop(0, col + '88'); g.addColorStop(1, col + '00'); c.fillStyle = g; c.beginPath(); c.arc(P.x + 13 * s, y, 13 * s, 0, Math.PI * 2); c.fill(); }
+    c.fillStyle = '#b9b2c2'; c.font = `bold ${Math.round(5 * s)}px system-ui`; c.fillText(label, P.x + 13 * s, y + 11 * s);
+  };
+  lamp(P.y - 30 * s, '#e04848', !on && Math.floor(t * 3) % 2 === 0, 'OFF');
+  lamp(P.y + 22 * s, '#7be38b', on, 'ON');
+  c.textAlign = 'left';
+  // The slot the arm travels in, and the copper jaws it closes into at ON.
+  const R = MAINS_LEVER.arm * s;
+  c.strokeStyle = '#1b1621'; c.lineWidth = 6 * s; c.lineCap = 'round';
+  // (A point at lever angle a is at canvas angle PI - a.)
+  c.beginPath(); c.arc(P.x, P.y, R * 0.62, Math.PI - MAINS_LEVER.off, Math.PI - MAINS_LEVER.on, true); c.stroke();
+  const jaw = mainsGrip(P, s * 0.62, MAINS_LEVER.on);
+  plate(c, jaw.x - 6 * s, jaw.y - 6 * s, 12 * s, 12 * s, '#c07a3c', 2.5 * s);
+  c.fillStyle = '#7a4520'; c.fillRect(jaw.x - 3.5 * s, jaw.y - 1 * s, 7 * s, 2 * s);
+  // The arm, its hub, and the red grip across its end.
+  const g = mainsGrip(P, s, ang);
+  c.strokeStyle = '#141019'; c.lineWidth = 8 * s; c.beginPath(); c.moveTo(P.x, P.y); c.lineTo(g.x, g.y); c.stroke();
+  c.strokeStyle = '#a9a4b2'; c.lineWidth = 5 * s; c.beginPath(); c.moveTo(P.x, P.y); c.lineTo(g.x, g.y); c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,0.35)'; c.lineWidth = 1.2 * s; c.beginPath(); c.moveTo(P.x, P.y - 1.5 * s); c.lineTo(g.x, g.y - 1.5 * s); c.stroke();
+  c.fillStyle = '#5c5766'; c.beginPath(); c.arc(P.x, P.y, 8 * s, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#141019'; c.lineWidth = Math.max(1, 1.2 * s); c.stroke();
+  c.fillStyle = '#c9c4d1'; c.beginPath(); c.arc(P.x, P.y, 3 * s, 0, Math.PI * 2); c.fill();
+  // A handlebar across the end, wide enough for both of his hands; it leans
+  // only a little with the arm so it always reads as a bar to hang from.
+  c.save(); c.translate(g.x, g.y); c.rotate(-ang * 0.3);
+  c.fillStyle = '#141019'; c.beginPath(); c.roundRect(-20 * s, -4.5 * s, 40 * s, 9 * s, 4.5 * s); c.fill();
+  c.fillStyle = '#d23b33'; c.beginPath(); c.roundRect(-18.7 * s, -3.2 * s, 37.4 * s, 6.4 * s, 3.2 * s); c.fill();
+  c.fillStyle = 'rgba(255,255,255,0.3)'; c.fillRect(-16 * s, -2.2 * s, 32 * s, 1.4 * s);
   c.restore();
-  // The pilot lamp: red blink while it waits, green when the mains is back.
-  const lx2 = x - 30 * s, ly2 = y + 36 * s;
-  const on = lamp === 'on', blink = lamp === 'wait' && Math.floor(t * 3) % 2 === 0;
-  c.fillStyle = on ? '#7be38b' : blink ? '#e04848' : '#4a1c1c';
-  c.beginPath(); c.arc(lx2, ly2, 4.5 * s, 0, Math.PI * 2); c.fill();
-  if (on || blink) {
-    const g = c.createRadialGradient(lx2, ly2, 2 * s, lx2, ly2, 14 * s);
-    g.addColorStop(0, on ? 'rgba(123,227,139,0.5)' : 'rgba(224,72,72,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-    c.fillStyle = g; c.beginPath(); c.arc(lx2, ly2, 14 * s, 0, Math.PI * 2); c.fill();
-  }
-  c.strokeStyle = '#1d1824'; c.lineWidth = Math.max(1, 0.9 * s); c.beginPath(); c.arc(lx2, ly2, 4.5 * s, 0, Math.PI * 2); c.stroke();
-}
-// Where the plug's prongs go: the socket's face, in the panel's own terms.
-export function breakerSocketPoint(x, y, s) { return { x: x - 17 * s, y: y - 8 * s }; }
-
-// The plug on its cable. `pivot` is where the cable hangs from (the top rail),
-// `tip` where the prongs are, `ang` the plug's lean (0 = pointing right into
-// the socket). The cable sags from the pivot to the plug's back.
-export function drawHangingPlug(c, pivot, tip, ang, s, o = {}) {
-  const { seated = 0, t = 0 } = o;
-  const back = { x: tip.x - Math.cos(ang) * 34 * s, y: tip.y - Math.sin(ang) * 34 * s };
-  const sag = Math.max(10 * s, (back.y - pivot.y) * 0.25);
-  c.strokeStyle = '#090c13'; c.lineWidth = 7 * s; c.lineCap = 'round';
-  c.beginPath(); c.moveTo(pivot.x, pivot.y);
-  c.bezierCurveTo(pivot.x + 6 * s, pivot.y + sag, back.x - 24 * s, back.y - sag * 0.4, back.x, back.y); c.stroke();
-  c.strokeStyle = '#2f2a38'; c.lineWidth = 2.2 * s;
-  c.beginPath(); c.moveTo(pivot.x, pivot.y);
-  c.bezierCurveTo(pivot.x + 6 * s, pivot.y + sag, back.x - 24 * s, back.y - sag * 0.4, back.x, back.y); c.stroke();
-  // The clip at the top rail.
-  plate(c, pivot.x - 5 * s, pivot.y - 4 * s, 10 * s, 8 * s, '#5a5564', 2 * s);
-  c.save();
-  c.translate(tip.x, tip.y); c.rotate(ang);
-  // Strain relief, moulded body with its grip ridges, the prongs and the earth pin.
-  c.fillStyle = '#2a2731'; c.beginPath(); c.roundRect(-40 * s, -5 * s, 12 * s, 10 * s, 3 * s); c.fill();
-  plate(c, -32 * s, -13 * s, 32 * s, 26 * s, '#f0c43c', 5 * s);
-  c.strokeStyle = '#1d1824'; c.lineWidth = Math.max(1, 1.1 * s); c.beginPath(); c.roundRect(-32 * s, -13 * s, 32 * s, 26 * s, 5 * s); c.stroke();
-  c.fillStyle = '#2a2731'; for (let i = 0; i < 3; i++) c.fillRect(-27 * s + i * 6 * s, -9 * s, 2 * s, 18 * s);
-  c.fillStyle = 'rgba(255,255,255,0.28)'; c.fillRect(-30 * s, -11 * s, 28 * s, 2.2 * s);
-  const prong = 11 * s * (1 - seated * 0.95);
-  c.fillStyle = '#b4b0a6';
-  c.fillRect(0, -9 * s, prong, 3.2 * s); c.fillRect(0, 5.8 * s, prong, 3.2 * s);
-  c.fillRect(0, -1.6 * s, prong * 0.85, 3.2 * s);
-  c.fillStyle = '#7d7a73'; c.fillRect(0, -9 * s, prong, 1 * s); c.fillRect(0, 5.8 * s, prong, 1 * s);
-  c.restore();
-  void t;
+  c.lineCap = 'butt';
 }
 
-// The spark ring and the flash where the plug meets the socket.
-export function drawPlugSpark(c, x, y, s, k) {
+// The spark ring and the flash where the lever closes on its jaws.
+export function drawMainsSpark(c, x, y, s, k) {
   if (k <= 0 || k >= 1) return;
   c.save();
   c.globalAlpha = 1 - k;

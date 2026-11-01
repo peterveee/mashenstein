@@ -1294,7 +1294,20 @@ const EG_LAMP_INKS = Object.freeze({
   field: { halo: '255,150,120', glow: '240,74,60', body: '#f04a3c', hot: '#ff9c84', core: '#ffdccc' },
   dead: { halo: '220,226,240', glow: '150,158,180', body: '#b8bdcc', hot: '#ffffff', core: '#eef0f8' },
 });
+// THE TUB GREW (Peter, 1 Nov): 25% wider and 30% deeper, grown down from the
+// rim's top, so it stands up to the hero's pod in the flight — and it is the
+// same tub everywhere he appears, so he never changes size between scenes.
+// The line weight is divided back out so the ink matches the rest of him.
+export const EG_TUB_SCALE = Object.freeze({ x: 1.25, y: 1.3 });
+// The hull's bottom edge as a fraction of the ape box (was 0.94).
+export const EG_TUB_BOTTOM = 0.6 + 0.34 * EG_TUB_SCALE.y;
 function eggshellTub(c, X, Y, lw, lamp = 0, ink = 'run') {
+  c.save();
+  c.translate(X(0.5), Y(0.6)); c.scale(EG_TUB_SCALE.x, EG_TUB_SCALE.y); c.translate(-X(0.5), -Y(0.6));
+  eggshellTubAtSize(c, X, Y, lw / Math.sqrt(EG_TUB_SCALE.x * EG_TUB_SCALE.y), lamp, ink);
+  c.restore();
+}
+function eggshellTubAtSize(c, X, Y, lw, lamp = 0, ink = 'run') {
   const hull = (k) => rr(k, X(0.12), Y(0.6), X(0.76), Y(0.34), X(0.07));
   egP(c, '#f0f0f8', hull, EG_LINE, lw);
   c.save();

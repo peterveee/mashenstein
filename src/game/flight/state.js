@@ -16,7 +16,7 @@ import { runChromeButtons, declareRunChrome } from '../touchchrome.js';
 import { portraitHudLayout } from '../portrait-layout.js';
 import { FlightModel, BACKUP } from './model.js';
 import {
-  drawPassage, drawFlightHero, drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE,
+  drawPassage, drawFlightHero, drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, FLIGHT_LEAN, drawSpeedStreaks,
   plate, warmPassage, currentFlightLayout, flightHudTop,
   drawFlightBalloon, drawBalloonBasket, drawBalloonBurst, drawBackupMachine, backupCopterCentre,
   drawGiantPlug, drawPassageReveal,
@@ -289,17 +289,37 @@ export class FlightPrototypeState {
       d.fillStyle = '#fff0bf'; d.beginPath(); d.arc(p.x - 1, p.y, 3, 0, Math.PI * 2); d.fill();
     }
     d.globalAlpha = m.grace > 0 && m.lead <= 0 ? 0.55 + 0.45 * Math.abs(Math.sin(m.t * 16)) : 1;
-    drawFlightHero(d, this.hero, this.heroX ?? l.px, m.y, l.scale, { t: this.heroClock(), thrust: this.heroThrust(), pose: this.heroPose() });
+    this.paintStreaks(d);
+    this.paintHero(d);
     d.globalAlpha = 1;
     this.paintBoss(d, beat);
   }
-  // Scenery behind the actors that a subclass owns (the socket, 6-3's shutter).
+  // Scenery behind the actors that a subclass owns (the mains lever, 6-3's shutter).
   paintScenery() {}
   // The pictures' clock: the model's, carried on from the run's at a handover
   // so faces, rotors and jets do not jump on the swap frame.
   artClock() { return this.model.t + (this.arrive?.clock || 0); }
   heroClock() { return this.artClock(); }
   heroPose() { return null; }
+  paintHero(d) {
+    const m = this.model, l = m.layout;
+    drawFlightHero(d, this.hero, this.heroX ?? l.px, m.y, l.scale, { t: this.heroClock(), thrust: this.heroThrust(), pose: this.heroPose(), lean: this.heroLean() });
+  }
+  // The forward lean, with a little more nose-down diving and less climbing.
+  heroLean() {
+    const vy = this.model.vy || 0;
+    return FLIGHT_LEAN + Math.max(-1, Math.min(1, vy / 240)) * 0.07;
+  }
+  // How hard the air streams past: full at cruise, none stopped.
+  streakAmount() { return Math.max(0, Math.min(1, (this.model.scrollV || 0) / 110)); }
+  paintStreaks(d) {
+    const m = this.model, l = m.layout, s = l.scale, k = this.streakAmount();
+    if (k <= 0.01) return;
+    drawSpeedStreaks(d, (this.heroX ?? l.px) - 36 * s, m.y + 9 * s, s, m.scroll, k);
+    if (!m.pattern.final || m.phase === 'first' || m.phase === 'midpoint' || m.phase === 'second') {
+      if (m.phase !== 'won' && m.phase !== 'fall') drawSpeedStreaks(d, l.bx - 40 * s, m.by + 8 * s, s, m.scroll + 50, k);
+    }
+  }
 
   // A bolt: a bright head with a tail that fades back along its path.
   paintPellet(d, p, s) {
@@ -398,8 +418,9 @@ export class FlightPrototypeState {
       const f = m.fin || {};
       const charge = f.mode === 'charge' ? Math.min(1, f.t / BACKUP.charge) : f.mode === 'beam' ? 1 : 0;
       drawBackupMachine(d, l.bx, coreY, ms, { vent: m.vent, charge, t, beat, hit: m.hitFlash, deflect: m.deflect, ...extra });
+      // Bolted to the machine: no lean.
       drawFlightBoss(d, l.bx, backupCopterCentre(coreY, ms), FLIGHT_BOSS_SIZE * ms,
-        { t, beat, mood: extra.mood || (m.vent > 0.5 ? 'sour' : 'smile'), hitT: m.hitFlash > 0 ? 0.3 : 0 });
+        { lean: 0, t, beat, mood: extra.mood || (m.vent > 0.5 ? 'sour' : 'smile'), hitT: m.hitFlash > 0 ? 0.3 : 0 });
     };
     if (m.phase === 'fall') {
       const ft = m.fallTime;

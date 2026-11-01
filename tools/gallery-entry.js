@@ -9276,7 +9276,8 @@ function jadeSky(ctx, w, h, seed = 1) {
 // the way they sit in the room.
 {
   const grid = section('archive-relic-bakeoff', 'TROPHY ROOM — the MANAGEMENT ARCHIVE relics (bake-off)',
-    '<b>NOW</b> is what shipped. <b>A</b> redraws the three subjects (the tub\'s dead headlamp and rim band on the panel, '
+    'SHIPPED 1 Nov: <b>D</b>, and the brown plinth under each relic is gone (every tile here is drawn without it now). '
+    + '<b>NOW</b> is the live Trophy Room painter, so it matches D. <b>A</b> redraws the three subjects (the tub\'s dead headlamp and rim band on the panel, '
     + 'the mast flange on the rotor, the machine\'s red-edged cradle under the core); <b>B–E</b> are presentation '
     + 'treatments on top of A — brass bracket, bell jar, more damage, a spotlight — so the answer can be one letter or '
     + '"A\'s drawing in C\'s case". The core\'s smoke is the only thing that moves.',
@@ -9292,8 +9293,7 @@ function jadeSky(ctx, w, h, seed = 1) {
       const x = W / 2 + (i - 1) * 46, y0 = 0;
       ctx.fillStyle = '#332b42'; ctx.fillRect(x - 20, y0 + 6, 40, 76);
       ctx.strokeStyle = '#8a7a52'; ctx.lineWidth = 1; ctx.strokeRect(x - 20, y0 + 6, 40, 76);
-      relicPainter(ctx, relic, x, y0 + 15, t);
-      ctx.fillStyle = '#6b5430'; ctx.fillRect(x - 15, y0 + 54, 30, 6); ctx.fillRect(x - 18, y0 + 60, 36, 4);
+      relicPainter(ctx, relic, x, y0 + 23, t);
       const labelScale = Math.min(0.64, 36 / Math.max(1, uiTextWidth(label, 1, 'bold')));
       drawUiTextCentered(ctx, label, x, y0 + 69, '#c8b880', labelScale, 'bold');
     });
@@ -9304,10 +9304,10 @@ function jadeSky(ctx, w, h, seed = 1) {
       archive(ctx, t, relicPainter);
     }, { animated: true, hires: 5 });
   };
-  caseTile('NOW — shipped', 'the three flat marks as they are in the room today',
-    (ctx, relic, x, y) => TrophyRoomState.prototype.drawBossRelic.call(null, ctx, relic, x, y));
+  caseTile('NOW — shipped', 'the Trophy Room\'s own drawBossRelic: D, no plinth',
+    (ctx, relic, x, y, t) => TrophyRoomState.prototype.drawBossRelic.call(null, ctx, relic, x, y, t));
   for (const c of RELIC_CANDIDATES) {
-    caseTile(`${c.letter} — ${c.name}`, c.note, (ctx, relic, x, y, t) => drawRelicCandidate(ctx, c.key, relic, x, y, t));
+    caseTile(`${c.letter} — ${c.name}${c.key === 'wrecked' ? ' (SHIPPED)' : ''}`, c.note, (ctx, relic, x, y, t) => drawRelicCandidate(ctx, c.key, relic, x, y, t));
   }
 }
 

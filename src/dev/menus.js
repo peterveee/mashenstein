@@ -36,6 +36,7 @@ import { resolveLayout } from '../game/layout.js';
 import { proseMenu } from './prose.js';
 import { labRenderMenu } from './lab-render.js';
 import { chipResults } from '../game/results-chip.js';
+import { beginFlightCheckpoint } from '../game/flight/checkpoint.js';
 
 const GOLD = '#f6d33c';
 const DIM = '#5a5a68';
@@ -139,6 +140,32 @@ function instantFail(dev, stage) {
     onDone: () => Flow.toHub(),
     onRetry: () => Flow.launchStage(cab, stage, []),
   }));
+}
+
+// SCENES ▸ EGGSHELL DEFEAT: an act-ending flight a pellet from the win. The
+// fight is the real one — a saved checkpoint over a fake cleared run, so the
+// ending, the results and (first 9-3 win) the finale all follow, and the
+// rewards are paid into this slot exactly as INSTANT-CLEAR's are.
+function eggshellDefeat(dev, stageId, checkpoint, at) {
+  const { save, Flow } = dev.ctx;
+  const stage = STAGES.find((s) => s.id === stageId);
+  if (!stage) return;
+  const pending = beginFlightCheckpoint(save, { ...fakeResult(stage), finalHero: Flow.heroId() }, dev.seedLock ?? 7);
+  pending.checkpoint = checkpoint; save.persist();
+  dev.close();
+  Flow.startActFlight(pending, { devLastHit: at });
+}
+
+function eggshellDefeatMenu(dev) {
+  return {
+    title: 'EGGSHELL DEFEAT',
+    items: [
+      { label: '3-3 \u00b7 LAST HIT', act: () => eggshellDefeat(dev, 'rhythm-3', 1, 'boss') },
+      { label: '6-3 \u00b7 LAST HIT', act: () => eggshellDefeat(dev, 'neon-3', 1, 'boss') },
+      { label: '9-3 \u00b7 BALLOON POP', act: () => eggshellDefeat(dev, 'surge-3', 1, 'boss') },
+      { label: '9-3 \u00b7 BACKUP POWER LAST HIT', act: () => eggshellDefeat(dev, 'surge-3', 2, 'core') },
+    ],
+  };
 }
 
 // ------------------------------------------------------------------ screens
@@ -371,6 +398,9 @@ function scenesMenu(dev) {
       // plumber-1 is a reach.
       { label: "RESULTS (fake time's up)", act: () => instantFail(dev, STAGES[1]) },
       { label: 'FINALE', act: go(() => Flow.startFinale()) },
+      // Each act's last stage, a pellet from beating Eggshell: the ending,
+      // results and (9-3) the finale without flying the whole fight.
+      { label: 'EGGSHELL DEFEAT \u25b8', submenu: () => eggshellDefeatMenu(dev) },
       // Every authored text screen in one index — see dev/prose.js for why the
       // rows below cannot cover it (the stage intros have no other route at
       // all, and the briefings are one stage launch each).

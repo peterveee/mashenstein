@@ -100,8 +100,13 @@ export const SFX_BIRTHDAYS = {
   vacuumLaunch: '2026-10-18',   // 8d69db21
   vacuumLoad: '2026-10-18',   // 8d69db21
   vacuumSuck: '2026-10-18',   // 8d69db21
-  rollSplat: null,
-  tada: null,
+  rollSplat: '2026-10-19',   // 26966389
+  tada: '2026-10-27',   // 52892b66
+  flightHurt: '2026-11-01',   // 93ef0593
+  flightPing: '2026-11-01',   // 93ef0593
+  flightPop: '2026-11-01',   // 93ef0593
+  flightShot: '2026-11-01',   // 93ef0593
+  flightWarn: '2026-11-01',   // 93ef0593
 };
 
 export function sfxBorn(cue) { return SFX_BIRTHDAYS[cue] || null; }

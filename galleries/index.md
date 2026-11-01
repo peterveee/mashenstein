@@ -38,3 +38,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-10-25 | `1420a5a` | [2026-10-25-1420a5a.html](2026-10-25-1420a5a.html) | [bake-offs](2026-10-25-1420a5a-lab.html) | Update strum directions in gravity and hub remixes for consistency |
 | 2026-10-28 | `56f9695` | [2026-10-28-56f9695.html](2026-10-28-56f9695.html) | [bake-offs](2026-10-28-56f9695-lab.html) | feat: enhance game mechanics and visuals with new wheel properties and adjustments |
 | 2026-11-01 | `93ef059` | [2026-11-01-93ef059.html](2026-11-01-93ef059.html) | [bake-offs](2026-11-01-93ef059-lab.html) | feat: Enhance flight mechanics and visuals for act transitions |
+| 2026-11-01 | `7948a3f` | [2026-11-01-7948a3f.html](2026-11-01-7948a3f.html) | [bake-offs](2026-11-01-7948a3f-lab.html) | Refactor flight state sound handling and pellet rendering; add relic candidates for archive bake-off |

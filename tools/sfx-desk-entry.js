@@ -60,6 +60,16 @@ const GROUPS = [
     ],
   },
   {
+    name: 'Act-ending flight (placeholders)',
+    cues: [
+      { cue: 'flightShot', what: "the tub's pellet, on the song's half-beats" },
+      { cue: 'flightPing', what: 'a pellet hitting Eggshell / BACKUP POWER' },
+      { cue: 'flightWarn', what: 'an attack telegraphing (the ! before a volley or beam)' },
+      { cue: 'flightHurt', what: 'the hero\'s tub taking a hit' },
+      { cue: 'flightPop', what: "the 9-3 balloon bursting" },
+    ],
+  },
+  {
     name: 'Abilities',
     cues: [
       { cue: 'impact', what: 'a weapon connecting, for a hero with no baked cue' },

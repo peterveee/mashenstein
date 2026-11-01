@@ -5,7 +5,9 @@ export const STEP = 1 / 120;
 export const FLIGHT_CRUISE = 130;
 const CRUISE_EASE = 0.9;
 // Where a pellet leaves the tub: the tip of the gun on its nose (scene.js).
-export const PELLET_MUZZLE = 31;
+// The pod's gun tip at the flight's 7° lean (scene.js FLIGHT_LEAN): 41 ahead
+// of the hero's x and 12 below his y.
+export const PELLET_MUZZLE = 41, PELLET_DROP = 12;
 
 // Each act's ordinary fight. `lanes` are Eggshell's altitude stops (fractions of
 // the band) and `hold` how long each lasts; `attack` the gap between telegraphs in
@@ -196,7 +198,7 @@ export class FlightModel {
     const onBeat = this.fireNow != null;
     if (onBeat ? this.fireNow : this.fire <= 0) {
       this.fire = onBeat ? 0 : this.fire + .16; this.fireNow = false;
-      this.pellets.push({ x: l.px + PELLET_MUZZLE * l.scale, y: this.y + 7 * l.scale }); this.fired = (this.fired || 0) + 1;
+      this.pellets.push({ x: l.px + PELLET_MUZZLE * l.scale, y: this.y + PELLET_DROP * l.scale }); this.fired = (this.fired || 0) + 1;
     }
     const shoot = (targetY, sourceY, travel = pat.travel, kind = 'shot') => {
       // Same arrival time across layouts. Aim is locked before release.
@@ -270,7 +272,8 @@ export class FlightModel {
         continue;
       }
       // The balloon's envelope is the target in Act III: bigger than the tub.
-      const hx = this.pattern.final ? 30 : 22, hy = this.pattern.final ? 28 : 15;
+      // Both grew with Eggshell's art (FLIGHT_BOSS_SIZE 72 -> 83).
+      const hx = this.pattern.final ? 35 : 25, hy = this.pattern.final ? 32 : 17;
       if (prev <= l.bx + hx * l.scale && p.x >= l.bx - hx * l.scale && Math.abs(p.y - (this.by + 7 * l.scale)) < hy * l.scale) {
         p.x = l.width + 100; this.damageBoss(onBeat ? 3 : 2); this.pinged = (this.pinged || 0) + 1;
         if (this.phase !== 'first' && this.phase !== 'second') return;

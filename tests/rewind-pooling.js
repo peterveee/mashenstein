@@ -251,6 +251,10 @@ for (let i = 0; i < 400 && !armed; i++) {
     && !run.introRunning && !run.zoneCard;
 }
 assert(armed, `the run is rewindable again before the capsule test (buffer ${ring.length})`);
+// A bot-less run can have picked up a real capsule on the way here and spent it on a
+// crate, and a spent capsule is spent for the attempt (rewindUsed) — so the charge granted
+// below would sit there and the hit would land. Measured on one lane in thirty.
+run.rewindUsed = false;
 run.powerups.grab('rewind');
 assert(!!run.powerups.active.rewind, 'a keyboard run can hold a rewind charge');
 const beforeCapX = run.camX;
@@ -268,7 +272,11 @@ assert(!run.powerups.active.rewind,
 // Spent: a second hit is now an ordinary hit, not another free undo.
 // A restored snapshot may legitimately carry hero i-frames; clear that
 // unrelated protection so this assertion isolates the spent rewind charge.
+// The same goes for a shield orb the lane dealt him and Ramon's one
+// reassembly: each takes a hit without the battery moving.
 run.player.iframes = 0;
+run.powerups.shieldStack = 0;
+run.player.assemblyGraceUsed = Infinity;
 const battBefore = run.battery;
 realTakeHit.call(run, 'TEST HIT 2');
 assert(run.rewindPlayFrames === 0 && (run.battery < battBefore || run.dead),

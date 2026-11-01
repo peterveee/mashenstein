@@ -56,7 +56,7 @@ import { openingEdge } from './hub/door-walk.js';
 import {
   makeCabinetDive, DIVE_PHASES, DIVE_DURATION, DIVE_LEAP_AT, leapVoiceFor,
 } from './hub/cabinet-dive.js';
-import { PROP_PAINTERS, eggshellCopterArt, STRIP_PLUGGED, powerStripCordAt } from '../sprites/props.js';
+import { PROP_PAINTERS, eggshellCopterArt, STRIP_PLUGGED, powerStripCordAt, EG_TUB_BOTTOM } from '../sprites/props.js';
 import { drawMcgfnPlate } from '../sprites/mcgfn.js';
 import { drawToon } from '../sprites/toons.js';
 import { drawSoftContactShadow } from '../engine/shadows.js';
@@ -716,10 +716,10 @@ function copterAt(t) {
     size: COPTER_SIZE, seat: 1 - lift, drift: lift, tilt: -0.05 * (1 - lift),
   };
 }
-// Where he lands. The hull's bottom edge is Y(0.94) of the ape box drawn at
-// (2,8) in the copter's 28-unit frame — props.js eggshellTub — so the seat
-// puts that edge one unit into the bar's top face, over its switch end.
-const COPTER_TUB_BOTTOM = 8 + 20 * 0.94;
+// Where he lands. The hull's bottom edge is Y(EG_TUB_BOTTOM) of the ape box
+// drawn at (2,8) in the copter's 28-unit frame — props.js eggshellTub — so the
+// seat puts that edge one unit into the bar's top face, over its switch end.
+const COPTER_TUB_BOTTOM = 8 + 20 * EG_TUB_BOTTOM;
 // Dead over the rocker, derived from it rather than typed, so stretching the
 // bar again cannot leave him sitting on the wrong part of it.
 const SEAT_X = ROCKER_X;

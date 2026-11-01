@@ -1660,7 +1660,11 @@ export const COPTER_BOX = 36;
 // box scaled to COPTER_BOX, the tub's rim spans twelve units either side of
 // centre, and the rotor's ink stops short of the box top. The rest is blade
 // sweep and sky, and a head that passes under a blade tip has missed.
-export const COPTER_HULL = { w: 24, h: 30, floor: 4 };
+// The tub grew on 1 Nov (props.js EG_TUB_SCALE: 1.25 wide, 1.3 deep, down
+// from the rim): the rim now spans fifteen either side, and the floor is 2.6
+// lower in the box, so the hull is taller by that and starts that much nearer
+// the copter's altitude. (Was w 24, h 30, floor 4.)
+export const COPTER_HULL = { w: 30, h: 32.6, floor: 1.4 };
 // How long the bonk's recoil runs, and — because the same field is the lockout
 // — how long nothing else may count as a hit.
 export const COPTER_HIT_T = 1.1;

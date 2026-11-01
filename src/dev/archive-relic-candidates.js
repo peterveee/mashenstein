@@ -3,7 +3,7 @@
 // better versions of these please".
 //
 // Every candidate draws into the SAME case the Trophy Room gives a relic — the
-// 40x76 box with the relic's origin at (x, y) and the brown plinth at y+39 —
+// 40x76 box with the relic's origin at (x, y), its stand at y+30 —
 // so a winner drops straight into TrophyRoomState.drawBossRelic. Candidates
 // are the shipped three subjects redrawn, then four presentation treatments
 // on top of that redraw, so the answer can be "A's drawing, C's case".
@@ -16,6 +16,9 @@
 //   C  BELL JAR  A under a glass dome on a turned wooden base
 //   D  WRECKED   A with the damage turned up — torn, snapped, split open
 //   E  SPOTLIT   A under a spotlight from the case top, with a cast shadow
+//
+// SHIPPED 1 Nov 2026: D, as src/sprites/archive-relics.js, with the brown
+// plinth under each relic removed from the case.
 import { EG_LINE, egP, egLine, egDot, rr } from '../sprites/props.js';
 
 const INK = "#1a1028";

@@ -15228,6 +15228,12 @@ export class RunState {
     this.loop = null;
     this.backdropLead = 0;
     this.copterLoopHold = 0;
+    // Nor does the tape. The ring still holds the seconds before he died, ahead
+    // of the checkpoint, and holding Left (or a banked capsule) would pop past
+    // the respawn into them: the camera jumps forward to where he fell and the
+    // death is undone. enter() drops it for the same reason.
+    this.rewindFrames.reset();
+    this.rewindCaptureT = 0;
     this.camX = s.camX; this.distance = s.distance ?? s.camX;
     // THE SONG HAS MOVED ON, SO THE ROAD MOVES WITH IT — first, so that every
     // "ahead of him / behind him" below (the pits, the wall) reads the camera

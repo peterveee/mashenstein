@@ -48,6 +48,7 @@ import { getStylePack } from '../../engine/stylePacks/index.js';
 import { makeObstacle, OBSTACLES } from '../entities.js';
 import { drawWorldEntity } from '../draw.js';
 import { drawSelectedCryptEnemy } from '../../sprites/crypt-enemies.js';
+import { drawArchiveRelic } from '../../sprites/archive-relics.js';
 import { drawVacuumMawBody, drawVacuumSpiralHose, vacuumBox } from '../../sprites/vacuum-compactor.js';
 import { USUAL_SUSPECTS } from '../usualSuspects.js';
 import { hashStr } from '../../engine/rng.js';
@@ -5527,61 +5528,10 @@ export class TrophyRoomState {
     }
   }
 
-  drawBossRelic(ctx, relic, x, y) {
-    if (relic === 'sidepanel') {
-      // The side panel that comes off Eggshell's tub at halfway in the 3-3
-      // flight ("DO YOU KNOW WHAT THAT COST?"): his tub's white and red, a dent,
-      // two bolt holes and a wire still hanging off it, propped on the plinth.
-      const panel = (k) => { k.beginPath(); k.roundRect(-15, -12, 30, 22, 4); };
-      ctx.save();
-      ctx.translate(x, y + 17);
-      ctx.rotate(-0.12);
-      panel(ctx); ctx.fillStyle = '#f2eef0'; ctx.fill();
-      ctx.save(); panel(ctx); ctx.clip();
-      ctx.fillStyle = '#d8403a'; ctx.fillRect(-9, -12, 6, 22); ctx.fillRect(1, -12, 6, 22);
-      ctx.fillStyle = 'rgba(30,20,40,0.2)'; ctx.beginPath(); ctx.ellipse(8, 3, 6, 3.5, 0.5, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      panel(ctx); ctx.strokeStyle = '#3a2f42'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = '#6f6a78';
-      for (const bx of [-12, 12]) { ctx.beginPath(); ctx.arc(bx, -9, 1.4, 0, Math.PI * 2); ctx.fill(); }
-      ctx.strokeStyle = '#3c8be0'; ctx.beginPath(); ctx.moveTo(-15, 4); ctx.quadraticCurveTo(-21, 8, -18, 14); ctx.stroke();
-      ctx.restore();
-      ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 30, 34, 4);
-      return;
-    }
-    if (relic === 'rotor') {
-      // Two blades on the hub and mast stub, the near one bent down at the tip.
-      ctx.save();
-      ctx.translate(x, y + 16);
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = '#3a3a48'; ctx.lineWidth = 3.2;
-      ctx.beginPath(); ctx.moveTo(-17, -2); ctx.lineTo(0, 0); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(11, 1); ctx.lineTo(16, 7); ctx.stroke();
-      ctx.strokeStyle = '#9a9aa8'; ctx.lineWidth = 1.1;
-      ctx.beginPath(); ctx.moveTo(-15, -2.4); ctx.lineTo(-2, -0.6); ctx.moveTo(2, -0.4); ctx.lineTo(10.5, 0.4); ctx.stroke();
-      ctx.fillStyle = '#3a3a48'; ctx.fillRect(-1.2, 0, 2.4, 12);
-      ctx.fillStyle = '#8a8a98'; ctx.beginPath(); ctx.arc(0, 0, 2.6, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 30, 34, 4);
-      return;
-    }
-    if (relic === 'core') {
-      // The core in a scorched cradle, cold: dull amber, a crack, a wisp.
-      ctx.save();
-      ctx.translate(x, y + 17);
-      ctx.fillStyle = '#2b2433'; ctx.beginPath(); ctx.roundRect(-13, 1, 26, 12, 2); ctx.fill();
-      ctx.fillStyle = '#c8332c'; ctx.fillRect(-12, 2, 2, 10); ctx.fillRect(10, 2, 2, 10);
-      const g = ctx.createRadialGradient(-3, -4, 1, 0, -1, 10);
-      g.addColorStop(0, '#b98a5a'); g.addColorStop(0.6, '#7a4a2a'); g.addColorStop(1, '#3a2418');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -1, 9.5, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#1a1210'; ctx.lineWidth = 0.9;
-      ctx.beginPath(); ctx.moveTo(-2, -10); ctx.lineTo(1, -4); ctx.lineTo(-1, 0); ctx.lineTo(3, 5); ctx.stroke();
-      ctx.strokeStyle = 'rgba(200,196,210,0.45)'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(4, -12); ctx.quadraticCurveTo(8, -17, 4, -21); ctx.stroke();
-      ctx.restore();
-      ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 30, 34, 4);
-      return;
-    }
+  drawBossRelic(ctx, relic, x, y, t = 0) {
+    // The three act relics (src/sprites/archive-relics.js): D, WRECKED, off the
+    // 1 Nov 2026 bake-off.
+    if (drawArchiveRelic(ctx, relic, x, y, t)) return;
     if (relic === 'copter') {
       // The copter painter carries its own rotor; the relic is frame 0, parked.
       drawProp(ctx, 'eggshellCopter', x - 14, y - 2, 28, 28);
@@ -5625,9 +5575,10 @@ export class TrophyRoomState {
       ctx.fillRect(x - 20, y0 + 6, 40, 76);
       ctx.strokeStyle = '#8a7a52'; ctx.lineWidth = 1;
       ctx.strokeRect(x - 20, y0 + 6, 40, 76);
-      this.drawBossRelic(ctx, b.relic, x, y0 + 15);
-      ctx.fillStyle = '#6b5430';
-      ctx.fillRect(x - 15, y0 + 54, 30, 6); ctx.fillRect(x - 18, y0 + 60, 36, 4);
+      // No brown plinth under the relic any more (Peter, 1 Nov 2026: "i don't
+      // like this thing"); the relic drops 8 into the room it left, so its
+      // stand sits just above the label and the core's smoke clears the case top.
+      this.drawBossRelic(ctx, b.relic, x, y0 + 23, this.t);
       const labelScale = Math.min(0.64, 36 / Math.max(1, textWidth(b.label, 1, 'bold')));
       drawTextCentered(ctx, b.label, x, y0 + 69, '#c8b880', labelScale, 'bold');
     });

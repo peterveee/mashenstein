@@ -690,7 +690,7 @@ const Flow = {
   // An act's ending flight. `arrive` is the run's handover (the frame the
   // passage filled), so the fight continues it; without one this is a saved
   // fight resumed from the cabinet, and it opens on its own music.
-  startActFlight(pending, { arrive = null, carried = null } = {}) {
+  startActFlight(pending, { arrive = null, carried = null, devLastHit = null } = {}) {
     const act = actEndingFor(pending.stageId);
     const cab = CABINET_BY_ID[act.cabinet];
     const stage = STAGE_BY_ID[pending.stageId];
@@ -707,7 +707,7 @@ const Flow = {
     const enter = arrive ? setStateNow : setState;
     enter(new CampaignFlightState({ pending, act, settings: save.settings, musicSong: Flow.gameSongFor(act.cabinet),
       banksBefore: flightBanksBefore(act, save.slot),
-      arrive, carried, hull: pending.oneHit ? 1 : 4,
+      arrive, carried, hull: pending.oneHit ? 1 : 4, devLastHit,
       // EXIT keeps the saved fight; the hero leaves the cabinet as one who did
       // not win, the way a runner's EXIT does.
       onExit: ({ seconds, hits } = {}) => {
