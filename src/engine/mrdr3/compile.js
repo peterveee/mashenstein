@@ -16,7 +16,7 @@
  * refused, rather than approximated.
  */
 import { MRDR3_NATIVE, isMrdrVoice } from './identity.js';
-import { mrdr3SyncKind, mrdr3SyncKey } from './tables.js';
+import { mrdr3SyncKind, mrdr3SyncKey, mrdr3FmKey, mrdr3FmFeedback } from './tables.js';
 import { mrdr3SyncBendSteps } from './env.js';
 import { driveCurve, DRIVE_HEADROOM, driveRef } from '../drive-curve.js';
 
@@ -164,6 +164,11 @@ export function compileMrdr3(voice) {
     // zero, which is silence rather than a wider sound. The native path's own arithmetic.
     const room = Math.min(width - 0.05, 0.95 - width);
     const swing = moving ? Math.min(room, Math.min(1, s.pwm.depth) * 0.45) : 0;
+    const sync = syncFor(voice, key, s);
+    const fmOn = !!s.fm && (s.fm.index ?? 1) > 0 && !sync.syncKeys;
+    const fmKey = fmOn ? mrdr3FmKey(s.fm.type, s.fm.feedback) : null;
+    const fmTable = fmKey
+      ? { key: fmKey, fm: { type: s.fm.type, feedback: mrdr3FmFeedback(s.fm.feedback) } } : null;
     layers.push({
       // Keep the panel's oscillator identity on the compiled layer. Active worklet notes
       // keep their layer objects across LEGATO handoffs, so a patch edit needs this key
@@ -200,8 +205,17 @@ export function compileMrdr3(voice) {
       // would beat against each other. Its pitch is fixed at the carrier's STARTING
       // frequency and its depth is in hertz as a multiple of it, with its own envelope:
       // a long decay is the modulation swelling across the note, which is what brass is.
-      fmRatio: s.fm && (s.fm.index ?? 1) > 0 ? (s.fm.ratio ?? 1.4) : 0,
-      fmIndex: s.fm && (s.fm.index ?? 1) > 0 ? (s.fm.index ?? 1) : 0,
+      //
+      // NOT on a hard-synced slave: the native path builds no modulator for one, because
+      // its pitch is the master's table and there is no oscillator of its own to bend.
+      fmRatio: fmOn ? (s.fm.ratio ?? 1.4) : 0,
+      fmIndex: fmOn ? (s.fm.index ?? 1) : 0,
+      // KEY SCALE: the depth falls with the note, applied at the strike (fmKeyScale).
+      fmKeyScale: fmOn ? Math.min(1, Math.max(0, Number(s.fm.keyScale) || 0)) : 0,
+      // The modulator's WAVE: a classic pyramid by name, or a keyed table (PULSE, or a
+      // sine with FEEDBACK) built from the series the native PeriodicWave is built from.
+      fmKind: fmOn && CLASSIC.includes(s.fm.type) ? s.fm.type : 'sine',
+      fmKey: fmOn ? mrdr3FmKey(s.fm.type, s.fm.feedback) : null,
       fmEnv: s.fm ? {
         attack: s.fm.attack ?? 0.01, decay: s.fm.decay ?? 0,
         sustain: s.fm.sustain ?? 0, release: s.fm.release ?? 0,
@@ -210,7 +224,9 @@ export function compileMrdr3(voice) {
       ratio: s.ratio ?? 1,
       detune: s.detune ?? 0,
       // A HARD-SYNCED slave plays the native path's table — see syncFor below.
-      ...syncFor(voice, key, s),
+      ...sync,
+      // The FM table rides with the sync tables, so one install carries both.
+      ...(fmTable ? { syncTables: [...(sync.syncTables || []), fmTable] } : {}),
       unison: Math.max(1, Math.min(4, Math.round(s.unison ?? 1))),
       spread: s.spread ?? 20,
       stereo: Math.min(1, Math.max(0, s.stereo ?? 0)),

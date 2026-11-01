@@ -20,13 +20,17 @@ save.newSlot(0, 0);
 save.slot.coins = 777;
 save.persist();
 
-// 1) shuffled rotation: 30 unique entries before any repeat
+// 1) shuffled rotation: every stage and boss once before any repeat
+const { STAGES: ALL_STAGES } = await import('../src/data/stages.js');
+const { ATTRACT_BOSSES } = await import('../src/game/attract.js');
+const ROTATION = ALL_STAGES.length + ATTRACT_BOSSES.length;
 const seen = new Set();
-for (let i = 0; i < 30; i++) {
+for (let i = 0; i < ROTATION; i++) {
   const sc = nextScenario();
   seen.add(sc.kind + ':' + sc.id);
 }
-assert(seen.size === 30, `rotation covers ${seen.size}/30 unique scenarios before repeating`);
+assert(seen.size === ROTATION, `rotation covers ${seen.size}/${ROTATION} unique scenarios before repeating`);
+assert(![...seen].some((k) => k.startsWith('boss:')), 'no separate boss fight is in the attract rotation (the acts end in flights)');
 
 const ctx = globalThis.document.createElement('canvas').getContext('2d');
 const TICK = 1 / 60;

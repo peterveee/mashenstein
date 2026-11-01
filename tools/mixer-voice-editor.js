@@ -732,6 +732,17 @@ const pick = (path, label, options, def, when = null, opts = {}) =>
   ({ kind: 'pick', path, label, options, def, when, ...opts });
 
 /**
+ * KEY SCALE on an FM depth — `fmKeyScale` in src/engine/mrdr3/tables.js, the one law MRDR-3's
+ * layer FM and RMND-7 both read. Stored 0–1, shown as a percent.
+ */
+const fmKeyScaleRow = (path) => n(path, 'KEY SCALE', 0, 100, 1, fixed(0), 0, '%', null, {
+  read: (x) => (x != null ? x * 100 : undefined), write: (x) => x / 100,
+  tip: 'Less FM the higher you play, as a DX7\u2019s keyboard scaling does \u2014 0 is the '
+    + 'same depth on every note; 100 halves it each octave above A2, so the top of the '
+    + 'keyboard stays bright without turning to hiss',
+});
+
+/**
  * The oscillator, as SHAPE plus VOICING plus the two controls a fat stack needs.
  *
  * `count` and `spread` only mean anything on a `fat*` type — Tone ignores them
@@ -1384,6 +1395,16 @@ const layerGroups = () => {
           { optionTips: { pulse: 'pulse \u2014 a fixed 25% pulse: thinner and buzzier than square' } }),
         ...ratioPairRows(`$${p}.fm.ratio`, 1.4),
         layerFmDepthRow(`$${p}.fm.index`),
+        // The DX7's operator feedback: the sine fed back into its own phase, so 0 is the
+        // sine and 100 is a sawtooth (`mrdr3FmPartials` in src/engine/mrdr3/tables.js).
+        // The sine's own control — greyed on the other waves, which have none.
+        n(`$${p}.fm.feedback`, 'FEEDBACK', 0, 100, 1, fixed(0), 0, '',
+          (v) => (getAt(v, `$${p}.fm.type`) ?? 'sine') === 'sine', {
+            read: (x) => (x != null ? x * 100 : undefined), write: (x) => x / 100,
+            tip: 'Feeds the sine modulator back into itself, as on a DX7 — 0 is a pure '
+              + 'sine, 100 a sawtooth, and the FM edge gets brassier and rougher on the way. '
+              + 'SINE only' }),
+        fmKeyScaleRow(`$${p}.fm.keyScale`),
         // The envelope every other card here has: ATTACK from 0, and the curve trio the
         // amp card ends on, on `adsr`'s own three keys (DEC keeps `curve`). Exponential is
         // what this envelope always drew, so every preset reads back unchanged.
@@ -1657,7 +1678,7 @@ const ratioPairRows = (path, dflt) => {
       tip: 'The modulator\u2019s pitch as a whole multiple of the carrier\u2019s. RATIO FINE adds the thousandths',
     }),
     n(path, 'RATIO FINE', 0, 999, 1, fixed(0), Math.round((dflt % 1) * 1000), '', null, {
-      derived: true,
+      derived: true, ...RATIO_FINE_TAPER,
       read: (raw) => parts(raw).fine,
       write: (x, voice) => join(voice, { fine: x }),
       tip: 'Thousandths added to RATIO \u2014 152 on a RATIO of 7 is 7.152',
@@ -1685,6 +1706,14 @@ const layerFmDepthRow = (path) => n(path, 'FM DEPTH', 0, 100, 0.1, fixed(1), 3.2
 
 /** FM DEPTH's power taper: 100 × 0.5^2.32 = 20 at the pot's centre. */
 const FM_DEPTH_SCALE = Math.log(0.2) / Math.log(0.5);
+
+/**
+ * RATIO FINE's LOG TAPER (Peter, 28 Oct 2026): the travel is spent evenly per decade, so
+ * 1–10 takes the first third of the sweep, 10–100 the second and 100–999 the last. The
+ * small numbers are the slow beats, and a linear 0–999 pot gave them a hair of travel
+ * each. The left stop is still 0.
+ */
+const RATIO_FINE_TAPER = { taper: 'log', floor: 1 };
 
 /** A ratio split the way the two pots show it: the whole multiple and the thousandths. */
 const rmnd7RatioParts = (raw) => {
@@ -2051,7 +2080,7 @@ const SYNTH_GROUPS = {
           + 'thousandths',
       }),
       n('harmonicity', 'RATIO FINE', 0, 999, 1, fixed(0), 0, '', null, {
-        derived: true,
+        derived: true, ...RATIO_FINE_TAPER,
         read: (raw) => rmnd7RatioParts(raw).fine,
         write: (x, voice) => { setRmnd7Ratio(voice, { fine: x }); return SKIP_WRITE; },
         tip: 'Thousandths added to RATIO \u2014 152 on a RATIO of 7 is 7.152. A few '
@@ -2070,6 +2099,9 @@ const SYNTH_GROUPS = {
         { scale: FM_DEPTH_SCALE, hideWhen: isRmnd7Fm,
           tip: 'How far the modulator bends the carrier\u2019s pitch, in multiples of it.'
           + ' Frequency modulation only \u2014 AM DEPTH is the other mode\u2019s' }),
+      // KEY SCALE beside FM DEPTH, on the law MRDR-3's layer FM reads (Peter, 28 Oct 2026).
+      // FM only: AM has no index for it to scale, so it hides in AM as FM DEPTH does.
+      { ...fmKeyScaleRow('$keyScale'), hideWhen: isRmnd7Fm },
       // The AM half of the same question, shown in AM where FM DEPTH is shown in FM. Tone's AMSynth has no such number, and what it does is shallow — the
       // carrier never swung past a third of itself — so the engine puts one in (`amDepthLaw`
       // in src/engine/voices.js): 1 is all the way to silence on every cycle, 0 is none,

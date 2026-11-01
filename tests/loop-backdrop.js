@@ -11,7 +11,7 @@
 //   - the backdrop never scrolls backward, on the ring or after it
 //   - it meets the world's pace at both seams, and the payback eases in
 //   - the lead is a circumference, and it is all paid back
-//   - speed-2's villain is never flown backward by the camera's U-turn either
+//   - the chase stage's villain is never flown backward by the camera's U-turn either
 import { installDom } from './dom-stub.js';
 installDom();
 
@@ -78,13 +78,13 @@ for (let i = exit + 1; i < rows.length; i++) {
 assert(worstStep < 8, `the payback eases in and out, never a step in the scenery's pace (worst ${worstStep.toFixed(1)} px/s a tick)`);
 
 // ---- and the villain -------------------------------------------------------
-// Speed-2's chase copter is flown off the camera, so he used to U-turn with it.
+// The chase stage's copter is flown off the camera, so he used to U-turn with it.
 // His own flight (c.dx) is left alone; what must never go backward over a lap
 // is what that flight is ANCHORED to (LOOP.copterRelease) — except where the
 // frame's edge stops him, which is allowed and reported.
 {
   const { STAGES } = await import('../src/data/stages.js');
-  const chase = STAGES.find((s) => s.cabinet === 'speed' && s.index === 2);
+  const chase = STAGES.find((s) => s.challenge?.type === 'chase');
   const r2 = new RunState({ stage: chase, save, seed: 7, difficulty: 1, onEnd: () => {} });
   r2.enter();
   for (let i = 0; i < 60 * 15 && !(r2.copter && r2.copter.arrived); i++) {
@@ -92,7 +92,7 @@ assert(worstStep < 8, `the payback eases in and out, never a step in the scenery
     r2.obstacles = r2.obstacles.filter((o) => !o.def?.isGap);
     r2.update(1 / 60);
   }
-  assert(!!r2.copter?.arrived, 'speed-2: the villain has arrived');
+  assert(!!r2.copter?.arrived, `${chase.id}: the villain has arrived`);
   r2.obstacles = []; r2.pickups = []; r2.projectiles = [];
   const ring = makeObstacle('loopPad', r2.playerWorldX() + 30);
   r2.obstacles.push(ring);
@@ -113,7 +113,7 @@ assert(worstStep < 8, `the payback eases in and out, never a step in the scenery
     peakHold = Math.max(peakHold, r2.copterLoopHold);
     if (done != null && r2.copterLoopHold === 0 && i > done + 5) break;
   }
-  assert(rode, 'speed-2: the hero rode the ring with the villain up');
+  assert(rode, `${chase.id}: the hero rode the ring with the villain up`);
   assert(peakHold > LOOP.r, `the camera's U-turn is banked, not flown (held ${peakHold.toFixed(1)} px)`);
   assert(worstBack > -1e-6, `his anchor never goes backward over the lap (worst ${worstBack.toFixed(2)} px; ${pinnedTicks} ticks held by the frame's edge)`);
   assert(r2.copterLoopHold === 0, 'and he is released back onto the camera after the exit');

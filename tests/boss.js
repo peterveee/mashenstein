@@ -19,7 +19,7 @@ function assert(cond, msg) {
 
 const canvasCtx = globalThis.document.createElement('canvas').getContext('2d');
 
-for (const bossCab of ['neon', 'rhythm', 'surge']) {
+for (const bossCab of ['surge']) {
   let result = null;
   const boss = new BossState({
     bossCab,

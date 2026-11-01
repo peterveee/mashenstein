@@ -19,7 +19,11 @@ import { Rng } from '../engine/rng.js';
 // the closing shutter never makes it into the picture.
 const QUIET_OUTRO = 0.9;
 
-// Shuffled rotation: all 27 stages + 3 bosses appear before any repeat.
+// Shuffled rotation: every stage appears before any repeat. No separate boss
+// fights: every act ends in Eggshell's flight now (flight/acts.js), which is a
+// continuation of its stage rather than a demo of its own. The old fight code
+// stays for the dev menu's bot runs (boss.js).
+export const ATTRACT_BOSSES = [];
 let rotation = [];
 let clipCounter = 0;
 const rotRng = new Rng(0xa77c0de);
@@ -27,7 +31,7 @@ export function nextScenario() {
   if (!rotation.length) {
     rotation = [
       ...STAGES.map((s) => ({ kind: 'stage', id: s.id })),
-      ...Object.keys(BOSSES).map((b) => ({ kind: 'boss', id: b })),
+      ...ATTRACT_BOSSES.filter((b) => BOSSES[b]).map((b) => ({ kind: 'boss', id: b })),
     ];
     for (let i = rotation.length - 1; i > 0; i--) {
       const j = rotRng.int(0, i);

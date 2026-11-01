@@ -195,9 +195,10 @@ assert(bonusPanelFold({ beatLock: false, bonusT: 10 }) === 0
   assert(!threw, `stage select renders for every cabinet and plug state (${threw || 'no throw'})`);
 
   // Rows are sized from the option count, so the list has to stay inside the
-  // panel in the loaded case as well as the empty one — six rows is the ceiling
-  // (three stages, BOSS, CORRUPTED MODE, BACK) and it must not push the last
-  // row's blurb down into the bottom status strip.
+  // panel in the loaded case as well as the empty one — five rows is the ceiling
+  // (three stages, CORRUPTED MODE, BACK; there is no BOSS row since every act
+  // ends in Eggshell's flight) and it must not push the last row's blurb down
+  // into the bottom status strip.
   const { H } = await import('../src/engine/renderer.js');
   let worst = 0, worstCab = '', worstRows = 0;
   for (const cab of CABINETS) {
@@ -208,7 +209,7 @@ assert(bonusPanelFold({ beatLock: false, bonusT: 10 }) === 0
     const bottom = st.listY + rows * st.rowH;
     if (bottom > worst || (bottom === worst && rows > worstRows)) { worst = bottom; worstRows = rows; worstCab = cab.id; }
   }
-  assert(worstRows === 6, `a boss cabinet with corrupted mode open reaches the six-row case (got ${worstRows} at ${worstCab})`);
+  assert(worstRows === 5, `a cabinet with corrupted mode open reaches the five-row case (got ${worstRows} at ${worstCab})`);
   assert(worst <= H - 16, `the fullest stage list clears the status strip: ${worstCab} ends at ${worst.toFixed(1)} of ${H - 16}`);
 
   // The per-cabinet denominator must be three per stage, and the totals must

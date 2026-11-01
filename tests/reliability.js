@@ -1392,7 +1392,7 @@ assert(run.coins === 0, 'Haunted Coupon does not award shield-break coins');
 
 // A piercing projectile can damage a boss only once.
 let bossEnds = 0;
-const boss = new BossState({ bossCab: 'neon', save, seed: 8, difficulty: 1, onEnd: () => bossEnds++ });
+const boss = new BossState({ bossCab: 'surge', save, seed: 8, difficulty: 1, onEnd: () => bossEnds++ });
 boss.enter(); boss.obstacles = [];
 // One tick to let the boss take up its framed position, then park the pellet on
 // it — where that is depends on the camera, so read it rather than assume it.

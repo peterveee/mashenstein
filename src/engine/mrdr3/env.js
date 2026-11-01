@@ -178,6 +178,41 @@ export function mrdr3GateAdsrEvents(t, end, peak, e, sustaining, freq) {
 }
 
 /**
+ * The HELD envelope the native path's `adsr` draws — MRDR-3's FM operator rides it — as
+ * ordered automation events, so the worklet's modulator swells exactly as the game's does.
+ *
+ * Not the gate: no attack floor, no raised cosine, and every stage starts from 1e-4 in the
+ * param's OWN units. That last one is the sound. The FM depth is in hertz, so an
+ * exponential attack from 1e-4 Hz to a 660 Hz peak blooms far later than one from 1e-4 of
+ * a normalised peak would, and the phase the carrier gains during that attack is the
+ * carrier's phase against its modulator for the rest of the note — which, at a
+ * whole-number ratio, is the timbre. So `peak` is passed in hertz, never as 1.
+ *
+ * See `adsr` in src/engine/voices.js for why each stage is shaped as it is.
+ */
+export function mrdr3AdsrEvents(t, end, peak, e, sustaining) {
+  if (!e) e = {};
+  if (!Number.isFinite(t) || !Number.isFinite(end) || !Number.isFinite(peak)) return null;
+  var level = Math.max(1e-4, peak);
+  var attack = Math.max(0.001, e.attack == null ? 0.01 : e.attack);
+  var release = Math.max(0, e.release == null ? 0.015 : e.release);
+  var sustain = Math.min(1, Math.max(0, e.sustain == null ? 0 : e.sustain));
+  var peakAt = t + Math.min(attack, Math.max(0.001, (end - t) * 0.45));
+  var decayEnd = Math.min(end, peakAt + Math.max(0, e.decay == null ? 0 : e.decay));
+  var held = Math.max(1e-4, level * sustain);
+  var events = [];
+  events.push({ k: 'set', v: 1e-4, t: t });
+  events.push({ k: e.attackCurve === 'lin' ? 'lin' : 'exp', v: level, t: peakAt });
+  events.push({ k: e.curve === 'lin' ? 'lin' : 'exp', v: held, t: decayEnd });
+  if (sustaining) return { events: events, off: end + release + 0.005 };
+  if (decayEnd < end) events.push({ k: 'set', v: held, t: end });
+  var off = end + release;
+  if (release > 0) events.push({ k: e.releaseCurve === 'lin' ? 'lin' : 'exp', v: 1e-4, t: off });
+  events.push({ k: 'lin', v: 0, t: off + 0.005 });
+  return { events: events, off: off + 0.005 };
+}
+
+/**
  * The pitch envelope, in CENTS, as ordered automation events.
  *
  * The second shared builder, and it earns the same treatment as the first: it carries
@@ -297,6 +332,6 @@ export function mrdr3SyncBendKnots(cents, e, end, steps, outT, outJ) {
  * about why these must stay self-contained.
  */
 export const MRDR3_ENV_SOURCE = [
-  mrdr3GateFloor, mrdr3GateLinUnder, mrdr3GateAdsrEvents, mrdr3CentsEnvEvents,
+  mrdr3GateFloor, mrdr3GateLinUnder, mrdr3GateAdsrEvents, mrdr3AdsrEvents, mrdr3CentsEnvEvents,
   mrdr3SyncBendKnots,
 ].map((fn) => fn.toString()).join('\n\n');

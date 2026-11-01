@@ -5975,6 +5975,16 @@ function syncRearrangeButton() {
  * Left alone mid-render: the button's text is the progress readout while a bounce runs, and
  * `renderwav.onclick` restores whatever label it captured at the click.
  */
+/** Bounce selected is live only over a bar selection, and names the bars it will render. */
+function syncBounceSelected() {
+  const button = $('renderwavsel');
+  if (!button || rendering) return;
+  button.disabled = !selectedBar;
+  button.title = selectedBar
+    ? `Bounce bars ${selFrom() + 1}–${selTo() + 1} only to a WAV — the same render as Bounce, played once through the selection with its reverb tail`
+    : 'Select some bars on the timeline to bounce just those';
+}
+
 function syncBounceScope() {
   const button = $('renderwav');
   if (!button || rendering) return;
@@ -12054,6 +12064,7 @@ function redrawSelection() {
  * as well as in the rows — that is where you read bar numbers.
  */
 function drawSelRegion() {
+  syncBounceSelected();
   const el = $('selregion');
   if (!el) return;
   const total = songShape().bars.length;
@@ -17939,7 +17950,7 @@ $('navdrawer').addEventListener('click', (ev) => {
   // Keep font and playhead controls live while the drawer is open; action buttons
   // leave the drawer before opening a modal, render job, or file chooser.
   if (!['save', 'savecopy', 'savealt', 'promotealt',
-    'revert', 'importtracks', 'history', 'resetsong', 'deletesong', 'renderwav', 'auditionwav', 'midi',
+    'revert', 'importtracks', 'history', 'resetsong', 'deletesong', 'renderwav', 'renderwavsel', 'auditionwav', 'midi',
     'exportaaf', 'importmidi', 'exportfreezes', 'importfreezes', 'exportjson', 'voicelibbtn',
     'applytocab', 'auditioncab', 'clearcab', 'loadcab'].includes(button.id)) return;
   closeMenu();
@@ -23216,8 +23227,19 @@ async function freezeLane(lane, {
 // dist/<slug>-mix.wav on the machine running the mixer, which is where every render
 // has always landed and what tools/audition opens; the deployed desk has no server
 // and no disk, so it downloads.
-$('renderwav').onclick = async () => {
-  const passes = await askRenderPasses('Bounce');
+//
+// Bounce selected is the same render cropped to the highlighted bars: one linear
+// visit to them, from the first downbeat to the last bar's end plus the reverb tail.
+// No pass count — a range is played once, never looped — and its own file name, so it
+// never overwrites the whole song's bounce.
+$('renderwav').onclick = () => bounceSong();
+$('renderwavsel').onclick = () => {
+  if (!selectedBar) { toast('Select some bars first'); return; }
+  bounceSong({ bars: { from: selFrom(), to: selTo() } });
+};
+
+async function bounceSong({ bars = null } = {}) {
+  const passes = bars ? 1 : await askRenderPasses('Bounce');
   if (passes == null) return;                     // cancelled — nothing rendered
   if (rendering) { toast('A bounce is already running'); return; }
 
@@ -23234,8 +23256,12 @@ $('renderwav').onclick = async () => {
   // structuredClone rather than a JSON round-trip because it is exactly what
   // postMessage is about to do to these objects anyway — same fidelity, same rules.
   const id = trackId;
-  const title = track.title;
-  const name = `${track.slug || id}-mix.wav`;
+  const barsText = bars ? `bars ${bars.from + 1}–${bars.to + 1}` : '';
+  const title = bars ? `${track.title} · ${barsText}` : track.title;
+  const name = bars
+    ? `${track.slug || id}-mix-bars-${bars.from + 1}-${bars.to + 1}.wav`
+    : `${track.slug || id}-mix.wav`;
+  const range = bars ? { startStep: bars.from * 16, endStep: (bars.to + 1) * 16 } : null;
   const source = resolveTrack(id)?.bank;
   if (!source) { toast('That song has no bank to render'); return; }
   const bank = structuredClone(source);
@@ -23250,7 +23276,7 @@ $('renderwav').onclick = async () => {
   const wasPlaying = playing;
   if (wasPlaying) setPlaying(false);
 
-  const btn = $('renderwav');
+  const btn = $(bars ? 'renderwavsel' : 'renderwav');
   const label = btn.textContent;
   rendering = true;
   btn.disabled = true;
@@ -23268,7 +23294,7 @@ $('renderwav').onclick = async () => {
   const stopped = wasPlaying ? ' · playback stopped' : '';
   const report = (pct) => {
     btn.textContent = pct == null ? 'Bouncing…' : `Bouncing… ${pct}%`;
-    toast(`Bouncing ${title} ×${passes}${pct == null ? '' : ` — ${pct}%`}${stopped}`, 0);
+    toast(`Bouncing ${title}${bars ? '' : ` ×${passes}`}${pct == null ? '' : ` — ${pct}%`}${stopped}`, 0);
   };
   report(null);
   try {
@@ -23279,7 +23305,7 @@ $('renderwav').onclick = async () => {
       // shape — the tempo you dragged, the groove you dragged, the bars you muted, the
       // loop you armed. `null` is a real answer and means "no arrangement", so a song
       // whose arrangement you have just undone renders as composed.
-      mix, arrangement,
+      mix, arrangement, range,
       repeat: passes, frameUrl: RENDER_FRAME_URL,
       // A bounce is for listening to on its own, so it comes out at a record's loudness
       // rather than the game's -21 (see lib/listening-master.js). Audition and the AAF
@@ -23307,7 +23333,8 @@ $('renderwav').onclick = async () => {
       // minutes to make, so it comes down as a file instead and says so.
       let res = null;
       try {
-        res = await fetchMixerAction(`/write-render?track=${encodeURIComponent(id)}`, {
+        const barsQuery = bars ? `&bars=${bars.from + 1}-${bars.to + 1}` : '';
+        res = await fetchMixerAction(`/write-render?track=${encodeURIComponent(id)}${barsQuery}`, {
           method: 'POST', headers: { 'content-type': 'audio/wav' }, body: out.wav,
         });
       } catch { res = null; }
@@ -23327,8 +23354,9 @@ $('renderwav').onclick = async () => {
     rendering = false;
     btn.disabled = false;
     btn.textContent = label;
+    syncBounceSelected();
   }
-};
+}
 
 // The same render, straight into tools/audition: a real AU plugin over this mix,
 // its own GUI open, previewed before anything is kept. What the desk's effects

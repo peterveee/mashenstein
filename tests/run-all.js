@@ -8,6 +8,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const suites = [
   'tests/migration.js',
   'tests/difficulty-identity.js',
+  'tests/flight-prototype.js',
+  'tests/flight-checkpoint.js',
+  // The act-ending flight's handover through the real RunState: the run goes on
+  // past 3-3's tape, checkpoints once, boards, leaves the screen and hands over.
+  'tests/flight-exit.js',
   'tests/run-complete.js',
   // Every mission is the finish line; the clock is what a stage is failed on.
   'tests/stage-clock.js',
@@ -525,6 +530,9 @@ const suites = [
   // MRDR-3's layer FM envelope with SUSTAIN and RELEASE: the desk panel, the worklet core
   // and the native path agree on it, and the Mod LFO's TARGET FM moves it on both.
   'tests/mrdr3-fm-adsr.js',
+  // MRDR-3's FM sounds the same on both backends: every modulator WAVE, FEEDBACK, and notes
+  // landing at three points of a render quantum. Twenty-seven renders.
+  'tests/mrdr3-fm-backends.js',
   // A native vibrato starts at the same point in its wobble wherever in a render quantum
   // its note lands. Twelve renders.
   'tests/vibrato-start.js',
@@ -843,6 +851,7 @@ const browserSuites = new Set([
   'tests/crls-filter-env.js',
   'tests/rmnd7-filter.js',
   'tests/mrdr3-fm-adsr.js',
+  'tests/mrdr3-fm-backends.js',
   'tests/vibrato-start.js',
   'tests/sfx-routing.js',
   'tests/note-duration.js',

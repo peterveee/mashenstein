@@ -89,6 +89,8 @@ export const HERO_CENTER_OFF = 6;
 // The ink is the cast's own contour colour, so it reads as part of the same
 // drawing rather than as a light effect laid over it.
 const SHADOW_INK = '26,16,40';
+// How far a rolling wheel travels per hop, in world px (entities.js `hop` is how high).
+const WHEEL_HOP_PERIOD = 90;
 export const CONTACT_SHADOW = {
   // WHY THIS IS A RAMP AND NOT A DISC. An evenly-filled ellipse reads as a
   // puddle the hero is standing in, however soft its edge and however faint it
@@ -1194,8 +1196,10 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}, renderOpt
     // THE WHEELS HOP (def.hop: runaway wheel, tyre, hearse wheel) as they come down the road (Peter, 28 Oct): a bounce off each stretch
     // of its own travel, so a row of them does not hop in step. ART ONLY, like the lurch above —
     // the box stays on the road, and a punted wheel (it has a `spin` of its own) is left alone.
-    const hop = e.def.hop && e.spin == null && !e.punted
-      ? Math.abs(Math.sin(e.x * 0.11)) * e.def.hop : 0;
+    // A parabola per HOP_PERIOD of its own travel (about 2.5 hops a second at road speed): it leaves
+    // the road, peaks mid-stride and lands. Quicker than that and it shivers rather than bounces.
+    const hopU = e.def.hop ? (((e.x / WHEEL_HOP_PERIOD) % 1) + 1) % 1 : 0;
+    const hop = e.def.hop && e.spin == null && !e.punted ? e.def.hop * 4 * hopU * (1 - hopU) : 0;
     ctx.translate(x + e.w / 2, y + e.h / 2 - (e.artRise || 0) - hop);
     if (scale !== 1) ctx.scale(scale, scale);
     // A barrel has been rolling since the level loaded, so it takes its angle

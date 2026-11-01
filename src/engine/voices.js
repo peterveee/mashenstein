@@ -58,9 +58,10 @@ import {
   setMrdr3LayerSolo, syncMrdr3Voice, canHostMrdr3,
   mrdr3PanicAll, releaseIdleMrdr3Lanes, warmMrdr3Tables,
 } from './mrdr3/controller.js';
-import { mrdr3GateAdsrEvents, mrdr3SyncBendKnots, mrdr3SyncBendSteps } from './mrdr3/env.js';
+import { mrdr3GateAdsrEvents, mrdr3AdsrEvents, mrdr3SyncBendKnots, mrdr3SyncBendSteps } from './mrdr3/env.js';
 import {
   mrdr3SyncKind, mrdr3SyncKey, hardSyncPartials, MRDR3_MAX_PARTIALS,
+  mrdr3FmKey, mrdr3FmPartials, fmKeyScale,
 } from './mrdr3/tables.js';
 import { compileJmjr4 } from './jmjr4/compile.js';
 import { renderIr } from './jmjr4/dsp.js';
@@ -306,29 +307,27 @@ const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 const nativeWave = (type, fallback = 'sine') => (NATIVE_WAVES.includes(type) ? type : fallback);
 
 /**
- * MRDR-3's FM PULSE: a fixed 25% pulse as a PeriodicWave, built once per context.
+ * MRDR-3's FM modulator as a PeriodicWave, or null for one of the four built-in types.
  *
- * A pulse of duty d with its DC taken out is Σ (2/πn)·[sin(2πnd)·cos + (1 − cos(2πnd))·sin]
- * per harmonic n; 32 harmonics, which is plenty for a MODULATOR — every one of them is a
- * family of sidebands — and fewer to alias. Normalised by Web Audio to a peak of 1, like the
- * built-in waves, so FM DEPTH means the same on it as on a square. Fixed width on purpose:
- * a MOVING width is the delay-line PWM, the dearest thing on this path (see `pwm`).
+ * Two waves need one. PULSE is a fixed 25% pulse — 32 harmonics, which is plenty for a
+ * MODULATOR (every one of them is a family of sidebands) and fewer to alias; fixed width on
+ * purpose, because a MOVING width is the delay-line PWM, the dearest thing on this path (see
+ * `pwm`). FEEDBACK is the DX7's operator feedback, a sine fed into its own phase, as its
+ * exact series. Both series are `mrdr3FmPartials` in src/engine/mrdr3/tables.js, the one
+ * definition the worklet builds its tables from too. Normalised by Web Audio to a peak of
+ * 1, like the built-in waves, so FM DEPTH means the same on any of them.
  */
-const FM_PULSE_DUTY = 0.25;
-const FM_PULSE_HARMONICS = 32;
-const fmPulseWaves = new WeakMap();
-function fmPulseWave(ctx) {
-  let wave = fmPulseWaves.get(ctx);
+const fmModWaves = new WeakMap();
+function fmModWave(ctx, fm) {
+  const key = mrdr3FmKey(fm.type, fm.feedback);
+  if (!key) return null;
+  let perCtx = fmModWaves.get(ctx);
+  if (!perCtx) { perCtx = new Map(); fmModWaves.set(ctx, perCtx); }
+  let wave = perCtx.get(key);
   if (!wave) {
-    const real = new Float32Array(FM_PULSE_HARMONICS + 1);
-    const imag = new Float32Array(FM_PULSE_HARMONICS + 1);
-    for (let n = 1; n <= FM_PULSE_HARMONICS; n++) {
-      const a = 2 * Math.PI * n * FM_PULSE_DUTY;
-      real[n] = (2 / (Math.PI * n)) * Math.sin(a);
-      imag[n] = (2 / (Math.PI * n)) * (1 - Math.cos(a));
-    }
+    const { real, imag } = mrdr3FmPartials(fm.type, fm.feedback);
     wave = ctx.createPeriodicWave(real, imag);
-    fmPulseWaves.set(ctx, wave);
+    perCtx.set(key, wave);
   }
   return wave;
 }
@@ -730,52 +729,24 @@ function pitchRamp(param, target, t, dur, curve = 'exp') {
  * Returns when the tail is actually over, which is what the caller stops its oscillator on.
  */
 function adsr(param, t, end, peak, e = {}, sustaining = false) {
-  const level = Math.max(1e-4, peak);
-  const attack = Math.max(0.001, e.attack ?? 0.01);
-  const release = Math.max(0, e.release ?? 0.015);
-  const sustain = Math.min(1, Math.max(0, e.sustain ?? 0));
-  // An attack longer than the note itself would never reach its peak, and the note would
-  // be a fade-in cut off partway up. The same clamp `_playGame` uses.
-  const peakAt = t + Math.min(attack, Math.max(0.001, (end - t) * 0.45));
-  // Clamped to the note, so a long decay on a short note cannot leave the release ramping
-  // down from a level the envelope never actually reached.
-  const decayEnd = Math.min(end, peakAt + Math.max(0, e.decay ?? 0));
-  // Everything is floored at 1e-4 until the very last ramp. An exponential ramp throws on a
-  // target of exactly zero, and is a silent no-op when the value it starts FROM is zero —
-  // so nothing here may be 0 while ramps are still being scheduled.
-  const held = Math.max(1e-4, level * sustain);
-  param.setValueAtTime(1e-4, t);
-  // Every stage takes the same exp/lin pair the decay has always taken — `curve`
-  // keeps its historical name and its decay meaning, so every preset on file reads
-  // back unchanged, and the two new keys default to the exponential shape every
-  // stage always had. Exponential from 1e-4 is a late-blooming attack; linear is
-  // the even fade-in, which is what Tone calls the default.
-  if (e.attackCurve === 'lin') param.linearRampToValueAtTime(level, peakAt);
-  else param.exponentialRampToValueAtTime(level, peakAt);
-  if (e.curve === 'lin') param.linearRampToValueAtTime(held, decayEnd);
-  else param.exponentialRampToValueAtTime(held, decayEnd);
-  // HELD: stop here. The note is being played by a finger rather than by a sequencer, so
-  // the envelope runs to its sustain level and STAYS there — an AudioParam holds its last
-  // value indefinitely — and `releaseNow` writes the rest when the key comes up. Nothing
-  // below is scheduled, which is exactly the difference between a note with a length and a
-  // note with a player.
-  if (sustaining) return end + release + 0.005;
-  // The plateau — and the reason this is not `_playDrum`'s `env` with one stage bolted on.
-  // A ramp interpolates from the time of the event BEFORE it, so without this the release
-  // starts falling the instant the decay ends and there is no sustain at all. Only when the
-  // decay finished early: a decay that ran to the end of the note has no plateau to hold,
-  // and two events at one instant are last-writer-wins.
-  if (decayEnd < end) param.setValueAtTime(held, end);
-  const off = end + release;
-  if (release > 0) {
-    if (e.releaseCurve === 'lin') param.linearRampToValueAtTime(1e-4, off);
-    else param.exponentialRampToValueAtTime(1e-4, off);
+  // The shape is `mrdr3AdsrEvents` in src/engine/mrdr3/env.js — the one definition the
+  // MRDR-3 worklet's FM operator runs too. Why each stage is what it is, briefly: an attack
+  // longer than the note is clamped to 45% of it so it still arrives; the decay is clamped
+  // to the note so a long one cannot release from a level never reached; everything is
+  // floored at 1e-4 until the last ramp, because an exponential ramp throws on a target of
+  // zero and is a silent no-op FROM zero; `curve` keeps its historical decay meaning; a
+  // HELD note stops at its sustain (an AudioParam holds its last value) and `releaseNow`
+  // writes the rest; the plateau `set` is what stops the release starting the instant the
+  // decay ends; and the final linear ramp to a true zero removes the step an exponential
+  // aimed at 1e-4 would leave when the oscillator stops.
+  const built = mrdr3AdsrEvents(t, end, peak, e, sustaining);
+  if (!built) return end;
+  for (const ev of built.events) {
+    if (ev.k === 'set') param.setValueAtTime(ev.v, ev.t);
+    else if (ev.k === 'lin') param.linearRampToValueAtTime(ev.v, ev.t);
+    else param.exponentialRampToValueAtTime(ev.v, ev.t);
   }
-  // ...and then to actual zero. An exponential ramp is aimed at 1e-4 and would sit there
-  // until the oscillator stopped, which is a step to silence and an audible click on a
-  // quiet lane — the same fix `play` in audio.js carries, for the same reason.
-  param.linearRampToValueAtTime(0, off + 0.005);
-  return off + 0.005;
+  return built.off;
 }
 
 /**
@@ -2195,17 +2166,30 @@ const keyCentsFor = (slot, hz) => {
   if (!f || !(f.track > 0) || !(hz > 0)) return undefined;
   return f.track * 1200 * Math.log2(hz / 110);
 };
+/**
+ * KEY SCALE on an RMND-7 FM slot: the FM DEPTH this note gets, by `fmKeyScale` — the law
+ * MRDR-3's layer FM reads too. Set at the strike on the synth's own `modulationIndex`, as
+ * KEY FOLLOW is set on the filter, and remembered as a factor so a live FM DEPTH drag moves
+ * the note you are hearing by the same proportion rather than snapping it to unscaled.
+ */
+const fmKeyOnly = (slot, t, hz) => {
+  if (!(slot.keyScale > 0) || !slot.synth.modulationIndex || !(hz > 0)) return;
+  slot.keyFactor = fmKeyScale(slot.keyScale, hz);
+  slot.synth.modulationIndex.setValueAtTime(slot.fmBase * slot.keyFactor, t);
+};
 const keyOnly = (slot, key, t) => {
   if (key === undefined || slot.fenv) return;
   slot.filter.keyCents = key;
   for (const st of slot.filter.stages) st.detune.setValueAtTime(key, t);
 };
 const envsStrike = (slot, t, hz) => {
+  fmKeyOnly(slot, t, hz);
   const key = keyCentsFor(slot, hz);
   keyOnly(slot, key, t);
   for (const e of slotEnvs(slot)) fenvStrike(e, t, e === slot.fenv && slot.filter ? key : undefined);
 };
 const envsFreeze = (slot, t, hz) => {
+  fmKeyOnly(slot, t, hz);
   const key = keyCentsFor(slot, hz);
   keyOnly(slot, key, t);
   for (const e of slotEnvs(slot)) fenvFreeze(e, t, e === slot.fenv && slot.filter ? key : undefined);
@@ -2557,9 +2541,13 @@ export class VoiceRack {
     // default so every preset written before the pot sounds as it did. Read in FM too (the
     // pot is greyed there, not gone), and ignored by the FM class.
     let amDepth = AM_DEPTH_TONE;
+    // KEY SCALE (28 Oct 2026) — see `fmKeyScale`. Zero by default, so every preset before
+    // it plays what it played.
+    let keyScale = 0;
     if (synthFamily(v.synth) === RMND7) {
       const d = Number(v.amDepth);
       if (Number.isFinite(d)) amDepth = Math.min(2, Math.max(0, d));
+      keyScale = Math.min(1, Math.max(0, Number(v.keyScale) || 0));
       const fs = v.filter;
       if (fs) {
         const freq = Number(fs.freq);
@@ -2581,7 +2569,7 @@ export class VoiceRack {
       // shape is a note that starts away and arrives, not one that scoops out first.
       if (v.pitch) penv = slotEnv(v.pitch, (Number(v.pitch.semitones) || 0) * 100, { attack: 0, decay: 0.06, sustain: 0, release: 0.015 });
     }
-    return { fenv, nativeFilter, penv, amDepth };
+    return { fenv, nativeFilter, penv, amDepth, keyScale };
   }
 
   /**
@@ -2617,7 +2605,7 @@ export class VoiceRack {
     // voice, never inside `options` — and `_addSlot` builds a native biquad cascade behind
     // the synth, swept by the same per-slot envelope CRLS-1's filter is. Absent by default,
     // so every preset written before the cards is untouched and builds no node for them.
-    let { fenv, nativeFilter, penv, amDepth } = VoiceRack.rmnd7Native(v);
+    let { fenv, nativeFilter, penv, amDepth, keyScale } = VoiceRack.rmnd7Native(v);
     // A filtered CRLS-1 moves its cutoff on the native envelope (see `crlsFilterEnv`):
     // Tone's own is parked at zero octaves, so the filter sits at CUTOFF and the slot's
     // detune source does the moving. CLASSIC keeps Tone's, and the STYLE key is the
@@ -2635,6 +2623,7 @@ export class VoiceRack {
       nativeFilter,
       penv,
       amDepth,
+      keyScale,
       // The same key, on the same scale, as every native path: DEPTH in semitones
       // (×100 cents onto the synth's own detune, uncapped), RATE in hertz, DELAY a fade
       // from each note-on. See `_addSlot`. This path used to hand the key to
@@ -5343,7 +5332,9 @@ export class VoiceRack {
       if (pool.spec.penv && synth.detune) penv = centsEnvInto(pool.spec.penv, [synth.detune]);
       out.connect(dry);
       if (echo && wet) out.connect(wet);
-      const slot = { synth, out, vib, fenv, penv, filter, am };
+      const slot = { synth, out, vib, fenv, penv, filter, am,
+        // KEY SCALE — see `fmKeyOnly`. FM DEPTH is Tone's `modulationIndex`, default 10.
+        keyScale: pool.spec.keyScale || 0, fmBase: pool.spec.opts.modulationIndex ?? 10, keyFactor: 1 };
       pool.slots.push(slot);
       return slot;
     }
@@ -7945,8 +7936,9 @@ export class VoiceRack {
             if (!hardSynced && spec.fm && (spec.fm.index ?? 1) > 0) {
               if (!fmSpread) {
                 const mod = ctx.createOscillator();
-                // PULSE is a fixed 25% pulse, as a PeriodicWave — the cost of any other wave.
-                if (spec.fm.type === 'pulse') mod.setPeriodicWave(fmPulseWave(ctx));
+                // PULSE and FEEDBACK are PeriodicWaves — the cost of any other wave.
+                const fmWave = fmModWave(ctx, spec.fm);
+                if (fmWave) mod.setPeriodicWave(fmWave);
                 else mod.type = nativeWave(spec.fm.type, 'sine');
                 mod.frequency.setValueAtTime(target * (spec.fm.ratio ?? 1.4), lt);
                 fmSpread = ctx.createGain();
@@ -7959,7 +7951,8 @@ export class VoiceRack {
                   sustain: spec.fm.sustain ?? 0, release: spec.fm.release ?? 0,
                   attackCurve: spec.fm.attackCurve, curve: spec.fm.curve, releaseCurve: spec.fm.releaseCurve };
                 const fmHolds = layerHolds && fmEnv.sustain > 0;
-                adsr(fmSpread.gain, lt, fmHolds ? holdEnd : end, target * (spec.fm.index ?? 1), fmEnv, fmHolds);
+                adsr(fmSpread.gain, lt, fmHolds ? holdEnd : end,
+                  target * (spec.fm.index ?? 1) * fmKeyScale(spec.fm.keyScale, target), fmEnv, fmHolds);
                 if (fmHolds) heldParams.push({ param: fmSpread.gain, e: fmEnv });
                 mod.connect(fmSpread);
                 mod.start(lt); mod.stop((tailPlan ? Math.min(off + 0.01, tailPlan.cullAt + STOP_FADE) : off + 0.01) - MOD_EARLY);
@@ -8414,7 +8407,16 @@ export class VoiceRack {
         // until the next note, which `set` may write as hard as it likes.
         const smooth = offline ? [] : liftSmoothParams(synth, bag);
         synth.set(bag);
-        for (const { param, value } of smooth) glide(param, value);
+        // KEY SCALE: the note sounding keeps its own proportion of the new FM DEPTH.
+        slot.keyScale = spec.keyScale || 0;
+        slot.fmBase = spec.opts.modulationIndex ?? 10;
+        if (!(slot.keyScale > 0)) slot.keyFactor = 1;
+        for (const { param, value } of smooth) {
+          glide(param, param === synth.modulationIndex ? value * (slot.keyFactor ?? 1) : value);
+        }
+        if (offline && synth.modulationIndex && slot.keyFactor !== 1) {
+          synth.modulationIndex.value = slot.fmBase * slot.keyFactor;
+        }
         // `set` only writes the keys it is given, and `buildSpec` omits a glide of
         // zero — so dragging GLIDE back down has to be said explicitly or the last
         // non-zero value would stay on the synth for good.

@@ -321,7 +321,10 @@ class InputSys {
         // playable glass an actionless touch WAS a jump that never resolved.
         // A guarded one was deliberately given no action, so releasing jump
         // here would cut a jump a DIFFERENT finger is holding on the pill.
-        else if (this.usingTouch && !t.guarded && screen.presentationMode !== 'phone-portrait') this.release('jump');
+        // Not in the act-ending flight: its picture is dead glass and its JUMP is a
+        // held climb, which a second finger lifting off the glass must not cut.
+        else if (this.usingTouch && !t.guarded && this.context !== 'flight'
+          && screen.presentationMode !== 'phone-portrait') this.release('jump');
         this.touches.delete(e.pointerId);
       }
       if (this.touches.size === 0) { this.pointer.down = false; this.release('pointer'); }
@@ -528,7 +531,43 @@ class InputSys {
     if (!!on === this.menuKeys) return;
     this.menuKeys = !!on;
     this.down.clear();
-    this.padPrev = new Set();
+    // What the pad is holding RIGHT NOW, read under the new meanings, counts as
+    // already held: a Start that opened a pause must not close it again on the
+    // next poll, and an A still down from the run must not press the plate it
+    // lands on. Only a fresh press acts.
+    this.padPrev = this.padHeld();
+  }
+
+  // The pad's held actions under the current meanings, pressing nothing.
+  padHeld() {
+    const held = new Set();
+    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const pad of pads || []) {
+      if (!pad) continue;
+      pad.buttons.forEach((b, i) => { if (b.pressed && GAMEPAD_MAP[i]) held.add(this.padAction(i)); });
+      if (pad.axes[0] < -0.5) held.add('left');
+      if (pad.axes[0] > 0.5) held.add(this.context === 'run' && !this.menuKeys ? 'ability' : 'right');
+      if (pad.axes[1] < -0.5) held.add(this.menuNav() ? 'up' : 'jump');
+      if (pad.axes[1] > 0.5) held.add(this.menuNav() ? 'down' : 'slide');
+    }
+    return held;
+  }
+
+  // Held input, carried across a state change that clears it (setStateNow,
+  // setContext). The act-ending flight's handover uses it: a JUMP held as the
+  // run hands over is still held in the fight — held, not pressed again, and
+  // its own key-up or finger-lift still releases it.
+  carryHeld(actions = ['jump', 'slide']) {
+    return {
+      down: actions.filter((a) => this.down.has(a)),
+      touches: [...this.touches].filter(([, t]) => !t.pending && actions.includes(t.action)),
+    };
+  }
+  restoreHeld(c) {
+    if (!c) return;
+    for (const a of c.down || []) this.down.add(a);
+    for (const [id, t] of c.touches || []) this.touches.set(id, t);
+    if (c.touches?.length) this.pointer.down = true;
   }
 
   /**

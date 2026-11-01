@@ -77,7 +77,7 @@ A haunted vacuum cleaner. Running background gag across acts:
 - Act I: cleans the floor
 - Act II: cleans the ceiling
 - Act III: cleans the inside of a CRT
-Becomes the Act I boss, ending RHYTHM BANKRUPTCY. The only antagonist with a conscience — apologizes for hitting you.
+Retired as the Act I boss on 1 Nov 2026: Act I now ends in Eggshell's flight (§3.3), and the vacuum is back to cleaning.
 
 **MISS CHOMP, IN RESIDENCE** — *"THE FOOD COURT IS MY HOMELAND. I AM ITS QUEEN."*
 Retired from the relay, not from the arcade: Kiko took her double-jump slot in the roster and Miss Chomp went back to the food court she always claimed as home. Her card plays straight, with no wink at having been a hero once — she has not noticed she stopped being one. Currently nowhere in the building and excluded from the hub roll call; cameo at most, never a precedent for bringing her back.
@@ -86,7 +86,7 @@ Retired from the relay, not from the arcade: Kiko took her double-jump slot in t
 
 ## 3. STORY STRUCTURE
 
-**Runtime shape:** a 32.20s opening film → 3 acts / 9 cabinets / 27 stages → 3 bosses → 9 finale beats.
+**Runtime shape:** a 32.20s opening film → 3 acts / 9 cabinets / 27 stages → 3 act-ending bosses (Act I's is Eggshell's flight, run on from the end of 3-3) → 9 finale beats.
 
 ### 3.1 Cold Open (The Opening Film)
 
@@ -141,7 +141,7 @@ Unplayed heroes loiter in the concourse, wandering and hopping. Press DOWN to ta
 |---|---|---|---|---|---|
 | I | FIELD SERVICE | pixel | Platformer | 3 | — |
 | I | SPEED ZONE | faux-3D | Racing | 3 | — |
-| I | RHYTHM BANKRUPTCY | LCD handheld | Rhythm | 3 | Dust Devil 9000 (end of Act I) |
+| I | RHYTHM BANKRUPTCY | LCD handheld | Rhythm | 3 | Eggshell's flight, off the end of 3-3 (end of Act I) |
 | II | FROST FORTRESS | watercolor | Ice Adventure | 3 | — |
 | II | CRYPT SHIFT | VHS | Horror | 3 | — |
 | II | TERMINAL VELOCITY | neon vector | SHMUP | 3 | Clown-Copter (end of Act II) |
@@ -662,7 +662,7 @@ All platforms pause audio, input, rendering, and the game loop when the page/app
 
 1. **No external assets.** Every sprite, sound, and music note is procedural math. The game ships as two text files.
 2. **One hero at a time.** The budget-cut premise is the design constraint. The relay is the game.
-3. **Runners, not fighters.** Bosses are dodged and outlasted using runner verbs only.
+3. **Runners, not fighters.** No boss adds a control. An act-ending chase is flown on the runner's own two verbs — jump to rise, slide to descend — and the flying tub fires by itself; a boss fought on foot is dodged and outlasted using runner verbs only.
 4. **The joke is load-bearing.** Difficulty modes are byte-identical. The premise is a budget joke. The toaster is not a metaphor.
 5. **Teach once, then get out of the way.** Tutor prompts are brief, in-flow, and never repeat.
 6. **Be honest with the player.** The crayon admits it hurts your score. Difficulty describes itself truthfully. Prices are what they say.

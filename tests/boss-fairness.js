@@ -93,7 +93,7 @@ for (const [label, zoom] of FRAMINGS) {
 // And one real fight, so the rule is actually the one on the drop path.
 {
   const boss = new BossState({
-    bossCab: 'neon', team: ['lorenzo', 'grumpos', 'b33p'],
+    bossCab: 'surge', team: ['lorenzo', 'grumpos', 'b33p'],
     save, seed: 99, difficulty: 1, onEnd: () => {},
   });
   boss.enter();

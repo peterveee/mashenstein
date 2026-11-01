@@ -5,7 +5,7 @@
 **Voice rule, stated in [jokes.js](src/data/jokes.js):** *absolute deadpan sincerity. Jokes never replace usable information.* Everything is uppercase in-game.
 
 **Cast:** eight heroes + Eggshell + Gary + Dolores + the Dust Devil (plus Miss Chomp, retired from the relay but still in the building's lore).
-**Runtime shape:** 10-shot, 33.13-second opening film → 3 acts / 9 cabinets / 27 stages (each opening on a briefing screen) → 3 bosses → 9 finale beats, then a coda and a curtain call.
+**Runtime shape:** 10-shot, 33.13-second opening film → 3 acts / 9 cabinets / 27 stages (each opening on a briefing screen) → 3 act-ending bosses (Act I's is Eggshell's flight, run on from the end of 3-3) → 9 finale beats, then a coda and a curtain call.
 
 ---
 
@@ -28,7 +28,7 @@
 
 **DOLORES, NOT YET RELIEVED** — *"NEXT."* Food court counter staff, still on shift. No hero entry; exists as an NPC and as the serving line itself — DOLORES' REPAIR COUNTER is her steam table, and repairs are priced and portioned like lunch. She does not acknowledge that the arcade is dead, because as far as her shift is concerned it is not over. She calls NEXT to an empty concourse; the menu board above her still reads NOW SERVING 0.
 
-**DUST DEVIL 9000** — *"DEEP CLEAN ENGAGED."* A haunted vacuum. Cleans something impossible in the background of every act. Becomes a boss — at the end of Act I, not Act II (see the Act I boss section below). Prints a certificate.
+**DUST DEVIL 9000** — *"DEEP CLEAN ENGAGED."* A haunted vacuum. Cleans something impossible in the background of every act. Was the Act I boss until 1 Nov 2026, when Act I's ending became Eggshell's flight (see 3-3 below). Prints a certificate.
 
 **MISS CHOMP, IN RESIDENCE** — *"THE FOOD COURT IS MY HOMELAND. I AM ITS QUEEN."* Retired from the relay, not from the arcade: Kiko took her double-jump slot in the eight and Miss Chomp went back to the food court she always claimed as home. Currently nowhere in the building and left out of the hub roll call — a cameo at most, never a precedent for bringing her back.
 
@@ -294,7 +294,7 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 
 # ACT I — THE ARCADE GOES DARK
 
-*Three cabinets, 60–90-second stages. The lights are mostly off. Ends with the Dust Devil boss.*
+*Three cabinets, 60–90-second stages. The lights are mostly off. Ends with Eggshell's flight.*
 
 ## CABINET 1 — FIELD SERVICE
 *Platformer parody. Pixel. Unlocks at 0 plugs. (Renamed from PLUMBER PANIC; same cabinet, same mechanic.)*
@@ -330,7 +330,7 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 > **2-3, CALIBRATION ERROR:** GNASH THE NEEDLEMOUSE FINISHED THIS LAP YESTERDAY AND DROPPED FOUR LETTERS ON THE WAY ROUND. THEY ARE UP HIGH AND OVER THE HOLES. ONE YOU MISS WILL WAIT FOR YOUR NEXT LAP. *(Gnash, not Rusty — the briefing text itself still names him; it has not been rewritten for his replacement.)*
 
 ## CABINET 3 — RHYTHM BANKRUPTCY
-*Rhythm parody. LCD handheld. Unlocks at 6 plugs. Act I's closing cabinet — the Act I boss lives here, not on Terminal Velocity.*
+*Rhythm parody. LCD handheld. Unlocks at 6 plugs. Act I's closing cabinet — Act I ends here, in Eggshell's flight off the end of 3-3, not on Terminal Velocity.*
 
 > **RHYTHM, STAGE 1 (narrator):** THE BEAT IS EASY TO FOLLOW. THE CABINET IS HARD TO PLEASE.
 
@@ -338,29 +338,28 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 |---|---|---|
 | 1 | BOP TILL YOU DROP | 30 ON-BEAT ACTIONS |
 | 2 | COMBO MAMBO | 10 COMBO *(hit 10 arrows on the beat in a row; your best streak counts)* |
-| 3 | BONK TO THE BEAT | BONK CLOWN-COPTER *(3 times; it is somehow on beat)* — **BOSS STAGE** |
+| 3 | BONK TO THE BEAT | BONK CLOWN-COPTER *(3 times; it is somehow on beat)* — **BOSS STAGE** *(runs on past the tape into Eggshell's flight)* |
 
 **Briefings:**
 > **3-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "I OWN THE EXCLUSIVE RIGHTS TO RHYTHM. YOU OWE ME ROYALTIES PER JUMP. EVERY STEP OFF-BEAT CONSTITUTES UNAUTHORIZED SAMPLING."
 > **3-2, LITIGATION BULLETIN:** THE MUSIC IN THE HALLWAY IS LICENSED UNDER A FORTY-YEAR EXCLUSIVITY GRUDGE. IF YOU HEAR AN AXE HIT THE SCENERY, IT WAS PERFORMED BY GRUMPOS FOR INTENDED COMEDIC VALUE.
-> **3-3, WARNING: PREPARE FOR ENCOUNTER WITH UNDERINSURED CLOWN-COPTER.** IT HAS LEARNED THE SONG AND NOW DIPS ON THE BEAT. BONK IT FROM BELOW THREE TIMES. THE PREMIUMS REMAIN UNPAID. *(This copter cameo is a dress rehearsal — the Act I boss waiting at the end of this stage is Dust Devil 9000, not the copter.)*
+> **3-3, WARNING: PREPARE FOR ENCOUNTER WITH UNDERINSURED CLOWN-COPTER.** IT HAS LEARNED THE SONG AND NOW DIPS ON THE BEAT. BONK IT FROM BELOW THREE TIMES. THE PREMIUMS REMAIN UNPAID. *(No longer a dress rehearsal: past the finish tape, this copter is the Act I boss — see Eggshell's flight, below.)*
 
-### ⚡ BOSS — DUST DEVIL 9000, DEEP CLEAN MODE
-*8 HP. It pulls you toward it. Ends Act I.*
+### ⚡ BOSS — EGGSHELL'S FLIGHT
+*Not a separate level: 3-3 runs on past its finish tape. Ends Act I.*
 
-> **EGGSHELL:** IT IS SET TO DEEP CLEAN. IT IS SO SORRY ABOUT THIS.
+The hero boards a small flying tub and chases Eggshell, in his clown-copter tub, out of the LCD screen and into the service passage behind the arcade machines. Up and down only: JUMP rises, SLIDE descends, and the tub fires its pellets by itself.
 
-*Then the narrator, over the arena:*
+*Halfway, a side panel falls off his tub:*
 
-> HE HAS MOPPED THE CEILING. HE HAS POLISHED THE INSIDE OF A GLASS TUBE. NOW, HE HAS TO CLEAN YOU. HE IS NOT HAPPY ABOUT IT.
+> **EGGSHELL:** DO YOU KNOW WHAT THAT COST?
 
-*(This line gets ahead of itself on a first playthrough: the ceiling and the CRT are Act II and Act III jobs. It reads as the vacuum narrating a career it hasn't had yet, which — given it is a haunted appliance — nobody in the building questions.)*
+*At the end he escapes, and the first power bank comes online:*
 
-*At half health:*
+> FIRST POWER BANK ONLINE
+> ACT I COMPLETE
 
-> IT STOPS TO EMPTY ITS BAG. IT IS VISIBLY ASHAMED. IT APOLOGIZES VIA LED.
-
-> **Note:** this is the same vacuum that has been quietly mopping the food court since Act I began. It is the only antagonist in the game with a conscience.
+*The side panel is Act I's relic in the Trophy Room, labeled `SIDE PANEL`.*
 
 ---
 
@@ -653,5 +652,7 @@ Each cabinet in [cabinets.js](src/data/cabinets.js) carries a `taunt` field — 
 10. **THE FINALE'S LAST BEAT CHANGED**, and two new screens were added after it: an HR coda (`HR HAS APPROVED NOTHING THAT HAPPENS FROM HERE ON.`) and a full curtain-call thank-you screen.
 
 11. **THE DEATH-MESSAGE SYSTEM WAS SPLIT.** What used to be one shared pool of "cause of death" and "results screen" lines is now four: a generic arcade-commentary pool, a barrel-specific line, a pit-specific pool, and pools keyed to what was waiting at the bottom of the pit (tar, lava, slush, spikes, gears).
+
+12. **THE DUST DEVIL 9000 WAS RETIRED AS THE ACT I BOSS (1 Nov 2026).** Act I now ends in Eggshell's flight, run on from 3-3 past its finish tape (see ⚡ BOSS — EGGSHELL'S FLIGHT, above). The vacuum's boss fight and its lines are out of the game; his background work — the hub, the club, MASH INVADERS, the briefings, the finale's certificate — is unchanged. The Trophy Room's Act I relic is now the SIDE PANEL off Eggshell's tub. Acts II and III have not changed. This supersedes the Dust Devil half of item 8.
 
 **Still open:** Miss Chomp has no current placement in the building; her hub lines and NPC card are written and held in the game's data against the day she gets one.

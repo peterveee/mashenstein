@@ -100,8 +100,9 @@ patient. The turtle is not impressed.
 - **Progression:** DOLORES' REPAIR COUNTER (power-up levels, relay upgrades), Hero
   Mastery (sidegrades with comic drawbacks), and Cabinet Mods from GARY'S
   LEGALLY DISTINCT PAWN SHOP.
-- **Bosses** at the end of each act, fought with runner verbs only. Some health
-  bars are labeled PRESENTATION ERROR.
+- **Bosses** at the end of each act, fought with runner verbs only. Act I's is a
+  flight after Eggshell off the end of 3-3: jump rises, slide descends, and the
+  tub fires by itself. Some health bars are labeled PRESENTATION ERROR.
 - **Difficulty:** five modes. The first four are — verifiably, by automated
   test — identical and forgiving. UNPLUGGED is real, and a mistake.
 - **After the finale:** OVERTIME, an endless one-hit mode with daily seeds, plus

@@ -12696,6 +12696,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     paintQuiverKit(ctx, spec, p, u, ow, lod, {
       qx: -torsoHalf - 0.07 * u + tuck, qTop: shoulderY - 0.06 * u - quiverLift, qBot: shoulderY + 0.3 * u - quiverLift,
       bow: aiming ? null : [slung[0] + tuck, slung[1]],
+      // Standing, tucked in behind her, only a strip of the case shows past the
+      // arm, and its bands across that strip read as a strap the arm cuts
+      // through (Peter, 28 Oct 2026). Turned, the whole case is on her back
+      // and the bands are a case's.
+      bands: !stand,
     });
     if (spec.quiverMount === 'loop' && !slide) {
       // Join the actual case to the body-side strip in the back pass. Both
@@ -18932,7 +18937,7 @@ function paintBambooBundle(ctx, spec, p, u, ow, lod,
   ctx.restore();
 }
 
-function paintQuiverKit(ctx, spec, p, u, ow, lod, { qx, qTop, qBot, bow }) {
+function paintQuiverKit(ctx, spec, p, u, ow, lod, { qx, qTop, qBot, bow, bands = true }) {
   const wornBow = () => {
     if (!bow) return;
     ctx.save();
@@ -18959,7 +18964,7 @@ function paintQuiverKit(ctx, spec, p, u, ow, lod, { qx, qTop, qBot, bow }) {
     }
   }
   outlined(ctx, p.f, ow, (c) => roundRectPath(c, qx - 0.075 * u, qTop, 0.15 * u, qBot - qTop, 0.05 * u));
-  if (!lod) {
+  if (!lod && bands) {
     ctx.strokeStyle = p.p; ctx.lineWidth = hair(0.6, 0.022 * u);
     for (const f of [0.26, 0.68]) {
       const y = qTop + (qBot - qTop) * f;

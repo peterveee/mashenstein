@@ -153,11 +153,11 @@ let diff = 0; for (let i = 0; i < pls.length; i++) diff = Math.max(diff, Math.ab
 assert(finite && diff > 0.01, `a PULSE modulator renders, finite and audibly not a square (largest sample difference ${diff.toFixed(3)})`);
 assert(row('WAVE')?.options.join(' ') === 'sine square sawtooth triangle pulse',
   'the FM WAVE row offers the four native waves and PULSE beside TRIANGLE, and no PWM');
-// NOT asserted: that the two hold it at the SAME brightness. They do not, and did not before
-// SUSTAIN existed — the native path draws the FM envelope with `adsr` (decay clamped to the
-// note), the dev-only worklet with the gate ADSR (decay runs its own length, a lifted
-// attack), so a strike already measured 50% sideband energy native against 39% core. The
-// worklet is the comparison scaffold (src/engine/mrdr3/identity.js); the native path ships.
-console.log(`note: held brightness native ${(nHeld * 100).toFixed(1)}%, worklet core ${(coreHeld * 100).toFixed(1)}% — an older gap between the backends' FM envelope shapes`);
+// The two hold it at the SAME brightness (28 Oct 2026). They did not: the worklet drew the
+// FM envelope with the gate ADSR on a normalised peak where the native path draws `adsr` in
+// hertz, and it missed what an OscillatorNode does in its first render quantum. Both are
+// fixed in the core — tests/mrdr3-fm-backends.js holds the full spectrum to it.
+assert(Math.abs(nHeld - coreHeld) < 0.01,
+  `and the two backends agree on it (native ${(nHeld * 100).toFixed(1)}%, worklet core ${(coreHeld * 100).toFixed(1)}%)`);
 console.log(failed ? `MRDR-3 FM ADSR: ${failed} FAILED` : 'MRDR-3 FM ADSR: PASSED');
 process.exit(failed ? 1 : 0);

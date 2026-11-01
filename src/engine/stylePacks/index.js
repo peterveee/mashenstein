@@ -8321,6 +8321,8 @@ function mcmFaded(ctx, alpha, box, paint) {
   }
   if (alpha <= 0.005) return;
   const m = ctx.getTransform();
+  // A context that reports no transform (a headless stub) gets the plain paint.
+  if (!m || !Number.isFinite(m.a)) { paint(ctx); return; }
   const x0 = Math.floor(m.a * box.x + m.e) - 2;
   const y0 = Math.floor(m.d * box.y + m.f) - 2;
   const w = Math.ceil(Math.abs(m.a) * box.w) + 4;
@@ -10745,7 +10747,10 @@ function neonKaijuState(k, t, camX, totalDist, context) {
     return null;
   }
   // How far he and the tower still are from where they park, at the near row's parallax.
-  const ahead = Math.max(0, finish.camX - camX) * 0.3 * ZOOM;
+  // On an act-ending run the camera does not park (finish.runsOn): past the park they
+  // go on travelling with that row, so the tower stays standing in its street.
+  const toPark = (finish.camX - camX) * 0.3 * ZOOM;
+  const ahead = finish.runsOn ? toPark : Math.max(0, toPark);
   if (k.charged == null && p >= KAIJU_CHARGE) k.charged = t;
   if (k.parked == null && ahead <= 0) k.parked = t;
   // He faces LEFT, away from the tape, and walks that way all the while: on the way in
@@ -10756,7 +10761,7 @@ function neonKaijuState(k, t, camX, totalDist, context) {
   const kx = KAIJU_FIRE_X + ahead * (1 + KAIJU_WALK_LEAD)
     - (k.parked == null ? 0 : (t - k.parked) * KAIJU_WALK_SPEED)
     - (k.wink ? Math.max(0, t - k.wink.askedT) * KAIJU_LEAVE_SPEED : 0);
-  if (kx > 700) return null;
+  if (kx > 700 || kx < -400) return null;
   // THE GOODBYE WINK, dinging on the beat like speed-3's coyote (run.js speedCoyoteWink via
   // `cues.wink`): asked as the hero lands on the finish pad (finishPadT, as the coyote's is); the run
   // moves it onto the next beat and says when, and the picture follows the heard audio clock.

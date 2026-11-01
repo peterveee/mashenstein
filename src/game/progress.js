@@ -287,9 +287,9 @@ export function cabinetMusicState(slot, cabId) {
   return 'level1';
 }
 
-export function bossAvailable(slot, cabId) {
-  // Bosses gate cabinets 3, 6, 9 (neon, rhythm, surge) once their 3 stages are cleared.
-  if (!['neon', 'rhythm', 'surge'].includes(cabId)) return false;
-  if (slot.campaign.bossesDown[cabId]) return false;
-  return !!slot.campaign.cleared[cabId];
+// Every act ends in Eggshell's flight now (3-3, 6-3, 9-3; flight/acts.js), on
+// older saves too: there is no separate boss fight to offer from a cabinet.
+// Kept as a function so the hub and stage select still ask the question.
+export function bossAvailable(slot, cabId) { // eslint-disable-line no-unused-vars
+  return false;
 }

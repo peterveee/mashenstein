@@ -533,7 +533,7 @@ function saveMenu(dev) {
           act: () => {
             for (const st of STAGES) s.campaign.plugs[st.id] = [true, true, true];
             for (const cab of CABINETS) s.campaign.cleared[cab.id] = true;
-            for (const b of Object.keys(BOSSES)) s.campaign.bossesDown[b] = true;
+            for (const b of ['rhythm', 'neon', 'surge']) s.campaign.bossesDown[b] = true;
             s.campaign.storyFlags.sawIntro = true;
             save.persist();
             dev.say('EVERYTHING UNLOCKED');
@@ -543,6 +543,7 @@ function saveMenu(dev) {
           label: 'WIPE PROGRESS (keep slot)',
           act: () => {
             s.campaign.plugs = {}; s.campaign.cleared = {}; s.campaign.bossesDown = {};
+            delete s.campaign.pendingFlights; delete s.campaign.pendingFlight;
             save.persist();
             dev.say('PROGRESS WIPED');
           },
@@ -575,7 +576,7 @@ function saveMenu(dev) {
         {
           label: 'MARK BOSSES DOWN',
           act: () => {
-            for (const b of Object.keys(BOSSES)) s.campaign.bossesDown[b] = true;
+            for (const b of ['rhythm', 'neon', 'surge']) s.campaign.bossesDown[b] = true;
             save.persist();
             dev.say('BOSSES MARKED DOWN');
           },

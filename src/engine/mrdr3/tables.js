@@ -194,6 +194,11 @@ export function hardSyncPartials(kind, ratio, width = 0.5, harmonics = 96) {
  */
 export function mrdr3SyncPyramid(kind, ratio, width = 0.5, harmonics = 96) {
   const { real, imag } = hardSyncPartials(kind, ratio, width, harmonics);
+  return seriesPyramid(real, imag, harmonics);
+}
+
+/** Any cosine + sine series as a pyramid — the projection a PeriodicWave makes of it. */
+function seriesPyramid(real, imag, harmonics) {
   const N = MRDR3_TABLE_SIZE;
   const cosT = new Float64Array(N);
   const sinT = new Float64Array(N);
@@ -215,6 +220,91 @@ export function mrdr3SyncPyramid(kind, ratio, width = 0.5, harmonics = 96) {
   });
 }
 
+// ---- THE FM OPERATOR'S WAVES, as both backends build them ---------------------------
+//
+// SINE, SQUARE, SAWTOOTH and TRIANGLE are an OscillatorNode's own types natively and the
+// classic pyramids here. PULSE and FEEDBACK are PeriodicWaves natively, built from the
+// series below; the worklet builds its pyramid from the same series, keyed like a sync
+// table and installed the same way. One definition, so the modulator the desk plays is
+// the modulator the game plays.
+//
+// FEEDBACK is the DX7's operator feedback — a sine fed back into its own phase,
+// y = sin(theta + b*y) — which walks the wave from a sine (b = 0) to a sawtooth (b = 1).
+// That equation is Kepler's in disguise (E = theta + b*y gives E - b*sin E = theta), so
+// its spectrum is Kapteyn's series: harmonic n is 2*J_n(n*b)/(n*b). A static amount is
+// therefore an exact, band-limited table rather than a one-sample loop, which is the only
+// way the native path could have it at all — a Web Audio cycle is a render quantum long.
+// What it cannot reach is the DX7's top settings, where the loop goes unstable and the
+// operator turns to noise: past b = 1 there is no steady wave to tabulate.
+
+/** The fixed duty of the FM PULSE, and how many harmonics its series carries. */
+export const MRDR3_FM_PULSE_DUTY = 0.25;
+const FM_PULSE_HARMONICS = 32;
+/** Harmonics in a feedback series. At b = 1 they fall as n^-4/3: 64 is -50 dB. */
+const FM_FEEDBACK_HARMONICS = 64;
+/** FEEDBACK is stored 0–1 and quantised to hundredths, which is the pot's own step. */
+export const mrdr3FmFeedback = (fb) => Math.round(Math.min(1, Math.max(0, Number(fb) || 0)) * 100) / 100;
+
+/**
+ * The table key for an FM modulator, or null when it is a classic wave the core already
+ * holds. Feedback rides on the SINE only: it is the sine's own phase being fed back, and
+ * the other waves have nothing for it to do.
+ */
+export function mrdr3FmKey(type, feedback) {
+  if (type === 'pulse') return `fm|pulse|${MRDR3_FM_PULSE_DUTY}`;
+  const fb = mrdr3FmFeedback(feedback);
+  if ((!type || type === 'sine') && fb > 0) return `fm|fb|${fb.toFixed(2)}`;
+  return null;
+}
+
+/**
+ * FM KEY SCALE — the DX7's keyboard level scaling, on the FM depth: how much less of it a
+ * note gets the higher it sits. 0 is none, the depth every note had before; 1 halves the
+ * depth per octave, which holds the sideband SPREAD constant in hertz (index x modulator
+ * frequency), so a bright low note does not turn into hiss at the top. Pivoted on A2,
+ * 110 Hz, the note KEY FOLLOW pivots on, so a note there is untouched and one below it
+ * gets a little more. One law, read by both MRDR-3 backends and by RMND-7.
+ */
+export const fmKeyScale = (k, hz) => {
+  const amount = Math.min(1, Math.max(0, Number(k) || 0));
+  return amount > 0 && hz > 0 ? Math.pow(110 / hz, amount) : 1;
+};
+
+/** Bessel J_n(x), by its integral — periodic and smooth, so the trapezoid is exact fast. */
+function besselJ(n, x) {
+  const M = 512;
+  let sum = 0;
+  for (let k = 0; k < M; k++) {
+    const t = (Math.PI * (k + 0.5)) / M;
+    sum += Math.cos(n * t - x * Math.sin(t));
+  }
+  return sum / M;
+}
+
+/**
+ * The series a keyed FM modulator is built from, as createPeriodicWave takes it. Null for
+ * a classic wave. Peak-normalised by the caller (Web Audio, or the pyramid), as every
+ * other wave here is.
+ */
+export function mrdr3FmPartials(type, feedback) {
+  if (type === 'pulse') {
+    const real = new Float32Array(FM_PULSE_HARMONICS + 1);
+    const imag = new Float32Array(FM_PULSE_HARMONICS + 1);
+    for (let n = 1; n <= FM_PULSE_HARMONICS; n++) {
+      const a = 2 * Math.PI * n * MRDR3_FM_PULSE_DUTY;
+      real[n] = (2 / (Math.PI * n)) * Math.sin(a);
+      imag[n] = (2 / (Math.PI * n)) * (1 - Math.cos(a));
+    }
+    return { real, imag, harmonics: FM_PULSE_HARMONICS };
+  }
+  const b = mrdr3FmFeedback(feedback);
+  if ((type && type !== 'sine') || !(b > 0)) return null;
+  const real = new Float32Array(FM_FEEDBACK_HARMONICS + 1);
+  const imag = new Float32Array(FM_FEEDBACK_HARMONICS + 1);
+  for (let n = 1; n <= FM_FEEDBACK_HARMONICS; n++) imag[n] = (2 * besselJ(n, n * b)) / (n * b);
+  return { real, imag, harmonics: FM_FEEDBACK_HARMONICS };
+}
+
 // Built per ratio a patch asks for, so cached by key for the life of the process. Each is
 // a few milliseconds; the cap bounds memory on a desk where a RATIO knob is being swept.
 const SYNC_PYRAMIDS = new Map();
@@ -226,7 +316,10 @@ export function mrdr3SyncSet(specs) {
   for (const t of specs) {
     let p = SYNC_PYRAMIDS.get(t.key);
     if (!p) {
-      p = mrdr3SyncPyramid(t.kind, t.ratio, t.width);
+      // An FM modulator's table travels with the sync tables: keyed, per patch, the same
+      // install. Its spec says which by carrying `fm` rather than a sync `kind`.
+      const fm = t.fm ? mrdr3FmPartials(t.fm.type, t.fm.feedback) : null;
+      p = fm ? seriesPyramid(fm.real, fm.imag, fm.harmonics) : mrdr3SyncPyramid(t.kind, t.ratio, t.width);
       if (SYNC_PYRAMIDS.size >= SYNC_PYRAMID_CACHE) {
         SYNC_PYRAMIDS.delete(SYNC_PYRAMIDS.keys().next().value);
       }

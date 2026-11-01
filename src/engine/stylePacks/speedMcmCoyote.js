@@ -24,6 +24,14 @@ function rgbOf(hex) {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
+// The canvas's current transform; identity where a context reports none (a headless
+// stub), so the frame-scale reads below stay numbers.
+const IDENTITY = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+function frameTransform(ctx) {
+  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  return m && Number.isFinite(m.a) ? m : IDENTITY;
+}
+
 export function mix(a, b, k) {
   const A = rgbOf(a);
   const B = rgbOf(b);
@@ -63,7 +71,7 @@ export function part(ctx, pass, path, fill, sil = true) {
     path(ctx);
     ctx.fill();
     if (GROW_NOW > 0) {
-      const m = ctx.getTransform();
+      const m = frameTransform(ctx);
       ctx.lineWidth = (2 * GROW_NOW) / (Math.hypot(m.a, m.b) / FRAME_SCALE);
       ctx.stroke();
     }
@@ -90,7 +98,7 @@ export function line(ctx, pass, color, width, path) {
 // slipped by `slip` (both frame px, the slip in screen directions whichever way the
 // figure faces).
 export function plate(ctx, colour, slip, grow, fn) {
-  const m = ctx.getTransform();
+  const m = frameTransform(ctx);
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, slip[0] * FRAME_SCALE, slip[1] * FRAME_SCALE);
   ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
@@ -535,7 +543,7 @@ export const CURRENT_MODEL = {
  */
 export function drawCoyoteModel(ctx, t, x, ledgeTop, facing, K, model, { mode = 'howl', since = null, pace = 1, look = 0, beat = 60 / 128 } = {}) {
   const dir = facing < 0 ? -1 : 1;
-  const m0 = ctx.getTransform();
+  const m0 = frameTransform(ctx);
   FRAME_SCALE = Math.hypot(m0.a, m0.b) || 1;
   const modes = model.modes ?? ['howl'];
   if (mode === 'winkWait' && !modes.includes('wink')) mode = 'howl';

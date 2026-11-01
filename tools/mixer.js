@@ -1377,8 +1377,11 @@ const server = createServer(async (req, res) => {
         res.end(`that render is over ${Math.round(MAX_RENDER_BYTES / 1048576)}MB — render fewer passes`);
         return;
       }
+      // Bounce selected names its bars, so it never lands on the whole song's file.
+      const bars = q.get('bars') || '';
+      if (bars && !/^\d+-\d+$/.test(bars)) { res.writeHead(400); res.end('bad bar range'); return; }
       mkdirSync(join(ROOT, 'dist'), { recursive: true });
-      const file = join('dist', `${track.slug}-mix.wav`);
+      const file = join('dist', `${track.slug}-mix${bars ? `-bars-${bars}` : ''}.wav`);
       writeFileSync(join(ROOT, file), bytes);
       console.log(`${file} — ${(bytes.length / 1048576).toFixed(1)} MB, rendered on the desk`);
       res.writeHead(200, { 'content-type': 'application/json' });

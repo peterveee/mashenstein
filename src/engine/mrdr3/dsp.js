@@ -56,6 +56,22 @@ function mrdr3WriteEnvelope(param, startFrame, durSeconds, peak, e, freq, rate) 
   return startFrame + built.off * rate;
 }
 
+/** The same, for the native path's HELD envelope ('adsr') — the FM operator's. */
+function mrdr3WriteAdsr(param, startFrame, durSeconds, peak, e, rate) {
+  var built = mrdr3AdsrEvents(0, durSeconds, peak, e, false);
+  param.reset(0);
+  if (!built) return startFrame;
+  var evs = built.events;
+  for (var i = 0; i < evs.length; i++) {
+    var ev = evs[i];
+    var at = startFrame + ev.t * rate;
+    if (ev.k === 'set') param.setValueAtTime(ev.v, at);
+    else if (ev.k === 'lin') param.linearRampToValueAtTime(ev.v, at);
+    else param.exponentialRampToValueAtTime(ev.v, at);
+  }
+  return startFrame + built.off * rate;
+}
+
 // ---- the moving pulse (§3.4, Tier C) -----------------------------------------------
 //
 // The one construction in this synth that is deliberately NOT a port. Natively a swept
@@ -296,6 +312,9 @@ function mrdr3SeededPhase(eventId, index) {
 
 function Mrdr3Unison() {
   this.phase = 0; this.cents = 0; this.panL = 1; this.panR = 1; this.gain = 1;
+  // The FIRST RENDER QUANTUM's misread — see the oscillator loop. Until 'quantumEnd' this
+  // voice reads its pitch 'quantumShift' frames early, as an OscillatorNode does.
+  this.quantumShift = 0; this.quantumEnd = -1;
   // When this voice's oscillator starts, absolutely. Before it the voice contributes
   // nothing AND does not advance — a stopped oscillator has no phase, so a staggered
   // voice still enters at phase zero, just later.
@@ -355,7 +374,15 @@ function Mrdr3Layer(rate) {
   this.fmPhase = 0;
   this.fmInc = 0;
   this.fmDepth = 0;
+  this.fmLevel = -1;
+  this.fmPreUntil = -1;
+  this.fmPreInc = 0;
   this.fmOn = false;
+  // What the layer's FM and pitch envelope came to at each frame of the current render
+  // quantum, kept only while a voice is in its first one and reading them late.
+  this.histFm = new Float64Array(128);
+  this.histPitch = new Float64Array(128);
+  this.histUntil = -1;
   // Does this layer put anything DIFFERENT on the two channels? Only a unison stack with
   // stereo width does — and when nothing does, the right channel is the left one, sample
   // for sample, so running a second filter cascade over it computes a number we already
@@ -426,6 +453,12 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
     // draws voice 0's stagger from the same table as the rest.
     v.from = frame + (entryDelays ? entryDelays[u] * rate : 0);
     v.lastCents = NaN;
+    // Started mid-quantum, an OscillatorNode reads its frequency and detune from the
+    // START of that quantum for the rest of it — see the oscillator loop.
+    var vStart = Math.ceil(v.from);
+    v.quantumShift = vStart & 127;
+    v.quantumEnd = v.quantumShift ? vStart - v.quantumShift + 128 : -1;
+    if (v.quantumEnd > this.histUntil) this.histUntil = v.quantumEnd;
     // GLIDE from the note before, in this layer's own ratio so a stack arrives together.
     if (glide && glide.frames > 0 && glide.from > 0) {
       v.glideFrom = glide.from * pitchRatio;
@@ -494,9 +527,27 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
   this.fmOn = spec.fmIndex > 0;
   if (this.fmOn) {
     this.fmPhase = 0;
-    this.fmInc = (this.hz * spec.fmRatio) / rate;
-    this.fmDepth = this.hz * spec.fmIndex;
-    mrdr3WriteEnvelope(this.fmParam, frame, layerSeconds, 1, spec.fmEnv, this.hz, rate);
+    // Clamped to Nyquist, as an OscillatorNode clamps its own frequency — and as a table
+    // read needs: an increment of a whole cycle or more walks the phase off the table.
+    var fmFreq = this.hz * spec.fmRatio;
+    this.fmInc = (fmFreq < rate * 0.5 ? fmFreq : rate * 0.5) / rate;
+    // KEY SCALE (fmKeyScale in tables.js, written out here: the core cannot import).
+    this.fmDepth = this.hz * spec.fmIndex
+      * (spec.fmKeyScale > 0 ? Math.pow(110 / this.hz, spec.fmKeyScale) : 1);
+    // Its mip level, found on the first sample: the pitch is fixed for the note.
+    this.fmLevel = -1;
+    // The modulator is an OscillatorNode started mid-quantum too, so for the frames that
+    // read before its own frequency was set it runs at the param's default, 440 Hz — see
+    // the first render quantum in the oscillator loop.
+    // Those are the frames whose shifted read lands before the start, cut off where the
+    // quantum ends: min(q, 128 - q) of them.
+    var fmStart = Math.ceil(frame);
+    var fmQ = fmStart & 127;
+    this.fmPreUntil = fmStart + (fmQ < 128 - fmQ ? fmQ : 128 - fmQ);
+    this.fmPreInc = 440 / rate;
+    // In HERTZ, on the native path's own 'adsr' — see mrdr3AdsrEvents for why the units
+    // are the sound.
+    mrdr3WriteAdsr(this.fmParam, frame, layerSeconds, this.fmDepth, spec.fmEnv, rate);
   }
   this.stages = spec.filterStages;
   if (this.stages) {
@@ -550,7 +601,7 @@ Mrdr3Layer.prototype.redraw = function (at, rate, vcaOff) {
   if (this.pitchOn) mrdr3WriteCentsEnv(this.pitchParam, this.startFrame, seconds, spec, rate);
   mrdr3PlanBend(this, this.startFrame, seconds, rate);
   if (this.fmOn) {
-    mrdr3WriteEnvelope(this.fmParam, this.startFrame, seconds, 1, spec.fmEnv, hz, rate);
+    mrdr3WriteAdsr(this.fmParam, this.startFrame, seconds, this.fmDepth, spec.fmEnv, rate);
   }
   if (this.stages) {
     mrdr3WriteFilterEnv(this.filterEnv, this.startFrame, seconds, spec.filterEnvShape, rate);
@@ -1611,9 +1662,27 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
           if (lay.pitchOn) pitchRatio = Math.pow(2, lay.pitchParam.valueAt(f) / 1200);
           var fmHz = 0;
           if (lay.fmOn) {
-            lay.fmPhase += lay.fmInc;
+            // The modulator's WAVE. A sine is the sine; anything else is a pyramid read at
+            // the modulator's own pitch — the classic waves by name, PULSE and FEEDBACK
+            // from the keyed set, each the series the native PeriodicWave is built from.
+            var fmData = spec.fmKey ? syncs[spec.fmKey]
+              : (spec.fmKind !== 'sine' ? kinds[spec.fmKind] : null);
+            var fmWave;
+            if (fmData) {
+              if (lay.fmLevel < 0) lay.fmLevel = mrdr3Level(lay.fmInc * rate, rate, size, levels);
+              fmWave = mrdr3Read(fmData, stride, size, lay.fmLevel, lay.fmPhase);
+            } else {
+              fmWave = Math.sin(MRDR3_TAU * lay.fmPhase);
+            }
+            fmHz = fmWave * lay.fmParam.valueAt(f) * grp.lfoFm;
+            // Read THEN advance: an OscillatorNode's first sample is its phase zero, and a
+            // modulator a sample ahead of its carrier is a phase error the index multiplies.
+            lay.fmPhase += f < lay.fmPreUntil ? lay.fmPreInc : lay.fmInc;
             if (lay.fmPhase >= 1) lay.fmPhase -= 1;
-            fmHz = Math.sin(MRDR3_TAU * lay.fmPhase) * lay.fmDepth * lay.fmParam.valueAt(f) * grp.lfoFm;
+          }
+          if (f < lay.histUntil) {
+            lay.histFm[f & 127] = fmHz;
+            lay.histPitch[f & 127] = pitchRatio;
           }
           // A synced slave has no pulse-width modulation — the native path turns it off
           // for a hard-synced layer — and reads its own table per unison voice below.
@@ -1679,7 +1748,27 @@ Mrdr3Core.prototype.process = function (out, frame, count, offset) {
             // FM adds in HERTZ and the envelopes multiply in cents, which is the order a
             // Web Audio oscillator applies them: a connected frequency input sums, and
             // detune scales whatever that came to.
-            var hz = (uv.hzNow + fmHz) * grp.vibRatio[u] * pitchRatio;
+            var hz;
+            if (f < uv.quantumEnd) {
+              // ---- THE FIRST RENDER QUANTUM, AS AN OSCILLATORNODE PLAYS IT ----------
+              //
+              // Measured in Chromium and WebKit alike (work/local/fm-node-probe4.mjs, 28 Oct
+              // 2026): an oscillator started 'q' frames into a 128-frame quantum writes
+              // from frame q but reads its frequency and detune from frame 0, so for the
+              // rest of that quantum its pitch is q frames late — and before the note's
+              // own automation begins, the param is still at its default, 440 Hz. The
+              // misread ends with the quantum, but the phase it cost does not: it is the
+              // carrier's phase against its modulator, and against every other layer, for
+              // the life of the note. On FM at a whole-number ratio that phase IS the
+              // timbre (ratio 1, index 3: half the spectrum moved). The game plays it, so
+              // this plays it. Vibrato and a glide are read on time; both are a few
+              // milliseconds of a slow movement here.
+              var sf = f - uv.quantumShift;
+              if (sf < lay.startFrame) hz = 440;
+              else hz = (uv.hzNow + lay.histFm[sf & 127]) * grp.vibRatio[u] * lay.histPitch[sf & 127];
+            } else {
+              hz = (uv.hzNow + fmHz) * grp.vibRatio[u] * pitchRatio;
+            }
             // ---- THE TWO CLAMPS, AND WHY THEY ARE NOT OPTIONAL -------------------
             //
             // A frequency AT OR ABOVE THE SAMPLE RATE breaks the phase wrap below: that

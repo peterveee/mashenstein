@@ -557,11 +557,11 @@ export const OBSTACLES = {
   // the box and answer of the slot it took: the wheel the barrel's (rolls, heavy punt), the
   // ladder the fire barrel's (shootable), the fan the saw's, the bollards a spike plate that
   // never lurks — they are always out.
-  runawayWheel: { w: 13, h: 13, sprite: 'runawayWheel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'WHEEL', hop: 2.6 },
+  runawayWheel: { w: 13, h: 13, sprite: 'runawayWheel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'WHEEL', hop: 4 },
   // THE TYRE AND THE HEARSE WHEEL (Peter, 28 Oct 2026): Speed Zone's and Crypt Shift's barrels.
   // The wheel's box and answer; `hop` is how far the art bounces as it rolls (draw.js — art only).
-  tyre:         { w: 13, h: 13, sprite: 'tyre', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'TYRE', hop: 3.4 },
-  hearseWheel:  { w: 13, h: 13, sprite: 'hearseWheel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'HEARSE WHEEL', hop: 1.8 },
+  tyre:         { w: 13, h: 13, sprite: 'tyre', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'TYRE', hop: 5 },
+  hearseWheel:  { w: 13, h: 13, sprite: 'hearseWheel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'HEARSE WHEEL', hop: 3 },
   jacobsLadder: { w: 13, h: 13, sprite: 'jacobsLadder', ground: true, breakable: true, action: 'jump' },
   risingBollards: { w: 15, h: 7, sprite: 'risingBollards', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },
   laserFan:     { w: 15, h: 8, sprite: 'laserFan', ground: true, breakable: false, action: 'jump', bedded: true, flush: true },

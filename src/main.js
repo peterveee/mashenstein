@@ -41,7 +41,7 @@ function consumeAboutReloadReturn() {
 }
 import { save } from './engine/save.js';
 import { floorReflectionStats, resetFloorReflectionStats } from './engine/reflections.js';
-import { setState, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero, isTransitioning } from './engine/states.js';
+import { setState, setStateNow, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero, isTransitioning } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState, applyFraming } from './game/run.js';
@@ -98,6 +98,10 @@ import {
 } from './engine/gameplay-profile.js';
 import { Dev } from './dev/index.js';
 import { GravityRunState } from './game/gravity/state.js';
+import { FlightPrototypeState } from './game/flight/state.js';
+import { CampaignFlightState } from './game/flight/campaign.js';
+import { readFlightCheckpoint, beginFlightCheckpoint, saveFlightMidpoint, saveFlightProgress, finishFlightCheckpoint, abandonFlightCheckpoint } from './game/flight/checkpoint.js';
+import { actEndingFor } from './game/flight/acts.js';
 import { devFinishStartPercent, devStageRoute } from './engine/dev-url.js';
 
 save.load();
@@ -214,6 +218,10 @@ function routeDevUrl(goto, p) {
   }
 
   switch (goto) {
+    case 'flight':
+      setState(new FlightPrototypeState({ hero: heroFrom(p) || 'b33p', seed: seedFrom(p) ?? 7,
+        onExit: () => Flow.toTitle() }));
+      break;
     case 'tutorial':
       setState(new TutorialState({ save, onDone: () => Flow.toTitle() }));
       break;
@@ -580,6 +588,11 @@ const Flow = {
   },
 
   startStage(cab, stage, corrupted) {
+    // A saved act-ending flight resumes straight into the fight: no briefing.
+    if (actEndingFor(stage?.id) && readFlightCheckpoint(save.slot, stage.id)) {
+      Flow.launchStage(cab, stage, corrupted);
+      return;
+    }
     // The Briefing Manifest: every stage opens on its establishment screen.
     //
     // WHERE THE GAME ASKS ABOUT LATENCY. Rhythm is the only cabinet that puts
@@ -605,6 +618,11 @@ const Flow = {
   // seedOverride: dev-menu seed lock or the previous attempt's seed. Runs are deterministic given a seed
   // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
   launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, devForceMission = false, previewTouchControls = false, skipActCard = false) {
+    const act = actEndingFor(stage?.id);
+    const pendingFlight = act && readFlightCheckpoint(save.slot, stage.id);
+    if (pendingFlight) { Flow.startActFlight(pendingFlight); return; }
+    // Written at the tape (onFlightTape), handed to the flight at the handover.
+    let flightPending = null;
     // You walk into the cabinet as yourself. The dev menu still overrides.
     initialHeroId = initialHeroId || Flow.heroId();
     // The exit cue is an offline render and cannot be made on the frame it is
@@ -629,6 +647,19 @@ const Flow = {
       devInvuln, devAutoExit, devMaxTime, devStartPercent, devForceMission,
       previewTouchControls,
       skipActCard,
+      // An act's last stage runs on past its tape into the flight. A dev
+      // auto-exit run (bots, captures) still ends at the pole.
+      flightExit: !!act && !devAutoExit,
+      // The tape: the runner's result is held, unpaid, as the fight's checkpoint.
+      onFlightTape: (result, extra) => {
+        flightPending = beginFlightCheckpoint(save, result, seed, extra);
+      },
+      // The passage fills the screen: the fight takes the frame over.
+      onFlightHandoff: (arrive) => {
+        if (!flightPending) return;
+        Flow.lastTeam = flightPending.result.team;
+        Flow.startActFlight(flightPending, { arrive, carried: Input.carryHeld?.() });
+      },
       musicSong: this.gameSongFor(cab.id),
       // The bench-upgrade parade is a once-per-visit thing; a retry has already
       // seen it (same as the briefing it also skips).
@@ -654,6 +685,55 @@ const Flow = {
     }));
   },
 
+  // An act's ending flight. `arrive` is the run's handover (the frame the
+  // passage filled), so the fight continues it; without one this is a saved
+  // fight resumed from the cabinet, and it opens on its own music.
+  startActFlight(pending, { arrive = null, carried = null } = {}) {
+    const act = actEndingFor(pending.stageId);
+    const cab = CABINET_BY_ID[act.cabinet];
+    const stage = STAGE_BY_ID[pending.stageId];
+    const corrupted = Array.isArray(pending.result.corrupted) ? pending.result.corrupted : [];
+    Flow.setHero(pending.result.finalHero);
+    // The act that ends the campaign goes on to the finale the first time it is
+    // won (a replay of 9-3 includes the flight; the finale is not replayed with it).
+    const firstEnding = act.finale && !save.slot.campaign.storyFlags?.sawEnding;
+    const results = (result, gains, won) => resultsOnTheBeat((chip) => setStateNoCameo(new ResultsState({ result, gains, save, chip,
+      onDone: () => (won && firstEnding ? Flow.startFinale() : Flow.toHub(false, act.cabinet, won)),
+      onRetry: () => Flow.launchStage(cab, stage, corrupted, pending.seed, result.finalHero, false),
+    })), { bar: won });
+    const enter = arrive ? setStateNow : setState;
+    enter(new CampaignFlightState({ pending, act, settings: save.settings, musicSong: Flow.gameSongFor(act.cabinet),
+      arrive, carried, hull: pending.oneHit ? 1 : 4,
+      // EXIT keeps the saved fight; the hero leaves the cabinet as one who did
+      // not win, the way a runner's EXIT does.
+      onExit: ({ seconds, hits } = {}) => {
+        if (Number.isFinite(seconds)) saveFlightProgress(save, pending, seconds, hits);
+        Flow.toHub(false, act.cabinet, false);
+      },
+      // RESTART replays the whole stage, as it does in the run: the saved
+      // fight and its unpaid runner result go.
+      onRestart: () => {
+        abandonFlightCheckpoint(save, pending, null, 'RESTART');
+        Flow.launchStage(cab, stage, corrupted, pending.seed, pending.result.finalHero, false);
+      },
+      // UNPLUGGED's one hit: the attempt ends as a failed run.
+      onFail: (seconds, hits) => {
+        const settled = abandonFlightCheckpoint(save, pending, applyResult, 'VEHICLE DOWN', seconds, hits);
+        if (!settled) { Flow.toHub(false, act.cabinet, false); return; }
+        Flow.lastTeam = settled.result.team;
+        results(settled.result, settled.gains, false);
+      },
+      onMidpoint: (seconds, hits, checkpoint) => saveFlightMidpoint(save, pending, seconds, hits, checkpoint),
+      onComplete: (seconds, hits) => {
+        const settled = finishFlightCheckpoint(save, pending, applyResult, seconds, hits);
+        if (!settled) { Flow.toHub(false, act.cabinet, false); return; }
+        const { result, gains } = settled;
+        Flow.lastTeam = result.team;
+        results(result, gains, true);
+      },
+    }));
+  },
+
   // Dev-only view of the opening touch-controls card. It uses the real opening
   // RunState path, but does not depend on the current save having an unfinished
   // plumber-1, so a completed development slot can still review the card.
@@ -666,6 +746,14 @@ const Flow = {
   },
 
   startBoss(cabId, seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
+    // Legacy links/saves return to the integrated ending: an act that ends in the
+    // flight has no second boss.
+    const actStage = STAGE_BY_ID[`${cabId}-3`];
+    if (actStage && actEndingFor(actStage.id)) {
+      Flow.launchStage(CABINET_BY_ID[cabId], actStage, [], seedOverride, initialHeroId,
+        false, devInvuln, devAutoExit, devMaxTime, devStartPercent);
+      return;
+    }
     const seed = seedOverride ?? ((Date.now() ^ 0xb055) >>> 0);
     levelOpenCue();
     // The exit cue is an offline render; pay for it now, not when the level ends.

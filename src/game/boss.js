@@ -1,4 +1,5 @@
-// Boss encounters: runner-verbs only. One shared skeleton, three bosses as data.
+// Boss encounters: runner-verbs only. One shared skeleton, the bosses as data.
+// Act I's is no longer here: 3-3 ends in Eggshell's flight (flight/acts.js).
 // Damage the boss by breaking what it throws at you (the redirect fantasy) —
 // stomps, axes, pellets, dashes all count. Every boss has a joke phase.
 import { W, H, shake } from '../engine/renderer.js';
@@ -63,30 +64,12 @@ export { BOSS_DROP_MIN_AHEAD, BOSS_DROP_SPREAD };
 // World-unit boxes the three boss painters are authored in (props.js).
 // The copter is COPTER_BOX square (draw.js); the balloon keeps the ape the
 // same size as in the copter, so its 28x46 authoring box scales by the same factor.
-const BOSS_ART = { eggshellCopter: [COPTER_BOX, COPTER_BOX], eggshellBalloon: [36, 59], dustdevil: [35, 38] };
+const BOSS_ART = { eggshellCopter: [COPTER_BOX, COPTER_BOX], eggshellBalloon: [36, 59] };
 
 export const BOSSES = {
-  neon: {
-    name: 'THE UNDERINSURED CLOWN-COPTER',
-    hp: 6, sprite: 'eggshellCopter',
-    drops: ['barrel', 'crate', 'cactus'],
-    dropEvery: [2.6, 2.0, 1.5],
-    jokeAt: 0.5,
-    jokeText: 'LOW BATTERY. THE COPTER PAUSES. EGGSHELL DISPUTES ALL DAMAGE SO FAR.',
-    fakeBars: 4,
-    intro: 'IT HAS FIVE HEALTH BARS. FOUR ARE LABELED "PRESENTATION ERROR".',
-  },
-  rhythm: {
-    name: 'DUST DEVIL 9000 - DEEP CLEAN MODE',
-    hp: 8, sprite: 'dustdevil',
-    drops: ['barrel', 'crate', 'tombstone'], // it suctions up level junk and hurls it, apologetically
-    dropEvery: [2.2, 1.8, 1.4],
-    jokeAt: 0.5,
-    jokeText: 'IT STOPS TO EMPTY ITS BAG. IT IS VISIBLY ASHAMED. IT APOLOGIZES VIA LED.',
-    pull: true,
-    intro: 'IT IS SET TO DEEP CLEAN. IT IS SO SORRY ABOUT THIS.',
-    subtitle: 'HE HAS MOPPED THE CEILING. HE HAS POLISHED THE INSIDE OF A GLASS TUBE. NOW, HE HAS TO CLEAN YOU. HE IS NOT HAPPY ABOUT IT.',
-  },
+  // Act II's separate copter fight went with Act I's: 6-3 ends in the flight.
+  // Act I's boss is no longer a separate fight either: 3-3 ends in Eggshell's
+  // flight (flight/acts.js), and the Dust Devil is back to being a cleaner (1 Nov 2026).
   surge: {
     name: 'EGGSHELL & THE ABSOLUTELY FINAL POWER STRIP',
     hp: 12, sprite: 'eggshellBalloon',
@@ -126,7 +109,7 @@ export class BossState extends RunState {
     this.bossX = VIEW_W * 0.68;   // first-frame seed, before update() frames it
     this.bossAlt = 60;
     this.speech = { text: this.boss.intro, t: 4, who: 'eggshell' };
-    // The Dust Devil's tragedy gets a narrator card after Eggshell's pitch.
+    // A boss with a narrator card gets it after Eggshell's pitch.
     if (this.boss.subtitle) this.speechQueue = [{ text: this.boss.subtitle, t: 4.5, who: null }];
     this.checkpoints = [];
     this.snapshot = this.makeSnapshot();
@@ -153,7 +136,7 @@ export class BossState extends RunState {
     // so it is measured against the VIEW. At a literal 300 the boss would sit
     // well past the right edge of a 213-px-wide view and never be seen.
     this.bossX = this.camX + VIEW_W * 0.62 + Math.sin(this.tRun * 0.9) * VIEW_W * 0.12;
-    this.bossAlt = 55 + Math.sin(this.tRun * 1.6) * (this.boss.pull ? 32 : 18);
+    this.bossAlt = 55 + Math.sin(this.tRun * 1.6) * 18;
 
     // Drop attacks.
     this.dropT -= wdt;
@@ -169,11 +152,6 @@ export class BossState extends RunState {
       ob.fromBoss = true;
       this.obstacles.push(ob);
       Audio.sfx('plop');
-    }
-
-    // Pull (Dust Devil): drags the player toward it unless jumping on beat.
-    if (this.boss.pull && this.phaseIdx() >= 1) {
-      if (this.player.grounded) this.camX += 12 * wdt; // suction: world creeps forward under you
     }
 
     // Hero projectiles that strike the boss directly damage it ("destroy armor
@@ -247,7 +225,7 @@ export class BossState extends RunState {
     const x = Math.round(this.bossX - this.camX);
     // Each boss is drawn at its painter's own box, floor at bossAlt. The
     // copter's rotor and the balloon both live above the 24x20 the old egg
-    // used; Dust Devil is an industrial upright a little over 1.5x the cast.
+    // used.
     const [bossW, bossH] = BOSS_ART[this.boss.sprite];
     const y = Math.round(GROUND_Y - this.bossAlt - bossH);
     const songBeat = Audio.songBeat();

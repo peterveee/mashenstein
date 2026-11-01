@@ -28,6 +28,7 @@ for(let stage=1;stage<=3;stage++)for(let seed=1;seed<=12;seed++){
 }
 assert.equal(roles.size,3,'all three costumes appear in actual spawns');
 // Other cabinets retain their own hazards.
-assert(CABINET_BY_ID.speed.patterns.some(p=>p.cells.some(c=>c.t.startsWith('cactus'))));
+// (Speed Zone dealt the cactus until its bake-off swapped it for the prickly pear; Rhythm still does.)
+assert(CABINET_BY_ID.rhythm.patterns.some(p=>p.cells.some(c=>c.t.startsWith('cactus'))));
 assert(CABINET_BY_ID.neon.patterns.some(p=>p.cells.some(c=>c.t==='drone')));
 console.log(`CRYPT LANE CAST: passed (${count} obstacles, 36 runs, all 3 costumes)`);

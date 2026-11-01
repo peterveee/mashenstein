@@ -11,7 +11,6 @@ const { CABINETS, CABINET_BY_ID } = await import('../src/data/cabinets.js');
 const { EGGSHELL_TAUNTS } = await import('../src/data/jokes.js');
 const { BRIEFINGS, BRIEFING_PROMPTS } = await import('../src/data/briefings.js');
 const { BriefingState } = await import('../src/game/menus.js');
-const { BOSSES } = await import('../src/game/boss.js');
 
 save.load();
 save.newSlot(0, 0);
@@ -387,7 +386,6 @@ for (const id of ['gravity-2', 'gravity-3', 'office-2']) {
 
 // --- New authored lines are actually reachable -----------------------------
 assert(EGGSHELL_TAUNTS.some((l) => l.includes('LOSING TO PLUMBERS SINCE 1986')), 'the 40-year grudge taunt is in the pool');
-assert(BOSSES.rhythm.subtitle && BOSSES.rhythm.subtitle.includes('HE HAS TO CLEAN YOU'), 'Dust Devil boss carries its subtitle');
 
 console.log(failed ? 'STORY-BEATS: FAILED' : 'STORY-BEATS: PASSED');
 process.exit(failed ? 1 : 0);

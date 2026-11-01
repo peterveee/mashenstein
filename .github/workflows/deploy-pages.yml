@@ -17,26 +17,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # The tests never stand between a push and the site (Peter, 28 Oct 2026). They used to
+  # gate the deploy, and 23 of 60 runs failed — nearly every one a test pinned to something
+  # deliberately changed (a renamed stage, a moved challenge), not a bug in the game. So the
+  # suites run beside the deploy and ping the phone when they fail; the site goes live as
+  # soon as it builds.
+  #
+  # The browser suites are on demand (see tests/run-all.js) — they cost minutes, most of
+  # it tests/voices.js rendering every preset in the catalogue — so only the weekly
+  # scheduled run pays for them, which keeps a browser-side regression from sitting
+  # undiscovered forever.
+  test:
     runs-on: ubuntu-latest
-    # The browser suites are on demand (see tests/run-all.js) — they cost minutes, most
-    # of it tests/voices.js rendering every preset in the catalogue, and they are run by
-    # hand with `npm run test:all` when the engine's sound is what changed.
-    #
-    # So nothing you TRIGGER waits for them: a push and a manual run both take the fast
-    # gate and deploy in about a minute. Only the weekly scheduled run pays the full
-    # price, which keeps a browser-side regression from sitting undiscovered forever
-    # without ever standing between you and a deploy you asked for.
     env:
       FULL_TESTS: ${{ github.event_name == 'schedule' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0 # archive index resolves the subject of every past release
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
@@ -73,6 +70,36 @@ jobs:
       - name: Test (including browser suites)
         if: env.FULL_TESTS == 'true'
         run: npm run test:all
+
+      # Failures only: a passing run is the normal case and the deploy already pings.
+      - name: Notify phone
+        if: failure()
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -s -H "Title: MASHENSTEIN" -H "Tags: warning" -H "Priority: default" -H "Click: $RUN_URL" \
+            -d "Tests failed at ${GITHUB_SHA::7} (site deployed anyway) — $(git log -1 --format=%s "$GITHUB_SHA" 2>/dev/null)" "https://ntfy.sh/$NTFY_TOPIC"
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # archive index resolves the subject of every past release
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build
         run: npm run build

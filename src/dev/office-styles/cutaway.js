@@ -3356,7 +3356,9 @@ function drawMid(ctx, f, B, k) {
         const dk = m.desks[d];
         if (!dk.occupied) continue;
         const spr = M.people.get(`c${dk.seed}:${dk.look}`);
-        blit(ctx, spr, x + d * 40 + 20, b - 42 + dk.dy - dk.pop * 12);
+        // a worker standing up rises 8, not the plan's 12: the bust is only 22 tall, and any
+        // higher its cut-off foot cleared the partition and floated over the desk (Peter, 28 Oct 2026)
+        blit(ctx, spr, x + d * 40 + 20, b - 42 + dk.dy - dk.pop * 8);
       }
     } else if (m.kind === 'boardroom') {
       for (const c of m.chairs) {

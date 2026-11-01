@@ -137,11 +137,13 @@ CAST: *"POYO."*
 **Dolores** ........................................ played by Delores, still on shift
 *(Three deliberate absences. **Don K. Eggshell, PhD** closes the whole crawl with
 the sequel sting, and a villain who gets the last word should not also be a row
-in the cast roll. The **Dust Devil 9000** is left out for the same reason the
-in-game cast roll leaves him out — he is a surprise, and a credit spends him
-before the player has met him. **Miss Chomp** is out of the relay and out of the
-food court both, held for a possible cameo — billing an actor for a part she is
-not in is the one joke this list cannot make straight-faced.)*
+in the cast roll. The **Dust Devil 9000** is left out, as the in-game cast roll
+leaves him out, because he was a surprise boss and a credit would have spent him
+before the player met him. That reason lapsed when he was retired as the Act I
+boss on 1 Nov 2026; whether he now gets a card or a credit is Peter's call.
+**Miss Chomp** is out of the relay and out of the food court both, held for a
+possible cameo — billing an actor for a part she is not in is the one joke this
+list cannot make straight-faced.)*
 
 ---
 

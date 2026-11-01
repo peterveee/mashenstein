@@ -86,7 +86,7 @@ const SCREENS = [
   },
   // Only three cabinets have a boss defined (BOSSES in src/game/boss.js) --
   // plumber does not, and crashes reading a boss that doesn't exist.
-  { id: 'boss', label: 'Boss fight', query: 'goto=boss&cab=neon&invuln', states: ['BossState'], settle: 2000 },
+  { id: 'boss', label: 'Boss fight', query: 'goto=boss&cab=surge&invuln', states: ['BossState'], settle: 2000 },
   { id: 'overtime', label: 'Overtime', query: 'goto=overtime&invuln', states: ['RunState'], settle: 1800 },
 ];
 

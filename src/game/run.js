@@ -45,7 +45,9 @@ import { BLAST_T } from '../sprites/blast.js';
 import { pickHitPicture, hitPicLife, hitFamilyOf } from '../sprites/hitPictures.js';
 import { CAT_HIT_T, CAT_IFRAMES_T, catSwipeActive, catHitScreenOffset } from './cat-hit.js';
 import { LEDGE_REACH, PIT_WORDS, PIT_HANG_RAN, PIT_HANG_JUMPED, PIT_GRIP, PIT_GRIP_ALT, PIT_GRIP_DX, PIT_MANTLE_T, pitGripSlip, pitMantle, warmPitFall } from '../sprites/pitFall.js';
-import { Player, PLAYER_X, HERO_ANCHOR, setHeroAnchor, beatLayOff, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, LANDED_T } from './player.js';
+import { Player, PLAYER_X, HERO_ANCHOR, setHeroAnchor, beatLayOff, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, jumpV, LANDED_T } from './player.js';
+import { drawHeroTub, drawPassage, drawFlightHero, drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, currentFlightLayout, edgeBandWidth, drawCabinetEdge, warmPassage, drawFlightBalloon, drawRunBalloon } from './flight/scene.js';
+import { actEndingFor } from './flight/acts.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
@@ -1099,6 +1101,29 @@ const pausePlateX = (i) => PAUSE_PLATE_X + i * (PAUSE_PLATE_W + PAUSE_PLATE_GAP)
 // Portrait pause is a safe, readable card rather than a black sheet laid
 // against the phone's top and bottom edges. Keep this margin on the panel and
 // its plates together so the status/home-indicator areas have visible air.
+// THE ACT-ENDING FLIGHT (flight/acts.js). An act's last stage runs on past its
+// tape: the camera never stops, and the hero keeps his column, his pace and his
+// size. The tape is the fight's checkpoint; a tub glides in under him, he hops
+// in on the beat, and the two lift off after Eggshell. Then the camera leaves
+// the screen sideways — the picture slides away under them with the cabinet's
+// edge behind it and the passage behind the machines behind that. The edge is
+// opaque and passes over each of them, and while it is over him the run's
+// picture of him becomes the flight's: the door walk's rule, occlusion doing
+// the work. The flight takes the frame once the passage fills it.
+const FLIGHT_TUB_PARK = 170;         // where the tub waits, world units past the tape
+const FLIGHT_TUB_FLOOR = 9;          // its floor (his soles in it) above the road
+const FLIGHT_TUB_SETTLE_MIN = 0.75;  // its glide in is never shorter than this
+const FLIGHT_HOP_MIN = 0.45;         // the hop is on the first beat at least this far past the tape
+const FLIGHT_SEAT_HOLD = 0.3;        // seated, before the lift
+const FLIGHT_LIFT_T = 1.1;
+const FLIGHT_SLIDE_AT = 0.62;        // how far into the lift the camera starts out of the screen
+const FLIGHT_SLIDE_RAMP = 0.4;
+const FLIGHT_ESCAPE_T = 1.5;         // Eggshell's move to where the flight flies him
+const FLIGHT_SEAT_POSE = { kind: 'idle', grounded: true, vy: 0, squash: 0, lean: 0,
+  sliding: false, slideAmount: 0, roll: false, float: false, cling: 0 };
+const NO_INPUT = { held: () => false, pressed: () => false, released: () => false };
+const smooth01 = (x) => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
+
 const PORTRAIT_PAUSE_EDGE = 28;
 const PORTRAIT_PAUSE_PANEL_PAD_X = 16;
 const PORTRAIT_PAUSE_PANEL_PAD_BOTTOM = 16;
@@ -4160,6 +4185,7 @@ export class RunState {
     this.prevAnimationPlayer = this.player;
     this.prevPlayerAnim = this.player?.anim;
     this.prevFinishPlayerX = this.finishPlayerX;
+    if (this.fx) this.fx.prevSlide = this.fx.slide;
     this.prevIntroRunX = this.introRunX;
     this.prevPitDx = this.heroPitDx();
   }
@@ -4180,6 +4206,7 @@ export class RunState {
     this.prevAnimationPlayer = this.player;
     this.prevPlayerAnim = this.player?.anim;
     this.prevFinishPlayerX = this.finishPlayerX;
+    if (this.fx) this.fx.prevSlide = this.fx.slide;
     this.prevIntroRunX = this.introRunX;
     this.prevPitDx = this.heroPitDx();
   }
@@ -4784,6 +4811,7 @@ export class RunState {
       if (this.bonusMet()) this.goalSeen.challenge = true;
     }
     this.missionTimers = { cord: 8, chaseNear: 0 };
+    this.fx = null; this.flightChrome = false; this.fxHandedOff = false;
     this.escapeWall = this.mission.type === 'escape' ? -140 : null;
     if (this.bonus.type === 'chase') {
       // He does not start in the frame: we are catching up to him. Two bars
@@ -5051,6 +5079,9 @@ export class RunState {
     // same reason as the line above: it is a block of main thread, and the queue has to be
     // full past it first. Behind the shutter, where a block costs nothing anyone sees.
     if (this.stage?.arcadeIntro) this.warmArcadeIntroArt();
+    // The act-ending flight's one baked picture (the passage tile): here,
+    // behind the shutter, rather than on the frame the screen slides away.
+    if (this.o.flightExit) warmPassage();
     // SKIP SYNTHESIS FOR LANES THE MIX HAS SILENCED — but not yet if a handover is
     // still pending. rhythm ships `lead4` muted: an MRDR-3 string pad layered off the
     // lead, so it carries the lead's notes and every pass builds a three-oscillator
@@ -5201,7 +5232,9 @@ export class RunState {
     setGlowSprites(true); setNeonGlow(1);
     setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
     Input.setDoubleTapTarget?.(null);
-    if (this.portraitGameplay) {
+    // Handing over to the act-ending flight, which keeps the same portrait
+    // frame: no round trip through landscape on the swap frame.
+    if (this.portraitGameplay && !this.fxHandedOff) {
       setPresentationMode(LANDSCAPE);
       applyFraming(this.renderSettings || this.save.settings);
     }
@@ -5360,7 +5393,8 @@ export class RunState {
     // resumes if already paused. That second half is unreachable from here
     // anyway, since pausing swaps this set out for the plates above.
     Input.setButtons([]);
-    Input.setChromeButtons(runChromeButtons());
+    // Past an act's tape the flight's discs: no POWER, JUMP and SLIDE stay put.
+    Input.setChromeButtons(runChromeButtons({ hasPower: !this.flightChrome }));
   }
 
   // Everything that has to follow the pause flag, in one place. The plates
@@ -7774,7 +7808,8 @@ export class RunState {
     // The copter is not content past the tape: he is the villain, and he
     // LEAVES — off the right edge, climbing, the way he arrived. Nulling him
     // here made him blink out the frame the finish armed.
-    if (this.copter) { this.copter.flyOff = true; this.copter.hitT = 0; }
+    if (this.flightExitArmed()) this.armFlightExit();
+    else if (this.copter) { this.copter.flyOff = true; this.copter.hitT = 0; }
     // AND THE SLEIGH, if the approach did not already put it up — a checkpoint
     // restore or a late objective clear can drop the hero past the lead distance entirely.
     this.armFlypast(0);
@@ -7792,7 +7827,285 @@ export class RunState {
     this.floatClear = 0;
   }
 
+  // ---- THE ACT-ENDING FLIGHT (see FLIGHT_TUB_PARK) ----
+  flightExitArmed() {
+    return !!this.o.flightExit && !this.demo && !this.recordBackground && !this.overtime
+      && Number.isFinite(this.totalDist);
+  }
+
+  armFlightExit() {
+    this.fx = { phase: 'approach', t: 0, tubWx: this.finishWorldX() + FLIGHT_TUB_PARK, cues: [] };
+    // Eggshell stays: the tub is for chasing him. A stage without the chase
+    // brings him on now, from the right, the way the chase does.
+    let c = this.copter;
+    if (!c) {
+      c = this.copter = { x: this.viewRightX() + 40, alt: 78, cooldown: 0, mode: 'away', modeT: 0,
+        bar: 4 * 60 / this.laneBpm(), hitT: 0, fromDx: null, enterAt: 0 };
+    }
+    if (c.shot) this.dropCopterShot(c);
+    c.flyOff = false; c.escape = { t: 0 }; c.hitT = 0; c.shieldT = 0; c.evadeT = 0;
+    c.bonkCued = false; c.mode = 'hover'; c.mood = 'smile';
+    // Act III's is the balloon.
+    c.vehicle = actEndingFor(this.stage?.id)?.vehicle || null;
+  }
+
+  // Where the flight will have the two of them, in this camera's terms: the
+  // tub's column and floor height, Eggshell's column and altitude.
+  flightTargets() {
+    const L = currentFlightLayout();
+    const z = this.camZoom || ZOOM, pan = this.camPan || 0, floorY = this.camFloorY;
+    const off = this.portraitWorldXOffset();
+    const cy = (L.top + L.bottom) / 2;
+    const heroDx = L.px / z - off;
+    const eggDx = L.bx / z - off;
+    // The tub-and-hero picture is centred 8.15 above the tub's floor (his head
+    // 24 above it, the jet 7.7 below); the flight's is centred on its y.
+    const floorWorldY = worldYForScreenY(cy, z, pan, floorY) + 8.15;
+    const heroFloorH = this.groundYAt(this.camX + heroDx) - floorWorldY;
+    // drawCopter centres his 36u box 22 above (ground - alt).
+    const eggWorldY = worldYForScreenY(flightBossCentre(cy, L.scale), z, pan, floorY);
+    const eggAlt = this.groundYAt(this.camX + eggDx) - 22 - eggWorldY;
+    return { heroDx, eggDx, heroFloorH, eggAlt };
+  }
+
+  updateFlightExit(dt) {
+    const fx = this.fx;
+    const sp = this.speed;
+    fx.t += dt;
+    this.finishT += dt; this.tRun += dt;
+    if (fx.phase === 'approach') {
+      // The dash's live stretch, with the camera carrying the world past the
+      // hero instead of the hero crossing a parked one.
+      this.powerups.update(dt);
+      this.updateInvincibility(dt);
+      this.player.powerJumpBonus = this.powerups.bonusJumps();
+      if (Input.pressed('jump') && this.player.jumpPressed(Audio)) this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
+      if (Input.pressed('slide')) this.player.slidePressed();
+      if (Input.pressed('ability')) this.useAbility();
+      const res = this.player.update(dt, Input, {
+        speed: sp, ice: this.cabinet.mechanic === 'ice',
+        gravityScale: this.beatLock ? 1 : this.powerups.gravityMultiplier(),
+      });
+      this.pitLandedTick = !!res.landed;
+      if (res.landed) Audio.sfx('land');
+      this.cueAbilityReady();
+      this.tickFloaties(dt);
+      this.camX += sp * dt;
+      this.updateCamera(dt);
+      this.updateEntities(dt, sp);
+      this.updateProjectiles(dt, sp);
+      this.collide();
+      if (this.dead) return;
+      updateParticles(dt);
+      updateShake(dt, () => this.fxRng.float());
+      // The tub waits past the marker, parked in the world, idling.
+      fx.tubDx = fx.tubWx - this.camX;
+      fx.tubFloorH = FLIGHT_TUB_FLOOR + Math.sin(fx.t * 5.2) * 0.5;
+      fx.thrust = 0.3;
+      if (this.playerWorldX() + HERO_CENTER_OFF >= this.finishWorldX()) this.flightTape();
+      return;
+    }
+    // From the tape on the run is a picture: nothing reads input, nothing can
+    // reach him, and the camera's height and zoom stay where the tape left them.
+    this.tickFloaties(dt);
+    updateParticles(dt);
+    updateShake(dt, () => this.fxRng.float());
+    this.updateTimeCoins(dt);
+    const p = this.player;
+    for (const k of ['iframes', 'catHitT', 'catIframesT', 'dashT', 'rollT', 'stumbleT', 'slipT', 'landedT', 'boostT']) {
+      if (p[k] > 0) p[k] = Math.max(0, p[k] - dt);
+    }
+    let camV = sp;
+    if (fx.phase === 'slide') {
+      const z = this.camZoom || ZOOM;
+      const road = sp * z;
+      fx.vs = road * smooth01((fx.t - fx.slideAt) / FLIGHT_SLIDE_RAMP);
+      // The road keeps its speed: the camera inside the screen gives way to
+      // the camera leaving it.
+      camV = Math.max(0, road - fx.vs) / z;
+      fx.slide += fx.vs * dt;
+    }
+    this.camX += camV * dt;
+    this.stepFlightHero(dt, sp);
+    this.stepCopterEscape(dt);
+    this.runFlightCues();
+    if (fx.phase === 'board' && fx.slideAt != null && fx.t >= fx.slideAt) this.startFlightSlide();
+    if (fx.phase === 'slide' && fx.slide >= W + fx.bandW * 1.16 + 2) this.handFlightOver();
+  }
+
+  // The tape: the runner's result is now the fight's checkpoint.
+  flightTape() {
+    const fx = this.fx;
+    this.distance = this.totalDist;
+    this.timeAtTape = this.timeLeft();
+    const bonus = Math.floor(this.timeAtTape || 0);
+    this.endInvincibility();
+    this.player.iframes = 0;
+    this.keepSongTempo();
+    // The result the fight will pay, the clock's seconds already in it; the pill
+    // counts them up while he boards, as the flag's tally does.
+    const result = { ...this.runResult(true, 'FLIGHT CHECKPOINT'), coins: this.coins + bonus, timeBonusCoins: bonus };
+    this.timeCoins = bonus > 0 ? { total: bonus, left: bonus, t: 0, delay: 0.35 } : null;
+    this.o.onFlightTape?.(result, { laneTempo: this.beatLock ? this.laneTempo() : 1, oneHit: this.oneHit === true });
+    fx.phase = 'board'; fx.t = 0; fx.tapeMarkerT = this.markerT || 0;
+    fx.targets = this.flightTargets();
+    this.flightChrome = true;
+    if (Input.usingTouch) this.setButtons();
+    this.floatText('CHECKPOINT. AFTER HIM.', '#8ddd8d');
+    Audio.sfx('checkpoint');
+    this.planFlightBoarding();
+  }
+
+  planFlightBoarding() {
+    const fx = this.fx, p = this.player, sp = this.speed;
+    const g = gravityFor(p.hero) * (this.beatLock ? 1 : this.powerups.gravityMultiplier());
+    const v0 = jumpV(p.hero);
+    // How long his own jump takes to come down to the tub's floor.
+    const tIn = (v0 + Math.sqrt(Math.max(0, v0 * v0 - 2 * g * FLIGHT_TUB_FLOOR))) / g;
+    // ON THE BEAT: the first beat at least FLIGHT_HOP_MIN past the tape. The tub
+    // is under him as he comes down, not as he leaves the road, so it is still
+    // well clear of his feet when he jumps.
+    const hopAt = this.nextFlightBeat(FLIGHT_HOP_MIN);
+    const settleAt = Math.max(FLIGHT_TUB_SETTLE_MIN, hopAt + tIn * 0.85);
+    // The tub glides in from where it waits and comes to rest under his column
+    // as he tops his jump: a Hermite from the parked tub's own motion (the road's
+    // speed, relative to the camera) to none. PARK keeps T*sp/D between about 1
+    // and 2, where the glide is a steady brake rather than an early arrival.
+    const hx = PLAYER_X + HERO_CENTER_OFF;
+    const D = Math.max(1, fx.tubWx - this.camX - hx);
+    Object.assign(fx, { hopAt, settleAt, tubP1: hx, tubD: D, tubV0: sp, hopV0: v0, hopG: g });
+    this.flightCue(0, 'fizzUp');
+    this.flightCue(hopAt, 'jump');
+  }
+
+  // The time (on the fight's clock, fx.t) of the first beat at or after `atT`.
+  nextFlightBeat(atT) {
+    const fx = this.fx, beat = Audio.songBeat();
+    const spb = 60 / ((Audio.bpm || 120) * (Audio.tempo || 1));
+    if (!Number.isFinite(beat) || !(spb > 0)) return atT;
+    const ahead = Math.max(0, atT - fx.t) / spb;
+    return fx.t + (Math.ceil(beat + ahead - 1e-6) - beat) * spb;
+  }
+
+  // Cues land when the picture does: asked a moment ahead and placed on the
+  // audio clock, so the output's latency does not leave them late.
+  flightCue(at, name, opts = {}) { this.fx.cues.push({ at, name, opts, done: false }); }
+  runFlightCues() {
+    const fx = this.fx;
+    const lat = Audio.heardLatencySec?.() || 0;
+    for (const q of fx.cues) {
+      if (q.done || q.at - fx.t > 0.15) continue;
+      q.done = true;
+      Audio.sfx(q.name, { ...q.opts, inSeconds: Math.max(0, q.at - fx.t - lat) });
+    }
+  }
+
+  stepFlightHero(dt, sp) {
+    const fx = this.fx, p = this.player, t = fx.t;
+    // The tub: parked until the tape, gliding in under his column after it, and
+    // once he is in, carrying him to where the flight will fly him.
+    let tubDx = fx.tubP1;
+    if (t < fx.settleAt) {
+      const u = t / fx.settleAt, T = fx.settleAt;
+      const h00 = 2 * u * u * u - 3 * u * u + 1, h10 = u * u * u - 2 * u * u + u;
+      tubDx = fx.tubP1 + fx.tubD * h00 - T * fx.tubV0 * h10;
+    }
+    let floorH = FLIGHT_TUB_FLOOR + Math.sin(t * 5.2) * 0.5 * (t < fx.settleAt ? 1 : 0);
+    fx.thrust = t < fx.settleAt ? 0.55 + 0.2 * Math.sin(t * 9) : 0.32;
+    if (fx.seated) {
+      const lift = fx.liftAt != null ? smooth01((t - fx.liftAt) / FLIGHT_LIFT_T) : 0;
+      const tgt = fx.targets;
+      tubDx = fx.tubP1 + (tgt.heroDx - fx.tubP1) * lift;
+      floorH = FLIGHT_TUB_FLOOR + (tgt.heroFloorH - FLIGHT_TUB_FLOOR) * lift;
+      // The landing's give: the tub dips under him and springs back.
+      const b = t - fx.landAt;
+      if (b >= 0 && b < 0.32) floorH -= Math.sin((b / 0.32) * Math.PI) * 2.4 * (1 - b / 0.32);
+      fx.thrust = fx.liftAt != null && t >= fx.liftAt ? 0.4 + 0.6 * Math.max(0, 1 - (t - fx.liftAt) / 0.9) : 0.3;
+    }
+    fx.tubDx = tubDx; fx.tubFloorH = floorH;
+    if (fx.seated) {
+      p.y = floorH; p.vy = 0; p.grounded = true;
+      this.finishPlayerX = tubDx - HERO_CENTER_OFF;
+      if (fx.liftAt == null) {
+        fx.liftAt = this.nextFlightBeat(fx.landAt + FLIGHT_SEAT_HOLD);
+        fx.slideAt = fx.liftAt + FLIGHT_LIFT_T * FLIGHT_SLIDE_AT;
+        this.flightCue(fx.liftAt, 'boost');
+      }
+      return;
+    }
+    if (t < fx.hopAt) {
+      if (p.grounded) { p.anim += dt * gaitRate(sp, p.hero); return; }
+      // Still in the air from a jump of his own before the tape: it finishes.
+      const res = p.update(dt, NO_INPUT, { speed: sp, gravityScale: this.beatLock ? 1 : this.powerups.gravityMultiplier() });
+      if (res.landed) Audio.sfx('land');
+      return;
+    }
+    // THE HOP, his own jump: his take-off speed and gravity, so it is his arc.
+    if (!fx.hop) {
+      fx.hop = { y: p.y, v: Math.max(p.vy, fx.hopV0), at: t };
+      p.jumpFace = rollJumpFace(this.fxRng, p.jumpFace);
+    }
+    const tau = t - fx.hop.at;
+    const y = fx.hop.y + fx.hop.v * tau - 0.5 * fx.hopG * tau * tau;
+    const vy = fx.hop.v - fx.hopG * tau;
+    if (vy < 0 && y <= FLIGHT_TUB_FLOOR && t >= fx.settleAt) {
+      fx.seated = true; fx.landAt = t;
+      p.y = FLIGHT_TUB_FLOOR; p.vy = 0; p.grounded = true;
+      Audio.sfx('land'); Audio.sfx('clickHard');
+      return;
+    }
+    p.y = Math.max(t >= fx.settleAt ? FLIGHT_TUB_FLOOR : 0, y);
+    p.vy = vy; p.grounded = false;
+  }
+
+  stepCopterEscape(dt) {
+    const c = this.copter;
+    if (!c || !c.escape) return;
+    const e = c.escape;
+    e.t += dt;
+    if (e.fromDx == null) { e.fromDx = Number.isFinite(c.dx) ? c.dx : c.x - this.camX; e.fromAlt = c.alt; }
+    const tgt = this.fx?.targets || this.flightTargets();
+    const k = smooth01(e.t / FLIGHT_ESCAPE_T);
+    c.dx = e.fromDx + (tgt.eggDx - e.fromDx) * k;
+    c.alt = e.fromAlt + (tgt.eggAlt - e.fromAlt) * k + Math.sin(e.t * 2.1) * 1.6 * k;
+    c.x = this.camX + c.dx;
+    c.mode = 'hover'; c.mood = 'smile';
+    if (c.hitT > 0) c.hitT = Math.max(0, c.hitT - dt);
+    if (c.shieldT > 0) c.shieldT = Math.max(0, c.shieldT - dt);
+  }
+
+  startFlightSlide() {
+    const fx = this.fx;
+    fx.phase = 'slide'; fx.slide = 0; fx.prevSlide = 0; fx.vs = 0;
+    fx.bandW = edgeBandWidth(isPhonePortraitPresentation());
+    fx.layout = currentFlightLayout();
+    // What was said on this screen leaves with it.
+    this.speech = null; this.speechQueue = [];
+    Audio.sfx('doorOpen');
+  }
+
+  // The passage fills the screen: the flight takes the frame from here.
+  handFlightOver() {
+    const fx = this.fx;
+    if (!this.o.onFlightHandoff) { this.endRun(true, 'FLIGHT CHECKPOINT'); return; }
+    this.finished = true;
+    this.fxHandedOff = true;
+    this.o.onFlightHandoff({ scroll: fx.slide, scrollV: fx.vs, clock: this.backgroundT });
+  }
+
+  // The tub, in the hero's own overlay pass so it covers his legs once he is in.
+  paintFlightTub(c, z, pan, floorY, xOffset) {
+    const fx = this.fx;
+    c.save();
+    if (this.mirror) { c.translate(W, 0); c.scale(-1, 1); }
+    applyWorld(c, z, pan, floorY, xOffset);
+    const gx = this.camX + fx.tubDx;
+    drawHeroTub(c, fx.tubDx, this.groundYAt(gx) - fx.tubFloorH, { u: 1, thrust: fx.thrust || 0, t: this.backgroundT });
+    c.restore();
+  }
+
   updateFinish(dt) {
+    if (this.fx) { this.updateFlightExit(dt); return; }
     const wdt = dt;
     this.finishT += wdt;
     this.tRun += wdt;
@@ -9976,7 +10289,7 @@ export class RunState {
    */
   cueHeadBonk() {
     const c = this.copter;
-    if (!c || c.flyOff || c.hitT > 0 || c.bonkCued || c.mode === 'away') return;
+    if (!c || c.flyOff || c.escape || c.hitT > 0 || c.bonkCued || c.mode === 'away') return;
     if (this.player.jumps > 1) return;
     const hull = this.copterUnderside();
     if (!hull) return;
@@ -10069,7 +10382,7 @@ export class RunState {
     // hitT is the recoil AND the lockout in one field: while he is still being
     // knocked about, nothing else may count. That is what stops one overlap
     // spread over six frames paying six times.
-    if (!c || c.flyOff || c.hitT > 0) return false;
+    if (!c || c.flyOff || c.escape || c.hitT > 0) return false;
     const spec = COPTER_BONK_CAUSES[cause] || COPTER_BONK_CAUSES.head;
     this.copterBonks++;
     if (this.bonus.type === 'chase') this.bonus.count = this.copterBonks;
@@ -10540,6 +10853,8 @@ export class RunState {
     // then he leaves for good.
     if (this.copter && this.copter.flyOff) {
       this.stepCopterExit(dt);
+    } else if (this.copter && this.copter.escape) {
+      this.stepCopterEscape(dt);
     } else if (this.copter) {
       const c = this.copter;
       // HE FLIES AHEAD, AND ONLY OCCASIONALLY COMES INTO REACH. Two earlier
@@ -15050,6 +15365,9 @@ export class RunState {
     this.finishing = false;
     this.finishT = 0;
     this.finishPlayerX = PLAYER_X;
+    this.fx = null;
+    this.flightChrome = false;
+    if (this.copter) this.copter.escape = null;
     this.flip = null;
     this.flipCoins = null;
     this.timeCoins = null;
@@ -17010,7 +17328,13 @@ export class RunState {
     Audio.setRewinding(false);
     this.invActive = false;
     Audio.setInvincible(false);
-    const result = {
+    this.o.onEnd(this.runResult(success, reason));
+  }
+
+  // What an attempt reports: endRun's, and the act-ending flight's at its tape,
+  // where the run is not over but its result is what the fight will pay.
+  runResult(success, reason) {
+    return {
       success, reason,
       stage: this.stage, overtime: this.overtime, offRecord: this.offRecord,
       corrupted: this.corrupted,
@@ -17047,7 +17371,6 @@ export class RunState {
       flip: this.flip ? this.flip.id : null,
       flipBonus: this.flip ? this.flip.points : 0,
     };
-    this.o.onEnd(result);
   }
 
   // Feedback popups all rise from one place: a stack above the hero's column.
@@ -17233,9 +17556,13 @@ export class RunState {
     // Throw progress, smoothstepped. Runs once on contact and sticks at 1, so
     // the plunger holds its thrown pose for the rest of the held frame instead of
     // snapping back while the results card comes up.
-    const thrown = flip ? Math.min(1, flip.t / FLIP_THROW) : 0;
+    // An act's last stage throws it as the hero runs through the tape: the
+    // checkpoint the fight restarts from, lit as he passes.
+    const fxThrow = this.fx && Number.isFinite(this.fx.tapeMarkerT)
+      ? Math.max(0, Math.min(1, ((this.markerT || t) - this.fx.tapeMarkerT) / FLIP_THROW)) : null;
+    const thrown = flip ? Math.min(1, flip.t / FLIP_THROW) : (fxThrow ?? 0);
     const ease = thrown * thrown * (3 - 2 * thrown);
-    const live = !!flip && flip.band.bonus > 0;   // a clunk throws the plunger but lights nothing
+    const live = (!!flip && flip.band.bonus > 0) || fxThrow != null;   // a clunk throws the plunger but lights nothing
 
     // The marker itself — pole, flag and switch — lives in finishMarker.js, so
     // the gallery bake-off deciding it renders candidates through the exact code
@@ -17244,7 +17571,7 @@ export class RunState {
     // method. Both are placed off the pole's 5px column and the switch's top,
     // which every candidate holds to.
     drawFinishMarkerArt(ctx, fx, gy, {
-      t, thrown: ease, live, armed: this.finishing && !flip,
+      t, thrown: ease, live, armed: this.finishing && !flip && fxThrow == null,
     });
 
     // NOTHING marks where PERFECT starts, and that is the decision, not an
@@ -17286,7 +17613,8 @@ export class RunState {
   // two and a half: small jumps, and most sixteenths left alone — glitched from one in ten
   // to one in four on surge-1, one in five to nearly half on surge-2.
   heroGlitchHeat() {
-    if (this.cabinet?.id !== 'surge' || this.flip) return null;
+    // ...and not from an act-ending tape on: he is boarding a tub, not running home.
+    if (this.cabinet?.id !== 'surge' || this.flip || (this.fx && this.fx.phase !== 'approach')) return null;
     const lv = this.stage?.index;
     if (lv === 1 || lv === 2) {
       if (this.overtime) return null;
@@ -17375,7 +17703,39 @@ export class RunState {
     const visibleWorldW = portraitRenderViewWidth(z,
       portraitFrameActive ? portraitWorldXOffset : 0);
     const portraitRenderViewW = portraitFrameActive ? visibleWorldW : null;
+    // THE ACT-ENDING FLIGHT's exit (updateFlightExit): the screen slides out
+    // from under the two of them with the cabinet's edge behind it and the
+    // passage behind that. The screen's picture — backbuffer, HUD, chatter —
+    // moves by `fxSlide`; the hero and Eggshell do not, because the camera is
+    // following them. Whoever the edge has passed is drawn by the flight's
+    // painter, in the passage; whoever it has not is still the run's.
+    const fx = this.fx;
+    const fxSlide = fx && fx.phase === 'slide'
+      ? mix(Number.isFinite(fx.prevSlide) ? fx.prevSlide : fx.slide, fx.slide) : 0;
+    let fxHeroOut = false, fxEggOut = false;
+    if (fxSlide > 0) {
+      const L = fx.layout;
+      const bandL = W - fxSlide, mid = bandL + fx.bandW / 2, edgeR = bandL + fx.bandW;
+      fxHeroOut = (heroScreenX + HERO_CENTER_OFF + portraitWorldXOffset) * z >= mid;
+      const c = this.copter;
+      fxEggOut = !c || (mix(Number.isFinite(c.prevX) ? c.prevX : c.x, c.x) - cam + portraitWorldXOffset) * z >= mid;
+      const cy = (L.top + L.bottom) / 2;
+      const heroId = this.relay.current, clock = backgroundT, beat = Audio.songBeat();
+      const heroOut = fxHeroOut, eggOut = fxEggOut, balloon = this.copter?.vehicle === 'balloon';
+      // The banks earlier acts brought back are already on in the passage.
+      const banksOn = Math.max(0, (actEndingFor(this.stage?.id)?.bank || 1) - 1);
+      pushOverlayDraw((d) => {
+        d.save();
+        d.beginPath(); d.rect(edgeR, 0, W - edgeR + 2, H); d.clip();
+        drawPassage(d, { scroll: fxSlide, top: L.top, bottom: L.bottom, banks: banksOn });
+        if (eggOut && balloon) drawFlightBalloon(d, L.bx, cy + 7 * L.scale, L.scale, { t: clock });
+        else if (eggOut) drawFlightBoss(d, L.bx, flightBossCentre(cy, L.scale), FLIGHT_BOSS_SIZE * L.scale, { t: clock, beat, mood: 'smile' });
+        if (heroOut) drawFlightHero(d, heroId, L.px, cy, L.scale, { t: clock, thrust: 0.32 });
+        d.restore();
+      });
+    }
     ctx.save();
+    if (fxSlide > 0) ctx.translate(-fxSlide, 0);
     if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
     // Backgrounds stay in SCREEN space. Their layers are anchored to the
     // groundline's screen y, and the camera pins that line there at every zoom,
@@ -17670,6 +18030,9 @@ export class RunState {
       finish: this.overtime || this.recordBackground || !Number.isFinite(this.totalDist) ? null : {
         camX: this.finishCameraX(),
         frac: (finishLineX() * z + (Number(portraitXOffset) || 0)) / W,
+        // An act's last stage does not park at the tape (updateFlightExit): what
+        // was going to stand still there carries on with the scenery.
+        runsOn: !!this.fx,
       },
       // How far through the level the run is. Weather that arrives over a level
       // needs this; a pack that only paints scenery ignores it.
@@ -18436,7 +18799,9 @@ export class RunState {
         g.save();
         if (this.mirror) { g.translate(W, 0); g.scale(-1, 1); }
         applyWorld(g, z, pan, floorY, portraitXOffset);
-        this.drawAtGround(g, copterView.x, () => drawCopter(g, copterView, cam, renderT, true, songBeat));
+        this.drawAtGround(g, copterView.x, () => (c.vehicle === 'balloon'
+          ? drawRunBalloon(g, copterView.x - cam, copterView.alt, renderT)
+          : drawCopter(g, copterView, cam, renderT, true, songBeat)));
         g.restore();
       };
     }
@@ -18606,13 +18971,20 @@ export class RunState {
             const beat = Number.isFinite(heard) ? heard : performance.now() / 1000 * (132 / 60);
             lit = (c) => paintHeroGlitched(c, inner, hx - 32 * z, hy - 58 * z, 64 * z, 68 * z, beat, heat.heat, heat.clean);
           }
-          const paint = this.insideTrain ? (c) => {
+          const painted = this.insideTrain ? (c) => {
             c.save();
             this.clipAboveTrainRoof(c, cam, z, pan, floorY, portraitXOffset);
             lit(c);
             c.restore();
             this.paintTrainShell(c, cam, z, pan, floorY, portraitXOffset);
           } : lit;
+          // The act-ending flight's tub rides in his pass, over his legs once
+          // he is in it. Once the cabinet's edge has passed him neither is the
+          // run's to draw: the flight's picture of him is in the passage.
+          if (fxHeroOut) return;
+          const paint = fx?.tubDx != null
+            ? (c) => { painted(c); this.paintFlightTub(c, z, pan, floorY, portraitXOffset); }
+            : painted;
           if (liftHero) heroLift = paint;
           else pushOverlayDraw(paint);
         },
@@ -18635,6 +19007,7 @@ export class RunState {
         // running to decay what the last live frame left behind.
         pose: celebrating
           ? FINISH_CELEBRATION_POSE
+          : fx?.seated ? FLIGHT_SEAT_POSE
           : (this.loop && !this.loop.pending)
             ? { kind: 'run', grounded: true, vy: 0, squash: 0, lean: -this.loop.theta,
               sliding: false, slideAmount: 0, roll: false, float: false, cling: 0 }
@@ -18882,12 +19255,19 @@ export class RunState {
         });
       }
     };
-    if (!pushOverlayDraw(drawChatter)) drawChatter(ctx);
+    // The screen's own overlay (chatter, HUD) leaves with the screen.
+    // Clipped to what is left of the screen, so nothing it paints (snow, a
+    // sleigh) can land on the cabinet's edge or the passage beyond it.
+    const withScreen = (fn) => (fxSlide > 0 ? (d) => {
+      d.save(); d.beginPath(); d.rect(0, 0, Math.max(0, W - fxSlide), H); d.clip();
+      d.translate(-fxSlide, 0); fn(d); d.restore();
+    } : fn);
+    if (!pushOverlayDraw(withScreen(drawChatter))) drawChatter(ctx);
     // The villain, over the cards he is being chased through. He builds his own
     // camera transform, so the headless fallback is the same callback handed
     // the screen-space context — the actors-above-post branch above does
     // exactly this. On the way out he waits for the frame instead (below).
-    if (copterLift && !copterOverHud && !pushOverlayDraw(copterLift)) copterLift(ctx);
+    if (copterLift && !copterOverHud && !fxEggOut && !pushOverlayDraw(copterLift)) copterLift(ctx);
     // The held-back hero, now that the cards he is jumping through are down.
     // Dropped rather than drawn if there is no overlay at all (headless): that
     // is the same nothing drawHeroSprite itself does on that path.
@@ -18908,7 +19288,7 @@ export class RunState {
       const drawWeather = (d) => this.style.weather(d, backgroundT, {
         groundScreenY: screenYFor(GROUND_Y, z, pan, floorY),
       });
-      if (!pushOverlayDraw(drawWeather)) drawWeather(ctx);
+      if (!pushOverlayDraw(withScreen(drawWeather))) drawWeather(ctx);
     }
     // AND THE SLEIGH GOES ABOVE THE WEATHER. It is the one thing in the sky the
     // player is meant to look at, it gets a single pass, and the tape is under
@@ -18922,11 +19302,16 @@ export class RunState {
       const shot = this.flypastShot;
       const drawSleigh = (d) => drawFrostFlypast(d, shot.x, shot.y, shot.t,
         { zoom: shot.zoom, tilt: shot.tilt, scale: flypastScaleFor(shot.phone), path: shot.pathScreen });
-      if (!pushOverlayDraw(drawSleigh)) drawSleigh(ctx);
+      if (!pushOverlayDraw(withScreen(drawSleigh))) drawSleigh(ctx);
     }
-    if (!pushOverlayDraw(drawFrame)) drawFrame(ctx);
+    if (!pushOverlayDraw(withScreen(drawFrame))) drawFrame(ctx);
     // The departing villain, now that the panels he climbs through are down.
     if (copterLift && copterOverHud && !pushOverlayDraw(copterLift)) copterLift(ctx);
+    // The cabinet's edge, over everything the screen and the two of them paint.
+    if (fxSlide > 0) {
+      const bandX = W - fxSlide, bandW = fx.bandW, cabId = this.cabinet.id;
+      pushOverlayDraw((d) => drawCabinetEdge(d, bandX, bandW, cabId));
+    }
     // The touch discs, on #chrome over everything: declared here, committed
     // centrally by states.js once the frame is drawn.
     declareRunChrome(this);

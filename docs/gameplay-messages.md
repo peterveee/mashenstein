@@ -84,14 +84,14 @@ removes one boss health point; it is not a literal projectile deflection.
 Trigger: boss health crosses a scripted threshold (`jokeAt`/`joke2At` in
 [boss.js](../src/game/boss.js#L20-L51)). Shown as a speech bubble.
 - **Boss 1 (Eggshell / Clown-Copter), 50% HP**: "LOW BATTERY. THE COPTER PAUSES. EGGSHELL DISPUTES ALL DAMAGE SO FAR."
-- **Boss 2 (Dust Devil), 50% HP**: "IT STOPS TO EMPTY ITS BAG. IT IS VISIBLY ASHAMED. IT APOLOGIZES VIA LED."
+- **Boss 2 (Dust Devil), 50% HP** — *retired 1 Nov 2026 with the Dust Devil's boss fight (Act I now ends in Eggshell's flight off 3-3); no longer shown*: "IT STOPS TO EMPTY ITS BAG. IT IS VISIBLY ASHAMED. IT APOLOGIZES VIA LED."
 - **Boss 3 (Eggshell & Power Strip), 60% HP**: "THE CRAYON IQ CERTIFICATE DEPLOYS AS A SHIELD. IT ABSORBS NOTHING."
 - **Boss 3, 25% HP**: "HIS SHELL IS STUCK IN THE COPTER DOOR. HE INSISTS THIS IS PHASE FIVE."
 
 ### Boss intro lines
 Trigger: boss encounter begins; shown as a ~4s speech bubble before the fight.
 - **Boss 1**: "IT HAS FIVE HEALTH BARS. FOUR ARE LABELED \"PRESENTATION ERROR\"."
-- **Boss 2**: "IT IS SET TO DEEP CLEAN. IT IS SO SORRY ABOUT THIS." — subtitle: "HE HAS MOPPED THE CEILING. HE HAS POLISHED THE INSIDE OF A GLASS TUBE. NOW, HE HAS TO CLEAN YOU. HE IS NOT HAPPY ABOUT IT."
+- **Boss 2 (Dust Devil)** — *retired 1 Nov 2026, as above; no longer shown*: "IT IS SET TO DEEP CLEAN. IT IS SO SORRY ABOUT THIS." — subtitle: "HE HAS MOPPED THE CEILING. HE HAS POLISHED THE INSIDE OF A GLASS TUBE. NOW, HE HAS TO CLEAN YOU. HE IS NOT HAPPY ABOUT IT."
 - **Boss 3**: "THE STRIP HAS ONE MORE SWITCH THAN PHYSICALLY POSSIBLE. DO NOT COUNT THEM."
 
 ### Boss taunts (UNPLUGGED difficulty)

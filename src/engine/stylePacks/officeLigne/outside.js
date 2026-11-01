@@ -50,12 +50,12 @@ function paintFar(g, F, P, u0, u1) {
   }
 }
 
-// Rooftop billboards: the parody brands from the lobby's own shop fronts (SHOPS 0-9).
+// Rooftop billboards: the parody brands from the lobby's own shop fronts (SHOPS).
 const AD = [
   { bg: '#ff6fae', ink: '#ffffff', text: 'PIZZA HURT' },
   { bg: '#1f1d26', ink: '#3fe0d0', text: 'BLOCKBUSTED' },
   { bg: '#2fbcb0', ink: '#fff6a8', text: 'K-MARTYR' },
-  { bg: '#f6df4a', ink: '#1f1d26', text: 'SEARS & TEARS' },
+  { bg: '#f6df4a', ink: '#1f1d26', text: 'TOWER WRECKORDS' },
   { bg: '#3c3a5e', ink: '#ffd77a', text: 'TOYS R SUS' },
   { bg: '#ffffff', ink: '#c64a3e', text: 'RADIO WRECK' },
 ];
@@ -65,10 +65,8 @@ const BILLBOARD_MIN_ROOF = 132;
 
 const SHOPS = [
   'BLOCKBUSTED', 'THE PANT RANCH', 'TOWER WRECKORDS', 'SHORT CIRCUIT CITY',
-  'TOYS R SUS', 'RADIO WRECK', 'SEARS & TEARS',
-  'K-MARTYR', 'PIZZA HURT', "GARY'S PAWN", 'PAYDAY LOANS',
-  'WAL-GREED', 'COMP-U-SIGH', 'SAM GOODY-GOODY', 'WOOLWORTHLESS',
-  'GAP YEAR', 'RADIO SHACKED', 'GOODBYE GUYS', 'SUBWAY DELAY',
+  'TOYS R SUS', 'RADIO WRECK', 'K-MARTYR', 'PIZZA HURT',
+  "GARY'S PAWN SHOP", 'GAP YEAR', 'RADIO SHACKED', 'GOODBYE GUYS', 'SUBWAY DELAY',
 ];
 
 function waterTank(g, cx, roofY, Pn, wood, woodDk, s = 1) {

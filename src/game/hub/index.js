@@ -5139,7 +5139,9 @@ function trophySuspectRoleBox(role, screen) {
 }
 
 const TROPHY_BOSSES = [
-  { id: 'rhythm', label: 'DEEP CLEAN', relic: 'dustdevil' },
+  // Act I ends in Eggshell's flight now (the Dust Devil was retired as a boss,
+  // 1 Nov 2026): its relic is the panel that comes off his tub at halfway.
+  { id: 'rhythm', label: 'SIDE PANEL', relic: 'sidepanel' },
   { id: 'neon', label: 'COPTER', relic: 'copter' },
   { id: 'surge', label: 'FINAL STRIP', relic: 'powerstrip' },
 ];
@@ -5524,8 +5526,25 @@ export class TrophyRoomState {
   }
 
   drawBossRelic(ctx, relic, x, y) {
-    if (relic === 'dustdevil') {
-      drawProp(ctx, 'dustdevil', x - 11, y - 4, 22, 38);
+    if (relic === 'sidepanel') {
+      // The side panel that comes off Eggshell's tub at halfway in the 3-3
+      // flight ("DO YOU KNOW WHAT THAT COST?"): his tub's white and red, a dent,
+      // two bolt holes and a wire still hanging off it, propped on the plinth.
+      const panel = (k) => { k.beginPath(); k.roundRect(-15, -12, 30, 22, 4); };
+      ctx.save();
+      ctx.translate(x, y + 17);
+      ctx.rotate(-0.12);
+      panel(ctx); ctx.fillStyle = '#f2eef0'; ctx.fill();
+      ctx.save(); panel(ctx); ctx.clip();
+      ctx.fillStyle = '#d8403a'; ctx.fillRect(-9, -12, 6, 22); ctx.fillRect(1, -12, 6, 22);
+      ctx.fillStyle = 'rgba(30,20,40,0.2)'; ctx.beginPath(); ctx.ellipse(8, 3, 6, 3.5, 0.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      panel(ctx); ctx.strokeStyle = '#3a2f42'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#6f6a78';
+      for (const bx of [-12, 12]) { ctx.beginPath(); ctx.arc(bx, -9, 1.4, 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = '#3c8be0'; ctx.beginPath(); ctx.moveTo(-15, 4); ctx.quadraticCurveTo(-21, 8, -18, 14); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 30, 34, 4);
       return;
     }
     if (relic === 'copter') {
@@ -6515,7 +6534,7 @@ export class StageSelectState {
         const desc = open ? stageBonusLine(o.stage) : `LOCKED - EARN A PLUG IN ${stageLabel(prevStage(o.stage))}`;
         drawText(ctx, fitText(desc, W - 60, DESC_S), 52, descY(y), open ? '#5a5a68' : '#6a5a3a', DESC_S);
       } else if (o.kind === 'boss') {
-        drawText(ctx, `BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`, 40, y, sel ? '#e04848' : '#c05050', ROW_S);
+        drawText(ctx, 'BOSS: THE FINAL POWER STRIP', 40, y, sel ? '#e04848' : '#c05050', ROW_S);
       } else if (o.kind === 'corrupt') {
         const m = CORRUPTED_MODIFIERS.find((mm) => mm.id === this.corrupt);
         drawText(ctx, `CORRUPTED MODE: ${m ? m.name : 'OFF'}`, 40, y, sel ? '#8858c8' : '#6a5a8a', ROW_S);
@@ -6630,7 +6649,7 @@ export class StageSelectState {
           textYForMid(rowTop + descMidOffset + lineI * descLineH, descScale),
           open ? '#8a8492' : '#8a6a42', descScale));
       } else if (o.kind === 'boss') {
-        const boss = `BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`;
+        const boss = 'BOSS: THE FINAL POWER STRIP';
         const lines = wrapText(boss, labelWidth, labelScale, rowCompact ? 1 : 2);
         lines.forEach((line, lineI) => drawText(ctx, line, labelX,
           textYForMid(rowTop + labelMidOffset + lineI * 12 * labelScale, labelScale),
