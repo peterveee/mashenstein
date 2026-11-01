@@ -38,13 +38,13 @@ export function plate(c, x, y, w, h, colour, r = 4) {
 // where his feet stand — at the origin. The run draws it at u = 1 inside its
 // world transform; the flight scales u to its own hero. The front wall comes
 // up to his hips, so he stands in it the way Eggshell stands in his.
-export const TUB = { halfW: 13, rimY: -9.6, bottom: 4, baseY: 5.2, hoverY: 7 };
+export const TUB = { halfW: 11, rimY: -9.6, bottom: 4, baseY: 4.6, hoverY: 7 };
 const TUB_INK = '#2a2836';
 const TUB_LW = 0.35;
 
 function tubBodyPath(k) {
   k.beginPath();
-  k.roundRect(-TUB.halfW, -9, TUB.halfW * 2, 13, [2, 2, 4.5, 4.5]);
+  k.roundRect(-TUB.halfW, -9, TUB.halfW * 2, 12.5, [2, 2, 4, 4]);
 }
 
 // thrust 0..1: the jet under the base. squash: the landing's give, 0..1.
@@ -71,10 +71,10 @@ export function drawHeroTub(c, cx, floorY, o = {}) {
   }
   // The hover base: a squat dark dome under the hull.
   c.fillStyle = '#3a3d4a';
-  c.beginPath(); c.ellipse(0, TUB.baseY, 8.5, 2.5, 0, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.ellipse(0, TUB.baseY, 7, 2.1, 0, 0, Math.PI * 2); c.fill();
   c.strokeStyle = TUB_INK; c.lineWidth = TUB_LW; c.stroke();
   c.fillStyle = '#5b6070';
-  c.beginPath(); c.ellipse(0, TUB.baseY - 0.9, 6.2, 1.1, 0, Math.PI, Math.PI * 2); c.fill();
+  c.beginPath(); c.ellipse(0, TUB.baseY - 0.8, 5.2, 0.9, 0, Math.PI, Math.PI * 2); c.fill();
   // The gun: auto-fire leaves from here, so it points the way he is chasing.
   c.fillStyle = '#586279';
   c.beginPath(); c.roundRect(TUB.halfW - 0.4, -5.6, 4.6, 2.6, 0.8); c.fill();
@@ -87,15 +87,15 @@ export function drawHeroTub(c, cx, floorY, o = {}) {
   c.save();
   tubBodyPath(c); c.clip();
   c.fillStyle = '#d3dae4'; c.fillRect(-TUB.halfW, 1.4, TUB.halfW * 2, 3);
-  c.fillStyle = '#36bec8'; c.fillRect(-3, -9, 6, 13);
-  c.fillStyle = '#2ea3ad'; c.fillRect(-3, 1.4, 6, 3);
+  c.fillStyle = '#36bec8'; c.fillRect(-2.6, -9, 5.2, 13);
+  c.fillStyle = '#2ea3ad'; c.fillRect(-2.6, 1.4, 5.2, 3);
   c.restore();
-  for (const x of [-8.4, 8.4]) {
+  for (const x of [-7, 7]) {
     c.fillStyle = '#68d9f0';
-    c.beginPath(); c.arc(x, -2.2, 2.2, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x, -2.2, 1.9, 0, Math.PI * 2); c.fill();
     c.strokeStyle = '#3a8fb0'; c.lineWidth = TUB_LW; c.stroke();
     c.fillStyle = 'rgba(255,255,255,0.85)';
-    c.beginPath(); c.arc(x - 0.7, -2.9, 0.62, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x - 0.6, -2.8, 0.55, 0, Math.PI * 2); c.fill();
   }
   tubBodyPath(c);
   c.strokeStyle = TUB_INK; c.lineWidth = TUB_LW; c.stroke();
@@ -122,15 +122,17 @@ export function drawTubbedHero(c, heroId, cx, floorY, o = {}) {
 // fight was tuned on drew; `cy` is the model's hero y. The tub's floor sits so
 // the gun's tip is where the model launches pellets (PELLET_MUZZLE, +7 down),
 // which leaves the hit box over his chest and the rim.
-export const FLIGHT_HERO_H = 50;
-export function flightHeroFloor(cy, scale) { return cy + 16 * scale; }
+// 46 tall: Eggshell's ape and his tub are the measure (Peter, 1 Nov: "scale is
+// off for our vehicle vs his"), and at 50 our tub out-sized his.
+export const FLIGHT_HERO_H = 46;
+export function flightHeroFloor(cy, scale) { return cy + 15 * scale; }
 
 export function drawFlightHero(c, heroId, cx, cy, scale, o = {}) {
   const u = FLIGHT_HERO_H * scale / 24;
   const floorY = flightHeroFloor(cy, scale) + (o.dip || 0) * u;
   drawTubbedHero(c, heroId, cx, floorY, {
     u, thrust: o.thrust ?? 0.4, t: o.t || 0,
-    pose: { kind: 'idle', grounded: true, time: o.t || 0 },
+    pose: o.pose || { kind: 'idle', grounded: true, time: o.t || 0 },
   });
 }
 
@@ -606,7 +608,7 @@ export function drawBreakerPanel(c, x, y, s, o = {}) {
   c.strokeStyle = '#1d1824'; c.lineWidth = Math.max(1, 0.9 * s); c.beginPath(); c.arc(lx2, ly2, 4.5 * s, 0, Math.PI * 2); c.stroke();
 }
 // Where the plug's prongs go: the socket's face, in the panel's own terms.
-export function breakerSocketPoint(x, y, s) { return { x: x - 22 * s, y: y - 8 * s }; }
+export function breakerSocketPoint(x, y, s) { return { x: x - 17 * s, y: y - 8 * s }; }
 
 // The plug on its cable. `pivot` is where the cable hangs from (the top rail),
 // `tip` where the prongs are, `ang` the plug's lean (0 = pointing right into
@@ -627,10 +629,10 @@ export function drawHangingPlug(c, pivot, tip, ang, s, o = {}) {
   c.translate(tip.x, tip.y); c.rotate(ang);
   // Strain relief, moulded body with its grip ridges, the prongs and the earth pin.
   c.fillStyle = '#2a2731'; c.beginPath(); c.roundRect(-40 * s, -5 * s, 12 * s, 10 * s, 3 * s); c.fill();
-  plate(c, -32 * s, -13 * s, 32 * s, 26 * s, '#3b3745', 5 * s);
-  c.strokeStyle = '#140f1a'; c.lineWidth = Math.max(1, 1 * s); c.beginPath(); c.roundRect(-32 * s, -13 * s, 32 * s, 26 * s, 5 * s); c.stroke();
+  plate(c, -32 * s, -13 * s, 32 * s, 26 * s, '#f0c43c', 5 * s);
+  c.strokeStyle = '#1d1824'; c.lineWidth = Math.max(1, 1.1 * s); c.beginPath(); c.roundRect(-32 * s, -13 * s, 32 * s, 26 * s, 5 * s); c.stroke();
   c.fillStyle = '#2a2731'; for (let i = 0; i < 3; i++) c.fillRect(-27 * s + i * 6 * s, -9 * s, 2 * s, 18 * s);
-  c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(-30 * s, -11 * s, 28 * s, 2 * s);
+  c.fillStyle = 'rgba(255,255,255,0.28)'; c.fillRect(-30 * s, -11 * s, 28 * s, 2.2 * s);
   const prong = 11 * s * (1 - seated * 0.95);
   c.fillStyle = '#b4b0a6';
   c.fillRect(0, -9 * s, prong, 3.2 * s); c.fillRect(0, 5.8 * s, prong, 3.2 * s);

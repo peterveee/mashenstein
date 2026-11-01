@@ -4,7 +4,7 @@ import { Audio } from '../../engine/audio.js';
 import { MusicDirector } from '../../engine/music-director.js';
 import { CABINET_BY_ID } from '../../data/cabinets.js';
 import { drawPanel, drawTextCenteredForPresentation, textYForMid } from '../../engine/sprites.js';
-import { drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, plate, drawSocketPanel, drawShutter } from './scene.js';
+import { drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, plate, drawBreakerPanel, drawHangingPlug, drawPlugSpark, breakerSocketPoint, drawShutter } from './scene.js';
 import { ACT_ENDINGS } from './acts.js';
 
 // The flight as the end of a stage. The run owns everything up to the moment
@@ -16,7 +16,12 @@ import { ACT_ENDINGS } from './acts.js';
 // socket on its breaker panel; the hero pushes the plug home; the bank's
 // lamps come on from it; the plate says what has been won. Peter, 1 Nov:
 // "should there be some sort of proper ending, not just eggshell flying off?"
-const END = { socketIn: 1.6, reach: 3.2, seat: 3.9, lamps: 4.3, plate: 5.0, done: 7.2 };
+// Beats of the victory clock: he is gone; the passage carries the tub to the
+// breaker panel and stops there (an arrival, not a camera freeze); the plug
+// hangs swinging off the top rail; the tub noses up and shoves it home — a
+// bounce, a spark, the breaker flips, the pilot lamp goes green; the bank's
+// lamps race away along the rails; the hero celebrates; the plate.
+const END = { arrive: 1.3, stop: 3.0, push: 3.35, seat: 3.75, lever: 4.05, lamps: 4.3, plate: 5.2, done: 7.6 };
 const ease01 = (x) => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
 const UNPLUGGED_DOWN_T = 1.2;
 
@@ -120,14 +125,53 @@ export class CampaignFlightState extends FlightPrototypeState {
       if (e.t < 0.55) { e.y += Math.sin(e.t / 0.55 * Math.PI) * 26 * dt; e.jx = Math.sin(e.t * 61) * 2.2; }
       else { e.jx = 0; e.vx += 240 * dt; e.x += e.vx * dt; e.y -= (30 + (e.t - 0.55) * 46) * dt; }
     }
-    // The socket panel comes in from the right; the tub rises or drops to its
-    // line, and the plug goes in on the beat its cue was placed for.
-    const vt = this.victoryT, l = this.model.layout;
-    const sx = W + 80 - ease01((vt - END.socketIn) / 1.2) * (W + 80 - (l.bx - 10));
-    this.socket = { x: sx, y: (l.top + l.bottom) / 2, seat: ease01((vt - END.reach) / (END.seat - END.reach)) };
-    const want = this.socket.y - 2;
-    this.model.y += (want - this.model.y) * Math.min(1, dt * 3);
-    if (vt >= END.seat && !this.plugged) { this.plugged = true; Audio.sfx('socketDrop'); Audio.sfx('switchFlick', { inSeconds: 0.25 }); }
+    this.updateEnding(dt);
+  }
+
+  // The panel lives in passage space: it is placed ahead at `arrive`, and the
+  // passage's scroll is steered so it comes to rest at the right column.
+  updateEnding(dt) {
+    const vt = this.victoryT, m = this.model, l = m.layout, s = l.scale;
+    if (!this.ending && vt >= END.arrive) {
+      const panelX = l.bx - 22 * s;
+      this.ending = { panelScroll: m.scroll + (W + 70 * s) - panelX, panelX, swing: 0.55, swingV: 0, pushed: false, sparkT: null };
+    }
+    const e = this.ending;
+    if (!e) return;
+    // The passage eases to a stop so the panel lands on its column at END.stop.
+    const left = e.panelScroll - m.scroll;
+    const tStop = Math.max(0.05, END.stop - vt);
+    const wantV = vt < END.stop ? Math.max(0, 2 * left / tStop - m.scrollV) : 0;
+    m.scrollV += (wantV - m.scrollV) * Math.min(1, dt * 6);
+    if (vt >= END.stop) { m.scrollV = 0; m.scroll = e.panelScroll; }
+    const socket = breakerSocketPoint(e.panelX - (e.panelScroll - m.scroll), (l.top + l.bottom) / 2 - 14 * s, s);
+    e.socket = socket;
+    // The plug hangs from the top rail, left of the socket, and swings.
+    e.pivot = { x: socket.x - 46 * s, y: l.top - 10 };
+    const L = socket.y - e.pivot.y;
+    if (!e.pushed) {
+      // A pendulum, nudged by the passage's slowing, then shoved by the tub.
+      const g = 9.5;
+      e.swingV += (-g / Math.max(40, L / s) * Math.sin(e.swing) * 60 - e.swingV * 0.4) * dt;
+      e.swing += e.swingV * dt;
+      e.tip = { x: e.pivot.x + Math.sin(e.swing) * L * 0.92 + 22 * s, y: e.pivot.y + Math.cos(e.swing) * L * 0.92 };
+      e.ang = e.swing * 0.6;
+      if (vt >= END.push) { e.pushed = true; e.from = { ...e.tip }; e.fromAng = e.ang; Audio.sfx('flightShot', { gain: 0.5 }); }
+    } else {
+      // Into the socket with an overshoot, then seated.
+      const k = ease01((vt - END.push) / (END.seat - END.push));
+      const bump = Math.sin(Math.min(1, k) * Math.PI) * 4 * s;
+      e.tip = { x: e.from.x + (socket.x - e.from.x) * k + bump * 0.3, y: e.from.y + (socket.y - e.from.y) * k - bump };
+      e.ang = e.fromAng * (1 - k);
+      e.seat = ease01((vt - END.seat + 0.12) / 0.12);
+    }
+    // The tub comes up behind the plug and gives it the shove.
+    const heroWantX = vt < END.push ? l.px + (e.tip.x - 74 * s - l.px) * ease01((vt - END.arrive) / (END.push - END.arrive)) : e.tip.x - 72 * s + 8 * s * ease01((vt - END.push) / 0.3);
+    this.heroX = this.heroX == null ? l.px : this.heroX + (heroWantX - this.heroX) * Math.min(1, dt * 5);
+    const heroWantY = e.tip.y + 2 * s;
+    m.y += (heroWantY - m.y) * Math.min(1, dt * 4);
+    if (vt >= END.seat && !this.plugged) { this.plugged = true; e.sparkT = vt; Audio.sfx('socketDrop'); }
+    if (vt >= END.lever && !this.levered) { this.levered = true; Audio.sfx('switchFlick'); Audio.sfx('power', { inSeconds: 0.1 }); }
     if (vt >= END.done) { this.completed = true; this.onComplete?.(this.seconds, this.hits); }
   }
 
@@ -140,16 +184,23 @@ export class CampaignFlightState extends FlightPrototypeState {
     if (m.pattern.final) {
       if (m.phase === 'fall') return { banks: before, stealX: m.fallTime < 2 ? Infinity : W - (m.fallTime - 2) * 520 };
       if (m.phase === 'final') return { banks: 0 };
-      if (m.phase === 'won') return { banks: 0, waveBank: 'all', waveX: this.plugged ? (this.victoryT - END.lamps) * 620 : -Infinity };
+      if (m.phase === 'won') return { banks: 0, waveBank: 'all', waveX: this.levered ? (this.victoryT - END.lamps) * 700 : -Infinity };
     }
     if (m.phase !== 'won') return { banks: before };
     // The bank comes on from the socket once the plug is in.
-    return { banks: before, waveBank: before, waveX: this.plugged ? (this.victoryT - END.lamps) * 620 : -Infinity };
+    // From the panel outward, both ways, once the breaker is up.
+    return { banks: before, waveBank: before, waveX: this.levered ? (this.victoryT - END.lamps) * 700 : -Infinity };
   }
 
   paintBoss(d, beat) {
     const m = this.model, l = m.layout, e = this.exitBoss;
     if (m.phase !== 'won' || !e) { super.paintBoss(d, beat); return; }
+    // The plug, over the tub that is pushing it.
+    if (this.ending?.socket) {
+      const en = this.ending, s = l.scale, vt = this.victoryT;
+      drawHangingPlug(d, en.pivot, en.tip, en.ang, s, { seated: en.seat || 0 });
+      if (en.sparkT != null) drawPlugSpark(d, en.socket.x, en.socket.y, s, (vt - en.sparkT) / 0.5);
+    }
     // BACKUP POWER gives out: the core goes dark, the fan runs down, and the
     // machine sinks away with him on top of it.
     if (m.pattern.final) {
@@ -162,21 +213,35 @@ export class CampaignFlightState extends FlightPrototypeState {
       { t: m.t + this.victoryT, beat, mood: 'sour', hitT: 0.5 + 0.5 * Math.max(0, 1 - this.victoryT) });
   }
 
+  // Plug in: he celebrates, the finish pole's own pose.
+  heroPose() {
+    if (this.model.phase === 'won' && this.levered) return { kind: 'celebrate', grounded: true, headTurn: 0, time: this.victoryT - END.lever };
+    return null;
+  }
+
   paintScenery(d) {
-    const m = this.model, l = m.layout;
-    if (m.phase === 'won' && this.socket) {
-      drawSocketPanel(d, this.socket.x, this.socket.y, l.scale, this.socket.seat, this.victoryT);
+    const m = this.model, l = m.layout, e = this.ending;
+    if (m.phase === 'won' && e?.socket) {
+      const s = l.scale, vt = this.victoryT;
+      const panelX = e.panelX - (e.panelScroll - m.scroll), panelY = (l.top + l.bottom) / 2 - 14 * s;
+      drawBreakerPanel(d, panelX, panelY, s, { lever: ease01((vt - END.lever) / 0.25), lamp: this.levered ? 'on' : 'wait', t: vt });
     }
     // 6-3: the shutter he drops behind him as he leaves the game. It starts
     // down while the hero is still crossing and shuts once the whole tub is
     // through: it rides the passage's own scroll, so it never catches him.
-    if (this.act.act === 2 && Number.isFinite(this.arrive?.plugX) && this.revealT < 6) {
-      const x = this.arrive.plugX - 300 - m.scroll;
-      const drop = l.top + ease01((this.revealT - 0.9) / 0.5) * (l.bottom - l.top + 24);
-      if (x > -60 && x < W + 60) {
-        drawShutter(d, x, l.top - 24, drop, l.scale);
-        if (!this.slammed && this.revealT >= 1.4) { this.slammed = true; Audio.sfx('gateSlam'); }
-      }
+    // Its plane starts ahead of the tub and comes back with the passage; it
+    // descends to just over the tub while it approaches and slams only once
+    // the whole tub (gun and all) is past it: no collision, nothing to dodge.
+    if (this.act.act === 2 && Number.isFinite(this.arrive?.plugX) && this.revealT < 8) {
+      const s = l.scale, x = this.arrive.plugX + 180 - m.scroll, w = 34 * s;
+      const heroLeft = (this.heroX ?? l.px) - 42 * s * (50 / 24) / 1.4 - 6 * s;
+      const tubTop = m.y - 36 * s;
+      if (!this.shutterSlam && x + w < heroLeft) this.shutterSlam = this.revealT;
+      const hover = ease01(this.revealT / 1.1) * Math.max(0, tubTop - 12 * s - (l.top - 24));
+      const slam = this.shutterSlam == null ? 0 : ease01((this.revealT - this.shutterSlam) / 0.14);
+      const drop = (l.top - 24) + hover + slam * ((l.bottom + 24) - (l.top - 24) - hover);
+      if (x > -60 && x < W + 60) drawShutter(d, x, l.top - 24, drop, s);
+      if (this.shutterSlam != null && !this.slammed && this.revealT >= this.shutterSlam + 0.12) { this.slammed = true; Audio.sfx('gateSlam'); }
     }
   }
 

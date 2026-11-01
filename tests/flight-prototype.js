@@ -57,3 +57,14 @@ for (const height of [270, 1066]) {
   assert.equal(m.phase, 'final'); assert.equal(m.finalHp, BACKUP.hp); assert.equal(m.hull, 4);
 }
 console.log('Act III: balloon, halfway, false defeat, BACKUP POWER and its core reached in both layouts; a death restores BACKUP POWER.');
+
+// The tub still steers through the halfway line and the false defeat.
+{
+  const m = new FlightModel(flightLayout(480, 1040), 7, { act: 3 });
+  m.damageBoss(60); assert.equal(m.phase, 'midpoint');
+  const y0 = m.y; advance(m, 1, true); assert.ok(m.y < y0 - 40, 'rises during the midpoint vignette');
+  advance(m, 2.2); m.damageBoss(50); assert.equal(m.phase, 'fall');
+  const y1 = m.y; advance(m, 1, false, true); assert.ok(m.y > y1 + 40, 'drops during the false defeat');
+  assert.equal(m.pellets.length, 0, 'but fires nothing meanwhile');
+}
+console.log('Steering stays live through the vignettes; firing does not.');

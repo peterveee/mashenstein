@@ -5,7 +5,7 @@ export const STEP = 1 / 120;
 export const FLIGHT_CRUISE = 130;
 const CRUISE_EASE = 0.9;
 // Where a pellet leaves the tub: the tip of the gun on its nose (scene.js).
-export const PELLET_MUZZLE = 37;
+export const PELLET_MUZZLE = 31;
 
 // Each act's ordinary fight. `lanes` are Eggshell's altitude stops (fractions of
 // the band) and `hold` how long each lasts; `attack` the gap between telegraphs in
@@ -117,8 +117,11 @@ export class FlightModel {
     this.scroll += dt * this.scrollV;
     this.scrollV += (FLIGHT_CRUISE - this.scrollV) * (1 - Math.exp(-dt / CRUISE_EASE));
   }
-  update(dt, up = false, down = false) {
+  // `fireNow`: the caller's say on when the tub fires (a half-beat line of the
+  // song has just passed); null means the tub keeps its own 0.16 s cadence.
+  update(dt, up = false, down = false, fireNow = null) {
     this.accumulator += Math.min(.1, Math.max(0, dt));
+    this.fireNow = fireNow;
     while (this.accumulator >= STEP) { this.tick(STEP, up, down); this.accumulator -= STEP; }
   }
   // A column's gap in px: its authored size, but never more than 45% of the
@@ -135,6 +138,14 @@ export class FlightModel {
     const l = this.layout;
     return Math.min((BACKUP.band + SHOT_HY) * l.scale, (l.bottom - l.top - 2 * l.radius) / 2 - 4);
   }
+  steer(dt, up, down) {
+    const l = this.layout;
+    const direction = Number(down) - Number(up);
+    const target = direction * (l.height > l.width ? 240 : 145);
+    this.vy += clamp(target - this.vy, -850 * dt, 850 * dt);
+    this.y = clamp(this.y + this.vy * dt, l.top + l.radius, l.bottom - l.radius);
+    if (this.y === l.top + l.radius || this.y === l.bottom - l.radius) this.vy = 0;
+  }
   bandLane(lane) {
     const l = this.layout;
     return l.top + l.radius + lane * (l.bottom - l.top - 2 * l.radius);
@@ -143,6 +154,10 @@ export class FlightModel {
     this.hitFlash = Math.max(0, this.hitFlash - dt); this.deflect = Math.max(0, this.deflect - dt);
     if (this.phase === 'dead' || this.phase === 'won') return;
     this.advanceScroll(dt); this.t += dt;
+    // The tub answers the controls through every flying phase, the halfway
+    // line and the false defeat included (Peter, 1 Nov: "firing can stop, but
+    // we should still be able to move"); only firing and attacks pause.
+    this.steer(dt, up, down);
     if (this.phase === 'midpoint') {
       this.midpointTime += dt;
       if (this.midpointTime >= 3) {
@@ -166,11 +181,6 @@ export class FlightModel {
     }
     const l = this.layout;
     this.grace = Math.max(0, this.grace - dt);
-    const direction = Number(down) - Number(up);
-    const target = direction * (l.height > l.width ? 240 : 145);
-    this.vy += clamp(target - this.vy, -850 * dt, 850 * dt);
-    this.y = clamp(this.y + this.vy * dt, l.top + l.radius, l.bottom - l.radius);
-    if (this.y === l.top + l.radius || this.y === l.bottom - l.radius) this.vy = 0;
     // Smooth authored travel with long settles; does not read the player's height.
     const pat = this.pattern;
     const lanes = this.phase === 'final' ? BACKUP.lanes : pat.lanes, hold = this.phase === 'final' ? BACKUP.hold : pat.hold;
@@ -183,8 +193,10 @@ export class FlightModel {
     if (!holding) this.by += clamp(this.bandLane(lane) - this.by, -bossSpeed * dt, bossSpeed * dt);
     if (this.lead > 0) { this.lead -= dt; return; }
     this.fire -= dt;
-    if (this.fire <= 0) {
-      this.fire += .16; this.pellets.push({ x: l.px + PELLET_MUZZLE * l.scale, y: this.y + 7 * l.scale }); this.fired = (this.fired || 0) + 1;
+    const onBeat = this.fireNow != null;
+    if (onBeat ? this.fireNow : this.fire <= 0) {
+      this.fire = onBeat ? 0 : this.fire + .16; this.fireNow = false;
+      this.pellets.push({ x: l.px + PELLET_MUZZLE * l.scale, y: this.y + 7 * l.scale }); this.fired = (this.fired || 0) + 1;
     }
     const shoot = (targetY, sourceY, travel = pat.travel, kind = 'shot') => {
       // Same arrival time across layouts. Aim is locked before release.
@@ -260,7 +272,7 @@ export class FlightModel {
       // The balloon's envelope is the target in Act III: bigger than the tub.
       const hx = this.pattern.final ? 30 : 22, hy = this.pattern.final ? 28 : 15;
       if (prev <= l.bx + hx * l.scale && p.x >= l.bx - hx * l.scale && Math.abs(p.y - (this.by + 7 * l.scale)) < hy * l.scale) {
-        p.x = l.width + 100; this.damageBoss(2); this.pinged = (this.pinged || 0) + 1;
+        p.x = l.width + 100; this.damageBoss(onBeat ? 3 : 2); this.pinged = (this.pinged || 0) + 1;
         if (this.phase !== 'first' && this.phase !== 'second') return;
       }
     }

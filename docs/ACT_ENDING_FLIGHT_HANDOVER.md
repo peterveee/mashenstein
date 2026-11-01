@@ -33,6 +33,12 @@ Read [ACT_ENDING_FLIGHT_PLAN.md](ACT_ENDING_FLIGHT_PLAN.md) — its 1 Nov sectio
 
 Boss retirement: `bossAvailable` is always false (no BOSS row); rhythm and neon removed from `BOSSES`; surge kept only for the dev menu's bot runs; attract has no boss demos; Act I trophy relic is the SIDE PANEL; the rhythm/neon/surge trophies are earned by the flights (`bossesDown`).
 
+## 1 Nov, later: the drama pass and Peter's first notes
+
+Done the same day after Peter played it: `docs/ACT_ENDING_TRANSITION_DRAMA.md` implemented inside the existing handover — Eggshell makes for the edge first and is gone before the hero boards; the crossing is a thick slice of the cabinet (glass edge, bezel, board, wires, a brace); the tub's headlight catches the passage before the lamps do; 3-3's overhead lamps come on in sequence (local light, not a bank), 6-3's shutter drops ahead of the tub and slams once the whole tub is past its plane, 9-3's lamps fade toward the balloon and come back. A giant floor plug is the scale cue. **The ending** (`CampaignFlightState.updateEnding`): the passage carries the tub to a breaker panel and stops; the yellow plug swings off the top rail; the tub shoves it home; spark, breaker lever, pilot lamp, the bank's lamps race out from the panel, the hero celebrates, then the plate.
+
+Also from his notes: the tub steers through the halfway line and the false defeat (only firing pauses); touch drag anywhere off the discs steers; the tub fires on the song's half-beats (placeholder SFX `flightShot/Ping/Warn/Hurt/Pop` in audio.js — "we'll finesse these later"); bolt-shaped pellets; portrait band capped at 430 (`PORTRAIT_BAND`) so there is less sky to hide in; landscape HUD is one slim row and the band takes the height; the balloon's ape is the copter's size; our tub shrunk to match his (`FLIGHT_HERO_H` 46). Relics: SIDE PANEL / ROTOR / SPENT CORE.
+
 ## How to try it
 
 Dev server (watch build) on **8001**; phones: `http://MBP14.local:8001`, and `https://MBP14.local:8002` to listen.

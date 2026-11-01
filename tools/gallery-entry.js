@@ -21,8 +21,10 @@ import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld } from '../src/engine/camera.js';
 import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
 import {
   HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook,
-  drawHubSocket, cabinetScreenArt,
+  drawHubSocket, cabinetScreenArt, TrophyRoomState,
 } from '../src/game/hub/index.js';
+import { RELIC_CANDIDATES, drawRelicCandidate } from '../src/dev/archive-relic-candidates.js';
+import { drawTextCentered as drawUiTextCentered, textWidth as uiTextWidth } from '../src/engine/sprites.js';
 import { INTRO_ZOOM_START, OUTRO_ZOOM } from '../src/game/tutorial.js';
 import { getSprite, drawPellet } from '../src/engine/sprites.js';
 import {
@@ -9261,6 +9263,51 @@ function jadeSky(ctx, w, h, seed = 1) {
   for (const c of OFFICE_COLOUR_CANDIDATES) {
     rowTile(`${c.letter} — ${c.name}${c.shipped ? ' (SHIPPED)' : ''}`, c.note, OFFICE_ROW,
       (cab) => ({ style: undefined, pal: cab.id === 'office' ? c.pal : undefined }));
+  }
+}
+
+// ------------------------------------------- archive relic bake-off (1 Nov 2026)
+// The MANAGEMENT ARCHIVE's three relics — the side panel off Eggshell's tub, the
+// copter's bent rotor, BACKUP POWER's spent core — shipped as flat marks with the
+// act-ending flights. Peter: "very basic, bake off to get better versions of
+// these please". Every tile is the whole archive case as the Trophy Room draws
+// it, at the hub's zoom, with all three relics in one treatment
+// (src/dev/archive-relic-candidates.js), so the three are judged side by side
+// the way they sit in the room.
+{
+  const grid = section('archive-relic-bakeoff', 'TROPHY ROOM — the MANAGEMENT ARCHIVE relics (bake-off)',
+    '<b>NOW</b> is what shipped. <b>A</b> redraws the three subjects (the tub\'s dead headlamp and rim band on the panel, '
+    + 'the mast flange on the rotor, the machine\'s red-edged cradle under the core); <b>B–E</b> are presentation '
+    + 'treatments on top of A — brass bracket, bell jar, more damage, a spotlight — so the answer can be one letter or '
+    + '"A\'s drawing in C\'s case". The core\'s smoke is the only thing that moves.',
+    '1 Nov 2026');
+  const Z = HUB_ZOOM, W = 150, H = 94, M = 6;
+  const RELICS = [['SIDE PANEL', 'sidepanel'], ['ROTOR', 'rotor'], ['SPENT CORE', 'core']];
+  const archive = (ctx, t, relicPainter) => {
+    ctx.fillStyle = '#1a1422'; ctx.fillRect(0, 0, W + M * 2, H + M * 2);
+    ctx.translate(M, M);
+    ctx.fillStyle = '#100e16'; ctx.beginPath(); ctx.roundRect(0, 0, W, H, 5); ctx.fill();
+    ctx.strokeStyle = '#73657c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(1, 1, W - 2, H - 2, 4); ctx.stroke();
+    RELICS.forEach(([label, relic], i) => {
+      const x = W / 2 + (i - 1) * 46, y0 = 0;
+      ctx.fillStyle = '#332b42'; ctx.fillRect(x - 20, y0 + 6, 40, 76);
+      ctx.strokeStyle = '#8a7a52'; ctx.lineWidth = 1; ctx.strokeRect(x - 20, y0 + 6, 40, 76);
+      relicPainter(ctx, relic, x, y0 + 15, t);
+      ctx.fillStyle = '#6b5430'; ctx.fillRect(x - 15, y0 + 54, 30, 6); ctx.fillRect(x - 18, y0 + 60, 36, 4);
+      const labelScale = Math.min(0.64, 36 / Math.max(1, uiTextWidth(label, 1, 'bold')));
+      drawUiTextCentered(ctx, label, x, y0 + 69, '#c8b880', labelScale, 'bold');
+    });
+  };
+  const caseTile = (name, note, relicPainter) => {
+    tile(grid, name, note, (W + M * 2) * Z, (H + M * 2) * Z, (ctx, t) => {
+      ctx.scale(Z, Z);
+      archive(ctx, t, relicPainter);
+    }, { animated: true, hires: 5 });
+  };
+  caseTile('NOW — shipped', 'the three flat marks as they are in the room today',
+    (ctx, relic, x, y) => TrophyRoomState.prototype.drawBossRelic.call(null, ctx, relic, x, y));
+  for (const c of RELIC_CANDIDATES) {
+    caseTile(`${c.letter} — ${c.name}`, c.note, (ctx, relic, x, y, t) => drawRelicCandidate(ctx, c.key, relic, x, y, t));
   }
 }
 

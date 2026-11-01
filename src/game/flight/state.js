@@ -156,7 +156,7 @@ export class FlightPrototypeState {
   // The model counts what happened; the sounds follow the counts, once each.
   soundCounts() {
     const m = this.model, c = this.counts || (this.counts = { fired: 0, pinged: 0, warned: 0, hurts: 0, phase: m.phase });
-    if ((m.fired || 0) > c.fired) { if (m.fired % 2) Audio.sfx('flightShot'); c.fired = m.fired; }   // every other pellet
+    if ((m.fired || 0) > c.fired) { Audio.sfx('flightShot'); c.fired = m.fired; }
     if ((m.pinged || 0) > c.pinged) { Audio.sfx('flightPing'); c.pinged = m.pinged; }
     if ((m.warned || 0) > c.warned) { Audio.sfx('flightWarn'); c.warned = m.warned; }
     if ((m.hurts || 0) > c.hurts) { Audio.sfx('flightHurt'); c.hurts = m.hurts; }
@@ -174,7 +174,16 @@ export class FlightPrototypeState {
       const dy = steer - this.model.y, dead = 6 * this.model.layout.scale;
       up = dy < -dead; down = dy > dead;
     }
-    this.model.update(dt, up, down);
+    // The tub fires on the song's half-beats: the pellets and their sound are
+    // part of the music, as everything on a rhythm cabinet is.
+    const beat = Audio.songBeat();
+    let fireNow = null;
+    if (Number.isFinite(beat)) {
+      const half = Math.floor(beat * 2);
+      fireNow = this.lastHalf != null && half !== this.lastHalf;
+      this.lastHalf = half;
+    } else this.lastHalf = null;
+    this.model.update(dt, up, down, fireNow);
     this.soundCounts();
   }
   steerTarget() {
@@ -273,14 +282,14 @@ export class FlightPrototypeState {
     }
     if (m.phase === 'final' && m.fin.mode === 'surge' && !m.fin.fired) this.paintColumnWarning(d, m.fin.gapY, BACKUP.surgeGap, 'surge');
     if (m.beam) this.paintBeam(d, t);
-    for (const p of m.pellets) plate(d, p.x - 4, p.y - 2, 8, 4, '#85efff', 2);
+    for (const p of m.pellets) this.paintPellet(d, p, l.scale);
     for (const p of m.shots) {
       if (p.kind === 'spark' || p.kind === 'surge') { this.paintSpark(d, p, t); continue; }
       d.fillStyle = '#ffbb60'; d.beginPath(); d.arc(p.x, p.y, 6, 0, Math.PI * 2); d.fill();
       d.fillStyle = '#fff0bf'; d.beginPath(); d.arc(p.x - 1, p.y, 3, 0, Math.PI * 2); d.fill();
     }
     d.globalAlpha = m.grace > 0 && m.lead <= 0 ? 0.55 + 0.45 * Math.abs(Math.sin(m.t * 16)) : 1;
-    drawFlightHero(d, this.hero, l.px, m.y, l.scale, { t: this.heroClock(), thrust: this.heroThrust() });
+    drawFlightHero(d, this.hero, this.heroX ?? l.px, m.y, l.scale, { t: this.heroClock(), thrust: this.heroThrust(), pose: this.heroPose() });
     d.globalAlpha = 1;
     this.paintBoss(d, beat);
   }
@@ -290,7 +299,18 @@ export class FlightPrototypeState {
   // so faces, rotors and jets do not jump on the swap frame.
   artClock() { return this.model.t + (this.arrive?.clock || 0); }
   heroClock() { return this.artClock(); }
+  heroPose() { return null; }
 
+  // A bolt: a bright head with a tail that fades back along its path.
+  paintPellet(d, p, s) {
+    const len = 16 * s, h = 3.2 * s;
+    const g = d.createLinearGradient(p.x - len, p.y, p.x, p.y);
+    g.addColorStop(0, 'rgba(133,239,255,0)'); g.addColorStop(0.7, 'rgba(133,239,255,0.6)'); g.addColorStop(1, 'rgba(230,255,255,1)');
+    d.fillStyle = g;
+    d.beginPath(); d.moveTo(p.x - len, p.y); d.lineTo(p.x - 3 * s, p.y - h); d.lineTo(p.x + 2 * s, p.y); d.lineTo(p.x - 3 * s, p.y + h); d.closePath(); d.fill();
+    d.fillStyle = '#ffffff'; d.beginPath(); d.arc(p.x - 1 * s, p.y, 2.2 * s, 0, Math.PI * 2); d.fill();
+    d.fillStyle = 'rgba(133,239,255,0.35)'; d.beginPath(); d.arc(p.x - 1 * s, p.y, 4.5 * s, 0, Math.PI * 2); d.fill();
+  }
   // Act III's sparks (the coils) and BACKUP POWER's surge orbs.
   paintSpark(d, p, t) {
     const s = this.model.layout.scale;
