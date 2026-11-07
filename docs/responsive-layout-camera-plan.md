@@ -287,7 +287,9 @@ Tunnel terrain should occlude the outdoor scene naturally. Entirely enclosed sce
 
 ### Camera policy
 
-Use one policy in both orientations, constrained by the resolved gameplay rectangle. Landscape today cranes to PAN_MAX first and then zooms out toward ZOOM_MIN (1.3) on tall jumps; portrait already holds zoom fixed. Constant zoom would remove the landscape zoom-out, which is a visible baseline change. Landscape keeps its crane-then-zoom framing unless Peter approves the change from a side-by-side capture; portrait uses constant zoom. The shared policy is the target definition, easing and reset rules below, not the zoom behaviour.
+Use one policy in both orientations, constrained by the resolved gameplay rectangle. Landscape used to crane to PAN_MAX first and then zoom out toward ZOOM_MIN (1.3) on tall jumps; portrait already held zoom fixed.
+
+**Status — 2026-11-06 (run camera rewrite, plan `the-camera-angle-hidden-mist`).** Both orientations now hold the zoom constant: the landscape zoom backstop is retired (`guardFraming` always returns the tier zoom; past the crane's bound the hero goes off the top under the marker, the 10 Oct "ground wins" rule). Both orientations frame against one **reference floor** (`RunState.cameraReferenceFloor()` / `resolveCameraReference()`): the floor the hero stands on, or while airborne the floor his arc lands on if it is at least as high — the next step of a staircase, a sky road's lip after a spring pad, the road past a gap. In landscape the anchor band, the ground cap and the crown floor all read it, so the cap no longer collapses between two steps, a spring flight is framed against the lip from the pad, and a double off a raised step keeps the step he left in shot until he has fallen back past it. The camera also runs after physics in the tick, the hero's feet are interpolated for drawing, and checkpoint restore settles the camera (tier zoom, anchor on the restored floor's target, crane at rest). The gate is `tests/camera-run-offscreen.js`; the measurements that drove it are in the plan. The shared policy is the target definition, easing and reset rules below.
 
 - Ordinary surface jumps remain camera-still while the hero is below the actual HUD edge; the decorative gap below the HUD is available sky, not an additional camera wall.
 - Tunnel entry still establishes one lower-route composition and ordinary tunnel hops keep it parked, but a genuinely tall underground jump may apply a bounded body-edge correction so the hero remains fully visible.
@@ -297,7 +299,7 @@ Use one policy in both orientations, constrained by the resolved gameplay rectan
 - Apply a final bounds correction only when needed to keep the hero visible.
 - During substantial falls, target the hero’s feet at 45% of gameplay height so the landing area is visible.
 - Preserve the existing fall-follow speed guard and tunnel lookahead, adapted to resolved gameplay bounds.
-- Reset transition state coherently after checkpoint restore, rewind, stage entry and orientation changes. Today checkpoint restore restores only camFloorY (pan and zoom are left as they were), rewind restores all four, and orientation has no reset at all.
+- Reset transition state coherently after checkpoint restore, rewind, stage entry and orientation changes. (Done 2026-11-06: checkpoint restore calls `settleCamera()`, rewind restores the guard and the cap, orientation resets through `resetCameraForPresentationMode`.)
 
 Fit against the hero’s visible body with an 8px CSS clearance and the locally relevant route/hazard envelope. Floaties, particles and distant unused routes must not move the camera.
 

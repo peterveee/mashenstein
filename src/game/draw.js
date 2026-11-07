@@ -576,7 +576,9 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // Vector art is rendered at device density: rounding here magnifies a one-
   // logical-pixel step into several phone pixels during run-in and terrain motion.
   const cx = (opts.screenX ?? PLAYER_X) + HERO_CENTER_OFF;
-  const feetY = (opts.groundY ?? GROUND_Y) - player.y;
+  // `feetWorldY` is the run's interpolated feet (run.js drawFrame); the contact
+  // shadow and the ground sampling keep `groundY`, which is the terrain.
+  const feetY = Number.isFinite(opts.feetWorldY) ? opts.feetWorldY : (opts.groundY ?? GROUND_Y) - player.y;
   const ghosts = player.dashT > 0;
   const shield = opts.shield || 0;
   // THE PRATFALL, and why it lives here rather than in a pose.

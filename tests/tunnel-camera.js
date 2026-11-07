@@ -49,6 +49,18 @@ const resetCamera = () => {
   run.camFloorY = GROUND_Y;
   run.camPan = 0;
   run.camFeetY = null;
+  // The latched and remembered state too, so each case starts cold rather
+  // than inheriting the previous case's crane, cap or reference floor.
+  run.camFloorV = 0;
+  run.camGuardNeed = undefined;
+  run.camGuardDwell = 0;
+  run.camCapPrev = undefined;
+  run.camCarry = 0;
+  run.camRef = null;
+  run.camRefPhysRoute = undefined;
+  run.camRefMiss = 0;
+  run.camRefRaised = false;
+  run.camTrace = null;
 };
 
 // The first preview frame is deliberately partial: it is a readable lead-in,

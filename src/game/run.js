@@ -5,7 +5,8 @@ import { efficiencyProfile } from '../engine/render-efficiency.js';
 import { SURGE_INTRO_BEATS, SURGE_BPM } from '../engine/stylePacks/surgeIntro.js';
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, sceneBloomAvailable, setScreenFlip, chrome as chromeGeo, setPresentationMode, isPhonePortraitPresentation, presentationFrame, setChromeExtraOverlay, setPageChrome, screen as renderScreen } from '../engine/renderer.js';
 import { frameGroundY, PHONE_PORTRAIT, LANDSCAPE } from '../engine/frame.js';
-import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, easeTunnelPreview, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, guardGroundCap, ballisticApex, GUARD_DWELL } from '../engine/camera.js';
+import { camStairs } from './camera-dev.js';
+import { GROUND_Y, ZOOM, VIEW_W, PAN_MAX, applyWorld, screenYFor, worldYForScreenY, camYFor, restingHeadroom, easeZoom, easePan, floorSpringW, stepFloorSpring, CAM_SLIDE_MAX, FOOTROOM_CATCHUP, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom, portraitRenderViewWidth, portraitPanForBounds, portraitPanForFloor, portraitEdgePanForBounds, guardNeed, guardFraming, guardApproach, guardRelease, guardFloorPan, guardGroundCap, ballisticApex, GUARD_DWELL, GUARD_SPEED, GUARD_TOP_MARGIN, ANCHOR_HOLD_HEADROOM, cameraOwnSlide } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { TICK } from '../engine/loop.js';
 import { crumb } from '../engine/diag.js';
@@ -45,7 +46,7 @@ import { BLAST_T } from '../sprites/blast.js';
 import { pickHitPicture, hitPicLife, hitFamilyOf } from '../sprites/hitPictures.js';
 import { CAT_HIT_T, CAT_IFRAMES_T, catSwipeActive, catHitScreenOffset } from './cat-hit.js';
 import { LEDGE_REACH, PIT_WORDS, PIT_HANG_RAN, PIT_HANG_JUMPED, PIT_GRIP, PIT_GRIP_ALT, PIT_GRIP_DX, PIT_MANTLE_T, pitGripSlip, pitMantle, warmPitFall } from '../sprites/pitFall.js';
-import { Player, PLAYER_X, HERO_ANCHOR, setHeroAnchor, beatLayOff, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, jumpV, LANDED_T } from './player.js';
+import { Player, PLAYER_X, HERO_ANCHOR, setHeroAnchor, beatLayOff, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, AIR_JUMP_SCALE, TERMINAL_VY, gaitRate, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor, gravityFor, jumpV, LANDED_T } from './player.js';
 import { drawHeroTub, drawPassage, drawFlightHero, drawFlightBoss, flightBossCentre, FLIGHT_BOSS_SIZE, currentFlightLayout, crossingWidth, drawCabinetCrossing, warmPassage, drawFlightBalloon, drawRunBalloon, drawPassageReveal, drawGiantPlug } from './flight/scene.js';
 import { actEndingFor, flightBanksBefore } from './flight/acts.js';
 import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
@@ -211,26 +212,39 @@ const ACT_BANNER_FADE = 0.3;
 const ZONE_CARD_FADE = 0.25;
 const ZONE_CARD_ARM = 0.4;
 // How high a road may carry the hero before the camera stops craning at it and
-// RE-PINS to the road instead (camera.js's `floorY`). Set to the island ceiling
-// on purpose: everything that could already be reached with a jump frames
-// exactly as it always did, and only a road that has left jump range — which is
-// to say only a road you are committed to — moves the anchor.
-// How high a road may carry the hero before the camera re-pins to it.
+// RE-PINS to the road instead (camera.js's `floorY`).
 //
-// Derived from the FRAME, not from the jump. The old value was the island
-// ceiling, which re-pinned for anything above one hop — and that was wrong the
-// moment islands started stacking: a staircase topping out at 80px is held
-// comfortably by the crane, and moving the anchor for it slides the lane and
-// the steps you climbed off the bottom of the screen, taking away the one thing
-// you need to see to get back down. What the anchor is FOR is a road the frame
-// cannot hold at all.
+// Derived from the FRAME at the resting zoom. What the anchor is FOR is a road
+// the frame cannot hold with the ground still in shot: the crane is bounded by
+// guardGroundCap (the reference floor stays GROUND_KEEP above the bottom edge),
+// so a standing height the crane cannot frame is one the anchor has to take.
+// ANCHOR_HOLD_HEADROOM is the screen room kept above a standing hero before
+// that happens; the second term keeps the band under what the frame holds at
+// full crane less a double jump, so a jump from the top of the band never asks
+// for more crane than exists. Live, because ZOOM moves with the device:
+//   1.6 → 87, 2.0 → 68, 2.2 → 60 world px. The 29 and 62 steps never move the
+//   anchor; 95 moves it 2 / 33 / 61; 128 moves it 57 / 123 / 128.
+// Stacks top out at 128 (plumber-1) and 139 (plumber-2).
 //
-// `restingHeadroom()` is what the frame holds at full crane; subtracting a
-// pessimistic jump apex leaves the standing height at which a hero can still
-// jump without the zoom opening up. Live, because ZOOM moves with the device.
-function camAnchorFree() {
-  return Math.max(MAX_ISLAND_RISE, restingHeadroom() - worstJumpApex());
+// CRANE mode is the other half of a dev A/B (camera-dev.js): the pre-November
+// band, restingHeadroom less a pessimistic hop, ~148 at every tier — which is
+// more than the frame holds at pan 0 on any device, so every staircase was
+// framed by crane alone and the lane left the bottom anyway at 2.0 / 2.2.
+function anchorFreeBand() {
+  if (!camStairs.rePin) return Math.max(MAX_ISLAND_RISE, restingHeadroom() - worstJumpApex());
+  return Math.max(MAX_ISLAND_RISE, Math.min(restingHeadroom() - doubleJumpApex(),
+    (frameGroundY() - ANCHOR_HOLD_HEADROOM) / ZOOM - HERO_DRAW_H));
 }
+// A full double, no gravity powerup: the first apex plus the air jump's. A
+// function, because the jump numbers are tunables (tests/tunables.js).
+function doubleJumpApex() { return (BASE_JUMP_V * BASE_JUMP_V) / (2 * GRAVITY) * (1 + AIR_JUMP_SCALE * AIR_JUMP_SCALE); }
+// THE REFERENCE FLOOR (cameraReferenceFloor). How much toe may hang past a
+// predicted landing's lip and still count as landing on it, in world px.
+const CAMERA_LOOKAHEAD_TOE = 4;
+// A prediction that merely drops back (step k+1 → lane with the physics floor
+// unchanged) has to repeat for this many ticks before the camera believes it;
+// one that rises, or a floor the physics actually changed, is taken at once.
+const CAMERA_REF_DROP_TICKS = 3;
 // The same band going DOWN, and far smaller, because the crane has nothing to
 // spend there: the apron below the groundline is the budget for craning UP, and
 // there is no equivalent underneath. Any road that dips more than a few pixels
@@ -241,6 +255,12 @@ const CAM_ANCHOR_DOWN = 10;
 // groundline, so rolling terrain — which dips the hero up to 18px below
 // GROUND_Y and has always been framed by the crane — never sees it.
 const CAM_FOOTROOM = 6;
+// And the same promise on the SCREEN: the clamp above is measured against the
+// anchor line, which assumes the crane is down. With the crane up — a double
+// off the top of a staircase — the feet could sit thirty pixels under the
+// frame while the clamp was satisfied. This is the screen px kept between the
+// feet and the bottom edge whatever the pan is (footroomLimit).
+const CAM_FOOTROOM_SCREEN = 8;
 // Start paying for a tunnel's lower floor before the hero reaches its mouth.
 // This is in travel time rather than pixels so the warning is consistent as
 // the stage ramps and across cabinets with different base speeds.
@@ -329,33 +349,35 @@ const PORTRAIT_EDGE_PAN_LIMIT = 480;
 // portrait mode." This is the floor under that test — the geometric one in
 // portraitHighPathFloor is the real gate.
 const PORTRAIT_HIGH_PATH_MIN_RISE = 48;
-// Spring roads are known before the hero reaches their lip. Start the portrait
-// reframe during that committed launch instead of waiting for the landing frame
-// at the foot of the climb.
-const PORTRAIT_HIGH_PATH_LOOKAHEAD_SEC = 0.65;
 // Put the high route in the middle of the usable gameplay band. This leaves a
 // deliberate sky/header area above the hero and enough route/landing context
 // below, without reserving the large low-ground clearance shown by the old
 // fixed composition.
 const PORTRAIT_HIGH_PATH_FEET_RATIO = 0.56;
-// Raised-road entry should feel deliberate, while returning to the base lane
-// is scenery settling back into place rather than an urgent gameplay correction.
-const PORTRAIT_HIGH_PATH_ENTRY_K = 8;
-const PORTRAIT_HIGH_PATH_EXIT_K = 5.5;
-// Tunnel exits can move a large distance back toward the surface composition.
-// Use a deliberately slower crane so the known rise out of the tunnel is
-// visible instead of turning the first frame above ground into a snap.
-const PORTRAIT_TUNNEL_TRANSITION_K = 3;
-
-function easePortraitHighPathPan(current, target, dt) {
-  const k = target >= current ? PORTRAIT_HIGH_PATH_ENTRY_K : PORTRAIT_HIGH_PATH_EXIT_K;
-  return current + (target - current) * (1 - Math.exp(-k * dt));
-}
-
-function easePortraitTunnelPan(current, target, dt) {
-  return current + (target - current)
-    * (1 - Math.exp(-PORTRAIT_TUNNEL_TRANSITION_K * dt));
-}
+// THE PORTRAIT PAN IS SPRUNG AND CAPPED. One spring (engine/camera.js
+// stepFloorSpring, z = 1 so the cap is in logical px/s) replaces the three
+// exponentials that used to move it. The exponential put its whole velocity
+// into the first frame of a move — on a sky-road gap landing that was a
+// +92/−191 px target step taken at 1200–1600 px/s — and there was no ease at
+// all on a frame nothing had marked as "in transition", which is plumber-3's
+// upper path cutting −293 px in one frame. Leaving a composition is quicker
+// than coming home: scenery settling back is not an urgent correction.
+//
+// 900 is the cap to judge on the phone; 520–900 is the range worth trying.
+const PORTRAIT_PAN_MAX_SPEED = 900;
+const PORTRAIT_PAN_OMEGA_AWAY = 7;
+const PORTRAIT_PAN_OMEGA_HOME = 3;
+// A CARRIED FALL. A drop onto a floor more than this far below the floor the
+// live composition was built for (a sky road's gap, a tunnel's roof hole) is
+// framed the way the landscape anchor frames one: the pan moves with the
+// hero's own descent so his feet hold their place on the screen, and on top of
+// that approaches a lead line — feet at PORTRAIT_FALL_LEAD_RATIO of the band,
+// the ground he is dropping onto in sight — at no more than
+// PORTRAIT_FALL_CATCHUP px/s. Smaller drops (a road's 48px end, a tunnel's
+// 18px mouth) are not carried: the composition and the feet clamp frame those.
+const PORTRAIT_FALL_FREE = 60;
+const PORTRAIT_FALL_CATCHUP = 400;
+const PORTRAIT_FALL_LEAD_RATIO = 0.45;
 
 // The world frame is taller than the landscape canvas in portrait, but the
 // readable gameplay band is smaller than that frame: the centered HUD owns the
@@ -2874,72 +2896,135 @@ export class RunState {
       GROUND_Y, PORTRAIT_FRAME_MARGIN, ratio);
   }
 
-  // A spring road is known before the hero lands on it. This is a committed
-  // preview only: ordinary jumps and optional routes that have not fired a pad
-  // do not move the camera early.
-  portraitHighPathPreviewRoute() {
-    if (this.route || !this.player?.launched) return null;
-    const heroX = this.playerWorldX();
-    const speed = Math.max(1, Number(this.speed) || Number(this.baseSpeed()) || 1);
-    return (this.routes || []).find((route) => route.kind !== 'tunnel'
-      && route.spring && route.sprung
-      && heroX < route.x && route.x - heroX <= speed * PORTRAIT_HIGH_PATH_LOOKAHEAD_SEC);
-  }
-
-  // A high route is framed from the route the hero is actually standing on,
-  // not from the base-lane ground anchor. A committed spring launch gets the
-  // route's entry floor early, so the camera has time to arrive before the
-  // climb. This is intentionally thresholded: low islands and ordinary jumps
-  // keep the established composition.
-  portraitHighPathFloor(gameplayEdges = null) {
-    const previewRoute = this.portraitHighPathPreviewRoute();
-    const route = this.route || previewRoute;
+  /**
+   * The raised route the portrait camera would compose for, read off the
+   * REFERENCE floor (resolveCameraReference): the route the hero stands on, or
+   * the one his arc lands on — so a sprung road is his from the pad firing,
+   * a stack's next step from the hop, and a departed route stays his until
+   * he has fallen back past it. Nothing here waits for a landing.
+   *
+   * `highestFloor` is the top of the whole thing, not of the step he is on:
+   * the top tread of a stack (every island sharing its `stack` label), a
+   * road's authored peak. A stack is one climb and gets one composition.
+   *
+   * Returns { route, floor, sampleX, base, rise, highestFloor, highest } or
+   * null on the lane and in a tunnel.
+   */
+  portraitHighPathProfile(ref) {
+    const route = ref?.route;
     if (!route || route.kind === 'tunnel' || !this.player) return null;
-    const sampleX = this.route ? this.routeSampleX() : route.x;
-    const floor = this.route ? this.playerGroundY() : this.routeGroundY(sampleX, route);
+    const floor = Number(ref.floorY);
+    const sampleX = Number(ref.x);
+    if (!Number.isFinite(floor) || !Number.isFinite(sampleX)) return null;
     const base = this.groundYAt(sampleX);
     const rise = base - floor;
-    if (rise < PORTRAIT_HIGH_PATH_MIN_RISE) return null;
-    // ONLY IF HE WOULD LEAVE THE BAND. Standing on this route at the resting
-    // pan, does the drawn hero's crown clear the top of the gameplay band?
-    // Then the frame has room and stays where it is; the edge correction
-    // catches anything transient. Only a route that would pin him against
-    // the HUD earns the reframe.
-    // Judged at the HIGHEST the road gets, not where he is on it: a sprung
-    // road is entered at its lip and climbs from there, and a composition
-    // that only arrived once the climb had crossed the line would be a pan in
-    // the middle of the ride. A road that never leaves the band never earns
-    // it; one that will, has it from the launch.
-    const bandTop = Number(gameplayEdges?.top);
-    if (Number.isFinite(bandTop)) {
-      const highest = Number.isFinite(Number(route.rise)) ? Math.max(rise, Number(route.rise)) : rise;
-      const crown = screenYFor(base - highest - HERO_DRAW_H, this.camZoom, 0, GROUND_Y);
-      if (crown >= bandTop + PORTRAIT_EDGE_PAN_TOP_MARGIN) return null;
+    let highestFloor;
+    if (route.kind === 'island') {
+      // An island's top is absolute, so the top tread of its stack is too.
+      highestFloor = floor;
+      const members = route.stack
+        ? (this.routes || []).filter((r) => r.kind === 'island' && r.stack === route.stack)
+        : [route];
+      for (const r of members) {
+        if (Number.isFinite(Number(r.topY))) highestFloor = Math.min(highestFloor, Number(r.topY));
+      }
+    } else {
+      // A road rides the lane's hills (routeGroundY), so its peak is read off
+      // the AUTHORED groundline, not the ground under the reference column:
+      // hills never move the frame. The feet clamp in portraitHighPathPan
+      // still measures the ACTUAL floor, so a road over a hill keeps him in
+      // the band — merely a little higher in it.
+      highestFloor = Math.min(floor + (GROUND_Y - base), GROUND_Y - (Number(route.rise) || 0));
     }
-
-    // A raised route is a resting composition, not a jump target. Claiming it
-    // while the hero is still airborne makes the camera begin its high-path
-    // reframe during an otherwise well-framed jump, which reads as an
-    // unnecessary pan through open sky. Wait for the actual landing, then
-    // retain the claim through ordinary hops so the camera does not bounce
-    // between the two compositions while the route is still active.
-    const grounded = !!this.player.grounded || Number(this.player.y) <= 0.01;
-    if (!grounded && !previewRoute) {
-      const previous = this.portraitFrameFitState;
-      return previous?.highPath && Number.isFinite(Number(previous.highPathFloor))
-        ? Number(previous.highPathFloor)
-        : null;
-    }
-    return floor;
+    return { route, floor, sampleX, base, rise, highestFloor, highest: base - highestFloor };
   }
 
-  portraitHighPathPan(floor, gameplayEdges) {
+  /**
+   * The floor a high-path composition is built for, or null when the frame has
+   * room and stays where it is. Low islands and ordinary jumps keep the
+   * established composition.
+   *
+   * ONLY IF HE WOULD LEAVE THE BAND, and judged at the top of an ordinary hop
+   * from the HIGHEST the route gets: a road is entered at its lip and climbs
+   * from there, a stack is climbed a step at a time, and a composition that
+   * only arrived once the climb had crossed the line would be a pan in the
+   * middle of the ride. Gating each step on its own rise is why the 4-step
+   * stack earned nothing and the hop onto its top tread put the crown 11px
+   * into the HUD pill with the edge correction chasing the arc a frame late.
+   * A route that never leaves the band never earns it; one that will, has it
+   * from the first hop.
+   *
+   * `ref` defaults to the stored reference so the layout diagnostic can ask
+   * without stepping the reference's holds.
+   */
+  portraitHighPathFloor(ref = this.camRef || (this.player ? this.cameraReferenceFloor() : null),
+    gameplayEdges = null) {
+    const prof = this.portraitHighPathProfile(ref);
+    if (!prof || prof.highest < PORTRAIT_HIGH_PATH_MIN_RISE) return null;
+    const bandTop = Number(gameplayEdges?.top);
+    if (Number.isFinite(bandTop)) {
+      const crown = screenYFor(prof.highestFloor - worstJumpApex() - HERO_DRAW_H, this.camZoom, 0, GROUND_Y);
+      if (crown >= bandTop + PORTRAIT_EDGE_PAN_TOP_MARGIN) return null;
+    }
+    return prof.floor;
+  }
+
+  /**
+   * The composition's pan: the TOP of the stack or road at
+   * PORTRAIT_HIGH_PATH_FEET_RATIO of the band — one pan for the whole climb,
+   * not one per tread — clamped so the feet on the CURRENT floor stay in the
+   * band (the bottom tread of a stack cannot take the top's pan without
+   * dropping the hero into the message shelf; the clamp is exactly the feet
+   * clamp's line, so the two agree).
+   */
+  portraitHighPathPan(floor, gameplayEdges,
+    ref = this.camRef || (this.player ? this.cameraReferenceFloor() : null)) {
     const top = Number(gameplayEdges?.top);
     const bottom = Number(gameplayEdges?.bottom);
-    if (!Number.isFinite(Number(floor)) || !Number.isFinite(top)
+    const current = Number(floor);
+    if (!Number.isFinite(current) || !Number.isFinite(top)
       || !Number.isFinite(bottom) || bottom <= top) return 0;
+    const prof = this.portraitHighPathProfile(ref);
+    const highestFloor = prof ? Math.min(prof.highestFloor, current) : current;
     const targetFeet = top + (bottom - top) * PORTRAIT_HIGH_PATH_FEET_RATIO;
-    return targetFeet - screenYFor(floor, this.camZoom, 0, GROUND_Y);
+    const composed = targetFeet - screenYFor(highestFloor, this.camZoom, 0, GROUND_Y);
+    const keepFeet = bottom - PORTRAIT_EDGE_PAN_BOTTOM_MARGIN
+      - screenYFor(current, this.camZoom, 0, GROUND_Y);
+    return Math.min(composed, keepFeet);
+  }
+
+  /**
+   * The resting pan for where the hero is — the one place that answers it, for
+   * updateCamera and for settleCamera: the tunnel fit (the route's AUTHORED
+   * depth under him, so the lane's hills rolling on under a tunnel do not
+   * breathe the frame), else the high-path composition, else the surface
+   * frame, which is pan 0 on every level.
+   *
+   * Returns { pan, floor, highPath, highPathFloor, tunnel, edgePanLimit }:
+   * `floor` is the floor the composition was built for, which is what a fall
+   * is measured from.
+   */
+  portraitCompositionPan(ref, gameplayEdges, frameFit = this.portraitFrameFit()) {
+    const frame = presentationFrame();
+    const edgePanLimit = Math.max(PORTRAIT_EDGE_PAN_LIMIT,
+      Number.isFinite(Number(frame?.height)) ? Number(frame.height) : 0);
+    const basePan = Number.isFinite(Number(frameFit?.pan)) ? Number(frameFit.pan) : 0;
+    if (this.route?.kind === 'tunnel') {
+      const tunnelRise = this.routeRise(this.routeSampleX(), this.route);
+      const depthFloor = Number.isFinite(tunnelRise) ? GROUND_Y - tunnelRise : this.playerGroundY();
+      const pan = portraitEdgePanForBounds({ top: depthFloor - HERO_DRAW_H, bottom: depthFloor },
+        this.camZoom, GROUND_Y, basePan, PORTRAIT_EDGE_PAN_TOP_MARGIN, PORTRAIT_EDGE_PAN_BOTTOM_MARGIN,
+        edgePanLimit, gameplayEdges);
+      return { pan, floor: depthFloor, highPath: false, highPathFloor: null, tunnel: true, edgePanLimit };
+    }
+    const highPathFloor = this.portraitHighPathFloor(ref, gameplayEdges);
+    if (highPathFloor != null && Number.isFinite(Number(highPathFloor))) {
+      const raw = this.portraitHighPathPan(highPathFloor, gameplayEdges, ref);
+      const pan = Math.max(basePan - edgePanLimit, Math.min(basePan + edgePanLimit, raw));
+      return { pan, floor: Number(highPathFloor), highPath: true, highPathFloor: Number(highPathFloor),
+        tunnel: false, edgePanLimit };
+    }
+    return { pan: basePan, floor: GROUND_Y, highPath: false, highPathFloor: null, tunnel: false, edgePanLimit };
   }
 
   // Rhythm stages keep their existing no-rewind rule; other runs use the
@@ -3258,6 +3343,159 @@ export class RunState {
   }
 
   /**
+   * THE REFERENCE FLOOR — the one floor the camera frames against.
+   *
+   * It is the floor the hero is standing on; while he is airborne it is the
+   * floor his arc comes down on IF that floor is at or above his physics
+   * floor: the next step of a staircase, a sky road's lip after a spring pad,
+   * the road past a sky gap. Lower landings are never predicted — they become
+   * falls when physics releases him and the fall branch frames those.
+   *
+   * Why one quantity: the anchor's target, the crane's ground cap and the
+   * crown floor all used to read the PHYSICS floor under his current x, and
+   * between two steps of a stack that floor is the lane. So the cap collapsed
+   * at the top of every hop, the crane was dragged down while he was at his
+   * apex, and on the landing `lift` jumped back with the crown clamp cutting
+   * the frame — the whole hero off the top for twenty frames at 2.2, then a
+   * 90px snap. The same thing put a spring flight off the top. Everything that
+   * derives from this floor now stays coherent through the hop.
+   *
+   * The prediction is a plain ballistic landing: the arc's larger root through
+   * the candidate's top, the landing column at the steady speed, the footprint
+   * (plus a toe) on the road and not in one of its gaps. Candidates are the
+   * live route and every route ahead within two seconds, highest first; a top
+   * above the apex is unreachable and a top below the physics floor is a fall.
+   * Terminal velocity and mid-air speed changes are ignored — the answer is
+   * re-asked every tick, so a wrong guess costs a frame, not a frame-up.
+   *
+   * Returns { floorY, x, route, rise, airborne, predicted }. `rise` is the
+   * route's AUTHORED rise (lane 0), so hills never move the anchor.
+   */
+  cameraReferenceFloor() {
+    const p = this.player;
+    const x = this.playerWorldX();
+    const physFloor = this.playerGroundY();
+    const withRise = (ref) => {
+      const r = ref.route;
+      ref.rise = !r ? 0
+        : r.kind === 'island' ? this.groundYAt(r.x + r.w / 2) - r.topY
+          : routeRise(ref.x, r);
+      return ref;
+    };
+    const grounded = !p || !!p.grounded || (Number(p.y) || 0) <= 0.01;
+    const riding = !!(this.loop && !this.loop.pending);
+    const base = { floorY: physFloor, x: this.routeSampleX(), route: this.route, airborne: !grounded, predicted: false };
+    if (grounded || riding || this.pitDeath || this.ledgeHang) return withRise(base);
+    const gravityScale = this.beatLock ? 1 : (this.powerups?.gravityMultiplier?.() ?? 1);
+    const g = Math.max(1, gravityFor(p.hero) * gravityScale);
+    const vy = Number(p.vy) || 0;
+    const feet = physFloor - (Number(p.y) || 0);
+    const sp = this.steadySpeed();
+    const apexFeet = feet - (vy > 0 ? (vy * vy) / (2 * g) : 0);
+    const { x1 } = this.playerFootprint();
+    const w = x1 - x;
+    // Time until the feet DESCEND through world y `top` (the larger root).
+    const tDown = (top) => (vy + Math.sqrt(Math.max(0, vy * vy + 2 * g * (top - feet)))) / g;
+    const topOf = (r) => (r.kind === 'island' ? r.topY
+      : this.routeGroundY(Math.min(Math.max(x, r.x), r.x + r.w - 0.001), r));
+    const cands = [this.route, ...this.routes].filter((r, i, a) => r && a.indexOf(r) === i
+      && r.kind !== 'tunnel' && r !== this.routeReleaseLock
+      && r.x + r.w > x && r.x < x + sp * 2);
+    cands.sort((a, b) => topOf(a) - topOf(b));
+    for (const r of cands) {
+      let top = topOf(r);
+      if (top < apexFeet) continue;                           // cannot reach it
+      if (top > physFloor + 0.5 && r !== this.route) continue; // never predict a lower landing
+      let t = tDown(top);
+      let lx = x + sp * t;
+      if (r.kind !== 'island') {
+        // A road's height depends on the column: one recompute at the landing.
+        top = this.routeGroundY(Math.min(Math.max(lx, r.x), r.x + r.w - 0.001), r);
+        t = tDown(top);
+        lx = x + sp * t;
+      }
+      const over = lx + w + CAMERA_LOOKAHEAD_TOE >= r.x && lx <= r.x + r.w - 0.001
+        && roadUnderFeet(lx, lx + w + CAMERA_LOOKAHEAD_TOE, r);
+      if (over) return withRise({ floorY: top, x: lx, route: r, airborne: true, predicted: true });
+    }
+    return withRise(base);
+  }
+
+  /**
+   * cameraReferenceFloor with two holds on top, so the frame does not twitch
+   * on an answer that is about to change back:
+   *
+   *   - THE DEPARTED FLOOR WHILE RISING. After leaving a floor (a double off
+   *     the top step is the case: the step is 150px wide and the double lasts
+   *     160) the reference stays on it while `vy > 0`. Without this the lane
+   *     took over at the top of the jump — the cap collapsed, the anchor
+   *     sprang toward the lane under a rising hero — and the crown went 99px
+   *     off the top at 1.6, worse than before.
+   *   - DROP HYSTERESIS. A prediction that merely drops back — step k+1 to
+   *     the lane with the physics floor unchanged — is believed only after
+   *     CAMERA_REF_DROP_TICKS; a higher floor, or a route change the physics
+   *     itself made (a claim, a release), is taken at once.
+   *
+   * Measured: zero flicker frames on every scripted hop at every tier; the
+   * predictor names step k+1 on the take-off tick and the lip one tick after
+   * the pad fires.
+   */
+  resolveCameraReference() {
+    const ref = this.resolveCameraReferenceRaw();
+    const p = this.player;
+    const airborne = !!p && !(p.grounded || (Number(p.y) || 0) <= 0.01);
+    // Sticky through one airborne phase: the camera framed him against a floor
+    // other than the one under him (a held step, a predicted lip). The crane's
+    // descent pacing keys on it, so the bare lane — hills and all — never sees
+    // that path and frames to the pixel as it always did.
+    const raised = !!(ref.route && ref.route !== this.route) || ref.predicted;
+    this.camRefRaised = airborne ? (!!this.camRefRaised || raised) : false;
+    return ref;
+  }
+
+  resolveCameraReferenceRaw() {
+    const raw = this.cameraReferenceFloor();
+    const p = this.player;
+    const stored = this.camRef;
+    const physChanged = this.camRefPhysRoute !== this.route;
+    this.camRefPhysRoute = this.route;
+    const airborne = !!p && !(p.grounded || (Number(p.y) || 0) <= 0.01);
+    // Only a ROUTE is held: the lane's own hills roll under a rising hero
+    // every jump, and the crane has always framed those from the floor under
+    // him — holding the take-off hill would move every flat-lane jump by a
+    // few pixels for nothing.
+    // Held while he is RISING, and held while he is still ABOVE it: a double
+    // pressed after drifting off a step's far lip (the step is 119px wide,
+    // the hop 160) is a hero the lane cannot hold — 184px up at 2.0 against a
+    // 135px frame — and the step he left is the ground that can stay in shot
+    // under him until he has fallen back past it.
+    const feetWorld = this.playerGroundY() - (Number(p?.y) || 0);
+    // Never the route he is still ON: a gap on a road's descent lands lower on
+    // the same road, and cameraReferenceFloor predicts that on purpose.
+    if (stored && stored.route && stored.route !== raw.route && airborne && raw.floorY > stored.floorY + 0.01
+      && ((Number(p.vy) || 0) > 0 || feetWorld < stored.floorY - 0.01)) {
+      this.camRefMiss = 0;
+      return stored;
+    }
+    // A floor he has LEFT hands over the moment the hold above ends — the hold
+    // was the hysteresis. The tick-count below is for a PREDICTION that flickers
+    // between step k+1 and the lane on the way up; delaying the hand-over off
+    // a departed floor by three ticks cost the cap fifty pixels of descent it
+    // then had to make up by pushing the anchor under the landing.
+    const departed = !!(stored && stored.route && !stored.predicted && stored.route !== this.route);
+    if (!stored || physChanged || departed || raw.floorY <= stored.floorY + 0.01 || raw.route === stored.route) {
+      this.camRef = raw; this.camRefMiss = 0;
+      return raw;
+    }
+    this.camRefMiss = (this.camRefMiss || 0) + 1;
+    if (this.camRefMiss >= CAMERA_REF_DROP_TICKS) {
+      this.camRef = raw; this.camRefMiss = 0;
+      return raw;
+    }
+    return stored;
+  }
+
+  /**
    * The road at this x a FALLING hero could land on. Routes never overlap.
    *
    * Tunnels are excluded because there is nothing to land on: a tunnel is a hole
@@ -3528,7 +3766,7 @@ export class RunState {
    * live route floor rather than replacing it.
    */
   tunnelPreviewFloor(heroX) {
-    const speed = Math.max(1, Number(this.speed) || Number(this.baseSpeed()) || 1);
+    const speed = this.steadySpeed();
     const lookX = heroX + speed * TUNNEL_CAMERA_LOOKAHEAD_SEC;
     const inTunnel = this.route?.kind === 'tunnel';
     const route = inTunnel
@@ -3543,12 +3781,13 @@ export class RunState {
     return inTunnel ? floor : Math.min(floor, GROUND_Y + TUNNEL_CAMERA_PREVIEW_MAX_DROP);
   }
 
-  // The dolly. Camera Y never TRACKS the hero — both numbers come out of
-  // framingFor, so the groundline stays welded to its screen y and the frame
-  // opens or cranes as one piece rather than chasing them around. A jump that
-  // outgrows the frame cranes up first (which costs the ground apron and
-  // nothing else) and only pulls the zoom back for what is left over. Most
-  // single jumps (57px against 103px of headroom) still move neither.
+  // The camera. Camera Y never TRACKS the hero: the groundline (or the road
+  // the anchor has re-pinned to) stays welded to its screen y and the frame
+  // cranes as one piece rather than chasing him around. Three mechanisms, all
+  // measured against one REFERENCE FLOOR (cameraReferenceFloor): the sprung
+  // ANCHOR re-pins a raised road past anchorFreeBand, the CRANE is the jump
+  // guard bounded by the ground cap, and the zoom never moves. Most single
+  // jumps still move neither.
   updateCamera(dt) {
     // Portrait is a presentation branch, not a second phone zoom tier. It is
     // active only while the renderer has an actual portrait frame; rotating to
@@ -3563,74 +3802,97 @@ export class RunState {
     if (portraitActive) {
       // Let the death animation finish without following the hero into a pit.
       if (this.dead) return;
-      // Keep the portrait composition fixed through ordinary jumps and hills.
-      // A materially raised route is a deliberate second composition: it
-      // reframes once around that route, then parks through ordinary jumps.
-      // The full-height frame already contains the underground cutaway; tunnel
-      // entry remains its own one-shot edge event.
+      // THE PORTRAIT CAMERA IS PAN-ONLY. The zoom is the phone's one gameplay
+      // scale and the anchor never leaves the groundline, so everything below
+      // is one number, and the rules for it:
+      //   - every level opens on pan 0; ordinary jumps and hills do not move
+      //     the frame;
+      //   - a route that would pin him against the HUD earns a COMPOSITION
+      //     (portraitCompositionPan): the tunnel fit, or a high path keyed to
+      //     the top of the stack or road;
+      //   - the pan is SPRUNG to it, capped at PORTRAIT_PAN_MAX_SPEED, from
+      //     the hop or launch that commits him to the route — the reference
+      //     floor names the step or lip he is going to land on while he is
+      //     still in the air, so there is no grounded wait and no preview to
+      //     drop before the landing;
+      //   - a tall jump is aimed at its apex (ballisticApex) and the pan it
+      //     needs is latched while he is airborne, as the landscape jump
+      //     guard does, so a hop from a tread that earned no composition
+      //     glides there instead of tracking the arc 1:1 a frame late;
+      //   - a fall past PORTRAIT_FALL_FREE is carried by his own descent and
+      //     led;
+      //   - and whatever the smoothing decided, the drawn hero is clamped into
+      //     the band every frame, unsmoothed: crown under the HUD first, feet
+      //     off the message shelf second.
       setRestingZoom(portraitConfig.worldZoom);
       this.camZoom = portraitConfig.worldZoom;
+      const z = this.camZoom;
       const frameFit = this.portraitFrameFit();
       const frame = presentationFrame();
       const gameplayEdges = portraitGameplayEdges(frame, this);
+      // Once per frame: it holds state (the departed route, the drop hysteresis).
+      const ref = this.resolveCameraReference();
+      const p = this.player;
       const inTunnel = this.route?.kind === 'tunnel';
       const wasInTunnel = this.portraitFrameFitState?.branch === 'tunnel-fixed';
       const hadPublishedFrame = Number.isFinite(Number(this.portraitFrameFitState?.frameRevision));
-      const frameChanged = this.portraitFrameFitState?.frameRevision !== frame?.revision;
       const modeChanged = this.portraitFrameFitState?.frameMode
         && this.portraitFrameFitState.frameMode !== frame?.mode;
       const floor = this.playerGroundY();
-      const edgePanLimit = Math.max(PORTRAIT_EDGE_PAN_LIMIT,
-        Number.isFinite(Number(frame?.height)) ? Number(frame.height) : 0);
-      const highPathFloor = !inTunnel ? this.portraitHighPathFloor(gameplayEdges) : null;
-      const highPath = highPathFloor != null
-        && Number.isFinite(Number(highPathFloor));
-      const highPathAnticipated = highPath && !this.route;
+      const feet = floor - (Number(p?.y) || 0);
+      const vy = Number(p?.vy) || 0;
+      // `y <= 0.01` as the guard does: a hero on a lip can be one flag behind.
+      // Read off the player rather than `ref.airborne`, which a held reference
+      // keeps from the tick it was stored on.
+      const grounded = !p || !!p.grounded || (Number(p.y) || 0) <= 0.01;
+      const airborne = !grounded;
+      const composition = this.portraitCompositionPan(ref, gameplayEdges, frameFit);
+      const { edgePanLimit } = composition;
+      const compositionPan = composition.pan;
+      const highPath = composition.highPath;
+      const highPathFloor = composition.highPathFloor;
+      const highPathAnticipated = highPath && !!ref.predicted;
       const previousHighPath = this.portraitFrameFitState?.highPath === true;
       const highPathChanged = highPath !== previousHighPath;
-      const tunnelChanged = inTunnel !== wasInTunnel;
-      const highPathPan = highPath
-        ? this.portraitHighPathPan(highPathFloor, gameplayEdges)
-        : frameFit.pan;
-      const compositionPan = Math.max(frameFit.pan - edgePanLimit,
-        Math.min(frameFit.pan + edgePanLimit, highPathPan));
-      const feet = floor - (Number(this.player?.y) || 0);
-      // IN A TUNNEL THE FRAME IS FITTED TO THE STANDING FLOOR, every frame.
-      // On the way in that is the lower route's footprint while the hero is
-      // still falling onto it, which is what stops the camera freezing on the
-      // surface composition before the fall has reached the controls. From
-      // then on it is the ground under him wherever he is along the route —
-      // a jump changes his feet, not the floor, so a jump cannot move the
-      // frame, and a floor that climbs out brings the frame back with it.
-      // The edge fit is a MINIMAL correction from the surface pan, so it
-      // returns to zero by itself once the standing hero is back inside the
-      // gameplay band, well before the floor has rejoined the lane.
-      //
-      // The route's AUTHORED depth, not the rolling floor: the lane's hills
-      // run on underneath a tunnel, and fitting to the floor itself had the
-      // frame breathing forty logical px up and down through the chamber on
-      // ground that only rolls. The surface composition ignores hills — the
-      // hero sways in a fixed frame — and so does this one.
-      const tunnelRise = inTunnel ? this.routeRise(this.routeSampleX(), this.route) : NaN;
-      const tunnelDepthFloor = Number.isFinite(tunnelRise) ? GROUND_Y - tunnelRise : floor;
+      const tunnelExit = wasInTunnel && !inTunnel;
+      // ---- the fall ---------------------------------------------------------
+      // Measured from the floor the LIVE composition was built for, which is
+      // only replaced once the fall is over: the reference drops to the lane
+      // the moment he is past the floor he left and the composition follows
+      // it, so this is what still remembers where he fell from. No previous
+      // frame (after a reset, a rewind, a checkpoint) is a drop of nothing,
+      // not a teleport read as a fall.
+      const composedFloor = Number.isFinite(this.camPortraitFloor) ? this.camPortraitFloor : GROUND_Y;
+      const drop = Number.isFinite(this.camPortraitFeetY) ? feet - this.camPortraitFeetY : 0;
+      const falling = airborne && vy <= 0 && (ref.floorY - composedFloor) > PORTRAIT_FALL_FREE;
+      // ---- the top edge, aimed at the apex ----------------------------------
+      // The edge correction is asked about the hero at the TOP of the jump he
+      // is in, from its first frame, so the pan it needs is known at once and
+      // glided to rather than discovered a frame late at the hero's own speed.
+      // Latched while he is airborne (the descent must not play the ascent
+      // backwards) and released after GUARD_DWELL on the ground, through the
+      // spring. Only the top side: the bottom is the fall's and the clamp's.
+      const gravityScale = this.beatLock ? 1 : (this.powerups?.gravityMultiplier?.() ?? 1);
+      const g = Math.max(1, gravityFor(p?.hero) * gravityScale);
+      const apexCrown = airborne && vy > 0
+        ? floor - ballisticApex(Number(p.y) || 0, vy, g) - HERO_DRAW_H
+        : feet - HERO_DRAW_H;
       const feetBounds = { top: feet - HERO_DRAW_H, bottom: feet };
-      const panBounds = inTunnel
-        ? { top: tunnelDepthFloor - HERO_DRAW_H, bottom: tunnelDepthFloor }
-        : feetBounds;
-      const standingPan = portraitEdgePanForBounds(panBounds, this.camZoom, GROUND_Y, frameFit.pan,
-      PORTRAIT_EDGE_PAN_TOP_MARGIN, PORTRAIT_EDGE_PAN_BOTTOM_MARGIN,
-      edgePanLimit, gameplayEdges);
-      const edgePan = standingPan;
-      // High-path composition is a resting target, so edge correction starts
-      // from it. On ordinary surface frames the established fixed target is
-      // unchanged. The correction remains bounded for malformed or extreme
-      // authored routes.
-      const composedEdgePan = portraitEdgePanForBounds(panBounds, this.camZoom, GROUND_Y,
-        compositionPan, PORTRAIT_EDGE_PAN_TOP_MARGIN, PORTRAIT_EDGE_PAN_BOTTOM_MARGIN,
-        edgePanLimit, gameplayEdges);
-      const targetPan = inTunnel
-        ? edgePan
-        : (wasInTunnel ? frameFit.pan : composedEdgePan);
+      const edgeBounds = { top: Math.min(apexCrown, feetBounds.top), bottom: feet };
+      const demand = Math.max(0, portraitEdgePanForBounds(edgeBounds, z, GROUND_Y, compositionPan,
+        PORTRAIT_EDGE_PAN_TOP_MARGIN, PORTRAIT_EDGE_PAN_BOTTOM_MARGIN, edgePanLimit, gameplayEdges)
+        - compositionPan);
+      // Not through a carried fall: the demand is measured against the
+      // composition he is falling TO, which a hero still high over it would
+      // read as a crown over the HUD, and a latch carried over from the
+      // composition he left would hold the frame off its landing. The fall
+      // branch owns the frame until he is down.
+      this.camPortraitDwell = grounded ? (Number(this.camPortraitDwell) || 0) + dt : 0;
+      const latched = Math.max(0, Number(this.camPortraitEdge) || 0);
+      const edge = falling ? 0
+        : this.camPortraitDwell >= GUARD_DWELL ? demand : Math.max(latched, demand);
+      this.camPortraitEdge = edge;
+      const targetPan = compositionPan + edge;
       this.portraitFrameFitState = Object.freeze({
         ...frameFit,
         frameRevision: frame?.revision,
@@ -3647,71 +3909,90 @@ export class RunState {
         edgePan: targetPan - frameFit.pan,
         edgeActive: Math.abs(targetPan - frameFit.pan) > 0.001,
       });
-      // The surface is still a parked composition. A route or viewport
-      // reflow is the exception: keep a small explicit transition object alive
-      // until the eased pan reaches its target. The old implementation inferred
-      // this from the just-rewritten fit state, so it was true for one tick.
+      // ---- the move -------------------------------------------------------
       const currentPan = Number.isFinite(Number(this.camPan)) ? Number(this.camPan) : targetPan;
       let transition = this.portraitFrameTransition;
-      if (modeChanged) transition = null;
-      const tunnelExit = tunnelChanged && !inTunnel;
-      // THE TUNNEL PAN IS ALWAYS EASED, entry included. The entry used to take
-      // its whole first step in one frame — the hero can still be falling from
-      // the lane and must not spend a frame inside the touch shelf — and that
-      // one step was 160 logical px at the end of a roof, taken while he was
-      // still standing on the slab, for a floor forty pixels below him. The
-      // guarantee it bought is now the feet clamp's below: the drawn hero is
-      // corrected against the band every frame, unsmoothed, so the frame
-      // moves WITH a fall exactly as far as the fall needs and no earlier.
-      // Following also has to stay armed: a transition that had settled would
-      // otherwise let the next frame's target land unsmoothed, which on a
-      // sloped floor is a pan stepping a pixel at a time with no ease at all.
-      const tunnelFollow = inTunnel;
-      const shouldStartTransition = (frameChanged || highPathChanged
-        || tunnelFollow || tunnelExit)
-        && hadPublishedFrame && !modeChanged
-        && Math.abs(targetPan - currentPan) > 0.001;
-      if (shouldStartTransition) {
-        transition = {
-          start: transition?.active ? transition.start : currentPan,
-          target: targetPan,
-          active: true,
-          kind: (highPathChanged || previousHighPath || highPath)
-            ? 'high-path'
-            : (tunnelFollow || tunnelExit ? 'tunnel' : 'frame'),
-        };
-      } else if (transition?.active) {
-        // The target can move while a route is being claimed or released. Keep
-        // the original start for diagnostics, but follow the live target.
-        transition = { ...transition, target: targetPan };
-      }
-      let nextPan = targetPan;
-      if (transition?.active) {
-        nextPan = transition.kind === 'high-path'
-          ? easePortraitHighPathPan(currentPan, transition.target, dt)
-          : transition.kind === 'tunnel'
-            ? easePortraitTunnelPan(currentPan, transition.target, dt)
-            : easePan(currentPan, transition.target, dt);
-        if (Math.abs(nextPan - transition.target) <= 0.01) {
-          nextPan = transition.target;
-          transition = { ...transition, active: false };
+      let velocity = Number.isFinite(this.camPanV) ? this.camPanV : 0;
+      let nextPan;
+      if (!hadPublishedFrame || modeChanged) {
+        // The first frame of a presentation IS the composition; there is
+        // nothing to glide from (a rotation is under the renderer's cover).
+        nextPan = targetPan;
+        velocity = 0;
+        transition = null;
+      } else if (falling) {
+        // Carried by his own descent — his motion, not the camera's — never
+        // past where the pan is going, then led: toward the lead line, or
+        // toward the composition's own target once that is the higher of the
+        // two, so the frame arrives at its composition as he lands instead of
+        // overshooting it and gliding back. The landscape anchor's
+        // `min(rest, feet + fallLead)` with its carry capped at the target.
+        const leadLine = gameplayEdges.top
+          + (gameplayEdges.bottom - gameplayEdges.top) * PORTRAIT_FALL_LEAD_RATIO;
+        const leadPan = leadLine - screenYFor(feet, z, 0, GROUND_Y);
+        const fallTarget = Math.max(leadPan, targetPan);
+        const carry = Math.max(-Math.max(0, drop) * z, Math.min(0, fallTarget - currentPan));
+        const sprung = stepFloorSpring(currentPan + carry, velocity, fallTarget,
+          PORTRAIT_PAN_OMEGA_AWAY, 1, dt, PORTRAIT_FALL_CATCHUP);
+        nextPan = sprung.value;
+        velocity = sprung.velocity;
+        // Arriving from above, it stops AT the target: the spring reaches it
+        // with the approach's own speed still in it and would carry on past
+        // (−17px on a double off the top of the stack, then three seconds
+        // crawling home). Zeroed for the reason every clamp here zeroes it.
+        if (currentPan + carry >= fallTarget - 1e-9 && nextPan < fallTarget) {
+          nextPan = fallTarget;
+          velocity = 0;
         }
+        transition = { start: transition?.active ? transition.start : currentPan,
+          target: fallTarget, active: true, kind: 'fall' };
+      } else {
+        const omega = Math.abs(targetPan) > Math.abs(currentPan) + 1e-6
+          ? PORTRAIT_PAN_OMEGA_AWAY : PORTRAIT_PAN_OMEGA_HOME;
+        const sprung = stepFloorSpring(currentPan, velocity, targetPan, omega, 1, dt,
+          PORTRAIT_PAN_MAX_SPEED);
+        nextPan = sprung.value;
+        velocity = sprung.velocity;
+        const settled = Math.abs(nextPan - targetPan) <= 0.01 && Math.abs(velocity) <= 1;
+        if (settled) { nextPan = targetPan; velocity = 0; }
+        const kind = inTunnel || tunnelExit ? 'tunnel'
+          : (highPath || highPathChanged || previousHighPath) ? 'high-path' : 'frame';
+        transition = settled
+          ? (transition ? { ...transition, target: targetPan, active: false } : null)
+          : { start: transition?.active ? transition.start : currentPan,
+            target: targetPan, active: true, kind };
       }
-      // A genuinely tall underground jump is the one exception to "jumps do
-      // not move the frame": the drawn hero is the contract, so if he actually
-      // reaches the HUD the eased standing fit is corrected for his real feet
-      // — and only then, and NOT eased, because a hero over the HUD is wrong
-      // this frame. An ordinary hop stays inside the band and changes nothing.
-      if (inTunnel) {
-        nextPan = portraitEdgePanForBounds(feetBounds, this.camZoom, GROUND_Y, nextPan,
-          PORTRAIT_EDGE_PAN_TOP_MARGIN, PORTRAIT_EDGE_PAN_BOTTOM_MARGIN,
-          edgePanLimit, gameplayEdges);
-      }
+      // THE CLAMP, every frame, unsmoothed: the drawn hero is the contract, and
+      // a hero over the HUD or in the message shelf is wrong THIS frame
+      // whatever the spring is still doing. Crown first — when both cannot
+      // hold, the HUD side wins (portraitEdgePanForBounds tests the top
+      // first). A spring held somewhere other than where its integrator
+      // thinks it is has to be told, or it discharges the difference the
+      // frame the clamp lets go.
+      const clamped = portraitEdgePanForBounds(feetBounds, z, GROUND_Y, nextPan,
+        PORTRAIT_EDGE_PAN_TOP_MARGIN, PORTRAIT_EDGE_PAN_BOTTOM_MARGIN, edgePanLimit, gameplayEdges);
+      const bound = Math.abs(clamped - nextPan) > 1e-9;
+      if (bound) { nextPan = clamped; velocity = 0; }
+      // The share of this frame's pan that is the hero's own drop: the carry,
+      // or the clamp holding his feet on the shelf line through a short fall.
+      const panCarry = Math.max(0, Math.min(currentPan - nextPan, Math.max(0, drop) * z));
       this.portraitFrameTransition = transition;
       this.camPan = nextPan;
+      this.camPanV = velocity;
+      this.camPortraitFloor = falling ? composedFloor : composition.floor;
+      this.camPortraitFeetY = feet;
       this.camFloorY = GROUND_Y;
       this.camFloorV = 0;
-      this.camFeetY = this.route?.kind === 'tunnel' ? this.playerGroundY() : null;
+      this.camFeetY = inTunnel ? this.playerGroundY() : null;
+      // What the camera did this tick, for the dev CAMERA readout and the
+      // headless gates. `own` is the pan's motion with the carried drop taken
+      // out; the landscape-only fields are null so nothing reads them as bound.
+      this.camTrace = {
+        ref: ref.floorY, refRoute: ref.route ? ref.route.kind : null, predicted: ref.predicted,
+        lift: 0, carry: 0, panCarry, falling, anchorTo: null, need: edge, cap: null, floorPan: null,
+        own: (nextPan - currentPan + panCarry) / Math.max(1e-6, dt),
+        composed: compositionPan, target: targetPan, bound,
+      };
       return;
     }
     // Re-resolved every frame so a settings change, or the dev strip moving
@@ -3728,6 +4009,15 @@ export class RunState {
     if (!Number.isFinite(this.camFloorV)) this.camFloorV = 0;
     if (!Number.isFinite(this.camZoom)) this.camZoom = ZOOM;
     applyFraming(this.renderSettings || this.save.settings);
+    // THE ZOOM NEVER MOVES IN A RUN. It used to be the backstop past the crane
+    // — a double from the top of a staircase opened the frame to 1.38 on a
+    // monitor and 1.90 on a phone, and the picture breathed on every landing.
+    // On the lane the ground cap outranked it anyway, and on a step it zoomed
+    // without saving the crown. Past the crane's bound the hero goes off the
+    // top under the marker (drawHeroAboveMarker). Eased to the tier's resting
+    // zoom only so a settings change or the dev strip arrives as it always did.
+    const zoomEased = easeZoom(this.camZoom, ZOOM, dt);
+    this.camZoom = Math.abs(zoomEased - ZOOM) < 1e-3 ? ZOOM : zoomEased;
     const heroX = this.playerWorldX();
     // Keep the camera on the route's lip until updateRoute gets its chance to
     // release it. `routeGroundY(heroX, route)` returns the base lane as soon
@@ -3746,7 +4036,7 @@ export class RunState {
     // the hero right now, while this is only the lower floor the frame is
     // preparing to reveal ahead of him.
     const tunnelFloor = this.tunnelPreviewFloor(heroX);
-    const speed = Math.max(1, Number(this.speed) || Number(this.baseSpeed()) || 1);
+    const speed = this.steadySpeed();
     const tunnelTransition = (this.routes || []).find((r) => r.kind === 'tunnel'
       && heroX >= r.x
       && heroX <= r.x + r.w + speed * TUNNEL_CAMERA_RETURN_DELAY_SEC);
@@ -3784,24 +4074,24 @@ export class RunState {
     // under it — so once it has caught up, standing on a cloud costs the same
     // framing as standing on the ground, which is the entire reason for
     // re-pinning instead of craning.
-    const roadRise = this.groundYAt(heroX) - floor;
-    // A SKY ROAD hands the anchor over early, and that is what keeps the zoom
-    // still up there.
     //
-    // The free band is sized for a hero who has JUMPED — below it the frame
-    // holds him by craning and nothing about the picture changes, which is
-    // exactly right for a hop and for an island. A road is not a hop. Riding one
-    // up through the band leaves `lift` at fifty or seventy pixels for the whole
-    // climb, and the frame then has to hold the hero's own jump on top of that,
-    // which it can only do by pulling the zoom back — so every jump taken on the
-    // way up zooms out and every landing zooms back in. Re-pinning from an
-    // island's height instead means the anchor has caught up long before the
-    // road reaches its entry height, `lift` is back to nothing, and a jump up
-    // there costs the same framing as a jump on the ground: a crane, and no
-    // scale change at all.
-    const band = roadRise < 0 ? CAM_ANCHOR_DOWN
-      : (this.route && this.route.sky ? MAX_ISLAND_RISE : camAnchorFree());
-    const k = Math.max(0, Math.min(1, (Math.abs(roadRise) - band) / band));
+    // Measured against the REFERENCE FLOOR (cameraReferenceFloor), not the
+    // physics floor under his current x: the floor he stands on, or the one
+    // his arc lands on if it is at least as high. So the anchor starts paying
+    // for a staircase step on the take-off tick and for a sky road's lip the
+    // tick the pad fires, and the ground cap below never collapses in the gap.
+    // The rise is the road's AUTHORED one, so hills never move the anchor.
+    const ref = this.resolveCameraReference();
+    const roadRise = ref.rise;
+    // A SKY ROAD hands the anchor over whole: the band is sized for a hero
+    // who has JUMPED, and a road is not a hop. Riding one up through the band
+    // used to leave `lift` at fifty pixels for the whole climb with every jump
+    // on the way up spending crane it did not have; re-pinned from the lip the
+    // anchor has caught up before the climb starts, `lift` is nothing, and a
+    // jump up there costs what a jump on the ground costs.
+    const sky = !!(ref.route && ref.route.sky);
+    const band = roadRise < 0 ? CAM_ANCHOR_DOWN : anchorFreeBand();
+    const k = sky ? 1 : Math.max(0, Math.min(1, (Math.abs(roadRise) - band) / band));
     const anchorLift = roadRise * (k * k * (3 - 2 * k));
     // ---- and the way back down ---------------------------------------------
     //
@@ -3828,7 +4118,12 @@ export class RunState {
     // so the fall allows itself nothing but fallLimit's own allowance rather
     // than reading a teleport as a mile of falling.
     const drop = Number.isFinite(this.camFeetY) ? feetY - this.camFeetY : 0;
-    const falling = !this.player.grounded && floor > this.camFloorY + 0.5;
+    // `y <= 0.01` as the guard does: a hero on a lip can be one flag behind.
+    // Against the reference floor: with it held on the departed step while he
+    // rises, a double off the top of a stack is not a fall until he has
+    // turned over, and the anchor stays put under him.
+    const grounded = !!this.player.grounded || (Number(this.player.y) || 0) <= 0.01;
+    const falling = !grounded && ref.floorY > this.camFloorY + 0.5;
     const routeAnchorTo = falling
       ? Math.min(GROUND_Y - anchorLift, feetY + fallLead(this.camZoom))
       : GROUND_Y - anchorLift;
@@ -3857,7 +4152,11 @@ export class RunState {
     // over. Moving with the hero is not camera work and does not read as one:
     // it is the difference between the frame following a fall and the frame
     // being dragged after it.
-    const carry = falling && anchorTo >= this.camFloorY ? Math.max(0, drop) : 0;
+    // Capped at the target: carried PAST where the anchor is going, the spring
+    // only has to bring it back.
+    const carry = falling && anchorTo >= this.camFloorY
+      ? Math.min(Math.max(0, drop), anchorTo - this.camFloorY) : 0;
+    this.camCarry = carry;
     const sprung = stepFloorSpring(this.camFloorY + carry, this.camFloorV || 0, anchorTo,
       floorSpringW(this.camFloorY, anchorTo, previewingTunnel || releasingTunnelPreview),
       this.camZoom, dt);
@@ -3882,7 +4181,17 @@ export class RunState {
     // Guarded on the anchor being off the groundline so rolling terrain — which
     // dips the hero below GROUND_Y and has always been framed by the crane —
     // never reaches this at all.
-    if (Math.abs(this.camFloorY - GROUND_Y) > 0.5) {
+    // Or while he is AIRBORNE under a crane that is up past the cap of the
+    // floor he will land on — holding a floor he left, with the anchor still
+    // on the groundline — so that the screen limit (footroomLimit) rules: a
+    // hero falling back to the lane under a crane that high would land below
+    // the frame (feet at 284–337 without this). Inside the floor's own cap,
+    // and on the ground, nothing changes: an ordinary double on the lane is
+    // framed to the pixel as before. The 3px is the approach's lag behind a
+    // descending cap.
+    this.camScreenFoot = !grounded
+      && this.camPan > guardGroundCap(this.camFloorY - floor, this.camZoom) + 3;
+    if (Math.abs(this.camFloorY - GROUND_Y) > 0.5 || this.camScreenFoot) {
       // Bounded the way the fall is, and for the same reason: this clamp only
       // fires when the spring is behind, and discharging the whole of that lag
       // in one frame was measurably the sharpest thing left on the screen —
@@ -3891,7 +4200,7 @@ export class RunState {
       // anything he can actually do and not enough to read as a cut.
       const room = Math.max(0, drop) + (FOOTROOM_CATCHUP / this.camZoom) * dt;
       const floored = Math.min(this.camFloorY + room,
-        Math.max(this.camFloorY, feetY - CAM_FOOTROOM));
+        Math.max(this.camFloorY, feetY - this.footroomLimit()));
       // Same reason as the fall cap: a sprung value that is being held somewhere
       // other than where its integrator thinks it is has to be told, or it
       // discharges the difference the frame the clamp stops binding.
@@ -3900,7 +4209,12 @@ export class RunState {
       // pushes it FORWARD, as this does, must not hand it the push as momentum —
       // that is what carried the anchor ten pixels past the tunnel floor and
       // left it drifting back for half a second.
-      if (floored > this.camFloorY) this.camFloorV = 0;
+      if (floored > this.camFloorY) {
+        this.camFloorV = 0;
+        // The push is the hero's own drop (plus the allowance); the drop's
+        // share is carry, not camera work.
+        this.camCarry = Math.min(Math.max(0, drop), this.camCarry + (floored - this.camFloorY));
+      }
       this.camFloorY = floored;
     }
     // Rolling terrain owes headroom, and a road owes MORE of it: the hero is
@@ -3910,55 +4224,74 @@ export class RunState {
     // sky road costs exactly what a jump on the ground costs, which is the
     // point of re-pinning. Identical to the old `GROUND_Y - routeGroundY` for
     // as long as the anchor sits on the groundline, which is most of the game.
-    const lift = this.camFloorY - floor;
-    const want = framingFor(this.player.y, lift);
-    // A lower tunnel changes the anchor before it changes the hero's jump
-    // state. The ordinary framing target is allowed to ease, but it can leave
-    // the drawn sprite above the frame while the lower anchor is catching up.
-    // Resolve that only for a lower-route presentation: the hero's actual
-    // drawn bounds are the contract, and a hard correction is preferable to a
-    // frame with no hero in it. Surface jumps keep the existing easing path.
-    const lowerRoutePresentation = this.route?.kind === 'tunnel' || tunnelFloor != null;
-    if (lowerRoutePresentation) {
-      const heroFeet = floor - (Number(this.player?.y) || 0);
-      const heroBounds = { top: heroFeet - HERO_DRAW_H, bottom: heroFeet };
-      const easedPan = easePan(this.camPan, want.pan, dt);
-      const visibleTarget = portraitEdgePanForBounds(heroBounds, this.camZoom, this.camFloorY,
-        easedPan, 0, 0, Math.max(PAN_MAX, H));
-      const currentTop = screenYFor(heroBounds.top, this.camZoom, this.camPan, this.camFloorY);
-      const currentBottom = screenYFor(heroBounds.bottom, this.camZoom, this.camPan, this.camFloorY);
-      const outsideFrame = currentTop < 0 || currentBottom > H;
-      this.camPan = outsideFrame ? visibleTarget : easePan(this.camPan, visibleTarget, dt);
-      this.camZoom = easeZoom(this.camZoom, want.zoom, dt);
-      // A lower route owns the crane outright while it is on screen, so leave
-      // the guard holding nothing rather than a stale requirement it would then
-      // have to release on the way out.
-      this.camGuardNeed = guardNeed(0, lift);
-      this.camGuardDwell = 0;
-    } else {
-      const guard = this.jumpGuard(floor, lift, dt);
-      this.camPan = guard.pan;
-      this.camZoom = easeZoom(this.camZoom, guard.zoom, dt);
-      // The floor under all of it. The guard is latched, capped and aimed at a
-      // predicted apex, and every one of those is a reason it can be behind
-      // where the hero actually is — a second air jump taken late, a bounce pad,
-      // a rewind putting him somewhere else entirely. So whatever the smoothing
-      // decided, the crane is never below the one that keeps the crown on
-      // screen, measured at the zoom that was just eased to. Correct by
-      // construction rather than by tuning, and in ordinary play it binds on
-      // nothing at all.
-      // Unless keeping it would push his own floor off the bottom: the ground
-      // wins that one (see guardGroundCap), and the hero goes off the top.
-      const floorPan = Math.min(guardFloorPan(this.player.y, lift, this.camZoom),
-        guardGroundCap(lift, this.camZoom));
-      if (this.camPan < floorPan) {
-        this.camPan = floorPan;
-        // Fold it back into the latch, or the next frame's approach eases
-        // straight back down to a target that has just been proven wrong.
-        this.camGuardNeed = Math.max(Number(this.camGuardNeed) || 0, floorPan);
-      }
+    // The reference floor, not the physics floor: between two steps of a stack
+    // `lift` stays what the next step needs and the ground cap keeps THAT step
+    // in shot, not the lane the hero is not going to land on.
+    const lift = this.camFloorY - ref.floorY;
+    // His height over the reference floor. Negative while he is below it — on
+    // the way up to a predicted step, or falling past a floor he has left —
+    // and the crown floor has to see that; the guard clamps it itself.
+    const yRef = ref.floorY - feetY;
+    // THE LOCKSTEP. Whatever the anchor took over this tick (a re-pin moving
+    // up: negative screen px) the crane gives back in the same tick, so the
+    // hand-over from crane to anchor is invisible on the screen rather than a
+    // climb-then-descend wobble around every lip claim.
+    const anchorCarry = Math.min(0, (this.camFloorY - slideFromFloorY) * this.camZoom);
+    // The crane is the jump guard, always — tunnels included. The lower-route
+    // dolly that used to own the crane in and around a tunnel had no apex
+    // latch, no ground cap, a hard snap when the hero left the frame and it
+    // reset the guard every frame, so the hand-overs at the mouth and the exit
+    // started from scratch mid-jump (7–10px a frame at 2.2).
+    // How far his feet dropped this tick, on the screen. A cap that has to come
+    // down (the floor he left handed over to the lane below) may do so at his
+    // own rate, and the crane with it: the lane rises to meet a hero who holds
+    // his place on the screen, which is the same picture the anchor's carry
+    // paints on a sky-road fall. That share of the pan's motion is not camera
+    // work either (panCarry, taken out of the budget below).
+    const descent = !grounded && this.player.vy <= 0 && this.camRefRaised
+      ? Math.max(0, drop) * this.camZoom : 0;
+    const guard = this.jumpGuard(yRef, lift, anchorCarry, dt, descent);
+    this.camPan = guard.pan;
+    const panCarry = Math.max(0, Math.min(slideFromPan - this.camPan, descent));
+    // The floor under all of it. The guard is latched, capped and aimed at a
+    // predicted apex, and every one of those is a reason it can be behind
+    // where the hero actually is — a second air jump taken late, a bounce pad,
+    // a rewind putting him somewhere else entirely. So whatever the smoothing
+    // decided, the crane is never below the one that keeps the crown on
+    // screen. Correct by construction rather than by tuning, and in ordinary
+    // play it binds on nothing at all.
+    // Unless keeping it would push the reference floor off the bottom: the
+    // ground wins that one (see guardGroundCap), and the hero goes off the top.
+    const floorPan = Math.min(guardFloorPan(yRef, lift, this.camZoom), guard.cap);
+    if (this.camPan < floorPan) {
+      this.camPan = floorPan;
+      // Fold it back into the latch, or the next frame's approach eases
+      // straight back down to a target that has just been proven wrong.
+      this.camGuardNeed = Math.max(Number(this.camGuardNeed) || 0, floorPan);
     }
-    this.spendSlideBudget(slideFromFloorY, slideFromPan, floor, feetY, drop, dt);
+    this.spendSlideBudget(slideFromFloorY, slideFromPan, ref.floorY, feetY, drop, carry, dt, panCarry);
+    // What the camera did this tick, for the dev CAMERA readout and the
+    // headless gate (tests/camera-run-offscreen.js). `own` is the camera's own
+    // screen motion in px/s with the carried fall taken out.
+    this.camTrace = {
+      ref: ref.floorY, refRoute: ref.route ? ref.route.kind : null, predicted: ref.predicted,
+      lift: this.camFloorY - ref.floorY, carry: this.camCarry, panCarry, falling, anchorTo,
+      need: this.camGuardNeed, cap: guard.cap,
+      floorPan: Math.min(guardFloorPan(yRef, this.camFloorY - ref.floorY, this.camZoom), guard.cap),
+      own: cameraOwnSlide(this.camFloorY - slideFromFloorY, this.camCarry,
+        this.camPan - slideFromPan + panCarry, this.camZoom) / Math.max(1e-6, dt),
+    };
+  }
+
+  /**
+   * How far the feet may sit below the anchor line, in world px: CAM_FOOTROOM
+   * at pan 0, and less with the crane up, so the feet stay CAM_FOOTROOM_SCREEN
+   * above the bottom edge of the frame whatever the pan is. Identical to the
+   * old clamp for as long as the crane is down.
+   */
+  footroomLimit() {
+    const z = this.camZoom || ZOOM;
+    return Math.min(CAM_FOOTROOM, (H - CAM_FOOTROOM_SCREEN - frameGroundY() - this.camPan) / z);
   }
 
   /**
@@ -3990,6 +4323,20 @@ export class RunState {
     this.camFeetY = null;
     this.camGuardNeed = undefined;
     this.camGuardDwell = 0;
+    this.camCapPrev = undefined;
+    this.camCarry = 0;
+    this.camRef = null;
+    this.camRefPhysRoute = undefined;
+    this.camRefMiss = 0;
+    this.camRefRaised = false;
+    this.camTrace = null;
+    this.prevHeroFeetY = null;
+    // The portrait pan's spring, its fall memory and its latched edge.
+    this.camPanV = 0;
+    this.camPortraitFloor = GROUND_Y;
+    this.camPortraitFeetY = null;
+    this.camPortraitEdge = 0;
+    this.camPortraitDwell = 0;
     this.portraitFrameTransition = null;
     this.portraitFrameFitState = null;
     this.cameraPresentationMode = mode;
@@ -4016,10 +4363,16 @@ export class RunState {
    * frames this fires on are ones where the crane is gliding rather than
    * clamped.
    */
-  spendSlideBudget(fromFloorY, fromPan, floor, feetY, drop, dt) {
+  spendSlideBudget(fromFloorY, fromPan, refFloorY, feetY, drop, carry, dt, panCarry = 0) {
     if (!(dt > 0) || !Number.isFinite(fromFloorY) || !Number.isFinite(fromPan)) return;
     const z = this.camZoom || ZOOM;
-    const slide = -(this.camFloorY - fromFloorY) * z + (this.camPan - fromPan);
+    carry = Number.isFinite(this.camCarry) ? this.camCarry : (carry || 0);
+    // The hero's own fall is not camera motion: the anchor riding his drop
+    // (`carry`) is taken out before the budget is measured. Counting it held
+    // the anchor at 380px/s under a hero dropping at a thousand, and then the
+    // footroom clamp caught up at his full speed — the 868–1089px/s snaps on
+    // every sky-road gap.
+    const slide = cameraOwnSlide(this.camFloorY - fromFloorY, carry, this.camPan - fromPan + (panCarry || 0), z);
     const budget = CAM_SLIDE_MAX * dt;
     const excess = Math.abs(slide) - budget;
     if (!(excess > 0)) return;
@@ -4029,9 +4382,11 @@ export class RunState {
     const held = this.camFloorY + give;
     // Never past the target: overshooting the anchor's own destination to save a
     // few pixels of slide would put the frame somewhere neither mechanism asked
-    // for. Between `fromFloorY` and where it wanted to be, and nowhere else.
-    this.camFloorY = give > 0 ? Math.min(held, Math.max(fromFloorY, this.camFloorY))
-      : Math.max(held, Math.min(fromFloorY, this.camFloorY));
+    // for. Between where the carry left it and where it wanted to be, and
+    // nowhere else.
+    const from = fromFloorY + (carry || 0);
+    this.camFloorY = give > 0 ? Math.min(held, Math.max(from, this.camFloorY))
+      : Math.max(held, Math.min(from, this.camFloorY));
     this.camFloorV = (this.camFloorY - fromFloorY) / dt;
     // Giving the anchor back moves the hero toward one edge or the other, so
     // both are re-asserted. This is the same contract the two branches above
@@ -4039,8 +4394,10 @@ export class RunState {
     // ground would: guardGroundCap outranks it), the feet do not leave the
     // bottom — restated once, here, because this is the last thing to touch
     // either number.
-    const lift = this.camFloorY - floor;
-    const floorPan = Math.min(guardFloorPan(this.player?.y || 0, lift, z), guardGroundCap(lift, z));
+    const lift = this.camFloorY - refFloorY;
+    const yRef = Number.isFinite(feetY) ? refFloorY - feetY : 0;
+    const cap = Number.isFinite(this.camCapPrev) ? this.camCapPrev : guardGroundCap(lift, z);
+    const floorPan = Math.min(guardFloorPan(yRef, lift, z), cap);
     if (this.camPan < floorPan) {
       this.camPan = floorPan;
       this.camGuardNeed = Math.max(Number(this.camGuardNeed) || 0, floorPan);
@@ -4050,11 +4407,15 @@ export class RunState {
     // speed or lose out of the bottom of the picture. Bounded the same way it is
     // above — his own drop plus the allowance — so the budget is overspent by
     // exactly as much as the fall requires and no more.
-    if (Math.abs(this.camFloorY - GROUND_Y) > 0.5 && Number.isFinite(feetY)) {
+    if ((Math.abs(this.camFloorY - GROUND_Y) > 0.5 || this.camScreenFoot) && Number.isFinite(feetY)) {
       const room = Math.max(0, drop) + (FOOTROOM_CATCHUP / z) * dt;
       const floored = Math.min(this.camFloorY + room,
-        Math.max(this.camFloorY, feetY - CAM_FOOTROOM));
-      if (floored > this.camFloorY) { this.camFloorV = 0; this.camFloorY = floored; }
+        Math.max(this.camFloorY, feetY - this.footroomLimit()));
+      if (floored > this.camFloorY) {
+        this.camFloorV = 0;
+        this.camCarry = Math.min(Math.max(0, drop), (this.camCarry || 0) + (floored - this.camFloorY));
+        this.camFloorY = floored;
+      }
     }
   }
 
@@ -4078,22 +4439,42 @@ export class RunState {
    * `camGuardNeed` is the latched requirement in unclamped crane px and
    * `camGuardDwell` the grounded timer; both ride the save/restore with the rest
    * of the camera so a rewind does not land mid-glide.
+   *
+   * `yRef` is the hero's height over the REFERENCE floor and `lift` the anchor's
+   * distance above it; `anchorCarry` is what the anchor took over this tick
+   * (≤ 0 screen px), which the latch and the pan give back in lockstep.
    */
-  jumpGuard(floor, lift, dt) {
+  jumpGuard(yRef, lift, anchorCarry, dt, descent = 0) {
     const p = this.player;
     // The crane the hero needs simply STANDING where he is. Zero on the flat,
     // non-zero only while the anchor is still catching up with a climbing road.
     const rest = guardNeed(0, lift);
-    const latched = Number.isFinite(Number(this.camGuardNeed)) ? Number(this.camGuardNeed) : rest;
-    // The frame never lifts the hero's own floor off the bottom edge. Applied to
-    // the TARGET, so a cap that drops (stepping off an island onto the lane) is
-    // glided down to by the approach rather than cut to.
-    const cap = guardGroundCap(lift, this.camZoom);
+    const latched = Math.max(0, (Number.isFinite(Number(this.camGuardNeed)) ? Number(this.camGuardNeed) : rest)
+      + (Number(anchorCarry) || 0));
+    const from = Math.max(0, this.camPan + (Number(anchorCarry) || 0));
+    // The frame never lifts the reference floor off the bottom edge. Applied to
+    // the TARGET, so a cap that drops is glided down to by the approach rather
+    // than cut to — and the cap itself may only DESCEND at the crane's own
+    // speed: handed from a step to the lane in one tick it dragged the crane
+    // down at 500px/s under a hero still at his apex, which is where the crown
+    // went on every walk-off and double from the top of a stack.
+    // — or at the hero's own rate of descent, when that is faster: the crane
+    // comes down WITH him and the ground he is falling to rises to meet him.
+    const fall = Math.max(0, Number(descent) || 0);
+    const rawCap = guardGroundCap(lift, this.camZoom);
+    const cap = Number.isFinite(this.camCapPrev)
+      ? Math.max(rawCap, this.camCapPrev - Math.max(GUARD_SPEED * dt, fall)) : rawCap;
+    this.camCapPrev = cap;
+    const speed = Math.max(GUARD_SPEED, fall / Math.max(1e-6, dt));
+    // Bounded by the larger of the crane budget and the cap: a step the anchor
+    // has not (yet) re-pinned may need more crane than the flat lane's budget,
+    // and the cap is exactly the amount the ground can spare.
+    const bound = Math.max(PAN_MAX, cap);
     if (!p) {
       this.camGuardNeed = rest;
       this.camGuardDwell = 0;
-      const framing = guardFraming(rest);
-      return { pan: guardApproach(this.camPan, Math.min(cap, framing.pan), dt), zoom: framing.zoom };
+      const framing = guardFraming(rest, GUARD_TOP_MARGIN, bound);
+      return { pan: this.guardUnderCap(from, Math.min(cap, framing.pan), cap, dt, speed, fall), zoom: framing.zoom, cap };
     }
     // `y <= 0.01` rather than `grounded` alone for the same reason the portrait
     // branch does it: a hero standing on a lip can be one flag behind.
@@ -4102,14 +4483,82 @@ export class RunState {
     // The powerup gravity multiplier is part of the arc, so the apex has to know
     // about it or a floaty jump is predicted short and the guard arrives late.
     const gravityScale = this.beatLock ? 1 : (this.powerups?.gravityMultiplier?.() ?? 1);
-    const apex = ballisticApex(p.y, p.vy, gravityFor(p.hero) * gravityScale);
-    const demand = Math.max(rest, guardNeed(Number(p.y) || 0, lift), guardNeed(apex, lift));
+    const y = Number(yRef) || 0;
+    const apex = ballisticApex(y, p.vy, gravityFor(p.hero) * gravityScale);
+    const demand = Math.max(rest, guardNeed(y, lift), guardNeed(apex, lift));
     const need = this.camGuardDwell >= GUARD_DWELL
       ? Math.max(demand, guardRelease(latched, rest, dt))
       : Math.max(latched, demand);
     this.camGuardNeed = need;
-    const framing = guardFraming(need);
-    return { pan: guardApproach(this.camPan, Math.min(cap, framing.pan), dt), zoom: framing.zoom };
+    const framing = guardFraming(need, GUARD_TOP_MARGIN, bound);
+    return { pan: this.guardUnderCap(from, Math.min(cap, framing.pan), cap, dt, speed, fall), zoom: framing.zoom, cap };
+  }
+
+  /**
+   * The approach, with one addition: a crane ABOVE a descending cap comes down
+   * at least as fast as the cap does. guardApproach is an exponential, so
+   * chasing a cap that is dropping at the hero's rate of fall it closed a
+   * seventh of the gap a frame and fell behind — the hero sank to the bottom
+   * edge, the footroom clamp pushed the anchor under him, and the lower anchor
+   * raised the cap again: he landed pinned to the bottom of the frame with
+   * the crane still up. Nothing changes while the crane is under the cap.
+   */
+  guardUnderCap(from, target, cap, dt, speed, fall) {
+    const pan = guardApproach(from, target, dt, speed);
+    if (!(fall > 0) || !(pan > cap)) return pan;
+    return Math.max(cap, from - Math.max(GUARD_SPEED * dt, fall));
+  }
+
+  /**
+   * Put the camera where it would have SETTLED for the hero's current place:
+   * the anchor on the reference floor's target, the crane at its resting need
+   * under the ground cap, nothing latched, nothing carried. A checkpoint used
+   * to keep the death frame's pan and zoom — a retry opened with the crane
+   * wherever the fall had left it and glided down from there.
+   */
+  settleCamera() {
+    this.camFloorV = 0;
+    this.camFeetY = null;
+    this.camGuardNeed = undefined;
+    this.camGuardDwell = 0;
+    this.camCapPrev = undefined;
+    this.camCarry = 0;
+    this.camRef = null;
+    this.camRefPhysRoute = undefined;
+    this.camRefMiss = 0;
+    this.camRefRaised = false;
+    this.camTrace = null;
+    if (this.cameraPresentationMode === PHONE_PORTRAIT) {
+      this.camFloorY = GROUND_Y;
+      this.camPanV = 0;
+      this.camPortraitFeetY = null;
+      this.camPortraitEdge = 0;
+      this.camPortraitDwell = 0;
+      this.portraitFrameTransition = null;
+      if (!this.player) { this.camPan = 0; this.camPortraitFloor = GROUND_Y; return; }
+      // The settled pan is the composition for where he stands — the tunnel
+      // fit, the high path, or the surface frame — with the standing hero
+      // clamped into the band: what updateCamera would arrive at, arrived at.
+      const frameFit = this.portraitFrameFit();
+      const gameplayEdges = portraitGameplayEdges(presentationFrame(), this);
+      const composition = this.portraitCompositionPan(this.resolveCameraReference(), gameplayEdges, frameFit);
+      const feet = this.playerGroundY() - (Number(this.player.y) || 0);
+      this.camPan = portraitEdgePanForBounds({ top: feet - HERO_DRAW_H, bottom: feet },
+        this.camZoom || ZOOM, GROUND_Y, composition.pan, PORTRAIT_EDGE_PAN_TOP_MARGIN,
+        PORTRAIT_EDGE_PAN_BOTTOM_MARGIN, composition.edgePanLimit, gameplayEdges);
+      this.camPortraitFloor = composition.floor;
+      return;
+    }
+    if (!this.player) { this.camFloorY = GROUND_Y; this.camPan = 0; return; }
+    const z = this.camZoom || ZOOM;
+    const ref = this.resolveCameraReference();
+    const sky = !!(ref.route && ref.route.sky);
+    const band = ref.rise < 0 ? CAM_ANCHOR_DOWN : anchorFreeBand();
+    const k = sky ? 1 : Math.max(0, Math.min(1, (Math.abs(ref.rise) - band) / band));
+    this.camFloorY = GROUND_Y - ref.rise * (k * k * (3 - 2 * k));
+    const lift = this.camFloorY - ref.floorY;
+    const yRef = ref.floorY - (this.playerGroundY() - (Number(this.player.y) || 0));
+    this.camPan = Math.min(guardGroundCap(lift, z), Math.max(0, guardNeed(Math.max(0, yRef), lift)));
   }
 
   // Translate a draw callback down to the terrain. Sampling ONE point floats
@@ -4188,6 +4637,23 @@ export class RunState {
     if (this.fx) { this.fx.prevSlide = this.fx.slide; this.fx.prevTubDx = this.fx.tubDx; this.fx.prevTubFloorH = this.fx.tubFloorH; }
     this.prevIntroRunX = this.introRunX;
     this.prevPitDx = this.heroPitDx();
+    this.prevHeroFeetY = this.heroWorldFeetY();
+    this.prevHeroY = this.player ? (Number(this.player.y) || 0) : null;
+    this.prevHeroRoute = this.route;
+    this.prevHeroGrounded = !!this.player && (!!this.player.grounded || (Number(this.player.y) || 0) <= 0.01);
+  }
+
+  /**
+   * The hero's feet as a WORLD y, which is the one vertical number of his that
+   * is continuous: `player.y` is altitude above whatever floor currently holds
+   * him and is rebased the frame a route claims or releases him. The renderer
+   * mixes this between ticks exactly as it mixes the camera, so the hero no
+   * longer jitters against a gliding frame by the tick remainder (up to 6px a
+   * frame while the crane or the anchor is moving).
+   */
+  heroWorldFeetY() {
+    if (!this.player) return null;
+    return this.playerGroundY() - (Number(this.player.y) || 0);
   }
 
   captureRenderInterpolation() {
@@ -4209,6 +4675,10 @@ export class RunState {
     if (this.fx) { this.fx.prevSlide = this.fx.slide; this.fx.prevTubDx = this.fx.tubDx; this.fx.prevTubFloorH = this.fx.tubFloorH; }
     this.prevIntroRunX = this.introRunX;
     this.prevPitDx = this.heroPitDx();
+    this.prevHeroFeetY = this.heroWorldFeetY();
+    this.prevHeroY = this.player ? (Number(this.player.y) || 0) : null;
+    this.prevHeroRoute = this.route;
+    this.prevHeroGrounded = !!this.player && (!!this.player.grounded || (Number(this.player.y) || 0) <= 0.01);
   }
 
   heroRenderPhase(alpha) {
@@ -4319,6 +4789,27 @@ export class RunState {
     this.camFloorV = 0;
     this.camGuardNeed = undefined;
     this.camGuardDwell = 0;
+    // The reference floor's memory and the crane's cap memory start empty too:
+    // a death restart with no checkpoint comes back through here, and a cap
+    // left over from the floor he died on would keep the lane off the bottom
+    // of the first double of the new run.
+    this.camCapPrev = undefined;
+    this.camCarry = 0;
+    this.camRef = null;
+    this.camRefPhysRoute = undefined;
+    this.camRefMiss = 0;
+    this.camRefRaised = false;
+    this.camScreenFoot = false;
+    this.camTrace = null;
+    this.camPanV = 0;
+    this.camPortraitFeetY = null;
+    this.camPortraitFloor = GROUND_Y;
+    this.camPortraitEdge = 0;
+    this.camPortraitDwell = 0;
+    this.prevHeroFeetY = null;
+    this.prevHeroY = null;
+    this.prevHeroRoute = null;
+    this.prevHeroGrounded = false;
     this.speedBoost = 0;
     this.speedBoostHoldT = 0;
     // The loop-de-loop ride, while one is happening. See game/loop.js: for its
@@ -6311,6 +6802,21 @@ export class RunState {
     return this.baseSpeed() * Math.min(SPEED_RAMP_CAP, 1 + SPEED_RAMP_K * Math.sqrt(t));
   }
 
+  /**
+   * The run's speed WITHOUT the hero's momentary state — the dash, the roll and
+   * the stumble multiply `speed` for a few frames, and anything that looks
+   * ahead by travel time (the tunnel preview window, the reference floor's
+   * landing column) flickered with them: a stumble at the mouth of a tunnel
+   * moved the preview window under the hero and back. Where he will BE is a
+   * question about the lane's pace, not about this frame's animation.
+   */
+  steadySpeed() {
+    if (this.beatLock) return Math.max(1, Number(this.baseSpeed()) || 1);
+    const p = this.player;
+    const f = p && (p.dashT > 0 ? 1.8 : p.rollT > 0 ? 1.25 : p.stumbleT > 0 ? 0.72 : 1);
+    return Math.max(1, (Number(this.speed) || Number(this.baseSpeed()) || 1) / (f || 1));
+  }
+
   get speed() {
     if (this.beatLock) return this.baseSpeed();
     const hero = HERO_BY_ID[this.relay.current];
@@ -6887,7 +7393,6 @@ export class RunState {
       }
     }
     this.distance = this.camX;
-    this.updateCamera(wdt);
     // Held for the length of a lap. The pad's kick bleeds off over about a
     // second and a half, which is most of the ride — so left to decay the hero
     // would enter boosted and leave at a crawl, and the ring would read as the
@@ -7023,6 +7528,14 @@ export class RunState {
       && (this.route.kind === 'tunnel' || this.route.kind === 'fork')) {
       this.player.y += this.routeGroundY(this.playerWorldX(), this.route) - slopeFloorPrev;
     }
+    // THE CAMERA RUNS AFTER PHYSICS. It used to run before Player.update() and
+    // updateRoute(), so every claim, release and landing reached it one tick
+    // late — the frame a staircase step caught the hero was framed as if he
+    // were still over the gap, and the crown and feet clamps could not hold
+    // what they had not been shown. Nothing between here and the old call
+    // site reads camPan/camFloorY/camZoom; checkCheckpoints() runs later, so
+    // the snapshot stores this tick's camera with this tick's hero.
+    this.updateCamera(wdt);
     // Route catches happen after Player.update(), so their universal landing
     // kick has no Player result object to carry the impact signal. The
     // landing timer is set only by startLandingSlide(), making this a narrow
@@ -7562,9 +8075,13 @@ export class RunState {
    * camera cranes once, he stays up there, and a card printing across him stays
    * across him. So terrain moves the cards and jumping never does.
    */
-  heroScreenRect(z = this.camZoom, pan = this.camPan, floorY = this.camFloorY, standing = false) {
+  heroScreenRect(z = this.camZoom, pan = this.camPan, floorY = this.camFloorY, standing = false, feetWorldY = null) {
     const heroX = (this.heroScreenX() + this.portraitWorldXOffset()) * z;
-    const feetY = screenYFor(this.playerGroundY() - (standing ? 0 : this.player.y), z, pan, floorY);
+    // `feetWorldY` is the renderer's interpolated feet (drawFrame), so the
+    // marker and the head floatie sit on the sprite as drawn, not on the sim.
+    const feetWorld = standing ? this.playerGroundY()
+      : (Number.isFinite(feetWorldY) ? feetWorldY : this.playerGroundY() - this.player.y);
+    const feetY = screenYFor(feetWorld, z, pan, floorY);
     // Mirror flips the overlay's anchor by hand, exactly as drawFloatie does.
     const left = this.mirror ? W - heroX - PLAYER_SPRITE_W * z : heroX;
     return {
@@ -7587,9 +8104,9 @@ export class RunState {
    * over the last few pixels so it never pops on a jump that only grazes the
    * edge. Over the HUD, because a hero under the HUD is still a hero.
    */
-  drawHeroAboveMarker(d, z, pan, floorY) {
+  drawHeroAboveMarker(d, z, pan, floorY, feetWorldY = null) {
     if (!this.player || this.dead || !this.rhythmHeroVisible()) return;
-    const rect = this.heroScreenRect(z, pan, floorY);
+    const rect = this.heroScreenRect(z, pan, floorY, false, feetWorldY);
     const alpha = Math.min(1, (16 - rect.y1) / 10);
     if (!(alpha > 0)) return;
     d.save();
@@ -15281,6 +15798,13 @@ export class RunState {
       this.player.landingSlideT = m.landingSlideT ?? 0; this.player.slideKickT = m.slideKickT ?? 0;
       this.player.standT = m.standT ?? 0;
     }
+    // A retry opens on a SETTLED frame: the tier's zoom, the anchor where the
+    // restored floor would have it, the crane at rest. After the player's
+    // motion is back, because the reference floor reads it.
+    this.camZoom = this.cameraPresentationMode === PHONE_PORTRAIT
+      ? (this.portraitConfig()?.worldZoom || ZOOM)
+      : applyFraming(this.renderSettings || this.save?.settings);
+    this.settleCamera();
     const ss = s.spawnerState || {};
     this.spawner.nextX = Math.max(ss.nextX ?? s.spawnerX ?? 0, s.camX + 400);
     this.spawner.lastPatternIdx = ss.lastPatternIdx ?? this.spawner.lastPatternIdx;
@@ -15536,6 +16060,8 @@ export class RunState {
     // so the very next frame releases a pan nothing asked for.
     s.camGuardNeed = this.camGuardNeed; s.camGuardDwell = this.camGuardDwell;
     s.camFloorV = this.camFloorV;
+    s.camPanV = this.camPanV;
+    s.camCapPrev = this.camCapPrev;
     s.distance = this.distance; s.tRun = this.tRun; s.score = this.score; s.coins = this.coins;
     // The chase tally rides here too. Coins ARE rewound, so without this a
     // rewind across a barrel delivery took the fifty back, kept the progress,
@@ -15698,8 +16224,18 @@ export class RunState {
     this.camFloorY = s.camFloorY ?? GROUND_Y;
     this.camFeetY = null;
     this.camFloorV = s.camFloorV || 0;
+    // The portrait pan keeps its spring; its drop memory and latched edge are
+    // forgotten for the same reason camFeetY is.
+    this.camPanV = s.camPanV || 0;
+    this.camPortraitFeetY = null;
+    this.camPortraitEdge = 0;
     this.camGuardNeed = s.camGuardNeed;
     this.camGuardDwell = s.camGuardDwell ?? 0;
+    this.camCapPrev = s.camCapPrev;
+    // The reference floor is re-asked every tick; a rewind only forgets what it
+    // was holding so the first frame back is not framed against a floor he
+    // will reach in the future it just unwound.
+    this.camCarry = 0; this.camRef = null; this.camRefPhysRoute = undefined; this.camRefMiss = 0; this.camRefRaised = false; this.camTrace = null;
     this.distance = s.distance; this.tRun = s.tRun; this.score = s.score; this.coins = s.coins;
     this.copterBonks = s.copterBonks || 0;
     this.copterPressure = Number.isFinite(s.copterPressure) ? s.copterPressure : COPTER_PRESSURE_START;
@@ -18956,8 +19492,27 @@ export class RunState {
     const hideFuse = this.recordBackground
       || (typeof window !== 'undefined' && !!(window.__mash_dev && window.__mash_dev.hideFuse));
     const carryFuse = !hideFuse && this.bonus.type === 'fuse';
+    // WHERE HIS FEET ARE DRAWN THIS FRAME. Mixed between ticks like the camera
+    // is, so the hero glides with a moving frame instead of stepping against
+    // it by the tick remainder. Which number is mixed depends on what he is
+    // doing: STANDING on the floor he stood on last tick, it is his altitude
+    // (zero), so his feet sit exactly on the drawn ground however it slopes —
+    // mixing world feet there sank him 2px into every ramp at alpha 0. In the
+    // AIR, or across a claim or release, it is his world feet (heroWorldFeetY),
+    // the one number that is continuous when `player.y` is rebased. Either is
+    // then moved to the column the art samples its ground at — the slope
+    // offset `groundY` below carries — and up by the train floor. The pit
+    // fall keeps raw feet: its picture is its own.
+    const heroGroundedNow = !!this.player.grounded || (Number(this.player.y) || 0) <= 0.01;
+    const heroArtGround = this.heroRenderGroundY(cam + heroArtX, this.route) - (this.trainFloorLift || 0);
+    const heroFeetWorldY = this.pitDeath || !Number.isFinite(this.prevHeroFeetY) ? null
+      : (heroGroundedNow && this.prevHeroGrounded && this.prevHeroRoute === this.route
+        && Number.isFinite(this.prevHeroY))
+        ? heroArtGround - mix(this.prevHeroY, Number(this.player.y) || 0)
+        : mix(this.prevHeroFeetY, this.heroWorldFeetY()) + (heroArtGround - this.playerGroundY());
     const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, carryFuse,
       { mirror: this.mirror,
+        feetWorldY: heroFeetWorldY,
         // screenX is world-facing before the optional mirror transform, so
         // invert the offset there to keep the visible recoil moving backward.
         screenX: heroScreenX + catHitScreenOffset(this.player.catHitT, VIEW_W) * (this.mirror ? -1 : 1),
@@ -19203,7 +19758,7 @@ export class RunState {
         // A word by his head: a small block centred just above and ahead of his
         // crown, where he is drawn this frame (the hang, the lean, the drop).
         if (f.head) {
-          const r = this.heroScreenRect(z, pan, floorY);
+          const r = this.heroScreenRect(z, pan, floorY, false, heroFeetWorldY);
           drawFloatie(d, { ...f, wx: 0, y: Math.round(r.y0 - 15) }, {
             heroX: (r.x0 + r.x1) / 2 + (this.mirror ? -6 : 6) * z,
             alpha: Math.max(0, Math.min(1, f.t / 0.2)),
@@ -19268,7 +19823,7 @@ export class RunState {
         if (hudEv && !this.paused && !this.dead && !this.finishing && !this.overtime && !this.flip && !this.style?.screenFlipped) {
           paintHudGlitched(d, this, hudEv, drawHud, hudTopBands);
         } else drawHud(d, this);
-        this.drawHeroAboveMarker(d, z, pan, floorY);
+        this.drawHeroAboveMarker(d, z, pan, floorY, heroFeetWorldY);
       }
       if (this.introFreeze > 0 && this.introText) {
         drawActBanner(d, this.introText, {

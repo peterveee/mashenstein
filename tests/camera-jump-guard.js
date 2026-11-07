@@ -10,7 +10,7 @@ import { installDom } from './dom-stub.js';
 import {
   ZOOM, PAN_MAX, framingFor, guardNeed, guardFraming, guardApproach, guardRelease,
   guardFloorPan, guardGroundCap, ballisticApex, GUARD_DWELL, GUARD_TOP_MARGIN, GUARD_SPEED,
-  GROUND_KEEP, GROUND_Y, setRestingZoom,
+  GROUND_KEEP, GROUND_Y, setRestingZoom, cameraOwnSlide,
 } from '../src/engine/camera.js';
 import { H } from '../src/engine/renderer.js';
 import { GRAVITY, BASE_JUMP_V, AIR_JUMP_SCALE } from '../src/game/player.js';
@@ -27,11 +27,13 @@ const DT = 1 / 60;
 
 // The guard's state machine, lifted out of run.js's jumpGuard() so the shape
 // under test is the shipped one and not a paraphrase of it, ground cap and
-// crown clamp included.
+// crown clamp included. The crane's bound is handed to guardFraming the way
+// run.js hands it over: PAN_MAX, or the reference floor's ground cap where that
+// sits higher.
 function makeGuard() {
   let need = guardNeed(0, 0);
   let dwell = 0;
-  let pan = guardFraming(need).pan;
+  let pan = guardFraming(need, GUARD_TOP_MARGIN, Math.max(PAN_MAX, guardGroundCap(0, ZOOM))).pan;
   return {
     get pan() { return pan; },
     step(y, vy, grounded, dt = DT) {
@@ -42,8 +44,8 @@ function makeGuard() {
       need = dwell >= GUARD_DWELL
         ? Math.max(demand, guardRelease(need, rest, dt))
         : Math.max(need, demand);
-      const framing = guardFraming(need);
-      const cap = guardGroundCap(0, framing.zoom);
+      const cap = guardGroundCap(0, ZOOM);
+      const framing = guardFraming(need, GUARD_TOP_MARGIN, Math.max(PAN_MAX, cap));
       pan = Math.max(guardApproach(pan, Math.min(cap, framing.pan), dt),
         Math.min(cap, guardFloorPan(y, 0, framing.zoom)));
       return { pan, zoom: framing.zoom, need };
@@ -154,13 +156,24 @@ for (const [mult, air, label] of [[1, 1, 'a phone double'], [1.1, 2, 'a phone tr
 }
 setRestingZoom(2);
 
-// ---- 7. the zoom is a backstop ordinary play never reaches ------------------
+// ---- 7. the zoom is retired: the crane is the whole answer ------------------
 assert(Math.min(...dbl.map((p) => p.zoom)) === ZOOM, 'a double jump does not touch the zoom');
 assert(guardFraming(guardNeed(180, 0)).pan <= PAN_MAX, 'the crane is capped at PAN_MAX');
-assert(guardFraming(guardNeed(260, 0)).zoom < ZOOM,
-  'and only a jump far past the roster ceiling opens the frame up');
+const past = guardFraming(guardNeed(260, 0));
+assert(past.zoom === ZOOM && past.pan === PAN_MAX,
+  'the zoom never moves; past the cap the hero goes off the top under the marker');
+assert(guardFraming(guardNeed(260, 0), GUARD_TOP_MARGIN, PAN_MAX + 40).pan === PAN_MAX + 40,
+  'and the bound is the one the caller hands over, where it sits above PAN_MAX');
 assert(GUARD_TOP_MARGIN > 0 && GUARD_TOP_MARGIN < 24,
   `the guard margin is a screen distance, smaller than the hero (${GUARD_TOP_MARGIN}px)`);
+
+// ---- 8. the camera's own slide leaves out the fall the anchor carries -------
+assert(cameraOwnSlide(-150, -150, 0, 1.6) === 0,
+  'a 150px fall the anchor carries in full is not camera motion');
+assert(cameraOwnSlide(-10, 0, 3, 2) === 23,
+  'an uncarried 10px floor move at zoom 2 plus 3px of crane is 23px of slide');
+assert(guardFloorPan(-20, 0, 2) === guardFloorPan(0, 0, 2) - 40,
+  'the crown floor sees a hero whose feet are below the reference floor');
 
 console.log(failed ? 'CAMERA JUMP GUARD: FAILED' : 'CAMERA JUMP GUARD: PASSED');
 process.exit(failed ? 1 : 0);

@@ -36,6 +36,11 @@ export const STAGE_LAYOUTS = {
     appliance: { at: 0.55, high: false },
     pits: [{ at: 0.119, w: 52 }, { at: 0.139, w: 56 }, { at: 0.16, w: 56 }, { at: 0.45, w: 58 }, { at: 0.78, w: 64 }],
     rewindAt: null,
+    // Authored clear of the routes: the default thirds put the second line
+    // inside the sky road's third gap, so every retry opened mid-fall. 0.40 is
+    // past the tunnel's return window and before the stack; 0.72 is after the
+    // fork ends and well before the 0.78 pit.
+    checkpoints: [0.40, 0.72],
   },
   "speed-1": {
     durationSec: 60,

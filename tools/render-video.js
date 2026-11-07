@@ -46,16 +46,15 @@
 //   --keep      leave the intermediate WAV directory on disk
 //
 // e.g.: node tools/render-video.js megamix "TOASTER SKY PARADE" work/video/megamix-toasters.mp4
-import { writeFileSync, mkdtempSync, mkdirSync, rmSync, renameSync, existsSync } from 'fs';
+import { writeFileSync, mkdtempSync, mkdirSync, rmSync } from 'fs';
 import { tmpdir, cpus } from 'os';
-import { join, dirname, basename, resolve } from 'path';
-import { spawn } from 'child_process';
-import { createRequire } from 'module';
+import { join, dirname, resolve } from 'path';
 import { renderBankBrowser } from './lib/render-bank-browser.js';
 import { analyseSong } from './lib/song-analysis.js';
 import { wavBuffer, SR } from './lib/wav.js';
 import { resolveOrExit } from './lib/tracks.js';
 import { bpmOf } from '../src/data/arrangements.js';
+import { renderVisualiserVideo } from './lib/visualiser-render.js';
 import { VISUALISER_NAMES } from '../src/engine/visualisers.js';
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
@@ -169,281 +168,38 @@ console.log(`           level ${avg('level').toFixed(3)}/${max('level').toFixed(
 console.log(`           kit ${percussion.length} hits, drums mean ${avg('drums').toFixed(2)}, `
   + `drumless ${(drumlessFrames / analysis.length * 100).toFixed(0)}% of the song`);
 
-// ------------------------------------------------------------- scratch dir
+// --------------------------------------------------------- shared renderer
 
+mkdirSync(dirname(OUT), { recursive: true });
 const work = mkdtempSync(join(tmpdir(), 'mash-video-'));
 const wavPath = join(work, 'song.wav');
 writeFileSync(wavPath, wavBuffer([outL, outR], norm));
-
 const cleanup = () => {
   if (!flags.keep) rmSync(work, { recursive: true, force: true });
   else console.log(`kept       ${work}`);
 };
 
-// ------------------------------------------------- bundle the browser shim
-
-const require = createRequire(import.meta.url);
-const esbuild = require('esbuild');
-
-const entry = join(work, 'entry.js');
-writeFileSync(entry, `
-import { createVisualiser } from ${JSON.stringify(join(ROOT, 'src/engine/visualisers.js'))};
-window.__mkVisualiser = (index, seed, track) => createVisualiser(index, seed, track);
-`);
-const bundle = await esbuild.build({
-  entryPoints: [entry],
-  bundle: true,
-  format: 'iife',
-  target: ['es2020'],
-  minify: false,
-  write: false,
-  logLevel: 'silent',
-});
-const bundleJs = bundle.outputFiles[0].text;
-
-// ------------------------------------------------------------ draw frames
-
-// Playwright is a devDependency, but resolve it leniently so a fresh checkout
-// that only ran `npm i --omit=dev` still gets a useful error.
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  console.error('playwright is required: npm install');
-  cleanup();
-  process.exit(1);
-}
-
-// The game's faces, on the same stylesheet src/gate.js injects at boot. Only
-// EMERALD CODE RAIN draws real text, but it bakes a glyph atlas the first time
-// it draws, so the face has to be resident before any frame is rendered or the
-// whole clip keeps the fallback.
-const GAME_FONT_URL = 'https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&family=Jost:wght@400..800&display=swap';
-const GAME_FONT_FACES = ["400 32px 'Lilita One'", "500 12px 'Fredoka'", "400 12px 'Permanent Marker'", "600 12px 'Jost'", "700 12px 'Jost'"];
-
-const html = `<!doctype html><meta charset="utf-8">
-<link rel="stylesheet" href="${GAME_FONT_URL}">
-<style>html,body{margin:0;background:#000}</style>
-<script>${bundleJs.replace(/<\/script>/g, '<\\/script>')}<\/script>`;
-
-// Headless Chromium defaults to rasterizing Canvas2D on the CPU (SwiftShader),
-// which for a 4K canvas full of gradients and sprite blits is by far the most
-// expensive thing this tool does — enabling the real GPU measured ~5.6x faster
-// end to end. --no-gpu falls back for machines where ANGLE/Metal is unavailable.
-const GPU_ARGS = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'];
-const USE_GPU = flags.gpu !== 'false' && !flags['no-gpu'];
-
-// The visualiser integrates state in update() and draws from it without ever
-// writing back — no RNG draws, no mutation in draw() or its helpers. So a
-// worker can reach any frame by replaying update() alone and will land in
-// exactly the state a serial run would have. Replay costs ~0.01ms/frame
-// against ~50-250ms to draw one, which is what makes splitting the song into
-// independent ranges practically free.
-async function renderRange(from, to, segmentPath, onProgress) {
-  const browser = await chromium.launch({ args: USE_GPU ? GPU_ARGS : [] });
-  const page = await browser.newPage({ viewport: { width: 64, height: 64 } });
-  await page.setContent(html, { waitUntil: 'load' });
-  // Offline or a slow font response falls back rather than failing the render:
-  // a clip in Trebuchet beats no clip at all.
-  await page.evaluate((faces) => Promise.all(faces.map((face) => document.fonts.load(face).catch(() => {}))), GAME_FONT_FACES);
-
-  await page.evaluate(({ index, seed, bpm, fps, w, h, outW, outH, ss, skip }) => {
-    // The visualiser draws in logical 480x270 coordinates. Scaling the context
-    // instead of the finished bitmap means its gradients, strokes and 8x-baked
-    // prop sprites are all rasterized at output resolution — the same drawing
-    // code, just never asked to squeeze itself into 480x270 first.
-    const draw = document.createElement('canvas');
-    draw.width = outW * ss;
-    draw.height = outH * ss;
-    const dctx = draw.getContext('2d', { alpha: false });
-    // Cover, not stretch: scale by the larger ratio and centre the overflow, so
-    // a portrait frame crops the sides instead of distorting the art. For a
-    // 16:9 target both ratios are equal and this is a plain uniform scale.
-    const fit = Math.max(draw.width / w, draw.height / h);
-    dctx.setTransform(fit, 0, 0, fit, (draw.width - w * fit) / 2, (draw.height - h * fit) / 2);
-    dctx.lineJoin = 'round';
-    dctx.lineCap = 'round';
-    dctx.imageSmoothingEnabled = true;
-    dctx.imageSmoothingQuality = 'high';
-
-    // Supersampling is resolved here rather than in ffmpeg so the extra pixels
-    // never cross the CDP bridge — only the finished frame does.
-    const out = ss === 1 ? draw : document.createElement('canvas');
-    let octx = dctx;
-    if (ss !== 1) {
-      out.width = outW;
-      out.height = outH;
-      octx = out.getContext('2d', { alpha: false });
-      octx.imageSmoothingEnabled = true;
-      octx.imageSmoothingQuality = 'high';
-    }
-
-    const vis = window.__mkVisualiser(index, seed, { bpm });
-    const dt = 1 / fps;
-    const advance = (a) => {
-      a.spectrum = Uint8Array.from(a.spectrum);
-      vis.update(dt, a);
-    };
-    // Replay this worker's lead-in without drawing.
-    for (const a of skip) advance(a);
-
-    // One discarded frame. Chromium rasterizes a canvas's very first draw on a
-    // different path — the surface is only promoted to GPU acceleration once it
-    // has been drawn to — so without this a worker's opening frame differs from
-    // the serial render by a few subpixels. Warming the destination makes the
-    // parallel output bit-identical (measured: 0 differing subpixels, where an
-    // unwarmed worker differed on ~70). draw() writes no state, so this costs
-    // one frame and changes nothing.
-    dctx.fillStyle = '#000';
-    dctx.fillRect(0, 0, w, h);
-    vis.draw(dctx);
-    if (ss !== 1) octx.drawImage(draw, 0, 0, outW, outH);
-
-    // One batch of frames per round trip: stepping and PNG-encoding in the page
-    // keeps the CDP traffic to the encoded images instead of raw pixels.
-    window.__batch = (chunk) => {
-      const pngs = [];
-      for (const a of chunk) {
-        advance(a);
-        dctx.fillStyle = '#000';
-        dctx.fillRect(0, 0, w, h);
-        vis.draw(dctx);
-        if (ss !== 1) octx.drawImage(draw, 0, 0, outW, outH);
-        pngs.push(out.toDataURL('image/png').slice('data:image/png;base64,'.length));
-      }
-      return pngs;
-    };
-  }, {
-    index: visualIndex, seed: SEED, bpm: BPM, fps: FPS,
-    w: W, h: H, outW: OUT_W, outH: OUT_H, ss: SS,
-    // Lead-in frames are replayed inside the page so only this worker's own
-    // range crosses the bridge as images.
-    skip: analysis.slice(0, from),
-  });
-
-  // ffmpeg is started before the first frame and fed over a pipe, so encoding
-  // overlaps capture and a 1080p render never lands on disk as a PNG pile.
-  const ff = spawn('ffmpeg', [
-    '-y', '-hide_banner', '-loglevel', 'error',
-    '-f', 'image2pipe', '-framerate', String(FPS), '-i', 'pipe:0',
-    // Nearest-neighbour keeps an integer upscale pixel-exact rather than soft.
-    ...(PIXEL ? ['-vf', `scale=${W * SCALE}:${H * SCALE}:flags=neighbor`] : []),
-    // -tune animation is aimed squarely at flat cel-style content like this:
-    // stronger deblocking across the big smooth sky gradient (which is where
-    // 8-bit banding would otherwise show) without eating the hard vector edges.
-    '-c:v', 'libx264', '-preset', 'slow', '-tune', 'animation', '-crf', String(CRF),
-    '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-level', '4.2',
-    '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709',
-    '-an', '-f', 'mp4', segmentPath,
-  ], { stdio: ['pipe', 'inherit', 'inherit'] });
-
-  let ffError = null;
-  const ffDone = new Promise((done) => {
-    ff.on('error', (err) => { ffError = err; done(-1); });
-    ff.on('close', (code) => done(code));
-  });
-  ff.stdin.on('error', (err) => { ffError = ffError || err; });
-
-  const write = (buf) => new Promise((done, fail) => {
-    if (ffError) { fail(ffError); return; }
-    if (ff.stdin.write(buf)) done();
-    else ff.stdin.once('drain', done);
-  });
-
-  const BATCH = 20;
-  let bytes = 0;
-  for (let i = from; i < to; i += BATCH) {
-    const pngs = await page.evaluate((c) => window.__batch(c), analysis.slice(i, Math.min(i + BATCH, to)));
-    for (const png of pngs) {
-      const buf = Buffer.from(png, 'base64');
-      bytes += buf.length;
-      await write(buf);
-    }
-    onProgress(pngs.length);
-  }
-  await browser.close();
-
-  ff.stdin.end();
-  const status = await ffDone;
-  if (status !== 0) throw new Error(`ffmpeg failed (${ffError ? ffError.message : `exit ${status}`})`);
-  return bytes;
-}
-
-// ------------------------------------------------------------------ encode
-
-mkdirSync(dirname(OUT), { recursive: true });
-
-// An mp4 has no moov atom until the encode finishes, so the destination would
-// otherwise hold an unopenable file for the whole render — and a previous good
-// version would be gone from the first byte. Encode beside it and rename into
-// place only on success; same directory, so the rename is atomic.
-const PARTIAL = join(dirname(OUT), `.${basename(OUT)}.partial`);
-
-// Ranges are contiguous and equal; every segment opens on its own IDR, so the
-// concat demuxer can stitch them without re-encoding.
-const bounds = [0];
-for (let k = 1; k <= WORKERS; k++) bounds.push(Math.round((FRAMES * k) / WORKERS));
-const ranges = [];
-for (let k = 0; k < WORKERS; k++) {
-  if (bounds[k + 1] > bounds[k]) {
-    ranges.push({ from: bounds[k], to: bounds[k + 1], path: join(work, `seg${k}.mp4`) });
-  }
-}
-console.log(`workers    ${ranges.length}${USE_GPU ? ', GPU rasterization' : ', CPU rasterization'}`);
-
-let drawn = 0;
-let bytes = 0;
 const startedAt = process.hrtime.bigint();
-const tick = (n) => {
-  drawn += n;
-  const elapsed = Number(process.hrtime.bigint() - startedAt) / 1e9;
-  const eta = (elapsed / drawn) * (FRAMES - drawn);
-  process.stdout.write(`\rframes     ${drawn}/${FRAMES} (${((drawn / FRAMES) * 100).toFixed(1)}%) `
-    + `${(drawn / elapsed).toFixed(1)} fps, eta ${eta.toFixed(0)}s   `);
-};
-
+let drawn = 0;
 try {
-  const sizes = await Promise.all(ranges.map((r) => renderRange(r.from, r.to, r.path, tick)));
-  bytes = sizes.reduce((a, b) => a + b, 0);
+  const rendered = await renderVisualiserVideo({
+    analysis, audioPath: wavPath, visualIndex, seed: SEED, bpm: BPM, fps: FPS,
+    startFrame: 0, frameCount: FRAMES, outW: PIXEL ? W : OUT_W, outH: PIXEL ? H : OUT_H,
+    ss: SS, pixel: PIXEL, pixelScale: SCALE, crf: CRF, workers: WORKERS, fade: FADE,
+    noGpu: !!flags['no-gpu'] || flags.gpu === 'false', keep: !!flags.keep, out: OUT,
+    onProgress: (n) => {
+      drawn += n;
+      const elapsed = Number(process.hrtime.bigint() - startedAt) / 1e9;
+      const eta = drawn ? (elapsed / drawn) * (FRAMES - drawn) : 0;
+      process.stdout.write(`\rframes     ${drawn}/${FRAMES} (${((drawn / FRAMES) * 100).toFixed(1)}%) `
+        + `${(drawn / elapsed).toFixed(1)} fps, eta ${eta.toFixed(0)}s   `);
+    },
+  });
+  process.stdout.write(`\rframes     ${drawn}/${FRAMES} complete\n`);
+  console.log(`\nwrote      ${rendered.out}`);
 } catch (err) {
-  cleanup();
   console.error(`\n${err.message}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  cleanup();
 }
-process.stdout.write(`\rframes     ${drawn}/${FRAMES} drawn, ${(bytes / 1e6).toFixed(0)}MB piped`
-  + ' '.repeat(24) + '\n');
-
-// Stitch the segments and mux the song in. -c:v copy means the video is never
-// re-encoded here, so joining costs seconds and loses nothing.
-console.log('encoding   joining segments + muxing audio…');
-const listPath = join(work, 'segments.txt');
-writeFileSync(listPath, ranges.map((r) => `file '${r.path}'\n`).join(''));
-const mux = spawn('ffmpeg', [
-  '-y', '-hide_banner', '-loglevel', 'error',
-  '-f', 'concat', '-safe', '0', '-i', listPath,
-  '-i', wavPath,
-  '-c:v', 'copy',
-  // Cutting a song short lands mid-waveform, which clicks. A short fade over
-  // the tail costs nothing musically and removes it.
-  ...(FADE > 0 ? ['-af', `afade=t=out:st=${Math.max(0, FRAMES / FPS - FADE).toFixed(3)}:d=${FADE}`] : []),
-  '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
-  '-movflags', '+faststart', '-shortest',
-  '-f', 'mp4', PARTIAL,
-], { stdio: ['ignore', 'inherit', 'inherit'] });
-const status = await new Promise((done) => {
-  mux.on('error', () => done(-1));
-  mux.on('close', (code) => done(code));
-});
-
-cleanup();
-if (status !== 0) {
-  rmSync(PARTIAL, { force: true });
-  console.error(`ffmpeg mux failed (exit ${status})`);
-  process.exit(1);
-}
-if (!existsSync(PARTIAL)) {
-  console.error('ffmpeg reported success but wrote no file');
-  process.exit(1);
-}
-renameSync(PARTIAL, OUT);
-console.log(`\nwrote      ${OUT}`);

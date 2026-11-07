@@ -36,6 +36,7 @@ import { resolveLayout } from '../game/layout.js';
 import { proseMenu } from './prose.js';
 import { labRenderMenu } from './lab-render.js';
 import { chipResults } from '../game/results-chip.js';
+import { camStairs } from '../game/camera-dev.js';
 import { beginFlightCheckpoint } from '../game/flight/checkpoint.js';
 
 const GOLD = '#f6d33c';
@@ -675,13 +676,18 @@ function tuneMenu(dev, group) {
         items.push({ label: `FAIR GAP jump>slide: ${Math.round(d.gap)}px  (react ${d.react})`, act: null });
         items.push({ label: `RUNWAY: ${d.runway.toFixed(2)}s   MARGIN: ${d.margin.toFixed(3)}s`, act: null });
       }
+      // The anchor's trace, when the run publishes one (run.camTrace — an older run has none):
+      // the reference row it framed (* = predicted) and which route chose it, the crane's cap,
+      // and what the anchor holds on its own.
+      const t = run?.camTrace;
+      const trace = t ? ` ref ${Math.round(t.ref)}${t.predicted ? '*' : ''} ${t.refRoute || 'lane'}  cap ${Math.round(t.cap)}  own ${Math.round(t.own)}` : '';
       if (d.pan != null) {
         items.push({
-          label: `CAMERA: peak ${Math.round(d.peak)}px  pan ${Math.round(d.pan)}/${Math.round(PAN_MAX)}  zoom ${d.zoom.toFixed(2)}`,
+          label: `CAMERA: peak ${Math.round(d.peak)}px  pan ${Math.round(d.pan)}/${Math.round(PAN_MAX)}  zoom ${d.zoom.toFixed(2)}${trace}`,
           act: null,
         });
       } else {
-        items.push({ label: 'CAMERA: jump to measure the crane', act: null });
+        items.push({ label: `CAMERA: jump to measure the crane${trace}`, act: null });
       }
       // Declared fairness estimate vs what the cast can actually produce. The
       // spawner sizes every jump gap off the former, so if it sits below the
@@ -738,6 +744,12 @@ const chipResultsItem = () => ({
   label: `8-BIT RESULTS: ${chipResults.on ? 'ON' : 'off'}`, act: () => { chipResults.on = !chipResults.on; },
 });
 
+// Staircase framing A/B (src/game/camera-dev.js). Read every frame by run.js, so flipping it
+// mid-run shows on the next frame. Browser-level, like 8-BIT RESULTS. Goes once Peter has chosen.
+const camStairsItem = () => ({
+  label: `STAIRS: ${camStairs.rePin ? 'RE-PIN' : 'CRANE'}`, act: () => { camStairs.rePin = !camStairs.rePin; },
+});
+
 function runMenu(dev) {
   const build = () => {
     const r = dev.run();
@@ -747,6 +759,7 @@ function runMenu(dev) {
         items: [
           { label: 'NO RUN ACTIVE', act: null },
           chipResultsItem(),
+          camStairsItem(),
           { label: `SEED LOCK: ${dev.seedLock ?? 'off'}`, adjust: (d) => { dev.seedLock = dev.seedLock == null ? 1000 : Math.max(0, dev.seedLock + d); } },
           { label: `TIME SCALE: x${dev.timeScale}`, adjust: (d) => dev.cycleSpeed(d) },
         ],
@@ -759,6 +772,7 @@ function runMenu(dev) {
         { label: `FORCE MISSION: ${r.devForceMission ? 'ON' : 'off'}`, act: () => { r.devForceMission = !r.devForceMission; } },
         { label: `HITBOXES: ${r.debug ? 'ON' : 'off'}`, act: () => { r.debug = !r.debug; } },
         chipResultsItem(),
+        camStairsItem(),
         { label: `TIME SCALE: x${dev.timeScale}`, adjust: (d) => dev.cycleSpeed(d) },
         { label: `SEED LOCK: ${dev.seedLock ?? 'off'}`, adjust: (d) => { dev.seedLock = dev.seedLock == null ? r.seed : Math.max(0, dev.seedLock + d); } },
         { label: `BATTERY: ${r.battery}/${r.maxBattery()}`, adjust: (d) => { r.battery = Math.min(r.maxBattery(), Math.max(0, r.battery + d)); } },

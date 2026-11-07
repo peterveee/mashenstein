@@ -71,10 +71,11 @@ export let ZOOM = 2;
 // GROUND_Y + PAN_MAX it clears 173px of hero altitude, which covers everything
 // short of a double-jumper carrying the cape.
 export const ZOOM_MIN = 1.3;
-// How far the dolly may CRANE UP — shift the whole frame down in screen px —
-// before it starts pulling back instead. A crane leaves the world's scale
-// alone, and a scale change mid-jump is the thing that reads as disconcerting,
-// so the crane is spent first and the zoom only covers what is left.
+// How far the dolly may CRANE UP — shift the whole frame down in screen px. A
+// crane leaves the world's scale alone, and a scale change mid-jump is the
+// thing that reads as disconcerting, which is why the crane is the only tool
+// the run camera has left: the zoom it used to fall back on past this budget
+// is retired (see guardFraming).
 //
 // The budget used to be exactly the ground apron, the H - GROUND_Y px of dirt
 // drawn BELOW the groundline: at full crane the groundline landed on the bottom
@@ -89,14 +90,17 @@ export const ZOOM_MIN = 1.3;
 // jumpMult with two air jumps stacked on top, as the roster stood when the
 // crane was sized — and holding that at
 // the resting zoom takes (185 + HERO_HEIGHT + HEAD_MARGIN) * ZOOM - GROUND_Y
-// of crane. So the crane covers everything anyone can actually jump and
-// the zoom becomes a backstop ordinary play never reaches.
+// of crane. So the crane covers everything anyone can actually jump, and the
+// zoom backstop that used to sit behind it is gone.
 //
-// What it costs is the old promise: past 135px of altitude the groundline now
-// leaves the bottom of the frame, so at the top of a triple you cannot see what
-// you are coming down onto. At that height it was a long way off anyway.
-// Nothing moves for an ordinary jump either way — the crane does not start
-// until 111px of altitude, which is past a double on most of the cast.
+// What bounds it in practice is not this budget but the REFERENCE FLOOR: the
+// crane may lift the frame only until that floor sits GROUND_KEEP px above the
+// bottom edge (guardGroundCap), so what you are about to land on stays in shot
+// at every altitude, and past that bound the hero goes off the top under the
+// edge marker. A raised road is not craned to at all: once a standing hero
+// would leave less than ANCHOR_HOLD_HEADROOM of sky over his crown (run.js
+// anchorFreeBand()) the anchor re-pins the floor to the road instead. Nothing
+// zooms, ever — ZOOM is the one magnification a run shows.
 // Headroom the dolly keeps above the hero's crown before it starts pulling back.
 const HEAD_MARGIN = 10;
 // Drawn hero height (draw.js HERO_DRAW_H). Duplicated rather than imported so
@@ -111,9 +115,8 @@ const HERO_HEIGHT = 24;
 // jumpMult buys height rather than launch speed (player.js jumpV), so the same
 // stack now measures 153px. Left at 185 deliberately: it is a CEILING, every
 // framing number on this screen is arithmetic off it, and lowering it would
-// re-tune the crane and the zoom backstop to buy back 32px of pan that nothing
-// is asking for. What it costs is slack, which is the right thing for a
-// backstop to have.
+// re-tune the crane to buy back 32px of pan that nothing is asking for. What
+// it costs is slack, which is the right thing for a ceiling to have.
 const MAX_HERO_ALT = 185;
 // Enough crane to hold that at a given magnification, and not a pixel of zoom.
 const craneFor = (z) => Math.ceil((MAX_HERO_ALT + HERO_HEIGHT + HEAD_MARGIN) * z - GROUND_Y);
@@ -263,18 +266,23 @@ export function portraitEdgePanForBounds(
   const safe = frame?.safeRect || { top: 0 };
   const topInset = Number.isFinite(Number(topMargin)) ? Math.max(0, Number(topMargin)) : 0;
   const bottomInset = Number.isFinite(Number(bottomMargin)) ? Math.max(0, Number(bottomMargin)) : 0;
-  const defaultTopEdge = (Number.isFinite(Number(safe.top)) ? Number(safe.top) : 0) + topInset;
+  const safeTop = Number.isFinite(Number(safe.top)) ? Number(safe.top) : 0;
+  const defaultTopEdge = safeTop + topInset;
   const frameHeight = Number.isFinite(Number(frame?.height)) ? Number(frame.height) : H;
   const defaultBottomEdge = Math.max(defaultTopEdge, frameHeight - bottomInset);
   // Callers that own a denser presentation (the portrait HUD and touch
   // controls) can reserve a smaller gameplay band than the physical frame.
   // Keep the old safe-frame behavior when no explicit band is supplied so
   // landscape and existing camera callers remain byte-for-byte compatible.
+  // An explicit band takes the same insets the safe frame does: the top margin
+  // is headroom over the subject whichever edge it is measured from, and the
+  // bottom margin is footroom under it (run.js passes 0, so its band's bottom
+  // is the edge it names).
   const explicitTop = Number(edges?.top);
   const explicitBottom = Number(edges?.bottom);
-  const topEdge = Number.isFinite(explicitTop) ? explicitTop : defaultTopEdge;
+  const topEdge = (Number.isFinite(explicitTop) ? explicitTop : safeTop) + topInset;
   const bottomEdge = Math.max(topEdge,
-    Number.isFinite(explicitBottom) ? explicitBottom : defaultBottomEdge);
+    Number.isFinite(explicitBottom) ? explicitBottom - bottomInset : defaultBottomEdge);
   const topScreen = screenYFor(top, z, base, floorY);
   const bottomScreen = screenYFor(bottom, z, base, floorY);
   let pan = base;
@@ -422,9 +430,14 @@ export function floorSpringW(current, target, preview = false) {
 // folded back into the velocity. Clamping the position alone winds the spring
 // up: it keeps integrating toward a target it is not being allowed to approach
 // and arrives with all of that speed still in it.
-export function stepFloorSpring(current, velocity, target, omega, z, dt) {
+//
+// `maxSpeed` is that ceiling in screen px per second. Landscape takes the
+// default; portrait passes its own cap in logical px, because its frame is a
+// different size and the same promise to the eye is a different number there.
+export function stepFloorSpring(current, velocity, target, omega, z, dt, maxSpeed = FLOOR_MAX_SPEED) {
   const next = springFloor(current, velocity, target, omega, dt);
-  const cap = (FLOOR_MAX_SPEED / Math.max(0.01, z)) * Math.max(0, dt);
+  const speed = Number.isFinite(Number(maxSpeed)) ? Math.max(0, Number(maxSpeed)) : FLOOR_MAX_SPEED;
+  const cap = (speed / Math.max(0.01, z)) * Math.max(0, dt);
   const moved = next.value - current;
   if (Math.abs(moved) <= cap) return next;
   const clamped = current + Math.sign(moved) * cap;
@@ -447,6 +460,17 @@ export function stepFloorSpring(current, velocity, target, omega, z, dt) {
 // to outspend this, and why capping the raw on-screen motion instead would have
 // made the game follow him worse for no gain in smoothness.
 export const CAM_SLIDE_MAX = 380;
+
+// The camera's own screen motion this tick, in screen px — the thing the budget
+// above is spent on. `dFloorY` is how far the reference floor moved this tick in
+// world px and `dPan` how far the crane did in screen px; `carry` is the part
+// of the floor's move that is the hero's own fall, carried by the anchor so he
+// stays in frame. That part is his motion, not the camera's, so it is taken out
+// before the slide is measured: a 150px drop the anchor carries in full is a
+// camera that has not moved at all.
+export function cameraOwnSlide(dFloorY, carry, dPan, z) {
+  return -(dFloorY - carry) * z + dPan;
+}
 
 // The footroom clamp — "the anchor never leaves the hero's feet more than
 // CAM_FOOTROOM under the bottom edge" — measured as the source of every spike
@@ -602,6 +626,14 @@ export function easePan(current, target, dt) {
 // ordinary double jump (98px) spends 18px of crane and a single (57px) spends
 // none at all.
 export const GUARD_TOP_MARGIN = 6;
+// Headroom the frame keeps above a STANDING hero before the anchor re-pins a
+// raised road, in screen px. With less sky than this over his crown the crane
+// would be holding a line he has climbed away from, so run.js anchorFreeBand()
+// moves the reference floor to the road instead. A screen distance for the
+// same reason GUARD_TOP_MARGIN is one; as a band of world altitude a road may
+// rise before the anchor follows it works out at 87 / 68 / 60 px at zoom
+// 1.6 / 2.0 / 2.2.
+export const ANCHOR_HOLD_HEADROOM = 48;
 // How long the hero has to stay on the ground before the crane is given back.
 // Zero would bounce the frame on every hop along a raised route; long enough to
 // outlast a landing-and-immediately-jumping-again reads as the camera waiting to
@@ -653,17 +685,19 @@ export function guardNeed(y, groundLift = 0, margin = GUARD_TOP_MARGIN) {
   return margin + (Math.max(0, Number(y) || 0) + HERO_HEIGHT + groundLift) * ZOOM - frameGroundY();
 }
 
-// Split one such requirement into the crane and the zoom left over. The crane is
-// spent first to the last pixel of PAN_MAX, exactly as framingFor does it, and
-// the zoom is a backstop that ordinary play never reaches: at ZOOM 2 it does not
-// move until 185px of altitude.
-export function guardFraming(need, margin = GUARD_TOP_MARGIN) {
-  const anchor = frameGroundY();
+// Turn one such requirement into a crane. The crane is the whole answer: it is
+// spent to the last pixel of `panMax` and the zoom is ZOOM, always. The zoom
+// backstop that used to open the frame once the need outran PAN_MAX is retired
+// — the zoom never changes in a run — so past the bound the hero simply goes
+// off the top of the picture under the edge marker: the ground wins (the 10 Oct
+// rule, guardGroundCap). `panMax` is the bound run.js hands over, which may sit
+// above PAN_MAX when the reference floor's ground cap does. `margin` stays in
+// the signature for callers that pass it positionally; nothing here reads it
+// any more.
+export function guardFraming(need, margin = GUARD_TOP_MARGIN, panMax = PAN_MAX) {
   const raw = Number.isFinite(Number(need)) ? Number(need) : 0;
-  const pan = Math.max(0, Math.min(PAN_MAX, raw));
-  if (raw <= PAN_MAX) return { pan, zoom: ZOOM };
-  const world = Math.max(1, (raw + anchor - margin) / ZOOM);
-  return { pan, zoom: Math.max(ZOOM_MIN, Math.min(ZOOM, (PAN_MAX + anchor - margin) / world)) };
+  const bound = Number.isFinite(Number(panMax)) ? Number(panMax) : PAN_MAX;
+  return { pan: Math.max(0, Math.min(bound, raw)), zoom: ZOOM };
 }
 
 // The altitude a ballistic hero is actually going to reach. This is the whole
@@ -710,8 +744,14 @@ export function guardApproach(current, target, dt, speed = GUARD_SPEED) {
 //
 // Note the margin is zero here and GUARD_TOP_MARGIN in guardNeed: the guard
 // would LIKE six pixels of sky and will not accept less than none.
+//
+// And `y` is NOT clamped at zero here, where guardNeed's is. The reference
+// floor can sit above the hero's feet — he has stepped off a road the anchor is
+// still carrying, so his altitude against it is negative — and the crown floor
+// has to see that, or it holds the crane up for a crown that is already well
+// inside the frame.
 export function guardFloorPan(y, groundLift, z) {
-  return (Math.max(0, Number(y) || 0) + HERO_HEIGHT + groundLift) * z - frameGroundY();
+  return ((Number(y) || 0) + HERO_HEIGHT + groundLift) * z - frameGroundY();
 }
 
 // Giving it back. No cap: the release target is the resting frame, the distance
