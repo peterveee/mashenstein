@@ -447,6 +447,12 @@ react to it in more than volume.
 ## Done
 <!-- move shipped items here with a date -->
 
+### 2026-11-10 — Music videos moved to their own repo
+The generative videos, `transcribe-vocals` and the video docs now live in
+`/Users/Peter/video-generation`, along with the songs, transcripts and models from `work/`.
+The old lyric-video command line is retired (Wordform replaces it). The social-media and
+game-footage video tools stay here.
+
 ### 2026-08-07 — MRDR-3 review pass
 Renamed the layer synth to **MRDR-3**, and took the reachable half of a review of
 `_playLayer`. Everything below has a test in `tests/voices.js` that fails on the engine
