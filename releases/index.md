@@ -42,3 +42,4 @@ Written by `tools/archive-release.js` on every push to `main`. Do not edit by ha
 | 2026-10-03 | `edd636b` | [2026-10-03-edd636b.html](2026-10-03-edd636b.html) | Add mirror ball candidates, dance legs, LED slogans, mood names, and mood song name generation |
 | 2026-11-02 | `02dc3cf` | [2026-11-02-02dc3cf.html](2026-11-02-02dc3cf.html) | Refactor flight state rendering and introduce new relic drawing functionality |
 | 2026-11-10 | `5e02394` | [2026-11-10-5e02394.html](2026-11-10-5e02394.html) | Move the music videos to their own repo; retire the lyric-video CLI |
+| 2026-11-15 | `75b1fb2` | [2026-11-15-75b1fb2.html](2026-11-15-75b1fb2.html) | Archive asset gallery 5e02394 |
