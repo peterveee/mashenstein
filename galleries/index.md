@@ -39,3 +39,4 @@ landscape side by side. It is a live snapshot, regenerated on demand with
 | 2026-11-01 | `7948a3f` | [2026-11-01-7948a3f.html](2026-11-01-7948a3f.html) | [bake-offs](2026-11-01-7948a3f-lab.html) | Refactor flight state sound handling and pellet rendering; add relic candidates for archive bake-off |
 | 2026-11-08 | `1d3f9cf` | [2026-11-08-1d3f9cf.html](2026-11-08-1d3f9cf.html) | [bake-offs](2026-11-08-1d3f9cf-lab.html) | Archive published build 02dc3cf |
 | 2026-11-15 | `44e0db0` | [2026-11-15-44e0db0.html](2026-11-15-44e0db0.html) | [bake-offs](2026-11-15-44e0db0-lab.html) | Archive published build 5e02394 |
+| 2026-11-22 | `26fc73b` | [2026-11-22-26fc73b.html](2026-11-22-26fc73b.html) | [bake-offs](2026-11-22-26fc73b-lab.html) | Archive published build 75b1fb2 |
